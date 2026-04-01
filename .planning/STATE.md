@@ -4,11 +4,11 @@
 Phase 1 — Repo Surgery (in progress)
 
 ## Current Plan
-Plan 1 of 3 in Phase 1 — COMPLETE (01-01: Git Init, Branch Setup, Gitignore Hardening)
-Next: 01-02 (source file staging and cleanup)
+Plan 2 of 3 in Phase 1 — COMPLETE (01-02: Root Cleanup, Legacy Docs Relocation)
+Next: 01-03 (README.md — running in parallel, may already be complete)
 
 ## Last Action
-Completed 01-01-PLAN.md — standalone git repo initialized in martin-loop/, hardened .gitignore committed, rebuild/v4-controller branch created and checked out.
+Completed 01-02-PLAN.md — legacy docs moved to docs/legacy/, MartinLoop V3 3-31-2026/ and demo/ added to .gitignore, root now contains only canonical project files.
 
 ## Active Decisions
 - Database: Supabase (Postgres)
@@ -20,6 +20,9 @@ Completed 01-01-PLAN.md — standalone git repo initialized in martin-loop/, har
 - git init run inside martin-loop/ as standalone repo — parent Setup Stuff repo must not track martin-loop files
 - Initial commit contains ONLY .gitignore so no noise ever enters git history
 - rebuild/v4-controller is the working branch; main contains only the .gitignore baseline commit
+- Legacy reference docs (ENGINEERING.md, HANDOVER.md, OPEN-ME-FIRST.html) live in docs/legacy/ — not root
+- Historical directories and demo artifacts excluded via explicit .gitignore entries (not deleted from disk)
+- Used plain mv (not git mv) for relocating untracked files — correct approach for freshly initialized repo
 
 ## Key Constraints
 - Do not proceed to Phase 6 (control plane) without Phase 3 (persistence) complete
@@ -40,3 +43,4 @@ None.
 | Phase | Plan | Duration | Tasks | Files |
 |-------|------|----------|-------|-------|
 | 01-repo-surgery | 01 | 18min | 2 | 2 |
+| 01-repo-surgery | 02 | 12min | 1 | 4 |
