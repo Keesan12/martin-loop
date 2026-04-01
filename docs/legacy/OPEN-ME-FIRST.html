@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Martin Loop - Open Me First</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: "Aptos", "Segoe UI", sans-serif;
+        background: linear-gradient(180deg, #f6f2eb, #fbfaf7);
+        color: #1b282d;
+      }
+      .wrap {
+        max-width: 920px;
+        margin: 0 auto;
+        padding: 48px 24px 72px;
+      }
+      .card {
+        background: white;
+        border: 1px solid rgba(41, 56, 61, 0.08);
+        border-radius: 28px;
+        padding: 28px;
+        box-shadow: 0 20px 50px rgba(29, 39, 45, 0.08);
+      }
+      .hero {
+        display: grid;
+        gap: 18px;
+        margin-bottom: 18px;
+      }
+      .eyebrow {
+        margin: 0;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        font-size: 0.76rem;
+        color: #6c767b;
+      }
+      h1 { margin: 0; font-size: 2.2rem; }
+      p { line-height: 1.55; }
+      .actions {
+        display: grid;
+        gap: 14px;
+        margin-top: 18px;
+      }
+      a.button {
+        display: inline-block;
+        padding: 14px 18px;
+        border-radius: 16px;
+        background: #19b9a7;
+        color: white;
+        text-decoration: none;
+        width: fit-content;
+      }
+      ul { line-height: 1.6; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="card hero">
+        <p class="eyebrow">Martin Loop Validation Pack</p>
+        <h1>Open this file first</h1>
+        <p>
+          This repo includes both the hosted SaaS control-plane code and a local dashboard you can open with no install.
+          If you just want to see something immediately, start with the local dashboard.
+        </p>
+        <p>
+          Before launching any run, set guardrails first in <code>martin.config.yaml</code> (or pass <code>--config</code>), then use CLI flags only for one-off overrides.
+        </p>
+        <div class="actions">
+          <a class="button" href="./apps/local-dashboard/index.html">Open Local Dashboard</a>
+          <a class="button" href="./docs/demo/mockups/index.html">Open Visual Gallery</a>
+          <a class="button" href="./docs/testing/non-technical-testing-guide.html">Open Testing Guide</a>
+          <a class="button" href="./README.md">Open README</a>
+        </div>
+      </div>
+      <div class="card">
+        <p class="eyebrow">What’s inside</p>
+        <ul>
+          <li><strong>Set guardrails first</strong>: defaults come from <code>martin.config.yaml</code> (or <code>--config</code>), then CLI flags override for a single run.</li>
+          <li><strong>Budget caps</strong>: set <code>budget.maxUsd</code>, <code>budget.softLimitUsd</code>, <code>budget.maxIterations</code>, and <code>budget.maxTokens</code> in the config file.</li>
+          <li><strong>Governance routing</strong>: set <code>governance.destructiveActionPolicy</code>, <code>governance.telemetryDestination</code>, and <code>governance.verifierRules</code> in the config file.</li>
+          <li><strong>Verification overrides</strong>: pass <code>--verify</code> only when you need a one-off verification plan for a single run.</li>
+          <li><strong>Hosted API demo auth</strong>: the control plane now expects <code>x-martin-api-key</code>; deployment should set <code>MARTIN_CONTROL_PLANE_ADMIN_API_KEY</code> and <code>MARTIN_CONTROL_PLANE_WORKSPACE_API_KEY</code>.</li>
+          <li>The Martin runtime and benchmark harness in `packages/*` and `benchmarks/`</li>
+          <li>The hosted SaaS control plane in `apps/control-plane/`</li>
+          <li>A no-install local dashboard in `apps/local-dashboard/`</li>
+          <li>A stakeholder-ready visual pack in `docs/demo/mockups/`</li>
+          <li>Testing and deployment guides in `docs/` and `deploy/`</li>
+        </ul>
+      </div>
+    </div>
+  </body>
+  </html>

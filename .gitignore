@@ -33,3 +33,9 @@ output/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Historical archive (not part of v4 rebuild)
+MartinLoop V3 3-31-2026/
+
+# Legacy demo directory
+demo/
