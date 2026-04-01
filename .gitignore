@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+coverage/
+.next/
+.turbo/
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Archives (never track zip/tar artifacts)
+*.zip
+*.tar.gz
+*.tgz
+
+# Cache directories
+.npm-cache/
+.cache/
+
+# Test output
+vitest-results.json
+*.sqlite
+
+# Runtime artifacts
+artifacts/
+output/
+
+# OS files
+.DS_Store
+Thumbs.db
