@@ -1,13 +1,17 @@
 # Project State
 
 ## Current Phase
-Phase 2 — Runtime State Machine (planned, ready to execute)
+Phase 3 — Persistence Stack (planned, executing)
 
 ## Current Plan
-Plan 2 of 2 in Phase 2 — COMPLETE (02-02: Test Coverage — Phase Transitions, Leash, Grounding, Admission)
+Plan 2 of 2 in Phase 3 — COMPLETE (03-02: ContextCompiler + RunStore wiring + full tests)
 
 ## Last Action
-Phase 2 complete. Plan 02-02 executed 2026-04-02. All 18 tests passing.
+Phase 3 complete (2026-04-01): 25 tests passing in @martin/core, 16 in @martin/cli. All 03-02 tasks done.
+- 03-01: RunStore interface + FileRunStore + LedgerEvent types (12 kinds) + CLI persistence shim
+- 03-02: ContextCompiler + wire RunStore into runMartin at all lifecycle boundaries + 7 new persistence tests
+Circular import resolved: compilePromptPacket extracted to packages/core/src/compiler.ts.
+Phase 2 complete (2026-04-02): 18 tests passing across runtime/leash/grounding.
 Previous: Phase 2 planned. 2 plans created:
 - 02-01-PLAN.md: Import engineer slice work (policy.ts, leash.ts, grounding.ts) + add PolicyPhase/EvidenceVector/MachineState to contracts + wire compilePromptPacket and evaluateAttemptPolicy into core/src/index.ts
 - 02-02-PLAN.md: Full test coverage for all new Phase 2 APIs
