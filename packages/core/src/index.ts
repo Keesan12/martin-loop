@@ -5,10 +5,7 @@ import {
   type InterventionType,
   type LoopAttempt,
   type LoopBudget,
-  type LoopCost,
-  type LoopLifecycleState,
   type LoopRecord,
-  type LoopStatus,
   type LoopTask,
   type PolicyPhase
 } from "@martin/contracts";
@@ -30,7 +27,8 @@ import {
   type RepoGroundingHit,
   type RepoGroundingIndex
 } from "./grounding.js";
-import { type RunStore } from "./persistence/index.js";
+import { compilePromptPacket } from "./compiler.js";
+import { makeLedgerEvent, type RunStore } from "./persistence/index.js";
 
 // ─── Public API re-exports ───────────────────────────────────────────────────
 export type { FailureClass, InterventionType, PolicyPhase } from "@martin/contracts";
@@ -49,6 +47,10 @@ export type { CostGovernorState, ExitDecision, FailureAssessment } from "./polic
 export type { SafetyLeashDecision } from "./leash.js";
 export type { RepoGroundingHit, RepoGroundingIndex } from "./grounding.js";
 
+// ─── Prompt packet compiler ──────────────────────────────────────────────────
+export { compilePromptPacket } from "./compiler.js";
+export type { PromptPacket, CompilerAdapterRequest } from "./compiler.js";
+
 // ─── Persistence (RunStore, LedgerEvent, FileRunStore) ──────────────────────
 export {
   createFileRunStore,
@@ -62,6 +64,8 @@ export type {
   RunContract,
   RunStore
 } from "./persistence/index.js";
+export { compileAndPersistContext } from "./persistence/index.js";
+export type { CompileResult } from "./persistence/index.js";
 
 // ─── Adapter interfaces ──────────────────────────────────────────────────────
 
@@ -126,83 +130,6 @@ export interface DistilledContext {
     remainingBudgetUsd: number;
     remainingIterations: number;
     remainingTokens: number;
-  };
-}
-
-// ─── Prompt packet compiler ──────────────────────────────────────────────────
-
-export interface PromptPacket {
-  loopId: string;
-  attemptNumber: number;
-  contract: {
-    objective: string;
-    verificationPlan: string[];
-    allowedPaths?: string[];
-    deniedPaths?: string[];
-    acceptanceCriteria?: string[];
-  };
-  /** Prior failure/intervention pairs as "failureClass:intervention" strings. */
-  priorFailurePatterns: string[];
-  guidance: string;
-  budgetEnvelope: {
-    remainingBudgetUsd: number;
-    remainingIterations: number;
-    remainingTokens: number;
-  };
-}
-
-/**
- * Compiles a deterministic PromptPacket from a MartinAdapterRequest.
- * This is the context compiler — takes structured request state and produces
- * a reconstructable packet (no chat history required).
- */
-export function compilePromptPacket(request: MartinAdapterRequest): PromptPacket {
-  const priorFailurePatterns = request.previousAttempts
-    .filter((a) => a.failureClass && a.intervention)
-    .map((a) => `${a.failureClass}:${a.intervention}`);
-
-  const guidanceParts: string[] = [
-    "Only modify files directly required to satisfy the contract.",
-    "Do not touch files outside the allowed paths."
-  ];
-
-  if (request.context.allowedPaths && request.context.allowedPaths.length > 0) {
-    guidanceParts.push(
-      `Allowed paths: ${request.context.allowedPaths.join(", ")}.`
-    );
-  }
-
-  if (request.context.deniedPaths && request.context.deniedPaths.length > 0) {
-    guidanceParts.push(
-      `Denied paths (never touch): ${request.context.deniedPaths.join(", ")}.`
-    );
-  }
-
-  if (priorFailurePatterns.length > 0) {
-    guidanceParts.push(
-      `Prior failure patterns: ${priorFailurePatterns.join(", ")}. Adjust strategy accordingly.`
-    );
-  }
-
-  return {
-    loopId: request.loopId,
-    attemptNumber: request.previousAttempts.length + 1,
-    contract: {
-      objective: request.context.objective,
-      verificationPlan: request.context.verificationPlan,
-      ...(request.context.allowedPaths ? { allowedPaths: request.context.allowedPaths } : {}),
-      ...(request.context.deniedPaths ? { deniedPaths: request.context.deniedPaths } : {}),
-      ...(request.context.acceptanceCriteria
-        ? { acceptanceCriteria: request.context.acceptanceCriteria }
-        : {})
-    },
-    priorFailurePatterns,
-    guidance: guidanceParts.join(" "),
-    budgetEnvelope: {
-      remainingBudgetUsd: request.context.remainingBudgetUsd,
-      remainingIterations: request.context.remainingIterations,
-      remainingTokens: request.context.remainingTokens
-    }
   };
 }
 
