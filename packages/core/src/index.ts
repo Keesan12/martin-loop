@@ -48,6 +48,20 @@ export type { CostGovernorState, ExitDecision, FailureAssessment } from "./polic
 export type { SafetyLeashDecision } from "./leash.js";
 export type { RepoGroundingHit, RepoGroundingIndex } from "./grounding.js";
 
+// ─── Persistence (RunStore, LedgerEvent, FileRunStore) ──────────────────────
+export {
+  createFileRunStore,
+  makeLedgerEvent,
+  resolveRunsRoot
+} from "./persistence/index.js";
+export type {
+  AttemptArtifacts,
+  LedgerEvent,
+  LedgerEventKind,
+  RunContract,
+  RunStore
+} from "./persistence/index.js";
+
 // ─── Adapter interfaces ──────────────────────────────────────────────────────
 
 export interface MartinAdapterRequest {
@@ -291,6 +305,8 @@ export interface RunMartinInput {
   idFactory?: (prefix: string) => string;
   maxRecentAttempts?: number;
   fallbackModels?: string[];
+  /** Optional persistence store. When provided, runMartin writes artifacts on each lifecycle event. */
+  store?: RunStore;
 }
 
 export interface RunMartinResult {
