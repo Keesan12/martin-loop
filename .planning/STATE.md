@@ -1,14 +1,18 @@
 # Project State
 
 ## Current Phase
-Phase 1 — Repo Surgery (in progress)
+Phase 2 — Runtime State Machine (planned, ready to execute)
 
 ## Current Plan
-Plan 2 of 3 in Phase 1 — COMPLETE (01-02: Root Cleanup, Legacy Docs Relocation)
-Next: 01-03 (README.md — running in parallel, may already be complete)
+Plan 2 of 2 in Phase 2 — COMPLETE (02-02: Test Coverage — Phase Transitions, Leash, Grounding, Admission)
 
 ## Last Action
-Completed 01-02-PLAN.md — legacy docs moved to docs/legacy/, MartinLoop V3 3-31-2026/ and demo/ added to .gitignore, root now contains only canonical project files.
+Phase 2 complete. Plan 02-02 executed 2026-04-02. All 18 tests passing.
+Previous: Phase 2 planned. 2 plans created:
+- 02-01-PLAN.md: Import engineer slice work (policy.ts, leash.ts, grounding.ts) + add PolicyPhase/EvidenceVector/MachineState to contracts + wire compilePromptPacket and evaluateAttemptPolicy into core/src/index.ts
+- 02-02-PLAN.md: Full test coverage for all new Phase 2 APIs
+
+Handoff zip analyzed: slices 1-8 implemented policy, leash, grounding modules. Phase 2 plans wire all of that into the tracked repo and add test coverage.
 
 ## Active Decisions
 - Database: Supabase (Postgres)
@@ -39,8 +43,18 @@ None.
 - CTO demo deliverable = Phase 6, which requires Phase 3 (persistence) first.
 - martin-loop .git/ is a standalone repo nested inside "Setup Stuff/" — git commands must be run from inside martin-loop/ to target the correct repo.
 
+## Active Decisions (Phase 2)
+- Slice work (policy.ts, leash.ts, grounding.ts) from engineer's handoff is imported as-is into working repo
+- compilePromptPacket and evaluateAttemptPolicy are NEW additions not in handoff (required by tests)
+- PolicyPhase, EvidenceVector, MachineState added to packages/contracts/src/index.ts
+- FailureClass kept as thin output label only (R2.5) — policy reads EvidenceVector, not the label
+- runMartin explicitly tracks currentPhase (PolicyPhase state machine variable)
+
 ## Performance Metrics
 | Phase | Plan | Duration | Tasks | Files |
 |-------|------|----------|-------|-------|
 | 01-repo-surgery | 01 | 18min | 2 | 2 |
 | 01-repo-surgery | 02 | 12min | 1 | 4 |
+| 01-repo-surgery | 03 | 8min | 1 | 1 |
+| 02-runtime-state-machine | 02-01 | (prior) | 4 | 5 |
+| 02-runtime-state-machine | 02-02 | 8min | 4 | 3 |

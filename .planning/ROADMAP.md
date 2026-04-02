@@ -48,7 +48,10 @@ Plans:
   4. Phase transitions in core/src/index.ts are explicit and typed
   5. FailureClass is still present but used as output label only
   6. Tests cover phase transition logic
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [x] 02-01-PLAN.md — Import slice work: policy.ts, leash.ts, grounding.ts + add PolicyPhase/EvidenceVector/MachineState to contracts + wire compilePromptPacket and evaluateAttemptPolicy
+- [x] 02-02-PLAN.md — Test coverage: compilePromptPacket, evaluateAttemptPolicy, safety leash, grounding index
 
 ### Phase 3: Persistence Stack
 **Goal**: Make persistence the operating system. Every run writes a structured artifact tree (contract.json, state.json, ledger.jsonl, artifacts). This is the direct prerequisite for a real control plane.
