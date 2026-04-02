@@ -35,6 +35,11 @@ export interface ExitDecision {
 export interface MartinAdapterResultLike {
   status: "completed" | "failed";
   summary: string;
+  usage?: {
+    actualUsd: number;
+    tokensIn: number;
+    tokensOut: number;
+  };
   verification: {
     passed: boolean;
     summary: string;
