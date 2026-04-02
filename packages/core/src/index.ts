@@ -30,6 +30,7 @@ import {
   type RepoGroundingHit,
   type RepoGroundingIndex
 } from "./grounding.js";
+import { type RunStore } from "./persistence/index.js";
 
 // ─── Public API re-exports ───────────────────────────────────────────────────
 export type { FailureClass, InterventionType, PolicyPhase } from "@martin/contracts";
