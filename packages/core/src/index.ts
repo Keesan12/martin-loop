@@ -293,6 +293,26 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     { now: now(), idFactory }
   );
 
+  if (input.store) {
+    await input.store.initRun({
+      runId: loop.loopId,
+      workspaceId: input.workspaceId,
+      projectId: input.projectId,
+      task: input.task,
+      budget: input.budget,
+      createdAt: loop.createdAt,
+      ...(input.metadata ? { metadata: input.metadata } : {})
+    });
+    await input.store.appendLedger(
+      loop.loopId,
+      makeLedgerEvent({
+        kind: "contract.created",
+        runId: loop.loopId,
+        payload: { workspaceId: input.workspaceId, projectId: input.projectId }
+      })
+    );
+  }
+
   const DEFAULT_FALLBACK_MODELS = [
     "claude-haiku-4-5",
     "claude-sonnet-4-6",
@@ -309,24 +329,29 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
 
   if (!leashDecision.allowed) {
     const reason = `${leashDecision.reason ?? "Safety leash blocked verifier commands."} Blocked: ${leashDecision.blockedCommands.join(", ")}`;
+    const leashExitDecision: ExitDecision = {
+      shouldExit: true,
+      lifecycleState: "human_escalation",
+      status: "exited",
+      reason
+    };
+    if (input.store) {
+      await input.store.appendLedger(
+        loop.loopId,
+        makeLedgerEvent({
+          kind: "run.exited",
+          runId: loop.loopId,
+          payload: {
+            lifecycleState: leashExitDecision.lifecycleState,
+            status: leashExitDecision.status,
+            reason: leashExitDecision.reason
+          }
+        })
+      );
+    }
     return {
-      loop: finalizeLoop(
-        loop,
-        {
-          shouldExit: true,
-          lifecycleState: "human_escalation",
-          status: "exited",
-          reason
-        },
-        now(),
-        idFactory
-      ),
-      decision: {
-        shouldExit: true,
-        lifecycleState: "human_escalation",
-        status: "exited",
-        reason
-      }
+      loop: finalizeLoop(loop, leashExitDecision, now(), idFactory),
+      decision: leashExitDecision
     };
   }
 
@@ -378,10 +403,45 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         status: "exited",
         reason: exitReason
       };
+      if (input.store) {
+        await input.store.appendLedger(
+          loop.loopId,
+          makeLedgerEvent({
+            kind: "attempt.rejected",
+            runId: loop.loopId,
+            attemptIndex: loop.attempts.length + 1,
+            payload: { reason: admissionDecision.reason }
+          })
+        );
+        await input.store.appendLedger(
+          loop.loopId,
+          makeLedgerEvent({
+            kind: "run.exited",
+            runId: loop.loopId,
+            payload: {
+              lifecycleState: exitDecision.lifecycleState,
+              status: exitDecision.status,
+              reason: exitDecision.reason
+            }
+          })
+        );
+      }
       return {
         loop: finalizeLoop(loop, exitDecision, now(), idFactory),
         decision: exitDecision
       };
+    }
+
+    if (input.store) {
+      await input.store.appendLedger(
+        loop.loopId,
+        makeLedgerEvent({
+          kind: "attempt.admitted",
+          runId: loop.loopId,
+          attemptIndex: loop.attempts.length + 1,
+          payload: { attemptId, model: currentAdapter.metadata.model }
+        })
+      );
     }
 
     // ADMIT → PATCH
@@ -433,9 +493,10 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         ? classifyFailure({ attempts: loop.attempts, result })
         : undefined;
 
+    const currentAttemptIndex = loop.attempts.length + 1;
     const attempt: LoopAttempt = {
       attemptId,
-      index: loop.attempts.length + 1,
+      index: currentAttemptIndex,
       adapterId: currentAdapter.adapterId,
       model: currentAdapter.metadata.model,
       startedAt: attemptStartedAt,
@@ -541,6 +602,52 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       { now: now(), idFactory }
     );
 
+    if (input.store) {
+      await input.store.writeAttemptArtifacts(loop.loopId, currentAttemptIndex, {
+        compiledContext: compilePromptPacket(request)
+      });
+      await input.store.appendLedger(
+        loop.loopId,
+        makeLedgerEvent({
+          kind: "patch.generated",
+          runId: loop.loopId,
+          attemptIndex: currentAttemptIndex,
+          payload: { status: result.status, summary: result.summary }
+        })
+      );
+      await input.store.appendLedger(
+        loop.loopId,
+        makeLedgerEvent({
+          kind: "verification.completed",
+          runId: loop.loopId,
+          attemptIndex: currentAttemptIndex,
+          payload: { passed: result.verification.passed, summary: result.verification.summary }
+        })
+      );
+      await input.store.appendLedger(
+        loop.loopId,
+        makeLedgerEvent({
+          kind: "budget.settled",
+          runId: loop.loopId,
+          attemptIndex: currentAttemptIndex,
+          payload: {
+            actualUsd: result.usage.actualUsd,
+            tokensIn: result.usage.tokensIn,
+            tokensOut: result.usage.tokensOut
+          }
+        })
+      );
+      await input.store.appendLedger(
+        loop.loopId,
+        makeLedgerEvent({
+          kind: result.verification.passed ? "attempt.kept" : "attempt.discarded",
+          runId: loop.loopId,
+          attemptIndex: currentAttemptIndex,
+          payload: { reason: result.verification.summary }
+        })
+      );
+    }
+
     const decision = inferExit({
       loop,
       lastResult: result,
@@ -554,6 +661,20 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     else phaseRetryCount = 0;
 
     if (decision.shouldExit) {
+      if (input.store) {
+        await input.store.appendLedger(
+          loop.loopId,
+          makeLedgerEvent({
+            kind: "run.exited",
+            runId: loop.loopId,
+            payload: {
+              lifecycleState: decision.lifecycleState,
+              status: decision.status,
+              reason: decision.reason
+            }
+          })
+        );
+      }
       return {
         loop: finalizeLoop(loop, decision, now(), idFactory),
         decision
@@ -567,6 +688,21 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     status: "exited",
     reason: "Martin exited because the loop exhausted its configured iteration budget."
   };
+
+  if (input.store) {
+    await input.store.appendLedger(
+      loop.loopId,
+      makeLedgerEvent({
+        kind: "run.exited",
+        runId: loop.loopId,
+        payload: {
+          lifecycleState: decision.lifecycleState,
+          status: decision.status,
+          reason: decision.reason
+        }
+      })
+    );
+  }
 
   return {
     loop: finalizeLoop(loop, decision, now(), idFactory),
