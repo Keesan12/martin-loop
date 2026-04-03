@@ -253,4 +253,24 @@ describe("scanPatchForGroundingViolations", () => {
     expect(scopeViolation).toBeDefined();
     expect(scopeViolation?.reference).toContain("apps/control-plane");
   });
+
+  it("challenge 5: flags content-only diff when patch adds only comments with no substantive code", async () => {
+    const root = await mkdtemp(join(tmpdir(), "martin-challenge5-"));
+    await mkdir(join(root, "src"), { recursive: true });
+    await writeFile(join(root, "src", "policy.ts"), "export function run() {}", "utf8");
+
+    const index = await buildRepoGroundingIndex(root);
+
+    // Diff adds only a comment — no real code change
+    const diff = `--- a/src/policy.ts
++++ b/src/policy.ts
+@@ -1 +1,3 @@
++// TODO: implement this properly
++// See issue #42
+ export function run() {}`;
+
+    const result = scanPatchForGroundingViolations(diff, index);
+
+    expect(result.contentOnly).toBe(true);
+  });
 });

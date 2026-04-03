@@ -197,3 +197,158 @@ function tokenize(input: string): string[] {
     (term) => !stopWords.has(term)
   );
 }
+
+// ─── Phase 4: Grounding Scanner ──────────────────────────────────────────────
+
+export type GroundingViolationKind =
+  | "file_not_found"
+  | "symbol_not_found"
+  | "import_not_found"
+  | "patch_outside_allowed_paths";
+
+export interface GroundingViolation {
+  kind: GroundingViolationKind;
+  reference: string;
+  sourceHint?: string;
+}
+
+export interface GroundingScanResult {
+  violations: GroundingViolation[];
+  scannedReferences: number;
+  resolvedFiles: string[];
+  /** True when the diff adds only comments, whitespace, or empty lines — no substantive code. */
+  contentOnly: boolean;
+}
+
+export function scanPatchForGroundingViolations(
+  diff: string,
+  index: RepoGroundingIndex,
+  options: { allowedPaths?: string[] } = {}
+): GroundingScanResult {
+  const violations: GroundingViolation[] = [];
+  const resolvedFiles: string[] = [];
+  const indexedPaths = new Set(index.files.map((file) => file.path));
+  const indexedSymbols = new Set(
+    index.files.flatMap((file) => file.symbols.map((symbol) => symbol.toLowerCase()))
+  );
+  const referencedFiles = new Set<string>();
+  const diffFilePattern = /^(?:---|\+\+\+)\s+[ab]\/(.+)$/gm;
+
+  for (const match of diff.matchAll(diffFilePattern)) {
+    const filePath = match[1]?.trim();
+    if (filePath && filePath !== "/dev/null") {
+      referencedFiles.add(filePath);
+    }
+  }
+
+  for (const filePath of referencedFiles) {
+    if (indexedPaths.has(filePath)) {
+      resolvedFiles.push(filePath);
+    } else {
+      violations.push({
+        kind: "file_not_found",
+        reference: filePath,
+        sourceHint: `diff header references ${filePath}`
+      });
+    }
+
+    if (options.allowedPaths?.length) {
+      const isAllowed = options.allowedPaths.some((pattern) =>
+        matchesGlobPattern(filePath, pattern)
+      );
+      if (!isAllowed) {
+        violations.push({
+          kind: "patch_outside_allowed_paths",
+          reference: filePath,
+          sourceHint: `${filePath} is outside allowed paths: ${options.allowedPaths.join(", ")}`
+        });
+      }
+    }
+  }
+
+  const addedLinePattern = /^\+(?!\+\+)(.+)$/gm;
+  const importPattern = /(?:import|require)\s*(?:.*\s+from\s+)?['"]([^'"]+)['"]/g;
+  const identifierPattern = /\b([A-Za-z_][A-Za-z0-9_]{2,})\b/g;
+  const symbolKeywords = new Set([
+    "const",
+    "let",
+    "var",
+    "function",
+    "class",
+    "return",
+    "export",
+    "import",
+    "from",
+    "await",
+    "async",
+    "new",
+    "true",
+    "false",
+    "null",
+    "undefined"
+  ]);
+
+  for (const lineMatch of diff.matchAll(addedLinePattern)) {
+    const line = lineMatch[1] ?? "";
+
+    for (const importMatch of line.matchAll(importPattern)) {
+      const reference = importMatch[1] ?? "";
+      if (!reference.startsWith(".") && !reference.startsWith("/")) {
+        continue;
+      }
+
+      const normalized = reference
+        .replace(/^\.\//, "")
+        .replace(/\.(js|ts|tsx|jsx)$/, "");
+      const hasMatch = index.files.some((file) => {
+        const withoutExt = file.path.replace(/\.(js|ts|tsx|jsx)$/, "");
+        return withoutExt.endsWith(normalized) || withoutExt.includes(normalized);
+      });
+
+      if (!hasMatch) {
+        violations.push({
+          kind: "import_not_found",
+          reference,
+          sourceHint: `import in added line: ${line.trim().slice(0, 80)}`
+        });
+      }
+    }
+
+    for (const symbolMatch of line.matchAll(identifierPattern)) {
+      const symbol = symbolMatch[1];
+      if (!symbol) continue;
+      if (symbolKeywords.has(symbol)) continue;
+      if (symbol.toUpperCase() === symbol) continue;
+      if (indexedSymbols.has(symbol.toLowerCase())) continue;
+      if (/^[a-z]+$/.test(symbol) && symbol.length <= 4) continue;
+
+      violations.push({
+        kind: "symbol_not_found",
+        reference: symbol,
+        sourceHint: `symbol in added line: ${line.trim().slice(0, 80)}`
+      });
+    }
+  }
+
+  // Detect content-only diff (only comments, whitespace, empty lines added)
+  const substantiveLinePattern = /^\+(?!\+\+)\s*(?!\/\/|\/\*|\*|#).*\S/gm;
+  const hasSubstantiveLines = substantiveLinePattern.test(diff);
+  const contentOnly = !hasSubstantiveLines && diff.includes("+");
+
+  return {
+    violations,
+    scannedReferences: referencedFiles.size,
+    resolvedFiles,
+    contentOnly
+  };
+}
+
+function matchesGlobPattern(filePath: string, pattern: string): boolean {
+  const regexStr = pattern
+    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+    .replace(/\*\*/g, "__DOUBLESTAR__")
+    .replace(/\*/g, "[^/]*")
+    .replace(/__DOUBLESTAR__/g, ".*");
+
+  return new RegExp(`^${regexStr}$`).test(filePath);
+}
