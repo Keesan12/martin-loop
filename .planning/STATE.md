@@ -1,15 +1,32 @@
+---
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
+status: active
+last_updated: "2026-04-03"
+progress:
+  total_phases: 12
+  completed_phases: 8
+  total_plans: 11
+  completed_plans: 11
+---
+
 # Project State
 
 ## Current Phase
-Phase 8 — Grounding Integrity (active)
+
+Phase 9 — Safety Leash v2 Profile Engine (next)
 
 ## Current Plan
-08-02 complete (2026-04-03). Phase 08-grounding-integrity complete.
+
+Phase 8 complete (2026-04-03). Awaiting Phase 9 execution.
 
 ## Last Action
-Phase 8 Plan 02 complete (2026-04-03): scanPatchForGroundingViolations wired into runMartin VERIFY phase. grounding.violations_found ledger event appended when violations.length > 0. buildPatchDiff helper added. Runtime test verifies ledger event fires for unindexed changedFiles. 55 @martin/core tests passing, 0 failures, 0 type errors.
+
+Phase 8 complete (2026-04-03): grounding integrity hardening done. 55/55 @martin/core tests passing. Challenges 1-5 named tests pass. contentOnly field added to GroundingScanResult. Anatomy artifact persistence verified. scanPatchForGroundingViolations wired into runMartin VERIFY phase with grounding.violations_found ledger event.
 
 Phase 7 complete (2026-04-02): evaluation matrix, replay drills, variance study, and CTO-ready go/no-go reporting landed.
+
 - Phase 5 complete: blocking safety enforcement, adapter normalization, fallback adapter rotation, and CLI/direct-provider ledger consistency
 - Phase 6 complete: mock/demo control-plane data deleted, repository-backed Supabase read model added, Clerk auth wiring added, and local dashboard moved to honest empty/live states
 - Phase 7 complete: A/B/C benchmark matrix, failure replay suite, safety incident drills, 21-run budget variance study, and generated go/no-go report artifacts
@@ -23,17 +40,21 @@ Phase 7 complete (2026-04-02): evaluation matrix, replay drills, variance study,
 - Handoff review: reviewed `martin-loop-complete-handoff-v5.zip` and used it as a cross-check while completing the grounding/policy and Phase 5-7 implementation passes
 
 Phase 3 complete (2026-04-01): 25 tests passing in @martin/core, 16 in @martin/cli. All 03-02 tasks done.
+
 - 03-01: RunStore interface + FileRunStore + LedgerEvent types (12 kinds) + CLI persistence shim
 - 03-02: ContextCompiler + wire RunStore into runMartin at all lifecycle boundaries + 7 new persistence tests
+
 Circular import resolved: compilePromptPacket extracted to packages/core/src/compiler.ts.
 Phase 2 complete (2026-04-02): 18 tests passing across runtime/leash/grounding.
 Previous: Phase 2 planned. 2 plans created:
+
 - 02-01-PLAN.md: Import engineer slice work (policy.ts, leash.ts, grounding.ts) + add PolicyPhase/EvidenceVector/MachineState to contracts + wire compilePromptPacket and evaluateAttemptPolicy into core/src/index.ts
 - 02-02-PLAN.md: Full test coverage for all new Phase 2 APIs
 
 Handoff zip analyzed: slices 1-8 implemented policy, leash, grounding modules. Phase 2 plans wire all of that into the tracked repo and add test coverage.
 
 ## Active Decisions
+
 - Database: Supabase (Postgres)
 - Auth: Clerk
 - Package manager: bun
@@ -48,15 +69,18 @@ Handoff zip analyzed: slices 1-8 implemented policy, leash, grounding modules. P
 - Used plain mv (not git mv) for relocating untracked files — correct approach for freshly initialized repo
 
 ## Key Constraints
+
 - Do not proceed to Phase 6 (control plane) without Phase 3 (persistence) complete
 - Delete mock-control-plane-data.ts — do not refactor it, do not wrap it, delete it
 - Delete demo-data.js — same rule
 - Non-goals: multi-tenant billing, demo pathways in production, natural language as canonical state
 
 ## Blockers
+
 - No active milestone blockers for Phases 5-7. The remaining work is next-milestone planning, not unresolved Phase 6/7 implementation debt.
 
 ## Notes
+
 - The old plan file (sharded-hopping-flask.md) was the v2 remediation plan. Now superseded.
 - v6 pack requires a full rebuild, not incremental patches on existing architecture.
 - CTO demo deliverable = Phase 6, which requires Phase 3 (persistence) first.
@@ -64,6 +88,7 @@ Handoff zip analyzed: slices 1-8 implemented policy, leash, grounding modules. P
 - The v5 handoff reframes "hallucination" as "grounding violation" and reinforces preflight/admission/settlement as the Phase 4 budget control layers.
 
 ## Active Decisions (Phase 2)
+
 - Slice work (policy.ts, leash.ts, grounding.ts) from engineer's handoff is imported as-is into working repo
 - compilePromptPacket and evaluateAttemptPolicy are NEW additions not in handoff (required by tests)
 - PolicyPhase, EvidenceVector, MachineState added to packages/contracts/src/index.ts
@@ -71,6 +96,7 @@ Handoff zip analyzed: slices 1-8 implemented policy, leash, grounding modules. P
 - runMartin explicitly tracks currentPhase (PolicyPhase state machine variable)
 
 ## Performance Metrics
+
 | Phase | Plan | Duration | Tasks | Files |
 |-------|------|----------|-------|-------|
 | 01-repo-surgery | 01 | 18min | 2 | 2 |

@@ -17,7 +17,7 @@ produces structured data for it to read.
 - [x] **Phase 5: Safety Leash and Adapters** - Blocking safety enforcement, normalized adapter interfaces
 - [x] **Phase 6: Real Control Plane** - Delete mock data, wire Supabase + Clerk, CTO-ready dashboard
 - [x] **Phase 7: Eval Bakeoff** - Benchmark v4 vs baseline, release gate report
-- [ ] **Phase 8: Grounding Integrity Hardening** - Challenge cases 1-5 with persisted anatomy artifacts; grounding scan wired into loop at VERIFY
+- [x] **Phase 8: Grounding Integrity Hardening** - Challenge cases 1-5 with persisted anatomy artifacts; grounding scan wired into loop at VERIFY
 - [ ] **Phase 9: Safety Leash v2 Profile Engine** - Network + change-approval leash; ExecutionProfile dispatch; challenges 10-13
 - [ ] **Phase 10: Patch Truth and Rollback** - PatchTruthArtifact; regression/entropy/improvement-ratio guards; challenges 14-17
 - [ ] **Phase 11: Read-Model Truth** - Control-plane API surfaces costProvenance, budgetSettlement, patchTruth, groundingScanResult
