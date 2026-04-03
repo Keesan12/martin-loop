@@ -1,3 +1,7 @@
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import { createLoopRecord, type LoopAttempt } from "@martin/contracts";
@@ -5,6 +9,7 @@ import { createLoopRecord, type LoopAttempt } from "@martin/contracts";
 import {
   classifyFailure,
   compilePromptPacket,
+  createFileRunStore,
   distillContext,
   evaluateAttemptPolicy,
   evaluateCostGovernor,
@@ -474,6 +479,512 @@ describe("runMartin", () => {
     expect(result.loop.events.map((event) => event.type)).toContain("budget.updated");
     expect(result.decision.shouldExit).toBe(true);
   });
+
+  it("rejects an attempt during budget preflight before the adapter runs and records the ledger source", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-preflight-"));
+    const store = createFileRunStore({ runsRoot });
+    let adapterExecutions = 0;
+
+    const adapter: MartinAdapter = {
+      adapterId: "direct:preflight-test",
+      kind: "direct-provider",
+      label: "Preflight test adapter",
+      metadata: {
+        providerId: "openai",
+        model: "gpt-5-mini"
+      },
+      async execute() {
+        adapterExecutions += 1;
+
+        return {
+          status: "completed",
+          summary: "This should never run when preflight rejects the attempt.",
+          usage: {
+            actualUsd: 0.1,
+            tokensIn: 10,
+            tokensOut: 10
+          },
+          verification: {
+            passed: true,
+            summary: "Unexpected success"
+          }
+        };
+      }
+    };
+
+    const result = await runMartin({
+      workspaceId: "ws_ops",
+      projectId: "proj_runtime",
+      task: {
+        title: "Repair the runtime adapter",
+        objective:
+          "Keep this objective intentionally long so a low budget preflight estimate must reject before execution occurs and the adapter is never called.",
+        verificationPlan: ["pnpm --filter @martin/core test"]
+      },
+      budget: {
+        maxUsd: 0.01,
+        softLimitUsd: 0.005,
+        maxIterations: 2,
+        maxTokens: 2_000
+      },
+      adapter,
+      store,
+      now: createTimestampSource([
+        "2026-04-02T12:00:00.000Z",
+        "2026-04-02T12:00:01.000Z",
+        "2026-04-02T12:00:02.000Z"
+      ]),
+      idFactory: createIdFactory()
+    });
+
+    const ledger = await readFile(join(runsRoot, result.loop.loopId, "ledger.jsonl"), "utf8");
+
+    expect(adapterExecutions).toBe(0);
+    expect(result.loop.attempts).toHaveLength(0);
+    expect(result.decision.lifecycleState).toBe("budget_exit");
+    expect(ledger).toContain('"attempt.rejected"');
+    expect(ledger).toContain('"source":"budget_preflight"');
+  });
+
+  it("emits safety.violations_found before run.exited when the command leash blocks execution", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-safety-command-"));
+    const store = createFileRunStore({ runsRoot });
+    let adapterExecutions = 0;
+
+    const adapter: MartinAdapter = {
+      adapterId: "direct:safety-command",
+      kind: "direct-provider",
+      label: "Safety command adapter",
+      metadata: {
+        providerId: "openai",
+        model: "gpt-5-mini"
+      },
+      async execute() {
+        adapterExecutions += 1;
+        return {
+          status: "completed",
+          summary: "Unexpectedly executed.",
+          usage: {
+            actualUsd: 0.1,
+            tokensIn: 10,
+            tokensOut: 10
+          },
+          verification: {
+            passed: true,
+            summary: "Unexpected verification pass"
+          }
+        };
+      }
+    };
+
+    const result = await runMartin({
+      workspaceId: "ws_ops",
+      projectId: "proj_runtime",
+      task: {
+        title: "Repair the runtime adapter",
+        objective: "Never run destructive verifier commands.",
+        verificationPlan: ["pnpm --filter @martin/core test", "rm -rf ."]
+      },
+      budget: {
+        maxUsd: 10,
+        softLimitUsd: 8,
+        maxIterations: 2,
+        maxTokens: 2_000
+      },
+      adapter,
+      store,
+      now: createTimestampSource([
+        "2026-04-02T13:00:00.000Z",
+        "2026-04-02T13:00:01.000Z",
+        "2026-04-02T13:00:02.000Z"
+      ]),
+      idFactory: createIdFactory()
+    });
+
+    const ledger = await readLedger(runsRoot, result.loop.loopId);
+    const safetyIndex = ledger.findIndex((entry) => entry.kind === "safety.violations_found");
+    const exitIndex = ledger.findIndex((entry) => entry.kind === "run.exited");
+
+    expect(adapterExecutions).toBe(0);
+    expect(result.decision.lifecycleState).toBe("human_escalation");
+    expect(safetyIndex).toBeGreaterThanOrEqual(0);
+    expect(exitIndex).toBeGreaterThan(safetyIndex);
+    expect(ledger[safetyIndex]?.payload).toMatchObject({
+      surface: "command",
+      blocked: true
+    });
+    expect(ledger[safetyIndex]?.payload.violations).toEqual(
+      expect.arrayContaining(["rm -rf ."])
+    );
+  });
+
+  it("discards the attempt and exits with human escalation when filesystem leash is violated", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-safety-filesystem-"));
+    const repoRoot = join(runsRoot, "repo");
+    await mkdir(repoRoot, { recursive: true });
+    await writeFile(join(repoRoot, ".gitkeep"), "", "utf8");
+    const store = createFileRunStore({ runsRoot });
+
+    const adapter: MartinAdapter = {
+      adapterId: "agent-cli:filesystem-block",
+      kind: "agent-cli",
+      label: "Filesystem block adapter",
+      metadata: {
+        providerId: "claude",
+        model: "claude-sonnet-4-6"
+      },
+      async execute() {
+        return {
+          status: "completed",
+          summary: "Produced a patch that touched a forbidden file.",
+          usage: {
+            actualUsd: 0.3,
+            tokensIn: 60,
+            tokensOut: 30
+          },
+          verification: {
+            passed: true,
+            summary: "pnpm test passed"
+          },
+          execution: {
+            changedFiles: ["apps/control-plane/page.tsx"],
+            diffStats: {
+              filesChanged: 1,
+              addedLines: 4,
+              deletedLines: 1
+            }
+          }
+        };
+      }
+    };
+
+    const result = await runMartin({
+      workspaceId: "ws_ops",
+      projectId: "proj_runtime",
+      task: {
+        title: "Repair the runtime adapter",
+        objective: "Keep changes confined to the core package.",
+        verificationPlan: ["pnpm --filter @martin/core test"],
+        repoRoot,
+        allowedPaths: ["packages/core/**"]
+      },
+      budget: {
+        maxUsd: 10,
+        softLimitUsd: 8,
+        maxIterations: 2,
+        maxTokens: 2_000
+      },
+      adapter,
+      store,
+      now: createTimestampSource([
+        "2026-04-02T13:10:00.000Z",
+        "2026-04-02T13:10:01.000Z",
+        "2026-04-02T13:10:02.000Z",
+        "2026-04-02T13:10:03.000Z",
+        "2026-04-02T13:10:04.000Z",
+        "2026-04-02T13:10:05.000Z",
+        "2026-04-02T13:10:06.000Z"
+      ]),
+      idFactory: createIdFactory()
+    });
+
+    const ledger = await readLedger(runsRoot, result.loop.loopId);
+    const safetyEvent = ledger.find((entry) => entry.kind === "safety.violations_found");
+
+    expect(result.loop.attempts).toHaveLength(1);
+    expect(result.decision.lifecycleState).toBe("human_escalation");
+    expect(ledger.map((entry) => entry.kind)).toContain("attempt.discarded");
+    expect(safetyEvent?.payload).toMatchObject({
+      surface: "filesystem",
+      blocked: true,
+      attemptIndex: 1
+    });
+  });
+
+  it("rotates to the next adapter when switch_adapter is selected", async () => {
+    let primaryExecutions = 0;
+    let fallbackExecutions = 0;
+
+    const primaryAdapter: MartinAdapter = {
+      adapterId: "agent-cli:claude-primary",
+      kind: "agent-cli",
+      label: "Primary CLI adapter",
+      metadata: {
+        providerId: "claude",
+        model: "claude-sonnet-4-6"
+      },
+      async execute() {
+        primaryExecutions += 1;
+        return {
+          status: "failed",
+          summary: "pnpm was missing from PATH in the CLI runner.",
+          usage: {
+            actualUsd: 0.12,
+            tokensIn: 110,
+            tokensOut: 45
+          },
+          verification: {
+            passed: false,
+            summary: "pnpm command not found"
+          },
+          failure: {
+            message: "ENOENT: pnpm: command not found"
+          }
+        };
+      }
+    };
+
+    const fallbackAdapter: MartinAdapter = {
+      adapterId: "direct:openai:gpt-5-mini",
+      kind: "direct-provider",
+      label: "Fallback direct adapter",
+      metadata: {
+        providerId: "openai",
+        model: "gpt-5-mini"
+      },
+      async execute() {
+        fallbackExecutions += 1;
+        return {
+          status: "completed",
+          summary: "Recovered with the fallback adapter and passed verification.",
+          usage: {
+            actualUsd: 0.4,
+            tokensIn: 80,
+            tokensOut: 60
+          },
+          verification: {
+            passed: true,
+            summary: "pnpm --filter @martin/core test passed"
+          }
+        };
+      }
+    };
+
+    const result = await runMartin({
+      workspaceId: "ws_ops",
+      projectId: "proj_runtime",
+      task: {
+        title: "Repair the runtime adapter",
+        objective: "Use a fallback adapter if the primary environment is missing tooling.",
+        verificationPlan: ["pnpm --filter @martin/core test"]
+      },
+      budget: {
+        maxUsd: 10,
+        softLimitUsd: 8,
+        maxIterations: 3,
+        maxTokens: 2_000
+      },
+      adapter: primaryAdapter,
+      fallbackAdapters: [fallbackAdapter],
+      now: createTimestampSource([
+        "2026-04-02T13:20:00.000Z",
+        "2026-04-02T13:20:01.000Z",
+        "2026-04-02T13:20:02.000Z",
+        "2026-04-02T13:20:03.000Z",
+        "2026-04-02T13:20:04.000Z",
+        "2026-04-02T13:20:05.000Z",
+        "2026-04-02T13:20:06.000Z",
+        "2026-04-02T13:20:07.000Z",
+        "2026-04-02T13:20:08.000Z"
+      ]),
+      idFactory: createIdFactory()
+    });
+
+    expect(primaryExecutions).toBe(1);
+    expect(fallbackExecutions).toBe(1);
+    expect(result.loop.status).toBe("completed");
+    expect(result.loop.attempts.map((attemptRecord) => attemptRecord.adapterId)).toEqual([
+      "agent-cli:claude-primary",
+      "direct:openai:gpt-5-mini"
+    ]);
+  });
+
+  it("appends grounding.violations_found to ledger when patch references unindexed files", async () => {
+    const { mkdtemp: mkdtempFs, mkdir: mkdirFs, writeFile: writeFileFs } = await import("node:fs/promises");
+    const { tmpdir: tmpdirOs } = await import("node:os");
+    const { join: joinPath } = await import("node:path");
+
+    // Create a minimal repo for grounding — only src/real.ts exists in the index
+    const repoRoot = await mkdtempFs(joinPath(tmpdirOs(), "martin-runtime-grounding-"));
+    await mkdirFs(joinPath(repoRoot, "src"), { recursive: true });
+    await writeFileFs(joinPath(repoRoot, "src", "real.ts"), "export const x = 1;", "utf8");
+
+    const ledgerEvents: import("../src/index.js").LedgerEvent[] = [];
+    const store: import("../src/index.js").RunStore = {
+      initRun: async () => {},
+      updateState: async () => {},
+      appendLedger: async (_, event) => {
+        ledgerEvents.push(event);
+      },
+      writeAttemptArtifacts: async () => {}
+    };
+
+    await runMartin({
+      workspaceId: "ws-test",
+      projectId: "proj-test",
+      task: {
+        title: "Test grounding scan",
+        objective: "Check that grounding violations are persisted",
+        verificationPlan: ["echo ok"],
+        repoRoot,
+        allowedPaths: ["src/**"]
+      },
+      budget: { maxUsd: 10, maxIterations: 1, maxTokens: 100_000 },
+      adapter: {
+        adapterId: "stub",
+        kind: "direct-provider",
+        label: "Stub",
+        metadata: { providerId: "stub", model: "stub" },
+        execute: async () => ({
+          status: "completed",
+          summary: "done",
+          usage: { actualUsd: 0.01, tokensIn: 100, tokensOut: 50 },
+          verification: { passed: true, summary: "tests pass" },
+          execution: {
+            // Reference a file that does not exist in the grounding index
+            changedFiles: ["src/ghost-new-file.ts"]
+          }
+        })
+      },
+      store
+    });
+
+    // ghost-new-file.ts is not in the grounding index, so violations_found should be logged
+    const groundingEvent = ledgerEvents.find((e) => e.kind === "grounding.violations_found");
+    expect(groundingEvent).toBeDefined();
+    expect((groundingEvent?.payload as Record<string, unknown>)?.violationCount).toBeGreaterThan(0);
+  });
+
+  it("writes consistent admission and settlement ledger payloads across mixed adapter types", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-adapter-ledger-"));
+    const store = createFileRunStore({ runsRoot });
+
+    const cliAdapter: MartinAdapter = {
+      adapterId: "agent-cli:codex",
+      kind: "agent-cli",
+      label: "Codex CLI adapter",
+      metadata: {
+        providerId: "codex",
+        model: "codex",
+        transport: "cli",
+        capabilities: {
+          preflight: true,
+          usageSettlement: false,
+          diffArtifacts: true,
+          structuredErrors: true,
+          cachingSignals: false
+        }
+      },
+      async execute() {
+        return {
+          status: "failed",
+          summary: "codex was unavailable in this environment.",
+          usage: {
+            actualUsd: 0.08,
+            estimatedUsd: 0.08,
+            tokensIn: 90,
+            tokensOut: 20,
+            provenance: "estimated"
+          },
+          verification: {
+            passed: false,
+            summary: "codex command not found"
+          },
+          failure: {
+            message: "ENOENT: codex command not found"
+          }
+        };
+      }
+    };
+
+    const directAdapter: MartinAdapter = {
+      adapterId: "direct:openai:gpt-5-mini",
+      kind: "direct-provider",
+      label: "OpenAI direct adapter",
+      metadata: {
+        providerId: "openai",
+        model: "gpt-5-mini",
+        transport: "http",
+        capabilities: {
+          preflight: true,
+          usageSettlement: true,
+          diffArtifacts: false,
+          structuredErrors: true,
+          cachingSignals: false
+        }
+      },
+      async execute() {
+        return {
+          status: "completed",
+          summary: "Recovered via the direct provider path.",
+          usage: {
+            actualUsd: 0.32,
+            tokensIn: 70,
+            tokensOut: 55,
+            provenance: "actual"
+          },
+          verification: {
+            passed: true,
+            summary: "pnpm --filter @martin/core test passed"
+          }
+        };
+      }
+    };
+
+    const result = await runMartin({
+      workspaceId: "ws_ops",
+      projectId: "proj_runtime",
+      task: {
+        title: "Repair the runtime adapter",
+        objective: "Keep ledger payloads stable across CLI and direct adapters.",
+        verificationPlan: ["pnpm --filter @martin/core test"]
+      },
+      budget: {
+        maxUsd: 10,
+        softLimitUsd: 8,
+        maxIterations: 3,
+        maxTokens: 2_000
+      },
+      adapter: cliAdapter,
+      fallbackAdapters: [directAdapter],
+      store,
+      now: createTimestampSource([
+        "2026-04-02T13:30:00.000Z",
+        "2026-04-02T13:30:01.000Z",
+        "2026-04-02T13:30:02.000Z",
+        "2026-04-02T13:30:03.000Z",
+        "2026-04-02T13:30:04.000Z",
+        "2026-04-02T13:30:05.000Z",
+        "2026-04-02T13:30:06.000Z",
+        "2026-04-02T13:30:07.000Z",
+        "2026-04-02T13:30:08.000Z"
+      ]),
+      idFactory: createIdFactory()
+    });
+
+    const ledger = await readLedger(runsRoot, result.loop.loopId);
+    const admitted = ledger.filter((entry) => entry.kind === "attempt.admitted");
+    const settled = ledger.filter((entry) => entry.kind === "budget.settled");
+
+    expect(admitted).toHaveLength(2);
+    expect(settled).toHaveLength(2);
+    expect(admitted[0]?.payload).toMatchObject({
+      adapterId: "agent-cli:codex",
+      transport: "cli",
+      providerId: "codex"
+    });
+    expect(admitted[1]?.payload).toMatchObject({
+      adapterId: "direct:openai:gpt-5-mini",
+      transport: "http",
+      providerId: "openai"
+    });
+    expect(settled[0]?.payload).toMatchObject({
+      provenance: "estimated"
+    });
+    expect(settled[1]?.payload).toMatchObject({
+      provenance: "actual"
+    });
+  });
 });
 
 function attempt(overrides: Partial<LoopAttempt> & Pick<LoopAttempt, "attemptId" | "index">): LoopAttempt {
@@ -532,4 +1043,16 @@ function createIdFactory(): (prefix: string) => string {
     sequence += 1;
     return `${prefix}_${String(sequence).padStart(3, "0")}`;
   };
+}
+
+async function readLedger(
+  runsRoot: string,
+  runId: string
+): Promise<Array<{ kind: string; payload: Record<string, unknown> }>> {
+  const contents = await readFile(join(runsRoot, runId, "ledger.jsonl"), "utf8");
+  return contents
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as { kind: string; payload: Record<string, unknown> });
 }
