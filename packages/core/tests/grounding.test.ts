@@ -168,4 +168,32 @@ describe("scanPatchForGroundingViolations", () => {
     expect(importViolation).toBeDefined();
     expect(importViolation?.reference).toContain("fake-module");
   });
+
+  it("challenge 2: detects symbol_not_found when diff references an unindexed internal helper", async () => {
+    const root = await mkdtemp(join(tmpdir(), "martin-challenge2-"));
+    await mkdir(join(root, "src"), { recursive: true });
+    // Index only contains "realHelper" — not "phantomHelper"
+    await writeFile(
+      join(root, "src", "helpers.ts"),
+      "export function realHelper() { return true; }",
+      "utf8"
+    );
+
+    const index = await buildRepoGroundingIndex(root);
+
+    // Diff adds usage of a symbol that doesn't exist in the index
+    const diff = `--- a/src/consumer.ts
++++ b/src/consumer.ts
+@@ -0,0 +1,3 @@
++export function processData(input: string): boolean {
++  return phantomHelper(input);
++}`;
+
+    const result = scanPatchForGroundingViolations(diff, index);
+
+    const symbolViolations = result.violations.filter((v) => v.kind === "symbol_not_found");
+    expect(symbolViolations.length).toBeGreaterThanOrEqual(1);
+    const phantomViolation = symbolViolations.find((v) => v.reference === "phantomHelper");
+    expect(phantomViolation).toBeDefined();
+  });
 });
