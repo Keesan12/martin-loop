@@ -829,7 +829,7 @@ describe("runMartin", () => {
         repoRoot,
         allowedPaths: ["src/**"]
       },
-      budget: { maxUsd: 10, maxIterations: 1, maxTokens: 100_000 },
+      budget: { maxUsd: 10, softLimitUsd: 8, maxIterations: 1, maxTokens: 100_000 },
       adapter: {
         adapterId: "stub",
         kind: "direct-provider",
