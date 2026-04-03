@@ -1,8 +1,12 @@
+import { spawnSync } from "node:child_process";
+
 import {
   appendLoopEvent,
   createLoopRecord,
+  type CostProvenance,
   type FailureClass,
   type InterventionType,
+  type LoopArtifact,
   type LoopAttempt,
   type LoopBudget,
   type LoopRecord,
@@ -11,19 +15,37 @@ import {
 } from "@martin/contracts";
 import {
   classifyFailure,
+  computeEvidenceVector,
   evaluateCostGovernor,
+  evaluateBudgetPreflight,
   inferExit,
   nextPolicyPhase,
   policyPhaseToLifecycleState,
+  selectRecoveryRecipe,
+  type BudgetPreflightDecision,
+  type BudgetPreflightInput,
   type CostGovernorState,
+  type EvidenceVectorInput,
   type ExitDecision,
-  type FailureAssessment
+  type FailureAssessment,
+  type RecoveryDecision,
+  type RecoveryRecipe
 } from "./policy.js";
-import { evaluateVerificationLeash } from "./leash.js";
+import {
+  evaluateFilesystemLeash,
+  evaluateSecretLeash,
+  redactSecretsFromText,
+  evaluateVerificationLeash,
+  type SafetyViolation
+} from "./leash.js";
 import {
   buildRepoGroundingIndex,
   loadOrBuildRepoGroundingIndex,
   queryRepoGroundingIndex,
+  scanPatchForGroundingViolations,
+  type GroundingScanResult,
+  type GroundingViolation,
+  type GroundingViolationKind,
   type RepoGroundingHit,
   type RepoGroundingIndex
 } from "./grounding.js";
@@ -31,21 +53,51 @@ import { compilePromptPacket } from "./compiler.js";
 import { makeLedgerEvent, type RunStore } from "./persistence/index.js";
 
 // ─── Public API re-exports ───────────────────────────────────────────────────
-export type { FailureClass, InterventionType, PolicyPhase } from "@martin/contracts";
+export type {
+  BudgetPreflightEstimate,
+  BudgetSettlement,
+  CostProvenance,
+  EvidenceVector,
+  FailureClass,
+  InterventionType,
+  PolicyPhase
+} from "@martin/contracts";
 export {
   classifyFailure,
+  computeEvidenceVector,
   evaluateCostGovernor,
+  evaluateBudgetPreflight,
   inferExit,
   nextPolicyPhase,
   policyPhaseToLifecycleState,
+  selectRecoveryRecipe,
   evaluateVerificationLeash,
+  evaluateFilesystemLeash,
+  evaluateSecretLeash,
+  redactSecretsFromText,
   buildRepoGroundingIndex,
   loadOrBuildRepoGroundingIndex,
-  queryRepoGroundingIndex
+  queryRepoGroundingIndex,
+  scanPatchForGroundingViolations
 };
-export type { CostGovernorState, ExitDecision, FailureAssessment } from "./policy.js";
-export type { SafetyLeashDecision } from "./leash.js";
-export type { RepoGroundingHit, RepoGroundingIndex } from "./grounding.js";
+export type {
+  BudgetPreflightDecision,
+  BudgetPreflightInput,
+  CostGovernorState,
+  EvidenceVectorInput,
+  ExitDecision,
+  FailureAssessment,
+  RecoveryDecision,
+  RecoveryRecipe
+} from "./policy.js";
+export type { SafetyLeashDecision, SafetyViolation } from "./leash.js";
+export type {
+  GroundingScanResult,
+  GroundingViolation,
+  GroundingViolationKind,
+  RepoGroundingHit,
+  RepoGroundingIndex
+} from "./grounding.js";
 
 // ─── Prompt packet compiler ──────────────────────────────────────────────────
 export { compilePromptPacket } from "./compiler.js";
@@ -98,13 +150,31 @@ export interface MartinAdapterResult {
   summary: string;
   usage: {
     actualUsd: number;
+    estimatedUsd?: number;
     tokensIn: number;
     tokensOut: number;
+    provenance?: CostProvenance;
   };
   verification: {
     passed: boolean;
     summary: string;
   };
+  execution?: {
+    changedFiles?: string[];
+    diffStats?: {
+      filesChanged: number;
+      addedLines: number;
+      deletedLines: number;
+    };
+    structuredErrors?: Array<{
+      file: string;
+      line?: number;
+      col?: number;
+      code?: string;
+      message: string;
+    }>;
+  };
+  artifacts?: LoopArtifact[];
   failure?: {
     message: string;
     classHint?: FailureClass;
@@ -118,6 +188,15 @@ export interface MartinAdapter {
   metadata: {
     providerId: string;
     model: string;
+    transport?: "cli" | "http" | "routed_http";
+    capabilities?: {
+      preflight?: boolean;
+      usageSettlement?: boolean;
+      diffArtifacts?: boolean;
+      structuredErrors?: boolean;
+      cachingSignals?: boolean;
+    };
+    [key: string]: unknown;
   };
   execute(request: MartinAdapterRequest): Promise<MartinAdapterResult>;
   withModel?(model: string): MartinAdapter;
@@ -233,6 +312,7 @@ export interface RunMartinInput {
   idFactory?: (prefix: string) => string;
   maxRecentAttempts?: number;
   fallbackModels?: string[];
+  fallbackAdapters?: MartinAdapter[];
   /** Optional persistence store. When provided, runMartin writes artifacts on each lifecycle event. */
   store?: RunStore;
 }
@@ -287,7 +367,8 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       payload: {
         adapterId: input.adapter.adapterId,
         providerId: input.adapter.metadata.providerId,
-        model: input.adapter.metadata.model
+        model: input.adapter.metadata.model,
+        transport: getAdapterTransport(input.adapter)
       }
     },
     { now: now(), idFactory }
@@ -318,7 +399,9 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     "claude-sonnet-4-6",
     "claude-opus-4-6"
   ];
-  let currentAdapter = input.adapter;
+  const adapterChain = [input.adapter, ...(input.fallbackAdapters ?? [])];
+  let currentAdapterIndex = 0;
+  let currentAdapter = adapterChain[currentAdapterIndex] ?? input.adapter;
   let useCompressedContext = false;
 
   // Safety leash: block destructive verifier commands before any attempt
@@ -339,6 +422,18 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       await input.store.appendLedger(
         loop.loopId,
         makeLedgerEvent({
+          kind: "safety.violations_found",
+          runId: loop.loopId,
+          payload: {
+            surface: "command",
+            blocked: true,
+            violations: leashDecision.blockedCommands
+          }
+        })
+      );
+      await input.store.appendLedger(
+        loop.loopId,
+        makeLedgerEvent({
           kind: "run.exited",
           runId: loop.loopId,
           payload: {
@@ -355,6 +450,55 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     };
   }
 
+  const secretDecision = evaluateSecretLeash({
+    values: [
+      input.task.title,
+      input.task.objective,
+      ...(input.task.acceptanceCriteria ?? [])
+    ]
+  });
+
+  if (!secretDecision.allowed) {
+    const secretExitDecision: ExitDecision = {
+      shouldExit: true,
+      lifecycleState: "human_escalation",
+      status: "exited",
+      reason: secretDecision.reason ?? "Safety leash blocked secret-like values in the runtime context."
+    };
+
+    if (input.store) {
+      await input.store.appendLedger(
+        loop.loopId,
+        makeLedgerEvent({
+          kind: "safety.violations_found",
+          runId: loop.loopId,
+          payload: {
+            surface: "secret",
+            blocked: true,
+            violations: secretDecision.violations.map((violation) => violation.match ?? violation.message)
+          }
+        })
+      );
+      await input.store.appendLedger(
+        loop.loopId,
+        makeLedgerEvent({
+          kind: "run.exited",
+          runId: loop.loopId,
+          payload: {
+            lifecycleState: secretExitDecision.lifecycleState,
+            status: secretExitDecision.status,
+            reason: secretExitDecision.reason
+          }
+        })
+      );
+    }
+
+    return {
+      loop: finalizeLoop(loop, secretExitDecision, now(), idFactory),
+      decision: secretExitDecision
+    };
+  }
+
   // Explicit PolicyPhase state machine — starts at GATHER, advances per attempt
   let currentPhase: PolicyPhase = "GATHER";
   let phaseRetryCount = 0;
@@ -366,6 +510,50 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     useCompressedContext = false;
     const attemptStartedAt = now();
     const attemptId = makeId("att", idFactory);
+    const executingAdapter = currentAdapter;
+
+    const budgetPreflight = evaluateBudgetPreflight({
+      promptCharCount: distilled.focus.length + loop.task.objective.length * 3,
+      attemptCount: loop.attempts.length,
+      remainingBudgetUsd: distilled.constraints.remainingBudgetUsd,
+      perAttemptCapUsd: loop.budget.maxUsd * 0.25
+    });
+
+    if (!budgetPreflight.allowed) {
+      const preflightExitDecision: ExitDecision = {
+        shouldExit: true,
+        lifecycleState: "budget_exit",
+        status: "exited",
+        reason: budgetPreflight.reason
+      };
+      if (input.store) {
+        await input.store.appendLedger(
+          loop.loopId,
+          makeLedgerEvent({
+            kind: "attempt.rejected",
+            runId: loop.loopId,
+            attemptIndex: loop.attempts.length + 1,
+            payload: { reason: budgetPreflight.reason, source: "budget_preflight" }
+          })
+        );
+        await input.store.appendLedger(
+          loop.loopId,
+          makeLedgerEvent({
+            kind: "run.exited",
+            runId: loop.loopId,
+            payload: {
+              lifecycleState: preflightExitDecision.lifecycleState,
+              status: preflightExitDecision.status,
+              reason: preflightExitDecision.reason
+            }
+          })
+        );
+      }
+      return {
+        loop: finalizeLoop(loop, preflightExitDecision, now(), idFactory),
+        decision: preflightExitDecision
+      };
+    }
 
     // GATHER → ADMIT: run admission control before executing
     currentPhase = "ADMIT";
@@ -389,7 +577,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         },
         previousAttempts: loop.attempts
       },
-      projectedUsd: distilled.constraints.remainingBudgetUsd * 0.25 // conservative estimate
+      projectedUsd: budgetPreflight.estimate.estimatedAttemptCostUsd
     });
 
     if (!admissionDecision.allowed) {
@@ -439,7 +627,13 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
           kind: "attempt.admitted",
           runId: loop.loopId,
           attemptIndex: loop.attempts.length + 1,
-          payload: { attemptId, model: currentAdapter.metadata.model }
+          payload: {
+            attemptId,
+            adapterId: executingAdapter.adapterId,
+            providerId: executingAdapter.metadata.providerId,
+            model: executingAdapter.metadata.model,
+            transport: getAdapterTransport(executingAdapter)
+          }
         })
       );
     }
@@ -454,8 +648,8 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         lifecycleState: "running",
         payload: {
           attemptId,
-          adapterId: currentAdapter.adapterId,
-          model: currentAdapter.metadata.model,
+          adapterId: executingAdapter.adapterId,
+          model: executingAdapter.metadata.model,
           policyPhase: currentPhase
         }
       },
@@ -482,7 +676,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       previousAttempts: loop.attempts
     };
 
-    const result = await currentAdapter.execute(request);
+    const result = await executingAdapter.execute(request);
     const attemptCompletedAt = now();
 
     // PATCH → VERIFY
@@ -497,8 +691,8 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     const attempt: LoopAttempt = {
       attemptId,
       index: currentAttemptIndex,
-      adapterId: currentAdapter.adapterId,
-      model: currentAdapter.metadata.model,
+      adapterId: executingAdapter.adapterId,
+      model: executingAdapter.metadata.model,
       startedAt: attemptStartedAt,
       completedAt: attemptCompletedAt,
       summary: result.summary,
@@ -512,7 +706,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       ...loop,
       attempts: [...loop.attempts, attempt],
       cost: {
-        actualUsd: roundUsd(loop.cost.actualUsd + result.usage.actualUsd),
+        actualUsd: roundUsd(loop.cost.actualUsd + getUsageUsd(result.usage)),
         avoidedUsd: loop.cost.avoidedUsd,
         tokensIn: loop.cost.tokensIn + result.usage.tokensIn,
         tokensOut: loop.cost.tokensOut + result.usage.tokensOut
@@ -533,6 +727,16 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     if (failure) {
       if (failure.recommendedIntervention === "compress_context") {
         useCompressedContext = true;
+      }
+
+      let adapterSwitched = false;
+      if (failure.recommendedIntervention === "switch_adapter") {
+        const nextAdapter = adapterChain[currentAdapterIndex + 1];
+        if (nextAdapter) {
+          currentAdapterIndex += 1;
+          currentAdapter = nextAdapter;
+          adapterSwitched = true;
+        }
       }
 
       if (failure.recommendedIntervention === "change_model" && currentAdapter.withModel) {
@@ -566,6 +770,23 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         },
         { now: attemptCompletedAt, idFactory }
       );
+
+      if (adapterSwitched) {
+        loop = appendLoopEvent(
+          loop,
+          {
+            type: "intervention.selected",
+            lifecycleState: "running",
+            payload: {
+              attemptId,
+              intervention: "switch_adapter",
+              nextAdapterId: currentAdapter.adapterId,
+              transport: getAdapterTransport(currentAdapter)
+            }
+          },
+          { now: attemptCompletedAt, idFactory }
+        );
+      }
     }
 
     loop = appendLoopEvent(
@@ -603,6 +824,13 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     );
 
     if (input.store) {
+      const settlement = createBudgetSettlement({
+        runId: loop.loopId,
+        attemptIndex: currentAttemptIndex,
+        usage: result.usage,
+        estimate: budgetPreflight.estimate,
+        settledAt: attemptCompletedAt
+      });
       await input.store.writeAttemptArtifacts(loop.loopId, currentAttemptIndex, {
         compiledContext: compilePromptPacket(request)
       });
@@ -631,12 +859,116 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
           runId: loop.loopId,
           attemptIndex: currentAttemptIndex,
           payload: {
-            actualUsd: result.usage.actualUsd,
+            actualUsd: settlement.totalActualUsd,
+            estimatedUsd: result.usage.estimatedUsd,
             tokensIn: result.usage.tokensIn,
-            tokensOut: result.usage.tokensOut
+            tokensOut: result.usage.tokensOut,
+            provenance: getUsageProvenance(result.usage),
+            transport: getAdapterTransport(executingAdapter),
+            providerId: executingAdapter.metadata.providerId,
+            model: executingAdapter.metadata.model,
+            patchCost: settlement.patchCost,
+            verificationCost: settlement.verificationCost,
+            varianceUsd: settlement.varianceUsd,
+            preflightEstimateUsd: settlement.preflightEstimateUsd
           }
         })
       );
+    }
+
+    const changedFiles = resolveChangedFiles(result, request.context.repoRoot);
+    const filesystemDecision = evaluateFilesystemLeash({
+      repoRoot: request.context.repoRoot,
+      changedFiles,
+      allowedPaths: request.context.allowedPaths,
+      deniedPaths: request.context.deniedPaths
+    });
+
+    if (!filesystemDecision.allowed) {
+      const filesystemExitDecision: ExitDecision = {
+        shouldExit: true,
+        lifecycleState: "human_escalation",
+        status: "exited",
+        reason: filesystemDecision.reason ?? "Safety leash blocked filesystem changes."
+      };
+
+      if (input.store) {
+        await input.store.appendLedger(
+          loop.loopId,
+          makeLedgerEvent({
+            kind: "safety.violations_found",
+            runId: loop.loopId,
+            attemptIndex: currentAttemptIndex,
+            payload: {
+              surface: "filesystem",
+              blocked: true,
+              attemptIndex: currentAttemptIndex,
+              violations: filesystemDecision.violations
+            }
+          })
+        );
+        await input.store.appendLedger(
+          loop.loopId,
+          makeLedgerEvent({
+            kind: "attempt.discarded",
+            runId: loop.loopId,
+            attemptIndex: currentAttemptIndex,
+            payload: { reason: filesystemExitDecision.reason }
+          })
+        );
+        await input.store.appendLedger(
+          loop.loopId,
+          makeLedgerEvent({
+            kind: "run.exited",
+            runId: loop.loopId,
+            payload: {
+              lifecycleState: filesystemExitDecision.lifecycleState,
+              status: filesystemExitDecision.status,
+              reason: filesystemExitDecision.reason
+            }
+          })
+        );
+      }
+
+      return {
+        loop: finalizeLoop(loop, filesystemExitDecision, now(), idFactory),
+        decision: filesystemExitDecision
+      };
+    }
+
+    // VERIFY: Run grounding scan on patch diff if available
+    // Uses the task's repoRoot to build/load the grounding index, then scans any diff
+    let groundingScanResult: GroundingScanResult | undefined;
+    const patchDiff = buildPatchDiff(result, changedFiles);
+    if (patchDiff && input.task.repoRoot) {
+      try {
+        const groundingIndex = await loadOrBuildRepoGroundingIndex(input.task.repoRoot);
+        groundingScanResult = scanPatchForGroundingViolations(patchDiff, groundingIndex, {
+          allowedPaths: input.task.allowedPaths
+        });
+
+        if (input.store && groundingScanResult.violations.length > 0) {
+          await input.store.appendLedger(
+            loop.loopId,
+            makeLedgerEvent({
+              kind: "grounding.violations_found",
+              runId: loop.loopId,
+              attemptIndex: currentAttemptIndex,
+              payload: {
+                violationCount: groundingScanResult.violations.length,
+                resolvedFiles: groundingScanResult.resolvedFiles,
+                contentOnly: groundingScanResult.contentOnly,
+                violations: groundingScanResult.violations.slice(0, 10)
+              }
+            })
+          );
+        }
+      } catch {
+        // Grounding scan is best-effort — never fail the loop because of a scan error
+      }
+    }
+
+    if (input.store) {
       await input.store.appendLedger(
         loop.loopId,
         makeLedgerEvent({
@@ -652,7 +984,11 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       loop,
       lastResult: result,
       lastFailure: failure,
-      costState
+      costState,
+      canSwitchAdapter:
+        failure?.recommendedIntervention === "switch_adapter" &&
+        adapterChain[currentAdapterIndex] !== undefined &&
+        currentAdapter.adapterId !== executingAdapter.adapterId
     });
 
     // Advance phase based on result
@@ -731,6 +1067,99 @@ function finalizeLoop(
     status: decision.status,
     lifecycleState: decision.lifecycleState,
     updatedAt: timestamp
+  };
+}
+
+function getAdapterTransport(adapter: MartinAdapter): "cli" | "http" | "routed_http" {
+  return adapter.metadata.transport ?? (adapter.kind === "agent-cli" ? "cli" : "http");
+}
+
+function getUsageUsd(usage: MartinAdapterResult["usage"]): number {
+  return roundUsd(usage.actualUsd);
+}
+
+function getUsageProvenance(usage: MartinAdapterResult["usage"]): CostProvenance {
+  if (usage.provenance) {
+    return usage.provenance;
+  }
+
+  if (usage.estimatedUsd !== undefined) {
+    return "estimated";
+  }
+
+  return "actual";
+}
+
+function resolveChangedFiles(result: MartinAdapterResult, repoRoot?: string): string[] {
+  if (result.execution?.changedFiles?.length) {
+    return result.execution.changedFiles;
+  }
+
+  if (!repoRoot) {
+    return [];
+  }
+
+  try {
+    const diff = spawnSync("git", ["diff", "--name-only", "HEAD"], {
+      cwd: repoRoot,
+      encoding: "utf8"
+    });
+
+    if (diff.status !== 0 || typeof diff.stdout !== "string") {
+      return [];
+    }
+
+    return diff.stdout
+      .split(/\r?\n/u)
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+function buildPatchDiff(result: MartinAdapterResult, changedFiles: string[]): string | undefined {
+  // Use structured diff stats to build a minimal diff header if no raw diff is available
+  if (result.execution?.changedFiles?.length) {
+    // Build a synthetic diff header from changed file list
+    return result.execution.changedFiles
+      .map((file) => `--- a/${file}\n+++ b/${file}\n@@ -0,0 +1 @@\n+`)
+      .join("\n");
+  }
+  if (changedFiles.length > 0) {
+    return changedFiles
+      .map((file) => `--- a/${file}\n+++ b/${file}\n@@ -0,0 +1 @@\n+`)
+      .join("\n");
+  }
+  return undefined;
+}
+
+function createBudgetSettlement(input: {
+  runId: string;
+  attemptIndex: number;
+  usage: MartinAdapterResult["usage"];
+  estimate: BudgetPreflightDecision["estimate"];
+  settledAt: string;
+}) {
+  const totalActualUsd = getUsageUsd(input.usage);
+
+  return {
+    runId: input.runId,
+    attemptIndex: input.attemptIndex,
+    patchCost: {
+      usd: totalActualUsd,
+      tokensIn: input.usage.tokensIn,
+      tokensOut: input.usage.tokensOut,
+      provenance: getUsageProvenance(input.usage)
+    },
+    verificationCost: {
+      usd: 0,
+      provenance: "unavailable" as CostProvenance
+    },
+    totalActualUsd,
+    preflightEstimateUsd: input.estimate.estimatedAttemptCostUsd,
+    varianceUsd: roundUsd(totalActualUsd - input.estimate.estimatedAttemptCostUsd),
+    settledAt: input.settledAt
   };
 }
 
