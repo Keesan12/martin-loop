@@ -196,4 +196,61 @@ describe("scanPatchForGroundingViolations", () => {
     const phantomViolation = symbolViolations.find((v) => v.reference === "phantomHelper");
     expect(phantomViolation).toBeDefined();
   });
+
+  it("challenge 3: detects out-of-scope patch when package.json is modified outside allowedPaths", async () => {
+    const root = await mkdtemp(join(tmpdir(), "martin-challenge3-"));
+    await mkdir(join(root, "src"), { recursive: true });
+    await writeFile(join(root, "src", "index.ts"), "export const x = 1;", "utf8");
+    await writeFile(join(root, "package.json"), '{"name":"test"}', "utf8");
+
+    const index = await buildRepoGroundingIndex(root);
+
+    // Diff modifies package.json — outside the allowedPaths scope
+    const diff = `--- a/package.json
++++ b/package.json
+@@ -1 +1 @@
+-{"name":"test"}
++{"name":"test","dependencies":{"lodash":"^4.0.0"}}`;
+
+    const result = scanPatchForGroundingViolations(diff, index, {
+      allowedPaths: ["src/**"]
+    });
+
+    const scopeViolation = result.violations.find((v) => v.kind === "patch_outside_allowed_paths");
+    expect(scopeViolation).toBeDefined();
+    expect(scopeViolation?.reference).toContain("package.json");
+  });
+
+  it("challenge 4: detects patch_outside_allowed_paths for a realistic scope violation", async () => {
+    const root = await mkdtemp(join(tmpdir(), "martin-challenge4-"));
+    await mkdir(join(root, "packages", "core", "src"), { recursive: true });
+    await mkdir(join(root, "apps", "control-plane", "app"), { recursive: true });
+    await writeFile(
+      join(root, "packages", "core", "src", "policy.ts"),
+      "export function classifyFailure() {}",
+      "utf8"
+    );
+    await writeFile(
+      join(root, "apps", "control-plane", "app", "page.tsx"),
+      "export default function Page() {}",
+      "utf8"
+    );
+
+    const index = await buildRepoGroundingIndex(root);
+
+    // Task scope: only allowed to modify packages/core — but diff also touches control-plane
+    const diff = `--- a/apps/control-plane/app/page.tsx
++++ b/apps/control-plane/app/page.tsx
+@@ -1 +1 @@
+-export default function Page() {}
++export default function Page() { return null; }`;
+
+    const result = scanPatchForGroundingViolations(diff, index, {
+      allowedPaths: ["packages/core/**"]
+    });
+
+    const scopeViolation = result.violations.find((v) => v.kind === "patch_outside_allowed_paths");
+    expect(scopeViolation).toBeDefined();
+    expect(scopeViolation?.reference).toContain("apps/control-plane");
+  });
 });
