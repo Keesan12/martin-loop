@@ -1,11 +1,13 @@
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { existsSync } from "node:fs";
+import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
 import {
   buildRepoGroundingIndex,
+  loadOrBuildRepoGroundingIndex,
   queryRepoGroundingIndex,
   scanPatchForGroundingViolations
 } from "../src/index.js";
@@ -272,5 +274,41 @@ describe("scanPatchForGroundingViolations", () => {
     const result = scanPatchForGroundingViolations(diff, index);
 
     expect(result.contentOnly).toBe(true);
+  });
+});
+
+describe("loadOrBuildRepoGroundingIndex anatomy artifact", () => {
+  it("writes a schema-valid anatomy artifact to ~/.martin/grounding/ on first call", async () => {
+    const root = await mkdtemp(join(tmpdir(), "martin-anatomy-"));
+    await mkdir(join(root, "src"), { recursive: true });
+    await writeFile(
+      join(root, "src", "core.ts"),
+      "export function run(): void {}",
+      "utf8"
+    );
+
+    const index = await loadOrBuildRepoGroundingIndex(root);
+
+    // Verify index in memory is valid
+    expect(index.schemaVersion).toBe("martin.grounding.v1");
+    expect(index.repoRoot).toBe(root);
+    expect(typeof index.createdAt).toBe("string");
+    expect(index.fileCount).toBeGreaterThanOrEqual(1);
+    expect(Array.isArray(index.files)).toBe(true);
+
+    // Verify artifact was written to disk
+    const cacheDir = join(homedir(), ".martin", "grounding");
+    const cacheFile = join(
+      cacheDir,
+      `${Buffer.from(root).toString("base64url")}.json`
+    );
+    expect(existsSync(cacheFile)).toBe(true);
+
+    // Verify disk artifact is valid JSON with correct schema
+    const rawContent = await readFile(cacheFile, "utf8");
+    const parsed = JSON.parse(rawContent) as typeof index;
+    expect(parsed.schemaVersion).toBe("martin.grounding.v1");
+    expect(parsed.repoRoot).toBe(root);
+    expect(Array.isArray(parsed.files)).toBe(true);
   });
 });
