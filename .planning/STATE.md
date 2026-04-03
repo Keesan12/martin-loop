@@ -4,10 +4,10 @@
 Phase 8 — Grounding Integrity (active)
 
 ## Current Plan
-08-01 complete (2026-04-03). Next: 08-02 if planned, or phase complete.
+08-02 complete (2026-04-03). Phase 08-grounding-integrity complete.
 
 ## Last Action
-Phase 8 Plan 01 complete (2026-04-03): challenge-set grounding tests (cases 1-5) + anatomy artifact persistence test + contentOnly field added to GroundingScanResult. 54 @martin/core tests passing, 0 failures, 0 type errors.
+Phase 8 Plan 02 complete (2026-04-03): scanPatchForGroundingViolations wired into runMartin VERIFY phase. grounding.violations_found ledger event appended when violations.length > 0. buildPatchDiff helper added. Runtime test verifies ledger event fires for unindexed changedFiles. 55 @martin/core tests passing, 0 failures, 0 type errors.
 
 Phase 7 complete (2026-04-02): evaluation matrix, replay drills, variance study, and CTO-ready go/no-go reporting landed.
 - Phase 5 complete: blocking safety enforcement, adapter normalization, fallback adapter rotation, and CLI/direct-provider ledger consistency
@@ -81,3 +81,4 @@ Handoff zip analyzed: slices 1-8 implemented policy, leash, grounding modules. P
 | 04-grounding-policy-engine | 04-01 | 2026-04-02 | 4 | 4 |
 | 04-grounding-policy-engine | 04-02 | 2026-04-02 | 4 | 4 |
 | 08-grounding-integrity | 08-01 | 3min | 7 | 2 |
+| 08-grounding-integrity | 08-02 | 6min | 4 | 2 |

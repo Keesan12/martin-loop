@@ -149,4 +149,4 @@ Plans:
 **Plans:** 2 plans
 Plans:
 - [x] 08-01-PLAN.md — Challenge-set grounding tests (cases 1-5) + anatomy persistence test
-- [ ] 08-02-PLAN.md — Wire scanPatchForGroundingViolations into runMartin VERIFY phase + ledger integration
+- [x] 08-02-PLAN.md — Wire scanPatchForGroundingViolations into runMartin VERIFY phase + ledger integration
