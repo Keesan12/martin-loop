@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "baseUrl": ".",
+    "exactOptionalPropertyTypes": false,
+    "paths": {
+      "@martin/contracts": ["../contracts/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*.ts", "tests/**/*.ts"]
+}

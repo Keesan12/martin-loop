@@ -54,12 +54,28 @@ export interface LoopTask {
   repoRoot?: string;
   verificationPlan: string[];
   verificationStack?: VerificationStep[];
+  executionProfile?: ExecutionProfile;
+  allowedNetworkDomains?: string[];
+  approvalPolicy?: ApprovalPolicy;
   /** Glob patterns for files the agent is allowed to modify. Empty = no restriction. */
   allowedPaths?: string[];
   /** Glob patterns for files the agent must never modify. */
   deniedPaths?: string[];
   /** Human-readable acceptance criteria injected into the prompt as a checklist. */
   acceptanceCriteria?: string[];
+}
+
+export type ExecutionProfile =
+  | "strict_local"
+  | "ci_safe"
+  | "staging_controlled"
+  | "research_untrusted";
+
+export interface ApprovalPolicy {
+  dependencyAdds?: boolean;
+  migrations?: boolean;
+  configChanges?: boolean;
+  externalWrites?: boolean;
 }
 
 export interface VerificationStep {
@@ -551,6 +567,124 @@ export interface MachineState {
     reason: string;
     timestamp: string;
   }>;
+}
+
+// ─── Phase 4: Budget Governor v3 Types ──────────────────────────────────────
+
+/**
+ * Cost provenance label — every budget metric must carry this.
+ * Never conflate actual with estimated or unavailable.
+ */
+export type CostProvenance = "actual" | "estimated" | "unavailable";
+
+/**
+ * Per-attempt budget preflight estimate produced before admission.
+ * Used to gate attempts before any tokens are spent.
+ */
+export interface BudgetPreflightEstimate {
+  estimatedPromptTokens: number;
+  estimatedToolOverheadTokens: number;
+  estimatedOutputTokensMax: number;
+  estimatedVerifierCostUsd: number;
+  estimatedAttemptCostUsd: number;
+  provenance: CostProvenance;
+}
+
+/**
+ * Actual cost settlement written to the ledger after an attempt completes.
+ * Separates patch cost from verification cost.
+ */
+export interface BudgetSettlement {
+  runId: string;
+  attemptIndex: number;
+  patchCost: {
+    usd: number;
+    tokensIn: number;
+    tokensOut: number;
+    provenance: CostProvenance;
+  };
+  verificationCost: {
+    usd: number;
+    provenance: CostProvenance;
+  };
+  totalActualUsd: number;
+  preflightEstimateUsd: number;
+  varianceUsd: number;
+  settledAt: string;
+}
+
+// ─── Phase 10: Patch Truth + Keep/Discard ───────────────────────────────────
+
+export type PatchDecision = "KEEP" | "DISCARD" | "ESCALATE" | "HANDOFF";
+
+export type PatchDecisionReasonCode =
+  | "verifier_passed"
+  | "verifier_regressed"
+  | "grounding_failure"
+  | "scope_violation"
+  | "no_code_change"
+  | "large_diff_no_improvement"
+  | "low_novelty_no_progress"
+  | "human_approval_required"
+  | "safety_violation"
+  | "verifier_not_improved";
+
+export interface PatchScore {
+  score: number;
+  verifierScore: number;
+  verifierDelta: number;
+  groundingViolationCount: number;
+  scopeViolationCount: number;
+  safetyViolationCount: number;
+  changedFileCount: number;
+  diffRiskScore: number;
+  noveltyScore: number;
+  costUsd: number;
+  reasonCodes: PatchDecisionReasonCode[];
+}
+
+export interface PatchDecisionArtifact {
+  decision: PatchDecision;
+  summary: string;
+  reasonCodes: PatchDecisionReasonCode[];
+}
+
+export type RollbackBoundaryStrategy = "git_head_plus_snapshot" | "no_repo_root";
+
+export interface RollbackFileSnapshot {
+  path: string;
+  existed: boolean;
+  encoding: "base64";
+  contentBase64?: string;
+}
+
+export interface RollbackBoundaryArtifact {
+  strategy: RollbackBoundaryStrategy;
+  capturedAt: string;
+  headRef?: string;
+  trackedDirtyFiles: string[];
+  untrackedFiles: string[];
+  snapshots: RollbackFileSnapshot[];
+}
+
+export type RollbackOutcomeStatus = "restored" | "not_required" | "failed" | "unavailable";
+
+export interface RollbackOutcomeArtifact {
+  attempted: boolean;
+  status: RollbackOutcomeStatus;
+  restoredAt: string;
+  decision: PatchDecision;
+  before: {
+    trackedDirtyFiles: string[];
+    untrackedFiles: string[];
+  };
+  after: {
+    trackedDirtyFiles: string[];
+    untrackedFiles: string[];
+  };
+  restoredFiles: string[];
+  deletedFiles: string[];
+  error?: string;
 }
 
 export { createGovernanceSnapshot } from "./governance.js";

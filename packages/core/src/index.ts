@@ -1,9 +1,11 @@
 import { spawnSync } from "node:child_process";
 
 import {
+  type ApprovalPolicy,
   appendLoopEvent,
   createLoopRecord,
   type CostProvenance,
+  type ExecutionProfile,
   type FailureClass,
   type InterventionType,
   type LoopArtifact,
@@ -11,30 +13,39 @@ import {
   type LoopBudget,
   type LoopRecord,
   type LoopTask,
+  type PatchDecisionArtifact,
+  type PatchScore,
+  type RollbackOutcomeArtifact,
   type PolicyPhase
 } from "@martin/contracts";
 import {
   classifyFailure,
   computeEvidenceVector,
+  evaluatePatchDecision,
   evaluateCostGovernor,
   evaluateBudgetPreflight,
   inferExit,
   nextPolicyPhase,
   policyPhaseToLifecycleState,
+  scorePatchDecision,
   selectRecoveryRecipe,
   type BudgetPreflightDecision,
   type BudgetPreflightInput,
   type CostGovernorState,
   type EvidenceVectorInput,
+  type EvaluatedPatchDecision,
   type ExitDecision,
   type FailureAssessment,
+  type PatchDecisionInput,
   type RecoveryDecision,
   type RecoveryRecipe
 } from "./policy.js";
 import {
+  evaluateChangeApprovalLeash,
   evaluateFilesystemLeash,
   evaluateSecretLeash,
   redactSecretsFromText,
+  resolveExecutionProfile,
   evaluateVerificationLeash,
   type SafetyViolation
 } from "./leash.js";
@@ -49,48 +60,68 @@ import {
   type RepoGroundingHit,
   type RepoGroundingIndex
 } from "./grounding.js";
+import { captureRollbackBoundary, restoreRollbackBoundary } from "./rollback.js";
 import { compilePromptPacket } from "./compiler.js";
 import { makeLedgerEvent, type RunStore } from "./persistence/index.js";
 
 // ─── Public API re-exports ───────────────────────────────────────────────────
 export type {
+  ApprovalPolicy,
   BudgetPreflightEstimate,
   BudgetSettlement,
   CostProvenance,
   EvidenceVector,
+  ExecutionProfile,
   FailureClass,
   InterventionType,
+  PatchDecision,
+  PatchDecisionArtifact,
+  PatchDecisionReasonCode,
+  PatchScore,
+  RollbackBoundaryArtifact,
+  RollbackBoundaryStrategy,
+  RollbackFileSnapshot,
+  RollbackOutcomeArtifact,
+  RollbackOutcomeStatus,
   PolicyPhase
 } from "@martin/contracts";
 export {
   classifyFailure,
   computeEvidenceVector,
+  evaluatePatchDecision,
   evaluateCostGovernor,
   evaluateBudgetPreflight,
   inferExit,
   nextPolicyPhase,
   policyPhaseToLifecycleState,
+  scorePatchDecision,
   selectRecoveryRecipe,
   evaluateVerificationLeash,
   evaluateFilesystemLeash,
+  evaluateChangeApprovalLeash,
   evaluateSecretLeash,
+  resolveExecutionProfile,
   redactSecretsFromText,
   buildRepoGroundingIndex,
   loadOrBuildRepoGroundingIndex,
   queryRepoGroundingIndex,
-  scanPatchForGroundingViolations
+  scanPatchForGroundingViolations,
+  captureRollbackBoundary,
+  restoreRollbackBoundary
 };
 export type {
   BudgetPreflightDecision,
   BudgetPreflightInput,
   CostGovernorState,
   EvidenceVectorInput,
+  EvaluatedPatchDecision,
   ExitDecision,
   FailureAssessment,
+  PatchDecisionInput,
   RecoveryDecision,
   RecoveryRecipe
 } from "./policy.js";
-export type { SafetyLeashDecision, SafetyViolation } from "./leash.js";
+export type { ResolvedExecutionProfile, SafetyLeashDecision, SafetyViolation } from "./leash.js";
 export type {
   GroundingScanResult,
   GroundingViolation,
@@ -137,6 +168,9 @@ export interface MartinAdapterRequest {
     deniedPaths?: string[];
     /** Human-readable acceptance criteria injected into the prompt. */
     acceptanceCriteria?: string[];
+    executionProfile?: ExecutionProfile;
+    allowedNetworkDomains?: string[];
+    approvalPolicy?: ApprovalPolicy;
     focus: string;
     remainingBudgetUsd: number;
     remainingIterations: number;
@@ -403,11 +437,17 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
   let currentAdapterIndex = 0;
   let currentAdapter = adapterChain[currentAdapterIndex] ?? input.adapter;
   let useCompressedContext = false;
+  const executionProfile = resolveExecutionProfile({
+    executionProfile: input.task.executionProfile,
+    allowedNetworkDomains: input.task.allowedNetworkDomains
+  });
 
   // Safety leash: block destructive verifier commands before any attempt
   const leashDecision = evaluateVerificationLeash({
     verificationPlan: input.task.verificationPlan,
-    verificationStack: input.task.verificationStack
+    verificationStack: input.task.verificationStack,
+    executionProfile: input.task.executionProfile,
+    allowedNetworkDomains: input.task.allowedNetworkDomains
   });
 
   if (!leashDecision.allowed) {
@@ -425,9 +465,10 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
           kind: "safety.violations_found",
           runId: loop.loopId,
           payload: {
-            surface: "command",
+            surface: leashDecision.surface,
             blocked: true,
-            violations: leashDecision.blockedCommands
+            profile: leashDecision.profile ?? executionProfile.name,
+            violations: serializeSafetyViolations(leashDecision)
           }
         })
       );
@@ -570,6 +611,11 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
           ...(loop.task.allowedPaths ? { allowedPaths: loop.task.allowedPaths } : {}),
           ...(loop.task.deniedPaths ? { deniedPaths: loop.task.deniedPaths } : {}),
           ...(loop.task.acceptanceCriteria ? { acceptanceCriteria: loop.task.acceptanceCriteria } : {}),
+          ...(loop.task.executionProfile ? { executionProfile: loop.task.executionProfile } : {}),
+          ...(loop.task.allowedNetworkDomains
+            ? { allowedNetworkDomains: loop.task.allowedNetworkDomains }
+            : {}),
+          ...(loop.task.approvalPolicy ? { approvalPolicy: loop.task.approvalPolicy } : {}),
           focus: distilled.focus,
           remainingBudgetUsd: distilled.constraints.remainingBudgetUsd,
           remainingIterations: distilled.constraints.remainingIterations,
@@ -668,6 +714,11 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         ...(loop.task.allowedPaths ? { allowedPaths: loop.task.allowedPaths } : {}),
         ...(loop.task.deniedPaths ? { deniedPaths: loop.task.deniedPaths } : {}),
         ...(loop.task.acceptanceCriteria ? { acceptanceCriteria: loop.task.acceptanceCriteria } : {}),
+        ...(loop.task.executionProfile ? { executionProfile: loop.task.executionProfile } : {}),
+        ...(loop.task.allowedNetworkDomains
+          ? { allowedNetworkDomains: loop.task.allowedNetworkDomains }
+          : {}),
+        ...(loop.task.approvalPolicy ? { approvalPolicy: loop.task.approvalPolicy } : {}),
         focus: distilled.focus,
         remainingBudgetUsd: distilled.constraints.remainingBudgetUsd,
         remainingIterations: distilled.constraints.remainingIterations,
@@ -676,13 +727,18 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       previousAttempts: loop.attempts
     };
 
+    const rollbackBoundary = await captureRollbackBoundary({
+      repoRoot: request.context.repoRoot,
+      capturedAt: attemptStartedAt
+    });
     const result = await executingAdapter.execute(request);
     const attemptCompletedAt = now();
+    const compiledContext = compilePromptPacket(request);
 
     // PATCH → VERIFY
     currentPhase = "VERIFY";
 
-    const failure =
+    let failure =
       result.status === "failed"
         ? classifyFailure({ attempts: loop.attempts, result })
         : undefined;
@@ -723,6 +779,8 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       },
       { now: attemptCompletedAt, idFactory }
     );
+
+    const previousVerifierScore = getLastVerifierScore(loop);
 
     if (failure) {
       if (failure.recommendedIntervention === "compress_context") {
@@ -832,7 +890,8 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         settledAt: attemptCompletedAt
       });
       await input.store.writeAttemptArtifacts(loop.loopId, currentAttemptIndex, {
-        compiledContext: compilePromptPacket(request)
+        compiledContext,
+        ...(rollbackBoundary ? { rollbackBoundary } : {})
       });
       await input.store.appendLedger(
         loop.loopId,
@@ -877,6 +936,8 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     }
 
     const changedFiles = resolveChangedFiles(result, request.context.repoRoot);
+    const changedFileEvidenceAvailable =
+      result.execution?.changedFiles !== undefined || Boolean(request.context.repoRoot);
     const filesystemDecision = evaluateFilesystemLeash({
       repoRoot: request.context.repoRoot,
       changedFiles,
@@ -885,14 +946,39 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     });
 
     if (!filesystemDecision.allowed) {
+      const patchDecision = evaluatePatchDecision({
+        verificationPassed: result.verification.passed,
+        previousVerifierScore,
+        verifierScore: result.verification.passed ? 1 : 0,
+        scopeViolationCount: filesystemDecision.violations.length,
+        changedFileCount: changedFiles.length,
+        diffNovelty: changedFiles.length > 0 ? 1 : 0,
+        diffStats: result.execution?.diffStats,
+        costUsd: getUsageUsd(result.usage),
+        summary: result.summary
+      });
       const filesystemExitDecision: ExitDecision = {
         shouldExit: true,
         lifecycleState: "human_escalation",
         status: "exited",
         reason: filesystemDecision.reason ?? "Safety leash blocked filesystem changes."
       };
+      const rollbackOutcome = await restoreRollbackBoundary({
+        repoRoot: request.context.repoRoot,
+        boundary: rollbackBoundary,
+        restoredAt: attemptCompletedAt,
+        decision: patchDecision.decision
+      });
 
       if (input.store) {
+        await input.store.writeAttemptArtifacts(loop.loopId, currentAttemptIndex, {
+          compiledContext,
+          leash: createLeashArtifact(filesystemDecision, currentAttemptIndex),
+          patchScore: patchDecision.score,
+          patchDecision: toPatchDecisionArtifact(patchDecision),
+          ...(rollbackBoundary ? { rollbackBoundary } : {}),
+          ...(rollbackOutcome ? { rollbackOutcome } : {})
+        });
         await input.store.appendLedger(
           loop.loopId,
           makeLedgerEvent({
@@ -913,7 +999,12 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
             kind: "attempt.discarded",
             runId: loop.loopId,
             attemptIndex: currentAttemptIndex,
-            payload: { reason: filesystemExitDecision.reason }
+            payload: {
+              decision: patchDecision.decision,
+              reason: patchDecision.summary,
+              reasonCodes: patchDecision.reasonCodes,
+              score: patchDecision.score.score
+            }
           })
         );
         await input.store.appendLedger(
@@ -933,6 +1024,98 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       return {
         loop: finalizeLoop(loop, filesystemExitDecision, now(), idFactory),
         decision: filesystemExitDecision
+      };
+    }
+
+    const changeApprovalDecision = evaluateChangeApprovalLeash({
+      changedFiles,
+      executionProfile: request.context.executionProfile,
+      approvalPolicy: request.context.approvalPolicy
+    });
+
+    if (!changeApprovalDecision.allowed) {
+      const patchDecision = evaluatePatchDecision({
+        verificationPassed: result.verification.passed,
+        previousVerifierScore,
+        verifierScore: result.verification.passed ? 1 : 0,
+        safetyViolationCount: changeApprovalDecision.violations.length,
+        changedFileCount: changedFiles.length,
+        diffNovelty: changedFiles.length > 0 ? 1 : 0,
+        diffStats: result.execution?.diffStats,
+        costUsd: getUsageUsd(result.usage),
+        humanApprovalRequired: true,
+        summary: result.summary
+      });
+      const approvalExitDecision: ExitDecision = {
+        shouldExit: true,
+        lifecycleState: "human_escalation",
+        status: "exited",
+        reason:
+          changeApprovalDecision.reason ??
+          "Safety leash blocked dependency or migration changes that require approval."
+      };
+      const rollbackOutcome = await restoreRollbackBoundary({
+        repoRoot: request.context.repoRoot,
+        boundary: rollbackBoundary,
+        restoredAt: attemptCompletedAt,
+        decision: patchDecision.decision
+      });
+
+      if (input.store) {
+        await input.store.writeAttemptArtifacts(loop.loopId, currentAttemptIndex, {
+          compiledContext,
+          leash: createLeashArtifact(changeApprovalDecision, currentAttemptIndex),
+          patchScore: patchDecision.score,
+          patchDecision: toPatchDecisionArtifact(patchDecision),
+          ...(rollbackBoundary ? { rollbackBoundary } : {}),
+          ...(rollbackOutcome ? { rollbackOutcome } : {})
+        });
+        await input.store.appendLedger(
+          loop.loopId,
+          makeLedgerEvent({
+            kind: "safety.violations_found",
+            runId: loop.loopId,
+            attemptIndex: currentAttemptIndex,
+            payload: {
+              surface: "dependency",
+              blocked: true,
+              profile: changeApprovalDecision.profile ?? executionProfile.name,
+              attemptIndex: currentAttemptIndex,
+              violations: changeApprovalDecision.violations
+            }
+          })
+        );
+        await input.store.appendLedger(
+          loop.loopId,
+          makeLedgerEvent({
+            kind: "attempt.discarded",
+            runId: loop.loopId,
+            attemptIndex: currentAttemptIndex,
+            payload: {
+              decision: patchDecision.decision,
+              reason: patchDecision.summary,
+              reasonCodes: patchDecision.reasonCodes,
+              score: patchDecision.score.score
+            }
+          })
+        );
+        await input.store.appendLedger(
+          loop.loopId,
+          makeLedgerEvent({
+            kind: "run.exited",
+            runId: loop.loopId,
+            payload: {
+              lifecycleState: approvalExitDecision.lifecycleState,
+              status: approvalExitDecision.status,
+              reason: approvalExitDecision.reason
+            }
+          })
+        );
+      }
+
+      return {
+        loop: finalizeLoop(loop, approvalExitDecision, now(), idFactory),
+        decision: approvalExitDecision
       };
     }
 
@@ -968,21 +1151,166 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       }
     }
 
+    let patchDecision: EvaluatedPatchDecision | undefined;
+    if (result.status === "completed") {
+      patchDecision = evaluatePatchDecision({
+        verificationPassed: result.verification.passed,
+        previousVerifierScore,
+        verifierScore: result.verification.passed ? 1 : 0,
+        groundingViolationCount: groundingScanResult?.violations.length ?? 0,
+        changedFileCount: changedFileEvidenceAvailable ? changedFiles.length : undefined,
+        diffNovelty: changedFileEvidenceAvailable ? (changedFiles.length > 0 ? 1 : 0) : undefined,
+        diffStats: result.execution?.diffStats,
+        costUsd: getUsageUsd(result.usage),
+        summary: result.summary
+      });
+    }
+
+    let rollbackOutcome: RollbackOutcomeArtifact | undefined;
+    if (patchDecision && patchDecision.decision !== "KEEP") {
+      rollbackOutcome = await restoreRollbackBoundary({
+        repoRoot: request.context.repoRoot,
+        boundary: rollbackBoundary,
+        restoredAt: attemptCompletedAt,
+        decision: patchDecision.decision
+      });
+    } else if (result.status === "failed") {
+      rollbackOutcome = await restoreRollbackBoundary({
+        repoRoot: request.context.repoRoot,
+        boundary: rollbackBoundary,
+        restoredAt: attemptCompletedAt,
+        decision: "DISCARD"
+      });
+    }
+
     if (input.store) {
-      await input.store.appendLedger(
-        loop.loopId,
-        makeLedgerEvent({
-          kind: result.verification.passed ? "attempt.kept" : "attempt.discarded",
-          runId: loop.loopId,
-          attemptIndex: currentAttemptIndex,
-          payload: { reason: result.verification.summary }
-        })
+      await input.store.writeAttemptArtifacts(loop.loopId, currentAttemptIndex, {
+        compiledContext,
+        ...(patchDiff ? { diff: patchDiff } : {}),
+        ...(groundingScanResult ? { groundingScan: groundingScanResult } : {}),
+        ...(patchDecision ? { patchScore: patchDecision.score } : {}),
+        ...(patchDecision ? { patchDecision: toPatchDecisionArtifact(patchDecision) } : {}),
+        ...(rollbackBoundary ? { rollbackBoundary } : {}),
+        ...(rollbackOutcome ? { rollbackOutcome } : {})
+      });
+    }
+
+    if (input.store) {
+      if (patchDecision) {
+        await input.store.appendLedger(
+          loop.loopId,
+          makeLedgerEvent({
+            kind: patchDecision.decision === "KEEP" ? "attempt.kept" : "attempt.discarded",
+            runId: loop.loopId,
+            attemptIndex: currentAttemptIndex,
+            payload: {
+              decision: patchDecision.decision,
+              reason: patchDecision.summary,
+              reasonCodes: patchDecision.reasonCodes,
+              score: patchDecision.score.score
+            }
+          })
+        );
+      } else {
+        await input.store.appendLedger(
+          loop.loopId,
+          makeLedgerEvent({
+            kind: result.verification.passed ? "attempt.kept" : "attempt.discarded",
+            runId: loop.loopId,
+            attemptIndex: currentAttemptIndex,
+            payload: { reason: result.verification.summary }
+          })
+        );
+      }
+    }
+
+    if (patchDecision && patchDecision.decision !== "KEEP" && !failure) {
+      failure = classifyPatchDecisionFailure(patchDecision);
+      loop = applyPatchFailureToLoop(loop, {
+        attemptId,
+        summary: patchDecision.summary,
+        failure
+      });
+
+      if (failure.recommendedIntervention === "compress_context") {
+        useCompressedContext = true;
+      }
+
+      loop = appendLoopEvent(
+        loop,
+        {
+          type: "failure.classified",
+          lifecycleState: "running",
+          payload: {
+            attemptId,
+            failureClass: failure.failureClass,
+            rationale: failure.rationale
+          }
+        },
+        { now: attemptCompletedAt, idFactory }
+      );
+
+      loop = appendLoopEvent(
+        loop,
+        {
+          type: "intervention.selected",
+          lifecycleState: "running",
+          payload: { attemptId, intervention: failure.recommendedIntervention }
+        },
+        { now: attemptCompletedAt, idFactory }
       );
     }
 
+    if (patchDecision?.decision === "ESCALATE" || patchDecision?.decision === "HANDOFF") {
+      const patchExitDecision: ExitDecision = {
+        shouldExit: true,
+        lifecycleState: "human_escalation",
+        status: "exited",
+        reason: patchDecision.summary
+      };
+
+      if (input.store) {
+        await input.store.appendLedger(
+          loop.loopId,
+          makeLedgerEvent({
+            kind: "run.exited",
+            runId: loop.loopId,
+            payload: {
+              lifecycleState: patchExitDecision.lifecycleState,
+              status: patchExitDecision.status,
+              reason: patchExitDecision.reason
+            }
+          })
+        );
+      }
+
+      return {
+        loop: finalizeLoop(loop, patchExitDecision, now(), idFactory),
+        decision: patchExitDecision
+      };
+    }
+
+    const effectiveResult =
+      patchDecision && patchDecision.decision !== "KEEP"
+        ? {
+            ...result,
+            status: "failed" as const,
+            summary: patchDecision.summary,
+            verification: {
+              ...result.verification,
+              passed: false,
+              summary: patchDecision.summary
+            },
+            failure: {
+              message: patchDecision.summary,
+              ...(failure?.failureClass ? { classHint: failure.failureClass } : {})
+            }
+          }
+        : result;
+
     const decision = inferExit({
       loop,
-      lastResult: result,
+      lastResult: effectiveResult,
       lastFailure: failure,
       costState,
       canSwitchAdapter:
@@ -992,7 +1320,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     });
 
     // Advance phase based on result
-    currentPhase = nextPolicyPhase(currentPhase, result, costState, phaseRetryCount);
+    currentPhase = nextPolicyPhase(currentPhase, effectiveResult, costState, phaseRetryCount);
     if (failure) phaseRetryCount++;
     else phaseRetryCount = 0;
 
@@ -1170,4 +1498,136 @@ function roundUsd(value: number): number {
 function makeId(prefix: string, idFactory?: (prefix: string) => string): string {
   if (idFactory) return idFactory(prefix);
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function serializeSafetyViolations(decision: {
+  surface: string;
+  blockedCommands: string[];
+  violations: SafetyViolation[];
+}): Array<string | SafetyViolation> {
+  if (decision.surface === "command") {
+    return decision.blockedCommands;
+  }
+
+  return decision.violations;
+}
+
+function createLeashArtifact(
+  decision: {
+    surface: string;
+    profile?: string;
+    reason?: string;
+    violations: SafetyViolation[];
+  },
+  attemptIndex: number
+): Record<string, unknown> {
+  return {
+    attemptIndex,
+    surface: decision.surface,
+    blocked: true,
+    ...(decision.profile ? { profile: decision.profile } : {}),
+    ...(decision.reason ? { reason: decision.reason } : {}),
+    violations: decision.violations
+  };
+}
+
+function getLastVerifierScore(loop: LoopRecord): number {
+  for (let index = loop.events.length - 1; index >= 0; index -= 1) {
+    const event = loop.events[index];
+    if (event?.type !== "verification.completed") {
+      continue;
+    }
+
+    return event.payload["passed"] === true ? 1 : 0;
+  }
+
+  return 0;
+}
+
+function toPatchDecisionArtifact(decision: EvaluatedPatchDecision): PatchDecisionArtifact {
+  return {
+    decision: decision.decision,
+    summary: decision.summary,
+    reasonCodes: decision.reasonCodes
+  };
+}
+
+function classifyPatchDecisionFailure(decision: EvaluatedPatchDecision): FailureAssessment {
+  if (decision.reasonCodes.includes("grounding_failure")) {
+    return {
+      failureClass: "repo_grounding_failure",
+      rationale: "Patch truth discarded the attempt because grounding evidence contradicted the patch.",
+      retryable: true,
+      recommendedIntervention: "run_verifier"
+    };
+  }
+
+  if (decision.reasonCodes.includes("scope_violation")) {
+    return {
+      failureClass: "scope_creep",
+      rationale: "Patch truth discarded the attempt because it changed files outside the task scope.",
+      retryable: true,
+      recommendedIntervention: "tighten_task"
+    };
+  }
+
+  if (
+    decision.reasonCodes.includes("verifier_regressed") ||
+    decision.reasonCodes.includes("large_diff_no_improvement")
+  ) {
+    return {
+      failureClass: "test_regression",
+      rationale: "Patch truth discarded the attempt because the verifier regressed or stopped improving.",
+      retryable: true,
+      recommendedIntervention: "run_verifier"
+    };
+  }
+
+  if (decision.reasonCodes.includes("human_approval_required")) {
+    return {
+      failureClass: "scope_creep",
+      rationale: "Patch truth escalated the attempt because it requires explicit human approval.",
+      retryable: false,
+      recommendedIntervention: "escalate_human"
+    };
+  }
+
+  if (decision.reasonCodes.includes("safety_violation")) {
+    return {
+      failureClass: "scope_creep",
+      rationale: "Patch truth escalated the attempt because safety evidence blocked it.",
+      retryable: false,
+      recommendedIntervention: "escalate_human"
+    };
+  }
+
+  return {
+    failureClass: "no_progress",
+    rationale: "Patch truth discarded the attempt because it did not produce a trustworthy code change.",
+    retryable: true,
+    recommendedIntervention: "compress_context"
+  };
+}
+
+function applyPatchFailureToLoop(
+  loop: LoopRecord,
+  input: {
+    attemptId: string;
+    summary: string;
+    failure: FailureAssessment;
+  }
+): LoopRecord {
+  return {
+    ...loop,
+    attempts: loop.attempts.map((attempt) =>
+      attempt.attemptId === input.attemptId
+        ? {
+            ...attempt,
+            summary: input.summary,
+            failureClass: input.failure.failureClass,
+            intervention: input.failure.recommendedIntervention
+          }
+        : attempt
+    )
+  };
 }

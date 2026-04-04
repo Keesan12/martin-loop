@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "baseUrl": ".",
+    "exactOptionalPropertyTypes": false,
+    "paths": {
+      "@martin/core": ["../core/src/index.ts"],
+      "@martin/adapters": ["../adapters/src/index.ts"],
+      "@martin/contracts": ["../contracts/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"]
+}

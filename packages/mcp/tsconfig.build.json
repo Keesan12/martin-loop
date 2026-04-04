@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "paths": {
+      "@martin/core": ["../core/dist/index.d.ts"],
+      "@martin/adapters": ["../adapters/dist/index.d.ts"],
+      "@martin/contracts": ["../contracts/dist/index.d.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"]
+}

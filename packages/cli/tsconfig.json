@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "outDir": "dist",
+    "exactOptionalPropertyTypes": false,
+    "paths": {
+      "@martin/adapters": ["../adapters/src/index.ts"],
+      "@martin/core": ["../core/src/index.ts"],
+      "@martin/benchmarks": ["../../benchmarks/src/index.ts"],
+      "@martin/contracts": ["../contracts/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*.ts", "tests/**/*.ts"]
+}

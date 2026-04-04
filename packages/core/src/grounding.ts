@@ -49,8 +49,13 @@ export async function loadOrBuildRepoGroundingIndex(
   } catch {}
 
   const index = await buildRepoGroundingIndex(repoRoot);
-  await mkdir(join(homedir(), ".martin", "grounding"), { recursive: true });
-  await writeFile(cachePath, JSON.stringify(index, null, 2), "utf8");
+  try {
+    await mkdir(join(homedir(), ".martin", "grounding"), { recursive: true });
+    await writeFile(cachePath, JSON.stringify(index, null, 2), "utf8");
+  } catch {
+    // Cache persistence is best-effort; runtime grounding must still work even
+    // when the local filesystem blocks writes to ~/.martin/grounding.
+  }
   return index;
 }
 

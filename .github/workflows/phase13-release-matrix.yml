@@ -1,0 +1,48 @@
+name: phase13-release-matrix
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  release-matrix:
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - windows-latest
+          - macos-latest
+          - ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.17.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Run Phase 13 release matrix lane
+        env:
+          MARTIN_RELEASE_MATRIX_OUTDIR: .artifacts/release-matrix/${{ matrix.os }}
+        run: pnpm release:matrix:local
+
+      - name: Upload Phase 13 release matrix artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase13-release-matrix-${{ matrix.os }}
+          path: .artifacts/release-matrix/${{ matrix.os }}

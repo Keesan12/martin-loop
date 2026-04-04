@@ -138,6 +138,179 @@ describe("FileRunStore", () => {
     expect(compiledCtx.test).toBe("compiled_packet");
     expect(diff).toContain("-old");
   });
+
+  it("writes leash.json when leash artifacts are provided for an attempt", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-artifact-leash-"));
+    const store = createFileRunStore({ runsRoot });
+
+    await store.initRun({
+      runId: "run_art_leash_001",
+      workspaceId: "ws_a",
+      projectId: "proj_a",
+      task: { title: "T", objective: "O", verificationPlan: [] },
+      budget: { maxUsd: 1, softLimitUsd: 0.5, maxIterations: 1, maxTokens: 1000 },
+      createdAt: "2026-04-01T00:00:00.000Z"
+    });
+
+    await store.writeAttemptArtifacts("run_art_leash_001", 1, {
+      compiledContext: { test: "compiled_packet" },
+      leash: {
+        surface: "dependency",
+        blocked: true,
+        profile: "strict_local",
+        violations: [
+          {
+            kind: "dependency_approval_required",
+            file: "package.json"
+          }
+        ]
+      }
+    });
+
+    const leash = JSON.parse(
+      await readFile(
+        join(runsRoot, "run_art_leash_001", "artifacts", "attempt-001", "leash.json"),
+        "utf8"
+      )
+    );
+
+    expect(leash.surface).toBe("dependency");
+    expect(leash.profile).toBe("strict_local");
+    expect(leash.violations[0]?.kind).toBe("dependency_approval_required");
+  });
+
+  it("writes patch-score.json and patch-decision.json when patch truth artifacts are provided", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-artifact-patch-"));
+    const store = createFileRunStore({ runsRoot });
+
+    await store.initRun({
+      runId: "run_art_patch_001",
+      workspaceId: "ws_a",
+      projectId: "proj_a",
+      task: { title: "T", objective: "O", verificationPlan: [] },
+      budget: { maxUsd: 1, softLimitUsd: 0.5, maxIterations: 1, maxTokens: 1000 },
+      createdAt: "2026-04-01T00:00:00.000Z"
+    });
+
+    await store.writeAttemptArtifacts("run_art_patch_001", 1, {
+      compiledContext: { test: "compiled_packet" },
+      patchScore: {
+        score: 0.91,
+        verifierScore: 1,
+        verifierDelta: 0.8,
+        groundingViolationCount: 0,
+        scopeViolationCount: 0,
+        safetyViolationCount: 0,
+        changedFileCount: 1,
+        diffRiskScore: 0.1,
+        noveltyScore: 0.9,
+        costUsd: 0.24,
+        reasonCodes: ["verifier_passed"]
+      },
+      patchDecision: {
+        decision: "KEEP",
+        summary: "Verifier passed with grounded, scope-compliant changes.",
+        reasonCodes: ["verifier_passed"]
+      }
+    });
+
+    const patchScore = JSON.parse(
+      await readFile(
+        join(runsRoot, "run_art_patch_001", "artifacts", "attempt-001", "patch-score.json"),
+        "utf8"
+      )
+    );
+    const patchDecision = JSON.parse(
+      await readFile(
+        join(runsRoot, "run_art_patch_001", "artifacts", "attempt-001", "patch-decision.json"),
+        "utf8"
+      )
+    );
+
+    expect(patchScore.score).toBe(0.91);
+    expect(patchScore.reasonCodes).toContain("verifier_passed");
+    expect(patchDecision.decision).toBe("KEEP");
+    expect(patchDecision.reasonCodes).toContain("verifier_passed");
+  });
+
+  it("writes rollback-boundary.json and rollback-outcome.json when rollback artifacts are provided", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-artifact-rollback-"));
+    const store = createFileRunStore({ runsRoot });
+
+    await store.initRun({
+      runId: "run_art_rollback_001",
+      workspaceId: "ws_a",
+      projectId: "proj_a",
+      task: { title: "T", objective: "O", verificationPlan: [] },
+      budget: { maxUsd: 1, softLimitUsd: 0.5, maxIterations: 1, maxTokens: 1000 },
+      createdAt: "2026-04-01T00:00:00.000Z"
+    });
+
+    await store.writeAttemptArtifacts("run_art_rollback_001", 1, {
+      compiledContext: { test: "compiled_packet" },
+      rollbackBoundary: {
+        strategy: "git_head_plus_snapshot",
+        capturedAt: "2026-04-03T17:30:00.000Z",
+        headRef: "abc123",
+        trackedDirtyFiles: ["src/real.ts"],
+        untrackedFiles: ["notes.md"],
+        snapshots: [
+          {
+            path: "src/real.ts",
+            existed: true,
+            encoding: "base64",
+            contentBase64: "ZXhwb3J0IGNvbnN0IHJlYWwgPSAyOwo="
+          }
+        ]
+      },
+      rollbackOutcome: {
+        attempted: true,
+        status: "restored",
+        restoredAt: "2026-04-03T17:30:02.000Z",
+        decision: "DISCARD",
+        before: {
+          trackedDirtyFiles: ["src/real.ts", "src/ghost-new-file.ts"],
+          untrackedFiles: ["notes.md", "src/ghost-new-file.ts"]
+        },
+        after: {
+          trackedDirtyFiles: ["src/real.ts"],
+          untrackedFiles: ["notes.md"]
+        },
+        restoredFiles: ["src/real.ts"],
+        deletedFiles: ["src/ghost-new-file.ts"]
+      }
+    });
+
+    const rollbackBoundary = JSON.parse(
+      await readFile(
+        join(
+          runsRoot,
+          "run_art_rollback_001",
+          "artifacts",
+          "attempt-001",
+          "rollback-boundary.json"
+        ),
+        "utf8"
+      )
+    );
+    const rollbackOutcome = JSON.parse(
+      await readFile(
+        join(
+          runsRoot,
+          "run_art_rollback_001",
+          "artifacts",
+          "attempt-001",
+          "rollback-outcome.json"
+        ),
+        "utf8"
+      )
+    );
+
+    expect(rollbackBoundary.strategy).toBe("git_head_plus_snapshot");
+    expect(rollbackBoundary.trackedDirtyFiles).toContain("src/real.ts");
+    expect(rollbackOutcome.status).toBe("restored");
+    expect(rollbackOutcome.deletedFiles).toContain("src/ghost-new-file.ts");
+  });
 });
 
 describe("compileAndPersistContext", () => {

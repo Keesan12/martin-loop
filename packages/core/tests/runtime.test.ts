@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -546,7 +547,7 @@ describe("runMartin", () => {
     expect(ledger).toContain('"source":"budget_preflight"');
   });
 
-  it("emits safety.violations_found before run.exited when the command leash blocks execution", async () => {
+  it("challenge 10: emits safety.violations_found before run.exited when the verifier plan contains an unsafe shell command", async () => {
     const runsRoot = await mkdtemp(join(tmpdir(), "martin-safety-command-"));
     const store = createFileRunStore({ runsRoot });
     let adapterExecutions = 0;
@@ -618,7 +619,75 @@ describe("runMartin", () => {
     );
   });
 
-  it("discards the attempt and exits with human escalation when filesystem leash is violated", async () => {
+  it("challenge 12: blocks network access in strict_local before adapter execution", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-safety-network-"));
+    const store = createFileRunStore({ runsRoot });
+    let adapterExecutions = 0;
+
+    const adapter: MartinAdapter = {
+      adapterId: "direct:safety-network",
+      kind: "direct-provider",
+      label: "Safety network adapter",
+      metadata: {
+        providerId: "openai",
+        model: "gpt-5-mini"
+      },
+      async execute() {
+        adapterExecutions += 1;
+        return {
+          status: "completed",
+          summary: "Unexpectedly executed.",
+          usage: {
+            actualUsd: 0.1,
+            tokensIn: 10,
+            tokensOut: 10
+          },
+          verification: {
+            passed: true,
+            summary: "Unexpected verification pass"
+          }
+        };
+      }
+    };
+
+    const result = await runMartin({
+      workspaceId: "ws_ops",
+      projectId: "proj_runtime",
+      task: {
+        title: "Repair the runtime adapter",
+        objective: "Never allow outbound network access in strict_local.",
+        verificationPlan: ["curl https://api.example.com/health"],
+        executionProfile: "strict_local"
+      },
+      budget: {
+        maxUsd: 10,
+        softLimitUsd: 8,
+        maxIterations: 2,
+        maxTokens: 2_000
+      },
+      adapter,
+      store,
+      now: createTimestampSource([
+        "2026-04-03T10:00:00.000Z",
+        "2026-04-03T10:00:01.000Z",
+        "2026-04-03T10:00:02.000Z"
+      ]),
+      idFactory: createIdFactory()
+    });
+
+    const ledger = await readLedger(runsRoot, result.loop.loopId);
+    const safetyEvent = ledger.find((entry) => entry.kind === "safety.violations_found");
+
+    expect(adapterExecutions).toBe(0);
+    expect(result.decision.lifecycleState).toBe("human_escalation");
+    expect(safetyEvent?.payload).toMatchObject({
+      surface: "network",
+      blocked: true,
+      profile: "strict_local"
+    });
+  });
+
+  it("challenge 11: discards the attempt and exits with human escalation when a forbidden path write is detected", async () => {
     const runsRoot = await mkdtemp(join(tmpdir(), "martin-safety-filesystem-"));
     const repoRoot = join(runsRoot, "repo");
     await mkdir(repoRoot, { recursive: true });
@@ -699,6 +768,199 @@ describe("runMartin", () => {
       blocked: true,
       attemptIndex: 1
     });
+  });
+
+  it("challenge 13: blocks dependency-related changes without approval and persists leash.json", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-safety-dependency-"));
+    const repoRoot = join(runsRoot, "repo");
+    await mkdir(repoRoot, { recursive: true });
+    await writeFile(join(repoRoot, "package.json"), '{"name":"martin-runtime"}', "utf8");
+    const store = createFileRunStore({ runsRoot });
+
+    const adapter: MartinAdapter = {
+      adapterId: "agent-cli:dependency-block",
+      kind: "agent-cli",
+      label: "Dependency block adapter",
+      metadata: {
+        providerId: "claude",
+        model: "claude-sonnet-4-6"
+      },
+      async execute() {
+        return {
+          status: "completed",
+          summary: "Produced a patch that changed package dependencies.",
+          usage: {
+            actualUsd: 0.35,
+            tokensIn: 70,
+            tokensOut: 40
+          },
+          verification: {
+            passed: true,
+            summary: "pnpm test passed"
+          },
+          execution: {
+            changedFiles: ["package.json"],
+            diffStats: {
+              filesChanged: 1,
+              addedLines: 3,
+              deletedLines: 1
+            }
+          }
+        };
+      }
+    };
+
+    const result = await runMartin({
+      workspaceId: "ws_ops",
+      projectId: "proj_runtime",
+      task: {
+        title: "Repair the runtime adapter",
+        objective: "Do not allow dependency changes without approval.",
+        verificationPlan: ["pnpm --filter @martin/core test"],
+        repoRoot,
+        executionProfile: "strict_local"
+      },
+      budget: {
+        maxUsd: 10,
+        softLimitUsd: 8,
+        maxIterations: 2,
+        maxTokens: 2_000
+      },
+      adapter,
+      store,
+      now: createTimestampSource([
+        "2026-04-03T10:10:00.000Z",
+        "2026-04-03T10:10:01.000Z",
+        "2026-04-03T10:10:02.000Z",
+        "2026-04-03T10:10:03.000Z",
+        "2026-04-03T10:10:04.000Z",
+        "2026-04-03T10:10:05.000Z",
+        "2026-04-03T10:10:06.000Z"
+      ]),
+      idFactory: createIdFactory()
+    });
+
+    const ledger = await readLedger(runsRoot, result.loop.loopId);
+    const safetyEvent = ledger.find((entry) => entry.kind === "safety.violations_found");
+    const leashArtifact = JSON.parse(
+      await readFile(
+        join(runsRoot, result.loop.loopId, "artifacts", "attempt-001", "leash.json"),
+        "utf8"
+      )
+    );
+
+    expect(result.decision.lifecycleState).toBe("human_escalation");
+    expect(safetyEvent?.payload).toMatchObject({
+      surface: "dependency",
+      blocked: true,
+      attemptIndex: 1,
+      profile: "strict_local"
+    });
+    expect(leashArtifact.surface).toBe("dependency");
+    expect(leashArtifact.profile).toBe("strict_local");
+    expect(leashArtifact.violations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "dependency_approval_required"
+        })
+      ])
+    );
+  });
+
+  it("blocks deployment config changes without approval and persists the config violation artifact", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-safety-config-"));
+    const repoRoot = join(runsRoot, "repo");
+    await mkdir(join(repoRoot, ".github", "workflows"), { recursive: true });
+    await writeFile(join(repoRoot, "vercel.json"), '{"version":2}', "utf8");
+    const store = createFileRunStore({ runsRoot });
+
+    const adapter: MartinAdapter = {
+      adapterId: "agent-cli:config-block",
+      kind: "agent-cli",
+      label: "Config block adapter",
+      metadata: {
+        providerId: "claude",
+        model: "claude-sonnet-4-6"
+      },
+      async execute() {
+        return {
+          status: "completed",
+          summary: "Produced a patch that changed deployment config.",
+          usage: {
+            actualUsd: 0.29,
+            tokensIn: 65,
+            tokensOut: 30
+          },
+          verification: {
+            passed: true,
+            summary: "pnpm test passed"
+          },
+          execution: {
+            changedFiles: ["vercel.json"],
+            diffStats: {
+              filesChanged: 1,
+              addedLines: 2,
+              deletedLines: 1
+            }
+          }
+        };
+      }
+    };
+
+    const result = await runMartin({
+      workspaceId: "ws_ops",
+      projectId: "proj_runtime",
+      task: {
+        title: "Repair the runtime adapter",
+        objective: "Do not allow deployment config changes without approval.",
+        verificationPlan: ["pnpm --filter @martin/core test"],
+        repoRoot,
+        executionProfile: "staging_controlled"
+      },
+      budget: {
+        maxUsd: 10,
+        softLimitUsd: 8,
+        maxIterations: 2,
+        maxTokens: 2_000
+      },
+      adapter,
+      store,
+      now: createTimestampSource([
+        "2026-04-03T10:20:00.000Z",
+        "2026-04-03T10:20:01.000Z",
+        "2026-04-03T10:20:02.000Z",
+        "2026-04-03T10:20:03.000Z",
+        "2026-04-03T10:20:04.000Z",
+        "2026-04-03T10:20:05.000Z",
+        "2026-04-03T10:20:06.000Z"
+      ]),
+      idFactory: createIdFactory()
+    });
+
+    const ledger = await readLedger(runsRoot, result.loop.loopId);
+    const safetyEvent = ledger.find((entry) => entry.kind === "safety.violations_found");
+    const leashArtifact = JSON.parse(
+      await readFile(
+        join(runsRoot, result.loop.loopId, "artifacts", "attempt-001", "leash.json"),
+        "utf8"
+      )
+    );
+
+    expect(result.decision.lifecycleState).toBe("human_escalation");
+    expect(safetyEvent?.payload).toMatchObject({
+      surface: "dependency",
+      blocked: true,
+      attemptIndex: 1,
+      profile: "staging_controlled"
+    });
+    expect(leashArtifact.violations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "config_change_approval_required",
+          file: "vercel.json"
+        })
+      ])
+    );
   });
 
   it("rotates to the next adapter when switch_adapter is selected", async () => {
@@ -853,6 +1115,380 @@ describe("runMartin", () => {
     const groundingEvent = ledgerEvents.find((e) => e.kind === "grounding.violations_found");
     expect(groundingEvent).toBeDefined();
     expect((groundingEvent?.payload as Record<string, unknown>)?.violationCount).toBeGreaterThan(0);
+  });
+
+  it("writes patch truth artifacts for a grounded verifier-passing patch", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-patch-keep-"));
+    const repoRoot = join(runsRoot, "repo");
+    await mkdir(join(repoRoot, "src"), { recursive: true });
+    await writeFile(join(repoRoot, "src", "real.ts"), "export const real = 1;\n", "utf8");
+    const store = createFileRunStore({ runsRoot });
+
+    const adapter: MartinAdapter = {
+      adapterId: "direct:patch-keep",
+      kind: "direct-provider",
+      label: "Patch keep adapter",
+      metadata: {
+        providerId: "openai",
+        model: "gpt-5-mini"
+      },
+      async execute() {
+        return {
+          status: "completed",
+          summary: "Updated the grounded source file and passed verification.",
+          usage: {
+            actualUsd: 0.22,
+            tokensIn: 75,
+            tokensOut: 32
+          },
+          verification: {
+            passed: true,
+            summary: "pnpm --filter @martin/core test passed"
+          },
+          execution: {
+            changedFiles: ["src/real.ts"],
+            diffStats: {
+              filesChanged: 1,
+              addedLines: 4,
+              deletedLines: 1
+            }
+          }
+        };
+      }
+    };
+
+    const result = await runMartin({
+      workspaceId: "ws_patch",
+      projectId: "proj_patch",
+      task: {
+        title: "Keep a grounded patch",
+        objective: "Persist patch truth when a grounded patch passes verification.",
+        verificationPlan: ["pnpm --filter @martin/core test"],
+        repoRoot,
+        allowedPaths: ["src/**"]
+      },
+      budget: {
+        maxUsd: 10,
+        softLimitUsd: 8,
+        maxIterations: 2,
+        maxTokens: 2_000
+      },
+      adapter,
+      store,
+      now: createTimestampSource([
+        "2026-04-03T11:00:00.000Z",
+        "2026-04-03T11:00:01.000Z",
+        "2026-04-03T11:00:02.000Z",
+        "2026-04-03T11:00:03.000Z",
+        "2026-04-03T11:00:04.000Z",
+        "2026-04-03T11:00:05.000Z",
+        "2026-04-03T11:00:06.000Z"
+      ]),
+      idFactory: createIdFactory()
+    });
+
+    const ledger = await readLedger(runsRoot, result.loop.loopId);
+    const keptEvent = ledger.find((entry) => entry.kind === "attempt.kept");
+    const patchDecision = JSON.parse(
+      await readFile(
+        join(runsRoot, result.loop.loopId, "artifacts", "attempt-001", "patch-decision.json"),
+        "utf8"
+      )
+    );
+    const patchScore = JSON.parse(
+      await readFile(
+        join(runsRoot, result.loop.loopId, "artifacts", "attempt-001", "patch-score.json"),
+        "utf8"
+      )
+    );
+
+    expect(result.decision.lifecycleState).toBe("completed");
+    expect(keptEvent?.payload).toMatchObject({
+      decision: "KEEP"
+    });
+    expect(patchDecision.decision).toBe("KEEP");
+    expect(patchDecision.reasonCodes).toContain("verifier_passed");
+    expect(patchScore.reasonCodes).toContain("verifier_passed");
+  });
+
+  it("discards grounding-failure patches and persists patch decision artifacts", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-patch-discard-"));
+    const repoRoot = join(runsRoot, "repo");
+    await mkdir(join(repoRoot, "src"), { recursive: true });
+    await writeFile(join(repoRoot, "src", "real.ts"), "export const real = 1;\n", "utf8");
+    const store = createFileRunStore({ runsRoot });
+
+    const adapter: MartinAdapter = {
+      adapterId: "direct:patch-discard",
+      kind: "direct-provider",
+      label: "Patch discard adapter",
+      metadata: {
+        providerId: "openai",
+        model: "gpt-5-mini"
+      },
+      async execute() {
+        return {
+          status: "completed",
+          summary: "Claimed success while introducing an ungrounded file.",
+          usage: {
+            actualUsd: 0.19,
+            tokensIn: 60,
+            tokensOut: 28
+          },
+          verification: {
+            passed: true,
+            summary: "pnpm --filter @martin/core test passed"
+          },
+          execution: {
+            changedFiles: ["src/ghost-new-file.ts"],
+            diffStats: {
+              filesChanged: 1,
+              addedLines: 6,
+              deletedLines: 0
+            }
+          }
+        };
+      }
+    };
+
+    const result = await runMartin({
+      workspaceId: "ws_patch",
+      projectId: "proj_patch",
+      task: {
+        title: "Discard an ungrounded patch",
+        objective: "Persist patch truth when grounding contradicts a passing verifier.",
+        verificationPlan: ["pnpm --filter @martin/core test"],
+        repoRoot,
+        allowedPaths: ["src/**"]
+      },
+      budget: {
+        maxUsd: 10,
+        softLimitUsd: 8,
+        maxIterations: 1,
+        maxTokens: 2_000
+      },
+      adapter,
+      store,
+      now: createTimestampSource([
+        "2026-04-03T11:10:00.000Z",
+        "2026-04-03T11:10:01.000Z",
+        "2026-04-03T11:10:02.000Z",
+        "2026-04-03T11:10:03.000Z",
+        "2026-04-03T11:10:04.000Z",
+        "2026-04-03T11:10:05.000Z",
+        "2026-04-03T11:10:06.000Z"
+      ]),
+      idFactory: createIdFactory()
+    });
+
+    const ledger = await readLedger(runsRoot, result.loop.loopId);
+    const discardedEvent = ledger.find((entry) => entry.kind === "attempt.discarded");
+    const patchDecision = JSON.parse(
+      await readFile(
+        join(runsRoot, result.loop.loopId, "artifacts", "attempt-001", "patch-decision.json"),
+        "utf8"
+      )
+    );
+
+    expect(result.loop.attempts).toHaveLength(1);
+    expect(result.decision.lifecycleState).toBe("budget_exit");
+    expect(discardedEvent?.payload).toMatchObject({
+      decision: "DISCARD"
+    });
+    expect(patchDecision.decision).toBe("DISCARD");
+    expect(patchDecision.reasonCodes).toContain("grounding_failure");
+  });
+
+  it("restores the pre-attempt repo boundary for discarded verifier regressions and preserves pre-existing dirty files", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-patch-rollback-"));
+    const repoRoot = join(runsRoot, "repo");
+    await mkdir(join(repoRoot, "src"), { recursive: true });
+    await writeFile(join(repoRoot, "src", "real.ts"), "export const real = 1;\n", "utf8");
+    initializeGitRepo(repoRoot);
+    await writeFile(join(repoRoot, "src", "real.ts"), "export const real = 2;\n", "utf8");
+    const store = createFileRunStore({ runsRoot });
+
+    const adapter: MartinAdapter = {
+      adapterId: "direct:patch-rollback",
+      kind: "direct-provider",
+      label: "Patch rollback adapter",
+      metadata: {
+        providerId: "openai",
+        model: "gpt-5-mini"
+      },
+      async execute() {
+        await writeFile(join(repoRoot, "src", "ghost-new-file.ts"), "export const ghost = 1;\n", "utf8");
+
+        return {
+          status: "completed",
+          summary: "Changed a file, but the verifier still failed.",
+          usage: {
+            actualUsd: 0.21,
+            tokensIn: 64,
+            tokensOut: 31
+          },
+          verification: {
+            passed: false,
+            summary: "pnpm --filter @martin/core test still failing"
+          },
+          execution: {
+            changedFiles: ["src/ghost-new-file.ts"],
+            diffStats: {
+              filesChanged: 1,
+              addedLines: 6,
+              deletedLines: 0
+            }
+          }
+        };
+      }
+    };
+
+    const result = await runMartin({
+      workspaceId: "ws_patch",
+      projectId: "proj_patch",
+      task: {
+        title: "Discard and restore a no-progress patch",
+        objective: "Restore the repo boundary when a discarded patch adds files without verifier improvement.",
+        verificationPlan: ["pnpm --filter @martin/core test"],
+        repoRoot,
+        allowedPaths: ["src/**"]
+      },
+      budget: {
+        maxUsd: 10,
+        softLimitUsd: 8,
+        maxIterations: 1,
+        maxTokens: 2_000
+      },
+      adapter,
+      store,
+      now: createTimestampSource([
+        "2026-04-03T12:00:00.000Z",
+        "2026-04-03T12:00:01.000Z",
+        "2026-04-03T12:00:02.000Z",
+        "2026-04-03T12:00:03.000Z",
+        "2026-04-03T12:00:04.000Z",
+        "2026-04-03T12:00:05.000Z",
+        "2026-04-03T12:00:06.000Z"
+      ]),
+      idFactory: createIdFactory()
+    });
+
+    const rollbackBoundary = JSON.parse(
+      await readFile(
+        join(runsRoot, result.loop.loopId, "artifacts", "attempt-001", "rollback-boundary.json"),
+        "utf8"
+      )
+    );
+    const rollbackOutcome = JSON.parse(
+      await readFile(
+        join(runsRoot, result.loop.loopId, "artifacts", "attempt-001", "rollback-outcome.json"),
+        "utf8"
+      )
+    );
+
+    await expect(readFile(join(repoRoot, "src", "ghost-new-file.ts"), "utf8")).rejects.toThrow();
+    await expect(readFile(join(repoRoot, "src", "real.ts"), "utf8")).resolves.toBe(
+      "export const real = 2;\n"
+    );
+    expect(result.decision.lifecycleState).toBe("budget_exit");
+    expect(rollbackBoundary.trackedDirtyFiles).toContain("src/real.ts");
+    expect(rollbackOutcome.status).toBe("restored");
+    expect(rollbackOutcome.deletedFiles).toContain("src/ghost-new-file.ts");
+    expect(rollbackOutcome.after.trackedDirtyFiles).toEqual(["src/real.ts"]);
+  });
+
+  it("restores forbidden file changes on the filesystem safety-block path and persists rollback artifacts", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-patch-scope-rollback-"));
+    const repoRoot = join(runsRoot, "repo");
+    await mkdir(join(repoRoot, "src"), { recursive: true });
+    await mkdir(join(repoRoot, "apps"), { recursive: true });
+    await writeFile(join(repoRoot, "src", "real.ts"), "export const real = 1;\n", "utf8");
+    initializeGitRepo(repoRoot);
+    const store = createFileRunStore({ runsRoot });
+
+    const adapter: MartinAdapter = {
+      adapterId: "direct:scope-rollback",
+      kind: "direct-provider",
+      label: "Scope rollback adapter",
+      metadata: {
+        providerId: "openai",
+        model: "gpt-5-mini"
+      },
+      async execute() {
+        await writeFile(join(repoRoot, "apps", "leak.ts"), "export const leak = true;\n", "utf8");
+
+        return {
+          status: "completed",
+          summary: "Changed a file outside the allowed scope.",
+          usage: {
+            actualUsd: 0.24,
+            tokensIn: 58,
+            tokensOut: 27
+          },
+          verification: {
+            passed: true,
+            summary: "pnpm --filter @martin/core test passed"
+          },
+          execution: {
+            changedFiles: ["apps/leak.ts"],
+            diffStats: {
+              filesChanged: 1,
+              addedLines: 3,
+              deletedLines: 0
+            }
+          }
+        };
+      }
+    };
+
+    const result = await runMartin({
+      workspaceId: "ws_patch",
+      projectId: "proj_patch",
+      task: {
+        title: "Block scope creep and restore baseline",
+        objective: "Reject edits outside allowed paths and restore the repo boundary.",
+        verificationPlan: ["pnpm --filter @martin/core test"],
+        repoRoot,
+        allowedPaths: ["src/**"]
+      },
+      budget: {
+        maxUsd: 10,
+        softLimitUsd: 8,
+        maxIterations: 1,
+        maxTokens: 2_000
+      },
+      adapter,
+      store,
+      now: createTimestampSource([
+        "2026-04-03T12:10:00.000Z",
+        "2026-04-03T12:10:01.000Z",
+        "2026-04-03T12:10:02.000Z",
+        "2026-04-03T12:10:03.000Z",
+        "2026-04-03T12:10:04.000Z",
+        "2026-04-03T12:10:05.000Z",
+        "2026-04-03T12:10:06.000Z"
+      ]),
+      idFactory: createIdFactory()
+    });
+
+    const patchDecision = JSON.parse(
+      await readFile(
+        join(runsRoot, result.loop.loopId, "artifacts", "attempt-001", "patch-decision.json"),
+        "utf8"
+      )
+    );
+    const rollbackOutcome = JSON.parse(
+      await readFile(
+        join(runsRoot, result.loop.loopId, "artifacts", "attempt-001", "rollback-outcome.json"),
+        "utf8"
+      )
+    );
+
+    await expect(readFile(join(repoRoot, "apps", "leak.ts"), "utf8")).rejects.toThrow();
+    expect(result.decision.lifecycleState).toBe("human_escalation");
+    expect(patchDecision.reasonCodes).toContain("scope_violation");
+    expect(rollbackOutcome.status).toBe("restored");
+    expect(rollbackOutcome.deletedFiles).toContain("apps/leak.ts");
   });
 
   it("writes consistent admission and settlement ledger payloads across mixed adapter types", async () => {
@@ -1055,4 +1691,21 @@ async function readLedger(
     .split("\n")
     .filter(Boolean)
     .map((line) => JSON.parse(line) as { kind: string; payload: Record<string, unknown> });
+}
+
+function initializeGitRepo(repoRoot: string): void {
+  expect(runGit(repoRoot, ["init"])).toBe(0);
+  expect(runGit(repoRoot, ["config", "user.email", "martin@example.com"])).toBe(0);
+  expect(runGit(repoRoot, ["config", "user.name", "Martin Loop"])).toBe(0);
+  expect(runGit(repoRoot, ["add", "."])).toBe(0);
+  expect(runGit(repoRoot, ["commit", "-m", "init"])).toBe(0);
+}
+
+function runGit(repoRoot: string, args: string[]): number {
+  const result = spawnSync("git", args, {
+    cwd: repoRoot,
+    encoding: "utf8"
+  });
+
+  return result.status ?? -1;
 }

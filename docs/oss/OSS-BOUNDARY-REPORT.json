@@ -1,0 +1,113 @@
+{
+  "generatedAt": "2026-04-04T05:33:38.591Z",
+  "verdict": "go",
+  "publicSurface": {
+    "packageName": "martin-loop",
+    "canonicalPackageManager": "npm",
+    "installCommand": "npm install martin-loop",
+    "npxCommand": "npx martin-loop",
+    "sdkImportPath": "martin-loop",
+    "supportsNpxCommand": true,
+    "supportsSdkImport": true
+  },
+  "ossCorePackages": [
+    {
+      "name": "@martin/contracts",
+      "path": "packages/contracts",
+      "private": true,
+      "publishAccess": null,
+      "workspaceDependencies": [],
+      "classification": "oss_core",
+      "classificationReason": "Intended Phase 13 OSS core surface."
+    },
+    {
+      "name": "@martin/core",
+      "path": "packages/core",
+      "private": true,
+      "publishAccess": null,
+      "workspaceDependencies": [
+        "@martin/contracts"
+      ],
+      "classification": "oss_core",
+      "classificationReason": "Intended Phase 13 OSS core surface."
+    },
+    {
+      "name": "@martin/adapters",
+      "path": "packages/adapters",
+      "private": true,
+      "publishAccess": null,
+      "workspaceDependencies": [
+        "@martin/core"
+      ],
+      "classification": "oss_core",
+      "classificationReason": "Intended Phase 13 OSS core surface."
+    },
+    {
+      "name": "@martin/cli",
+      "path": "packages/cli",
+      "private": false,
+      "publishAccess": "public",
+      "workspaceDependencies": [
+        "@martin/adapters",
+        "@martin/contracts",
+        "@martin/core"
+      ],
+      "classification": "oss_core",
+      "classificationReason": "Intended Phase 13 OSS core surface."
+    },
+    {
+      "name": "@martin/mcp",
+      "path": "packages/mcp",
+      "private": false,
+      "publishAccess": "public",
+      "workspaceDependencies": [
+        "@martin/adapters",
+        "@martin/contracts",
+        "@martin/core"
+      ],
+      "classification": "oss_core",
+      "classificationReason": "Intended Phase 13 OSS core surface."
+    }
+  ],
+  "nonOssWorkspacePackages": [
+    {
+      "name": "@martin/control-plane",
+      "path": "apps/control-plane",
+      "private": true,
+      "publishAccess": null,
+      "workspaceDependencies": [
+        "@martin/contracts"
+      ],
+      "classification": "non_oss_workspace",
+      "classificationReason": "Managed or RC-only workspace surface that stays out of the initial OSS boundary."
+    },
+    {
+      "name": "@martin/benchmarks",
+      "path": "benchmarks",
+      "private": true,
+      "publishAccess": null,
+      "workspaceDependencies": [
+        "@martin/adapters",
+        "@martin/contracts",
+        "@martin/core"
+      ],
+      "classification": "non_oss_workspace",
+      "classificationReason": "Managed or RC-only workspace surface that stays out of the initial OSS boundary."
+    }
+  ],
+  "localOnlySurfaces": [
+    {
+      "path": "apps/local-dashboard",
+      "reason": "Local read-model viewer that is not yet packaged as a publishable OSS workspace."
+    }
+  ],
+  "dependencyLeaks": [],
+  "summary": {
+    "ossCoreCount": 5,
+    "nonOssWorkspaceCount": 2,
+    "localOnlySurfaceCount": 1,
+    "dependencyLeakCount": 0,
+    "privateOssCoreCount": 3,
+    "publishReadyOssCoreCount": 2
+  }
+}
