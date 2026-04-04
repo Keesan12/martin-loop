@@ -1,0 +1,25 @@
+{
+  "name": "@martin/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Martin Loop CLI — budget-aware coding loops with failure classification and verified exits.",
+  "bin": {
+    "martin": "dist/bin/martin.js"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "dev": "tsx --tsconfig tsconfig.json src/bin/martin.ts"
+  },
+  "dependencies": {
+    "@martin/adapters": "workspace:*",
+    "@martin/core": "workspace:*",
+    "@martin/contracts": "workspace:*"
+  }
+}

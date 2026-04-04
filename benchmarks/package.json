@@ -1,0 +1,25 @@
+{
+  "name": "@martin/benchmarks",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "eval": "node --import tsx/esm src/eval.ts",
+    "eval:phase7": "pnpm --filter @martin/contracts build && pnpm --filter @martin/core build && pnpm build && node dist/phase7-report.js",
+    "eval:phase12": "pnpm --filter @martin/contracts build && pnpm --filter @martin/core build && pnpm build && node dist/phase12-report.js",
+    "eval:providers": "pnpm --filter @martin/contracts build && pnpm --filter @martin/core build && pnpm --filter @martin/adapters build && pnpm build && node dist/provider-path-report.js"
+  },
+  "dependencies": {
+    "@martin/adapters": "workspace:*",
+    "@martin/core": "workspace:*",
+    "@martin/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.3"
+  }
+}

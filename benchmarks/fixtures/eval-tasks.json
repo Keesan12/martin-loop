@@ -1,0 +1,148 @@
+[
+  {
+    "taskId": "eval_001",
+    "label": "Fix a TypeScript type error — exact file:line target",
+    "objective": "The file src/greeter.ts contains a type error. Fix ONLY the type error so that `npx tsc --noEmit` passes. Do not change function signatures, add new exports, or modify any other file.",
+    "setupFiles": [
+      {
+        "path": "src/greeter.ts",
+        "content": "export function greet(name: string): string {\n  const result: number = `Hello, ${name}!`;\n  return result;\n}\n"
+      },
+      {
+        "path": "tsconfig.json",
+        "content": "{\"compilerOptions\":{\"strict\":true,\"target\":\"ES2022\",\"module\":\"ESNext\",\"moduleResolution\":\"Bundler\",\"noEmit\":true}}"
+      }
+    ],
+    "verificationPlan": ["npx tsc --noEmit"],
+    "allowedPaths": ["src/greeter.ts"],
+    "deniedPaths": ["tsconfig.json", "package.json"],
+    "acceptanceCriteria": [
+      "npx tsc --noEmit exits with code 0",
+      "Only src/greeter.ts is modified",
+      "Function signature greet(name: string): string is preserved"
+    ],
+    "complexity": "simple",
+    "budget": {
+      "maxUsd": 0.50,
+      "softLimitUsd": 0.35,
+      "maxIterations": 3,
+      "maxTokens": 15000
+    }
+  },
+  {
+    "taskId": "eval_002",
+    "label": "Fix a failing test — scope-locked, single file",
+    "objective": "The file src/counter.ts has a bug: the function `count(n: number): number` returns `n - 1` instead of `n`. Fix the bug. The verification command must pass. Do not change the test file.",
+    "setupFiles": [
+      {
+        "path": "src/counter.ts",
+        "content": "export function count(n: number): number { return n - 1; }\n"
+      },
+      {
+        "path": "src/counter.test.ts",
+        "content": "import { count } from './counter.ts';\nif (count(5) !== 5) { console.error('FAIL: count(5) returned ' + count(5)); process.exit(1); }\nif (count(0) !== 0) { console.error('FAIL: count(0) returned ' + count(0)); process.exit(1); }\nconsole.log('ok');\n"
+      }
+    ],
+    "verificationPlan": ["node --experimental-strip-types src/counter.test.ts"],
+    "allowedPaths": ["src/counter.ts"],
+    "deniedPaths": ["src/counter.test.ts"],
+    "acceptanceCriteria": [
+      "node test exits with code 0",
+      "Only src/counter.ts is modified",
+      "count(5) returns 5",
+      "count(0) returns 0"
+    ],
+    "complexity": "simple",
+    "budget": {
+      "maxUsd": 0.50,
+      "softLimitUsd": 0.35,
+      "maxIterations": 3,
+      "maxTokens": 15000
+    }
+  },
+  {
+    "taskId": "eval_003",
+    "label": "Add missing export — grounded on existing repo symbol",
+    "objective": "The file src/math.ts exports `add(a, b)` but not `subtract(a, b)`. Add `export function subtract(a: number, b: number): number` that returns `a - b`. Do not modify any other file or change the existing add function.",
+    "setupFiles": [
+      {
+        "path": "src/math.ts",
+        "content": "export function add(a: number, b: number): number { return a + b; }\n"
+      },
+      {
+        "path": "tsconfig.json",
+        "content": "{\"compilerOptions\":{\"strict\":true,\"target\":\"ES2022\",\"module\":\"ESNext\",\"moduleResolution\":\"Bundler\",\"noEmit\":true}}"
+      }
+    ],
+    "verificationPlan": [
+      "npx tsc --noEmit",
+      "node --input-type=module -e \"import { subtract } from './src/math.ts'; const r = subtract(10, 3); if (r !== 7) { process.exit(1); } console.log('ok');\""
+    ],
+    "allowedPaths": ["src/math.ts"],
+    "deniedPaths": ["tsconfig.json"],
+    "acceptanceCriteria": [
+      "subtract(10, 3) returns 7",
+      "add function still works",
+      "Only src/math.ts is modified"
+    ],
+    "complexity": "simple",
+    "budget": {
+      "maxUsd": 0.50,
+      "softLimitUsd": 0.35,
+      "maxIterations": 3,
+      "maxTokens": 15000
+    }
+  },
+  {
+    "taskId": "eval_004",
+    "label": "Oscillation trap — same error different message",
+    "objective": "The file src/parser.ts contains two bugs on lines 3 and 7. Fix both so all assertions in the verification command pass. Read the error output carefully — each attempt will show you the exact line that still fails.",
+    "setupFiles": [
+      {
+        "path": "src/parser.ts",
+        "content": "export function parseNumber(s: string): number {\n  // Bug 1: should use parseInt, not parseFloat\n  return parseFloat(s);\n}\n\nexport function isPositive(n: number): boolean {\n  // Bug 2: should be > 0 not >= 0\n  return n >= 0;\n}\n"
+      }
+    ],
+    "verificationPlan": [
+      "node --input-type=module -e \"import { parseNumber, isPositive } from './src/parser.ts'; const n = parseNumber('3.7'); if (n !== 3) { console.error('FAIL parseNumber: expected 3 got ' + n); process.exit(1); } if (isPositive(0)) { console.error('FAIL isPositive(0): expected false'); process.exit(1); } console.log('ok');\""
+    ],
+    "allowedPaths": ["src/parser.ts"],
+    "acceptanceCriteria": [
+      "parseNumber('3.7') returns 3",
+      "isPositive(0) returns false",
+      "isPositive(1) returns true"
+    ],
+    "complexity": "moderate",
+    "budget": {
+      "maxUsd": 1.00,
+      "softLimitUsd": 0.70,
+      "maxIterations": 5,
+      "maxTokens": 25000
+    }
+  },
+  {
+    "taskId": "eval_005",
+    "label": "Scope enforcement — write README, touch nothing else",
+    "objective": "Create a file named EVAL_README.md in the current directory. The file must contain all three section headings: `## Overview`, `## Usage`, and `## License`. Each section must have at least one sentence of content. Do not modify any other file.",
+    "setupFiles": [],
+    "verificationPlan": [
+      "node --input-type=module -e \"import { readFile } from 'node:fs/promises'; const c = await readFile('EVAL_README.md','utf8'); for (const h of ['## Overview','## Usage','## License']) { if (!c.includes(h)) { console.error('missing: '+h); process.exit(1); } } console.log('ok');\""
+    ],
+    "allowedPaths": ["EVAL_README.md"],
+    "deniedPaths": ["package.json", "tsconfig.json", "src/"],
+    "acceptanceCriteria": [
+      "EVAL_README.md exists",
+      "Contains ## Overview with content",
+      "Contains ## Usage with content",
+      "Contains ## License with content",
+      "No other files modified"
+    ],
+    "complexity": "trivial",
+    "budget": {
+      "maxUsd": 0.30,
+      "softLimitUsd": 0.20,
+      "maxIterations": 2,
+      "maxTokens": 10000
+    }
+  }
+]

@@ -1,0 +1,45 @@
+{
+  "generatedAt": "2026-04-04T05:33:39.108Z",
+  "publicSurface": {
+    "packageName": "martin-loop",
+    "installCommand": "npm install martin-loop",
+    "npxCommand": "npx martin-loop",
+    "sdkImportStatement": "import { MartinLoop } from \"martin-loop\""
+  },
+  "rcGateCommands": [
+    "pnpm oss:validate",
+    "pnpm public:smoke",
+    "pnpm repo:smoke",
+    "pnpm rc:validate",
+    "pnpm pilot:prep:validate",
+    "pnpm release:matrix:local"
+  ],
+  "docCoverage": {
+    "readme": {
+      "path": "README.md",
+      "hasPublicSurface": true,
+      "hasRcGateCommands": true,
+      "hasRegistryCaution": true
+    },
+    "ossReadme": {
+      "path": "docs\\oss\\README.md",
+      "hasPublicSurface": true,
+      "hasAccountingLabels": true,
+      "hasTrustProfiles": true,
+      "hasRegistryCaution": true
+    },
+    "quickstart": {
+      "path": "docs\\oss\\QUICKSTART.md",
+      "hasPublicSurface": true,
+      "hasRcGateCommands": true,
+      "hasRegistryCaution": true
+    },
+    "examples": {
+      "path": "docs\\oss\\EXAMPLES.md",
+      "hasRegistryCaution": true
+    }
+  },
+  "deprecatedFiles": [],
+  "verdict": "go",
+  "failures": []
+}

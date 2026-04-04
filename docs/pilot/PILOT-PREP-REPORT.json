@@ -1,0 +1,70 @@
+{
+  "generatedAt": "2026-04-04T05:33:39.722Z",
+  "defaults": {
+    "trustProfile": "strict_local",
+    "primaryAdapter": "claude_cli",
+    "requiresCrossPlatformEvidenceBeforePilot": true,
+    "preparationOnly": true
+  },
+  "requiredDocs": [
+    {
+      "path": "docs\\ops\\OPERATOR-RUNBOOK.md"
+    },
+    {
+      "path": "docs\\ops\\INCIDENT-AND-ROLLBACK-RUNBOOK.md"
+    },
+    {
+      "path": "docs\\pilot\\README.md"
+    },
+    {
+      "path": "docs\\pilot\\PILOT-DEFAULTS.md"
+    },
+    {
+      "path": "docs\\pilot\\ARTIFACT-REVIEW-TEMPLATE.md"
+    },
+    {
+      "path": "docs\\pilot\\STAGING-CHECKLIST.md"
+    },
+    {
+      "path": "docs\\pilot\\SUCCESS-FAILURE-SCORECARD.md"
+    }
+  ],
+  "docCoverage": {
+    "operatorRunbook": {
+      "path": "docs\\ops\\OPERATOR-RUNBOOK.md",
+      "hasEscalationPath": true,
+      "hasArtifactLocations": true
+    },
+    "incidentRunbook": {
+      "path": "docs\\ops\\INCIDENT-AND-ROLLBACK-RUNBOOK.md",
+      "hasRollbackProcedure": true,
+      "hasStopUsingCriteria": true
+    },
+    "pilotIndex": {
+      "path": "docs\\pilot\\README.md",
+      "hasPreparationOnlyWarning": true,
+      "hasCrossPlatformRequirement": true
+    },
+    "pilotDefaults": {
+      "path": "docs\\pilot\\PILOT-DEFAULTS.md",
+      "hasTrustProfileDefault": true,
+      "hasBudgetDefaults": true,
+      "hasProviderGuidance": true
+    },
+    "artifactReview": {
+      "path": "docs\\pilot\\ARTIFACT-REVIEW-TEMPLATE.md",
+      "hasRequiredArtifacts": true
+    },
+    "stagingChecklist": {
+      "path": "docs\\pilot\\STAGING-CHECKLIST.md",
+      "hasCrossPlatformGate": true
+    },
+    "scorecard": {
+      "path": "docs\\pilot\\SUCCESS-FAILURE-SCORECARD.md",
+      "hasSuccessCriteria": true,
+      "hasFailureCriteria": true
+    }
+  },
+  "verdict": "go",
+  "failures": []
+}

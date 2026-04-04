@@ -1,0 +1,51 @@
+{
+  "suiteId": "ralphy-smoke",
+  "label": "Ralphy Smoke",
+  "description": "Benchmark fixtures that mirror common Ralph/Ralphy retry-loop failure patterns.",
+  "baselineAdapter": "ralphy",
+  "cases": [
+    {
+      "caseId": "repair-ci",
+      "label": "Repair flaky CI",
+      "task": {
+        "title": "Repair flaky CI",
+        "objective": "Stabilize the verification gate before costs spiral.",
+        "verificationPlan": ["pnpm test", "pnpm build"]
+      },
+      "budget": {
+        "maxUsd": 8,
+        "softLimitUsd": 4,
+        "maxIterations": 3,
+        "maxTokens": 20000
+      },
+      "baseline": {
+        "adapterId": "ralphy",
+        "model": "gpt-5-mini",
+        "strategy": "single-loop"
+      },
+      "tags": ["ci", "verification"]
+    },
+    {
+      "caseId": "budget-guard",
+      "label": "Budget guardrail",
+      "task": {
+        "title": "Budget guardrail",
+        "objective": "Exit the loop when retries stop being economically credible.",
+        "verificationPlan": ["pnpm test"]
+      },
+      "budget": {
+        "maxUsd": 6,
+        "softLimitUsd": 3,
+        "maxIterations": 2,
+        "maxTokens": 12000
+      },
+      "baseline": {
+        "adapterId": "ralphy",
+        "model": "gpt-5-mini",
+        "strategy": "single-loop"
+      },
+      "tags": ["budget", "governor"]
+    }
+  ]
+}
+

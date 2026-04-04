@@ -1,4 +1,7 @@
 import type {
+  BudgetPreflightEstimate,
+  CostProvenance,
+  EvidenceVector,
   FailureClass,
   InterventionType,
   LoopAttempt,
@@ -6,6 +9,10 @@ import type {
   LoopCost,
   LoopLifecycleState,
   LoopStatus,
+  PatchDecision,
+  PatchDecisionArtifact,
+  PatchDecisionReasonCode,
+  PatchScore,
   PolicyPhase
 } from "@martin/contracts";
 
@@ -37,8 +44,10 @@ export interface MartinAdapterResultLike {
   summary: string;
   usage?: {
     actualUsd: number;
+    estimatedUsd?: number;
     tokensIn: number;
     tokensOut: number;
+    provenance?: CostProvenance;
   };
   verification: {
     passed: boolean;
@@ -298,6 +307,7 @@ export function inferExit(input: {
   lastResult: MartinAdapterResultLike;
   lastFailure?: FailureAssessment;
   costState: CostGovernorState;
+  canSwitchAdapter?: boolean;
 }): ExitDecision {
   if (input.lastResult.status === "completed" && input.lastResult.verification.passed) {
     return {
@@ -348,7 +358,8 @@ export function inferExit(input: {
 
   if (
     input.lastFailure?.failureClass === "environment_mismatch" &&
-    !input.lastFailure.retryable
+    !input.lastFailure.retryable &&
+    !input.canSwitchAdapter
   ) {
     return {
       shouldExit: true,
@@ -465,5 +476,426 @@ function detectRepeatedFailure(attempts: LoopAttempt[]): FailureClass | undefine
 }
 
 function roundUsd(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+// ─── Phase 4: Budget Preflight ───────────────────────────────────────────────
+
+export interface BudgetPreflightInput {
+  promptCharCount: number;
+  attemptCount: number;
+  remainingBudgetUsd: number;
+  perAttemptCapUsd?: number;
+  pricePerMTokenUsd?: number;
+}
+
+export interface BudgetPreflightDecision {
+  allowed: boolean;
+  reason: string;
+  estimate: BudgetPreflightEstimate;
+}
+
+export function evaluateBudgetPreflight(input: BudgetPreflightInput): BudgetPreflightDecision {
+  const pricePerMToken = input.pricePerMTokenUsd ?? 3.0;
+  const rawPromptTokens = Math.ceil(input.promptCharCount / 4);
+  const estimatedPromptTokens = Math.ceil(rawPromptTokens * 1.2);
+  const estimatedToolOverheadTokens = 800 + input.attemptCount * 200;
+  const estimatedOutputTokensMax = 4_000;
+  const estimatedVerifierCostUsd = 0.01;
+  const estimatedAttemptCostUsd =
+    roundUsd(
+      ((estimatedPromptTokens + estimatedToolOverheadTokens + estimatedOutputTokensMax) /
+        1_000_000) *
+        pricePerMToken
+    ) + estimatedVerifierCostUsd;
+  const provenance: CostProvenance = "estimated";
+  const estimate: BudgetPreflightEstimate = {
+    estimatedPromptTokens,
+    estimatedToolOverheadTokens,
+    estimatedOutputTokensMax,
+    estimatedVerifierCostUsd,
+    estimatedAttemptCostUsd,
+    provenance
+  };
+
+  if (estimatedAttemptCostUsd > input.remainingBudgetUsd) {
+    return {
+      allowed: false,
+      reason: `Preflight: estimated attempt cost $${estimatedAttemptCostUsd} exceeds remaining budget $${input.remainingBudgetUsd}.`,
+      estimate
+    };
+  }
+
+  const perAttemptCap = input.perAttemptCapUsd ?? Math.max(input.remainingBudgetUsd * 0.2, 0.05);
+  if (estimatedAttemptCostUsd > perAttemptCap) {
+    return {
+      allowed: false,
+      reason: `Preflight: estimated attempt cost $${estimatedAttemptCostUsd} exceeds per-attempt cap $${roundUsd(perAttemptCap)}.`,
+      estimate
+    };
+  }
+
+  return {
+    allowed: true,
+    reason: "Preflight passed.",
+    estimate
+  };
+}
+
+// ─── Phase 4: EvidenceVector + Recovery Recipes ──────────────────────────────
+
+export interface EvidenceVectorInput {
+  compilerOutput?: string;
+  testOutput?: string;
+  diff?: string;
+  previousDiff?: string;
+  forbiddenTouchedFiles?: string[];
+  missingSymbols?: string[];
+  actualUsd?: number;
+  previousVerifierScore?: number;
+  verifierScore?: number;
+  retryCountForSurface?: number;
+}
+
+export function computeEvidenceVector(input: EvidenceVectorInput): EvidenceVector {
+  const typeErrors = input.compilerOutput
+    ? (input.compilerOutput.match(/\berror TS\d+/g) ?? []).length
+    : 0;
+  const compileErrors =
+    typeErrors +
+    (input.compilerOutput ? (input.compilerOutput.match(/\bSyntaxError\b/g) ?? []).length : 0);
+  const failingTests = input.testOutput
+    ? (input.testOutput.match(/\bFAIL\b/gi) ?? []).length +
+      (input.testOutput.match(/\bfailed\b/gi) ?? []).length +
+      (input.testOutput.match(/[✗×]/g) ?? []).length
+    : 0;
+  const verifierScore = input.verifierScore ?? 0;
+  let diffNovelty = 1;
+
+  if (input.diff && input.previousDiff) {
+    const currentTokens = tokenizeDiff(input.diff);
+    const previousTokens = tokenizeDiff(input.previousDiff);
+    if (previousTokens.size > 0) {
+      const overlap = [...currentTokens].filter((token) => previousTokens.has(token)).length;
+      const similarity = overlap / Math.max(currentTokens.size, previousTokens.size, 1);
+      diffNovelty = Math.max(0, 1 - similarity);
+    }
+  }
+
+  const forbiddenTouchedFileCount = input.forbiddenTouchedFiles?.length ?? 0;
+  const missingSymbolCount = input.missingSymbols?.length ?? 0;
+  const progressDelta =
+    input.verifierScore !== undefined && input.previousVerifierScore !== undefined
+      ? Math.max(0, input.verifierScore - input.previousVerifierScore)
+      : 0;
+  const costPerProgressUnit =
+    progressDelta > 0 && input.actualUsd !== undefined ? roundUsd(input.actualUsd / progressDelta) : 0;
+  const safetyRiskScore = Math.min(
+    1,
+    forbiddenTouchedFileCount * 0.3 + missingSymbolCount * 0.1
+  );
+
+  return {
+    compileErrors,
+    typeErrors,
+    failingTests,
+    verifierScore,
+    diffNovelty,
+    forbiddenTouchedFileCount,
+    missingSymbolCount,
+    costPerProgressUnit,
+    retryCountForSurface: input.retryCountForSurface ?? 0,
+    safetyRiskScore
+  };
+}
+
+export type RecoveryRecipe =
+  | "narrow_prompt_targeted_files"
+  | "failing_tests_only"
+  | "force_repo_anatomy_slices"
+  | "tighten_allowlist_reduce_patch"
+  | "strategy_swap"
+  | "abort_safety_violation"
+  | "downgrade_model"
+  | "escalate_human";
+
+export interface RecoveryDecision {
+  recipe: RecoveryRecipe;
+  rationale: string;
+  intervention: InterventionType;
+}
+
+export interface PatchDecisionInput {
+  verificationPassed: boolean;
+  previousVerifierScore?: number;
+  verifierScore?: number;
+  groundingViolationCount?: number;
+  safetyViolationCount?: number;
+  scopeViolationCount?: number;
+  changedFileCount?: number;
+  diffNovelty?: number;
+  diffStats?: {
+    filesChanged: number;
+    addedLines: number;
+    deletedLines: number;
+  };
+  costUsd?: number;
+  humanApprovalRequired?: boolean;
+  summary?: string;
+}
+
+export interface EvaluatedPatchDecision extends PatchDecisionArtifact {
+  score: PatchScore;
+}
+
+export function selectRecoveryRecipe(evidence: EvidenceVector): RecoveryDecision {
+  if (evidence.safetyRiskScore >= 0.7 || evidence.forbiddenTouchedFileCount > 2) {
+    return {
+      recipe: "abort_safety_violation",
+      rationale: "High safety risk score or multiple forbidden file touches. Abort required.",
+      intervention: "escalate_human"
+    };
+  }
+
+  if (evidence.missingSymbolCount > 0 && evidence.retryCountForSurface <= 1) {
+    return {
+      recipe: "force_repo_anatomy_slices",
+      rationale: "Missing symbols detected. Force repo grounding context into the next prompt.",
+      intervention: "run_verifier"
+    };
+  }
+
+  if (evidence.forbiddenTouchedFileCount > 0) {
+    return {
+      recipe: "tighten_allowlist_reduce_patch",
+      rationale: "Patch touched forbidden files. Tighten scope and reduce patch budget.",
+      intervention: "tighten_task"
+    };
+  }
+
+  if (evidence.compileErrors > 0 || evidence.typeErrors > 0) {
+    return {
+      recipe: "narrow_prompt_targeted_files",
+      rationale: "Compile or type errors detected. Narrow the next prompt to targeted files.",
+      intervention: "compress_context"
+    };
+  }
+
+  if (evidence.failingTests > 0 && evidence.retryCountForSurface <= 2) {
+    return {
+      recipe: "failing_tests_only",
+      rationale: "Test failures remain. Focus on the failing tests and touched files only.",
+      intervention: "run_verifier"
+    };
+  }
+
+  if (evidence.diffNovelty < 0.2) {
+    if (evidence.retryCountForSurface >= 2) {
+      return {
+        recipe: "strategy_swap",
+        rationale: "Very low diff novelty across repeated retries. Swap strategy.",
+        intervention: "change_model"
+      };
+    }
+
+    return {
+      recipe: "narrow_prompt_targeted_files",
+      rationale: "Low diff novelty suggests repetition. Compress context and narrow focus.",
+      intervention: "compress_context"
+    };
+  }
+
+  if (evidence.costPerProgressUnit > 5 || evidence.retryCountForSurface >= 3) {
+    return {
+      recipe: "downgrade_model",
+      rationale: "Cost efficiency is degrading or retries are exhausted. Downgrade the model.",
+      intervention: "change_model"
+    };
+  }
+
+  return {
+    recipe: "escalate_human",
+    rationale: "No specific recovery pattern matched. Escalate for human review.",
+    intervention: "escalate_human"
+  };
+}
+
+export function evaluatePatchDecision(input: PatchDecisionInput): EvaluatedPatchDecision {
+  const score = scorePatchDecision(input);
+  const reasonCodes = [...score.reasonCodes];
+  const decision = decidePatchOutcome(input, reasonCodes);
+
+  return {
+    decision,
+    summary: buildPatchDecisionSummary(decision, reasonCodes, input.summary),
+    reasonCodes,
+    score
+  };
+}
+
+export function scorePatchDecision(input: PatchDecisionInput): PatchScore {
+  const verifierScore = input.verifierScore ?? (input.verificationPassed ? 1 : 0);
+  const previousVerifierScore = input.previousVerifierScore ?? 0;
+  const verifierDelta = roundScore(verifierScore - previousVerifierScore);
+  const groundingViolationCount = input.groundingViolationCount ?? 0;
+  const scopeViolationCount = input.scopeViolationCount ?? 0;
+  const safetyViolationCount = input.safetyViolationCount ?? 0;
+  const changedFileEvidenceAvailable = input.changedFileCount !== undefined;
+  const changedFileCount = input.changedFileCount ?? 0;
+  const noveltyScore = input.diffNovelty ?? (changedFileCount > 0 ? 1 : 0);
+  const diffRiskScore = computeDiffRiskScore(input.diffStats);
+  const costUsd = roundUsd(input.costUsd ?? 0);
+  const reasonCodes: PatchDecisionReasonCode[] = [];
+
+  if (input.verificationPassed) {
+    reasonCodes.push("verifier_passed");
+  }
+  if (groundingViolationCount > 0) {
+    reasonCodes.push("grounding_failure");
+  }
+  if (scopeViolationCount > 0) {
+    reasonCodes.push("scope_violation");
+  }
+  if (changedFileEvidenceAvailable && changedFileCount === 0) {
+    reasonCodes.push("no_code_change");
+  }
+  if (input.humanApprovalRequired) {
+    reasonCodes.push("human_approval_required");
+  }
+  if (safetyViolationCount > 0) {
+    reasonCodes.push("safety_violation");
+  }
+  if (verifierDelta < 0) {
+    reasonCodes.push("verifier_regressed");
+  }
+  if (!input.verificationPassed && noveltyScore < 0.2 && verifierDelta <= 0) {
+    reasonCodes.push("low_novelty_no_progress");
+  }
+  if (!input.verificationPassed && diffRiskScore >= 0.7 && verifierDelta <= 0) {
+    reasonCodes.push("large_diff_no_improvement");
+  }
+  if (
+    !input.verificationPassed &&
+    reasonCodes.length === 0
+  ) {
+    reasonCodes.push("verifier_not_improved");
+  }
+
+  let score = 0;
+  if (input.verificationPassed) {
+    score += 0.55;
+  }
+  score += Math.max(verifierDelta, 0) * 0.2;
+  score -= groundingViolationCount * 0.45;
+  score -= scopeViolationCount * 0.35;
+  score -= safetyViolationCount * 0.45;
+  if (input.humanApprovalRequired) {
+    score -= 0.25;
+  }
+  if (changedFileEvidenceAvailable && changedFileCount === 0) {
+    score -= 0.35;
+  }
+  if (!input.verificationPassed && noveltyScore < 0.2 && verifierDelta <= 0) {
+    score -= 0.2;
+  }
+  if (!input.verificationPassed && diffRiskScore >= 0.7 && verifierDelta <= 0) {
+    score -= 0.25;
+  }
+  score -= diffRiskScore * 0.1;
+  score -= Math.min(costUsd / 10, 0.1);
+
+  return {
+    score: roundScore(Math.max(-1, Math.min(1, score))),
+    verifierScore: roundScore(verifierScore),
+    verifierDelta,
+    groundingViolationCount,
+    scopeViolationCount,
+    safetyViolationCount,
+    changedFileCount,
+    diffRiskScore,
+    noveltyScore: roundScore(noveltyScore),
+    costUsd,
+    reasonCodes
+  };
+}
+
+function tokenizeDiff(diff: string): Set<string> {
+  const tokens = new Set<string>();
+
+  for (const line of diff.split("\n")) {
+    if ((!line.startsWith("+") && !line.startsWith("-")) || line.startsWith("+++") || line.startsWith("---")) {
+      continue;
+    }
+
+    for (const token of line.slice(1).match(/[A-Za-z_][A-Za-z0-9_]{2,}/g) ?? []) {
+      tokens.add(token);
+    }
+  }
+
+  return tokens;
+}
+
+function decidePatchOutcome(
+  input: PatchDecisionInput,
+  reasonCodes: PatchDecisionReasonCode[]
+): PatchDecision {
+  if (input.humanApprovalRequired || reasonCodes.includes("safety_violation")) {
+    return "ESCALATE";
+  }
+
+  if (
+    reasonCodes.includes("grounding_failure") ||
+    reasonCodes.includes("scope_violation") ||
+    reasonCodes.includes("no_code_change") ||
+    reasonCodes.includes("verifier_regressed") ||
+    reasonCodes.includes("large_diff_no_improvement") ||
+    reasonCodes.includes("low_novelty_no_progress") ||
+    reasonCodes.includes("verifier_not_improved")
+  ) {
+    return "DISCARD";
+  }
+
+  if (input.verificationPassed) {
+    return "KEEP";
+  }
+
+  return "DISCARD";
+}
+
+function buildPatchDecisionSummary(
+  decision: PatchDecision,
+  reasonCodes: PatchDecisionReasonCode[],
+  summary?: string
+): string {
+  const headline = {
+    KEEP: "Patch kept.",
+    DISCARD: "Patch discarded.",
+    ESCALATE: "Patch requires escalation.",
+    HANDOFF: "Patch requires handoff."
+  }[decision];
+  const reasons = reasonCodes.join(", ");
+
+  if (summary) {
+    return `${headline} Reasons: ${reasons || "none"}. Attempt summary: ${summary}`;
+  }
+
+  return `${headline} Reasons: ${reasons || "none"}.`;
+}
+
+function computeDiffRiskScore(input?: {
+  filesChanged: number;
+  addedLines: number;
+  deletedLines: number;
+}): number {
+  if (!input) {
+    return 0;
+  }
+
+  const fileRisk = Math.min(input.filesChanged / 8, 1);
+  const lineRisk = Math.min((input.addedLines + input.deletedLines) / 200, 1);
+  return roundScore(Math.max(fileRisk, lineRisk));
+}
+
+function roundScore(value: number): number {
   return Math.round(value * 100) / 100;
 }

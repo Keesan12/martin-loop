@@ -1,0 +1,19 @@
+policyProfile: balanced
+budget:
+  # Hard cost cap for a run.
+  maxUsd: 8
+  # Early warning threshold below the hard cap.
+  softLimitUsd: 5
+  # Maximum number of loop iterations.
+  maxIterations: 3
+  # Maximum token budget for the run.
+  maxTokens: 20000
+governance:
+  # Policy used when the run would take a destructive action.
+  destructiveActionPolicy: approval
+  # Where governance/telemetry events should be sent.
+  telemetryDestination: control-plane
+  # Verification commands used when --verify is not supplied.
+  verifierRules:
+    - pnpm test
+    - pnpm lint

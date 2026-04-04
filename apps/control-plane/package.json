@@ -1,0 +1,28 @@
+{
+  "name": "@martin/control-plane",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "test": "vitest run",
+    "lint": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@clerk/nextjs": "^6.19.3",
+    "@martin/contracts": "workspace:*",
+    "@supabase/supabase-js": "^2.56.0",
+    "next": "^15.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "@types/react": "^19.0.12",
+    "@types/react-dom": "^19.0.5",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.8"
+  }
+}

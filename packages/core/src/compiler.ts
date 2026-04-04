@@ -1,4 +1,5 @@
 import type { LoopAttempt, LoopTask } from "@martin/contracts";
+import { redactSecretsFromText } from "./leash.js";
 
 // ─── Adapter request type (minimal, for the compiler) ────────────────────────
 
@@ -86,12 +87,16 @@ export function compilePromptPacket(request: CompilerAdapterRequest): PromptPack
     loopId: request.loopId,
     attemptNumber: request.previousAttempts.length + 1,
     contract: {
-      objective: request.context.objective,
+      objective: redactSecretsFromText(request.context.objective),
       verificationPlan: request.context.verificationPlan,
       ...(request.context.allowedPaths ? { allowedPaths: request.context.allowedPaths } : {}),
       ...(request.context.deniedPaths ? { deniedPaths: request.context.deniedPaths } : {}),
       ...(request.context.acceptanceCriteria
-        ? { acceptanceCriteria: request.context.acceptanceCriteria }
+        ? {
+            acceptanceCriteria: request.context.acceptanceCriteria.map((criterion) =>
+              redactSecretsFromText(criterion)
+            )
+          }
         : {})
     },
     priorFailurePatterns,

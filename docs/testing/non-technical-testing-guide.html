@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Martin Loop Testing Guide</title>
+    <style>
+      body { margin: 0; font-family: "Aptos", "Segoe UI", sans-serif; background: #f7f3ed; color: #1c282d; }
+      .wrap { max-width: 960px; margin: 0 auto; padding: 42px 24px 72px; }
+      .card { background: white; border: 1px solid rgba(41, 56, 61, 0.08); border-radius: 24px; padding: 24px; margin-bottom: 18px; }
+      .eyebrow { margin: 0 0 8px; text-transform: uppercase; letter-spacing: 0.14em; font-size: 0.76rem; color: #6c767b; }
+      h1, h2 { margin-top: 0; }
+      pre { background: #132025; color: #eaf7f5; padding: 14px; border-radius: 14px; overflow: auto; }
+      li { margin-bottom: 10px; }
+      a { color: #0c8f84; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="card">
+        <p class="eyebrow">Explain like I’m 5</p>
+        <h1>How to test Martin Loop</h1>
+        <p>If you want the fastest proof, open the local dashboard first. The terminal commands below have also been verified in this pass.</p>
+      </div>
+      <div class="card">
+        <h2>Fastest path</h2>
+        <ol>
+          <li>Extract the zip.</li>
+          <li>Open <code>OPEN-ME-FIRST.html</code>.</li>
+          <li>Click <strong>Open Local Dashboard</strong>.</li>
+          <li>Click <strong>Open Visual Gallery</strong> if you want the executive mockups and comparison boards first.</li>
+          <li>Review the <strong>Current Run</strong>, <strong>Effective Policy</strong>, <strong>Budget</strong>, and <strong>Verifier</strong> sections in the local dashboard.</li>
+          <li>Then review the <strong>Benchmark Lab</strong> section for the Ralph-vs-Martin comparison.</li>
+        </ol>
+      </div>
+      <div class="card">
+        <h2>Know the labels</h2>
+        <ul>
+          <li><strong>Seeded Demo Data</strong>: prepared repo fixtures.</li>
+          <li><strong>Simulated Scenario</strong>: the seeded benchmark story label used in the dashboard; in this validation pass, the underlying benchmark also ran live from this Codex shell.</li>
+          <li><strong>Modeled</strong>: projected or estimated economics.</li>
+          <li><strong>Actual</strong>: measured spend or verifier-backed truth.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h2>Real automated tests</h2>
+        <ol>
+          <li>Install Node.js if you do not already have it.</li>
+          <li>Open a normal PowerShell or VS Code terminal.</li>
+          <li>Go into the <code>martin-loop</code> folder.</li>
+        </ol>
+        <pre>pnpm install</pre>
+        <pre>pnpm test</pre>
+        <pre>pnpm dev:control-plane</pre>
+        <pre>pnpm --filter @martin/cli dev -- bench --suite ralphy-smoke</pre>
+        <pre>pnpm --filter @martin/cli dev -- run --workspace ws_demo --project proj_demo --objective "Repair the flaky CI gate" --verify "pnpm test" --budget-usd 8 --soft-limit-usd 4 --max-iterations 3 --max-tokens 20000</pre>
+        <p>When the hosted dashboard is running, inspect <code>/</code>, <code>/operations</code>, <code>/economics</code>, and <code>/governance</code>.</p>
+        <p>You can also open <code>docs/demo/mockups/index.html</code> directly to review the stakeholder-facing visual pack without running the app.</p>
+      </div>
+      <div class="card">
+        <h2>Important note</h2>
+        <p>Verified in this pass: <code>pnpm lint</code>, <code>pnpm test</code>, <code>pnpm build</code>, the ralphy-smoke benchmark, and both the config-driven and override-driven CLI runs.</p>
+      </div>
+    </div>
+  </body>
+  </html>

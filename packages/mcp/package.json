@@ -1,0 +1,27 @@
+{
+  "name": "@martin/mcp",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "description": "Martin Loop MCP server — exposes martin_run, martin_inspect, and martin_status as Model Context Protocol tools.",
+  "main": "dist/server.js",
+  "types": "dist/server.d.ts",
+  "bin": {
+    "martin-mcp": "dist/server.js"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "@martin/adapters": "workspace:*",
+    "@martin/contracts": "workspace:*",
+    "@martin/core": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  }
+}

@@ -1,0 +1,44 @@
+
+> martin-loop@0.1.0 dev:control-plane C:\Users\Torram\OneDrive\Documents\Codex Main\Setup Stuff\martin-loop
+> pnpm --filter @martin/control-plane dev
+
+
+> @martin/control-plane@0.1.0 dev C:\Users\Torram\OneDrive\Documents\Codex Main\Setup Stuff\martin-loop\apps\control-plane
+> next dev
+
+   ▲ Next.js 15.5.14
+   - Local:        http://localhost:3000
+   - Network:      http://192.168.2.241:3000
+
+ ✓ Starting...
+ ✓ Ready in 5s
+ ○ Compiling / ...
+ GET / 200 in 732ms
+ GET / 200 in 1072ms
+ ✓ Compiled /operations in 2.3s (537 modules)
+ GET /operations 200 in 4461ms
+ ○ Compiling /economics ...
+ ✓ Compiled /economics in 2.7s (539 modules)
+ GET /economics 200 in 3557ms
+ ○ Compiling /governance ...
+ ✓ Compiled /governance in 850ms (541 modules)
+ GET /governance 200 in 1432ms
+ ○ Compiling /billing ...
+ ✓ Compiled /billing in 838ms (543 modules)
+ GET /billing 200 in 1346ms
+ ○ Compiling /settings ...
+ ✓ Compiled /settings in 894ms (545 modules)
+ GET /settings 200 in 1324ms
+ ○ Compiling /_not-found ...
+ ✓ Compiled /_not-found in 1189ms (550 modules)
+ GET /loops 404 in 1663ms
+ GET /savings 404 in 112ms
+ GET /policies 404 in 101ms
+ GET /integrations 404 in 109ms
+ GET / 200 in 318ms
+ GET /sign-in 404 in 116ms
+ POST /api/runs 404 in 193ms
+ POST /api/billing/checkout 404 in 197ms
+ GET /upgrade 404 in 97ms
+ GET / 200 in 489ms
+ GET /economics 200 in 432ms

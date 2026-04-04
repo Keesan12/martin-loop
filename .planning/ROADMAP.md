@@ -18,10 +18,13 @@ produces structured data for it to read.
 - [x] **Phase 6: Real Control Plane** - Delete mock data, wire Supabase + Clerk, CTO-ready dashboard
 - [x] **Phase 7: Eval Bakeoff** - Benchmark v4 vs baseline, release gate report
 - [x] **Phase 8: Grounding Integrity Hardening** - Challenge cases 1-5 with persisted anatomy artifacts; grounding scan wired into loop at VERIFY
-- [ ] **Phase 9: Safety Leash v2 Profile Engine** - Network + change-approval leash; ExecutionProfile dispatch; challenges 10-13
-- [ ] **Phase 10: Patch Truth and Rollback** - PatchTruthArtifact; regression/entropy/improvement-ratio guards; challenges 14-17
-- [ ] **Phase 11: Read-Model Truth** - Control-plane API surfaces costProvenance, budgetSettlement, patchTruth, groundingScanResult
-- [ ] **Phase 12: Certification and Claim Freeze** - 20-challenge certification test suite; hardening report; claim matrix
+- [x] **Phase 9: Safety Leash v2 Profile Engine** - Network + change-approval leash; ExecutionProfile dispatch; challenges 10-13
+- [x] **Phase 10: Patch Truth and Rollback** - PatchTruthArtifact plus rollback-boundary and restore-outcome evidence now persist for discarded and blocked attempts
+- [x] **Phase 11: Read-Model Truth** - Control-plane API now surfaces artifact-backed costProvenance, budgetSettlement, patchTruth, groundingScanResult
+- [x] **Phase 12: Certification and Claim Freeze** - Certification suite and persisted GO report landed; claim-freeze evidence bundle generated
+- [ ] **Phase 13: Release-Candidate Engineering** - Clean install/build/package pass, OSS core boundary finalization, and operator-facing release docs
+- [ ] **Phase 14: Staged Pilot** - Controlled internal/low-risk repo rollout with strict trust defaults and artifact review
+- [ ] **Phase 15: Public Release** - OSS core release first, then controlled hosted rollout with conservative claims
 
 ## Phase Details
 
@@ -150,3 +153,87 @@ Plans:
 Plans:
 - [x] 08-01-PLAN.md — Challenge-set grounding tests (cases 1-5) + anatomy persistence test
 - [x] 08-02-PLAN.md — Wire scanPatchForGroundingViolations into runMartin VERIFY phase + ledger integration
+
+### Phase 9: Safety Leash v2 Profile Engine
+**Goal**: Make unsafe behavior deterministic, profile-driven, and artifact-backed.
+**Depends on**: Phase 8
+**Requirements**: H-04
+**Success Criteria** (what must be TRUE):
+  1. Execution profiles resolve deterministically across strict_local, ci_safe, staging_controlled, and research_untrusted
+  2. Command, file, network, dependency, and config boundaries block or escalate consistently
+  3. `safety.violations_found` and `leash.json` persist profile-aware violation evidence
+  4. Challenges 10-13 pass in automated coverage
+**Plans**: Inline execution completed
+
+### Phase 10: Patch Truth and Rollback
+**Goal**: Make keep/discard decisions reproducible from artifacts and finish rollback-truth persistence before release-candidate work.
+**Depends on**: Phase 9
+**Requirements**: H-06
+**Success Criteria** (what must be TRUE):
+  1. Patch decision and score artifacts persist for every completed attempt
+  2. Challenges 14-17 pass against the patch-truth scoring rules
+  3. Rollback-boundary persistence and explicit restore outcome artifacts exist for discarded/regressed patches
+  4. Replayable patch baseline and restore evidence can be reconstructed from disk
+**Plans**: Inline slice execution completed
+
+### Phase 11: Read-Model Truth
+**Goal**: Ensure control-plane and dashboard claims are driven only by persisted runtime artifacts.
+**Depends on**: Phase 10 patch-truth artifacts
+**Requirements**: H-08
+**Success Criteria** (what must be TRUE):
+  1. `/api/runs` returns nested attempt truth backed by persisted artifacts, not inferred prose
+  2. Read-model summaries expose patch decision, grounding evidence, leash surface, budget variance, accounting mode, and stop reason
+  3. Missing auth configuration degrades safely without faking provider state
+  4. Control-plane lint, test, and build all pass
+**Plans**: Inline execution completed
+
+### Phase 12: Certification and Claim Freeze
+**Goal**: Re-run the hardening suite as a release gate and persist a certification evidence bundle suitable for claim freeze.
+**Depends on**: Phase 11
+**Requirements**: H-09
+**Success Criteria** (what must be TRUE):
+  1. The certification suite covers grounding, budget, safety, no-progress, accounting, keep/discard, and golden-path cases
+  2. Every certification scenario produces a complete persisted evidence bundle
+  3. The report command rebuilds its dependencies and emits a stable GO/NO-GO artifact set
+  4. The latest certification report verdict is GO
+**Plans**: Inline execution completed
+
+### Phase 13: Release-Candidate Engineering
+**Goal**: Make the product installable, buildable, operable, and packageable for a release candidate instead of just a completed codebase.
+**Depends on**: Phase 10, Phase 12
+**Requirements**: RC-01, RC-02, RC-03, RC-04, RC-05
+**Success Criteria** (what must be TRUE):
+  1. Clean-environment install/build/test passes from a fresh repo path
+  2. OSS core package boundaries and dependency hygiene are final
+  3. Release notes, migration notes, quickstart docs, operator runbook, and incident/rollback runbook exist
+  4. Trust-mode defaults, observability checks, and accounting labels are reviewed end to end
+  5. A fresh engineer can boot, verify, and operate the RC without hidden tribal knowledge
+**Slices**:
+- [x] 13-01-SUMMARY.md — RC reproducibility entry slice: clean-environment validator, rooted OSS docs, and Phase 13 README truth
+- [x] 13-02-SUMMARY.md — Provider-path validation matrix: honest RC support classifications plus RC gate integration
+- [x] 13-03-SUMMARY.md — OSS boundary closeout: remove CLI leak into private benchmarks, add machine-checked OSS boundary report, and incorporate the public package-surface memo
+- [x] 13-04-SUMMARY.md — Root public package facade: shipped root exports/bin surface, clean-install smoke test, and RC gate integration
+- [x] 13-05-SUMMARY.md — Cross-platform release matrix: real repo-backed smoke, local Windows lane verification, and GitHub Actions lanes for Windows/macOS/Linux
+- [x] 13-06-SUMMARY.md — Release-surface audit closeout: machine-checked doc/package audit, RC gate integration, and stale OSS surface cleanup
+- [x] 13-07-SUMMARY.md — Pilot-prep packaging: operator runbooks, pilot defaults/checklists, machine-checked pilot-prep audit, and RC gate integration
+- [x] 13-08-SUMMARY.md — Windows matrix hardening: verify OneDrive install claim, clean stale root `_tmp_*` artifacts before install, and upload per-OS matrix artifacts in CI
+
+### Phase 14: Staged Pilot
+**Goal**: Prove runtime truth, dashboard truth, and rollback truth under controlled real-world usage before widening access.
+**Depends on**: Phase 13
+**Requirements**: PILOT-01, PILOT-02, PILOT-03
+**Success Criteria** (what must be TRUE):
+  1. Disposable/internal repos complete with strict trust profiles and hard budget caps
+  2. Low-risk real repos produce no hidden overspend, silent grounding failures, or unsafe execution escapes
+  3. Operators can explain Martin stop reasons, spend, keep/discard decisions, and rollback outcomes from artifacts alone
+**Plans**: Not started
+
+### Phase 15: Public Release
+**Goal**: Release OSS core first, then widen hosted access only as fast as the evidence supports.
+**Depends on**: Phase 14
+**Requirements**: REL-01, REL-02, REL-03
+**Success Criteria** (what must be TRUE):
+  1. OSS core public release artifacts are complete and reproducible
+  2. Website and product claims map directly to verified capabilities and evidence bundles
+  3. Hosted control-plane rollout remains conservative until provider-path and pilot evidence stay green
+**Plans**: Not started

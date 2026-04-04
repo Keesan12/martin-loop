@@ -30,6 +30,16 @@ export interface AttemptArtifacts {
   verifierOutput?: string;
   /** Grounding scan result (optional) */
   groundingScan?: unknown;
+  /** Safety leash artifact captured for a blocked or escalated attempt (optional) */
+  leash?: unknown;
+  /** Patch score artifact captured for Phase 10 patch-truth decisions (optional) */
+  patchScore?: unknown;
+  /** Patch keep/discard/escalate decision artifact (optional) */
+  patchDecision?: unknown;
+  /** Rollback boundary captured before an attempt mutates the repo (optional) */
+  rollbackBoundary?: unknown;
+  /** Rollback restore outcome captured after discard/escalation/failure (optional) */
+  rollbackOutcome?: unknown;
 }
 
 // ─── RunStore interface ───────────────────────────────────────────────────────
@@ -91,6 +101,11 @@ export function artifactDir(runsRoot: string, runId: string, attemptIndex: numbe
  *   <runsRoot>/<runId>/artifacts/attempt-<n>/diff.patch (if diff provided)
  *   <runsRoot>/<runId>/artifacts/attempt-<n>/verifier-output.txt (if provided)
  *   <runsRoot>/<runId>/artifacts/attempt-<n>/grounding-scan.json (if provided)
+ *   <runsRoot>/<runId>/artifacts/attempt-<n>/leash.json (if leash provided)
+ *   <runsRoot>/<runId>/artifacts/attempt-<n>/patch-score.json (if patchScore provided)
+ *   <runsRoot>/<runId>/artifacts/attempt-<n>/patch-decision.json (if patchDecision provided)
+ *   <runsRoot>/<runId>/artifacts/attempt-<n>/rollback-boundary.json (if rollbackBoundary provided)
+ *   <runsRoot>/<runId>/artifacts/attempt-<n>/rollback-outcome.json (if rollbackOutcome provided)
  */
 export function createFileRunStore(options: { runsRoot?: string } = {}): RunStore {
   const runsRoot = options.runsRoot ?? resolveRunsRoot();
@@ -136,6 +151,21 @@ export function createFileRunStore(options: { runsRoot?: string } = {}): RunStor
       }
       if (artifacts.groundingScan !== undefined) {
         await writeJsonFile(join(dir, "grounding-scan.json"), artifacts.groundingScan);
+      }
+      if (artifacts.leash !== undefined) {
+        await writeJsonFile(join(dir, "leash.json"), artifacts.leash);
+      }
+      if (artifacts.patchScore !== undefined) {
+        await writeJsonFile(join(dir, "patch-score.json"), artifacts.patchScore);
+      }
+      if (artifacts.patchDecision !== undefined) {
+        await writeJsonFile(join(dir, "patch-decision.json"), artifacts.patchDecision);
+      }
+      if (artifacts.rollbackBoundary !== undefined) {
+        await writeJsonFile(join(dir, "rollback-boundary.json"), artifacts.rollbackBoundary);
+      }
+      if (artifacts.rollbackOutcome !== undefined) {
+        await writeJsonFile(join(dir, "rollback-outcome.json"), artifacts.rollbackOutcome);
       }
     }
   };

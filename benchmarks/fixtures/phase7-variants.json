@@ -1,0 +1,80 @@
+{
+  "suiteId": "phase7-variants",
+  "label": "Phase 7 Benchmark Variants",
+  "description": "Variant A/B/C bakeoff comparing Martin Loop v4 against a baseline retry controller.",
+  "baselineAdapter": "ralphy",
+  "cases": [
+    {
+      "caseId": "repair-ci",
+      "label": "Variant A - Repair flaky CI",
+      "task": {
+        "title": "Repair flaky CI",
+        "objective": "Stabilize the verification gate before repeated retries waste the budget.",
+        "verificationPlan": ["pnpm test", "pnpm build"]
+      },
+      "budget": {
+        "maxUsd": 8,
+        "softLimitUsd": 4,
+        "maxIterations": 3,
+        "maxTokens": 20000
+      },
+      "baseline": {
+        "adapterId": "ralphy",
+        "model": "gpt-5-mini",
+        "strategy": "single-loop"
+      },
+      "tags": ["phase7", "variant-a", "verification"],
+      "metadata": {
+        "variantId": "A"
+      }
+    },
+    {
+      "caseId": "budget-guard",
+      "label": "Variant B - Budget guardrail",
+      "task": {
+        "title": "Budget guardrail",
+        "objective": "Exit the loop when retries stop being economically credible.",
+        "verificationPlan": ["pnpm test"]
+      },
+      "budget": {
+        "maxUsd": 6,
+        "softLimitUsd": 3,
+        "maxIterations": 2,
+        "maxTokens": 12000
+      },
+      "baseline": {
+        "adapterId": "ralphy",
+        "model": "gpt-5-mini",
+        "strategy": "single-loop"
+      },
+      "tags": ["phase7", "variant-b", "budget"],
+      "metadata": {
+        "variantId": "B"
+      }
+    },
+    {
+      "caseId": "adapter-failover",
+      "label": "Variant C - Adapter failover",
+      "task": {
+        "title": "Recover from CLI environment mismatch",
+        "objective": "Switch to a fallback adapter when the primary environment cannot execute the task.",
+        "verificationPlan": ["pnpm test"]
+      },
+      "budget": {
+        "maxUsd": 6,
+        "softLimitUsd": 3,
+        "maxIterations": 3,
+        "maxTokens": 16000
+      },
+      "baseline": {
+        "adapterId": "ralphy",
+        "model": "gpt-5-mini",
+        "strategy": "single-loop"
+      },
+      "tags": ["phase7", "variant-c", "fallback"],
+      "metadata": {
+        "variantId": "C"
+      }
+    }
+  ]
+}

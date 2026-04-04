@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Martin Loop Local Operator Console</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand">ML</div>
+        <p class="eyebrow">Local Operator Console</p>
+        <h1>Current Run Monitor</h1>
+        <nav>
+          <a href="#current-run">Current Run</a>
+          <a href="#timeline">Timeline</a>
+          <a href="#budget">Budget</a>
+          <a href="#verifier">Verifier</a>
+          <a href="#interventions">Interventions</a>
+          <a href="#artifacts">Artifacts</a>
+          <a href="#replay-resume">Replay / Resume</a>
+          <a href="#benchmark-lab">Benchmark Lab</a>
+        </nav>
+      </aside>
+      <main class="content">
+        <section id="current-run" class="operator-top">
+          <article id="run-header" class="card"></article>
+          <article class="card budget-strip-card">
+            <div class="card-head">
+              <h2>Budget Strip</h2>
+              <p>Live burn against effective run guardrails.</p>
+            </div>
+            <div id="budget-strip" class="budget-strip"></div>
+          </article>
+          <div class="top-grid">
+            <article id="attempt-state" class="card"></article>
+            <article id="verifier-state" class="card"></article>
+            <article id="effective-policy" class="card"></article>
+            <article id="exit-orientation" class="card"></article>
+          </div>
+        </section>
+
+        <section id="timeline" class="card">
+          <div class="card-head">
+            <h2>Timeline</h2>
+            <p>Attempt-by-attempt execution events.</p>
+          </div>
+          <div id="timeline-list" class="table"></div>
+        </section>
+
+        <section id="budget" class="card">
+          <div class="card-head">
+            <h2>Budget</h2>
+            <p>Budget pressure and remaining headroom.</p>
+          </div>
+          <div id="budget-panel"></div>
+        </section>
+
+        <section id="verifier" class="card">
+          <div class="card-head">
+            <h2>Verifier</h2>
+            <p>Gate outcomes and verifier trend details.</p>
+          </div>
+          <div id="verifier-panel" class="table"></div>
+        </section>
+
+        <section id="interventions" class="card">
+          <div class="card-head">
+            <h2>Interventions</h2>
+            <p>Policy-selected changes applied during this run.</p>
+          </div>
+          <div id="interventions-list" class="table"></div>
+        </section>
+
+        <section id="artifacts" class="card">
+          <div class="card-head">
+            <h2>Artifacts</h2>
+            <p>Generated traces and patch evidence for audit/review.</p>
+          </div>
+          <div id="artifacts-list" class="table"></div>
+        </section>
+
+        <section id="replay-resume" class="card">
+          <div class="card-head">
+            <h2>Replay / Resume</h2>
+            <p>Operator controls for continuation after exit.</p>
+          </div>
+          <div id="replay-panel"></div>
+        </section>
+
+        <section id="benchmark-lab" class="card">
+          <div class="card-head">
+            <h2>Benchmark Lab</h2>
+            <p>Comparison and storytelling content, after the live operator sections.</p>
+          </div>
+          <div id="benchmark-label" class="seed-line"></div>
+          <div id="benchmark-summary" class="summary-grid"></div>
+          <div id="benchmark-table" class="table"></div>
+          <p class="footnote">
+            This section is simulated benchmark content. The operator sections above are seeded demo fixtures from this repository.
+          </p>
+        </section>
+      </main>
+    </div>
+    <script src="./data/demo-data.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>

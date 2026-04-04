@@ -1,0 +1,53 @@
+{
+  "name": "martin-loop",
+  "private": false,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Martin Loop dual-track monorepo for the OSS runtime and hosted SaaS control plane.",
+  "packageManager": "pnpm@10.17.1",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "martin-loop": "./dist/bin/martin-loop.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "docs/oss"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "pnpm -r build && node ./scripts/build-public-facade.mjs",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint",
+    "oss:validate": "node ./scripts/oss-boundary.mjs",
+    "release:surface:validate": "node ./scripts/release-surface-audit.mjs",
+    "pilot:prep:validate": "node ./scripts/pilot-prep-audit.mjs",
+    "public:smoke": "node ./scripts/public-facade-smoke.mjs",
+    "repo:smoke": "node ./scripts/repo-backed-smoke.mjs",
+    "rc:validate": "node ./scripts/rc-validation.mjs",
+    "rc:validate:install": "node ./scripts/rc-validation.mjs --install",
+    "release:matrix:local": "node ./scripts/release-matrix.mjs",
+    "dev:control-plane": "pnpm --filter @martin/control-plane dev",
+    "run:cli": "pnpm --filter @martin/cli dev",
+    "eval": "pnpm --filter @martin/benchmarks eval",
+    "dev:dashboard": "node apps/local-dashboard/server.js"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "@types/react": "^19.0.12",
+    "@types/react-dom": "^19.0.5",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.8"
+  }
+}

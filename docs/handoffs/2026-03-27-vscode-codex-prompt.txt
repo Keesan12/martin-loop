@@ -1,0 +1,36 @@
+Continue the Martin Loop V2A execution pass from this repo:
+
+C:\Users\Torram\OneDrive\Documents\Codex Main\Setup Stuff\martin-loop
+
+Read these first:
+
+1. C:\Users\Torram\OneDrive\Documents\Codex Main\Setup Stuff\martin-loop\docs\handoffs\2026-03-27-vscode-codex-handoff.md
+2. C:\Users\Torram\OneDrive\Documents\Codex Main\Setup Stuff\martin-loop\docs\plans\2026-03-27-martin-v2a-trust-demo-implementation-plan.md
+3. C:\Users\Torram\OneDrive\Documents\Codex Main\Setup Stuff\martin-loop\docs\2026-03-27-v2-v3-product-spec.md
+
+Your job:
+
+- run the real install / lint / test / build commands
+- fix anything that fails
+- run and verify the hosted control plane locally
+- run and verify the CLI benchmark and CLI run smoke tests
+- verify the local dashboard and visual gallery
+- remove any empty legacy hosted route directories if they still exist
+- refresh martin-loop-package.zip if possible
+- write results to:
+  C:\Users\Torram\OneDrive\Documents\Codex Main\Setup Stuff\martin-loop\docs\handoffs\2026-03-27-vscode-validation-results.md
+
+Important behavioral requirements:
+
+- use the repo folder as source of truth, not the old zip
+- preserve the executive IA:
+  Overview, Operations, Economics, Governance, Billing, Admin
+- preserve the local operator console structure
+- preserve the CLI effectivePolicy behavior
+- preserve the hosted API fail-closed production auth behavior
+- if you fix code, also update docs when behavior changes
+- include exact commands run and exact outputs summarized in the results file
+- include exact files changed in the results file
+- include screenshot paths if you capture any
+
+The desktop Codex session could not run node.exe, so your validation is the first real executable proof pass.
