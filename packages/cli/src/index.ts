@@ -548,11 +548,14 @@ async function loadGuardrailsConfig(
 }
 
 function resolveConfigPath(configPath: string): string {
-  if (isAbsolute(configPath)) {
-    return configPath;
+  const normalizedConfigPath =
+    process.platform === "win32" ? configPath : configPath.replace(/\\/g, "/");
+
+  if (isAbsolute(normalizedConfigPath)) {
+    return normalizedConfigPath;
   }
 
-  return resolve(getInvocationRoot(), configPath);
+  return resolve(getInvocationRoot(), normalizedConfigPath);
 }
 
 function getInvocationRoot(): string {
