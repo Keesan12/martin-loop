@@ -16,15 +16,16 @@ AI coding tools are getting more capable, but most still operate like unchecked 
 
 ⛔ AI coding agents are useful, but the default loop is unsafe.
 
-A typical autonomous coding loop keeps attempting work until tests pass. In practice, that creates a recurring failure mode Martin Loop calls the **Ralph Loop**: an agent keeps retrying without a hard budget cap, without a tamper-evident audit record, and without pre-execution governance over what it is about to do. :contentReference[oaicite:2]{index=2}
+A typical autonomous coding loop keeps attempting work until tests pass. In practice, that creates a recurring failure mode Martin Loop calls the **Ralph Loop**: an agent keeps retrying without a hard budget cap, without a tamper-evident audit record, and without pre-execution governance over what it is about to do. 
+
 
 That creates five serious problems:
 
 - **No hard budget stop** — the loop can keep spending after it becomes uneconomical.
-- **No real failure taxonomy** — most tools only know pass/fail, not whether the task is recoverable, terminal, unsafe, or hallucinated. :contentReference[oaicite:4]{index=4}
-- **No cryptographic audit trail** — teams cannot prove what changed, what was attempted, or why the loop stopped. :contentReference[oaicite:5]{index=5}
-- **No pre-execution safety gate** — dangerous operations may run before governance sees them. :contentReference[oaicite:6]{index=6}
-- **No context efficiency** — uncontrolled loops re-read more and more context each iteration, which drives quadratic token growth and hidden spend. :contentReference[oaicite:7]{index=7} :contentReference[oaicite:8]{index=8}
+- **No real failure taxonomy** — most tools only know pass/fail, not whether the task is recoverable, terminal, unsafe, or hallucinated. 
+- **No cryptographic audit trail** — teams cannot prove what changed, what was attempted, or why the loop stopped.
+- **No pre-execution safety gate** — dangerous operations may run before governance sees them. 
+- **No context efficiency** — uncontrolled loops re-read more and more context each iteration, which drives quadratic token growth and hidden spend.
 
 In other words: AI coding is moving into production, but most teams still lack the layer that controls cost, safety, evidence, and operational discipline.
 
@@ -34,12 +35,12 @@ In other words: AI coding is moving into production, but most teams still lack t
 
 It does not try to replace the agent pattern. It makes that pattern safe to run. Martin Loop adds:
 
-- **Hard USD budget caps** that stop work before the next attempt breaches policy. :contentReference[oaicite:9]{index=9}
-- A **14-class verification leash** that distinguishes real success from unsafe, invalid, or terminal behavior. :contentReference[oaicite:10]{index=10}
-- **Ed25519-signed audit records** for every attempt, creating a tamper-evident execution trail. :contentReference[oaicite:11]{index=11}
-- **Policy-as-code** via `martin.policy.yaml`, so teams can version and enforce runtime rules in-repo. :contentReference[oaicite:12]{index=12}
-- **Filesystem rollback** on failed runs, so bad attempts do not leave half-finished damage behind. :contentReference[oaicite:13]{index=13}
-- **Delta re-prompting** so each retry sends only changed state instead of re-reading the entire loop history. :contentReference[oaicite:14]{index=14}
+- **Hard USD budget caps** that stop work before the next attempt breaches policy. 
+- A **14-class verification leash** that distinguishes real success from unsafe, invalid, or terminal behavior. 
+- **Ed25519-signed audit records** for every attempt, creating a tamper-evident execution trail. 
+- **Policy-as-code** via `martin.policy.yaml`, so teams can version and enforce runtime rules in-repo. 
+- **Filesystem rollback** on failed runs, so bad attempts do not leave half-finished damage behind. 
+- **Delta re-prompting** so each retry sends only changed state instead of re-reading the entire loop history.
 
 The result is a governed runtime that can complete good work, refuse bad work, stop uneconomical work, and leave evidence behind.
 
@@ -79,11 +80,11 @@ The pattern is simple: attempt the task, run checks, retry on failure, repeat. T
 
 Martin Loop solves the Ralph Loop by enforcing rules **before** damage happens:
 
-- it stops the next attempt before budget overspend :contentReference[oaicite:22]{index=22}
-- it classifies unsafe or invalid actions before execution :contentReference[oaicite:23]{index=23}
-- it records each attempt with cryptographic proof :contentReference[oaicite:24]{index=24}
-- it rolls back failed runs instead of leaving broken state behind :contentReference[oaicite:25]{index=25}
-- it reduces runaway token growth with delta re-prompting :contentReference[oaicite:26]{index=26}
+- it stops the next attempt before budget overspend
+- it classifies unsafe or invalid actions before execution
+- it records each attempt with cryptographic proof 
+- it rolls back failed runs instead of leaving broken state behind 
+- it reduces runaway token growth with delta re-prompting 
 
 Ralph is an uncontrolled loop.  
 Martin Loop is the governed runtime around that loop.
@@ -100,13 +101,13 @@ AI agents are already touching real repositories, real budgets, and real enginee
 
 Martin Loop matters because it turns AI coding from an opaque experiment into something that can be governed, replayed, verified, and trusted.
 
-On the public benchmark described in the technical whitepaper, Martin Loop achieved an **80% verifier pass rate at $11.90 per 10 tasks**, versus **40% at $30.70** for the Ralph baseline. The same materials also report **417 passing tests**, **63/63 adversarial gate checks**, and **zero false positives** on the declared safety checks. :contentReference[oaicite:27]{index=27} :contentReference[oaicite:28]{index=28}
+On the public benchmark described in the technical whitepaper, Martin Loop achieved an **80% verifier pass rate at $11.90 per 10 tasks**, versus **40% at $30.70** for the Ralph baseline. The same materials also report **417 passing tests**, **63/63 adversarial gate checks**, and **zero false positives** on the declared safety checks.
 
 That is the point of Martin Loop: not just more agent activity, but better governed outcomes.
 
 ## Get started
 
-Clone the repo, install dependencies, and run the public benchmark to reproduce the benchmark claims from the paper. The whitepaper states the benchmark is reproducible with `bun run benchmark`. :contentReference[oaicite:29]{index=29}
+Clone the repo, install dependencies, and run the public benchmark to reproduce the benchmark claims from the paper. The whitepaper states the benchmark is reproducible with `bun run benchmark`. 
 
 ## Support the project
 
