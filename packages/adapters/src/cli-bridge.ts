@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
+import { isAbsolute } from "node:path";
 
 import { diffStatsFromNumstat } from "./runtime-support.js";
 
@@ -38,10 +39,11 @@ export async function runSubprocess(
         cwd: options.cwd,
         stdio: [stdinMode, "pipe", "pipe"],
         env: process.env,
-        // shell: true is required on Windows to resolve .cmd shims (e.g. claude.cmd).
-        // Prompt content is never passed as a shell argument — it goes via stdin — so
+        // shell: true is required on Windows to resolve PATH shims (e.g. claude.cmd).
+        // Avoid it for absolute .exe paths because cmd.exe can split paths with spaces.
+        // Prompt content is never passed as a shell argument, it goes via stdin, so
         // injection risk from the DEP0190 warning does not apply here.
-        shell: process.platform === "win32"
+        shell: shouldUseWindowsShell(command)
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -179,6 +181,10 @@ export async function readGitExecutionArtifacts(
     ...(changedFiles.length > 0 ? { changedFiles } : {}),
     ...(diffStats ? { diffStats } : {})
   };
+}
+
+function shouldUseWindowsShell(command: string): boolean {
+  return process.platform === "win32" && !isAbsolute(command);
 }
 
 function truncate(text: string, maxLength: number): string {
