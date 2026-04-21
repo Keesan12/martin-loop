@@ -936,8 +936,11 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     }
 
     const changedFiles = resolveChangedFiles(result, request.context.repoRoot);
+    // Evidence is only reliable when the adapter explicitly reported files OR git actually
+    // returned a non-empty list. A repoRoot alone is insufficient — git may fail (e.g. not
+    // a git repo) and silently return [], which would falsely trigger no_code_change.
     const changedFileEvidenceAvailable =
-      result.execution?.changedFiles !== undefined || Boolean(request.context.repoRoot);
+      result.execution?.changedFiles !== undefined || changedFiles.length > 0;
     const filesystemDecision = evaluateFilesystemLeash({
       repoRoot: request.context.repoRoot,
       changedFiles,

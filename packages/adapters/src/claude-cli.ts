@@ -64,10 +64,16 @@ interface ClaudeJsonOutput {
   result?: string;
   error?: string;
   usage?: {
+    // camelCase (older SDK versions)
     inputTokens?: number;
     outputTokens?: number;
     cacheReadInputTokens?: number;
     cacheCreationInputTokens?: number;
+    // snake_case (Claude CLI --output-format json)
+    input_tokens?: number;
+    output_tokens?: number;
+    cache_read_input_tokens?: number;
+    cache_creation_input_tokens?: number;
   };
 }
 
@@ -85,10 +91,10 @@ function extractUsage(
   }
 
   const tokensIn =
-    (parsed.usage.inputTokens ?? 0) +
-    (parsed.usage.cacheReadInputTokens ?? 0) +
-    (parsed.usage.cacheCreationInputTokens ?? 0);
-  const tokensOut = parsed.usage.outputTokens ?? 0;
+    (parsed.usage.inputTokens ?? parsed.usage.input_tokens ?? 0) +
+    (parsed.usage.cacheReadInputTokens ?? parsed.usage.cache_read_input_tokens ?? 0) +
+    (parsed.usage.cacheCreationInputTokens ?? parsed.usage.cache_creation_input_tokens ?? 0);
+  const tokensOut = parsed.usage.outputTokens ?? parsed.usage.output_tokens ?? 0;
 
   const pricing =
     (modelLabel ? MODEL_PRICING[modelLabel] : undefined) ??
@@ -258,10 +264,16 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
 
       const args = options.argsBuilder(prompt);
 
-      const agentResult = await runSubprocess(options.command, args, {
+      // stdinPrompt: if argsBuilder signals stdin delivery by returning args ending with "--stdin-prompt",
+      // remove that sentinel and pass the prompt via stdin instead (avoids Windows shell-escaping issues).
+      const useStdin = args.at(-1) === "--stdin-prompt";
+      const spawnArgs = useStdin ? args.slice(0, -1) : args;
+
+      const agentResult = await runSubprocess(options.command, spawnArgs, {
         cwd: workingDirectory,
         timeoutMs,
-        spawnImpl: options.spawnImpl
+        spawnImpl: options.spawnImpl,
+        ...(useStdin ? { stdinData: prompt } : {})
       });
 
       if (agentResult.timedOut) {
@@ -504,14 +516,14 @@ export function createClaudeCliAdapter(options: ClaudeCliAdapterOptions = {}): M
     verifyTimeoutMs: options.verifyTimeoutMs,
     supportsJsonOutput: true,
     spawnImpl: options.spawnImpl,
-    argsBuilder: (prompt) => [
+    argsBuilder: (_prompt) => [
       "--output-format",
       "json",
       "--print",
-      prompt,
       "--dangerously-skip-permissions",
       ...modelArgs,
-      ...extraArgs
+      ...extraArgs,
+      "--stdin-prompt"  // sentinel: tells execute() to deliver prompt via stdin
     ]
   });
 }
@@ -563,9 +575,13 @@ export function createCodexCliAdapter(options: CodexCliAdapterOptions = {}): Mar
 function buildPrompt(request: MartinAdapterRequest): string {
   const lines: string[] = [];
 
-  lines.push("READ PROGRESS.md IN YOUR WORKING DIRECTORY BEFORE STARTING.");
-  lines.push("It contains the original objective and hypothesis chain from prior attempts.");
-  lines.push("If it does not exist, that is fine — proceed with the objective below.");
+  lines.push("You are running in autonomous agentic mode.");
+  lines.push("MAKE ALL REQUIRED FILE EDITS NOW. Do not ask for confirmation. Do not ask clarifying questions.");
+  lines.push("Do not explain what you found without also making the changes. Edit the files and complete the task.");
+  lines.push("");
+
+  lines.push("If PROGRESS.md exists in your working directory, read it first for context from prior attempts.");
+  lines.push("If it does not exist, proceed with the objective below.");
   lines.push("");
 
   lines.push("Complete the following coding task. Make all necessary file changes.");
