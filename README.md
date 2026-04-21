@@ -116,26 +116,6 @@ P.S. — If Ralph ever burned $30.70 on your dime, you're in the right place. Ma
 
 Clone the repo, install dependencies, and run the public benchmark to reproduce the benchmark claims from the paper. The whitepaper states the benchmark is reproducible with `bun run benchmark`. 
 
-## Support the project
-
-**give the repo a star** If you think AI coding needs budgets, brakes, and receipts.
-
-A GitHub star helps more engineers discover Martin Loop, validate the category, and push governed AI coding forward.
-
-### The agentic AI governance runtime. Hard enforcement, not suggestions.
-
-[![License: MIT](https://img.shields.io/badge/license-MIT-7c3aed?style=flat-square)](./LICENSE)
-[![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&logo=typescript&logoColor=white)](./tsconfig.json)
-[![Node](https://img.shields.io/badge/node-%3E%3D20-3c873a?style=flat-square&logo=nodedotjs&logoColor=white)](#quick-start)
-[![npm](https://img.shields.io/badge/npm-martin--loop-cc3534?style=flat-square&logo=npm&logoColor=white)](https://npmjs.com/package/martin-loop)
-
-<br>
-
-> **Your overnight AI pipeline estimated $2.40.**
-> **You woke up to $65 cursor bill.**
->
-> 47 retries. No hard stop. No rollback. No audit trail. Nothing merged. 
-> <br> **MartinLoop exists so that never happens again.** 
 
 </div>
 
@@ -429,6 +409,28 @@ Conventional commits: `feat:` · `fix:` · `chore:` · `docs:` · `refactor:` ·
 ---
 
 <div align="center">
+
+## Support the project
+
+**give the repo a star** If you think AI coding needs budgets, brakes, and receipts.
+
+A GitHub star helps more engineers discover Martin Loop, validate the category, and push governed AI coding forward.
+
+### The agentic AI governance runtime. Hard enforcement, not suggestions.
+
+[![License: MIT](https://img.shields.io/badge/license-MIT-7c3aed?style=flat-square)](./LICENSE)
+[![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&logo=typescript&logoColor=white)](./tsconfig.json)
+[![Node](https://img.shields.io/badge/node-%3E%3D20-3c873a?style=flat-square&logo=nodedotjs&logoColor=white)](#quick-start)
+[![npm](https://img.shields.io/badge/npm-martin--loop-cc3534?style=flat-square&logo=npm&logoColor=white)](https://npmjs.com/package/martin-loop)
+
+<br>
+
+> **Your overnight AI pipeline estimated $2.40.**
+> **You woke up to a $65 cursor bill.**
+>
+> 47 retries. No hard stop. No rollback. No audit trail. Nothing merged. 
+> <br> **MartinLoop exists so that never happens again.** 
+
 
 **MIT Licensed** · [martinloop.com](https://martinloop.com) · [keesan@martinloop.com](mailto:keesan@martinloop.com)
 
