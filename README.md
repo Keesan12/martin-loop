@@ -41,19 +41,31 @@ It does not try to replace the agent pattern. It makes that pattern safe to run.
 
 The result is a governed runtime that can complete good work, refuse bad work, stop uneconomical work, and leave evidence behind.
 
-## What Martin Loop does
+## 🛡️ What MartinLoop Enforces Today
 
 Martin Loop gives engineering teams a control layer around AI coding agents
 
-With Martin Loop, you can:
+**1. Hard budget cap.**
+Every run has a `maxUsd` limit. When the cost reaches that limit the subprocess is terminated — not warned.
 
-- define runtime rules in `martin.policy.yaml` :contentReference[oaicite:15]{index=15}
-- run governed loops with `martin run` :contentReference[oaicite:16]{index=16}
-- resume interrupted work with `martin resume` :contentReference[oaicite:17]{index=17}
-- verify signed audit records with `martin verify` :contentReference[oaicite:18]{index=18}
-- inspect why a loop was blocked with `martin explain` :contentReference[oaicite:19]{index=19}
+**2. Iteration cap.**
+Every run has a `maxIterations` limit. The loop exits when it is hit, regardless of progress.
 
-It is built for teams that want AI coding to behave less like a gamble and more like an operating discipline.
+**3. Filesystem leash.**
+If `allowedPaths` or `deniedPaths` are configured, any attempt that writes outside the envelope is blocked and rolled back before the patch is kept.
+
+**4. Secret leash.**
+Values that look like secrets (API keys, tokens) in the task objective or acceptance criteria are blocked before any attempt runs.
+
+**5. Verifier gate.**
+The loop only marks a run successful if the verifier command exits `0`. A passing verifier is required for a `completed` lifecycle state.
+
+**6. Rollback on failure.**
+When an attempt is discarded (failed verifier, safety violation, patch decision), MartinLoop restores the filesystem to the pre-attempt state using a git-backed snapshot.
+
+**7. Run persistence.**
+Every run is written to `~/.martin/runs/<workspaceId>.jsonl`. Use `martin resume` and `martin inspect` to read it back.
+
 
 ## The Ralph Loop, explained
 
@@ -94,7 +106,7 @@ Clone the repo, install dependencies, and run the public benchmark to reproduce 
 
 ## Support the project
 
-If you think AI coding needs budgets, brakes, and receipts — **give the repo a star**.
+**give the repo a star** If you think AI coding needs budgets, brakes, and receipts.
 
 A GitHub star helps more engineers discover Martin Loop, validate the category, and push governed AI coding forward.
 
@@ -110,8 +122,8 @@ A GitHub star helps more engineers discover Martin Loop, validate the category, 
 > **Your overnight AI pipeline estimated $2.40.**
 > **You woke up to $165.**
 >
-> 47 retries. No hard stop. No rollback. No audit trail. Nothing merged.
-> **MartinLoop exists so that never happens again.**
+> 47 retries. No hard stop. No rollback. No audit trail. Nothing merged. 
+> <br> **MartinLoop exists so that never happens again.**
 
 </div>
 
@@ -346,31 +358,6 @@ Five governance layers from policy to runtime enforcement.
 │                      │  Portfolio inspect + resume       │
 └──────────────────────┴───────────────────────────────────┘
 ```
-
----
-
-## 🛡️ What MartinLoop Enforces Today
-
-**1. Hard budget cap.**
-Every run has a `maxUsd` limit. When the cost reaches that limit the subprocess is terminated — not warned.
-
-**2. Iteration cap.**
-Every run has a `maxIterations` limit. The loop exits when it is hit, regardless of progress.
-
-**3. Filesystem leash.**
-If `allowedPaths` or `deniedPaths` are configured, any attempt that writes outside the envelope is blocked and rolled back before the patch is kept.
-
-**4. Secret leash.**
-Values that look like secrets (API keys, tokens) in the task objective or acceptance criteria are blocked before any attempt runs.
-
-**5. Verifier gate.**
-The loop only marks a run successful if the verifier command exits `0`. A passing verifier is required for a `completed` lifecycle state.
-
-**6. Rollback on failure.**
-When an attempt is discarded (failed verifier, safety violation, patch decision), MartinLoop restores the filesystem to the pre-attempt state using a git-backed snapshot.
-
-**7. Run persistence.**
-Every run is written to `~/.martin/runs/<workspaceId>.jsonl`. Use `martin resume` and `martin inspect` to read it back.
 
 ---
 
