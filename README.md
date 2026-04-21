@@ -25,6 +25,34 @@
 
 ## ⚡ Quick Start
 
+## Release Surface
+
+The frozen public package surface for this RC is:
+
+```sh
+npm install martin-loop
+npx martin-loop
+```
+
+```typescript
+import { MartinLoop } from "martin-loop"
+```
+
+Phase 13 RC gate commands:
+
+```sh
+pnpm oss:validate
+pnpm public:smoke
+pnpm repo:smoke
+pnpm rc:validate
+pnpm pilot:prep:validate
+pnpm release:matrix:local
+```
+
+Registry publication is intentionally held for a later release step; this repository can validate the package surface locally before publishing.
+
+---
+
 ### 1. Install
 
 ```sh

@@ -268,11 +268,18 @@ describe("createClaudeCliAdapter", () => {
   });
 
   it("returns failed gracefully when claude is not installed", async () => {
-    // When claude IS installed and runs successfully, status may be "completed"
-    const adapter = createClaudeCliAdapter({ timeoutMs: 2_000 });
+    const adapter = createClaudeCliAdapter({
+      timeoutMs: 2_000,
+      spawnImpl() {
+        const error = new Error("spawn ENOENT");
+        Object.assign(error, { code: "ENOENT" });
+        throw error;
+      }
+    });
     const result = await adapter.execute(makeRequest());
 
-    expect(["failed", "completed"]).toContain(result.status);
+    expect(result.status).toBe("failed");
+    expect(result.failure?.message).toContain("environment_mismatch");
   });
 });
 
