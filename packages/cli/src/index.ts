@@ -261,6 +261,13 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
       }
     };
 
+    // First positional arg (not a flag) is treated as the objective
+    const firstPositional = rest[0] && !rest[0].startsWith("--") ? rest[0] : undefined;
+    if (firstPositional) {
+      request.objective = firstPositional;
+      request.title ??= firstPositional;
+    }
+
     for (let index = 0; index < rest.length; index += 1) {
       const token = rest[index];
       const next = rest[index + 1];
@@ -298,6 +305,7 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
           }
           index += 1;
           break;
+        case "--budget":
         case "--budget-usd":
           request.budget = {
             ...request.budget,
@@ -427,10 +435,11 @@ export function renderCliHelp(): string {
     "Martin Loop CLI",
     "",
     "Usage:",
-    "  martin-loop run --objective <text> [options]",
-    "  martin-loop inspect --file <path>",
-    "  martin-loop resume <loopId>",
-    "  martin-loop bench --suite <suiteId>",
+    "  martin run <objective> [options]",
+    "  martin run --objective <text> [options]",
+    "  martin inspect --file <path>",
+    "  martin resume <loopId>",
+    "  martin bench --suite <suiteId>",
     "",
     "Commands:",
     "  run      Execute a bounded Martin loop against the current repository.",
@@ -439,11 +448,13 @@ export function renderCliHelp(): string {
     "  bench    Redirect to the workspace-only RC benchmark harness.",
     "",
     "Common options:",
-    "  --help              Show this message.",
-    "  --engine <name>     Select the adapter route (claude or codex).",
-    "  --model <name>      Override the adapter model when supported.",
-    "  --cwd <path>        Set the repo root used for repo-backed runs.",
-    "  --budget-usd <n>    Set the hard cost cap for the run.",
+    "  --help                Show this message.",
+    "  --engine <name>       Select the adapter route (claude or codex).",
+    "  --model <name>        Override the adapter model when supported.",
+    "  --cwd <path>          Set the repo root used for repo-backed runs.",
+    "  --budget <n>          Set the hard cost cap in USD for the run.",
+    "  --budget-usd <n>      Alias for --budget.",
+    "  --verify <cmd>        Shell command to use as the verifier.",
     "  --max-iterations <n>  Set the maximum attempt budget for the run."
   ].join("\n");
 }
