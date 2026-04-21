@@ -87,7 +87,7 @@ Martin Loop solves the Ralph Loop by enforcing rules **before** damage happens:
 - it reduces runaway token growth with delta re-prompting 
 
 Ralph is an uncontrolled loop.  
-Martin Loop is the governed runtime around that loop.
+Martin Loop is the governed runtime around that loop. 
 
 ## Why it matters
 
@@ -104,6 +104,13 @@ Martin Loop matters because it turns AI coding from an opaque experiment into so
 On the public benchmark described in the technical whitepaper, Martin Loop achieved an **80% verifier pass rate at $11.90 per 10 tasks**, versus **40% at $30.70** for the Ralph baseline. The same materials also report **417 passing tests**, **63/63 adversarial gate checks**, and **zero false positives** on the declared safety checks.
 
 That is the point of Martin Loop: not just more agent activity, but better governed outcomes.
+
+P.S. — If Ralph ever burned $30.70 on your dime, you're in the right place. Martin stopped him at $4.97 with a full audit trail. LFG! 🚀 Finally a Martin Prince leash for Ralph Wiggums! :) 
+
+
+
+
+
 
 ## Get started
 
