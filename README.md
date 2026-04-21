@@ -4,6 +4,100 @@
 
 # MartinLoop
 
+**The control plane for AI coding agents.**
+
+Martin Loop is a governed runtime for AI coding loops. It lets teams run AI coding agents with hard budget caps, pre-execution safety checks, signed audit trails, rollback protection, and policy-as-code enforcement.
+
+AI coding tools are getting more capable, but most still operate like unchecked loops: they keep trying, keep spending, and keep mutating files until something passes or the user intervenes. Martin Loop exists to make that behavior accountable, bounded, and production-safe.
+
+## The Problem
+
+AI coding agents are useful, but the default loop is unsafe.
+
+A typical autonomous coding loop keeps attempting work until tests pass. In practice, that creates a recurring failure mode Martin Loop calls the **Ralph Loop**: an agent keeps retrying without a hard budget cap, without a tamper-evident audit record, and without pre-execution governance over what it is about to do. :contentReference[oaicite:2]{index=2}
+
+That creates five serious problems:
+
+- **No hard budget stop** — the loop can keep spending after it becomes uneconomical. :contentReference[oaicite:3]{index=3}
+- **No real failure taxonomy** — most tools only know pass/fail, not whether the task is recoverable, terminal, unsafe, or hallucinated. :contentReference[oaicite:4]{index=4}
+- **No cryptographic audit trail** — teams cannot prove what changed, what was attempted, or why the loop stopped. :contentReference[oaicite:5]{index=5}
+- **No pre-execution safety gate** — dangerous operations may run before governance sees them. :contentReference[oaicite:6]{index=6}
+- **No context efficiency** — uncontrolled loops re-read more and more context each iteration, which drives quadratic token growth and hidden spend. :contentReference[oaicite:7]{index=7} :contentReference[oaicite:8]{index=8}
+
+In other words: AI coding is moving into production, but most teams still lack the layer that controls cost, safety, evidence, and operational discipline.
+
+## The Solution
+
+Martin Loop wraps AI coding loops with a governance layer.
+
+It does not try to replace the agent pattern. It makes that pattern safe to run. Martin Loop adds:
+
+- **Hard USD budget caps** that stop work before the next attempt breaches policy. :contentReference[oaicite:9]{index=9}
+- A **14-class verification leash** that distinguishes real success from unsafe, invalid, or terminal behavior. :contentReference[oaicite:10]{index=10}
+- **Ed25519-signed audit records** for every attempt, creating a tamper-evident execution trail. :contentReference[oaicite:11]{index=11}
+- **Policy-as-code** via `martin.policy.yaml`, so teams can version and enforce runtime rules in-repo. :contentReference[oaicite:12]{index=12}
+- **Filesystem rollback** on failed runs, so bad attempts do not leave half-finished damage behind. :contentReference[oaicite:13]{index=13}
+- **Delta re-prompting** so each retry sends only changed state instead of re-reading the entire loop history. :contentReference[oaicite:14]{index=14}
+
+The result is a governed runtime that can complete good work, refuse bad work, stop uneconomical work, and leave evidence behind.
+
+## What Martin Loop does
+
+Martin Loop gives engineering teams a control layer around AI coding agents
+
+With Martin Loop, you can:
+
+- define runtime rules in `martin.policy.yaml` :contentReference[oaicite:15]{index=15}
+- run governed loops with `martin run` :contentReference[oaicite:16]{index=16}
+- resume interrupted work with `martin resume` :contentReference[oaicite:17]{index=17}
+- verify signed audit records with `martin verify` :contentReference[oaicite:18]{index=18}
+- inspect why a loop was blocked with `martin explain` :contentReference[oaicite:19]{index=19}
+
+It is built for teams that want AI coding to behave less like a gamble and more like an operating discipline.
+
+## The Ralph Loop, explained
+
+The **Ralph Loop** is the failure mode where an AI coding agent keeps trying without knowing when it should stop.
+
+The pattern is simple: attempt the task, run checks, retry on failure, repeat. The problem is not that the loop exists. The problem is that most implementations have no hard budget cap, no signed evidence layer, and no pre-execution control system. They know how to keep trying. They do **not** know when continuing is unsafe, uneconomical, or impossible. :contentReference[oaicite:20]{index=20} :contentReference[oaicite:21]{index=21}
+
+Martin Loop solves the Ralph Loop by enforcing rules **before** damage happens:
+
+- it stops the next attempt before budget overspend :contentReference[oaicite:22]{index=22}
+- it classifies unsafe or invalid actions before execution :contentReference[oaicite:23]{index=23}
+- it records each attempt with cryptographic proof :contentReference[oaicite:24]{index=24}
+- it rolls back failed runs instead of leaving broken state behind :contentReference[oaicite:25]{index=25}
+- it reduces runaway token growth with delta re-prompting :contentReference[oaicite:26]{index=26}
+
+Ralph is an uncontrolled loop.  
+Martin Loop is the governed runtime around that loop.
+
+## Why it matters
+
+AI agents are already touching real repositories, real budgets, and real engineering workflows. But “faster” is not enough if teams cannot answer basic operational questions:
+
+- What changed?
+- What did it cost?
+- Why was it allowed?
+- Why did it stop?
+- Can we prove any of it?
+
+Martin Loop matters because it turns AI coding from an opaque experiment into something that can be governed, replayed, verified, and trusted.
+
+On the public benchmark described in the technical whitepaper, Martin Loop achieved an **80% verifier pass rate at $11.90 per 10 tasks**, versus **40% at $30.70** for the Ralph baseline. The same materials also report **417 passing tests**, **63/63 adversarial gate checks**, and **zero false positives** on the declared safety checks. :contentReference[oaicite:27]{index=27} :contentReference[oaicite:28]{index=28}
+
+That is the point of Martin Loop: not just more agent activity, but better governed outcomes.
+
+## Get started
+
+Clone the repo, install dependencies, and run the public benchmark to reproduce the benchmark claims from the paper. The whitepaper states the benchmark is reproducible with `bun run benchmark`. :contentReference[oaicite:29]{index=29}
+
+## Support the project
+
+If you think AI coding needs budgets, brakes, and receipts — **give the repo a star**.
+
+A GitHub star helps more engineers discover Martin Loop, validate the category, and push governed AI coding forward.
+
 ### The agentic AI governance runtime. Hard enforcement, not suggestions.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-7c3aed?style=flat-square)](./LICENSE)
