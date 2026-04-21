@@ -163,8 +163,9 @@ export async function executeCli(args: string[]): Promise<{
     case "inspect": {
       try {
         const contents = await readFile(parsed.file, "utf8");
-        const parsedContents = JSON.parse(contents) as unknown;
-        const loops = Array.isArray(parsedContents) ? parsedContents : [parsedContents];
+        // .jsonl files are newline-delimited JSON — parse each line individually
+        const lines = contents.split(/\r?\n/).filter((l) => l.trim().length > 0);
+        const loops = lines.map((line) => JSON.parse(line) as unknown);
 
         return {
           exitCode: 0,

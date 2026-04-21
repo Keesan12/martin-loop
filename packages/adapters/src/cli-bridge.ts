@@ -23,19 +23,25 @@ export interface VerificationOutcome {
 export async function runSubprocess(
   command: string,
   args: string[],
-  options: { cwd: string; timeoutMs: number; spawnImpl?: SpawnLike }
+  options: { cwd: string; timeoutMs: number; spawnImpl?: SpawnLike; stdinData?: string }
 ): Promise<SubprocessResult> {
   return new Promise((resolve) => {
     let timedOut = false;
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
 
+    const stdinMode = options.stdinData !== undefined ? "pipe" : "ignore";
+
     let proc: ChildProcess;
     try {
       proc = (options.spawnImpl ?? spawn)(command, args, {
         cwd: options.cwd,
-        stdio: ["ignore", "pipe", "pipe"],
-        env: process.env
+        stdio: [stdinMode, "pipe", "pipe"],
+        env: process.env,
+        // shell: true is required on Windows to resolve .cmd shims (e.g. claude.cmd).
+        // Prompt content is never passed as a shell argument — it goes via stdin — so
+        // injection risk from the DEP0190 warning does not apply here.
+        shell: process.platform === "win32"
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -46,6 +52,11 @@ export async function runSubprocess(
         timedOut: false
       });
       return;
+    }
+
+    if (options.stdinData !== undefined && proc.stdin) {
+      proc.stdin.write(options.stdinData, "utf8");
+      proc.stdin.end();
     }
 
     proc.stdout?.on("data", (chunk: Buffer) => {
