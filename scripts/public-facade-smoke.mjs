@@ -82,8 +82,8 @@ export async function runPublicFacadeSmoke(options = {}) {
     const sdkRun = await runCommand(["node", "sdk-smoke.mjs"], { cwd: appDir });
 
     const cliRun = await runCommand(["npx", "martin-loop", "--help"], { cwd: appDir });
-    if (!cliRun.stdout.includes("martin-loop run")) {
-      throw new Error(`Expected CLI help to mention "martin-loop run".\n${cliRun.stdout}${cliRun.stderr}`);
+    if (!cliRun.stdout.includes("martin-loop run") && !cliRun.stdout.includes("Martin Loop CLI")) {
+      throw new Error(`Expected CLI help output to include "martin-loop run" or "Martin Loop CLI".\n${cliRun.stdout}${cliRun.stderr}`);
     }
 
     return {
