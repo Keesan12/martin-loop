@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/assets/martinloop_logo_1.png" alt="MartinLoop" width="200">
+<!-- <img src="docs/assets/martinloop_logo_1.png" alt="MartinLoop" width="200"> -->
 
 # MartinLoop
 
