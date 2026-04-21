@@ -4,7 +4,7 @@ import { isAbsolute, join, resolve } from "node:path";
 
 import { createClaudeCliAdapter, createCodexCliAdapter, createStubDirectProviderAdapter } from "@martin/adapters";
 import { runMartin, type MartinAdapter } from "@martin/core";
-import { buildPortfolioSnapshot, type LoopBudget } from "@martin/contracts";
+import { buildPortfolioSnapshot, createLoopRecord, type LoopBudget, type LoopRecord } from "@martin/contracts";
 
 export type RunCommandRequest = {
   workspaceId: string;
@@ -98,22 +98,49 @@ export async function executeCli(args: string[]): Promise<{
       const workingDirectory = parsed.request.cwd ?? readOption(args, "--cwd") ?? process.cwd();
       const adapter = selectAdapter(args, workingDirectory, parsed.request.model, parsed.request.engine);
 
-      const result = await runMartin({
-        workspaceId: resolvedRequest.workspaceId,
-        projectId: resolvedRequest.projectId,
-        task: {
-          title: resolvedRequest.title,
-          objective: resolvedRequest.objective,
-          verificationPlan: resolvedRequest.verificationPlan,
-          repoRoot: workingDirectory,
-          ...(resolvedRequest.allowedPaths?.length ? { allowedPaths: resolvedRequest.allowedPaths } : {}),
-          ...(resolvedRequest.deniedPaths?.length ? { deniedPaths: resolvedRequest.deniedPaths } : {}),
-          ...(resolvedRequest.acceptanceCriteria?.length ? { acceptanceCriteria: resolvedRequest.acceptanceCriteria } : {})
-        },
-        budget: resolvedRequest.budget,
-        metadata: resolvedRequest.metadata,
-        adapter
-      });
+      let result: Awaited<ReturnType<typeof runMartin>>;
+      try {
+        result = await runMartin({
+          workspaceId: resolvedRequest.workspaceId,
+          projectId: resolvedRequest.projectId,
+          task: {
+            title: resolvedRequest.title,
+            objective: resolvedRequest.objective,
+            verificationPlan: resolvedRequest.verificationPlan,
+            repoRoot: workingDirectory,
+            ...(resolvedRequest.allowedPaths?.length ? { allowedPaths: resolvedRequest.allowedPaths } : {}),
+            ...(resolvedRequest.deniedPaths?.length ? { deniedPaths: resolvedRequest.deniedPaths } : {}),
+            ...(resolvedRequest.acceptanceCriteria?.length ? { acceptanceCriteria: resolvedRequest.acceptanceCriteria } : {})
+          },
+          budget: resolvedRequest.budget,
+          metadata: resolvedRequest.metadata,
+          adapter
+        });
+      } catch {
+        const fallbackLoop = createLoopRecord({
+          workspaceId: resolvedRequest.workspaceId,
+          projectId: resolvedRequest.projectId,
+          task: {
+            title: resolvedRequest.title,
+            objective: resolvedRequest.objective,
+            verificationPlan: resolvedRequest.verificationPlan,
+            repoRoot: workingDirectory
+          },
+          budget: resolvedRequest.budget,
+          metadata: resolvedRequest.metadata,
+          status: "exited",
+          lifecycleState: "human_escalation"
+        });
+        result = {
+          loop: fallbackLoop,
+          decision: {
+            shouldExit: true,
+            status: "exited",
+            lifecycleState: "human_escalation",
+            reason: "adapter-unavailable"
+          }
+        };
+      }
 
       // Persist loop record to ~/.martin/runs/<workspaceId>.jsonl
       // Dashboard and inspect commands read from this file.
@@ -163,9 +190,7 @@ export async function executeCli(args: string[]): Promise<{
     case "inspect": {
       try {
         const contents = await readFile(parsed.file, "utf8");
-        // .jsonl files are newline-delimited JSON — parse each line individually
-        const lines = contents.split(/\r?\n/).filter((l) => l.trim().length > 0);
-        const loops = lines.map((line) => JSON.parse(line) as unknown);
+        const loops = parseLoopRecords(contents);
 
         return {
           exitCode: 0,
@@ -173,7 +198,7 @@ export async function executeCli(args: string[]): Promise<{
             {
               command: "inspect",
               source: parsed.file,
-              summary: buildPortfolioSnapshot(loops as Parameters<typeof buildPortfolioSnapshot>[0])
+              summary: buildPortfolioSnapshot(loops)
             },
             null,
             2
@@ -472,6 +497,21 @@ function readOption(tokens: string[], flag: string): string | undefined {
 
 function hasFlag(tokens: string[], flag: string): boolean {
   return tokens.includes(flag);
+}
+
+function parseLoopRecords(contents: string): LoopRecord[] {
+  try {
+    const parsed = JSON.parse(contents) as LoopRecord | LoopRecord[];
+    return Array.isArray(parsed) ? parsed : [parsed];
+  } catch (jsonError) {
+    const lines = contents.split(/\r?\n/u).filter((line) => line.trim().length > 0);
+
+    if (lines.length === 0) {
+      throw jsonError;
+    }
+
+    return lines.map((line) => JSON.parse(line) as LoopRecord);
+  }
 }
 
 async function resolveGuardrails(

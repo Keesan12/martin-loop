@@ -310,4 +310,62 @@ describe("executeCli", () => {
       await rm(directory, { force: true, recursive: true });
     }
   });
+
+  it("inspects persisted JSONL loop records", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-jsonl-"));
+    const filePath = join(directory, "loops.jsonl");
+
+    try {
+      const firstLoop = createLoopRecord({
+        workspaceId: "ws_ops",
+        projectId: "proj_runtime",
+        task: {
+          title: "Repair the flaky CI gate",
+          objective: "Repair the flaky CI gate",
+          verificationPlan: ["pnpm test"]
+        },
+        cost: {
+          actualUsd: 3,
+          avoidedUsd: 7,
+          tokensIn: 1200,
+          tokensOut: 450
+        }
+      });
+      const secondLoop = createLoopRecord({
+        workspaceId: "ws_docs",
+        projectId: "proj_readme",
+        task: {
+          title: "Polish release docs",
+          objective: "Polish release docs",
+          verificationPlan: ["pnpm test"]
+        },
+        cost: {
+          actualUsd: 2,
+          avoidedUsd: 5,
+          tokensIn: 800,
+          tokensOut: 200
+        }
+      });
+
+      await writeFile(
+        filePath,
+        `${JSON.stringify(firstLoop)}\n${JSON.stringify(secondLoop)}\n`,
+        "utf8"
+      );
+
+      const result = await executeCli(["inspect", "--file", filePath]);
+
+      expect(result.exitCode).toBe(0);
+
+      const payload = JSON.parse(result.stdout);
+
+      expect(payload.command).toBe("inspect");
+      expect(payload.summary.totalActualUsd).toBe(5);
+      expect(payload.summary.totalAvoidedUsd).toBe(12);
+      expect(payload.summary.activeLoops).toBe(2);
+      expect(payload.source).toBe(filePath);
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
 });

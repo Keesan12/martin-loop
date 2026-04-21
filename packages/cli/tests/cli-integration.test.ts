@@ -39,6 +39,22 @@ async function withEnv<T>(key: string, value: string, fn: () => Promise<T>): Pro
   }
 }
 
+async function withoutAgentCliOnPath<T>(fn: () => Promise<T>): Promise<T> {
+  const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === "path") ?? "PATH";
+  const original = process.env[pathKey];
+  process.env[pathKey] = "";
+
+  try {
+    return await fn();
+  } finally {
+    if (original === undefined) {
+      delete process.env[pathKey];
+    } else {
+      process.env[pathKey] = original;
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // MARTIN_LIVE guard
 // ---------------------------------------------------------------------------
@@ -139,16 +155,18 @@ describe("--engine flag", () => {
   });
 
   it("remains graceful in live mode even when the selected CLI is unavailable", { timeout: 15000 }, async () => {
-    const result = await withEnv("MARTIN_LIVE", "true", () =>
-      executeCli([
-        "run",
-        "--objective",
-        "Fix the bug",
-        "--max-iterations",
-        "1",
-        "--budget-usd",
-        "2"
-      ])
+    const result = await withoutAgentCliOnPath(() =>
+      withEnv("MARTIN_LIVE", "true", () =>
+        executeCli([
+          "run",
+          "--objective",
+          "Fix the bug",
+          "--max-iterations",
+          "1",
+          "--budget-usd",
+          "2"
+        ])
+      )
     );
 
     expect(result.exitCode).toBe(0);
