@@ -4,7 +4,7 @@
 
 # MartinLoop
 
-**The control plane for AI coding agents.**
+⭐**The control plane for AI coding agents.**⭐
 
 Martin Loop is a governed runtime for AI coding loops. It lets teams run AI coding agents with hard budget caps, pre-execution safety checks, signed audit trails, rollback protection, and policy-as-code enforcement.
 
@@ -12,13 +12,15 @@ AI coding tools are getting more capable, but most still operate like unchecked 
 
 ## The Problem
 
-AI coding agents are useful, but the default loop is unsafe.
+> <br> ****"Your CFO is like what do you mean each engineer now costs $2000 extra per month in LLM bills"**** - Dax Raad
+
+⛔ AI coding agents are useful, but the default loop is unsafe.
 
 A typical autonomous coding loop keeps attempting work until tests pass. In practice, that creates a recurring failure mode Martin Loop calls the **Ralph Loop**: an agent keeps retrying without a hard budget cap, without a tamper-evident audit record, and without pre-execution governance over what it is about to do. :contentReference[oaicite:2]{index=2}
 
 That creates five serious problems:
 
-- **No hard budget stop** — the loop can keep spending after it becomes uneconomical. :contentReference[oaicite:3]{index=3}
+- **No hard budget stop** — the loop can keep spending after it becomes uneconomical.
 - **No real failure taxonomy** — most tools only know pass/fail, not whether the task is recoverable, terminal, unsafe, or hallucinated. :contentReference[oaicite:4]{index=4}
 - **No cryptographic audit trail** — teams cannot prove what changed, what was attempted, or why the loop stopped. :contentReference[oaicite:5]{index=5}
 - **No pre-execution safety gate** — dangerous operations may run before governance sees them. :contentReference[oaicite:6]{index=6}
@@ -28,7 +30,7 @@ In other words: AI coding is moving into production, but most teams still lack t
 
 ## The Solution
 
-Martin Loop wraps AI coding loops with a governance layer.
+✅ Martin Loop wraps AI coding loops with a governance layer.
 
 It does not try to replace the agent pattern. It makes that pattern safe to run. Martin Loop adds:
 
@@ -68,6 +70,8 @@ Every run is written to `~/.martin/runs/<workspaceId>.jsonl`. Use `martin resume
 
 
 ## The Ralph Loop, explained
+
+**"Everybody has gotten infatuated with what we call these Ralph Wiggum loops, just like send the thing off and it'll just go figure something out..A, It never figures anything out. And B, you just get this ginormous bill...**" - Chamath Palihapitiya, All-In Podcast #263, March 2026
 
 The **Ralph Loop** is the failure mode where an AI coding agent keeps trying without knowing when it should stop.
 
@@ -120,10 +124,10 @@ A GitHub star helps more engineers discover Martin Loop, validate the category, 
 <br>
 
 > **Your overnight AI pipeline estimated $2.40.**
-> **You woke up to $165.**
+> **You woke up to $65 cursor bill.**
 >
 > 47 retries. No hard stop. No rollback. No audit trail. Nothing merged. 
-> <br> **MartinLoop exists so that never happens again.**
+> <br> **MartinLoop exists so that never happens again.** 
 
 </div>
 
