@@ -4,7 +4,7 @@
 
 # MartinLoop
 
-⭐**The control plane for AI coding agents.**⭐
+⭐**The control plane for autonomous AI coding agents.**⭐
 
 Martin Loop is a governed runtime for AI coding loops. It lets teams run AI coding agents with hard budget caps, pre-execution safety checks, signed audit trails, rollback protection, and policy-as-code enforcement.
 
