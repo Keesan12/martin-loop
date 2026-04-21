@@ -1,105 +1,316 @@
-# Martin Loop
+<div align="center">
 
-Martin Loop is a governed AI coding-loop runtime and control surface. The runtime core is real, artifact-backed, and verified through the Phase 12 certification gate; the repo is now in Phase 13 release-candidate engineering, where the work is about reproducibility, OSS-core extraction, release-surface honesty, and pilot readiness.
+<img src="docs/assets/martinloop_logo_1.png" alt="MartinLoop" width="200">
 
-## Current status
+# MartinLoop
 
-- Phase 10 rollback truth: closed
-- Phase 11 read-model truth: closed
-- Phase 12 certification: `GO`
-- Phase 13 RC engineering: active
+### The agentic AI governance runtime. Hard enforcement, not suggestions.
 
-The biggest remaining risks are release sloppiness and environment drift, not missing runtime fundamentals.
+[![License: MIT](https://img.shields.io/badge/license-MIT-7c3aed?style=flat-square)](./LICENSE)
+[![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&logo=typescript&logoColor=white)](./tsconfig.json)
+[![Node](https://img.shields.io/badge/node-%3E%3D20-3c873a?style=flat-square&logo=nodedotjs&logoColor=white)](#quick-start)
+[![npm](https://img.shields.io/badge/npm-martin--loop-cc3534?style=flat-square&logo=npm&logoColor=white)](https://npmjs.com/package/martin-loop)
 
-## What is real in this repo today
+<br>
 
-- policy-phase runtime with explicit `GATHER` to `HANDOFF` state transitions
-- grounding scans and persisted grounding artifacts
-- blocking leash behavior for unsafe commands, file-scope violations, network or approval boundaries, and secret handling
-- provenance-aware cost accounting using `actual`, `estimated`, and `unavailable`
-- patch-truth scoring plus rollback boundary and restore outcome artifacts
-- CLI, MCP, benchmark, control-plane, and local dashboard surfaces inside one workspace
+> **Your overnight AI pipeline estimated $2.40.**
+> **You woke up to $165.**
+>
+> 47 retries. No hard stop. No rollback. No audit trail. Nothing merged.
+> **MartinLoop exists so that never happens again.**
 
-## What is not being claimed yet
+</div>
 
-- a completed public managed-product launch
-- final licensing and registry-publishing decisions for every workspace package
+---
 
-Those are Phase 13 to Phase 15 concerns and should stay explicit until the release path is closed.
+## ⚡ Quick Start
 
-## Repo map
+### 1. Install
 
-| Path | Role |
-|---|---|
-| `packages/contracts` | shared loop, grounding, leash, budget, and rollback types |
-| `packages/core` | runtime controller, persistence, grounding, policy, leash, rollback |
-| `packages/adapters` | Claude CLI, Codex CLI, direct-provider, and stub adapter surfaces |
-| `packages/cli` | local operator CLI for `run`, `inspect`, and `resume`; benchmark orchestration stays in the workspace-only `benchmarks/` package during RC |
-| `packages/mcp` | MCP server exposing `martin_run`, `martin_inspect`, and `martin_status` |
-| `apps/control-plane` | hosted governance/control-plane app |
-| `apps/local-dashboard` | local dashboard surface |
-| `benchmarks` | Phase 7 and Phase 12 evaluation/certification harnesses |
+```sh
+npm install -g martin-loop
+```
 
-## Quick start
+This gives you two commands: `martin` and `martin-loop` (both identical).
 
-```bash
-pnpm install
+### 2. Run a governed task
+
+```sh
+martin run "fix the auth regression" \
+  --budget 3.00 \
+  --verify "pnpm test"
+```
+
+What each flag does:
+- `--budget 3.00` — hard kill at $3.00. The subprocess is terminated at the limit.
+- `--verify "pnpm test"` — shell command run after each attempt. Loop only exits success when it passes.
+
+The first argument after `run` is your objective. You can also use `--objective`:
+
+```sh
+martin run --objective "fix the auth regression" --budget 3.00 --verify "pnpm test"
+```
+
+### 3. Resume an interrupted run
+
+```sh
+martin resume <loopId>
+```
+
+Loads the persisted loop record from `~/.martin/runs/` by ID.
+
+### 4. Inspect a run file
+
+```sh
+martin inspect --file ~/.martin/runs/<workspaceId>.jsonl
+```
+
+Prints a portfolio summary (total cost, attempts, outcomes) for all loops in the file.
+
+---
+
+## 🖥️ All CLI Flags
+
+```
+martin run <objective> [options]
+
+  --objective <text>      The task to accomplish (or pass as first positional arg)
+  --budget <n>            Hard cost cap in USD (subprocess killed at limit)
+  --budget-usd <n>        Alias for --budget
+  --verify <cmd>          Shell command used as the verifier after each attempt
+  --max-iterations <n>    Maximum number of attempts (default: 3)
+  --engine <name>         Adapter to use: claude (default) or codex
+  --model <name>          Override the model (e.g. claude-sonnet-4-6)
+  --cwd <path>            Repo root for the run (default: current directory)
+  --allow-path <glob>     Restrict agent to this path pattern (repeatable)
+  --deny-path <glob>      Block agent from this path pattern (repeatable)
+  --accept <criterion>    Add an acceptance criterion injected into the prompt (repeatable)
+  --config <path>         Path to a martin.config.yaml policy file
+  --workspace <id>        Workspace ID for the run record (default: ws_default)
+  --project <id>          Project ID for the run record (default: proj_default)
+  --metadata <key=value>  Attach metadata to the run record (repeatable)
+```
+
+---
+
+## 📋 Policy File (martin.config.yaml)
+
+Drop a `martin.config.yaml` in your repo root to set governance defaults:
+
+```yaml
+budget:
+  maxUsd: 5.00
+  softLimitUsd: 3.75
+  maxIterations: 5
+  maxTokens: 40000
+
+governance:
+  destructiveActionPolicy: approval
+  telemetryDestination: local-only
+  verifierRules:
+    - pnpm test
+```
+
+The CLI picks this up automatically. CLI flags always override the config file.
+
+---
+
+## 📦 TypeScript SDK
+
+Install as a library:
+
+```sh
+npm install martin-loop
+```
+
+```typescript
+import {
+  MartinLoop,
+  createClaudeCliAdapter,
+  createCodexCliAdapter
+} from 'martin-loop'
+
+const loop = new MartinLoop({
+  adapter: createClaudeCliAdapter({ workingDirectory: process.cwd() }),
+  defaults: {
+    budget: {
+      maxUsd: 3.00,
+      softLimitUsd: 2.25,
+      maxIterations: 3,
+      maxTokens: 20_000
+    }
+  }
+})
+
+const result = await loop.run({
+  workspaceId: 'my-workspace',
+  projectId: 'my-project',
+  task: {
+    title: 'Fix auth regression',
+    objective: 'Fix the failing auth regression tests',
+    verificationPlan: ['pnpm test'],
+    repoRoot: process.cwd()
+  },
+  budget: {
+    maxUsd: 3.00,
+    softLimitUsd: 2.25,
+    maxIterations: 3,
+    maxTokens: 20_000
+  }
+})
+
+// result.decision.status          → 'completed' | 'exited' | 'failed'
+// result.decision.lifecycleState  → 'completed' | 'budget_exit' | 'human_escalation' | ...
+// result.loop.cost.actualUsd      → actual USD spent
+// result.loop.attempts.length     → number of attempts made
+// result.decision.reason          → why the loop exited
+```
+
+### Using Codex instead of Claude
+
+```typescript
+const loop = new MartinLoop({
+  adapter: createCodexCliAdapter({ workingDirectory: process.cwd() })
+})
+```
+
+### Using the lower-level `runMartin` directly
+
+```typescript
+import { runMartin, createClaudeCliAdapter } from 'martin-loop'
+
+const result = await runMartin({
+  workspaceId: 'ws_default',
+  projectId: 'proj_default',
+  task: {
+    title: 'Fix auth regression',
+    objective: 'Fix the failing auth regression tests',
+    verificationPlan: ['pnpm test'],
+    repoRoot: process.cwd()
+  },
+  budget: {
+    maxUsd: 3.00,
+    softLimitUsd: 2.25,
+    maxIterations: 3,
+    maxTokens: 20_000
+  },
+  adapter: createClaudeCliAdapter({ workingDirectory: process.cwd() })
+})
+```
+
+---
+
+## 🧠 Architecture
+
+Five governance layers from policy to runtime enforcement.
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                   MartinLoop Governance Stack            │
+├──────────────────────┬───────────────────────────────────┤
+│  Autonomy Envelope   │  Surface · Path · Command         │
+│  (policy-enforced)   │  Leash — pre-execution gate       │
+├──────────────────────┼───────────────────────────────────┤
+│  Model Router        │  Cost-aware adapter selection     │
+│                      │  Fallback chain + model override  │
+├──────────────────────┼───────────────────────────────────┤
+│  Agent Adapters      │  Claude Code · Codex · any CLI   │
+│                      │  Direct + stub adapters           │
+├──────────────────────┼───────────────────────────────────┤
+│  Safety Leash        │  Pre-execution verification gate  │
+│                      │  Filesystem + secret + command    │
+├──────────────────────┼───────────────────────────────────┤
+│  Persistence         │  Per-run JSONL in ~/.martin/runs/ │
+│                      │  Portfolio inspect + resume       │
+└──────────────────────┴───────────────────────────────────┘
+```
+
+---
+
+## 🛡️ What MartinLoop Enforces Today
+
+**1. Hard budget cap.**
+Every run has a `maxUsd` limit. When the cost reaches that limit the subprocess is terminated — not warned.
+
+**2. Iteration cap.**
+Every run has a `maxIterations` limit. The loop exits when it is hit, regardless of progress.
+
+**3. Filesystem leash.**
+If `allowedPaths` or `deniedPaths` are configured, any attempt that writes outside the envelope is blocked and rolled back before the patch is kept.
+
+**4. Secret leash.**
+Values that look like secrets (API keys, tokens) in the task objective or acceptance criteria are blocked before any attempt runs.
+
+**5. Verifier gate.**
+The loop only marks a run successful if the verifier command exits `0`. A passing verifier is required for a `completed` lifecycle state.
+
+**6. Rollback on failure.**
+When an attempt is discarded (failed verifier, safety violation, patch decision), MartinLoop restores the filesystem to the pre-attempt state using a git-backed snapshot.
+
+**7. Run persistence.**
+Every run is written to `~/.martin/runs/<workspaceId>.jsonl`. Use `martin resume` and `martin inspect` to read it back.
+
+---
+
+## 📦 OSS Packages
+
+| Package | What It Does |
+|---------|-------------|
+| `martin-loop` | Self-contained facade — everything below, vendored and published |
+| `@martin/core` | Runtime controller, leash, router, rollback, policy engine |
+| `@martin/cli` | `martin run` · `inspect` · `resume` CLI commands |
+| `@martin/adapters` | Claude Code, Codex CLI, direct-provider, stub adapters |
+| `@martin/contracts` | Shared types: loop, policy, leash, budget, rollback |
+
+All `@martin/*` packages are workspace-internal. Install `martin-loop` from npm — it bundles them all.
+
+---
+
+## 🔧 Development
+
+**Requirements:** Node 20+ · pnpm 8+
+
+```sh
+# Clone and install
+git clone https://github.com/Keesan12/MartinLoop
+cd martin-loop && pnpm install
+
+# Full test suite
+pnpm test
+
+# Type check all packages
+pnpm -r lint
+
+# Build all packages + public facade
 pnpm build
-pnpm rc:validate
+
+# Publish (after build)
+npm publish
 ```
 
-`pnpm rc:validate` runs the current RC matrix in an isolated temp home or profile so fresh-environment behavior is checked instead of relying on warmed `~/.martin` state. Use `pnpm rc:validate:install` if you also want the validation run to perform a clean `pnpm install --frozen-lockfile` first.
+---
 
-## RC gate commands
+## 🤝 Contributing
 
-The Phase 13 RC gate is intentionally explicit:
+```sh
+git checkout -b feat/your-feature
 
-- `pnpm oss:validate`
-- `pnpm public:smoke`
-- `pnpm repo:smoke`
-- `pnpm rc:validate`
-- `pnpm pilot:prep:validate`
-- `pnpm release:matrix:local`
+# Make changes, then:
+pnpm -r lint && pnpm test   # must stay green
 
-Use `pnpm release:matrix:local` for the current machine’s full local lane. Cross-platform fanout for Windows, macOS, and Linux lives in `.github/workflows/phase13-release-matrix.yml`.
-
-## Public launch target vs current RC path
-
-The CTO memo freezes the intended public package name and install surface for launch planning, and the root package facade now implements that surface inside this repo:
-
-- `npm install martin-loop`
-- `npx martin-loop ...`
-- `import { MartinLoop } from "martin-loop"`
-
-What is still separate from that is registry publication. The current release-candidate workflow remains the repo-local source path shown here: `pnpm install`, `pnpm build`, `pnpm rc:validate`, and `pnpm run:cli -- ...`.
-
-## Safe first run
-
-### PowerShell
-
-```powershell
-$env:MARTIN_LIVE='false'
-pnpm run:cli -- run --objective "Summarize the current Martin runtime" --verify "pnpm --filter @martin/core test"
-Remove-Item Env:MARTIN_LIVE
+git commit -m "feat: describe what you built"
+git push -u origin feat/your-feature
+# Open a PR against main
 ```
 
-### Bash
+Conventional commits: `feat:` · `fix:` · `chore:` · `docs:` · `refactor:` · `test:`
 
-```bash
-MARTIN_LIVE=false pnpm run:cli -- run --objective "Summarize the current Martin runtime" --verify "pnpm --filter @martin/core test"
-```
+---
 
-## More docs
+<div align="center">
 
-- [`docs/oss/README.md`](./docs/oss/README.md)
-- [`docs/oss/QUICKSTART.md`](./docs/oss/QUICKSTART.md)
-- [`docs/oss/EXAMPLES.md`](./docs/oss/EXAMPLES.md)
-- [`docs/oss/RELEASE-SURFACE-REPORT.md`](./docs/oss/RELEASE-SURFACE-REPORT.md)
-- [`docs/pilot/README.md`](./docs/pilot/README.md)
-- [`docs/pilot/PILOT-PREP-REPORT.md`](./docs/pilot/PILOT-PREP-REPORT.md)
+**MIT Licensed** · [martinloop.com](https://martinloop.com) · [keesan@martinloop.com](mailto:keesan@martinloop.com)
 
-## Notes for RC reviewers
+*"AI coding accountability: completes good work · refuses bad work · stops uneconomical work."*
 
-- Treat runtime artifacts, not prose, as the source of truth.
-- Keep exact-versus-estimated accounting labels intact.
-- Do not widen public claims faster than Phase 13 to Phase 15 evidence supports.
+</div>
