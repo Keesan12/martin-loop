@@ -1,0 +1,38 @@
+{
+  "policyProfile": "balanced",
+  "maxUsd": 8,
+  "softLimitUsd": 6,
+  "maxTokens": 80000,
+  "maxIterations": 4,
+  "allowedAdapters": [
+    "agent:claude-cli",
+    "agent:codex-cli",
+    "direct:stub"
+  ],
+  "allowedModels": [
+    "claude-sonnet-4-6",
+    "codex-default",
+    "stub"
+  ],
+  "destructiveActionPolicy": "approval",
+  "approvalRequired": true,
+  "verifierRules": [
+    "pnpm test",
+    "pnpm lint"
+  ],
+  "escalationRoute": "engineering-review",
+  "telemetryDestination": "local-only",
+  "retentionPolicy": "30-days",
+  "provenance": [
+    {
+      "field": "maxUsd",
+      "value": "8",
+      "source": "contracts-test-fixture"
+    },
+    {
+      "field": "destructiveActionPolicy",
+      "value": "approval",
+      "source": "contracts-test-fixture"
+    }
+  ]
+}
