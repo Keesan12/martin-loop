@@ -1,6 +1,6 @@
 <div align="center">
 
-# MartinLoop
+<img src="./docs/assets/martinloop-logo.png" alt="MartinLoop" width="260">
 
 ### A governed runtime for autonomous AI coding agents.
 
