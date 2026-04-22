@@ -19,23 +19,6 @@
 
 ---
 
-## Status
-
-The public package surface is live as `martin-loop` and currently published on npm as version `0.1.2`.
-
-```sh
-npm install martin-loop
-npx martin-loop
-```
-
-```typescript
-import { MartinLoop } from "martin-loop";
-```
-
-This repository is still organized as a dual-track workspace: the OSS runtime and package facade are present, while the hosted control-plane, local dashboard, and benchmark harness remain repo/workspace surfaces rather than the primary npm package API. Older RC docs may still mention that registry publication was a later release step; as of this README pass, the `martin-loop` package is published, but broader release packaging and managed-product surfaces remain gated.
-
----
-
 ## The Problem
 
 A typical autonomous coding loop keeps attempting work until tests pass. Without a governance layer, that loop can keep spending, mutate files outside the intended scope, lose track of why it failed, and leave teams without a clean audit trail.
@@ -47,20 +30,6 @@ MartinLoop calls that failure mode the Ralph Loop: attempt, check, retry, repeat
 - Why was it allowed?
 - Why did it stop?
 - Can we inspect or resume it later?
-
-<div align="center">
-
-| | MartinLoop | Ralph Loop |
-|:---|:---:|:---:|
-| Scenario | Repair Flaky CI Gate | Repair Flaky CI Gate |
-| Outcome | ✅ Verifier passed | ❌ Failed — no verifier |
-| Cost | **$2.30** | ~~$5.20~~ |
-| Attempts | 1 | 4 retries |
-| Audit trail | JSONL record written | None |
-
-*Reproducible: `pnpm --filter @martin/benchmarks eval`*
-
-</div>
 
 ---
 
@@ -90,19 +59,9 @@ The result is a runtime that can complete good work, refuse unsafe work, stop un
 
 ---
 
-## Benchmark And Demo
+## See It In Action
 
-The repo includes deterministic benchmark and demo surfaces under `benchmarks/` and `docs/assets/`. These are useful for review and validation, but the benchmark harness is still a workspace-level RC surface, not a `martin bench` command in the public npm package.
-
-Reproducible local benchmark paths:
-
-```sh
-pnpm --filter @martin/benchmarks test
-pnpm --filter @martin/benchmarks eval
-pnpm --filter @martin/benchmarks eval:phase12
-```
-
-The side-by-side demo uses the current demo scenario numbers for "Repair Flaky CI Gate": MartinLoop completes with verifier-backed success at `$2.30`; the Ralph-style baseline spends `$5.20` and fails.
+Same task, same starting state. MartinLoop completes in one verified attempt at `$2.30`. The uncontrolled loop retries four times, spends `$5.20`, and fails with no audit trail.
 
 <div align="center">
   <img src="./docs/assets/side-by-side.svg" alt="MartinLoop vs Ralph — side-by-side benchmark comparison" width="900">
@@ -112,17 +71,23 @@ The side-by-side demo uses the current demo scenario numbers for "Repair Flaky C
   <img src="./docs/assets/martin-raplph.png.jpg" alt="Martin vs Ralph — governed vs ungoverned agent loop" width="420">
 </div>
 
+Reproducible locally:
+
+```sh
+pnpm --filter @martin/benchmarks test
+pnpm --filter @martin/benchmarks eval
+pnpm --filter @martin/benchmarks eval:phase12
+```
+
 ---
 
 ## Quick Start
-
-### Install from npm
 
 ```sh
 npm install -g martin-loop
 ```
 
-This installs both `martin-loop` and `martin` command aliases.
+This installs both the `martin-loop` package and the `martin` command alias. The package is currently published on npm as version `0.1.2`.
 
 ### Run a governed task
 
@@ -305,6 +270,8 @@ pnpm rc:validate
 pnpm pilot:prep:validate
 pnpm release:matrix:local
 ```
+
+The repository is organized as a dual-track workspace: the OSS runtime and package facade are present and published, while the hosted control-plane, local dashboard, and benchmark harness remain repo/workspace surfaces rather than the primary npm package API.
 
 Helpful docs:
 
