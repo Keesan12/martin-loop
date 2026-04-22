@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MartinLoop — CLI Demo Scenarios</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,700;1,9..144,700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --cream:#f8f5ed;--paper:#fffdf8;--border:#e2d9cc;
+  --ink:#18181b;--ink-2:#52525b;--ink-3:#a1a1aa;
+  --purple:#5b50d6;--navy:#1a1a2e;
+  --green:#15803d;--red:#b91c1c;
+  --font-d:'Fraunces',serif;--font-m:'JetBrains Mono',monospace;
+}
+body{font-family:-apple-system,sans-serif;background:var(--cream);color:var(--ink);padding:40px 24px;}
+.wrap{max-width:1060px;margin:0 auto;display:flex;flex-direction:column;gap:64px;}
+.logo{font-family:var(--font-d);font-size:1.6rem;font-weight:700;letter-spacing:-0.05em;}
+.logo span{color:var(--purple);}
+.logo sub{font-family:var(--font-m);font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);vertical-align:middle;margin-left:8px;}
+.eyebrow{font-family:var(--font-m);font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--purple);margin-bottom:10px;display:block;}
+.scenario-title{font-family:var(--font-d);font-size:clamp(1.8rem,3vw,2.6rem);font-weight:700;color:var(--ink);letter-spacing:-0.04em;margin-bottom:8px;}
+.scenario-sub{font-size:14px;color:var(--ink-2);line-height:1.65;max-width:520px;margin-bottom:24px;}
+.compare{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+.terminal-wrap{border-radius:16px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.12);}
+.terminal-bar{background:#1e2030;padding:11px 16px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #2a2d40;}
+.dot{width:11px;height:11px;border-radius:50%;}
+.dot-r{background:#ff5f57;}.dot-y{background:#ffbd2e;}.dot-g{background:#28c840;}
+.t-title{flex:1;text-align:center;font-family:var(--font-m);font-size:11px;color:#4a4d62;}
+.terminal-body{background:#0d1117;padding:20px 22px;font-family:var(--font-m);font-size:12.5px;line-height:1.75;overflow:hidden;}
+.line{display:block;white-space:pre;}
+.cp{color:#4a4d62;}.cc{color:#f0f0f5;}.ca{color:#7c72f0;}
+.cok{color:#28ca41;}.ce{color:#f87171;}.cw{color:#fbbf24;}.cd{color:#8b8fa8;}
+.cj{color:#79c0ff;}.cjk{color:#bc8cff;}.cjv{color:#a5d6ff;}.cjn{color:#f0f0f5;}
+.outcome{display:flex;align-items:flex-start;gap:12px;padding:16px 20px;border-radius:12px;margin-top:14px;}
+.outcome.pass{background:#dcfce7;border:1px solid #86efac;}
+.outcome.fail{background:#fee2e2;border:1px solid #fca5a5;}
+.outcome.warn{background:#fef3c7;border:1px solid #fde68a;}
+.outcome-icon{font-size:18px;flex-shrink:0;margin-top:1px;}
+.outcome-label{font-size:13px;font-weight:700;color:var(--ink);margin-bottom:2px;}
+.outcome-detail{font-size:12px;color:var(--ink-2);line-height:1.5;}
+.verdict{background:var(--navy);border-radius:16px;padding:20px 24px;display:flex;gap:32px;align-items:center;margin-top:6px;}
+.verdict-stat{text-align:center;}
+.verdict-num{font-family:var(--font-d);font-size:1.8rem;font-weight:700;letter-spacing:-0.04em;}
+.verdict-num.green{color:#28ca41;}.verdict-num.red{color:#f87171;}
+.verdict-label{font-family:var(--font-m);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:#4a4d62;margin-top:2px;}
+.verdict-div{width:1px;height:40px;background:#1e2030;}
+.verdict-note{font-size:12.5px;color:#8b8fa8;line-height:1.6;max-width:400px;}
+.verdict-note strong{color:#f0f0f5;}
+.verdict-note code{font-family:var(--font-m);font-size:11px;}
+.scenario-num{display:inline-flex;align-items:center;gap:8px;background:var(--purple);color:#fff;font-family:var(--font-m);font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:6px 14px;border-radius:999px;margin-bottom:16px;}
+hr.divider{border:none;border-top:1px solid var(--border);}
+.col-label{font-family:var(--font-m);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- HEADER -->
+<div>
+  <div class="logo">Martin<span>Loop</span> <sub>CLI Demo Scenarios</sub></div>
+  <p style="font-size:13px;color:var(--ink-3);margin-top:6px;">3 real scenarios. What the CLI actually outputs.</p>
+</div>
+
+<!-- SCENARIO 1: BUDGET ENFORCEMENT -->
+<div id="s1">
+  <div class="scenario-num">Scenario 01</div>
+  <span class="eyebrow">Hard Stop, Not a Warning</span>
+  <div class="scenario-title">The Budget Blowout</div>
+  <div class="scenario-sub">Without a budget cap, an AI agent retries on failure and burns money with no ceiling. With MartinLoop, budget governance rejects attempts that would exceed the configured cap and exits with a structured reason.</div>
+
+  <div class="compare">
+    <div>
+      <div class="col-label" style="color:var(--red);">Without MartinLoop (Ralph)</div>
+      <div class="terminal-wrap">
+        <div class="terminal-bar"><div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div><div class="t-title">ralph — no governance</div></div>
+        <div class="terminal-body">
+<span class="line"><span class="cp">$ </span><span class="cc">ralph run "refactor auth module"</span></span>
+<span class="line"><span class="cd">  ⟳ Attempt 1... failed</span></span>
+<span class="line"><span class="cd">  ⟳ Attempt 2... failed</span></span>
+<span class="line"><span class="cd">  ⟳ Attempt 3... failed</span></span>
+<span class="line"><span class="ce">  ✗ Attempt 4... unsafe outcome</span></span>
+<span class="line"> </span>
+<span class="line"><span class="cd">Total: </span><span class="ce">$3.07</span><span class="cd"> — no cap, no rollback, no receipt</span></span>
+        </div>
+      </div>
+      <div class="outcome fail" style="margin-top:14px;">
+        <div class="outcome-icon">💸</div>
+        <div><div class="outcome-label">Loop ran uncontrolled</div><div class="outcome-detail">4 retries. $3.07 spent. Unsafe outcome. No audit trail.</div></div>
+      </div>
+    </div>
+    <div>
+      <div class="col-label" style="color:var(--green);">With MartinLoop</div>
+      <div class="terminal-wrap">
+        <div class="terminal-bar"><div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div><div class="t-title">martin — governed</div></div>
+        <div class="terminal-body">
+<span class="line"><span class="cp">$ </span><span class="cc">martin run "refactor auth module" \</span></span>
+<span class="line"><span class="cc">    --budget 2.00 --verify "pnpm test"</span></span>
+<span class="line"> </span>
+<span class="line"><span class="cj">{</span></span>
+<span class="line"><span class="cjk">  "decision"</span><span class="cj">: {</span></span>
+<span class="line"><span class="cjk">    "lifecycleState"</span><span class="cj">: </span><span class="cok">"completed"</span><span class="cj">,</span></span>
+<span class="line"><span class="cjk">    "status"</span><span class="cj">: </span><span class="cok">"completed"</span><span class="cj">,</span></span>
+<span class="line"><span class="cjk">    "reason"</span><span class="cj">: </span><span class="cjv">"Martin verified the fix"</span></span>
+<span class="line"><span class="cj">  },</span></span>
+<span class="line"><span class="cjk">  "loop"</span><span class="cj">: {</span></span>
+<span class="line"><span class="cjk">    "cost"</span><span class="cj">: {</span></span>
+<span class="line"><span class="cjk">      "actualUsd"</span><span class="cj">: </span><span class="cjn">1.19</span><span class="cj">,</span></span>
+<span class="line"><span class="cjk">      "tokensIn"</span><span class="cj">: </span><span class="cjn">89432</span></span>
+<span class="line"><span class="cj">    },</span></span>
+<span class="line"><span class="cjk">    "attempts"</span><span class="cj">: [{</span></span>
+<span class="line"><span class="cjk">      "index"</span><span class="cj">: </span><span class="cjn">1</span><span class="cj">,</span></span>
+<span class="line"><span class="cjk">      "summary"</span><span class="cj">: </span><span class="cjv">"All 24 tests pass."</span></span>
+<span class="line"><span class="cj">    }]</span></span>
+<span class="line"><span class="cj">  }</span></span>
+<span class="line"><span class="cj">}</span></span>
+        </div>
+      </div>
+      <div class="outcome pass" style="margin-top:14px;">
+        <div class="outcome-icon">✓</div>
+        <div><div class="outcome-label">Completed in 1 attempt</div><div class="outcome-detail">$1.19 spent. Loop exited with lifecycleState: "completed". Run record saved to ~/.martin/runs/.</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="verdict">
+    <div class="verdict-stat"><div class="verdict-num green">$1.19</div><div class="verdict-label">Martin cost</div></div>
+    <div class="verdict-div"></div>
+    <div class="verdict-stat"><div class="verdict-num red">$3.07</div><div class="verdict-label">Ralph cost</div></div>
+    <div class="verdict-div"></div>
+    <div class="verdict-stat"><div class="verdict-num green">0</div><div class="verdict-label">Unsafe outcomes</div></div>
+    <div class="verdict-div"></div>
+    <div class="verdict-note"><strong>Budget-bounded execution.</strong> The <code>--budget</code> flag sets the run's cost ceiling, and <code>lifecycleState</code> in the JSON tells you exactly why the loop stopped.</div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- SCENARIO 2: VERIFIER GATE -->
+<div id="s2">
+  <div class="scenario-num">Scenario 02</div>
+  <span class="eyebrow">The Verifier Gate</span>
+  <div class="scenario-title">The Silent Failure</div>
+  <div class="scenario-sub">The agent says the task is done. Tests are still failing. Without a verifier, you ship broken code. MartinLoop runs your actual test command and only exits success when it passes.</div>
+
+  <div class="compare">
+    <div>
+      <div class="col-label" style="color:var(--red);">Without verifier</div>
+      <div class="terminal-wrap">
+        <div class="terminal-bar"><div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div><div class="t-title">no --verify flag</div></div>
+        <div class="terminal-body">
+<span class="line"><span class="cp">$ </span><span class="cc">ralph run "add rate limiting to API"</span></span>
+<span class="line"><span class="cd">  ⟳ Running...</span></span>
+<span class="line"><span class="cok">  ✓ Task completed</span></span>
+<span class="line"><span class="cok">  ✓ Model reports: implementation correct</span></span>
+<span class="line"> </span>
+<span class="line"><span class="cd">Tests run: </span><span class="ce">none</span></span>
+<span class="line"><span class="cd">Verification: </span><span class="ce">model's word only</span></span>
+<span class="line"> </span>
+<span class="line"><span class="ce">[ CI fails 3 hours later ]</span></span>
+<span class="line"><span class="ce">[ Team reverts. Day lost. ]</span></span>
+        </div>
+      </div>
+      <div class="outcome fail" style="margin-top:14px;">
+        <div class="outcome-icon">🚨</div>
+        <div><div class="outcome-label">Hallucinated completion</div><div class="outcome-detail">The AI said it worked. No verifier ran. Broken code shipped to CI.</div></div>
+      </div>
+    </div>
+    <div>
+      <div class="col-label" style="color:var(--green);">With --verify flag</div>
+      <div class="terminal-wrap">
+        <div class="terminal-bar"><div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div><div class="t-title">martin — verifier armed</div></div>
+        <div class="terminal-body">
+<span class="line"><span class="cp">$ </span><span class="cc">martin run "add rate limiting to API" \</span></span>
+<span class="line"><span class="cc">    --budget 2.00 --verify "pnpm test"</span></span>
+<span class="line"> </span>
+<span class="line"><span class="cj">{</span></span>
+<span class="line"><span class="cjk">  "decision"</span><span class="cj">: {</span></span>
+<span class="line"><span class="cjk">    "lifecycleState"</span><span class="cj">: </span><span class="cjv">"diminishing_returns"</span><span class="cj">,</span></span>
+<span class="line"><span class="cjk">    "status"</span><span class="cj">: </span><span class="cjv">"exited"</span><span class="cj">,</span></span>
+<span class="line"><span class="cjk">    "reason"</span><span class="cj">: </span><span class="cjv">"verification_failure repeated"</span></span>
+<span class="line"><span class="cj">  },</span></span>
+<span class="line"><span class="cjk">  "loop"</span><span class="cj">: {</span></span>
+<span class="line"><span class="cjk">    "attempts"</span><span class="cj">: [{</span></span>
+<span class="line"><span class="cjk">      "failureClass"</span><span class="cj">: </span><span class="ce">"verification_failure"</span><span class="cj">,</span></span>
+<span class="line"><span class="cjk">      "summary"</span><span class="cj">: </span><span class="cjv">"pnpm test: 2 failing"</span></span>
+<span class="line"><span class="cj">    }],</span></span>
+<span class="line"><span class="cjk">    "cost"</span><span class="cj">: { </span><span class="cjk">"actualUsd"</span><span class="cj">: </span><span class="cjn">0.43</span><span class="cj"> }</span></span>
+<span class="line"><span class="cj">  }</span></span>
+<span class="line"><span class="cj">}</span></span>
+        </div>
+      </div>
+      <div class="outcome warn" style="margin-top:14px;">
+        <div class="outcome-icon">⚠️</div>
+        <div><div class="outcome-label">Verifier caught it — flagged before merge</div><div class="outcome-detail">failureClass: "verification_failure". Tests ran. Loop exited clean. No broken code written.</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="verdict">
+    <div class="verdict-stat"><div class="verdict-num green">"exited"</div><div class="verdict-label">Martin status</div></div>
+    <div class="verdict-div"></div>
+    <div class="verdict-stat"><div class="verdict-num red">"done"</div><div class="verdict-label">Ralph's claim</div></div>
+    <div class="verdict-div"></div>
+    <div class="verdict-note"><strong>The AI cannot grade its own work.</strong> MartinLoop runs your actual test command. The <code>failureClass</code> field tells you exactly what went wrong. <code>lifecycleState</code> tells you why the loop stopped.</div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- SCENARIO 3: OVERNIGHT / INSPECT -->
+<div id="s3">
+  <div class="scenario-num">Scenario 03</div>
+  <span class="eyebrow">The One That Keeps Engineers Awake</span>
+  <div class="scenario-title">The Overnight CI Trigger</div>
+  <div class="scenario-sub">Your CI triggers an agent at midnight. Without a cap it retries all night. With MartinLoop, it stops at your limit, persists the record, and you can inspect or resume it in the morning.</div>
+
+  <div class="compare">
+    <div>
+      <div class="col-label" style="color:var(--red);">Without governance — 6am discovery</div>
+      <div class="terminal-wrap">
+        <div class="terminal-bar"><div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div><div class="t-title">CI log — 00:14 → 05:47</div></div>
+        <div class="terminal-body">
+<span class="line"><span class="cd">00:14  </span><span class="cc">ralph run "migrate db schema v2→v3"</span></span>
+<span class="line"><span class="cd">00:19  ✗ failed — retrying (1/∞)</span></span>
+<span class="line"><span class="cd">01:04  ✗ failed — retrying (2/∞)</span></span>
+<span class="line"><span class="cd">02:18  ✗ failed — retrying (3/∞)</span></span>
+<span class="line"><span class="cd">03:55  ✗ failed — retrying (4/∞)</span></span>
+<span class="line"><span class="cd">05:47  ✗ API limit reached. Stopping.</span></span>
+<span class="line"> </span>
+<span class="line"><span class="ce">Cost:          untracked</span></span>
+<span class="line"><span class="ce">Files changed:  unknown</span></span>
+<span class="line"><span class="ce">Run record:    none</span></span>
+        </div>
+      </div>
+      <div class="outcome fail" style="margin-top:14px;">
+        <div class="outcome-icon">🕒</div>
+        <div><div class="outcome-label">5h 33m. Unknown cost. No record.</div><div class="outcome-detail">Engineer wakes to chaos. No way to see what happened or how much was spent.</div></div>
+      </div>
+    </div>
+    <div>
+      <div class="col-label" style="color:var(--green);">With MartinLoop — clean stop, full record</div>
+      <div class="terminal-wrap">
+        <div class="terminal-bar"><div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div><div class="t-title">martin — 00:14 → 00:23</div></div>
+        <div class="terminal-body">
+<span class="line"><span class="cp">$ </span><span class="cc">martin run "migrate db schema v2→v3" \</span></span>
+<span class="line"><span class="cc">    --budget 3.00 --max-iterations 2 \</span></span>
+<span class="line"><span class="cc">    --verify "pnpm test"</span></span>
+<span class="line"> </span>
+<span class="line"><span class="cj">{</span></span>
+<span class="line"><span class="cjk">  "decision"</span><span class="cj">: {</span></span>
+<span class="line"><span class="cjk">    "lifecycleState"</span><span class="cj">: </span><span class="cjv">"diminishing_returns"</span><span class="cj">,</span></span>
+<span class="line"><span class="cjk">    "status"</span><span class="cj">: </span><span class="cjv">"exited"</span></span>
+<span class="line"><span class="cj">  },</span></span>
+<span class="line"><span class="cjk">  "loop"</span><span class="cj">: {</span></span>
+<span class="line"><span class="cjk">    "loopId"</span><span class="cj">: </span><span class="cjv">"loop_a7f2b9"</span><span class="cj">,</span></span>
+<span class="line"><span class="cjk">    "cost"</span><span class="cj">: { </span><span class="cjk">"actualUsd"</span><span class="cj">: </span><span class="cjn">1.43</span><span class="cj"> }</span></span>
+<span class="line"><span class="cj">  }</span></span>
+<span class="line"><span class="cj">}</span></span>
+<span class="line"> </span>
+<span class="line"><span class="cd"># Morning: inspect all overnight runs</span></span>
+<span class="line"><span class="cp">$ </span><span class="cc">martin inspect --file ~/.martin/runs/ws_default.jsonl</span></span>
+<span class="line"><span class="cj">{ </span><span class="cjk">"summary"</span><span class="cj">: { </span><span class="cjk">"totalActualUsd"</span><span class="cj">: </span><span class="cjn">1.43</span><span class="cj">, </span><span class="cjk">"failuresCaught"</span><span class="cj">: </span><span class="cjn">2</span><span class="cj"> } }</span></span>
+<span class="line"> </span>
+<span class="line"><span class="cd"># Or resume it</span></span>
+<span class="line"><span class="cp">$ </span><span class="cc">martin resume loop_a7f2b9</span></span>
+        </div>
+      </div>
+      <div class="outcome pass" style="margin-top:14px;">
+        <div class="outcome-icon">✓</div>
+        <div><div class="outcome-label">Stopped in 9 minutes. $1.43. Full record.</div><div class="outcome-detail">loopId persisted to ~/.martin/runs/. Inspect or resume from where it stopped.</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="verdict">
+    <div class="verdict-stat"><div class="verdict-num green">9 min</div><div class="verdict-label">Martin runtime</div></div>
+    <div class="verdict-div"></div>
+    <div class="verdict-stat"><div class="verdict-num red">5h 33m</div><div class="verdict-label">Ralph runtime</div></div>
+    <div class="verdict-div"></div>
+    <div class="verdict-stat"><div class="verdict-num green">$1.43</div><div class="verdict-label">Martin cost</div></div>
+    <div class="verdict-div"></div>
+    <div class="verdict-note"><strong>The hard stop is the whole point.</strong> <code>--max-iterations</code> caps attempts. <code>loopId</code> is always returned so you can resume or inspect later. Run record is at <code>~/.martin/runs/&lt;workspaceId&gt;.jsonl</code>.</div>
+  </div>
+</div>
+
+<!-- FOOTER -->
+<div style="background:var(--navy);border-radius:16px;padding:24px 32px;display:flex;justify-content:space-between;align-items:center;">
+  <div>
+    <div style="font-family:var(--font-d);font-size:1.4rem;font-weight:700;color:#fff;letter-spacing:-0.03em;">Try it yourself.</div>
+    <div style="font-family:var(--font-m);font-size:12px;color:#4a4d62;margin-top:6px;">npm install -g martin-loop &nbsp;→&nbsp; martin run "your task" --budget 2.00 --verify "pnpm test"</div>
+  </div>
+  <div style="font-family:var(--font-m);font-size:11px;color:#4a4d62;text-align:right;">Commands: martin run · inspect · resume<br>Run record: ~/.martin/runs/&lt;workspaceId&gt;.jsonl</div>
+</div>
+
+</div>
+</body>
+</html>

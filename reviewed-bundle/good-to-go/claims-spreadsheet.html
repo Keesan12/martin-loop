@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MartinLoop - Claims Register</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#fff;color:#1a1a2e}
+header{background:#5b50d6;color:white;padding:34px 44px}
+h1{font-size:28px;letter-spacing:-.04em;margin-bottom:6px}
+header p{color:#e4e0ff;font-size:14px}
+.container{max-width:1180px;margin:0 auto;padding:34px 44px}
+.summary{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:28px}
+.stat{border:1px solid #e5e7eb;border-radius:12px;padding:18px;background:#fbfaf7}
+.num{font-size:30px;font-weight:850;color:#15803d;letter-spacing:-.04em}.label{font-size:12px;color:#6b7280;margin-top:4px}
+.note{background:#ede9ff;border:1px solid #d8ccff;border-radius:12px;padding:16px 18px;color:#3d348b;font-size:13px;line-height:1.6;margin-bottom:24px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{background:#f3f4f6;color:#6b7280;text-transform:uppercase;letter-spacing:.06em;font-size:11px;text-align:left;padding:11px 12px;border-bottom:2px solid #e5e7eb}
+td{padding:13px 12px;border-bottom:1px solid #f0f1f3;vertical-align:top;line-height:1.5}
+td:first-child{font-weight:750;color:#111827}
+.badge{display:inline-block;border-radius:999px;padding:4px 9px;font-size:11px;font-weight:800;white-space:nowrap}
+.yes{background:#dcfce7;color:#15803d}.care{background:#fef3c7;color:#92400e}.no{background:#fee2e2;color:#991b1b}
+code{font-family:"SF Mono","Cascadia Code",Consolas,monospace;background:#ede9ff;color:#4c3fb8;padding:1px 5px;border-radius:4px;font-size:12px}
+@media(max-width:850px){.summary{grid-template-columns:1fr 1fr}.container,header{padding-left:22px;padding-right:22px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>MartinLoop Claims Register</h1>
+  <p>Reviewed against the current `martin-loop` repository and npm package 0.1.2.</p>
+</header>
+<main class="container">
+  <section class="summary" aria-label="Claim summary">
+    <div class="stat"><div class="num">8</div><div class="label">Cleared claims</div></div>
+    <div class="stat"><div class="num" style="color:#92400e">4</div><div class="label">Use with care</div></div>
+    <div class="stat"><div class="num" style="color:#991b1b">8</div><div class="label">Do not use</div></div>
+    <div class="stat"><div class="num">0.1.2</div><div class="label">Current npm version</div></div>
+  </section>
+
+  <div class="note">
+    This register is deliberately conservative. Cleared claims must map to code, package metadata, repo docs, or commands that currently exist. Do not use legacy signed-receipt, old benchmark-total, or certification language until the repository actually ships those surfaces.
+  </div>
+
+  <table>
+    <thead>
+      <tr><th>Claim</th><th>Status</th><th>Evidence</th><th>Approved wording</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Public package is available as `martin-loop`</td>
+        <td><span class="badge yes">cleared</span></td>
+        <td><code>npm view martin-loop version</code>, root `package.json`</td>
+        <td>`martin-loop` is published on npm and exposes the `martin-loop` and `martin` CLI aliases.</td>
+      </tr>
+      <tr>
+        <td>SDK import surface</td>
+        <td><span class="badge yes">cleared</span></td>
+        <td><code>pnpm public:smoke</code>, root package facade</td>
+        <td>Use `import { MartinLoop } from "martin-loop"` for the public SDK facade.</td>
+      </tr>
+      <tr>
+        <td>Current public CLI commands</td>
+        <td><span class="badge yes">cleared</span></td>
+        <td><code>packages/cli/src/index.ts</code></td>
+        <td>The public CLI supports `run`, `inspect`, and `resume`; `bench` redirects to the workspace benchmark harness.</td>
+      </tr>
+      <tr>
+        <td>Policy-as-code config</td>
+        <td><span class="badge yes">cleared</span></td>
+        <td><code>martin.config.example.yaml</code>, CLI config loader</td>
+        <td>MartinLoop reads governance defaults from `martin.config.yaml`; CLI flags override config values.</td>
+      </tr>
+      <tr>
+        <td>Budget governance</td>
+        <td><span class="badge yes">cleared</span></td>
+        <td><code>runMartin</code>, policy tests, CLI tests</td>
+        <td>MartinLoop enforces budget, token, and iteration constraints through preflight and lifecycle exits.</td>
+      </tr>
+      <tr>
+        <td>Failure taxonomy</td>
+        <td><span class="badge yes">cleared</span></td>
+        <td><code>packages/contracts/src/index.ts</code></td>
+        <td>The current contracts expose 11 failure classes for runtime classification.</td>
+      </tr>
+      <tr>
+        <td>Run records</td>
+        <td><span class="badge yes">cleared</span></td>
+        <td>CLI persistence path and inspect command</td>
+        <td>The CLI appends JSONL loop records under `~/.martin/runs/` and `martin inspect` summarizes them.</td>
+      </tr>
+      <tr>
+        <td>Rollback evidence</td>
+        <td><span class="badge yes">cleared</span></td>
+        <td>Core rollback tests and persistence artifacts</td>
+        <td>Repo-backed runs can capture rollback boundaries and restore outcomes for discarded attempts.</td>
+      </tr>
+
+      <tr>
+        <td>Comparative benchmark superiority</td>
+        <td><span class="badge care">use with care</span></td>
+        <td>Workspace benchmark harness</td>
+        <td>Say the repo includes deterministic benchmark and certification harnesses. Avoid fixed public cost totals unless regenerated from current evidence.</td>
+      </tr>
+      <tr>
+        <td>Provider support</td>
+        <td><span class="badge care">use with care</span></td>
+        <td>Provider-path report code</td>
+        <td>Claude CLI and Codex CLI are supported RC paths; direct and routed HTTP contracts are present but not live-provider surfaces in RC.</td>
+      </tr>
+      <tr>
+        <td>Hosted control plane</td>
+        <td><span class="badge care">use with care</span></td>
+        <td>OSS boundary report</td>
+        <td>The control plane exists in the repo but remains outside the initial public npm package surface.</td>
+      </tr>
+      <tr>
+        <td>Benchmark harness availability</td>
+        <td><span class="badge care">use with care</span></td>
+        <td><code>benchmarks/package.json</code></td>
+        <td>The benchmark harness is workspace-level RC tooling under `benchmarks/`, not a public CLI command.</td>
+      </tr>
+
+      <tr>
+        <td>Legacy fixed cost totals</td>
+        <td><span class="badge no">do not use</span></td>
+        <td>No current release-surface evidence</td>
+        <td>Do not use old per-task or per-batch totals in public materials.</td>
+      </tr>
+      <tr>
+        <td>Legacy adversarial gate count</td>
+        <td><span class="badge no">do not use</span></td>
+        <td>Current contracts differ</td>
+        <td>Use current failure taxonomy and test results instead of old gate-count language.</td>
+      </tr>
+      <tr>
+        <td>Signed receipt or cryptographic audit claim</td>
+        <td><span class="badge no">do not use</span></td>
+        <td>No current public implementation in package surface</td>
+        <td>Say JSONL records and persisted artifacts, not signed receipts.</td>
+      </tr>
+      <tr>
+        <td>External review or certification language</td>
+        <td><span class="badge no">do not use</span></td>
+        <td>No completed third-party audit report in repo</td>
+        <td>Do not use until an external audit or certification is complete and available.</td>
+      </tr>
+      <tr>
+        <td>Unsupported CLI commands</td>
+        <td><span class="badge no">do not use</span></td>
+        <td>CLI parser</td>
+        <td>Do not advertise unshipped helper commands as current public CLI commands.</td>
+      </tr>
+      <tr>
+        <td>Legacy policy filename</td>
+        <td><span class="badge no">do not use</span></td>
+        <td>Current CLI config loader</td>
+        <td>Use `martin.config.yaml`, not the old policy filename.</td>
+      </tr>
+      <tr>
+        <td>Non-workspace benchmark command</td>
+        <td><span class="badge no">do not use</span></td>
+        <td>Current package scripts</td>
+        <td>Use `pnpm` workspace commands, not old reproduction commands.</td>
+      </tr>
+      <tr>
+        <td>Hard subprocess-kill marketing wording</td>
+        <td><span class="badge no">do not use</span></td>
+        <td>Current runtime behavior is more specific</td>
+        <td>Use budget governance, budget preflight, and lifecycle-exit wording.</td>
+      </tr>
+    </tbody>
+  </table>
+</main>
+</body>
+</html>

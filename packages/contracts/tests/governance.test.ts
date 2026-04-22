@@ -57,6 +57,6 @@ describe("createGovernanceSnapshot", () => {
 function loadGovernanceFixture(): GovernanceSnapshot {
   const currentFile = fileURLToPath(import.meta.url);
   const currentDir = dirname(currentFile);
-  const fixturePath = resolve(currentDir, "../../../demo/seeded-workspace/governance-policy.json");
+  const fixturePath = resolve(currentDir, "./fixtures/governance-policy.json");
   return JSON.parse(readFileSync(fixturePath, "utf8")) as GovernanceSnapshot;
 }

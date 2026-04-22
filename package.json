@@ -4,6 +4,7 @@
   "version": "0.1.2",
   "type": "module",
   "description": "Martin Loop dual-track monorepo for the OSS runtime and hosted SaaS control plane.",
+  "license": "MIT",
   "packageManager": "pnpm@10.17.1",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

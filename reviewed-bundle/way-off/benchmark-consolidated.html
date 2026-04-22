@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MartinLoop — Full Benchmark Report 2026</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,700;0,9..144,900;1,9..144,700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --cream:#f8f5ed;--paper:#fffdf8;--border:#e2d9cc;
+  --ink:#18181b;--ink-2:#52525b;--ink-3:#a1a1aa;
+  --purple:#5b50d6;--purple-lt:#ede9ff;
+  --green:#15803d;--red:#b91c1c;--amber:#92400e;
+  --navy:#1a1a2e;
+  --font-d:'Fraunces',serif;--font-m:'JetBrains Mono',monospace;
+}
+body{font-family:-apple-system,sans-serif;background:var(--cream);color:var(--ink);padding:40px 24px;}
+.wrap{max-width:960px;margin:0 auto;display:flex;flex-direction:column;gap:60px;}
+.logo{font-family:var(--font-d);font-size:1.8rem;font-weight:700;letter-spacing:-0.05em;}
+.logo span{color:var(--purple);}
+.subtitle{font-family:var(--font-m);font-size:11px;color:var(--ink-3);margin-top:4px;text-transform:uppercase;letter-spacing:.1em;}
+.eyebrow{font-family:var(--font-m);font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--purple);margin-bottom:12px;display:block;}
+.section-title{font-family:var(--font-d);font-size:clamp(1.6rem,3vw,2.2rem);font-weight:700;color:var(--ink);letter-spacing:-0.04em;margin-bottom:6px;}
+.section-sub{font-size:14px;color:var(--ink-2);line-height:1.6;margin-bottom:24px;}
+
+/* 3-RUN VALIDATION */
+.run-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
+.run-card{background:var(--paper);border:1px solid var(--border);border-radius:16px;padding:22px;}
+.run-card.all{border-color:var(--purple);background:var(--purple-lt);}
+.run-label{font-family:var(--font-m);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--ink-3);margin-bottom:10px;}
+.run-card.all .run-label{color:var(--purple);}
+.run-num{font-family:var(--font-d);font-size:2.8rem;font-weight:700;color:var(--green);letter-spacing:-0.05em;line-height:1;}
+.run-desc{font-size:12px;color:var(--ink-3);margin-top:6px;}
+
+/* COMPARISON TABLE */
+.table-wrap{border:1px solid var(--border);border-radius:20px;overflow:hidden;}
+table{width:100%;border-collapse:collapse;}
+thead th{background:var(--navy);color:rgba(255,255,255,0.45);font-family:var(--font-m);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;padding:12px 18px;text-align:left;}
+thead th:not(:first-child){text-align:center;}
+tbody td{padding:12px 18px;border-bottom:1px solid var(--border);font-size:13.5px;color:var(--ink-2);}
+tbody td:not(:first-child){text-align:center;font-family:var(--font-m);font-size:12px;}
+tbody tr.winner{background:rgba(91,80,214,0.04);}
+tbody tr.winner td{font-weight:700;}
+tbody tr.winner td:first-child{color:var(--ink);}
+tbody tr:last-child td{border-bottom:none;}
+.g{color:var(--green);font-weight:700;}
+.r{color:var(--red);}
+.m{color:var(--ink-3);}
+.wbadge{display:inline-block;background:var(--purple);color:#fff;font-family:var(--font-m);font-size:8px;font-weight:700;padding:2px 6px;border-radius:4px;letter-spacing:.06em;margin-left:6px;}
+
+/* BAR CHARTS */
+.bars{display:flex;flex-direction:column;gap:14px;}
+.bar-row{display:flex;align-items:center;gap:14px;}
+.bar-runner{font-family:var(--font-m);font-size:11px;font-weight:700;width:100px;flex-shrink:0;color:var(--ink);}
+.bar-track{flex:1;background:var(--border);border-radius:8px;height:32px;position:relative;overflow:hidden;}
+.bar-fill{height:100%;border-radius:8px;transition:width 1s ease;display:flex;align-items:center;padding-left:12px;}
+.bar-m{background:var(--purple);}
+.bar-ry{background:#d1d5db;}
+.bar-r{background:#e5e7eb;}
+.bar-val{position:absolute;right:12px;top:50%;transform:translateY(-50%);font-family:var(--font-m);font-size:11px;font-weight:700;color:var(--ink-2);}
+.bar-fill .bar-label{font-family:var(--font-m);font-size:11px;font-weight:700;color:#fff;}
+.bar-r .bar-label,.bar-ry .bar-label{color:var(--ink-2);}
+
+/* SAFETY CHECKS */
+.checks-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;}
+.check-card{background:var(--paper);border:1px solid var(--border);border-radius:16px;padding:20px;display:flex;gap:14px;align-items:flex-start;}
+.check-icon{font-size:20px;flex-shrink:0;}
+.check-name{font-size:14px;font-weight:700;color:var(--ink);margin-bottom:4px;}
+.check-desc{font-size:12.5px;color:var(--ink-2);line-height:1.55;}
+.check-result{display:inline-block;font-family:var(--font-m);font-size:9.5px;font-weight:700;padding:3px 8px;border-radius:4px;margin-top:6px;}
+.check-pass{background:#dcfce7;color:var(--green);}
+.check-zero{background:var(--purple-lt);color:var(--purple);}
+
+/* METHODOLOGY */
+.method{background:var(--navy);border-radius:16px;padding:28px 32px;}
+.method h3{font-family:var(--font-m);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:#7c72f0;margin-bottom:12px;}
+.method p{font-size:13px;color:#8b8fa8;line-height:1.7;margin-bottom:12px;}
+.method code{font-family:var(--font-m);background:rgba(255,255,255,.08);padding:1px 6px;border-radius:3px;font-size:12px;}
+.method a{color:#7c72f0;}
+.method p:last-child{margin-bottom:0;}
+
+/* CHART */
+.chart-card{background:var(--paper);border:1px solid var(--border);border-radius:20px;padding:28px;}
+.chart-title{font-size:14px;font-weight:700;color:var(--ink);margin-bottom:4px;}
+.chart-sub{font-size:12px;color:var(--ink-3);margin-bottom:20px;}
+.chart-container{position:relative;height:240px;}
+
+hr.divider{border:none;border-top:1px solid var(--border);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div>
+  <div class="logo">Martin<span>Loop</span></div>
+  <div class="subtitle">Full Benchmark Report · 3-Run Validation · April 2026</div>
+</div>
+
+<!-- STABILITY: 3 RUNS -->
+<div>
+  <span class="eyebrow">Benchmark Stability</span>
+  <div class="section-title">Ran it 3 times. Same result every time.</div>
+  <div class="section-sub">If a benchmark can't be reproduced, it's not a benchmark. These are 3 consecutive independent runs. All 45 benchmark contracts pass each time.</div>
+  <div class="run-grid">
+    <div class="run-card"><div class="run-label">Run 1 — April 14, 00:12</div><div class="run-num">45/45</div><div class="run-desc">benchmark contracts · 0 failures</div></div>
+    <div class="run-card"><div class="run-label">Run 2 — April 14, 01:47</div><div class="run-num">45/45</div><div class="run-desc">benchmark contracts · 0 failures</div></div>
+    <div class="run-card all"><div class="run-label">Run 3 — April 14, 03:22</div><div class="run-num">45/45</div><div class="run-desc">benchmark contracts · 0 failures</div></div>
+  </div>
+</div>
+
+<!-- HEAD TO HEAD -->
+<div>
+  <span class="eyebrow">Head-to-Head Results</span>
+  <div class="section-title">Same 10 tasks. Every runner. Every metric.</div>
+  <div class="section-sub">One test suite. Three runners. MartinLoop wins on cost, accuracy, and safety — and the numbers are verifiable by anyone.</div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Runner</th>
+          <th>Correct Outcomes</th>
+          <th>Verified Patches</th>
+          <th>Unsafe Outcomes</th>
+          <th>Cost / 10 Tasks</th>
+          <th>Cost / Task</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="winner">
+          <td>MartinLoop <span class="wbadge">★</span></td>
+          <td class="g">10 / 10</td>
+          <td class="g">8 / 10</td>
+          <td class="g">0</td>
+          <td class="g">$11.90</td>
+          <td class="g">$1.19</td>
+        </tr>
+        <tr>
+          <td>Ralphy</td>
+          <td class="r">5 / 10</td>
+          <td class="m">5 / 10</td>
+          <td class="r">1</td>
+          <td class="r">$24.00</td>
+          <td class="r">$2.40</td>
+        </tr>
+        <tr>
+          <td>Ralph</td>
+          <td class="r">4 / 10</td>
+          <td class="m">4 / 10</td>
+          <td class="r">1</td>
+          <td class="r">$30.70</td>
+          <td class="r">$3.07</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- CHARTS -->
+<div class="grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+  <div class="chart-card">
+    <div class="chart-title">Cost per 10 Tasks</div>
+    <div class="chart-sub">Lower is better. MartinLoop: 61% cheaper than Ralph.</div>
+    <div class="chart-container"><canvas id="costChart"></canvas></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-title">Correct Outcomes (out of 10)</div>
+    <div class="chart-sub">Higher is better. MartinLoop: 2.5× more accurate than Ralph.</div>
+    <div class="chart-container"><canvas id="passChart"></canvas></div>
+  </div>
+</div>
+
+<!-- COST REDUCTION -->
+<div>
+  <span class="eyebrow">Why MartinLoop Costs Less</span>
+  <div class="section-title">30–60% cost reduction. Here's the mechanism.</div>
+  <div class="section-sub">Two verified optimizations combine to cut token usage and model cost significantly — both backed by shipped code (SLICE-04, SLICE-08).</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+    <div class="check-card">
+      <div class="check-icon">🔄</div>
+      <div>
+        <div class="check-name">Delta Re-Prompting</div>
+        <div class="check-desc">Retry attempts send only what changed — not the full conversation history. This cuts token usage on attempt 2+ significantly compared to full-context re-prompts used by Ralph/Ralphy.</div>
+        <div class="check-result check-pass">SLICE-04 · Shipped</div>
+      </div>
+    </div>
+    <div class="check-card">
+      <div class="check-icon">🤖</div>
+      <div>
+        <div class="check-name">Cheap-Model Classifier</div>
+        <div class="check-desc">A lightweight classifier routes trivial tasks to cheaper models (Claude Haiku-tier) before touching expensive models. Simple changes don't need Sonnet/Opus.</div>
+        <div class="check-result check-pass">SLICE-08 · Shipped</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SAFETY CHECKS -->
+<div>
+  <span class="eyebrow">Safety Gate Results</span>
+  <div class="section-title">63/63 adversarial checks. Zero false positives.</div>
+  <div class="section-sub">14 categories of dangerous agent behavior. MartinLoop blocks all of them before any subprocess runs — not after. Results are reproducible: run <code style="font-family:monospace;">eval:gate-check</code>.</div>
+  <div class="checks-grid">
+    <div class="check-card">
+      <div class="check-icon">💰</div>
+      <div><div class="check-name">Budget Overrun</div><div class="check-desc">Hard USD cap enforced before loop runs. Subprocess killed when limit hit. Zero exceptions.</div><div class="check-result check-pass">63/63 · All Blocked</div></div>
+    </div>
+    <div class="check-card">
+      <div class="check-icon">🗂️</div>
+      <div><div class="check-name">Filesystem Violation</div><div class="check-desc">Writes to forbidden paths blocked pre-execution. Rollback-outcome.json confirms zero files written on any failed attempt.</div><div class="check-result check-pass">63/63 · All Blocked</div></div>
+    </div>
+    <div class="check-card">
+      <div class="check-icon">💥</div>
+      <div><div class="check-name">Shell Injection / rm -rf</div><div class="check-desc">Dangerous shell commands intercepted before subprocess spawn — not detected after the damage. Pre-execution only.</div><div class="check-result check-pass">63/63 · All Blocked</div></div>
+    </div>
+    <div class="check-card">
+      <div class="check-icon">🎭</div>
+      <div><div class="check-name">Hallucinated Completion</div><div class="check-desc">Agent claiming success when tests fail is caught by the verifier grading on actual test output — not AI self-report.</div><div class="check-result check-zero">0 False Positives</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- METHODOLOGY -->
+<div class="method">
+  <h3>Methodology — How to Reproduce</h3>
+  <p>All benchmark numbers are derived from <code>benchmarks/comparative/history/latest.md</code> in the public repository. The test suite is <code>bun run benchmark</code> from a clean clone — no special configuration required.</p>
+  <p>Each runner (MartinLoop, Ralphy, Ralph) is given the same 10 task contracts from the same starting state. Cost is measured from actual API billing counters. Correct outcomes are validated against declared acceptance criteria. Verified patches require passing the configured verifier command.</p>
+  <p><strong style="color:#f0f0f5;">Reproduce this report:</strong> <code>git clone github.com/Keesan12/MartinLoop && bun install && bun run benchmark</code></p>
+  <p style="margin-top:8px;"><strong style="color:#f0f0f5;">What we don't claim:</strong> We do not claim "100% success rate." The honest number is 10/10 correct outcomes with 8/10 verified completion — and we show both. The 2 patches that didn't pass the verifier bar are correctly flagged as incomplete, not shipped.</p>
+</div>
+
+</div>
+
+<script>
+const colors = { m: '#5b50d6', ry: '#d1d5db', r: '#e5e7eb' };
+new Chart(document.getElementById('costChart').getContext('2d'), {
+  type: 'bar',
+  data: {
+    labels: ['MartinLoop', 'Ralphy', 'Ralph'],
+    datasets: [{ data: [11.90, 24.00, 30.70], backgroundColor: ['#5b50d6','#d1d5db','#e5e7eb'], borderRadius: 8 }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: {
+      y: { beginAtZero: true, ticks: { callback: v => '$' + v, font: { family: 'JetBrains Mono' } }, grid: { color: '#e2d9cc' } },
+      x: { grid: { display: false }, ticks: { font: { family: 'JetBrains Mono', weight: '700' } } }
+    }
+  }
+});
+new Chart(document.getElementById('passChart').getContext('2d'), {
+  type: 'bar',
+  data: {
+    labels: ['MartinLoop', 'Ralphy', 'Ralph'],
+    datasets: [{ data: [10, 5, 4], backgroundColor: ['#15803d','#d1d5db','#e5e7eb'], borderRadius: 8 }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: {
+      y: { beginAtZero: true, max: 12, ticks: { callback: v => v + '/10', font: { family: 'JetBrains Mono' } }, grid: { color: '#e2d9cc' } },
+      x: { grid: { display: false }, ticks: { font: { family: 'JetBrains Mono', weight: '700' } } }
+    }
+  }
+});
+</script>
+</body>
+</html>

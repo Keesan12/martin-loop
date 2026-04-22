@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 420" width="820" height="420">
+  <defs>
+    <style>
+      .bg{fill:#0d1117}
+      .bar{fill:#161b22}
+      .text{fill:#e6edf3;font-family:'SF Mono','Cascadia Code',Consolas,monospace;font-size:12.5px}
+      .dim{fill:#8b949e}
+      .green{fill:#3fb950}
+      .blue{fill:#79c0ff}
+      .yellow{fill:#d29922}
+      .red{fill:#f85149}
+      .purple{fill:#bc8cff}
+      .cyan{fill:#58a6ff}
+      .dot-r{fill:#ff5f57}
+      .dot-y{fill:#ffbd2e}
+      .dot-g{fill:#28c840}
+    </style>
+  </defs>
+  <rect width="820" height="420" rx="12" class="bg"/>
+  <rect width="820" height="40" rx="12" class="bar"/>
+  <rect y="28" width="820" height="12" class="bar"/>
+  <circle cx="20" cy="20" r="6" class="dot-r"/>
+  <circle cx="40" cy="20" r="6" class="dot-y"/>
+  <circle cx="60" cy="20" r="6" class="dot-g"/>
+  <text x="410" y="25" class="text dim" text-anchor="middle" font-size="12">martin — governed ai coding runtime · martinloop.com</text>
+
+  <text x="22" y="66" class="text green">$</text>
+  <text x="34" y="66" class="text"> martin run --objective "repair flaky CI gate" --budget 5.00 --verify "pnpm test"</text>
+  <text x="22" y="85" class="text dim">[martin] Run ID: a7f2b930  |  Budget: $5.00  |  Adapter: claude-sonnet-4  |  Leash: armed (14 classes)</text>
+  <text x="22" y="104" class="text cyan">[policy] martin.policy.yaml loaded  |  max_retries: 3  |  verify_cmd: pnpm test</text>
+  <text x="22" y="128" class="text blue">── Attempt 1 ──────────────────────────────────────────────────────────────────────────</text>
+  <text x="22" y="147" class="text dim">[grounding] Scanning: jest.config.js, ci-gate.test.ts, .github/workflows/ci.yml</text>
+  <text x="22" y="166" class="text green">[grounding] No contradictions found — task scope clear</text>
+  <text x="22" y="185" class="text dim">[leash] Pre-execution scan: 14 classes active</text>
+  <text x="22" y="204" class="text green">[leash] PASS — 0 dangerous patterns matched  |  Proceeding to patch</text>
+  <text x="22" y="223" class="text dim">[patch] Applying fix: race condition in jest worker pool config...</text>
+  <text x="22" y="242" class="text green">[patch] Modified: jest.config.js (+3 lines)  |  No other files touched</text>
+  <text x="22" y="261" class="text dim">[verify] Running: pnpm test  →  62/62 pass</text>
+  <text x="22" y="280" class="text green">[verify] Grade: A  —  All 62 tests pass  |  All acceptance criteria met</text>
+  <text x="22" y="299" class="text dim">[cost] $2.30  |  Running total: $2.30 / $5.00 cap</text>
+  <text x="22" y="318" class="text purple">[audit] Signed  |  sig: ed25519:9c3e7f...a1b84d</text>
+  <text x="22" y="337" class="text green">[rollback] Snapshot retained  |  0 files written on failure</text>
+
+  <rect x="18" y="356" width="782" height="52" rx="8" fill="#161b22"/>
+  <rect x="18" y="356" width="782" height="52" rx="8" fill="none" stroke="#238636" stroke-width="1"/>
+  <text x="30" y="374" class="text blue">┌─ ACCEPTED ✓ ──────────────────────────────────────────────────────────────────────┐</text>
+  <text x="30" y="392" class="text"> │  Grade A · Cost $2.30 / $5.00 · 62/62 pass · Ed25519 signed · Drift: 12 · 1 attempt │</text>
+  <text x="30" y="410" class="text blue">└───────────────────────────────────────────────────────────────────────────────────┘</text>
+</svg>

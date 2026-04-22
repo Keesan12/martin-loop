@@ -1,0 +1,127 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 520" width="820" height="520">
+  <defs>
+    <style>
+      @keyframes fadeIn { from{opacity:0} to{opacity:1} }
+      @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+      @keyframes slideIn { from{opacity:0;transform:translateY(3px)} to{opacity:1;transform:translateY(0)} }
+
+      .bg{fill:#0d1117}
+      .bar{fill:#161b22}
+      .text{fill:#e6edf3;font-family:'SF Mono','Cascadia Code',Consolas,monospace;font-size:12.5px}
+      .dim{fill:#8b949e}
+      .green{fill:#3fb950}
+      .blue{fill:#79c0ff}
+      .yellow{fill:#d29922}
+      .red{fill:#f85149}
+      .purple{fill:#bc8cff}
+      .cyan{fill:#58a6ff}
+      .white{fill:#ffffff}
+
+      .dot-r{fill:#ff5f57}
+      .dot-y{fill:#ffbd2e}
+      .dot-g{fill:#28c840}
+
+      .l01{animation:slideIn .22s ease both;animation-delay:.3s;opacity:0}
+      .l02{animation:slideIn .22s ease both;animation-delay:.65s;opacity:0}
+      .l03{animation:slideIn .22s ease both;animation-delay:1.0s;opacity:0}
+      .l04{animation:slideIn .22s ease both;animation-delay:1.3s;opacity:0}
+      .l05{animation:slideIn .22s ease both;animation-delay:1.6s;opacity:0}
+      .l06{animation:slideIn .22s ease both;animation-delay:1.9s;opacity:0}
+      .l07{animation:slideIn .22s ease both;animation-delay:2.2s;opacity:0}
+      .l08{animation:slideIn .22s ease both;animation-delay:2.5s;opacity:0}
+      .l09{animation:slideIn .22s ease both;animation-delay:2.8s;opacity:0}
+      .l10{animation:slideIn .22s ease both;animation-delay:3.1s;opacity:0}
+      .l11{animation:slideIn .22s ease both;animation-delay:3.4s;opacity:0}
+      .l12{animation:slideIn .22s ease both;animation-delay:3.7s;opacity:0}
+      .l13{animation:slideIn .22s ease both;animation-delay:4.0s;opacity:0}
+      .l14{animation:slideIn .22s ease both;animation-delay:4.3s;opacity:0}
+      .l15{animation:slideIn .22s ease both;animation-delay:4.6s;opacity:0}
+      .l16{animation:slideIn .22s ease both;animation-delay:4.9s;opacity:0}
+      .l17{animation:slideIn .22s ease both;animation-delay:5.2s;opacity:0}
+      .l18{animation:slideIn .22s ease both;animation-delay:5.5s;opacity:0}
+      .l19{animation:slideIn .22s ease both;animation-delay:5.8s;opacity:0}
+      .l20{animation:slideIn .22s ease both;animation-delay:6.1s;opacity:0}
+      .l21{animation:slideIn .22s ease both;animation-delay:6.4s;opacity:0}
+      .l22{animation:slideIn .22s ease both;animation-delay:6.7s;opacity:0}
+      .l23{animation:slideIn .22s ease both;animation-delay:7.0s;opacity:0}
+      .l24{animation:slideIn .22s ease both;animation-delay:7.3s;opacity:0}
+      .l25{animation:slideIn .22s ease both;animation-delay:7.6s;opacity:0}
+      .l26{animation:slideIn .22s ease both;animation-delay:7.9s;opacity:0}
+      .l27{animation:slideIn .22s ease both;animation-delay:8.2s;opacity:0}
+
+      .card-bg{animation:fadeIn .4s ease both;animation-delay:8.0s;opacity:0}
+      .cursor{animation:blink 1s step-end infinite;animation-delay:9s;opacity:0}
+    </style>
+  </defs>
+
+  <!-- Window -->
+  <rect width="820" height="520" rx="12" class="bg"/>
+
+  <!-- Title bar -->
+  <rect width="820" height="40" rx="12" class="bar"/>
+  <rect y="28" width="820" height="12" class="bar"/>
+
+  <!-- Traffic lights -->
+  <circle cx="20" cy="20" r="6" class="dot-r"/>
+  <circle cx="40" cy="20" r="6" class="dot-y"/>
+  <circle cx="60" cy="20" r="6" class="dot-g"/>
+
+  <!-- Title -->
+  <text x="410" y="25" class="text dim" text-anchor="middle" font-size="12">martin — governed ai coding runtime · martinloop.com</text>
+
+  <!-- LINE 01: command -->
+  <text x="22" y="66" class="text green l01">$</text>
+  <text x="34" y="66" class="text l01"> martin run --objective "repair flaky CI gate" --budget 5.00 --verify "pnpm test"</text>
+
+  <!-- LINE 02: run meta -->
+  <text x="22" y="85" class="text dim l02">[martin] Run ID: a7f2b930  |  Budget: $5.00  |  Adapter: claude-sonnet-4  |  Leash: armed (14 classes)</text>
+
+  <!-- LINE 03: policy -->
+  <text x="22" y="104" class="text cyan l03">[policy] martin.policy.yaml loaded  |  max_retries: 3  |  verify_cmd: pnpm test</text>
+
+  <!-- LINE 04: attempt header -->
+  <text x="22" y="128" class="text blue l04">── Attempt 1 ─────────────────────────────────────────────────────────────────────────</text>
+
+  <!-- LINE 05: grounding -->
+  <text x="22" y="147" class="text dim l05">[grounding] Scanning: jest.config.js, src/tests/ci-gate.test.ts, .github/workflows/ci.yml</text>
+  <text x="22" y="166" class="text green l06">[grounding] No contradictions found — task scope clear</text>
+
+  <!-- LINE 07: leash scan -->
+  <text x="22" y="185" class="text dim l07">[leash] Pre-execution scan: 14 classes active</text>
+  <text x="22" y="204" class="text green l08">[leash] PASS — 0 dangerous patterns matched  |  Proceeding to patch</text>
+
+  <!-- LINE 09: patch -->
+  <text x="22" y="223" class="text dim l09">[patch] Applying fix: race condition in jest worker pool config...</text>
+  <text x="22" y="242" class="text green l10">[patch] Modified: jest.config.js (+3 lines)  |  No other files touched</text>
+
+  <!-- LINE 11: verifier -->
+  <text x="22" y="261" class="text dim l11">[verify] Running: pnpm test</text>
+  <text x="22" y="280" class="text dim l12">[verify]   PASS  src/tests/ci-gate.test.ts (44 tests)</text>
+  <text x="22" y="299" class="text dim l13">[verify]   PASS  src/tests/auth.test.ts    (18 tests)</text>
+  <text x="22" y="318" class="text green l14">[verify] Grade: A  —  62/62 tests pass  |  All acceptance criteria met</text>
+
+  <!-- LINE 15: cost -->
+  <text x="22" y="337" class="text dim l15">[cost] Attempt 1: $2.30  |  Running total: $2.30 / $5.00 cap</text>
+
+  <!-- LINE 16: audit -->
+  <text x="22" y="356" class="text dim l16">[audit] Ed25519 signing run record...</text>
+  <text x="22" y="375" class="text purple l17">[audit] Signed  |  sig: ed25519:9c3e7f...a1b84d  |  Replay: martin audit verify --run a7f2b930</text>
+
+  <!-- LINE 18: rollback status -->
+  <text x="22" y="394" class="text green l18">[rollback] Snapshot retained  |  0 files written on any prior failure</text>
+
+  <!-- Summary box background -->
+  <rect x="18" y="414" width="782" height="68" rx="8" fill="#161b22" class="card-bg"/>
+  <rect x="18" y="414" width="782" height="68" rx="8" fill="none" stroke="#238636" stroke-width="1" class="card-bg"/>
+
+  <!-- Summary lines -->
+  <text x="30" y="434" class="text blue l19">┌─ ACCEPTED ✓ ───────────────────────────────────────────────────────────────────────┐</text>
+  <text x="30" y="453" class="text l20">│  Grade A · Attempts 1/3 · Cost $2.30/$5.00 · 62/62 tests pass · Ed25519 signed ✓    │</text>
+  <text x="30" y="471" class="text green l21">│  Patch: jest.config.js  |  Rollback: ready  |  0 files on failure  |  Drift: 12      │</text>
+  <text x="30" y="489" class="text blue l22">└────────────────────────────────────────────────────────────────────────────────────┘</text>
+
+  <!-- Prompt after -->
+  <text x="22" y="508" class="text green l23">$</text>
+  <text x="34" y="508" class="text dim l23"> martin audit verify --run a7f2b930</text>
+  <rect x="22" y="498" width="8" height="14" fill="#e6edf3" class="cursor"/>
+</svg>

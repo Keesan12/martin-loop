@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MartinLoop - Field Position</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f8f5ed;color:#18181b;padding:42px 24px}.wrap{max-width:980px;margin:0 auto;display:flex;flex-direction:column;gap:30px}.hero{background:#1a1a2e;color:white;border-radius:18px;padding:34px}.ey{font:800 11px "SF Mono","Cascadia Code",monospace;text-transform:uppercase;letter-spacing:.12em;color:#a99cff;margin-bottom:12px}h1{font-size:38px;line-height:1.05;letter-spacing:-.05em;margin-bottom:12px}.hero p{max-width:720px;color:#bcc1cf;line-height:1.65}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.card{background:#fffdf8;border:1px solid #e2d9cc;border-radius:14px;padding:20px}.k{font:800 10px "SF Mono","Cascadia Code",monospace;text-transform:uppercase;letter-spacing:.1em;color:#8a8f99;margin-bottom:10px}.big{font-size:30px;font-weight:850;letter-spacing:-.04em;color:#15803d}.desc{font-size:13px;color:#5f6470;line-height:1.55;margin-top:8px}.section{background:#fffdf8;border:1px solid #e2d9cc;border-radius:18px;padding:26px}h2{font-size:25px;letter-spacing:-.04em;margin-bottom:8px}.lead{font-size:14px;line-height:1.65;color:#5f6470;margin-bottom:18px;max-width:760px}table{width:100%;border-collapse:collapse;border:1px solid #e2d9cc;border-radius:12px;overflow:hidden}th{background:#1a1a2e;color:#aeb4c2;font:800 10px "SF Mono","Cascadia Code",monospace;text-transform:uppercase;letter-spacing:.08em;text-align:left;padding:12px}td{border-top:1px solid #e2d9cc;padding:13px 12px;font-size:13.5px;color:#5f6470;vertical-align:top}td:first-child{font-weight:750;color:#18181b}.yes{color:#15803d;font-weight:800}.no{color:#991b1b;font-weight:800}.partial{color:#92400e;font-weight:800}code{font-family:"SF Mono","Cascadia Code",monospace;background:#ede9ff;color:#4c3fb8;padding:1px 5px;border-radius:4px;font-size:12px}@media(max-width:760px){.grid{grid-template-columns:1fr}h1{font-size:30px}}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <section class="hero">
+    <div class="ey">Field Position</div>
+    <h1>MartinLoop is the governance layer around coding agents.</h1>
+    <p>This page compares product surfaces, not legacy historical cost totals. Use it to show where MartinLoop sits: budget governance, verifier gates, safety checks, JSONL run records, rollback evidence, and a public npm facade.</p>
+  </section>
+  <section class="grid">
+    <div class="card"><div class="k">Package</div><div class="big">0.1.2</div><div class="desc">Published as `martin-loop` with CLI aliases `martin-loop` and `martin`.</div></div>
+    <div class="card"><div class="k">CLI</div><div class="big">run</div><div class="desc">Current public commands: `run`, `inspect`, and `resume`.</div></div>
+    <div class="card"><div class="k">Validation</div><div class="big">GO</div><div class="desc">Release-surface and OSS-boundary checks pass in the current repo.</div></div>
+  </section>
+  <section class="section">
+    <h2>Capability Comparison</h2>
+    <p class="lead">Keep this table conservative: it describes MartinLoop's current package and repo surfaces without making claims about other projects' internal behavior.</p>
+    <table>
+      <thead><tr><th>Capability</th><th>MartinLoop Current Surface</th><th>How To Say It</th></tr></thead>
+      <tbody>
+        <tr><td>Budget governance</td><td class="yes">Yes</td><td>Run budgets, token ceilings, and iteration limits drive preflight and lifecycle exits.</td></tr>
+        <tr><td>Verifier gate</td><td class="yes">Yes</td><td>Completion requires a passing verifier result, not only an agent self-report.</td></tr>
+        <tr><td>Safety leash</td><td class="yes">Yes</td><td>Verifier commands, file scope, dependency changes, and secret-like task text are checked.</td></tr>
+        <tr><td>Run evidence</td><td class="yes">Yes</td><td>The CLI writes JSONL loop records and `inspect` summarizes them.</td></tr>
+        <tr><td>Rollback artifacts</td><td class="partial">Repo-backed</td><td>Repo-backed runs can capture rollback boundaries and restore outcomes.</td></tr>
+        <tr><td>Hosted control plane</td><td class="partial">Repo workstream</td><td>Present in the repo, outside the initial npm package surface.</td></tr>
+        <tr><td>Workspace benchmark harness</td><td class="partial">RC tooling</td><td>Use `pnpm --filter @martin/benchmarks ...` from the repo root.</td></tr>
+      </tbody>
+    </table>
+  </section>
+  <section class="section">
+    <h2>Approved Positioning</h2>
+    <p class="lead">MartinLoop is best positioned as a governed runtime for autonomous AI coding loops: it does not replace coding agents; it wraps them with budgets, policy, verification, and evidence.</p>
+    <table>
+      <thead><tr><th>Use</th><th>Avoid</th></tr></thead>
+      <tbody>
+        <tr><td>Public npm facade and current CLI commands</td><td>Unsupported commands or unshipped package names</td></tr>
+        <tr><td>Deterministic workspace validation harness</td><td>Old fixed cost-comparison tables</td></tr>
+        <tr><td>JSONL records and persisted artifacts</td><td>Signed-receipt or certification language</td></tr>
+      </tbody>
+    </table>
+  </section>
+</main>
+</body>
+</html>

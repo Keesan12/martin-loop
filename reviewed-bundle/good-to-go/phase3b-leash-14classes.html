@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MartinLoop - Safety Leash</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f8f5ed;color:#18181b;padding:40px 24px}.wrap{max-width:980px;margin:0 auto}.hero{margin-bottom:24px}.ey{font:800 11px "SF Mono","Cascadia Code",monospace;text-transform:uppercase;letter-spacing:.12em;color:#5b50d6;margin-bottom:10px}h1{font-size:38px;letter-spacing:-.05em;line-height:1.05;margin-bottom:10px}.lead{color:#5f6470;line-height:1.65;max-width:760px}.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}.card{background:#fffdf8;border:1px solid #e2d9cc;border-radius:14px;padding:18px}.tag{font:800 10px "SF Mono","Cascadia Code",monospace;color:#5b50d6;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px}.title{font-weight:850;margin-bottom:6px}.body{font-size:13.5px;line-height:1.55;color:#5f6470}code{font-family:"SF Mono","Cascadia Code",monospace;background:#ede9ff;color:#4c3fb8;padding:1px 5px;border-radius:4px;font-size:12px}@media(max-width:760px){.grid{grid-template-columns:1fr}h1{font-size:30px}}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <section class="hero"><div class="ey">Safety Leash</div><h1>Current safety checks and failure classes.</h1><p class="lead">This file replaces the old count-based page with the current repo truth: 11 failure classes plus specific leash decisions for commands, filesystem scope, approval boundaries, and secret-like values.</p></section>
+  <section class="grid">
+    <article class="card"><div class="tag">Command</div><div class="title">Verifier command checks</div><div class="body">Unsafe verifier commands are blocked before adapter execution.</div></article>
+    <article class="card"><div class="tag">Filesystem</div><div class="title">Allowed and denied paths</div><div class="body">Changed files are evaluated against task scope and can trigger rollback evidence.</div></article>
+    <article class="card"><div class="tag">Secrets</div><div class="title">Task-text secret scan</div><div class="body">Secret-like values in objectives and acceptance criteria are rejected before attempts run.</div></article>
+    <article class="card"><div class="tag">Approval</div><div class="title">Dependency and migration boundaries</div><div class="body">Sensitive change categories can require human escalation.</div></article>
+    <article class="card"><div class="tag">Grounding</div><div class="title">Repo grounding</div><div class="body">Repo-backed patches can be scanned for files or symbols that do not match repository evidence.</div></article>
+    <article class="card"><div class="tag">Failure Classes</div><div class="title">11 current classes</div><div class="body"><code>logic_error</code>, <code>hallucination</code>, <code>syntax_error</code>, <code>type_error</code>, <code>test_regression</code>, <code>scope_creep</code>, <code>no_progress</code>, <code>repo_grounding_failure</code>, <code>verification_failure</code>, <code>environment_mismatch</code>, and <code>budget_pressure</code>.</div></article>
+  </section>
+</main>
+</body>
+</html>

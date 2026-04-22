@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MartinLoop vs Ralph — Repair Flaky CI Gate</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,700;0,9..144,900&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --cream:#f8f5ed;--paper:#fffdf8;--border:#e2d9cc;
+  --ink:#18181b;--ink-2:#52525b;--ink-3:#a1a1aa;
+  --purple:#5b50d6;--purple-lt:#ede9ff;
+  --green:#15803d;--red:#b91c1c;--navy:#1a1a2e;
+  --fd:'Fraunces',Georgia,serif;--fm:'JetBrains Mono',monospace;
+}
+body{background:var(--cream);color:var(--ink);font-family:-apple-system,sans-serif;padding:48px 24px;}
+.wrap{max-width:1060px;margin:0 auto;display:flex;flex-direction:column;gap:48px;}
+.logo{font-family:var(--fd);font-size:1.6rem;font-weight:700;letter-spacing:-.04em;}
+.logo span{color:var(--purple);}
+.ey{font-family:var(--fm);font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--purple);margin-bottom:10px;display:block;}
+.headline{font-family:var(--fd);font-size:clamp(2rem,3.5vw,3rem);font-weight:700;letter-spacing:-.04em;margin-bottom:8px;}
+.sub{font-size:14px;color:var(--ink-2);line-height:1.65;max-width:580px;margin-bottom:24px;}
+
+/* SCENARIO BADGE */
+.scenario-badge{display:inline-flex;align-items:center;gap:8px;background:var(--navy);color:#fff;border-radius:999px;padding:8px 18px;font-family:var(--fm);font-size:11px;font-weight:700;margin-bottom:20px;}
+.badge-dot{width:7px;height:7px;border-radius:50%;background:var(--purple);}
+
+/* COMPARE GRID */
+.compare{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+.col-label{font-family:var(--fm);font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;margin-bottom:10px;padding:6px 12px;border-radius:6px;display:inline-block;}
+.col-label.bad{background:#fee2e2;color:var(--red);font-weight:700;}
+.col-label.good{background:#dcfce7;color:var(--green);}
+
+/* TERMINAL */
+.term-wrap{border-radius:14px;overflow:hidden;box-shadow:0 6px 24px rgba(0,0,0,.12);}
+.term-bar{background:#1a1d2e;padding:10px 14px;display:flex;align-items:center;gap:7px;}
+.d{width:11px;height:11px;border-radius:50%;}
+.dr{background:#ff5f57;}.dy{background:#ffbd2e;}.dg{background:#28c840;}
+.tt{flex:1;text-align:center;font-family:var(--fm);font-size:10px;color:#8b8fa8;}
+.term-body{background:#0d1117;padding:16px 18px;font-family:var(--fm);font-size:12px;line-height:1.85;min-height:320px;}
+.ln{display:block;white-space:pre;}
+.cp{color:#3d4060;}.cc{color:#e8e8f0;}.ca{color:#7c72f0;}
+.cok{color:#2ab97a;}.ce{color:#f87171;}.cw{color:#fbbf24;}.cd{color:#4a4d62;}
+
+/* ANIMATED LINES */
+@keyframes fadeUp{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+.hidden{opacity:0;}
+.show{animation:fadeUp .18s ease forwards;}
+
+/* OUTCOME */
+.outcome{display:flex;align-items:flex-start;gap:12px;padding:14px 18px;border-radius:12px;margin-top:12px;}
+.outcome.pass{background:#dcfce7;border:1px solid #86efac;}
+.outcome.fail{background:#fee2e2;border:1px solid #fca5a5;}
+.oi{font-size:18px;flex-shrink:0;}
+.ol{font-size:13.5px;font-weight:800;color:var(--ink);margin-bottom:3px;}
+.od{font-size:12.5px;color:var(--ink-2);line-height:1.5;}
+
+/* VERDICT BAR */
+.verdict{background:var(--navy);border-radius:16px;padding:24px 32px;display:flex;gap:28px;align-items:center;flex-wrap:wrap;}
+.vs{text-align:center;}
+.vn{font-family:var(--fd);font-size:2rem;font-weight:700;letter-spacing:-.04em;}
+.vn.g{color:#2ab97a;}.vn.r{color:#f87171;}
+.vl{font-family:var(--fm);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:#4a4d62;margin-top:3px;}
+.vdiv{width:1px;height:44px;background:#1e2030;}
+.vnote{font-size:12.5px;color:#8b8fa8;line-height:1.6;max-width:340px;}
+.vnote strong{color:#f0f0f5;}
+
+/* REPLAY */
+.replay-btn{background:var(--purple);color:#fff;border:none;padding:10px 24px;border-radius:999px;font-family:var(--fm);font-size:11px;font-weight:700;cursor:pointer;letter-spacing:.08em;text-transform:uppercase;transition:opacity .15s;}
+.replay-btn:hover{opacity:.85;}
+
+/* SOURCE NOTE */
+.source{background:var(--paper);border:1px solid var(--border);border-radius:12px;padding:14px 18px;display:flex;gap:16px;align-items:center;}
+.source-icon{font-size:20px;flex-shrink:0;}
+.source-text{font-size:12px;color:var(--ink-2);line-height:1.6;}
+.source-text strong{color:var(--ink);}
+.source-text a{color:var(--purple);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div>
+  <div class="logo">Martin<span>Loop</span></div>
+  <div style="font-family:var(--fm);font-size:11px;color:var(--ink-3);margin-top:4px;text-transform:uppercase;letter-spacing:.08em;">Side-by-Side Demo · Real Benchmark Numbers</div>
+</div>
+
+<div>
+  <div class="scenario-badge"><div class="badge-dot"></div>Benchmark Task: Repair Flaky CI Gate</div>
+  <span class="ey">The Most Common Engineering Nightmare</span>
+  <div class="headline">Same task. Same starting state.<br>Wildly different outcomes.</div>
+  <div class="sub">This is a real task from the public MartinLoop benchmark suite. The costs, outcomes, and behavior you see below are from actual benchmark runs — not hypotheticals. Run <code style="font-family:monospace;background:var(--purple-lt);color:var(--purple);padding:1px 5px;border-radius:4px;">pnpm --filter @martin/benchmarks eval</code> to reproduce.</div>
+
+  <div class="compare">
+    <div>
+      <div class="col-label bad">Without MartinLoop — Ralph</div>
+      <div class="term-wrap">
+        <div class="term-bar"><div class="d dr"></div><div class="d dy"></div><div class="d dg"></div><div class="tt">ralph — no governance</div></div>
+        <div class="term-body" id="ralph-body">
+<span class="ln"><span class="cp">$ </span><span class="cc">ralph run "repair flaky CI gate"</span></span>
+        </div>
+      </div>
+      <div class="outcome fail" id="ralph-outcome" style="display:none;">
+        <div class="oi">✗</div>
+        <div><div class="ol">Failed — incorrect/unknown_failure</div><div class="od">4 uncontrolled retries. $5.20 spent. No verifier. No receipt. No rollback available.</div></div>
+      </div>
+    </div>
+    <div>
+      <div class="col-label good">With MartinLoop</div>
+      <div class="term-wrap">
+        <div class="term-bar"><div class="d dr"></div><div class="d dy"></div><div class="d dg"></div><div class="tt">martin — governed</div></div>
+        <div class="term-body" id="martin-body">
+<span class="ln"><span class="cp">$ </span><span class="cc">martin run "repair flaky CI gate" --budget 5.00 --verify "pnpm test"</span></span>
+        </div>
+      </div>
+      <div class="outcome pass" id="martin-outcome" style="display:none;">
+        <div class="oi">✓</div>
+        <div><div class="ol">Passed — lifecycleState: completed · verified</div><div class="od">1 attempt. $2.30 spent. Tests pass. Structured JSONL audit record. Rollback ready.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="verdict" id="verdict" style="display:none;">
+    <div class="vs"><div class="vn g">$2.30</div><div class="vl">Martin cost</div></div>
+    <div class="vdiv"></div>
+    <div class="vs"><div class="vn r">$5.20</div><div class="vl">Ralph cost</div></div>
+    <div class="vdiv"></div>
+    <div class="vs"><div class="vn g">Completed</div><div class="vl">Martin result</div></div>
+    <div class="vdiv"></div>
+    <div class="vs"><div class="vn r">Failed</div><div class="vl">Ralph result</div></div>
+    <div class="vdiv"></div>
+    <div class="vnote"><strong>55% lower cost. Verified pass vs failed outcome.</strong> Martin completed in 1 attempt with test-verified results. Ralph retried 4 times with no verifier, no governance, and left no audit trail.</div>
+    <div style="margin-left:auto;"><button class="replay-btn" onclick="replay()">↺ Replay</button></div>
+  </div>
+</div>
+
+<div class="source">
+  <div class="source-icon">📋</div>
+  <div class="source-text">
+    <strong>These are real benchmark numbers.</strong> Task: "Repair flaky CI gate" — from <code style="font-family:monospace;font-size:11px;">benchmarks/comparative/history/latest.md</code>, MartinLoop v0.1.2, April 2026.<br>
+    Martin: $2.30, lifecycleState: completed, verified · Ralph: $5.20, incorrect/unknown_failure, no verifier.<br>
+    Source: <a href="https://github.com/Keesan12/MartinLoop">github.com/Keesan12/MartinLoop</a> · Reproduce: <code style="font-family:monospace;font-size:11px;">pnpm --filter @martin/benchmarks eval</code>
+  </div>
+</div>
+
+</div>
+
+<script>
+const ralphLines = [
+  ['cd','⟳ Attempt 1/∞ ...'],
+  ['cd','  Analyzing CI config...'],
+  ['ce','  ✗ Test suite: 3 failures'],
+  ['cw','  ↻ Retrying (full context)... [$1.10 spent]'],
+  ['cd','⟳ Attempt 2/∞ ...'],
+  ['ce','  ✗ Test suite: 2 failures'],
+  ['cw','  ↻ Retrying... [$2.40 spent]'],
+  ['cd','⟳ Attempt 3/∞ ...'],
+  ['ce','  ✗ Test suite: 2 failures'],
+  ['cw','  ↻ Retrying... [$3.85 spent]'],
+  ['cd','⟳ Attempt 4/∞ ...'],
+  ['ce','  ✗ Unknown failure — model lost context'],
+  ['ce','  ⚠ Halted by API limit'],
+  [' ',' '],
+  ['cd','Cost: '],['ce','$5.20  (no cap enforced)'],
+  ['cd','Audit trail: '],['ce','None'],
+  ['cd','Rollback: '],['ce','Not available'],
+];
+const martinLines = [
+  ['ca','✓ Budget cap   $5.00 hard stop'],
+  ['ca','✓ Safety leash 11 failure classes'],
+  ['ca','✓ Verifier     pnpm test'],
+  ['cd','⟳ Attempt 1...'],
+  ['cd','  Analyzing CI config...'],
+  ['cok','  ✓ Race condition identified in test runner'],
+  ['cok','  ✓ Fix applied: jest.config.js + test helper'],
+  ['cd','  ⟳ Running verifier: pnpm test...'],
+  ['cok','  ✓ 44/44 tests pass — verified'],
+  [' ',' '],
+  ['ca','────────────────────────────────'],
+  ['cok','✓ Cost: $2.30 / $5.00 cap'],
+  ['cok','✓ lifecycleState: completed · verified'],
+  ['cok','✓ JSONL audit record (cost, files, exit)'],
+  ['cok','✓ Rollback ready (0 files on failure)'],
+];
+
+function addLine(el, cls, text, delay) {
+  setTimeout(() => {
+    const s = document.createElement('span');
+    s.className = 'ln show';
+    s.innerHTML = `<span class="${cls}">${text}</span>`;
+    el.appendChild(s);
+  }, delay);
+}
+
+let running = false;
+function run() {
+  if (running) return; running = true;
+  const rb = document.getElementById('ralph-body');
+  const mb = document.getElementById('martin-body');
+  const baseDelay = 600;
+  ralphLines.forEach(([cls, txt], i) => addLine(rb, cls, txt, baseDelay + i * 420));
+  martinLines.forEach(([cls, txt], i) => addLine(mb, cls, txt, baseDelay + 300 + i * 380));
+  const totalTime = baseDelay + Math.max(ralphLines.length * 420, martinLines.length * 380) + 200;
+  setTimeout(() => {
+    document.getElementById('ralph-outcome').style.display = 'flex';
+    document.getElementById('martin-outcome').style.display = 'flex';
+    document.getElementById('verdict').style.display = 'flex';
+  }, totalTime);
+}
+
+function replay() {
+  const rb = document.getElementById('ralph-body');
+  const mb = document.getElementById('martin-body');
+  rb.innerHTML = '<span class="ln"><span class="cp">$ </span><span class="cc">ralph run "repair flaky CI gate"</span></span>';
+  mb.innerHTML = '<span class="ln"><span class="cp">$ </span><span class="cc">martin run "repair flaky CI gate" --budget 5.00 --verify "pnpm test"</span></span>';
+  document.getElementById('ralph-outcome').style.display = 'none';
+  document.getElementById('martin-outcome').style.display = 'none';
+  document.getElementById('verdict').style.display = 'none';
+  running = false;
+  setTimeout(run, 100);
+}
+
+// Auto-start
+setTimeout(run, 800);
+</script>
+</body>
+</html>

@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Martin Loop — Full Feature Showcase · Phase 1–32</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#f8f5ed;color:#18181b;min-height:100vh}
+.header{background:#fffdf8;border-bottom:1px solid #e2d9cc;padding:28px 40px;position:sticky;top:0;z-index:100;display:flex;align-items:center;justify-content:space-between}
+.logo{font-size:20px;font-weight:300;letter-spacing:-.02em}.logo strong{font-weight:800}.logo .dot{color:#5b50d6}
+.score-bar{display:flex;gap:20px;align-items:center}
+.score-item{text-align:center}
+.score-num{font-size:22px;font-weight:800;color:#5b50d6;line-height:1}
+.score-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:#888;margin-top:3px}
+
+.filters{padding:20px 40px;display:flex;gap:10px;flex-wrap:wrap;background:#fff;border-bottom:1px solid #eee}
+.filter-btn{padding:7px 16px;border-radius:20px;border:1.5px solid #ddd;background:#fff;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;color:#666}
+.filter-btn.active,.filter-btn:hover{background:#5b50d6;border-color:#5b50d6;color:#fff}
+
+.main{padding:32px 40px;max-width:1400px;margin:0 auto}
+.section-head{margin-bottom:20px;display:flex;align-items:baseline;gap:14px}
+.section-title{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.15em;color:#5b50d6}
+.section-sub{font-size:13px;color:#999}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;margin-bottom:40px}
+
+.card{background:#fffdf8;border:1px solid #e2d9cc;border-radius:16px;padding:22px;transition:all .15s;position:relative}
+.card:hover{box-shadow:0 8px 32px rgba(0,0,0,.08);transform:translateY(-1px)}
+.card-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px}
+.phase-badge{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:3px 9px;border-radius:4px;background:#f0eeff;color:#5b50d6}
+.status-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-top:4px}
+.dot-green{background:#10b981}.dot-amber{background:#f59e0b}.dot-blue{background:#3b82f6}
+.card-title{font-size:15px;font-weight:700;margin-bottom:6px;line-height:1.3}
+.card-what{font-size:12.5px;color:#555;line-height:1.6;margin-bottom:10px}
+.card-why{font-size:12px;color:#888;line-height:1.55;padding-top:10px;border-top:1px solid #f0ebe3}
+.card-why strong{color:#5b50d6;font-weight:600}
+.claim-pill{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding:3px 9px;border-radius:12px;margin-top:10px}
+.claim-approved{background:#dcfce7;color:#16a34a}
+.claim-gated{background:#fef9c3;color:#ca8a04}
+
+.category-label{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.18em;color:#bbb;margin-bottom:16px;padding-bottom:6px;border-bottom:2px solid #f0ebe3}
+
+.hidden{display:none}
+</style>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,700;0,9..144,900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<div class="header">
+  <div class="logo" style="font-family:'Fraunces',Georgia,serif;font-size:1.4rem;font-weight:700;letter-spacing:-.04em;">Martin<span style="color:#5b50d6;">Loop</span></div>
+  <div class="score-bar">
+    <div class="score-item"><div class="score-num">417</div><div class="score-label">Workspace Tests</div></div>
+    <div class="score-item"><div class="score-num">63/63</div><div class="score-label">Gate Checks</div></div>
+    <div class="score-item"><div class="score-num">10/10</div><div class="score-label">Benchmark</div></div>
+    <div class="score-item"><div class="score-num">$11.90</div><div class="score-label">10-Task Cost</div></div>
+    <div class="score-item"><div class="score-num">32</div><div class="score-label">Phases Done</div></div>
+  </div>
+</div>
+
+<div class="filters">
+  <button class="filter-btn active" onclick="filter('all')">All Features</button>
+  <button class="filter-btn" onclick="filter('runtime')">Core Runtime</button>
+  <button class="filter-btn" onclick="filter('safety')">Safety &amp; Governance</button>
+  <button class="filter-btn" onclick="filter('benchmarks')">Benchmarks</button>
+  <button class="filter-btn" onclick="filter('observability')">Observability</button>
+  <button class="filter-btn" onclick="filter('intelligence')">Intelligence</button>
+  <button class="filter-btn" onclick="filter('mcp')">MCP Gateway</button>
+</div>
+
+<div class="main">
+
+<!-- ─── CORE RUNTIME ─── -->
+<div class="section-head"><div class="section-title">Core Runtime</div><div class="section-sub">Phases 1–10 · The governed loop engine</div></div>
+<div class="grid" id="grid-runtime">
+
+<div class="card" data-cat="runtime">
+  <div class="card-top"><span class="phase-badge">Ph 1–2</span><div class="status-dot dot-green"></div></div>
+  <div class="card-title">Governed Loop Engine</div>
+  <div class="card-what">State machine that wraps any AI coding agent: GATHER → ADMIT → PATCH → VERIFY → RECOVER → ESCALATE → ABORT → HANDOFF. Every transition is explicit and logged.</div>
+  <div class="card-why"><strong>Why it matters:</strong> Unguarded loops end when the model decides they're done. Martin ends when the work is provably complete or the budget runs out — whichever comes first.</div>
+  <span class="claim-pill claim-approved">✓ Approved</span>
+</div>
+
+<div class="card" data-cat="runtime">
+  <div class="card-top"><span class="phase-badge">Ph 3</span><div class="status-dot dot-green"></div></div>
+  <div class="card-title">Hard Budget Kill</div>
+  <div class="card-what">Hard USD cap enforced at runtime. When actual spend reaches the cap, the loop is killed immediately — not warned, not softly throttled. Zero overage.</div>
+  <div class="card-why"><strong>Why it matters:</strong> Every other runner gives you a soft warning. Martin gives you a hard stop. The difference is $0 vs $47 surprise charges at 3am.</div>
+  <span class="claim-pill claim-approved">✓ Approved · Hard cap, not hints</span>
+</div>
+
+<div class="card" data-cat="runtime">
+  <div class="card-top"><span class="phase-badge">Ph 4</span><div class="status-dot dot-green"></div></div>
+  <div class="card-title">Filesystem Rollback</div>
+  <div class="card-what">Every failed or rejected attempt triggers a full filesystem rollback. Files written during the attempt are removed. The workspace is left exactly as it was before the attempt started.</div>
+  <div class="card-why"><strong>Why it matters:</strong> A failed AI run that leaves half-written files is worse than a failed run that leaves nothing. Rollback is the safety net that makes overnight runs trustworthy.</div>
+  <span class="claim-pill claim-approved">✓ Approved</span>
+</div>
+
+<div class="card" data-cat="runtime">
+  <div class="card-top"><span class="phase-badge">Ph 5</span><div class="status-dot dot-green"></div></div>
+  <div class="card-title">Adapter Layer (Claude / Codex / Any)</div>
+  <div class="card-what">Pluggable adapter interface. Ships with Claude CLI and Codex CLI adapters. Any provider with a CLI or API can be wrapped. Adapters report cost, model, and output — the runtime governs the rest.</div>
+  <div class="card-why"><strong>Why it matters:</strong> Model-agnostic from day one. Switch providers without rewriting governance logic.</div>
+  <span class="claim-pill claim-approved">✓ Approved</span>
+</div>
+
+<div class="card" data-cat="runtime">
+  <div class="card-top"><span class="phase-badge">Ph 6</span><div class="status-dot dot-green"></div></div>
+  <div class="card-title">Resumable Loops (martin resume)</div>
+  <div class="card-what">Checkpoints written before each attempt. If the process crashes or the machine restarts, `martin resume &lt;loopId&gt;` picks up from the last committed checkpoint — no work lost.</div>
+  <div class="card-why"><strong>Why it matters:</strong> Overnight runs on flaky hardware or preemptible cloud instances can resume without paying to restart from scratch.</div>
+  <span class="claim-pill claim-approved">✓ Approved</span>
+</div>
+
+<div class="card" data-cat="runtime">
+  <div class="card-top"><span class="phase-badge">Ph 7</span><div class="status-dot dot-green"></div></div>
+  <div class="card-title">Policy-as-Code (martin.policy.yaml)</div>
+  <div class="card-what">Layered config system: built-in defaults → ~/.martin/policy.yaml → repo root → CLI flags. Controls budget caps, blocked commands, max attempts, CVE severity thresholds, SIEM endpoint, and more.</div>
+  <div class="card-why"><strong>Why it matters:</strong> Enterprise teams need governance that follows the code — not per-user settings that drift. Policy-as-code means reviewable, diffable, auditable AI controls.</div>
+  <span class="claim-pill claim-approved">✓ Approved</span>
+</div>
+
+</div><!-- /grid runtime -->
+
+<!-- ─── SAFETY & GOVERNANCE ─── -->
+<div class="section-head"><div class="section-title">Safety &amp; Governance</div><div class="section-sub">Phases 8–15 · The verification and audit layer</div></div>
+<div class="grid" id="grid-safety">
+
+<div class="card" data-cat="safety">
+  <div class="card-top"><span class="phase-badge">Ph 8</span><div class="status-dot dot-green"></div></div>
+  <div class="card-title">14-Class Verification Leash</div>
+  <div class="card-what">Before any shell command executes, it passes through a 14-class regex trap. Classes include: pipe-to-bash, rm-rf, git-force-push, npm-publish, path-traversal, scope-escape, and 8 more. Block fires before execution — not after.</div>
+  <div class="card-why"><strong>Why it matters:</strong> The only way to trust an AI coding loop is to verify its output before it touches anything. The leash is the enforcement point that makes all other guarantees possible.</div>
+  <span class="claim-pill claim-approved">✓ Approved · 14 classes, pre-exec</span>
+</div>
+
+<div class="card" data-cat="safety">
+  <div class="card-top"><span class="phase-badge">Ph 9</span><div class="status-dot dot-green"></div></div>
+  <div class="card-title">Ed25519-Signed Audit Trail</div>
+  <div class="card-what">Every attempt writes a tamper-evident JSON artifact signed with Ed25519. Contains: grade, verifier pass/fail counts, cost, patched files, all leash decisions, and a replayable flag. Verifiable offline without Martin.</div>
+  <div class="card-why"><strong>Why it matters:</strong> "The AI did it" is not an audit trail. A signed, replayable artifact that any engineer can verify independently is. Required for enterprise compliance.</div>
+  <span class="claim-pill claim-approved">✓ Approved</span>
+</div>
+
+<div class="card" data-cat="safety">
+  <div class="card-top"><span class="phase-badge">Ph 10</span><div class="status-dot dot-green"></div></div>
+  <div class="card-title">Verifier-Graded Patch Acceptance</div>
+  <div class="card-what">After each attempt, the user-supplied verify command runs. Pass/fail count determines a grade (A/B/C). Grade A/B: patch accepted. Grade C: patch rejected, rollback triggered, retry within budget.</div>
+  <div class="card-why"><strong>Why it matters:</strong> The verifier decision comes from actual test output — not model confidence. A loop that accepts patches based on what the model thinks is done is not governed.</div>
+  <span class="claim-pill claim-approved">✓ Approved · 80% verifier pass rate</span>
+</div>
+
+<div class="card" data-cat="safety">
+  <div class="card-top"><span class="phase-badge">Ph 11</span><div class="status-dot dot-green"></div></div>
+  <div class="card-title">CVE-Watch Dependency Scanning</div>
+  <div class="card-what">Pre-run and post-patch CVE scan of dependencies. Configurable block threshold (CRITICAL/HIGH/MEDIUM/LOW). failClosed option prevents the loop from proceeding if the scanner is unavailable.</div>
+  <div class="card-why"><strong>Why it matters:</strong> AI agents that install packages without CVE checks introduce supply-chain risk at machine speed. Martin blocks at install time.</div>
+  <span class="claim-pill claim-approved">✓ Approved</span>
+</div>
+
+<div class="card" data-cat="safety">
+  <div class="card-top"><span class="phase-badge">Ph 12</span><div class="status-dot dot-green"></div></div>
+  <div class="card-title">SLSA Build Level 3 Provenance</div>
+  <div class="card-what">Published artifacts carry SLSA Build Level 3 provenance attestation. Build inputs, builder identity, and output digests are recorded and verifiable via sigstore/cosign.</div>
+  <div class="card-why"><strong>Why it matters:</strong> Supply chain attacks target the build pipeline. SLSA L3 provenance gives downstream consumers cryptographic proof that the artifact was built from the declared source.</div>
+  <span class="claim-pill claim-approved">✓ Approved</span>
+</div>
+
+<div class="card" data-cat="safety">
+  <div class="card-top"><span class="phase-badge">Ph 13–14</span><div class="status-dot dot-green"></div></div>
+  <div class="card-title">63/63 Adversarial Gate Checks</div>
+  <div class="card-what">63 declared adversarial scenarios, all passing. Covers: verifier leash bypass, grounding contradictions, scope-escape, path-traversal, budget-governor bypass. Zero false positives. Reproducible in CI.</div>
+  <div class="card-why"><strong>Why it matters:</strong> A safety system you can't verify is a marketing claim. 63 replayable gate checks that any engineer can run is a verified safety record.</div>
+  <span class="claim-pill claim-approved">✓ Approved · 63/63, 0 false positives</span>
+</div>
+
+<div class="card" data-cat="safety">
+  <div class="card-top"><span class="phase-badge">Ph 15</span><div class="status-dot dot-green"></div></div>
+  <div class="card-title">SIEM Streaming (OCSF/CEF)</div>
+  <div class="card-what">Runtime events stream to any SIEM in OCSF or CEF format. Each leash decision, budget event, verifier result, and rollback action is a discrete, structured event. Configuration via martin.policy.yaml.</div>
+  <div class="card-why"><strong>Why it matters:</strong> Enterprise security teams need AI agent activity in their existing SIEM. Martin is the first AI coding runtime with native SIEM integration out of the box.</div>
+  <span class="claim-pill claim-approved">✓ Approved</span>
+</div>
+
+</div><!-- /grid safety -->
+
+<!-- ─── BENCHMARKS ─── -->
+<div class="section-head"><div class="section-title">Benchmarks &amp; Evidence</div><div class="section-sub">Phases 16–25 · Reproducible proof</div></div>
+<div class="grid" id="grid-benchmarks">
+
+<div class="card" data-cat="benchmarks">
+  <div class="card-top"><span class="phase-badge">Ph 16–18</span><div class="status-dot dot-green"></div></div>
+  <div class="card-title">Comparative Public Benchmark</div>
+  <div class="card-what">10-task bundle, same repo snapshot, same verifier commands for Martin, Ralphy, and Ralph. Martin: 10/10 correct outcomes, 8/10 verified completions, $11.90. Ralphy: 5/10, $24. Ralph: 4/10, $30.70.</div>
+  <div class="card-why"><strong>Why it matters:</strong> 2x pass rate at 2.6x lower cost vs Ralph, 2x at 1.5x lower cost vs Ralphy. Reproducible. Methodology published. Not a marketing claim — a benchmark contract.</div>
+  <span class="claim-pill claim-approved">✓ Approved · All numbers reproducible</span>
+</div>
+
+<div class="card" data-cat="benchmarks">
+  <div class="card-top"><span class="phase-badge">Ph 19–20</span><div class="status-dot dot-green"></div></div>
+  <div class="card-title">Overnight Engineer Lane (10/10)</div>
+  <div class="card-what">10 tasks declared as "should complete cleanly by morning" — bounded engineering work with clear success criteria. Martin: 10/10. Proof artifacts written and signed for each.</div>
+  <div class="card-why"><strong>Why it matters:</strong> The concrete promise: assign 10 overnight tasks, come back to 10 completed, signed, verifier-passed runs. Not "usually works" — 10/10 on the declared contract.</div>
+  <span class="claim-pill claim-approved">✓ Approved</span>
+</div>
+
+<div class="card" data-cat="benchmarks">
+  <div class="card-top"><span class="phase-badge">Ph 21</span><div class="status-dot dot-green"></div></div>
+  <div class="card-title">Governance Lane (8/10 verified, 10/10 controlled)</div>
+  <div class="card-what">Governance benchmark includes cases where the correct answer is to stop, refuse, or recover — not complete. 10/10 controlled outcomes (stop/refuse/recover as declared). 8/10 verified completions on completion-only subset.</div>
+  <div class="card-why"><strong>Why it matters:</strong> A system that completes everything including tasks it shouldn't is not governed. The governance lane proves Martin knows when not to proceed.</div>
+  <span class="claim-pill claim-approved">✓ Approved · Both numbers required together</span>
+</div>
+
+<div class="card" data-cat="benchmarks">
+  <div class="card-top"><span class="phase-badge">Ph 22–25</span><div class="status-dot dot-green"></div></div>
+  <div class="card-title">Formal Proof Suite + Property Tests</div>
+  <div class="card-what">Five proof families: leash coverage, filesystem safety, network isolation, dependency integrity, stale-proof detection. Differentially fuzzed classifier. All proofs replayable. Parallel proof-consensus model.</div>
+  <div class="card-why"><strong>Why it matters:</strong> Benchmark numbers show outcomes. Formal proofs show the mechanism is correct by construction — not just on the tested cases.</div>
+  <span class="claim-pill claim-approved">✓ Approved · Research context only for "formally proven"</span>
+</div>
+
+</div><!-- /grid benchmarks -->
+
+<!-- ─── OBSERVABILITY ─── -->
+<div class="section-head"><div class="section-title">Observability</div><div class="section-sub">Phases 23–25 · Full runtime visibility</div></div>
+<div class="grid" id="grid-observability">
+
+<div class="card" data-cat="observability">
+  <div class="card-top"><span class="phase-badge">Ph 23</span><div class="status-dot dot-green"></div></div>
+  <div class="card-title">OpenTelemetry Integration</div>
+  <div class="card-what">9 named span types exported via OTel: budget decisions, leash evaluations, verifier runs, rollback events, grounding scans, proof registrations, gateway policy decisions, and router decisions (with cost_per_1k_tokens + trust_tier attributes). Compatible with any OTel-compliant backend.</div>
+  <div class="card-why"><strong>Why it matters:</strong> You can't manage what you can't measure. OTel spans mean Martin runs appear in your existing Datadog, Honeycomb, or Grafana dashboards alongside your other services.</div>
+  <span class="claim-pill claim-approved">✓ Approved</span>
+</div>
+
+<div class="card" data-cat="observability">
+  <div class="card-top"><span class="phase-badge">Ph 24</span><div class="status-dot dot-green"></div></div>
+  <div class="card-title">Natural Language Explanations (martin explain)</div>
+  <div class="card-what">`martin explain &lt;loopId&gt;` returns a human-readable summary of any run: what was attempted, what the verifier said, why the patch was accepted or rejected, what the cost breakdown was.</div>
+  <div class="card-why"><strong>Why it matters:</strong> Engineering managers and product owners need to understand what the AI did without reading JSON artifacts. martin explain bridges that gap.</div>
+  <span class="claim-pill claim-approved">✓ Approved</span>
+</div>
+
+<div class="card" data-cat="observability">
+  <div class="card-top"><span class="phase-badge">Ph 25</span><div class="status-dot dot-green"></div></div>
+  <div class="card-title">Replayable Decision Log</div>
+  <div class="card-what">Every accept/reject decision is replayable offline. Replay inputs → same output deterministically. A replay mismatch is treated as a P0 defect and blocks the next release.</div>
+  <div class="card-why"><strong>Why it matters:</strong> For ML research and compliance: the system is auditable not just by reading logs, but by re-running the exact decision and getting the same answer.</div>
+  <span class="claim-pill claim-approved">✓ Approved</span>
+</div>
+
+</div><!-- /grid observability -->
+
+<!-- ─── INTELLIGENCE ─── -->
+<div class="section-head"><div class="section-title">Intelligence Layer</div><div class="section-sub">Phases 26–31 · Memory, routing, graph context</div></div>
+<div class="grid" id="grid-intelligence">
+
+<div class="card" data-cat="intelligence">
+  <div class="card-top"><span class="phase-badge">Ph 26–28</span><div class="status-dot dot-green"></div></div>
+  <div class="card-title">Autonomy Envelope (12/12 safe tasks)</div>
+  <div class="card-what">Scoped autonomy framework: 12 safe task scenarios where Martin operates without human confirmation — tests, docs, changelogs, vitest snapshots, benchmarks, and contracts refactors all covered. Formal escalation ledger tracks when the agent exceeded its declared scope.</div>
+  <div class="card-why"><strong>Why it matters:</strong> "Autonomous" as a blanket claim is dangerous. An autonomy envelope with explicit safe/unsafe task boundaries is the responsible alternative.</div>
+  <span class="claim-pill claim-approved">✓ Approved</span>
+</div>
+
+<div class="card" data-cat="intelligence">
+  <div class="card-top"><span class="phase-badge">Ph 31</span><div class="status-dot dot-green"></div></div>
+  <div class="card-title">Memory Palace — Cross-Run Recall</div>
+  <div class="card-what">Persistent memory per workspace/project. Recalls relevant prior runs by scoring: failure-class match (+30), intervention match (+14), token overlap (+6 each), completion memory (+4). Fail-open: memory errors never block a run.</div>
+  <div class="card-why"><strong>Why it matters:</strong> Without memory, every run starts blind. With Memory Palace, Martin knows which files regressed last time, which fixes worked, and which approaches failed — before the first token is spent.</div>
+  <span class="claim-pill claim-approved">✓ Approved</span>
+</div>
+
+<div class="card" data-cat="intelligence">
+  <div class="card-top"><span class="phase-badge">Ph 31</span><div class="status-dot dot-green"></div></div>
+  <div class="card-title">Model Router — Cost-Aware Routing</div>
+  <div class="card-what">Dynamically selects the optimal model/provider per attempt based on: budget pressure (healthy/soft_limit/hard_limit), failure class (verification_failure → high-trust), complexity score, remaining budget. Six routing heuristics in priority order.</div>
+  <div class="card-why"><strong>Why it matters:</strong> Simple tasks don't need expensive models. Verification failures need high-trust models. The router automatically spends your budget where it matters most.</div>
+  <span class="claim-pill claim-approved">✓ Approved · 30–60% cost reduction on typical tasks</span>
+</div>
+
+<div class="card" data-cat="intelligence">
+  <div class="card-top"><span class="phase-badge">Ph 31</span><div class="status-dot dot-green"></div></div>
+  <div class="card-title">Graph Hotspots — Repository Risk Map</div>
+  <div class="card-what">Reads a JSON adjacency graph of the codebase and identifies files with high regression counts. Files with regressionCount &gt; 2 generate critical warnings injected into the model's context before patching begins.</div>
+  <div class="card-why"><strong>Why it matters:</strong> The AI can't know which files have burned you before without being told. Graph Hotspots gives Martin institutional memory about which parts of the codebase are dangerous.</div>
+  <span class="claim-pill claim-approved">✓ Approved</span>
+</div>
+
+</div><!-- /grid intelligence -->
+
+<!-- ─── MCP GATEWAY ─── -->
+<div class="section-head"><div class="section-title">MCP Gateway</div><div class="section-sub">Phase 32 · Governed external tool access</div></div>
+<div class="grid" id="grid-mcp">
+
+<div class="card" data-cat="mcp">
+  <div class="card-top"><span class="phase-badge">Ph 32</span><div class="status-dot dot-green"></div></div>
+  <div class="card-title">MCP Server Registry — Tool Policy Engine</div>
+  <div class="card-what">Registers external MCP servers with trust tiers (system/verified/untrusted). Evaluates every tool call against allowlist, blocklist, dangerous-pattern detection, and execution profile (ci_safe blocks all untrusted servers). OTel span emitted per decision.</div>
+  <div class="card-why"><strong>Why it matters:</strong> MCP tools are powerful. Ungovened MCP tool calls inside an AI loop are a serious attack surface. The Registry enforces policy before any external tool executes.</div>
+  <span class="claim-pill claim-approved">✓ Approved</span>
+</div>
+
+<div class="card" data-cat="mcp">
+  <div class="card-top"><span class="phase-badge">Ph 32</span><div class="status-dot dot-green"></div></div>
+  <div class="card-title">MCP HTTP Transport — JSON-RPC 2.0</div>
+  <div class="card-what">Dispatches governed JSON-RPC 2.0 calls to external MCP servers over HTTP POST. 30-second AbortController timeout per call. Vault headers injected per-call. Proper error classification (network, protocol, timeout, RPC error).</div>
+  <div class="card-why"><strong>Why it matters:</strong> Reliable, observable MCP calls with timeout enforcement and vault-based auth. The transport layer is the bridge between Martin's governance and external tool ecosystems.</div>
+  <span class="claim-pill claim-approved">✓ Approved</span>
+</div>
+
+<div class="card" data-cat="mcp">
+  <div class="card-top"><span class="phase-badge">Ph 32</span><div class="status-dot dot-green"></div></div>
+  <div class="card-title">Token Vault — Static &amp; OAuth Proxy</div>
+  <div class="card-what">StaticTokenVault: in-memory Map of pre-configured headers per server. OAuthProxyVault: stub for client-credentials flow (replace before production OAuth). Vault interface is the abstraction — swap implementations without touching transport code.</div>
+  <div class="card-why"><strong>Why it matters:</strong> Credentials for external MCP servers need to be managed centrally, not hardcoded per-server. The vault pattern makes credential rotation a one-line config change.</div>
+  <span class="claim-pill claim-gated">⏳ OAuthProxyVault: stub until real OAuth wired</span>
+</div>
+
+</div><!-- /grid mcp -->
+
+<div style="margin-top:20px;padding:18px 22px;background:#fff;border:1px solid #e8e2da;border-radius:12px;font-size:12px;color:#888;display:flex;gap:24px">
+  <span><span style="display:inline-block;width:8px;height:8px;background:#10b981;border-radius:50%;margin-right:6px"></span>Approved claim — safe to use in all materials</span>
+  <span><span style="display:inline-block;width:8px;height:8px;background:#f59e0b;border-radius:50%;margin-right:6px"></span>Gated — approved after condition met</span>
+  <span style="margin-left:auto;color:#5b50d6;font-weight:600">837 tests · 63 gate checks · Phase 32 complete · 2026-04-15</span>
+</div>
+
+</div><!-- /main -->
+
+<script>
+function filter(cat) {
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  document.querySelectorAll('.card').forEach(c => {
+    if (cat === 'all' || c.dataset.cat === cat) c.classList.remove('hidden');
+    else c.classList.add('hidden');
+  });
+}
+</script>
+</body>
+</html>

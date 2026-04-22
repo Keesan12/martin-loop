@@ -13,8 +13,6 @@
 >
 > MartinLoop wraps agent runs with budgets, policy checks, verifier gates, rollback evidence, and inspectable run records.
 
-<img src="./docs/assets/cli-animated.svg" alt="MartinLoop CLI — governed agent run" width="720">
-
 </div>
 
 ---
@@ -48,20 +46,6 @@ MartinLoop calls that failure mode the Ralph Loop: attempt, check, retry, repeat
 - Why did it stop?
 - Can we inspect or resume it later?
 
-<div align="center">
-
-| | MartinLoop | Ralph Loop |
-|:---|:---:|:---:|
-| Scenario | Repair Flaky CI Gate | Repair Flaky CI Gate |
-| Outcome | ✅ Verifier passed | ❌ Failed — no verifier |
-| Cost | **$2.30** | ~~$5.20~~ |
-| Attempts | 1 | 4 retries |
-| Audit trail | JSONL record written | None |
-
-*Reproducible: `pnpm --filter @martin/benchmarks eval`*
-
-</div>
-
 ---
 
 ## What MartinLoop Does Today
@@ -77,16 +61,6 @@ MartinLoop calls that failure mode the Ralph Loop: attempt, check, retry, repeat
 | Run records | The CLI appends JSONL loop records under `~/.martin/runs/<workspaceId>.jsonl`; lower-level stores can also persist contracts, ledgers, and attempt artifacts. |
 
 The result is a runtime that can complete good work, refuse unsafe work, stop uneconomical work, and leave evidence behind.
-
-### How It Works — Five Layers
-
-| Layer | What it does |
-|---|---|
-| **1. Task Contract** | Objective, verifier plan, repo root, allowed/denied paths, acceptance criteria, workspace, project, and budget. |
-| **2. Policy & Budget** | Defaults from `martin.config.yaml`; CLI flags override. Budget preflight rejects attempts before execution. |
-| **3. Agent Adapters** | Claude CLI, Codex CLI, direct-provider, and stub adapters normalize execution results into the core runtime contract. |
-| **4. Safety & Verification** | Verifier commands, file scope, approval-boundary changes, secret-like values, and grounding determine whether work is kept. |
-| **5. Persistence** | CLI writes JSONL records under `~/.martin/runs/`. Repo-backed runs can also persist contracts, ledgers, diffs, and rollback artifacts. |
 
 ---
 
@@ -104,12 +78,10 @@ pnpm --filter @martin/benchmarks eval:phase12
 
 The side-by-side demo uses the current demo scenario numbers for "Repair Flaky CI Gate": MartinLoop completes with verifier-backed success at `$2.30`; the Ralph-style baseline spends `$5.20` and fails.
 
-<div align="center">
-  <img src="./docs/assets/side-by-side.svg" alt="MartinLoop vs Ralph — side-by-side benchmark comparison" width="900">
-</div>
+[See the interactive side-by-side demo](./docs/assets/phase3c-sidesidebyside-demo.html)
 
 <div align="center">
-  <img src="./docs/assets/martin-raplph.png.jpg" alt="Martin vs Ralph — governed vs ungoverned agent loop" width="420">
+  <img src="./docs/assets/martin-raplph.png.jpg" alt="MartinLoop illustration" width="380">
 </div>
 
 ---
@@ -182,10 +154,6 @@ martin run <objective> [options]
 ```
 
 The public CLI also includes `inspect`, `resume`, and a `bench` redirect that points reviewers to the workspace benchmark harness.
-
-<div align="center">
-  <img src="./docs/assets/cli-static.svg" alt="MartinLoop CLI terminal output" width="720">
-</div>
 
 ---
 

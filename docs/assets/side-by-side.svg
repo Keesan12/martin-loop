@@ -1,0 +1,134 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 582" width="960" height="582">
+  <defs>
+    <style>
+      .m{font-family:"SF Mono","JetBrains Mono","Cascadia Code",Consolas,monospace}
+    </style>
+  </defs>
+
+  <!-- Root background -->
+  <rect width="960" height="582" rx="14" fill="#0d1117"/>
+  <rect x=".5" y=".5" width="959" height="581" rx="14" fill="none" stroke="#30363d"/>
+
+  <!-- Header -->
+  <text x="480" y="28" text-anchor="middle" class="m" font-size="9" fill="#bc8cff" letter-spacing="1.2">BENCHMARK · REPAIR FLAKY CI GATE · MartinLoop v0.1.2</text>
+  <text x="480" y="50" text-anchor="middle" class="m" font-size="13" fill="#e6edf3">Same task. Same starting state. Wildly different outcomes.</text>
+  <text x="480" y="68" text-anchor="middle" class="m" font-size="9.5" fill="#8b949e">Real benchmark numbers · Reproduce: pnpm --filter @martin/benchmarks eval</text>
+
+  <!-- ═══════════════ LEFT PANEL: RALPH ═══════════════ -->
+
+  <!-- Badge -->
+  <rect x="20" y="78" width="232" height="20" rx="4" fill="#3d1515"/>
+  <text x="32" y="92" class="m" font-size="10" fill="#f85149" font-weight="bold">WITHOUT MARTINLOOP — RALPH</text>
+
+  <!-- Window frame -->
+  <rect x="20" y="102" width="450" height="340" rx="10" fill="#161b22"/>
+  <rect x="20.5" y="102.5" width="449" height="339" rx="10" fill="none" stroke="#30363d"/>
+  <!-- Title bar -->
+  <rect x="20" y="102" width="450" height="36" rx="10" fill="#1c2128"/>
+  <rect x="20" y="124" width="450" height="14" fill="#1c2128"/>
+  <line x1="20" y1="138" x2="470" y2="138" stroke="#30363d"/>
+  <!-- Traffic lights -->
+  <circle cx="40" cy="120" r="5.5" fill="#ff5f57"/>
+  <circle cx="58" cy="120" r="5.5" fill="#ffbd2e"/>
+  <circle cx="76" cy="120" r="5.5" fill="#28c840"/>
+  <text x="245" y="125" text-anchor="middle" class="m" font-size="10" fill="#8b949e">ralph — no governance</text>
+
+  <!-- Ralph content: y starts at 154, step 16 -->
+  <text x="34" y="154" class="m" font-size="11" fill="#3fb950">$ ralph run "repair flaky CI gate"</text>
+
+  <text x="34" y="186" class="m" font-size="11" fill="#8b949e">&#x27F3; Attempt 1/&#x221E; ...</text>
+  <text x="34" y="202" class="m" font-size="11" fill="#8b949e">  Analyzing CI config...</text>
+  <text x="34" y="218" class="m" font-size="11" fill="#f85149">  &#x2717; Test suite: 3 failures</text>
+  <text x="34" y="234" class="m" font-size="11" fill="#d29922">  &#x21BB; Retrying... [$1.10 spent]</text>
+  <text x="34" y="250" class="m" font-size="11" fill="#8b949e">&#x27F3; Attempt 2/&#x221E; ...</text>
+  <text x="34" y="266" class="m" font-size="11" fill="#f85149">  &#x2717; Test suite: 2 failures</text>
+  <text x="34" y="282" class="m" font-size="11" fill="#d29922">  &#x21BB; Retrying... [$2.40 spent]</text>
+  <text x="34" y="298" class="m" font-size="11" fill="#8b949e">&#x27F3; Attempt 3/&#x221E; ... 4/&#x221E; ...</text>
+  <text x="34" y="314" class="m" font-size="11" fill="#f85149">  &#x2717; Unknown failure — model lost context</text>
+  <text x="34" y="330" class="m" font-size="11" fill="#d29922">  &#x26A0; Halted by API limit [$5.20 total]</text>
+
+  <text x="34" y="362" class="m" font-size="11" fill="#f85149">Cost:         $5.20  (no cap enforced)</text>
+  <text x="34" y="378" class="m" font-size="11" fill="#8b949e">Audit trail:  <tspan fill="#f85149">None</tspan></text>
+  <text x="34" y="394" class="m" font-size="11" fill="#8b949e">Rollback:     <tspan fill="#f85149">Not available</tspan></text>
+  <text x="34" y="410" class="m" font-size="11" fill="#8b949e">Exit:         <tspan fill="#f85149">unknown_failure</tspan></text>
+
+  <!-- Ralph outcome box -->
+  <rect x="20" y="450" width="450" height="48" rx="8" fill="#3d1515"/>
+  <rect x="20.5" y="450.5" width="449" height="47" rx="8" fill="none" stroke="#f85149" stroke-opacity=".4"/>
+  <text x="38" y="470" class="m" font-size="12" fill="#f85149" font-weight="bold">&#x2717;  Failed — unknown_failure</text>
+  <text x="38" y="488" class="m" font-size="10" fill="#8b949e">4 retries · $5.20 · no verifier · no receipt · no rollback</text>
+
+  <!-- ═══════════════ RIGHT PANEL: MARTIN ═══════════════ -->
+
+  <!-- Badge -->
+  <rect x="490" y="78" width="172" height="20" rx="4" fill="#0d2b17"/>
+  <text x="502" y="92" class="m" font-size="10" fill="#3fb950" font-weight="bold">WITH MARTINLOOP</text>
+
+  <!-- Window frame -->
+  <rect x="490" y="102" width="450" height="340" rx="10" fill="#161b22"/>
+  <rect x="490.5" y="102.5" width="449" height="339" rx="10" fill="none" stroke="#30363d"/>
+  <!-- Title bar -->
+  <rect x="490" y="102" width="450" height="36" rx="10" fill="#1c2128"/>
+  <rect x="490" y="124" width="450" height="14" fill="#1c2128"/>
+  <line x1="490" y1="138" x2="940" y2="138" stroke="#30363d"/>
+  <!-- Traffic lights -->
+  <circle cx="510" cy="120" r="5.5" fill="#ff5f57"/>
+  <circle cx="528" cy="120" r="5.5" fill="#ffbd2e"/>
+  <circle cx="546" cy="120" r="5.5" fill="#28c840"/>
+  <text x="715" y="125" text-anchor="middle" class="m" font-size="10" fill="#8b949e">martin — governed</text>
+
+  <!-- Martin content -->
+  <text x="504" y="154" class="m" font-size="11" fill="#3fb950">$ martin run "repair flaky CI gate" \</text>
+  <text x="504" y="170" class="m" font-size="11" fill="#3fb950">    --budget 5.00 --verify "pnpm test"</text>
+  <text x="504" y="191" class="m" font-size="11" fill="#79c0ff">&#x2713; Budget $5.00 · Safety leash · Verifier set</text>
+
+  <text x="504" y="223" class="m" font-size="11" fill="#8b949e">&#x27F3; Attempt 1/3 ...</text>
+  <text x="504" y="239" class="m" font-size="11" fill="#8b949e">  Analyzing CI config...</text>
+  <text x="504" y="255" class="m" font-size="11" fill="#3fb950">  &#x2713; Race condition found in test runner</text>
+  <text x="504" y="271" class="m" font-size="11" fill="#3fb950">  &#x2713; Fix: jest.config.js + test helper</text>
+  <text x="504" y="287" class="m" font-size="11" fill="#8b949e">  &#x27F3; Running verifier: pnpm test...</text>
+  <text x="504" y="303" class="m" font-size="11" fill="#3fb950">  &#x2713; 44/44 tests pass — verified</text>
+
+  <!-- Separator line -->
+  <rect x="504" y="312" width="422" height="1" fill="#30363d"/>
+
+  <text x="504" y="328" class="m" font-size="11" fill="#3fb950">&#x2713; Cost:   $2.30 / $5.00 cap</text>
+  <text x="504" y="344" class="m" font-size="11" fill="#3fb950">&#x2713; Status: completed · verified</text>
+  <text x="504" y="360" class="m" font-size="11" fill="#bc8cff">&#x2713; Record: JSONL audit record written</text>
+  <text x="504" y="376" class="m" font-size="11" fill="#3fb950">&#x2713; Rollback ready</text>
+
+  <!-- Martin outcome box -->
+  <rect x="490" y="450" width="450" height="48" rx="8" fill="#0d2b17"/>
+  <rect x="490.5" y="450.5" width="449" height="47" rx="8" fill="none" stroke="#3fb950" stroke-opacity=".4"/>
+  <text x="508" y="470" class="m" font-size="12" fill="#3fb950" font-weight="bold">&#x2713;  Passed — lifecycleState: completed</text>
+  <text x="508" y="488" class="m" font-size="10" fill="#8b949e">1 attempt · $2.30 · verifier passed · JSONL record · rollback ready</text>
+
+  <!-- ═══════════════ VERDICT BAR ═══════════════ -->
+  <rect x="20" y="506" width="920" height="62" rx="10" fill="#161b22"/>
+  <rect x="20.5" y="506.5" width="919" height="61" rx="10" fill="none" stroke="#30363d"/>
+
+  <!-- Stat: Martin cost -->
+  <text x="88" y="529" text-anchor="middle" class="m" font-size="18" fill="#3fb950" font-weight="bold">$2.30</text>
+  <text x="88" y="550" text-anchor="middle" class="m" font-size="8" fill="#8b949e" letter-spacing=".6">MARTIN COST</text>
+  <line x1="155" y1="516" x2="155" y2="558" stroke="#30363d"/>
+
+  <!-- Stat: Ralph cost -->
+  <text x="218" y="529" text-anchor="middle" class="m" font-size="18" fill="#f85149" font-weight="bold">$5.20</text>
+  <text x="218" y="550" text-anchor="middle" class="m" font-size="8" fill="#8b949e" letter-spacing=".6">RALPH COST</text>
+  <line x1="285" y1="516" x2="285" y2="558" stroke="#30363d"/>
+
+  <!-- Stat: Martin result -->
+  <text x="360" y="529" text-anchor="middle" class="m" font-size="14" fill="#3fb950" font-weight="bold">Completed</text>
+  <text x="360" y="550" text-anchor="middle" class="m" font-size="8" fill="#8b949e" letter-spacing=".6">MARTIN RESULT</text>
+  <line x1="430" y1="516" x2="430" y2="558" stroke="#30363d"/>
+
+  <!-- Stat: Ralph result -->
+  <text x="498" y="529" text-anchor="middle" class="m" font-size="14" fill="#f85149" font-weight="bold">Failed</text>
+  <text x="498" y="550" text-anchor="middle" class="m" font-size="8" fill="#8b949e" letter-spacing=".6">RALPH RESULT</text>
+  <line x1="558" y1="516" x2="558" y2="558" stroke="#30363d"/>
+
+  <!-- Note -->
+  <text x="576" y="528" class="m" font-size="11" fill="#e6edf3" font-weight="bold">55% lower cost. Verified pass vs failed outcome.</text>
+  <text x="576" y="549" class="m" font-size="10" fill="#8b949e">Reproduce: pnpm --filter @martin/benchmarks eval</text>
+
+</svg>
