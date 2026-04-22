@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MartinLoop — The Field 2026</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,700;0,9..144,900;1,9..144,700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --cream:#f8f5ed;--paper:#fffdf8;--border:#e2d9cc;
+  --ink:#18181b;--ink-2:#52525b;--ink-3:#a1a1aa;
+  --purple:#5b50d6;--purple-lt:#ede9ff;
+  --green:#15803d;--red:#b91c1c;--amber:#92400e;
+  --navy:#1a1a2e;
+  --font-d:'Fraunces',serif;--font-m:'JetBrains Mono',monospace;
+}
+body{font-family:-apple-system,sans-serif;background:var(--cream);color:var(--ink);padding:40px 24px;}
+.wrap{max-width:960px;margin:0 auto;display:flex;flex-direction:column;gap:56px;}
+.logo{font-size:28px;font-weight:900;color:var(--ink);letter-spacing:-0.05em;}
+.logo span{color:var(--purple);}
+.tagline{font-family:var(--font-m);font-size:11px;color:var(--ink-3);margin-top:4px;letter-spacing:.08em;text-transform:uppercase;}
+.eyebrow{font-family:var(--font-m);font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--purple);margin-bottom:12px;display:block;}
+.section-title{font-family:var(--font-d);font-size:clamp(1.6rem,3vw,2.4rem);font-weight:700;color:var(--ink);letter-spacing:-0.04em;margin-bottom:6px;}
+.section-sub{font-size:14px;color:var(--ink-2);line-height:1.6;max-width:560px;margin-bottom:24px;}
+
+/* HERO COST CARDS */
+.cost-row{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
+.cost-card{background:var(--paper);border:1px solid var(--border);border-radius:20px;padding:28px;position:relative;overflow:hidden;}
+.cost-card.winner{background:var(--navy);border-color:var(--navy);}
+.cost-card.winner::before{content:"★ WINNER";position:absolute;top:16px;right:16px;font-family:var(--font-m);font-size:9px;font-weight:700;letter-spacing:.12em;background:var(--purple);color:#fff;padding:3px 8px;border-radius:4px;}
+.cost-runner{font-family:var(--font-m);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--ink-3);margin-bottom:12px;}
+.cost-card.winner .cost-runner{color:rgba(255,255,255,0.45);}
+.cost-num{font-family:var(--font-d);font-size:3rem;font-weight:700;letter-spacing:-0.06em;line-height:1;color:var(--green);}
+.cost-card:not(.winner) .cost-num{color:var(--ink);}
+.cost-label{font-size:12px;color:var(--ink-3);margin-top:6px;}
+.cost-card.winner .cost-label{color:rgba(255,255,255,0.35);}
+.cost-detail{margin-top:16px;border-top:1px solid var(--border);padding-top:12px;}
+.cost-card.winner .cost-detail{border-color:rgba(255,255,255,0.1);}
+.cost-row-item{display:flex;justify-content:space-between;align-items:center;padding:4px 0;}
+.cost-key{font-size:12px;color:var(--ink-2);}
+.cost-val{font-family:var(--font-m);font-size:11px;font-weight:700;}
+.cost-card.winner .cost-key{color:rgba(255,255,255,0.4);}
+.cost-card.winner .cost-val{color:#fff;}
+.val-green{color:var(--green);}
+.val-red{color:var(--red);}
+.savings-tag{display:inline-block;background:#dcfce7;color:var(--green);font-family:var(--font-m);font-size:10px;font-weight:700;padding:4px 10px;border-radius:20px;margin-top:10px;}
+
+/* BAR CHART SECTION */
+.chart-wrap{background:var(--paper);border:1px solid var(--border);border-radius:20px;padding:28px;}
+.chart-container{position:relative;height:240px;}
+
+/* WHAT'S IN THE BOX */
+.feature-grid{display:grid;grid-template-columns:1fr;gap:0;border:1px solid var(--border);border-radius:20px;overflow:hidden;}
+.feat-header{display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr;background:var(--navy);padding:12px 20px;gap:8px;}
+.feat-h{font-family:var(--font-m);font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,0.4);text-align:center;}
+.feat-h:first-child{text-align:left;}
+.feat-row{display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr;padding:12px 20px;gap:8px;border-bottom:1px solid var(--border);background:var(--paper);align-items:center;}
+.feat-row:last-child{border-bottom:none;}
+.feat-row.us-row{background:var(--purple-lt);}
+.feat-name{font-size:13.5px;color:var(--ink);font-weight:500;}
+.feat-row.us-row .feat-name{font-weight:800;color:var(--ink);}
+.feat-cell{text-align:center;font-size:15px;}
+.check-y{color:var(--green);}
+.check-n{color:#d1d5db;}
+.check-p{color:var(--amber);font-family:var(--font-m);font-size:10px;font-weight:700;}
+
+/* PLAIN ENGLISH SECTION */
+.plain-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.plain-card{background:var(--paper);border:1px solid var(--border);border-radius:16px;padding:22px;}
+.plain-card.hero{border-color:var(--purple);background:var(--purple-lt);}
+.plain-q{font-size:12px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;font-family:var(--font-m);}
+.plain-a{font-size:15px;font-weight:700;color:var(--ink);line-height:1.45;}
+.plain-card.hero .plain-a{color:var(--purple);}
+.plain-sub{font-size:12.5px;color:var(--ink-2);margin-top:6px;line-height:1.5;}
+
+/* PROOF FOOTER */
+.proof-bar{background:var(--navy);border-radius:16px;padding:28px 36px;display:flex;align-items:center;justify-content:space-between;gap:24px;}
+.proof-num{font-family:var(--font-d);font-size:2.2rem;font-weight:700;color:#fff;letter-spacing:-0.04em;}
+.proof-label{font-family:var(--font-m);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:#4a4d62;margin-top:3px;}
+.proof-div{width:1px;height:40px;background:#1e2030;}
+.proof-note{font-size:12px;color:#4a4d62;line-height:1.6;max-width:280px;}
+.proof-note a{color:var(--purple);}
+
+hr.divider{border:none;border-top:1px solid var(--border);margin:0;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- HEADER -->
+<div>
+  <div class="logo">Martin<span>Loop</span></div>
+  <div class="tagline">vs The Field · Verified Benchmark · April 2026</div>
+</div>
+
+<!-- HERO COST COMPARISON -->
+<div>
+  <span class="eyebrow">Head-to-Head Cost</span>
+  <div class="section-title">Same tasks. MartinLoop costs 61% less.</div>
+  <div class="section-sub">10 identical benchmark tasks. 3 consecutive runs. Results are public and reproducible.</div>
+  <div class="cost-row">
+    <div class="cost-card winner">
+      <div class="cost-runner">MartinLoop</div>
+      <div class="cost-num">$11.90</div>
+      <div class="cost-label">10 tasks · $1.19 per task</div>
+      <div class="cost-detail">
+        <div class="cost-row-item"><span class="cost-key">Correct outcomes</span><span class="cost-val val-green">10 / 10</span></div>
+        <div class="cost-row-item"><span class="cost-key">Verified patches</span><span class="cost-val val-green">8 / 10</span></div>
+        <div class="cost-row-item"><span class="cost-key">Unsafe outcomes</span><span class="cost-val val-green">0</span></div>
+        <div class="cost-row-item"><span class="cost-key">Hard budget stop</span><span class="cost-val val-green">Yes</span></div>
+      </div>
+    </div>
+    <div class="cost-card">
+      <div class="cost-runner">Ralphy</div>
+      <div class="cost-num">$24.00</div>
+      <div class="cost-label">10 tasks · $2.40 per task</div>
+      <div class="cost-detail">
+        <div class="cost-row-item"><span class="cost-key">Correct outcomes</span><span class="cost-val val-red">5 / 10</span></div>
+        <div class="cost-row-item"><span class="cost-key">Verified patches</span><span class="cost-val">5 / 10</span></div>
+        <div class="cost-row-item"><span class="cost-key">Unsafe outcomes</span><span class="cost-val val-red">1</span></div>
+        <div class="cost-row-item"><span class="cost-key">Hard budget stop</span><span class="cost-val val-red">No</span></div>
+      </div>
+    </div>
+    <div class="cost-card">
+      <div class="cost-runner">Ralph</div>
+      <div class="cost-num">$30.70</div>
+      <div class="cost-label">10 tasks · $3.07 per task</div>
+      <div class="cost-detail">
+        <div class="cost-row-item"><span class="cost-key">Correct outcomes</span><span class="cost-val val-red">4 / 10</span></div>
+        <div class="cost-row-item"><span class="cost-key">Verified patches</span><span class="cost-val">4 / 10</span></div>
+        <div class="cost-row-item"><span class="cost-key">Unsafe outcomes</span><span class="cost-val val-red">1</span></div>
+        <div class="cost-row-item"><span class="cost-key">Hard budget stop</span><span class="cost-val val-red">No</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- BAR CHART -->
+<div>
+  <span class="eyebrow">Visual Comparison</span>
+  <div class="chart-wrap">
+    <canvas id="chart"></canvas>
+  </div>
+</div>
+
+<!-- PLAIN ENGLISH: WHAT EACH THING DOES -->
+<div>
+  <span class="eyebrow">What It Actually Means</span>
+  <div class="section-title">In plain English.</div>
+  <div class="plain-grid">
+    <div class="plain-card hero">
+      <div class="plain-q">What is MartinLoop?</div>
+      <div class="plain-a">A safety layer that runs between your team and your AI coding agent.</div>
+      <div class="plain-sub">It sets a cost limit, blocks dangerous moves before they happen, verifies the work actually passed tests, and leaves a signed receipt. Ralph and Ralphy do none of this.</div>
+    </div>
+    <div class="plain-card">
+      <div class="plain-q">What is Ralph / Ralphy?</div>
+      <div class="plain-a">AI coding agent runners with no budget control and no safety rails.</div>
+      <div class="plain-sub">Open source loop runners that keep retrying until they succeed or you run out of money. No hard stop. No verifier. No audit trail. Useful starting point, not production-safe.</div>
+    </div>
+    <div class="plain-card">
+      <div class="plain-q">Why does MartinLoop cost less?</div>
+      <div class="plain-a">It stops wasting tokens on retries and routes simple tasks to cheaper models first.</div>
+      <div class="plain-sub">Delta re-prompting sends only what changed on retry (not full context). A cheap-model classifier handles trivial tasks before touching expensive models. Real-world runs show 30–60% cost reduction vs unguarded loops (benchmark-cited).</div>
+    </div>
+    <div class="plain-card">
+      <div class="plain-q">What does "verified completion" mean?</div>
+      <div class="plain-a">The agent's work actually passed your tests — we didn't just take its word for it.</div>
+      <div class="plain-sub">Ralph and Ralphy report success based on model self-assessment. MartinLoop grades A/B/C based on actual test output. 8/10 patches met the verifier bar; 2/10 were correctly flagged as incomplete.</div>
+    </div>
+  </div>
+</div>
+
+<!-- FEATURE TABLE -->
+<div>
+  <span class="eyebrow">Feature Breakdown</span>
+  <div class="section-title">What's actually in the box.</div>
+  <div class="feature-grid">
+    <div class="feat-header">
+      <div class="feat-h" style="text-align:left;">Feature</div>
+      <div class="feat-h">MartinLoop</div>
+      <div class="feat-h">Ralphy</div>
+      <div class="feat-h">Ralph</div>
+      <div class="feat-h">GitHub ACP</div>
+    </div>
+    <div class="feat-row us-row">
+      <div class="feat-name">Hard dollar stop (not an alert)</div>
+      <div class="feat-cell"><span class="check-y">✓</span></div>
+      <div class="feat-cell"><span class="check-n">✗</span></div>
+      <div class="feat-cell"><span class="check-n">✗</span></div>
+      <div class="feat-cell"><span class="check-n">✗</span></div>
+    </div>
+    <div class="feat-row">
+      <div class="feat-name">Blocks dangerous commands before they run</div>
+      <div class="feat-cell"><span class="check-y">✓</span></div>
+      <div class="feat-cell"><span class="check-n">✗</span></div>
+      <div class="feat-cell"><span class="check-n">✗</span></div>
+      <div class="feat-cell"><span class="check-n">✗</span></div>
+    </div>
+    <div class="feat-row us-row">
+      <div class="feat-name">Rollback — zero files written on failure</div>
+      <div class="feat-cell"><span class="check-y">✓</span></div>
+      <div class="feat-cell"><span class="check-n">✗</span></div>
+      <div class="feat-cell"><span class="check-n">✗</span></div>
+      <div class="feat-cell"><span class="check-n">✗</span></div>
+    </div>
+    <div class="feat-row">
+      <div class="feat-name">Verifies work with real test results (not AI self-report)</div>
+      <div class="feat-cell"><span class="check-y">✓</span></div>
+      <div class="feat-cell"><span class="check-n">✗</span></div>
+      <div class="feat-cell"><span class="check-n">✗</span></div>
+      <div class="feat-cell"><span class="check-n">✗</span></div>
+    </div>
+    <div class="feat-row us-row">
+      <div class="feat-name">Signed audit trail — cryptographic proof</div>
+      <div class="feat-cell"><span class="check-y">✓</span></div>
+      <div class="feat-cell"><span class="check-n">✗</span></div>
+      <div class="feat-cell"><span class="check-n">✗</span></div>
+      <div class="feat-cell"><span class="check-p">partial</span></div>
+    </div>
+    <div class="feat-row">
+      <div class="feat-name">Policy-as-code (committed to your repo)</div>
+      <div class="feat-cell"><span class="check-y">✓</span></div>
+      <div class="feat-cell"><span class="check-n">✗</span></div>
+      <div class="feat-cell"><span class="check-n">✗</span></div>
+      <div class="feat-cell"><span class="check-n">✗</span></div>
+    </div>
+    <div class="feat-row us-row">
+      <div class="feat-name">Open source / MIT licensed</div>
+      <div class="feat-cell"><span class="check-y">✓</span></div>
+      <div class="feat-cell"><span class="check-y">✓</span></div>
+      <div class="feat-cell"><span class="check-y">✓</span></div>
+      <div class="feat-cell"><span class="check-n">✗</span></div>
+    </div>
+    <div class="feat-row">
+      <div class="feat-name">Routes cheap tasks to cheaper models (saves money)</div>
+      <div class="feat-cell"><span class="check-y">✓</span></div>
+      <div class="feat-cell"><span class="check-n">✗</span></div>
+      <div class="feat-cell"><span class="check-n">✗</span></div>
+      <div class="feat-cell"><span class="check-n">✗</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- PROOF FOOTER -->
+<div class="proof-bar">
+  <div><div class="proof-num">45/45</div><div class="proof-label">Benchmark tests · 3 runs</div></div>
+  <div class="proof-div"></div>
+  <div><div class="proof-num">63/63</div><div class="proof-label">Safety gate checks</div></div>
+  <div class="proof-div"></div>
+  <div><div class="proof-num">417</div><div class="proof-label">Tests green</div></div>
+  <div class="proof-div"></div>
+  <div class="proof-note">All benchmark numbers are public and reproducible.<br>
+  Run: <code style="font-family:monospace;background:rgba(255,255,255,0.1);padding:1px 5px;border-radius:3px;">bun run benchmark</code><br>
+  Source: <span style="color:var(--purple);">github.com/Keesan12/MartinLoop</span></div>
+</div>
+
+</div><!-- .wrap -->
+
+<script>
+const ctx = document.getElementById('chart').getContext('2d');
+new Chart(ctx, {
+  type: 'bar',
+  data: {
+    labels: ['MartinLoop', 'Ralphy', 'Ralph'],
+    datasets: [
+      {
+        label: 'Cost per 10 Tasks ($)',
+        data: [11.90, 24.00, 30.70],
+        backgroundColor: ['#5b50d6','#d1d5db','#e5e7eb'],
+        borderRadius: 8,
+        yAxisID: 'y',
+      },
+      {
+        label: 'Correct Outcomes (out of 10)',
+        data: [10, 5, 4],
+        backgroundColor: ['#15803d44','#d1d5db44','#e5e7eb44'],
+        borderColor: ['#15803d','#d1d5db','#e5e7eb'],
+        borderWidth: 2,
+        type: 'line',
+        yAxisID: 'y2',
+        tension: 0.3,
+        pointRadius: 6,
+        pointBackgroundColor: ['#15803d','#9ca3af','#d1d5db'],
+      }
+    ]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        labels: { font: { family: "'JetBrains Mono', monospace", size: 11 }, color: '#52525b' }
+      }
+    },
+    scales: {
+      y: { beginAtZero: true, grid: { color: '#e2d9cc' }, ticks: { callback: v => '$' + v, font: { family: 'JetBrains Mono' } } },
+      y2: { position: 'right', beginAtZero: true, max: 12, grid: { display: false }, ticks: { callback: v => v + '/10', font: { family: 'JetBrains Mono' } } },
+      x: { grid: { display: false }, ticks: { font: { family: 'JetBrains Mono', weight: '700' } } }
+    }
+  }
+});
+</script>
+</body>
+</html>

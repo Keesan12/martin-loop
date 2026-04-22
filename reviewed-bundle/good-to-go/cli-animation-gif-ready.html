@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#0d1117;display:flex;align-items:center;justify-content:center;min-height:100vh;}
+.terminal{width:820px;border-radius:12px;overflow:hidden;background:#0d1117;border:1px solid #30363d;font-family:'SF Mono','Cascadia Code',Consolas,monospace;font-size:12.5px;}
+.tbar{background:#161b22;height:40px;display:flex;align-items:center;padding:0 16px;gap:8px;border-bottom:1px solid #30363d;}
+.d{width:12px;height:12px;border-radius:50%;}
+.dr{background:#ff5f57;}.dy{background:#ffbd2e;}.dg{background:#28c840;}
+.ttitle{flex:1;text-align:center;color:#484f58;font-size:12px;}
+.tbody{padding:16px 22px;line-height:2;}
+.ln{display:block;white-space:pre;opacity:0;}
+@keyframes fadeUp{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+.cp{color:#3fb950;}.cc{color:#e6edf3;}.dim{color:#8b949e;}
+.cok{color:#3fb950;}.ce{color:#f85149;}.cjk{color:#79c0ff;}.cjv{color:#a5d6ff;}.cjn{color:#e6edf3;}.cj{color:#e6edf3;}
+.sumbox{background:#161b22;border:1px solid #238636;border-radius:8px;padding:12px 16px;margin-top:4px;opacity:0;}
+@keyframes boxIn{from{opacity:0}to{opacity:1}}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+.cursor{display:inline-block;width:8px;height:14px;background:#e6edf3;vertical-align:middle;animation:blink 1s step-end infinite;opacity:0;}
+</style>
+</head>
+<body>
+<div class="terminal">
+  <div class="tbar">
+    <div class="d dr"></div><div class="d dy"></div><div class="d dg"></div>
+    <div class="ttitle">martin — governed ai coding runtime · martinloop.com</div>
+  </div>
+  <div class="tbody" id="body">
+
+<span class="ln" id="l1"><span class="cp">$</span> <span class="cc">martin run "repair flaky CI gate" --budget 5.00 --verify "pnpm test"</span></span>
+<span class="ln" id="l2"><span class="cj">{</span></span>
+<span class="ln" id="l3">  <span class="cjk">"command"</span><span class="cj">: </span><span class="cjv">"run"</span><span class="cj">,</span></span>
+<span class="ln" id="l4">  <span class="cjk">"decision"</span><span class="cj">: {</span></span>
+<span class="ln" id="l5">    <span class="cjk">"lifecycleState"</span><span class="cj">: </span><span class="cok">"completed"</span><span class="cj">,</span></span>
+<span class="ln" id="l6">    <span class="cjk">"status"</span><span class="cj">: </span><span class="cok">"completed"</span><span class="cj">,</span></span>
+<span class="ln" id="l7">    <span class="cjk">"reason"</span><span class="cj">: </span><span class="cjv">"Martin verified the fix and can hard-complete the loop."</span></span>
+<span class="ln" id="l8">  <span class="cj">},</span></span>
+<span class="ln" id="l9">  <span class="cjk">"loop"</span><span class="cj">: {</span></span>
+<span class="ln" id="l10">    <span class="cjk">"loopId"</span><span class="cj">: </span><span class="cjv">"loop_a7f2b9"</span><span class="cj">,</span></span>
+<span class="ln" id="l11">    <span class="cjk">"status"</span><span class="cj">: </span><span class="cok">"completed"</span><span class="cj">,</span></span>
+<span class="ln" id="l12">    <span class="cjk">"cost"</span><span class="cj">: {</span></span>
+<span class="ln" id="l13">      <span class="cjk">"actualUsd"</span><span class="cj">: </span><span class="cjn">2.30</span><span class="cj">,</span></span>
+<span class="ln" id="l14">      <span class="cjk">"tokensIn"</span><span class="cj">: </span><span class="cjn">108661</span><span class="cj">,</span></span>
+<span class="ln" id="l15">      <span class="cjk">"tokensOut"</span><span class="cj">: </span><span class="cjn">778</span></span>
+<span class="ln" id="l16">    <span class="cj">},</span></span>
+<span class="ln" id="l17">    <span class="cjk">"attempts"</span><span class="cj">: [{</span></span>
+<span class="ln" id="l18">      <span class="cjk">"index"</span><span class="cj">: </span><span class="cjn">1</span><span class="cj">,</span></span>
+<span class="ln" id="l19">      <span class="cjk">"model"</span><span class="cj">: </span><span class="cjv">"claude-sonnet-4-6"</span><span class="cj">,</span></span>
+<span class="ln" id="l20">      <span class="cjk">"summary"</span><span class="cj">: </span><span class="cjv">"All 62 tests pass. Fixed race condition in jest config."</span></span>
+<span class="ln" id="l21">    <span class="cj">}]</span></span>
+<span class="ln" id="l22">  <span class="cj">}</span></span>
+<span class="ln" id="l23"><span class="cj">}</span></span>
+<div class="sumbox" id="sumbox">
+  <div style="color:#79c0ff;margin-bottom:6px;font-size:12px;">── Inspect: martin inspect --file ~/.martin/runs/ws_default.jsonl</div>
+  <div style="color:#3fb950;font-size:12px;">── Resume:  martin resume loop_a7f2b9</div>
+</div>
+<span class="ln" id="l24"><span class="cp">$</span> <span class="cursor" id="cur"></span></span>
+
+  </div>
+</div>
+<script>
+const delays = [300,700,1000,1250,1500,1750,2000,2250,2500,2750,3000,3250,3500,3750,4000,4250,4500,4750,5000,5250,5500,5750,6000];
+delays.forEach((d,i) => {
+  setTimeout(() => {
+    const el = document.getElementById('l'+(i+1));
+    if(el){ el.style.animation='fadeUp .22s ease forwards'; el.style.opacity='1'; }
+  }, d);
+});
+setTimeout(() => {
+  const sb = document.getElementById('sumbox');
+  sb.style.animation='boxIn .4s ease forwards'; sb.style.opacity='1';
+}, 6500);
+setTimeout(() => {
+  document.getElementById('l24').style.opacity='1';
+  document.getElementById('cur').style.opacity='1';
+}, 7000);
+</script>
+</body>
+</html>

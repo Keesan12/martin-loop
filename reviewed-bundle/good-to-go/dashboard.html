@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MartinLoop - Operator Dashboard Snapshot</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f4f6f8;color:#172033;padding:28px}.shell{max-width:1180px;margin:0 auto;background:white;border:1px solid #d8dee7;border-radius:18px;overflow:hidden}.top{background:#111827;color:white;padding:22px 28px;display:flex;justify-content:space-between;gap:18px;align-items:center}.brand{font-size:23px;font-weight:850;letter-spacing:-.04em}.brand span{color:#8b7cff}.meta{font:12px "SF Mono","Cascadia Code",monospace;color:#aeb7c6}.main{padding:26px;display:grid;gap:20px}.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}.card{border:1px solid #e2e8f0;border-radius:14px;padding:18px;background:#fff}.label{font:800 10px "SF Mono","Cascadia Code",monospace;color:#64748b;text-transform:uppercase;letter-spacing:.1em}.num{font-size:30px;font-weight:850;color:#15803d;margin-top:8px}.sub{font-size:12px;color:#64748b;margin-top:5px}.grid{display:grid;grid-template-columns:1.2fr .8fr;gap:18px}h2{font-size:18px;margin-bottom:12px}.row{display:grid;grid-template-columns:130px 1fr 120px;gap:12px;border-top:1px solid #edf2f7;padding:13px 0;font-size:13px}.row:first-of-type{border-top:0}.pill{display:inline-block;border-radius:999px;padding:4px 9px;font:800 11px "SF Mono","Cascadia Code",monospace}.ok{background:#dcfce7;color:#15803d}.warn{background:#fef3c7;color:#92400e}.info{background:#ede9ff;color:#5b50d6}code{font-family:"SF Mono","Cascadia Code",monospace;background:#f1f5f9;padding:1px 5px;border-radius:4px}@media(max-width:850px){.kpis,.grid{grid-template-columns:1fr}.row{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="shell">
+  <header class="top">
+    <div><div class="brand">Martin<span>Loop</span> Operator Snapshot</div><div class="meta">Local review dashboard - current package 0.1.2</div></div>
+    <div class="meta">Source: repo tests, release checks, run records</div>
+  </header>
+  <main class="main">
+    <section class="kpis">
+      <div class="card"><div class="label">Full tests</div><div class="num">PASS</div><div class="sub">`pnpm test` passed in this review.</div></div>
+      <div class="card"><div class="label">Public smoke</div><div class="num">PASS</div><div class="sub">SDK export and CLI help verified.</div></div>
+      <div class="card"><div class="label">Release surface</div><div class="num">GO</div><div class="sub">Docs and package surface aligned.</div></div>
+      <div class="card"><div class="label">OSS boundary</div><div class="num">GO</div><div class="sub">No workspace dependency leaks.</div></div>
+    </section>
+    <section class="grid">
+      <div class="card">
+        <h2>Runtime Evidence</h2>
+        <div class="row"><strong>Run records</strong><span>CLI appends JSONL records under <code>~/.martin/runs/</code>.</span><span class="pill ok">active</span></div>
+        <div class="row"><strong>Verifier gate</strong><span>Completion requires passing verifier state.</span><span class="pill ok">active</span></div>
+        <div class="row"><strong>Budget</strong><span>Budget, token, and iteration constraints drive preflight and exits.</span><span class="pill ok">active</span></div>
+        <div class="row"><strong>Rollback</strong><span>Repo-backed attempts can persist rollback boundary and restore artifacts.</span><span class="pill info">repo-backed</span></div>
+      </div>
+      <div class="card">
+        <h2>Public Surface</h2>
+        <div class="row"><strong>Package</strong><span><code>martin-loop</code> on npm.</span><span class="pill ok">0.1.2</span></div>
+        <div class="row"><strong>CLI</strong><span><code>run</code>, <code>inspect</code>, <code>resume</code>.</span><span class="pill ok">shipped</span></div>
+        <div class="row"><strong>Benchmarks</strong><span>Workspace RC harness, not public CLI API.</span><span class="pill warn">workspace</span></div>
+        <div class="row"><strong>Control plane</strong><span>Repo workstream outside initial npm surface.</span><span class="pill warn">gated</span></div>
+      </div>
+    </section>
+  </main>
+</div>
+</body>
+</html>

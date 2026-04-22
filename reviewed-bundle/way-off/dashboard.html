@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MartinLoop Dashboard — Live Cost & Governance Intelligence</title>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root{--bg:#0d0e12;--surface:#13141f;--surface-2:#181927;--border:#1e2030;--ink:#f0f0f5;--ink-2:#8b8fa8;--ink-3:#4a4d62;--purple:#7c72f0;--purple-lt:#1a1740;--teal:#2dd4bf;--amber:#fbbf24;--green:#28ca41;--red:#f87171;--r-card:16px;--r-sm:8px;--r-pill:999px;--font-d:'Fraunces',Georgia,serif;--font-m:'JetBrains Mono',monospace;}
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+    body{background:var(--bg);color:var(--ink);font-family:-apple-system,sans-serif;font-size:14px;line-height:1.5;}
+    a{color:inherit;text-decoration:none;}
+
+    /* LAYOUT */
+    .app{display:grid;grid-template-columns:220px 1fr;min-height:100vh;}
+
+    /* SIDEBAR */
+    .sidebar{background:var(--surface);border-right:1px solid var(--border);padding:20px 0;display:flex;flex-direction:column;}
+    .sidebar-logo{padding:0 20px 20px;border-bottom:1px solid var(--border);margin-bottom:20px;}
+    .sidebar-logo-text{font-family:var(--font-m);font-weight:700;font-size:16px;letter-spacing:-0.03em;}
+    .sidebar-logo-text span{color:var(--purple);}
+    .sidebar-logo-sub{font-size:11px;color:var(--ink-3);margin-top:3px;}
+    .nav-section{padding:0 12px;margin-bottom:8px;}
+    .nav-label{font-family:var(--font-m);font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);padding:0 8px;margin-bottom:4px;}
+    .nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:10px;cursor:pointer;color:var(--ink-2);font-size:13px;font-weight:500;transition:all .15s;}
+    .nav-item:hover{background:var(--surface-2);color:var(--ink);}
+    .nav-item.active{background:var(--purple-lt);color:var(--purple);font-weight:600;}
+    .nav-item svg{width:16px;height:16px;flex-shrink:0;}
+    .nav-badge{margin-left:auto;font-family:var(--font-m);font-size:10px;background:var(--border);color:var(--ink-2);padding:2px 7px;border-radius:var(--r-pill);}
+    .nav-badge.green{background:rgba(40,202,65,.15);color:var(--green);}
+    .sidebar-bottom{margin-top:auto;padding:16px 20px;border-top:1px solid var(--border);}
+    .sidebar-status{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-2);}
+    .status-dot{width:7px;height:7px;border-radius:50%;background:var(--green);animation:pulse 2s infinite;}
+    @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.4;}}
+
+    /* MAIN */
+    .main{overflow-y:auto;}
+    .topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:0 28px;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;}
+    .topbar-title{font-size:15px;font-weight:600;color:var(--ink);}
+    .topbar-right{display:flex;align-items:center;gap:12px;}
+    .topbar-date{font-family:var(--font-m);font-size:12px;color:var(--ink-3);}
+    .btn-topbar{font-family:var(--font-m);font-size:12px;font-weight:700;padding:7px 14px;background:var(--purple);color:#fff;border:none;border-radius:var(--r-pill);cursor:pointer;}
+    .content{padding:28px;}
+
+    /* STAT CARDS TOP ROW */
+    .stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px;}
+    .stat-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card);padding:20px;}
+    .stat-label{font-family:var(--font-m);font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin-bottom:10px;}
+    .stat-val{font-family:var(--font-d);font-size:2rem;font-weight:700;line-height:1;margin-bottom:4px;}
+    .stat-trend{font-size:12px;display:flex;align-items:center;gap:4px;}
+    .trend-up{color:var(--green);}
+    .trend-down{color:var(--red);}
+    .trend-neutral{color:var(--ink-3);}
+
+    /* GRID LAYOUT */
+    .grid-2{display:grid;grid-template-columns:1.4fr 1fr;gap:14px;margin-bottom:14px;}
+    .grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px;}
+    .grid-full{margin-bottom:14px;}
+    .panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-card);}
+    .panel-header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+    .panel-title{font-size:13px;font-weight:600;color:var(--ink);}
+    .panel-badge{font-family:var(--font-m);font-size:10px;padding:3px 8px;border-radius:4px;}
+    .badge-green{background:rgba(40,202,65,.12);color:var(--green);}
+    .badge-amber{background:rgba(251,191,36,.12);color:var(--amber);}
+    .badge-purple{background:var(--purple-lt);color:var(--purple);}
+    .panel-body{padding:20px;}
+
+    /* COST CHART */
+    .cost-chart{height:160px;position:relative;display:flex;align-items:flex-end;gap:6px;padding:0 4px;}
+    .cost-bar-group{flex:1;display:flex;align-items:flex-end;gap:3px;position:relative;}
+    .cost-bar{border-radius:4px 4px 0 0;transition:opacity .15s;cursor:pointer;}
+    .cost-bar:hover{opacity:.8;}
+    .cost-bar.martin{background:var(--purple);}
+    .cost-bar.ralph{background:var(--border);}
+    .cost-axis{position:absolute;top:0;right:0;left:0;display:flex;flex-direction:column;justify-content:space-between;height:160px;pointer-events:none;}
+    .cost-axis-line{border-top:1px dashed rgba(255,255,255,.06);font-family:var(--font-m);font-size:10px;color:var(--ink-3);padding-top:2px;}
+    .chart-labels{display:flex;gap:6px;margin-top:8px;}
+    .chart-label{flex:1;text-align:center;font-family:var(--font-m);font-size:10px;color:var(--ink-3);}
+    .chart-legend{display:flex;gap:16px;padding:12px 20px 16px;}
+    .legend-item{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-2);}
+    .legend-dot{width:10px;height:10px;border-radius:2px;}
+
+    /* LOOP TABLE */
+    .loop-table{width:100%;border-collapse:collapse;}
+    .loop-table th{font-family:var(--font-m);font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);padding:10px 16px;text-align:left;border-bottom:1px solid var(--border);}
+    .loop-table td{padding:12px 16px;border-bottom:1px solid rgba(30,32,48,.6);font-size:13px;color:var(--ink-2);}
+    .loop-table tr:last-child td{border-bottom:none;}
+    .loop-table tr:hover td{background:var(--surface-2);}
+    .loop-id{font-family:var(--font-m);font-size:12px;color:var(--purple);}
+    .grade-badge{display:inline-block;font-family:var(--font-m);font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;}
+    .grade-a{background:rgba(40,202,65,.15);color:var(--green);}
+    .grade-b{background:rgba(251,191,36,.12);color:var(--amber);}
+    .grade-stop{background:rgba(248,113,113,.12);color:var(--red);}
+    .loop-cost{font-family:var(--font-m);font-weight:700;color:var(--teal);}
+
+    /* LEASH STATUS */
+    .leash-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;}
+    .leash-item{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--surface-2);border-radius:8px;}
+    .leash-icon{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;}
+    .leash-ok{background:rgba(40,202,65,.12);}
+    .leash-name{font-family:var(--font-m);font-size:11px;font-weight:700;color:var(--ink-2);margin-bottom:1px;}
+    .leash-sub{font-size:11px;color:var(--ink-3);}
+    .leash-count{margin-left:auto;font-family:var(--font-m);font-size:12px;color:var(--green);font-weight:700;}
+
+    /* LIVE LOOP ANIMATION */
+    .live-loop{font-family:var(--font-m);font-size:13px;line-height:2;}
+    .live-step{padding:8px 14px;border-radius:8px;margin-bottom:4px;display:flex;align-items:center;gap:10px;transition:all .4s;}
+    .step-done{background:rgba(40,202,65,.08);color:var(--ink-2);}
+    .step-active{background:rgba(124,114,240,.12);color:var(--purple);animation:stepPulse 1s ease infinite alternate;}
+    .step-pending{color:var(--ink-3);}
+    @keyframes stepPulse{from{opacity:.7;}to{opacity:1;}}
+    .step-icon{width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;}
+    .icon-done{background:rgba(40,202,65,.2);color:var(--green);}
+    .icon-active{background:var(--purple-lt);color:var(--purple);}
+    .icon-pending{background:var(--border);color:var(--ink-3);}
+
+    /* MINI CHART SVG */
+    .mini-chart{width:100%;overflow:visible;}
+
+    /* OVERNIGHT STATUS */
+    .overnight-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);}
+    .overnight-row:last-child{border-bottom:none;}
+    .overnight-name{font-size:13px;color:var(--ink-2);flex:1;}
+    .overnight-status{font-family:var(--font-m);font-size:11px;font-weight:700;padding:3px 8px;border-radius:4px;margin:0 12px;}
+    .overnight-cost{font-family:var(--font-m);font-size:12px;color:var(--teal);}
+
+    /* FOMO TICKER */
+    .fomo-bar{background:var(--purple-lt);border:1px solid rgba(124,114,240,.25);border-radius:var(--r-card);padding:14px 20px;display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;}
+    .fomo-left{display:flex;align-items:center;gap:14px;}
+    .fomo-pulse{width:8px;height:8px;border-radius:50%;background:var(--purple);animation:pulse 2s infinite;}
+    .fomo-text{font-size:13px;color:var(--ink-2);}
+    .fomo-count{font-family:var(--font-m);font-size:20px;font-weight:700;color:var(--purple);}
+    .fomo-label{font-family:var(--font-m);font-size:11px;color:var(--ink-3);margin-top:1px;}
+    @media(max-width:1100px){.stats-row{grid-template-columns:repeat(2,1fr);}.grid-2,.grid-3{grid-template-columns:1fr;}.app{grid-template-columns:1fr;}.sidebar{display:none;}}
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="sidebar-logo-text">martin<span>loop</span></div>
+      <div class="sidebar-logo-sub">Governance Dashboard</div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">Overview</div>
+      <div class="nav-item active">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        Dashboard
+      </div>
+      <div class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        Live Loops
+        <span class="nav-badge green">2 active</span>
+      </div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">Evidence</div>
+      <div class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        Audit Trail
+        <span class="nav-badge">847</span>
+      </div>
+      <div class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        Leash Monitor
+      </div>
+      <div class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        Benchmarks
+      </div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">Governance</div>
+      <div class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
+        Policy Editor
+      </div>
+      <div class="nav-item">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Team
+      </div>
+    </div>
+    <div class="sidebar-bottom">
+      <div class="sidebar-status">
+        <div class="status-dot"></div>
+        All systems nominal
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN CONTENT -->
+  <div class="main">
+    <div class="topbar">
+      <div class="topbar-title">Overview · April 2026</div>
+      <div class="topbar-right">
+        <span class="topbar-date" id="live-time"></span>
+        <a href="index.html"><button class="btn-topbar">← martinloop.com</button></a>
+      </div>
+    </div>
+
+    <div class="content">
+
+      <!-- FOMO COUNTER -->
+      <div class="fomo-bar">
+        <div class="fomo-left">
+          <div class="fomo-pulse"></div>
+          <div>
+            <div class="fomo-text">Engineers on the early access waitlist</div>
+          </div>
+        </div>
+        <div style="text-align:center;">
+          <div class="fomo-count" id="signup-count">247</div>
+          <div class="fomo-label">joined · last 7 days</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:12px;color:var(--ink-2);">Latest: <span id="latest-city" style="color:var(--teal);font-family:var(--font-m);">San Francisco</span></div>
+          <div style="font-size:11px;color:var(--ink-3);margin-top:2px;font-family:var(--font-m);" id="latest-time">2 minutes ago</div>
+        </div>
+      </div>
+
+      <!-- STAT CARDS -->
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="stat-label">Total loops run</div>
+          <div class="stat-val" style="color:var(--ink);">1,847</div>
+          <div class="stat-trend"><span class="trend-up">↑ 12.4%</span>&nbsp;<span style="color:var(--ink-3);">vs last week</span></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Governed cost saved</div>
+          <div class="stat-val" style="color:var(--green);">$4,291</div>
+          <div class="stat-trend"><span class="trend-up">↑ hard stops prevented overspend</span></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Leash blocks (no harm)</div>
+          <div class="stat-val" style="color:var(--amber);">23</div>
+          <div class="stat-trend"><span class="trend-neutral">23 dangerous commands blocked</span></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Audit trail entries</div>
+          <div class="stat-val" style="color:var(--purple);">847</div>
+          <div class="stat-trend"><span class="trend-neutral">Ed25519 signed · all verified</span></div>
+        </div>
+      </div>
+
+      <!-- MAIN GRID ROW 1 -->
+      <div class="grid-2">
+        <!-- Cost chart -->
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">Loop cost · Martin vs unguarded baseline</span>
+            <span class="panel-badge badge-green">61% avg savings</span>
+          </div>
+          <div class="panel-body" style="padding-bottom:0;">
+            <div class="cost-axis">
+              <div class="cost-axis-line">$5.00</div>
+              <div class="cost-axis-line">$3.75</div>
+              <div class="cost-axis-line">$2.50</div>
+              <div class="cost-axis-line">$1.25</div>
+              <div class="cost-axis-line">$0</div>
+            </div>
+            <div class="cost-chart" id="cost-chart">
+              <!-- bars rendered by JS -->
+            </div>
+          </div>
+          <div class="chart-labels" id="chart-labels"></div>
+          <div class="chart-legend">
+            <div class="legend-item"><div class="legend-dot" style="background:var(--purple);"></div>MartinLoop</div>
+            <div class="legend-item"><div class="legend-dot" style="background:var(--border);"></div>Unguarded baseline</div>
+          </div>
+        </div>
+
+        <!-- Live loop state -->
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">Active loop · loop-a7f3c2</span>
+            <span class="panel-badge badge-purple">● running</span>
+          </div>
+          <div class="panel-body">
+            <div style="margin-bottom:14px;">
+              <div style="font-family:var(--font-m);font-size:11px;color:var(--ink-3);margin-bottom:6px;">Objective</div>
+              <div style="font-size:13px;color:var(--ink-2);">Repair session-state regression before morning QA</div>
+            </div>
+            <div style="display:flex;gap:12px;margin-bottom:16px;">
+              <div style="flex:1;padding:10px;background:var(--surface-2);border-radius:8px;text-align:center;">
+                <div style="font-family:var(--font-m);font-size:18px;font-weight:700;color:var(--teal);">$0.84</div>
+                <div style="font-family:var(--font-m);font-size:10px;color:var(--ink-3);margin-top:2px;">spent</div>
+              </div>
+              <div style="flex:1;padding:10px;background:var(--surface-2);border-radius:8px;text-align:center;">
+                <div style="font-family:var(--font-m);font-size:18px;font-weight:700;color:var(--amber);">$3.00</div>
+                <div style="font-family:var(--font-m);font-size:10px;color:var(--ink-3);margin-top:2px;">cap</div>
+              </div>
+              <div style="flex:1;padding:10px;background:var(--surface-2);border-radius:8px;text-align:center;">
+                <div style="font-family:var(--font-m);font-size:18px;font-weight:700;color:var(--ink);">2/5</div>
+                <div style="font-family:var(--font-m);font-size:10px;color:var(--ink-3);margin-top:2px;">attempts</div>
+              </div>
+            </div>
+            <div class="live-loop" id="live-loop">
+              <div class="live-step step-done"><div class="step-icon icon-done">✓</div> GATHER context</div>
+              <div class="live-step step-done"><div class="step-icon icon-done">✓</div> PATCH generated → leash check passed</div>
+              <div class="live-step step-active"><div class="step-icon icon-active">⟳</div> VERIFY running pnpm test...</div>
+              <div class="live-step step-pending"><div class="step-icon icon-pending">·</div> ACCEPT or RECOVER</div>
+              <div class="live-step step-pending"><div class="step-icon icon-pending">·</div> SIGN audit trail</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ROW 2 -->
+      <div class="grid-3">
+        <!-- Recent loops table -->
+        <div class="panel" style="grid-column:span 2;">
+          <div class="panel-header">
+            <span class="panel-title">Recent loop receipts</span>
+            <a href="benchmark.html" style="font-family:var(--font-m);font-size:11px;color:var(--purple);">View all →</a>
+          </div>
+          <div style="overflow-x:auto;">
+            <table class="loop-table">
+              <thead><tr><th>Loop ID</th><th>Objective</th><th>Grade</th><th>Cost</th><th>Status</th><th>Time</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td class="loop-id">loop-f9d2a1</td>
+                  <td style="color:var(--ink);">Fix auth regression · JWT edge case</td>
+                  <td><span class="grade-badge grade-a">A</span></td>
+                  <td class="loop-cost">$0.94</td>
+                  <td><span style="color:var(--green);font-size:12px;">✓ Accepted</span></td>
+                  <td style="color:var(--ink-3);font-family:var(--font-m);font-size:11px;">04:22 AM</td>
+                </tr>
+                <tr>
+                  <td class="loop-id">loop-e8b3c4</td>
+                  <td style="color:var(--ink);">Stabilize flaky CI gate · webpack</td>
+                  <td><span class="grade-badge grade-a">A</span></td>
+                  <td class="loop-cost">$1.24</td>
+                  <td><span style="color:var(--green);font-size:12px;">✓ Accepted</span></td>
+                  <td style="color:var(--ink-3);font-family:var(--font-m);font-size:11px;">03:41 AM</td>
+                </tr>
+                <tr>
+                  <td class="loop-id">loop-d7a2b3</td>
+                  <td style="color:var(--ink);">Scope creep detected — declined</td>
+                  <td><span class="grade-badge grade-stop">STOP</span></td>
+                  <td class="loop-cost" style="color:var(--ink-3);">$0.37</td>
+                  <td><span style="color:var(--amber);font-size:12px;">⊘ Governed stop</span></td>
+                  <td style="color:var(--ink-3);font-family:var(--font-m);font-size:11px;">02:18 AM</td>
+                </tr>
+                <tr>
+                  <td class="loop-id">loop-c6f1a2</td>
+                  <td style="color:var(--ink);">Add regression test · parser bug</td>
+                  <td><span class="grade-badge grade-a">A</span></td>
+                  <td class="loop-cost">$0.66</td>
+                  <td><span style="color:var(--green);font-size:12px;">✓ Accepted</span></td>
+                  <td style="color:var(--ink-3);font-family:var(--font-m);font-size:11px;">01:53 AM</td>
+                </tr>
+                <tr>
+                  <td class="loop-id">loop-b5e0f9</td>
+                  <td style="color:var(--ink);">Typecheck recovery · api/users.ts</td>
+                  <td><span class="grade-badge grade-b">B</span></td>
+                  <td class="loop-cost">$1.08</td>
+                  <td><span style="color:var(--green);font-size:12px;">✓ Accepted</span></td>
+                  <td style="color:var(--ink-3);font-family:var(--font-m);font-size:11px;">01:14 AM</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Leash status -->
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">Leash classes · active</span>
+            <span class="panel-badge badge-green">14/14 armed</span>
+          </div>
+          <div class="panel-body" style="padding:12px 16px;">
+            <div class="leash-grid">
+              <div class="leash-item"><div class="leash-icon leash-ok">🛡</div><div><div class="leash-name">RM_RF</div><div class="leash-sub">destructive</div></div><div class="leash-count">0</div></div>
+              <div class="leash-item"><div class="leash-icon leash-ok">🛡</div><div><div class="leash-name">SHELL_EVAL</div><div class="leash-sub">exec chain</div></div><div class="leash-count">2</div></div>
+              <div class="leash-item"><div class="leash-icon leash-ok">🛡</div><div><div class="leash-name">GIT_FORCE</div><div class="leash-sub">history</div></div><div class="leash-count">0</div></div>
+              <div class="leash-item"><div class="leash-icon leash-ok">🛡</div><div><div class="leash-name">NET_EXFIL</div><div class="leash-sub">data egress</div></div><div class="leash-count">0</div></div>
+              <div class="leash-item"><div class="leash-icon leash-ok">🛡</div><div><div class="leash-name">SCOPE_CREEP</div><div class="leash-sub">path bounds</div></div><div class="leash-count">3</div></div>
+              <div class="leash-item"><div class="leash-icon leash-ok">🛡</div><div><div class="leash-name">BUDGET_KILL</div><div class="leash-sub">hard cap</div></div><div class="leash-count">1</div></div>
+            </div>
+            <div style="margin-top:14px;padding:10px 12px;background:rgba(40,202,65,.06);border:1px solid rgba(40,202,65,.12);border-radius:8px;font-family:var(--font-m);font-size:11px;color:var(--green);">63 / 63 gate checks passing</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ROW 3: OVERNIGHT STATUS -->
+      <div class="grid-full">
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">Overnight engineer queue · tonight's tasks</span>
+            <span class="panel-badge badge-amber">3 queued · running</span>
+          </div>
+          <div class="panel-body">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 32px;">
+              <div>
+                <div class="overnight-row"><span class="overnight-name">Auth regression handoff</span><span class="overnight-status badge-green">✓ done</span><span class="overnight-cost">$0.94</span></div>
+                <div class="overnight-row"><span class="overnight-name">CI gate stabilization</span><span class="overnight-status badge-green">✓ done</span><span class="overnight-cost">$1.24</span></div>
+                <div class="overnight-row"><span class="overnight-name">Parser regression test</span><span class="overnight-status badge-green">✓ done</span><span class="overnight-cost">$0.66</span></div>
+                <div class="overnight-row"><span class="overnight-name">Typecheck recovery</span><span class="overnight-status badge-green">✓ done</span><span class="overnight-cost">$1.08</span></div>
+                <div class="overnight-row"><span class="overnight-name">Lockfile conflict resolve</span><span class="overnight-status badge-green">✓ done</span><span class="overnight-cost">$0.74</span></div>
+              </div>
+              <div>
+                <div class="overnight-row"><span class="overnight-name">CLI tool path fallback</span><span class="overnight-status badge-green">✓ done</span><span class="overnight-cost">$0.59</span></div>
+                <div class="overnight-row"><span class="overnight-name">Rollback canary verify</span><span class="overnight-status badge-green">✓ done</span><span class="overnight-cost">$0.97</span></div>
+                <div class="overnight-row"><span class="overnight-name">Session-state regression</span><span class="overnight-status" style="background:rgba(124,114,240,.12);color:var(--purple);font-family:var(--font-m);font-size:11px;font-weight:700;padding:3px 8px;border-radius:4px;">⟳ running</span><span class="overnight-cost">$0.84</span></div>
+                <div class="overnight-row"><span class="overnight-name">Dead fixture cleanup</span><span class="overnight-status badge-amber">pending</span><span class="overnight-cost">—</span></div>
+                <div class="overnight-row"><span class="overnight-name">Observability cache</span><span class="overnight-status badge-amber">pending</span><span class="overnight-cost">—</span></div>
+              </div>
+            </div>
+            <div style="margin-top:16px;padding:12px 16px;background:var(--surface-2);border-radius:8px;display:flex;align-items:center;justify-content:space-between;">
+              <div style="font-size:13px;color:var(--ink-2);">Total so far: <span style="font-family:var(--font-m);color:var(--teal);font-weight:700;">$7.06</span> / $30.00 budget cap</div>
+              <div style="font-family:var(--font-m);font-size:11px;color:var(--ink-3);">Ralph would've spent ~$23.40 by now</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /content -->
+  </div><!-- /main -->
+</div><!-- /app -->
+
+<script>
+  // Live clock
+  function updateTime(){
+    const now=new Date();
+    document.getElementById('live-time').textContent=now.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  }
+  setInterval(updateTime,1000);updateTime();
+
+  // FOMO counter - increments slowly
+  let count=247;
+  const cities=['Toronto','Austin','London','Berlin','Singapore','Sydney','Amsterdam','Seoul','NYC','Seattle'];
+  let cityIdx=0;
+  const times=['just now','1 minute ago','2 minutes ago','3 minutes ago','5 minutes ago'];
+  setInterval(()=>{
+    if(Math.random()>0.6){
+      count++;
+      document.getElementById('signup-count').textContent=count;
+      document.getElementById('latest-city').textContent=cities[Math.floor(Math.random()*cities.length)];
+      document.getElementById('latest-time').textContent=times[Math.floor(Math.random()*3)];
+    }
+  },8000);
+
+  // Build cost chart
+  const chartData=[
+    {label:'Mon',martin:1.2,baseline:3.1},
+    {label:'Tue',martin:0.9,baseline:2.8},
+    {label:'Wed',martin:1.5,baseline:3.6},
+    {label:'Thu',martin:0.8,baseline:2.4},
+    {label:'Fri',martin:1.9,baseline:4.2},
+    {label:'Sat',martin:0.6,baseline:2.1},
+    {label:'Sun',martin:1.1,baseline:3.3},
+  ];
+  const maxVal=5;
+  const chart=document.getElementById('cost-chart');
+  const labels=document.getElementById('chart-labels');
+  chartData.forEach(d=>{
+    const g=document.createElement('div');
+    g.className='cost-bar-group';
+    const mh=Math.round((d.martin/maxVal)*140);
+    const bh=Math.round((d.baseline/maxVal)*140);
+    g.innerHTML=`<div class="cost-bar ralph" style="height:${bh}px;flex:1;" title="Baseline: $${d.baseline}"></div><div class="cost-bar martin" style="height:${mh}px;flex:1;" title="Martin: $${d.martin}"></div>`;
+    chart.appendChild(g);
+    const l=document.createElement('div');
+    l.className='chart-label';
+    l.textContent=d.label;
+    labels.appendChild(l);
+  });
+
+  // Animate live loop state
+  const steps=document.querySelectorAll('.live-step');
+  let activeStep=2;
+  setInterval(()=>{
+    steps.forEach((s,i)=>{
+      s.className='live-step '+(i<activeStep?'step-done':i===activeStep?'step-active':'step-pending');
+      const icon=s.querySelector('.step-icon');
+      icon.className='step-icon '+(i<activeStep?'icon-done':i===activeStep?'icon-active':'icon-pending');
+      if(i<activeStep)icon.textContent='✓';
+      else if(i===activeStep)icon.textContent='⟳';
+      else icon.textContent='·';
+    });
+    activeStep=(activeStep+1)%steps.length;
+  },2500);
+</script>
+</body>
+</html>

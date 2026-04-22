@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MartinLoop - Current Feature Reference</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:white;color:#1a1a2e}header{background:#5b50d6;color:white;padding:42px 52px}h1{font-size:31px;letter-spacing:-.04em}header p{color:#e4e0ff;margin-top:8px}.container{max-width:1160px;margin:0 auto;padding:42px 52px}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:34px}.stat{border:1px solid #e5e7eb;border-radius:14px;padding:18px;background:#fbfaf7}.big{font-size:31px;font-weight:850;color:#15803d}.label{font-size:12px;color:#6b7280;margin-top:4px}.section{margin-bottom:34px}h2{font-size:22px;margin-bottom:14px}table{width:100%;border-collapse:collapse;font-size:13.5px}th{background:#f3f4f6;color:#6b7280;text-transform:uppercase;letter-spacing:.06em;font-size:11px;text-align:left;padding:11px 12px;border-bottom:2px solid #e5e7eb}td{padding:13px 12px;border-bottom:1px solid #f0f1f3;vertical-align:top;line-height:1.5}.name{font-weight:750;color:#111827}.badge{display:inline-block;border-radius:999px;padding:3px 8px;font-size:11px;font-weight:800}.done{background:#dcfce7;color:#15803d}.rc{background:#ede9ff;color:#5b50d6}.limited{background:#fef3c7;color:#92400e}code{font-family:"SF Mono","Cascadia Code",monospace;background:#ede9ff;color:#4c3fb8;padding:1px 5px;border-radius:4px;font-size:12px}@media(max-width:820px){.stats{grid-template-columns:1fr 1fr}.container,header{padding-left:22px;padding-right:22px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>MartinLoop Current Feature Reference</h1>
+  <p>Grounded in the current repository and npm package 0.1.2.</p>
+</header>
+<main class="container">
+  <section class="stats">
+    <div class="stat"><div class="big">0.1.2</div><div class="label">Published package</div></div>
+    <div class="stat"><div class="big">11</div><div class="label">Failure classes</div></div>
+    <div class="stat"><div class="big">3</div><div class="label">Primary CLI commands</div></div>
+    <div class="stat"><div class="big">GO</div><div class="label">Release/OSS audits</div></div>
+  </section>
+  <section class="section">
+    <h2>Runtime And Package Features</h2>
+    <table>
+      <thead><tr><th>Feature</th><th>Status</th><th>Evidence</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td class="name">Public package facade</td><td><span class="badge done">shipped</span></td><td><code>package.json</code></td><td>Root package exports SDK helpers and CLI aliases through `martin-loop`.</td></tr>
+        <tr><td class="name">CLI run command</td><td><span class="badge done">shipped</span></td><td><code>@martin/cli</code></td><td>Runs a bounded Martin loop with objective, verifier, budget, config, model, and path options.</td></tr>
+        <tr><td class="name">Inspect command</td><td><span class="badge done">shipped</span></td><td><code>martin inspect</code></td><td>Reads persisted loop records and returns portfolio summary metrics.</td></tr>
+        <tr><td class="name">Resume command</td><td><span class="badge done">shipped</span></td><td><code>martin resume</code></td><td>Loads a persisted loop record by loop ID from the local runs directory.</td></tr>
+        <tr><td class="name">Config file</td><td><span class="badge done">shipped</span></td><td><code>martin.config.yaml</code></td><td>Repo-local defaults for budget and governance behavior; CLI flags override config values.</td></tr>
+        <tr><td class="name">Budget governance</td><td><span class="badge done">shipped</span></td><td>Core policy tests</td><td>Budget, token, and iteration constraints feed preflight decisions and lifecycle exits.</td></tr>
+        <tr><td class="name">Safety leash</td><td><span class="badge done">shipped</span></td><td>Core leash tests</td><td>Checks verifier commands, file scope, approval-boundary changes, and secret-like values.</td></tr>
+        <tr><td class="name">Rollback evidence</td><td><span class="badge done">shipped</span></td><td>Core rollback tests</td><td>Repo-backed attempts can persist rollback boundaries and restore outcomes.</td></tr>
+        <tr><td class="name">Workspace benchmark harness</td><td><span class="badge rc">RC tooling</span></td><td><code>benchmarks/</code></td><td>Deterministic benchmark, provider-path, and certification harnesses for review workflows.</td></tr>
+        <tr><td class="name">Control plane</td><td><span class="badge limited">repo surface</span></td><td><code>apps/control-plane</code></td><td>Hosted control-plane workstream is present but outside the initial npm package surface.</td></tr>
+      </tbody>
+    </table>
+  </section>
+  <section class="section">
+    <h2>Current Commands</h2>
+    <table>
+      <thead><tr><th>Command</th><th>Use</th></tr></thead>
+      <tbody>
+        <tr><td><code>martin run "task" --budget 3 --verify "pnpm test"</code></td><td>Run a governed coding task.</td></tr>
+        <tr><td><code>martin inspect --file ~/.martin/runs/&lt;workspaceId&gt;.jsonl</code></td><td>Summarize persisted run records.</td></tr>
+        <tr><td><code>martin resume &lt;loopId&gt;</code></td><td>Load a persisted loop record by ID.</td></tr>
+        <tr><td><code>pnpm --filter @martin/benchmarks test</code></td><td>Run workspace benchmark tests from the repo root.</td></tr>
+      </tbody>
+    </table>
+  </section>
+</main>
+</body>
+</html>

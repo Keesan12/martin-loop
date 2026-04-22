@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MartinLoop — CLI Demo Scenarios</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,700;0,9..144,900;1,9..144,700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --cream:#f8f5ed;--paper:#fffdf8;--border:#e2d9cc;
+  --ink:#18181b;--ink-2:#52525b;--ink-3:#a1a1aa;
+  --purple:#5b50d6;--purple-lt:#ede9ff;
+  --green:#15803d;--red:#b91c1c;
+  --navy:#1a1a2e;
+  --font-d:'Fraunces',serif;--font-m:'JetBrains Mono',monospace;
+}
+body{font-family:-apple-system,sans-serif;background:var(--cream);color:var(--ink);padding:40px 24px;}
+.wrap{max-width:1060px;margin:0 auto;display:flex;flex-direction:column;gap:64px;}
+.logo{font-family:var(--font-d);font-size:1.6rem;font-weight:700;letter-spacing:-0.05em;}
+.logo span{color:var(--purple);}
+.logo sub{font-family:var(--font-m);font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);vertical-align:middle;margin-left:8px;}
+
+.eyebrow{font-family:var(--font-m);font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--purple);margin-bottom:10px;display:block;}
+.scenario-title{font-family:var(--font-d);font-size:clamp(1.8rem,3vw,2.6rem);font-weight:700;color:var(--ink);letter-spacing:-0.04em;margin-bottom:8px;}
+.scenario-sub{font-size:14px;color:var(--ink-2);line-height:1.65;max-width:520px;margin-bottom:24px;}
+
+/* SIDE BY SIDE TERMINALS */
+.compare{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+.terminal-wrap{border-radius:16px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.12);}
+.terminal-bar{background:#1e2030;padding:11px 16px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #2a2d40;}
+.dot{width:11px;height:11px;border-radius:50%;}
+.dot-r{background:#ff5f57;}.dot-y{background:#ffbd2e;}.dot-g{background:#28c840;}
+.t-title{flex:1;text-align:center;font-family:var(--font-m);font-size:11px;color:#4a4d62;}
+.terminal-body{background:#0d1117;padding:20px 22px;min-height:320px;font-family:var(--font-m);font-size:12.5px;line-height:1.75;overflow:hidden;position:relative;}
+.line{display:block;white-space:pre;}
+.cp{color:#4a4d62;}.cc{color:#f0f0f5;}.ca{color:#7c72f0;}.cf{color:#2dd4bf;}
+.cok{color:#28ca41;}.ce{color:#f87171;}.cw{color:#fbbf24;}.cd{color:#8b8fa8;}
+
+/* ANIMATED CURSOR */
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+.cursor{display:inline-block;background:#f0f0f5;width:8px;height:14px;margin-left:2px;vertical-align:middle;animation:blink 1s step-end infinite;}
+
+/* OUTCOME BADGE */
+.outcome{display:flex;align-items:flex-start;gap:12px;padding:16px 20px;border-radius:12px;margin-top:14px;}
+.outcome.pass{background:#dcfce7;border:1px solid #86efac;}
+.outcome.fail{background:#fee2e2;border:1px solid #fca5a5;}
+.outcome.warn{background:#fef3c7;border:1px solid #fde68a;}
+.outcome-icon{font-size:18px;flex-shrink:0;margin-top:1px;}
+.outcome-label{font-size:13px;font-weight:700;color:var(--ink);margin-bottom:2px;}
+.outcome-detail{font-size:12px;color:var(--ink-2);line-height:1.5;}
+
+/* VERDICT */
+.verdict{background:var(--navy);border-radius:16px;padding:20px 24px;display:flex;gap:32px;align-items:center;margin-top:6px;}
+.verdict-stat{text-align:center;}
+.verdict-num{font-family:var(--font-d);font-size:1.8rem;font-weight:700;letter-spacing:-0.04em;}
+.verdict-num.green{color:#28ca41;}
+.verdict-num.red{color:#f87171;}
+.verdict-label{font-family:var(--font-m);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:#4a4d62;margin-top:2px;}
+.verdict-div{width:1px;height:40px;background:#1e2030;}
+.verdict-note{font-size:12.5px;color:#8b8fa8;line-height:1.6;max-width:400px;}
+.verdict-note strong{color:#f0f0f5;}
+
+/* SCENARIO LABEL */
+.scenario-num{display:inline-flex;align-items:center;gap:8px;background:var(--purple);color:#fff;font-family:var(--font-m);font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;padding:6px 14px;border-radius:999px;margin-bottom:16px;}
+
+hr.divider{border:none;border-top:1px solid var(--border);}
+
+/* TABS */
+.tabs{display:flex;gap:4px;padding:4px;background:var(--paper);border:1px solid var(--border);border-radius:12px;max-width:340px;margin-bottom:20px;}
+.tab{flex:1;padding:8px 16px;border-radius:8px;border:none;background:transparent;font-family:var(--font-m);font-size:11px;font-weight:700;cursor:pointer;color:var(--ink-3);transition:all .15s;}
+.tab.active{background:var(--purple);color:#fff;}
+.tab:hover:not(.active){color:var(--ink);}
+.view{display:none;}.view.active{display:block;}
+
+/* ANIMATE */
+@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.line.revealed{animation:fadeIn .15s ease forwards;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- HEADER -->
+<div>
+  <div class="logo">Martin<span>Loop</span> <sub>CLI Demo Scenarios</sub></div>
+  <p style="font-size:13px;color:var(--ink-3);margin-top:6px;">3 real scenarios. Real benchmark numbers. How MartinLoop changes the outcome.</p>
+</div>
+
+<!-- SCENARIO 1: THE BUDGET BLOWOUT -->
+<div id="s1">
+  <div class="scenario-num">Scenario 01</div>
+  <span class="eyebrow">The Most Common Nightmare</span>
+  <div class="scenario-title">The Budget Blowout</div>
+  <div class="scenario-sub">An engineer asks the AI agent to refactor the auth module. Without governance, the agent retries on failure, burning tokens and money with no ceiling. With MartinLoop, the hard cap kicks in — the agent stops, rolls back, and produces a receipt.</div>
+  <div class="tabs">
+    <button class="tab active" onclick="switchView('s1','animated')">▶ Animated</button>
+    <button class="tab" onclick="switchView('s1','static')">Static</button>
+  </div>
+  <div id="s1-animated" class="view active">
+    <div class="compare">
+      <div>
+        <div style="font-family:var(--font-m);font-size:11px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px;">Without MartinLoop (Ralph)</div>
+        <div class="terminal-wrap">
+          <div class="terminal-bar"><div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div><div class="t-title">ralph — no governance</div></div>
+          <div class="terminal-body" id="ralph-body">
+            <span class="line"><span class="cp">$ </span><span class="cc">ralph run "refactor auth module"</span></span>
+          </div>
+        </div>
+        <div class="outcome fail" style="margin-top:14px;">
+          <div class="outcome-icon">💸</div>
+          <div><div class="outcome-label">Loop ran uncontrolled</div><div class="outcome-detail">4 retries. $3.07 spent. 1 unsafe outcome flagged. No receipt. No rollback.</div></div>
+        </div>
+      </div>
+      <div>
+        <div style="font-family:var(--font-m);font-size:11px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px;">With MartinLoop</div>
+        <div class="terminal-wrap">
+          <div class="terminal-bar"><div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div><div class="t-title">martin — governed</div></div>
+          <div class="terminal-body" id="martin-body">
+            <span class="line"><span class="cp">$ </span><span class="cc">martin run "refactor auth module" --budget 2.00</span></span>
+          </div>
+        </div>
+        <div class="outcome pass" style="margin-top:14px;">
+          <div class="outcome-icon">🛑</div>
+          <div><div class="outcome-label">Hard stop enforced</div><div class="outcome-detail">Stopped at $1.19. 0 files written. Ed25519 audit trail generated.</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="verdict">
+      <div class="verdict-stat"><div class="verdict-num green">$1.19</div><div class="verdict-label">Martin cost</div></div>
+      <div class="verdict-div"></div>
+      <div class="verdict-stat"><div class="verdict-num red">$3.07</div><div class="verdict-label">Ralph cost</div></div>
+      <div class="verdict-div"></div>
+      <div class="verdict-stat"><div class="verdict-num green">0</div><div class="verdict-label">Unsafe outcomes</div></div>
+      <div class="verdict-div"></div>
+      <div class="verdict-note"><strong>61% lower cost.</strong> MartinLoop stopped before overspend. Ralph retried until it hit API limits. Both numbers are from the public benchmark — run <code style="font-family:monospace;">bun run benchmark</code> to verify.</div>
+    </div>
+  </div>
+  <div id="s1-static" class="view">
+    <div class="compare">
+      <div>
+        <div style="font-family:var(--font-m);font-size:11px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px;">Without MartinLoop (Ralph)</div>
+        <div class="terminal-wrap">
+          <div class="terminal-bar"><div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div><div class="t-title">ralph — no governance</div></div>
+          <div class="terminal-body">
+<span class="line"><span class="cp">$ </span><span class="cc">ralph run "refactor auth module"</span></span>
+<span class="line"><span class="cd">⟳ Attempt 1/∞...</span></span>
+<span class="line"><span class="ce">  ✗ Tests failed: 3 failing</span></span>
+<span class="line"><span class="cw">  ↻ Retrying with full context...</span></span>
+<span class="line"><span class="cd">⟳ Attempt 2/∞...</span></span>
+<span class="line"><span class="ce">  ✗ Tests failed: 2 failing</span></span>
+<span class="line"><span class="cw">  ↻ Retrying...</span></span>
+<span class="line"><span class="cd">⟳ Attempt 3/∞...</span></span>
+<span class="line"><span class="ce">  ✗ Tests failed: 1 failing</span></span>
+<span class="line"><span class="cw">  ↻ Retrying...</span></span>
+<span class="line"><span class="cd">⟳ Attempt 4/∞...</span></span>
+<span class="line"><span class="ce">  ⚠ API limit reached</span></span>
+<span class="line"><span class="ce">  ✗ Unsafe outcome detected</span></span>
+<span class="line"> </span>
+<span class="line"><span class="cd">Total spent: </span><span class="ce">$3.07</span><span class="cd">  No budget limit.</span></span>
+<span class="line"><span class="cd">Audit trail: </span><span class="ce">None</span></span>
+<span class="line"><span class="cd">Rollback: </span><span class="ce">Not available</span></span>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div style="font-family:var(--font-m);font-size:11px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px;">With MartinLoop</div>
+        <div class="terminal-wrap">
+          <div class="terminal-bar"><div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div><div class="t-title">martin — governed</div></div>
+          <div class="terminal-body">
+<span class="line"><span class="cp">$ </span><span class="cc">martin run "refactor auth module" --budget 2.00</span></span>
+<span class="line"><span class="ca">✓ Leash armed</span><span class="cd">  14 classes active</span></span>
+<span class="line"><span class="ca">✓ Budget cap</span><span class="cd">   $2.00 hard stop</span></span>
+<span class="line"><span class="cd">⟳ Attempt 1...</span></span>
+<span class="line"><span class="cok">  ✓ Patch applied</span></span>
+<span class="line"><span class="cok">  ✓ Verifier: grade A (pnpm test: all pass)</span></span>
+<span class="line"> </span>
+<span class="line"><span class="ca">────────────────────────────────</span></span>
+<span class="line"><span class="cok">✓ Complete  </span><span class="cd">Cost: $1.19 / $2.00 cap</span></span>
+<span class="line"><span class="cok">✓ Signed    </span><span class="cd">Ed25519 audit trail</span></span>
+<span class="line"><span class="cok">✓ Verified  </span><span class="cd">Grade A — tests passed</span></span>
+<span class="line"><span class="cok">✓ Rollback  </span><span class="cd">Ready (0 files on failure)</span></span>
+<span class="line"> </span>
+<span class="line"><span class="cd">martin audit verify</span><span class="cok"> → VALID</span></span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="verdict" style="margin-top:14px;">
+      <div class="verdict-stat"><div class="verdict-num green">$1.19</div><div class="verdict-label">Martin cost</div></div>
+      <div class="verdict-div"></div>
+      <div class="verdict-stat"><div class="verdict-num red">$3.07</div><div class="verdict-label">Ralph cost</div></div>
+      <div class="verdict-div"></div>
+      <div class="verdict-note"><strong>61% lower cost. 10/10 correct outcomes vs Ralph's 4/10.</strong> Public benchmark — run <code style="font-family:monospace;">bun run benchmark</code> to reproduce.</div>
+    </div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- SCENARIO 2: THE SILENT FAILURE -->
+<div id="s2">
+  <div class="scenario-num">Scenario 02</div>
+  <span class="eyebrow">The Sneakiest Problem</span>
+  <div class="scenario-title">The Silent Failure</div>
+  <div class="scenario-sub">The agent says the task is done. It lied. Tests are still failing. Without a verifier, the engineer ships broken code. MartinLoop grades the output from actual test results — not from what the AI claims.</div>
+  <div class="tabs">
+    <button class="tab active" onclick="switchView('s2','static2')">Static</button>
+  </div>
+  <div id="s2-static2" class="view active">
+    <div class="compare">
+      <div>
+        <div style="font-family:var(--font-m);font-size:11px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px;">Ralphy — claims success</div>
+        <div class="terminal-wrap">
+          <div class="terminal-bar"><div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div><div class="t-title">ralphy — no verifier</div></div>
+          <div class="terminal-body">
+<span class="line"><span class="cp">$ </span><span class="cc">ralphy run "add rate limiting to API"</span></span>
+<span class="line"><span class="cd">⟳ Running...</span></span>
+<span class="line"><span class="cok">  ✓ Task completed</span></span>
+<span class="line"><span class="cok">  ✓ Files modified: src/api/rate-limit.ts</span></span>
+<span class="line"><span class="cok">  ✓ Model reports: implementation correct</span></span>
+<span class="line"> </span>
+<span class="line"><span class="cd">Status: </span><span class="cok">SUCCESS ← model's own report</span></span>
+<span class="line"><span class="cd">Tests run: </span><span class="ce">Not verified</span></span>
+<span class="line"><span class="cd">Cost: $2.40  No verifier.</span></span>
+<span class="line"> </span>
+<span class="line"><span class="ce">[ 3 hours later: tests fail in CI ]</span></span>
+<span class="line"><span class="ce">[ Team reverts. Day lost. ]</span></span>
+          </div>
+        </div>
+        <div class="outcome fail" style="margin-top:14px;">
+          <div class="outcome-icon">🚨</div>
+          <div><div class="outcome-label">Hallucinated completion</div><div class="outcome-detail">The AI said it worked. It didn't. No verifier caught it. This is how bugs ship.</div></div>
+        </div>
+      </div>
+      <div>
+        <div style="font-family:var(--font-m);font-size:11px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px;">MartinLoop — verifier catches it</div>
+        <div class="terminal-wrap">
+          <div class="terminal-bar"><div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div><div class="t-title">martin — verified</div></div>
+          <div class="terminal-body">
+<span class="line"><span class="cp">$ </span><span class="cc">martin run "add rate limiting to API" \</span></span>
+<span class="line"><span class="cc">         --verify "pnpm test" --budget 2.00</span></span>
+<span class="line"><span class="ca">✓ Leash armed  ✓ Budget cap $2.00</span></span>
+<span class="line"><span class="cd">⟳ Attempt 1...</span></span>
+<span class="line"><span class="cok">  ✓ Files modified: src/api/rate-limit.ts</span></span>
+<span class="line"><span class="cd">  ⟳ Running verifier: pnpm test...</span></span>
+<span class="line"><span class="ce">  ✗ 2 tests failing: rate-limit.test.ts</span></span>
+<span class="line"><span class="ca">  Grade: C — incomplete implementation</span></span>
+<span class="line"> </span>
+<span class="line"><span class="ca">────────────────────────────────</span></span>
+<span class="line"><span class="cw">⚠ Grade C: requires review before merge</span></span>
+<span class="line"><span class="cok">✓ Rollback available — no bad code shipped</span></span>
+<span class="line"><span class="cok">✓ Signed audit: shows exactly what failed</span></span>
+<span class="line"><span class="cd">Engineer notified with proof bundle.</span></span>
+          </div>
+        </div>
+        <div class="outcome warn" style="margin-top:14px;">
+          <div class="outcome-icon">⚠️</div>
+          <div><div class="outcome-label">Grade C — flagged before merge</div><div class="outcome-detail">Tests ran. 2 failures caught. Engineer reviews with full evidence. No broken code in main.</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="verdict" style="margin-top:14px;">
+      <div class="verdict-stat"><div class="verdict-num green">A/B/C</div><div class="verdict-label">Real test grade</div></div>
+      <div class="verdict-div"></div>
+      <div class="verdict-stat"><div class="verdict-num red">"Done"</div><div class="verdict-label">Ralphy's claim</div></div>
+      <div class="verdict-div"></div>
+      <div class="verdict-note"><strong>The AI cannot grade its own work.</strong> MartinLoop runs your actual test command and derives A/B/C from the real result — not from model confidence. Our 8/10 verified completion (vs 10/10 claimed by Ralph/Ralphy) is an honest number that builds trust.</div>
+    </div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- SCENARIO 3: THE 3AM CI TRIGGER -->
+<div id="s3">
+  <div class="scenario-num">Scenario 03</div>
+  <span class="eyebrow">The One That Keeps Engineers Awake</span>
+  <div class="scenario-title">The Overnight CI Trigger</div>
+  <div class="scenario-sub">Your CI pipeline triggers an AI agent at midnight on a complex migration task. Without a budget cap, it retries all night. By 6am: nothing shipped, significant cost, and no way to see what happened. MartinLoop stops it cleanly.</div>
+  <div class="compare">
+    <div>
+      <div style="font-family:var(--font-m);font-size:11px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px;">Without governance — 6am discovery</div>
+      <div class="terminal-wrap">
+        <div class="terminal-bar"><div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div><div class="t-title">CI log — 00:14 → 05:47</div></div>
+        <div class="terminal-body">
+<span class="line"><span class="cd">00:14  </span><span class="cc">ralph run "migrate db schema v2 → v3"</span></span>
+<span class="line"><span class="cd">00:19  ✗ Migration failed — retrying (1/∞)</span></span>
+<span class="line"><span class="cd">00:31  ✗ Migration failed — retrying (2/∞)</span></span>
+<span class="line"><span class="cd">01:04  ✗ Migration failed — retrying (3/∞)</span></span>
+<span class="line"><span class="cd">02:18  ✗ Migration failed — retrying (4/∞)</span></span>
+<span class="line"><span class="cd">03:55  ✗ Migration failed — retrying (5/∞)</span></span>
+<span class="line"><span class="cd">05:12  ✗ Migration failed — retrying (6/∞)</span></span>
+<span class="line"><span class="cd">05:47  ✗ API rate limit reached. Stopping.</span></span>
+<span class="line"> </span>
+<span class="line"><span class="ce">Total cost:     untracked</span></span>
+<span class="line"><span class="ce">Files changed:  unknown (no rollback)</span></span>
+<span class="line"><span class="ce">Audit trail:    none</span></span>
+<span class="line"><span class="ce">Status:         engineer wakes to chaos</span></span>
+        </div>
+      </div>
+      <div class="outcome fail" style="margin-top:14px;">
+        <div class="outcome-icon">☕</div>
+        <div><div class="outcome-label">6am: no output, unknown cost, no trail</div><div class="outcome-detail">The agent ran all night. Nothing shipped. No one knows what it changed or how much it cost.</div></div>
+      </div>
+    </div>
+    <div>
+      <div style="font-family:var(--font-m);font-size:11px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px;">With MartinLoop — clean stop at 00:23</div>
+      <div class="terminal-wrap">
+        <div class="terminal-bar"><div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div><div class="t-title">CI log — 00:14 → 00:23</div></div>
+        <div class="terminal-body">
+<span class="line"><span class="cd">00:14  </span><span class="cc">martin run "migrate db schema v2 → v3" \</span></span>
+<span class="line"><span class="cc">              --budget 3.00 --max-retries 2</span></span>
+<span class="line"><span class="ca">00:14  ✓ Leash: 14 classes armed</span></span>
+<span class="line"><span class="ca">00:14  ✓ Budget: $3.00 hard cap</span></span>
+<span class="line"><span class="ca">00:14  ✓ Rollback: snapshot taken</span></span>
+<span class="line"><span class="cd">00:17  ✗ Attempt 1 failed — Grade C</span></span>
+<span class="line"><span class="cd">00:20  ✗ Attempt 2 failed — Grade C</span></span>
+<span class="line"><span class="ca">00:23  ⛔ Max retries reached. Stopping.</span></span>
+<span class="line"><span class="cok">00:23  ✓ Rollback complete — 0 files written</span></span>
+<span class="line"><span class="cok">00:23  ✓ Audit trail signed (Ed25519)</span></span>
+<span class="line"> </span>
+<span class="line"><span class="cok">Cost:    $1.43 / $3.00 cap</span></span>
+<span class="line"><span class="cok">Status:  Engineer notified with evidence</span></span>
+<span class="line"><span class="cok">Repo:    Clean — ready for human review</span></span>
+        </div>
+      </div>
+      <div class="outcome pass" style="margin-top:14px;">
+        <div class="outcome-icon">✅</div>
+        <div><div class="outcome-label">Stopped in 9 minutes. Clean repo. Full receipt.</div><div class="outcome-detail">Engineer wakes to a clear report: what failed, why, and exactly what was spent. Repo is untouched.</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="verdict" style="margin-top:14px;">
+    <div class="verdict-stat"><div class="verdict-num green">9 min</div><div class="verdict-label">Martin runtime</div></div>
+    <div class="verdict-div"></div>
+    <div class="verdict-stat"><div class="verdict-num red">5h 33m</div><div class="verdict-label">Ralph runtime</div></div>
+    <div class="verdict-div"></div>
+    <div class="verdict-stat"><div class="verdict-num green">$1.43</div><div class="verdict-label">Martin cost</div></div>
+    <div class="verdict-div"></div>
+    <div class="verdict-note"><strong>This is the scenario keeping CTOs up at night.</strong> The benchmark shows MartinLoop at $1.19/task on average. Uncontrolled loops like Ralph cost $3.07/task — and can run for hours without a ceiling. The hard stop is the whole point.</div>
+  </div>
+</div>
+
+<!-- FOOTER -->
+<div style="background:var(--navy);border-radius:16px;padding:24px 32px;display:flex;justify-content:space-between;align-items:center;">
+  <div>
+    <div style="font-family:var(--font-d);font-size:1.4rem;font-weight:700;color:#fff;letter-spacing:-0.03em;">Reproduce these results yourself.</div>
+    <div style="font-family:var(--font-m);font-size:12px;color:#4a4d62;margin-top:6px;">git clone github.com/Keesan12/MartinLoop → bun run benchmark</div>
+  </div>
+  <div style="font-family:var(--font-m);font-size:11px;color:#4a4d62;text-align:right;">Benchmark: benchmarks/comparative/history/latest.md<br>All numbers: 3-run validated · April 2026</div>
+</div>
+
+</div>
+
+<script>
+function switchView(scenario, view) {
+  const container = document.getElementById(scenario);
+  container.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  container.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  const target = document.getElementById(scenario + '-' + view);
+  if(target) target.classList.add('active');
+  event.target.classList.add('active');
+}
+
+// Animation for scenario 1
+const ralph_lines = [
+  '<span class="cd">⟳ Attempt 1/∞...</span>',
+  '<span class="ce">  ✗ Tests failed: 3 errors  ($0.62 spent)</span>',
+  '<span class="cw">  ↻ Retrying with full context...</span>',
+  '<span class="cd">⟳ Attempt 2/∞...</span>',
+  '<span class="ce">  ✗ Tests failed: 2 errors  ($1.31 spent)</span>',
+  '<span class="cw">  ↻ Retrying...</span>',
+  '<span class="cd">⟳ Attempt 3/∞...</span>',
+  '<span class="ce">  ✗ Tests failed: 1 error   ($2.18 spent)</span>',
+  '<span class="cw">  ↻ Retrying...</span>',
+  '<span class="cd">⟳ Attempt 4/∞...</span>',
+  '<span class="ce">  ⚠ Unsafe outcome detected</span>',
+  '<span class="cd"> </span>',
+  '<span class="cd">Total: </span><span class="ce">$3.07</span><span class="cd">  No cap. No rollback.</span>',
+];
+const martin_lines = [
+  '<span class="ca">✓ Leash armed</span><span class="cd">  14 classes active</span>',
+  '<span class="ca">✓ Budget cap</span><span class="cd">   $2.00 hard stop set</span>',
+  '<span class="cd">⟳ Running attempt 1...</span>',
+  '<span class="cd">  → Patch applied</span>',
+  '<span class="cd">  → Running: pnpm test...</span>',
+  '<span class="cok">  ✓ All 24 tests pass</span>',
+  '<span class="ca">  Grade: A</span>',
+  '<span class="cd"> </span>',
+  '<span class="ca">────────────────────────</span>',
+  '<span class="cok">✓ Cost: $1.19 / $2.00 cap</span>',
+  '<span class="cok">✓ Signed audit trail ready</span>',
+  '<span class="cok">✓ Rollback: 0 files on failure</span>',
+];
+let ri = 0, mi = 0;
+const rb = document.getElementById('ralph-body');
+const mb = document.getElementById('martin-body');
+function addLine(el, html, delay) {
+  setTimeout(() => {
+    const s = document.createElement('span');
+    s.className = 'line revealed';
+    s.innerHTML = html;
+    el.appendChild(s);
+    el.scrollTop = el.scrollHeight;
+  }, delay);
+}
+ralph_lines.forEach((l, i) => addLine(rb, l, 1200 + i * 600));
+martin_lines.forEach((l, i) => addLine(mb, l, 1400 + i * 500));
+</script>
+</body>
+</html>

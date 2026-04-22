@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MartinLoop - Feature Showcase</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f8f5ed;color:#18181b;padding:40px 24px}.wrap{max-width:1060px;margin:0 auto}.hero{margin-bottom:26px}.ey{font:800 11px "SF Mono","Cascadia Code",monospace;text-transform:uppercase;letter-spacing:.12em;color:#5b50d6;margin-bottom:10px}h1{font-size:38px;letter-spacing:-.05em;line-height:1.05;margin-bottom:10px}.lead{color:#5f6470;line-height:1.65;max-width:760px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.card{background:#fffdf8;border:1px solid #e2d9cc;border-radius:16px;padding:22px}.tag{display:inline-block;font:800 10px "SF Mono","Cascadia Code",monospace;text-transform:uppercase;letter-spacing:.08em;background:#ede9ff;color:#5b50d6;border-radius:999px;padding:4px 9px;margin-bottom:14px}.title{font-size:18px;font-weight:800;margin-bottom:8px}.body{font-size:13.5px;line-height:1.6;color:#5f6470}.status{margin-top:14px;font:800 11px "SF Mono","Cascadia Code",monospace;color:#15803d}@media(max-width:850px){.grid{grid-template-columns:1fr}h1{font-size:30px}}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <section class="hero">
+    <div class="ey">Feature Showcase</div>
+    <h1>The current MartinLoop surface, without old proof claims.</h1>
+    <p class="lead">These are the features that can be described today from code, tests, docs, and package metadata.</p>
+  </section>
+  <section class="grid">
+    <article class="card"><div class="tag">Package</div><div class="title">Public npm facade</div><div class="body">Install `martin-loop` and use either the CLI aliases or the SDK facade.</div><div class="status">SHIPPED</div></article>
+    <article class="card"><div class="tag">Governance</div><div class="title">Budget controls</div><div class="body">Budget, token, and iteration constraints inform preflight decisions and lifecycle exits.</div><div class="status">SHIPPED</div></article>
+    <article class="card"><div class="tag">Verification</div><div class="title">Verifier gate</div><div class="body">Runs only complete successfully when verifier state passes.</div><div class="status">SHIPPED</div></article>
+    <article class="card"><div class="tag">Safety</div><div class="title">Leash checks</div><div class="body">Verifier commands, file scope, approval-boundary changes, and secret-like task text are evaluated.</div><div class="status">SHIPPED</div></article>
+    <article class="card"><div class="tag">Evidence</div><div class="title">JSONL run records</div><div class="body">The CLI writes inspectable local records under `~/.martin/runs/`.</div><div class="status">SHIPPED</div></article>
+    <article class="card"><div class="tag">Recovery</div><div class="title">Rollback artifacts</div><div class="body">Repo-backed attempts can persist rollback boundaries and restore outcomes.</div><div class="status">SHIPPED</div></article>
+    <article class="card"><div class="tag">Adapters</div><div class="title">Claude and Codex CLI paths</div><div class="body">The adapter package exposes Claude CLI, Codex CLI, direct-provider, and stub adapter surfaces.</div><div class="status">SHIPPED</div></article>
+    <article class="card"><div class="tag">MCP</div><div class="title">MCP tools</div><div class="body">The MCP package exposes run, inspect, and status tools for host integrations.</div><div class="status">SHIPPED</div></article>
+    <article class="card"><div class="tag">Benchmarks</div><div class="title">Workspace validation</div><div class="body">Benchmark and certification harnesses live under `benchmarks/` for RC review.</div><div class="status">WORKSPACE</div></article>
+  </section>
+</main>
+</body>
+</html>

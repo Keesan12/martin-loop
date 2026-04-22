@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MartinLoop — Architecture Explainer</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,700;0,9..144,900;1,9..144,700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --cream:#f8f5ed;--paper:#fffdf8;--border:#e2d9cc;
+  --ink:#18181b;--ink-2:#52525b;--ink-3:#a1a1aa;
+  --purple:#5b50d6;--purple-lt:#ede9ff;
+  --green:#15803d;--navy:#1a1a2e;
+  --fd:'Fraunces',Georgia,serif;--fm:'JetBrains Mono',monospace;
+}
+body{background:var(--cream);color:var(--ink);font-family:-apple-system,sans-serif;padding:0;}
+.wrap{max-width:920px;margin:0 auto;padding:48px 32px;display:flex;flex-direction:column;gap:64px;}
+.ey{font-family:var(--fm);font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--purple);margin-bottom:10px;display:block;}
+.headline{font-family:var(--fd);font-size:clamp(2rem,4vw,3.2rem);font-weight:700;letter-spacing:-.04em;margin-bottom:8px;}
+.sub{font-size:14px;color:var(--ink-2);line-height:1.7;max-width:560px;}
+hr{border:none;border-top:1px solid var(--border);}
+
+/* LAYER STACK */
+.stack{display:flex;flex-direction:column;gap:4px;max-width:680px;}
+.layer{border-radius:14px;padding:18px 22px;cursor:pointer;transition:all .2s;position:relative;}
+.layer:hover{transform:translateX(4px);}
+.layer-n{font-family:var(--fm);font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;margin-bottom:5px;}
+.layer-t{font-size:15px;font-weight:800;color:var(--ink);margin-bottom:4px;}
+.layer-d{font-size:12.5px;color:var(--ink-2);line-height:1.55;}
+.layer.l1{background:var(--navy);} .layer.l1 .layer-n{color:#7c72f0;} .layer.l1 .layer-t,.layer.l1 .layer-d{color:rgba(255,255,255,.8);}
+.layer.l2{background:#1e2030;} .layer.l2 .layer-n{color:#5b9bd5;} .layer.l2 .layer-t,.layer.l2 .layer-d{color:rgba(255,255,255,.8);}
+.layer.l3{background:#252a3d;} .layer.l3 .layer-n{color:#10b981;} .layer.l3 .layer-t,.layer.l3 .layer-d{color:rgba(255,255,255,.8);}
+.layer.l4{background:#2a2040;} .layer.l4 .layer-n{color:#a78bfa;} .layer.l4 .layer-t,.layer.l4 .layer-d{color:rgba(255,255,255,.8);}
+.layer.l5{background:#1d2d22;} .layer.l5 .layer-n{color:#2ab97a;} .layer.l5 .layer-t,.layer.l5 .layer-d{color:rgba(255,255,255,.8);}
+.layer.l6{background:#1a1a2e;border:1.5px solid rgba(91,80,214,.3);} .layer.l6 .layer-n{color:#7c72f0;} .layer.l6 .layer-t,.layer.l6 .layer-d{color:rgba(255,255,255,.8);}
+.layer-badge{position:absolute;right:16px;top:50%;transform:translateY(-50%);font-family:var(--fm);font-size:9px;font-weight:700;padding:3px 8px;border-radius:4px;}
+.b-oss{background:rgba(42,185,122,.2);color:#2ab97a;}
+.b-paid{background:rgba(91,80,214,.3);color:#a78bfa;}
+.connector{height:4px;width:3px;background:rgba(255,255,255,.1);margin:0 auto;}
+
+/* TIER COMPARISON */
+.tier-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
+.tc{border-radius:16px;padding:18px 16px;}
+.tc.free{background:var(--paper);border:1px solid var(--border);}
+.tc.pro{background:rgba(91,80,214,.06);border:1.5px solid rgba(91,80,214,.2);}
+.tc.growth{background:rgba(91,80,214,.1);border:1.5px solid rgba(91,80,214,.3);}
+.tc.ent{background:var(--navy);border:none;}
+.tc-t{font-family:var(--fm);font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--ink-3);margin-bottom:6px;}
+.tc.ent .tc-t{color:rgba(255,255,255,.4);}
+.tc.pro .tc-t,.tc.growth .tc-t{color:var(--purple);}
+.tc-p{font-family:var(--fd);font-size:1.6rem;font-weight:700;color:var(--ink);letter-spacing:-.03em;margin-bottom:10px;}
+.tc.ent .tc-p{color:#fff;}
+.tc-l{list-style:none;}
+.tc-l li{font-size:11.5px;color:var(--ink-2);padding:4px 0;border-bottom:1px solid rgba(0,0,0,.06);display:flex;gap:5px;align-items:flex-start;line-height:1.45;}
+.tc-l li::before{content:"→";color:var(--purple);flex-shrink:0;margin-top:1px;}
+.tc.ent .tc-l li{color:rgba(255,255,255,.7);border-bottom-color:rgba(255,255,255,.07);}
+.tc-l li:last-child{border-bottom:none;}
+
+/* HOW IT WORKS */
+.steps{display:flex;gap:0;max-width:760px;}
+.step{flex:1;padding:18px 16px;background:var(--paper);border:1px solid var(--border);border-right:none;position:relative;}
+.step:first-child{border-radius:14px 0 0 14px;}
+.step:last-child{border-radius:0 14px 14px 0;border-right:1px solid var(--border);}
+.step-n{font-family:var(--fd);font-size:2rem;font-weight:700;color:var(--purple);letter-spacing:-.04em;line-height:1;margin-bottom:6px;}
+.step-t{font-size:14px;font-weight:800;color:var(--ink);margin-bottom:4px;}
+.step-d{font-size:12px;color:var(--ink-2);line-height:1.55;}
+.arrow{width:24px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:var(--paper);border-top:1px solid var(--border);border-bottom:1px solid var(--border);font-size:14px;color:var(--purple);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- HEADER -->
+<div>
+  <span class="ey">Architecture Explainer</span>
+  <div class="headline">What MartinLoop actually does under the hood.</div>
+  <div class="sub">Five governance layers stack between your prompt and the outside world. Every AI coding agent runs inside this envelope — whether you're on the free OSS tier or enterprise. The layers are what make the guarantee real.</div>
+</div>
+
+<hr>
+
+<!-- HOW IT WORKS - 3 STEPS -->
+<div>
+  <span class="ey">How It Works in 3 Steps</span>
+  <div class="steps">
+    <div class="step">
+      <div class="step-n">1</div>
+      <div class="step-t">You define the rules</div>
+      <div class="step-d">Write a <code style="font-family:monospace;font-size:11px;">martin.policy.yaml</code> — budget, providers, allowed file paths. Check it into your repo. Governance is now code.</div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="step">
+      <div class="step-n">2</div>
+      <div class="step-t">MartinLoop enforces them</div>
+      <div class="step-d">Every agent run passes through 5 governance layers: admission control, safety leash, budget governor, verifier, and signed audit trail. All before anything touches your codebase.</div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="step">
+      <div class="step-n">3</div>
+      <div class="step-t">You get proof</div>
+      <div class="step-d">A cryptographically signed receipt: cost, grade, diff, test results. On failure: filesystem rollback with zero files written. Either way, you know exactly what happened.</div>
+    </div>
+  </div>
+</div>
+
+<hr>
+
+<!-- GOVERNANCE STACK -->
+<div>
+  <span class="ey">The Governance Stack — 5 Layers</span>
+  <div style="font-size:13.5px;color:var(--ink-2);margin-bottom:20px;max-width:560px;">Each layer runs in sequence. Every AI agent run must pass through all five before anything changes in your repository.</div>
+  <div class="stack">
+    <div class="layer l1">
+      <div class="layer-badge b-oss">ALL TIERS</div>
+      <div class="layer-n">Layer 1</div>
+      <div class="layer-t">Admission Control + Policy Check</div>
+      <div class="layer-d">Budget preflight runs before any model is called. If the estimated cost exceeds your configured limit, the run is rejected immediately — zero tokens spent. Policy-as-code enforced from <code style="font-family:monospace;font-size:11px;">martin.policy.yaml</code>.</div>
+    </div>
+    <div class="connector"></div>
+    <div class="layer l2">
+      <div class="layer-badge b-oss">ALL TIERS</div>
+      <div class="layer-n">Layer 2</div>
+      <div class="layer-t">Safety Leash — 14 Trap Classes</div>
+      <div class="layer-d">Pre-execution blocking across 14 adversarial categories: scope drift, filesystem violation, credential access, prompt injection, hallucinated completion, recursive loop injection, and more. 63/63 gate checks passing. Zero false positives.</div>
+    </div>
+    <div class="connector"></div>
+    <div class="layer l3">
+      <div class="layer-badge b-oss">ALL TIERS</div>
+      <div class="layer-n">Layer 3</div>
+      <div class="layer-t">Budget Governor — Hard USD Stop</div>
+      <div class="layer-d">Real-time spend tracking against your configured cap. When the limit is hit, the subprocess is killed. Not warned — killed. Delta re-prompting on retry reduces token usage by sending only what changed, not full context.</div>
+    </div>
+    <div class="connector"></div>
+    <div class="layer l4">
+      <div class="layer-badge b-oss">ALL TIERS</div>
+      <div class="layer-n">Layer 4</div>
+      <div class="layer-t">Verifier — Grade from Real Tests</div>
+      <div class="layer-d">Runs your configured test command after each patch. Derives A/B/C grade from actual test output — not the model's self-assessment. Failed verifier = filesystem rollback with zero files written. 8/10 verified completion on the public benchmark.</div>
+    </div>
+    <div class="connector"></div>
+    <div class="layer l5">
+      <div class="layer-badge b-oss">ALL TIERS</div>
+      <div class="layer-n">Layer 5</div>
+      <div class="layer-t">Signed Audit Trail — Ed25519</div>
+      <div class="layer-d">Every accepted attempt produces a tamper-evident proof bundle: Ed25519 signature, cost provenance, patch diff, grounding scan, test results. Replayable offline. Verify with <code style="font-family:monospace;font-size:11px;">martin audit verify</code>.</div>
+    </div>
+    <div class="connector"></div>
+    <div class="layer l6">
+      <div class="layer-badge b-paid">PRO+ ONLY</div>
+      <div class="layer-n">Enterprise Layer</div>
+      <div class="layer-t">Control Plane — Dashboard, SIEM, SSO</div>
+      <div class="layer-d">Pro tier unlocks the live cost dashboard, SIEM-ready event streaming (OCSF/CEF), OpenTelemetry spans, and compliance export reports. Enterprise adds SSO/SAML, custom policy engine, SLA, and dedicated security review.</div>
+    </div>
+  </div>
+</div>
+
+<hr>
+
+<!-- TIER BREAKDOWN -->
+<div>
+  <span class="ey">OSS vs Paid — What's in Each Tier</span>
+  <div class="tier-grid">
+    <div class="tc free">
+      <div class="tc-t">Free · OSS Core</div>
+      <div class="tc-p">$0</div>
+      <ul class="tc-l">
+        <li>Full CLI runtime</li>
+        <li>All 5 governance layers</li>
+        <li>14 safety leash classes</li>
+        <li>Ed25519 audit trail</li>
+        <li>Filesystem rollback</li>
+        <li>Policy-as-code YAML</li>
+        <li>MIT licensed</li>
+      </ul>
+    </div>
+    <div class="tc pro">
+      <div class="tc-t">Pro</div>
+      <div class="tc-p">$49<span style="font-size:.8rem;font-weight:400;">/seat</span></div>
+      <ul class="tc-l">
+        <li>Team cost dashboard</li>
+        <li>SIEM export (OCSF/CEF)</li>
+        <li>Failure classification</li>
+        <li>Audit export reports</li>
+        <li>Priority support</li>
+      </ul>
+    </div>
+    <div class="tc growth">
+      <div class="tc-t">Growth</div>
+      <div class="tc-p">$199<span style="font-size:.8rem;font-weight:400;">/seat</span></div>
+      <ul class="tc-l">
+        <li>Auto model routing (30–60% cost cut)</li>
+        <li>CVE-watch at install</li>
+        <li>OpenTelemetry spans</li>
+        <li>Custom policy engine</li>
+        <li>Multi-workspace</li>
+      </ul>
+    </div>
+    <div class="tc ent">
+      <div class="tc-t">Enterprise</div>
+      <div class="tc-p">$499<span style="font-size:.8rem;font-weight:400;">/seat</span></div>
+      <ul class="tc-l">
+        <li>SSO/SAML</li>
+        <li>Uptime SLA</li>
+        <li>Full audit export bundle</li>
+        <li>Circuit breaker/failover</li>
+        <li>Dedicated security review</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div style="background:var(--navy);border-radius:14px;padding:20px 24px;display:flex;gap:16px;align-items:center;">
+  <div style="font-family:var(--fd);font-size:1.2rem;font-weight:700;color:#fff;letter-spacing:-.03em;">Reproduce everything yourself.</div>
+  <div style="font-family:var(--fm);font-size:11px;color:#c0c4d0;">git clone github.com/Keesan12/MartinLoop · bun install · bun run benchmark</div>
+</div>
+
+</div>
+</body>
+</html>

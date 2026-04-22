@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MartinLoop - Benchmark And Validation Surface</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#f8f5ed;--paper:#fffdf8;--border:#e2d9cc;--ink:#18181b;--muted:#5f6470;--faint:#8a8f99;--purple:#5b50d6;--purpleLt:#ede9ff;--green:#15803d;--amber:#92400e;--navy:#1a1a2e;--mono:"SF Mono","Cascadia Code",Consolas,monospace}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg);color:var(--ink);padding:42px 24px}
+.wrap{max-width:980px;margin:0 auto;display:flex;flex-direction:column;gap:34px}
+.logo{font-size:30px;font-weight:800;letter-spacing:-.04em}.logo span{color:var(--purple)}
+.sub{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:var(--faint);margin-top:5px}
+.hero{background:var(--navy);color:white;border-radius:18px;padding:34px}
+.eyebrow{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#a99cff;font-weight:800;margin-bottom:12px}
+h1{font-size:38px;line-height:1.05;letter-spacing:-.05em;margin-bottom:14px}
+.hero p{max-width:720px;color:#b9bdca;line-height:1.65;font-size:15px}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.card{background:var(--paper);border:1px solid var(--border);border-radius:14px;padding:20px}
+.k{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--faint);font-weight:800;margin-bottom:10px}
+.num{font-size:34px;font-weight:850;letter-spacing:-.05em;color:var(--green);line-height:1}
+.desc{font-size:13px;color:var(--muted);line-height:1.55;margin-top:8px}
+.section{background:var(--paper);border:1px solid var(--border);border-radius:18px;padding:26px}
+h2{font-size:25px;letter-spacing:-.04em;margin-bottom:8px}
+.lead{font-size:14px;line-height:1.65;color:var(--muted);margin-bottom:18px;max-width:760px}
+table{width:100%;border-collapse:collapse;border:1px solid var(--border);border-radius:12px;overflow:hidden}
+th{background:var(--navy);color:#aeb4c2;font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.08em;text-align:left;padding:12px}
+td{border-top:1px solid var(--border);padding:13px 12px;font-size:13.5px;color:var(--muted);vertical-align:top}
+td:first-child{font-weight:750;color:var(--ink)}
+.status{display:inline-block;font-family:var(--mono);font-size:10px;font-weight:800;border-radius:999px;padding:4px 8px}
+.ok{background:#dcfce7;color:var(--green)}.warn{background:#fef3c7;color:var(--amber)}.info{background:var(--purpleLt);color:var(--purple)}
+.cmds{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+code,pre{font-family:var(--mono)}pre{background:#0d1117;color:#e6edf3;border-radius:12px;padding:16px;font-size:12px;line-height:1.7;overflow:auto}
+.note{background:var(--purpleLt);border:1px solid #d8ccff;border-radius:12px;padding:14px 16px;color:#3d348b;font-size:13px;line-height:1.6}
+@media (max-width:760px){.grid,.cmds{grid-template-columns:1fr}h1{font-size:30px}}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <header>
+    <div class="logo">Martin<span>Loop</span></div>
+    <div class="sub">Current validation report - package 0.1.2</div>
+  </header>
+
+  <section class="hero">
+    <div class="eyebrow">Benchmark Surface</div>
+    <h1>Use the current RC harness, not old cost-comparison claims.</h1>
+    <p>MartinLoop currently ships deterministic benchmark, certification, provider-path, release-surface, and OSS-boundary validation. This page intentionally avoids obsolete public claims such as fixed per-10-task cost totals, 14-class leash counts, or signed-receipt language.</p>
+  </section>
+
+  <section class="grid" aria-label="Current validation summary">
+    <div class="card"><div class="k">Full Workspace Tests</div><div class="num">PASS</div><div class="desc">`pnpm test` passed during this review across the contracts, core, adapters, CLI, MCP, benchmarks, and control-plane test packages.</div></div>
+    <div class="card"><div class="k">Release Surface</div><div class="num">GO</div><div class="desc">`pnpm release:surface:validate` reports the npm package, CLI target, SDK import, and RC gate docs are aligned.</div></div>
+    <div class="card"><div class="k">OSS Boundary</div><div class="num">GO</div><div class="desc">`pnpm oss:validate` reports no workspace dependency leaks across the current OSS boundary.</div></div>
+  </section>
+
+  <section class="section">
+    <h2>Current Validation Commands</h2>
+    <p class="lead">These are the commands a reviewer should run from the repository root. They match the current package scripts and docs.</p>
+    <div class="cmds">
+      <pre>pnpm test
+pnpm public:smoke
+pnpm repo:smoke</pre>
+      <pre>pnpm oss:validate
+pnpm release:surface:validate
+pnpm rc:validate</pre>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>Benchmark And Certification Matrix</h2>
+    <p class="lead">The benchmark harness is a workspace-level RC surface under `benchmarks/`. It is not a public `martin bench` command and should be described as deterministic validation evidence.</p>
+    <table>
+      <thead><tr><th>Surface</th><th>Command</th><th>Current Claim</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Benchmark package tests</td>
+          <td><code>pnpm --filter @martin/benchmarks test</code></td>
+          <td>Exercises runner, fixtures, comparison, provider-path, Phase 7, and Phase 12 test coverage.</td>
+          <td><span class="status ok">review passed</span></td>
+        </tr>
+        <tr>
+          <td>Phase 7 evaluation</td>
+          <td><code>pnpm --filter @martin/benchmarks eval:phase7</code></td>
+          <td>Deterministic variant matrix, replay, safety-drill, and budget-variance reporting.</td>
+          <td><span class="status info">workspace RC</span></td>
+        </tr>
+        <tr>
+          <td>Phase 12 certification</td>
+          <td><code>pnpm --filter @martin/benchmarks eval:phase12</code></td>
+          <td>Certification scenarios produce evidence-complete outputs suitable for release gating.</td>
+          <td><span class="status info">workspace RC</span></td>
+        </tr>
+        <tr>
+          <td>Provider paths</td>
+          <td><code>pnpm --filter @martin/benchmarks eval:providers</code></td>
+          <td>Claude CLI and Codex CLI are supported for RC; direct and routed HTTP contracts are explicit but not live-provider surfaces in RC.</td>
+          <td><span class="status warn">mixed support</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="section">
+    <h2>What This Page Does Not Claim</h2>
+    <p class="lead">These older claims were removed because they do not match the current repository truth.</p>
+    <table>
+      <thead><tr><th>Removed Claim</th><th>Current Replacement</th></tr></thead>
+      <tbody>
+        <tr><td>Legacy fixed comparative cost totals</td><td>Use the current deterministic benchmark and certification commands instead.</td></tr>
+        <tr><td>Legacy adversarial-count marketing language</td><td>The current contracts expose 11 failure classes and repo tests validate the active leash behavior.</td></tr>
+        <tr><td>Legacy signed-receipt or certification language</td><td>The current audit surface is JSONL loop records plus optional persisted run artifacts.</td></tr>
+        <tr><td>Legacy non-workspace reproduction path</td><td>Use `pnpm` workspace scripts from the repo root.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <div class="note">Reviewer note: this is an honest validation report for the current `martin-loop` repo. It is designed for release review and documentation, not for unsupported marketing comparisons.</div>
+</main>
+</body>
+</html>

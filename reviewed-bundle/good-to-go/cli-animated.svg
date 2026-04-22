@@ -1,0 +1,139 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 540" width="820" height="540">
+  <defs>
+    <style>
+      @keyframes fadeIn { from{opacity:0} to{opacity:1} }
+      @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+      @keyframes slideIn { from{opacity:0;transform:translateY(3px)} to{opacity:1;transform:translateY(0)} }
+
+      .bg{fill:#0d1117}
+      .bar{fill:#161b22}
+      .text{fill:#e6edf3;font-family:'SF Mono','Cascadia Code',Consolas,monospace;font-size:12.5px}
+      .dim{fill:#8b949e}
+      .green{fill:#3fb950}
+      .blue{fill:#79c0ff}
+      .purple{fill:#bc8cff}
+      .str{fill:#a5d6ff}
+      .dot-r{fill:#ff5f57}
+      .dot-y{fill:#ffbd2e}
+      .dot-g{fill:#28c840}
+
+      .l01{animation:slideIn .22s ease both;animation-delay:.3s;opacity:0}
+      .l02{animation:slideIn .22s ease both;animation-delay:.7s;opacity:0}
+      .l03{animation:slideIn .22s ease both;animation-delay:1.0s;opacity:0}
+      .l04{animation:slideIn .22s ease both;animation-delay:1.25s;opacity:0}
+      .l05{animation:slideIn .22s ease both;animation-delay:1.5s;opacity:0}
+      .l06{animation:slideIn .22s ease both;animation-delay:1.75s;opacity:0}
+      .l07{animation:slideIn .22s ease both;animation-delay:2.0s;opacity:0}
+      .l08{animation:slideIn .22s ease both;animation-delay:2.25s;opacity:0}
+      .l09{animation:slideIn .22s ease both;animation-delay:2.5s;opacity:0}
+      .l10{animation:slideIn .22s ease both;animation-delay:2.75s;opacity:0}
+      .l11{animation:slideIn .22s ease both;animation-delay:3.0s;opacity:0}
+      .l12{animation:slideIn .22s ease both;animation-delay:3.25s;opacity:0}
+      .l13{animation:slideIn .22s ease both;animation-delay:3.5s;opacity:0}
+      .l14{animation:slideIn .22s ease both;animation-delay:3.75s;opacity:0}
+      .l15{animation:slideIn .22s ease both;animation-delay:4.0s;opacity:0}
+      .l16{animation:slideIn .22s ease both;animation-delay:4.25s;opacity:0}
+      .l17{animation:slideIn .22s ease both;animation-delay:4.5s;opacity:0}
+      .l18{animation:slideIn .22s ease both;animation-delay:4.75s;opacity:0}
+      .l19{animation:slideIn .22s ease both;animation-delay:5.0s;opacity:0}
+      .l20{animation:slideIn .22s ease both;animation-delay:5.25s;opacity:0}
+      .l21{animation:slideIn .22s ease both;animation-delay:5.5s;opacity:0}
+      .l22{animation:slideIn .22s ease both;animation-delay:5.75s;opacity:0}
+      .l23{animation:slideIn .22s ease both;animation-delay:6.0s;opacity:0}
+
+      .card-bg{animation:fadeIn .4s ease both;animation-delay:6.5s;opacity:0}
+      .card-text{animation:fadeIn .4s ease both;animation-delay:6.7s;opacity:0}
+      .cursor{animation:blink 1s step-end infinite;animation-delay:7s;opacity:0}
+      .prompt-end{animation:fadeIn .1s ease both;animation-delay:7s;opacity:0}
+    </style>
+  </defs>
+
+  <!-- Window -->
+  <rect width="820" height="540" rx="12" class="bg"/>
+
+  <!-- Title bar -->
+  <rect width="820" height="40" rx="12" class="bar"/>
+  <rect y="28" width="820" height="12" class="bar"/>
+
+  <!-- Traffic lights -->
+  <circle cx="20" cy="20" r="6" class="dot-r"/>
+  <circle cx="40" cy="20" r="6" class="dot-y"/>
+  <circle cx="60" cy="20" r="6" class="dot-g"/>
+
+  <!-- Title -->
+  <text x="410" y="25" class="text dim" text-anchor="middle" font-size="12">martin — governed ai coding runtime · martinloop.com</text>
+
+  <!-- L01: command -->
+  <text x="22" y="66" class="text green l01">$</text>
+  <text x="34" y="66" class="text l01"> martin run "repair flaky CI gate" --budget 5.00 --verify "pnpm test"</text>
+
+  <!-- L02: opening brace -->
+  <text x="22" y="86" class="text l02">{</text>
+
+  <!-- L03: command field -->
+  <text x="22" y="106" class="text l03">  <tspan class="blue">"command"</tspan>: <tspan class="str">"run"</tspan>,</text>
+
+  <!-- L04: decision key -->
+  <text x="22" y="126" class="text l04">  <tspan class="blue">"decision"</tspan>: {</text>
+
+  <!-- L05: lifecycleState -->
+  <text x="22" y="146" class="text l05">    <tspan class="blue">"lifecycleState"</tspan>: <tspan class="green">"completed"</tspan>,</text>
+
+  <!-- L06: status -->
+  <text x="22" y="166" class="text l06">    <tspan class="blue">"status"</tspan>: <tspan class="green">"completed"</tspan>,</text>
+
+  <!-- L07: reason -->
+  <text x="22" y="186" class="text l07">    <tspan class="blue">"reason"</tspan>: <tspan class="str">"Martin verified the fix and can hard-complete the loop."</tspan></text>
+
+  <!-- L08: close decision -->
+  <text x="22" y="206" class="text l08">  },</text>
+
+  <!-- L09: loop key -->
+  <text x="22" y="226" class="text l09">  <tspan class="blue">"loop"</tspan>: {</text>
+
+  <!-- L10: loopId -->
+  <text x="22" y="246" class="text l10">    <tspan class="blue">"loopId"</tspan>: <tspan class="str">"loop_a7f2b9"</tspan>,</text>
+
+  <!-- L11: status -->
+  <text x="22" y="266" class="text l11">    <tspan class="blue">"status"</tspan>: <tspan class="green">"completed"</tspan>,</text>
+
+  <!-- L12: cost open -->
+  <text x="22" y="286" class="text l12">    <tspan class="blue">"cost"</tspan>: {</text>
+
+  <!-- L13: actualUsd -->
+  <text x="22" y="306" class="text l13">      <tspan class="blue">"actualUsd"</tspan>: <tspan>2.30</tspan>,</text>
+
+  <!-- L14: tokensIn -->
+  <text x="22" y="326" class="text l14">      <tspan class="blue">"tokensIn"</tspan>: <tspan>108661</tspan>,  <tspan class="dim">"tokensOut"</tspan>: <tspan>778</tspan></text>
+
+  <!-- L15: close cost -->
+  <text x="22" y="346" class="text l15">    },</text>
+
+  <!-- L16: attempts open -->
+  <text x="22" y="366" class="text l16">    <tspan class="blue">"attempts"</tspan>: [{</text>
+
+  <!-- L17: index -->
+  <text x="22" y="386" class="text l17">      <tspan class="blue">"index"</tspan>: <tspan>1</tspan>,  <tspan class="blue">"model"</tspan>: <tspan class="str">"claude-sonnet-4-6"</tspan>,</text>
+
+  <!-- L18: summary -->
+  <text x="22" y="406" class="text l18">      <tspan class="blue">"summary"</tspan>: <tspan class="str">"All 62 tests pass. Fixed race condition in jest config."</tspan></text>
+
+  <!-- L19: close attempts -->
+  <text x="22" y="426" class="text l19">    }]</text>
+
+  <!-- L20: close loop -->
+  <text x="22" y="446" class="text l20">  }</text>
+
+  <!-- L21: close root -->
+  <text x="22" y="466" class="text l21">}</text>
+
+  <!-- Summary box -->
+  <rect x="18" y="476" width="782" height="44" rx="8" fill="#161b22" class="card-bg"/>
+  <rect x="18" y="476" width="782" height="44" rx="8" fill="none" stroke="#238636" stroke-width="1" class="card-bg"/>
+  <text x="30" y="493" class="text blue card-text" font-size="12">── Inspect: martin inspect --file ~/.martin/runs/ws_default.jsonl</text>
+  <text x="30" y="511" class="text green card-text" font-size="12">── Resume:  martin resume loop_a7f2b9</text>
+
+  <!-- Prompt -->
+  <text x="22" y="530" class="text green prompt-end">$</text>
+  <rect x="34" y="519" width="8" height="14" fill="#e6edf3" class="cursor"/>
+</svg>

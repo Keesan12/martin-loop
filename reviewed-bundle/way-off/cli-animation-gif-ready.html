@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#0d1117;display:flex;align-items:center;justify-content:center;min-height:100vh;}
+.terminal{width:820px;border-radius:12px;overflow:hidden;background:#0d1117;border:1px solid #30363d;font-family:'SF Mono','Cascadia Code',Consolas,monospace;font-size:12.5px;}
+.tbar{background:#161b22;height:40px;display:flex;align-items:center;padding:0 16px;gap:8px;border-bottom:1px solid #30363d;}
+.d{width:12px;height:12px;border-radius:50%;}
+.dr{background:#ff5f57;}.dy{background:#ffbd2e;}.dg{background:#28c840;}
+.ttitle{flex:1;text-align:center;color:#484f58;font-size:12px;}
+.tbody{padding:16px 22px;line-height:2;}
+.ln{display:block;white-space:pre;opacity:0;}
+@keyframes fadeUp{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+.cp{color:#3fb950;}.cc{color:#e6edf3;}.ca{color:#79c0ff;}.dim{color:#8b949e;}
+.cok{color:#3fb950;}.ce{color:#f85149;}.cw{color:#d29922;}.cp2{color:#bc8cff;}.cy{color:#58a6ff;}
+.sumbox{background:#161b22;border:1px solid #238636;border-radius:8px;padding:12px 16px;margin-top:8px;opacity:0;}
+@keyframes boxIn{from{opacity:0}to{opacity:1}}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+.cursor{display:inline-block;width:8px;height:14px;background:#e6edf3;vertical-align:middle;animation:blink 1s step-end infinite;opacity:0;}
+</style>
+</head>
+<body>
+<div class="terminal">
+  <div class="tbar">
+    <div class="d dr"></div><div class="d dy"></div><div class="d dg"></div>
+    <div class="ttitle">martin — governed ai coding runtime · martinloop.com</div>
+  </div>
+  <div class="tbody" id="body">
+<span class="ln" id="l1"><span class="cp">$ </span><span class="cc">martin run --objective "repair flaky CI gate" --budget 5.00 --verify "pnpm test"</span></span>
+<span class="ln" id="l2"><span class="dim">[martin] Run ID: a7f2b930  |  Budget: $5.00  |  Adapter: claude-sonnet-4  |  Leash: armed (14 classes)</span></span>
+<span class="ln" id="l3"><span class="cy">[policy] martin.policy.yaml loaded  |  max_retries: 3  |  verify_cmd: pnpm test</span></span>
+<span class="ln" id="l4"><span class="ca">── Attempt 1 ──────────────────────────────────────────────────────────────────────</span></span>
+<span class="ln" id="l5"><span class="dim">[grounding] Scanning: jest.config.js, ci-gate.test.ts, .github/workflows/ci.yml</span></span>
+<span class="ln" id="l6"><span class="cok">[grounding] No contradictions found — task scope clear</span></span>
+<span class="ln" id="l7"><span class="dim">[leash] Pre-execution scan: 14 classes active</span></span>
+<span class="ln" id="l8"><span class="cok">[leash] PASS — 0 dangerous patterns matched  |  Proceeding to patch</span></span>
+<span class="ln" id="l9"><span class="dim">[patch] Applying fix: race condition in jest worker pool config...</span></span>
+<span class="ln" id="l10"><span class="cok">[patch] Modified: jest.config.js (+3 lines)  |  No other files touched</span></span>
+<span class="ln" id="l11"><span class="dim">[verify] Running: pnpm test  →  62/62 pass</span></span>
+<span class="ln" id="l12"><span class="cok">[verify] Grade: A  —  62 tests pass  |  All acceptance criteria met</span></span>
+<span class="ln" id="l13"><span class="dim">[cost] $2.30  |  Running total: $2.30 / $5.00 cap</span></span>
+<span class="ln" id="l14"><span class="cp2">[audit] Signed  |  sig: ed25519:9c3e7f...a1b84d  |  Tamper-evident. Replayable.</span></span>
+<span class="ln" id="l15"><span class="cok">[rollback] Snapshot retained  |  0 files written on failure</span></span>
+<div class="sumbox" id="sumbox">
+  <div style="color:#79c0ff;margin-bottom:4px;">┌─ ACCEPTED ✓ ─────────────────────────────────────────────────────────┐</div>
+  <div style="color:#e6edf3;margin-bottom:4px;">│  Grade A · Cost $2.30/$5.00 cap · 62/62 pass · Ed25519 signed ✓      │</div>
+  <div style="color:#3fb950;margin-bottom:4px;">│  jest.config.js patched  |  Drift: 12  |  Rollback ready              │</div>
+  <div style="color:#79c0ff;">└───────────────────────────────────────────────────────────────────────┘</div>
+</div>
+<span class="ln" id="l16"><span class="cp">$ </span><span class="cursor" id="cur"></span></span>
+  </div>
+</div>
+<script>
+const delays = [300,650,1000,1300,1600,1900,2200,2500,2800,3100,3400,3700,4000,4300,4600];
+delays.forEach((d,i)=>{
+  setTimeout(()=>{
+    const el=document.getElementById('l'+(i+1));
+    if(el){el.style.animation='fadeUp .22s ease forwards';el.style.opacity='1';}
+  },d);
+});
+setTimeout(()=>{
+  const sb=document.getElementById('sumbox');
+  sb.style.animation='boxIn .4s ease forwards';sb.style.opacity='1';
+},5000);
+setTimeout(()=>{
+  document.getElementById('l16').style.opacity='1';
+  document.getElementById('cur').style.opacity='1';
+},5500);
+</script>
+</body>
+</html>

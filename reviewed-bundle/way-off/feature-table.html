@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Martin Loop — Complete Feature & Phase Reference</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif; background: #FFFFFF; color: #1A1A2E; }
+  header { background: #6B4EFF; padding: 48px 56px; }
+  header h1 { color: #FFFFFF; font-size: 32px; font-weight: 800; letter-spacing: -0.5px; }
+  header p { color: #EDE9FE; font-size: 15px; margin-top: 8px; }
+  .container { max-width: 1200px; margin: 0 auto; padding: 56px; }
+  /* STAT CARDS */
+  .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 64px; }
+  .stat-card { background: #FFFFFF; border: 2px solid #EDE9FE; border-radius: 16px; padding: 28px 24px; text-align: center; }
+  .stat-card .big { font-size: 48px; font-weight: 900; color: #6B4EFF; letter-spacing: -2px; line-height: 1; }
+  .stat-card .label { font-size: 13px; color: #374151; margin-top: 8px; font-weight: 500; }
+  /* SECTION */
+  .section { margin-bottom: 56px; }
+  .section-title { font-size: 22px; font-weight: 800; color: #1A1A2E; margin-bottom: 24px; }
+  /* FEATURE TABLE */
+  .feature-table { width: 100%; border-collapse: collapse; }
+  .feature-table thead th { padding: 12px 16px; text-align: left; font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6B7280; background: #F9FAFB; border-bottom: 2px solid #E5E7EB; }
+  .feature-table tbody tr { border-bottom: 1px solid #F3F4F6; }
+  .feature-table tbody tr:hover { background: #FAFAFA; }
+  .feature-table tbody td { padding: 14px 16px; font-size: 13.5px; vertical-align: top; }
+  .slice-badge { display: inline-block; font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px; }
+  .tier-header { padding: 12px 16px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
+  /* TIER COLORS */
+  .t1-row { background: #FAF5FF; }
+  .t1-row:hover { background: #F3E8FF !important; }
+  .t1-badge { background: #EDE9FE; color: #6B4EFF; }
+  .t1-header { background: #6B4EFF; color: #FFFFFF; }
+  .t2-row { background: #EFF6FF; }
+  .t2-row:hover { background: #DBEAFE !important; }
+  .t2-badge { background: #DBEAFE; color: #1D4ED8; }
+  .t2-header { background: #1D4ED8; color: #FFFFFF; }
+  .t3-row { background: #F0FDFA; }
+  .t3-row:hover { background: #CCFBF1 !important; }
+  .t3-badge { background: #CCFBF1; color: #0F766E; }
+  .t3-header { background: #0F766E; color: #FFFFFF; }
+  .t4-row { background: #FFFBEB; }
+  .t4-row:hover { background: #FEF3C7 !important; }
+  .t4-badge { background: #FEF3C7; color: #92400E; }
+  .t4-header { background: #D97706; color: #FFFFFF; }
+  .r-row { background: #F9FAFB; }
+  .r-row:hover { background: #F3F4F6 !important; }
+  .r-badge { background: #F3F4F6; color: #4B5563; }
+  .r-header { background: #6B7280; color: #FFFFFF; }
+  .feature-name { font-weight: 700; color: #1A1A2E; }
+  .feature-desc { font-size: 12.5px; color: #6B7280; margin-top: 3px; line-height: 1.4; }
+  .status-done { display: inline-block; background: #D1FAE5; color: #065F46; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; }
+  .status-wip { display: inline-block; background: #FEF3C7; color: #92400E; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; }
+  /* CLI */
+  .cli-block { background: #1A1A2E; border-radius: 14px; padding: 32px; }
+  .cli-line { display: flex; align-items: flex-start; gap: 16px; padding: 8px 0; border-bottom: 1px solid #2D2D4E; }
+  .cli-line:last-child { border-bottom: none; }
+  .cli-cmd { font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 14px; color: #A78BFA; min-width: 200px; }
+  .cli-desc { font-size: 14px; color: #9CA3AF; }
+  /* TIER LEGEND */
+  .tier-legend { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+  .tier-chip { border-radius: 20px; padding: 4px 14px; font-size: 12px; font-weight: 700; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Martin Loop — Complete Feature &amp; Phase Reference</h1>
+  <p>All 30 slices, organized by tier. Last updated 2026-04-09.</p>
+</header>
+
+<div class="container">
+
+  <!-- STATS -->
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="big">30</div>
+      <div class="label">Modules implemented</div>
+    </div>
+    <div class="stat-card">
+      <div class="big">417</div>
+      <div class="label">Tests green</div>
+    </div>
+    <div class="stat-card">
+      <div class="big">63</div>
+      <div class="label">Gate checks passing</div>
+    </div>
+    <div class="stat-card">
+      <div class="big">14</div>
+      <div class="label">Leash trap classes</div>
+    </div>
+  </div>
+
+  <!-- FEATURE TABLE -->
+  <div class="section">
+    <div class="section-title">Feature Reference by Tier</div>
+    <div class="tier-legend">
+      <span class="tier-chip t1-badge">T1 — Core Safety</span>
+      <span class="tier-chip t2-badge">T2 — Cost &amp; Control</span>
+      <span class="tier-chip t3-badge">T3 — Enterprise</span>
+      <span class="tier-chip t4-badge">T4 — Advanced</span>
+      <span class="tier-chip r-badge">R — Research</span>
+    </div>
+    <table class="feature-table">
+      <thead>
+        <tr>
+          <th>Slice</th>
+          <th>Feature Name</th>
+          <th>Description</th>
+          <th>CLI / API</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- T1 HEADER -->
+        <tr><td colspan="5" class="tier-header t1-header">Tier 1 — Core Safety</td></tr>
+        <tr class="t1-row">
+          <td><span class="slice-badge t1-badge">SLICE-01</span></td>
+          <td><div class="feature-name">Objective Lock</div></td>
+          <td><div class="feature-desc">Locks loop objective at start, blocks scope drift, BFS context pruning to prevent hallucinated goal expansion</div></td>
+          <td><code style="font-size:12px;color:#6B4EFF;">core/objective-lock</code></td>
+          <td><span class="status-done">DONE</span></td>
+        </tr>
+        <tr class="t1-row">
+          <td><span class="slice-badge t1-badge">SLICE-09</span></td>
+          <td><div class="feature-name">Attestation</div></td>
+          <td><div class="feature-desc">Ed25519 sign/verify per attempt, tamper-evident audit trail. <code style="font-size:11px;">sign.ts</code> and <code style="font-size:11px;">verify.ts</code> fully implemented.</div></td>
+          <td><code style="font-size:12px;color:#6B4EFF;">martin verify</code></td>
+          <td><span class="status-done">DONE</span></td>
+        </tr>
+        <tr class="t1-row">
+          <td><span class="slice-badge t1-badge">SLICE-12</span></td>
+          <td><div class="feature-name">Verifier Pyramid</div></td>
+          <td><div class="feature-desc">A/B/C graded verification with confidence scoring. Primary driver of the 80% pass rate.</div></td>
+          <td><code style="font-size:12px;color:#6B4EFF;">core/verifier</code></td>
+          <td><span class="status-done">DONE</span></td>
+        </tr>
+        <tr class="t1-row">
+          <td><span class="slice-badge t1-badge">SLICE-13</span></td>
+          <td><div class="feature-name">Phase Planning</div></td>
+          <td><div class="feature-desc">Multi-phase task decomposition before execution. Prevents single-shot failures on complex tasks.</div></td>
+          <td><code style="font-size:12px;color:#6B4EFF;">core/phase-planner</code></td>
+          <td><span class="status-done">DONE</span></td>
+        </tr>
+        <tr class="t1-row">
+          <td><span class="slice-badge t1-badge">SLICE-15</span></td>
+          <td><div class="feature-name">Doctor Command</div></td>
+          <td><div class="feature-desc">Health check CLI. Validates API keys, policy file, CVE status, and environment configuration.</div></td>
+          <td><code style="font-size:12px;color:#6B4EFF;">martin doctor</code></td>
+          <td><span class="status-done">DONE</span></td>
+        </tr>
+        <tr class="t1-row">
+          <td><span class="slice-badge t1-badge">SLICE-28</span></td>
+          <td><div class="feature-name">Init Command</div></td>
+          <td><div class="feature-desc">Project initialization. Scaffolds martin.policy.yaml with sane defaults, checks environment.</div></td>
+          <td><code style="font-size:12px;color:#6B4EFF;">martin init</code></td>
+          <td><span class="status-done">DONE</span></td>
+        </tr>
+        <tr class="t1-row">
+          <td><span class="slice-badge t1-badge">SLICE-29</span></td>
+          <td><div class="feature-name">Config Lint</div></td>
+          <td><div class="feature-desc">Policy file validation. Catches malformed YAML, missing required fields, and invalid constraint values before runtime.</div></td>
+          <td><code style="font-size:12px;color:#6B4EFF;">martin lint-config</code></td>
+          <td><span class="status-done">DONE</span></td>
+        </tr>
+
+        <!-- T2 HEADER -->
+        <tr><td colspan="5" class="tier-header t2-header">Tier 2 — Cost &amp; Control</td></tr>
+        <tr class="t2-row">
+          <td><span class="slice-badge t2-badge">SLICE-02</span></td>
+          <td><div class="feature-name">Delta Re-prompting</div></td>
+          <td><div class="feature-desc">Scope-pruned context on retry. Sends only what changed, not full context. Primary token efficiency driver.</div></td>
+          <td><code style="font-size:12px;color:#1D4ED8;">core/delta-reprompt</code></td>
+          <td><span class="status-done">DONE</span></td>
+        </tr>
+        <tr class="t2-row">
+          <td><span class="slice-badge t2-badge">SLICE-03</span></td>
+          <td><div class="feature-name">SIEM Streaming</div></td>
+          <td><div class="feature-desc">OCSF and CEF format event emission for Splunk, Datadog, Elastic, and other SIEM platforms.</div></td>
+          <td><code style="font-size:12px;color:#1D4ED8;">core/siem</code></td>
+          <td><span class="status-done">DONE</span></td>
+        </tr>
+        <tr class="t2-row">
+          <td><span class="slice-badge t2-badge">SLICE-04</span></td>
+          <td><div class="feature-name">OpenTelemetry</div></td>
+          <td><div class="feature-desc">OTel spans per gate decision. Drop into Jaeger, Honeycomb, or any APM platform.</div></td>
+          <td><code style="font-size:12px;color:#1D4ED8;">core/otel</code></td>
+          <td><span class="status-done">DONE</span></td>
+        </tr>
+        <tr class="t2-row">
+          <td><span class="slice-badge t2-badge">SLICE-05</span></td>
+          <td><div class="feature-name">CVE Watch</div></td>
+          <td><div class="feature-desc">Vulnerability check at install time. Blocks installation if known CVEs present in dependency tree.</div></td>
+          <td><code style="font-size:12px;color:#1D4ED8;">core/cve-check</code></td>
+          <td><span class="status-done">DONE</span></td>
+        </tr>
+        <tr class="t2-row">
+          <td><span class="slice-badge t2-badge">SLICE-06</span></td>
+          <td><div class="feature-name">Policy-as-code</div></td>
+          <td><div class="feature-desc">martin.policy.yaml runtime enforcement. Budget limits, allowed providers, forbidden paths, token quotas.</div></td>
+          <td><code style="font-size:12px;color:#1D4ED8;">core/policy</code></td>
+          <td><span class="status-done">DONE</span></td>
+        </tr>
+        <tr class="t2-row">
+          <td><span class="slice-badge t2-badge">SLICE-07</span></td>
+          <td><div class="feature-name">Circuit Breaker</div></td>
+          <td><div class="feature-desc">Provider fallback, auto-switch on consecutive failures. Loop continues from backup provider transparently.</div></td>
+          <td><code style="font-size:12px;color:#1D4ED8;">core/circuit-breaker</code></td>
+          <td><span class="status-done">DONE</span></td>
+        </tr>
+        <tr class="t2-row">
+          <td><span class="slice-badge t2-badge">SLICE-08</span></td>
+          <td><div class="feature-name">Speculative Probe</div></td>
+          <td><div class="feature-desc">Cheap model pre-check before expensive call. If Haiku can handle it, Sonnet never gets called.</div></td>
+          <td><code style="font-size:12px;color:#1D4ED8;">core/speculative-probe</code></td>
+          <td><span class="status-done">DONE</span></td>
+        </tr>
+        <tr class="t2-row">
+          <td><span class="slice-badge t2-badge">SLICE-30</span></td>
+          <td><div class="feature-name">Diff Summary</div></td>
+          <td><div class="feature-desc">Human-readable change summaries for each loop completion. Plain-language description of what the agent did.</div></td>
+          <td><code style="font-size:12px;color:#1D4ED8;">martin diff-summary</code></td>
+          <td><span class="status-done">DONE</span></td>
+        </tr>
+
+        <!-- T3 HEADER -->
+        <tr><td colspan="5" class="tier-header t3-header">Tier 3 — Enterprise</td></tr>
+        <tr class="t3-row">
+          <td><span class="slice-badge t3-badge">SLICE-16</span></td>
+          <td><div class="feature-name">Efficiency Sentinel</div></td>
+          <td><div class="feature-desc">Real-time token efficiency monitoring. Alerts when a loop's efficiency score drops below policy threshold.</div></td>
+          <td><code style="font-size:12px;color:#0F766E;">core/efficiency-sentinel</code></td>
+          <td><span class="status-done">DONE</span></td>
+        </tr>
+        <tr class="t3-row">
+          <td><span class="slice-badge t3-badge">SLICE-17</span></td>
+          <td><div class="feature-name">Drift Graph</div></td>
+          <td><div class="feature-desc">Objective drift visualization. Renders the BFS scope tree to show how far the agent deviated from original objective.</div></td>
+          <td><code style="font-size:12px;color:#0F766E;">core/drift-graph</code></td>
+          <td><span class="status-done">DONE</span></td>
+        </tr>
+        <tr class="t3-row">
+          <td><span class="slice-badge t3-badge">SLICE-18</span></td>
+          <td><div class="feature-name">Truth Wall</div></td>
+          <td><div class="feature-desc">Invariant assertion layer. Define facts that must remain true throughout the loop. Loop halts if any invariant breaks.</div></td>
+          <td><code style="font-size:12px;color:#0F766E;">core/truth-wall</code></td>
+          <td><span class="status-done">DONE</span></td>
+        </tr>
+        <tr class="t3-row">
+          <td><span class="slice-badge t3-badge">SLICE-19</span></td>
+          <td><div class="feature-name">Honey Tokens</div></td>
+          <td><div class="feature-desc">Canary detection for data exfiltration. Synthetic credentials embedded in context; triggers alert if agent attempts to use them.</div></td>
+          <td><code style="font-size:12px;color:#0F766E;">core/honey-tokens</code></td>
+          <td><span class="status-done">DONE</span></td>
+        </tr>
+        <tr class="t3-row">
+          <td><span class="slice-badge t3-badge">SLICE-20</span></td>
+          <td><div class="feature-name">Audit Package</div></td>
+          <td><div class="feature-desc">CVSS 3.1 findings tracker and publication protocol. Third-party audit documentation ready at docs/audit/.</div></td>
+          <td><code style="font-size:12px;color:#0F766E;">docs/audit/</code></td>
+          <td><span class="status-done">DONE</span></td>
+        </tr>
+        <tr class="t3-row">
+          <td><span class="slice-badge t3-badge">SLICE-21</span></td>
+          <td><div class="feature-name">Red-Team Harness</div></td>
+          <td><div class="feature-desc">5 adversarial seed bundles: scope manipulation, budget bypass, hallucinated completion, data exfiltration, recursive injection.</div></td>
+          <td><code style="font-size:12px;color:#0F766E;">packages/fuzzer/</code></td>
+          <td><span class="status-done">DONE</span></td>
+        </tr>
+        <tr class="t3-row">
+          <td><span class="slice-badge t3-badge">SLICE-22</span></td>
+          <td><div class="feature-name">Provider Billing Gates</div></td>
+          <td><div class="feature-desc">Per-provider spend limits enforced at the gate level. Separate budgets for Anthropic, OpenAI, and local providers.</div></td>
+          <td><code style="font-size:12px;color:#0F766E;">core/billing-gates</code></td>
+          <td><span class="status-done">DONE</span></td>
+        </tr>
+        <tr class="t3-row">
+          <td><span class="slice-badge t3-badge">SLICE-14</span></td>
+          <td><div class="feature-name">AST Merge</div></td>
+          <td><div class="feature-desc">ts-morph 3-way merge for parallel branches. Resolves conflicts at the AST level, not string level.</div></td>
+          <td><code style="font-size:12px;color:#0F766E;">core/ast-merge</code></td>
+          <td><span class="status-done">DONE</span></td>
+        </tr>
+
+        <!-- T4 HEADER -->
+        <tr><td colspan="5" class="tier-header t4-header">Tier 4 — Advanced</td></tr>
+        <tr class="t4-row">
+          <td><span class="slice-badge t4-badge">SLICE-23</span></td>
+          <td><div class="feature-name">Resumable Loops</div></td>
+          <td><div class="feature-desc">Checkpoint-based resumability. Resume from last verified checkpoint after crash, timeout, or budget stop.</div></td>
+          <td><code style="font-size:12px;color:#92400E;">martin resume</code></td>
+          <td><span class="status-done">DONE</span></td>
+        </tr>
+        <tr class="t4-row">
+          <td><span class="slice-badge t4-badge">SLICE-24</span></td>
+          <td><div class="feature-name">Provider Billing</div></td>
+          <td><div class="feature-desc">Multi-provider cost aggregation. Single view of all AI spend across Anthropic, OpenAI, and local models.</div></td>
+          <td><code style="font-size:12px;color:#92400E;">core/billing</code></td>
+          <td><span class="status-done">DONE</span></td>
+        </tr>
+        <tr class="t4-row">
+          <td><span class="slice-badge t4-badge">SLICE-25</span></td>
+          <td><div class="feature-name">Grounding Module</div></td>
+          <td><div class="feature-desc">Natural-language explanations of gate decisions. "Why did Martin stop the loop?" answered in plain English.</div></td>
+          <td><code style="font-size:12px;color:#92400E;">martin explain</code></td>
+          <td><span class="status-done">DONE</span></td>
+        </tr>
+        <tr class="t4-row">
+          <td><span class="slice-badge t4-badge">SLICE-10</span></td>
+          <td><div class="feature-name">Red-Blue Framework</div></td>
+          <td><div class="feature-desc">Risk tier classification for tasks. Red tasks require higher confidence threshold before proceeding.</div></td>
+          <td><code style="font-size:12px;color:#92400E;">core/risk-tier</code></td>
+          <td><span class="status-done">DONE</span></td>
+        </tr>
+        <tr class="t4-row">
+          <td><span class="slice-badge t4-badge">SLICE-11</span></td>
+          <td><div class="feature-name">Patch Proof / SLSA</div></td>
+          <td><div class="feature-desc">SLSA Build Level 3 provenance on all releases. Cryptographic proof that artifacts match source.</div></td>
+          <td><code style="font-size:12px;color:#92400E;">.github/workflows/slsa-provenance.yml</code></td>
+          <td><span class="status-done">DONE</span></td>
+        </tr>
+
+        <!-- RESEARCH HEADER -->
+        <tr><td colspan="5" class="tier-header r-header">Research Track</td></tr>
+        <tr class="r-row">
+          <td><span class="slice-badge r-badge">SLICE-26</span></td>
+          <td><div class="feature-name">Leash Coverage Proof</div></td>
+          <td><div class="feature-desc">Formal proof of 14-class leash coverage. Mathematical verification that the trap matrix is complete and non-redundant.</div></td>
+          <td><code style="font-size:12px;color:#4B5563;">docs/proofs/</code></td>
+          <td><span class="status-wip">IN PROGRESS</span></td>
+        </tr>
+        <tr class="r-row">
+          <td><span class="slice-badge r-badge">SLICE-27</span></td>
+          <td><div class="feature-name">Parallel Consensus</div></td>
+          <td><div class="feature-desc">Multi-attempt scorer with best-of-N selection. Runs N parallel attempts and selects the highest-confidence result.</div></td>
+          <td><code style="font-size:12px;color:#4B5563;">core/consensus</code></td>
+          <td><span class="status-done">DONE</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- CLI REFERENCE -->
+  <div class="section">
+    <div class="section-title">CLI Commands Reference</div>
+    <div class="cli-block">
+      <div class="cli-line">
+        <span class="cli-cmd">martin init</span>
+        <span class="cli-desc">Initialize project. Creates martin.policy.yaml with defaults, checks API keys and environment.</span>
+      </div>
+      <div class="cli-line">
+        <span class="cli-cmd">martin doctor</span>
+        <span class="cli-desc">Health check: validates API keys, policy file schema, CVE status, and provider connectivity.</span>
+      </div>
+      <div class="cli-line">
+        <span class="cli-cmd">martin run</span>
+        <span class="cli-desc">Execute a governed loop. Enforces policy, leash, budget stops, and creates signed audit trail.</span>
+      </div>
+      <div class="cli-line">
+        <span class="cli-cmd">martin resume</span>
+        <span class="cli-desc">Resume from last verified checkpoint. Use after crash, timeout, or manual interruption.</span>
+      </div>
+      <div class="cli-line">
+        <span class="cli-cmd">martin explain</span>
+        <span class="cli-desc">Natural-language explanation of the last gate decision. Answers "why did Martin stop the loop?"</span>
+      </div>
+      <div class="cli-line">
+        <span class="cli-cmd">martin verify</span>
+        <span class="cli-desc">Verify Ed25519 signatures on the audit trail. Detects any post-run tampering.</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

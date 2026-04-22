@@ -1,0 +1,147 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 460" width="780" height="460">
+  <defs>
+    <style>
+      @keyframes fadeIn {
+        from { opacity: 0; }
+        to   { opacity: 1; }
+      }
+      @keyframes blink {
+        0%, 100% { opacity: 1; }
+        50%       { opacity: 0; }
+      }
+      @keyframes slideIn {
+        from { opacity: 0; transform: translateY(3px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+
+      .bg     { fill: #0d1117; }
+      .bar    { fill: #21262d; }
+      .border { fill: #30363d; }
+      .text   { fill: #e6edf3; font-family: 'SF Mono', 'Cascadia Code', Consolas, monospace; font-size: 13px; }
+      .dim    { fill: #8b949e; }
+      .green  { fill: #3fb950; }
+      .blue   { fill: #58a6ff; }
+      .yellow { fill: #d29922; }
+      .red    { fill: #f85149; }
+      .purple { fill: #bc8cff; }
+      .cyan   { fill: #79c0ff; }
+
+      /* Dot colours */
+      .dot-r { fill: #ff5f57; }
+      .dot-y { fill: #ffbd2e; }
+      .dot-g { fill: #28c840; }
+
+      /* Per-line animation delays */
+      .l01 { animation: slideIn 0.25s ease both; animation-delay: 0.4s;  opacity: 0; }
+      .l02 { animation: slideIn 0.25s ease both; animation-delay: 0.75s; opacity: 0; }
+      .l03 { animation: slideIn 0.25s ease both; animation-delay: 1.05s; opacity: 0; }
+      .l04 { animation: slideIn 0.25s ease both; animation-delay: 1.35s; opacity: 0; }
+      .l05 { animation: slideIn 0.25s ease both; animation-delay: 1.70s; opacity: 0; }
+      .l06 { animation: slideIn 0.25s ease both; animation-delay: 2.0s;  opacity: 0; }
+      .l07 { animation: slideIn 0.25s ease both; animation-delay: 2.3s;  opacity: 0; }
+      .l08 { animation: slideIn 0.25s ease both; animation-delay: 2.55s; opacity: 0; }
+      .l09 { animation: slideIn 0.25s ease both; animation-delay: 2.8s;  opacity: 0; }
+      .l10 { animation: slideIn 0.25s ease both; animation-delay: 3.05s; opacity: 0; }
+      .l11 { animation: slideIn 0.25s ease both; animation-delay: 3.3s;  opacity: 0; }
+      .l12 { animation: slideIn 0.25s ease both; animation-delay: 3.55s; opacity: 0; }
+      .l13 { animation: slideIn 0.25s ease both; animation-delay: 3.8s;  opacity: 0; }
+      .l14 { animation: slideIn 0.25s ease both; animation-delay: 4.1s;  opacity: 0; }
+      .l15 { animation: slideIn 0.25s ease both; animation-delay: 4.35s; opacity: 0; }
+      .l16 { animation: slideIn 0.25s ease both; animation-delay: 4.6s;  opacity: 0; }
+      .l17 { animation: slideIn 0.25s ease both; animation-delay: 4.85s; opacity: 0; }
+      .l18 { animation: slideIn 0.25s ease both; animation-delay: 5.1s;  opacity: 0; }
+      .l19 { animation: slideIn 0.25s ease both; animation-delay: 5.35s; opacity: 0; }
+      .l20 { animation: slideIn 0.25s ease both; animation-delay: 5.6s;  opacity: 0; }
+      .l21 { animation: slideIn 0.25s ease both; animation-delay: 5.85s; opacity: 0; }
+      .l22 { animation: slideIn 0.25s ease both; animation-delay: 6.1s;  opacity: 0; }
+      .l23 { animation: slideIn 0.25s ease both; animation-delay: 6.4s;  opacity: 0; }
+      .l24 { animation: slideIn 0.25s ease both; animation-delay: 6.65s; opacity: 0; }
+      .l25 { animation: slideIn 0.25s ease both; animation-delay: 6.9s;  opacity: 0; }
+      .l26 { animation: slideIn 0.25s ease both; animation-delay: 7.15s; opacity: 0; }
+      .l27 { animation: slideIn 0.25s ease both; animation-delay: 7.4s;  opacity: 0; }
+      .l28 { animation: slideIn 0.25s ease both; animation-delay: 7.65s; opacity: 0; }
+      .l29 { animation: slideIn 0.25s ease both; animation-delay: 7.9s;  opacity: 0; }
+      .l30 { animation: slideIn 0.25s ease both; animation-delay: 8.15s; opacity: 0; }
+
+      .cursor {
+        animation: blink 1s step-end infinite;
+        animation-delay: 8.5s;
+        opacity: 0;
+      }
+
+      /* Card glow on entry */
+      .card-bg {
+        animation: fadeIn 0.4s ease both;
+        animation-delay: 7.4s;
+        opacity: 0;
+      }
+    </style>
+  </defs>
+
+  <!-- Window background -->
+  <rect width="780" height="460" rx="12" class="bg"/>
+
+  <!-- Outer border -->
+  <rect width="780" height="460" rx="12" fill="none" stroke="#30363d" stroke-width="1"/>
+
+  <!-- Title bar -->
+  <rect width="780" height="38" rx="12" class="bar"/>
+  <rect y="24" width="780" height="14" class="bar"/>
+  <rect y="37" width="780" height="1" fill="#30363d"/>
+
+  <!-- Traffic lights -->
+  <circle cx="22" cy="19" r="6" class="dot-r"/>
+  <circle cx="42" cy="19" r="6" class="dot-y"/>
+  <circle cx="62" cy="19" r="6" class="dot-g"/>
+
+  <!-- Title -->
+  <text x="390" y="23" class="text dim" text-anchor="middle" font-size="12">martin-loop — governed ai coding runtime</text>
+
+  <!-- ── Terminal lines ─────────────────────────────── -->
+  <!-- Line spacing: 19px per line, starting at y=65 -->
+
+  <!-- Prompt + command -->
+  <text x="22" y="65"  class="text green l01">$</text>
+  <text x="34" y="65"  class="text l01"> martin run --objective "Add rate limiting to /api/auth"</text>
+
+  <!-- Run meta -->
+  <text x="22" y="84"  class="text dim l02">[martin] Run ID: d9c1e447  |  Budget: $10.00  |  Max: 5 attempts</text>
+
+  <!-- Attempt 1 header -->
+  <text x="22" y="108" class="text blue l03">── Attempt 1 ──────────────────────────────────────────────────</text>
+
+  <!-- Grounding -->
+  <text x="22" y="127" class="text dim l04">[grounding] Scanning relevant files...                  </text>
+  <text x="22" y="146" class="text green l05">[grounding] No contradictions found                     </text>
+
+  <!-- Leash BLOCKED -->
+  <text x="22" y="165" class="text dim l06">[leash] Scanning diff for dangerous patterns...          </text>
+  <text x="22" y="184" class="text red l07">[leash] BLOCKED: curl https://… | sh detected (T03)      </text>
+  <text x="22" y="203" class="text red l08">        Patch rejected. Workspace unchanged.              </text>
+  <text x="22" y="222" class="text green l09">[rollback] Complete. 0 files written.                    </text>
+
+  <!-- Attempt 2 header -->
+  <text x="22" y="246" class="text blue l10">── Attempt 2 ──────────────────────────────────────────────────</text>
+
+  <!-- Delta re-prompt -->
+  <text x="22" y="265" class="text dim l11">[martin] Delta re-prompt: 1,203 tokens (was 4,102)       </text>
+  <text x="22" y="284" class="text green l12">[grounding] No contradictions found                     </text>
+  <text x="22" y="303" class="text green l13">[leash] PASS — 0 patterns matched                       </text>
+  <text x="22" y="322" class="text green l14">[proof] bun test src/middleware/rate-limit.test.ts  PASS (8/8)</text>
+  <text x="22" y="341" class="text green l15">[proof] Grade: A  (all acceptance criteria met)          </text>
+  <text x="22" y="360" class="text green l16">[martin] Attempt 2 ACCEPTED                              </text>
+
+  <!-- ── Summary card ────────────────────────────────── -->
+
+  <!-- Card subtle glow/background -->
+  <rect x="20" y="375" width="556" height="74" rx="4" fill="#0e1a2e" class="card-bg"/>
+
+  <text x="22" y="391" class="text blue l17">┌──────────────────────────────────────────────────────┐</text>
+  <text x="22" y="407" class="text l18">│ martin-loop  run complete                            │</text>
+  <text x="22" y="423" class="text l19">│ Status  <tspan class="green">ACCEPTED ✓</tspan>  │  Grade <tspan class="green">A</tspan>  │  Cost <tspan>$0.79</tspan>  │  Files <tspan class="cyan">1</tspan>  │</text>
+  <text x="22" y="439" class="text l20">│ Attempts  2/5  (1 leash-blocked)  │  Duration  18.4s      │</text>
+  <text x="22" y="455" class="text blue l21">└──────────────────────────────────────────────────────┘</text>
+
+  <!-- Blinking cursor -->
+  <rect x="22" y="459" width="8" height="13" class="green cursor"/>
+</svg>
