@@ -14,7 +14,7 @@
 **Your overnight AI pipeline estimated $2.40.**  
 **You woke up to a $65 bill.** 
  <br> 47 retries. No hard stop. No rollback. No audit trail. Nothing merged.  
- **MartinLoop exists so that never happens again.**✅✅✅
+ MartinLoop exists so that never happens again.✅
 <br>
 
 > AI coding agents are useful. Unbounded retry loops are not.
@@ -31,7 +31,7 @@
 
 A typical autonomous coding loop keeps attempting work until tests pass. Without a governance layer, that loop can keep spending, mutate files outside the intended scope, lose track of why it failed, and leave teams without a clean audit trail.
 
-MartinLoop calls that failure mode the **Ralph Loop**: attempt, check, retry, repeat, with no strong answer to:
+MartinLoop calls that failure mode the **Ralph Loop**: attempt ➡️ check ➡️ retry ➡️ repeat, with no strong answer to:
 
 - What changed?
 - What did it cost?
@@ -58,6 +58,7 @@ It does not try to replace the agent pattern. It makes that pattern safe to run.
 | Rollback evidence | Captures rollback boundaries and restore outcomes for repo-backed attempts when a persistence store is configured. |
 | Context distillation | Carries a distilled summary of recent attempts and remaining constraints into subsequent attempts. |
 | Run records | The CLI appends JSONL loop records under `~/.martin/runs/<workspaceId>.jsonl`; lower-level stores can also persist contracts, ledgers, and attempt artifacts.
+
 
 ⭐The result is a runtime that can complete good work, refuse unsafe work, stop uneconomical work, and leave evidence behind.✅
 ---
