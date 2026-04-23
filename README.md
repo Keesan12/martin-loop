@@ -31,7 +31,7 @@
 
 A typical autonomous coding loop keeps attempting work until tests pass. Without a governance layer, that loop can keep spending, mutate files outside the intended scope, lose track of why it failed, and leave teams without a clean audit trail.
 
-MartinLoop calls that failure mode the Ralph Loop: attempt, check, retry, repeat, with no strong answer to:
+MartinLoop calls that failure mode the **Ralph Loop**: attempt, check, retry, repeat, with no strong answer to:
 
 - What changed?
 - What did it cost?
@@ -41,19 +41,48 @@ MartinLoop calls that failure mode the Ralph Loop: attempt, check, retry, repeat
 
 ---
 
-## What MartinLoop Does Today
+## The Solution
+
+✅ Martin Loop wraps AI coding loops with a governance layer.
+
+It does not try to replace the agent pattern. It makes that pattern safe to run.
+
+### What MartinLoop Does Today
 
 | Capability | Current behavior |
 |---|---|
-| Budget governance | Enforces `maxUsd`, `softLimitUsd`, `maxIterations`, and `maxTokens`; rejects attempts projected to exceed remaining budget and exits on budget or iteration exhaustion. |
+| Budget governance | Enforces `maxUsd`, `softLimitUsd`, `maxIterations`, and `maxTokens`; rejects attempts projected to exceed remaining budget and exits on budget or iteration exhaustion. Hard USD budget caps that stop work before the next attempt breaches policy. |
 | Verifier gate | A run only reaches `completed` when the adapter result and verifier state pass. Unsafe verifier commands are blocked before agent execution. |
-| Failure taxonomy | Classifies failures across 11 current classes, including hallucination, test regression, scope creep, repo grounding failure, environment mismatch, and budget pressure. |
-| Safety leash | Evaluates verifier commands, file scope, dependency or migration changes that require approval, and secret-like values in task text. |
+| Failure taxonomy | Classifies failures across 11 current classes, including hallucination, test regression, scope creep, repo grounding failure, environment mismatch, and budget pressure, that distinguishes real success from unsafe, invalid, or terminal behavior.|
+| Safety leash | Evaluates verifier commands, file scope, dependency or migration changes that require approval, and secret-like values in task text. **Policy-as-code**. |
 | Rollback evidence | Captures rollback boundaries and restore outcomes for repo-backed attempts when a persistence store is configured. |
 | Context distillation | Carries a distilled summary of recent attempts and remaining constraints into subsequent attempts. |
-| Run records | The CLI appends JSONL loop records under `~/.martin/runs/<workspaceId>.jsonl`; lower-level stores can also persist contracts, ledgers, and attempt artifacts. |
+| Run records | The CLI appends JSONL loop records under `~/.martin/runs/<workspaceId>.jsonl`; lower-level stores can also persist contracts, ledgers, and attempt artifacts.
 
-The result is a runtime that can complete good work, refuse unsafe work, stop uneconomical work, and leave evidence behind.
+⭐The result is a runtime that can complete good work, refuse unsafe work, stop uneconomical work, and leave evidence behind.✅
+---
+
+## The Ralph Loop, explained
+
+**"Everybody has gotten infatuated with what we call these Ralph Wiggum loops, just like send the thing off and it'll just go figure something out..A, It never figures anything out. And B, you just get this ginormous bill...**" - Chamath Palihapitiya, All-In Podcast #263, March 2026
+
+⛔ The **Ralph Loop** is the failure mode where an AI coding agent keeps trying without knowing when it should stop.⛔
+
+The pattern is simple: attempt the task, run checks, retry on failure, repeat. The problem is not that the loop exists. The problem is that most implementations have no hard budget cap, no signed evidence layer, and no pre-execution control system. They know how to keep trying. They do **not** know when continuing is unsafe, uneconomical, or impossible.
+
+✅ Martin Loop solves the Ralph Loop problem by enforcing rules **before** damage happens:
+
+- it stops the next attempt before budget overspend
+- it classifies unsafe or invalid actions before execution
+- it records each attempt with cryptographic proof 
+- it rolls back failed runs instead of leaving broken state behind 
+- it reduces runaway token growth with delta re-prompting 
+
+If Ralph ever burned $165.70 on your dime, you're in the right place. Martin stopped him at $4.97 with a full audit trail. LFG! 🚀 Finally a Martin Prince leash for Ralph Wiggums! :)  
+
+<div align="center">
+  <img src="./docs/assets/martin-raplph.png.jpg" alt="Martin vs Ralph — governed vs ungoverned agent loop" width="240">
+</div>
 
 ### How It Works — Five Layers
 
@@ -71,13 +100,12 @@ The result is a runtime that can complete good work, refuse unsafe work, stop un
 
 Same task, same starting state. MartinLoop completes in one verified attempt at `$2.30`. The uncontrolled loop retries four times, spends `$5.20`, and fails with no audit trail.
 
-<div align="center">
-  <img src="./docs/assets/side-by-side.svg" alt="MartinLoop vs Ralph — side-by-side benchmark comparison" width="900">
-</div>
+Martin Loop matters because it turns AI coding from an opaque experiment into something that can be governed, replayed, verified, and trusted.
 
 <div align="center">
-  <img src="./docs/assets/martin-raplph.png.jpg" alt="Martin vs Ralph — governed vs ungoverned agent loop" width="420">
+  <img src="./docs/assets/side-by-side.svg" alt="Martin vs Ralph — governed vs ungoverned agent loop side-by-side benchmark comparison" width="720" height="1080">
 </div>
+
 
 Reproducible locally:
 
