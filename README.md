@@ -2,17 +2,25 @@
 
 <img src="./docs/assets/martinloop-logo.png" alt="MartinLoop" width="260">
 
-### A governed runtime for autonomous AI coding agents.
+### A governed runtime for autonomous AI coding agents. ⭐⭐⭐
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-7c3aed?style=flat-square)](./LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&logo=typescript&logoColor=white)](./tsconfig.base.json)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-3c873a?style=flat-square&logo=nodedotjs&logoColor=white)](#quick-start)
 [![npm](https://img.shields.io/badge/npm-martin--loop-cc3534?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/martin-loop)
 
+<br>
+
+**Your overnight AI pipeline estimated $2.40.**  
+**You woke up to a $65 bill.** 
+ <br> 47 retries. No hard stop. No rollback. No audit trail. Nothing merged.  
+ **MartinLoop exists so that never happens again.**✅✅✅
+<br>
+
 > AI coding agents are useful. Unbounded retry loops are not.
 >
 > MartinLoop wraps agent runs with budgets, policy checks, verifier gates, rollback evidence, and inspectable run records.
-
+<br>
 <img src="./docs/assets/cli-animated.svg" alt="MartinLoop CLI — governed agent run" width="720">
 
 </div>
