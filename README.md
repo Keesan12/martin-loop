@@ -126,6 +126,16 @@ npm install -g martin-loop
 
 This installs both the `martin-loop` package and the `martin` command alias. The package is currently published on npm as version `0.1.2`.
 
+### Public Package Surface
+
+The frozen public package surface for this release candidate is:
+
+- Install target: `npm install martin-loop`
+- CLI target: `npx martin-loop`
+- SDK target: `import { MartinLoop } from "martin-loop"`
+
+The `martin` command alias is installed for local operator convenience, but the public CLI surface is `npx martin-loop`.
+
 ### Run a governed task
 
 ```sh
@@ -299,6 +309,9 @@ pnpm build
 
 Current RC gate commands:
 
+```md
+Current RC gate commands:
+
 ```sh
 pnpm oss:validate
 pnpm public:smoke
@@ -306,13 +319,13 @@ pnpm repo:smoke
 pnpm rc:validate
 pnpm pilot:prep:validate
 pnpm release:matrix:local
+
+Caution: Registry Publication
+
+This package is published through the public martin-loop package surface. Treat registry publication as a guarded release step: verify the RC gate commands, confirm the version follows semantic versioning, and document breaking changes before publishing.
 ```
 
 The repository is organized as a dual-track workspace: the OSS runtime and package facade are present and published, while the hosted control-plane, local dashboard, and benchmark harness remain gated in private workspace for future release rather than the primary npm package API.
-
-> **⚠️ Caution: Registry Publication**
-> 
-> This package is published to a registry. Ensure that version numbers follow semantic versioning conventions and that all breaking changes are clearly documented before publishing. You can run command: npm install -g martin-loop
 
 Helpful docs:
 
