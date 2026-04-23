@@ -335,7 +335,7 @@ Conventional commit prefixes: `feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, a
 
 <div align="center">
 
-**Give the repo a star** if you think AI coding needs budgets, brakes, and receipts.
+**⭐Give the repo a star⭐** if you think AI coding needs budgets, brakes, and receipts.
 
 **MIT Licensed** · [martinloop.com](https://martinloop.com) · [keesan@martinloop.com](mailto:keesan@martinloop.com)
 
