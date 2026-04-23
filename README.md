@@ -307,6 +307,7 @@ pnpm lint
 pnpm build
 ```
 
+```md
 Current RC gate commands:
 
 ```sh
@@ -316,7 +317,9 @@ pnpm repo:smoke
 pnpm rc:validate
 pnpm pilot:prep:validate
 pnpm release:matrix:local
-```
+Caution: Registry Publication
+
+This package is published through the public martin-loop package surface. Treat registry publication as a guarded release step: verify the RC gate commands, confirm the version follows semantic versioning, and document breaking changes before publishing.
 
 > **Caution:** This package is live on npm. Treat registry publication as a guarded release step — verify the RC gate commands, confirm semantic versioning, and document breaking changes before publishing.
 
