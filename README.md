@@ -308,7 +308,11 @@ pnpm pilot:prep:validate
 pnpm release:matrix:local
 ```
 
-The repository is organized as a dual-track workspace: the OSS runtime and package facade are present and published, while the hosted control-plane, local dashboard, and benchmark harness remain repo/workspace surfaces rather than the primary npm package API.
+The repository is organized as a dual-track workspace: the OSS runtime and package facade are present and published, while the hosted control-plane, local dashboard, and benchmark harness remain gated in private workspace for future release rather than the primary npm package API.
+
+> **⚠️ Caution: Registry Publication**
+> 
+> This package is published to a registry. Ensure that version numbers follow semantic versioning conventions and that all breaking changes are clearly documented before publishing. You can run command: npm install -g martin-loop
 
 Helpful docs:
 
