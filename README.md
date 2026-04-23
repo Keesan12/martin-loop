@@ -75,9 +75,9 @@ The pattern is simple: attempt the task, run checks, retry on failure, repeat. T
 
 - it stops the next attempt before budget overspend
 - it classifies unsafe or invalid actions before execution
-- it records each attempt with cryptographic proof 
-- it rolls back failed runs instead of leaving broken state behind 
-- it reduces runaway token growth with delta re-prompting 
+- it appends a structured JSONL audit record for every attempt
+- it rolls back failed runs instead of leaving broken state behind
+- it reduces runaway token growth with context distillation
 
 If Ralph ever burned $165.70 on your dime, you're in the right place. Martin stopped him at $4.97 with a full audit trail. LFG! 🚀 Finally a Martin Prince leash for Ralph Wiggums! :)  
 
@@ -309,9 +309,6 @@ pnpm build
 
 Current RC gate commands:
 
-```md
-Current RC gate commands:
-
 ```sh
 pnpm oss:validate
 pnpm public:smoke
@@ -319,11 +316,9 @@ pnpm repo:smoke
 pnpm rc:validate
 pnpm pilot:prep:validate
 pnpm release:matrix:local
-
-Caution: Registry Publication
-
-This package is published through the public martin-loop package surface. Treat registry publication as a guarded release step: verify the RC gate commands, confirm the version follows semantic versioning, and document breaking changes before publishing.
 ```
+
+> **Caution:** This package is live on npm. Treat registry publication as a guarded release step — verify the RC gate commands, confirm semantic versioning, and document breaking changes before publishing.
 
 The repository is organized as a dual-track workspace: the OSS runtime and package facade are present and published, while the hosted control-plane, local dashboard, and benchmark harness remain gated in private workspace for future release rather than the primary npm package API.
 
