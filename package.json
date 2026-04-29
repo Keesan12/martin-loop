@@ -29,6 +29,7 @@
   },
   "scripts": {
     "build": "pnpm -r build && node ./scripts/build-public-facade.mjs",
+    "prepublishOnly": "pnpm build",
     "test": "pnpm -r test",
     "lint": "pnpm -r lint",
     "oss:validate": "node ./scripts/oss-boundary.mjs",
