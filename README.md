@@ -32,13 +32,15 @@
 
 A typical autonomous coding loop keeps attempting work until tests pass. Without a governance layer, that loop can keep spending, mutate files outside the intended scope, lose track of why it failed, and leave teams without a clean audit trail.
 
-MartinLoop calls that failure mode the **Ralph Loop**: attempt ➡️ check ➡️ retry ➡️ repeat, with no strong answer to:
+Ralph-style loops are powerful but they attempt ➡️ check ➡️ retry ➡️ repeat, with no strong answer to:
 
 - What changed?
 - What did it cost?
 - Why was it allowed?
 - Why did it stop?
 - Can we inspect or resume it later?
+
+MartinLoop governs the failure mode.
 
 ---
 
@@ -299,8 +301,8 @@ The `@martin/core`, `@martin/adapters`, and `@martin/contracts` package manifest
 Requirements: Node 20+ and pnpm 10.x.
 
 ```sh
-git clone https://github.com/Keesan12/MartinLoop
-cd MartinLoop/martin-loop
+git clone https://github.com/Keesan12/martin-loop.git
+cd martin-loop
 pnpm install
 
 pnpm test
