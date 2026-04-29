@@ -67,7 +67,7 @@ It does not try to replace the agent pattern. It makes that pattern safe to run.
 
 **"Everybody has gotten infatuated with what we call these Ralph Wiggum loops, just like send the thing off and it'll just go figure something out..A, It never figures anything out. And B, you just get this ginormous bill...**" - Chamath Palihapitiya, All-In Podcast #263, March 2026
 
-⛔ The **Ralph Loop** is the failure mode where an AI coding agent keeps trying without knowing when it should stop.⛔
+⛔ The **Ralph Loop** is the failure mode where an AI coding agent keeps trying without knowing when it should stop.
 
 The pattern is simple: attempt the task, run checks, retry on failure, repeat. The problem is not that the loop exists. The problem is that most implementations have no hard budget cap, no signed evidence layer, and no pre-execution control system. They know how to keep trying. They do **not** know when continuing is unsafe, uneconomical, or impossible.
 
