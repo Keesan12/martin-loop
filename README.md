@@ -66,7 +66,7 @@ It does not try to replace the agent pattern. It makes that pattern safe to run.
 ⭐The result is a runtime that can complete good work, refuse unsafe work, stop uneconomical work, and leave evidence behind.✅
 ---
 
-## The Ralph Loop, explained
+## Ralph-Style Loops Need a Control Layer
 
 **"Everybody has gotten infatuated with what we call these Ralph Wiggum loops, just like send the thing off and it'll just go figure something out..A, It never figures anything out. And B, you just get this ginormous bill...**" - Chamath Palihapitiya, All-In Podcast #263, March 2026
 
@@ -82,7 +82,7 @@ The pattern is simple: attempt the task, run checks, retry on failure, repeat. T
 - it rolls back failed runs instead of leaving broken state behind
 - it reduces runaway token growth with context distillation
 
-If Ralph ever burned $165.70 on your dime, you're in the right place. Martin stopped him at $4.97 with a full audit trail. LFG! 🚀 Finally a Martin Prince leash for Ralph Wiggums! :)  
+If a Ralph-style loop has ever burned budget without producing a verified result, MartinLoop is designed to stop that failure mode before the next unsafe attempt runs. $165.70 on your dime, you're in the right place. Martin stopped him at $40.97 with a full audit trail.
 
 <div align="center">
   <img src="./docs/assets/martin-raplph.png.jpg" alt="Martin vs Ralph — governed vs ungoverned agent loop" width="240">
@@ -295,12 +295,14 @@ The lower-level `runMartin` function is also exported for callers that want to a
 The `@martin/core`, `@martin/adapters`, and `@martin/contracts` package manifests are still private workspace packages; the public install target is the root `martin-loop` facade.
 
 ---
-
 ## Development
 
-Requirements: Node 20+ and pnpm 10.x.
+Requirements:
 
-```sh
+- Node 20+
+- pnpm 10.x
+
+```bash
 git clone https://github.com/Keesan12/martin-loop.git
 cd martin-loop
 pnpm install
@@ -308,6 +310,7 @@ pnpm install
 pnpm test
 pnpm lint
 pnpm build
+
 ```
 
 ```md
