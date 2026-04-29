@@ -14,7 +14,8 @@
 **Your overnight AI pipeline estimated $2.40.**  
 **You woke up to a $65 bill.** 
  <br> 47 retries. No hard stop. No rollback. No audit trail. Nothing merged.  
- MartinLoop exists so that never happens again.✅
+ MartinLoop exists so that never happens again.✅ <br> <br>
+ If you think autonomous AI coding agents need budgets, brakes, and receipts, ⭐ the repo so more builders can find it.
 <br>
 
 > AI coding agents are useful. Unbounded retry loops are not.
