@@ -1,7 +1,7 @@
 {
   "name": "martin-loop",
   "private": false,
-  "version": "0.1.4",
+  "version": "0.1.5",
   "type": "module",
   "description": "Martin Loop dual-track monorepo for the OSS runtime and hosted SaaS control plane.",
   "license": "MIT",
