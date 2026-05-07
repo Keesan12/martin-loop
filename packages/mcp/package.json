@@ -1,27 +1,59 @@
 {
   "name": "@martin/mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": false,
   "type": "module",
-  "description": "Martin Loop MCP server — exposes martin_run, martin_inspect, and martin_status as Model Context Protocol tools.",
-  "main": "dist/server.js",
-  "types": "dist/server.d.ts",
+  "description": "Martin Loop MCP server — installable stdio server for martin_run, martin_inspect, and martin_status.",
+  "license": "MIT",
+  "author": "Vakeesan Mahalingam and Gobi Shanthan",
+  "homepage": "https://martinloop.com/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Keesan12/martin-loop.git",
+    "directory": "packages/mcp"
+  },
+  "bugs": {
+    "url": "https://github.com/Keesan12/martin-loop/issues"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "martin-loop",
+    "ai-agent",
+    "claude",
+    "codex"
+  ],
+  "main": "./dist/server.js",
+  "types": "./dist/server.d.ts",
   "bin": {
-    "martin-mcp": "dist/server.js"
+    "martin-mcp": "./dist/server.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/server.d.ts",
+      "default": "./dist/server.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
   },
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "node ./scripts/build-package.mjs",
+    "prepack": "pnpm build",
+    "smoke:pack": "node ./scripts/smoke-package.mjs",
     "test": "vitest run",
     "lint": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/server.js"
   },
   "dependencies": {
-    "@martin/adapters": "workspace:*",
-    "@martin/contracts": "workspace:*",
-    "@martin/core": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.0.0"
   }
 }
