@@ -9,7 +9,10 @@
  *   martin_status   — return cost and pressure state from a loop record
  *
  * Setup (Claude Code):
- *   claude mcp add martin-loop -- npx @martin/mcp
+ *   claude mcp add martin-loop -- npx -y @martin/mcp
+ *
+ * Packaged smoke test:
+ *   pnpm --filter @martin/mcp smoke:pack
  *
  * Manual start:
  *   node dist/server.js
@@ -27,7 +30,7 @@ import { inspectLoopTool } from "./tools/inspect-loop.js";
 import { runLoopTool } from "./tools/run-loop.js";
 
 const server = new Server(
-  { name: "martin-loop", version: "0.1.0" },
+  { name: "martin-loop", version: "0.1.1" },
   { capabilities: { tools: {} } }
 );
 
