@@ -1,6 +1,7 @@
 {
   "name": "@martin/mcp",
   "version": "0.1.1",
+  "mcpName": "io.github.keesan12/martin-loop",
   "private": false,
   "type": "module",
   "description": "Martin Loop MCP server — installable stdio server for martin_run, martin_inspect, and martin_status.",
