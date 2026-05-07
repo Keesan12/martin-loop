@@ -27,6 +27,21 @@ For clients that want explicit command/args:
 - Command: `npx`
 - Args: `-y`, `@martin/mcp`
 
+## Official MCP Registry
+
+This package is prepared for the official MCP Registry metadata flow:
+
+- npm package: `@martin/mcp`
+- registry server name: `io.github.keesan12/martin-loop`
+- manifest file: `packages/mcp/server.json`
+
+The official registry publish flow is separate from npm publication. After publishing the package to npm, run the publisher from `packages/mcp`:
+
+```sh
+mcp-publisher login github
+mcp-publisher publish
+```
+
 ## Local Verification
 
 From the repository root:

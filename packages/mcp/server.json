@@ -1,0 +1,21 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.keesan12/martin-loop",
+  "title": "Martin Loop",
+  "description": "Martin Loop MCP server — installable stdio server for martin_run, martin_inspect, and martin_status.",
+  "repository": {
+    "url": "https://github.com/Keesan12/martin-loop",
+    "source": "github"
+  },
+  "version": "0.1.1",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "@martin/mcp",
+      "version": "0.1.1",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}
