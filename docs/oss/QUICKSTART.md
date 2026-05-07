@@ -9,8 +9,9 @@ The frozen public launch target is:
 - `npm install martin-loop`
 - `npx martin-loop ...`
 - `import { MartinLoop } from "martin-loop"`
+- `npx -y @martin/mcp`
 
-That launch surface is now implemented in the root package facade and smoke-validated from a clean temporary install. This quickstart still documents the honest RC-from-source path because public registry publication is a later release step.
+That runtime launch surface is implemented in the root package facade and smoke-validated from a clean temporary install. The MCP package shape is also smoke-validated from a packed tarball. This quickstart still documents the honest RC-from-source path because public registry publication is a separate release step.
 
 ## Prerequisites
 
@@ -114,10 +115,18 @@ For persisted run folders, inspect the `contract.json`, `state.json`, `ledger.js
 
 ## MCP server
 
-Build first, then start the server from the workspace:
+The publish-ready MCP install target is:
+
+```bash
+npx -y @martin/mcp
+claude mcp add martin-loop -- npx -y @martin/mcp
+```
+
+For repo-local verification from source:
 
 ```bash
 pnpm --filter @martin/mcp build
+pnpm --filter @martin/mcp smoke:pack
 node packages/mcp/dist/server.js
 ```
 

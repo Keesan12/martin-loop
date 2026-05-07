@@ -12,7 +12,7 @@ Martin Loop is a governed AI coding-loop runtime. The core runtime is real and v
 
 ## What is still outside the initial OSS promise
 
-- The root workspace now exposes the `martin-loop` public package facade, but registry publication is still a later release step.
+- The root workspace now exposes the `martin-loop` public package facade, and `@martin/mcp` now has a standalone tarball shape validated via `pnpm --filter @martin/mcp smoke:pack`, but registry publication is still a separate release step.
 - `@martin/contracts`, `@martin/core`, and `@martin/adapters` are still marked `private` in their package manifests.
 - The hosted control-plane and local dashboard remain in the repo, but they are not yet the finalized public OSS boundary.
 - The benchmark harness remains a workspace-only RC surface under `benchmarks/` and is not part of the publishable CLI boundary yet.
@@ -55,8 +55,9 @@ The current engineering memo freezes these public-launch targets for release pla
 - install target: `npm install martin-loop`
 - CLI target: `npx martin-loop ...`
 - SDK target: `import { MartinLoop } from "martin-loop"`
+- MCP target (publish-ready): `npx -y @martin/mcp`
 
-Those targets are now implemented in the root package facade and verified through a clean-install smoke test. During the current RC phase, the honest operator path still includes the repo-local workflow documented below and in the quickstart, because public registry publication and broader release packaging remain later steps.
+Those runtime targets are implemented in the root package facade and verified through a clean-install smoke test. The MCP target is packaged and verified through a tarball launch smoke test. During the current RC phase, the honest operator path still includes the repo-local workflow documented below and in the quickstart, because public registry publication and broader release packaging remain separate release steps.
 
 ## Reproducibility
 
