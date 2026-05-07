@@ -176,28 +176,23 @@ function shouldSkipFile(name) {
   return name.endsWith(".map");
 }
 
-function rewritePackageSpecifiers(contents, input) {
+export function rewritePackageSpecifiers(contents, input) {
   return contents.replace(
-    /(['"])(@martin\/(?:contracts|core|adapters)(?:\/[a-z0-9-]+)?)\1/g,
+    /(['"])(@martin\/(?:contracts|core|adapters)(?:\/[^'"]+)?)\1/g,
     (_match, quote, packageName) => {
-      const [basePackageName, subpath] = packageName.split("/", 3).reduce(
-        (parts, segment, index) => {
-          if (index < 2) {
-            parts[0].push(segment);
-          } else {
-            parts[1].push(segment);
-          }
-          return parts;
-        },
-        [[], []],
-      ).map((parts) => parts.join("/"));
+      const parts = packageName.split("/");
+      const basePackageName = parts.slice(0, 2).join("/");
+      const subpath = parts.slice(2).join("/");
       const mapped = REWRITABLE_PACKAGES[basePackageName];
       if (!mapped) {
         return `${quote}${packageName}${quote}`;
       }
 
+      const normalizedSubpath = subpath
+        ? (subpath.endsWith(".js") ? subpath : `${subpath}.js`)
+        : "index.js";
       const targetFile = subpath
-        ? path.join(input.distDir, "vendor", mapped, `${subpath}.js`)
+        ? path.join(input.distDir, "vendor", mapped, normalizedSubpath)
         : path.join(input.distDir, "vendor", mapped, "index.js");
       const specifier = toImportSpecifier(path.dirname(input.targetPath), targetFile);
 
