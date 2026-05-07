@@ -2,7 +2,7 @@
 
 <img src="./docs/assets/martinloop-logo.png" alt="MartinLoop" width="260">
 
-### A governed runtime for autonomous AI coding agents. ⭐⭐⭐
+### A governed runtime for autonomous AI coding agents.⭐⭐⭐
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-7c3aed?style=flat-square)](./LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&logo=typescript&logoColor=white)](./tsconfig.base.json)
@@ -20,7 +20,7 @@
 
 > AI coding agents are useful. Unbounded retry loops are not.
 >
-> MartinLoop wraps agent runs with budgets, policy checks, verifier gates, rollback evidence, and inspectable run records.
+> MartinLoop wraps agent runs with budgets, policy checks, verifier gates, rollback evidence, and inspectable run records. Built for Enterprise Coding Agents, Agentic Teams, and Autonomous Companies. 
 <br>
 <img src="./docs/assets/cli-animated.svg" alt="MartinLoop CLI — governed agent run" width="720">
 
