@@ -122,6 +122,18 @@ npx -y @martin/mcp
 claude mcp add martin-loop -- npx -y @martin/mcp
 ```
 
+Official MCP Registry publication has an extra metadata step beyond npm packaging. Do not mark `@martin/mcp` registry-ready unless both of these exist and match:
+
+- `packages/mcp/package.json` with `mcpName`
+- `packages/mcp/server.json` with the official server metadata
+
+After publishing `@martin/mcp` to npm, run the official registry publisher from `packages/mcp`:
+
+```bash
+mcp-publisher login github
+mcp-publisher publish
+```
+
 For repo-local verification from source:
 
 ```bash
