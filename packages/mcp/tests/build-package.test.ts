@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { rewritePackageSpecifiers } from "../scripts/build-package.mjs";
+import { rewritePackageSpecifiers } from "../scripts/build-package-lib.mjs";
 
 describe("rewritePackageSpecifiers", () => {
   it("rewrites nested internal package subpaths without truncating them", () => {
