@@ -6,11 +6,10 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { createLoopRecord } from "@martin/contracts";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
-import { buildStandaloneMcpPackage } from "./build-package.mjs";
+import { buildStandaloneMcpPackage } from "./build-package-lib.mjs";
 
 const REQUIRED_TOOLS = ["martin_inspect", "martin_run", "martin_status"];
 const REQUIRED_TARBALL_FILES = [
@@ -31,6 +30,24 @@ const REQUIRED_TARBALL_FILES = [
   "dist/vendor/core/index.js",
   "package.json",
 ];
+const SMOKE_LOOP_RECORD = {
+  loopId: "loop_pack_smoke",
+  status: "queued",
+  lifecycleState: "created",
+  attempts: [],
+  budget: {
+    maxUsd: 5,
+    softLimitUsd: 3,
+    maxIterations: 2,
+    maxTokens: 1_000,
+  },
+  cost: {
+    actualUsd: 1.25,
+    avoidedUsd: 0,
+    tokensIn: 20,
+    tokensOut: 10,
+  },
+};
 
 export async function runStandaloneMcpSmoke(options = {}) {
   const packageDir = path.resolve(options.packageDir ?? fileURLToPath(new URL("..", import.meta.url)));
@@ -96,29 +113,7 @@ export async function runStandaloneMcpSmoke(options = {}) {
     const statusResult = await client.callTool({
       name: "martin_status",
       arguments: {
-        loopJson: JSON.stringify(
-          createLoopRecord({
-            workspaceId: "ws_pack_smoke",
-            projectId: "proj_pack_smoke",
-            task: {
-              title: "Pack smoke",
-              objective: "Verify packaged MCP status tool",
-              verificationPlan: [],
-            },
-            budget: {
-              maxUsd: 5,
-              softLimitUsd: 3,
-              maxIterations: 2,
-              maxTokens: 1_000,
-            },
-            cost: {
-              actualUsd: 1.25,
-              avoidedUsd: 0,
-              tokensIn: 20,
-              tokensOut: 10,
-            },
-          }),
-        ),
+        loopJson: JSON.stringify(SMOKE_LOOP_RECORD),
       },
     });
 
