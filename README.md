@@ -136,8 +136,10 @@ The frozen public package surface for this release candidate is:
 - Install target: `npm install martin-loop`
 - CLI target: `npx martin-loop`
 - SDK target: `import { MartinLoop } from "martin-loop"`
+- MCP target (registry-ready package): `npx -y @martin/mcp`
 
 The `martin` command alias is installed for local operator convenience, but the public CLI surface is `npx martin-loop`.
+The standalone MCP server package is smoke-validated locally with `pnpm --filter @martin/mcp smoke:pack` and is ready for registry publication as a separate release step.
 
 ### Run a governed task
 
@@ -292,7 +294,7 @@ The lower-level `runMartin` function is also exported for callers that want to a
 | `apps/control-plane/` | Hosted control-plane workstream, outside the initial npm package surface. |
 | `apps/local-dashboard/` | Local dashboard/read-model viewer, not currently packaged as public npm API. |
 
-The `@martin/core`, `@martin/adapters`, and `@martin/contracts` package manifests are still private workspace packages; the public install target is the root `martin-loop` facade.
+The `@martin/core`, `@martin/adapters`, and `@martin/contracts` package manifests are still private workspace packages. The public runtime install target is the root `martin-loop` facade, while `@martin/mcp` is packaged as a standalone MCP server with vendored internal runtime dependencies for registry publication.
 
 ---
 ## Development
