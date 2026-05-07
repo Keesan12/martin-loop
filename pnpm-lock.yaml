@@ -108,15 +108,6 @@ importers:
 
   packages/mcp:
     dependencies:
-      '@martin/adapters':
-        specifier: workspace:*
-        version: link:../adapters
-      '@martin/contracts':
-        specifier: workspace:*
-        version: link:../contracts
-      '@martin/core':
-        specifier: workspace:*
-        version: link:../core
       '@modelcontextprotocol/sdk':
         specifier: ^1.0.0
         version: 1.29.0(zod@4.3.6)
