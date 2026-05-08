@@ -10,7 +10,7 @@
   "homepage": "https://martinloop.com/",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Keesan12/martin-loop.git",
+    "url": "git+https://github.com/Keesan12/martin-loop.git",
     "directory": "packages/mcp"
   },
   "bugs": {
@@ -27,7 +27,7 @@
   "main": "./dist/server.js",
   "types": "./dist/server.d.ts",
   "bin": {
-    "mcp": "./dist/server.js"
+    "mcp": "dist/server.js"
   },
   "exports": {
     ".": {
