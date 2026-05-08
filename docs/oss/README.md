@@ -55,7 +55,7 @@ The current engineering memo freezes these public-launch targets for release pla
 - install target: `npm install martin-loop`
 - CLI target: `npx martin-loop ...`
 - SDK target: `import { MartinLoop } from "martin-loop"`
-- MCP target (publish-ready): `npx -y @keean12/mcp`
+- MCP target (publish-ready): `npx @keean12/mcp`
 
 Those runtime targets are implemented in the root package facade and verified through a clean-install smoke test. The MCP target is packaged and verified through a tarball launch smoke test. During the current RC phase, the honest operator path still includes the repo-local workflow documented below and in the quickstart, because public registry publication and broader release packaging remain separate release steps.
 
