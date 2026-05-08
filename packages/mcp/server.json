@@ -11,7 +11,7 @@
   "packages": [
     {
       "registryType": "npm",
-      "identifier": "@martin/mcp",
+      "identifier": "@keean12/mcp",
       "version": "0.1.1",
       "transport": {
         "type": "stdio"

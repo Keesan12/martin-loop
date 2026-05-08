@@ -136,10 +136,23 @@ The frozen public package surface for this release candidate is:
 - Install target: `npm install martin-loop`
 - CLI target: `npx martin-loop`
 - SDK target: `import { MartinLoop } from "martin-loop"`
-- MCP target (registry-ready package): `npx -y @martin/mcp`
+- MCP target (registry-ready package): `npx @keean12/mcp`
 
 The `martin` command alias is installed for local operator convenience, but the public CLI surface is `npx martin-loop`.
-The standalone MCP server package is smoke-validated locally with `pnpm --filter @martin/mcp smoke:pack` and is ready for registry publication as a separate release step.
+The standalone MCP server package is smoke-validated locally with `pnpm --filter @keean12/mcp smoke:pack` and is ready for registry publication as a separate release step.
+
+### Claude Code MCP install
+
+Use the published MCP package directly:
+
+- macOS/Linux: `claude mcp add --scope user martin-loop -- npx @keean12/mcp`
+- Windows PowerShell/cmd: `claude mcp add --scope user martin-loop cmd /c "npx @keean12/mcp"`
+
+If you just want to launch the server manually, the one-line command is:
+
+```sh
+npx @keean12/mcp
+```
 
 ### Run a governed task
 
@@ -289,12 +302,12 @@ The lower-level `runMartin` function is also exported for callers that want to a
 | `@martin/core` | Runtime controller, policy engine, safety leash, grounding, persistence, and rollback logic. |
 | `@martin/adapters` | Claude CLI, Codex CLI, direct-provider, and stub adapter surfaces. |
 | `@martin/cli` | Local CLI implementation for `run`, `inspect`, `resume`, and the benchmark redirect. |
-| `@martin/mcp` | MCP server tools: `martin_run`, `martin_inspect`, and `martin_status`. |
+| `@keean12/mcp` | MCP server tools: `martin_run`, `martin_inspect`, and `martin_status`. |
 | `benchmarks/` | Workspace-only deterministic benchmark and RC validation harness. |
 | `apps/control-plane/` | Hosted control-plane workstream, outside the initial npm package surface. |
 | `apps/local-dashboard/` | Local dashboard/read-model viewer, not currently packaged as public npm API. |
 
-The `@martin/core`, `@martin/adapters`, and `@martin/contracts` package manifests are still private workspace packages. The public runtime install target is the root `martin-loop` facade, while `@martin/mcp` is packaged as a standalone MCP server with vendored internal runtime dependencies for registry publication.
+The `@martin/core`, `@martin/adapters`, and `@martin/contracts` package manifests are still private workspace packages. The public runtime install target is the root `martin-loop` facade, while `@keean12/mcp` is packaged as a standalone MCP server with vendored internal runtime dependencies for registry publication.
 
 ---
 ## Development
