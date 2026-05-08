@@ -9,7 +9,7 @@ The frozen public launch target is:
 - `npm install martin-loop`
 - `npx martin-loop ...`
 - `import { MartinLoop } from "martin-loop"`
-- `npx @keean12/mcp`
+- `npx @martinloop/mcp`
 
 That runtime launch surface is implemented in the root package facade and smoke-validated from a clean temporary install. The MCP package shape is also smoke-validated from a packed tarball. This quickstart still documents the honest RC-from-source path because public registry publication is a separate release step.
 
@@ -118,25 +118,25 @@ For persisted run folders, inspect the `contract.json`, `state.json`, `ledger.js
 The publish-ready MCP install target is:
 
 ```bash
-npx @keean12/mcp
+npx @martinloop/mcp
 ```
 
 Claude Code one-line install:
 
 ```bash
 # macOS/Linux
-claude mcp add --scope user martin-loop -- npx @keean12/mcp
+claude mcp add --scope user martin-loop -- npx @martinloop/mcp
 
 # Windows PowerShell/cmd
-claude mcp add --scope user martin-loop cmd /c "npx @keean12/mcp"
+claude mcp add --scope user martin-loop cmd /c "npx @martinloop/mcp"
 ```
 
-Official MCP Registry publication has an extra metadata step beyond npm packaging. Do not mark `@keean12/mcp` registry-ready unless both of these exist and match:
+Official MCP Registry publication has an extra metadata step beyond npm packaging. Do not mark `@martinloop/mcp` registry-ready unless both of these exist and match:
 
 - `packages/mcp/package.json` with `mcpName`
 - `packages/mcp/server.json` with the official server metadata
 
-After publishing `@keean12/mcp` to npm, run the official registry publisher from `packages/mcp`:
+After publishing `@martinloop/mcp` to npm, run the official registry publisher from `packages/mcp`:
 
 ```bash
 mcp-publisher login github
@@ -146,8 +146,8 @@ mcp-publisher publish
 For repo-local verification from source:
 
 ```bash
-pnpm --filter @keean12/mcp build
-pnpm --filter @keean12/mcp smoke:pack
+pnpm --filter @martinloop/mcp build
+pnpm --filter @martinloop/mcp smoke:pack
 node packages/mcp/dist/server.js
 ```
 
