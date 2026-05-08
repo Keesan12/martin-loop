@@ -12,6 +12,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { buildStandaloneMcpPackage } from "./build-package-lib.mjs";
 
 const REQUIRED_TOOLS = ["martin_inspect", "martin_run", "martin_status"];
+const PACKAGED_BIN_NAME = "mcp";
 const REQUIRED_TARBALL_FILES = [
   "README.md",
   "dist/server.d.ts",
@@ -72,12 +73,13 @@ export async function runStandaloneMcpSmoke(options = {}) {
       { cwd: packageDir },
     );
     const packEntry = parsePackEntry(packRun.stdout);
+    const tarballFilename = packEntry.filename;
     const tarballPath = path.join(packDir, packEntry.filename);
 
     const packedManifestOutput = await runCommand(
       tarCommand(),
-      ["-xOf", tarballPath, "package/package.json"],
-      { cwd: packageDir },
+      ["-xOf", tarballFilename, "package/package.json"],
+      { cwd: packDir },
     );
     const packedManifest = JSON.parse(packedManifestOutput.stdout);
     assertPackedManifest(packedManifest);
@@ -124,7 +126,7 @@ export async function runStandaloneMcpSmoke(options = {}) {
 
     return {
       tarballPath,
-      npxCommand: "npx -y @martin/mcp",
+      npxCommand: "npx @keean12/mcp",
       toolNames,
       tarballFiles,
       packedDependencies: packedManifest.dependencies ?? {},
@@ -203,13 +205,13 @@ function createPackagedLaunch(tarballPath) {
     const normalizedTarballPath = tarballPath.replace(/\\/g, "/");
     return {
       command: process.env.ComSpec ?? "cmd.exe",
-      args: ["/d", "/s", "/c", `npm exec --yes --package ${normalizedTarballPath} -- martin-mcp`],
+      args: ["/d", "/s", "/c", `npm exec --yes --package ${normalizedTarballPath} -- ${PACKAGED_BIN_NAME}`],
     };
   }
 
   return {
     command: "npm",
-    args: ["exec", "--yes", "--package", tarballPath, "--", "martin-mcp"],
+    args: ["exec", "--yes", "--package", tarballPath, "--", PACKAGED_BIN_NAME],
   };
 }
 
