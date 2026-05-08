@@ -1,4 +1,4 @@
-# @keean12/mcp
+# @martinloop/mcp
 
 Martin Loop's installable Model Context Protocol server.
 
@@ -13,29 +13,29 @@ It exposes three MCP tools over stdio:
 Run the packaged server directly:
 
 ```sh
-npx @keean12/mcp
+npx @martinloop/mcp
 ```
 
 Add it to Claude Code:
 
 ```sh
 # macOS/Linux
-claude mcp add --scope user martin-loop -- npx @keean12/mcp
+claude mcp add --scope user martin-loop -- npx @martinloop/mcp
 
 # Windows PowerShell/cmd
-claude mcp add --scope user martin-loop cmd /c "npx @keean12/mcp"
+claude mcp add --scope user martin-loop cmd /c "npx @martinloop/mcp"
 ```
 
 For clients that want explicit command/args:
 
 - Command: `npx`
-- Args: `@keean12/mcp`
+- Args: `@martinloop/mcp`
 
 ## Official MCP Registry
 
 This package is prepared for the official MCP Registry metadata flow:
 
-- npm package: `@keean12/mcp`
+- npm package: `@martinloop/mcp`
 - registry server name: `io.github.keesan12/martin-loop`
 - manifest file: `packages/mcp/server.json`
 
@@ -51,9 +51,9 @@ mcp-publisher publish
 From the repository root:
 
 ```sh
-pnpm --filter @keean12/mcp build
-pnpm --filter @keean12/mcp test
-pnpm --filter @keean12/mcp smoke:pack
+pnpm --filter @martinloop/mcp build
+pnpm --filter @martinloop/mcp test
+pnpm --filter @martinloop/mcp smoke:pack
 ```
 
 `smoke:pack` packs the tarball, launches it through `npx`, performs the MCP handshake, lists tools, and verifies a `martin_status` call.

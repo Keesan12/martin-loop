@@ -4,7 +4,7 @@
 - Martin Loop ships both a repo-wide OSS/RC surface and a standalone publishable MCP package at `packages/mcp`.
 
 ## Build and Verify
-- For MCP-only changes, run `pnpm --filter @keean12/mcp test`, `pnpm --filter @keean12/mcp build`, and `pnpm --filter @keean12/mcp smoke:pack`.
+- For MCP-only changes, run `pnpm --filter @martinloop/mcp test`, `pnpm --filter @martinloop/mcp build`, and `pnpm --filter @martinloop/mcp smoke:pack`.
 - For release-surface or packaging changes that could affect CI, run `pnpm release:matrix:local`.
 
 ## MCP Registry Guardrails
