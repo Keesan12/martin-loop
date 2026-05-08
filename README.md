@@ -136,10 +136,23 @@ The frozen public package surface for this release candidate is:
 - Install target: `npm install martin-loop`
 - CLI target: `npx martin-loop`
 - SDK target: `import { MartinLoop } from "martin-loop"`
-- MCP target (registry-ready package): `npx -y @keean12/mcp`
+- MCP target (registry-ready package): `npx @keean12/mcp`
 
 The `martin` command alias is installed for local operator convenience, but the public CLI surface is `npx martin-loop`.
 The standalone MCP server package is smoke-validated locally with `pnpm --filter @keean12/mcp smoke:pack` and is ready for registry publication as a separate release step.
+
+### Claude Code MCP install
+
+Use the published MCP package directly:
+
+- macOS/Linux: `claude mcp add --scope user martin-loop -- npx @keean12/mcp`
+- Windows PowerShell/cmd: `claude mcp add --scope user martin-loop cmd /c "npx @keean12/mcp"`
+
+If you just want to launch the server manually, the one-line command is:
+
+```sh
+npx @keean12/mcp
+```
 
 ### Run a governed task
 

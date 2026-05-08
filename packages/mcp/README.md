@@ -13,19 +13,23 @@ It exposes three MCP tools over stdio:
 Run the packaged server directly:
 
 ```sh
-npx -y @keean12/mcp
+npx @keean12/mcp
 ```
 
 Add it to Claude Code:
 
 ```sh
-claude mcp add martin-loop -- npx -y @keean12/mcp
+# macOS/Linux
+claude mcp add --scope user martin-loop -- npx @keean12/mcp
+
+# Windows PowerShell/cmd
+claude mcp add --scope user martin-loop cmd /c "npx @keean12/mcp"
 ```
 
 For clients that want explicit command/args:
 
 - Command: `npx`
-- Args: `-y`, `@keean12/mcp`
+- Args: `@keean12/mcp`
 
 ## Official MCP Registry
 
