@@ -15,7 +15,7 @@ test("createOssBoundaryReport defines the intended OSS core packages without wor
 
   assert.deepEqual(
     report.ossCorePackages.map((pkg) => pkg.name),
-    ["@martin/contracts", "@martin/core", "@martin/adapters", "@martin/cli", "@martin/mcp"],
+    ["@martin/contracts", "@martin/core", "@martin/adapters", "@martin/cli", "@keean12/mcp"],
   );
 
   assert.equal(report.summary.dependencyLeakCount, 0);

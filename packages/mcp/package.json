@@ -1,5 +1,5 @@
 {
-  "name": "@martin/mcp",
+  "name": "@keean12/mcp",
   "version": "0.1.1",
   "mcpName": "io.github.keesan12/martin-loop",
   "private": false,
@@ -27,7 +27,7 @@
   "main": "./dist/server.js",
   "types": "./dist/server.d.ts",
   "bin": {
-    "martin-mcp": "./dist/server.js"
+    "mcp": "./dist/server.js"
   },
   "exports": {
     ".": {
