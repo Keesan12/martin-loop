@@ -62,7 +62,12 @@ import {
 } from "./grounding.js";
 import { captureRollbackBoundary, restoreRollbackBoundary } from "./rollback.js";
 import { compilePromptPacket } from "./compiler.js";
-import { makeLedgerEvent, type RunStore } from "./persistence/index.js";
+import { makeLedgerEvent, resolveRunsRoot, runDir, type RunStore } from "./persistence/index.js";
+import {
+  runContextIntegrityPrecheck,
+  type ContextIntegrityPrecheck,
+  type ContextIntegrityVerdict
+} from "./context-integrity.js";
 
 // ─── Public API re-exports ───────────────────────────────────────────────────
 export type {
@@ -129,6 +134,10 @@ export type {
   RepoGroundingHit,
   RepoGroundingIndex
 } from "./grounding.js";
+
+// ─── Context Integrity Pre-gate ──────────────────────────────────────────────
+export { runContextIntegrityPrecheck } from "./context-integrity.js";
+export type { ContextIntegrityPrecheck, ContextIntegrityVerdict } from "./context-integrity.js";
 
 // ─── Prompt packet compiler ──────────────────────────────────────────────────
 export { compilePromptPacket } from "./compiler.js";
@@ -598,6 +607,46 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
 
     // GATHER → ADMIT: run admission control before executing
     currentPhase = "ADMIT";
+
+    // T05: Context Integrity Pre-gate — blocks authority inversion / injection before reasoning
+    const contextPrecheck = await runContextIntegrityPrecheck(
+      loop.loopId,
+      loop.attempts.length + 1,
+      runDir(resolveRunsRoot(), loop.loopId),
+      {
+        userPrompt: distilled.focus,
+        history: loop.attempts.map(a => a.summary).join("\n")
+      }
+    );
+
+    if (contextPrecheck.verdict === "context_poisoning_block") {
+      currentPhase = "ABORT";
+      const poisoningExitDecision: ExitDecision = {
+        shouldExit: true,
+        lifecycleState: "human_escalation",
+        status: "exited",
+        reason: "Context Integrity Pre-gate: context poisoning attempt detected."
+      };
+      if (input.store) {
+        await input.store.appendLedger(
+          loop.loopId,
+          makeLedgerEvent({
+            kind: "safety.violations_found",
+            runId: loop.loopId,
+            payload: {
+              verdict: contextPrecheck.verdict,
+              signals: contextPrecheck.detectedSignals,
+              source: "context_integrity_pregate"
+            }
+          })
+        );
+      }
+      return {
+        loop: finalizeLoop(loop, poisoningExitDecision, now(), idFactory),
+        decision: poisoningExitDecision
+      };
+    }
+
     const admissionDecision = evaluateAttemptPolicy({
       request: {
         loopId: loop.loopId,

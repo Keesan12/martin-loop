@@ -58,6 +58,7 @@ It does not try to replace the agent pattern. It makes that pattern safe to run.
 | Verifier gate | A run only reaches `completed` when the adapter result and verifier state pass. Unsafe verifier commands are blocked before agent execution. |
 | Failure taxonomy | Classifies failures across 11 current classes, including hallucination, test regression, scope creep, repo grounding failure, environment mismatch, and budget pressure, that distinguishes real success from unsafe, invalid, or terminal behavior.|
 | Safety leash | Evaluates verifier commands, file scope, dependency or migration changes that require approval, and secret-like values in task text. **Policy-as-code**. |
+| Context integrity | Scans user prompts and tool output for injection patterns (authority inversion, instruction override, identity redefinition) before any attempt is admitted. Aborts with human escalation on detection. |
 | Rollback evidence | Captures rollback boundaries and restore outcomes for repo-backed attempts when a persistence store is configured. |
 | Context distillation | Carries a distilled summary of recent attempts and remaining constraints into subsequent attempts. |
 | Run records | The CLI appends JSONL loop records under `~/.martin/runs/<workspaceId>.jsonl`; lower-level stores can also persist contracts, ledgers, and attempt artifacts.
