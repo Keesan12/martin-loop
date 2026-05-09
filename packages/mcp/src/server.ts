@@ -9,8 +9,8 @@
  *   martin_status   — return cost and pressure state from a loop record
  *
  * Setup (Claude Code):
- *   macOS/Linux: claude mcp add --scope user martin-loop -- npx @martinloop/mcp
- *   Windows:     claude mcp add --scope user martin-loop cmd /c "npx @martinloop/mcp"
+ *   macOS/Linux: claude mcp add --scope user martin-loop -- npx -y @martinloop/mcp
+ *   Windows:     claude mcp add --scope user martin-loop -- cmd /c "npx -y @martinloop/mcp"
  *
  * Packaged smoke test:
  *   pnpm --filter @martinloop/mcp smoke:pack
