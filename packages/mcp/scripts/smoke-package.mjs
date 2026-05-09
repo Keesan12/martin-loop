@@ -126,7 +126,7 @@ export async function runStandaloneMcpSmoke(options = {}) {
 
     return {
       tarballPath,
-      npxCommand: "npx @martinloop/mcp",
+      npxCommand: "npx -y @martinloop/mcp",
       toolNames,
       tarballFiles,
       packedDependencies: packedManifest.dependencies ?? {},
