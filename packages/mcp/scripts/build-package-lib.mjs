@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { chmod, copyFile, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, chmod, copyFile, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -210,15 +210,10 @@ function pnpmCommand() {
 
 async function fileExists(targetPath) {
   try {
-    await readFile(targetPath);
+    await access(targetPath);
     return true;
-  } catch (error) {
-    return !(
-      error &&
-      typeof error === "object" &&
-      "code" in error &&
-      error.code === "ENOENT"
-    );
+  } catch {
+    return false;
   }
 }
 
