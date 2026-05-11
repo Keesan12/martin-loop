@@ -491,6 +491,8 @@ function buildExceptions(dataset: DashboardDataset, runs: RunPortfolioItem[]): E
         { label: "Actual", value: "human_escalation" },
         { label: "Source", value: "runs table" },
         { label: "Stop reason", value: run.stopReason ?? run.lifecycleState },
+        { label: "Failure class", value: run.failureClass ?? "Unclassified" },
+        { label: "Reason code", value: run.reasonCode ?? "Uncoded" },
         { label: "Patch decision", value: run.latestPatchDecision ?? "Unrecorded" }
       ]
     });
@@ -524,7 +526,8 @@ function buildFocusAreas(runs: RunPortfolioItem[]): OperationsViewModel["focusAr
       { label: "Stop reason", value: run.stopReason ?? run.lifecycleState },
       { label: "Patch decision", value: run.latestPatchDecision ?? "Unrecorded" },
       { label: "Grounding evidence", value: `${String(run.groundingViolationCount)} flagged` },
-      { label: "Leash surface", value: run.lastSafetySurface ?? "none" },
+      { label: "Leash surface", value: run.safetySurface ?? run.lastSafetySurface ?? "none" },
+      { label: "Reason code", value: run.reasonCode ?? "none" },
       { label: "Budget variance", value: formatSignedUsd(run.budgetVarianceUsd) },
       { label: "Accounting mode", value: run.accountingMode }
     ]
@@ -559,6 +562,9 @@ function buildApprovalQueue(runs: RunPortfolioItem[]): GovernanceViewModel["appr
       { label: "Actual", value: run.lifecycleState },
       { label: "Source", value: "run.exited ledger event" },
       { label: "Stop reason", value: run.stopReason ?? run.lifecycleState },
+      { label: "Failure class", value: run.failureClass ?? "Unclassified" },
+      { label: "Leash surface", value: run.safetySurface ?? run.lastSafetySurface ?? "none" },
+      { label: "Reason code", value: run.reasonCode ?? "Uncoded" },
       { label: "Patch decision", value: run.latestPatchDecision ?? "Unrecorded" },
       { label: "Grounding evidence", value: `${String(run.groundingViolationCount)} flagged` }
     ]

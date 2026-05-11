@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-07T21:23:30.889Z",
+  "generatedAt": "2026-05-11T21:47:36.834Z",
   "verdict": "go",
   "publicSurface": {
     "packageName": "martin-loop",
@@ -56,7 +56,7 @@
       "classificationReason": "Intended Phase 13 OSS core surface."
     },
     {
-      "name": "@martin/mcp",
+      "name": "@martinloop/mcp",
       "path": "packages/mcp",
       "private": false,
       "publishAccess": "public",

@@ -1,3 +1,5 @@
+import { resolve } from "node:path";
+
 import {
   createClaudeCliAdapter,
   createCodexCliAdapter,
@@ -15,6 +17,8 @@ export interface RunLoopInput {
   maxIterations?: number;
   maxTokens?: number;
   verificationPlan?: string[];
+  allowedPaths?: string[];
+  deniedPaths?: string[];
   workspaceId?: string;
   projectId?: string;
 }
@@ -30,7 +34,7 @@ export interface RunLoopOutput {
 }
 
 export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
-  const workingDirectory = input.workingDirectory ?? process.cwd();
+  const workingDirectory = resolve(input.workingDirectory ?? process.cwd());
   const engine = input.engine ?? "claude";
   const model = input.model;
 
@@ -63,7 +67,10 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
     task: {
       title: input.objective.slice(0, 100),
       objective: input.objective,
-      verificationPlan: input.verificationPlan ?? []
+      verificationPlan: input.verificationPlan ?? [],
+      repoRoot: workingDirectory,
+      ...(input.allowedPaths?.length ? { allowedPaths: input.allowedPaths } : {}),
+      ...(input.deniedPaths?.length ? { deniedPaths: input.deniedPaths } : {})
     },
     budget,
     adapter

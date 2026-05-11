@@ -123,6 +123,9 @@ export function buildRunGraph(
   let lifecycleState = "running";
   let status = "running";
   let stopReason: string | null = null;
+  let failureClass: string | null = null;
+  let safetySurface: string | null = null;
+  let reasonCode: string | null = null;
   let lastTimestamp = contract.createdAt;
 
   for (const event of ledger) {
@@ -342,6 +345,9 @@ export function buildRunGraph(
         lifecycleState = readString(event.payload.lifecycleState) ?? lifecycleState;
         status = readString(event.payload.status) ?? status;
         stopReason = readString(event.payload.reason) ?? stopReason;
+        failureClass = readString(event.payload.failureClass) ?? failureClass;
+        safetySurface = readString(event.payload.safetySurface) ?? safetySurface;
+        reasonCode = readString(event.payload.reasonCode) ?? reasonCode;
         break;
     }
   }
@@ -436,6 +442,9 @@ export function buildRunGraph(
     status,
     lifecycleState,
     stopReason,
+    failureClass,
+    safetySurface,
+    reasonCode,
     activeModel,
     adapterId,
     providerId,

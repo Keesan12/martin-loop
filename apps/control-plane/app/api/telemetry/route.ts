@@ -1,6 +1,6 @@
 import { createTelemetryEnvelope } from "../../../lib/domain/models";
 import { getControlPlaneRepository } from "../../../lib/server/control-plane-repository";
-import { ingestRunsIntoControlPlane } from "../../../lib/server/ingest-run-read-model";
+import { ingestTelemetryEnvelope } from "../../../lib/server/telemetry-ingest";
 import { requireControlPlaneAuth } from "../../../lib/server/auth";
 import { jsonError, jsonResponse } from "../../../lib/server/http";
 import {
@@ -58,7 +58,7 @@ export async function POST(request: Request): Promise<Response> {
     });
   }
 
-  const ingested = await ingestRunsIntoControlPlane(repository);
+  const ingested = await ingestTelemetryEnvelope(repository, envelope);
 
   return jsonResponse(
     {
