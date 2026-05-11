@@ -107,7 +107,11 @@ Example `martin_run` payload:
 }
 ```
 
-## 6. What to inspect in artifacts
+## 6. OpenCode-style adapter example
+
+If you want a runnable, no-credentials-required adapter sketch for another coding runtime, see [`examples/opencode-adapter/`](../../examples/opencode-adapter/). It shows how to keep MartinLoop's budget, verifier, and JSONL record shape stable around an OpenCode-style workflow without claiming a native adapter already exists.
+
+## 7. What to inspect in artifacts
 
 For a repo-backed attempt, look at:
 
