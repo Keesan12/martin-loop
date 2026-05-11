@@ -3,6 +3,7 @@ title: "AI Coding Agents Need Receipts, Not Just Better Prompts"
 datePublished: 2026-05-11T18:47:07.339Z
 cuid: cmp1k009300g92dlccbv2f4mz
 slug: ai-coding-agents-need-receipts-not-just-better-prompts
+cover: https://cdn.hashnode.com/uploads/covers/6a021686fca21b0d4b51c1b3/5eca661c-2dbf-47f5-9e45-829331cf39f5.jpg
 
 ---
 
