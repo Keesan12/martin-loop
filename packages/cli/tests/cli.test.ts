@@ -190,6 +190,36 @@ describe("executeCli", () => {
     expect(payload.loop.task.verificationPlan).toEqual(["pnpm test"]);
   });
 
+  it("supports verify-only runs without invoking a coding adapter", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-verify-only-"));
+
+    try {
+      const result = await executeCli([
+        "run",
+        "--objective",
+        "Verify the contracts package without edits",
+        "--verify-only",
+        "--verify",
+        `"${process.execPath}" -e "process.exit(0)"`,
+        "--cwd",
+        directory,
+        "--allow-path",
+        "packages/contracts/**"
+      ]);
+
+      expect(result.exitCode).toBe(0);
+
+      const payload = JSON.parse(result.stdout);
+
+      expect(payload.decision.lifecycleState).toBe("completed");
+      expect(payload.loop.lifecycleState).toBe("completed");
+      expect(payload.loop.task.mutationMode).toBe("verify_only");
+      expect(payload.loop.cost.actualUsd).toBe(0);
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
   it("resolves a relative --config path from INIT_CWD for filtered dev runs", async () => {
     const directory = await mkdtemp(join(tmpdir(), "martin-cli-init-cwd-"));
     const packageDirectory = join(directory, "packages", "cli");

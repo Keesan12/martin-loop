@@ -54,6 +54,7 @@ export interface LoopTask {
   repoRoot?: string;
   verificationPlan: string[];
   verificationStack?: VerificationStep[];
+  mutationMode?: MutationMode;
   executionProfile?: ExecutionProfile;
   allowedNetworkDomains?: string[];
   approvalPolicy?: ApprovalPolicy;
@@ -70,6 +71,8 @@ export type ExecutionProfile =
   | "ci_safe"
   | "staging_controlled"
   | "research_untrusted";
+
+export type MutationMode = "edit" | "verify_only";
 
 export interface ApprovalPolicy {
   dependencyAdds?: boolean;

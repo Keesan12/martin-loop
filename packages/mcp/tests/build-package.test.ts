@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { rewritePackageSpecifiers } from "../scripts/build-package-lib.mjs";
+import { rewritePackageSpecifiers, workspaceBuildCommandArgs } from "../scripts/build-package-lib.mjs";
 
 describe("rewritePackageSpecifiers", () => {
   it("rewrites nested internal package subpaths without truncating them", () => {
@@ -26,5 +26,15 @@ describe("rewritePackageSpecifiers", () => {
 
     expect(rewritten).toContain('./vendor/adapters/runtime-support.js');
     expect(rewritten).not.toContain("runtime-support.js.js");
+  });
+});
+
+describe("workspaceBuildCommandArgs", () => {
+  it("avoids --dir so Windows paths with spaces are not reparsed by pnpm", () => {
+    expect(workspaceBuildCommandArgs("@martin/contracts")).toEqual([
+      "--filter",
+      "@martin/contracts",
+      "build",
+    ]);
   });
 });
