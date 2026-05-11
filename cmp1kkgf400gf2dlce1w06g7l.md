@@ -493,14 +493,401 @@ It is specific criticism from people using agents in real workflows.
 
 What would your team need before trusting an AI coding agent in a serious repo?
 
-What should every run record include?
+---
+title: "Designing Safe Halt Boundaries for AI Coding Agents"
+subtitle: "Why budget limits should stop autonomous coding workflows at clean state transitions, not in the middle of repository changes."
+slug: "safe-halt-boundaries-ai-coding-agents"
+tags: ai, devops, softwareengineering, opensource, testing
+seo_description: "A technical look at safe halt boundaries for AI coding agents: budget checks, run logs, audit trails, test verification, and clean handoffs to human engineers."
+---
 
-What failures should be classified by default?
+# Designing Safe Halt Boundaries for AI Coding Agents
 
-Where should the control plane live?
+AI coding agents are useful because they can loop.
 
-AI coding agents are becoming part of software engineering.
+They can inspect a repository, make a plan, edit files, run commands, read failures, update the plan, and try again.
 
-Now they need the infrastructure to behave like it.
+That loop is the power source.
 
-https://github.com/Keesan12/Martin-Loop
+It is also the risk surface.
+
+Once an agent is allowed to modify a real codebase, the engineering problem is no longer only:
+
+> Can the model produce a good patch?
+
+A more practical question appears:
+
+> What happens when the agent should stop?
+
+That sounds simple until the agent is halfway through a change.
+
+## The Problem With Naive Budget Limits
+
+A common answer is to add a budget limit.
+
+That is reasonable.
+
+An autonomous coding workflow should not be allowed to spend unlimited tokens, run forever, or keep retrying the same failed strategy.
+
+But a budget limit by itself is not enough.
+
+If the system stops an agent the moment a token, time, or cost threshold is crossed, it may interrupt the agent in the middle of an effect.
+
+That can leave the repository in an ambiguous state:
+
+- files partially edited
+- tests failing
+- no final explanation
+- no rollback trail
+- no clear next step
+- no useful handoff for a human reviewer
+
+In that case, the budget limit worked mechanically, but failed operationally.
+
+The agent stopped.
+
+The workflow did not halt cleanly.
+
+## Stopping Is Not The Same As Halting
+
+There is a difference between stopping an agent and halting a workflow.
+
+Stopping is mechanical.
+
+The process ends.
+
+Halting is operational.
+
+The system reaches a state where a human or another tool can understand what happened and decide what to do next.
+
+For AI coding agents, a useful halt should answer:
+
+- What was the agent trying to do?
+- What changed?
+- What verification was attempted?
+- What passed?
+- What failed?
+- Why did the run stop?
+- Is the repository in a reviewable state?
+- Should the next action be resume, revert, retry, or escalate?
+
+A run that cannot answer those questions has not really halted.
+
+It has only been interrupted.
+
+## What Is A Halt Boundary?
+
+A halt boundary is a clean state transition where the system is allowed to decide whether the agent should continue.
+
+Instead of checking budget during arbitrary execution, the system checks policy between steps.
+
+For example, a coding agent loop might look like this:
+
+1. Observe repository state
+2. Create or update a plan
+3. Apply a scoped change
+4. Run verifier
+5. Record result
+6. Decide whether to continue, stop, revert, or escalate
+
+The halt boundary lives between those steps.
+
+At each boundary, the system can ask:
+
+- Is the run still within budget?
+- Has the verifier passed?
+- Has the agent repeated a failed strategy?
+- Has the task drifted from the original objective?
+- Did the agent touch files outside the expected scope?
+- Is human approval required?
+- Is the repository safe to leave as-is?
+- Should the system create a diagnostic and stop?
+
+The key idea is simple:
+
+> Budget checks should happen at clean state transitions, not in the middle of effects.
+
+## Why Mid-Effect Stops Are Dangerous
+
+A mid-effect stop is dangerous because code changes are not always atomic.
+
+An agent might be in the middle of:
+
+- editing related files
+- updating tests
+- changing imports
+- applying migrations
+- modifying configuration
+- running a multi-step refactor
+- cleaning up after a failed attempt
+
+If the process is killed at a random moment, the final repository state may not represent any coherent plan.
+
+That creates extra work for the human reviewer.
+
+Instead of reviewing the agent’s intended solution, the engineer has to reconstruct what the agent might have been doing when it was interrupted.
+
+This is the opposite of useful automation.
+
+Good automation should reduce ambiguity.
+
+Bad automation creates a mystery.
+
+## The Role Of Run Records
+
+Safe halt boundaries become much more useful when paired with structured run records.
+
+A run record is the evidence trail for the agent’s work.
+
+It should capture:
+
+- task objective
+- budget policy
+- steps attempted
+- commands executed
+- files changed
+- verifier results
+- failure class
+- stop reason
+- final repository state
+- recommended next action
+
+This does not need to be complicated.
+
+A JSONL record is often enough.
+
+The important thing is that the record is structured, append-only, and readable after the run.
+
+Without a run record, a halted agent still leaves too much interpretation to the human.
+
+With a run record, the halt becomes a handoff.
+
+## Example: A Poor Halt
+
+Imagine an agent is asked to fix a failing authentication test.
+
+It edits `auth.ts`, updates a test file, runs the test suite twice, and starts changing session-refresh logic.
+
+Then the budget limit fires.
+
+The run stops with:
+
+```text
+Budget exceeded.
+
+That message is technically true.
+
+It is also not useful.
+
+The reviewer still has to determine:
+
+what was changed
+whether the changes are coherent
+which test still fails
+whether the agent was close
+whether to revert
+whether to continue manually
+whether to rerun with a narrower task
+
+The workflow stopped, but it did 
+not produce a useful diagnostic.
+
+## Example: A Better Halt
+
+A better halt would look more like this:
+Plain text
+Run halted at verifier boundary.
+
+Reason:
+Budget threshold reached after 3 attempts.
+
+Current state:
+- Modified auth/session.ts
+- Modified auth/session.test.ts
+- Verifier still failing: auth/session.test.ts
+
+Observed failure:
+Token refresh returns 401 when the refresh token is expired.
+
+Recommendation:
+Review the refresh-token branch in auth/session.ts.
+
+Either revert the current diff or rerun with a narrower task focused only on expired-token handling.
+
+That is still a failed run.
+
+But it is a useful failed run.
+
+A human can act on it.
+
+That is the point of safe halting.
+
+## Failure Classification Helps The Next Decision
+
+Not all failed agent runs are the same.
+
+A failed run might mean:
+
+the budget was too low
+the task was under-specified
+the verifier was wrong
+the agent repeated the same bad strategy
+a dependency failed
+the repo was already broken
+a command was unsafe
+human approval was required
+the task exceeded the agent’s current capability
+
+A useful control layer should classify these failures.
+
+Failure classification helps determine what should happen next.
+
+For example:
+
+Failure class
+Likely next action
+Budget exhausted
+Resume with higher budget or narrower scope
+Verifier failed
+Inspect failing test and changed files
+Repeated strategy loop
+Stop and require human intervention
+Unsafe command
+Block and escalate
+Task drift
+Reset plan or narrow objective
+Dependency failure
+Retry later or fix environment
+Human approval required
+Pause until reviewed
+
+This is more useful than treating every failure as a generic agent error.
+
+## Test-Verified Completion
+
+Safe halt boundaries also matter when the agent succeeds.
+
+The system should not rely only on the agent’s statement that the task is done.
+
+At a halt boundary, the system can ask:
+
+Did the verifier run?
+Did it pass?
+Was the verifier relevant to the task?
+Were there uncommitted or unexplained changes?
+Did the agent stay within scope?
+Is the run record complete?
+
+This turns completion from a model claim into an engineering event.
+
+A useful completion state might say:
+
+Run completed.
+
+Verifier:
+pnpm test auth/session.test.ts
+
+Result:
+Passed.
+
+Changed files:
+- auth/session.ts
+- auth/session.test.ts
+
+Budget:
+$1.42 of $3.00 used.
+
+Stop reason:
+Verifier passed at halt boundary.
+That is much easier to trust than:
+
+Done.
+
+## Where This Fits In The Engineering Workflow
+
+Safe halt boundaries could live in several places:
+
+inside the agent runtime
+inside a CLI wrapper
+at the MCP/tool boundary
+inside CI
+inside a platform engineering workflow
+as part of a policy engine around agent execution
+The right answer may depend on the team.
+
+Local developer workflows may want lightweight CLI-based control.
+
+Platform teams may want centralized policy and audit logs.
+
+DevSecOps teams may care more about command restrictions, sensitive files, and approval gates.
+
+CI systems may care most about verifier status and reproducibility.
+
+The common requirement is the same:
+An agent run should stop only in a state that can be inspected.
+
+## Design Principles
+The design principles I keep coming back to are:
+
+Do not interrupt mid-effect unless safety requires it.
+
+Check budget and policy at state transitions.
+
+Make every halt produce a diagnostic.
+
+Treat failed runs as useful artifacts, not garbage.
+
+Prefer verifier-backed completion over agent-reported completion.
+
+Make resume, revert, or rerun decisions explicit.
+
+These principles are not specific to one model or one coding tool.
+They are workflow principles.
+
+As coding agents become more common, these control points will matter more.
+
+## Open Questions
+There are still unresolved design questions.
+
+For example:
+
+How granular should halt boundaries be?
+Should every tool call create a boundary?
+Should file edits be grouped into atomic change sets?
+What is the minimum useful run record?
+How should a system detect repeated strategy loops?
+How should budget policy change based on task type?
+What should require human approval?
+Should failed runs automatically generate rollback patches?
+How much of this belongs in CI versus the local agent runtime?
+
+I do not think there is one universal answer yet.
+
+But I do think “just stop when the budget is gone” is too crude for serious coding workflows.
+
+## Conclusion
+AI coding agents are becoming more capable.
+
+That makes clean stopping behavior more important, not less.
+
+A useful agent workflow should not simply run until it succeeds, fails, or runs out of money.
+
+It should move through inspectable states.
+
+It should check policy at safe boundaries.
+
+It should record what happened.
+
+It should explain why it stopped.
+
+It should leave the repository in a state a human can understand.
+
+That is the difference between an interrupted agent and a governed workflow.
+
+I am exploring these ideas while building MartinLoop, an open-source control plane for AI coding agents.
+
+The project is early, and the main thing I am looking for is technical feedback on the design of budget policies, run records, failure classification, and safe halt boundaries.
+
+GitHub: https://github.com/Keesan12/Martin-Loop
+
+Website: https://martinloop.com⁠
