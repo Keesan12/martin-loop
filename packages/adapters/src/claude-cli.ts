@@ -203,8 +203,16 @@ export interface CodexCliAdapterOptions {
   label?: string;
   /** Override the model passed via --model flag. */
   model?: string;
-  /** Run in full-auto mode (--full-auto). Defaults to true. */
+  /**
+   * Deprecated no-op retained for compatibility.
+   *
+   * Codex CLI's supported non-interactive entrypoint is `codex exec`.
+   * MartinLoop now uses explicit sandboxing instead of the legacy
+   * `--full-auto` compatibility path, which can exit before verifier execution.
+   */
   fullAuto?: boolean;
+  /** Codex sandbox mode for model-generated commands. Defaults to workspace-write. */
+  sandbox?: "read-only" | "workspace-write" | "danger-full-access";
   /** Extra args appended after core args (before prompt). */
   extraArgs?: string[];
   spawnImpl?: SpawnLike;
@@ -295,18 +303,19 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
       }
 
       if (agentResult.exitCode !== 0 && agentResult.stdout.trim().length === 0) {
+        const failureMessage = formatPreVerifierSubprocessFailure(options.command, agentResult.stderr, agentResult.exitCode);
         return {
           status: "failed",
-          summary: `${options.command} subprocess exited with an error.`,
+          summary: `${options.command} subprocess exited before verifier execution.`,
           usage: normalizeUsage({
             actualUsd: 0,
             tokensIn: 0,
             tokensOut: 0,
             provenance: "unavailable"
           }),
-          verification: { passed: false, summary: "Subprocess error." },
+          verification: { passed: false, summary: `Verifier not run: ${failureMessage}` },
           failure: {
-            message: `${agentResult.stderr.trim() || `Exit code ${String(agentResult.exitCode)}`}. environment_mismatch`
+            message: failureMessage
           }
         };
       }
@@ -533,15 +542,19 @@ export function createClaudeCliAdapter(options: ClaudeCliAdapterOptions = {}): M
 // ---------------------------------------------------------------------------
 
 /**
- * Spawns `codex [--full-auto] [--model <model>] "<prompt>" [extraArgs]`.
+ * Spawns `codex exec --sandbox <mode> [--model <model>] [extraArgs] -`.
+ *
+ * The prompt is delivered via stdin so Windows shell quoting cannot truncate or
+ * reinterpret long MartinLoop prompts that contain paths, deny rules, or budget
+ * context.
  *
  * Requires the Codex CLI to be installed and authenticated:
  *   npm install -g @openai/codex
  */
 export function createCodexCliAdapter(options: CodexCliAdapterOptions = {}): MartinAdapter {
-  const fullAuto = options.fullAuto !== false;
   const modelArgs: string[] = options.model ? ["--model", options.model] : [];
   const extraArgs = options.extraArgs ?? [];
+  const sandbox = options.sandbox ?? "workspace-write";
 
   return createAgentCliAdapter({
     command: "codex",
@@ -553,11 +566,16 @@ export function createCodexCliAdapter(options: CodexCliAdapterOptions = {}): Mar
     verifyTimeoutMs: options.verifyTimeoutMs,
     supportsJsonOutput: false,
     spawnImpl: options.spawnImpl,
-    argsBuilder: (prompt) => [
-      ...(fullAuto ? ["--full-auto"] : []),
+    argsBuilder: () => [
+      "exec",
+      "--sandbox",
+      sandbox,
+      "--color",
+      "never",
       ...modelArgs,
-      prompt,
-      ...extraArgs
+      ...extraArgs,
+      "-",
+      "--stdin-prompt"
     ]
   });
 }
@@ -693,6 +711,20 @@ function truncate(text: string, maxLength: number): string {
   }
 
   return `...${text.slice(-(maxLength - 3))}`;
+}
+
+function formatPreVerifierSubprocessFailure(command: string, stderr: string, exitCode: number): string {
+  const detail = stderr.trim() || `Exit code ${String(exitCode)}`;
+  const lowerDetail = detail.toLowerCase();
+  const codexLaunchBlocked =
+    command === "codex" &&
+    /\b(full-auto|sandbox|approval|permission|trusted|safety|unexpected argument)\b/u.test(lowerDetail);
+
+  if (codexLaunchBlocked) {
+    return `Codex CLI failed before patch completion, likely due to its launch/sandbox configuration. MartinLoop invokes Codex through "codex exec --sandbox workspace-write"; verify Codex CLI auth and configuration if this persists. ${detail}. environment_mismatch`;
+  }
+
+  return `${detail}. environment_mismatch`;
 }
 
 const INJECTION_PATTERNS = [

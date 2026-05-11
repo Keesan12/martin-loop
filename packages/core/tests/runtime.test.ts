@@ -669,12 +669,23 @@ describe("runMartin", () => {
     const exitIndex = ledger.findIndex((entry) => entry.kind === "run.exited");
 
     expect(adapterExecutions).toBe(0);
-    expect(result.decision.lifecycleState).toBe("human_escalation");
+    expect(result.decision).toMatchObject({
+      lifecycleState: "human_escalation",
+      failureClass: "safety_leash_blocked",
+      safetySurface: "verifier",
+      reasonCode: "destructive_verifier_command"
+    });
     expect(safetyIndex).toBeGreaterThanOrEqual(0);
     expect(exitIndex).toBeGreaterThan(safetyIndex);
     expect(ledger[safetyIndex]?.payload).toMatchObject({
       surface: "command",
       blocked: true
+    });
+    expect(ledger[exitIndex]?.payload).toMatchObject({
+      lifecycleState: "human_escalation",
+      failureClass: "safety_leash_blocked",
+      safetySurface: "verifier",
+      reasonCode: "destructive_verifier_command"
     });
     expect(ledger[safetyIndex]?.payload.violations).toEqual(
       expect.arrayContaining(["rm -rf ."])

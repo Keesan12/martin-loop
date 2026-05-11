@@ -3,7 +3,7 @@
  * and the MARTIN_LIVE guard introduced with the real adapter.
  */
 
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -15,6 +15,8 @@ import { executeCli } from "../src/index.js";
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+const NOOP_VERIFIER = process.platform === "win32" ? "cmd /c exit 0" : "true";
 
 async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
   const dir = await mkdtemp(join(tmpdir(), "martin-cli-int-"));
@@ -53,6 +55,33 @@ async function withoutAgentCliOnPath<T>(fn: () => Promise<T>): Promise<T> {
       process.env[pathKey] = original;
     }
   }
+}
+
+async function withPathPrefix<T>(dir: string, fn: () => Promise<T>): Promise<T> {
+  const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === "path") ?? "PATH";
+  const original = process.env[pathKey] ?? "";
+  process.env[pathKey] = original.length > 0 ? `${dir}${process.platform === "win32" ? ";" : ":"}${original}` : dir;
+
+  try {
+    return await fn();
+  } finally {
+    process.env[pathKey] = original;
+  }
+}
+
+async function withFakeCodexCli<T>(fn: () => Promise<T>): Promise<T> {
+  return withTempDir(async (dir) => {
+    const script = process.platform === "win32"
+      ? "@echo off\r\necho fake codex completed\r\nexit /b 0\r\n"
+      : "#!/usr/bin/env sh\necho fake codex completed\n";
+    const file = join(dir, process.platform === "win32" ? "codex.cmd" : "codex");
+    await writeFile(file, script, "utf8");
+    if (process.platform !== "win32") {
+      await chmod(file, 0o755);
+    }
+
+    return withPathPrefix(dir, fn);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -129,18 +158,26 @@ describe("--engine flag", () => {
   });
 
   it("selects codex adapter when --engine codex is given", async () => {
-    const result = await withEnv("MARTIN_LIVE", "true", () =>
-      executeCli([
-        "run",
-        "--engine",
-        "codex",
-        "--objective",
-        "Fix the bug",
-        "--max-iterations",
-        "1",
-        "--budget-usd",
-        "2"
-      ])
+    const result = await withTempDir((workspace) =>
+      withFakeCodexCli(() =>
+        withEnv("MARTIN_LIVE", "true", () =>
+          executeCli([
+            "run",
+            "--engine",
+            "codex",
+            "--cwd",
+            workspace,
+            "--objective",
+            "Fix the bug",
+            "--verify",
+            NOOP_VERIFIER,
+            "--max-iterations",
+            "1",
+            "--budget-usd",
+            "2"
+          ])
+        )
+      )
     );
 
     expect(result.exitCode).toBe(0);
@@ -161,6 +198,8 @@ describe("--engine flag", () => {
           "run",
           "--objective",
           "Fix the bug",
+          "--verify",
+          NOOP_VERIFIER,
           "--max-iterations",
           "1",
           "--budget-usd",

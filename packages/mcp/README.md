@@ -8,6 +8,11 @@ It exposes three MCP tools over stdio:
 - `martin_inspect`
 - `martin_status`
 
+`martin_run` accepts budget fields (`maxUsd`, `maxIterations`, `maxTokens`),
+`verificationPlan`, and optional repo-relative `allowedPaths` / `deniedPaths`.
+When scope paths are supplied, MartinLoop passes them into both the agent prompt
+and post-run filesystem leash checks using `workingDirectory` as the repo root.
+
 ## Quickstart
 
 Run the packaged server directly:

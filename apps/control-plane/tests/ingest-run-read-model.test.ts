@@ -131,7 +131,10 @@ describe("readRunGraph", () => {
         payload: {
           lifecycleState: "human_escalation",
           status: "exited",
-          reason: "Grounding evidence contradicted the claimed repair."
+          reason: "Grounding evidence contradicted the claimed repair.",
+          failureClass: "safety_leash_blocked",
+          safetySurface: "verifier",
+          reasonCode: "destructive_verifier_command"
         }
       }
     ]);
@@ -183,6 +186,9 @@ describe("readRunGraph", () => {
 
     expect(graph.run.lifecycleState).toBe("human_escalation");
     expect(graph.run.stopReason).toBe("Grounding evidence contradicted the claimed repair.");
+    expect(graph.run.failureClass).toBe("safety_leash_blocked");
+    expect(graph.run.safetySurface).toBe("verifier");
+    expect(graph.run.reasonCode).toBe("destructive_verifier_command");
     expect(graph.run.costProvenance).toBe("estimated");
     expect(graph.run.latestPatchDecision).toBe("DISCARD");
     expect(graph.run.groundingViolationCount).toBe(1);

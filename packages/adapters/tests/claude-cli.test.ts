@@ -1,3 +1,7 @@
+import { EventEmitter } from "node:events";
+import { PassThrough } from "node:stream";
+import type { ChildProcess, SpawnOptions } from "node:child_process";
+
 import { describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -10,7 +14,8 @@ import {
   createAgentCliAdapter,
   createClaudeCliAdapter,
   createCodexCliAdapter,
-  createVerifierOnlyAdapter
+  createVerifierOnlyAdapter,
+  type SpawnLike
 } from "../src/index.js";
 import { splitCommand } from "../src/cli-bridge.js";
 
@@ -33,6 +38,67 @@ function makeRequest(overrides: Partial<MartinAdapterRequest> = {}): MartinAdapt
     },
     previousAttempts: [],
     ...overrides
+  };
+}
+
+interface SpawnCall {
+  command: string;
+  args: readonly string[];
+  options?: SpawnOptions;
+  stdin: string;
+}
+
+interface ScriptedSpawnOutput {
+  exitCode?: number;
+  stdout?: string;
+  stderr?: string;
+}
+
+function createScriptedSpawn(
+  calls: SpawnCall[],
+  outputs: ScriptedSpawnOutput[] = [{ stdout: "done\n" }]
+): SpawnLike {
+  let index = 0;
+
+  return (command, args = [], options) => {
+    const output = outputs[index] ?? outputs.at(-1) ?? { stdout: "done\n" };
+    index += 1;
+
+    const child = new EventEmitter() as Partial<ChildProcess> & {
+      stdout: PassThrough;
+      stderr: PassThrough;
+      stdin: PassThrough;
+    };
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    child.stdin = new PassThrough();
+    child.kill = () => true;
+
+    const call: SpawnCall = {
+      command,
+      args: [...args],
+      options,
+      stdin: ""
+    };
+    calls.push(call);
+
+    child.stdin.on("data", (chunk: Buffer | string) => {
+      call.stdin += Buffer.isBuffer(chunk) ? chunk.toString("utf8") : chunk;
+    });
+
+    process.nextTick(() => {
+      if (output.stdout) {
+        child.stdout.write(output.stdout);
+      }
+      if (output.stderr) {
+        child.stderr.write(output.stderr);
+      }
+      child.stdout.end();
+      child.stderr.end();
+      child.emit("close", output.exitCode ?? 0);
+    });
+
+    return child as ChildProcess;
   };
 }
 
@@ -378,10 +444,127 @@ describe("createCodexCliAdapter", () => {
     expect(adapter.metadata.model).toBe("o3");
   });
 
-  it("returns failed gracefully when codex is not installed", async () => {
-    const adapter = createCodexCliAdapter({ timeoutMs: 2_000 });
-    const result = await adapter.execute(makeRequest());
+  it("uses codex exec with an explicit writable sandbox instead of legacy full-auto", async () => {
+    const calls: SpawnCall[] = [];
+    const adapter = createCodexCliAdapter({
+      fullAuto: true,
+      spawnImpl: createScriptedSpawn(calls)
+    });
+    const result = await adapter.execute(
+      makeRequest({
+        context: {
+          taskTitle: "test",
+          objective: "update the target file",
+          verificationPlan: [],
+          focus: "test",
+          remainingBudgetUsd: 8,
+          remainingIterations: 3,
+          remainingTokens: 10_000
+        }
+      })
+    );
 
-    expect(["failed", "completed"]).toContain(result.status);
+    expect(result.status).toBe("completed");
+    expect(calls[0]?.command).toBe("codex");
+    expect(calls[0]?.args).toEqual([
+      "exec",
+      "--sandbox",
+      "workspace-write",
+      "--color",
+      "never",
+      "-"
+    ]);
+    expect(calls[0]?.args).not.toContain("--full-auto");
+    expect(calls[0]?.stdin).toContain("OBJECTIVE:");
+    expect(calls[0]?.stdin).toContain("update the target file");
+  });
+
+  it("preserves custom Codex model, sandbox, and extra exec flags before stdin prompt", async () => {
+    const calls: SpawnCall[] = [];
+    const adapter = createCodexCliAdapter({
+      model: "gpt-5.5",
+      sandbox: "read-only",
+      extraArgs: ["--ignore-rules"],
+      spawnImpl: createScriptedSpawn(calls)
+    });
+    const result = await adapter.execute(
+      makeRequest({
+        context: {
+          taskTitle: "test",
+          objective: "inspect only",
+          verificationPlan: [],
+          focus: "test",
+          remainingBudgetUsd: 8,
+          remainingIterations: 3,
+          remainingTokens: 10_000
+        }
+      })
+    );
+
+    expect(result.status).toBe("completed");
+    expect(calls[0]?.args).toEqual([
+      "exec",
+      "--sandbox",
+      "read-only",
+      "--color",
+      "never",
+      "--model",
+      "gpt-5.5",
+      "--ignore-rules",
+      "-"
+    ]);
+  });
+
+  it("runs MartinLoop verification after successful Codex exec completion", async () => {
+    const calls: SpawnCall[] = [];
+    const adapter = createCodexCliAdapter({
+      spawnImpl: createScriptedSpawn(calls, [{ stdout: "patched\n" }, { stdout: "ok\n" }])
+    });
+    const result = await adapter.execute(
+      makeRequest({
+        context: {
+          taskTitle: "test",
+          objective: "patch then verify",
+          verificationPlan: process.platform === "win32" ? ["cmd /c exit 0"] : ["true"],
+          focus: "test",
+          remainingBudgetUsd: 8,
+          remainingIterations: 3,
+          remainingTokens: 10_000
+        }
+      })
+    );
+
+    expect(result.status).toBe("completed");
+    expect(result.verification.passed).toBe(true);
+    expect(calls[0]?.command).toBe("codex");
+    expect(calls[1]?.command).toBe(process.platform === "win32" ? "cmd" : "true");
+  });
+
+  it("reports pre-verifier Codex launch failures without running verifier commands", async () => {
+    const calls: SpawnCall[] = [];
+    const adapter = createCodexCliAdapter({
+      spawnImpl: createScriptedSpawn(calls, [
+        { exitCode: 2, stderr: "unexpected argument '--full-auto'\n" }
+      ])
+    });
+    const result = await adapter.execute(
+      makeRequest({
+        context: {
+          taskTitle: "test",
+          objective: "patch then verify",
+          verificationPlan: process.platform === "win32" ? ["cmd /c exit 0"] : ["true"],
+          focus: "test",
+          remainingBudgetUsd: 8,
+          remainingIterations: 3,
+          remainingTokens: 10_000
+        }
+      })
+    );
+
+    expect(result.status).toBe("failed");
+    expect(result.summary).toContain("before verifier execution");
+    expect(result.verification.summary).toContain("Verifier not run");
+    expect(result.failure?.message).toContain("environment_mismatch");
+    expect(calls).toHaveLength(1);
   });
 });
