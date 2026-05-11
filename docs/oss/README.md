@@ -88,6 +88,7 @@ The current release-candidate gate is:
 
 - [`docs/oss/QUICKSTART.md`](./QUICKSTART.md) for clone-to-first-run setup
 - [`docs/oss/EXAMPLES.md`](./EXAMPLES.md) for grounded CLI and MCP examples
+- [`docs/oss/CLAUDE-CODE-WALKTHROUGH.md`](./CLAUDE-CODE-WALKTHROUGH.md) for a Claude Code-specific governed-run walkthrough
 - [`docs/oss/OSS-BOUNDARY-REPORT.md`](./OSS-BOUNDARY-REPORT.md) for the current machine-checked OSS boundary and public-surface status
 - [`docs/oss/RELEASE-SURFACE-REPORT.md`](./RELEASE-SURFACE-REPORT.md) for the current machine-checked release-surface audit
 - [`docs/pilot/README.md`](../pilot/README.md) for the pilot-prep package that remains explicitly gated behind Phase 13 completion
