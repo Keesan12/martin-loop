@@ -27,7 +27,8 @@ export type FailureClass =
   | "repo_grounding_failure"
   | "verification_failure"
   | "environment_mismatch"
-  | "budget_pressure";
+  | "budget_pressure"
+  | "safety_leash_blocked";
 
 export type InterventionType =
   | "compress_context"

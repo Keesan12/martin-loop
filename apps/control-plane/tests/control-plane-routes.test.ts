@@ -76,7 +76,7 @@ describe("executive route rendering", () => {
 
 describe("telemetry route", () => {
   it("accepts a valid telemetry ingest payload and returns a normalized receipt", async () => {
-    await installSeedRepository();
+    const repository = await installSeedRepository();
     installAuthSession({ role: "workspace", workspaceId: "ws_martin" });
 
     const response = await postTelemetry(
@@ -116,7 +116,18 @@ describe("telemetry route", () => {
     expect(payload.accepted).toBe(true);
     expect(payload.summary.loops).toBe(1);
     expect(payload.summary.totalActualUsd).toBe(22);
-    expect(payload.summary.runsIngested).toBeGreaterThanOrEqual(0);
+    expect(payload.summary.runsIngested).toBe(1);
+
+    const runs = await repository.listRuns("ws_martin");
+    const ingestedRun = runs.find((run) => run.runId === "loop_ingest");
+    expect(ingestedRun).toMatchObject({
+      title: "Treasury variance monitor",
+      projectId: "treasury",
+      providerId: "sdk",
+      actualUsd: 22,
+      modeledAvoidedUsd: 49,
+      lifecycleState: "completed"
+    });
   });
 });
 

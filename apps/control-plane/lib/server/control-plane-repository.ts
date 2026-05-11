@@ -44,6 +44,9 @@ export interface RunRow {
   status: string;
   lifecycleState: string;
   stopReason: string | null;
+  failureClass?: string | null;
+  safetySurface?: string | null;
+  reasonCode?: string | null;
   activeModel: string | null;
   adapterId: string | null;
   providerId: string | null;

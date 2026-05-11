@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-11T21:27:29.218Z",
+  "generatedAt": "2026-05-11T21:47:37.985Z",
   "defaults": {
     "trustProfile": "strict_local",
     "primaryAdapter": "claude_cli",
