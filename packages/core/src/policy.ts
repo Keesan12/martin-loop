@@ -37,6 +37,12 @@ export interface ExitDecision {
   lifecycleState: LoopLifecycleState;
   status: LoopStatus;
   reason: string;
+  /** Machine-readable stop classifier for non-attempt exits such as preflight safety blocks. */
+  failureClass?: FailureClass;
+  /** Machine-readable safety surface, when the stop came from a safety leash. */
+  safetySurface?: string;
+  /** Stable reason code for dashboards, MCP, and downstream automation. */
+  reasonCode?: string;
 }
 
 export interface MartinAdapterResultLike {

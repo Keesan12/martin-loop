@@ -469,7 +469,8 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       shouldExit: true,
       lifecycleState: "human_escalation",
       status: "exited",
-      reason
+      reason,
+      ...classifySafetyLeashExit(leashDecision, "verifier")
     };
     if (input.store) {
       await input.store.appendLedger(
@@ -490,11 +491,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         makeLedgerEvent({
           kind: "run.exited",
           runId: loop.loopId,
-          payload: {
-            lifecycleState: leashExitDecision.lifecycleState,
-            status: leashExitDecision.status,
-            reason: leashExitDecision.reason
-          }
+          payload: createRunExitPayload(leashExitDecision)
         })
       );
     }
@@ -517,7 +514,8 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       shouldExit: true,
       lifecycleState: "human_escalation",
       status: "exited",
-      reason: secretDecision.reason ?? "Safety leash blocked secret-like values in the runtime context."
+      reason: secretDecision.reason ?? "Safety leash blocked secret-like values in the runtime context.",
+      ...classifySafetyLeashExit(secretDecision, "secret")
     };
 
     if (input.store) {
@@ -538,11 +536,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         makeLedgerEvent({
           kind: "run.exited",
           runId: loop.loopId,
-          payload: {
-            lifecycleState: secretExitDecision.lifecycleState,
-            status: secretExitDecision.status,
-            reason: secretExitDecision.reason
-          }
+          payload: createRunExitPayload(secretExitDecision)
         })
       );
     }
@@ -595,11 +589,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
           makeLedgerEvent({
             kind: "run.exited",
             runId: loop.loopId,
-            payload: {
-              lifecycleState: preflightExitDecision.lifecycleState,
-              status: preflightExitDecision.status,
-              reason: preflightExitDecision.reason
-            }
+            payload: createRunExitPayload(preflightExitDecision)
           })
         );
       }
@@ -629,7 +619,10 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         shouldExit: true,
         lifecycleState: "human_escalation",
         status: "exited",
-        reason: "Context Integrity Pre-gate: context poisoning attempt detected."
+        reason: "Context Integrity Pre-gate: context poisoning attempt detected.",
+        failureClass: "safety_leash_blocked",
+        safetySurface: "context_integrity",
+        reasonCode: "context_poisoning_blocked"
       };
       if (input.store) {
         await input.store.appendLedger(
@@ -705,11 +698,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
           makeLedgerEvent({
             kind: "run.exited",
             runId: loop.loopId,
-            payload: {
-              lifecycleState: exitDecision.lifecycleState,
-              status: exitDecision.status,
-              reason: exitDecision.reason
-            }
+            payload: createRunExitPayload(exitDecision)
           })
         );
       }
@@ -1012,7 +1001,10 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         shouldExit: true,
         lifecycleState: "human_escalation",
         status: "exited",
-        reason: "Verify-only mode forbids file changes."
+        reason: "Verify-only mode forbids file changes.",
+        failureClass: "safety_leash_blocked",
+        safetySurface: "filesystem",
+        reasonCode: "verify_only_write_attempt"
       };
       const rollbackOutcome = await restoreRollbackBoundary({
         repoRoot: request.context.repoRoot,
@@ -1081,11 +1073,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
           makeLedgerEvent({
             kind: "run.exited",
             runId: loop.loopId,
-            payload: {
-              lifecycleState: verifyOnlyExitDecision.lifecycleState,
-              status: verifyOnlyExitDecision.status,
-              reason: verifyOnlyExitDecision.reason
-            }
+            payload: createRunExitPayload(verifyOnlyExitDecision)
           })
         );
       }
@@ -1119,7 +1107,8 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         shouldExit: true,
         lifecycleState: "human_escalation",
         status: "exited",
-        reason: filesystemDecision.reason ?? "Safety leash blocked filesystem changes."
+        reason: filesystemDecision.reason ?? "Safety leash blocked filesystem changes.",
+        ...classifySafetyLeashExit(filesystemDecision, "filesystem")
       };
       const rollbackOutcome = await restoreRollbackBoundary({
         repoRoot: request.context.repoRoot,
@@ -1170,11 +1159,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
           makeLedgerEvent({
             kind: "run.exited",
             runId: loop.loopId,
-            payload: {
-              lifecycleState: filesystemExitDecision.lifecycleState,
-              status: filesystemExitDecision.status,
-              reason: filesystemExitDecision.reason
-            }
+            payload: createRunExitPayload(filesystemExitDecision)
           })
         );
       }
@@ -1210,7 +1195,8 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         status: "exited",
         reason:
           changeApprovalDecision.reason ??
-          "Safety leash blocked dependency or migration changes that require approval."
+          "Safety leash blocked dependency or migration changes that require approval.",
+        ...classifySafetyLeashExit(changeApprovalDecision, "dependency")
       };
       const rollbackOutcome = await restoreRollbackBoundary({
         repoRoot: request.context.repoRoot,
@@ -1262,11 +1248,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
           makeLedgerEvent({
             kind: "run.exited",
             runId: loop.loopId,
-            payload: {
-              lifecycleState: approvalExitDecision.lifecycleState,
-              status: approvalExitDecision.status,
-              reason: approvalExitDecision.reason
-            }
+            payload: createRunExitPayload(approvalExitDecision)
           })
         );
       }
@@ -1435,11 +1417,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
           makeLedgerEvent({
             kind: "run.exited",
             runId: loop.loopId,
-            payload: {
-              lifecycleState: patchExitDecision.lifecycleState,
-              status: patchExitDecision.status,
-              reason: patchExitDecision.reason
-            }
+            payload: createRunExitPayload(patchExitDecision)
           })
         );
       }
@@ -1491,11 +1469,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
           makeLedgerEvent({
             kind: "run.exited",
             runId: loop.loopId,
-            payload: {
-              lifecycleState: decision.lifecycleState,
-              status: decision.status,
-              reason: decision.reason
-            }
+            payload: createRunExitPayload(decision)
           })
         );
       }
@@ -1519,11 +1493,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       makeLedgerEvent({
         kind: "run.exited",
         runId: loop.loopId,
-        payload: {
-          lifecycleState: decision.lifecycleState,
-          status: decision.status,
-          reason: decision.reason
-        }
+        payload: createRunExitPayload(decision)
       })
     );
   }
@@ -1532,6 +1502,59 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     loop: finalizeLoop(loop, decision, now(), idFactory),
     decision
   };
+}
+
+function createRunExitPayload(decision: ExitDecision): Record<string, unknown> {
+  return {
+    lifecycleState: decision.lifecycleState,
+    status: decision.status,
+    reason: decision.reason,
+    ...(decision.failureClass ? { failureClass: decision.failureClass } : {}),
+    ...(decision.safetySurface ? { safetySurface: decision.safetySurface } : {}),
+    ...(decision.reasonCode ? { reasonCode: decision.reasonCode } : {})
+  };
+}
+
+function classifySafetyLeashExit(
+  decision: { surface: string; violations: SafetyViolation[] },
+  safetySurface = decision.surface
+): Pick<ExitDecision, "failureClass" | "safetySurface" | "reasonCode"> {
+  return {
+    failureClass: "safety_leash_blocked",
+    safetySurface,
+    reasonCode: safetyLeashReasonCode(decision, safetySurface)
+  };
+}
+
+function safetyLeashReasonCode(
+  decision: { surface: string; violations: SafetyViolation[] },
+  safetySurface: string
+): string {
+  const kind = decision.violations[0]?.kind;
+
+  switch (kind) {
+    case "command_blocked":
+      return safetySurface === "verifier" ? "destructive_verifier_command" : "command_blocked";
+    case "network_blocked":
+      return safetySurface === "verifier" ? "verifier_network_blocked" : "network_access_blocked";
+    case "secret_value":
+      return "secret_context_value";
+    case "path_denied":
+    case "protected_path":
+      return "protected_surface_write";
+    case "path_not_allowed":
+      return "surface_write_not_allowed";
+    case "path_outside_repo":
+      return "outside_repo_write";
+    case "dependency_approval_required":
+      return "dependency_approval_required";
+    case "migration_approval_required":
+      return "migration_approval_required";
+    case "config_change_approval_required":
+      return "config_change_approval_required";
+    default:
+      return `${safetySurface}_safety_block`;
+  }
 }
 
 function finalizeLoop(
@@ -1545,7 +1568,7 @@ function finalizeLoop(
     {
       type: "run.completed",
       lifecycleState: decision.lifecycleState,
-      payload: { status: decision.status, reason: decision.reason }
+      payload: createRunExitPayload(decision)
     },
     { now: timestamp, idFactory }
   );

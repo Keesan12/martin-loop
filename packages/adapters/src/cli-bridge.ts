@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
-import { isAbsolute } from "node:path";
+import { delimiter, extname, isAbsolute, join, resolve } from "node:path";
+import { existsSync } from "node:fs";
 
 import { diffStatsFromNumstat } from "./runtime-support.js";
 
@@ -35,15 +36,11 @@ export async function runSubprocess(
 
     let proc: ChildProcess;
     try {
-      proc = (options.spawnImpl ?? spawn)(command, args, {
+      const spawnPlan = createSpawnPlan(command, args, options.cwd, options.spawnImpl !== undefined);
+      proc = (options.spawnImpl ?? spawn)(spawnPlan.command, spawnPlan.args, {
         cwd: options.cwd,
         stdio: [stdinMode, "pipe", "pipe"],
-        env: process.env,
-        // shell: true is required on Windows to resolve PATH shims (e.g. claude.cmd).
-        // Avoid it for absolute .exe paths because cmd.exe can split paths with spaces.
-        // Prompt content is never passed as a shell argument, it goes via stdin, so
-        // injection risk from the DEP0190 warning does not apply here.
-        shell: shouldUseWindowsShell(command)
+        env: process.env
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -182,8 +179,89 @@ export async function readGitExecutionArtifacts(
   };
 }
 
-function shouldUseWindowsShell(command: string): boolean {
-  return process.platform === "win32" && !isAbsolute(command);
+interface SpawnPlan {
+  command: string;
+  args: string[];
+}
+
+function createSpawnPlan(
+  command: string,
+  args: string[],
+  cwd: string,
+  preserveRawForInjectedSpawn: boolean
+): SpawnPlan {
+  if (preserveRawForInjectedSpawn || process.platform !== "win32" || isAbsolute(command)) {
+    return { command, args };
+  }
+
+  const resolved = resolveWindowsCommand(command, cwd);
+  if (!resolved) {
+    return { command, args };
+  }
+
+  const extension = extname(resolved).toLowerCase();
+  if (extension === ".cmd" || extension === ".bat") {
+    return {
+      command: process.env.ComSpec || "cmd.exe",
+      args: ["/d", "/s", "/c", [quoteWindowsCmdArg(resolved), ...args.map(quoteWindowsCmdArg)].join(" ")]
+    };
+  }
+
+  return { command: resolved, args };
+}
+
+function resolveWindowsCommand(command: string, cwd: string): string | undefined {
+  const hasPathSegment = command.includes("\\") || command.includes("/");
+  const baseCandidates = expandWindowsCommandCandidates(
+    hasPathSegment ? resolve(cwd, command) : command
+  );
+
+  if (hasPathSegment) {
+    return baseCandidates.find((candidate) => existsSync(candidate));
+  }
+
+  for (const directory of windowsPathDirectories()) {
+    for (const candidate of baseCandidates) {
+      const fullPath = join(directory, candidate);
+      if (existsSync(fullPath)) {
+        return fullPath;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function expandWindowsCommandCandidates(command: string): string[] {
+  if (extname(command)) {
+    return [command];
+  }
+
+  const pathExt = process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD";
+  return pathExt
+    .split(";")
+    .map((extension) => extension.trim())
+    .filter(Boolean)
+    .map((extension) => `${command}${extension.toLowerCase()}`);
+}
+
+function windowsPathDirectories(): string[] {
+  const rawPath = process.env.Path ?? process.env.PATH ?? "";
+  return rawPath
+    .split(delimiter)
+    .map((entry) => entry.trim().replace(/^"|"$/g, ""))
+    .filter(Boolean);
+}
+
+function quoteWindowsCmdArg(value: string): string {
+  const normalized = value.replace(/\r?\n/gu, " ");
+  const escaped = normalized
+    .replace(/\^/gu, "^^")
+    .replace(/"/gu, '^"')
+    .replace(/%/gu, "%%")
+    .replace(/!/gu, "^^!")
+    .replace(/[&|<>()]/gu, (match) => `^${match}`);
+  return `"${escaped}"`;
 }
 
 export function splitCommand(command: string): string[] {

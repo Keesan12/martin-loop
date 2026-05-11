@@ -84,6 +84,18 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
             description:
               "Shell commands that must all exit 0 for the task to be considered complete (e.g. ['pnpm test', 'pnpm build'])."
           },
+          allowedPaths: {
+            type: "array",
+            items: { type: "string" },
+            description:
+              "Optional repo-relative path patterns MartinLoop is allowed to modify. When set, changes outside these patterns fail scope enforcement."
+          },
+          deniedPaths: {
+            type: "array",
+            items: { type: "string" },
+            description:
+              "Optional repo-relative path patterns MartinLoop must never modify. Denied paths are enforced in prompts and post-run scope checks."
+          },
           workspaceId: {
             type: "string",
             description: "Workspace identifier for telemetry. Defaults to 'ws_mcp'."
