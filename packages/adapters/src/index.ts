@@ -19,4 +19,8 @@ export {
   type CodexCliAdapterOptions,
   type CliArgsBuilder
 } from "./claude-cli.js";
+export {
+  createVerifierOnlyAdapter,
+  type VerifierOnlyAdapterOptions
+} from "./verifier-only.js";
 export type { SpawnLike, SubprocessResult, VerificationOutcome } from "./cli-bridge.js";
