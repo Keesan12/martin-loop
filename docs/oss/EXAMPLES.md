@@ -107,7 +107,11 @@ Example `martin_run` payload:
 }
 ```
 
-## 6. What to inspect in artifacts
+## 6. GitHub Actions budget gate example
+
+See [`examples/github-actions-budget-gate/`](../../examples/github-actions-budget-gate/) for a CI-safe example that runs MartinLoop with a budget cap, an explicit verifier, and an uploaded JSONL run record artifact.
+
+## 7. What to inspect in artifacts
 
 For a repo-backed attempt, look at:
 
