@@ -1,15 +1,14 @@
 ---
-title: "Your AI Coding Agent Is A Production Risk Until It Has A Control Plane"
+title: "Designing Safe Halt Boundaries for AI Coding Agents"
 seoTitle: "AI Coding Agent Are a PRD Risk Until It Has A Control Plane"
 seoDescription: "AI coding agents become production risks when they can edit code, spend tokens, and claim completion without budget caps, audit logs, failure modes."
 datePublished: 2026-05-11T19:03:01.412Z
 cuid: cmp1kkgf400gf2dlce1w06g7l
-slug: your-ai-coding-agent-is-a-production-risk-until-it-has-a-control-plane
+slug: designing-safe-halt-boundaries-for-ai-coding-agents
 cover: https://cdn.hashnode.com/uploads/covers/6a021686fca21b0d4b51c1b3/a906c120-2896-4967-b680-273ab012c886.jpg
 tags: security, devops, governance, ai-tools, ai-governance, agentic-ai
 
 ---
-
 
 AI coding agents are moving from novelty to workflow.
 
@@ -25,8 +24,6 @@ The uncomfortable truth is this:
 
 Most AI coding agents today are powerful enough to create risk, but not governed enough to be trusted.
 
-That is the gap MartinLoop is built to close.
-
 ## The Real Problem Is Not Code Generation
 
 The market is obsessed with whether AI can write code.
@@ -41,16 +38,26 @@ Why?
 
 Because the surrounding workflow may not answer basic engineering questions:
 
-- What did the agent change?
-- Why did it change it?
-- What commands did it run?
-- How much did it spend?
-- What tests did it pass?
-- What tests did it fail?
-- Did it retry the same broken approach?
-- Did it drift from the task?
-- Did it stop cleanly?
-- Can another engineer audit the run later?
+*   What did the agent change?
+    
+*   Why did it change it?
+    
+*   What commands did it run?
+    
+*   How much did it spend?
+    
+*   What tests did it pass?
+    
+*   What tests did it fail?
+    
+*   Did it retry the same broken approach?
+    
+*   Did it drift from the task?
+    
+*   Did it stop cleanly?
+    
+*   Can another engineer audit the run later?
+    
 
 If the answer is “we don’t know,” the agent is not production-ready.
 
@@ -124,12 +131,18 @@ Actual budgets.
 
 A run should know:
 
-- its maximum spend
-- its remaining budget
-- what actions consume budget
-- when to stop
-- when to escalate
-- what diagnostic to leave behind
+*   its maximum spend
+    
+*   its remaining budget
+    
+*   what actions consume budget
+    
+*   when to stop
+    
+*   when to escalate
+    
+*   what diagnostic to leave behind
+    
 
 Without budget control, agentic coding is not a workflow.
 
@@ -149,15 +162,24 @@ If an AI coding agent touches a repo, the run should produce evidence.
 
 That evidence should show:
 
-- the task
-- the plan
-- the files changed
-- the commands run
-- the verifier used
-- the test results
-- the failure class
-- the stop reason
-- the rollback or resume path
+*   the task
+    
+*   the plan
+    
+*   the files changed
+    
+*   the commands run
+    
+*   the verifier used
+    
+*   the test results
+    
+*   the failure class
+    
+*   the stop reason
+    
+*   the rollback or resume path
+    
 
 This is not bureaucracy.
 
@@ -195,14 +217,22 @@ It means every task needs an explicit completion standard.
 
 Examples:
 
-- unit tests passed
-- typecheck passed
-- build passed
-- lint passed
-- integration test passed
-- benchmark passed
-- policy check passed
-- human approval required
+*   unit tests passed
+    
+*   typecheck passed
+    
+*   build passed
+    
+*   lint passed
+    
+*   integration test passed
+    
+*   benchmark passed
+    
+*   policy check passed
+    
+*   human approval required
+    
 
 The control plane should not ask, “Does the agent think it is done?”
 
@@ -222,12 +252,18 @@ If the agent is interrupted mid-edit, the repository may be left in an inconsist
 
 That creates a different operational problem:
 
-- half-finished changes
-- broken tests
-- unclear next steps
-- no diagnostic
-- no rollback trail
-- no clean handoff to a human
+*   half-finished changes
+    
+*   broken tests
+    
+*   unclear next steps
+    
+*   no diagnostic
+    
+*   no rollback trail
+    
+*   no clean handoff to a human
+    
 
 The real requirement is not just stopping.
 
@@ -237,12 +273,18 @@ A governed agent should stop at clean boundaries.
 
 At each boundary, the system can decide:
 
-- continue
-- stop
-- revert
-- escalate
-- request approval
-- rerun with a different policy
+*   continue
+    
+*   stop
+    
+*   revert
+    
+*   escalate
+    
+*   request approval
+    
+*   rerun with a different policy
+    
 
 The halt should leave a clear explanation:
 
@@ -298,13 +340,20 @@ It sits around agentic coding workflows and gives them the controls teams will n
 
 MartinLoop focuses on:
 
-- hard budget caps
-- JSONL run records
-- audit trails
-- failure classification
-- safe halt boundaries
-- test-verified completion
-- reproducible agent runs
+*   hard budget caps
+    
+*   JSONL run records
+    
+*   audit trails
+    
+*   failure classification
+    
+*   safe halt boundaries
+    
+*   test-verified completion
+    
+*   reproducible agent runs
+    
 
 The purpose is simple:
 
@@ -328,16 +377,26 @@ It should tell the story of the work in a way another engineer can inspect later
 
 A strong run record answers:
 
-- What was the objective?
-- What policy governed the run?
-- What budget was used?
-- What actions were taken?
-- What changed in the repo?
-- What verifier ran?
-- What failed?
-- What passed?
-- Why did the agent stop?
-- What should a human do next?
+*   What was the objective?
+    
+*   What policy governed the run?
+    
+*   What budget was used?
+    
+*   What actions were taken?
+    
+*   What changed in the repo?
+    
+*   What verifier ran?
+    
+*   What failed?
+    
+*   What passed?
+    
+*   Why did the agent stop?
+    
+*   What should a human do next?
+    
 
 That record turns an agent from a black box into an accountable workflow participant.
 
@@ -351,13 +410,20 @@ If agents are going to generate, modify, and verify code, they need an operation
 
 That layer should provide:
 
-- policy
-- budget
-- logs
-- verification
-- review
-- failure handling
-- reproducibility
+*   policy
+    
+*   budget
+    
+*   logs
+    
+*   verification
+    
+*   review
+    
+*   failure handling
+    
+*   reproducibility
+    
 
 That is the MartinLoop thesis.
 
@@ -369,12 +435,18 @@ It is governed agents.
 
 MartinLoop is most urgent for teams already experimenting with AI coding agents in real workflows:
 
-- platform teams
-- DevSecOps teams
-- AI infrastructure teams
-- engineering managers
-- open-source maintainers
-- developers using Claude Code, Codex, Cursor, Devin-style agents, or custom agent loops
+*   platform teams
+    
+*   DevSecOps teams
+    
+*   AI infrastructure teams
+    
+*   engineering managers
+    
+*   open-source maintainers
+    
+*   developers using Claude Code, Codex, Cursor, Devin-style agents, or custom agent loops
+    
 
 The need becomes obvious when agent usage moves from one developer experimenting locally to multiple people running agentic workflows across real repos.
 
