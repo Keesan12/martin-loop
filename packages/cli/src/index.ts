@@ -2,9 +2,20 @@ import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 
-import { createClaudeCliAdapter, createCodexCliAdapter, createStubDirectProviderAdapter } from "@martin/adapters";
+import {
+  createClaudeCliAdapter,
+  createCodexCliAdapter,
+  createStubDirectProviderAdapter,
+  createVerifierOnlyAdapter
+} from "@martin/adapters";
 import { runMartin, type MartinAdapter } from "@martin/core";
-import { buildPortfolioSnapshot, createLoopRecord, type LoopBudget, type LoopRecord } from "@martin/contracts";
+import {
+  buildPortfolioSnapshot,
+  createLoopRecord,
+  type LoopBudget,
+  type LoopRecord,
+  type MutationMode
+} from "@martin/contracts";
 
 export type RunCommandRequest = {
   workspaceId: string;
@@ -18,6 +29,7 @@ export type RunCommandRequest = {
   cwd?: string;
   model?: string;
   engine?: string;
+  mutationMode?: MutationMode;
   allowedPaths?: string[];
   deniedPaths?: string[];
   acceptanceCriteria?: string[];
@@ -96,7 +108,13 @@ export async function executeCli(args: string[]): Promise<{
       };
 
       const workingDirectory = parsed.request.cwd ?? readOption(args, "--cwd") ?? process.cwd();
-      const adapter = selectAdapter(args, workingDirectory, parsed.request.model, parsed.request.engine);
+      const adapter = selectAdapter(
+        args,
+        workingDirectory,
+        parsed.request.model,
+        parsed.request.engine,
+        parsed.request.mutationMode
+      );
 
       let result: Awaited<ReturnType<typeof runMartin>>;
       try {
@@ -107,6 +125,7 @@ export async function executeCli(args: string[]): Promise<{
             title: resolvedRequest.title,
             objective: resolvedRequest.objective,
             verificationPlan: resolvedRequest.verificationPlan,
+            ...(resolvedRequest.mutationMode ? { mutationMode: resolvedRequest.mutationMode } : {}),
             repoRoot: workingDirectory,
             ...(resolvedRequest.allowedPaths?.length ? { allowedPaths: resolvedRequest.allowedPaths } : {}),
             ...(resolvedRequest.deniedPaths?.length ? { deniedPaths: resolvedRequest.deniedPaths } : {}),
@@ -124,6 +143,7 @@ export async function executeCli(args: string[]): Promise<{
             title: resolvedRequest.title,
             objective: resolvedRequest.objective,
             verificationPlan: resolvedRequest.verificationPlan,
+            ...(resolvedRequest.mutationMode ? { mutationMode: resolvedRequest.mutationMode } : {}),
             repoRoot: workingDirectory
           },
           budget: resolvedRequest.budget,
@@ -380,6 +400,9 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
           request.cwd = next;
           index += 1;
           break;
+        case "--verify-only":
+          request.mutationMode = "verify_only";
+          break;
         case "--allow-path":
           if (next) {
             request.allowedPaths = [...(request.allowedPaths ?? []), next];
@@ -425,6 +448,7 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
         ...(request.cwd ? { cwd: request.cwd } : {}),
         ...(request.model ? { model: request.model } : {}),
         ...(request.engine ? { engine: request.engine } : {}),
+        ...(request.mutationMode ? { mutationMode: request.mutationMode } : {}),
         ...(request.allowedPaths?.length ? { allowedPaths: request.allowedPaths } : {}),
         ...(request.deniedPaths?.length ? { deniedPaths: request.deniedPaths } : {}),
         ...(request.acceptanceCriteria?.length ? { acceptanceCriteria: request.acceptanceCriteria } : {})
@@ -485,6 +509,7 @@ export function renderCliHelp(): string {
     "  --max-iterations <n>    Set the maximum number of attempts.",
     "  --max-tokens <n>        Set the maximum total token budget.",
     "  --verify <cmd>          Shell command to run as the verifier after each attempt.",
+    "  --verify-only           Skip the coding adapter and run the verifier only.",
     "  --allow-path <glob>     Restrict agent writes to this path pattern (repeatable).",
     "  --deny-path <glob>      Block agent from this path pattern (repeatable).",
     "  --accept <criterion>    Add an acceptance criterion to the prompt (repeatable).",
@@ -759,8 +784,13 @@ function selectAdapter(
   rawArgs: string[],
   workingDirectory: string,
   modelOverride?: string,
-  engineOverride?: string
+  engineOverride?: string,
+  mutationMode?: MutationMode
 ): MartinAdapter {
+  if (mutationMode === "verify_only") {
+    return createVerifierOnlyAdapter({ workingDirectory });
+  }
+
   if (process.env.MARTIN_LIVE === "false") {
     return createStubDirectProviderAdapter({
       label: "Stub adapter (MARTIN_LIVE=false)",

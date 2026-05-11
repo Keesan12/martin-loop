@@ -16,6 +16,7 @@ export interface CompilerAdapterRequest {
     objective: string;
     verificationPlan: string[];
     verificationStack?: LoopTask["verificationStack"];
+    mutationMode?: LoopTask["mutationMode"];
     repoRoot?: string;
     allowedPaths?: string[];
     deniedPaths?: string[];
@@ -36,6 +37,7 @@ export interface PromptPacket {
   contract: {
     objective: string;
     verificationPlan: string[];
+    mutationMode?: LoopTask["mutationMode"];
     allowedPaths?: string[];
     deniedPaths?: string[];
     acceptanceCriteria?: string[];
@@ -60,10 +62,16 @@ export function compilePromptPacket(request: CompilerAdapterRequest): PromptPack
     .filter((a) => a.failureClass && a.intervention)
     .map((a) => `${a.failureClass}:${a.intervention}`);
 
-  const guidanceParts: string[] = [
-    "Only modify files directly required to satisfy the contract.",
-    "Do not touch files outside the allowed paths."
-  ];
+  const guidanceParts: string[] =
+    request.context.mutationMode === "verify_only"
+      ? [
+          "Do not modify files.",
+          "Run the verifier only and report whether it passed."
+        ]
+      : [
+          "Only modify files directly required to satisfy the contract.",
+          "Do not touch files outside the allowed paths."
+        ];
 
   if (request.context.allowedPaths && request.context.allowedPaths.length > 0) {
     guidanceParts.push(
@@ -89,6 +97,7 @@ export function compilePromptPacket(request: CompilerAdapterRequest): PromptPack
     contract: {
       objective: redactSecretsFromText(request.context.objective),
       verificationPlan: request.context.verificationPlan,
+      ...(request.context.mutationMode ? { mutationMode: request.context.mutationMode } : {}),
       ...(request.context.allowedPaths ? { allowedPaths: request.context.allowedPaths } : {}),
       ...(request.context.deniedPaths ? { deniedPaths: request.context.deniedPaths } : {}),
       ...(request.context.acceptanceCriteria
