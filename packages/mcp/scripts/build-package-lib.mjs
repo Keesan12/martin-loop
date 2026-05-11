@@ -68,10 +68,14 @@ async function ensureWorkspaceArtifacts(rootDir) {
 
     await runCommand(
       pnpmCommand(),
-      ["--dir", rootDir, "--filter", facade.packageName, "build"],
+      workspaceBuildCommandArgs(facade.packageName),
       { cwd: rootDir },
     );
   }
+}
+
+export function workspaceBuildCommandArgs(packageName) {
+  return ["--filter", packageName, "build"];
 }
 
 async function copyFacadeDirectory(input) {
@@ -239,8 +243,8 @@ async function runCommand(command, args, options) {
   });
 }
 
-function createCommandLaunch(command, args) {
-  if (process.platform !== "win32") {
+export function createCommandLaunch(command, args, platform = process.platform) {
+  if (platform !== "win32") {
     return { command, args };
   }
 

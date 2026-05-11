@@ -11,6 +11,7 @@ import {
   type LoopArtifact,
   type LoopAttempt,
   type LoopBudget,
+  type MutationMode,
   type LoopRecord,
   type LoopTask,
   type PatchDecisionArtifact,
@@ -83,6 +84,7 @@ export type {
   PatchDecisionArtifact,
   PatchDecisionReasonCode,
   PatchScore,
+  MutationMode,
   RollbackBoundaryArtifact,
   RollbackBoundaryStrategy,
   RollbackFileSnapshot,
@@ -169,6 +171,7 @@ export interface MartinAdapterRequest {
     objective: string;
     verificationPlan: string[];
     verificationStack?: LoopTask["verificationStack"];
+    mutationMode?: MutationMode;
     /** Absolute path to the repository root. */
     repoRoot?: string;
     /** Glob patterns for files the agent may modify. Empty = no restriction. */
@@ -446,6 +449,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
   let currentAdapterIndex = 0;
   let currentAdapter = adapterChain[currentAdapterIndex] ?? input.adapter;
   let useCompressedContext = false;
+  const isVerifyOnly = input.task.mutationMode === "verify_only";
   const executionProfile = resolveExecutionProfile({
     executionProfile: input.task.executionProfile,
     allowedNetworkDomains: input.task.allowedNetworkDomains
@@ -759,6 +763,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         objective: loop.task.objective,
         verificationPlan: loop.task.verificationPlan,
         ...(loop.task.verificationStack ? { verificationStack: loop.task.verificationStack } : {}),
+        ...(loop.task.mutationMode ? { mutationMode: loop.task.mutationMode } : {}),
         ...(loop.task.repoRoot ? { repoRoot: loop.task.repoRoot } : {}),
         ...(loop.task.allowedPaths ? { allowedPaths: loop.task.allowedPaths } : {}),
         ...(loop.task.deniedPaths ? { deniedPaths: loop.task.deniedPaths } : {}),
@@ -990,6 +995,107 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     // a git repo) and silently return [], which would falsely trigger no_code_change.
     const changedFileEvidenceAvailable =
       result.execution?.changedFiles !== undefined || changedFiles.length > 0;
+
+    if (isVerifyOnly && changedFiles.length > 0) {
+      const patchDecision = evaluatePatchDecision({
+        verificationPassed: result.verification.passed,
+        previousVerifierScore,
+        verifierScore: result.verification.passed ? 1 : 0,
+        scopeViolationCount: changedFiles.length,
+        changedFileCount: changedFiles.length,
+        diffNovelty: 1,
+        diffStats: result.execution?.diffStats,
+        costUsd: getUsageUsd(result.usage),
+        summary: result.summary
+      });
+      const verifyOnlyExitDecision: ExitDecision = {
+        shouldExit: true,
+        lifecycleState: "human_escalation",
+        status: "exited",
+        reason: "Verify-only mode forbids file changes."
+      };
+      const rollbackOutcome = await restoreRollbackBoundary({
+        repoRoot: request.context.repoRoot,
+        boundary: rollbackBoundary,
+        restoredAt: attemptCompletedAt,
+        decision: patchDecision.decision
+      });
+
+      if (input.store) {
+        const verifyOnlyViolation: SafetyViolation = {
+          kind: "path_not_allowed",
+          message: `Verify-only mode forbids changed files: ${changedFiles.join(", ")}`,
+          file: changedFiles[0]
+        };
+        await input.store.writeAttemptArtifacts(loop.loopId, currentAttemptIndex, {
+          compiledContext,
+          leash: createLeashArtifact(
+            {
+              surface: "filesystem",
+              reason: verifyOnlyExitDecision.reason,
+              violations: [verifyOnlyViolation]
+            },
+            currentAttemptIndex
+          ),
+          patchScore: patchDecision.score,
+          patchDecision: toPatchDecisionArtifact(patchDecision),
+          ...(rollbackBoundary ? { rollbackBoundary } : {}),
+          ...(rollbackOutcome ? { rollbackOutcome } : {})
+        });
+        await input.store.appendLedger(
+          loop.loopId,
+          makeLedgerEvent({
+            kind: "safety.violations_found",
+            runId: loop.loopId,
+            attemptIndex: currentAttemptIndex,
+            payload: {
+              surface: "filesystem",
+              blocked: true,
+              attemptIndex: currentAttemptIndex,
+              violations: [
+                {
+                  kind: "path_not_allowed",
+                  message: verifyOnlyExitDecision.reason,
+                  files: changedFiles
+                }
+              ]
+            }
+          })
+        );
+        await input.store.appendLedger(
+          loop.loopId,
+          makeLedgerEvent({
+            kind: "attempt.discarded",
+            runId: loop.loopId,
+            attemptIndex: currentAttemptIndex,
+            payload: {
+              decision: patchDecision.decision,
+              reason: patchDecision.summary,
+              reasonCodes: patchDecision.reasonCodes,
+              score: patchDecision.score.score
+            }
+          })
+        );
+        await input.store.appendLedger(
+          loop.loopId,
+          makeLedgerEvent({
+            kind: "run.exited",
+            runId: loop.loopId,
+            payload: {
+              lifecycleState: verifyOnlyExitDecision.lifecycleState,
+              status: verifyOnlyExitDecision.status,
+              reason: verifyOnlyExitDecision.reason
+            }
+          })
+        );
+      }
+
+      return {
+        loop: finalizeLoop(loop, verifyOnlyExitDecision, now(), idFactory),
+        decision: verifyOnlyExitDecision
+      };
+    }
+
     const filesystemDecision = evaluateFilesystemLeash({
       repoRoot: request.context.repoRoot,
       changedFiles,
@@ -1210,8 +1316,10 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         previousVerifierScore,
         verifierScore: result.verification.passed ? 1 : 0,
         groundingViolationCount: groundingScanResult?.violations.length ?? 0,
-        changedFileCount: changedFileEvidenceAvailable ? changedFiles.length : undefined,
-        diffNovelty: changedFileEvidenceAvailable ? (changedFiles.length > 0 ? 1 : 0) : undefined,
+        changedFileCount:
+          !isVerifyOnly && changedFileEvidenceAvailable ? changedFiles.length : undefined,
+        diffNovelty:
+          !isVerifyOnly && changedFileEvidenceAvailable ? (changedFiles.length > 0 ? 1 : 0) : undefined,
         diffStats: result.execution?.diffStats,
         costUsd: getUsageUsd(result.usage),
         summary: result.summary
@@ -1471,7 +1579,7 @@ function getUsageProvenance(usage: MartinAdapterResult["usage"]): CostProvenance
 }
 
 function resolveChangedFiles(result: MartinAdapterResult, repoRoot?: string): string[] {
-  if (result.execution?.changedFiles?.length) {
+  if (result.execution?.changedFiles !== undefined) {
     return result.execution.changedFiles;
   }
 
