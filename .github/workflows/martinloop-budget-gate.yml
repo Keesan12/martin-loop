@@ -1,0 +1,57 @@
+name: MartinLoop Budget Gate
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  martinloop:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.17.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build workspace
+        run: pnpm build
+
+      - name: Run MartinLoop budget gate
+        env:
+          MARTIN_LIVE: "false"
+        run: |
+          pnpm run:cli -- run \
+            --cwd "$GITHUB_WORKSPACE" \
+            --config examples/github-actions-budget-gate/martin.config.yaml \
+            --workspace gh_budget_gate \
+            --project martinloop_examples \
+            --objective "Summarize the current repo state and stay inside the configured CI budget gate" \
+            --verify "pnpm --filter @martin/core test" \
+            --metadata trigger=github-actions \
+            --metadata example=budget-gate
+
+      - name: Inspect persisted run record
+        run: |
+          pnpm run:cli -- inspect --file "$HOME/.martin/runs/gh_budget_gate.jsonl"
+
+      - name: Upload run record artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: martinloop-budget-gate-run-record
+          path: ~/.martin/runs/gh_budget_gate.jsonl
+          if-no-files-found: warn
