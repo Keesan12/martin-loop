@@ -1,0 +1,11 @@
+policyProfile: ci_safe
+budget:
+  maxUsd: 3
+  softLimitUsd: 1.5
+  maxIterations: 2
+  maxTokens: 16000
+governance:
+  destructiveActionPolicy: approval
+  telemetryDestination: local-only
+  verifierRules:
+    - pnpm --filter @martin/core test

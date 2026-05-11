@@ -1,9 +1,12 @@
 ---
 title: "Your AI Coding Agent Is A Production Risk Until It Has A Control Plane"
+seoTitle: "AI Coding Agent Are a PRD Risk Until It Has A Control Plane"
+seoDescription: "AI coding agents become production risks when they can edit code, spend tokens, and claim completion without budget caps, audit logs, failure modes."
 datePublished: 2026-05-11T19:03:01.412Z
 cuid: cmp1kkgf400gf2dlce1w06g7l
 slug: your-ai-coding-agent-is-a-production-risk-until-it-has-a-control-plane
 cover: https://cdn.hashnode.com/uploads/covers/6a021686fca21b0d4b51c1b3/a906c120-2896-4967-b680-273ab012c886.jpg
+tags: security, devops, governance, ai-tools, ai-governance, agentic-ai
 
 ---
 
