@@ -1,6 +1,6 @@
 # Martin Loop Phase 13 OSS Core Boundary
 
-Generated: 2026-05-07T21:23:30.889Z
+Generated: 2026-05-11T21:27:27.422Z
 
 ## Verdict
 **GO**
@@ -30,7 +30,7 @@ Generated: 2026-05-07T21:23:30.889Z
 | @martin/core | packages/core | yes | n/a | @martin/contracts |
 | @martin/adapters | packages/adapters | yes | n/a | @martin/core |
 | @martin/cli | packages/cli | no | public | @martin/adapters, @martin/contracts, @martin/core |
-| @martin/mcp | packages/mcp | no | public | none |
+| @martinloop/mcp | packages/mcp | no | public | none |
 
 ## Non-OSS Workspace Packages
 | Package | Path | Reason |
