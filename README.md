@@ -348,6 +348,7 @@ Helpful docs:
 
 - [OSS quickstart](./docs/oss/QUICKSTART.md)
 - [OSS examples](./docs/oss/EXAMPLES.md)
+- [Ralph-style loop safety guide](./docs/oss/RALPH-LOOP-SAFETY.md)
 - [OSS boundary report](./docs/oss/OSS-BOUNDARY-REPORT.md)
 - [Release surface report](./docs/oss/RELEASE-SURFACE-REPORT.md)
 
