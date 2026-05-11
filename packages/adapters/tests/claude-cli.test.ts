@@ -1,12 +1,18 @@
 import { describe, expect, it } from "vitest";
+import { spawnSync } from "node:child_process";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import type { MartinAdapterRequest } from "@martin/core";
 
 import {
   createAgentCliAdapter,
   createClaudeCliAdapter,
-  createCodexCliAdapter
+  createCodexCliAdapter,
+  createVerifierOnlyAdapter
 } from "../src/index.js";
+import { splitCommand } from "../src/cli-bridge.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -220,6 +226,14 @@ describe("createAgentCliAdapter", () => {
     expect(result.verification.summary).toContain("No verification commands");
   });
 
+  it("preserves quoted verifier arguments and executable paths when tokenizing verification commands", () => {
+    expect(splitCommand(`"${process.execPath}" -e "process.exit(0)"`)).toEqual([
+      process.execPath,
+      "-e",
+      "process.exit(0)"
+    ]);
+  });
+
   it("returns estimated cost provenance when the CLI does not emit settled usage", async () => {
     const adapter = createAgentCliAdapter({
       command: process.execPath,
@@ -244,6 +258,67 @@ describe("createAgentCliAdapter", () => {
     expect(result.status).toBe("completed");
     expect(result.usage.provenance).toBe("estimated");
     expect(result.usage.estimatedUsd).toBeGreaterThan(0);
+  });
+});
+
+describe("splitCommand", () => {
+  it("preserves backslashes inside quoted Windows executable paths", () => {
+    const command =
+      '"C:\\Users\\Torram\\OneDrive\\Documents\\Codex Main\\node.exe" -e "process.exit(0)"';
+
+    expect(splitCommand(command)).toEqual([
+      "C:\\Users\\Torram\\OneDrive\\Documents\\Codex Main\\node.exe",
+      "-e",
+      "process.exit(0)",
+    ]);
+  });
+});
+
+describe("createVerifierOnlyAdapter", () => {
+  it("reports verifier-created file changes instead of treating verify-only as clean", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-verify-only-"));
+
+    try {
+      spawnSync("git", ["init"], { cwd: directory, stdio: "ignore" });
+      await writeFile(join(directory, "tracked.txt"), "original", "utf8");
+      spawnSync("git", ["add", "tracked.txt"], { cwd: directory, stdio: "ignore" });
+      spawnSync(
+        "git",
+        [
+          "-c",
+          "user.email=martin@example.com",
+          "-c",
+          "user.name=Martin Test",
+          "commit",
+          "-m",
+          "seed"
+        ],
+        { cwd: directory, stdio: "ignore" }
+      );
+
+      const adapter = createVerifierOnlyAdapter({ workingDirectory: directory });
+      const result = await adapter.execute(
+        makeRequest({
+          context: {
+            taskTitle: "verify only",
+            objective: "Run verification only",
+            verificationPlan: [
+              `"${process.execPath}" -e "require('node:fs').writeFileSync('tracked.txt','changed')"`
+            ],
+            mutationMode: "verify_only",
+            focus: "verify only",
+            remainingBudgetUsd: 8,
+            remainingIterations: 1,
+            remainingTokens: 10_000
+          }
+        })
+      );
+
+      expect(result.verification.passed).toBe(true);
+      expect(result.execution?.changedFiles).toContain("tracked.txt");
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
   });
 });
 

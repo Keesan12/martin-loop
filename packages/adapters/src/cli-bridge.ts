@@ -117,9 +117,8 @@ export async function runVerification(
   const failedSteps: string[] = [];
 
   for (const step of steps) {
-    const parts = step.command.trim().split(/\s+/u);
-    const bin = parts[0];
-    const args = parts.slice(1);
+    const parts = splitCommand(step.command);
+    const [bin, ...args] = parts;
 
     if (!bin) {
       continue;
@@ -185,6 +184,58 @@ export async function readGitExecutionArtifacts(
 
 function shouldUseWindowsShell(command: string): boolean {
   return process.platform === "win32" && !isAbsolute(command);
+}
+
+export function splitCommand(command: string): string[] {
+  const tokens: string[] = [];
+  let current = "";
+  let quote: '"' | "'" | undefined;
+
+  const trimmed = command.trim();
+  for (let index = 0; index < trimmed.length; index += 1) {
+    const char = trimmed[index];
+    const next = trimmed[index + 1];
+    if (char === undefined) {
+      continue;
+    }
+
+    if (char === "\\") {
+      const canEscape = quote !== "'" && (next === quote || next === "\\");
+      if (canEscape && next !== undefined) {
+        current += next;
+        index += 1;
+        continue;
+      }
+    }
+
+    if (char === '"' || char === "'") {
+      if (!quote) {
+        quote = char;
+        continue;
+      }
+
+      if (quote === char) {
+        quote = undefined;
+        continue;
+      }
+    }
+
+    if (!quote && /\s/u.test(char)) {
+      if (current.length > 0) {
+        tokens.push(current);
+        current = "";
+      }
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (current.length > 0) {
+    tokens.push(current);
+  }
+
+  return tokens;
 }
 
 function truncate(text: string, maxLength: number): string {
