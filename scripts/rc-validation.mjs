@@ -29,6 +29,7 @@ const RC_VALIDATION_STEPS = [
   ["pnpm", "--filter", "@martin/control-plane", "build"],
   ["pnpm", "build"],
   ["pnpm", "public:smoke"],
+  ["pnpm", "mcp:published:smoke"],
 ];
 
 export function createRcValidationPlan(options = {}) {

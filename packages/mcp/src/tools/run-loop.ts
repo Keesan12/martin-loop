@@ -1,12 +1,12 @@
-import { resolve } from "node:path";
-
 import {
   createClaudeCliAdapter,
   createCodexCliAdapter,
   createStubDirectProviderAdapter
 } from "@martin/adapters";
-import { runMartin } from "@martin/core";
+import { createFileRunStore, resolveRunsRoot, runMartin } from "@martin/core";
 import { DEFAULT_BUDGET, type LoopBudget } from "@martin/contracts";
+
+import { normalizeSafePathPatterns, resolveSafeRepoRoot } from "../server-validation.js";
 
 export interface RunLoopInput {
   objective: string;
@@ -34,9 +34,11 @@ export interface RunLoopOutput {
 }
 
 export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
-  const workingDirectory = resolve(input.workingDirectory ?? process.cwd());
+  const workingDirectory = resolveSafeRepoRoot(input.workingDirectory);
   const engine = input.engine ?? "claude";
   const model = input.model;
+  const allowedPaths = normalizeSafePathPatterns(input.allowedPaths, "allowedPaths");
+  const deniedPaths = normalizeSafePathPatterns(input.deniedPaths, "deniedPaths");
 
   const adapter =
     process.env.MARTIN_LIVE === "false"
@@ -64,13 +66,14 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
   const result = await runMartin({
     workspaceId: input.workspaceId ?? "ws_mcp",
     projectId: input.projectId ?? "proj_mcp",
+    store: createFileRunStore({ runsRoot: resolveRunsRoot(process.env) }),
     task: {
       title: input.objective.slice(0, 100),
       objective: input.objective,
       verificationPlan: input.verificationPlan ?? [],
       repoRoot: workingDirectory,
-      ...(input.allowedPaths?.length ? { allowedPaths: input.allowedPaths } : {}),
-      ...(input.deniedPaths?.length ? { deniedPaths: input.deniedPaths } : {})
+      ...(allowedPaths ? { allowedPaths } : {}),
+      ...(deniedPaths ? { deniedPaths } : {})
     },
     budget,
     adapter

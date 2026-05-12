@@ -1,10 +1,12 @@
-import { readFile } from "node:fs/promises";
-
 import { buildPortfolioSnapshot, type LoopRecord, type PortfolioSnapshot } from "@martin/contracts";
 
+import { loadLoopRecordsForInspect } from "./run-store.js";
+
 export interface InspectLoopInput {
-  /** Absolute or relative path to a JSON file containing a LoopRecord or LoopRecord[]. */
-  file: string;
+  /** Optional path to a JSON, JSONL, or run-store directory under the Martin runs root. */
+  file?: string;
+  /** Optional Martin runs directory. Defaults to MARTIN_RUNS_DIR or ~/.martin/runs. */
+  runsDir?: string;
 }
 
 export interface InspectLoopOutput {
@@ -14,14 +16,11 @@ export interface InspectLoopOutput {
 }
 
 export async function inspectLoopTool(input: InspectLoopInput): Promise<InspectLoopOutput> {
-  const raw = await readFile(input.file, "utf8");
-  const parsed: unknown = JSON.parse(raw);
-  const loops: LoopRecord[] = Array.isArray(parsed)
-    ? (parsed as LoopRecord[])
-    : [parsed as LoopRecord];
+  const inspection = await loadLoopRecordsForInspect(input);
+  const loops = inspection.loops as LoopRecord[];
 
   return {
-    source: input.file,
+    source: inspection.source,
     loopCount: loops.length,
     portfolio: buildPortfolioSnapshot(loops)
   };

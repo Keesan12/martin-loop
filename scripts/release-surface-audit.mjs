@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 const REQUIRED_RC_GATE_COMMANDS = [
   "pnpm oss:validate",
   "pnpm public:smoke",
+  "pnpm mcp:published:smoke",
   "pnpm repo:smoke",
   "pnpm rc:validate",
   "pnpm pilot:prep:validate",

@@ -1,20 +1,29 @@
 {
   "name": "martin-loop",
   "private": false,
-  "version": "0.1.5",
+  "version": "1.3.0",
   "type": "module",
   "description": "Martin Loop dual-track monorepo for the OSS runtime and hosted SaaS control plane.",
+  "packageManager": "pnpm@10.33.0",
+  "keywords": [
+    "ai",
+    "agent",
+    "coding-loop",
+    "llm",
+    "automation",
+    "cli"
+  ],
+  "author": "Vakeesan Mahalingam and Gobi Shanthan",
   "license": "MIT",
+  "homepage": "https://martinloop.com/",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Keesan12/martin-loop.git"
+    "url": "https://github.com/Keesan12/MartinLoop.git"
   },
-  "packageManager": "pnpm@10.17.1",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "martin-loop": "./dist/bin/martin-loop.js",
-    "martin": "./dist/bin/martin-loop.js"
+    "martin-loop": "./dist/bin/martin-loop.js"
   },
   "exports": {
     ".": {
@@ -25,38 +34,100 @@
   },
   "files": [
     "dist",
-    "demo",
     "README.md",
-    "docs/oss",
-    "docs/distribution"
+    "CODE_OF_CONDUCT.md",
+    "docs/assets",
+    "docs/oss"
   ],
   "publishConfig": {
     "access": "public"
   },
+  "bundleDependencies": [
+    "@martin/adapters",
+    "@martin/audit-exporter",
+    "@martin/cli",
+    "@martin/contracts",
+    "@martin/core",
+    "@martin/headlessos-core",
+    "@martin/policy",
+    "@martin/sdk",
+    "@martin/trace-intelligence"
+  ],
   "scripts": {
     "build": "pnpm -r build && node ./scripts/build-public-facade.mjs",
-    "prepublishOnly": "pnpm build",
-    "test": "pnpm -r test",
+    "test": "pnpm -r --filter=!@martin/audit-proof-tests test",
+    "test:audit-proof": "pnpm --filter @martin/audit-proof-tests test",
     "lint": "pnpm -r lint",
     "oss:validate": "node ./scripts/oss-boundary.mjs",
+    "agents:validate": "node ./scripts/validate-agent-discovery.mjs",
+    "agents:selftest": "node ./scripts/agent-readiness-selftest.mjs",
+    "db:verify-schema": "node ./scripts/db-verify-schema.mjs",
     "release:surface:validate": "node ./scripts/release-surface-audit.mjs",
     "pilot:prep:validate": "node ./scripts/pilot-prep-audit.mjs",
+    "pilot:intake:validate": "node ./scripts/pilot-intake-validate.mjs",
+    "pilot:live:preflight": "node ./scripts/pilot-live-preflight.mjs",
+    "pilot:review:validate": "node ./scripts/pilot-review-pack.mjs --self-check",
+    "pilot:gate:review": "node ./scripts/pilot-gate-review.mjs",
     "public:smoke": "node ./scripts/public-facade-smoke.mjs",
+    "mcp:published:smoke": "pnpm --filter @martinloop/mcp smoke:published",
+    "examples:validate": "node ./scripts/examples-validate.mjs",
     "repo:smoke": "node ./scripts/repo-backed-smoke.mjs",
     "rc:validate": "node ./scripts/rc-validation.mjs",
     "rc:validate:install": "node ./scripts/rc-validation.mjs --install",
+    "release:truth:validate": "node ./scripts/release-truth-audit.mjs",
+    "release:package:validate": "node ./scripts/release-package-validate.mjs",
+    "release:launch:validate": "node ./scripts/release-launch-readiness.mjs",
+    "release:gate:review": "node ./scripts/release-gate-review.mjs",
+    "release:scorecard": "node ./scripts/release-scorecard.mjs",
+    "release:audit:gaps": "node ./scripts/release-audit-gap-manifest.mjs",
+    "release:audit:handoff": "node ./scripts/package-external-audit-handoff.mjs",
+    "claims:lint": "node ./scripts/claim-lint.mjs",
+    "claims:compile": "node ./scripts/claim-compile.mjs",
+    "claims:trace-autonomy:gate": "node --import tsx/esm ./scripts/trace-autonomy-certification.ts --require-claim-allowed",
+    "claims:trace-autonomy:audit-request": "node --import tsx/esm ./scripts/trace-autonomy-certification.ts --write-audit-signoff-request .martin/runs/trace-autonomy-certification/audit-signoff-request.json",
+    "claims:trace-autonomy:run": "node --import tsx/esm ./scripts/trace-autonomy-certification-runner.ts",
+    "research:corpus:build": "node --import tsx/esm ./scripts/research-corpus/build.ts",
+    "research:corpus:report": "node --import tsx/esm ./scripts/research-corpus/report.ts",
+    "release:truth:compile": "node ./scripts/release-truth-compiler.mjs",
     "release:matrix:local": "node ./scripts/release-matrix.mjs",
     "dev:control-plane": "pnpm --filter @martin/control-plane dev",
     "run:cli": "pnpm --filter @martin/cli dev",
     "eval": "pnpm --filter @martin/benchmarks eval",
-    "dev:dashboard": "node apps/local-dashboard/server.js"
+    "eval:ralphy-stress": "pnpm --filter @martin/benchmarks eval:ralphy-stress",
+    "eval:known-bad-world": "node --import tsx/esm scripts/eval-known-bad-world.ts",
+    "dev:dashboard": "node apps/local-dashboard/server.js",
+    "post-phase15:handoff": "node ./scripts/package-post-phase15-handoff.mjs",
+    "eval:gate-check": "pnpm --filter @martin/sdk build && node --import tsx/esm scripts/eval-gate-check.ts",
+    "eval:case-studies": "node --import tsx/esm scripts/eval-case-studies.ts",
+    "eval:phase23": "pnpm --filter @martin/benchmarks phase23",
+    "security:deepsec:trial": "node --import tsx/esm ./scripts/security/deepsec-bounded-audit.ts",
+    "headless:worker:run": "node --import tsx/esm scripts/run-headless-worker.ts",
+    "headless:postgres:proof": "node --import tsx/esm scripts/headlessos-postgres-proof.ts",
+    "headless:live:proof": "node ./scripts/headlessos-live-proof.mjs",
+    "headless:handoff:package": "node ./scripts/package-headlessos-handoff.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.13.10",
+    "@types/pg": "^8.20.0",
     "@types/react": "^19.0.12",
     "@types/react-dom": "^19.0.5",
+    "pg": "^8.20.0",
     "tsx": "^4.19.3",
     "typescript": "^5.8.2",
     "vitest": "^3.0.8"
-  }
+  },
+  "dependencies": {
+    "@open-policy-agent/opa-wasm": "^1.10.0",
+    "@opentelemetry/api-logs": "^0.214.0",
+    "@opentelemetry/exporter-logs-otlp-http": "^0.214.0",
+    "@opentelemetry/resources": "^2.6.1",
+    "@opentelemetry/sdk-logs": "^0.214.0",
+    "@opentelemetry/semantic-conventions": "^1.38.0",
+    "ts-morph": "^21.0.0"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*",
+    "benchmarks"
+  ]
 }

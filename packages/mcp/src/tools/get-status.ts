@@ -1,9 +1,18 @@
-import { type LoopRecord } from "@martin/contracts";
 import { evaluateCostGovernor } from "@martin/core";
+
+import { loadLoopRecordForStatus } from "./run-store.js";
 
 export interface GetStatusInput {
   /** JSON-serialized LoopRecord. */
-  loopJson: string;
+  loopJson?: string;
+  /** Optional path to a JSON, JSONL, or run-store directory under the Martin runs root. */
+  file?: string;
+  /** Optional loop identifier under the Martin runs root. */
+  loopId?: string;
+  /** Optional Martin runs directory. Defaults to MARTIN_RUNS_DIR or ~/.martin/runs. */
+  runsDir?: string;
+  /** Load the newest loop record from the runs directory. */
+  latest?: boolean;
 }
 
 export interface GetStatusOutput {
@@ -20,12 +29,20 @@ export interface GetStatusOutput {
   remainingTokens: number;
 }
 
-export function getStatusTool(input: GetStatusInput): GetStatusOutput {
-  const loop = JSON.parse(input.loopJson) as LoopRecord;
+export async function getStatusTool(input: GetStatusInput): Promise<GetStatusOutput> {
+  const resolved = await loadLoopRecordForStatus(input);
+  const loop = resolved.loop;
 
   const costState = evaluateCostGovernor({
     budget: loop.budget,
-    cost: loop.cost,
+    cost: {
+      actualUsd: loop.cost.actualUsd,
+      avoidedUsd: loop.cost.avoidedUsd ?? 0,
+      tokensIn: loop.cost.tokensIn,
+      tokensOut: loop.cost.tokensOut,
+      thinkingTokensOut: 0,
+      childCostUsd: 0
+    },
     attemptsUsed: loop.attempts.length
   });
 
@@ -35,7 +52,7 @@ export function getStatusTool(input: GetStatusInput): GetStatusOutput {
     lifecycleState: loop.lifecycleState,
     attempts: loop.attempts.length,
     costUsd: loop.cost.actualUsd,
-    avoidedUsd: loop.cost.avoidedUsd,
+    avoidedUsd: loop.cost.avoidedUsd ?? 0,
     pressure: costState.pressure,
     shouldStop: costState.shouldStop,
     remainingBudgetUsd: costState.remainingBudgetUsd,

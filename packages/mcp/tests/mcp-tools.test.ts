@@ -1,4 +1,4 @@
-import { writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -39,14 +39,30 @@ function makeLoopRecord(overrides: { costUsd?: number; avoidedUsd?: number } = {
   return loop;
 }
 
+async function withRunsRoot<T>(fn: (runsRoot: string) => Promise<T>): Promise<T> {
+  const previousRunsRoot = process.env.MARTIN_RUNS_DIR;
+  const runsRoot = join(tmpdir(), `martin-mcp-runs-${Date.now()}`);
+  process.env.MARTIN_RUNS_DIR = runsRoot;
+  await mkdir(runsRoot, { recursive: true });
+  try {
+    return await fn(runsRoot);
+  } finally {
+    if (previousRunsRoot === undefined) {
+      delete process.env.MARTIN_RUNS_DIR;
+    } else {
+      process.env.MARTIN_RUNS_DIR = previousRunsRoot;
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // martin_status
 // ---------------------------------------------------------------------------
 
 describe("getStatusTool", () => {
-  it("returns correct loop metadata and cost state", () => {
+  it("returns correct loop metadata and cost state from inline JSON", async () => {
     const loop = makeLoopRecord({ costUsd: 3 });
-    const result = getStatusTool({ loopJson: JSON.stringify(loop) });
+    const result = await getStatusTool({ loopJson: JSON.stringify(loop) });
 
     expect(result.loopId).toBe(loop.loopId);
     expect(result.status).toBe("queued");
@@ -58,24 +74,83 @@ describe("getStatusTool", () => {
     expect(result.remainingBudgetUsd).toBeCloseTo(7);
   });
 
-  it("reports soft_limit pressure when cost exceeds soft limit", () => {
+  it("reports soft_limit pressure when cost exceeds soft limit", async () => {
     const loop = makeLoopRecord({ costUsd: 7 });
-    const result = getStatusTool({ loopJson: JSON.stringify(loop) });
+    const result = await getStatusTool({ loopJson: JSON.stringify(loop) });
 
     expect(result.pressure).toBe("soft_limit");
     expect(result.shouldStop).toBe(false);
   });
 
-  it("reports hard_limit and shouldStop when cost exceeds maxUsd", () => {
+  it("reports hard_limit and shouldStop when cost exceeds maxUsd", async () => {
     const loop = makeLoopRecord({ costUsd: 11 });
-    const result = getStatusTool({ loopJson: JSON.stringify(loop) });
+    const result = await getStatusTool({ loopJson: JSON.stringify(loop) });
 
     expect(result.pressure).toBe("hard_limit");
     expect(result.shouldStop).toBe(true);
   });
 
-  it("throws on invalid JSON", () => {
-    expect(() => getStatusTool({ loopJson: "not valid json" })).toThrow();
+  it("throws on invalid JSON", async () => {
+    await expect(getStatusTool({ loopJson: "not valid json" })).rejects.toThrow();
+  });
+
+  it("loads the latest loop record from a JSONL file", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const older = {
+        ...makeLoopRecord({ costUsd: 1 }),
+        createdAt: "2026-05-01T00:00:00.000Z",
+        updatedAt: "2026-05-01T00:00:00.000Z"
+      };
+      const newer = {
+        ...makeLoopRecord({ costUsd: 4 }),
+        createdAt: "2026-05-02T00:00:00.000Z",
+        updatedAt: "2026-05-02T00:00:00.000Z"
+      };
+      const file = join(runsRoot, "workspace.jsonl");
+      await writeFile(file, `${JSON.stringify(older)}\n${JSON.stringify(newer)}\n`, "utf8");
+
+      const result = await getStatusTool({ file });
+
+      expect(result.loopId).toBe(newer.loopId);
+      expect(result.costUsd).toBe(4);
+    });
+  });
+
+  it("loads the latest run from the configured runs root", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const older = {
+        ...makeLoopRecord({ costUsd: 2 }),
+        createdAt: "2026-05-01T00:00:00.000Z",
+        updatedAt: "2026-05-01T00:00:00.000Z"
+      };
+      const newer = {
+        ...makeLoopRecord({ costUsd: 5 }),
+        createdAt: "2026-05-03T00:00:00.000Z",
+        updatedAt: "2026-05-03T00:00:00.000Z"
+      };
+      await mkdir(join(runsRoot, older.loopId), { recursive: true });
+      await mkdir(join(runsRoot, newer.loopId), { recursive: true });
+      await writeFile(join(runsRoot, older.loopId, "loop-record.json"), JSON.stringify(older), "utf8");
+      await writeFile(join(runsRoot, newer.loopId, "loop-record.json"), JSON.stringify(newer), "utf8");
+
+      const result = await getStatusTool({ latest: true });
+
+      expect(result.loopId).toBe(newer.loopId);
+      expect(result.costUsd).toBe(5);
+    });
+  });
+
+  it("loads a canonical loop record by loopId", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const loop = makeLoopRecord({ costUsd: 2.75 });
+      await mkdir(join(runsRoot, loop.loopId), { recursive: true });
+      await writeFile(join(runsRoot, loop.loopId, "loop-record.json"), JSON.stringify(loop), "utf8");
+
+      const result = await getStatusTool({ loopId: loop.loopId });
+
+      expect(result.loopId).toBe(loop.loopId);
+      expect(result.costUsd).toBe(2.75);
+    });
   });
 });
 
@@ -85,34 +160,70 @@ describe("getStatusTool", () => {
 
 describe("inspectLoopTool", () => {
   it("reads a single loop record file and returns portfolio snapshot", async () => {
-    const loop = makeLoopRecord({ costUsd: 2.5, avoidedUsd: 1 });
-    const file = join(tmpdir(), `martin-test-${Date.now()}.json`);
-    await writeFile(file, JSON.stringify(loop), "utf8");
+    await withRunsRoot(async (runsRoot) => {
+      const loop = makeLoopRecord({ costUsd: 2.5, avoidedUsd: 1 });
+      const file = join(runsRoot, "loop_001", "loop-record.json");
+      await mkdir(join(runsRoot, "loop_001"), { recursive: true });
+      await writeFile(file, JSON.stringify(loop), "utf8");
 
-    const result = await inspectLoopTool({ file });
+      const result = await inspectLoopTool({ file });
 
-    expect(result.source).toBe(file);
-    expect(result.loopCount).toBe(1);
-    expect(result.portfolio.totalActualUsd).toBe(2.5);
-    expect(result.portfolio.totalAvoidedUsd).toBe(1);
-    expect(result.portfolio.totalTokensIn).toBe(400);
+      expect(result.source).toBe(file);
+      expect(result.loopCount).toBe(1);
+      expect(result.portfolio.totalActualUsd).toBe(2.5);
+      expect(result.portfolio.totalAvoidedUsd).toBe(1);
+      expect(result.portfolio.totalTokensIn).toBe(400);
+    });
   });
 
   it("reads an array of loop records", async () => {
-    const loops = [makeLoopRecord({ costUsd: 1 }), makeLoopRecord({ costUsd: 2 })];
-    const file = join(tmpdir(), `martin-test-arr-${Date.now()}.json`);
-    await writeFile(file, JSON.stringify(loops), "utf8");
+    await withRunsRoot(async (runsRoot) => {
+      const loops = [makeLoopRecord({ costUsd: 1 }), makeLoopRecord({ costUsd: 2 })];
+      const file = join(runsRoot, "aggregate", "loops.json");
+      await mkdir(join(runsRoot, "aggregate"), { recursive: true });
+      await writeFile(file, JSON.stringify(loops), "utf8");
 
-    const result = await inspectLoopTool({ file });
+      const result = await inspectLoopTool({ file });
 
-    expect(result.loopCount).toBe(2);
-    expect(result.portfolio.totalActualUsd).toBe(3);
+      expect(result.loopCount).toBe(2);
+      expect(result.portfolio.totalActualUsd).toBe(3);
+    });
   });
 
-  it("throws when file does not exist", async () => {
-    await expect(
-      inspectLoopTool({ file: "/tmp/martin-nonexistent-xyzabc.json" })
-    ).rejects.toThrow();
+  it("reads legacy JSONL loop records", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const loops = [makeLoopRecord({ costUsd: 1 }), makeLoopRecord({ costUsd: 2 })];
+      const file = join(runsRoot, "aggregate.jsonl");
+      await writeFile(file, `${JSON.stringify(loops[0])}\n${JSON.stringify(loops[1])}\n`, "utf8");
+
+      const result = await inspectLoopTool({ file });
+
+      expect(result.loopCount).toBe(2);
+      expect(result.portfolio.totalActualUsd).toBe(3);
+    });
+  });
+
+  it("defaults to the Martin run store when no selector is provided", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const loop = makeLoopRecord({ costUsd: 2.5, avoidedUsd: 0.5 });
+      await mkdir(join(runsRoot, loop.loopId), { recursive: true });
+      await writeFile(join(runsRoot, loop.loopId, "loop-record.json"), JSON.stringify(loop), "utf8");
+
+      const result = await inspectLoopTool({});
+
+      expect(result.source).toBe(runsRoot);
+      expect(result.loopCount).toBe(1);
+      expect(result.portfolio.totalActualUsd).toBe(2.5);
+    });
+  });
+
+  it("rejects files outside the Martin run store", async () => {
+    await withRunsRoot(async () => {
+      const file = join(tmpdir(), `martin-outside-${Date.now()}.json`);
+      await writeFile(file, JSON.stringify(makeLoopRecord()), "utf8");
+
+      await expect(inspectLoopTool({ file })).rejects.toThrow("Invalid file.");
+    });
   });
 });
 
@@ -129,6 +240,8 @@ describe("runLoopTool", () => {
     try {
       const result = await runLoopTool({
         objective: "Add a console.log to index.ts",
+        allowedPaths: ["src/**"],
+        deniedPaths: ["docs/security/**"],
         verificationPlan: [],
         maxIterations: 1,
         maxUsd: 5
@@ -192,6 +305,38 @@ describe("runLoopTool", () => {
         process.env.MARTIN_LIVE = originalEnv;
       }
     }
+  });
+
+  it("persists repoRoot and path constraints into the loop record", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const originalEnv = process.env.MARTIN_LIVE;
+      process.env.MARTIN_LIVE = "false";
+
+      try {
+        const result = await runLoopTool({
+          objective: "Scope-limited change",
+          workingDirectory: ".",
+          allowedPaths: ["src/**"],
+          deniedPaths: ["docs/**"],
+          verificationPlan: [],
+          maxIterations: 1,
+          maxUsd: 1
+        });
+
+        const loopRecordPath = join(runsRoot, result.loopId, "loop-record.json");
+        const persisted = JSON.parse(await readFile(loopRecordPath, "utf8"));
+
+        expect(persisted.task.repoRoot).toBe(process.cwd());
+        expect(persisted.task.allowedPaths).toEqual(["src/**"]);
+        expect(persisted.task.deniedPaths).toEqual(["docs/**"]);
+      } finally {
+        if (originalEnv === undefined) {
+          delete process.env.MARTIN_LIVE;
+        } else {
+          process.env.MARTIN_LIVE = originalEnv;
+        }
+      }
+    });
   });
 });
 

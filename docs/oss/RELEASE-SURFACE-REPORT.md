@@ -1,6 +1,6 @@
 # Martin Loop Phase 13 Release Surface Audit
 
-Generated: 2026-05-11T21:47:37.407Z
+Generated: 2026-05-12T16:27:49.701Z
 
 ## Verdict
 **GO**
@@ -14,6 +14,7 @@ Generated: 2026-05-11T21:47:37.407Z
 ## RC Gate Commands
 - `pnpm oss:validate`
 - `pnpm public:smoke`
+- `pnpm mcp:published:smoke`
 - `pnpm repo:smoke`
 - `pnpm rc:validate`
 - `pnpm pilot:prep:validate`
