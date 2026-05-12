@@ -29,10 +29,19 @@ export async function runSubprocess(
 ): Promise<SubprocessResult> {
   return new Promise((resolve) => {
     let timedOut = false;
+    let settled = false;
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
 
     const stdinMode = options.stdinData !== undefined ? "pipe" : "ignore";
+
+    const resolveOnce = (result: SubprocessResult) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      resolve(result);
+    };
 
     let proc: ChildProcess;
     try {
@@ -44,18 +53,13 @@ export async function runSubprocess(
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      resolve({
+      resolveOnce({
         exitCode: 1,
         stdout: "",
         stderr: message,
         timedOut: false
       });
       return;
-    }
-
-    if (options.stdinData !== undefined && proc.stdin) {
-      proc.stdin.write(options.stdinData, "utf8");
-      proc.stdin.end();
     }
 
     proc.stdout?.on("data", (chunk: Buffer) => {
@@ -66,14 +70,33 @@ export async function runSubprocess(
       stderrChunks.push(chunk);
     });
 
+    proc.stdin?.on("error", (error: NodeJS.ErrnoException) => {
+      // Some CLIs exit before consuming stdin in tests and on fast-fail paths.
+      // Treat the closed pipe as a handled subprocess lifecycle condition.
+      if (error.code === "EPIPE") {
+        return;
+      }
+      stderrChunks.push(Buffer.from(`${error.message}\n`, "utf8"));
+    });
+
     const timer = setTimeout(() => {
       timedOut = true;
       proc.kill("SIGTERM");
     }, options.timeoutMs);
 
+    proc.on("error", (error) => {
+      clearTimeout(timer);
+      resolveOnce({
+        exitCode: 1,
+        stdout: "",
+        stderr: error.message,
+        timedOut: false
+      });
+    });
+
     proc.on("close", (code) => {
       clearTimeout(timer);
-      resolve({
+      resolveOnce({
         exitCode: code ?? 1,
         stdout: Buffer.concat(stdoutChunks).toString("utf8"),
         stderr: Buffer.concat(stderrChunks).toString("utf8"),
@@ -81,15 +104,22 @@ export async function runSubprocess(
       });
     });
 
-    proc.on("error", (error) => {
-      clearTimeout(timer);
-      resolve({
-        exitCode: 1,
-        stdout: "",
-        stderr: error.message,
-        timedOut: false
-      });
-    });
+    if (options.stdinData !== undefined && proc.stdin) {
+      try {
+        proc.stdin.end(options.stdinData, "utf8");
+      } catch (error) {
+        const stdinError = error as NodeJS.ErrnoException;
+        if (stdinError.code !== "EPIPE") {
+          clearTimeout(timer);
+          resolveOnce({
+            exitCode: 1,
+            stdout: Buffer.concat(stdoutChunks).toString("utf8"),
+            stderr: stdinError.message,
+            timedOut: false
+          });
+        }
+      }
+    }
   });
 }
 

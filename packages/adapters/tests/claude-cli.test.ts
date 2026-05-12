@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { PassThrough } from "node:stream";
+import { PassThrough, Writable } from "node:stream";
 import type { ChildProcess, SpawnOptions } from "node:child_process";
 
 import { describe, expect, it } from "vitest";
@@ -17,7 +17,7 @@ import {
   createVerifierOnlyAdapter,
   type SpawnLike
 } from "../src/index.js";
-import { splitCommand } from "../src/cli-bridge.js";
+import { runSubprocess, splitCommand } from "../src/cli-bridge.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -337,6 +337,45 @@ describe("splitCommand", () => {
       "-e",
       "process.exit(0)",
     ]);
+  });
+});
+
+describe("runSubprocess", () => {
+  it("handles closed stdin pipes without surfacing an unhandled EPIPE", async () => {
+    const spawnImpl: SpawnLike = () => {
+      const child = new EventEmitter() as Partial<ChildProcess> & {
+        stdout: PassThrough;
+        stderr: PassThrough;
+        stdin: Writable;
+      };
+      child.stdout = new PassThrough();
+      child.stderr = new PassThrough();
+      child.stdin = new Writable({
+        write(_chunk, _encoding, callback) {
+          const error = new Error("write EPIPE") as NodeJS.ErrnoException;
+          error.code = "EPIPE";
+          callback(error);
+        }
+      });
+      child.kill = () => true;
+
+      process.nextTick(() => {
+        child.emit("close", 0);
+      });
+
+      return child as ChildProcess;
+    };
+
+    const result = await runSubprocess("codex", ["exec", "-"], {
+      cwd: process.cwd(),
+      timeoutMs: 1_000,
+      spawnImpl,
+      stdinData: "OBJECTIVE: test"
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.timedOut).toBe(false);
   });
 });
 
