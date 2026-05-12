@@ -9,15 +9,6 @@
 [![Node](https://img.shields.io/badge/node-%3E%3D20-3c873a?style=flat-square&logo=nodedotjs&logoColor=white)](#quick-start)
 [![npm](https://img.shields.io/badge/npm-martin--loop-cc3534?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/martin-loop)
 
-<br>
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Keesan12/martin-loop/main/docs/assets/nvidia-inception-program.png">
-  <img src="https://raw.githubusercontent.com/Keesan12/martin-loop/main/docs/assets/nvidia-inception-program-light.png" alt="NVIDIA Inception Program logo" width="280">
-</picture>
-
-<br>
-
 MartinLoop has been accepted into the NVIDIA Inception program.
 
 <br>
@@ -26,7 +17,7 @@ MartinLoop has been accepted into the NVIDIA Inception program.
 **You woke up to a $65 bill.** 
  <br> 47 retries. No hard stop. No rollback. No audit trail. Nothing merged.  
  MartinLoop exists so that never happens again.✅ <br> <br>
- If you think autonomous AI coding agents need budgets, brakes, and receipts, ⭐ the repo so more builders can find it.
+ If you think autonomous AI coding agents need budgets, brakes, and receipts, Plase star ⭐ the repo so more builders can find it.
 <br>
 
 > AI coding agents are useful. Unbounded retry loops are not.
@@ -389,3 +380,11 @@ Conventional commit prefixes: `feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, a
 *"AI coding accountability: completes good work, refuses unsafe work, stops uneconomical work."*
 
 </div>
+<br>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Keesan12/martin-loop/main/docs/assets/nvidia-inception-program.png">
+  <img src="https://raw.githubusercontent.com/Keesan12/martin-loop/main/docs/assets/nvidia-inception-program-light.png" alt="NVIDIA Inception Program logo" width="280">
+</picture>
+
+<br>
