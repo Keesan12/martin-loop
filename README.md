@@ -122,6 +122,8 @@ pnpm --filter @martin/benchmarks eval
 pnpm --filter @martin/benchmarks eval:phase12
 ```
 
+Challenge page: [Can your AI coding agent finish this task under $3?](./docs/distribution/UNDER-3-CHALLENGE.md)
+
 ---
 
 ## Quick Start
@@ -131,6 +133,8 @@ npm install -g martin-loop
 ```
 
 This installs both the `martin-loop` package and the `martin` command alias. The package is currently published on npm as version `0.1.4`.
+
+Want a safe sandbox first? Run `npx martin-loop demo` and MartinLoop will copy a disposable local workspace into `./martin-loop-demo`.
 
 ### Public Package Surface
 
@@ -214,7 +218,7 @@ martin run <objective> [options]
   --metadata <key=value>  Attach metadata to the run record; repeatable
 ```
 
-The public CLI also includes `inspect`, `resume`, and a `bench` redirect that points reviewers to the workspace benchmark harness.
+The public CLI also includes `demo`, `inspect`, `resume`, and a `bench` redirect that points reviewers to the workspace benchmark harness.
 
 <div align="center">
   <img src="./docs/assets/cli-static.svg" alt="MartinLoop CLI terminal output" width="720">
@@ -350,6 +354,9 @@ Helpful docs:
 
 - [OSS quickstart](./docs/oss/QUICKSTART.md)
 - [OSS examples](./docs/oss/EXAMPLES.md)
+- [Under-$3 benchmark challenge](./docs/distribution/UNDER-3-CHALLENGE.md)
+- [Directory submission pack](./docs/distribution/DIRECTORY-SUBMISSIONS.md)
+- [Integration outreach pack](./docs/distribution/INTEGRATION-OUTREACH.md)
 - [Claude Code walkthrough](./docs/oss/CLAUDE-CODE-WALKTHROUGH.md)
 - [Ralph-style loop safety guide](./docs/oss/RALPH-LOOP-SAFETY.md)
 - [OSS boundary report](./docs/oss/OSS-BOUNDARY-REPORT.md)
