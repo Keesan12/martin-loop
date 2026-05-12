@@ -1,6 +1,6 @@
 # Quickstart
 
-This quickstart is intentionally conservative. It is written for a fresh engineer validating the current Phase 13 release-candidate state, not for a hypothetical future public release.
+This quickstart is intentionally conservative. It is written for a fresh engineer validating the active Phase 15 release lane, not for a hypothetical future public release.
 
 ## Public launch target vs current RC path
 
@@ -11,7 +11,7 @@ The frozen public launch target is:
 - `import { MartinLoop } from "martin-loop"`
 - `npx @martinloop/mcp`
 
-That runtime launch surface is implemented in the root package facade and smoke-validated from a clean temporary install. The MCP package shape is also smoke-validated from a packed tarball. This quickstart still documents the honest RC-from-source path because public registry publication is a separate release step.
+That runtime launch surface is implemented in the root package facade and smoke-validated from a clean temporary install. The MCP package shape is also smoke-validated from a packed tarball. This quickstart still documents the honest RC-from-source path because public registry publication is a later release step.
 
 ## Prerequisites
 
@@ -54,6 +54,7 @@ The current Phase 13 RC gate is made of these commands:
 
 - `pnpm oss:validate`
 - `pnpm public:smoke`
+- `pnpm mcp:published:smoke`
 - `pnpm repo:smoke`
 - `pnpm rc:validate`
 - `pnpm pilot:prep:validate`
@@ -64,6 +65,7 @@ Recommended order for a fresh local reviewer:
 ```bash
 pnpm oss:validate
 pnpm public:smoke
+pnpm mcp:published:smoke
 pnpm repo:smoke
 pnpm rc:validate
 pnpm release:matrix:local
@@ -146,8 +148,11 @@ mcp-publisher publish
 For repo-local verification from source:
 
 ```bash
+pnpm --filter @martinloop/mcp lint
+pnpm --filter @martinloop/mcp test
 pnpm --filter @martinloop/mcp build
 pnpm --filter @martinloop/mcp smoke:pack
+pnpm --filter @martinloop/mcp smoke:published
 node packages/mcp/dist/server.js
 ```
 

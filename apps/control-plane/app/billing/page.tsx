@@ -2,6 +2,8 @@ import { ControlPlaneShell } from "../../components/control-plane-shell";
 import { Panel } from "../../components/dashboard-primitives";
 import { getBillingPageData } from "../../lib/queries/control-plane-queries";
 
+export const dynamic = "force-dynamic";
+
 export default async function BillingPage() {
   const data = await getBillingPageData();
 

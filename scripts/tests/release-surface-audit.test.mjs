@@ -20,6 +20,7 @@ test("createReleaseSurfaceReport captures the frozen public surface and the RC g
   assert.deepEqual(report.rcGateCommands, [
     "pnpm oss:validate",
     "pnpm public:smoke",
+    "pnpm mcp:published:smoke",
     "pnpm repo:smoke",
     "pnpm rc:validate",
     "pnpm pilot:prep:validate",
@@ -49,6 +50,7 @@ test("renderReleaseSurfaceReportMarkdown produces a reviewer-friendly Slice 06 a
   assert.match(markdown, /# Martin Loop Phase 13 Release Surface Audit/i);
   assert.match(markdown, /pnpm oss:validate/);
   assert.match(markdown, /pnpm repo:smoke/);
+  assert.match(markdown, /pnpm mcp:published:smoke/);
   assert.match(markdown, /pnpm pilot:prep:validate/);
   assert.match(markdown, /pnpm release:matrix:local/);
   assert.match(markdown, /README\.md/);

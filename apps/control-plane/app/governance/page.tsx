@@ -4,6 +4,8 @@ import { LabelLedger, Panel } from "../../components/dashboard-primitives";
 import { TrustStrip } from "../../components/trust-strip";
 import { getGovernancePageData } from "../../lib/queries/control-plane-queries";
 
+export const dynamic = "force-dynamic";
+
 export default async function GovernancePage() {
   const governance = await getGovernancePageData();
 

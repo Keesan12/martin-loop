@@ -7,5 +7,12 @@ export {
   runDir
 } from "./store.js";
 export type { AttemptArtifacts, RunContract, RunStore } from "./store.js";
+export {
+  readAllLoopRecords,
+  readLatestLoopRecord,
+  readLatestLoopRecordFromFile,
+  readLoopRecordsFromFile
+} from "./runs-reader.js";
+export type { LoopAttemptRecord, LoopRunRecord } from "./runs-reader.js";
 export { compileAndPersistContext } from "./compiler.js";
 export type { CompileResult } from "./compiler.js";
