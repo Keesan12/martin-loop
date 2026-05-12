@@ -1,6 +1,7 @@
-import { appendFile, mkdir, readFile } from "node:fs/promises";
+import { appendFile, cp, mkdir, readFile, readdir, rm } from "node:fs/promises";
 import { homedir } from "node:os";
-import { isAbsolute, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   createClaudeCliAdapter,
@@ -65,6 +66,11 @@ export type ParsedCliArguments =
   | {
       command: "bench";
       suiteId: string;
+    }
+  | {
+      command: "demo";
+      directory: string;
+      force: boolean;
     }
   | {
       command: "inspect";
@@ -206,6 +212,27 @@ export async function executeCli(args: string[]): Promise<{
         stderr:
           "The benchmark harness remains a workspace-only RC surface and is not part of the publishable @martin/cli boundary yet. Use pnpm --filter @martin/benchmarks test or pnpm --filter @martin/benchmarks eval:phase12 from the repo root instead."
       };
+    }
+    case "demo": {
+      try {
+        const targetDirectory = await createDemoWorkspace({
+          targetDirectory: parsed.directory,
+          force: parsed.force
+        });
+
+        return {
+          exitCode: 0,
+          stdout: renderDemoInstructions(targetDirectory),
+          stderr: ""
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return {
+          exitCode: 1,
+          stdout: "",
+          stderr: `Error: ${message}`
+        };
+      }
     }
     case "inspect": {
       try {
@@ -463,6 +490,14 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
     };
   }
 
+  if (command === "demo") {
+    return {
+      command: "demo",
+      directory: resolve(readOption(rest, "--dir") ?? join(process.cwd(), "martin-loop-demo")),
+      force: hasFlag(rest, "--force")
+    };
+  }
+
   if (command === "inspect") {
     return {
       command: "inspect",
@@ -488,12 +523,14 @@ export function renderCliHelp(): string {
     "  martin-loop run <objective> [options]",
     "  martin run <objective> [options]       (alias)",
     "  martin-loop run --objective <text> [options]",
+    "  martin-loop demo [--dir <path>] [--force]",
     "  martin-loop inspect --file <path>",
     "  martin-loop resume <loopId>",
     "  martin-loop bench --suite <suiteId>",
     "",
     "Commands:",
     "  run      Execute a bounded Martin loop against the current repository.",
+    "  demo     Copy a safe local sandbox so you can try MartinLoop outside your own repo.",
     "  inspect  Read a persisted loop record and summarize its portfolio metrics.",
     "  resume   Load a persisted loop record by loop ID from ~/.martin/runs/.",
     "  bench    Redirect to the workspace-only RC benchmark harness.",
@@ -513,7 +550,11 @@ export function renderCliHelp(): string {
     "  --allow-path <glob>     Restrict agent writes to this path pattern (repeatable).",
     "  --deny-path <glob>      Block agent from this path pattern (repeatable).",
     "  --accept <criterion>    Add an acceptance criterion to the prompt (repeatable).",
-    "  --config <path>         Path to martin.config.yaml."
+    "  --config <path>         Path to martin.config.yaml.",
+    "",
+    "Demo options:",
+    "  --dir <path>            Target directory for the copied demo sandbox.",
+    "  --force                 Replace an existing non-empty demo target."
   ].join("\n");
 }
 
@@ -539,6 +580,94 @@ function parseLoopRecords(contents: string): LoopRecord[] {
 
     return lines.map((line) => JSON.parse(line) as LoopRecord);
   }
+}
+
+async function createDemoWorkspace(input: {
+  targetDirectory: string;
+  force: boolean;
+}): Promise<string> {
+  const rootDir = await findMartinPackageRoot();
+  const sourceDirectory = join(rootDir, "demo", "seeded-workspace");
+
+  try {
+    await readdir(sourceDirectory);
+  } catch (error) {
+    if (isNodeErrorWithCode(error, "ENOENT")) {
+      throw new Error(`Demo assets are missing from this install: ${sourceDirectory}`);
+    }
+
+    throw error;
+  }
+
+  const targetDirectory = resolve(input.targetDirectory);
+  const existingEntries = await readdir(targetDirectory).catch((error: unknown) => {
+    if (isNodeErrorWithCode(error, "ENOENT")) {
+      return undefined;
+    }
+
+    throw error;
+  });
+
+  if (existingEntries) {
+    if (existingEntries.length > 0 && !input.force) {
+      throw new Error(
+        `Demo target already exists and is not empty: ${targetDirectory}. Re-run with --force to replace it.`
+      );
+    }
+
+    await rm(targetDirectory, { force: true, recursive: true });
+  }
+
+  await mkdir(dirname(targetDirectory), { recursive: true });
+  await cp(sourceDirectory, targetDirectory, { recursive: true });
+
+  return targetDirectory;
+}
+
+async function findMartinPackageRoot(): Promise<string> {
+  let currentDirectory = dirname(fileURLToPath(import.meta.url));
+
+  for (let depth = 0; depth < 8; depth += 1) {
+    const manifestPath = join(currentDirectory, "package.json");
+
+    try {
+      const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as { name?: string };
+      if (manifest.name === "martin-loop") {
+        return currentDirectory;
+      }
+    } catch (error) {
+      if (!isNodeErrorWithCode(error, "ENOENT")) {
+        throw error;
+      }
+    }
+
+    const parentDirectory = dirname(currentDirectory);
+    if (parentDirectory === currentDirectory) {
+      break;
+    }
+    currentDirectory = parentDirectory;
+  }
+
+  throw new Error("Unable to resolve the martin-loop package root for demo assets.");
+}
+
+function renderDemoInstructions(targetDirectory: string): string {
+  return [
+    `MartinLoop demo sandbox created at ${targetDirectory}`,
+    "",
+    "Next steps:",
+    `  cd ${targetDirectory}`,
+    "  npm install",
+    "  npm test",
+    "",
+    "Safe first run (no provider spend):",
+    '  MARTIN_LIVE=false npx martin-loop run "Summarize the demo workspace and confirm the verifier is green" --verify "npm test"',
+    "",
+    "Optional live run:",
+    '  npx martin-loop run "Add support for a discount percentage to summarizeInvoice and update the tests" --verify "npm test" --engine codex',
+    "",
+    `Task ideas live in ${join(targetDirectory, "TASKS.md")}`
+  ].join("\n");
 }
 
 async function resolveGuardrails(

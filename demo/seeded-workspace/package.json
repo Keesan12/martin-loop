@@ -1,0 +1,8 @@
+{
+  "name": "martin-loop-demo-sandbox",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  }
+}
