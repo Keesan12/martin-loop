@@ -2,7 +2,7 @@
 
 <img src="./docs/assets/martinloop-logo.png" alt="MartinLoop" width="260">
 
-### A governed runtime for autonomous AI coding agents.⭐⭐⭐
+### The cross agent governance layer for autonomous AI coding agents.⭐⭐⭐
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-7c3aed?style=flat-square)](./LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&logo=typescript&logoColor=white)](./tsconfig.base.json)
