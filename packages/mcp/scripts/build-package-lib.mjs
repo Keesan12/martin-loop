@@ -3,6 +3,12 @@ import { chmod, copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from "
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+const ROOT_FACADE_PACKAGES = [
+  "@martin/contracts",
+  "@martin/core",
+  "@martin/adapters",
+];
+
 const PACKAGE_FACADES = [
   {
     packageName: "@martin/contracts",
@@ -38,6 +44,7 @@ const PACKAGE_FACADES = [
 
 const PACKAGE_ASSETS = [
   {
+    packageName: "@martin/policy",
     sourceDir: ["packages", "policy", "policies"],
     targetDir: ["dist", "vendor", "policies"],
   },
@@ -67,20 +74,11 @@ export async function buildStandaloneMcpPackage(options = {}) {
     skipDirs: new Set(["vendor"]),
   });
 
-  for (const facade of PACKAGE_FACADES) {
-    await copyFacadeDirectory({
-      sourceDir: path.join(rootDir, ...facade.sourceDir),
-      targetDir: path.join(packageDir, ...facade.targetDir),
-      distDir,
-    });
-  }
-
-  for (const asset of PACKAGE_ASSETS) {
-    await copyRawDirectory({
-      sourceDir: path.join(rootDir, ...asset.sourceDir),
-      targetDir: path.join(packageDir, ...asset.targetDir),
-    });
-  }
+  await vendorDependencyGraph({
+    rootDir,
+    packageDir,
+    distDir,
+  });
 
   await chmod(path.join(distDir, "server.js"), 0o755);
 
@@ -92,7 +90,13 @@ export async function buildStandaloneMcpPackage(options = {}) {
 }
 
 async function ensureWorkspaceArtifacts(rootDir) {
-  for (const facade of PACKAGE_FACADES) {
+  for (const facade of PACKAGE_FACADES.filter((candidate) => ROOT_FACADE_PACKAGES.includes(candidate.packageName))) {
+    await rm(path.join(rootDir, ...facade.sourceDir), {
+      force: true,
+      recursive: true,
+      maxRetries: 10,
+      retryDelay: 100,
+    });
     await runCommand(
       pnpmCommand(),
       workspaceBuildCommandArgs(facade.packageName),
@@ -101,12 +105,60 @@ async function ensureWorkspaceArtifacts(rootDir) {
   }
 }
 
+async function vendorDependencyGraph(input) {
+  const vendored = new Set();
+  const pending = [...ROOT_FACADE_PACKAGES];
+
+  while (pending.length > 0) {
+    const packageName = pending.shift();
+    if (!packageName || vendored.has(packageName)) {
+      continue;
+    }
+
+    const facade = resolveFacade(packageName);
+    const discoveredDependencies = await copyFacadeDirectory({
+      sourceDir: path.join(input.rootDir, ...facade.sourceDir),
+      targetDir: path.join(input.packageDir, ...facade.targetDir),
+      distDir: input.distDir,
+      packageName,
+    });
+
+    for (const dependency of discoveredDependencies) {
+      if (!vendored.has(dependency)) {
+        pending.push(dependency);
+      }
+    }
+
+    for (const asset of PACKAGE_ASSETS.filter((candidate) => candidate.packageName === packageName)) {
+      await copyRawDirectory({
+        sourceDir: path.join(input.rootDir, ...asset.sourceDir),
+        targetDir: path.join(input.packageDir, ...asset.targetDir),
+      });
+    }
+
+    vendored.add(packageName);
+  }
+}
+
+function resolveFacade(packageName) {
+  const facade = PACKAGE_FACADES.find((candidate) => candidate.packageName === packageName);
+  if (!facade) {
+    throw new Error(`No vendored facade is configured for ${packageName}.`);
+  }
+  return facade;
+}
+
 export function workspaceBuildCommandArgs(packageName) {
   return ["--filter", packageName, "build"];
 }
 
 async function copyFacadeDirectory(input) {
-  await copyDirectory({
+  const sourceStats = await stat(input.sourceDir).catch(() => null);
+  if (!sourceStats?.isDirectory()) {
+    throw new Error(`Missing vendored facade source directory for ${input.packageName}: ${input.sourceDir}`);
+  }
+
+  return copyDirectory({
     sourceDir: input.sourceDir,
     targetDir: input.targetDir,
     distDir: input.distDir,
@@ -141,6 +193,7 @@ async function copyRawDirectory(input) {
 
 async function copyDirectory(input) {
   await mkdir(input.targetDir, { recursive: true });
+  const dependencies = new Set();
 
   const entries = await readdir(input.sourceDir, { withFileTypes: true });
 
@@ -154,12 +207,13 @@ async function copyDirectory(input) {
         continue;
       }
 
-      await copyDirectory({
+      const nestedDependencies = await copyDirectory({
         sourceDir: path.join(input.sourceDir, entry.name),
         targetDir: path.join(input.targetDir, entry.name),
         distDir: input.distDir,
         relativeDir: relativePath,
       });
+      mergeDependencySets(dependencies, nestedDependencies);
       continue;
     }
 
@@ -172,6 +226,7 @@ async function copyDirectory(input) {
 
     if (entry.name.endsWith(".js") || entry.name.endsWith(".d.ts")) {
       const contents = await readFile(sourcePath, "utf8");
+      mergeDependencySets(dependencies, collectRewritablePackages(contents));
       const rewritten = rewritePackageSpecifiers(contents, {
         targetPath,
         distDir: input.distDir,
@@ -182,6 +237,8 @@ async function copyDirectory(input) {
 
     await copyFile(sourcePath, targetPath);
   }
+
+  return dependencies;
 }
 
 async function rewriteDirectory(input) {
@@ -228,6 +285,17 @@ function shouldSkipDirectory(name, relativePath) {
 
 function shouldSkipFile(name) {
   return name.endsWith(".map");
+}
+
+export function collectRewritablePackages(contents) {
+  const matches = contents.match(/@martin\/(?:contracts|core|policy|headlessos-core|audit-exporter|adapters)(?:\/[^'"]+)?/g) ?? [];
+  return new Set(matches.map((match) => match.split("/").slice(0, 2).join("/")));
+}
+
+function mergeDependencySets(target, source) {
+  for (const entry of source) {
+    target.add(entry);
+  }
 }
 
 export function rewritePackageSpecifiers(contents, input) {

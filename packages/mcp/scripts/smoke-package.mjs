@@ -26,16 +26,10 @@ const REQUIRED_TARBALL_FILES = [
   "dist/tools/run-loop.js",
   "dist/vendor/adapters/index.d.ts",
   "dist/vendor/adapters/index.js",
-  "dist/vendor/audit-exporter/index.d.ts",
-  "dist/vendor/audit-exporter/index.js",
   "dist/vendor/contracts/index.d.ts",
   "dist/vendor/contracts/index.js",
   "dist/vendor/core/index.d.ts",
   "dist/vendor/core/index.js",
-  "dist/vendor/headlessos-core/index.d.ts",
-  "dist/vendor/headlessos-core/index.js",
-  "dist/vendor/policy/index.d.ts",
-  "dist/vendor/policy/index.js",
   "package.json",
 ];
 const SMOKE_LOOP_RECORD = {
