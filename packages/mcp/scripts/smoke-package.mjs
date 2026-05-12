@@ -13,6 +13,7 @@ import { buildStandaloneMcpPackage } from "./build-package-lib.mjs";
 
 const REQUIRED_TOOLS = ["martin_inspect", "martin_run", "martin_status"];
 const PACKAGED_BIN_NAME = "mcp";
+export const PUBLISHED_PACKAGE_SPEC = "@martinloop/mcp";
 const REQUIRED_TARBALL_FILES = [
   "README.md",
   "dist/server.d.ts",
@@ -90,7 +91,7 @@ export async function runStandaloneMcpSmoke(options = {}) {
       command: launch.command,
       args: launch.args,
       cwd: tempRoot,
-      env: process.env,
+      env: sanitizePackageManagerEnv(process.env),
       stderr: "pipe",
     });
     transport.stderr?.on("data", (chunk) => {
@@ -98,7 +99,7 @@ export async function runStandaloneMcpSmoke(options = {}) {
     });
 
     const client = new Client(
-      { name: "martin-mcp-smoke", version: "0.1.1" },
+      { name: "martin-mcp-smoke", version: "0.1.2" },
       { capabilities: {} },
     );
 
@@ -126,7 +127,7 @@ export async function runStandaloneMcpSmoke(options = {}) {
 
     return {
       tarballPath,
-      npxCommand: "npx -y @martinloop/mcp",
+      npxCommand: "npx @martinloop/mcp",
       toolNames,
       tarballFiles,
       packedDependencies: packedManifest.dependencies ?? {},
@@ -193,7 +194,7 @@ function parsePackEntry(stdout) {
 }
 
 function npmCommand() {
-  return "npm";
+  return process.platform === "win32" ? "npm.cmd" : "npm";
 }
 
 function tarCommand() {
@@ -201,18 +202,27 @@ function tarCommand() {
 }
 
 function createPackagedLaunch(tarballPath) {
-  if (process.platform === "win32") {
-    const normalizedTarballPath = tarballPath.replace(/\\/g, "/");
-    return {
-      command: process.env.ComSpec ?? "cmd.exe",
-      args: ["/d", "/s", "/c", `npm exec --yes --package ${normalizedTarballPath} -- ${PACKAGED_BIN_NAME}`],
-    };
-  }
-
   return {
-    command: "npm",
+    command: npmCommand(),
     args: ["exec", "--yes", "--package", tarballPath, "--", PACKAGED_BIN_NAME],
   };
+}
+
+export function sanitizePackageManagerEnv(env = process.env) {
+  const sanitized = { ...env };
+
+  for (const key of Object.keys(sanitized)) {
+    if (
+      /^npm_/iu.test(key) ||
+      /^npm_config_/iu.test(key) ||
+      /^pnpm_/iu.test(key) ||
+      /^INIT_CWD$/u.test(key)
+    ) {
+      delete sanitized[key];
+    }
+  }
+
+  return sanitized;
 }
 
 async function runCommand(command, args, options) {

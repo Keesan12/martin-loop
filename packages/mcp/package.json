@@ -1,10 +1,10 @@
 {
   "name": "@martinloop/mcp",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "mcpName": "io.github.keesan12/martin-loop",
   "private": false,
   "type": "module",
-  "description": "Martin Loop MCP server — installable stdio server for martin_run, martin_inspect, and martin_status.",
+  "description": "Governed MCP server for AI coding agents with budgets, verifier gates, policy checks, and audit trails.",
   "license": "MIT",
   "author": "Vakeesan Mahalingam and Gobi Shanthan",
   "homepage": "https://martinloop.com/",
@@ -27,7 +27,8 @@
   "main": "./dist/server.js",
   "types": "./dist/server.d.ts",
   "bin": {
-    "mcp": "dist/server.js"
+    "mcp": "./dist/server.js",
+    "martin-loop-mcp": "./dist/server.js"
   },
   "exports": {
     ".": {
@@ -41,7 +42,7 @@
     "README.md"
   ],
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
   "publishConfig": {
     "access": "public"
@@ -50,11 +51,18 @@
     "build": "node ./scripts/build-package.mjs",
     "prepack": "pnpm build",
     "smoke:pack": "node ./scripts/smoke-package.mjs",
+    "smoke:published": "node ./scripts/smoke-published-package.mjs",
     "test": "vitest run",
     "lint": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/server.js"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0"
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@open-policy-agent/opa-wasm": "^1.10.0",
+    "@opentelemetry/api-logs": "^0.214.0",
+    "@opentelemetry/exporter-logs-otlp-http": "^0.214.0",
+    "@opentelemetry/resources": "^2.6.1",
+    "@opentelemetry/sdk-logs": "^0.214.0",
+    "ts-morph": "^21.0.0"
   }
 }

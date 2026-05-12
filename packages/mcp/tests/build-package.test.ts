@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import packageJson from "../package.json";
 
 import { rewritePackageSpecifiers, workspaceBuildCommandArgs } from "../scripts/build-package-lib.mjs";
 
@@ -27,6 +28,24 @@ describe("rewritePackageSpecifiers", () => {
     expect(rewritten).toContain('./vendor/adapters/runtime-support.js');
     expect(rewritten).not.toContain("runtime-support.js.js");
   });
+
+  it("rewrites transitive workspace dependencies vendored through core", () => {
+    const rewritten = rewritePackageSpecifiers(
+      [
+        'import { evaluate } from "@martin/policy";',
+        'import { compileContext } from "@martin/headlessos-core";',
+        'import type { AuditExporter } from "@martin/audit-exporter";'
+      ].join("\n"),
+      {
+        targetPath: "C:/repo/packages/mcp/dist/vendor/core/index.js",
+        distDir: "C:/repo/packages/mcp/dist",
+      },
+    );
+
+    expect(rewritten).toContain('../policy/index.js');
+    expect(rewritten).toContain('../headlessos-core/index.js');
+    expect(rewritten).toContain('../audit-exporter/index.js');
+  });
 });
 
 describe("workspaceBuildCommandArgs", () => {
@@ -34,7 +53,16 @@ describe("workspaceBuildCommandArgs", () => {
     expect(workspaceBuildCommandArgs("@martin/contracts")).toEqual([
       "--filter",
       "@martin/contracts",
-      "build",
+      "build"
     ]);
+  });
+});
+
+describe("package manifest", () => {
+  it("keeps both MCP bin aliases pointed at the packaged entrypoint", () => {
+    expect(packageJson.bin).toEqual({
+      mcp: "./dist/server.js",
+      "martin-loop-mcp": "./dist/server.js",
+    });
   });
 });

@@ -13,6 +13,7 @@ const RELEASE_MATRIX_STEPS = [
   ["pnpm", "build"],
   ["pnpm", "oss:validate"],
   ["pnpm", "public:smoke"],
+  ["pnpm", "mcp:published:smoke"],
   ["pnpm", "repo:smoke"],
   ["pnpm", "rc:validate"],
 ];

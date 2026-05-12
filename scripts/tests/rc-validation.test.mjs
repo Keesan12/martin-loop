@@ -21,8 +21,10 @@ test("createRcValidationPlan omits install by default and includes the RC matrix
   assert.ok(commands.includes("pnpm pilot:prep:validate"));
   assert.ok(commands.includes("pnpm oss:validate"));
   assert.ok(commands.includes("pnpm public:smoke"));
-  assert.equal(commands.at(-2), "pnpm build");
-  assert.equal(commands.at(-1), "pnpm public:smoke");
+  assert.ok(commands.includes("pnpm mcp:published:smoke"));
+  assert.equal(commands.at(-3), "pnpm build");
+  assert.equal(commands.at(-2), "pnpm public:smoke");
+  assert.equal(commands.at(-1), "pnpm mcp:published:smoke");
   assert.ok(!commands.includes("pnpm install --frozen-lockfile"));
 });
 
