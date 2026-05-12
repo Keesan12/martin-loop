@@ -9,8 +9,8 @@
  *   martin_status   — return cost and pressure state from a loop record
  *
  * Setup (Claude Code):
- *   macOS/Linux: claude mcp add --scope user martin-loop -- npx -y @martinloop/mcp
- *   Windows:     claude mcp add --scope user martin-loop -- cmd /c "npx -y @martinloop/mcp"
+ *   macOS/Linux: claude mcp add --scope user martin-loop -- npx @martinloop/mcp
+ *   Windows:     claude mcp add --scope user martin-loop cmd /c "npx @martinloop/mcp"
  *
  * Packaged smoke test:
  *   pnpm --filter @martinloop/mcp smoke:pack
@@ -29,9 +29,10 @@ import {
 import { getStatusTool } from "./tools/get-status.js";
 import { inspectLoopTool } from "./tools/inspect-loop.js";
 import { runLoopTool } from "./tools/run-loop.js";
+import { sanitizeToolErrorMessage, validateToolInput } from "./server-validation.js";
 
 const server = new Server(
-  { name: "martin-loop", version: "0.1.1" },
+  { name: "martin-loop", version: "0.1.2" },
   { capabilities: { tools: {} } }
 );
 
@@ -88,13 +89,13 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
             type: "array",
             items: { type: "string" },
             description:
-              "Optional repo-relative path patterns MartinLoop is allowed to modify. When set, changes outside these patterns fail scope enforcement."
+              "Relative path globs Martin may modify, such as ['src/**', 'tests/**']."
           },
           deniedPaths: {
             type: "array",
             items: { type: "string" },
             description:
-              "Optional repo-relative path patterns MartinLoop must never modify. Denied paths are enforced in prompts and post-run scope checks."
+              "Relative path globs Martin must never modify, such as ['.env', 'docs/security/**']."
           },
           workspaceId: {
             type: "string",
@@ -111,31 +112,55 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
     {
       name: "martin_inspect",
       description:
-        "Summarise a saved Martin loop record file. Reads a JSON file containing one or more LoopRecords and returns portfolio-level statistics: total spend, avoided spend, token counts, and loop counts.",
+        "Summarise Martin Loop run records from a saved loop file or run-store directory. Supports canonical loop-record.json files, legacy JSONL files, and full runs directories.",
       inputSchema: {
         type: "object",
         properties: {
           file: {
             type: "string",
-            description: "Absolute or relative path to a LoopRecord JSON file."
+            description:
+              "Optional path under the Martin runs root to a loop-record.json file, a legacy .jsonl file, or a run-store directory."
+          },
+          runsDir: {
+            type: "string",
+            description:
+              "Optional Martin runs directory. Defaults to MARTIN_RUNS_DIR or ~/.martin/runs."
           }
-        },
-        required: ["file"]
+        }
       }
     },
     {
       name: "martin_status",
       description:
-        "Return the current budget and cost state of a Martin loop record. Useful for monitoring in-progress or completed loops.",
+        "Return the current budget and cost state of a Martin loop record. Accepts inline JSON, a saved loop file, a loopId under the run store, or the latest run in the store.",
       inputSchema: {
         type: "object",
         properties: {
           loopJson: {
             type: "string",
             description: "JSON-serialized LoopRecord."
+          },
+          file: {
+            type: "string",
+            description:
+              "Optional path under the Martin runs root to a loop-record.json file, a legacy .jsonl file, or a run-store directory."
+          },
+          loopId: {
+            type: "string",
+            description:
+              "Optional Martin loop ID. Loads <runsDir>/<loopId>/loop-record.json."
+          },
+          runsDir: {
+            type: "string",
+            description:
+              "Optional Martin runs directory. Defaults to MARTIN_RUNS_DIR or ~/.martin/runs."
+          },
+          latest: {
+            type: "boolean",
+            description:
+              "When true, loads the most recently updated loop record in the runs directory."
           }
-        },
-        required: ["loopJson"]
+        }
       }
     }
   ]
@@ -150,20 +175,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
   try {
     if (name === "martin_run") {
-      const input = args as unknown as Parameters<typeof runLoopTool>[0];
+      const input = validateToolInput("martin_run", args) as Parameters<typeof runLoopTool>[0];
       const output = await runLoopTool(input);
       return { content: [{ type: "text", text: JSON.stringify(output, null, 2) }] };
     }
 
     if (name === "martin_inspect") {
-      const input = args as unknown as Parameters<typeof inspectLoopTool>[0];
+      const input = validateToolInput("martin_inspect", args) as Parameters<typeof inspectLoopTool>[0];
       const output = await inspectLoopTool(input);
       return { content: [{ type: "text", text: JSON.stringify(output, null, 2) }] };
     }
 
     if (name === "martin_status") {
-      const input = args as unknown as Parameters<typeof getStatusTool>[0];
-      const output = getStatusTool(input);
+      const input = validateToolInput("martin_status", args) as Parameters<typeof getStatusTool>[0];
+      const output = await getStatusTool(input);
       return { content: [{ type: "text", text: JSON.stringify(output, null, 2) }] };
     }
 
@@ -172,7 +197,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       isError: true
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = sanitizeToolErrorMessage(error);
     return {
       content: [{ type: "text", text: `Tool error: ${message}` }],
       isError: true

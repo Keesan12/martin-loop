@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { access, chmod, copyFile, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, copyFile, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -15,15 +15,40 @@ const PACKAGE_FACADES = [
     targetDir: ["dist", "vendor", "core"],
   },
   {
+    packageName: "@martin/policy",
+    sourceDir: ["packages", "policy", "dist"],
+    targetDir: ["dist", "vendor", "policy"],
+  },
+  {
+    packageName: "@martin/headlessos-core",
+    sourceDir: ["packages", "headlessos-core", "dist"],
+    targetDir: ["dist", "vendor", "headlessos-core"],
+  },
+  {
+    packageName: "@martin/audit-exporter",
+    sourceDir: ["packages", "audit-exporter", "dist"],
+    targetDir: ["dist", "vendor", "audit-exporter"],
+  },
+  {
     packageName: "@martin/adapters",
     sourceDir: ["packages", "adapters", "dist"],
     targetDir: ["dist", "vendor", "adapters"],
   },
 ];
 
+const PACKAGE_ASSETS = [
+  {
+    sourceDir: ["packages", "policy", "policies"],
+    targetDir: ["dist", "vendor", "policies"],
+  },
+];
+
 const REWRITABLE_PACKAGES = {
   "@martin/contracts": "contracts",
   "@martin/core": "core",
+  "@martin/policy": "policy",
+  "@martin/headlessos-core": "headlessos-core",
+  "@martin/audit-exporter": "audit-exporter",
   "@martin/adapters": "adapters",
 };
 
@@ -50,6 +75,13 @@ export async function buildStandaloneMcpPackage(options = {}) {
     });
   }
 
+  for (const asset of PACKAGE_ASSETS) {
+    await copyRawDirectory({
+      sourceDir: path.join(rootDir, ...asset.sourceDir),
+      targetDir: path.join(packageDir, ...asset.targetDir),
+    });
+  }
+
   await chmod(path.join(distDir, "server.js"), 0o755);
 
   return {
@@ -61,11 +93,6 @@ export async function buildStandaloneMcpPackage(options = {}) {
 
 async function ensureWorkspaceArtifacts(rootDir) {
   for (const facade of PACKAGE_FACADES) {
-    const markerFile = path.join(rootDir, ...facade.sourceDir, "index.js");
-    if (await fileExists(markerFile)) {
-      continue;
-    }
-
     await runCommand(
       pnpmCommand(),
       workspaceBuildCommandArgs(facade.packageName),
@@ -85,6 +112,26 @@ async function copyFacadeDirectory(input) {
     distDir: input.distDir,
     relativeDir: "",
   });
+}
+
+async function copyRawDirectory(input) {
+  await mkdir(input.targetDir, { recursive: true });
+
+  const entries = await readdir(input.sourceDir, { withFileTypes: true });
+  for (const entry of entries) {
+    const sourcePath = path.join(input.sourceDir, entry.name);
+    const targetPath = path.join(input.targetDir, entry.name);
+
+    if (entry.isDirectory()) {
+      await copyRawDirectory({
+        sourceDir: sourcePath,
+        targetDir: targetPath,
+      });
+      continue;
+    }
+
+    await copyFile(sourcePath, targetPath);
+  }
 }
 
 async function copyDirectory(input) {
@@ -180,7 +227,7 @@ function shouldSkipFile(name) {
 
 export function rewritePackageSpecifiers(contents, input) {
   return contents.replace(
-    /(['"])(@martin\/(?:contracts|core|adapters)(?:\/[^'"]+)?)\1/g,
+    /(['"])(@martin\/(?:contracts|core|policy|headlessos-core|audit-exporter|adapters)(?:\/[^'"]+)?)\1/g,
     (_match, quote, packageName) => {
       const parts = packageName.split("/");
       const basePackageName = parts.slice(0, 2).join("/");
@@ -209,16 +256,7 @@ function toImportSpecifier(fromDir, toFile) {
 }
 
 function pnpmCommand() {
-  return "pnpm";
-}
-
-async function fileExists(targetPath) {
-  try {
-    await access(targetPath);
-    return true;
-  } catch {
-    return false;
-  }
+  return process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 }
 
 async function runCommand(command, args, options) {
@@ -261,4 +299,3 @@ function toCmdCommand(command, args) {
 function quoteForCmdArgument(value) {
   return /[\s"]/u.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }
-

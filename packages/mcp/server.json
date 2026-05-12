@@ -2,17 +2,17 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.keesan12/martin-loop",
   "title": "Martin Loop",
-  "description": "Martin Loop MCP server — installable stdio server for martin_run, martin_inspect, and martin_status.",
+  "description": "Governed MCP server for AI coding agents with budgets, verifier gates, policy checks, and audit trails.",
   "repository": {
     "url": "https://github.com/Keesan12/martin-loop",
     "source": "github"
   },
-  "version": "0.1.1",
+  "version": "0.1.2",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@martinloop/mcp",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "transport": {
         "type": "stdio"
       }

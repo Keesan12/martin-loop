@@ -1,6 +1,6 @@
 # Martin OSS Core
 
-Martin Loop is a governed AI coding-loop runtime. The core runtime is real and verified through the Phase 12 certification gate; the repo is now in Phase 13 release-candidate engineering, which means the focus is reproducibility, OSS boundary cleanup, and pilot readiness rather than new feature invention.
+Martin Loop is a governed AI coding-loop runtime. The core runtime is real and verified through the Phase 12 certification gate; the repo is now in the Phase 15 public-release lane, which means the focus is release truth, packaging, and final-gate evidence rather than new feature invention.
 
 ## What the OSS core includes today
 
@@ -12,11 +12,12 @@ Martin Loop is a governed AI coding-loop runtime. The core runtime is real and v
 
 ## What is still outside the initial OSS promise
 
-- The root workspace now exposes the `martin-loop` public package facade, and `@martinloop/mcp` now has a standalone tarball shape validated via `pnpm --filter @martinloop/mcp smoke:pack`, but registry publication is still a separate release step.
+- The root workspace now exposes the `martin-loop` public package facade, and `@martinloop/mcp` now has a standalone tarball shape plus a published-package smoke validated via `pnpm --filter @martinloop/mcp smoke:pack` and `pnpm --filter @martinloop/mcp smoke:published`, but registry publication is still a separate release step.
 - `@martin/contracts`, `@martin/core`, and `@martin/adapters` are still marked `private` in their package manifests.
 - The hosted control-plane and local dashboard remain in the repo, but they are not yet the finalized public OSS boundary.
 - The benchmark harness remains a workspace-only RC surface under `benchmarks/` and is not part of the publishable CLI boundary yet.
 - Final licensing, public package publishing, and managed-product packaging are still gated behind later Phase 13 to Phase 15 work.
+- Internal workspace packages remain non-public release internals unless the release lane explicitly widens that surface.
 
 That means this repo is ready for grounded engineering review and RC validation, but it is not yet claiming a finished public OSS release.
 
@@ -77,6 +78,7 @@ The current release-candidate gate is:
 
 - `pnpm oss:validate`
 - `pnpm public:smoke`
+- `pnpm mcp:published:smoke`
 - `pnpm repo:smoke`
 - `pnpm rc:validate`
 - `pnpm pilot:prep:validate`
@@ -88,8 +90,6 @@ The current release-candidate gate is:
 
 - [`docs/oss/QUICKSTART.md`](./QUICKSTART.md) for clone-to-first-run setup
 - [`docs/oss/EXAMPLES.md`](./EXAMPLES.md) for grounded CLI and MCP examples
-- [`docs/oss/CLAUDE-CODE-WALKTHROUGH.md`](./CLAUDE-CODE-WALKTHROUGH.md) for a Claude Code-specific governed-run walkthrough
-- [`docs/oss/RALPH-LOOP-SAFETY.md`](./RALPH-LOOP-SAFETY.md) for a technical guide to governing Ralph-style loops safely
 - [`docs/oss/OSS-BOUNDARY-REPORT.md`](./OSS-BOUNDARY-REPORT.md) for the current machine-checked OSS boundary and public-surface status
 - [`docs/oss/RELEASE-SURFACE-REPORT.md`](./RELEASE-SURFACE-REPORT.md) for the current machine-checked release-surface audit
 - [`docs/pilot/README.md`](../pilot/README.md) for the pilot-prep package that remains explicitly gated behind Phase 13 completion
