@@ -66,6 +66,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
         with:
@@ -82,14 +84,20 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Fetch tags
+        run: git fetch --force --tags
+
       - name: Pack tarballs
         run: |
           mkdir -p dist-release
           cd packages/core && pnpm pack --pack-destination ../../dist-release && cd ../..
           cd packages/cli && pnpm pack --pack-destination ../../dist-release && cd ../..
 
+      - name: Generate release notes
+        run: node ./scripts/generate-release-notes.mjs --current-tag "${GITHUB_REF_NAME}" --output dist-release/release-notes.md
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: dist-release/*
-          generate_release_notes: true
+          body_path: dist-release/release-notes.md
