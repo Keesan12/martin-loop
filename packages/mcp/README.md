@@ -1,21 +1,27 @@
 # @martinloop/mcp
 
-Governed MCP server for AI coding agents with hard budgets, verifier gates, policy checks, and inspectable run records.
+Governed MCP server for AI coding agents that need hard spend limits, verifier gates, scoped file edits, and inspectable run records.
 
-Martin Loop helps MCP hosts run AI coding work inside a bounded runtime instead of an open-ended retry loop. The standalone MCP package exposes three focused tools over stdio:
+`@martinloop/mcp` exposes three stdio tools:
 
 - `martin_run`
 - `martin_inspect`
 - `martin_status`
 
-## What's new in 0.1.2
+## What This Server Is For
 
-- `martin_inspect` now reads both canonical `loop-record.json` runs and legacy `.jsonl` run-store files
-- `martin_status` now supports `file`, `loopId`, `runsDir`, and `latest` selectors in addition to inline `loopJson`
-- `martin_run` now persists loop records by default in the MCP path and preserves `allowedPaths`, `deniedPaths`, and resolved `repoRoot`
-- the packaged tarball now rebuilds vendored workspace dependencies before packing, so `npm` installs match current source instead of stale `dist/` output
-- the packaged artifact now rebuilds and vendors the Martin runtime dependencies needed by the standalone MCP server
-- release validation now includes both a packed-tarball smoke and a published-artifact smoke
+Use this MCP when a host already knows how to delegate coding work, but you want Martin Loop to bound that work with:
+
+- a hard budget ceiling (`maxUsd`)
+- an attempt ceiling (`maxIterations`)
+- a total token ceiling (`maxTokens`)
+- verifier commands (`verificationPlan`)
+- allowed and denied file globs
+- persisted run records you can inspect afterward
+
+It is a good fit for Claude Code, Codex-oriented hosts, and other MCP clients that want governed code-change execution instead of open-ended retry behavior.
+
+For host-facing integration guidance, see [MCP for AI Agents](https://github.com/Keesan12/martin-loop/blob/main/docs/oss/MCP-FOR-AI-AGENTS.md).
 
 ## Quickstart
 
@@ -35,7 +41,7 @@ claude mcp add --scope user martin-loop -- npx @martinloop/mcp
 claude mcp add --scope user martin-loop cmd /c "npx @martinloop/mcp"
 ```
 
-Generic stdio configuration for non-Claude clients:
+Generic stdio configuration:
 
 ```json
 {
@@ -45,37 +51,60 @@ Generic stdio configuration for non-Claude clients:
 }
 ```
 
-## What the tools do
+Codex host configuration in `~/.codex/config.toml`:
 
-- `martin_run`: runs a governed coding loop with budget caps, verifier commands, engine selection, path scoping, and persisted loop records
-- `martin_inspect`: reads Martin Loop run-store data from a canonical `loop-record.json`, a legacy `.jsonl` file, or a full runs directory
-- `martin_status`: evaluates remaining budget pressure and stop conditions from inline JSON, a saved loop record, a loop id, or the latest persisted run
+```toml
+[mcp_servers.martin-loop]
+command = "npx"
+args = ["@martinloop/mcp"]
+```
 
 ## Requirements
 
 - Node 20+
-- For live runs, either the `claude` CLI or the `codex` CLI must be on `PATH`
-- For dry-run and smoke-test flows, set `MARTIN_LIVE=false`
+- For live `martin_run` usage, either the `claude` CLI or the `codex` CLI must be available on `PATH`
+- For stub or smoke flows, set `MARTIN_LIVE=false`
 
-Live `martin_run` delegates to the configured CLI adapter. If no supported CLI is installed, use the stub path for testing:
+Example stub launch:
 
 ```sh
 MARTIN_LIVE=false npx @martinloop/mcp
 ```
 
-## Tool examples
+## Tool Contract
+
+| Tool | Purpose | Required input | Important optional input | Notes |
+| --- | --- | --- | --- | --- |
+| `martin_run` | Run a governed coding loop | `objective` | `workingDirectory`, `engine`, `model`, `maxUsd`, `maxIterations`, `maxTokens`, `verificationPlan`, `allowedPaths`, `deniedPaths`, `workspaceId`, `projectId` | Unknown arguments are rejected. |
+| `martin_inspect` | Read a saved run record or run folder | none | `file`, `runsDir` | `file` may point to a `loop-record.json`, legacy `.jsonl`, or a run directory under the runs root. |
+| `martin_status` | Report budget pressure and stop conditions | exactly one of `loopJson`, `file`, `loopId`, or `latest` | `runsDir` | `latest` must be `true` when used. |
+
+## Safe-Root Path Model
+
+This MCP does not let tool callers point at arbitrary filesystem locations. The server resolves tool paths against safe roots chosen when the server starts.
+
+- `workingDirectory`
+  Defaults to `MARTIN_MCP_WORKSPACE_ROOT` or the server process current directory. If you pass a value, it must still resolve inside that workspace root. `.` and repo-relative subpaths are the safest choices.
+- `file`
+  For `martin_inspect` and `martin_status`, `file` resolves under the runs root, not the whole machine. Direct file targets must end in `.json` or `.jsonl`; run directories are also accepted where the tool supports them.
+- `runsDir`
+  Defaults to `MARTIN_RUNS_DIR` or `~/.martin/runs`. Passing `runsDir` only re-states or narrows that safe runs root; it does not grant access outside it.
+- `allowedPaths` and `deniedPaths`
+  These are relative glob patterns only. Absolute paths, drive-qualified paths, and patterns containing `..` are rejected.
+
+Absolute paths can work only when they still resolve inside the corresponding safe root. Escapes above the workspace or runs root are rejected.
+
+## Tool Examples
 
 ### `martin_run`
-
-Example request body:
 
 ```json
 {
   "objective": "Fix the auth regression and prove it with tests",
   "engine": "codex",
-  "budgetUsd": 3,
-  "softLimitUsd": 2.25,
+  "maxUsd": 3,
   "maxIterations": 3,
+  "maxTokens": 20000,
   "verificationPlan": ["pnpm test --filter auth"],
   "workingDirectory": ".",
   "allowedPaths": ["src/**", "tests/**"],
@@ -85,25 +114,25 @@ Example request body:
 
 ### `martin_inspect`
 
-Inspect the default run store:
+Inspect the default runs root:
 
 ```json
 {}
 ```
 
-Inspect a legacy JSONL file directly:
+Inspect a specific saved loop record under the runs root:
 
 ```json
 {
-  "file": "C:/Users/you/.martin/runs/workspace.jsonl"
+  "file": "loop-123/loop-record.json"
 }
 ```
 
-Inspect a canonical runs directory:
+Inspect a subdirectory under the configured runs root:
 
 ```json
 {
-  "runsDir": "C:/Users/you/.martin/runs"
+  "runsDir": "team-a"
 }
 ```
 
@@ -121,27 +150,36 @@ Status for a specific persisted loop:
 
 ```json
 {
-  "loopId": "loop-123",
-  "runsDir": "C:/Users/you/.martin/runs"
+  "loopId": "loop-123"
 }
 ```
 
-## Official MCP Registry
+Status from inline JSON:
 
-This package is prepared for the official MCP Registry metadata flow:
+```json
+{
+  "loopJson": "{\"loopId\":\"loop-123\",\"status\":\"completed\",\"lifecycleState\":\"completed\",\"attempts\":[],\"budget\":{\"maxUsd\":5,\"softLimitUsd\":3,\"maxIterations\":2,\"maxTokens\":1000},\"cost\":{\"actualUsd\":1.25,\"avoidedUsd\":0,\"tokensIn\":20,\"tokensOut\":10}}"
+}
+```
+
+## Registry Metadata
+
+The registry manifest artifact for this package is `server.json`. In this repository, that manifest is authored at `packages/mcp/server.json`.
+
+Current metadata:
 
 - npm package: `@martinloop/mcp`
 - registry server name: `io.github.keesan12/martin-loop`
-- manifest file: `packages/mcp/server.json`
+- manifest artifact name: `server.json`
 
-The official registry publish flow is separate from npm publication. After publishing the package to npm, run the publisher from `packages/mcp`:
+Official MCP Registry publication is separate from npm publication. After publishing the package to npm, run the publisher from `packages/mcp`:
 
 ```sh
 mcp-publisher login github
 mcp-publisher publish
 ```
 
-## Local verification
+## Verification
 
 From the repository root:
 
@@ -153,5 +191,9 @@ pnpm --filter @martinloop/mcp smoke:pack
 pnpm --filter @martinloop/mcp smoke:published
 ```
 
-- `smoke:pack` validates the local packed tarball before publish
-- `smoke:published` validates the npm-published artifact through `npm exec`
+- `smoke:pack` verifies the packed tarball shape and a stdio MCP launch
+- `smoke:published` verifies the npm-installed artifact through `npm install` plus live MCP tool calls
+
+## Version Notes
+
+The root `CHANGELOG.md` is repo-wide and includes non-MCP changes. For the `@martinloop/mcp` surface, prefer this README, `server.json`, and the MCP release notes under `docs/release/`.

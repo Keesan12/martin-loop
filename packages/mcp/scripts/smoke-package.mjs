@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
+import packageJson from "../package.json" with { type: "json" };
 import { spawn } from "node:child_process";
-import { mkdtemp, mkdir, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -30,6 +31,7 @@ const REQUIRED_TARBALL_FILES = [
   "dist/vendor/contracts/index.js",
   "dist/vendor/core/index.d.ts",
   "dist/vendor/core/index.js",
+  "server.json",
   "package.json",
 ];
 const SMOKE_LOOP_RECORD = {
@@ -77,13 +79,21 @@ export async function runStandaloneMcpSmoke(options = {}) {
     const tarballFilename = packEntry.filename;
     const tarballPath = path.join(packDir, packEntry.filename);
 
-    const packedManifestOutput = await runCommand(
-      tarCommand(),
-      ["-xOf", tarballFilename, "package/package.json"],
-      { cwd: packDir },
-    );
+    const [packedManifestOutput, packedServerOutput] = await Promise.all([
+      runCommand(
+        tarCommand(),
+        ["-xOf", tarballFilename, "package/package.json"],
+        { cwd: packDir },
+      ),
+      runCommand(
+        tarCommand(),
+        ["-xOf", tarballFilename, "package/server.json"],
+        { cwd: packDir },
+      ),
+    ]);
     const packedManifest = JSON.parse(packedManifestOutput.stdout);
-    assertPackedManifest(packedManifest);
+    const packedServerMetadata = JSON.parse(packedServerOutput.stdout);
+    assertPackedManifest(packedManifest, packedServerMetadata);
 
     const stderrChunks = [];
     const launch = createPackagedLaunch(tarballPath);
@@ -99,7 +109,7 @@ export async function runStandaloneMcpSmoke(options = {}) {
     });
 
     const client = new Client(
-      { name: "martin-mcp-smoke", version: "0.1.2" },
+      { name: "martin-mcp-smoke", version: packageJson.version },
       { capabilities: {} },
     );
 
@@ -131,6 +141,7 @@ export async function runStandaloneMcpSmoke(options = {}) {
       toolNames,
       tarballFiles,
       packedDependencies: packedManifest.dependencies ?? {},
+      packedServerMetadata,
       statusPayload,
       stderr: stderrChunks.join(""),
     };
@@ -149,6 +160,7 @@ function assertTarballFileSet(filePaths) {
     (filePath) =>
       filePath !== "package.json" &&
       filePath !== "README.md" &&
+      filePath !== "server.json" &&
       !filePath.startsWith("dist/"),
   );
   if (unexpected.length > 0) {
@@ -161,7 +173,66 @@ function assertTarballFileSet(filePaths) {
   }
 }
 
-function assertPackedManifest(manifest) {
+export function assertMcpPackageMetadataParity(manifest, serverMetadata) {
+  if (!manifest || typeof manifest !== "object") {
+    throw new Error("Expected an MCP package manifest object.");
+  }
+
+  if (!serverMetadata || typeof serverMetadata !== "object") {
+    throw new Error("Expected an MCP server metadata object.");
+  }
+
+  if (manifest.name !== PUBLISHED_PACKAGE_SPEC) {
+    throw new Error(
+      `Standalone MCP package name must be ${PUBLISHED_PACKAGE_SPEC}, received ${String(manifest.name)}.`,
+    );
+  }
+
+  if (manifest.mcpName !== serverMetadata.name) {
+    throw new Error(
+      `package.json mcpName (${String(manifest.mcpName)}) must match server.json name (${String(serverMetadata.name)}).`,
+    );
+  }
+
+  if (manifest.version !== serverMetadata.version) {
+    throw new Error(
+      `package.json version (${String(manifest.version)}) must match server.json version (${String(serverMetadata.version)}).`,
+    );
+  }
+
+  const npmPackage = Array.isArray(serverMetadata.packages)
+    ? serverMetadata.packages.find((pkg) => pkg?.registryType === "npm")
+    : undefined;
+  if (!npmPackage) {
+    throw new Error("server.json must declare an npm package entry.");
+  }
+
+  if (npmPackage.identifier !== manifest.name) {
+    throw new Error(
+      `server.json npm identifier (${String(npmPackage.identifier)}) must match package.json name (${String(manifest.name)}).`,
+    );
+  }
+
+  if (npmPackage.version !== manifest.version) {
+    throw new Error(
+      `server.json npm package version (${String(npmPackage.version)}) must match package.json version (${String(manifest.version)}).`,
+    );
+  }
+
+  if (serverMetadata.name !== manifest.mcpName) {
+    throw new Error(
+      `server.json name (${String(serverMetadata.name)}) must match package.json mcpName (${String(manifest.mcpName)}).`,
+    );
+  }
+}
+
+export async function readJsonFile(filePath) {
+  return JSON.parse(await readFile(filePath, "utf8"));
+}
+
+function assertPackedManifest(manifest, serverMetadata) {
+  assertMcpPackageMetadataParity(manifest, serverMetadata);
+
   const dependencyNames = Object.keys(manifest.dependencies ?? {});
   const internalDependencies = dependencyNames.filter((name) => name.startsWith("@martin/"));
   if (internalDependencies.length > 0) {

@@ -32,7 +32,6 @@ test("createReleaseMatrixPlan defines the frozen Windows macOS and Linux RC lane
       "pnpm build",
       "pnpm oss:validate",
       "pnpm public:smoke",
-      "pnpm mcp:published:smoke",
       "pnpm repo:smoke",
       "pnpm rc:validate",
     ]);

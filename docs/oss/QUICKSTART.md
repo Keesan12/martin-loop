@@ -133,10 +133,40 @@ claude mcp add --scope user martin-loop -- npx @martinloop/mcp
 claude mcp add --scope user martin-loop cmd /c "npx @martinloop/mcp"
 ```
 
+Codex-oriented hosts can register the same stdio server in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.martin-loop]
+command = "npx"
+args = ["@martinloop/mcp"]
+```
+
+The package exposes three tools:
+
+- `martin_run`
+- `martin_inspect`
+- `martin_status`
+
+Tool argument shape should match the live schema in `packages/mcp/src/server.ts` and validation in `packages/mcp/src/server-validation.ts`.
+
+- `martin_run` accepts `maxUsd`, `maxIterations`, and `maxTokens`
+- `martin_run` does not accept `budgetUsd` or `softLimitUsd`
+- `martin_status` requires exactly one selector: `loopJson`, `file`, `loopId`, or `latest`
+- unknown tool arguments are rejected
+
+Safe-root behavior matters for external hosts:
+
+- `workingDirectory` resolves under `MARTIN_MCP_WORKSPACE_ROOT` or the server process cwd
+- `file` resolves under `MARTIN_RUNS_DIR` or `~/.martin/runs`
+- `runsDir` can only restate or narrow that runs root, not escape it
+- `allowedPaths` and `deniedPaths` must be relative globs without absolute prefixes or `..`
+
 Official MCP Registry publication has an extra metadata step beyond npm packaging. Do not mark `@martinloop/mcp` registry-ready unless both of these exist and match:
 
 - `packages/mcp/package.json` with `mcpName`
-- `packages/mcp/server.json` with the official server metadata
+- the package manifest artifact `server.json` with the official server metadata
+
+In this repo, that manifest is authored at `packages/mcp/server.json`.
 
 After publishing `@martinloop/mcp` to npm, run the official registry publisher from `packages/mcp`:
 
@@ -156,11 +186,7 @@ pnpm --filter @martinloop/mcp smoke:published
 node packages/mcp/dist/server.js
 ```
 
-The current MCP tools are:
-
-- `martin_run`
-- `martin_inspect`
-- `martin_status`
+For practical host-facing guidance, see [`docs/oss/MCP-FOR-AI-AGENTS.md`](./MCP-FOR-AI-AGENTS.md).
 
 ## Notes for reviewers
 
@@ -168,3 +194,4 @@ The current MCP tools are:
 - Exact-versus-estimated cost labels are meaningful and should not be merged in docs or dashboards.
 - The repo contains control-plane code, but the public OSS boundary is still being finalized during Phase 13.
 - The benchmark harness remains a workspace-level RC surface; `martin bench` is not part of the publishable CLI boundary yet.
+- The root `CHANGELOG.md` is repo-wide. For `@martinloop/mcp`, prefer the package README, `server.json`, and package-specific release notes when you need MCP-scoped history.
