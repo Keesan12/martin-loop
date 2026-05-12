@@ -21,8 +21,10 @@
   },
   "files": [
     "dist",
+    "demo",
     "README.md",
-    "docs/oss"
+    "docs/oss",
+    "docs/distribution"
   ],
   "publishConfig": {
     "access": "public"

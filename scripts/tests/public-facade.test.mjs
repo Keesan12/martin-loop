@@ -18,9 +18,10 @@ test("createPublicFacadeSmokePlan targets the frozen public package surface", ()
   assert.equal(plan.npxCommand, "npx martin-loop --help");
   assert.match(plan.sdkSmoke.description, /MartinLoop root import/i);
   assert.match(plan.cliSmoke.description, /npx martin-loop/i);
+  assert.match(plan.demoSmoke.description, /demo copies the packaged sandbox/i);
 });
 
-test("runPublicFacadeSmoke proves the root SDK import and CLI help work from a clean temp project", async () => {
+test("runPublicFacadeSmoke proves the root SDK import, CLI help, and demo sandbox work from a clean temp project", async () => {
   const result = await runPublicFacadeSmoke({ rootDir: ROOT_DIR });
 
   assert.equal(result.packageName, "martin-loop");
@@ -28,4 +29,6 @@ test("runPublicFacadeSmoke proves the root SDK import and CLI help work from a c
   assert.equal(result.sdkSmoke.exportName, "MartinLoop");
   assert.equal(result.cliSmoke.ok, true);
   assert.equal(result.cliSmoke.command, "npx martin-loop --help");
+  assert.equal(result.demoSmoke.ok, true);
+  assert.equal(result.demoSmoke.command, "npx martin-loop demo --dir ./martin-loop-demo");
 });
