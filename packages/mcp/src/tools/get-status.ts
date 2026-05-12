@@ -39,9 +39,7 @@ export async function getStatusTool(input: GetStatusInput): Promise<GetStatusOut
       actualUsd: loop.cost.actualUsd,
       avoidedUsd: loop.cost.avoidedUsd ?? 0,
       tokensIn: loop.cost.tokensIn,
-      tokensOut: loop.cost.tokensOut,
-      thinkingTokensOut: 0,
-      childCostUsd: 0
+      tokensOut: loop.cost.tokensOut
     },
     attemptsUsed: loop.attempts.length
   });

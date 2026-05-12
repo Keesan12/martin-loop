@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { chmod, copyFile, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -115,6 +115,11 @@ async function copyFacadeDirectory(input) {
 }
 
 async function copyRawDirectory(input) {
+  const sourceStats = await stat(input.sourceDir).catch(() => null);
+  if (!sourceStats?.isDirectory()) {
+    return;
+  }
+
   await mkdir(input.targetDir, { recursive: true });
 
   const entries = await readdir(input.sourceDir, { withFileTypes: true });

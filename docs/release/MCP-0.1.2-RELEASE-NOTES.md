@@ -30,7 +30,7 @@
 ### Packaging and install hardening
 
 - the packaged MCP tarball now rebuilds vendored workspace dependencies before packing, preventing stale `dist/` output from leaking into the npm artifact.
-- the packaged MCP tarball now includes the Martin policy WASM bundle required by runtime policy evaluation.
+- the packaged MCP tarball now rebuilds and vendors the Martin runtime dependencies required by the standalone server.
 - the package manifest now exposes both:
   - `mcp`
   - `martin-loop-mcp`

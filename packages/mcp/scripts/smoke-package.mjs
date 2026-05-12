@@ -34,7 +34,6 @@ const REQUIRED_TARBALL_FILES = [
   "dist/vendor/core/index.js",
   "dist/vendor/headlessos-core/index.d.ts",
   "dist/vendor/headlessos-core/index.js",
-  "dist/vendor/policies/default.wasm",
   "dist/vendor/policy/index.d.ts",
   "dist/vendor/policy/index.js",
   "package.json",
