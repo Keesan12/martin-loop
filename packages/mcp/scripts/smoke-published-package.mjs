@@ -13,6 +13,7 @@ import { buildStandaloneMcpPackage, createCommandLaunch } from "./build-package-
 import { PUBLISHED_PACKAGE_SPEC, sanitizePackageManagerEnv } from "./smoke-package.mjs";
 
 const REQUIRED_TOOLS = ["martin_inspect", "martin_run", "martin_status"];
+const INSTALLED_PACKAGE_PATH = path.join("node_modules", ...PUBLISHED_PACKAGE_SPEC.split("/"));
 
 export async function runPublishedMcpSmoke(options = {}) {
   const packageDir = path.resolve(options.packageDir ?? fileURLToPath(new URL("..", import.meta.url)));
@@ -20,9 +21,13 @@ export async function runPublishedMcpSmoke(options = {}) {
   const runsRoot = path.join(tempRoot, "runs");
   const npmCacheDir = path.join(tempRoot, ".npm-cache");
   const packDir = path.join(tempRoot, "pack");
+  const installRoot = path.join(tempRoot, "install");
+  const workspaceRoot = path.join(tempRoot, "workspace");
   await mkdir(runsRoot, { recursive: true });
   await mkdir(npmCacheDir, { recursive: true });
   await mkdir(packDir, { recursive: true });
+  await mkdir(installRoot, { recursive: true });
+  await mkdir(path.join(workspaceRoot, "src"), { recursive: true });
 
   let transport;
   try {
@@ -30,6 +35,11 @@ export async function runPublishedMcpSmoke(options = {}) {
       packageDir,
       tempPackDir: packDir,
       explicitPackageSpec: options.packageSpec ?? process.env.MARTIN_MCP_PACKAGE_SPEC,
+    });
+    const installedPackageDir = await installPublishedPackage({
+      installRoot,
+      npmCacheDir,
+      packageSpec,
     });
     const canonicalLoop = {
       loopId: "loop_published_canonical",
@@ -90,14 +100,20 @@ export async function runPublishedMcpSmoke(options = {}) {
       `${JSON.stringify(jsonlOlderLoop)}\n${JSON.stringify(jsonlNewerLoop)}\n`,
       "utf8",
     );
+    await writeFile(
+      path.join(workspaceRoot, "src", "smoke-entry.ts"),
+      "export const martinSmokeWorkspace = true;\n",
+      "utf8",
+    );
 
     transport = new StdioClientTransport({
-      ...createPublishedLaunch(packageSpec),
-      cwd: tempRoot,
+      ...createInstalledPackageLaunch(installedPackageDir),
+      cwd: workspaceRoot,
       env: {
         ...sanitizePackageManagerEnv(process.env),
         MARTIN_RUNS_DIR: runsRoot,
         MARTIN_LIVE: "false",
+        MARTIN_MCP_WORKSPACE_ROOT: workspaceRoot,
         npm_config_cache: npmCacheDir,
       },
       stderr: "pipe",
@@ -152,6 +168,7 @@ export async function runPublishedMcpSmoke(options = {}) {
     return {
       packageSpec,
       npxCommand: packageSpec.startsWith("@") ? `npx ${packageSpec}` : `npm exec --yes --package "${packageSpec}" -- mcp`,
+      launchCommand: `${JSON.stringify(process.execPath)} ${JSON.stringify(path.join(installedPackageDir, "dist", "server.js"))}`,
       toolNames,
       canonicalInspect: JSON.parse(readTextContent(canonicalInspect)),
       jsonlInspect: JSON.parse(readTextContent(jsonlInspect)),
@@ -240,11 +257,33 @@ async function runCommand(command, args, options) {
   });
 }
 
-function createPublishedLaunch(packageSpec) {
-  return createCommandLaunch(
-    npmCommand(),
-    ["exec", "--yes", "--package", packageSpec, "--", "mcp"],
+async function installPublishedPackage({ installRoot, npmCacheDir, packageSpec }) {
+  await writeFile(
+    path.join(installRoot, "package.json"),
+    `${JSON.stringify({ name: "martin-mcp-published-smoke", private: true }, null, 2)}\n`,
+    "utf8",
   );
+
+  await runCommand(
+    npmCommand(),
+    ["install", "--no-save", "--ignore-scripts", "--fund=false", "--audit=false", packageSpec],
+    {
+      cwd: installRoot,
+      env: {
+        ...sanitizePackageManagerEnv(process.env),
+        npm_config_cache: npmCacheDir,
+      },
+    },
+  );
+
+  return path.join(installRoot, INSTALLED_PACKAGE_PATH);
+}
+
+function createInstalledPackageLaunch(installedPackageDir) {
+  return {
+    command: process.execPath,
+    args: [path.join(installedPackageDir, "dist", "server.js")],
+  };
 }
 
 function readTextContent(result) {
