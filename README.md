@@ -11,6 +11,17 @@
 
 <br>
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Keesan12/martin-loop/main/docs/assets/nvidia-inception-program.png">
+  <img src="https://raw.githubusercontent.com/Keesan12/martin-loop/main/docs/assets/nvidia-inception-program-light.png" alt="NVIDIA Inception Program logo" width="280">
+</picture>
+
+<br>
+
+MartinLoop has been accepted into the NVIDIA Inception program.
+
+<br>
+
 **Your overnight AI pipeline estimated $2.40.**  
 **You woke up to a $65 bill.** 
  <br> 47 retries. No hard stop. No rollback. No audit trail. Nothing merged.  
