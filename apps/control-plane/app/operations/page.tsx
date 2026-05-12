@@ -6,6 +6,8 @@ import { OverviewKpiBand } from "../../components/overview-kpi-band";
 import { TrustStrip } from "../../components/trust-strip";
 import { getOperationsPageData } from "../../lib/queries/control-plane-queries";
 
+export const dynamic = "force-dynamic";
+
 export default async function OperationsPage() {
   const operations = await getOperationsPageData();
 

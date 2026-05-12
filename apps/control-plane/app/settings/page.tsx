@@ -2,6 +2,8 @@ import { ControlPlaneShell } from "../../components/control-plane-shell";
 import { Panel } from "../../components/dashboard-primitives";
 import { getSettingsPageData } from "../../lib/queries/control-plane-queries";
 
+export const dynamic = "force-dynamic";
+
 export default async function SettingsPage() {
   const data = await getSettingsPageData();
 

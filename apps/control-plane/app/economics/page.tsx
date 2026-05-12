@@ -5,6 +5,8 @@ import { OverviewKpiBand } from "../../components/overview-kpi-band";
 import { PrimaryTrendPanel } from "../../components/primary-trend-panel";
 import { getEconomicsPageData } from "../../lib/queries/control-plane-queries";
 
+export const dynamic = "force-dynamic";
+
 export default async function EconomicsPage() {
   const economics = await getEconomicsPageData();
 

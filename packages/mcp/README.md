@@ -14,7 +14,7 @@ Martin Loop helps MCP hosts run AI coding work inside a bounded runtime instead 
 - `martin_status` now supports `file`, `loopId`, `runsDir`, and `latest` selectors in addition to inline `loopJson`
 - `martin_run` now persists loop records by default in the MCP path and preserves `allowedPaths`, `deniedPaths`, and resolved `repoRoot`
 - the packaged tarball now rebuilds vendored workspace dependencies before packing, so `npm` installs match current source instead of stale `dist/` output
-- the packaged artifact now includes the Martin policy WASM bundle required for real runtime policy evaluation
+- the packaged artifact now rebuilds and vendors the Martin runtime dependencies needed by the standalone MCP server
 - release validation now includes both a packed-tarball smoke and a published-artifact smoke
 
 ## Quickstart

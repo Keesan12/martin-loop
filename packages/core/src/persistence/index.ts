@@ -11,18 +11,8 @@ export {
   readAllLoopRecords,
   readLatestLoopRecord,
   readLatestLoopRecordFromFile,
-  readLoopRecordsFromFile,
+  readLoopRecordsFromFile
 } from "./runs-reader.js";
 export type { LoopAttemptRecord, LoopRunRecord } from "./runs-reader.js";
 export { compileAndPersistContext } from "./compiler.js";
 export type { CompileResult } from "./compiler.js";
-export {
-  cleanupOldCheckpoints,
-  getCheckpointStorageDir,
-  hashFiles,
-  readCheckpoint,
-  validateWorkspaceHashes,
-  WorkspaceModifiedError,
-  writeCheckpoint
-} from "./checkpoint.js";
-export type { Checkpoint, CheckpointPhase } from "./checkpoint.js";

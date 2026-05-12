@@ -6,6 +6,8 @@ import { PrimaryTrendPanel } from "../components/primary-trend-panel";
 import { TrustStrip } from "../components/trust-strip";
 import { getOverviewPageData } from "../lib/queries/control-plane-queries";
 
+export const dynamic = "force-dynamic";
+
 export default async function OverviewPage() {
   const overview = await getOverviewPageData();
 
