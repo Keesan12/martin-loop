@@ -39,3 +39,6 @@ MartinLoop V3 3-31-2026/
 
 # Legacy demo directory
 demo/
+!demo/
+!demo/seeded-workspace/
+!demo/seeded-workspace/**

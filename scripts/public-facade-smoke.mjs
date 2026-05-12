@@ -23,6 +23,9 @@ export function createPublicFacadeSmokePlan(options = {}) {
     cliSmoke: {
       description: "npx martin-loop --help resolves through the root public package facade.",
     },
+    demoSmoke: {
+      description: "npx martin-loop demo copies the packaged sandbox from a clean temp install.",
+    },
   };
 }
 
@@ -86,6 +89,15 @@ export async function runPublicFacadeSmoke(options = {}) {
       throw new Error(`Expected CLI help output to include "martin-loop run" or "Martin Loop CLI".\n${cliRun.stdout}${cliRun.stderr}`);
     }
 
+    const demoTarget = path.join(appDir, "martin-loop-demo");
+    const demoRun = await runCommand(["npx", "martin-loop", "demo", "--dir", demoTarget], {
+      cwd: appDir,
+    });
+    const demoReadme = await readFile(path.join(demoTarget, "README.md"), "utf8");
+    if (!demoRun.stdout.includes("MartinLoop demo sandbox created at") || !demoReadme.includes("Demo Sandbox")) {
+      throw new Error(`Expected demo command to copy the packaged sandbox.\n${demoRun.stdout}${demoRun.stderr}`);
+    }
+
     return {
       packageName: rootManifest.name,
       tarballPath,
@@ -97,6 +109,10 @@ export async function runPublicFacadeSmoke(options = {}) {
       cliSmoke: {
         ok: true,
         command: "npx martin-loop --help",
+      },
+      demoSmoke: {
+        ok: true,
+        command: "npx martin-loop demo --dir ./martin-loop-demo",
       },
     };
   } finally {

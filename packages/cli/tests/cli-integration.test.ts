@@ -310,6 +310,20 @@ describe("bench command", () => {
   });
 });
 
+describe("demo command", () => {
+  it("copies a public-safe sandbox and prints next steps", async () => {
+    await withTempDir(async (dir) => {
+      const targetDirectory = join(dir, "demo sandbox");
+      const result = await executeCli(["demo", "--dir", targetDirectory]);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain(targetDirectory);
+      expect(result.stdout).toContain("npm test");
+      expect(result.stdout).toContain("Task ideas live in");
+    });
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Help surface
 // ---------------------------------------------------------------------------
@@ -321,6 +335,7 @@ describe("help command", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe("");
     expect(result.stdout).toContain("martin-loop run");
+    expect(result.stdout).toContain("martin-loop demo");
     expect(result.stdout).toContain("martin-loop inspect");
     expect(result.stdout).toContain("martin-loop resume");
   });
