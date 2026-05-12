@@ -380,11 +380,12 @@ Conventional commit prefixes: `feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, a
 *"AI coding accountability: completes good work, refuses unsafe work, stops uneconomical work."*
 
 </div>
-<br>
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Keesan12/martin-loop/main/docs/assets/nvidia-inception-program.png">
-  <img src="https://raw.githubusercontent.com/Keesan12/martin-loop/main/docs/assets/nvidia-inception-program-light.png" alt="NVIDIA Inception Program logo" width="280">
-</picture>
-
-<br>
+<div align="center">
+  <br>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Keesan12/martin-loop/main/docs/assets/nvidia-inception-program.png">
+    <img src="https://raw.githubusercontent.com/Keesan12/martin-loop/main/docs/assets/nvidia-inception-program-light.png" alt="NVIDIA Inception Program logo" width="280">
+  </picture>
+  <br>
+</div>
