@@ -152,16 +152,19 @@ function inferStructuralClassHint(
 
 /**
  * Given a prompt string, returns the full argv array to pass to spawn().
- * Example for Claude:  (p) => ["--print", p, "--dangerously-skip-permissions"]
- * Example for Codex:   (p) => ["--full-auto", p]
+ * Example for Claude:  () => ["--output-format", "json", "--print"]
+ * Example for Codex:   () => ["exec", "--sandbox", "workspace-write", "-"]
  */
 export type CliArgsBuilder = (prompt: string) => string[];
+export type CliStdinBuilder = (prompt: string) => string | undefined;
 
 export interface AgentCliAdapterOptions {
   /** The executable to spawn (e.g. "claude", "codex"). */
   command: string;
   /** Converts a prompt string into the argv array passed to spawn(). */
   argsBuilder: CliArgsBuilder;
+  /** Optional stdin payload for CLIs that accept prompt input via stdin or `-`. */
+  stdinBuilder?: CliStdinBuilder;
   /** Adapter ID suffix. Defaults to command. */
   adapterIdSuffix?: string;
   /** Working directory for all subprocesses. Defaults to process.cwd(). */
@@ -271,17 +274,13 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
       }
 
       const args = options.argsBuilder(prompt);
+      const stdinData = options.stdinBuilder?.(prompt);
 
-      // stdinPrompt: if argsBuilder signals stdin delivery by returning args ending with "--stdin-prompt",
-      // remove that sentinel and pass the prompt via stdin instead (avoids Windows shell-escaping issues).
-      const useStdin = args.at(-1) === "--stdin-prompt";
-      const spawnArgs = useStdin ? args.slice(0, -1) : args;
-
-      const agentResult = await runSubprocess(options.command, spawnArgs, {
+      const agentResult = await runSubprocess(options.command, args, {
         cwd: workingDirectory,
         timeoutMs,
         spawnImpl: options.spawnImpl,
-        ...(useStdin ? { stdinData: prompt } : {})
+        ...(stdinData === undefined ? {} : { stdinData })
       });
 
       if (agentResult.timedOut) {
@@ -531,9 +530,9 @@ export function createClaudeCliAdapter(options: ClaudeCliAdapterOptions = {}): M
       "--print",
       "--dangerously-skip-permissions",
       ...modelArgs,
-      ...extraArgs,
-      "--stdin-prompt"  // sentinel: tells execute() to deliver prompt via stdin
-    ]
+      ...extraArgs
+    ],
+    stdinBuilder: (prompt) => prompt
   });
 }
 
@@ -542,7 +541,7 @@ export function createClaudeCliAdapter(options: ClaudeCliAdapterOptions = {}): M
 // ---------------------------------------------------------------------------
 
 /**
- * Spawns `codex exec --sandbox <mode> [--model <model>] [extraArgs] -`.
+ * Spawns `codex exec --cd <workspace> --sandbox <mode> [--model <model>] [extraArgs] -`.
  *
  * The prompt is delivered via stdin so Windows shell quoting cannot truncate or
  * reinterpret long MartinLoop prompts that contain paths, deny rules, or budget
@@ -555,28 +554,31 @@ export function createCodexCliAdapter(options: CodexCliAdapterOptions = {}): Mar
   const modelArgs: string[] = options.model ? ["--model", options.model] : [];
   const extraArgs = options.extraArgs ?? [];
   const sandbox = options.sandbox ?? "workspace-write";
+  const workingDirectory = options.workingDirectory ?? process.cwd();
 
   return createAgentCliAdapter({
     command: "codex",
     adapterIdSuffix: "codex",
     model: options.model ?? "codex",
     label: options.label ?? "Codex CLI adapter",
-    workingDirectory: options.workingDirectory,
+    workingDirectory,
     timeoutMs: options.timeoutMs,
     verifyTimeoutMs: options.verifyTimeoutMs,
     supportsJsonOutput: false,
     spawnImpl: options.spawnImpl,
     argsBuilder: () => [
       "exec",
+      "--cd",
+      workingDirectory,
       "--sandbox",
       sandbox,
       "--color",
       "never",
       ...modelArgs,
       ...extraArgs,
-      "-",
-      "--stdin-prompt"
-    ]
+      "-"
+    ],
+    stdinBuilder: (prompt) => prompt
   });
 }
 

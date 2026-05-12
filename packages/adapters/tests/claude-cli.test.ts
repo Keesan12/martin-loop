@@ -446,8 +446,10 @@ describe("createCodexCliAdapter", () => {
 
   it("uses codex exec with an explicit writable sandbox instead of legacy full-auto", async () => {
     const calls: SpawnCall[] = [];
+    const workingDirectory = join(tmpdir(), "martin codex path with spaces");
     const adapter = createCodexCliAdapter({
       fullAuto: true,
+      workingDirectory,
       spawnImpl: createScriptedSpawn(calls)
     });
     const result = await adapter.execute(
@@ -468,6 +470,8 @@ describe("createCodexCliAdapter", () => {
     expect(calls[0]?.command).toBe("codex");
     expect(calls[0]?.args).toEqual([
       "exec",
+      "--cd",
+      workingDirectory,
       "--sandbox",
       "workspace-write",
       "--color",
@@ -475,6 +479,8 @@ describe("createCodexCliAdapter", () => {
       "-"
     ]);
     expect(calls[0]?.args).not.toContain("--full-auto");
+    expect(calls[0]?.args).not.toContain("--stdin-prompt");
+    expect(calls[0]?.options?.cwd).toBe(workingDirectory);
     expect(calls[0]?.stdin).toContain("OBJECTIVE:");
     expect(calls[0]?.stdin).toContain("update the target file");
   });
@@ -504,6 +510,8 @@ describe("createCodexCliAdapter", () => {
     expect(result.status).toBe("completed");
     expect(calls[0]?.args).toEqual([
       "exec",
+      "--cd",
+      expect.any(String),
       "--sandbox",
       "read-only",
       "--color",
