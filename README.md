@@ -9,8 +9,6 @@
 [![Node](https://img.shields.io/badge/node-%3E%3D20-3c873a?style=flat-square&logo=nodedotjs&logoColor=white)](#quick-start)
 [![npm](https://img.shields.io/badge/npm-martin--loop-cc3534?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/martin-loop)
 
-MartinLoop has been accepted into the NVIDIA Inception program.
-
 <br>
 
 **Your overnight AI pipeline estimated $2.40.**  
@@ -386,6 +384,8 @@ Conventional commit prefixes: `feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, a
 
 *"AI coding accountability: completes good work, refuses unsafe work, stops uneconomical work."*
 
+
+MartinLoop has been accepted into the NVIDIA Inception program.
 </div>
 
 <div align="center">
