@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -294,6 +294,98 @@ describe("executeCli", () => {
     expect(result.stdout).toBe("");
     expect(result.stderr).toContain("workspace-only RC surface");
     expect(result.stderr).toContain("@martin/benchmarks");
+  });
+
+  it("copies the seeded demo workspace into the default target directory", async () => {
+    const previousCwd = process.cwd();
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-demo-default-"));
+
+    try {
+      process.chdir(directory);
+
+      const result = await executeCli(["demo"]);
+      const targetDirectory = join(directory, "martin-loop-demo");
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain(targetDirectory);
+      expect(result.stdout).toContain("npm install");
+      expect(result.stdout).toContain("MARTIN_LIVE=false");
+      expect(await readFile(join(targetDirectory, "README.md"), "utf8")).toContain("Demo Sandbox");
+    } finally {
+      process.chdir(previousCwd);
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("supports --dir for the demo sandbox target", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-demo-dir-"));
+    const targetDirectory = join(directory, "custom-demo");
+
+    try {
+      const result = await executeCli(["demo", "--dir", targetDirectory]);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain(targetDirectory);
+      expect(await readFile(join(targetDirectory, "package.json"), "utf8")).toContain(
+        "martin-loop-demo-sandbox"
+      );
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("refuses to overwrite a non-empty demo target without --force", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-demo-blocked-"));
+    const targetDirectory = join(directory, "existing demo");
+
+    try {
+      await mkdir(targetDirectory, { recursive: true });
+      await writeFile(join(targetDirectory, "keep.txt"), "do not replace", "utf8");
+
+      const result = await executeCli(["demo", "--dir", targetDirectory]);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("already exists and is not empty");
+      expect(await readFile(join(targetDirectory, "keep.txt"), "utf8")).toBe("do not replace");
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("replaces a non-empty demo target when --force is provided", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-demo-force-"));
+    const targetDirectory = join(directory, "existing demo");
+
+    try {
+      await mkdir(targetDirectory, { recursive: true });
+      await writeFile(join(targetDirectory, "keep.txt"), "replace me", "utf8");
+
+      const result = await executeCli(["demo", "--dir", targetDirectory, "--force"]);
+
+      expect(result.exitCode).toBe(0);
+      await expect(readFile(join(targetDirectory, "keep.txt"), "utf8")).rejects.toThrow();
+      expect(await readFile(join(targetDirectory, "TASKS.md"), "utf8")).toContain("Optional live run");
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("handles demo target paths with spaces and prints the guided next steps", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-demo-spaces-"));
+    const targetDirectory = join(directory, "demo sandbox with spaces");
+
+    try {
+      const result = await executeCli(["demo", "--dir", targetDirectory]);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain(`cd ${targetDirectory}`);
+      expect(result.stdout).toContain("Optional live run");
+      expect(await readFile(join(targetDirectory, "martin.config.yaml"), "utf8")).toContain(
+        "strict_local"
+      );
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
   });
 
   it("inspects loop record files and returns a portfolio summary", async () => {

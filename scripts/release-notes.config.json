@@ -1,0 +1,26 @@
+{
+  "repo": "Keesan12/martin-loop",
+  "installCommand": "npm install -g martin-loop",
+  "quickTryCommand": "npx martin-loop demo",
+  "challengeUrl": "https://github.com/Keesan12/martin-loop/blob/main/docs/distribution/UNDER-3-CHALLENGE.md",
+  "discussions": [
+    {
+      "title": "What should every AI coding agent run record include?",
+      "url": "https://github.com/Keesan12/martin-loop/discussions/26"
+    },
+    {
+      "title": "Should budget checks happen only at safe halt boundaries?",
+      "url": "https://github.com/Keesan12/martin-loop/discussions/27"
+    },
+    {
+      "title": "Where should the AI agent control layer live?",
+      "url": "https://github.com/Keesan12/martin-loop/discussions/28"
+    }
+  ],
+  "provenance": [
+    "npm publication runs before the GitHub release job and skips duplicate publishes when the tagged version already exists on npm.",
+    "Release assets are built from the tagged source and packed in CI before the release is published.",
+    "The public smoke path covers the root SDK import, CLI help, and the packaged `martin-loop demo` sandbox flow.",
+    "The benchmark challenge numbers stay tied to the public repo-backed benchmark story and reproduction commands."
+  ]
+}
