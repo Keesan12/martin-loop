@@ -338,6 +338,7 @@ Current RC gate commands:
 ```sh
 pnpm oss:validate
 pnpm public:smoke
+pnpm mcp:published:smoke
 pnpm repo:smoke
 pnpm rc:validate
 pnpm pilot:prep:validate
