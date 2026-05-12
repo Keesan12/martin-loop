@@ -5,6 +5,10 @@
   "type": "module",
   "description": "Martin Loop dual-track monorepo for the OSS runtime and hosted SaaS control plane.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Keesan12/martin-loop.git"
+  },
   "packageManager": "pnpm@10.17.1",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
