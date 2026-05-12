@@ -1,5 +1,2 @@
 packages:
   - "packages/*"
-  - "apps/*"
-  - "benchmarks"
-

@@ -9,21 +9,15 @@ import {
   resolveRcCommandExecution,
 } from "../rc-validation.mjs";
 
-test("createRcValidationPlan omits install by default and includes the RC matrix", () => {
+test("createRcValidationPlan omits install by default and includes the OSS-safe validation lane", () => {
   const plan = createRcValidationPlan();
   const commands = plan.map((step) => step.command.join(" "));
 
-  assert.equal(commands[0], "pnpm --filter @martin/contracts build");
-  assert.ok(commands.includes("pnpm --filter @martin/core test"));
-  assert.ok(commands.includes("pnpm --filter @martin/benchmarks eval:phase12"));
-  assert.ok(commands.includes("pnpm --filter @martin/benchmarks eval:providers"));
-  assert.ok(commands.includes("pnpm release:surface:validate"));
-  assert.ok(commands.includes("pnpm pilot:prep:validate"));
+  assert.equal(commands[0], "pnpm build");
+  assert.ok(commands.includes("pnpm test"));
   assert.ok(commands.includes("pnpm oss:validate"));
   assert.ok(commands.includes("pnpm public:smoke"));
-  assert.ok(commands.includes("pnpm mcp:published:smoke"));
-  assert.equal(commands.at(-3), "pnpm build");
-  assert.equal(commands.at(-2), "pnpm public:smoke");
+  assert.ok(commands.includes("pnpm --filter @martinloop/mcp smoke:pack"));
   assert.equal(commands.at(-1), "pnpm mcp:published:smoke");
   assert.ok(!commands.includes("pnpm install --frozen-lockfile"));
 });

@@ -21,14 +21,14 @@
 
 - The packaged MCP tarball now rebuilds tracked vendored runtime dependencies before packing, preventing stale local build residue from leaking into the npm artifact.
 - The standalone package now vendors the tracked Martin runtime facades it actually needs instead of depending on unrelated workspace outputs being present on disk.
-- The package manifest exposes both `mcp` and `martin-loop-mcp`, while keeping `npx @martinloop/mcp` as the primary install path.
+- The package manifest exposes both `mcp` and `martin-loop-mcp`, while keeping `npx -y @martinloop/mcp` as the primary install path.
 
 ### Install and release verification hardening
 
 - Public install guidance is standardized to:
-  - direct run: `npx @martinloop/mcp`
-  - Claude macOS/Linux: `claude mcp add --scope user martin-loop -- npx @martinloop/mcp`
-  - Claude Windows: `claude mcp add --scope user martin-loop cmd /c "npx @martinloop/mcp"`
+  - direct run: `npx -y @martinloop/mcp`
+  - Claude macOS/Linux: `claude mcp add --scope user martin-loop -- npx -y @martinloop/mcp`
+  - Claude Windows: `claude mcp add --scope user martin-loop cmd /c "npx -y @martinloop/mcp"`
 - `smoke:pack` verifies the packed tarball after fresh vendored builds.
 - `smoke:published` verifies the installed package artifact from an isolated temp workspace, which keeps the published-artifact smoke deterministic on Windows as well as Linux and macOS.
 - The RC gate list now includes `pnpm mcp:published:smoke`.

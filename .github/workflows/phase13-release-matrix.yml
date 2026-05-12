@@ -38,12 +38,12 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      - name: Run Phase 13 release matrix lane
+      - name: Run OSS release matrix lane
         env:
           MARTIN_RELEASE_MATRIX_OUTDIR: .artifacts/release-matrix/${{ matrix.os }}
         run: pnpm release:matrix:local
 
-      - name: Upload Phase 13 release matrix artifacts
+      - name: Upload release matrix artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:

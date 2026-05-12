@@ -1,29 +1,18 @@
-# Martin Loop Phase 13 OSS Core Boundary
+# Martin Loop OSS Boundary Report
 
-Generated: 2026-05-12T20:52:33.837Z
+Generated: 2026-05-12T22:46:47.915Z
 
 ## Verdict
 **GO**
 
-## Summary
-- Public package target: martin-loop
-- Canonical public package manager: npm
-- Intended OSS core packages: 5
-- Non-OSS workspace packages: 2
-- Local-only surfaces: 1
-- Private OSS-core packages still gated from publish: 3
-- OSS-core packages already publish-configured: 2
-- Dependency leaks: 0
-- No workspace dependency leaks detected between the intended OSS core and the non-OSS workspace surfaces.
-
-## Public Package Surface
+## Public Surface
+- Root package: `martin-loop@0.1.6`
 - Install target: `npm install martin-loop`
 - CLI target: `npx martin-loop`
-- SDK target: `import { MartinLoop } from 'martin-loop'`
-- Root `npx martin-loop` support shipped: yes
-- Root SDK import shipped: yes
+- SDK target: `import { MartinLoop } from "martin-loop"`
+- MCP target: `npx -y @martinloop/mcp`
 
-## Intended OSS Core Packages
+## OSS Packages
 | Package | Path | Private | Publish Access | Workspace Deps |
 |---|---|---|---|---|
 | @martin/contracts | packages/contracts | yes | n/a | none |
@@ -32,17 +21,9 @@ Generated: 2026-05-12T20:52:33.837Z
 | @martin/cli | packages/cli | no | public | @martin/adapters, @martin/contracts, @martin/core |
 | @martinloop/mcp | packages/mcp | no | public | none |
 
-## Non-OSS Workspace Packages
-| Package | Path | Reason |
-|---|---|---|
-| @martin/control-plane | apps/control-plane | Managed or RC-only workspace surface that stays out of the initial OSS boundary. |
-| @martin/benchmarks | benchmarks | Managed or RC-only workspace surface that stays out of the initial OSS boundary. |
-
-## Local-Only Surfaces
-| Path | Reason |
-|---|---|
-| apps/local-dashboard | Local read-model viewer that is not yet packaged as a publishable OSS workspace. |
-
-## Dependency Leak Review
-- No workspace dependency leaks detected.
+## Boundary Checks
+- Forbidden top-level entries: none
+- Unexpected top-level entries: none
+- Unexpected package directories: none
+- Workspace dependency leaks: none
 

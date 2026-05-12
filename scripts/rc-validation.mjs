@@ -7,28 +7,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const RC_VALIDATION_STEPS = [
-  ["pnpm", "--filter", "@martin/contracts", "build"],
-  ["pnpm", "--filter", "@martin/core", "lint"],
-  ["pnpm", "--filter", "@martin/core", "test"],
-  ["pnpm", "--filter", "@martin/core", "build"],
-  ["pnpm", "--filter", "@martin/adapters", "lint"],
-  ["pnpm", "--filter", "@martin/adapters", "test"],
-  ["pnpm", "--filter", "@martin/adapters", "build"],
-  ["pnpm", "--filter", "@martin/cli", "lint"],
-  ["pnpm", "--filter", "@martin/cli", "test"],
-  ["pnpm", "--filter", "@martin/cli", "build"],
-  ["pnpm", "--filter", "@martin/benchmarks", "test"],
-  ["pnpm", "--filter", "@martin/benchmarks", "build"],
-  ["pnpm", "--filter", "@martin/benchmarks", "eval:phase12"],
-  ["pnpm", "--filter", "@martin/benchmarks", "eval:providers"],
-  ["pnpm", "oss:validate"],
-  ["pnpm", "release:surface:validate"],
-  ["pnpm", "pilot:prep:validate"],
-  ["pnpm", "--filter", "@martin/control-plane", "lint"],
-  ["pnpm", "--filter", "@martin/control-plane", "test"],
-  ["pnpm", "--filter", "@martin/control-plane", "build"],
   ["pnpm", "build"],
+  ["pnpm", "test"],
+  ["pnpm", "oss:validate"],
   ["pnpm", "public:smoke"],
+  ["pnpm", "--filter", "@martinloop/mcp", "smoke:pack"],
   ["pnpm", "mcp:published:smoke"],
 ];
 

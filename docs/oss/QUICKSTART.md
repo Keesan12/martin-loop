@@ -1,81 +1,34 @@
 # Quickstart
 
-This quickstart is intentionally conservative. It is written for a fresh engineer validating the active Phase 15 release lane, not for a hypothetical future public release.
-
-## Public launch target vs current RC path
-
-The frozen public launch target is:
-
-- `npm install martin-loop`
-- `npx martin-loop ...`
-- `import { MartinLoop } from "martin-loop"`
-- `npx @martinloop/mcp`
-
-That runtime launch surface is implemented in the root package facade and smoke-validated from a clean temporary install. The MCP package shape is also smoke-validated from a packed tarball. This quickstart still documents the honest RC-from-source path because public registry publication is a later release step.
+This quickstart is for the public OSS runtime, CLI, and MCP surfaces only.
 
 ## Prerequisites
 
-- Node.js 20+ recommended
-- `pnpm` 10.x
-- A clean local checkout of this repo
-
-Optional for live runs:
-
-- Claude Code CLI for the Claude adapter path
-- OpenAI Codex CLI plus credentials for the Codex adapter path
+- Node.js 20+
+- `pnpm` 10.x for repo-local work
+- Optional for live runs: Claude Code CLI or Codex CLI on `PATH`
 
 ## Install and build
 
 From the repo root:
 
 ```bash
-pnpm install
+pnpm install --frozen-lockfile
 pnpm build
 ```
 
-## Run the RC validation matrix
+## Validate the OSS surface
 
 ```bash
-pnpm rc:validate
-```
-
-What this does:
-
-- creates an isolated temporary home or profile directory
-- points Martin run artifacts at that clean location
-- runs the current build, lint, test, benchmark, and certification matrix
-- writes step logs into a temp `martin-rc-validation-*` directory
-
-Use this when you want to answer, "Can a fresh environment still reproduce the current RC baseline?"
-
-## RC gate commands
-
-The current Phase 13 RC gate is made of these commands:
-
-- `pnpm oss:validate`
-- `pnpm public:smoke`
-- `pnpm mcp:published:smoke`
-- `pnpm repo:smoke`
-- `pnpm rc:validate`
-- `pnpm pilot:prep:validate`
-- `pnpm release:matrix:local`
-
-Recommended order for a fresh local reviewer:
-
-```bash
+pnpm test
 pnpm oss:validate
 pnpm public:smoke
-pnpm mcp:published:smoke
-pnpm repo:smoke
-pnpm rc:validate
-pnpm release:matrix:local
+pnpm --filter @martinloop/mcp smoke:pack
 ```
 
-`pnpm release:matrix:local` runs the full local OS lane for the current machine. The repository also defines Windows, macOS, and Linux CI lanes in `.github/workflows/phase13-release-matrix.yml`.
+Use `pnpm rc:validate` when you want the same checks to run inside an isolated temp home.
 
 ## Stub-safe CLI run
-
-This is the safest first run because it avoids real provider spend.
 
 ### PowerShell
 
@@ -91,15 +44,9 @@ Remove-Item Env:MARTIN_LIVE
 MARTIN_LIVE=false pnpm run:cli -- run --objective "Summarize the current runtime state" --verify "pnpm --filter @martin/core test"
 ```
 
-This path uses the stub adapter and still exercises the loop, persistence, and policy surfaces.
-
 ## Config-driven run
 
 The repo ships an example config at `martin.config.example.yaml`.
-
-Martin auto-looks for `martin.config.yaml` in the invocation root, or you can pass `--config <path>`.
-
-Example:
 
 ```bash
 pnpm run:cli -- run --config martin.config.example.yaml --objective "Run with repo defaults" --verify "pnpm --filter @martin/core test"
@@ -107,64 +54,51 @@ pnpm run:cli -- run --config martin.config.example.yaml --objective "Run with re
 
 ## Inspect a saved run
 
-Martin persists runs under `~/.martin/runs/` by default, or under `MARTIN_RUNS_DIR` if you override it.
-
 ```bash
 pnpm run:cli -- inspect --file path/to/loop-record.json
 ```
 
-For persisted run folders, inspect the `contract.json`, `state.json`, `ledger.jsonl`, and `artifacts/attempt-XXX/` files together. Those artifacts are the source of truth for runtime behavior.
+Martin persists runs under `~/.martin/runs/` by default, or under `MARTIN_RUNS_DIR` if you override it.
 
 ## MCP server
 
-The publish-ready MCP install target is:
+Launch the published MCP package:
 
 ```bash
-npx @martinloop/mcp
+npx -y @martinloop/mcp
 ```
 
-Claude Code one-line install:
+Claude Code install:
 
 ```bash
 # macOS/Linux
-claude mcp add --scope user martin-loop -- npx @martinloop/mcp
+claude mcp add --scope user martin-loop -- npx -y @martinloop/mcp
 
 # Windows PowerShell/cmd
-claude mcp add --scope user martin-loop cmd /c "npx @martinloop/mcp"
+claude mcp add --scope user martin-loop cmd /c "npx -y @martinloop/mcp"
 ```
 
-Official MCP Registry publication has an extra metadata step beyond npm packaging. Do not mark `@martinloop/mcp` registry-ready unless both of these exist and match:
-
-- `packages/mcp/package.json` with `mcpName`
-- `packages/mcp/server.json` with the official server metadata
-
-After publishing `@martinloop/mcp` to npm, run the official registry publisher from `packages/mcp`:
-
-```bash
-mcp-publisher login github
-mcp-publisher publish
-```
-
-For repo-local verification from source:
+Repo-local MCP verification:
 
 ```bash
 pnpm --filter @martinloop/mcp lint
 pnpm --filter @martinloop/mcp test
 pnpm --filter @martinloop/mcp build
 pnpm --filter @martinloop/mcp smoke:pack
-pnpm --filter @martinloop/mcp smoke:published
-node packages/mcp/dist/server.js
 ```
 
-The current MCP tools are:
+Official MCP Registry publication still happens after npm publication:
 
-- `martin_run`
-- `martin_inspect`
-- `martin_status`
+```bash
+cd packages/mcp
+mcp-publisher login github
+mcp-publisher publish
+```
 
-## Notes for reviewers
+## Local release matrix
 
-- Fresh-home behavior matters. Do not rely only on a long-lived `~/.martin` directory.
-- Exact-versus-estimated cost labels are meaningful and should not be merged in docs or dashboards.
-- The repo contains control-plane code, but the public OSS boundary is still being finalized during Phase 13.
-- The benchmark harness remains a workspace-level RC surface; `martin bench` is not part of the publishable CLI boundary yet.
+```bash
+pnpm release:matrix:local
+```
+
+This runs the Windows, macOS, and Linux lane definitions locally for the current machine’s platform and writes logs into a temp directory.
