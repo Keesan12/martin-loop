@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,20 +9,28 @@ import { fileURLToPath } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
+import { buildStandaloneMcpPackage, createCommandLaunch } from "./build-package-lib.mjs";
 import { PUBLISHED_PACKAGE_SPEC, sanitizePackageManagerEnv } from "./smoke-package.mjs";
 
 const REQUIRED_TOOLS = ["martin_inspect", "martin_run", "martin_status"];
 
 export async function runPublishedMcpSmoke(options = {}) {
-  const packageSpec = options.packageSpec ?? process.env.MARTIN_MCP_PACKAGE_SPEC ?? PUBLISHED_PACKAGE_SPEC;
+  const packageDir = path.resolve(options.packageDir ?? fileURLToPath(new URL("..", import.meta.url)));
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), "martin-mcp-published-smoke-"));
   const runsRoot = path.join(tempRoot, "runs");
   const npmCacheDir = path.join(tempRoot, ".npm-cache");
+  const packDir = path.join(tempRoot, "pack");
   await mkdir(runsRoot, { recursive: true });
   await mkdir(npmCacheDir, { recursive: true });
+  await mkdir(packDir, { recursive: true });
 
   let transport;
   try {
+    const packageSpec = await resolvePublishedPackageSpec({
+      packageDir,
+      tempPackDir: packDir,
+      explicitPackageSpec: options.packageSpec ?? process.env.MARTIN_MCP_PACKAGE_SPEC,
+    });
     const canonicalLoop = {
       loopId: "loop_published_canonical",
       status: "completed",
@@ -142,7 +151,7 @@ export async function runPublishedMcpSmoke(options = {}) {
 
     return {
       packageSpec,
-      npxCommand: `npx ${packageSpec}`,
+      npxCommand: packageSpec.startsWith("@") ? `npx ${packageSpec}` : `npm exec --yes --package "${packageSpec}" -- mcp`,
       toolNames,
       canonicalInspect: JSON.parse(readTextContent(canonicalInspect)),
       jsonlInspect: JSON.parse(readTextContent(jsonlInspect)),
@@ -155,16 +164,87 @@ export async function runPublishedMcpSmoke(options = {}) {
       await transport.close().catch(() => {});
     }
     if (!options.keepTempDir) {
-      await rm(tempRoot, { force: true, recursive: true, maxRetries: 10, retryDelay: 100 });
+      await removeTempDir(tempRoot);
     }
   }
 }
 
+async function resolvePublishedPackageSpec({ packageDir, tempPackDir, explicitPackageSpec }) {
+  if (explicitPackageSpec) {
+    return explicitPackageSpec;
+  }
+
+  const manifest = JSON.parse(await readFile(path.join(packageDir, "package.json"), "utf8"));
+  const currentVersionSpec = `${PUBLISHED_PACKAGE_SPEC}@${manifest.version}`;
+  if (await npmPackageExists(currentVersionSpec)) {
+    return currentVersionSpec;
+  }
+
+  await buildStandaloneMcpPackage({ packageDir });
+  const packRun = await runCommand(
+    npmCommand(),
+    ["pack", "--ignore-scripts", "--json", "--pack-destination", tempPackDir],
+    { cwd: packageDir },
+  );
+  const packEntry = JSON.parse(packRun.stdout)?.[0];
+  if (!packEntry?.filename) {
+    throw new Error("Unable to create fallback MCP tarball for smoke verification.");
+  }
+
+  return path.join(tempPackDir, packEntry.filename);
+}
+
+async function npmPackageExists(packageSpec) {
+  try {
+    await runCommand(npmCommand(), ["view", packageSpec, "version"], { cwd: process.cwd() });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function npmCommand() {
+  return process.platform === "win32" ? "npm.cmd" : "npm";
+}
+
+async function runCommand(command, args, options) {
+  return new Promise((resolve, reject) => {
+    const launch = createCommandLaunch(command, args);
+    const child = spawn(launch.command, launch.args, {
+      cwd: options.cwd,
+      env: options.env ?? process.env,
+      shell: false,
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code !== 0) {
+        reject(new Error(`Command failed (${code ?? "unknown"}): ${command} ${args.join(" ")}\n${stdout}${stderr}`));
+        return;
+      }
+      resolve({ stdout, stderr });
+    });
+  });
+}
+
 function createPublishedLaunch(packageSpec) {
-  return {
-    command: process.platform === "win32" ? "npm.cmd" : "npm",
-    args: ["exec", "--yes", "--package", packageSpec, "--", "mcp"],
-  };
+  return createCommandLaunch(
+    npmCommand(),
+    ["exec", "--yes", "--package", packageSpec, "--", "mcp"],
+  );
 }
 
 function readTextContent(result) {
@@ -178,6 +258,25 @@ function readTextContent(result) {
   }
 
   return first.text;
+}
+
+async function removeTempDir(tempRoot) {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    try {
+      await rm(tempRoot, { force: true, recursive: true, maxRetries: 10, retryDelay: 100 });
+      return;
+    } catch (error) {
+      const code = error?.code;
+      if (code !== "EBUSY" && code !== "EPERM" && code !== "ENOTEMPTY") {
+        throw error;
+      }
+      await sleep(120 * (attempt + 1));
+    }
+  }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function main() {
