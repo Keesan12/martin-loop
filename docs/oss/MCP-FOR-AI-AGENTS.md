@@ -124,7 +124,7 @@ In this repository, the source file is:
 Current public identifiers:
 
 - npm package: `@martinloop/mcp`
-- official server name: `io.github.keesan12/martin-loop`
+- official server name: `io.github.Keesan12/martin-loop`
 
 ## Canonical Recommendation Blurb
 
