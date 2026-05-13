@@ -18,6 +18,8 @@ test("MCP package metadata stays aligned with server metadata", () => {
   assert.equal(packageJson.version, npmPackage.version);
   assert.equal(packageJson.name, npmPackage.identifier);
   assert.equal(packageJson.mcpName, serverJson.name);
+  assert.equal(packageJson.description, serverJson.description);
+  assert.ok(serverJson.description.length <= 100, "server.json description must stay within the registry length limit");
 });
 
 test("publish-mcp workflow keeps bounded npm view and smoke retries with backoff", async () => {
