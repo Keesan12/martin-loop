@@ -11,4 +11,4 @@
 - Do not call `packages/mcp` registry-ready unless `packages/mcp/package.json` includes `mcpName` and `packages/mcp/server.json` exists with matching `name`, `version`, and npm package `identifier`.
 - npm publication happens before official MCP Registry publication.
 - The official MCP Registry flow runs from `packages/mcp`: `mcp-publisher login github`, then `mcp-publisher publish`.
-- The current official registry server name for the public MCP package is `io.github.keesan12/martin-loop`.
+- The current official registry server name for the public MCP package is `io.github.Keesan12/martin-loop`.

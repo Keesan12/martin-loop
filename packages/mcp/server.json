@@ -1,6 +1,6 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.keesan12/martin-loop",
+  "name": "io.github.Keesan12/martin-loop",
   "title": "Martin Loop",
   "description": "Governed MCP server for AI coding agents with budgets, verifier gates, and inspectable runs.",
   "repository": {

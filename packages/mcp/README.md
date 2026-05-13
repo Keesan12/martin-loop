@@ -169,7 +169,7 @@ The registry manifest artifact for this package is `server.json`. In this reposi
 Current metadata:
 
 - npm package: `@martinloop/mcp`
-- registry server name: `io.github.keesan12/martin-loop`
+- registry server name: `io.github.Keesan12/martin-loop`
 - manifest artifact name: `server.json`
 
 Official MCP Registry publication is separate from npm publication. After publishing the package to npm, run the publisher from `packages/mcp`:
