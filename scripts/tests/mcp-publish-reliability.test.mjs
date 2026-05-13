@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -31,4 +32,26 @@ test("publish-mcp workflow keeps bounded npm view and smoke retries with backoff
   assert.match(workflow, /pnpm --filter @martinloop\/mcp smoke:published/);
   assert.match(workflow, /sleep \$\(\(attempt \* 20\)\)/);
   assert.match(workflow, /after bounded retries/);
+});
+
+test("published smoke CLI rejects missing or flag-like package specs", () => {
+  const scriptPath = path.join(ROOT_DIR, "packages", "mcp", "scripts", "smoke-published-package.mjs");
+
+  const missingValue = spawnSync(process.execPath, [scriptPath, "--package-spec="], {
+    cwd: ROOT_DIR,
+    encoding: "utf8",
+  });
+  assert.notEqual(missingValue.status, 0);
+  assert.match(missingValue.stderr, /--package-spec requires a non-empty value/);
+
+  const flagValue = spawnSync(
+    process.execPath,
+    [scriptPath, "--package-spec", "--allow-local-fallback"],
+    {
+      cwd: ROOT_DIR,
+      encoding: "utf8",
+    },
+  );
+  assert.notEqual(flagValue.status, 0);
+  assert.match(flagValue.stderr, /expected a package spec but received another flag/);
 });

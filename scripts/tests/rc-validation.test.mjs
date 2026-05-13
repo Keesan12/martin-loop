@@ -18,7 +18,7 @@ test("createRcValidationPlan omits install by default and includes the OSS-safe 
   assert.ok(commands.includes("pnpm oss:validate"));
   assert.ok(commands.includes("pnpm public:smoke"));
   assert.ok(commands.includes("pnpm --filter @martinloop/mcp smoke:pack"));
-  assert.equal(commands.at(-1), "pnpm mcp:published:smoke");
+  assert.equal(commands.at(-1), "pnpm mcp:published:smoke:pack");
   assert.ok(!commands.includes("pnpm install --frozen-lockfile"));
 });
 
