@@ -48,6 +48,7 @@
     "prepack": "pnpm build",
     "smoke:pack": "node ./scripts/smoke-package.mjs",
     "smoke:published": "node ./scripts/smoke-published-package.mjs",
+    "smoke:published:pack": "node ./scripts/smoke-published-package.mjs --package-spec=pack",
     "test": "vitest run",
     "lint": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/server.js"

@@ -228,6 +228,9 @@ export async function resolvePublishedPackageSpec({
   buildLocalFallbackPackageSpec = buildLocalFallbackTarballSpec,
 }) {
   if (explicitPackageSpec) {
+    if (explicitPackageSpec === "__BUILD_LOCAL_PACK__") {
+      return buildLocalFallbackPackageSpec({ packageDir, tempPackDir });
+    }
     return explicitPackageSpec;
   }
 
@@ -385,8 +388,57 @@ function sleep(ms) {
 }
 
 async function main() {
-  const result = await runPublishedMcpSmoke();
+  const cliOptions = parseCliOptions(process.argv.slice(2));
+  const result = await runPublishedMcpSmoke(cliOptions);
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+}
+
+function parseCliOptions(argv) {
+  const options = {};
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const argument = argv[index];
+
+    if (argument === "--allow-local-fallback") {
+      options.allowLocalFallback = true;
+      continue;
+    }
+
+    if (argument === "--package-spec") {
+      const next = argv[index + 1];
+      if (!next) {
+        throw new Error("--package-spec requires a value.");
+      }
+      options.packageSpec = parsePackageSpecValue(next);
+      index += 1;
+      continue;
+    }
+
+    if (argument.startsWith("--package-spec=")) {
+      options.packageSpec = parsePackageSpecValue(argument.slice("--package-spec=".length));
+      continue;
+    }
+
+    throw new Error(`Unknown argument: ${argument}`);
+  }
+
+  return options;
+}
+
+function parsePackageSpecValue(value) {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error("--package-spec requires a non-empty value.");
+  }
+
+  if (value.startsWith("--")) {
+    throw new Error(`--package-spec expected a package spec but received another flag: ${value}`);
+  }
+
+  if (value === "pack") {
+    return "__BUILD_LOCAL_PACK__";
+  }
+
+  return value;
 }
 
 const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : "";

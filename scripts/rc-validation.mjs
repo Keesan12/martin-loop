@@ -12,7 +12,7 @@ const RC_VALIDATION_STEPS = [
   ["pnpm", "oss:validate"],
   ["pnpm", "public:smoke"],
   ["pnpm", "--filter", "@martinloop/mcp", "smoke:pack"],
-  ["pnpm", "mcp:published:smoke"],
+  ["pnpm", "mcp:published:smoke:pack"],
 ];
 
 export function createRcValidationPlan(options = {}) {

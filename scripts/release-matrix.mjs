@@ -15,7 +15,7 @@ const RELEASE_MATRIX_STEPS = [
   ["pnpm", "oss:validate"],
   ["pnpm", "public:smoke"],
   ["pnpm", "--filter", "@martinloop/mcp", "smoke:pack"],
-  ["pnpm", "mcp:published:smoke"],
+  ["pnpm", "mcp:published:smoke:pack"],
 ];
 
 const RELEASE_MATRIX_LANES = [

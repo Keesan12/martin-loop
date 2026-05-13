@@ -34,7 +34,7 @@ test("createReleaseMatrixPlan defines the Windows macOS and Linux OSS-safe relea
       "pnpm oss:validate",
       "pnpm public:smoke",
       "pnpm --filter @martinloop/mcp smoke:pack",
-      "pnpm mcp:published:smoke",
+      "pnpm mcp:published:smoke:pack",
     ]);
   }
 });
