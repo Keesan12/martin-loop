@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import packageJson from "../package.json";
+import serverJson from "../server.json";
 
 import { rewritePackageSpecifiers, workspaceBuildCommandArgs } from "../scripts/build-package-lib.mjs";
 
@@ -64,5 +65,23 @@ describe("package manifest", () => {
       mcp: "./dist/server.js",
       "martin-loop-mcp": "./dist/server.js",
     });
+  });
+
+  it("ships server metadata and does not advertise a root import surface", () => {
+    expect(packageJson.files).toContain("server.json");
+    expect(packageJson.exports).toEqual({
+      "./server.json": "./server.json",
+      "./package.json": "./package.json",
+    });
+    expect(packageJson).not.toHaveProperty("main");
+    expect(packageJson).not.toHaveProperty("types");
+  });
+
+  it("keeps package and server metadata in parity", () => {
+    expect(packageJson.name).toBe("@martinloop/mcp");
+    expect(packageJson.mcpName).toBe(serverJson.name);
+    expect(packageJson.version).toBe(serverJson.version);
+    expect(serverJson.packages[0]?.identifier).toBe(packageJson.name);
+    expect(serverJson.packages[0]?.version).toBe(packageJson.version);
   });
 });

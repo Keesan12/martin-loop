@@ -10,13 +10,19 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
 import { buildStandaloneMcpPackage, createCommandLaunch } from "./build-package-lib.mjs";
-import { PUBLISHED_PACKAGE_SPEC, sanitizePackageManagerEnv } from "./smoke-package.mjs";
+import {
+  PUBLISHED_PACKAGE_SPEC,
+  assertMcpPackageMetadataParity,
+  readJsonFile,
+  sanitizePackageManagerEnv,
+} from "./smoke-package.mjs";
 
 const REQUIRED_TOOLS = ["martin_inspect", "martin_run", "martin_status"];
 const INSTALLED_PACKAGE_PATH = path.join("node_modules", ...PUBLISHED_PACKAGE_SPEC.split("/"));
 
 export async function runPublishedMcpSmoke(options = {}) {
   const packageDir = path.resolve(options.packageDir ?? fileURLToPath(new URL("..", import.meta.url)));
+  const sourceManifest = await readJsonFile(path.join(packageDir, "package.json"));
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), "martin-mcp-published-smoke-"));
   const runsRoot = path.join(tempRoot, "runs");
   const npmCacheDir = path.join(tempRoot, ".npm-cache");
@@ -35,12 +41,33 @@ export async function runPublishedMcpSmoke(options = {}) {
       packageDir,
       tempPackDir: packDir,
       explicitPackageSpec: options.packageSpec ?? process.env.MARTIN_MCP_PACKAGE_SPEC,
+      allowLocalFallback:
+        options.allowLocalFallback === true || process.env.MARTIN_MCP_ALLOW_LOCAL_FALLBACK === "1",
     });
     const installedPackageDir = await installPublishedPackage({
       installRoot,
       npmCacheDir,
       packageSpec,
     });
+    let installedManifest;
+    let installedServerMetadata;
+    try {
+      [installedManifest, installedServerMetadata] = await Promise.all([
+        readJsonFile(path.join(installedPackageDir, "package.json")),
+        readJsonFile(path.join(installedPackageDir, "server.json")),
+      ]);
+    } catch (error) {
+      if (error?.code === "ENOENT") {
+        throw new Error(
+          [
+            `Installed MCP artifact at ${installedPackageDir} is missing required metadata files.`,
+            "Published smoke fails closed until the npm package includes both package.json and server.json.",
+          ].join(" "),
+        );
+      }
+      throw error;
+    }
+    assertMcpPackageMetadataParity(installedManifest, installedServerMetadata);
     const canonicalLoop = {
       loopId: "loop_published_canonical",
       status: "completed",
@@ -125,7 +152,7 @@ export async function runPublishedMcpSmoke(options = {}) {
     });
 
     const client = new Client(
-      { name: "martin-mcp-published-smoke", version: "0.1.2" },
+      { name: "martin-mcp-published-smoke", version: sourceManifest.version },
       { capabilities: {} },
     );
 
@@ -170,6 +197,12 @@ export async function runPublishedMcpSmoke(options = {}) {
       npxCommand: packageSpec.startsWith("@") ? `npx ${packageSpec}` : `npm exec --yes --package "${packageSpec}" -- mcp`,
       launchCommand: `${JSON.stringify(process.execPath)} ${JSON.stringify(path.join(installedPackageDir, "dist", "server.js"))}`,
       toolNames,
+      installedManifest: {
+        name: installedManifest.name,
+        version: installedManifest.version,
+        mcpName: installedManifest.mcpName,
+      },
+      installedServerMetadata,
       canonicalInspect: JSON.parse(readTextContent(canonicalInspect)),
       jsonlInspect: JSON.parse(readTextContent(jsonlInspect)),
       latestStatus: JSON.parse(readTextContent(latestStatus)),
@@ -186,37 +219,55 @@ export async function runPublishedMcpSmoke(options = {}) {
   }
 }
 
-async function resolvePublishedPackageSpec({ packageDir, tempPackDir, explicitPackageSpec }) {
+export async function resolvePublishedPackageSpec({
+  packageDir,
+  tempPackDir,
+  explicitPackageSpec,
+  allowLocalFallback = false,
+  lookupPublishedVersion = npmViewPublishedVersion,
+  buildLocalFallbackPackageSpec = buildLocalFallbackTarballSpec,
+}) {
   if (explicitPackageSpec) {
     return explicitPackageSpec;
   }
 
-  const manifest = JSON.parse(await readFile(path.join(packageDir, "package.json"), "utf8"));
+  const manifest = await readJsonFile(path.join(packageDir, "package.json"));
   const currentVersionSpec = `${PUBLISHED_PACKAGE_SPEC}@${manifest.version}`;
-  if (await npmPackageExists(currentVersionSpec)) {
+  const lookup = await lookupPublishedVersion(currentVersionSpec);
+  if (lookup.found) {
     return currentVersionSpec;
   }
 
-  await buildStandaloneMcpPackage({ packageDir });
-  const packRun = await runCommand(
-    npmCommand(),
-    ["pack", "--ignore-scripts", "--json", "--pack-destination", tempPackDir],
-    { cwd: packageDir },
-  );
-  const packEntry = JSON.parse(packRun.stdout)?.[0];
-  if (!packEntry?.filename) {
-    throw new Error("Unable to create fallback MCP tarball for smoke verification.");
+  if (!allowLocalFallback) {
+    throw new Error(
+      [
+        `Published MCP package ${currentVersionSpec} is not available for smoke validation.`,
+        lookup.reason,
+        "Set MARTIN_MCP_PACKAGE_SPEC to an explicit package spec or set MARTIN_MCP_ALLOW_LOCAL_FALLBACK=1 for a local fallback tarball.",
+      ].join(" "),
+    );
   }
 
-  return path.join(tempPackDir, packEntry.filename);
+  return buildLocalFallbackPackageSpec({ packageDir, tempPackDir });
 }
 
-async function npmPackageExists(packageSpec) {
+async function npmViewPublishedVersion(packageSpec) {
   try {
     await runCommand(npmCommand(), ["view", packageSpec, "version"], { cwd: process.cwd() });
-    return true;
-  } catch {
-    return false;
+    return {
+      found: true,
+      reason: `Resolved ${packageSpec} from npm.`,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const normalized = message.toLowerCase();
+    const notFound = normalized.includes("e404") || normalized.includes("404") || normalized.includes("not found");
+    return {
+      found: false,
+      reason: notFound
+        ? `npm view did not find ${packageSpec}.`
+        : `npm view failed for ${packageSpec}: ${message}`,
+    };
   }
 }
 
@@ -277,6 +328,21 @@ async function installPublishedPackage({ installRoot, npmCacheDir, packageSpec }
   );
 
   return path.join(installRoot, INSTALLED_PACKAGE_PATH);
+}
+
+async function buildLocalFallbackTarballSpec({ packageDir, tempPackDir }) {
+  await buildStandaloneMcpPackage({ packageDir });
+  const packRun = await runCommand(
+    npmCommand(),
+    ["pack", "--ignore-scripts", "--json", "--pack-destination", tempPackDir],
+    { cwd: packageDir },
+  );
+  const packEntry = JSON.parse(packRun.stdout)?.[0];
+  if (!packEntry?.filename) {
+    throw new Error("Unable to create fallback MCP tarball for smoke verification.");
+  }
+
+  return path.join(tempPackDir, packEntry.filename);
 }
 
 function createInstalledPackageLaunch(installedPackageDir) {

@@ -24,22 +24,18 @@
     "claude",
     "codex"
   ],
-  "main": "./dist/server.js",
-  "types": "./dist/server.d.ts",
   "bin": {
     "mcp": "./dist/server.js",
     "martin-loop-mcp": "./dist/server.js"
   },
   "exports": {
-    ".": {
-      "types": "./dist/server.d.ts",
-      "default": "./dist/server.js"
-    },
+    "./server.json": "./server.json",
     "./package.json": "./package.json"
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "server.json"
   ],
   "engines": {
     "node": ">=20.0.0"
