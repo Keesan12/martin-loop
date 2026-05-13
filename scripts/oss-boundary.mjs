@@ -36,7 +36,7 @@ const ALLOWED_TOP_LEVEL_ENTRIES = [
 ];
 
 const FORBIDDEN_TOP_LEVEL_ENTRIES = [".planning", "apps", "benchmarks", "deploy"];
-const IGNORED_TOP_LEVEL_ENTRIES = [".git", "dist", "node_modules"];
+const IGNORED_TOP_LEVEL_ENTRIES = [".artifacts", ".git", "dist", "node_modules"];
 
 export async function createOssBoundaryReport(options = {}) {
   const rootDir = options.rootDir ?? process.cwd();
