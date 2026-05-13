@@ -45,24 +45,7 @@ jobs:
         working-directory: packages/mcp
         shell: bash
         run: |
-          node <<'NODE' >> "$GITHUB_OUTPUT"
-          const fs = require('node:fs');
-          const pkg = JSON.parse(fs.readFileSync('./package.json', 'utf8'));
-          const server = JSON.parse(fs.readFileSync('./server.json', 'utf8'));
-          const npmPackage = Array.isArray(server.packages)
-            ? server.packages.find((entry) => entry && entry.registryType === 'npm')
-            : undefined;
-
-          if (!npmPackage) {
-            throw new Error('server.json is missing an npm package entry.');
-          }
-
-          process.stdout.write(`package_version=${pkg.version}\n`);
-          process.stdout.write(`server_version=${server.version}\n`);
-          process.stdout.write(`package_name=${pkg.name}\n`);
-          process.stdout.write(`server_name=${server.name}\n`);
-          process.stdout.write(`identifier=${npmPackage.identifier}\n`);
-NODE
+          node ../../scripts/read-mcp-package-metadata.mjs >> "$GITHUB_OUTPUT"
 
       - name: Verify MCP tag/version parity
         if: startsWith(github.ref, 'refs/tags/')
