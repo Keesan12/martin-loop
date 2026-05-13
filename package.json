@@ -14,7 +14,7 @@
     "cli"
   ],
   "author": "Vakeesan Mahalingam and Gobi Shanthan",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "homepage": "https://martinloop.com/",
   "repository": {
     "type": "git",

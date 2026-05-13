@@ -5,7 +5,7 @@
   "private": false,
   "type": "module",
   "description": "Governed MCP server for AI coding agents with budgets, verifier gates, and inspectable runs.",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "author": "Vakeesan Mahalingam and Gobi Shanthan",
   "homepage": "https://martinloop.com/",
   "repository": {
