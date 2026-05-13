@@ -50,6 +50,7 @@
     "public:smoke": "node ./scripts/public-facade-smoke.mjs",
     "mcp:pack:smoke": "pnpm --filter @martinloop/mcp smoke:pack",
     "mcp:published:smoke": "pnpm --filter @martinloop/mcp smoke:published",
+    "mcp:published:smoke:pack": "pnpm --filter @martinloop/mcp smoke:published:pack",
     "rc:validate": "node ./scripts/rc-validation.mjs",
     "rc:validate:install": "node ./scripts/rc-validation.mjs --install",
     "release:matrix:local": "node ./scripts/release-matrix.mjs",
