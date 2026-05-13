@@ -36,7 +36,7 @@
 ## Metadata
 
 - npm package: `@martinloop/mcp`
-- MCP registry server name: `io.github.keesan12/martin-loop`
+- MCP registry server name: `io.github.Keesan12/martin-loop`
 - Node runtime requirement: `>=20`
 
 ## Verification
