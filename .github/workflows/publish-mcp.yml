@@ -40,19 +40,55 @@ jobs:
           pnpm --filter @martinloop/mcp build
           pnpm --filter @martinloop/mcp smoke:pack
 
-      - name: Read MCP package version
-        id: package-version
+      - name: Read MCP package metadata
+        id: mcp-metadata
         working-directory: packages/mcp
         shell: bash
         run: |
-          VERSION="$(node -p "require('./package.json').version")"
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          node <<'NODE' >> "$GITHUB_OUTPUT"
+          const fs = require('node:fs');
+          const pkg = JSON.parse(fs.readFileSync('./package.json', 'utf8'));
+          const server = JSON.parse(fs.readFileSync('./server.json', 'utf8'));
+          const npmPackage = Array.isArray(server.packages)
+            ? server.packages.find((entry) => entry && entry.registryType === 'npm')
+            : undefined;
+
+          if (!npmPackage) {
+            throw new Error('server.json is missing an npm package entry.');
+          }
+
+          process.stdout.write(`package_version=${pkg.version}\n`);
+          process.stdout.write(`server_version=${server.version}\n`);
+          process.stdout.write(`package_name=${pkg.name}\n`);
+          process.stdout.write(`server_name=${server.name}\n`);
+          process.stdout.write(`identifier=${npmPackage.identifier}\n`);
+NODE
+
+      - name: Verify MCP tag/version parity
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#mcp-v}"
+          if [ "$TAG_VERSION" = "$GITHUB_REF_NAME" ]; then
+            echo "Expected an mcp-vX.Y.Z tag but received ${GITHUB_REF_NAME}."
+            exit 1
+          fi
+
+          if [ "$TAG_VERSION" != "${{ steps.mcp-metadata.outputs.package_version }}" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match package.json version ${{ steps.mcp-metadata.outputs.package_version }}."
+            exit 1
+          fi
+
+          if [ "$TAG_VERSION" != "${{ steps.mcp-metadata.outputs.server_version }}" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match server.json version ${{ steps.mcp-metadata.outputs.server_version }}."
+            exit 1
+          fi
 
       - name: Check npm for existing MCP version
         id: npm-version
         shell: bash
         run: |
-          if npm view "@martinloop/mcp@${{ steps.package-version.outputs.version }}" version >/dev/null 2>&1; then
+          if npm view "@martinloop/mcp@${{ steps.mcp-metadata.outputs.package_version }}" version >/dev/null 2>&1; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
@@ -65,11 +101,35 @@ jobs:
 
       - name: Skip duplicate MCP publish
         if: steps.npm-version.outputs.exists == 'true'
-        run: echo "@martinloop/mcp@${{ steps.package-version.outputs.version }} already exists on npm; skipping publish."
+        run: echo "@martinloop/mcp@${{ steps.mcp-metadata.outputs.package_version }} already exists on npm; skipping publish."
 
       - name: Verify published MCP artifact
         env:
-          MARTIN_MCP_PACKAGE_SPEC: "@martinloop/mcp@${{ steps.package-version.outputs.version }}"
+          MARTIN_MCP_PACKAGE_SPEC: "@martinloop/mcp@${{ steps.mcp-metadata.outputs.package_version }}"
+          MCP_PACKAGE_SPEC: "@martinloop/mcp@${{ steps.mcp-metadata.outputs.package_version }}"
         run: |
-          npm view "@martinloop/mcp@${{ steps.package-version.outputs.version }}" version
-          pnpm --filter @martinloop/mcp smoke:published
+          for attempt in 1 2 3 4 5; do
+            if npm view "${MCP_PACKAGE_SPEC}" version; then
+              break
+            fi
+
+            if [ "$attempt" -eq 5 ]; then
+              echo "npm view did not observe ${MCP_PACKAGE_SPEC} after bounded retries."
+              exit 1
+            fi
+
+            sleep $((attempt * 15))
+          done
+
+          for attempt in 1 2 3; do
+            if pnpm --filter @martinloop/mcp smoke:published; then
+              break
+            fi
+
+            if [ "$attempt" -eq 3 ]; then
+              echo "Published MCP smoke failed after bounded retries."
+              exit 1
+            fi
+
+            sleep $((attempt * 20))
+          done

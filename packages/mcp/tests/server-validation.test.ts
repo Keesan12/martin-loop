@@ -1,6 +1,7 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
@@ -108,6 +109,22 @@ describe("server validation", () => {
     ).toThrow("Provide exactly one");
   });
 
+  it("requires integer values for maxIterations and maxTokens", () => {
+    expect(() =>
+      validateToolInput("martin_run", {
+        objective: "Fix the bug",
+        maxIterations: 1.5
+      })
+    ).toThrow("Invalid maxIterations.");
+
+    expect(() =>
+      validateToolInput("martin_run", {
+        objective: "Fix the bug",
+        maxTokens: 1000.25
+      })
+    ).toThrow("Invalid maxTokens.");
+  });
+
   it("accepts loopId and latest selectors for martin_status", () => {
     expect(
       validateToolInput("martin_status", {
@@ -132,5 +149,24 @@ describe("server validation", () => {
         new Error("Failed to load C:\\secret\\repo\\.martin\\policy.rego")
       )
     ).toBe("Tool execution failed.");
+  });
+
+  it("keeps MCP public tool schemas aligned with validation constraints", async () => {
+    const testsDir = dirname(fileURLToPath(import.meta.url));
+    const serverSource = await readFile(join(testsDir, "../src/server.ts"), "utf8");
+
+    expect(serverSource).toContain('import { createRequire } from "node:module"');
+    expect(serverSource).toContain("const require = createRequire(import.meta.url);");
+    expect(serverSource).toContain('const packageJson = require("../package.json") as { version: string };');
+    expect(serverSource).toContain('{ name: "martin-loop", version: packageJson.version }');
+    expect(serverSource).toContain("additionalProperties: false");
+    expect(serverSource).toContain('maxIterations: {\n            type: "integer"');
+    expect(serverSource).toContain('maxTokens: {\n            type: "integer"');
+    expect(serverSource).toContain('latest: {\n            const: true');
+    expect(serverSource).toContain("oneOf: [");
+    expect(serverSource).toContain('{ required: ["loopJson"] }');
+    expect(serverSource).toContain('{ required: ["file"] }');
+    expect(serverSource).toContain('{ required: ["loopId"] }');
+    expect(serverSource).toContain('{ required: ["latest"] }');
   });
 });
