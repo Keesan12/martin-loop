@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -41,9 +41,8 @@ function makeLoopRecord(overrides: { costUsd?: number; avoidedUsd?: number } = {
 
 async function withRunsRoot<T>(fn: (runsRoot: string) => Promise<T>): Promise<T> {
   const previousRunsRoot = process.env.MARTIN_RUNS_DIR;
-  const runsRoot = join(tmpdir(), `martin-mcp-runs-${Date.now()}`);
+  const runsRoot = await mkdtemp(join(tmpdir(), "martin-mcp-runs-"));
   process.env.MARTIN_RUNS_DIR = runsRoot;
-  await mkdir(runsRoot, { recursive: true });
   try {
     return await fn(runsRoot);
   } finally {
@@ -52,6 +51,8 @@ async function withRunsRoot<T>(fn: (runsRoot: string) => Promise<T>): Promise<T>
     } else {
       process.env.MARTIN_RUNS_DIR = previousRunsRoot;
     }
+
+    await rm(runsRoot, { recursive: true, force: true }).catch(() => {});
   }
 }
 
