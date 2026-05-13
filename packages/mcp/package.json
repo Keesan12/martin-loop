@@ -4,7 +4,7 @@
   "mcpName": "io.github.keesan12/martin-loop",
   "private": false,
   "type": "module",
-  "description": "Governed MCP server for AI coding agents with budgets, verifier gates, policy checks, and audit trails.",
+  "description": "Governed MCP server for AI coding agents with budgets, verifier gates, and inspectable runs.",
   "license": "MIT",
   "author": "Vakeesan Mahalingam and Gobi Shanthan",
   "homepage": "https://martinloop.com/",
