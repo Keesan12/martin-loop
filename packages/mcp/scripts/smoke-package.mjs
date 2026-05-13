@@ -12,7 +12,6 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { buildStandaloneMcpPackage } from "./build-package-lib.mjs";
 
 const REQUIRED_TOOLS = ["martin_inspect", "martin_run", "martin_status"];
-const PACKAGED_BIN_NAME = "mcp";
 export const PUBLISHED_PACKAGE_SPEC = "@martinloop/mcp";
 const REQUIRED_TARBALL_FILES = [
   "README.md",
@@ -55,7 +54,9 @@ export async function runStandaloneMcpSmoke(options = {}) {
   const packageDir = path.resolve(options.packageDir ?? fileURLToPath(new URL("..", import.meta.url)));
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), "martin-mcp-smoke-"));
   const packDir = path.join(tempRoot, "pack");
+  const extractedDir = path.join(tempRoot, "extracted");
   await mkdir(packDir, { recursive: true });
+  await mkdir(extractedDir, { recursive: true });
 
   let transport;
   try {
@@ -76,6 +77,8 @@ export async function runStandaloneMcpSmoke(options = {}) {
     const packEntry = parsePackEntry(packRun.stdout);
     const tarballFilename = packEntry.filename;
     const tarballPath = path.join(packDir, packEntry.filename);
+    await runCommand(tarCommand(), ["-xf", tarballFilename, "-C", extractedDir], { cwd: packDir });
+    const extractedPackageDir = path.join(extractedDir, "package");
 
     const packedManifestOutput = await runCommand(
       tarCommand(),
@@ -86,7 +89,7 @@ export async function runStandaloneMcpSmoke(options = {}) {
     assertPackedManifest(packedManifest);
 
     const stderrChunks = [];
-    const launch = createPackagedLaunch(tarballPath);
+    const launch = createPackagedLaunch(extractedPackageDir);
     transport = new StdioClientTransport({
       command: launch.command,
       args: launch.args,
@@ -139,7 +142,7 @@ export async function runStandaloneMcpSmoke(options = {}) {
       await transport.close().catch(() => {});
     }
     if (!options.keepTempDir) {
-      await rm(tempRoot, { force: true, recursive: true, maxRetries: 10, retryDelay: 100 });
+      await removeTempDir(tempRoot);
     }
   }
 }
@@ -201,10 +204,10 @@ function tarCommand() {
   return process.platform === "win32" ? "tar.exe" : "tar";
 }
 
-function createPackagedLaunch(tarballPath) {
+function createPackagedLaunch(extractedPackageDir) {
   return {
-    command: npmCommand(),
-    args: ["exec", "--yes", "--package", tarballPath, "--", PACKAGED_BIN_NAME],
+    command: process.execPath,
+    args: [path.join(extractedPackageDir, "dist", "server.js")],
   };
 }
 
@@ -275,6 +278,25 @@ function toCmdCommand(command, args) {
 
 function quoteForCmdArgument(value) {
   return /[\s"]/u.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
+
+async function removeTempDir(tempRoot) {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    try {
+      await rm(tempRoot, { force: true, recursive: true, maxRetries: 10, retryDelay: 100 });
+      return;
+    } catch (error) {
+      const code = error?.code;
+      if (code !== "EBUSY" && code !== "EPERM" && code !== "ENOTEMPTY") {
+        throw error;
+      }
+      await sleep(120 * (attempt + 1));
+    }
+  }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function main() {
