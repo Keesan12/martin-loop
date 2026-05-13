@@ -19,6 +19,8 @@
  *   node dist/server.js
  */
 
+import { createRequire } from "node:module";
+
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -31,8 +33,11 @@ import { inspectLoopTool } from "./tools/inspect-loop.js";
 import { runLoopTool } from "./tools/run-loop.js";
 import { sanitizeToolErrorMessage, validateToolInput } from "./server-validation.js";
 
+const require = createRequire(import.meta.url);
+const packageJson = require("../package.json") as { version: string };
+
 const server = new Server(
-  { name: "martin-loop", version: "0.1.2" },
+  { name: "martin-loop", version: packageJson.version },
   { capabilities: { tools: {} } }
 );
 
@@ -48,6 +53,7 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
         "Execute a full Martin Loop on a coding task. Martin spawns the selected agent CLI (claude or codex), runs the task, classifies failures, and retries within the specified budget. Returns the loop outcome including lifecycle state, attempt count, and spend.",
       inputSchema: {
         type: "object",
+        additionalProperties: false,
         properties: {
           objective: {
             type: "string",
@@ -56,7 +62,7 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
           workingDirectory: {
             type: "string",
             description:
-              "Absolute path to the project root. Defaults to the current working directory."
+              "Optional repo-root override resolved under the MCP workspace root (or current working directory). Must stay within that safe root."
           },
           engine: {
             type: "string",
@@ -69,14 +75,17 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
           },
           maxUsd: {
             type: "number",
+            exclusiveMinimum: 0,
             description: "Hard budget ceiling in USD. Defaults to 25."
           },
           maxIterations: {
-            type: "number",
+            type: "integer",
+            exclusiveMinimum: 0,
             description: "Maximum number of loop attempts. Defaults to 8."
           },
           maxTokens: {
-            type: "number",
+            type: "integer",
+            exclusiveMinimum: 0,
             description: "Maximum total tokens across all attempts. Defaults to 80000."
           },
           verificationPlan: {
@@ -89,13 +98,13 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
             type: "array",
             items: { type: "string" },
             description:
-              "Relative path globs Martin may modify, such as ['src/**', 'tests/**']."
+              "Repo-relative path globs Martin may modify, such as ['src/**', 'tests/**']. Absolute paths and '..' traversal are rejected."
           },
           deniedPaths: {
             type: "array",
             items: { type: "string" },
             description:
-              "Relative path globs Martin must never modify, such as ['.env', 'docs/security/**']."
+              "Repo-relative path globs Martin must never modify, such as ['.env', 'docs/security/**']. Absolute paths and '..' traversal are rejected."
           },
           workspaceId: {
             type: "string",
@@ -115,16 +124,17 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
         "Summarise Martin Loop run records from a saved loop file or run-store directory. Supports canonical loop-record.json files, legacy JSONL files, and full runs directories.",
       inputSchema: {
         type: "object",
+        additionalProperties: false,
         properties: {
           file: {
             type: "string",
             description:
-              "Optional path under the Martin runs root to a loop-record.json file, a legacy .jsonl file, or a run-store directory."
+              "Optional path resolved under the Martin runs root to a loop-record.json file, a legacy .jsonl file, or a run-store directory."
           },
           runsDir: {
             type: "string",
             description:
-              "Optional Martin runs directory. Defaults to MARTIN_RUNS_DIR or ~/.martin/runs."
+              "Optional runs-root override resolved under the default Martin runs root. Defaults to MARTIN_RUNS_DIR or ~/.martin/runs."
           }
         }
       }
@@ -135,6 +145,7 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
         "Return the current budget and cost state of a Martin loop record. Accepts inline JSON, a saved loop file, a loopId under the run store, or the latest run in the store.",
       inputSchema: {
         type: "object",
+        additionalProperties: false,
         properties: {
           loopJson: {
             type: "string",
@@ -143,7 +154,7 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
           file: {
             type: "string",
             description:
-              "Optional path under the Martin runs root to a loop-record.json file, a legacy .jsonl file, or a run-store directory."
+              "Optional path resolved under the Martin runs root to a loop-record.json file, a legacy .jsonl file, or a run-store directory."
           },
           loopId: {
             type: "string",
@@ -153,14 +164,20 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
           runsDir: {
             type: "string",
             description:
-              "Optional Martin runs directory. Defaults to MARTIN_RUNS_DIR or ~/.martin/runs."
+              "Optional runs-root override resolved under the default Martin runs root. Defaults to MARTIN_RUNS_DIR or ~/.martin/runs."
           },
           latest: {
-            type: "boolean",
+            const: true,
             description:
               "When true, loads the most recently updated loop record in the runs directory."
           }
-        }
+        },
+        oneOf: [
+          { required: ["loopJson"] },
+          { required: ["file"] },
+          { required: ["loopId"] },
+          { required: ["latest"] }
+        ]
       }
     }
   ]

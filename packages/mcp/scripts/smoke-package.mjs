@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawn } from "node:child_process";
-import { mkdtemp, mkdir, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -29,6 +29,7 @@ const REQUIRED_TARBALL_FILES = [
   "dist/vendor/contracts/index.js",
   "dist/vendor/core/index.d.ts",
   "dist/vendor/core/index.js",
+  "server.json",
   "package.json",
 ];
 const SMOKE_LOOP_RECORD = {
@@ -54,9 +55,12 @@ export async function runStandaloneMcpSmoke(options = {}) {
   const packageDir = path.resolve(options.packageDir ?? fileURLToPath(new URL("..", import.meta.url)));
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), "martin-mcp-smoke-"));
   const packDir = path.join(tempRoot, "pack");
-  const extractedDir = path.join(tempRoot, "extracted");
+  const installRoot = path.join(tempRoot, "install");
+  const npmCacheDir = path.join(tempRoot, ".npm-cache");
+  const sourceManifest = await readJsonFile(path.join(packageDir, "package.json"));
   await mkdir(packDir, { recursive: true });
-  await mkdir(extractedDir, { recursive: true });
+  await mkdir(installRoot, { recursive: true });
+  await mkdir(npmCacheDir, { recursive: true });
 
   let transport;
   try {
@@ -77,19 +81,30 @@ export async function runStandaloneMcpSmoke(options = {}) {
     const packEntry = parsePackEntry(packRun.stdout);
     const tarballFilename = packEntry.filename;
     const tarballPath = path.join(packDir, packEntry.filename);
-    await runCommand(tarCommand(), ["-xf", tarballFilename, "-C", extractedDir], { cwd: packDir });
-    const extractedPackageDir = path.join(extractedDir, "package");
 
-    const packedManifestOutput = await runCommand(
-      tarCommand(),
-      ["-xOf", tarballFilename, "package/package.json"],
-      { cwd: packDir },
-    );
+    const [packedManifestOutput, packedServerOutput] = await Promise.all([
+      runCommand(
+        tarCommand(),
+        ["-xOf", tarballFilename, "package/package.json"],
+        { cwd: packDir },
+      ),
+      runCommand(
+        tarCommand(),
+        ["-xOf", tarballFilename, "package/server.json"],
+        { cwd: packDir },
+      ),
+    ]);
     const packedManifest = JSON.parse(packedManifestOutput.stdout);
-    assertPackedManifest(packedManifest);
+    const packedServerMetadata = JSON.parse(packedServerOutput.stdout);
+    assertPackedManifest(packedManifest, packedServerMetadata);
 
     const stderrChunks = [];
-    const launch = createPackagedLaunch(extractedPackageDir);
+    const installedPackageDir = await installPackagedTarball({
+      installRoot,
+      npmCacheDir,
+      tarballPath,
+    });
+    const launch = createPackagedLaunch(installedPackageDir);
     transport = new StdioClientTransport({
       command: launch.command,
       args: launch.args,
@@ -102,7 +117,7 @@ export async function runStandaloneMcpSmoke(options = {}) {
     });
 
     const client = new Client(
-      { name: "martin-mcp-smoke", version: "0.1.2" },
+      { name: "martin-mcp-smoke", version: sourceManifest.version },
       { capabilities: {} },
     );
 
@@ -130,10 +145,11 @@ export async function runStandaloneMcpSmoke(options = {}) {
 
     return {
       tarballPath,
-      npxCommand: "npx @martinloop/mcp",
+      npxCommand: "npx -y @martinloop/mcp",
       toolNames,
       tarballFiles,
       packedDependencies: packedManifest.dependencies ?? {},
+      packedServerMetadata,
       statusPayload,
       stderr: stderrChunks.join(""),
     };
@@ -152,6 +168,7 @@ function assertTarballFileSet(filePaths) {
     (filePath) =>
       filePath !== "package.json" &&
       filePath !== "README.md" &&
+      filePath !== "server.json" &&
       !filePath.startsWith("dist/"),
   );
   if (unexpected.length > 0) {
@@ -164,7 +181,66 @@ function assertTarballFileSet(filePaths) {
   }
 }
 
-function assertPackedManifest(manifest) {
+export function assertMcpPackageMetadataParity(manifest, serverMetadata) {
+  if (!manifest || typeof manifest !== "object") {
+    throw new Error("Expected an MCP package manifest object.");
+  }
+
+  if (!serverMetadata || typeof serverMetadata !== "object") {
+    throw new Error("Expected an MCP server metadata object.");
+  }
+
+  if (manifest.name !== PUBLISHED_PACKAGE_SPEC) {
+    throw new Error(
+      `Standalone MCP package name must be ${PUBLISHED_PACKAGE_SPEC}, received ${String(manifest.name)}.`,
+    );
+  }
+
+  if (manifest.mcpName !== serverMetadata.name) {
+    throw new Error(
+      `package.json mcpName (${String(manifest.mcpName)}) must match server.json name (${String(serverMetadata.name)}).`,
+    );
+  }
+
+  if (manifest.version !== serverMetadata.version) {
+    throw new Error(
+      `package.json version (${String(manifest.version)}) must match server.json version (${String(serverMetadata.version)}).`,
+    );
+  }
+
+  const npmPackage = Array.isArray(serverMetadata.packages)
+    ? serverMetadata.packages.find((pkg) => pkg?.registryType === "npm")
+    : undefined;
+  if (!npmPackage) {
+    throw new Error("server.json must declare an npm package entry.");
+  }
+
+  if (npmPackage.identifier !== manifest.name) {
+    throw new Error(
+      `server.json npm identifier (${String(npmPackage.identifier)}) must match package.json name (${String(manifest.name)}).`,
+    );
+  }
+
+  if (npmPackage.version !== manifest.version) {
+    throw new Error(
+      `server.json npm package version (${String(npmPackage.version)}) must match package.json version (${String(manifest.version)}).`,
+    );
+  }
+
+  if (serverMetadata.name !== manifest.mcpName) {
+    throw new Error(
+      `server.json name (${String(serverMetadata.name)}) must match package.json mcpName (${String(manifest.mcpName)}).`,
+    );
+  }
+}
+
+export async function readJsonFile(filePath) {
+  return JSON.parse(await readFile(filePath, "utf8"));
+}
+
+function assertPackedManifest(manifest, serverMetadata) {
+  assertMcpPackageMetadataParity(manifest, serverMetadata);
+
   const dependencyNames = Object.keys(manifest.dependencies ?? {});
   const internalDependencies = dependencyNames.filter((name) => name.startsWith("@martin/"));
   if (internalDependencies.length > 0) {
@@ -204,11 +280,33 @@ function tarCommand() {
   return process.platform === "win32" ? "tar.exe" : "tar";
 }
 
-function createPackagedLaunch(extractedPackageDir) {
+function createPackagedLaunch(installedPackageDir) {
   return {
     command: process.execPath,
-    args: [path.join(extractedPackageDir, "dist", "server.js")],
+    args: [path.join(installedPackageDir, "dist", "server.js")],
   };
+}
+
+async function installPackagedTarball({ installRoot, npmCacheDir, tarballPath }) {
+  await writeFile(
+    path.join(installRoot, "package.json"),
+    `${JSON.stringify({ name: "martin-mcp-pack-smoke", private: true }, null, 2)}\n`,
+    "utf8",
+  );
+
+  await runCommand(
+    npmCommand(),
+    ["install", "--no-save", "--ignore-scripts", "--fund=false", "--audit=false", tarballPath],
+    {
+      cwd: installRoot,
+      env: {
+        ...sanitizePackageManagerEnv(process.env),
+        npm_config_cache: npmCacheDir,
+      },
+    },
+  );
+
+  return path.join(installRoot, "node_modules", ...PUBLISHED_PACKAGE_SPEC.split("/"));
 }
 
 export function sanitizePackageManagerEnv(env = process.env) {
