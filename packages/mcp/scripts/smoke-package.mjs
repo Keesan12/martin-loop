@@ -139,7 +139,7 @@ export async function runStandaloneMcpSmoke(options = {}) {
       await transport.close().catch(() => {});
     }
     if (!options.keepTempDir) {
-      await rm(tempRoot, { force: true, recursive: true, maxRetries: 10, retryDelay: 100 });
+      await removeTempDir(tempRoot);
     }
   }
 }
@@ -275,6 +275,25 @@ function toCmdCommand(command, args) {
 
 function quoteForCmdArgument(value) {
   return /[\s"]/u.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
+
+async function removeTempDir(tempRoot) {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    try {
+      await rm(tempRoot, { force: true, recursive: true, maxRetries: 10, retryDelay: 100 });
+      return;
+    } catch (error) {
+      const code = error?.code;
+      if (code !== "EBUSY" && code !== "EPERM" && code !== "ENOTEMPTY") {
+        throw error;
+      }
+      await sleep(120 * (attempt + 1));
+    }
+  }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function main() {
