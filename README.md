@@ -4,7 +4,7 @@
 
 ### The cross agent governance layer for autonomous AI coding agents.⭐
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-7c3aed?style=flat-square)](./LICENSE)
+![License: APACHE 2.0](https://img.shields.io/badge/license-Apache--2.0-blue?logo=apache](https://github.com/IvorySQL/IvorySQL/blob/master/LICENSE))
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&logo=typescript&logoColor=white)](./tsconfig.base.json)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-3c873a?style=flat-square&logo=nodedotjs&logoColor=white)](#quick-start)
 [![npm](https://img.shields.io/badge/npm-martin--loop-cc3534?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/martin-loop)
@@ -382,7 +382,7 @@ Conventional commit prefixes: `feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, a
 
 **⭐Give the repo a star⭐** if you think AI coding needs budgets, brakes, and receipts.
 
-**MIT Licensed** · [martinloop.com](https://martinloop.com) · [keesan@martinloop.com](mailto:keesan@martinloop.com)
+**APACHE 2.0 Licensed** · [martinloop.com](https://martinloop.com) · [keesan@martinloop.com](mailto:support@martinloop.com)
 
 *"AI coding accountability: completes good work, refuses unsafe work, stops uneconomical work."*
 
