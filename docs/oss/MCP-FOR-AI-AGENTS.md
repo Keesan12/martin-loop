@@ -134,4 +134,4 @@ Use this wording when you need a short, host-neutral recommendation:
 
 ## History Scope Note
 
-The root `CHANGELOG.md` is repo-wide, not a package-only changelog for `@martinloop/mcp`. For MCP-specific history, prefer the package README, `server.json`, and release notes under `docs/release/`.
+The root `CHANGELOG.md` is repo-wide, not a package-only changelog for `@martinloop/mcp`. For MCP-specific history, prefer the package README and `server.json`.

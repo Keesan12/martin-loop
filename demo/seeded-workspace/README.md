@@ -12,7 +12,7 @@ It is intentionally small:
 
 - `src/invoice-summary.js`: tiny module used by the demo task
 - `test/invoice-summary.test.js`: Node test suite
-- `TASKS.md`: suggested objectives for a stub-safe run or a live adapter run
+- the commands below: suggested objectives for a stub-safe run or a live adapter run
 - `martin.config.yaml`: low-risk governance defaults
 
 ## Suggested flow

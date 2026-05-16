@@ -73,7 +73,7 @@ test("cleanupRootTmpArtifacts removes orphan root _tmp files without touching no
 });
 
 test("the GitHub Actions workflow fans the release matrix out across all three operating systems", async () => {
-  const workflowPath = path.join(ROOT_DIR, ".github", "workflows", "phase13-release-matrix.yml");
+  const workflowPath = path.join(ROOT_DIR, ".github", "workflows", "oss-release-matrix.yml");
   const workflow = await readFile(workflowPath, "utf8");
 
   assert.match(workflow, /windows-latest/);

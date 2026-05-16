@@ -196,4 +196,4 @@ pnpm --filter @martinloop/mcp smoke:published
 
 ## Version Notes
 
-The root `CHANGELOG.md` is repo-wide and includes non-MCP changes. For the `@martinloop/mcp` surface, prefer this README, `server.json`, and the MCP release notes under `docs/release/`.
+The root `CHANGELOG.md` is repo-wide and includes non-MCP changes. For the `@martinloop/mcp` surface, prefer this README and `server.json`.
