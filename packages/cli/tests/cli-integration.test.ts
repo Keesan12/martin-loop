@@ -319,7 +319,7 @@ describe("demo command", () => {
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain(targetDirectory);
       expect(result.stdout).toContain("npm test");
-      expect(result.stdout).toContain("Task ideas live in");
+      expect(result.stdout).toContain("Optional live run");
     });
   });
 });
