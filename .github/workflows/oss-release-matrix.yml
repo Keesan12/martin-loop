@@ -1,4 +1,4 @@
-name: phase13-release-matrix
+name: oss-release-matrix
 
 on:
   workflow_dispatch:
@@ -47,5 +47,5 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: phase13-release-matrix-${{ matrix.os }}
+          name: oss-release-matrix-${{ matrix.os }}
           path: .artifacts/release-matrix/${{ matrix.os }}

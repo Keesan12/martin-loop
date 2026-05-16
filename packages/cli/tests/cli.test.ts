@@ -364,7 +364,7 @@ describe("executeCli", () => {
 
       expect(result.exitCode).toBe(0);
       await expect(readFile(join(targetDirectory, "keep.txt"), "utf8")).rejects.toThrow();
-      expect(await readFile(join(targetDirectory, "TASKS.md"), "utf8")).toContain("Optional live run");
+      expect(await readFile(join(targetDirectory, "README.md"), "utf8")).toContain("Demo Sandbox");
     } finally {
       await rm(directory, { force: true, recursive: true });
     }

@@ -20,7 +20,6 @@ const ALLOWED_TOP_LEVEL_ENTRIES = [
   "packages",
   "scripts",
   ".gitignore",
-  "AGENTS.md",
   "CHANGELOG.md",
   "CODE_OF_CONDUCT.md",
   "CONTRIBUTING.md",
@@ -133,17 +132,10 @@ export async function writeOssBoundaryReport(options = {}) {
   const rootDir = options.rootDir ?? process.cwd();
   const outputDir = options.outputDir ?? path.join(rootDir, "docs", "oss");
   const report = await createOssBoundaryReport({ rootDir });
-  const markdown = renderOssBoundaryReportMarkdown(report);
-
   await mkdir(outputDir, { recursive: true });
   await writeFile(
     path.join(outputDir, "OSS-BOUNDARY-REPORT.json"),
     `${JSON.stringify(report, null, 2)}\n`,
-    "utf8",
-  );
-  await writeFile(
-    path.join(outputDir, "OSS-BOUNDARY-REPORT.md"),
-    `${markdown}\n`,
     "utf8",
   );
 
@@ -203,7 +195,7 @@ async function main() {
 
   process.stdout.write(`${markdown}\n`);
   process.stdout.write(
-    `\nArtifacts written to ${path.join(rootDir, "docs", "oss", "OSS-BOUNDARY-REPORT.json")} and ${path.join(rootDir, "docs", "oss", "OSS-BOUNDARY-REPORT.md")}\n`,
+    `\nArtifact written to ${path.join(rootDir, "docs", "oss", "OSS-BOUNDARY-REPORT.json")}\n`,
   );
 
   process.exitCode = report.verdict === "go" ? 0 : 1;

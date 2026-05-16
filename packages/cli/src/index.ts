@@ -664,9 +664,7 @@ function renderDemoInstructions(targetDirectory: string): string {
     '  MARTIN_LIVE=false npx martin-loop run "Summarize the demo workspace and confirm the verifier is green" --verify "npm test"',
     "",
     "Optional live run:",
-    '  npx martin-loop run "Add support for a discount percentage to summarizeInvoice and update the tests" --verify "npm test" --engine codex',
-    "",
-    `Task ideas live in ${join(targetDirectory, "TASKS.md")}`
+    '  npx martin-loop run "Add support for a discount percentage to summarizeInvoice and update the tests" --verify "npm test" --engine codex'
   ].join("\n");
 }
 
