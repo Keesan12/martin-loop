@@ -92,6 +92,10 @@ importers:
       ts-morph:
         specifier: ^21.0.0
         version: 21.0.1
+    devDependencies:
+      '@martin/contracts':
+        specifier: workspace:*
+        version: link:../contracts
 
 packages:
 

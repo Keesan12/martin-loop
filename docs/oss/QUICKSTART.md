@@ -1,14 +1,14 @@
 # Quickstart
 
-This quickstart is for the public OSS runtime, CLI, and MCP surfaces only.
+This quickstart covers the public OSS runtime and the standalone `@martinloop/mcp@0.2.5` cockpit line.
 
 ## Prerequisites
 
 - Node.js 20+
 - `pnpm` 10.x for repo-local work
-- Optional for live runs: Claude Code CLI or Codex CLI on `PATH`
+- optional for live runs: `claude` or `codex` on `PATH`
 
-## Install and build
+## Install and Build
 
 From the repo root:
 
@@ -17,83 +17,171 @@ pnpm install --frozen-lockfile
 pnpm build
 ```
 
-## Validate the OSS surface
-
-```bash
-pnpm test
-pnpm oss:validate
-pnpm public:smoke
-pnpm --filter @martinloop/mcp smoke:pack
-```
-
-Use `pnpm rc:validate` when you want the same checks to run inside an isolated temp home.
-
-## Stub-safe CLI run
-
-### PowerShell
-
-```powershell
-$env:MARTIN_LIVE='false'
-pnpm run:cli -- run --objective "Summarize the current runtime state" --verify "pnpm --filter @martin/core test"
-Remove-Item Env:MARTIN_LIVE
-```
-
-### Bash
-
-```bash
-MARTIN_LIVE=false pnpm run:cli -- run --objective "Summarize the current runtime state" --verify "pnpm --filter @martin/core test"
-```
-
-## Config-driven run
-
-The repo ships an example config at `martin.config.example.yaml`.
-
-```bash
-pnpm run:cli -- run --config martin.config.example.yaml --objective "Run with repo defaults" --verify "pnpm --filter @martin/core test"
-```
-
-## Inspect a saved run
-
-```bash
-pnpm run:cli -- inspect --file path/to/loop-record.json
-```
-
-Martin persists runs under `~/.martin/runs/` by default, or under `MARTIN_RUNS_DIR` if you override it.
-
-## MCP server
-
-Launch the published MCP package:
+## Launch the MCP Package
 
 ```bash
 npx -y @martinloop/mcp
 ```
 
-Claude Code install:
-
-```bash
-# macOS/Linux
-claude mcp add --transport stdio --scope user martin-loop -- npx -y @martinloop/mcp
-
-# Windows PowerShell/cmd
-claude mcp add --transport stdio --scope user martin-loop -- cmd /c npx -y @martinloop/mcp
-```
-
-Codex install:
+Codex:
 
 ```bash
 codex mcp add martin-loop -- npx -y @martinloop/mcp
 ```
 
-Recommended first-use flow:
+Claude Code:
 
-```text
-martin_doctor
-martin_preflight
-martin_run
-martin_inspect or martin_status
+```bash
+# macOS/Linux
+claude mcp add --transport stdio --scope user martin-loop -- npx -y @martinloop/mcp
+
+# Windows PowerShell or cmd.exe
+claude mcp add --transport stdio --scope user martin-loop -- cmd /c npx -y @martinloop/mcp
 ```
 
-Repo-local MCP verification:
+## First Session
+
+### 1. Doctor
+
+```json
+{
+  "tool": "martin_doctor",
+  "arguments": {
+    "engine": "codex"
+  }
+}
+```
+
+### 2. Preflight
+
+```json
+{
+  "tool": "martin_preflight",
+  "arguments": {
+    "objective": "Fix the auth regression and prove it with tests",
+    "engine": "codex",
+    "maxUsd": 3,
+    "maxIterations": 3,
+    "verificationPlan": ["pnpm test --filter auth"],
+    "allowedPaths": ["src/**", "tests/**"],
+    "deniedPaths": [".env*", "secrets/**"]
+  }
+}
+```
+
+### 3. Run
+
+```json
+{
+  "tool": "martin_run",
+  "arguments": {
+    "objective": "Fix the auth regression and prove it with tests",
+    "engine": "codex",
+    "maxUsd": 3,
+    "maxIterations": 3,
+    "verificationPlan": ["pnpm test --filter auth"],
+    "allowedPaths": ["src/**", "tests/**"],
+    "deniedPaths": [".env*", "secrets/**"]
+  }
+}
+```
+
+### 4. Triage
+
+Rank the runs that need attention first:
+
+```json
+{
+  "tool": "martin_triage_runs",
+  "arguments": {}
+}
+```
+
+### 5. Inspect
+
+Use the richest surface:
+
+```json
+{
+  "tool": "martin_run_dossier",
+  "arguments": {
+    "loopId": "loop-123"
+  }
+}
+```
+
+Or use targeted reads:
+
+```json
+{
+  "tool": "martin_get_verification_results",
+  "arguments": {
+    "loopId": "loop-123"
+  }
+}
+```
+
+```json
+{
+  "tool": "martin_get_attempt",
+  "arguments": {
+    "loopId": "loop-123",
+    "attemptIndex": 1
+  }
+}
+```
+
+### 6. Discovery
+
+Read recent runs:
+
+```json
+{
+  "uri": "martin://runs/recent"
+}
+```
+
+Or ask for a kickoff/debug prompt:
+
+```json
+{
+  "name": "martin_governed_coding_kickoff",
+  "arguments": {
+    "objective": "Fix the auth regression and prove it with tests"
+  }
+}
+```
+
+## Tool Inventory
+
+- `martin_doctor`
+- `martin_preflight`
+- `martin_run`
+- `martin_inspect`
+- `martin_status`
+- `martin_list_runs`
+- `martin_triage_runs`
+- `martin_get_run`
+- `martin_get_attempt`
+- `martin_get_verification_results`
+- `martin_run_dossier`
+
+## Resource Inventory
+
+- `martin://server/health`
+- `martin://runs/recent`
+- `martin://runs/triage`
+- `martin://guides/mcp-usage`
+- `martin://guides/publish-readiness`
+
+## Prompt Inventory
+
+- `martin_governed_coding_kickoff`
+- `martin_debug_failed_run`
+- `martin_publish_readiness_review`
+- `martin_triage_run_store`
+
+## Repo-local MCP Verification
 
 ```bash
 pnpm --filter @martinloop/mcp lint
@@ -104,18 +192,4 @@ pnpm --filter @martinloop/mcp smoke:published:pack
 pnpm --filter @martinloop/mcp verify:release
 ```
 
-Official MCP Registry publication still happens after npm publication:
-
-```bash
-cd packages/mcp
-mcp-publisher login github
-mcp-publisher publish
-```
-
-## Local release matrix
-
-```bash
-pnpm release:matrix:local
-```
-
-This runs the Windows, macOS, and Linux lane definitions locally for the current machine’s platform and writes logs into a temp directory.
+Use `pnpm --filter @martinloop/mcp smoke:published` only after npm publish.

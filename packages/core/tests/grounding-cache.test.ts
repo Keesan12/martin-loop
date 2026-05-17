@@ -31,7 +31,7 @@ describe("loadOrBuildRepoGroundingIndex cache hardening", () => {
         }
       };
     });
-    const { loadOrBuildRepoGroundingIndex } = await import("../src/grounding.js");
+const { loadOrBuildRepoGroundingIndex } = await import("../src/grounding");
     const index = await loadOrBuildRepoGroundingIndex(root);
 
     expect(index.schemaVersion).toBe("martin.grounding.v1");

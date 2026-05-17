@@ -1647,7 +1647,7 @@ function resolveChangedFiles(result: MartinAdapterResult, repoRoot?: string): st
   }
 
   try {
-    const diff = spawnSync("git", ["diff", "--name-only", "HEAD"], {
+    const diff = spawnSync("git", ["diff", "--name-only", "HEAD", "--", "."], {
       cwd: repoRoot,
       encoding: "utf8"
     });

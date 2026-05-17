@@ -21,6 +21,10 @@ coverage/
 # Cache directories
 .npm-cache/
 .cache/
+.deepsec/
+.tmp/
+.qwen/
+.tools/
 
 # Test output
 vitest-results.json
@@ -28,9 +32,21 @@ vitest-results.json
 
 # Runtime artifacts
 artifacts/
+.artifacts/
 output/
 /cm*.md
 /cmp*.md
+audit-pack-gate-audit-run/
+case-study-results.json
+gate-check-results.json
+.codex-root-build.log
+.codex-root-lint.log
+
+# Private or internal-only workspace residue
+apps/
+packages/formal-proof/
+docs/handoffs/
+docs/release/audit-handoff/
 
 # OS files
 .DS_Store

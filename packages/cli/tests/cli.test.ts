@@ -92,6 +92,7 @@ describe("executeCli", () => {
       const prevLive = process.env.MARTIN_LIVE;
       process.env.MARTIN_LIVE = "false";
       const result = await executeCli([
+        "--json",
         "run",
         "--objective",
         "Repair flaky CI gate",
@@ -143,6 +144,7 @@ describe("executeCli", () => {
     const prevLive = process.env.MARTIN_LIVE;
     process.env.MARTIN_LIVE = "false";
     const result = await executeCli([
+      "--json",
       "run",
       "--objective",
       "Repair flaky CI gate",
@@ -195,6 +197,7 @@ describe("executeCli", () => {
 
     try {
       const result = await executeCli([
+        "--json",
         "run",
         "--objective",
         "Verify the contracts package without edits",
@@ -254,6 +257,7 @@ describe("executeCli", () => {
 
       process.env.MARTIN_LIVE = "false";
       const result = await executeCli([
+        "--json",
         "run",
         "--objective",
         "Repair flaky CI gate",
@@ -344,7 +348,7 @@ describe("executeCli", () => {
 
       const result = await executeCli(["demo", "--dir", targetDirectory]);
 
-      expect(result.exitCode).toBe(1);
+      expect(result.exitCode).toBe(2);
       expect(result.stderr).toContain("already exists and is not empty");
       expect(await readFile(join(targetDirectory, "keep.txt"), "utf8")).toBe("do not replace");
     } finally {
@@ -417,7 +421,7 @@ describe("executeCli", () => {
 
       await writeFile(filePath, JSON.stringify(loop, null, 2), "utf8");
 
-      const result = await executeCli(["inspect", "--file", filePath]);
+      const result = await executeCli(["--json", "inspect", "--file", filePath]);
 
       expect(result.exitCode).toBe(0);
 
@@ -475,7 +479,7 @@ describe("executeCli", () => {
         "utf8"
       );
 
-      const result = await executeCli(["inspect", "--file", filePath]);
+      const result = await executeCli(["--json", "inspect", "--file", filePath]);
 
       expect(result.exitCode).toBe(0);
 

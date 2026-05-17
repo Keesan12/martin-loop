@@ -50,7 +50,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "pnpm -r build && node ./scripts/build-public-facade.mjs",
+    "build": "pnpm -r --workspace-concurrency=1 build && node ./scripts/build-public-facade.mjs",
     "prepack": "pnpm build && node ./scripts/root-release-guard.mjs --pack",
     "test": "pnpm -r test && node --test scripts/tests/*.mjs",
     "lint": "pnpm -r lint",
