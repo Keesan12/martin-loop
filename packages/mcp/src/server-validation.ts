@@ -480,7 +480,6 @@ function assertPathWithinRoot(
     requireExistingRoot?: boolean;
   } = {}
 ): void {
-  assertNoSymbolicLinkSegments(rootPath, name);
   assertNoSymbolicLinkSegments(candidatePath, name, rootPath);
   const canonicalRoot = canonicalizePath(rootPath, name, options.requireExistingRoot ?? false);
   const canonicalCandidate = canonicalizePath(candidatePath, name, options.requireExistingCandidate ?? false);

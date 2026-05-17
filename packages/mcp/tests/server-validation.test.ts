@@ -125,6 +125,39 @@ describe("server validation", () => {
     });
   });
 
+  it("allows inspect paths when the configured runs root lives under a symlinked parent alias", async () => {
+    const previousRunsRoot = process.env.MARTIN_RUNS_DIR;
+    const realParent = await mkdtemp(join(tmpdir(), "martin-mcp-validation-real-parent-"));
+    const aliasContainer = await mkdtemp(join(tmpdir(), "martin-mcp-validation-alias-parent-"));
+    const realRunsRoot = join(realParent, "runs");
+    const aliasParent = join(aliasContainer, "alias");
+    const aliasedRunsRoot = join(aliasParent, "runs");
+
+    await mkdir(join(realRunsRoot, "loop_001"), { recursive: true });
+    await writeFile(join(realRunsRoot, "loop_001", "loop-record.json"), "{}", "utf8");
+    await symlink(realParent, aliasParent, process.platform === "win32" ? "junction" : "dir");
+    process.env.MARTIN_RUNS_DIR = aliasedRunsRoot;
+
+    try {
+      const result = validateToolInput("martin_inspect", {
+        file: "loop_001/loop-record.json"
+      });
+
+      expect(result).toEqual({
+        file: join(aliasedRunsRoot, "loop_001", "loop-record.json")
+      });
+    } finally {
+      if (previousRunsRoot === undefined) {
+        delete process.env.MARTIN_RUNS_DIR;
+      } else {
+        process.env.MARTIN_RUNS_DIR = previousRunsRoot;
+      }
+
+      await rm(aliasContainer, { recursive: true, force: true }).catch(() => {});
+      await rm(realParent, { recursive: true, force: true }).catch(() => {});
+    }
+  });
+
   it("rejects working directories that traverse through a symlinked workspace segment", async () => {
     await withValidationWorkspaceRoot(async (workspaceRoot) => {
       const outsideRoot = await mkdtemp(join(tmpdir(), "martin-mcp-validation-outside-workspace-"));

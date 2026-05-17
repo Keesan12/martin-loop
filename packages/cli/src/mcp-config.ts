@@ -328,8 +328,8 @@ function resolveTargetPath(
 ): string {
   if (input.host === "codex") {
     return input.scope === "user"
-      ? path.join(resolveCodexHome(), "config.toml")
-      : path.join(input.cwd, ".codex", "config.toml");
+      ? joinTargetPath(resolveCodexHome(), "config.toml")
+      : joinTargetPath(input.cwd, ".codex", "config.toml");
   }
 
   if (input.host === "claude") {
@@ -339,18 +339,18 @@ function resolveTargetPath(
 
     return input.scope === "user"
       ? path.join(homedir(), ".claude.json")
-      : path.join(input.cwd, ".mcp.json");
+      : joinTargetPath(input.cwd, ".mcp.json");
   }
 
   if (input.host === "gemini") {
     return input.scope === "user"
       ? path.join(homedir(), ".gemini", "settings.json")
-      : path.join(input.cwd, ".gemini", "settings.json");
+      : joinTargetPath(input.cwd, ".gemini", "settings.json");
   }
 
   return input.scope === "user"
     ? path.join(homedir(), ".martin-loop", "mcp.generic.json")
-    : path.join(input.cwd, ".martin-loop", "mcp.generic.json");
+    : joinTargetPath(input.cwd, ".martin-loop", "mcp.generic.json");
 }
 
 function detectPlatform(): MartinMcpPlatform {
@@ -367,6 +367,16 @@ function detectPlatform(): MartinMcpPlatform {
 function resolveCodexHome(env: NodeJS.ProcessEnv = process.env): string {
   const codexHome = env["CODEX_HOME"]?.trim();
   return codexHome && codexHome.length > 0 ? codexHome : path.join(homedir(), ".codex");
+}
+
+function joinTargetPath(basePath: string, ...segments: string[]): string {
+  return usesWindowsSeparators(basePath)
+    ? path.win32.join(basePath, ...segments)
+    : path.join(basePath, ...segments);
+}
+
+function usesWindowsSeparators(pathValue: string): boolean {
+  return /^[A-Za-z]:([\\/]|$)/u.test(pathValue) || pathValue.includes("\\");
 }
 
 function buildStdioLauncher(platform: MartinMcpPlatform): {
