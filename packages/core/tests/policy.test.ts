@@ -5,7 +5,7 @@ import {
   evaluateBudgetPreflight,
   evaluatePatchDecision,
   selectRecoveryRecipe
-} from "../src/index.js";
+} from "../src/index";
 
 describe("evaluateBudgetPreflight", () => {
   it("allows attempt when estimated cost is within budget and per-attempt cap", () => {

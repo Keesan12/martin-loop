@@ -92,6 +92,7 @@ describe("MARTIN_LIVE=false — stub adapter", () => {
   it("run command completes without spawning a real subprocess", async () => {
     const result = await withEnv("MARTIN_LIVE", "false", () =>
       executeCli([
+        "--json",
         "run",
         "--objective",
         "Add a greeting function",
@@ -112,6 +113,7 @@ describe("MARTIN_LIVE=false — stub adapter", () => {
   it("returns a valid loop record structure in stub mode", async () => {
     const result = await withEnv("MARTIN_LIVE", "false", () =>
       executeCli([
+        "--json",
         "run",
         "--workspace",
         "ws_stub",
@@ -141,6 +143,7 @@ describe("--engine flag", () => {
     // not that claude itself runs successfully
     const result = await withEnv("MARTIN_LIVE", "false", () =>
       executeCli([
+        "--json",
         "run",
         "--objective",
         "Fix the bug",
@@ -162,6 +165,7 @@ describe("--engine flag", () => {
       withFakeCodexCli(() =>
         withEnv("MARTIN_LIVE", "true", () =>
           executeCli([
+            "--json",
             "run",
             "--engine",
             "codex",
@@ -195,6 +199,7 @@ describe("--engine flag", () => {
     const result = await withoutAgentCliOnPath(() =>
       withEnv("MARTIN_LIVE", "true", () =>
         executeCli([
+          "--json",
           "run",
           "--objective",
           "Fix the bug",
@@ -265,7 +270,7 @@ describe("inspect command", () => {
       const filePath = join(dir, "loop.json");
       await writeFile(filePath, JSON.stringify(loop), "utf8");
 
-      const result = await executeCli(["inspect", "--file", filePath]);
+      const result = await executeCli(["--json", "inspect", "--file", filePath]);
 
       expect(result.exitCode).toBe(0);
       const payload = JSON.parse(result.stdout);
@@ -282,16 +287,8 @@ describe("inspect command", () => {
       "/tmp/martin-nonexistent-xyzabc.json"
     ]);
 
-    // The CLI should surface the error — exit code 0 is expected because
-    // executeCli catches errors in the switch and returns non-zero only
-    // if the CLI itself crashes. Inspect propagates as a thrown error.
-    // Accept either a non-zero exit or an error message in stderr.
-    const hasError =
-      result.exitCode !== 0 ||
-      result.stderr.includes("Error") ||
-      result.stderr.includes("ENOENT");
-
-    expect(hasError).toBe(true);
+    expect(result.exitCode).toBe(5);
+    expect(result.stderr).toContain("Persisted loop file not found");
   });
 });
 

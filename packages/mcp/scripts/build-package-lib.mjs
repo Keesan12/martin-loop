@@ -227,7 +227,7 @@ async function copyDirectory(input) {
     if (entry.name.endsWith(".js") || entry.name.endsWith(".d.ts")) {
       const contents = await readFile(sourcePath, "utf8");
       mergeDependencySets(dependencies, collectRewritablePackages(contents));
-      const rewritten = rewritePackageSpecifiers(contents, {
+      const rewritten = rewriteBuiltFileContents(entry.name, contents, {
         targetPath,
         distDir: input.distDir,
       });
@@ -268,7 +268,7 @@ async function rewriteDirectory(input) {
     }
 
     const contents = await readFile(entryPath, "utf8");
-    const rewritten = rewritePackageSpecifiers(contents, {
+    const rewritten = rewriteBuiltFileContents(entry.name, contents, {
       targetPath: entryPath,
       distDir: input.distDir,
     });
@@ -321,6 +321,20 @@ export function rewritePackageSpecifiers(contents, input) {
       return `${quote}${specifier}${quote}`;
     },
   );
+}
+
+function rewriteBuiltFileContents(fileName, contents, input) {
+  const rewritten = rewritePackageSpecifiers(contents, input);
+  return fileName.endsWith(".js") || fileName.endsWith(".d.ts")
+    ? stripSourceMapDirectives(rewritten)
+    : rewritten;
+}
+
+function stripSourceMapDirectives(contents) {
+  return contents
+    .replace(/^[ \t]*\/\/[#@]\s*sourceMappingURL=.*(?:\r?\n)?/gmu, "")
+    .replace(/^[ \t]*\/\*#\s*sourceMappingURL=.*?\*\/(?:\r?\n)?/gmsu, "")
+    .replace(/^[ \t]*\/\/[#@]\s*declarationMappingURL=.*(?:\r?\n)?/gmu, "");
 }
 
 function toImportSpecifier(fromDir, toFile) {

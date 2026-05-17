@@ -1,6 +1,6 @@
 # Martin Loop OSS Boundary Report
 
-Generated: 2026-05-12T22:46:47.915Z
+Generated: 2026-05-17T23:06:50.459Z
 
 ## Verdict
 **GO**
@@ -19,11 +19,12 @@ Generated: 2026-05-12T22:46:47.915Z
 | @martin/core | packages/core | yes | n/a | @martin/contracts |
 | @martin/adapters | packages/adapters | yes | n/a | @martin/core |
 | @martin/cli | packages/cli | no | public | @martin/adapters, @martin/contracts, @martin/core |
-| @martinloop/mcp | packages/mcp | no | public | none |
+| @martinloop/mcp | packages/mcp | no | public | @martin/contracts |
 
 ## Boundary Checks
 - Forbidden top-level entries: none
 - Unexpected top-level entries: none
+- Forbidden paid/private package directories: none
 - Unexpected package directories: none
 - Workspace dependency leaks: none
 

@@ -11,7 +11,19 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 
 import { buildStandaloneMcpPackage } from "./build-package-lib.mjs";
 
-const REQUIRED_TOOLS = ["martin_inspect", "martin_run", "martin_status"];
+const REQUIRED_TOOLS = [
+  "martin_doctor",
+  "martin_preflight",
+  "martin_run",
+  "martin_inspect",
+  "martin_status",
+  "martin_list_runs",
+  "martin_triage_runs",
+  "martin_get_run",
+  "martin_get_attempt",
+  "martin_get_verification_results",
+  "martin_run_dossier",
+];
 export const PUBLISHED_PACKAGE_SPEC = "@martinloop/mcp";
 const REQUIRED_TARBALL_FILES = [
   "README.md",
@@ -231,6 +243,26 @@ export function assertMcpPackageMetadataParity(manifest, serverMetadata) {
     throw new Error(
       `server.json name (${String(serverMetadata.name)}) must match package.json mcpName (${String(manifest.mcpName)}).`,
     );
+  }
+
+  if (npmPackage.transport?.type !== "stdio") {
+    throw new Error(
+      `server.json npm transport must be stdio, received ${String(npmPackage.transport?.type)}.`,
+    );
+  }
+
+  const expectedBinPath = "./dist/server.js";
+  if (manifest.bin?.mcp !== expectedBinPath || manifest.bin?.["martin-loop-mcp"] !== expectedBinPath) {
+    throw new Error(
+      `package.json bin aliases must expose both "mcp" and "martin-loop-mcp" at ${expectedBinPath}.`,
+    );
+  }
+
+  const shippedFiles = Array.isArray(manifest.files) ? manifest.files : [];
+  for (const requiredFile of ["dist", "README.md", "server.json"]) {
+    if (!shippedFiles.includes(requiredFile)) {
+      throw new Error(`package.json files must include ${requiredFile}.`);
+    }
   }
 }
 

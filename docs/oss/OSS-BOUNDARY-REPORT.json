@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-12T22:46:47.915Z",
+  "generatedAt": "2026-05-17T23:06:50.459Z",
   "verdict": "go",
   "publicSurface": {
     "packageName": "martin-loop",
@@ -51,43 +51,60 @@
       "path": "packages/mcp",
       "private": false,
       "publishAccess": "public",
-      "workspaceDependencies": []
+      "workspaceDependencies": [
+        "@martin/contracts"
+      ]
     }
   ],
   "topLevelEntries": [
+    ".artifacts",
+    ".cache",
     ".git",
     ".github",
     ".gitignore",
+    ".npm-cache",
+    ".planning",
     "AGENTS.md",
     "CHANGELOG.md",
     "CODE_OF_CONDUCT.md",
+    "CONTEXT.md",
     "CONTRIBUTING.md",
     "LICENSE",
     "README.md",
     "SECURITY.md",
+    "benchmarks",
     "demo",
+    "deploy",
     "dist",
     "docs",
     "examples",
+    "martin-cli-dist.zip",
+    "martin-mcp-dist.zip",
     "martin.config.example.yaml",
     "node_modules",
+    "output",
     "package.json",
     "packages",
     "pnpm-lock.yaml",
     "pnpm-workspace.yaml",
     "scripts",
+    "tests and feedback",
+    "tmp",
     "tsconfig.base.json",
+    "vitest-results.json",
     "vitest.workspace.ts"
   ],
   "forbiddenTopLevelEntries": [],
   "unexpectedTopLevelEntries": [],
   "unexpectedPackageDirs": [],
+  "forbiddenPackageDirs": [],
   "dependencyLeaks": [],
   "summary": {
     "ossCoreCount": 5,
     "forbiddenTopLevelCount": 0,
     "unexpectedTopLevelCount": 0,
     "unexpectedPackageDirCount": 0,
+    "forbiddenPackageDirCount": 0,
     "dependencyLeakCount": 0
   }
 }

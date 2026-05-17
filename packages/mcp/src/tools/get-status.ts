@@ -1,6 +1,7 @@
 import { evaluateCostGovernor } from "@martin/core";
 
 import { loadLoopRecordForStatus } from "./run-store.js";
+import { buildLoopPreview, type LoopPreview } from "./tool-support.js";
 
 export interface GetStatusInput {
   /** JSON-serialized LoopRecord. */
@@ -16,6 +17,7 @@ export interface GetStatusInput {
 }
 
 export interface GetStatusOutput {
+  source: string;
   loopId: string;
   status: string;
   lifecycleState: string;
@@ -27,6 +29,15 @@ export interface GetStatusOutput {
   remainingBudgetUsd: number;
   remainingIterations: number;
   remainingTokens: number;
+  budget: {
+    maxUsd: number;
+    softLimitUsd: number;
+    maxIterations: number;
+    maxTokens: number;
+  };
+  inspection: {
+    loop: LoopPreview;
+  };
 }
 
 export async function getStatusTool(input: GetStatusInput): Promise<GetStatusOutput> {
@@ -45,6 +56,7 @@ export async function getStatusTool(input: GetStatusInput): Promise<GetStatusOut
   });
 
   return {
+    source: resolved.source,
     loopId: loop.loopId,
     status: loop.status,
     lifecycleState: loop.lifecycleState,
@@ -55,6 +67,15 @@ export async function getStatusTool(input: GetStatusInput): Promise<GetStatusOut
     shouldStop: costState.shouldStop,
     remainingBudgetUsd: costState.remainingBudgetUsd,
     remainingIterations: costState.remainingIterations,
-    remainingTokens: costState.remainingTokens
+    remainingTokens: costState.remainingTokens,
+    budget: {
+      maxUsd: loop.budget.maxUsd,
+      softLimitUsd: loop.budget.softLimitUsd,
+      maxIterations: loop.budget.maxIterations,
+      maxTokens: loop.budget.maxTokens
+    },
+    inspection: {
+      loop: buildLoopPreview(loop)
+    }
   };
 }
