@@ -64,7 +64,7 @@ jobs:
       - name: Publish to npm
         if: steps.npm-version.outputs.exists != 'true'
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN_GITHUB_RELEASE != '' && secrets.NPM_TOKEN_GITHUB_RELEASE || secrets.NPM_TOKEN }}
         run: npm publish "${{ steps.root-pack.outputs.tarball }}" --access public --provenance
 
       - name: Skip duplicate npm publish
