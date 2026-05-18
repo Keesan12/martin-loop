@@ -13,7 +13,7 @@ import {
 
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
-test("createReleaseMatrixPlan defines the frozen Windows macOS and Linux RC lanes", () => {
+test("createReleaseMatrixPlan defines the Windows macOS and Linux OSS-safe release lanes", () => {
   const plan = createReleaseMatrixPlan({ rootDir: ROOT_DIR });
 
   assert.deepEqual(
@@ -30,10 +30,11 @@ test("createReleaseMatrixPlan defines the frozen Windows macOS and Linux RC lane
     assert.deepEqual(commands, [
       "pnpm install --frozen-lockfile",
       "pnpm build",
+      "pnpm test",
       "pnpm oss:validate",
       "pnpm public:smoke",
-      "pnpm repo:smoke",
-      "pnpm rc:validate",
+      "pnpm --filter @martinloop/mcp smoke:pack",
+      "pnpm mcp:published:smoke:pack",
     ]);
   }
 });

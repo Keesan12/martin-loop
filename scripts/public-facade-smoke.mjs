@@ -6,8 +6,12 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { buildPublicFacade } from "./build-public-facade.mjs";
 import { resolveRcCommandExecution } from "./rc-validation.mjs";
+import {
+  assertPackedSurface,
+  extractPackJsonPayload,
+  inspectPackedFiles,
+} from "./root-release-guard.mjs";
 
 export function createPublicFacadeSmokePlan(options = {}) {
   const rootDir = options.rootDir ?? process.cwd();
@@ -32,7 +36,8 @@ export function createPublicFacadeSmokePlan(options = {}) {
 export async function runPublicFacadeSmoke(options = {}) {
   const rootDir = options.rootDir ?? process.cwd();
   const rootManifest = JSON.parse(await readFile(path.join(rootDir, "package.json"), "utf8"));
-  await buildPublicFacade({ rootDir });
+  const packedFiles = await inspectPackedFiles({ rootDir, ignoreScripts: false });
+  assertPackedSurface(packedFiles);
 
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), "martin-public-facade-"));
   const packDir = path.join(tempRoot, "pack");
@@ -44,7 +49,7 @@ export async function runPublicFacadeSmoke(options = {}) {
     const packRun = await runCommand(["npm", "pack", "--json", "--pack-destination", packDir], {
       cwd: rootDir,
     });
-    const packArtifacts = JSON.parse(packRun.stdout);
+    const packArtifacts = extractPackJsonPayload(packRun.stdout);
     const tarballName = Array.isArray(packArtifacts) ? packArtifacts[0]?.filename : undefined;
 
     if (typeof tarballName !== "string" || tarballName.trim().length === 0) {
@@ -94,7 +99,7 @@ export async function runPublicFacadeSmoke(options = {}) {
       cwd: appDir,
     });
     const demoReadme = await readFile(path.join(demoTarget, "README.md"), "utf8");
-    if (!demoRun.stdout.includes("MartinLoop demo sandbox created at") || !demoReadme.includes("Demo Sandbox")) {
+    if (!/Martin\s*Loop demo sandbox created at/u.test(demoRun.stdout) || !demoReadme.includes("Demo Sandbox")) {
       throw new Error(`Expected demo command to copy the packaged sandbox.\n${demoRun.stdout}${demoRun.stderr}`);
     }
 
@@ -102,6 +107,7 @@ export async function runPublicFacadeSmoke(options = {}) {
       packageName: rootManifest.name,
       tarballPath,
       installCommand: `npm install ${rootManifest.name}`,
+      packedFiles,
       sdkSmoke: {
         ok: true,
         exportName: sdkRun.stdout.trim() || "MartinLoop",

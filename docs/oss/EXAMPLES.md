@@ -1,12 +1,8 @@
 # Examples
 
-These examples are grounded in the current CLI and MCP surfaces in this repo. Where an example depends on a real provider path, it is labeled that way explicitly.
-
-These are still primarily repo-local RC examples. The root `martin-loop` package facade is now real and smoke-validated, but registry publication remains a later release step.
+These examples are grounded in the current public CLI and MCP surfaces in this repo.
 
 ## 1. Stub-backed hello world
-
-Use this when you want a safe first pass through the loop without real model spend.
 
 ### PowerShell
 
@@ -20,15 +16,7 @@ pnpm run:cli -- run `
 Remove-Item Env:MARTIN_LIVE
 ```
 
-Why this is useful:
-
-- exercises `runMartin`
-- writes a real loop record and artifacts
-- avoids external provider dependencies
-
 ## 2. Repo-backed task with explicit scope
-
-Use allow and deny paths so the task contract is narrow and reviewable.
 
 ```bash
 pnpm run:cli -- run \
@@ -37,20 +25,12 @@ pnpm run:cli -- run \
   --verify "pnpm --filter @martin/core test" \
   --allow-path README.md \
   --allow-path docs/oss/** \
-  --deny-path apps/control-plane/** \
+  --deny-path demo/seeded-workspace/** \
   --accept "Only update documentation files" \
   --accept "Do not modify runtime code"
 ```
 
-What this demonstrates:
-
-- repo root selection with `--cwd`
-- scoped file-edit boundaries
-- acceptance criteria injection into the task contract
-
 ## 3. Safety-block example
-
-This example is expected to block before execution because the verifier command is unsafe.
 
 ```bash
 pnpm run:cli -- run \
@@ -58,17 +38,9 @@ pnpm run:cli -- run \
   --verify "rm -rf ."
 ```
 
-Expected behavior:
-
-- the leash blocks the verifier command before adapter execution
-- the run exits through a safety-oriented path rather than pretending the command was acceptable
-- the attempt artifact set includes a persisted leash artifact when applicable
-
-The point of this example is not that `rm` exists on every machine. The point is that the raw verifier text is evaluated before the process would be allowed to run.
+Expected behavior: Martin Loop blocks the verifier before adapter execution and records the failed admission path instead of attempting the command.
 
 ## 4. Budget-constrained live run
-
-This is a live-provider example. Only use it when you have the relevant CLI and credentials configured.
 
 ```bash
 pnpm run:cli -- run \
@@ -81,12 +53,6 @@ pnpm run:cli -- run \
   --max-iterations 2
 ```
 
-What to review afterward:
-
-- admission and settlement events in `ledger.jsonl`
-- cost provenance labels in the run artifacts
-- whether the loop stopped for completion, budget pressure, or lack of progress
-
 ## 5. MCP invocation shape
 
 The MCP server exposes `martin_run`, `martin_inspect`, and `martin_status`.
@@ -95,10 +61,10 @@ Example `martin_run` payload:
 
 ```json
 {
-  "objective": "Tighten the local dashboard copy",
+  "objective": "Tighten the OSS quickstart wording",
   "workingDirectory": ".",
   "engine": "claude",
-  "verificationPlan": ["pnpm --filter @martin/control-plane test"],
+  "verificationPlan": ["pnpm --filter @martin/core test"],
   "maxUsd": 5,
   "maxIterations": 2,
   "maxTokens": 20000,
@@ -109,26 +75,8 @@ Example `martin_run` payload:
 
 ## 6. GitHub Actions budget gate example
 
-See [`examples/github-actions-budget-gate/`](../../examples/github-actions-budget-gate/) for a CI-safe example that runs MartinLoop with a budget cap, an explicit verifier, and an uploaded JSONL run record artifact.
+See [`../../examples/github-actions-budget-gate/`](../../examples/github-actions-budget-gate/) for a CI-safe example that runs Martin Loop with a budget cap, an explicit verifier, and an uploaded JSONL run record artifact.
 
 ## 7. OpenCode-style adapter example
 
-If you want a runnable, no-credentials-required adapter sketch for another coding runtime, see [`examples/opencode-adapter/`](../../examples/opencode-adapter/). It shows how to keep MartinLoop's budget, verifier, and JSONL record shape stable around an OpenCode-style workflow without claiming a native adapter already exists.
-
-## 8. What to inspect in artifacts
-
-For a repo-backed attempt, look at:
-
-- `contract.json`
-- `state.json`
-- `ledger.jsonl`
-- `artifacts/attempt-XXX/compiled-context.json`
-- `artifacts/attempt-XXX/diff.patch`
-- `artifacts/attempt-XXX/grounding-scan.json`
-- `artifacts/attempt-XXX/leash.json`
-- `artifacts/attempt-XXX/patch-score.json`
-- `artifacts/attempt-XXX/patch-decision.json`
-- `artifacts/attempt-XXX/rollback-boundary.json`
-- `artifacts/attempt-XXX/rollback-outcome.json`
-
-Those files are the evidence trail that backs the runtime’s claims.
+See [`../../examples/opencode-adapter/`](../../examples/opencode-adapter/) for a no-credentials-required adapter sketch that keeps Martin Loop’s budget, verifier, and JSONL record shape stable around an OpenCode-style workflow.

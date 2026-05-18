@@ -30,7 +30,7 @@ jobs:
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 10.17.1
+          version: 10.33.0
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -38,12 +38,12 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      - name: Run Phase 13 release matrix lane
+      - name: Run OSS release matrix lane
         env:
           MARTIN_RELEASE_MATRIX_OUTDIR: .artifacts/release-matrix/${{ matrix.os }}
         run: pnpm release:matrix:local
 
-      - name: Upload Phase 13 release matrix artifacts
+      - name: Upload release matrix artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:

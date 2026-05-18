@@ -10,9 +10,9 @@
   <rect x=".5" y=".5" width="959" height="581" rx="14" fill="none" stroke="#30363d"/>
 
   <!-- Header -->
-  <text x="480" y="28" text-anchor="middle" class="m" font-size="9" fill="#bc8cff" letter-spacing="1.2">BENCHMARK · REPAIR FLAKY CI GATE · MartinLoop v0.1.2</text>
+  <text x="480" y="28" text-anchor="middle" class="m" font-size="9" fill="#bc8cff" letter-spacing="1.2">ILLUSTRATIVE SCENARIO · REPAIR FLAKY CI GATE · MartinLoop</text>
   <text x="480" y="50" text-anchor="middle" class="m" font-size="13" fill="#e6edf3">Same task. Same starting state. Wildly different outcomes.</text>
-  <text x="480" y="68" text-anchor="middle" class="m" font-size="9.5" fill="#8b949e">Real benchmark numbers · Reproduce: pnpm --filter @martin/benchmarks eval</text>
+  <text x="480" y="68" text-anchor="middle" class="m" font-size="9.5" fill="#8b949e">Illustrative governed vs ungoverned outcomes for the same coding task.</text>
 
   <!-- ═══════════════ LEFT PANEL: RALPH ═══════════════ -->
 
@@ -129,6 +129,6 @@
 
   <!-- Note -->
   <text x="576" y="528" class="m" font-size="11" fill="#e6edf3" font-weight="bold">55% lower cost. Verified pass vs failed outcome.</text>
-  <text x="576" y="549" class="m" font-size="10" fill="#8b949e">Reproduce: pnpm --filter @martin/benchmarks eval</text>
+  <text x="576" y="549" class="m" font-size="10" fill="#8b949e">Illustrative comparison: bounded, verified work vs unbounded retries.</text>
 
 </svg>

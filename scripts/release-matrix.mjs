@@ -11,10 +11,11 @@ import { resolveRcCommandExecution } from "./rc-validation.mjs";
 const RELEASE_MATRIX_STEPS = [
   ["pnpm", "install", "--frozen-lockfile"],
   ["pnpm", "build"],
+  ["pnpm", "test"],
   ["pnpm", "oss:validate"],
   ["pnpm", "public:smoke"],
-  ["pnpm", "repo:smoke"],
-  ["pnpm", "rc:validate"],
+  ["pnpm", "--filter", "@martinloop/mcp", "smoke:pack"],
+  ["pnpm", "mcp:published:smoke:pack"],
 ];
 
 const RELEASE_MATRIX_LANES = [

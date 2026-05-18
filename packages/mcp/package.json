@@ -1,11 +1,11 @@
 {
   "name": "@martinloop/mcp",
-  "version": "0.1.1",
-  "mcpName": "io.github.keesan12/martin-loop",
+  "version": "0.2.5",
+  "mcpName": "io.github.Keesan12/martin-loop",
   "private": false,
   "type": "module",
-  "description": "Martin Loop MCP server — installable stdio server for martin_run, martin_inspect, and martin_status.",
-  "license": "MIT",
+  "description": "Governed MCP server for AI coding agents with budgets, verifier gates, and inspectable runs.",
+  "license": "Apache-2.0",
   "author": "Vakeesan Mahalingam and Gobi Shanthan",
   "homepage": "https://martinloop.com/",
   "repository": {
@@ -22,26 +22,28 @@
     "martin-loop",
     "ai-agent",
     "claude",
-    "codex"
+    "codex",
+    "martin_doctor",
+    "martin_triage_runs",
+    "martin_run_dossier",
+    "mcp-resources",
+    "mcp-prompts"
   ],
-  "main": "./dist/server.js",
-  "types": "./dist/server.d.ts",
   "bin": {
-    "mcp": "dist/server.js"
+    "mcp": "./dist/server.js",
+    "martin-loop-mcp": "./dist/server.js"
   },
   "exports": {
-    ".": {
-      "types": "./dist/server.d.ts",
-      "default": "./dist/server.js"
-    },
+    "./server.json": "./server.json",
     "./package.json": "./package.json"
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "server.json"
   ],
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
   "publishConfig": {
     "access": "public"
@@ -50,11 +52,24 @@
     "build": "node ./scripts/build-package.mjs",
     "prepack": "pnpm build",
     "smoke:pack": "node ./scripts/smoke-package.mjs",
+    "smoke:published": "node ./scripts/smoke-published-package.mjs",
+    "smoke:published:pack": "node ./scripts/smoke-published-package.mjs --package-spec=pack",
+    "verify:release": "node --test ../../scripts/tests/publish-mcp-workflow.test.mjs ../../scripts/tests/mcp-publish-reliability.test.mjs ../../scripts/tests/mcp-release-docs.test.mjs",
     "test": "vitest run",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "inspect:live": "node ./scripts/inspect-live.mjs"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0"
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@open-policy-agent/opa-wasm": "^1.10.0",
+    "@opentelemetry/api-logs": "^0.214.0",
+    "@opentelemetry/exporter-logs-otlp-http": "^0.214.0",
+    "@opentelemetry/resources": "^2.6.1",
+    "@opentelemetry/sdk-logs": "^0.214.0",
+    "ts-morph": "^21.0.0"
+  },
+  "devDependencies": {
+    "@martin/contracts": "workspace:*"
   }
 }

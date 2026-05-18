@@ -1,12 +1,23 @@
-import { resolve } from "node:path";
-
 import {
   createClaudeCliAdapter,
   createCodexCliAdapter,
   createStubDirectProviderAdapter
 } from "@martin/adapters";
-import { runMartin } from "@martin/core";
+
+import { createFileRunStore, evaluateCostGovernor, resolveRunsRoot, runMartin } from "@martin/core";
 import { DEFAULT_BUDGET, type LoopBudget } from "@martin/contracts";
+
+import { normalizeSafePathPatterns, resolveSafeRepoRoot } from "../server-validation.js";
+import { MartinToolError } from "./tool-errors.js";
+import {
+  buildArtifactSummary,
+  buildVerificationSummary,
+  buildLoopPreview,
+  buildRunRecordPaths,
+  getEngineAvailability,
+  resolveExecutionMode,
+  type MartinEngine
+} from "./tool-support.js";
 
 export interface RunLoopInput {
   objective: string;
@@ -31,12 +42,41 @@ export interface RunLoopOutput {
   costUsd: number;
   verificationPassed: boolean;
   loopId: string;
+  pressure: string;
+  shouldStop: boolean;
+  remainingBudgetUsd: number;
+  remainingIterations: number;
+  remainingTokens: number;
+  engine: MartinEngine;
+  workingDirectory: string;
+  budget: LoopBudget;
+  inspection: {
+    runsRoot: string;
+    runDirectory: string;
+    loopRecordPath: string;
+    ledgerPath: string;
+    loop: ReturnType<typeof buildLoopPreview>;
+    verification: ReturnType<typeof buildVerificationSummary>;
+    artifacts: ReturnType<typeof buildArtifactSummary>;
+  };
 }
 
 export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
-  const workingDirectory = resolve(input.workingDirectory ?? process.cwd());
+  const workingDirectory = resolveSafeRepoRoot(input.workingDirectory);
   const engine = input.engine ?? "claude";
   const model = input.model;
+  const allowedPaths = normalizeSafePathPatterns(input.allowedPaths, "allowedPaths");
+  const deniedPaths = normalizeSafePathPatterns(input.deniedPaths, "deniedPaths");
+  const executionMode = resolveExecutionMode();
+  const engineAvailability = getEngineAvailability(engine);
+
+  if (executionMode.liveMode && !engineAvailability.available) {
+    throw new MartinToolError("engine_unavailable", `Engine '${engine}' is not available on PATH.`, {
+      category: "environment",
+      suggestion: "Install the requested CLI or set MARTIN_LIVE=false for stub execution.",
+      retryable: false
+    });
+  }
 
   const adapter =
     process.env.MARTIN_LIVE === "false"
@@ -64,13 +104,14 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
   const result = await runMartin({
     workspaceId: input.workspaceId ?? "ws_mcp",
     projectId: input.projectId ?? "proj_mcp",
+    store: createFileRunStore({ runsRoot: resolveRunsRoot(process.env) }),
     task: {
       title: input.objective.slice(0, 100),
       objective: input.objective,
       verificationPlan: input.verificationPlan ?? [],
       repoRoot: workingDirectory,
-      ...(input.allowedPaths?.length ? { allowedPaths: input.allowedPaths } : {}),
-      ...(input.deniedPaths?.length ? { deniedPaths: input.deniedPaths } : {})
+      ...(allowedPaths ? { allowedPaths } : {}),
+      ...(deniedPaths ? { deniedPaths } : {})
     },
     budget,
     adapter
@@ -79,6 +120,20 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
   const lastAttempt = result.loop.attempts.at(-1);
   const verificationPassed =
     lastAttempt !== undefined && result.decision.lifecycleState === "completed";
+  const costState = evaluateCostGovernor({
+    budget: result.loop.budget,
+    cost: {
+      actualUsd: result.loop.cost.actualUsd,
+      avoidedUsd: result.loop.cost.avoidedUsd ?? 0,
+      tokensIn: result.loop.cost.tokensIn,
+      tokensOut: result.loop.cost.tokensOut
+    },
+    attemptsUsed: result.loop.attempts.length
+  });
+  const runsRoot = resolveRunsRoot(process.env);
+  const recordPaths = buildRunRecordPaths(runsRoot, result.loop.loopId);
+  const verification = buildVerificationSummary(result.loop);
+  const artifacts = buildArtifactSummary(result.loop);
 
   return {
     status: result.loop.status,
@@ -87,6 +142,20 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
     attempts: result.loop.attempts.length,
     costUsd: result.loop.cost.actualUsd,
     verificationPassed,
-    loopId: result.loop.loopId
+    loopId: result.loop.loopId,
+    pressure: costState.pressure,
+    shouldStop: costState.shouldStop,
+    remainingBudgetUsd: costState.remainingBudgetUsd,
+    remainingIterations: costState.remainingIterations,
+    remainingTokens: costState.remainingTokens,
+    engine,
+    workingDirectory,
+    budget,
+    inspection: {
+      ...recordPaths,
+      loop: buildLoopPreview(result.loop),
+      verification,
+      artifacts
+    }
   };
 }

@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*.*.*'
+      - "v*.*.*"
 
 permissions:
   contents: write
@@ -18,24 +18,33 @@ jobs:
 
       - uses: pnpm/action-setup@v4
         with:
-          version: 10.17.1
+          version: 10.33.0
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          registry-url: 'https://registry.npmjs.org'
+          node-version: 22
+          registry-url: "https://registry.npmjs.org"
           cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build
-        run: pnpm build
-
-      - name: Verify dist exists
+      - name: Validate OSS release surface
         run: |
-          test -f dist/bin/martin-loop.js || (echo "ERROR: dist/bin/martin-loop.js missing after build" && exit 1)
-          test -f dist/index.js || (echo "ERROR: dist/index.js missing after build" && exit 1)
+          pnpm build
+          pnpm test
+          pnpm oss:validate
+          pnpm public:smoke
+          pnpm --filter @martinloop/mcp smoke:pack
+          node ./scripts/root-release-guard.mjs --tag "${GITHUB_REF_NAME}" --pack
+
+      - name: Pack root tarball
+        id: root-pack
+        run: |
+          PACK_RESULT="$(node ./scripts/pack-root-release.mjs --output-dir dist-release)"
+          printf '%s\n' "$PACK_RESULT" > dist-release/pack-result.json
+          TARBALL="$(node -e "const fs = require('fs'); const data = JSON.parse(fs.readFileSync('dist-release/pack-result.json', 'utf8')); process.stdout.write(data.tarballPath);")"
+          echo "tarball=${TARBALL}" >> "$GITHUB_OUTPUT"
 
       - name: Read package version
         id: package-version
@@ -54,52 +63,25 @@ jobs:
 
       - name: Publish to npm
         if: steps.npm-version.outputs.exists != 'true'
-        run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish "${{ steps.root-pack.outputs.tarball }}" --access public
 
       - name: Skip duplicate npm publish
         if: steps.npm-version.outputs.exists == 'true'
         run: echo "martin-loop@${{ steps.package-version.outputs.version }} already exists on npm; skipping publish."
 
-  release:
-    name: Create GitHub Release
-    needs: publish-npm
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.17.1
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build
-        run: pnpm build
-
-      - name: Fetch tags
-        run: git fetch --force --tags
-
-      - name: Pack tarballs
+      - name: Verify npm availability
         run: |
-          mkdir -p dist-release
-          cd packages/core && pnpm pack --pack-destination ../../dist-release && cd ../..
-          cd packages/cli && pnpm pack --pack-destination ../../dist-release && cd ../..
-
-      - name: Generate release notes
-        run: node ./scripts/generate-release-notes.mjs --current-tag "${GITHUB_REF_NAME}" --output dist-release/release-notes.md
+          for attempt in 1 2 3 4 5; do
+            if npm view "martin-loop@${{ steps.package-version.outputs.version }}" version >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep $((attempt * 5))
+          done
+          echo "martin-loop@${{ steps.package-version.outputs.version }} did not become visible on npm in time."
+          exit 1
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist-release/*
-          body_path: dist-release/release-notes.md
+          files: ${{ steps.root-pack.outputs.tarball }}
+          generate_release_notes: true
