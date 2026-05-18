@@ -3,10 +3,12 @@
 /**
  * Martin Loop MCP Server
  *
- * Exposes three tools over the Model Context Protocol (stdio transport):
- *   martin_run      — execute a full Martin loop on a coding task
- *   martin_inspect  — summarise a saved loop record file
- *   martin_status   — return cost and pressure state from a loop record
+ * Exposes five tools over the Model Context Protocol (stdio transport):
+ *   martin_doctor     — inspect local readiness and run-store health
+ *   martin_preflight  — normalize a proposed run contract before execution
+ *   martin_run        — execute a full Martin loop on a coding task
+ *   martin_inspect    — summarise a saved loop record file
+ *   martin_status     — return cost and pressure state from a loop record
  *
  * Setup (Claude Code):
  *   macOS/Linux: claude mcp add --scope user martin-loop -- npx @martinloop/mcp
@@ -28,8 +30,10 @@ import {
   ListToolsRequestSchema
 } from "@modelcontextprotocol/sdk/types.js";
 
+import { martinDoctorTool } from "./tools/doctor.js";
 import { getStatusTool } from "./tools/get-status.js";
 import { inspectLoopTool } from "./tools/inspect-loop.js";
+import { martinPreflightTool } from "./tools/preflight.js";
 import { runLoopTool } from "./tools/run-loop.js";
 import { sanitizeToolErrorMessage, validateToolInput } from "./server-validation.js";
 
@@ -47,6 +51,103 @@ const server = new Server(
 
 server.setRequestHandler(ListToolsRequestSchema, () => ({
   tools: [
+    {
+      name: "martin_doctor",
+      description:
+        "Inspect Martin MCP readiness without changing code. Reports workspace roots, run-store visibility, execution mode, and whether claude or codex is available on PATH.",
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          workingDirectory: {
+            type: "string",
+            description:
+              "Optional repo-root override resolved under the MCP workspace root (or current working directory). Must stay within that safe root."
+          },
+          runsDir: {
+            type: "string",
+            description:
+              "Optional runs-root override resolved under the default Martin runs root. Defaults to MARTIN_RUNS_DIR or ~/.martin/runs."
+          },
+          engine: {
+            type: "string",
+            enum: ["claude", "codex"],
+            description: "Optional engine to emphasize in the readiness report."
+          }
+        }
+      }
+    },
+    {
+      name: "martin_preflight",
+      description:
+        "Validate and normalize a proposed martin_run contract before execution. Reports the effective budget, path scope, engine readiness, and expected run-store layout.",
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          objective: {
+            type: "string",
+            description: "The coding task to complete. Be specific about what needs to change."
+          },
+          workingDirectory: {
+            type: "string",
+            description:
+              "Optional repo-root override resolved under the MCP workspace root (or current working directory). Must stay within that safe root."
+          },
+          engine: {
+            type: "string",
+            enum: ["claude", "codex"],
+            description: "Which agent CLI to use. Defaults to 'claude'."
+          },
+          model: {
+            type: "string",
+            description: "Model override passed to the CLI (e.g. 'claude-opus-4-6', 'o3')."
+          },
+          maxUsd: {
+            type: "number",
+            exclusiveMinimum: 0,
+            description: "Hard budget ceiling in USD. Defaults to 25."
+          },
+          maxIterations: {
+            type: "integer",
+            exclusiveMinimum: 0,
+            description: "Maximum number of loop attempts. Defaults to 8."
+          },
+          maxTokens: {
+            type: "integer",
+            exclusiveMinimum: 0,
+            description: "Maximum total tokens across all attempts. Defaults to 80000."
+          },
+          verificationPlan: {
+            type: "array",
+            items: { type: "string" },
+            description:
+              "Shell commands that must all exit 0 for the task to be considered complete (e.g. ['pnpm test', 'pnpm build'])."
+          },
+          allowedPaths: {
+            type: "array",
+            items: { type: "string" },
+            description:
+              "Repo-relative path globs Martin may modify, such as ['src/**', 'tests/**']. Absolute paths and '..' traversal are rejected."
+          },
+          deniedPaths: {
+            type: "array",
+            items: { type: "string" },
+            description:
+              "Repo-relative path globs Martin must never modify, such as ['.env', 'docs/security/**']. Absolute paths and '..' traversal are rejected."
+          },
+          workspaceId: {
+            type: "string",
+            description: "Workspace identifier for telemetry. Defaults to 'ws_mcp'."
+          },
+          projectId: {
+            type: "string",
+            description: "Project identifier for telemetry. Defaults to 'proj_mcp'."
+          }
+        },
+        required: ["objective"]
+      }
+    },
     {
       name: "martin_run",
       description:
@@ -191,6 +292,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
 
   try {
+    if (name === "martin_doctor") {
+      const input = validateToolInput("martin_doctor", args) as Parameters<typeof martinDoctorTool>[0];
+      const output = await martinDoctorTool(input);
+      return { content: [{ type: "text", text: JSON.stringify(output, null, 2) }] };
+    }
+
+    if (name === "martin_preflight") {
+      const input = validateToolInput("martin_preflight", args) as Parameters<typeof martinPreflightTool>[0];
+      const output = await martinPreflightTool(input);
+      return { content: [{ type: "text", text: JSON.stringify(output, null, 2) }] };
+    }
+
     if (name === "martin_run") {
       const input = validateToolInput("martin_run", args) as Parameters<typeof runLoopTool>[0];
       const output = await runLoopTool(input);

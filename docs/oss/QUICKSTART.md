@@ -72,10 +72,25 @@ Claude Code install:
 
 ```bash
 # macOS/Linux
-claude mcp add --scope user martin-loop -- npx -y @martinloop/mcp
+claude mcp add --transport stdio --scope user martin-loop -- npx -y @martinloop/mcp
 
 # Windows PowerShell/cmd
-claude mcp add --scope user martin-loop cmd /c "npx -y @martinloop/mcp"
+claude mcp add --transport stdio --scope user martin-loop -- cmd /c npx -y @martinloop/mcp
+```
+
+Codex install:
+
+```bash
+codex mcp add martin-loop -- npx -y @martinloop/mcp
+```
+
+Recommended first-use flow:
+
+```text
+martin_doctor
+martin_preflight
+martin_run
+martin_inspect or martin_status
 ```
 
 Repo-local MCP verification:
@@ -85,6 +100,8 @@ pnpm --filter @martinloop/mcp lint
 pnpm --filter @martinloop/mcp test
 pnpm --filter @martinloop/mcp build
 pnpm --filter @martinloop/mcp smoke:pack
+pnpm --filter @martinloop/mcp smoke:published:pack
+pnpm --filter @martinloop/mcp verify:release
 ```
 
 Official MCP Registry publication still happens after npm publication:

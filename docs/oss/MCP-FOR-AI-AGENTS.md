@@ -33,14 +33,20 @@ Usually not the right fit:
 
 ## Install Snippets
 
+### Codex
+
+```sh
+codex mcp add martin-loop -- npx -y @martinloop/mcp
+```
+
 ### Claude Code
 
 ```sh
 # macOS/Linux
-claude mcp add --scope user martin-loop -- npx -y @martinloop/mcp
+claude mcp add --transport stdio --scope user martin-loop -- npx -y @martinloop/mcp
 
 # Windows PowerShell/cmd
-claude mcp add --scope user martin-loop cmd /c "npx -y @martinloop/mcp"
+claude mcp add --transport stdio --scope user martin-loop -- cmd /c npx -y @martinloop/mcp
 ```
 
 ### Generic stdio hosts
@@ -80,6 +86,8 @@ MARTIN_RUNS_DIR = "C:/path/to/repo/.martin/runs"
 
 | Tool | Use it for | Required fields | Key rules |
 | --- | --- | --- | --- |
+| `martin_doctor` | Inspect environment readiness and run-store visibility | none | Read-only. Accepts `workingDirectory`, `runsDir`, and `engine`. |
+| `martin_preflight` | Validate and normalize a proposed governed run | `objective` | Read-only. Mirrors `martin_run` contract fields without executing work. |
 | `martin_run` | Execute a governed coding task | `objective` | Accepts `maxUsd`, `maxIterations`, `maxTokens`, `verificationPlan`, `allowedPaths`, `deniedPaths`, `workingDirectory`, `engine`, `model`, `workspaceId`, `projectId`. Rejects unknown keys. |
 | `martin_inspect` | Summarize a saved run | none | `file` may target a `loop-record.json`, legacy `.jsonl`, or run directory under the runs root. |
 | `martin_status` | Check budget pressure or stop state | exactly one of `loopJson`, `file`, `loopId`, `latest` | `latest` must be `true` when present. `runsDir` is optional. |
@@ -91,6 +99,13 @@ MARTIN_RUNS_DIR = "C:/path/to/repo/.martin/runs"
 - `maxTokens`
 
 Do not send legacy fields like `budgetUsd` or `softLimitUsd` to the MCP server.
+
+Recommended tool order:
+
+1. `martin_doctor`
+2. `martin_preflight`
+3. `martin_run`
+4. `martin_inspect` or `martin_status`
 
 ## Safe-Root Path Model
 

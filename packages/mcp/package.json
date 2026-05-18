@@ -1,6 +1,6 @@
 {
   "name": "@martinloop/mcp",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "mcpName": "io.github.Keesan12/martin-loop",
   "private": false,
   "type": "module",
@@ -22,7 +22,9 @@
     "martin-loop",
     "ai-agent",
     "claude",
-    "codex"
+    "codex",
+    "martin_doctor",
+    "martin_preflight"
   ],
   "bin": {
     "mcp": "./dist/server.js",
@@ -49,6 +51,7 @@
     "smoke:pack": "node ./scripts/smoke-package.mjs",
     "smoke:published": "node ./scripts/smoke-published-package.mjs",
     "smoke:published:pack": "node ./scripts/smoke-published-package.mjs --package-spec=pack",
+    "verify:release": "node --test ../../scripts/tests/publish-mcp-workflow.test.mjs ../../scripts/tests/mcp-publish-reliability.test.mjs ../../scripts/tests/mcp-release-docs.test.mjs",
     "test": "vitest run",
     "lint": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/server.js"

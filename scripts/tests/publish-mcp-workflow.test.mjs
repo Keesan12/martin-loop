@@ -20,13 +20,38 @@ test("publish-mcp workflow enforces mcp tag parity against package and server me
   assert.match(workflow, /id: mcp-metadata/);
   assert.match(workflow, /read-mcp-package-metadata\.mjs/);
   assert.match(metadataScript, /server\.json is missing an npm package entry/);
+  assert.match(workflow, /Resolve release coordinates/);
+  assert.match(workflow, /INPUT_TAG:/);
+  assert.match(workflow, /echo "tag=\$\{RELEASE_TAG\}" >> "\$GITHUB_OUTPUT"/);
   assert.match(workflow, /Verify MCP tag\/version parity/);
-  assert.match(workflow, /TAG_VERSION="\$\{GITHUB_REF_NAME#mcp-v\}"/);
+  assert.match(workflow, /TAG_VERSION="\$\{RELEASE_TAG#mcp-v\}"/);
   assert.match(workflow, /Expected an mcp-vX\.Y\.Z tag/);
   assert.match(workflow, /steps\.mcp-metadata\.outputs\.package_version/);
   assert.match(workflow, /steps\.mcp-metadata\.outputs\.server_version/);
   assert.match(workflow, /does not match package\.json version/);
   assert.match(workflow, /does not match server\.json version/);
+});
+
+test("publish-mcp workflow covers trusted publishing, local-pack proof, and published smoke", async () => {
+  const workflowPath = path.join(ROOT_DIR, ".github", "workflows", "publish-mcp.yml");
+  const workflow = await readFile(workflowPath, "utf8");
+
+  assert.match(workflow, /workflow_dispatch:/);
+  assert.match(workflow, /inputs:\s*[\s\S]*tag:/);
+  assert.match(workflow, /permissions:\s*[\s\S]*id-token:\s*write/);
+  assert.match(workflow, /permissions:\s*[\s\S]*contents:\s*read/);
+  assert.match(workflow, /pnpm install --frozen-lockfile/);
+  assert.match(workflow, /pnpm --filter @martinloop\/mcp lint/);
+  assert.match(workflow, /pnpm --filter @martinloop\/mcp test/);
+  assert.match(workflow, /pnpm --filter @martinloop\/mcp build/);
+  assert.match(workflow, /pnpm --filter @martinloop\/mcp smoke:pack/);
+  assert.match(workflow, /pnpm --filter @martinloop\/mcp smoke:published:pack/);
+  assert.match(workflow, /pnpm --filter @martinloop\/mcp verify:release/);
+  assert.match(workflow, /npm publish --access public --provenance/);
+  assert.match(workflow, /npm view "@martinloop\/mcp@\$\{\{ steps\.mcp-metadata\.outputs\.package_version \}\}" version/);
+  assert.match(workflow, /pnpm --filter @martinloop\/mcp smoke:published/);
+  assert.match(workflow, /softprops\/action-gh-release@v2/);
+  assert.match(workflow, /body_path:\s*docs\/release\/MCP-\$\{\{ steps\.mcp-metadata\.outputs\.package_version \}\}-RELEASE-NOTES\.md/);
 });
 
 test("metadata reader emits GitHub output keys from packages/mcp", () => {

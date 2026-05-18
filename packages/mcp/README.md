@@ -2,11 +2,20 @@
 
 Governed MCP server for AI coding agents that need hard spend limits, verifier gates, scoped file edits, and inspectable run records.
 
-`@martinloop/mcp` exposes three stdio tools:
+`@martinloop/mcp@0.1.4` exposes five stdio tools:
 
+- `martin_doctor`
+- `martin_preflight`
 - `martin_run`
 - `martin_inspect`
 - `martin_status`
+
+Recommended flow:
+
+1. `martin_doctor`
+2. `martin_preflight`
+3. `martin_run`
+4. `martin_inspect` or `martin_status`
 
 ## What This Server Is For
 
@@ -31,14 +40,20 @@ Run the packaged server directly:
 npx -y @martinloop/mcp
 ```
 
+Add it to Codex:
+
+```sh
+codex mcp add martin-loop -- npx -y @martinloop/mcp
+```
+
 Add it to Claude Code:
 
 ```sh
 # macOS/Linux
-claude mcp add --scope user martin-loop -- npx -y @martinloop/mcp
+claude mcp add --transport stdio --scope user martin-loop -- npx -y @martinloop/mcp
 
 # Windows PowerShell/cmd
-claude mcp add --scope user martin-loop cmd /c "npx -y @martinloop/mcp"
+claude mcp add --transport stdio --scope user martin-loop -- cmd /c npx -y @martinloop/mcp
 ```
 
 Generic stdio configuration:
@@ -75,6 +90,8 @@ MARTIN_LIVE=false npx -y @martinloop/mcp
 
 | Tool | Purpose | Required input | Important optional input | Notes |
 | --- | --- | --- | --- | --- |
+| `martin_doctor` | Inspect local readiness and run-store health | none | `workingDirectory`, `runsDir`, `engine` | Read-only setup lane before execution. |
+| `martin_preflight` | Normalize and validate a proposed run contract | `objective` | `workingDirectory`, `engine`, `model`, `maxUsd`, `maxIterations`, `maxTokens`, `verificationPlan`, `allowedPaths`, `deniedPaths`, `workspaceId`, `projectId` | Read-only contract check; does not execute work. |
 | `martin_run` | Run a governed coding loop | `objective` | `workingDirectory`, `engine`, `model`, `maxUsd`, `maxIterations`, `maxTokens`, `verificationPlan`, `allowedPaths`, `deniedPaths`, `workspaceId`, `projectId` | Unknown arguments are rejected. |
 | `martin_inspect` | Read a saved run record or run folder | none | `file`, `runsDir` | `file` may point to a `loop-record.json`, legacy `.jsonl`, or a run directory under the runs root. |
 | `martin_status` | Report budget pressure and stop conditions | exactly one of `loopJson`, `file`, `loopId`, or `latest` | `runsDir` | `latest` must be `true` when used. |
@@ -188,10 +205,14 @@ pnpm --filter @martinloop/mcp lint
 pnpm --filter @martinloop/mcp test
 pnpm --filter @martinloop/mcp build
 pnpm --filter @martinloop/mcp smoke:pack
+pnpm --filter @martinloop/mcp smoke:published:pack
+pnpm --filter @martinloop/mcp verify:release
 pnpm --filter @martinloop/mcp smoke:published
 ```
 
 - `smoke:pack` verifies the packed tarball shape and a stdio MCP launch
+- `smoke:published:pack` verifies install-and-run behavior from a freshly packed local tarball before npm publish
+- `verify:release` checks metadata parity, release-note presence, and public MCP doc accuracy for the current package version
 - `smoke:published` verifies the npm-installed artifact through `npm install` plus live MCP tool calls
 
 ## Version Notes

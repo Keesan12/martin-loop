@@ -2,14 +2,25 @@ import { extname, isAbsolute, relative, resolve } from "node:path";
 
 import { resolveRunsRoot } from "@martin/core";
 
+import type { MartinDoctorInput } from "./tools/doctor.js";
 import type { GetStatusInput } from "./tools/get-status.js";
 import type { InspectLoopInput } from "./tools/inspect-loop.js";
+import type { MartinPreflightInput } from "./tools/preflight.js";
 import type { RunLoopInput } from "./tools/run-loop.js";
 
-type ToolName = "martin_run" | "martin_inspect" | "martin_status";
+type ToolName =
+  | "martin_doctor"
+  | "martin_preflight"
+  | "martin_run"
+  | "martin_inspect"
+  | "martin_status";
 
 export function validateToolInput(name: ToolName, args: unknown): unknown {
   switch (name) {
+    case "martin_doctor":
+      return validateDoctorInput(args);
+    case "martin_preflight":
+      return validatePreflightInput(args);
     case "martin_run":
       return validateRunInput(args);
     case "martin_inspect":
@@ -26,6 +37,58 @@ export function sanitizeToolErrorMessage(error: unknown): string {
   return /([A-Za-z]:\\|\/|policy\.rego|policy\.wasm|\.pem|\.env)/u.test(message)
     ? "Tool execution failed."
     : message;
+}
+
+function validateDoctorInput(args: unknown): MartinDoctorInput {
+  const record = requireObject(args);
+  assertAllowedKeys(record, ["workingDirectory", "runsDir", "engine"]);
+
+  const engine = optionalEnum(record.engine, "engine", ["claude", "codex"] as const);
+  return {
+    ...(record.workingDirectory !== undefined
+      ? { workingDirectory: resolveSafeRepoRoot(requireString(record.workingDirectory, "workingDirectory")) }
+      : {}),
+    ...(record.runsDir !== undefined
+      ? { runsDir: resolveSafeRunsRootPath(requireString(record.runsDir, "runsDir")) }
+      : {}),
+    ...(engine ? { engine } : {})
+  };
+}
+
+function validatePreflightInput(args: unknown): MartinPreflightInput {
+  const record = requireObject(args);
+  assertAllowedKeys(record, [
+    "objective",
+    "workingDirectory",
+    "engine",
+    "model",
+    "maxUsd",
+    "maxIterations",
+    "maxTokens",
+    "verificationPlan",
+    "allowedPaths",
+    "deniedPaths",
+    "workspaceId",
+    "projectId"
+  ]);
+
+  const engine = optionalEnum(record.engine, "engine", ["claude", "codex"] as const);
+  return {
+    objective: requireString(record.objective, "objective"),
+    ...(record.workingDirectory !== undefined
+      ? { workingDirectory: resolveSafeRepoRoot(requireString(record.workingDirectory, "workingDirectory")) }
+      : {}),
+    ...(engine ? { engine } : {}),
+    ...optionalString(record.model, "model"),
+    ...optionalPositiveNumber(record.maxUsd, "maxUsd"),
+    ...optionalPositiveInteger(record.maxIterations, "maxIterations"),
+    ...optionalPositiveInteger(record.maxTokens, "maxTokens"),
+    ...optionalStringArrayAsObject(record.verificationPlan, "verificationPlan"),
+    ...optionalPathPatternArrayAsObject(record.allowedPaths, "allowedPaths"),
+    ...optionalPathPatternArrayAsObject(record.deniedPaths, "deniedPaths"),
+    ...optionalString(record.workspaceId, "workspaceId"),
+    ...optionalString(record.projectId, "projectId")
+  };
 }
 
 export function resolveSafeRepoRoot(
