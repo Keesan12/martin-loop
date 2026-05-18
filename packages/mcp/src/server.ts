@@ -18,7 +18,9 @@
  *   node dist/server.js
  */
 
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { realpathSync } from "node:fs";
+import path from "node:path";
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -1262,9 +1264,29 @@ export async function connectMartinMcpStdioServer() {
   return server;
 }
 
+export function isDirectExecutionEntry(
+  entryPath: string | undefined,
+  moduleUrl: string = import.meta.url
+): boolean {
+  if (typeof entryPath !== "string" || entryPath.length === 0) {
+    return false;
+  }
+
+  const modulePath = realPathOrResolved(fileURLToPath(moduleUrl));
+  const resolvedEntryPath = realPathOrResolved(entryPath);
+  return modulePath === resolvedEntryPath;
+}
+
 function isDirectExecution(): boolean {
-  const entry = process.argv[1];
-  return typeof entry === "string" && import.meta.url === pathToFileURL(entry).href;
+  return isDirectExecutionEntry(process.argv[1]);
+}
+
+function realPathOrResolved(filePath: string): string {
+  try {
+    return realpathSync.native(filePath);
+  } catch {
+    return path.resolve(filePath);
+  }
 }
 
 if (isDirectExecution()) {
