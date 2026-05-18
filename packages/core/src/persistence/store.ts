@@ -3,7 +3,7 @@ import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import type { LoopBudget, LoopTask, MachineState } from "@martin/contracts";
+import type { LoopBudget, LoopRecord, LoopTask, MachineState } from "@martin/contracts";
 
 import { type LedgerEvent } from "./ledger.js";
 
@@ -75,6 +75,12 @@ export interface RunStore {
     attemptIndex: number,
     artifacts: AttemptArtifacts
   ): Promise<void>;
+
+  /**
+   * Persist the latest canonical loop record snapshot when the caller has one.
+   * Optional to avoid breaking custom RunStore implementations.
+   */
+  writeLoopRecord?(runId: string, loop: LoopRecord): Promise<void>;
 }
 
 // ─── FileRunStore implementation ─────────────────────────────────────────────
@@ -167,6 +173,12 @@ export function createFileRunStore(options: { runsRoot?: string } = {}): RunStor
       if (artifacts.rollbackOutcome !== undefined) {
         await writeJsonFile(join(dir, "rollback-outcome.json"), artifacts.rollbackOutcome);
       }
+    },
+
+    async writeLoopRecord(runId: string, loop: LoopRecord): Promise<void> {
+      const dir = runDir(runsRoot, runId);
+      await mkdir(dir, { recursive: true });
+      await writeJsonFile(join(dir, "loop-record.json"), loop);
     }
   };
 }

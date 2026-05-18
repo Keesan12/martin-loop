@@ -6,7 +6,7 @@ Use this file for direct outreach to projects and communities building around AI
 
 Hey [Name] — I’m building MartinLoop, an OSS governed runtime for AI coding agents.
 
-The repo already supports budget caps, verifier gates, JSONL run records, rollback evidence, Claude/Codex adapters, and an MCP package.
+The repo already supports budget caps, verifier gates, run records, rollback evidence, Claude/Codex adapters, and an MCP package.
 
 I’m trying to understand where a control layer like this should integrate best with projects like [their project]: CLI wrapper, MCP boundary, CI, or runtime adapter.
 
