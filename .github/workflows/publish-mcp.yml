@@ -2,6 +2,11 @@ name: publish-mcp
 
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing mcp-vX.Y.Z tag to publish
+        required: true
+        type: string
   push:
     tags:
       - 'mcp-v*.*.*'
@@ -15,8 +20,28 @@ jobs:
     name: Publish @martinloop/mcp
     runs-on: ubuntu-latest
     steps:
+      - name: Resolve release coordinates
+        id: release-vars
+        shell: bash
+        env:
+          INPUT_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || '' }}
+        run: |
+          RELEASE_TAG="${INPUT_TAG:-$GITHUB_REF_NAME}"
+          if [[ -z "$RELEASE_TAG" ]]; then
+            echo "Missing release tag."
+            exit 1
+          fi
+          if [[ "$RELEASE_TAG" != mcp-v* ]]; then
+            echo "Expected an mcp-vX.Y.Z tag"
+            exit 1
+          fi
+          echo "tag=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${RELEASE_TAG#mcp-v}" >> "$GITHUB_OUTPUT"
+
       - name: Check out repository
         uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.release-vars.outputs.tag }}
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v6
@@ -39,6 +64,8 @@ jobs:
           pnpm --filter @martinloop/mcp test
           pnpm --filter @martinloop/mcp build
           pnpm --filter @martinloop/mcp smoke:pack
+          pnpm --filter @martinloop/mcp smoke:published:pack
+          pnpm --filter @martinloop/mcp verify:release
 
       - name: Read MCP package metadata
         id: mcp-metadata
@@ -48,22 +75,23 @@ jobs:
           node ../../scripts/read-mcp-package-metadata.mjs >> "$GITHUB_OUTPUT"
 
       - name: Verify MCP tag/version parity
-        if: startsWith(github.ref, 'refs/tags/')
         shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.release-vars.outputs.tag }}
         run: |
-          TAG_VERSION="${GITHUB_REF_NAME#mcp-v}"
-          if [ "$TAG_VERSION" = "$GITHUB_REF_NAME" ]; then
-            echo "Expected an mcp-vX.Y.Z tag but received ${GITHUB_REF_NAME}."
+          TAG_VERSION="${RELEASE_TAG#mcp-v}"
+          if [ "$TAG_VERSION" = "$RELEASE_TAG" ]; then
+            echo "Expected an mcp-vX.Y.Z tag but received ${RELEASE_TAG}."
             exit 1
           fi
 
           if [ "$TAG_VERSION" != "${{ steps.mcp-metadata.outputs.package_version }}" ]; then
-            echo "Tag ${GITHUB_REF_NAME} does not match package.json version ${{ steps.mcp-metadata.outputs.package_version }}."
+            echo "Tag ${RELEASE_TAG} does not match package.json version ${{ steps.mcp-metadata.outputs.package_version }}."
             exit 1
           fi
 
           if [ "$TAG_VERSION" != "${{ steps.mcp-metadata.outputs.server_version }}" ]; then
-            echo "Tag ${GITHUB_REF_NAME} does not match server.json version ${{ steps.mcp-metadata.outputs.server_version }}."
+            echo "Tag ${RELEASE_TAG} does not match server.json version ${{ steps.mcp-metadata.outputs.server_version }}."
             exit 1
           fi
 
@@ -80,7 +108,7 @@ jobs:
       - name: Publish MCP to npm
         if: steps.npm-version.outputs.exists != 'true'
         working-directory: packages/mcp
-        run: npm publish --access public
+        run: npm publish --access public --provenance
 
       - name: Skip duplicate MCP publish
         if: steps.npm-version.outputs.exists == 'true'
@@ -116,3 +144,9 @@ jobs:
 
             sleep $((attempt * 20))
           done
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release-vars.outputs.tag }}
+          body_path: docs/release/MCP-${{ steps.mcp-metadata.outputs.package_version }}-RELEASE-NOTES.md
