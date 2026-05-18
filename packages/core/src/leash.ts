@@ -420,22 +420,31 @@ function normalizeChangedFile(
 }
 
 function matchesPathPattern(file: string, pattern: string): boolean {
-  const normalizedFile = file.replace(/\\/gu, "/");
-  const normalizedPattern = pattern.replace(/\\/gu, "/");
+  const normalizedFile = normalizePathForMatching(file);
+  const normalizedPattern = normalizePathForMatching(pattern);
 
-  if (normalizedPattern.includes("**")) {
-    const prefix = normalizedPattern.split("**")[0] ?? normalizedPattern;
-    return normalizedFile.startsWith(prefix.replace(/\/$/u, ""));
+  if (!normalizedPattern.includes("*")) {
+    return (
+      normalizedFile === normalizedPattern ||
+      normalizedFile.startsWith(`${normalizedPattern.replace(/\/$/u, "")}/`)
+    );
   }
 
-  if (normalizedPattern.endsWith("*")) {
-    return normalizedFile.startsWith(normalizedPattern.replace(/\*+$/u, ""));
-  }
+  const regexStr = normalizedPattern
+    .replace(/[.+^${}()|[\]\\]/gu, "\\$&")
+    .replace(/\*\*/gu, "__DOUBLESTAR__")
+    .replace(/\*/gu, "[^/]*")
+    .replace(/__DOUBLESTAR__/gu, ".*");
 
-  return (
-    normalizedFile === normalizedPattern ||
-    normalizedFile.startsWith(`${normalizedPattern.replace(/\/$/u, "")}/`)
-  );
+  return new RegExp(`^${regexStr}$`, "u").test(normalizedFile);
+}
+
+function normalizePathForMatching(value: string): string {
+  return value
+    .replace(/\\/gu, "/")
+    .replace(/^\.\//u, "")
+    .replace(/\/{2,}/gu, "/")
+    .replace(/\/$/u, "");
 }
 
 function buildNetworkViolation(

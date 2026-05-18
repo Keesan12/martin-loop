@@ -4,18 +4,18 @@ Use this file as the single source of truth for public directory submissions.
 
 ## Short tagline
 
-Open-source control plane for AI coding agents.
+Open-source governance layer for AI coding agents.
 
 ## Long description
 
-MartinLoop is an open-source governed runtime for AI coding agents. It wraps autonomous coding loops with budget caps, verifier gates, rollback evidence, JSONL run records, failure classification, and MCP/Claude/Codex integration so agent work can be inspected, halted, and trusted.
+MartinLoop is an open-source governed runtime for AI coding agents. It wraps autonomous coding loops with budget caps, verifier gates, rollback evidence, run records, failure classification, and MCP/Claude/Codex integration so agent work can be inspected, halted, and trusted.
 
 ## Primary links
 
 - GitHub repo: [github.com/Keesan12/martin-loop](https://github.com/Keesan12/martin-loop)
 - Website: [martinloop.com](https://martinloop.com)
 - npm package: [npmjs.com/package/martin-loop](https://www.npmjs.com/package/martin-loop)
-- Benchmark challenge: [UNDER-3-CHALLENGE.md](./UNDER-3-CHALLENGE.md)
+- Challenge page: [UNDER-3-CHALLENGE.md](./UNDER-3-CHALLENGE.md)
 
 ## Submission checklist
 
@@ -31,7 +31,7 @@ MartinLoop is an open-source governed runtime for AI coding agents. It wraps aut
 - status: pending
 - surface: product hunt style dev tools directory
 - copy to use: short tagline + long description
-- include: benchmark challenge and demo command
+- include: challenge page and demo command
 
 ### Uneed
 
@@ -52,7 +52,7 @@ MartinLoop is an open-source governed runtime for AI coding agents. It wraps aut
 - status: pending
 - surface: lightweight launch directory
 - copy to use: short tagline + long description
-- include: demo command and benchmark challenge
+- include: demo command and challenge page
 
 ### AlternativeTo
 
@@ -73,7 +73,7 @@ MartinLoop is an open-source governed runtime for AI coding agents. It wraps aut
 - status: pending
 - surface: AI tool directory
 - copy to use: short tagline + long description
-- include: benchmark challenge link
+- include: challenge page link
 
 ### There’s An AI For That
 
@@ -85,5 +85,5 @@ MartinLoop is an open-source governed runtime for AI coding agents. It wraps aut
 ## Notes
 
 - Prefer submissions that link directly to the repo, website, and npm package together.
-- Reuse the benchmark challenge and `martin-loop demo` as the fastest trust-building assets.
+- Reuse the challenge page and `martin-loop demo` as the fastest trust-building assets.
 - If a directory wants screenshots, use the current public repo README visuals instead of inventing a separate pitch deck.

@@ -1,14 +1,13 @@
 {
-  "generatedAt": "2026-05-11T21:47:36.834Z",
+  "generatedAt": "2026-05-18T19:27:47.778Z",
   "verdict": "go",
   "publicSurface": {
     "packageName": "martin-loop",
-    "canonicalPackageManager": "npm",
+    "packageVersion": "0.1.6",
     "installCommand": "npm install martin-loop",
     "npxCommand": "npx martin-loop",
     "sdkImportPath": "martin-loop",
-    "supportsNpxCommand": true,
-    "supportsSdkImport": true
+    "mcpCommand": "npx -y @martinloop/mcp"
   },
   "ossCorePackages": [
     {
@@ -16,9 +15,7 @@
       "path": "packages/contracts",
       "private": true,
       "publishAccess": null,
-      "workspaceDependencies": [],
-      "classification": "oss_core",
-      "classificationReason": "Intended Phase 13 OSS core surface."
+      "workspaceDependencies": []
     },
     {
       "name": "@martin/core",
@@ -27,9 +24,7 @@
       "publishAccess": null,
       "workspaceDependencies": [
         "@martin/contracts"
-      ],
-      "classification": "oss_core",
-      "classificationReason": "Intended Phase 13 OSS core surface."
+      ]
     },
     {
       "name": "@martin/adapters",
@@ -38,9 +33,7 @@
       "publishAccess": null,
       "workspaceDependencies": [
         "@martin/core"
-      ],
-      "classification": "oss_core",
-      "classificationReason": "Intended Phase 13 OSS core surface."
+      ]
     },
     {
       "name": "@martin/cli",
@@ -51,59 +44,67 @@
         "@martin/adapters",
         "@martin/contracts",
         "@martin/core"
-      ],
-      "classification": "oss_core",
-      "classificationReason": "Intended Phase 13 OSS core surface."
+      ]
     },
     {
       "name": "@martinloop/mcp",
       "path": "packages/mcp",
       "private": false,
       "publishAccess": "public",
-      "workspaceDependencies": [],
-      "classification": "oss_core",
-      "classificationReason": "Intended Phase 13 OSS core surface."
-    }
-  ],
-  "nonOssWorkspacePackages": [
-    {
-      "name": "@martin/control-plane",
-      "path": "apps/control-plane",
-      "private": true,
-      "publishAccess": null,
       "workspaceDependencies": [
         "@martin/contracts"
-      ],
-      "classification": "non_oss_workspace",
-      "classificationReason": "Managed or RC-only workspace surface that stays out of the initial OSS boundary."
-    },
-    {
-      "name": "@martin/benchmarks",
-      "path": "benchmarks",
-      "private": true,
-      "publishAccess": null,
-      "workspaceDependencies": [
-        "@martin/adapters",
-        "@martin/contracts",
-        "@martin/core"
-      ],
-      "classification": "non_oss_workspace",
-      "classificationReason": "Managed or RC-only workspace surface that stays out of the initial OSS boundary."
+      ]
     }
   ],
-  "localOnlySurfaces": [
-    {
-      "path": "apps/local-dashboard",
-      "reason": "Local read-model viewer that is not yet packaged as a publishable OSS workspace."
-    }
+  "topLevelEntries": [
+    ".artifacts",
+    ".cache",
+    ".git",
+    ".github",
+    ".gitignore",
+    ".npm-cache",
+    ".planning",
+    "AGENTS.md",
+    "CHANGELOG.md",
+    "CODE_OF_CONDUCT.md",
+    "CONTEXT.md",
+    "CONTRIBUTING.md",
+    "LICENSE",
+    "README.md",
+    "SECURITY.md",
+    "benchmarks",
+    "demo",
+    "deploy",
+    "dist",
+    "docs",
+    "examples",
+    "martin-cli-dist.zip",
+    "martin-mcp-dist.zip",
+    "martin.config.example.yaml",
+    "node_modules",
+    "output",
+    "package.json",
+    "packages",
+    "pnpm-lock.yaml",
+    "pnpm-workspace.yaml",
+    "scripts",
+    "tests and feedback",
+    "tmp",
+    "tsconfig.base.json",
+    "vitest-results.json",
+    "vitest.workspace.ts"
   ],
+  "forbiddenTopLevelEntries": [],
+  "unexpectedTopLevelEntries": [],
+  "unexpectedPackageDirs": [],
+  "forbiddenPackageDirs": [],
   "dependencyLeaks": [],
   "summary": {
     "ossCoreCount": 5,
-    "nonOssWorkspaceCount": 2,
-    "localOnlySurfaceCount": 1,
-    "dependencyLeakCount": 0,
-    "privateOssCoreCount": 3,
-    "publishReadyOssCoreCount": 2
+    "forbiddenTopLevelCount": 0,
+    "unexpectedTopLevelCount": 0,
+    "unexpectedPackageDirCount": 0,
+    "forbiddenPackageDirCount": 0,
+    "dependencyLeakCount": 0
   }
 }

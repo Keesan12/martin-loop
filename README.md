@@ -132,7 +132,7 @@ Challenge page: [Can your AI coding agent finish this task under $3?](./docs/dis
 npm install -g martin-loop
 ```
 
-This installs both the `martin-loop` package and the `martin` command alias. The package is currently published on npm as version `0.1.4`.
+This installs both the `martin-loop` package and the `martin` command alias. The root package in this repo is on the `0.1.x` line; check [`docs/release/VERSION-LEDGER.md`](./docs/release/VERSION-LEDGER.md) before doing any release work so the root and standalone MCP version lines do not get conflated.
 
 Want a safe sandbox first? Run `npx martin-loop demo` and MartinLoop will copy a disposable local workspace into `./martin-loop-demo`.
 
@@ -146,20 +146,37 @@ The frozen public package surface for this release candidate is:
 - MCP target (registry-ready package): `npx -y @martinloop/mcp`
 
 The `martin` command alias is installed for local operator convenience, but the public CLI surface is `npx martin-loop`.
-The standalone MCP server package is smoke-validated locally with `pnpm --filter @martinloop/mcp smoke:pack` and is ready for registry publication as a separate release step.
+The standalone MCP server package is only ready for registry publication after the full MCP prepublish lane passes locally:
+
+- `pnpm --filter @martinloop/mcp lint`
+- `pnpm --filter @martinloop/mcp test`
+- `pnpm --filter @martinloop/mcp build`
+- `pnpm --filter @martinloop/mcp smoke:pack`
+- `pnpm --filter @martinloop/mcp smoke:published:pack`
+- `pnpm --filter @martinloop/mcp verify:release`
+
+Registry/server identifier for the standalone MCP package: `io.github.Keesan12/martin-loop`
 
 ### Claude Code MCP install
 
 Use the published MCP package directly:
 
-- macOS/Linux: `claude mcp add --scope user martin-loop -- npx -y @martinloop/mcp`
-- Windows PowerShell/cmd: `claude mcp add --scope user martin-loop -- cmd /c "npx -y @martinloop/mcp"`
+- macOS/Linux: `claude mcp add --transport stdio --scope user martin-loop -- npx -y @martinloop/mcp`
+- Windows PowerShell/cmd: `claude mcp add --transport stdio --scope user martin-loop -- cmd /c npx -y @martinloop/mcp`
 
 If you just want to launch the server manually, the one-line command is:
 
 ```sh
-npx @martinloop/mcp
+npx -y @martinloop/mcp
 ```
+
+### Other MCP host installs
+
+- Codex: `codex mcp add martin-loop -- npx -y @martinloop/mcp`
+- Gemini CLI and generic wrapper hosts: generate the exact local or remote profile with `martin mcp print-config --host gemini|generic --transport stdio|remote --profile starter|full`
+- Claude, Codex, Gemini, and generic hosts all support generated starter/full profiles through `martin mcp print-config` and `martin mcp install`
+
+Martin Loop keeps the public package local-first and stdio-first. Remote Streamable HTTP profiles are generated from the same shared contract, but the hosted remote lane remains a private beta in the main workspace until it is explicitly promoted.
 
 ### Run a governed task
 
@@ -183,14 +200,16 @@ pnpm run:cli -- run --objective "Summarize the current runtime state" --verify "
 Remove-Item Env:MARTIN_LIVE
 ```
 
-### Inspect or resume runs
+### Inspect, triage, or resume runs
 
 ```sh
-martin inspect --file ~/.martin/runs/<workspaceId>.jsonl
-martin resume <loopId>
+martin doctor
+martin triage
+martin dossier --latest
+martin runs get --loop-id <loopId>
 ```
 
-`inspect` prints a portfolio summary for records in the file. `resume` looks up a persisted loop record by ID under `~/.martin/runs/`.
+`doctor` checks environment readiness, `triage` ranks persisted runs that need attention, `dossier` gives you the richest single-run view, and `runs get` loads a persisted loop by selector. The legacy `inspect` and `resume` commands still work, but they are now compatibility aliases.
 
 ---
 
@@ -219,6 +238,22 @@ martin run <objective> [options]
 ```
 
 The public CLI also includes `demo`, `inspect`, `resume`, and a `bench` redirect that points reviewers to the workspace benchmark harness.
+
+New operator-first workflows are available through:
+
+```text
+martin doctor
+martin preflight <objective> [options]
+martin triage [options]
+martin dossier (--loop-id <id> | --file <path> | --latest)
+martin runs list|get|attempt|verify ...
+martin mcp print-config --host codex|claude|gemini|generic --transport stdio|remote --profile starter|full
+martin mcp install --host codex|claude|gemini|generic --scope user|project [--dry-run]
+```
+
+Use `--json` for stable machine-readable output and `--quiet` for script-friendly minimal output.
+
+The public OSS package remains local-first and stdio-first. The private/main workspace now carries the hosted Streamable HTTP beta and control-plane hardening, but that hosted lane is not yet part of the public package manifest.
 
 <div align="center">
   <img src="./docs/assets/cli-static.svg" alt="MartinLoop CLI terminal output" width="720">
@@ -309,12 +344,12 @@ The lower-level `runMartin` function is also exported for callers that want to a
 | `@martin/core` | Runtime controller, policy engine, safety leash, grounding, persistence, and rollback logic. |
 | `@martin/adapters` | Claude CLI, Codex CLI, direct-provider, and stub adapter surfaces. |
 | `@martin/cli` | Local CLI implementation for `run`, `inspect`, `resume`, and the benchmark redirect. |
-| `@martinloop/mcp` | MCP server tools: `martin_run`, `martin_inspect`, and `martin_status`. |
+| `@martinloop/mcp` | Governed execution cockpit over MCP: doctor, preflight, run, inspection tools, resources, and prompts. |
 | `benchmarks/` | Workspace-only deterministic benchmark and RC validation harness. |
-| `apps/control-plane/` | Hosted control-plane workstream, outside the initial npm package surface. |
-| `apps/local-dashboard/` | Local dashboard/read-model viewer, not currently packaged as public npm API. |
 
 The `@martin/core`, `@martin/adapters`, and `@martin/contracts` package manifests are still private workspace packages. The public runtime install target is the root `martin-loop` facade, while `@martinloop/mcp` is packaged as a standalone MCP server with vendored internal runtime dependencies for registry publication.
+
+Private control-plane, dashboard, audit, and handoff material now lives outside this OSS repo. See [`CONTEXT.md`](./CONTEXT.md) for the current public/private workspace map and MCP verification lane.
 
 ---
 ## Development

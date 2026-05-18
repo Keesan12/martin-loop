@@ -9,7 +9,7 @@ import {
   createFileRunStore,
   makeLedgerEvent,
   resolveRunsRoot
-} from "../src/index.js";
+} from "../src/index";
 
 describe("makeLedgerEvent", () => {
   it("produces a well-formed LedgerEvent with all required fields", () => {

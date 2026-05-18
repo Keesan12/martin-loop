@@ -1,96 +1,54 @@
 # Martin OSS Core
 
-Martin Loop is a governed AI coding-loop runtime. The core runtime is real and verified through the Phase 12 certification gate; the repo is now in Phase 13 release-candidate engineering, which means the focus is reproducibility, OSS boundary cleanup, and pilot readiness rather than new feature invention.
+This repository is the public OSS-safe Martin Loop runtime surface: runtime packages, CLI, MCP server, examples, and release validation for the root `martin-loop` package.
 
-## What the OSS core includes today
+## Included packages
 
-- `@martin/contracts`: shared loop, policy, grounding, leash, budget, and rollback types
-- `@martin/core`: the runtime controller, persistence layer, grounding scanner, leash engine, patch-truth scoring, and rollback restoration logic
-- `@martin/adapters`: normalized Claude CLI, Codex CLI, and direct-provider or stub adapter surfaces
-- `@martin/cli`: the local operator CLI for `run`, `inspect`, and `resume`
-- `@martinloop/mcp`: the MCP server surface for `martin_run`, `martin_inspect`, and `martin_status`
+- `@martin/contracts`
+- `@martin/core`
+- `@martin/adapters`
+- `@martin/cli`
+- `@martinloop/mcp`
 
-## What is still outside the initial OSS promise
+## Public launch targets
 
-- The root workspace now exposes the `martin-loop` public package facade, and `@martinloop/mcp` now has a standalone tarball shape validated via `pnpm --filter @martinloop/mcp smoke:pack`, but registry publication is still a separate release step.
-- `@martin/contracts`, `@martin/core`, and `@martin/adapters` are still marked `private` in their package manifests.
-- The hosted control-plane and local dashboard remain in the repo, but they are not yet the finalized public OSS boundary.
-- The benchmark harness remains a workspace-only RC surface under `benchmarks/` and is not part of the publishable CLI boundary yet.
-- Final licensing, public package publishing, and managed-product packaging are still gated behind later Phase 13 to Phase 15 work.
-
-That means this repo is ready for grounded engineering review and RC validation, but it is not yet claiming a finished public OSS release.
-
-## Runtime truth the current core enforces
-
-- Explicit policy phases: `GATHER`, `ADMIT`, `PATCH`, `VERIFY`, `RECOVER`, `ESCALATE`, `ABORT`, `HANDOFF`
-- Grounding scans against repo anatomy before success is accepted
-- Blocking leash behavior for unsafe verifier commands, file-scope violations, approval-boundary changes, and secret handling
-- Provenance-aware accounting using `actual`, `estimated`, and `unavailable`
-- Persisted attempt artifacts under `~/.martin/runs/<runId>/artifacts/attempt-XXX/`
-- Patch-truth scoring plus rollback boundary and restore outcome artifacts for discarded or blocked repo-backed attempts
-
-## Trust profiles
-
-Martin currently exposes these execution profiles:
-
-- `strict_local`: safest default for local repo work
-- `ci_safe`: tighter CI-oriented behavior
-- `staging_controlled`: controlled outbound or network allowances with approvals
-- `research_untrusted`: looser network posture for research-oriented runs while still enforcing approval boundaries
-
-## Accounting labels
-
-Martin keeps cost provenance explicit:
-
-- `actual`: reported directly by the provider or adapter settlement
-- `estimated`: derived from pricing logic or modeled usage
-- `unavailable`: the adapter could not produce a trustworthy number
-
-Do not collapse those labels when building dashboards, docs, or public claims.
-
-## Frozen public launch target
-
-The current engineering memo freezes these public-launch targets for release planning:
-
-- install target: `npm install martin-loop`
-- CLI target: `npx martin-loop ...`
+- Install target: `npm install martin-loop`
+- CLI target: `npx martin-loop`
 - SDK target: `import { MartinLoop } from "martin-loop"`
-- MCP target (publish-ready): `npx @martinloop/mcp`
+- MCP target: `npx -y @martinloop/mcp`
 
-Those runtime targets are implemented in the root package facade and verified through a clean-install smoke test. The MCP target is packaged and verified through a tarball launch smoke test. During the current RC phase, the honest operator path still includes the repo-local workflow documented below and in the quickstart, because public registry publication and broader release packaging remain separate release steps.
-
-## Reproducibility
+## Validation commands
 
 From the repo root:
 
 ```bash
-pnpm install
+pnpm install --frozen-lockfile
 pnpm build
-pnpm rc:validate
+pnpm test
+pnpm oss:validate
+pnpm public:smoke
+pnpm --filter @martinloop/mcp smoke:pack
+pnpm mcp:published:smoke:pack
 ```
 
-`pnpm rc:validate` runs the current RC matrix in an isolated temp home so fresh-home behavior is checked instead of depending on warmed `~/.martin` state. Use `pnpm rc:validate:install` when you also want the RC run to perform a clean `pnpm install --frozen-lockfile` first.
+For isolated end-to-end validation:
 
-## RC gate commands
+```bash
+pnpm rc:validate
+pnpm release:matrix:local
+```
 
-The current release-candidate gate is:
+## Notes
 
-- `pnpm oss:validate`
-- `pnpm public:smoke`
-- `pnpm repo:smoke`
-- `pnpm rc:validate`
-- `pnpm pilot:prep:validate`
-- `pnpm release:matrix:local`
-
-`pnpm rc:validate` now includes the machine-checked release-surface audit in addition to the existing build, test, benchmark, provider-path, OSS-boundary, and control-plane checks.
+- The root `martin-loop` package remains on the `0.1.x` version line.
+- `@martinloop/mcp` is published and released independently from the root package.
+- Use [`../release/VERSION-LEDGER.md`](../release/VERSION-LEDGER.md) before any release work; it is the canonical version map for the root package, the standalone MCP package, and known historical anomalies.
+- `pnpm mcp:published:smoke` is a post-publish npm gate; use `pnpm mcp:published:smoke:pack` for local prepublish validation.
+- The OSS boundary report is generated by `pnpm oss:validate` and written to this directory.
 
 ## Where to go next
 
-- [`docs/oss/QUICKSTART.md`](./QUICKSTART.md) for clone-to-first-run setup
-- [`docs/oss/EXAMPLES.md`](./EXAMPLES.md) for grounded CLI and MCP examples
-- [`docs/oss/CLAUDE-CODE-WALKTHROUGH.md`](./CLAUDE-CODE-WALKTHROUGH.md) for a Claude Code-specific governed-run walkthrough
-- [`docs/oss/RALPH-LOOP-SAFETY.md`](./RALPH-LOOP-SAFETY.md) for a technical guide to governing Ralph-style loops safely
-- [`docs/oss/OSS-BOUNDARY-REPORT.md`](./OSS-BOUNDARY-REPORT.md) for the current machine-checked OSS boundary and public-surface status
-- [`docs/oss/RELEASE-SURFACE-REPORT.md`](./RELEASE-SURFACE-REPORT.md) for the current machine-checked release-surface audit
-- [`docs/pilot/README.md`](../pilot/README.md) for the pilot-prep package that remains explicitly gated behind Phase 13 completion
-- [`../../README.md`](../../README.md) for the repo-level RC status and workspace map
+- [QUICKSTART.md](./QUICKSTART.md)
+- [EXAMPLES.md](./EXAMPLES.md)
+- [OSS-BOUNDARY-REPORT.md](./OSS-BOUNDARY-REPORT.md)
+- [../../README.md](../../README.md)
