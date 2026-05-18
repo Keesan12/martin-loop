@@ -2,7 +2,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { runContextIntegrityPrecheck } from "../src/index.js";
+import { runContextIntegrityPrecheck } from "../src/index";
 
 const artifactsDir = join(tmpdir(), "martin-test-context-integrity");
 

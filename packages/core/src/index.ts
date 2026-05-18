@@ -149,12 +149,18 @@ export type { PromptPacket, CompilerAdapterRequest } from "./compiler.js";
 export {
   createFileRunStore,
   makeLedgerEvent,
+  readAllLoopRecords,
+  readLatestLoopRecord,
+  readLatestLoopRecordFromFile,
+  readLoopRecordsFromFile,
   resolveRunsRoot
 } from "./persistence/index.js";
 export type {
   AttemptArtifacts,
   LedgerEvent,
   LedgerEventKind,
+  LoopAttemptRecord,
+  LoopRunRecord,
   RunContract,
   RunStore
 } from "./persistence/index.js";
@@ -438,6 +444,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         payload: { workspaceId: input.workspaceId, projectId: input.projectId }
       })
     );
+    await persistLoopRecordIfSupported(input.store, loop);
   }
 
   const DEFAULT_FALLBACK_MODELS = [
@@ -495,8 +502,10 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         })
       );
     }
+    const finalizedLoop = finalizeLoop(loop, leashExitDecision, now(), idFactory);
+    await persistLoopRecordIfSupported(input.store, finalizedLoop);
     return {
-      loop: finalizeLoop(loop, leashExitDecision, now(), idFactory),
+      loop: finalizedLoop,
       decision: leashExitDecision
     };
   }
@@ -541,8 +550,10 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       );
     }
 
+    const finalizedLoop = finalizeLoop(loop, secretExitDecision, now(), idFactory);
+    await persistLoopRecordIfSupported(input.store, finalizedLoop);
     return {
-      loop: finalizeLoop(loop, secretExitDecision, now(), idFactory),
+      loop: finalizedLoop,
       decision: secretExitDecision
     };
   }
@@ -593,8 +604,10 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
           })
         );
       }
+      const finalizedLoop = finalizeLoop(loop, preflightExitDecision, now(), idFactory);
+      await persistLoopRecordIfSupported(input.store, finalizedLoop);
       return {
-        loop: finalizeLoop(loop, preflightExitDecision, now(), idFactory),
+        loop: finalizedLoop,
         decision: preflightExitDecision
       };
     }
@@ -638,8 +651,10 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
           })
         );
       }
+      const finalizedLoop = finalizeLoop(loop, poisoningExitDecision, now(), idFactory);
+      await persistLoopRecordIfSupported(input.store, finalizedLoop);
       return {
-        loop: finalizeLoop(loop, poisoningExitDecision, now(), idFactory),
+        loop: finalizedLoop,
         decision: poisoningExitDecision
       };
     }
@@ -702,8 +717,10 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
           })
         );
       }
+      const finalizedLoop = finalizeLoop(loop, exitDecision, now(), idFactory);
+      await persistLoopRecordIfSupported(input.store, finalizedLoop);
       return {
-        loop: finalizeLoop(loop, exitDecision, now(), idFactory),
+        loop: finalizedLoop,
         decision: exitDecision
       };
     }
@@ -1078,8 +1095,10 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         );
       }
 
+      const finalizedLoop = finalizeLoop(loop, verifyOnlyExitDecision, now(), idFactory);
+      await persistLoopRecordIfSupported(input.store, finalizedLoop);
       return {
-        loop: finalizeLoop(loop, verifyOnlyExitDecision, now(), idFactory),
+        loop: finalizedLoop,
         decision: verifyOnlyExitDecision
       };
     }
@@ -1164,8 +1183,10 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         );
       }
 
+      const finalizedLoop = finalizeLoop(loop, filesystemExitDecision, now(), idFactory);
+      await persistLoopRecordIfSupported(input.store, finalizedLoop);
       return {
-        loop: finalizeLoop(loop, filesystemExitDecision, now(), idFactory),
+        loop: finalizedLoop,
         decision: filesystemExitDecision
       };
     }
@@ -1253,8 +1274,10 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         );
       }
 
+      const finalizedLoop = finalizeLoop(loop, approvalExitDecision, now(), idFactory);
+      await persistLoopRecordIfSupported(input.store, finalizedLoop);
       return {
-        loop: finalizeLoop(loop, approvalExitDecision, now(), idFactory),
+        loop: finalizedLoop,
         decision: approvalExitDecision
       };
     }
@@ -1422,8 +1445,10 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         );
       }
 
+      const finalizedLoop = finalizeLoop(loop, patchExitDecision, now(), idFactory);
+      await persistLoopRecordIfSupported(input.store, finalizedLoop);
       return {
-        loop: finalizeLoop(loop, patchExitDecision, now(), idFactory),
+        loop: finalizedLoop,
         decision: patchExitDecision
       };
     }
@@ -1473,8 +1498,10 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
           })
         );
       }
+      const finalizedLoop = finalizeLoop(loop, decision, now(), idFactory);
+      await persistLoopRecordIfSupported(input.store, finalizedLoop);
       return {
-        loop: finalizeLoop(loop, decision, now(), idFactory),
+        loop: finalizedLoop,
         decision
       };
     }
@@ -1498,8 +1525,10 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     );
   }
 
+  const finalizedLoop = finalizeLoop(loop, decision, now(), idFactory);
+  await persistLoopRecordIfSupported(input.store, finalizedLoop);
   return {
-    loop: finalizeLoop(loop, decision, now(), idFactory),
+    loop: finalizedLoop,
     decision
   };
 }
@@ -1581,6 +1610,13 @@ function finalizeLoop(
   };
 }
 
+async function persistLoopRecordIfSupported(
+  store: RunStore | undefined,
+  loop: LoopRecord
+): Promise<void> {
+  await store?.writeLoopRecord?.(loop.loopId, loop);
+}
+
 function getAdapterTransport(adapter: MartinAdapter): "cli" | "http" | "routed_http" {
   return adapter.metadata.transport ?? (adapter.kind === "agent-cli" ? "cli" : "http");
 }
@@ -1611,7 +1647,7 @@ function resolveChangedFiles(result: MartinAdapterResult, repoRoot?: string): st
   }
 
   try {
-    const diff = spawnSync("git", ["diff", "--name-only", "HEAD"], {
+    const diff = spawnSync("git", ["diff", "--name-only", "HEAD", "--", "."], {
       cwd: repoRoot,
       encoding: "utf8"
     });

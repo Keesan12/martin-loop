@@ -79,7 +79,7 @@ martin run "update the OSS quickstart wording" \
   --cwd . \
   --allow-path README.md \
   --allow-path docs/oss/** \
-  --deny-path apps/control-plane/** \
+  --deny-path demo/seeded-workspace/** \
   --accept "Only documentation files may change" \
   --verify "pnpm --filter @martin/core test"
 ```

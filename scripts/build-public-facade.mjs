@@ -24,6 +24,7 @@ const PACKAGE_FACADES = [
     packageName: "@martin/cli",
     sourceDir: ["packages", "cli", "dist"],
     targetDir: ["dist", "vendor", "cli"],
+    packageJson: ["packages", "cli", "package.json"],
   },
 ];
 
@@ -46,6 +47,7 @@ export async function buildPublicFacade(options = {}) {
       sourceDir: path.join(rootDir, ...facade.sourceDir),
       targetDir: path.join(rootDir, ...facade.targetDir),
       distDir,
+      packageJsonSource: facade.packageJson ? path.join(rootDir, ...facade.packageJson) : null,
     });
   }
 
@@ -66,8 +68,13 @@ async function copyFacadeDirectory(input) {
     sourceDir: input.sourceDir,
     targetDir: input.targetDir,
     distDir: input.distDir,
+    packageJsonTarget: input.packageJsonSource ? path.join(input.targetDir, "package.json") : null,
     relativeDir: "",
   });
+
+  if (input.packageJsonSource) {
+    await copyFile(input.packageJsonSource, path.join(input.targetDir, "package.json"));
+  }
 }
 
 async function copyDirectory(input) {
@@ -89,6 +96,7 @@ async function copyDirectory(input) {
         sourceDir: path.join(input.sourceDir, entry.name),
         targetDir: path.join(input.targetDir, entry.name),
         distDir: input.distDir,
+        packageJsonTarget: input.packageJsonTarget,
         relativeDir: relativePath,
       });
       continue;
@@ -103,10 +111,16 @@ async function copyDirectory(input) {
 
     if (entry.name.endsWith(".js") || entry.name.endsWith(".d.ts")) {
       const contents = await readFile(sourcePath, "utf8");
-      const rewritten = rewritePackageSpecifiers(contents, {
-        targetPath,
-        distDir: input.distDir,
-      });
+      const rewritten = rewritePackageJsonSpecifier(
+        rewritePackageSpecifiers(contents, {
+          targetPath,
+          distDir: input.distDir,
+        }),
+        {
+          targetPath,
+          packageJsonTarget: input.packageJsonTarget,
+        },
+      );
       await writeFile(targetPath, rewritten, "utf8");
       continue;
     }
@@ -140,6 +154,15 @@ function rewritePackageSpecifiers(contents, input) {
       return `${quote}${specifier}${quote}`;
     },
   );
+}
+
+function rewritePackageJsonSpecifier(contents, input) {
+  if (!input.packageJsonTarget) {
+    return contents;
+  }
+
+  const specifier = toImportSpecifier(path.dirname(input.targetPath), input.packageJsonTarget);
+  return contents.replace(/require\((['"])\.\.\/package\.json\1\)/gu, `require("${specifier}")`);
 }
 
 function toImportSpecifier(fromDir, toFile) {

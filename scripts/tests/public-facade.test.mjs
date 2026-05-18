@@ -25,6 +25,8 @@ test("runPublicFacadeSmoke proves the root SDK import, CLI help, and demo sandbo
   const result = await runPublicFacadeSmoke({ rootDir: ROOT_DIR });
 
   assert.equal(result.packageName, "martin-loop");
+  assert.match(result.packedFiles.join("\n"), /dist\/index\.js/);
+  assert.match(result.packedFiles.join("\n"), /dist\/bin\/martin-loop\.js/);
   assert.equal(result.sdkSmoke.ok, true);
   assert.equal(result.sdkSmoke.exportName, "MartinLoop");
   assert.equal(result.cliSmoke.ok, true);

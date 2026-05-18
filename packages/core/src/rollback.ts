@@ -148,8 +148,8 @@ export async function restoreRollbackBoundary(input: {
 
 function readRepoState(repoRoot: string): RepoStateSnapshot {
   return {
-    trackedDirtyFiles: readGitLines(repoRoot, ["diff", "--name-only", "HEAD"]),
-    untrackedFiles: readGitLines(repoRoot, ["ls-files", "--others", "--exclude-standard"])
+    trackedDirtyFiles: readGitLines(repoRoot, ["diff", "--name-only", "HEAD", "--", "."]),
+    untrackedFiles: readGitLines(repoRoot, ["ls-files", "--others", "--exclude-standard", "--", "."])
   };
 }
 
