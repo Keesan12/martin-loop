@@ -63,7 +63,9 @@ jobs:
 
       - name: Publish to npm
         if: steps.npm-version.outputs.exists != 'true'
-        run: npm publish "${{ steps.root-pack.outputs.tarball }}" --access public
+        env:
+          NODE_AUTH_TOKEN: ""
+        run: npm publish "${{ steps.root-pack.outputs.tarball }}" --access public --provenance
 
       - name: Skip duplicate npm publish
         if: steps.npm-version.outputs.exists == 'true'
