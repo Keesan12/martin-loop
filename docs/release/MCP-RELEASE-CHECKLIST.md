@@ -35,7 +35,7 @@ Use this checklist before calling a Martin MCP release ready.
 - sync `packages/mcp` into `martin-loop_MAIN_FULL_REPO\\oss-core\\packages\\mcp`
 - resync `packages/mcp\\dist` into the private mirror when build artifacts are present so stale packaged version labels do not survive
 - sync MCP-facing docs into the private `oss-core` mirror
-- update `DEVELOPMENT_HANDOFF.md` with repo truth, verification, blockers, and next step
+- update the active internal plan docs with repo truth, verification, blockers, and next step
 
 ## Candidate Branch Proof
 

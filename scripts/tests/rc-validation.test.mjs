@@ -32,8 +32,8 @@ test("createRcValidationEnvironment points HOME-style state at an isolated direc
   const env = createRcValidationEnvironment(
     {
       PATH: process.env.PATH ?? "",
-      HOME: "C:\\Users\\Torram",
-      USERPROFILE: "C:\\Users\\Torram",
+      HOME: "C:\\Users\\ExampleUser",
+      USERPROFILE: "C:\\Users\\ExampleUser",
     },
     cleanHomeRoot,
   );
@@ -41,7 +41,7 @@ test("createRcValidationEnvironment points HOME-style state at an isolated direc
   assert.equal(env.HOME, cleanHomeRoot);
   assert.equal(env.USERPROFILE, cleanHomeRoot);
   assert.equal(env.MARTIN_RUNS_DIR, path.join(cleanHomeRoot, ".martin", "runs"));
-  assert.notEqual(env.HOME, "C:\\Users\\Torram");
+  assert.notEqual(env.HOME, "C:\\Users\\ExampleUser");
 });
 
 test("resolveRcCommandExecution avoids shell mode on Windows by invoking cmd.exe explicitly", () => {

@@ -243,3 +243,59 @@ test("MCP release docs preserve publish gates and current cockpit claims", async
     assert.doesNotMatch(contents, /0\.3\.0/);
   }
 });
+
+test("OSS tier docs keep the paid-tier ladder separate from the public MCP train", async () => {
+  const [rootReadme, contextDoc, versionLedger, deliveryMap, publishingDoc, releaseNotes, releasePacket] =
+    await Promise.all([
+      readRepoFile("README.md"),
+      readRepoFile("CONTEXT.md"),
+      readRepoFile(path.join("docs", "release", "VERSION-LEDGER.md")),
+      readRepoFile(path.join("docs", "release", "MCP-DELIVERY-SLICE-MAP.md")),
+      readRepoFile(path.join("docs", "release", "MCP-PUBLISHING.md")),
+      readRepoFile(path.join("docs", "release", `MCP-${packageJson.version}-RELEASE-NOTES.md`)),
+      readRepoFile(path.join("docs", "release", `MCP-${packageJson.version}-RELEASE-PACKET.md`))
+    ]);
+
+  for (const contents of [rootReadme, contextDoc, versionLedger, deliveryMap, publishingDoc, releaseNotes, releasePacket]) {
+    assert.match(contents, /0\.1\.4/);
+    assert.match(contents, /operator foundation/i);
+    assert.match(contents, /0\.2\.0/);
+    assert.match(contents, /cockpit expansion/i);
+    assert.match(contents, /0\.2\.5/);
+    assert.match(contents, /stable cockpit line/i);
+  }
+
+  for (const contents of [rootReadme, contextDoc, versionLedger, deliveryMap, publishingDoc, releaseNotes, releasePacket]) {
+    assert.match(contents, /Free \/ OSS/);
+    assert.match(contents, /\bPro\b/);
+    assert.match(contents, /\bGrowth\b/);
+    assert.match(contents, /\bEnterprise\b/);
+    assert.match(contents, /\bInternal\b/);
+    assert.doesNotMatch(contents, /\bStarter\b/);
+  }
+
+  assert.match(
+    contextDoc,
+    /Do not treat a public `@martinloop\/mcp` release as a promotion of the private Pro, Growth, Enterprise, or Internal lanes\./,
+  );
+  assert.match(
+    deliveryMap,
+    /should never be implied by a public MCP release note, packet, or README/i,
+  );
+  assert.match(
+    publishingDoc,
+    /Publishing `@martinloop\/mcp` only promotes the public Free \/ OSS MCP lane\./,
+  );
+  assert.match(rootReadme, /remote MCP private beta/i);
+  assert.match(rootReadme, /principal-aware remote config/i);
+  assert.match(contextDoc, /remote MCP private beta/i);
+  assert.match(contextDoc, /principal-aware remote config/i);
+  assert.match(deliveryMap, /remote MCP private beta/i);
+  assert.match(deliveryMap, /principal-aware remote config/i);
+  assert.match(publishingDoc, /remote MCP private beta/i);
+  assert.match(publishingDoc, /principal-aware remote config/i);
+  assert.match(releaseNotes, /remote MCP private beta/i);
+  assert.match(releaseNotes, /principal-aware remote config/i);
+  assert.match(releasePacket, /remote MCP private beta/i);
+  assert.match(releasePacket, /principal-aware remote config/i);
+});

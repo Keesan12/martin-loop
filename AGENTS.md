@@ -27,6 +27,11 @@
 - Guardrail: before claiming completion on browser-involved work, explicitly check whether extra tabs opened for the run should be closed.
 - Verification: either the extra tabs are closed, or the final status states why they were intentionally left open.
 
+### Mirror parity exception
+- Rule: treat `ML_Core_OSS_Internal` as mirroring local truth from `martin-loop_OSS_CORE`, with one explicit preserved exception.
+- Guardrail: ignore `old/pre-sync-2026-05-18` during parity discussions, drift checks, and sync decisions unless Keesan explicitly asks to revisit that archive.
+- Verification: parity summaries and sync work should not flag `old/pre-sync-2026-05-18` as drift or ask for it to be explained again.
+
 ## MCP Registry Guardrails
 - Do not call `packages/mcp` registry-ready unless `packages/mcp/package.json` includes `mcpName` and `packages/mcp/server.json` exists with matching `name`, `version`, and npm package `identifier`.
 - npm publication happens before official MCP Registry publication.
