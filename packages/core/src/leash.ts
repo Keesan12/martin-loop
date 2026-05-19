@@ -54,7 +54,7 @@ const BLOCKED_PATTERNS: RegExp[] = [
   /(^|\s)mkfs(\.|\s|$)/u,
   /(^|\s)dd\s+if=/u,
   /(shutdown|reboot)(\s|$)/iu,
-  /:\(\)\{:\|:&\};:/u,
+  /:\(\)\s*\{\s*:\|:&\s*\}\s*;\s*:/u,
   /chmod\s+-R\s+777\s+\//iu,
   /(kubectl|docker)\s+.*\b(delete|prune|rm)\b/iu,
   /ssh\s+/iu,

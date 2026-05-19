@@ -11,9 +11,17 @@ This packet is the local proof bundle for the current integrated `@martinloop/mc
 - public scheduled release train:
   - `0.1.4` operator foundation
   - `0.2.0` cockpit expansion
-  - `0.2.5` polish and hardening
+  - `0.2.5` stable cockpit line
 
 See [VERSION-LEDGER.md](./VERSION-LEDGER.md) for the canonical version map.
+
+## Tier Boundary
+
+This packet is a public Free / OSS MCP artifact only.
+
+- Pro, Growth, Enterprise, and Internal remain private tier lanes.
+- private Pro remote MCP private beta and principal-aware remote config remain outside this packet
+- Reviewing this packet does not approve promotion of private control-plane, autonomy, or router internals into the OSS package or docs.
 
 ## Commands Run
 
@@ -109,4 +117,3 @@ Do not call the train ready to push until all of these are true:
 - mirror parity still holds
 - local OSS gates remain green
 - the exact candidate branch CI is green on Windows, Linux, and macOS
-

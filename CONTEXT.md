@@ -4,7 +4,7 @@
 
 This repository is the public OSS execution repo for Martin Loop:
 
-- Repo path: `C:\Users\Torram\OneDrive\Documents\Codex Main\Setup Stuff\martin-loop_OSS_CORE`
+- Repo path: `./`
 - Git remote: `https://github.com/Keesan12/martin-loop.git`
 
 Use this tree for OSS-safe package, docs, and verification work only.
@@ -28,11 +28,28 @@ The canonical public surface in this repo is:
 
 If a folder is not needed to ship or verify the OSS runtime, it does not belong here by default.
 
+## Tier Boundary Map
+
+Use the current product-lane names consistently in OSS-safe docs:
+
+- Free / OSS: the only public tier in this tree; includes the root `martin-loop` facade and the standalone `@martinloop/mcp` package.
+- Pro: private paid tier for authenticated remote MCP private beta, principal-aware remote config, and team proof surfaces; do not describe it as shipped from this repo.
+- Growth: private paid tier for broader team policy and collaboration controls; do not describe it as shipped from this repo.
+- Enterprise: private paid tier for governance, diagnostics, scorecards, and hosted operations; do not describe it as shipped from this repo.
+- Internal: private operator and shadow-promotion tier; never mirror its implementation details into this repo.
+
+The public MCP schedule inside the Free / OSS lane is:
+
+- `0.1.4` operator foundation
+- `0.2.0` cockpit expansion
+- `0.2.5` stable cockpit line
+
+Do not treat a public `@martinloop/mcp` release as a promotion of the private Pro, Growth, Enterprise, or Internal lanes.
+Keep private control-plane, autonomy, and router internals out of this repo even when naming the paid tiers.
+
 ## Private Workspace Boundary
 
-Private archive, handoff, and internal coordination work belongs in:
-
-- `C:\Users\Torram\OneDrive\Documents\Codex Main\Setup Stuff\martin-loop_MAIN_FULL_REPO`
+Private archive, handoff, and internal coordination work belongs in the internal MartinLoop repo workspace that embeds this mirror under `oss-core/`.
 
 Use the private workspace for:
 
@@ -70,10 +87,10 @@ pnpm --filter @martinloop/mcp verify:release
 
 Durable handoff notes for this repo should be updated in the private workspace, not inside this OSS repo.
 
-Current private handoff lane:
+Current private planning lane:
 
-- `C:\Users\Torram\OneDrive\Documents\Codex Main\Setup Stuff\martin-loop_MAIN_FULL_REPO\DEVELOPMENT_HANDOFF.md`
-- `C:\Users\Torram\OneDrive\Documents\Codex Main\Setup Stuff\martin-loop_MAIN_FULL_REPO\docs\handoffs\from-martin-loop\`
+- `MASTERPLAN.md`
+- `docs/internal/autonomy/MARTINLOOP-AUTONOMY-MASTER-PLAN.md`
 
 ## Cleanup Rules
 

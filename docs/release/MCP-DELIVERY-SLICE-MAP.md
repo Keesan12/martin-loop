@@ -6,16 +6,23 @@ Use this map when cutting the scheduled public deliveries from the current integ
 
 - live npm baseline: `0.1.3`
 - staged public deliveries:
-  - `0.1.4`
-  - `0.2.0`
-  - `0.2.5`
+  - `0.1.4` operator foundation
+  - `0.2.0` cockpit expansion
+  - `0.2.5` stable cockpit line
 - integrated local tip: `0.2.5`
 
 See [VERSION-LEDGER.md](./VERSION-LEDGER.md) for the canonical version truth.
 
+## Tier Boundary
+
+- Free / OSS is the only public tier in this repo. The standalone `@martinloop/mcp` train belongs to that lane.
+- Pro, Growth, Enterprise, and Internal remain private tier names and should never be implied by a public MCP release note, packet, or README.
+- Private Pro surfaces such as the authenticated remote MCP private beta and principal-aware remote config stay out of the public MCP npm train unless this slice map changes first.
+- Keep private control-plane, autonomy, and router internals out of the OSS MCP train even when they exist in the broader workspace.
+
 ## Delivery `0.1.4`
 
-Scope: operator foundation only.
+Scope: operator foundation for the Free / OSS operator lane.
 
 Include:
 
@@ -47,7 +54,7 @@ Do not include:
 
 ## Delivery `0.2.0`
 
-Scope: cockpit expansion.
+Scope: cockpit expansion for the Free / OSS public cockpit lane.
 
 Include:
 
@@ -84,7 +91,7 @@ Do not include:
 
 ## Delivery `0.2.5`
 
-Scope: polish, hardening, and stable cockpit line.
+Scope: stable cockpit line for the Free / OSS public cockpit lane, including the polish and hardening needed to keep that line honest.
 
 Include:
 
@@ -114,6 +121,8 @@ Primary surfaces:
 
 These stay out of the public MCP npm release train for this wave:
 
+- private Pro, Growth, Enterprise, and Internal tier surfaces
+- private Pro remote MCP beta and principal-aware remote config
 - `enterprise/apps/control-plane`
 - `enterprise/packages/trace-intelligence`
 - `enterprise/packages/martin-router`
