@@ -32,6 +32,25 @@ const EXPECTED_RESOURCES_AND_PROMPTS = [
   "martin_triage_failures"
 ];
 
+const FORBIDDEN_PUBLIC_RELEASE_NOTE_PATTERNS = [
+  /0\.2\.5/i,
+  /\bremoved\b/i,
+  /\bskipped\b/i,
+  /\bbranch\b/i,
+  /\bprivate\b/i,
+  /\bpro\b/i,
+  /\bgrowth\b/i,
+  /\benterprise\b/i,
+  /\binternal\b/i,
+  /hosted control-plane/i,
+  /\bautonomy\b/i,
+  /\brouter\b/i,
+  /workflow contract/i,
+  /contents:\s*write/i,
+  /do not publish locally/i,
+  /\brelease path\b/i
+];
+
 async function readRepoFile(relativePath) {
   return readFile(path.join(ROOT_DIR, relativePath), "utf8");
 }
@@ -95,11 +114,20 @@ test("MCP docs stay aligned with the 0.2.0 read-only cockpit", async () => {
   }
 
   assert.match(releaseNotes, new RegExp(`@martinloop/mcp v${packageJson.version.replaceAll(".", "\\.")}`));
-  assert.match(releaseNotes, /What `0\.2\.0` does not claim/);
-  assert.match(releaseNotes, /smoke:published:pack/);
-  assert.match(releaseNotes, /verify:release/);
+  assert.match(releaseNotes, /What Changed From `0\.1\.4`/);
+  assert.match(releaseNotes, /published package was verified from npm/i);
   assert.match(publishingDoc, /smoke:published:pack/);
   assert.match(publishingDoc, /verify:release/);
   assert.match(publishingDoc, /workflow_dispatch/i);
   assert.match(publishingDoc, /release notes/i);
+});
+
+test("public MCP release notes do not expose private roadmap or workflow plumbing", async () => {
+  const releaseNotes = await readRepoFile(
+    path.join("docs", "release", `MCP-${packageJson.version}-RELEASE-NOTES.md`)
+  );
+
+  for (const pattern of FORBIDDEN_PUBLIC_RELEASE_NOTE_PATTERNS) {
+    assert.doesNotMatch(releaseNotes, pattern);
+  }
 });
