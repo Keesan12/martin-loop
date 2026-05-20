@@ -63,9 +63,42 @@ jobs:
 
       - name: Publish to npm
         if: steps.npm-version.outputs.exists != 'true'
+        id: npm-publish
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN_GITHUB_RELEASE != '' && secrets.NPM_TOKEN_GITHUB_RELEASE || secrets.NPM_TOKEN }}
-        run: npm publish "${{ steps.root-pack.outputs.tarball }}" --access public --provenance
+          NPM_TOKEN_GITHUB_RELEASE: ${{ secrets.NPM_TOKEN_GITHUB_RELEASE }}
+          NPM_TOKEN_AUTOMATION: ${{ secrets.NPM_TOKEN_AUTOMATION }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          for token_name in NPM_TOKEN_GITHUB_RELEASE NPM_TOKEN_AUTOMATION NPM_TOKEN; do
+            token="${!token_name:-}"
+            if [ -z "$token" ]; then
+              echo "$token_name is not configured; skipping."
+              continue
+            fi
+
+            echo "::add-mask::$token"
+            if ! NODE_AUTH_TOKEN="$token" npm whoami --registry=https://registry.npmjs.org >/dev/null 2>&1; then
+              echo "::warning::$token_name failed npm whoami; trying the next configured token."
+              continue
+            fi
+
+            echo "Publishing with npm auth token: $token_name"
+            if NODE_AUTH_TOKEN="$token" npm publish "${{ steps.root-pack.outputs.tarball }}" --access public --provenance; then
+              echo "token_source=$token_name" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            if npm view "martin-loop@${{ steps.package-version.outputs.version }}" version >/dev/null 2>&1; then
+              echo "token_source=$token_name" >> "$GITHUB_OUTPUT"
+              echo "martin-loop@${{ steps.package-version.outputs.version }} became visible on npm after publish returned non-zero."
+              exit 0
+            fi
+
+            echo "::warning::$token_name authenticated but could not publish martin-loop@${{ steps.package-version.outputs.version }}; trying the next configured token."
+          done
+
+          echo "::error::No configured npm token could publish martin-loop@${{ steps.package-version.outputs.version }}."
+          exit 1
 
       - name: Skip duplicate npm publish
         if: steps.npm-version.outputs.exists == 'true'
