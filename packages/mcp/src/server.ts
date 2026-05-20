@@ -3,7 +3,7 @@
 /**
  * Martin Loop MCP Server
  *
- * Exposes five tools over the Model Context Protocol (stdio transport):
+ * Exposes a governed local MCP cockpit over stdio:
  *   martin_doctor     — inspect local readiness and run-store health
  *   martin_preflight  — normalize a proposed run contract before execution
  *   martin_run        — execute a full Martin loop on a coding task
@@ -27,14 +27,26 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   CallToolRequestSchema,
-  ListToolsRequestSchema
+  GetPromptRequestSchema,
+  ListPromptsRequestSchema,
+  ListResourcesRequestSchema,
+  ListResourceTemplatesRequestSchema,
+  ListToolsRequestSchema,
+  ReadResourceRequestSchema
 } from "@modelcontextprotocol/sdk/types.js";
 
 import { martinDoctorTool } from "./tools/doctor.js";
+import { getAttemptTool } from "./tools/get-attempt.js";
+import { getRunTool } from "./tools/get-run.js";
 import { getStatusTool } from "./tools/get-status.js";
+import { getVerificationResultsTool } from "./tools/get-verification-results.js";
 import { inspectLoopTool } from "./tools/inspect-loop.js";
+import { listRunsTool } from "./tools/list-runs.js";
 import { martinPreflightTool } from "./tools/preflight.js";
+import { getMartinPrompt, listMartinPrompts } from "./prompts.js";
+import { listMartinResourceTemplates, listMartinResources, readMartinResource } from "./resources.js";
 import { runLoopTool } from "./tools/run-loop.js";
+import { runDossierTool } from "./tools/run-dossier.js";
 import { sanitizeToolErrorMessage, validateToolInput } from "./server-validation.js";
 
 const require = createRequire(import.meta.url);
@@ -42,7 +54,7 @@ const packageJson = require("../package.json") as { version: string };
 
 const server = new Server(
   { name: "martin-loop", version: packageJson.version },
-  { capabilities: { tools: {} } }
+  { capabilities: { tools: {}, resources: {}, prompts: {} } }
 );
 
 // ---------------------------------------------------------------------------
@@ -280,9 +292,155 @@ server.setRequestHandler(ListToolsRequestSchema, () => ({
           { required: ["latest"] }
         ]
       }
+    },
+    {
+      name: "martin_list_runs",
+      description:
+        "List recent Martin Loop runs from the local run store with budget, verifier, and lifecycle summaries. Read-only.",
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          runsDir: {
+            type: "string",
+            description:
+              "Optional runs-root override resolved under the default Martin runs root. Defaults to MARTIN_RUNS_DIR or ~/.martin/runs."
+          },
+          limit: {
+            type: "integer",
+            exclusiveMinimum: 0,
+            description: "Maximum number of runs to return. Defaults to 20."
+          }
+        }
+      }
+    },
+    {
+      name: "martin_get_run",
+      description:
+        "Load a read-only run dossier by loopId or latest run selector, including task, budget, cost, and attempts.",
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          loopId: {
+            type: "string",
+            description: "Martin loop ID under the run store."
+          },
+          runsDir: {
+            type: "string",
+            description:
+              "Optional runs-root override resolved under the default Martin runs root. Defaults to MARTIN_RUNS_DIR or ~/.martin/runs."
+          },
+          latest: {
+            const: true,
+            description: "When true, loads the most recently updated loop record in the runs directory."
+          }
+        },
+        oneOf: [{ required: ["loopId"] }, { required: ["latest"] }]
+      }
+    },
+    {
+      name: "martin_get_attempt",
+      description:
+        "Load read-only attempt evidence for a single Martin Loop attempt by loopId and attempt index.",
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          loopId: {
+            type: "string",
+            description: "Martin loop ID under the run store."
+          },
+          attemptIndex: {
+            type: "integer",
+            exclusiveMinimum: 0,
+            description: "1-based attempt index to inspect."
+          },
+          runsDir: {
+            type: "string",
+            description:
+              "Optional runs-root override resolved under the default Martin runs root. Defaults to MARTIN_RUNS_DIR or ~/.martin/runs."
+          }
+        },
+        required: ["loopId", "attemptIndex"]
+      }
+    },
+    {
+      name: "martin_get_verification_results",
+      description:
+        "Extract verifier completion events for a run by loopId or latest selector. Read-only.",
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          loopId: {
+            type: "string",
+            description: "Martin loop ID under the run store."
+          },
+          runsDir: {
+            type: "string",
+            description:
+              "Optional runs-root override resolved under the default Martin runs root. Defaults to MARTIN_RUNS_DIR or ~/.martin/runs."
+          },
+          latest: {
+            const: true,
+            description: "When true, loads the most recently updated loop record in the runs directory."
+          }
+        },
+        oneOf: [{ required: ["loopId"] }, { required: ["latest"] }]
+      }
+    },
+    {
+      name: "martin_run_dossier",
+      description:
+        "Build a compact read-only dossier for review: summary, budget, attempts, and verification evidence.",
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          loopId: {
+            type: "string",
+            description: "Martin loop ID under the run store."
+          },
+          runsDir: {
+            type: "string",
+            description:
+              "Optional runs-root override resolved under the default Martin runs root. Defaults to MARTIN_RUNS_DIR or ~/.martin/runs."
+          },
+          latest: {
+            const: true,
+            description: "When true, loads the most recently updated loop record in the runs directory."
+          }
+        },
+        oneOf: [{ required: ["loopId"] }, { required: ["latest"] }]
+      }
     }
   ]
 }));
+
+// ---------------------------------------------------------------------------
+// Resources and prompts
+// ---------------------------------------------------------------------------
+
+server.setRequestHandler(ListResourcesRequestSchema, () => ({
+  resources: listMartinResources()
+}));
+
+server.setRequestHandler(ListResourceTemplatesRequestSchema, () => ({
+  resourceTemplates: listMartinResourceTemplates()
+}));
+
+server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+  return readMartinResource(request.params.uri);
+});
+
+server.setRequestHandler(ListPromptsRequestSchema, () => ({
+  prompts: listMartinPrompts()
+}));
+
+server.setRequestHandler(GetPromptRequestSchema, (request) => {
+  return getMartinPrompt(request.params.name, request.params.arguments ?? {});
+});
 
 // ---------------------------------------------------------------------------
 // Tool dispatch
@@ -319,6 +477,38 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     if (name === "martin_status") {
       const input = validateToolInput("martin_status", args) as Parameters<typeof getStatusTool>[0];
       const output = await getStatusTool(input);
+      return { content: [{ type: "text", text: JSON.stringify(output, null, 2) }] };
+    }
+
+    if (name === "martin_list_runs") {
+      const input = validateToolInput("martin_list_runs", args) as Parameters<typeof listRunsTool>[0];
+      const output = await listRunsTool(input);
+      return { content: [{ type: "text", text: JSON.stringify(output, null, 2) }] };
+    }
+
+    if (name === "martin_get_run") {
+      const input = validateToolInput("martin_get_run", args) as Parameters<typeof getRunTool>[0];
+      const output = await getRunTool(input);
+      return { content: [{ type: "text", text: JSON.stringify(output, null, 2) }] };
+    }
+
+    if (name === "martin_get_attempt") {
+      const input = validateToolInput("martin_get_attempt", args) as Parameters<typeof getAttemptTool>[0];
+      const output = await getAttemptTool(input);
+      return { content: [{ type: "text", text: JSON.stringify(output, null, 2) }] };
+    }
+
+    if (name === "martin_get_verification_results") {
+      const input = validateToolInput("martin_get_verification_results", args) as Parameters<
+        typeof getVerificationResultsTool
+      >[0];
+      const output = await getVerificationResultsTool(input);
+      return { content: [{ type: "text", text: JSON.stringify(output, null, 2) }] };
+    }
+
+    if (name === "martin_run_dossier") {
+      const input = validateToolInput("martin_run_dossier", args) as Parameters<typeof runDossierTool>[0];
+      const output = await runDossierTool(input);
       return { content: [{ type: "text", text: JSON.stringify(output, null, 2) }] };
     }
 

@@ -11,7 +11,25 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 
 import { buildStandaloneMcpPackage } from "./build-package-lib.mjs";
 
-const REQUIRED_TOOLS = ["martin_inspect", "martin_run", "martin_status"];
+const REQUIRED_TOOLS = [
+  "martin_doctor",
+  "martin_preflight",
+  "martin_run",
+  "martin_inspect",
+  "martin_status",
+  "martin_list_runs",
+  "martin_get_run",
+  "martin_get_attempt",
+  "martin_get_verification_results",
+  "martin_run_dossier",
+];
+const REQUIRED_RESOURCES = ["martin://runs/summary", "martin://runs/latest"];
+const REQUIRED_RESOURCE_TEMPLATES = [
+  "martin://runs/{loopId}",
+  "martin://runs/{loopId}/attempts/{attemptIndex}",
+  "martin://runs/{loopId}/verification",
+];
+const REQUIRED_PROMPTS = ["martin_review_run", "martin_triage_failures"];
 export const PUBLISHED_PACKAGE_SPEC = "@martinloop/mcp";
 const REQUIRED_TARBALL_FILES = [
   "README.md",
@@ -124,12 +142,23 @@ export async function runStandaloneMcpSmoke(options = {}) {
     await client.connect(transport);
     const tools = await client.listTools();
     const toolNames = tools.tools.map((tool) => tool.name).sort();
+    const resources = await client.listResources();
+    const resourceUris = resources.resources.map((resource) => resource.uri).sort();
+    const resourceTemplates = await client.listResourceTemplates();
+    const resourceTemplateUris = resourceTemplates.resourceTemplates
+      .map((resourceTemplate) => resourceTemplate.uriTemplate)
+      .sort();
+    const prompts = await client.listPrompts();
+    const promptNames = prompts.prompts.map((prompt) => prompt.name).sort();
 
     for (const toolName of REQUIRED_TOOLS) {
       if (!toolNames.includes(toolName)) {
         throw new Error(`Missing expected tool "${toolName}" in packaged MCP server.`);
       }
     }
+    assertIncludesAll(resourceUris, REQUIRED_RESOURCES, "resource");
+    assertIncludesAll(resourceTemplateUris, REQUIRED_RESOURCE_TEMPLATES, "resource template");
+    assertIncludesAll(promptNames, REQUIRED_PROMPTS, "prompt");
 
     const statusResult = await client.callTool({
       name: "martin_status",
@@ -151,6 +180,9 @@ export async function runStandaloneMcpSmoke(options = {}) {
       packedDependencies: packedManifest.dependencies ?? {},
       packedServerMetadata,
       statusPayload,
+      resourceUris,
+      resourceTemplateUris,
+      promptNames,
       stderr: stderrChunks.join(""),
     };
   } finally {
@@ -160,6 +192,13 @@ export async function runStandaloneMcpSmoke(options = {}) {
     if (!options.keepTempDir) {
       await removeTempDir(tempRoot);
     }
+  }
+}
+
+function assertIncludesAll(actual, expected, label) {
+  const missing = expected.filter((item) => !actual.includes(item));
+  if (missing.length > 0) {
+    throw new Error(`Missing expected MCP ${label}s: ${missing.join(", ")}`);
   }
 }
 
