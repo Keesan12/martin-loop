@@ -3,17 +3,27 @@ import { extname, isAbsolute, relative, resolve } from "node:path";
 import { resolveRunsRoot } from "@martin/core";
 
 import type { MartinDoctorInput } from "./tools/doctor.js";
+import type { GetAttemptInput } from "./tools/get-attempt.js";
+import type { GetRunInput } from "./tools/get-run.js";
+import type { GetVerificationResultsInput } from "./tools/get-verification-results.js";
 import type { GetStatusInput } from "./tools/get-status.js";
 import type { InspectLoopInput } from "./tools/inspect-loop.js";
+import type { ListRunsInput } from "./tools/list-runs.js";
 import type { MartinPreflightInput } from "./tools/preflight.js";
 import type { RunLoopInput } from "./tools/run-loop.js";
+import type { RunDossierInput } from "./tools/run-dossier.js";
 
 type ToolName =
   | "martin_doctor"
   | "martin_preflight"
   | "martin_run"
   | "martin_inspect"
-  | "martin_status";
+  | "martin_status"
+  | "martin_list_runs"
+  | "martin_get_run"
+  | "martin_get_attempt"
+  | "martin_get_verification_results"
+  | "martin_run_dossier";
 
 export function validateToolInput(name: ToolName, args: unknown): unknown {
   switch (name) {
@@ -27,6 +37,16 @@ export function validateToolInput(name: ToolName, args: unknown): unknown {
       return validateInspectInput(args);
     case "martin_status":
       return validateStatusInput(args);
+    case "martin_list_runs":
+      return validateListRunsInput(args);
+    case "martin_get_run":
+      return validateGetRunInput(args);
+    case "martin_get_attempt":
+      return validateGetAttemptInput(args);
+    case "martin_get_verification_results":
+      return validateGetVerificationResultsInput(args);
+    case "martin_run_dossier":
+      return validateRunDossierInput(args);
     default:
       throw new Error(`Unknown tool: ${name}`);
   }
@@ -254,6 +274,72 @@ function validateStatusInput(args: unknown): GetStatusInput {
   };
 }
 
+function validateListRunsInput(args: unknown): ListRunsInput {
+  const record = requireObject(args);
+  assertAllowedKeys(record, ["runsDir", "limit"]);
+  return {
+    ...(record.runsDir !== undefined
+      ? { runsDir: resolveSafeRunsRootPath(requireString(record.runsDir, "runsDir")) }
+      : {}),
+    ...(record.limit !== undefined ? { limit: requirePositiveInteger(record.limit, "limit") } : {})
+  };
+}
+
+function validateGetRunInput(args: unknown): GetRunInput {
+  const record = requireObject(args);
+  assertAllowedKeys(record, ["loopId", "runsDir", "latest"]);
+  return validateRunSelector(record);
+}
+
+function validateGetVerificationResultsInput(args: unknown): GetVerificationResultsInput {
+  const record = requireObject(args);
+  assertAllowedKeys(record, ["loopId", "runsDir", "latest"]);
+  return validateRunSelector(record);
+}
+
+function validateRunDossierInput(args: unknown): RunDossierInput {
+  const record = requireObject(args);
+  assertAllowedKeys(record, ["loopId", "runsDir", "latest"]);
+  return validateRunSelector(record);
+}
+
+function validateGetAttemptInput(args: unknown): GetAttemptInput {
+  const record = requireObject(args);
+  assertAllowedKeys(record, ["loopId", "attemptIndex", "runsDir"]);
+  return {
+    loopId: requireLoopId(record.loopId, "loopId"),
+    attemptIndex: requirePositiveInteger(record.attemptIndex, "attemptIndex"),
+    ...(record.runsDir !== undefined
+      ? { runsDir: resolveSafeRunsRootPath(requireString(record.runsDir, "runsDir")) }
+      : {})
+  };
+}
+
+function validateRunSelector(
+  record: Record<string, unknown>
+): GetRunInput | GetVerificationResultsInput | RunDossierInput {
+  const selectors = [
+    record.loopId !== undefined ? "loopId" : null,
+    record.latest !== undefined ? "latest" : null
+  ].filter((value): value is string => value !== null);
+
+  if (selectors.length !== 1) {
+    throw new Error("Provide exactly one of loopId or latest.");
+  }
+
+  if (record.latest !== undefined && record.latest !== true) {
+    throw new Error("Invalid latest.");
+  }
+
+  return {
+    ...(record.loopId !== undefined ? { loopId: requireLoopId(record.loopId, "loopId") } : {}),
+    ...(record.latest === true ? { latest: true } : {}),
+    ...(record.runsDir !== undefined
+      ? { runsDir: resolveSafeRunsRootPath(requireString(record.runsDir, "runsDir")) }
+      : {})
+  };
+}
+
 function requireObject(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("Tool arguments must be an object.");
@@ -320,10 +406,14 @@ function optionalPositiveInteger(
   if (value === undefined) {
     return {};
   }
+  return { [name]: requirePositiveInteger(value, name) } as Partial<Record<typeof name, number>>;
+}
+
+function requirePositiveInteger(value: unknown, name: string): number {
   if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
     throw new Error(`Invalid ${name}.`);
   }
-  return { [name]: value } as Partial<Record<typeof name, number>>;
+  return value;
 }
 
 function optionalStringArray(value: unknown, name: string): string[] | undefined {

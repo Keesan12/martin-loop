@@ -2,20 +2,25 @@
 
 Governed MCP server for AI coding agents that need hard spend limits, verifier gates, scoped file edits, and inspectable run records.
 
-`@martinloop/mcp@0.1.4` exposes five stdio tools:
+`@martinloop/mcp@0.2.0` exposes ten stdio tools plus read-only MCP resources, resource templates, and prompts:
 
 - `martin_doctor`
 - `martin_preflight`
 - `martin_run`
 - `martin_inspect`
 - `martin_status`
+- `martin_list_runs`
+- `martin_get_run`
+- `martin_get_attempt`
+- `martin_get_verification_results`
+- `martin_run_dossier`
 
 Recommended flow:
 
 1. `martin_doctor`
 2. `martin_preflight`
 3. `martin_run`
-4. `martin_inspect` or `martin_status`
+4. `martin_list_runs`, `martin_run_dossier`, `martin_inspect`, or `martin_status`
 
 ## What This Server Is For
 
@@ -95,6 +100,31 @@ MARTIN_LIVE=false npx -y @martinloop/mcp
 | `martin_run` | Run a governed coding loop | `objective` | `workingDirectory`, `engine`, `model`, `maxUsd`, `maxIterations`, `maxTokens`, `verificationPlan`, `allowedPaths`, `deniedPaths`, `workspaceId`, `projectId` | Unknown arguments are rejected. |
 | `martin_inspect` | Read a saved run record or run folder | none | `file`, `runsDir` | `file` may point to a `loop-record.json`, legacy `.jsonl`, or a run directory under the runs root. |
 | `martin_status` | Report budget pressure and stop conditions | exactly one of `loopJson`, `file`, `loopId`, or `latest` | `runsDir` | `latest` must be `true` when used. |
+| `martin_list_runs` | List recent run summaries | none | `runsDir`, `limit` | Read-only cockpit view over local run records. |
+| `martin_get_run` | Load a run dossier | exactly one of `loopId` or `latest` | `runsDir` | Read-only task, budget, cost, and attempt details. |
+| `martin_get_attempt` | Load one attempt | `loopId`, `attemptIndex` | `runsDir` | Read-only attempt evidence. |
+| `martin_get_verification_results` | Extract verifier events | exactly one of `loopId` or `latest` | `runsDir` | Read-only verifier completion summaries. |
+| `martin_run_dossier` | Build a compact review dossier | exactly one of `loopId` or `latest` | `runsDir` | Summary, budget, attempts, and verification evidence. |
+
+## Discovery Surface
+
+`0.2.0` adds read-only cockpit discovery for MCP hosts that support resources and prompts.
+
+Resources:
+
+- `martin://runs/summary`
+- `martin://runs/latest`
+
+Resource templates:
+
+- `martin://runs/{loopId}`
+- `martin://runs/{loopId}/attempts/{attemptIndex}`
+- `martin://runs/{loopId}/verification`
+
+Prompts:
+
+- `martin_review_run`
+- `martin_triage_failures`
 
 ## Safe-Root Path Model
 

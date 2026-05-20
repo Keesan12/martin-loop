@@ -14,7 +14,22 @@ const EXPECTED_TOOLS = [
   "martin_preflight",
   "martin_run",
   "martin_inspect",
-  "martin_status"
+  "martin_status",
+  "martin_list_runs",
+  "martin_get_run",
+  "martin_get_attempt",
+  "martin_get_verification_results",
+  "martin_run_dossier"
+];
+
+const EXPECTED_RESOURCES_AND_PROMPTS = [
+  "martin://runs/summary",
+  "martin://runs/latest",
+  "martin://runs/{loopId}",
+  "martin://runs/{loopId}/attempts/{attemptIndex}",
+  "martin://runs/{loopId}/verification",
+  "martin_review_run",
+  "martin_triage_failures"
 ];
 
 async function readRepoFile(relativePath) {
@@ -38,7 +53,7 @@ test("current MCP release note exists for the package version", async () => {
   await access(releaseNotesPath);
 });
 
-test("MCP docs stay aligned with the 0.1.4 five-tool cockpit", async () => {
+test("MCP docs stay aligned with the 0.2.0 read-only cockpit", async () => {
   const [serverSource, readme, aiGuide, quickstart, releaseNotes, publishingDoc] = await Promise.all([
     readRepoFile(path.join("packages", "mcp", "src", "server.ts")),
     readRepoFile(path.join("packages", "mcp", "README.md")),
@@ -61,27 +76,26 @@ test("MCP docs stay aligned with the 0.1.4 five-tool cockpit", async () => {
     assert.match(releaseNotes, new RegExp(escapeRegex(toolName)));
   }
 
+  for (const discoveryName of EXPECTED_RESOURCES_AND_PROMPTS) {
+    assert.match(readme, new RegExp(escapeRegex(discoveryName)));
+    assert.match(aiGuide, new RegExp(escapeRegex(discoveryName)));
+    assert.match(releaseNotes, new RegExp(escapeRegex(discoveryName)));
+  }
+
   for (const contents of [readme, aiGuide, quickstart]) {
     assert.match(contents, new RegExp(escapeRegex(codexSnippet)));
     assert.match(contents, new RegExp(escapeRegex(claudeUnixSnippet)));
     assert.match(contents, new RegExp(escapeRegex(claudeWindowsSnippet)));
   }
 
-  for (const futureOnlyClaim of [
-    "martin_list_runs",
-    "martin_triage_runs",
-    "martin_get_run",
-    "martin_get_attempt",
-    "martin_get_verification_results",
-    "martin_run_dossier"
-  ]) {
+  for (const futureOnlyClaim of ["martin_triage_runs", "0.2.5 stable cockpit"]) {
     assert.doesNotMatch(readme, new RegExp(escapeRegex(futureOnlyClaim), "i"));
     assert.doesNotMatch(aiGuide, new RegExp(escapeRegex(futureOnlyClaim), "i"));
     assert.doesNotMatch(quickstart, new RegExp(escapeRegex(futureOnlyClaim), "i"));
   }
 
   assert.match(releaseNotes, new RegExp(`@martinloop/mcp v${packageJson.version.replaceAll(".", "\\.")}`));
-  assert.match(releaseNotes, /What `0\.1\.4` does not claim/);
+  assert.match(releaseNotes, /What `0\.2\.0` does not claim/);
   assert.match(releaseNotes, /smoke:published:pack/);
   assert.match(releaseNotes, /verify:release/);
   assert.match(publishingDoc, /smoke:published:pack/);

@@ -1,6 +1,6 @@
 {
   "name": "@martinloop/mcp",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "mcpName": "io.github.Keesan12/martin-loop",
   "private": false,
   "type": "module",
@@ -24,7 +24,9 @@
     "claude",
     "codex",
     "martin_doctor",
-    "martin_preflight"
+    "martin_preflight",
+    "martin_list_runs",
+    "martin_run_dossier"
   ],
   "bin": {
     "mcp": "./dist/server.js",

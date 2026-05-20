@@ -39,7 +39,7 @@ test("publish-mcp workflow covers trusted publishing, local-pack proof, and publ
   assert.match(workflow, /workflow_dispatch:/);
   assert.match(workflow, /inputs:\s*[\s\S]*tag:/);
   assert.match(workflow, /permissions:\s*[\s\S]*id-token:\s*write/);
-  assert.match(workflow, /permissions:\s*[\s\S]*contents:\s*read/);
+  assert.match(workflow, /permissions:\s*[\s\S]*contents:\s*write/);
   assert.match(workflow, /pnpm install --frozen-lockfile/);
   assert.match(workflow, /pnpm --filter @martinloop\/mcp lint/);
   assert.match(workflow, /pnpm --filter @martinloop\/mcp test/);
