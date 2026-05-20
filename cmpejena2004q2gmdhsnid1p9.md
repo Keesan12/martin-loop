@@ -3,6 +3,7 @@ title: "AI Coding Agents Don't Need Bigger Budgets. They Need Better Stop Rules.
 datePublished: 2026-05-20T20:51:31.038Z
 cuid: cmpejena2004q2gmdhsnid1p9
 slug: ai-coding-agents-don-t-need-bigger-budgets-they-need-better-stop-rules
+cover: https://cdn.hashnode.com/uploads/covers/6a021686fca21b0d4b51c1b3/10eb8d71-d7e1-4845-8051-332a2fd6b696.svg
 
 ---
 
@@ -216,3 +217,7 @@ If you are already running agents in production or even just in serious side pro
 **What should an agent have to prove before it earns one more attempt?**
 
 And if this framing is useful, trying the repo and starring it helps us keep pushing the open-source version forward.
+
+[https://martinloop.com/](https://martinloop.com/)
+
+[https://github.com/Keesan12/Martin-Loop](https://github.com/Keesan12/Martin-Loop)
