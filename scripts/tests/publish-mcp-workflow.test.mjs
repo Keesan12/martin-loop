@@ -52,6 +52,10 @@ test("publish-mcp workflow covers trusted publishing, local-pack proof, and publ
   assert.match(workflow, /pnpm --filter @martinloop\/mcp smoke:published/);
   assert.match(workflow, /softprops\/action-gh-release@v2/);
   assert.match(workflow, /body_path:\s*docs\/release\/MCP-\$\{\{ steps\.mcp-metadata\.outputs\.package_version \}\}-RELEASE-NOTES\.md/);
+  assert.doesNotMatch(workflow, /registry-url/);
+  assert.doesNotMatch(workflow, /NODE_AUTH_TOKEN/);
+  assert.doesNotMatch(workflow, /NPM_TOKEN/);
+  assert.doesNotMatch(workflow, /secrets\./);
 });
 
 test("metadata reader emits GitHub output keys from packages/mcp", () => {

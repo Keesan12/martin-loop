@@ -21,5 +21,6 @@ test("root release workflow uses GitHub Actions trusted publishing without npm t
 
   assert.doesNotMatch(workflow, /NODE_AUTH_TOKEN/);
   assert.doesNotMatch(workflow, /NPM_TOKEN/);
+  assert.doesNotMatch(workflow, /registry-url/);
   assert.doesNotMatch(workflow, /secrets\./);
 });
