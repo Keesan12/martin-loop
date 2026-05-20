@@ -14,12 +14,12 @@ const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../
 test("runRootReleaseGuard accepts the current OSS-safe root package shape", async () => {
   const result = await runRootReleaseGuard({
     rootDir: ROOT_DIR,
-    tag: "v0.1.6",
+    tag: "v0.1.7",
   });
 
   assert.equal(result.name, "martin-loop");
-  assert.equal(result.version, "0.1.6");
-  assert.equal(result.tag, "v0.1.6");
+  assert.equal(result.version, "0.1.7");
+  assert.equal(result.tag, "v0.1.7");
   assert.equal(result.packChecked, false);
 });
 
