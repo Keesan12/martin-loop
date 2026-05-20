@@ -24,7 +24,6 @@ Generated: 2026-05-19T02:49:24.776Z
 ## Boundary Checks
 - Forbidden top-level entries: none
 - Unexpected top-level entries: none
-- Forbidden paid/private package directories: none
+- Forbidden non-OSS package directories: none
 - Unexpected package directories: none
 - Workspace dependency leaks: none
-

@@ -48,23 +48,12 @@ pnpm oss:validate
 pnpm public:smoke
 ```
 
-Focused post-cleanup checks that passed:
-
-```powershell
-pnpm test
-pnpm lint
-pnpm build
-pnpm smoke:remote
-pnpm smoke:remote:live
-```
-
-The focused private checks were run in `enterprise/apps/control-plane` to confirm the remote beta and policy surfaces still match the normalized MCP line.
+Additional non-public integration receipts are intentionally tracked outside this public packet. They do not expand or alter the public `@martinloop/mcp` package contract.
 
 ## Versions Tested
 
 - root package local integrated tree: `martin-loop@0.1.6`
 - standalone MCP local integrated tree: `@martinloop/mcp@0.2.5`
-- private control plane local integrated tree: `@martin/control-plane@0.2.5-local`
 
 ## Host Matrix Receipts
 
@@ -80,13 +69,12 @@ Local and documented proof currently includes:
 
 The remaining honesty boundary is unchanged: the current unpushed local tree has not itself been executed on a live macOS runner. That proof requires a pushed candidate branch or another real macOS execution surface.
 
-## Mirror Parity Receipts
+## Source Parity Receipts
 
-- `packages/mcp/package.json` matches the private `oss-core` mirror
-- `packages/mcp/server.json` matches the private `oss-core` mirror
-- `packages/mcp/src/package-version.ts` matches the private `oss-core` mirror
-- MCP-facing `docs/oss` and `docs/release` are synced into the private `oss-core` mirror
-- stale mirror `packages/mcp/dist` artifacts were resynced from the OSS build output so the mirror no longer advertises `0.3.0`
+- `packages/mcp/package.json` matches the standalone MCP server metadata
+- `packages/mcp/server.json` matches the standalone MCP package metadata
+- `packages/mcp/src/package-version.ts` matches the standalone MCP package metadata
+- MCP-facing `docs/oss` and `docs/release` match the public MCP package surface
 
 ## Known Non-Goals
 
@@ -114,6 +102,6 @@ Do not call the train ready to push until all of these are true:
 
 - version truth is still consistent with [VERSION-LEDGER.md](./VERSION-LEDGER.md)
 - release docs, manifest, and `server.json` all align
-- mirror parity still holds
+- source parity still holds
 - local OSS gates remain green
 - the exact candidate branch CI is green on Windows, Linux, and macOS

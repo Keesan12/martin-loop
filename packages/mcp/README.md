@@ -4,9 +4,15 @@ Governed execution cockpit for AI coding agents over MCP stdio.
 
 `@martinloop/mcp@0.2.5` is the integrated local governed execution cockpit tip aligned to the public MCP release train. It gives hosts one bounded execution entrypoint, rich read-only inspection tools, discoverable resources, run triage, and operator prompts on top of Martin Loop’s persisted run records.
 
-This package stays local-first and stdio-first in public packaging today. The broader Martin Loop system now also has a private hosted Streamable HTTP beta in the main workspace, but `server.json` stays honest and package-first until that hosted lane is intentionally promoted.
+This package stays local-first and stdio-first in public packaging today.
 
 For host-facing guidance, see [MCP for AI Agents](https://github.com/Keesan12/martin-loop/blob/main/docs/oss/MCP-FOR-AI-AGENTS.md).
+
+## Public Release Train
+
+- 0.1.4 operator foundation.
+- 0.2.0 cockpit expansion. 0.2.0 adds resources, resource templates, prompts, and read-only cockpit inspection.
+- 0.2.5 stable cockpit line. 0.2.5 adds triage and degraded run-store hardening.
 
 ## What Ships
 
@@ -78,13 +84,13 @@ claude mcp add --transport stdio --scope user martin-loop -- npx -y @martinloop/
 claude mcp add --transport stdio --scope user martin-loop -- cmd /c npx -y @martinloop/mcp
 ```
 
-Generate host config from the CLI when you want starter vs full profiles, remote config, or platform-specific launchers:
+Generate host config from the CLI when you want starter vs full profiles or platform-specific launchers:
 
 ```sh
 martin mcp print-config --host codex --transport stdio --profile starter
-martin mcp print-config --host claude --transport remote --profile starter
+martin mcp print-config --host claude --transport stdio --profile starter
 martin mcp print-config --host gemini --transport stdio --profile full
-martin mcp print-config --host generic --transport remote --profile starter
+martin mcp print-config --host generic --transport stdio --profile starter
 ```
 
 `martin mcp install` supports the same host set and only writes when the target file is absent or already contains a Martin Loop block.
@@ -116,10 +122,10 @@ Registry/server identifier: `io.github.Keesan12/martin-loop`
 
 ## Host coverage
 
-- `codex`: local stdio and remote URL profiles
-- `claude`: local, user, and project scopes plus remote HTTP profiles
-- `gemini`: local and remote `settings.json` snippets with `includeTools`
-- `generic`: JSON config for MCP-aware wrappers and remote/API consumers
+- `codex`: local stdio profiles
+- `claude`: local, user, and project scopes
+- `gemini`: local `settings.json` snippets with `includeTools`
+- `generic`: JSON config for MCP-aware wrappers
 
 Operating-system launcher behavior is explicit:
 

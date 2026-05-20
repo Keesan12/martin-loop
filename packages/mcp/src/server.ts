@@ -53,7 +53,7 @@ import { martinRunDossierTool } from "./tools/run-dossier.js";
 import { martinTriageRunsTool } from "./tools/triage-runs.js";
 import { runLoopTool } from "./tools/run-loop.js";
 import { createToolErrorResult, createToolSuccessResult } from "./tools/tool-response.js";
-import { toToolFailure } from "./tools/tool-errors.js";
+import { MartinToolError, toToolFailure } from "./tools/tool-errors.js";
 import { sanitizeToolErrorMessage, validateToolInput } from "./server-validation.js";
 
 const stringArraySchema = {
@@ -1132,6 +1132,9 @@ export function createMartinMcpServer(serverInfo?: {
   try {
     return await readMartinResource({ uri: request.params.uri });
   } catch (error) {
+    if (error instanceof MartinToolError) {
+      throw error;
+    }
     throw new Error(sanitizeToolErrorMessage(error));
   }
   });
@@ -1147,6 +1150,9 @@ export function createMartinMcpServer(serverInfo?: {
       arguments: request.params.arguments
     });
   } catch (error) {
+    if (error instanceof MartinToolError) {
+      throw error;
+    }
     throw new Error(sanitizeToolErrorMessage(error));
   }
   });

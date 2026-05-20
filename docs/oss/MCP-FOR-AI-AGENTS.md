@@ -2,7 +2,13 @@
 
 `@martinloop/mcp@0.2.5` is the integrated local governed execution cockpit tip for coding-agent hosts. It is built for agents that need one bounded execution tool, strong read-only inspection, run triage, and progressive discovery through MCP resources and prompts.
 
-It is intentionally local-first in the OSS package. Martin Loop also has a private hosted Streamable HTTP beta in the main workspace, but the public manifest stays package-first until that hosted lane is intentionally promoted.
+It is intentionally local-first and stdio-first in the OSS package.
+
+## Public Release Train
+
+- 0.1.4 operator foundation.
+- 0.2.0 cockpit expansion. 0.2.0 adds resources, resource templates, prompts, and read-only cockpit inspection.
+- 0.2.5 stable cockpit line. 0.2.5 adds triage and degraded run-store hardening.
 
 ## What This MCP Is Good At
 
@@ -124,7 +130,7 @@ If `CODEX_HOME` is set, Codex user-scope installs target `CODEX_HOME\\config.tom
 
 ### Gemini and generated profiles
 
-Martin Loop’s CLI can emit host-ready config for:
+Martin Loop’s CLI can emit host-ready stdio config for:
 
 - `codex`
 - `claude`
@@ -135,9 +141,9 @@ Examples:
 
 ```sh
 martin mcp print-config --host codex --transport stdio --profile starter
-martin mcp print-config --host claude --transport remote --profile starter
+martin mcp print-config --host claude --transport stdio --profile starter
 martin mcp print-config --host gemini --transport stdio --profile full
-martin mcp print-config --host generic --transport remote --profile starter
+martin mcp print-config --host generic --transport stdio --profile starter
 ```
 
 `martin mcp install` accepts the same host, transport, profile, scope, and platform options.
@@ -148,11 +154,9 @@ Host notes:
 - Gemini config uses `includeTools` and `trust` in `settings.json`.
 - The current live host matrix is proven with `pnpm --filter @martin/cli verify:hosts:live`.
 
-## Local vs remote
+## Local Package Mode
 
-- use local `stdio` when you want the fastest local iteration loop and fully local execution
-- use remote HTTP when you want zero-local-install onboarding, centralized auth/policy/audit, or a managed Martin Loop deployment
-- the OSS package documents the shared surface; the private hosted lane carries the remote control plane
+Use local `stdio` when you want the fastest local iteration loop and fully local execution. The OSS package docs describe the package-first MCP surface and do not claim hosted transport availability.
 
 ## Safety and Data Model
 

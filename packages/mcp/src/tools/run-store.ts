@@ -61,6 +61,12 @@ export interface LoopListResult {
   warnings: string[];
 }
 
+export type LedgerEventsWithDiagnostics = LedgerEvent[] & {
+  warnings?: string[];
+  unreadable?: boolean;
+  ledgerPath?: string;
+};
+
 export async function loadLoopRecordsForInspect(input: {
   file?: string;
   runsDir?: string;
@@ -269,16 +275,36 @@ export async function loadDetailedLoopRecord(input: {
   }
 
   if (input.loopId) {
-    const canonicalLoopRecordPath = resolveSafeLoopRecordPath(input.loopId, runsRoot);
-    const loop = await readCanonicalLoopRecord(canonicalLoopRecordPath);
-    return buildDetailedLoopSource({
-      source: canonicalLoopRecordPath,
+    const canonicalLoopRecordPath = resolvePotentialLoopRecordPath(input.loopId, runsRoot);
+    const canonicalStats = await safeStat(canonicalLoopRecordPath);
+    if (canonicalStats?.isFile()) {
+      const loop = await readCanonicalLoopRecord(canonicalLoopRecordPath);
+      return buildDetailedLoopSource({
+        source: canonicalLoopRecordPath,
+        sourceKind: "loop_id",
+        runsRoot,
+        loop,
+        canonicalLoopRecordPath,
+        canonicalRunDirectory: path.dirname(canonicalLoopRecordPath)
+      });
+    }
+
+    const inspected = await readAllLoopRecordsSafely(runsRoot);
+    const loop = inspected.loops.find((candidate) => candidate.loopId === input.loopId);
+    if (!loop) {
+      throw noLoopRecordsError();
+    }
+
+    const detail = await buildDetailedLoopSourceFromDiscoveredLoop({
+      source: runsRoot,
       sourceKind: "loop_id",
       runsRoot,
-      loop,
-      canonicalLoopRecordPath,
-      canonicalRunDirectory: path.dirname(canonicalLoopRecordPath)
+      loop
     });
+    return {
+      ...detail,
+      warnings: [...detail.warnings, ...inspected.warnings]
+    };
   }
 
   const inspected = await readAllLoopRecordsSafely(runsRoot);
@@ -324,25 +350,36 @@ export async function loadAttemptFromLoop(input: {
   };
 }
 
-export async function readLedgerEvents(detail: DetailedLoopSource): Promise<LedgerEvent[]> {
+export async function readLedgerEvents(detail: DetailedLoopSource): Promise<LedgerEventsWithDiagnostics> {
   const requestedLedgerPath =
     detail.ledgerPath ??
     (detail.canonicalRunDirectory ? path.join(detail.canonicalRunDirectory, "ledger.jsonl") : undefined);
 
   if (!requestedLedgerPath) {
-    return [];
+    return withLedgerDiagnostics([]);
   }
 
   try {
     const ledgerPath = resolveInspectableLedgerPath(requestedLedgerPath, detail.runsRoot);
+    const ledgerStats = await safeStat(ledgerPath);
+    if (!ledgerStats?.isFile()) {
+      return withLedgerDiagnostics([], { ledgerPath });
+    }
+
     const text = await readFile(ledgerPath, "utf8");
-    return text
+    const events = text
       .split(/\r?\n/u)
       .map((line) => line.trim())
       .filter(Boolean)
       .map((line) => JSON.parse(line) as LedgerEvent);
+    return withLedgerDiagnostics(events, { ledgerPath });
   } catch {
-    return [];
+    return withLedgerDiagnostics([], {
+      unreadable: true,
+      warnings: [
+        `Verification ledger for '${detail.loop.loopId}' is unreadable; ledger verification evidence is unavailable.`
+      ]
+    });
   }
 }
 
@@ -376,7 +413,9 @@ export async function readAllLoopRecordsSafely(runsRoot: string): Promise<{
   } catch {
     return {
       loops: [],
-      warnings: []
+      warnings: [
+        "Configured Martin runs root is missing or unreadable; no loop records could be inspected."
+      ]
     };
   }
 
@@ -433,7 +472,7 @@ export async function readAllLoopRecordsSafely(runsRoot: string): Promise<{
 
 async function buildDetailedLoopSourceFromDiscoveredLoop(input: {
   source: string;
-  sourceKind: "file" | "latest" | "runs_root";
+  sourceKind: "file" | "loop_id" | "latest" | "runs_root";
   runsRoot: string;
   loop: InspectableLoopRecord;
 }): Promise<DetailedLoopSource> {
@@ -531,6 +570,17 @@ function resolveInspectableLoopRecordPath(
   }
 }
 
+function resolvePotentialLoopRecordPath(loopId: string, runsRoot: string): string {
+  try {
+    return resolveSafeLoopRecordPath(loopId, runsRoot);
+  } catch (error) {
+    if (!/^[A-Za-z0-9._-]+$/u.test(loopId)) {
+      throw error;
+    }
+    return path.join(runsRoot, loopId, "loop-record.json");
+  }
+}
+
 function resolveInspectableLedgerPath(
   ledgerPath: string,
   runsRoot: string
@@ -542,6 +592,13 @@ function resolveInspectableLedgerPath(
 function timestampForLoop(loop: InspectableLoopRecord): number {
   const timestamp = new Date(loop.updatedAt ?? loop.createdAt ?? 0).getTime();
   return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function withLedgerDiagnostics(
+  events: LedgerEvent[],
+  diagnostics: { warnings?: string[]; unreadable?: boolean; ledgerPath?: string } = {}
+): LedgerEventsWithDiagnostics {
+  return Object.assign(events, diagnostics);
 }
 
 function validateInspectableLoopRecord(value: unknown): InspectableLoopRecord {

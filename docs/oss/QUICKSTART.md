@@ -2,6 +2,12 @@
 
 This quickstart covers the public OSS runtime and the standalone `@martinloop/mcp@0.2.5` cockpit line.
 
+## Public Release Train
+
+- 0.1.4 operator foundation.
+- 0.2.0 cockpit expansion. 0.2.0 adds resources, resource templates, prompts, and read-only cockpit inspection.
+- 0.2.5 stable cockpit line. 0.2.5 adds triage and degraded run-store hardening.
+
 ## Prerequisites
 
 - Node.js 20+

@@ -38,6 +38,42 @@ const EXPECTED_PROMPTS = [
   "martin_triage_run_store"
 ];
 
+const COCKPIT_020_TOOLS = [
+  "martin_list_runs",
+  "martin_get_run",
+  "martin_get_attempt",
+  "martin_get_verification_results",
+  "martin_run_dossier"
+];
+
+const COCKPIT_020_RESOURCES = [
+  "martin://server/health",
+  "martin://runs/recent",
+  "martin://guides/mcp-usage",
+  "martin://guides/publish-readiness"
+];
+
+const COCKPIT_020_PROMPTS = [
+  "martin_governed_coding_kickoff",
+  "martin_debug_failed_run",
+  "martin_publish_readiness_review"
+];
+
+const LATER_025_SURFACES = [
+  "martin_triage_runs",
+  "martin://runs/triage",
+  "martin_triage_run_store",
+  "degraded run-store hardening"
+];
+
+const PUBLIC_CONTRACT_DOCS = [
+  "docs/release/MCP-0.2.0-RELEASE-NOTES.md",
+  "docs/release/MCP-0.2.0-RELEASE-PACKET.md",
+  "packages/mcp/README.md",
+  "docs/oss/MCP-FOR-AI-AGENTS.md",
+  "docs/oss/QUICKSTART.md"
+];
+
 async function readRepoFile(relativePath) {
   return readFile(path.join(ROOT_DIR, relativePath), "utf8");
 }
@@ -59,6 +95,16 @@ function assertOrderedSubstrings(contents, expectedOrder) {
     assert.ok(index > previousIndex, `Expected "${value}" to appear after the prior cockpit step`);
     previousIndex = index;
   }
+}
+
+function sectionBetween(contents, startHeading, endHeading) {
+  const startIndex = contents.indexOf(startHeading);
+  assert.notEqual(startIndex, -1, `Expected to find section "${startHeading}"`);
+
+  const endIndex = endHeading === null ? contents.length : contents.indexOf(endHeading, startIndex + startHeading.length);
+  assert.notEqual(endIndex, -1, `Expected to find section "${endHeading}" after "${startHeading}"`);
+
+  return contents.slice(startIndex, endIndex);
 }
 
 test("current MCP release note exists for the package version", async () => {
@@ -90,7 +136,7 @@ test("current MCP release packet exists for the package version and records proo
     "Commands Run",
     "Versions Tested",
     "Host Matrix Receipts",
-    "Mirror Parity Receipts",
+    "Source Parity Receipts",
     "Known Non-Goals",
     "Publish Gates Still Pending Explicit Approval",
     "Ready-To-Push Rule"
@@ -113,6 +159,92 @@ test("current MCP release packet exists for the package version and records proo
   assert.match(releasePacket, /0\.1\.4/);
   assert.match(releasePacket, /0\.2\.0/);
   assert.match(releasePacket, /0\.2\.5/);
+});
+
+test("MCP 0.2.0 release packet proves the cockpit-expansion contract without inheriting 0.2.5 hardening", async () => {
+  const [releaseNotes, releasePacket, packageReadme, aiGuide, quickstart] = await Promise.all([
+    readRepoFile(path.join("docs", "release", "MCP-0.2.0-RELEASE-NOTES.md")),
+    readRepoFile(path.join("docs", "release", "MCP-0.2.0-RELEASE-PACKET.md")),
+    readRepoFile(path.join("packages", "mcp", "README.md")),
+    readRepoFile(path.join("docs", "oss", "MCP-FOR-AI-AGENTS.md")),
+    readRepoFile(path.join("docs", "oss", "QUICKSTART.md"))
+  ]);
+
+  assert.match(releasePacket, /Martin MCP `0\.2\.0` Release Packet/);
+  assert.match(releasePacket, /0\.2\.0 cockpit expansion contract/i);
+  assert.match(releasePacket, /Cockpit Expansion Contract/);
+  assert.match(releasePacket, /Contract Boundary/);
+  assert.match(releasePacket, /Evidence/);
+  assert.match(releasePacket, /Known Non-Goals/);
+  assert.match(releasePacket, /Later-Line Boundary/);
+
+  for (const contents of [releaseNotes, releasePacket]) {
+    assert.match(contents, /resources/i);
+    assert.match(contents, /resource templates/i);
+    assert.match(contents, /prompts/i);
+    assert.match(contents, /read-only/i);
+
+    for (const toolName of COCKPIT_020_TOOLS) {
+      assert.match(contents, new RegExp(escapeRegex(toolName)));
+    }
+
+    for (const resourceUri of COCKPIT_020_RESOURCES) {
+      assert.match(contents, new RegExp(escapeRegex(resourceUri)));
+    }
+
+    for (const promptName of COCKPIT_020_PROMPTS) {
+      assert.match(contents, new RegExp(escapeRegex(promptName)));
+    }
+  }
+
+  const releaseNotesContract = sectionBetween(releaseNotes, "## What Shipped", "## Release Verification Gates");
+  const releasePacketContract = sectionBetween(releasePacket, "## Cockpit Expansion Contract", "## Later-Line Boundary");
+
+  for (const contents of [releaseNotesContract, releasePacketContract]) {
+    for (const laterSurface of LATER_025_SURFACES) {
+      assert.doesNotMatch(contents, new RegExp(escapeRegex(laterSurface), "i"));
+    }
+    assert.doesNotMatch(contents, /stable cockpit line/i);
+  }
+
+  assert.match(releasePacket, /0\.2\.5 stable cockpit line/i);
+  for (const laterSurface of LATER_025_SURFACES) {
+    assert.match(releasePacket, new RegExp(escapeRegex(laterSurface), "i"));
+  }
+
+  for (const contents of [packageReadme, aiGuide, quickstart]) {
+    assert.match(contents, /0\.2\.0 cockpit expansion/i);
+    assert.match(contents, /0\.2\.5 stable cockpit line/i);
+    assert.match(contents, /0\.2\.0 adds resources, resource templates, prompts, and read-only cockpit inspection/i);
+    assert.match(contents, /0\.2\.5 adds triage and degraded run-store hardening/i);
+  }
+});
+
+test("MCP 0.2.0 public contract docs avoid private workspace leakage", async () => {
+  const forbiddenPatterns = [
+    /ML_Main_Repo_Internal/,
+    /ML_Core_OSS_Internal/,
+    /martin-Loop\/ML_/,
+    /OneDrive/,
+    /C:\\Users\\/,
+    /docs\/internal/i,
+    /private mirror/i,
+    /private package/i,
+    /private hosted/i,
+    /private beta/i,
+    /control-plane/i,
+    /enterprise\/apps/i,
+    /principal-aware remote config/i,
+    /autonomy\/router/i
+  ];
+
+  for (const relativePath of PUBLIC_CONTRACT_DOCS) {
+    const contents = await readRepoFile(relativePath);
+
+    for (const pattern of forbiddenPatterns) {
+      assert.doesNotMatch(contents, pattern, `${relativePath} must not leak ${pattern}`);
+    }
+  }
 });
 
 test("MCP docs stay aligned with the actual cockpit surface", async () => {
@@ -228,7 +360,7 @@ test("MCP release docs preserve publish gates and current cockpit claims", async
   assert.match(checklistDoc, /MCP-X\.Y\.Z-RELEASE-PACKET\.md/);
   assert.match(checklistDoc, /Candidate Branch Proof/i);
   assert.match(checklistDoc, /packages\/mcp/);
-  assert.match(checklistDoc, /oss-core/i);
+  assert.match(checklistDoc, /downstream workspace copy/i);
   assert.match(versionLedger, /@martinloop\/mcp/);
   assert.match(versionLedger, /0\.1\.3/);
   assert.match(versionLedger, /0\.2\.5/);
@@ -236,7 +368,8 @@ test("MCP release docs preserve publish gates and current cockpit claims", async
   assert.match(deliveryMap, /0\.1\.4/);
   assert.match(deliveryMap, /0\.2\.0/);
   assert.match(deliveryMap, /0\.2\.5/);
-  assert.match(deliveryMap, /enterprise\/apps\/control-plane/);
+  assert.match(deliveryMap, /product-internal application packages/i);
+  assert.doesNotMatch(deliveryMap, /enterprise\/apps\/control-plane/);
   assert.match(deliveryMap, /martin_run` remains the only write-capable entrypoint/i);
 
   for (const contents of [publishingDoc, compatibilityDoc, releaseNotes]) {

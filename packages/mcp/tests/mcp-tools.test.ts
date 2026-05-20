@@ -9,6 +9,7 @@ import { getStatusTool } from "../src/tools/get-status.js";
 import { inspectLoopTool } from "../src/tools/inspect-loop.js";
 import { martinDoctorTool } from "../src/tools/doctor.js";
 import { martinGetVerificationResultsTool } from "../src/tools/get-verification-results.js";
+import { martinListRunsTool } from "../src/tools/list-runs.js";
 import { martinPreflightTool } from "../src/tools/preflight.js";
 import { runLoopTool } from "../src/tools/run-loop.js";
 import { martinTriageRunsTool } from "../src/tools/triage-runs.js";
@@ -293,6 +294,26 @@ describe("inspectLoopTool", () => {
     });
   });
 
+  it("degrades missing explicit runsDir diagnostics instead of rejecting the path", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const missingRunsRoot = join(runsRoot, "missing");
+
+      const inspected = await inspectLoopTool({ runsDir: missingRunsRoot });
+      const listed = await martinListRunsTool({ runsDir: missingRunsRoot });
+
+      expect(inspected.source).toBe(missingRunsRoot);
+      expect(inspected.loopCount).toBe(0);
+      expect(inspected.warnings).toContain(
+        "Configured Martin runs root is missing or unreadable; no loop records could be inspected."
+      );
+      expect(listed.runsRoot).toBe(missingRunsRoot);
+      expect(listed.loopCount).toBe(0);
+      expect(listed.warnings).toContain(
+        "Configured Martin runs root is missing or unreadable; no loop records could be inspected."
+      );
+    });
+  });
+
   it("rejects files outside the Martin run store", async () => {
     await withRunsRoot(async () => {
       const file = join(tmpdir(), `martin-outside-${Date.now()}.json`);
@@ -353,6 +374,33 @@ describe("martinDoctorTool", () => {
         expect(result.status).toBe("degraded");
         expect(result.runStore.loopCount).toBe(1);
         expect(result.warnings).toContain("Skipped unreadable loop record for 'loop_broken'.");
+      } finally {
+        if (originalEnv === undefined) {
+          delete process.env.MARTIN_LIVE;
+        } else {
+          process.env.MARTIN_LIVE = originalEnv;
+        }
+      }
+    });
+  });
+
+  it("degrades missing explicit runsDir health checks instead of rejecting the path", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const originalEnv = process.env.MARTIN_LIVE;
+      process.env.MARTIN_LIVE = "false";
+
+      try {
+        const missingRunsRoot = join(runsRoot, "missing");
+        const result = await martinDoctorTool({ runsDir: missingRunsRoot, engine: "codex" });
+
+        expect(result.status).toBe("degraded");
+        expect(result.environment.runsRoot).toBe(missingRunsRoot);
+        expect(result.runStore.exists).toBe(false);
+        expect(result.runStore.loopCount).toBe(0);
+        expect(result.warnings).toContain("Configured Martin runs root does not exist yet.");
+        expect(result.warnings).toContain(
+          "Configured Martin runs root is missing or unreadable; no loop records could be inspected."
+        );
       } finally {
         if (originalEnv === undefined) {
           delete process.env.MARTIN_LIVE;
@@ -572,6 +620,51 @@ describe("martinTriageRunsTool", () => {
     });
   });
 
+  it("distinguishes unreadable ledger evidence from absent ledger verification evidence", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const loop = {
+        ...makeLoopRecord({ costUsd: 2 }),
+        loopId: "loop_malformed_ledger",
+        status: "completed",
+        lifecycleState: "completed",
+        attempts: [
+          {
+            attemptId: "att_malformed_ledger",
+            index: 1,
+            adapterId: "codex-cli",
+            model: "gpt-5-codex",
+            summary: "Loop record verification is valid."
+          }
+        ],
+        events: [
+          {
+            eventId: "evt_1",
+            timestamp: "2026-05-16T04:00:00.000Z",
+            type: "verification.completed",
+            lifecycleState: "verifying",
+            payload: {
+              attemptId: "att_malformed_ledger",
+              passed: true,
+              summary: "Loop record verification passed."
+            }
+          }
+        ]
+      };
+
+      await mkdir(join(runsRoot, loop.loopId), { recursive: true });
+      await writeFile(join(runsRoot, loop.loopId, "loop-record.json"), JSON.stringify(loop), "utf8");
+      await writeFile(join(runsRoot, loop.loopId, "ledger.jsonl"), "{not-json", "utf8");
+
+      const verification = await martinGetVerificationResultsTool({ loopId: loop.loopId });
+
+      expect(verification.verification.status).toBe("passed");
+      expect(verification.warnings).toContain(
+        "Verification ledger for 'loop_malformed_ledger' is unreadable; ledger verification evidence is unavailable."
+      );
+      expect(verification.warnings).not.toContain("No verification.completed ledger events were found for this run.");
+    });
+  });
+
   it("reports unavailable verification when the latest attempt has conflicting evidence", async () => {
     await withRunsRoot(async (runsRoot) => {
       const loop = {
@@ -665,6 +758,9 @@ describe("martinTriageRunsTool", () => {
       expect(verification.verification.status).toBe("unavailable");
       expect(verification.verification.eventCount).toBe(1);
       expect(verification.verification).not.toHaveProperty("latestAttemptIndex");
+      expect(verification.warnings).toContain(
+        "Ignored 1 future-dated verification evidence item(s) that cannot be trusted yet."
+      );
     });
   });
 

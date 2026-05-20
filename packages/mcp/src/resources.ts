@@ -177,6 +177,7 @@ async function readDynamicMartinResource(input: {
     const detail = await loadDetailedLoopRecord({ loopId, runsDir: input.runsDir });
     const ledgerEvents = await readLedgerEvents(detail);
     const loop = detail.loop as Parameters<typeof buildPersistedLoopPreview>[0];
+    const verification = buildVerificationHistorySnapshot(loop, ledgerEvents);
 
     return jsonResource(input.uri, withDiscoveryMetadata({
       source: detail.source,
@@ -185,7 +186,8 @@ async function readDynamicMartinResource(input: {
       budget: loop.budget,
       cost: loop.cost,
       attempts: loop.attempts,
-      verification: buildVerificationHistorySnapshot(loop, ledgerEvents)
+      verification,
+      warnings: [...detail.warnings, ...verification.warnings]
     }, input.runsDir));
   }
 
@@ -196,10 +198,14 @@ async function readDynamicMartinResource(input: {
     const detail = await loadDetailedLoopRecord({ loopId, runsDir: input.runsDir });
     const ledgerEvents = await readLedgerEvents(detail);
     const loop = detail.loop as Parameters<typeof buildAttemptSnapshot>[0];
+    const attempt = buildAttemptSnapshot(loop, attemptIndex, ledgerEvents);
 
     return jsonResource(
       input.uri,
-      withDiscoveryMetadata(buildAttemptSnapshot(loop, attemptIndex, ledgerEvents), input.runsDir)
+      withDiscoveryMetadata({
+        ...attempt,
+        warnings: [...detail.warnings, ...attempt.warnings]
+      }, input.runsDir)
     );
   }
 
@@ -209,10 +215,14 @@ async function readDynamicMartinResource(input: {
     const detail = await loadDetailedLoopRecord({ loopId, runsDir: input.runsDir });
     const ledgerEvents = await readLedgerEvents(detail);
     const loop = detail.loop as Parameters<typeof buildVerificationHistorySnapshot>[0];
+    const verification = buildVerificationHistorySnapshot(loop, ledgerEvents);
 
     return jsonResource(
       input.uri,
-      withDiscoveryMetadata(buildVerificationHistorySnapshot(loop, ledgerEvents), input.runsDir)
+      withDiscoveryMetadata({
+        ...verification,
+        warnings: [...detail.warnings, ...verification.warnings]
+      }, input.runsDir)
     );
   }
 

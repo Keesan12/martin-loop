@@ -65,6 +65,7 @@ export interface MartinAttemptSnapshot {
   loop: LoopPreview;
   attempt: PersistedLoopAttemptRecord;
   verification?: MartinVerificationSnapshot;
+  warnings: string[];
 }
 
 export interface MartinVerificationHistorySnapshot {
@@ -73,6 +74,7 @@ export interface MartinVerificationHistorySnapshot {
   verificationCount: number;
   latestVerification?: MartinVerificationSnapshot;
   verificationHistory: MartinVerificationSnapshot[];
+  warnings: string[];
 }
 
 export function resolveMartinDiscoveryContext(input: {
@@ -124,14 +126,16 @@ export function buildAttemptSnapshot(
     );
   }
 
+  const verification = buildVerificationSnapshotForAttempt(loop, attempt, ledgerEvents);
+  const warnings = collectVerificationSnapshots(loop, ledgerEvents).warnings;
+
   return {
     loopId: loop.loopId,
     attemptIndex: attempt.index,
     loop: buildPersistedLoopPreview(loop),
     attempt,
-    ...(buildVerificationSnapshotForAttempt(loop, attempt, ledgerEvents)
-      ? { verification: buildVerificationSnapshotForAttempt(loop, attempt, ledgerEvents) }
-      : {})
+    ...(verification ? { verification } : {}),
+    warnings
   };
 }
 
@@ -139,16 +143,17 @@ export function buildVerificationHistorySnapshot(
   loop: PersistedLoopRecord,
   ledgerEvents: LedgerEvent[] = []
 ): MartinVerificationHistorySnapshot {
-  const verificationHistory = collectVerificationSnapshots(loop, ledgerEvents);
+  const collected = collectVerificationSnapshots(loop, ledgerEvents);
+  const verificationHistory = collected.snapshots;
+  const latestVerification = selectLatestVerificationSnapshot(verificationHistory, collected.warnings);
 
   return {
     loopId: loop.loopId,
     loop: buildPersistedLoopPreview(loop),
     verificationCount: verificationHistory.length,
-    ...(verificationHistory.at(-1)
-      ? { latestVerification: verificationHistory.at(-1) }
-      : {}),
-    verificationHistory
+    ...(latestVerification ? { latestVerification } : {}),
+    verificationHistory,
+    warnings: collected.warnings
   };
 }
 
@@ -184,10 +189,16 @@ function buildVerificationSnapshotForAttempt(
   attempt: PersistedLoopAttemptRecord,
   ledgerEvents: LedgerEvent[] = []
 ): MartinVerificationSnapshot | undefined {
-  return collectVerificationSnapshots(loop, ledgerEvents).find((verification) =>
+  const matching = collectVerificationSnapshots(loop, ledgerEvents).snapshots.filter((verification) =>
     verification.attemptIndex === attempt.index ||
     (attempt.attemptId !== undefined && verification.attemptId === attempt.attemptId)
   );
+
+  if (hasConflictingStatuses(matching)) {
+    return undefined;
+  }
+
+  return matching.at(-1);
 }
 
 function getVerificationEvents(loop: PersistedLoopRecord): LoopEvent[] {
@@ -200,15 +211,29 @@ function toVerificationSnapshot(
   loop: PersistedLoopRecord,
   event: LoopEvent
 ): MartinVerificationSnapshot | undefined {
+  if (!isTrustedVerificationTimestamp(event.timestamp)) {
+    return undefined;
+  }
+
   const payload = isRecord(event.payload) ? event.payload : undefined;
   const attemptId = typeof payload?.["attemptId"] === "string" ? payload["attemptId"] : undefined;
+  const attemptIndex =
+    typeof payload?.["attemptIndex"] === "number" && Number.isInteger(payload["attemptIndex"])
+      ? payload["attemptIndex"]
+      : undefined;
   const matchedAttempt = attemptId
     ? loop.attempts.find((attempt) => attempt.attemptId === attemptId)
-    : undefined;
+    : attemptIndex !== undefined
+      ? loop.attempts.find((attempt) => attempt.index === attemptIndex)
+      : undefined;
+
+  if (!matchedAttempt) {
+    return undefined;
+  }
 
   return {
-    ...(attemptId ? { attemptId } : {}),
-    ...(matchedAttempt ? { attemptIndex: matchedAttempt.index } : {}),
+    ...(matchedAttempt.attemptId ? { attemptId: matchedAttempt.attemptId } : {}),
+    attemptIndex: matchedAttempt.index,
     timestamp: event.timestamp,
     lifecycleState: event.lifecycleState,
     ...(typeof payload?.["passed"] === "boolean" ? { passed: payload["passed"] } : {}),
@@ -219,9 +244,20 @@ function toVerificationSnapshot(
 function collectVerificationSnapshots(
   loop: PersistedLoopRecord,
   ledgerEvents: LedgerEvent[]
-): MartinVerificationSnapshot[] {
+): { snapshots: MartinVerificationSnapshot[]; warnings: string[] } {
   const seen = new Set<string>();
   const snapshots: MartinVerificationSnapshot[] = [];
+  const warnings = getLedgerWarnings(ledgerEvents);
+  const futureEvidenceCount = [
+    ...getVerificationEvents(loop).map((event) => event.timestamp),
+    ...ledgerEvents.filter((candidate) => candidate.kind === "verification.completed").map((event) => event.timestamp)
+  ].filter(isFutureVerificationTimestamp).length;
+
+  if (futureEvidenceCount > 0) {
+    warnings.push(
+      `Ignored ${futureEvidenceCount} future-dated verification evidence item(s) that cannot be trusted yet.`
+    );
+  }
 
   for (const event of getVerificationEvents(loop)) {
     const snapshot = toVerificationSnapshot(loop, event);
@@ -250,18 +286,30 @@ function collectVerificationSnapshots(
   }
 
   snapshots.sort((left, right) => new Date(left.timestamp).getTime() - new Date(right.timestamp).getTime());
-  return snapshots;
+  if (hasConflictingStatusesForLatestAttempt(snapshots)) {
+    warnings.push("Verification evidence conflicts for the latest attempt; reporting status as unavailable.");
+  }
+
+  return { snapshots, warnings };
 }
 
 function ledgerEventToVerificationSnapshot(
   loop: PersistedLoopRecord,
   event: LedgerEvent
 ): MartinVerificationSnapshot | undefined {
+  if (!isTrustedVerificationTimestamp(event.timestamp)) {
+    return undefined;
+  }
+
   const payload = isRecord(event.payload) ? event.payload : undefined;
   const matchedAttempt =
     event.attemptIndex !== undefined
       ? loop.attempts.find((attempt) => attempt.index === event.attemptIndex)
       : undefined;
+
+  if (!matchedAttempt) {
+    return undefined;
+  }
 
   return {
     ...(matchedAttempt?.attemptId ? { attemptId: matchedAttempt.attemptId } : {}),
@@ -274,15 +322,73 @@ function ledgerEventToVerificationSnapshot(
 }
 
 function verificationSnapshotKey(snapshot: MartinVerificationSnapshot): string {
-  if (snapshot.attemptIndex !== undefined) {
-    return `attempt:${snapshot.attemptIndex}`;
+  return [
+    snapshot.attemptIndex !== undefined ? `attempt:${snapshot.attemptIndex}` : `attempt-id:${snapshot.attemptId ?? ""}`,
+    `timestamp:${snapshot.timestamp}`,
+    `summary:${snapshot.summary ?? ""}`,
+    `passed:${String(snapshot.passed)}`
+  ].join(":");
+}
+
+function selectLatestVerificationSnapshot(
+  snapshots: MartinVerificationSnapshot[],
+  warnings: string[]
+): MartinVerificationSnapshot | undefined {
+  if (warnings.includes("Verification evidence conflicts for the latest attempt; reporting status as unavailable.")) {
+    return undefined;
+  }
+  return snapshots.at(-1);
+}
+
+function hasConflictingStatusesForLatestAttempt(snapshots: MartinVerificationSnapshot[]): boolean {
+  const latest = snapshots.at(-1);
+  if (!latest) {
+    return false;
   }
 
-  if (snapshot.attemptId) {
-    return `attempt-id:${snapshot.attemptId}`;
+  const latestAttemptSnapshots = snapshots.filter((candidate) =>
+    latest.attemptId
+      ? candidate.attemptId === latest.attemptId
+      : latest.attemptIndex !== undefined
+        ? candidate.attemptIndex === latest.attemptIndex
+        : false
+  );
+
+  return hasConflictingStatuses(latestAttemptSnapshots);
+}
+
+function hasConflictingStatuses(snapshots: MartinVerificationSnapshot[]): boolean {
+  const statuses = new Set(
+    snapshots
+      .map((snapshot) => snapshot.passed)
+      .filter((status): status is boolean => typeof status === "boolean")
+  );
+  return statuses.size > 1;
+}
+
+function isTrustedVerificationTimestamp(value: string): boolean {
+  const timestamp = new Date(value).getTime();
+  if (!Number.isFinite(timestamp)) {
+    return false;
   }
 
-  return `timestamp:${snapshot.timestamp}:summary:${snapshot.summary ?? ""}:passed:${String(snapshot.passed)}`;
+  return timestamp <= Date.now() + 5 * 60_000;
+}
+
+function isFutureVerificationTimestamp(value: string): boolean {
+  const timestamp = new Date(value).getTime();
+  if (!Number.isFinite(timestamp)) {
+    return false;
+  }
+
+  return timestamp > Date.now() + 5 * 60_000;
+}
+
+function getLedgerWarnings(ledgerEvents: LedgerEvent[]): string[] {
+  const diagnostics = ledgerEvents as LedgerEvent[] & { warnings?: unknown };
+  return Array.isArray(diagnostics.warnings)
+    ? diagnostics.warnings.filter((warning): warning is string => typeof warning === "string")
+    : [];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

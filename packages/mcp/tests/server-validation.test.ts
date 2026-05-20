@@ -16,6 +16,12 @@ import {
   sanitizeToolErrorMessage,
   validateToolInput
 } from "../src/server-validation.js";
+import { createMartinMcpServer } from "../src/server.js";
+
+type ServerRequestHandler = (request: unknown, extra: unknown) => Promise<unknown>;
+type ServerWithRequestHandlers = {
+  _requestHandlers: Map<string, ServerRequestHandler>;
+};
 
 async function withValidationRunsRoot<T>(fn: (runsRoot: string) => Promise<T>): Promise<T> {
   const previousRunsRoot = process.env.MARTIN_RUNS_DIR;
@@ -251,6 +257,44 @@ describe("server validation", () => {
     });
   });
 
+  it("allows missing explicit runsDir for diagnostic run-store surfaces", () => {
+    return withValidationRunsRoot(async (runsRoot) => {
+      const missingRunsRoot = join(runsRoot, "missing");
+
+      expect(
+        validateToolInput("martin_doctor", {
+          runsDir: "missing"
+        })
+      ).toEqual({
+        runsDir: missingRunsRoot
+      });
+
+      expect(
+        validateToolInput("martin_inspect", {
+          runsDir: "missing"
+        })
+      ).toEqual({
+        runsDir: missingRunsRoot
+      });
+
+      expect(
+        validateToolInput("martin_list_runs", {
+          runsDir: "missing"
+        })
+      ).toEqual({
+        runsDir: missingRunsRoot
+      });
+
+      expect(
+        validateToolInput("martin_triage_runs", {
+          runsDir: "missing"
+        })
+      ).toEqual({
+        runsDir: missingRunsRoot
+      });
+    });
+  });
+
   it("validates doctor and preflight public tool shapes", () => {
     expect(
       validateToolInput("martin_doctor", {
@@ -314,6 +358,43 @@ describe("server validation", () => {
     expect(MARTIN_RESOURCE_URIS).toContain("martin://runs/triage");
     expect(MARTIN_RESOURCE_TEMPLATE_URIS).toContain("martin://runs/{loopId}/verification");
     expect(MARTIN_PROMPT_NAMES).toContain("martin_triage_run_store");
+  });
+
+  it("preserves typed resource and prompt errors through server handlers", async () => {
+    const server = createMartinMcpServer() as unknown as ServerWithRequestHandlers;
+    const readResource = server._requestHandlers.get("resources/read");
+    const getPrompt = server._requestHandlers.get("prompts/get");
+
+    await expect(
+      readResource?.(
+        {
+          method: "resources/read",
+          params: { uri: "martin://unknown" }
+        },
+        {}
+      )
+    ).rejects.toMatchObject({
+      name: "MartinToolError",
+      code: "invalid_arguments",
+      suggestion: "Use resources/list or resources/templates/list to discover Martin resource URIs."
+    });
+
+    await expect(
+      getPrompt?.(
+        {
+          method: "prompts/get",
+          params: {
+            name: "martin_governed_coding_kickoff",
+            arguments: {}
+          }
+        },
+        {}
+      )
+    ).rejects.toMatchObject({
+      name: "MartinToolError",
+      code: "invalid_arguments",
+      suggestion: "Provide 'objective' when calling this Martin prompt."
+    });
   });
 
   it("documents the same positive attemptIndex contract in the public schema", async () => {

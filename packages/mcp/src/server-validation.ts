@@ -126,8 +126,8 @@ export function resolveSafeRunsRootPath(
   const baseRoot = resolve(fallbackRunsRoot);
   const candidate = runsRoot ? resolve(baseRoot, runsRoot) : baseRoot;
   assertPathWithinRoot(candidate, baseRoot, "runsDir", {
-    requireExistingCandidate: runsRoot !== undefined,
-    requireExistingRoot: true
+    requireExistingCandidate: false,
+    requireExistingRoot: false
   });
   return candidate;
 }
