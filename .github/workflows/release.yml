@@ -22,9 +22,12 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           registry-url: "https://registry.npmjs.org"
           cache: pnpm
+
+      - name: Use latest npm for trusted publishing
+        run: npm install -g npm@latest
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -63,8 +66,6 @@ jobs:
 
       - name: Publish to npm
         if: steps.npm-version.outputs.exists != 'true'
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN_GITHUB_RELEASE != '' && secrets.NPM_TOKEN_GITHUB_RELEASE || secrets.NPM_TOKEN }}
         run: npm publish "${{ steps.root-pack.outputs.tarball }}" --access public --provenance
 
       - name: Skip duplicate npm publish
