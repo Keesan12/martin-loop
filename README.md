@@ -2,7 +2,7 @@
 
 <img src="./docs/assets/martinloop-logo.png" alt="MartinLoop" width="260">
 
-### The cross agent governance layer for autonomous AI coding agents.⭐
+### Governed AI coding loops with budgets, verifier gates, rollback evidence, and receipts.
 
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue?logo=apache)](./LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&logo=typescript&logoColor=white)](./tsconfig.base.json)
@@ -13,16 +13,16 @@ MartinLoop has been accepted into the NVIDIA Inception program.
 
 <br>
 
-**Your overnight AI pipeline estimated $2.40.**  
-**You woke up to a $65 bill.** 
- <br> 47 retries. No hard stop. No rollback. No audit trail. Nothing merged.  
- MartinLoop exists so that never happens again.✅ <br> <br>
- If you think autonomous AI coding agents need budgets, brakes, and receipts, please star ⭐ the repo so more builders can find it.
+**Your AI coding run estimated $2.40.**
+**It kept retrying until the bill hit $65.**
+<br>47 attempts. No hard stop. No rollback. No audit trail. Nothing merged.
+<br><br>
+MartinLoop exists so that does not happen silently.
 <br>
 
 > AI coding agents are useful. Unbounded retry loops are not.
 >
-> MartinLoop wraps agent runs with budgets, policy checks, verifier gates, rollback evidence, and inspectable run records. Built for Enterprise Coding Agents, Agentic Teams, and Autonomous Companies. 
+> MartinLoop wraps Claude Code, Codex, and custom agent runs with budget caps, policy checks, verifier gates, rollback evidence, and inspectable JSONL run records.
 <br>
 <img src="./docs/assets/cli-animated.svg" alt="MartinLoop CLI — governed agent run" width="720">
 
@@ -34,7 +34,7 @@ MartinLoop has been accepted into the NVIDIA Inception program.
 
 A typical autonomous coding loop keeps attempting work until tests pass. Without a governance layer, that loop can keep spending, mutate files outside the intended scope, lose track of why it failed, and leave teams without a clean audit trail.
 
-Ralph-style loops are powerful but they attempt ➡️ check ➡️ retry ➡️ repeat, with no strong answer to:
+Autonomous coding loops are powerful, but the usual pattern is attempt, check, retry, repeat, with no strong answer to:
 
 - What changed?
 - What did it cost?
@@ -48,7 +48,7 @@ MartinLoop governs the failure mode.
 
 ## The Solution
 
-✅ Martin Loop wraps AI coding loops with a governance layer.
+MartinLoop wraps AI coding loops with a governance layer.
 
 It does not try to replace the agent pattern. It makes that pattern safe to run.
 
@@ -66,18 +66,16 @@ It does not try to replace the agent pattern. It makes that pattern safe to run.
 | Run records | The CLI appends JSONL loop records under `~/.martin/runs/<workspaceId>.jsonl`; lower-level stores can also persist contracts, ledgers, and attempt artifacts.
 
 
-⭐The result is a runtime that can complete good work, refuse unsafe work, stop uneconomical work, and leave evidence behind.✅
+The result is a runtime that can complete good work, refuse unsafe work, stop uneconomical work, and leave evidence behind.
 ---
 
 ## Ralph-Style Loops Need a Control Layer
 
-**"Everybody has gotten infatuated with what we call these Ralph Wiggum loops, just like send the thing off and it'll just go figure something out..A, It never figures anything out. And B, you just get this ginormous bill...**" - Chamath Palihapitiya, All-In Podcast #263, March 2026
-
-⛔ The **Ralph Loop** is the failure mode where an AI coding agent keeps trying without knowing when it should stop.
+The **Ralph Loop** is the failure mode where an AI coding agent keeps trying without knowing when it should stop.
 
 The pattern is simple: attempt the task, run checks, retry on failure, repeat. The problem is not that the loop exists. The problem is that most implementations have no hard budget cap, no signed evidence layer, and no pre-execution control system. They know how to keep trying. They do **not** know when continuing is unsafe, uneconomical, or impossible.
 
-✅ Martin Loop solves the Ralph Loop problem by enforcing rules **before** damage happens:
+MartinLoop solves the Ralph Loop problem by enforcing rules **before** damage happens:
 
 - it stops the next attempt before budget overspend
 - it classifies unsafe or invalid actions before execution
@@ -85,10 +83,10 @@ The pattern is simple: attempt the task, run checks, retry on failure, repeat. T
 - it rolls back failed runs instead of leaving broken state behind
 - it reduces runaway token growth with context distillation
 
-If a Ralph-style loop has ever burned budget without producing a verified result, MartinLoop is designed to stop that failure mode before the next unsafe attempt runs. $165.70 on your dime, you're in the right place. Martin stopped him at $40.97 with a full audit trail.
+If a Ralph-style loop has ever burned budget without producing a verified result, MartinLoop is designed to stop that failure mode before the next unsafe attempt runs.
 
 <div align="center">
-  <img src="./docs/assets/martin-raplph.png.jpg" alt="Martin vs Ralph — governed vs ungoverned agent loop" width="240">
+  <img src="./docs/assets/martin-ralph-loop.jpg" alt="Martin vs Ralph — governed vs ungoverned agent loop" width="240">
 </div>
 
 ### How It Works — Five Layers
@@ -124,6 +122,8 @@ MARTIN_LIVE=false npx martin-loop run "Summarize the demo workspace and confirm 
 ```
 
 Challenge page: [Can your AI coding agent finish this task under $3?](./docs/distribution/UNDER-3-CHALLENGE.md)
+
+If the problem is familiar, star the repo so other builders can find the runtime before their next runaway agent loop.
 
 ---
 
