@@ -24,6 +24,8 @@ This repository is a public surface. Keep all docs, release notes, PRs, package 
 ## Release Workflow
 
 - Publish public packages through GitHub Actions release workflows by default.
+- When npm trusted publishing is connected, use GitHub Actions trusted publishing/OIDC only. Do not add, use, prefer, or fall back to npm publish tokens (`NPM_TOKEN`, `NODE_AUTH_TOKEN`, token selection, or local `npm publish`) unless Keesan explicitly approves an exception after trusted publishing is proven unavailable.
+- If trusted publishing fails, debug the trusted-publisher setup, workflow identity, tag/ref trigger, package mapping, runner Node/npm version, and live npm/GitHub release state before changing release mechanics.
 - Do not publish locally unless the workflow path is unavailable and the user explicitly approves a fallback.
 - Keep the root `martin-loop` package version separate from the standalone `@martinloop/mcp` package version.
 - For MCP releases, keep `packages/mcp/package.json`, `packages/mcp/server.json`, release docs, and published package smoke tests aligned.
