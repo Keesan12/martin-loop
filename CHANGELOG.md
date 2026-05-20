@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.7] — 2026-05-20
+
+### Changed
+- Refresh public README and npm package copy for the `martin-loop@0.1.7` root package.
+- Clarify the current `npx martin-loop` CLI, packaged demo flow, and `@martinloop/mcp@0.2.0` read-only cockpit surface.
+- Add public README guardrails so stale version text and non-public workspace wording stay out of the package README.
+
 ## [0.1.5] — 2026-05-08
 
 ### Added
