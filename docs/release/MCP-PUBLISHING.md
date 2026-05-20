@@ -53,7 +53,7 @@ Set up npm trusted publishing on the `@martinloop/mcp` package page:
 Only use local publish when automation is unavailable:
 
 ```powershell
-cd "C:\Users\Torram\OneDrive\Documents\Codex Main\Setup Stuff\martin-loop\packages\mcp"
+cd packages/mcp
 pnpm lint
 pnpm test
 pnpm build
