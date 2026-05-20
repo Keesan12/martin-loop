@@ -20,6 +20,7 @@ const ALLOWED_TOP_LEVEL_ENTRIES = [
   "packages",
   "scripts",
   ".gitignore",
+  "AGENTS.md",
   "CHANGELOG.md",
   "CODE_OF_CONDUCT.md",
   "CONTRIBUTING.md",
