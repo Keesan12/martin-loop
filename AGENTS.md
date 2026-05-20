@@ -22,6 +22,11 @@
 - Guardrail: read the release-memory docs and the closest instruction layer before touching workflows, tags, versions, or publish paths.
 - Verification: the first execution step and release lane must visibly follow those docs instead of ad hoc assumptions.
 
+### Public release surface hygiene
+- Rule: public MCP release work is not complete until the whole public docs/package surface is checked for non-public leakage, not only the files edited in the current slice.
+- Guardrail: run a high-confidence forbidden-term scan across `docs`, `packages/mcp/README.md`, and `packages/mcp/package.json` for internal repo names, local paths, private mirror/package wording, concrete enterprise paths, private package versions, and workspace chatter before final status.
+- Verification: final release status must name the scan surface and whether it returned zero matches or list the exact repaired hits.
+
 ### Browser cleanup
 - Rule: if browser tabs are used during repo work, cleanup is part of done.
 - Guardrail: before claiming completion on browser-involved work, explicitly check whether extra tabs opened for the run should be closed.

@@ -306,15 +306,17 @@ export function buildVerificationSummary(
   );
 
   const warnings: string[] = [];
+  const ledgerWarnings = getLedgerWarnings(ledgerEvents);
+  warnings.push(...ledgerWarnings);
 
   if (verificationEvents.length === 0) {
     warnings.push(
       verificationLedgerEvents.length > 0
         ? "No verification.completed events were found in the loop record; using ledger evidence."
-        : "No verification.completed events were found in the loop record."
+      : "No verification.completed events were found in the loop record."
     );
   }
-  if (verificationLedgerEvents.length === 0) {
+  if (verificationLedgerEvents.length === 0 && ledgerWarnings.length === 0) {
     warnings.push("No verification.completed ledger events were found for this run.");
   }
 
@@ -534,12 +536,23 @@ function selectLatestVerificationEvidence(
   evidence?: NormalizedVerificationEvidence;
   warnings: string[];
 } {
+  const warnings: string[] = [];
+  const futureEvidenceCount = [
+    ...verificationEvents.map((event) => event.timestamp),
+    ...verificationLedgerEvents.map((event) => event.timestamp)
+  ].filter(isFutureVerificationTimestamp).length;
+
+  if (futureEvidenceCount > 0) {
+    warnings.push(
+      `Ignored ${futureEvidenceCount} future-dated verification evidence item(s) that cannot be trusted yet.`
+    );
+  }
+
   const evidence = [
     ...verificationEvents.map((event) => normalizeLoopVerificationEvidence(loop, event)),
     ...verificationLedgerEvents.map((event) => normalizeLedgerVerificationEvidence(loop, event))
   ].filter((candidate): candidate is NormalizedVerificationEvidence => candidate !== undefined);
 
-  const warnings: string[] = [];
   if (evidence.length === 0) {
     return { warnings };
   }
@@ -642,6 +655,22 @@ function isTrustedVerificationTimestamp(value: string): boolean {
   }
 
   return timestamp <= Date.now() + 5 * 60_000;
+}
+
+function isFutureVerificationTimestamp(value: string): boolean {
+  const timestamp = new Date(value).getTime();
+  if (!Number.isFinite(timestamp)) {
+    return false;
+  }
+
+  return timestamp > Date.now() + 5 * 60_000;
+}
+
+function getLedgerWarnings(ledgerEvents: LedgerEvent[]): string[] {
+  const diagnostics = ledgerEvents as LedgerEvent[] & { warnings?: unknown };
+  return Array.isArray(diagnostics.warnings)
+    ? diagnostics.warnings.filter((warning): warning is string => typeof warning === "string")
+    : [];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

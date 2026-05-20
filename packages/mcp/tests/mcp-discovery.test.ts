@@ -147,6 +147,20 @@ describe("Martin MCP discovery resources", () => {
     });
   });
 
+  it("degrades server health when an explicit runsDir is missing", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const missingRunsRoot = join(runsRoot, "missing");
+      const health = await readMartinResource({
+        uri: MARTIN_STATIC_RESOURCE_URIS.serverHealth,
+        runsDir: missingRunsRoot
+      });
+
+      expect(health.contents[0]?.text).toContain("\"status\": \"degraded\"");
+      expect(health.contents[0]?.text).toContain("\"exists\": false");
+      expect(health.contents[0]?.text).toContain("Configured Martin runs root does not exist yet.");
+    });
+  });
+
   it("reads loop, attempt, and verification resources from persisted loop records", async () => {
     await withRunsRoot(async (runsRoot) => {
       const loop = {
@@ -217,6 +231,109 @@ describe("Martin MCP discovery resources", () => {
       expect(attemptResource.contents[0]?.text).toContain("\"passed\": false");
       expect(verificationResource.contents[0]?.text).toContain("\"verificationCount\": 1");
       expect(verificationResource.contents[0]?.text).toContain("\"summary\": \"Ledger-backed verification failure.\"");
+    });
+  });
+
+  it("surfaces unreadable ledger evidence as a partial-data warning in dynamic resources", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const loop = {
+        ...makeLoopRecord(),
+        loopId: "loop_malformed_ledger_resource"
+      };
+
+      await mkdir(join(runsRoot, loop.loopId), { recursive: true });
+      await writeFile(join(runsRoot, loop.loopId, "loop-record.json"), JSON.stringify(loop), "utf8");
+      await writeFile(join(runsRoot, loop.loopId, "ledger.jsonl"), "{not-json", "utf8");
+
+      const verificationResource = await readMartinResource({
+        uri: `martin://runs/${loop.loopId}/verification`,
+        runsDir: runsRoot
+      });
+
+      expect(verificationResource.contents[0]?.text).toContain("\"latestVerification\"");
+      expect(verificationResource.contents[0]?.text).toContain(
+        "Verification ledger for 'loop_malformed_ledger_resource' is unreadable; ledger verification evidence is unavailable."
+      );
+      expect(verificationResource.contents[0]?.text).not.toContain("No verification.completed ledger events were found for this run.");
+    });
+  });
+
+  it("loads dynamic run resources for loops discovered only from aggregate store files", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const loop = {
+        ...makeLoopRecord(),
+        loopId: "loop_aggregate_only",
+        updatedAt: "2026-05-16T00:10:00.000Z"
+      };
+
+      await writeFile(join(runsRoot, "aggregate.jsonl"), `${JSON.stringify(loop)}\n`, "utf8");
+
+      const recentRuns = await readMartinResource({
+        uri: MARTIN_STATIC_RESOURCE_URIS.recentRuns,
+        runsDir: runsRoot
+      });
+      const runResource = await readMartinResource({
+        uri: `martin://runs/${loop.loopId}`,
+        runsDir: runsRoot
+      });
+
+      expect(recentRuns.contents[0]?.text).toContain(`"${loop.loopId}"`);
+      expect(runResource.contents[0]?.text).toContain(`"${loop.loopId}"`);
+      expect(runResource.contents[0]?.text).toContain(
+        "Canonical run directory for loop_aggregate_only is not available; dossier data may be partial."
+      );
+    });
+  });
+
+  it("uses the same future-dated verification trust rules for resources and prompts", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const loop = {
+        ...makeLoopRecord(),
+        loopId: "loop_future_resource",
+        attempts: [
+          {
+            attemptId: "att_future_resource",
+            index: 1,
+            adapterId: "codex-cli",
+            model: "gpt-5-codex",
+            summary: "Future-dated verification should not be trusted."
+          }
+        ],
+        events: [
+          {
+            eventId: "evt_1",
+            timestamp: "2099-05-16T04:00:00.000Z",
+            type: "verification.completed",
+            lifecycleState: "verifying",
+            payload: {
+              attemptId: "att_future_resource",
+              passed: true,
+              summary: "Future verification should not leak into prompt guidance."
+            }
+          }
+        ]
+      };
+
+      await mkdir(join(runsRoot, loop.loopId), { recursive: true });
+      await writeFile(join(runsRoot, loop.loopId, "loop-record.json"), JSON.stringify(loop), "utf8");
+
+      const verificationResource = await readMartinResource({
+        uri: `martin://runs/${loop.loopId}/verification`,
+        runsDir: runsRoot
+      });
+      const prompt = await getMartinPrompt({
+        name: "martin_debug_failed_run",
+        arguments: { loopId: loop.loopId },
+        runsDir: runsRoot
+      });
+      const promptRequest = prompt.messages[5]?.content as { type: "text"; text: string };
+
+      expect(verificationResource.contents[0]?.text).toContain("\"verificationCount\": 0");
+      expect(verificationResource.contents[0]?.text).toContain(
+        "Ignored 1 future-dated verification evidence item(s) that cannot be trusted yet."
+      );
+      expect(verificationResource.contents[0]?.text).not.toContain("Future verification should not leak into prompt guidance.");
+      expect(promptRequest.text).not.toContain("Future verification should not leak into prompt guidance.");
     });
   });
 });

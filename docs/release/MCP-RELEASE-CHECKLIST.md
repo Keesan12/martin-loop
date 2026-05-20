@@ -4,8 +4,8 @@ Use this checklist before calling a Martin MCP release ready.
 
 ## Source of Truth
 
-- confirm `packages/mcp` in `martin-loop_OSS_CORE` is the release source of truth
-- confirm the private `oss-core` copy is treated as a one-way mirror only
+- confirm `packages/mcp` is the public release source of truth
+- confirm any downstream workspace copy is treated as a one-way sync target only
 
 ## Metadata
 
@@ -30,12 +30,12 @@ Use this checklist before calling a Martin MCP release ready.
 - `pnpm --filter @martinloop/mcp smoke:published:pack`
 - `pnpm --filter @martinloop/mcp verify:release`
 
-## Mirror Sync
+## Source Sync
 
-- sync `packages/mcp` into `martin-loop_MAIN_FULL_REPO\\oss-core\\packages\\mcp`
-- resync `packages/mcp\\dist` into the private mirror when build artifacts are present so stale packaged version labels do not survive
-- sync MCP-facing docs into the private `oss-core` mirror
-- update the active internal plan docs with repo truth, verification, blockers, and next step
+- sync `packages/mcp` only from the public release source into downstream workspace copies
+- resync built artifacts only after a clean local build so stale packaged version labels do not survive
+- sync MCP-facing docs from the public release source after release-doc tests pass
+- update non-public planning notes outside the public release docs with repo truth, verification, blockers, and next step
 
 ## Candidate Branch Proof
 

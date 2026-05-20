@@ -123,9 +123,8 @@ These stay out of the public MCP npm release train for this wave:
 
 - private Pro, Growth, Enterprise, and Internal tier surfaces
 - private Pro remote MCP beta and principal-aware remote config
-- `enterprise/apps/control-plane`
-- `enterprise/packages/trace-intelligence`
-- `enterprise/packages/martin-router`
+- product-internal application packages
+- product-internal trace and routing packages
 - hosted Streamable HTTP remote metadata
 - bearer tokens, audit, rate limits, and other private beta control-plane operations
 - hosted autonomy, self-improvement, and router claims
