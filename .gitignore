@@ -29,6 +29,8 @@ vitest-results.json
 # Runtime artifacts
 artifacts/
 output/
+/cm*.md
+/cmp*.md
 
 # OS files
 .DS_Store

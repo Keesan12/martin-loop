@@ -20,6 +20,9 @@ This repository is a public surface. Keep all docs, release notes, PRs, package 
 - Rule: every public-facing repo file, release note, package README, GitHub release, npm metadata entry, public PR description, doc, example, screenshot, and changelog must be clean client-facing copy.
 - Guardrail: preserve internal work and ideas in private handoffs, planning docs, release playbooks, or internal repos. Before publishing, editing, merging, or summarizing public material, scan for and remove internal repo names, local machine paths, private roadmap language, removed-branch/process notes, workflow plumbing, paid-tier plans, private implementation commentary, customer-sensitive details, and workspace chatter.
 - Verification: final public-surface status must name the surface checked and the guardrail used, such as `pnpm exec node --test scripts/tests/mcp-release-docs.test.mjs`, a forbidden-term scan, `gh release view`, `npm view`, `rg`, or `pnpm oss:validate`.
+- Rule: outreach/article export artifacts must never land as top-level files in the OSS repo root.
+- Guardrail: keep publishable articles under `docs/posts/` if they belong in the public repo at all; otherwise keep them in the outreach workspace, not in the package/release surface.
+- Verification: `pnpm oss:validate` and `scripts/tests/oss-boundary.test.mjs` must stay green after any content move.
 
 ## Release Workflow
 
