@@ -91,6 +91,11 @@ MARTIN_RUNS_DIR = "C:/path/to/repo/.martin/runs"
 | `martin_run` | Execute a governed coding task | `objective` | Accepts `maxUsd`, `maxIterations`, `maxTokens`, `verificationPlan`, `allowedPaths`, `deniedPaths`, `workingDirectory`, `engine`, `model`, `workspaceId`, `projectId`. Rejects unknown keys. |
 | `martin_inspect` | Summarize a saved run | none | `file` may target a `loop-record.json`, legacy `.jsonl`, or run directory under the runs root. |
 | `martin_status` | Check budget pressure or stop state | exactly one of `loopJson`, `file`, `loopId`, `latest` | `latest` must be `true` when present. `runsDir` is optional. |
+| `martin_list_runs` | List recent governed runs | none | Read-only. Accepts `runsDir` and `limit`. |
+| `martin_get_run` | Load a run dossier | exactly one of `loopId` or `latest` | Read-only. Accepts `runsDir`. |
+| `martin_get_attempt` | Load one attempt | `loopId`, `attemptIndex` | Read-only attempt evidence. |
+| `martin_get_verification_results` | Extract verifier events | exactly one of `loopId` or `latest` | Read-only verifier evidence. |
+| `martin_run_dossier` | Build a compact review dossier | exactly one of `loopId` or `latest` | Read-only summary, budget, attempts, and verifier evidence. |
 
 `martin_run` uses the current MCP schema:
 
@@ -105,7 +110,15 @@ Recommended tool order:
 1. `martin_doctor`
 2. `martin_preflight`
 3. `martin_run`
-4. `martin_inspect` or `martin_status`
+4. `martin_list_runs`, `martin_run_dossier`, `martin_inspect`, or `martin_status`
+
+## Resources And Prompts
+
+`@martinloop/mcp` also exposes read-only cockpit discovery for MCP hosts:
+
+- resources: `martin://runs/summary`, `martin://runs/latest`
+- resource templates: `martin://runs/{loopId}`, `martin://runs/{loopId}/attempts/{attemptIndex}`, `martin://runs/{loopId}/verification`
+- prompts: `martin_review_run`, `martin_triage_failures`
 
 ## Safe-Root Path Model
 

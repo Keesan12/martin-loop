@@ -17,7 +17,25 @@ import {
   sanitizePackageManagerEnv,
 } from "./smoke-package.mjs";
 
-const REQUIRED_TOOLS = ["martin_inspect", "martin_run", "martin_status"];
+const REQUIRED_TOOLS = [
+  "martin_doctor",
+  "martin_preflight",
+  "martin_run",
+  "martin_inspect",
+  "martin_status",
+  "martin_list_runs",
+  "martin_get_run",
+  "martin_get_attempt",
+  "martin_get_verification_results",
+  "martin_run_dossier",
+];
+const REQUIRED_RESOURCES = ["martin://runs/summary", "martin://runs/latest"];
+const REQUIRED_RESOURCE_TEMPLATES = [
+  "martin://runs/{loopId}",
+  "martin://runs/{loopId}/attempts/{attemptIndex}",
+  "martin://runs/{loopId}/verification",
+];
+const REQUIRED_PROMPTS = ["martin_review_run", "martin_triage_failures"];
 const INSTALLED_PACKAGE_PATH = path.join("node_modules", ...PUBLISHED_PACKAGE_SPEC.split("/"));
 
 export async function runPublishedMcpSmoke(options = {}) {
@@ -160,11 +178,23 @@ export async function runPublishedMcpSmoke(options = {}) {
 
     const tools = await client.listTools();
     const toolNames = tools.tools.map((tool) => tool.name).sort();
+    const resources = await client.listResources();
+    const resourceUris = resources.resources.map((resource) => resource.uri).sort();
+    const resourceTemplates = await client.listResourceTemplates();
+    const resourceTemplateUris = resourceTemplates.resourceTemplates
+      .map((resourceTemplate) => resourceTemplate.uriTemplate)
+      .sort();
+    const prompts = await client.listPrompts();
+    const promptNames = prompts.prompts.map((prompt) => prompt.name).sort();
+
     for (const toolName of REQUIRED_TOOLS) {
       if (!toolNames.includes(toolName)) {
         throw new Error(`Missing expected tool "${toolName}" in published MCP server.`);
       }
     }
+    assertIncludesAll(resourceUris, REQUIRED_RESOURCES, "resource");
+    assertIncludesAll(resourceTemplateUris, REQUIRED_RESOURCE_TEMPLATES, "resource template");
+    assertIncludesAll(promptNames, REQUIRED_PROMPTS, "prompt");
 
     const canonicalInspect = await client.callTool({
       name: "martin_inspect",
@@ -177,6 +207,14 @@ export async function runPublishedMcpSmoke(options = {}) {
     const latestStatus = await client.callTool({
       name: "martin_status",
       arguments: { latest: true },
+    });
+    const listRuns = await client.callTool({
+      name: "martin_list_runs",
+      arguments: {},
+    });
+    const runDossier = await client.callTool({
+      name: "martin_run_dossier",
+      arguments: { loopId: canonicalLoop.loopId },
     });
     const runResult = await client.callTool({
       name: "martin_run",
@@ -197,6 +235,9 @@ export async function runPublishedMcpSmoke(options = {}) {
       npxCommand: packageSpec.startsWith("@") ? `npx ${packageSpec}` : `npm exec --yes --package "${packageSpec}" -- mcp`,
       launchCommand: `${JSON.stringify(process.execPath)} ${JSON.stringify(path.join(installedPackageDir, "dist", "server.js"))}`,
       toolNames,
+      resourceUris,
+      resourceTemplateUris,
+      promptNames,
       installedManifest: {
         name: installedManifest.name,
         version: installedManifest.version,
@@ -206,6 +247,8 @@ export async function runPublishedMcpSmoke(options = {}) {
       canonicalInspect: JSON.parse(readTextContent(canonicalInspect)),
       jsonlInspect: JSON.parse(readTextContent(jsonlInspect)),
       latestStatus: JSON.parse(readTextContent(latestStatus)),
+      listRuns: JSON.parse(readTextContent(listRuns)),
+      runDossier: JSON.parse(readTextContent(runDossier)),
       runResult: JSON.parse(readTextContent(runResult)),
       stderr: stderrChunks.join(""),
     };
@@ -216,6 +259,13 @@ export async function runPublishedMcpSmoke(options = {}) {
     if (!options.keepTempDir) {
       await removeTempDir(tempRoot);
     }
+  }
+}
+
+function assertIncludesAll(actual, expected, label) {
+  const missing = expected.filter((item) => !actual.includes(item));
+  if (missing.length > 0) {
+    throw new Error(`Missing expected MCP ${label}s: ${missing.join(", ")}`);
   }
 }
 
