@@ -35,7 +35,14 @@ For host-facing guidance, see [MCP for AI Agents](https://github.com/Keesan12/ma
 - `martin://server/health`
 - `martin://runs/recent`
 - `martin://runs/triage`
+- `martin://runs/latest/summary`
+- `martin://runs/latest/proof-card`
+- `martin://runs/latest/budget-status`
+- `martin://runs/latest/verifier-evidence`
+- `martin://runs/latest/rollback-evidence`
+- `martin://agent/next-step`
 - `martin://guides/mcp-usage`
+- `martin://guides/agent-start`
 - `martin://guides/publish-readiness`
 
 ### Resource templates
@@ -46,6 +53,12 @@ For host-facing guidance, see [MCP for AI Agents](https://github.com/Keesan12/ma
 
 ### Prompts
 
+- `martin_start`
+- `martin_preflight`
+- `martin_triage`
+- `martin_resume`
+- `martin_prove`
+- `martin_release_check`
 - `martin_governed_coding_kickoff`
 - `martin_debug_failed_run`
 - `martin_publish_readiness_review`
@@ -57,8 +70,9 @@ For host-facing guidance, see [MCP for AI Agents](https://github.com/Keesan12/ma
 2. `martin_preflight`
 3. `martin_run`
 4. `martin_triage_runs`
-5. `martin_run_dossier` or `martin_get_*`
-6. resources/prompts for follow-on debugging and review
+5. `martin://agent/next-step` or `martin://runs/latest/summary`
+6. `martin_run_dossier` or `martin_get_*` when compact evidence says the full record is needed
+7. `martin://runs/latest/proof-card` or `martin_prove` for a shareable receipt
 
 ## Install
 
@@ -84,13 +98,13 @@ claude mcp add --transport stdio --scope user martin-loop -- npx -y @martinloop/
 claude mcp add --transport stdio --scope user martin-loop -- cmd /c npx -y @martinloop/mcp
 ```
 
-Generate host config from the CLI when you want starter vs full profiles or platform-specific launchers:
+Generate host config from the CLI when you want minimal, diagnostic, full-local, or paid-remote profiles:
 
 ```sh
-martin mcp print-config --host codex --transport stdio --profile starter
-martin mcp print-config --host claude --transport stdio --profile starter
-martin mcp print-config --host gemini --transport stdio --profile full
-martin mcp print-config --host generic --transport stdio --profile starter
+martin mcp print-config --host codex --transport stdio --profile minimal
+martin mcp print-config --host claude --transport stdio --profile diagnostic
+martin mcp print-config --host gemini --transport stdio --profile full-local
+martin mcp print-config --host generic --transport remote --profile paid-remote
 ```
 
 `martin mcp install` supports the same host set and only writes when the target file is absent or already contains a Martin Loop block.
@@ -107,7 +121,7 @@ tool_timeout_sec = 180
 enabled_tools = [
   "martin_doctor",
   "martin_preflight",
-  "martin_run",
+  "martin_list_runs",
   "martin_triage_runs",
   "martin_run_dossier",
 ]
@@ -137,6 +151,7 @@ Claude `--scope local` remains CLI-managed. `martin mcp install --host claude --
 ## Discovery metadata
 
 - JSON resources now carry `metadata.serverVersion`, `metadata.discoveryRevision`, and freshness context such as the resolved `runsRoot`.
+- Compact resources expose low-token latest-run summaries, proof cards, budget status, verifier evidence, rollback evidence, and a single recommended next step.
 - Prompts stamp the current server version and discovery revision into their descriptions so hosts can confirm which surface they discovered.
 - The server does **not** advertise `listChanged` yet. That is deliberate: the current discovery surface is stable and versioned, but it does not yet emit authoritative change notifications.
 
@@ -153,9 +168,10 @@ Claude `--scope local` remains CLI-managed. `martin mcp install --host claude --
 
 - `martin_get_verification_results` only reports persisted verification evidence. If evidence is missing, it returns `unavailable` with warnings.
 - `martin_triage_runs` is the fastest way to decide which persisted run deserves attention first.
-- `martin_run_dossier` is the richest single-run inspection surface and is the best default follow-up after execution.
+- `martin://agent/next-step`, `martin://runs/latest/summary`, and `martin://runs/latest/proof-card` are the best default follow-ups for context-constrained agents.
+- `martin_run_dossier` is the richest single-run inspection surface and is best when a compact receipt says deeper evidence is needed.
 - Resources and prompts reuse the same run-store selectors as the tools; they are discovery surfaces, not a second data model.
-- The recommended host starter profile is `martin_doctor`, `martin_preflight`, `martin_run`, `martin_triage_runs`, and `martin_run_dossier`. Keep the broader read-only tools enabled when you need deeper inspection, but do not start with the whole catalog by default if context budget matters.
+- The recommended host default is the `minimal` profile: `martin_doctor`, `martin_preflight`, `martin_list_runs`, `martin_triage_runs`, and `martin_run_dossier`. Use `diagnostic` for read-only archaeology and `full-local` only when the host should execute runs.
 
 ## Debugging
 

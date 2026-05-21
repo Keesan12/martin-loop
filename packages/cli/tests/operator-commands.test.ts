@@ -112,6 +112,7 @@ describe("operator commands", () => {
     expect(result.exitCode).toBe(0);
     expect(payload.command).toBe("doctor");
     expect(payload.cliVersion).toBeTypeOf("string");
+    expect(payload.profiles.minimal).toContain("martin_list_runs");
     expect(payload.starterTools).toContain("martin_doctor");
     expect(payload.environment.runsRoot).toBeTypeOf("string");
   });
@@ -158,6 +159,8 @@ describe("operator commands", () => {
       expect(dossier.command).toBe("dossier");
       expect(dossier.loop.loopId).toBe(loop.loopId);
       expect(dossier.verification.status).toBe("failed");
+      expect(dossier.receipt.whatMartinPrevented).toContain("false success claims after a failed verifier");
+      expect(dossier.receipt.tokenWasteReceipt.estimateLabel).toContain("directional local estimates");
       expect(attempt.command).toBe("runs_attempt");
       expect(attempt.attempt.index).toBe(1);
       expect(verify.command).toBe("runs_verify");

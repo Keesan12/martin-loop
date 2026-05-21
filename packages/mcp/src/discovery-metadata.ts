@@ -22,11 +22,48 @@ export const MARTIN_STARTER_TOOL_NAMES = [
   "martin_run_dossier"
 ] as const;
 
+export const MARTIN_MINIMAL_TOOL_NAMES = [
+  "martin_doctor",
+  "martin_preflight",
+  "martin_list_runs",
+  "martin_triage_runs",
+  "martin_run_dossier"
+] as const;
+
+export const MARTIN_DIAGNOSTIC_TOOL_NAMES = [
+  "martin_doctor",
+  "martin_preflight",
+  "martin_list_runs",
+  "martin_triage_runs",
+  "martin_get_run",
+  "martin_get_attempt",
+  "martin_get_verification_results",
+  "martin_run_dossier"
+] as const;
+
+export const MARTIN_PAID_REMOTE_TOOL_NAMES = [
+  "martin_doctor",
+  "martin_preflight",
+  "martin_run",
+  "martin_list_runs",
+  "martin_triage_runs",
+  "martin_get_run",
+  "martin_get_verification_results",
+  "martin_run_dossier"
+] as const;
+
 export const MARTIN_RESOURCE_URIS = [
   "martin://server/health",
   "martin://runs/recent",
   "martin://runs/triage",
+  "martin://runs/latest/summary",
+  "martin://runs/latest/proof-card",
+  "martin://runs/latest/budget-status",
+  "martin://runs/latest/verifier-evidence",
+  "martin://runs/latest/rollback-evidence",
+  "martin://agent/next-step",
   "martin://guides/mcp-usage",
+  "martin://guides/agent-start",
   "martin://guides/publish-readiness"
 ] as const;
 
@@ -37,6 +74,12 @@ export const MARTIN_RESOURCE_TEMPLATE_URIS = [
 ] as const;
 
 export const MARTIN_PROMPT_NAMES = [
+  "martin_start",
+  "martin_preflight",
+  "martin_triage",
+  "martin_resume",
+  "martin_prove",
+  "martin_release_check",
   "martin_governed_coding_kickoff",
   "martin_debug_failed_run",
   "martin_publish_readiness_review",
@@ -52,6 +95,7 @@ export interface MartinDiscoveryMetadata {
   resourceTemplateCount: number;
   promptCount: number;
   starterTools: string[];
+  profiles: Record<string, string[]>;
 }
 
 export function buildMartinDiscoveryMetadata(serverVersion: string): MartinDiscoveryMetadata {
@@ -60,7 +104,15 @@ export function buildMartinDiscoveryMetadata(serverVersion: string): MartinDisco
     resources: [...MARTIN_RESOURCE_URIS],
     resourceTemplates: [...MARTIN_RESOURCE_TEMPLATE_URIS],
     prompts: [...MARTIN_PROMPT_NAMES],
-    starterTools: [...MARTIN_STARTER_TOOL_NAMES]
+    starterTools: [...MARTIN_STARTER_TOOL_NAMES],
+    profiles: {
+      minimal: [...MARTIN_MINIMAL_TOOL_NAMES],
+      diagnostic: [...MARTIN_DIAGNOSTIC_TOOL_NAMES],
+      "full-local": [...MARTIN_TOOL_NAMES],
+      "paid-remote": [...MARTIN_PAID_REMOTE_TOOL_NAMES],
+      starter: [...MARTIN_STARTER_TOOL_NAMES],
+      full: [...MARTIN_TOOL_NAMES]
+    }
   };
 
   const discoveryRevision = createHash("sha256")
@@ -76,6 +128,7 @@ export function buildMartinDiscoveryMetadata(serverVersion: string): MartinDisco
     resourceCount: surface.resources.length,
     resourceTemplateCount: surface.resourceTemplates.length,
     promptCount: surface.prompts.length,
-    starterTools: [...surface.starterTools]
+    starterTools: [...surface.starterTools],
+    profiles: surface.profiles
   };
 }

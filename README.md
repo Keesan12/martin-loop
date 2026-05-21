@@ -4,7 +4,7 @@
 
 ### The cross agent governance layer for autonomous AI coding agents.⭐
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-7c3aed?style=flat-square)](./LICENSE)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-7c3aed?style=flat-square)](./LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&logo=typescript&logoColor=white)](./tsconfig.base.json)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-3c873a?style=flat-square&logo=nodedotjs&logoColor=white)](#quick-start)
 [![npm](https://img.shields.io/badge/npm-martin--loop-cc3534?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/martin-loop)
@@ -17,7 +17,7 @@ MartinLoop has been accepted into the NVIDIA Inception program.
 **You woke up to a $65 bill.** 
  <br> 47 retries. No hard stop. No rollback. No audit trail. Nothing merged.  
  MartinLoop exists so that never happens again.✅ <br> <br>
- If you think autonomous AI coding agents need budgets, brakes, and receipts, Plase star ⭐ the repo so more builders can find it.
+ If you think autonomous AI coding agents need budgets, brakes, and receipts, please star ⭐ the repo so more builders can find it.
 <br>
 
 > AI coding agents are useful. Unbounded retry loops are not.
@@ -136,6 +136,25 @@ This installs both the `martin-loop` package and the `martin` command alias. The
 
 Want a safe sandbox first? Run `npx martin-loop demo` and MartinLoop will copy a disposable local workspace into `./martin-loop-demo`.
 
+### Three-Minute First Value
+
+```sh
+npx martin-loop doctor
+npx martin-loop demo
+cd martin-loop-demo
+```
+
+Then run the no-spend proof path:
+
+```powershell
+$env:MARTIN_LIVE='false'
+npx martin-loop run "Summarize the demo workspace and prove tests still pass" --verify "npm test"
+npx martin-loop dossier --latest
+Remove-Item Env:MARTIN_LIVE
+```
+
+The dossier includes what happened, what Martin prevented, verifier evidence, rollback/artifact evidence, clearly labeled token/cost estimates, and the next safe action.
+
 ### Public Package Surface
 
 The frozen public package surface for this release candidate is:
@@ -193,8 +212,8 @@ npx -y @martinloop/mcp
 ### Other MCP host installs
 
 - Codex: `codex mcp add martin-loop -- npx -y @martinloop/mcp`
-- Gemini CLI and generic wrapper hosts: generate the exact local or remote profile with `martin mcp print-config --host gemini|generic --transport stdio|remote --profile starter|full`
-- Claude, Codex, Gemini, and generic hosts all support generated starter/full profiles through `martin mcp print-config` and `martin mcp install`
+- Gemini CLI and generic wrapper hosts: generate the exact local or remote profile with `martin mcp print-config --host gemini|generic --transport stdio|remote --profile minimal|diagnostic|full-local|paid-remote`
+- Claude, Codex, Gemini, and generic hosts all support generated minimal, diagnostic, full-local, paid-remote, and compatibility profiles through `martin mcp print-config` and `martin mcp install`
 
 Martin Loop keeps the public package local-first and stdio-first. Remote Streamable HTTP profiles are generated from the same shared contract, but the hosted remote lane remains a private beta in the main workspace until it is explicitly promoted.
 
@@ -227,6 +246,7 @@ martin doctor
 martin triage
 martin dossier --latest
 martin runs get --loop-id <loopId>
+martin mcp print-config --host codex --profile minimal
 ```
 
 `doctor` checks environment readiness, `triage` ranks persisted runs that need attention, `dossier` gives you the richest single-run view, and `runs get` loads a persisted loop by selector. The legacy `inspect` and `resume` commands still work, but they are now compatibility aliases.
@@ -267,13 +287,13 @@ martin preflight <objective> [options]
 martin triage [options]
 martin dossier (--loop-id <id> | --file <path> | --latest)
 martin runs list|get|attempt|verify ...
-martin mcp print-config --host codex|claude|gemini|generic --transport stdio|remote --profile starter|full
+martin mcp print-config --host codex|claude|gemini|generic --transport stdio|remote --profile minimal|diagnostic|full-local|paid-remote
 martin mcp install --host codex|claude|gemini|generic --scope user|project [--dry-run]
 ```
 
 Use `--json` for stable machine-readable output and `--quiet` for script-friendly minimal output.
 
-The public OSS package remains local-first and stdio-first. The private/main workspace now carries the hosted Streamable HTTP beta and control-plane hardening, but that hosted lane is not yet part of the public package manifest.
+The public OSS package remains local-first and stdio-first. Hosted Streamable HTTP support is not part of the public package manifest until it has release evidence and an explicit public promotion.
 
 <div align="center">
   <img src="./docs/assets/cli-static.svg" alt="MartinLoop CLI terminal output" width="720">
@@ -369,7 +389,7 @@ The lower-level `runMartin` function is also exported for callers that want to a
 
 The `@martin/core`, `@martin/adapters`, and `@martin/contracts` package manifests are still private workspace packages. The public runtime install target is the root `martin-loop` facade, while `@martinloop/mcp` is packaged as a standalone MCP server with vendored internal runtime dependencies for registry publication.
 
-Private control-plane, dashboard, audit, and handoff material now lives outside this OSS repo. See [`CONTEXT.md`](./CONTEXT.md) for the current public/private workspace map and MCP verification lane.
+Hosted dashboard, audit, and paid-tier implementation material live outside this OSS repo. See [`CONTEXT.md`](./CONTEXT.md) for the current public/private workspace map and MCP verification lane.
 
 ---
 ## Development
@@ -403,11 +423,12 @@ pnpm release:matrix:local
 
 > **Caution:** This package is live on npm. Treat registry publication as a guarded release step — verify the RC gate commands, confirm semantic versioning, and document breaking changes before publishing.
 
-The repository is organized as a dual-track workspace: the OSS runtime and package facade are present and published, while the hosted control-plane, local dashboard, and benchmark harness remain gated in private workspace for future release rather than the primary npm package API.
+The repository is organized as a dual-track workspace: the OSS runtime and package facade are present and published, while hosted operations, local dashboard work, and benchmark expansion remain outside the primary npm package API.
 
 Helpful docs:
 
 - [OSS quickstart](./docs/oss/QUICKSTART.md)
+- [Agent Start Here](./docs/oss/AGENT-START-HERE.md)
 - [OSS examples](./docs/oss/EXAMPLES.md)
 - [Under-$3 benchmark challenge](./docs/distribution/UNDER-3-CHALLENGE.md)
 - [Directory submission pack](./docs/distribution/DIRECTORY-SUBMISSIONS.md)
@@ -437,7 +458,7 @@ Conventional commit prefixes: `feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, a
 
 **⭐Give the repo a star⭐** if you think AI coding needs budgets, brakes, and receipts.
 
-**MIT Licensed** · [martinloop.com](https://martinloop.com) · [keesan@martinloop.com](mailto:keesan@martinloop.com)
+**Apache-2.0 Licensed** · [martinloop.com](https://martinloop.com) · [keesan@martinloop.com](mailto:keesan@martinloop.com)
 
 *"AI coding accountability: completes good work, refuses unsafe work, stops uneconomical work."*
 

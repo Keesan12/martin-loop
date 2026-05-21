@@ -49,6 +49,7 @@ pnpm release:matrix:local
 ## Where to go next
 
 - [QUICKSTART.md](./QUICKSTART.md)
+- [AGENT-START-HERE.md](./AGENT-START-HERE.md)
 - [EXAMPLES.md](./EXAMPLES.md)
 - [OSS-BOUNDARY-REPORT.md](./OSS-BOUNDARY-REPORT.md)
 - [../../README.md](../../README.md)

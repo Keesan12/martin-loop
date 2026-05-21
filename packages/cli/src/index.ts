@@ -30,7 +30,10 @@ import {
   type MartinMcpProfile,
   type MartinMcpScope,
   type MartinMcpTransport,
+  MARTIN_DIAGNOSTIC_TOOLS,
   MARTIN_FULL_TOOLS,
+  MARTIN_MINIMAL_TOOLS,
+  MARTIN_PAID_REMOTE_TOOLS,
   MARTIN_STARTER_TOOLS
 } from "./mcp-config.js";
 import { persistLoopArtifacts } from "./persistence.js";
@@ -490,7 +493,7 @@ export function renderCliHelp(): string {
     "  --host <name>            codex, claude, gemini, or generic.",
     "  --scope <name>           user or project for all hosts; Claude also supports local.",
     "  --transport <name>       stdio (default) or remote.",
-    "  --profile <name>         starter (default) or full.",
+    "  --profile <name>         minimal (default), diagnostic, full-local, paid-remote, starter, or full.",
     "  --remote-url <url>       Override the private remote MCP endpoint URL.",
     "  --remote-token-env <var> Env var used for remote bearer auth (default: MARTIN_REMOTE_TOKEN).",
     "  --platform <name>        windows, macos, or linux recipe shaping.",
@@ -767,6 +770,14 @@ async function executeDoctorCommand(
       codex: { available: codexAvailable }
     },
     starterTools: [...MARTIN_STARTER_TOOLS],
+    profiles: {
+      minimal: [...MARTIN_MINIMAL_TOOLS],
+      diagnostic: [...MARTIN_DIAGNOSTIC_TOOLS],
+      "full-local": [...MARTIN_FULL_TOOLS],
+      "paid-remote": [...MARTIN_PAID_REMOTE_TOOLS],
+      starter: [...MARTIN_STARTER_TOOLS],
+      full: [...MARTIN_FULL_TOOLS]
+    },
     recommendations: buildDoctorRecommendations({
       liveMode: environment.liveMode,
       engine: environment.engine,
@@ -897,6 +908,11 @@ async function executeDossierCommand(
   const detail = await loadPersistedLoop(selector);
   const dossier = buildRunDossier(detail);
   const verification = buildVerificationSummary(detail.loop);
+  const receipt = dossier["receipt"] as {
+    whatHappened?: string;
+    whatMartinPrevented?: string[];
+    nextSafeAction?: string;
+  };
 
   return renderCliSuccess(outputMode, {
     data: {
@@ -909,6 +925,9 @@ async function executeDossierCommand(
       `Verification: ${verification.status}`,
       `Artifacts: ${detail.loop.artifacts.length}`,
       `Attempts: ${detail.loop.attempts.length}`,
+      `What happened: ${receipt.whatHappened ?? "No attempt summary was recorded."}`,
+      `What Martin prevented: ${(receipt.whatMartinPrevented ?? []).join("; ") || "No prevention claim is available."}`,
+      `Next safe action: ${receipt.nextSafeAction ?? "Run preflight before the next attempt."}`,
       `Source: ${detail.source}`
     ],
     quiet: detail.loop.loopId,
@@ -1050,6 +1069,14 @@ async function executeMcpPrintConfigCommand(
       serverId: plan.serverId,
       enabledTools: plan.enabledTools,
       installMethod: plan.installMethod,
+      profiles: {
+        minimal: [...MARTIN_MINIMAL_TOOLS],
+        diagnostic: [...MARTIN_DIAGNOSTIC_TOOLS],
+        "full-local": [...MARTIN_FULL_TOOLS],
+        "paid-remote": [...MARTIN_PAID_REMOTE_TOOLS],
+        starter: [...MARTIN_STARTER_TOOLS],
+        full: [...MARTIN_FULL_TOOLS]
+      },
       starterTools: [...MARTIN_STARTER_TOOLS],
       fullTools: [...MARTIN_FULL_TOOLS]
     },
@@ -1389,15 +1416,22 @@ function parseMcpProfile(tokens: string[]): MartinMcpProfile {
   const profile = readOption(tokens, "--profile");
 
   if (profile === undefined) {
-    return "starter";
+    return "minimal";
   }
 
-  if (profile === "starter" || profile === "full") {
+  if (
+    profile === "minimal" ||
+    profile === "diagnostic" ||
+    profile === "full-local" ||
+    profile === "paid-remote" ||
+    profile === "starter" ||
+    profile === "full"
+  ) {
     return profile;
   }
 
   throw new CliCommandError("invalid_input", `Invalid --profile value: ${profile}.`, {
-    suggestion: "Use --profile starter or --profile full."
+    suggestion: "Use --profile minimal, diagnostic, full-local, paid-remote, starter, or full."
   });
 }
 
