@@ -40,7 +40,14 @@ It is not meant to be a generic browser, search engine, or shell replacement.
 - `martin://server/health`
 - `martin://runs/recent`
 - `martin://runs/triage`
+- `martin://runs/latest/summary`
+- `martin://runs/latest/proof-card`
+- `martin://runs/latest/budget-status`
+- `martin://runs/latest/verifier-evidence`
+- `martin://runs/latest/rollback-evidence`
+- `martin://agent/next-step`
 - `martin://guides/mcp-usage`
+- `martin://guides/agent-start`
 - `martin://guides/publish-readiness`
 
 ### Resource templates
@@ -51,6 +58,12 @@ It is not meant to be a generic browser, search engine, or shell replacement.
 
 ### Prompts
 
+- `martin_start`
+- `martin_preflight`
+- `martin_triage`
+- `martin_resume`
+- `martin_prove`
+- `martin_release_check`
 - `martin_governed_coding_kickoff`
 - `martin_debug_failed_run`
 - `martin_publish_readiness_review`
@@ -62,20 +75,21 @@ It is not meant to be a generic browser, search engine, or shell replacement.
 2. Call `martin_preflight` before non-trivial execution.
 3. Use `martin_run` as the only execution entrypoint.
 4. Use `martin_triage_runs` to rank which persisted run needs attention.
-5. Use `martin_run_dossier` or the `martin_get_*` tools to inspect outcomes.
-6. Use resources/prompts when the host wants discovery-first workflows.
+5. Read `martin://agent/next-step`, `martin://runs/latest/summary`, or `martin://runs/latest/proof-card` when context budget matters.
+6. Use `martin_run_dossier` or the `martin_get_*` tools when compact evidence says deeper inspection is needed.
+7. Use prompts when the host wants discovery-first workflows.
 
-### Recommended starter allow-list
+### Recommended minimal allow-list
 
 If your host supports tool allow-lists, start here:
 
 - `martin_doctor`
 - `martin_preflight`
-- `martin_run`
+- `martin_list_runs`
 - `martin_triage_runs`
 - `martin_run_dossier`
 
-Keep the broader `martin_get_*` tools enabled when the host actually needs deeper run archaeology. This keeps context bloat down without reducing operator power.
+Use `diagnostic` when the host needs deeper read-only run archaeology, and use `full-local` only when the host should execute `martin_run`. This keeps tool bloat down without reducing operator power.
 
 ## Install
 
@@ -117,7 +131,7 @@ tool_timeout_sec = 180
 enabled_tools = [
   "martin_doctor",
   "martin_preflight",
-  "martin_run",
+  "martin_list_runs",
   "martin_triage_runs",
   "martin_run_dossier",
 ]
@@ -140,10 +154,10 @@ Martin Loop’s CLI can emit host-ready stdio config for:
 Examples:
 
 ```sh
-martin mcp print-config --host codex --transport stdio --profile starter
-martin mcp print-config --host claude --transport stdio --profile starter
-martin mcp print-config --host gemini --transport stdio --profile full
-martin mcp print-config --host generic --transport stdio --profile starter
+martin mcp print-config --host codex --transport stdio --profile minimal
+martin mcp print-config --host claude --transport stdio --profile diagnostic
+martin mcp print-config --host gemini --transport stdio --profile full-local
+martin mcp print-config --host generic --transport remote --profile paid-remote
 ```
 
 `martin mcp install` accepts the same host, transport, profile, scope, and platform options.
@@ -165,6 +179,7 @@ Use local `stdio` when you want the fastest local iteration loop and fully local
 - `allowedPaths` and `deniedPaths` must stay repo-relative.
 - Verification summaries come only from persisted `verification.completed` evidence. Missing evidence is reported as `unavailable`, not guessed.
 - Resources and prompts reuse the same persisted run data as the tools.
+- Compact resources are cheap by default: latest summary, proof card, budget status, verifier evidence, rollback evidence, and one next-step recommendation.
 - Resource JSON includes `metadata.serverVersion` and `metadata.discoveryRevision` so hosts can confirm which discovery surface they actually loaded.
 - Prompt descriptions include the same version/revision stamp for the same reason.
 - `listChanged` is not advertised yet. Martin Loop prefers an honest, versioned discovery surface over fake change notifications.
@@ -188,4 +203,4 @@ If those two paths look sane, move on to the host-specific config and timeout se
 
 ## Recommendation Blurb
 
-> `@martinloop/mcp` is a stdio MCP server for governed AI coding work. It gives hosts a bounded execution entrypoint, rich read-only run inspection, MCP resources for discovery, and prompts for kickoff, debugging, and release review.
+> `@martinloop/mcp` is a stdio MCP server for governed AI coding work. It gives hosts a bounded execution entrypoint, compact proof receipts, rich read-only run inspection, MCP resources for discovery, and prompts for kickoff, triage, resume, proof, debugging, and release review.

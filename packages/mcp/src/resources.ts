@@ -18,13 +18,20 @@ import {
   toPrettyJson
 } from "./discovery-support.js";
 import { loadDetailedLoopRecord, readLedgerEvents } from "./tools/run-store.js";
-import { invalidArgumentsError } from "./tools/tool-errors.js";
+import { invalidArgumentsError, MartinToolError } from "./tools/tool-errors.js";
 
 export const MARTIN_STATIC_RESOURCE_URIS = {
   serverHealth: "martin://server/health",
   recentRuns: "martin://runs/recent",
   triage: "martin://runs/triage",
+  latestSummary: "martin://runs/latest/summary",
+  latestProofCard: "martin://runs/latest/proof-card",
+  latestBudgetStatus: "martin://runs/latest/budget-status",
+  latestVerifierEvidence: "martin://runs/latest/verifier-evidence",
+  latestRollbackEvidence: "martin://runs/latest/rollback-evidence",
+  agentNextStep: "martin://agent/next-step",
   mcpUsageGuide: "martin://guides/mcp-usage",
+  agentStartGuide: "martin://guides/agent-start",
   publishReadinessGuide: "martin://guides/publish-readiness"
 } as const;
 
@@ -72,10 +79,59 @@ export const MARTIN_STATIC_RESOURCES: Resource[] = [
     mimeType: "application/json"
   },
   {
+    uri: MARTIN_STATIC_RESOURCE_URIS.latestSummary,
+    name: "martin_latest_summary",
+    title: "Martin Latest Summary",
+    description: "Compact latest-run summary for context-constrained agents.",
+    mimeType: "application/json"
+  },
+  {
+    uri: MARTIN_STATIC_RESOURCE_URIS.latestProofCard,
+    name: "martin_latest_proof_card",
+    title: "Martin Latest Proof Card",
+    description: "Small Markdown receipt showing what happened, what Martin prevented, and the next safe action.",
+    mimeType: "text/markdown"
+  },
+  {
+    uri: MARTIN_STATIC_RESOURCE_URIS.latestBudgetStatus,
+    name: "martin_latest_budget_status",
+    title: "Martin Latest Budget Status",
+    description: "Compact budget, token, and stop-condition snapshot for the latest run.",
+    mimeType: "application/json"
+  },
+  {
+    uri: MARTIN_STATIC_RESOURCE_URIS.latestVerifierEvidence,
+    name: "martin_latest_verifier_evidence",
+    title: "Martin Latest Verifier Evidence",
+    description: "Compact verifier evidence and warnings for the latest run.",
+    mimeType: "application/json"
+  },
+  {
+    uri: MARTIN_STATIC_RESOURCE_URIS.latestRollbackEvidence,
+    name: "martin_latest_rollback_evidence",
+    title: "Martin Latest Rollback Evidence",
+    description: "Compact rollback and artifact evidence for the latest run.",
+    mimeType: "application/json"
+  },
+  {
+    uri: MARTIN_STATIC_RESOURCE_URIS.agentNextStep,
+    name: "martin_agent_next_step",
+    title: "Martin Agent Next Step",
+    description: "Single next recommended Martin tool, prompt, or resource for a context-constrained agent.",
+    mimeType: "application/json"
+  },
+  {
     uri: MARTIN_STATIC_RESOURCE_URIS.mcpUsageGuide,
     name: "martin_mcp_usage_guide",
     title: "Martin MCP Usage Guide",
     description: "Recommended workflow for using Martin Loop over MCP.",
+    mimeType: "text/markdown"
+  },
+  {
+    uri: MARTIN_STATIC_RESOURCE_URIS.agentStartGuide,
+    name: "martin_agent_start_guide",
+    title: "Martin Agent Start Guide",
+    description: "Short agent-facing guide for using Martin with minimal context and low tool bloat.",
     mimeType: "text/markdown"
   },
   {
@@ -133,8 +189,29 @@ export async function readMartinResource(
       return jsonResource(input.uri, withDiscoveryMetadata(triage, context.runsRoot));
     }
 
+    case MARTIN_STATIC_RESOURCE_URIS.latestSummary:
+      return jsonResource(input.uri, withDiscoveryMetadata(await buildLatestSummaryResource(context.runsRoot), context.runsRoot));
+
+    case MARTIN_STATIC_RESOURCE_URIS.latestProofCard:
+      return textResource(input.uri, "text/markdown", await buildLatestProofCardResource(context.runsRoot));
+
+    case MARTIN_STATIC_RESOURCE_URIS.latestBudgetStatus:
+      return jsonResource(input.uri, withDiscoveryMetadata(await buildLatestBudgetStatusResource(context.runsRoot), context.runsRoot));
+
+    case MARTIN_STATIC_RESOURCE_URIS.latestVerifierEvidence:
+      return jsonResource(input.uri, withDiscoveryMetadata(await buildLatestVerifierEvidenceResource(context.runsRoot), context.runsRoot));
+
+    case MARTIN_STATIC_RESOURCE_URIS.latestRollbackEvidence:
+      return jsonResource(input.uri, withDiscoveryMetadata(await buildLatestRollbackEvidenceResource(context.runsRoot), context.runsRoot));
+
+    case MARTIN_STATIC_RESOURCE_URIS.agentNextStep:
+      return jsonResource(input.uri, withDiscoveryMetadata(await buildAgentNextStepResource(context.runsRoot), context.runsRoot));
+
     case MARTIN_STATIC_RESOURCE_URIS.mcpUsageGuide:
       return textResource(input.uri, "text/markdown", buildMcpUsageGuide(context.runsRoot));
+
+    case MARTIN_STATIC_RESOURCE_URIS.agentStartGuide:
+      return textResource(input.uri, "text/markdown", buildAgentStartGuide(context.runsRoot));
 
     case MARTIN_STATIC_RESOURCE_URIS.publishReadinessGuide:
       return textResource(input.uri, "text/markdown", buildPublishReadinessGuide(context.runsRoot));
@@ -232,6 +309,319 @@ async function readDynamicMartinResource(input: {
   );
 }
 
+async function loadLatestRunForCompactResource(runsRoot: string): Promise<{
+  empty: boolean;
+  detail?: Awaited<ReturnType<typeof loadDetailedLoopRecord>>;
+  warnings: string[];
+}> {
+  try {
+    return {
+      empty: false,
+      detail: await loadDetailedLoopRecord({ latest: true, runsDir: runsRoot }),
+      warnings: []
+    };
+  } catch (error) {
+    if (error instanceof MartinToolError && error.code === "no_loop_records") {
+      return {
+        empty: true,
+        warnings: [
+          "No Martin run records were found yet.",
+          "Run `npx martin-loop demo`, then run a governed task or set MARTIN_LIVE=false for a no-spend local proof run."
+        ]
+      };
+    }
+
+    throw error;
+  }
+}
+
+async function buildLatestSummaryResource(runsRoot: string): Promise<Record<string, unknown>> {
+  const latest = await loadLatestRunForCompactResource(runsRoot);
+  if (latest.empty || !latest.detail) {
+    return compactEmptyState("latest-summary", runsRoot, latest.warnings);
+  }
+
+  const ledgerEvents = await readLedgerEvents(latest.detail);
+  const loop = latest.detail.loop as Parameters<typeof buildPersistedLoopPreview>[0];
+  const verification = buildVerificationHistorySnapshot(loop, ledgerEvents);
+  const preview = buildPersistedLoopPreview(loop);
+  const nextStep = inferAgentNextStep(loop, verification);
+
+  return {
+    kind: "latest-summary",
+    loop: preview,
+    task: {
+      title: loop.task?.title,
+      objective: loop.task?.objective,
+      verificationPlan: loop.task?.verificationPlan ?? []
+    },
+    budget: loop.budget,
+    cost: {
+      actualUsd: loop.cost.actualUsd,
+      avoidedUsdEstimate: loop.cost.avoidedUsd ?? 0,
+      tokensIn: loop.cost.tokensIn,
+      tokensOut: loop.cost.tokensOut,
+      estimateLabel: "Cost and avoided-spend fields are local run estimates unless your adapter reported authoritative usage."
+    },
+    verification: {
+      status: verification.latestVerification?.passed === true
+        ? "passed"
+        : verification.latestVerification?.passed === false
+          ? "failed"
+          : "unavailable",
+      latest: verification.latestVerification,
+      count: verification.verificationCount
+    },
+    whatMartinPrevented: describePrevention(loop),
+    nextStep,
+    warnings: [...latest.detail.warnings, ...verification.warnings]
+  };
+}
+
+async function buildLatestBudgetStatusResource(runsRoot: string): Promise<Record<string, unknown>> {
+  const latest = await loadLatestRunForCompactResource(runsRoot);
+  if (latest.empty || !latest.detail) {
+    return compactEmptyState("budget-status", runsRoot, latest.warnings);
+  }
+
+  const loop = latest.detail.loop as Parameters<typeof buildPersistedLoopPreview>[0];
+  const preview = buildPersistedLoopPreview(loop);
+
+  return {
+    kind: "budget-status",
+    loopId: loop.loopId,
+    lifecycleState: loop.lifecycleState,
+    shouldStop: preview.shouldStop,
+    pressure: preview.pressure,
+    budget: loop.budget,
+    cost: {
+      actualUsd: loop.cost.actualUsd,
+      avoidedUsdEstimate: loop.cost.avoidedUsd ?? 0,
+      tokensIn: loop.cost.tokensIn,
+      tokensOut: loop.cost.tokensOut,
+      estimateLabel: "Avoided USD and token fields are estimates unless backed by adapter usage receipts."
+    },
+    remaining: {
+      budgetUsd: preview.remainingBudgetUsd,
+      iterations: preview.remainingIterations,
+      tokens: preview.remainingTokens
+    },
+    whatStoppedOrWillStopNext: preview.shouldStop
+      ? `Martin is at a stop condition: ${loop.lifecycleState}.`
+      : "Martin still has budget/iteration/token room, but preflight should run before another attempt."
+  };
+}
+
+async function buildLatestVerifierEvidenceResource(runsRoot: string): Promise<Record<string, unknown>> {
+  const latest = await loadLatestRunForCompactResource(runsRoot);
+  if (latest.empty || !latest.detail) {
+    return compactEmptyState("verifier-evidence", runsRoot, latest.warnings);
+  }
+
+  const ledgerEvents = await readLedgerEvents(latest.detail);
+  const loop = latest.detail.loop as Parameters<typeof buildPersistedLoopPreview>[0];
+  const verification = buildVerificationHistorySnapshot(loop, ledgerEvents);
+
+  return {
+    kind: "verifier-evidence",
+    loopId: loop.loopId,
+    status: verification.latestVerification?.passed === true
+      ? "passed"
+      : verification.latestVerification?.passed === false
+        ? "failed"
+        : "unavailable",
+    latestVerification: verification.latestVerification,
+    verificationCount: verification.verificationCount,
+    verificationHistory: verification.verificationHistory.slice(-3),
+    warnings: [...latest.detail.warnings, ...verification.warnings],
+    nextSafeAction: inferAgentNextStep(loop, verification)
+  };
+}
+
+async function buildLatestRollbackEvidenceResource(runsRoot: string): Promise<Record<string, unknown>> {
+  const latest = await loadLatestRunForCompactResource(runsRoot);
+  if (latest.empty || !latest.detail) {
+    return compactEmptyState("rollback-evidence", runsRoot, latest.warnings);
+  }
+
+  const loop = latest.detail.loop as Parameters<typeof buildPersistedLoopPreview>[0];
+  const artifacts = loop.artifacts ?? [];
+  const rollbackArtifacts = artifacts.filter((artifact) =>
+    /rollback|restore|diff|patch/iu.test(`${artifact.kind} ${artifact.label} ${artifact.uri}`)
+  );
+
+  return {
+    kind: "rollback-evidence",
+    loopId: loop.loopId,
+    artifactCount: artifacts.length,
+    rollbackEvidenceCount: rollbackArtifacts.length,
+    rollbackEvidence: rollbackArtifacts.slice(0, 5).map((artifact) => ({
+      artifactId: artifact.artifactId,
+      kind: artifact.kind,
+      label: artifact.label,
+      uri: artifact.uri
+    })),
+    boundary: rollbackArtifacts.length > 0
+      ? "Rollback or diff evidence exists in the local run artifacts."
+      : "No rollback artifact was found in this compact view; inspect the full dossier before claiming rollback evidence.",
+    nextSafeAction: "If rollback evidence is required, call `martin_run_dossier` or read `martin://runs/{loopId}` before proceeding."
+  };
+}
+
+async function buildAgentNextStepResource(runsRoot: string): Promise<Record<string, unknown>> {
+  const latest = await loadLatestRunForCompactResource(runsRoot);
+  if (latest.empty || !latest.detail) {
+    return {
+      ...compactEmptyState("agent-next-step", runsRoot, latest.warnings),
+      nextTool: "martin_doctor",
+      reason: "No run store evidence exists yet; confirm environment and run-store visibility first."
+    };
+  }
+
+  const ledgerEvents = await readLedgerEvents(latest.detail);
+  const loop = latest.detail.loop as Parameters<typeof buildPersistedLoopPreview>[0];
+  const verification = buildVerificationHistorySnapshot(loop, ledgerEvents);
+  const nextStep = inferAgentNextStep(loop, verification);
+
+  return {
+    kind: "agent-next-step",
+    loopId: loop.loopId,
+    nextStep,
+    compactContext: {
+      status: loop.status,
+      lifecycleState: loop.lifecycleState,
+      attempts: loop.attempts.length,
+      latestFailureClass: loop.attempts.at(-1)?.failureClass,
+      verifier: verification.latestVerification?.passed === true
+        ? "passed"
+        : verification.latestVerification?.passed === false
+          ? "failed"
+          : "unavailable"
+    },
+    preferredResource: MARTIN_STATIC_RESOURCE_URIS.latestSummary,
+    proofCard: MARTIN_STATIC_RESOURCE_URIS.latestProofCard
+  };
+}
+
+async function buildLatestProofCardResource(runsRoot: string): Promise<string> {
+  const latest = await loadLatestRunForCompactResource(runsRoot);
+  if (latest.empty || !latest.detail) {
+    return [
+      "# Martin Proof Card",
+      "",
+      "Status: no run evidence yet",
+      "",
+      "What happened: Martin has not found a local run record in this runs root.",
+      "What Martin prevented: unknown until a governed run executes.",
+      "Next safe action: call `martin_doctor`, run `npx martin-loop demo`, then inspect `martin://runs/latest/summary`.",
+      "",
+      "Estimate note: no cost or token savings are claimed without run evidence.",
+      ""
+    ].join("\n");
+  }
+
+  const ledgerEvents = await readLedgerEvents(latest.detail);
+  const loop = latest.detail.loop as Parameters<typeof buildPersistedLoopPreview>[0];
+  const verification = buildVerificationHistorySnapshot(loop, ledgerEvents);
+  const preview = buildPersistedLoopPreview(loop);
+  const latestAttempt = loop.attempts.at(-1);
+  const verifierStatus = verification.latestVerification?.passed === true
+    ? "passed"
+    : verification.latestVerification?.passed === false
+      ? "failed honestly"
+      : "unavailable";
+
+  return [
+    "# Martin Proof Card",
+    "",
+    `Run: \`${loop.loopId}\``,
+    `Status: ${loop.status} / ${loop.lifecycleState}`,
+    `Attempts: ${loop.attempts.length}`,
+    `Spend: $${loop.cost.actualUsd.toFixed(2)} actual, $${(loop.cost.avoidedUsd ?? 0).toFixed(2)} avoided estimate`,
+    `Tokens: ${loop.cost.tokensIn} in / ${loop.cost.tokensOut} out`,
+    `Verifier: ${verifierStatus}`,
+    "",
+    `What happened: ${latestAttempt?.summary ?? loop.task?.objective ?? "Martin produced a persisted governed run record."}`,
+    `What Martin prevented: ${describePrevention(loop).join("; ")}`,
+    `Budget state: ${preview.shouldStop ? "stop condition reached" : "budget still available"}; ${preview.remainingIterations} iteration(s) and ${preview.remainingTokens} token(s) remain.`,
+    `Next safe action: ${inferAgentNextStep(loop, verification).instruction}`,
+    "",
+    "Evidence links:",
+    `- Summary: \`${MARTIN_STATIC_RESOURCE_URIS.latestSummary}\``,
+    `- Verifier: \`${MARTIN_STATIC_RESOURCE_URIS.latestVerifierEvidence}\``,
+    `- Rollback/artifacts: \`${MARTIN_STATIC_RESOURCE_URIS.latestRollbackEvidence}\``,
+    "",
+    "Estimate note: avoided spend and token savings are directional local estimates unless backed by adapter/provider usage receipts.",
+    ""
+  ].join("\n");
+}
+
+function compactEmptyState(kind: string, runsRoot: string, warnings: string[]): Record<string, unknown> {
+  return {
+    kind,
+    status: "empty",
+    runsRoot,
+    summary: "No Martin run records are available yet.",
+    nextStep: "Run `martin doctor`, create the demo workspace with `npx martin-loop demo`, then run a no-spend stub task with MARTIN_LIVE=false.",
+    warnings
+  };
+}
+
+function describePrevention(loop: Parameters<typeof buildPersistedLoopPreview>[0]): string[] {
+  const prevented = [];
+  const latestAttempt = loop.attempts.at(-1);
+
+  if (loop.lifecycleState === "budget_exit" || loop.lifecycleState === "diminishing_returns") {
+    prevented.push("unsafe or uneconomical retry continuation");
+  }
+  if (latestAttempt?.failureClass) {
+    prevented.push(`unlabeled failure drift (${latestAttempt.failureClass})`);
+  }
+  if ((loop.cost.avoidedUsd ?? 0) > 0) {
+    prevented.push("estimated additional spend");
+  }
+  if (loop.status !== "completed") {
+    prevented.push("false success claims before verifier-backed completion");
+  }
+
+  return prevented.length > 0 ? prevented : ["no extra prevention claim available from this compact record"];
+}
+
+function inferAgentNextStep(
+  loop: Parameters<typeof buildPersistedLoopPreview>[0],
+  verification: ReturnType<typeof buildVerificationHistorySnapshot>
+): { action: string; toolOrResource: string; instruction: string } {
+  if (verification.latestVerification?.passed === false) {
+    return {
+      action: "debug_failed_run",
+      toolOrResource: "martin_debug_failed_run",
+      instruction: `Use prompt \`martin_debug_failed_run\` for loop \`${loop.loopId}\`, then rerun only after the verifier failure is understood.`
+    };
+  }
+
+  if (loop.lifecycleState === "budget_exit" || loop.lifecycleState === "diminishing_returns") {
+    return {
+      action: "triage_before_retry",
+      toolOrResource: "martin_triage_runs",
+      instruction: "Call `martin_triage_runs` and inspect the proof card before spending another attempt."
+    };
+  }
+
+  if (loop.status === "completed" && verification.latestVerification?.passed === true) {
+    return {
+      action: "prove_and_share",
+      toolOrResource: MARTIN_STATIC_RESOURCE_URIS.latestProofCard,
+      instruction: "Read the proof card and full dossier before sharing or promoting the result."
+    };
+  }
+
+  return {
+    action: "preflight_next_attempt",
+    toolOrResource: "martin_preflight",
+    instruction: "Call `martin_preflight` with explicit verifier, budget, and path scope before the next run."
+  };
+}
+
 function buildMcpUsageGuide(runsRoot: string): string {
   const metadata = buildMartinDiscoveryMetadata(MARTIN_MCP_PACKAGE_VERSION);
   return `# Martin Loop MCP Usage
@@ -248,21 +638,54 @@ Martin Loop exposes governed coding workflows over MCP. Use the server health an
 2. Use the \`martin_governed_coding_kickoff\` prompt to frame a governed coding request.
 3. Call \`martin_preflight\` before \`martin_run\` when the task or safety envelope is non-trivial.
 4. After execution, inspect \`${MARTIN_STATIC_RESOURCE_URIS.recentRuns}\`, \`martin://runs/{loopId}\`, and \`martin://runs/{loopId}/verification\`.
-5. Read \`${MARTIN_STATIC_RESOURCE_URIS.triage}\` or call \`martin_triage_runs\` to prioritize which run needs attention first.
-6. Use \`martin_debug_failed_run\` when a loop exits failed, budget-bound, or escalated.
+5. For low-context agents, read \`${MARTIN_STATIC_RESOURCE_URIS.agentNextStep}\`, \`${MARTIN_STATIC_RESOURCE_URIS.latestSummary}\`, or \`${MARTIN_STATIC_RESOURCE_URIS.latestProofCard}\` before asking for full JSON.
+6. Read \`${MARTIN_STATIC_RESOURCE_URIS.triage}\` or call \`martin_triage_runs\` to prioritize which run needs attention first.
+7. Use \`martin_debug_failed_run\` when a loop exits failed, budget-bound, or escalated.
 
 ## Current Martin MCP Surface
 
 - Tools: \`martin_run\`, \`martin_inspect\`, \`martin_status\`, \`martin_doctor\`, \`martin_preflight\`, \`martin_list_runs\`, \`martin_triage_runs\`, \`martin_get_run\`, \`martin_get_attempt\`, \`martin_get_verification_results\`, \`martin_run_dossier\`
-- Static resources: \`${MARTIN_STATIC_RESOURCE_URIS.serverHealth}\`, \`${MARTIN_STATIC_RESOURCE_URIS.recentRuns}\`, \`${MARTIN_STATIC_RESOURCE_URIS.triage}\`, \`${MARTIN_STATIC_RESOURCE_URIS.mcpUsageGuide}\`, \`${MARTIN_STATIC_RESOURCE_URIS.publishReadinessGuide}\`
+- Static resources: \`${MARTIN_STATIC_RESOURCE_URIS.serverHealth}\`, \`${MARTIN_STATIC_RESOURCE_URIS.recentRuns}\`, \`${MARTIN_STATIC_RESOURCE_URIS.triage}\`, \`${MARTIN_STATIC_RESOURCE_URIS.latestSummary}\`, \`${MARTIN_STATIC_RESOURCE_URIS.latestProofCard}\`, \`${MARTIN_STATIC_RESOURCE_URIS.latestBudgetStatus}\`, \`${MARTIN_STATIC_RESOURCE_URIS.latestVerifierEvidence}\`, \`${MARTIN_STATIC_RESOURCE_URIS.latestRollbackEvidence}\`, \`${MARTIN_STATIC_RESOURCE_URIS.agentNextStep}\`, \`${MARTIN_STATIC_RESOURCE_URIS.mcpUsageGuide}\`, \`${MARTIN_STATIC_RESOURCE_URIS.agentStartGuide}\`, \`${MARTIN_STATIC_RESOURCE_URIS.publishReadinessGuide}\`
 - Resource templates: \`martin://runs/{loopId}\`, \`martin://runs/{loopId}/attempts/{attemptIndex}\`, \`martin://runs/{loopId}/verification\`
-- Prompts: \`martin_governed_coding_kickoff\`, \`martin_debug_failed_run\`, \`martin_publish_readiness_review\`, \`martin_triage_run_store\`
+- Prompts: \`martin_start\`, \`martin_preflight\`, \`martin_triage\`, \`martin_resume\`, \`martin_prove\`, \`martin_release_check\`, \`martin_governed_coding_kickoff\`, \`martin_debug_failed_run\`, \`martin_publish_readiness_review\`, \`martin_triage_run_store\`
 
 ## Notes
 
 - Discovery helpers read the existing Martin run-store; they do not create new schema.
 - Verification history is derived from persisted \`verification.completed\` evidence in loop records and ledgers.
 - Attempt inspection stays aligned with the same loop selectors used by \`martin_status\` and \`martin_inspect\`.
+`;
+}
+
+function buildAgentStartGuide(runsRoot: string): string {
+  const metadata = buildMartinDiscoveryMetadata(MARTIN_MCP_PACKAGE_VERSION);
+  return `# Agent Start Here
+
+Discovery revision: \`${metadata.discoveryRevision}\`
+Server version: \`${metadata.serverVersion}\`
+Runs root: \`${runsRoot}\`
+
+Use Martin Loop as the local governor before you spend agent tokens or retry a failed coding loop.
+
+## Cheap Default Flow
+
+1. Read \`${MARTIN_STATIC_RESOURCE_URIS.agentNextStep}\` first. It is the smallest "what should I do now?" payload.
+2. If no runs exist, call \`martin_doctor\`, then \`martin_preflight\`.
+3. If a run exists, read \`${MARTIN_STATIC_RESOURCE_URIS.latestSummary}\` before reading full run JSON.
+4. If the verifier failed, use prompt \`martin_debug_failed_run\` or \`martin_triage\`.
+5. If you need a shareable receipt, read \`${MARTIN_STATIC_RESOURCE_URIS.latestProofCard}\`.
+
+## Install Profiles
+
+- \`minimal\` (default): doctor, preflight, list, triage, dossier. Good for low tool bloat.
+- \`diagnostic\`: read-only inspection tools for debugging without execution.
+- \`full-local\`: all local tools, including \`martin_run\`.
+- \`paid-remote\`: hosted/remote-appropriate paid profile with execution plus compact inspection.
+- \`starter\` and \`full\`: compatibility aliases.
+
+## Copy-Paste Agent Rule
+
+Before running or retrying an autonomous coding task, call Martin. Prefer compact resources first, then full dossiers only when the compact receipt says more evidence is needed. Never claim success unless Martin shows verifier-backed completion or a clear blocked reason.
 `;
 }
 

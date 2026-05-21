@@ -105,6 +105,20 @@ Rank the runs that need attention first:
 
 ### 5. Inspect
 
+For low-context agents, start with compact resources:
+
+```json
+{
+  "uri": "martin://agent/next-step"
+}
+```
+
+```json
+{
+  "uri": "martin://runs/latest/proof-card"
+}
+```
+
 Use the richest surface:
 
 ```json
@@ -151,7 +165,7 @@ Or ask for a kickoff/debug prompt:
 
 ```json
 {
-  "name": "martin_governed_coding_kickoff",
+  "name": "martin_start",
   "arguments": {
     "objective": "Fix the auth regression and prove it with tests"
   }
@@ -177,11 +191,24 @@ Or ask for a kickoff/debug prompt:
 - `martin://server/health`
 - `martin://runs/recent`
 - `martin://runs/triage`
+- `martin://runs/latest/summary`
+- `martin://runs/latest/proof-card`
+- `martin://runs/latest/budget-status`
+- `martin://runs/latest/verifier-evidence`
+- `martin://runs/latest/rollback-evidence`
+- `martin://agent/next-step`
 - `martin://guides/mcp-usage`
+- `martin://guides/agent-start`
 - `martin://guides/publish-readiness`
 
 ## Prompt Inventory
 
+- `martin_start`
+- `martin_preflight`
+- `martin_triage`
+- `martin_resume`
+- `martin_prove`
+- `martin_release_check`
 - `martin_governed_coding_kickoff`
 - `martin_debug_failed_run`
 - `martin_publish_readiness_review`

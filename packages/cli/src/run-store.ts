@@ -293,9 +293,50 @@ export function buildArtifactSummary(loop: LoopRecord): ArtifactSummary {
   };
 }
 
+export function buildRunReceipt(loop: LoopRecord, verification = buildVerificationSummary(loop)): Record<string, unknown> {
+  const latestAttempt = loop.attempts.at(-1);
+  const rollbackArtifacts = loop.artifacts.filter((artifact) =>
+    /rollback|restore|diff|patch/iu.test(`${artifact.kind} ${artifact.label} ${artifact.uri}`)
+  );
+  const stopConditionReached =
+    loop.lifecycleState === "budget_exit" ||
+    loop.lifecycleState === "diminishing_returns" ||
+    loop.lifecycleState === "stuck_exit" ||
+    loop.lifecycleState === "human_escalation";
+  const prevented = buildPreventionSummary(loop, verification, stopConditionReached);
+
+  return {
+    whatHappened: latestAttempt?.summary ?? verification.summary ?? loop.task.objective,
+    whatMartinPrevented: prevented,
+    tokenWasteReceipt: {
+      actualUsd: loop.cost.actualUsd,
+      avoidedUsdEstimate: loop.cost.avoidedUsd,
+      tokensIn: loop.cost.tokensIn,
+      tokensOut: loop.cost.tokensOut,
+      avoidedIterationsEstimate: stopConditionReached ? 1 : 0,
+      avoidedVerifierRetriesEstimate: verification.status === "failed" && stopConditionReached ? 1 : 0,
+      estimateLabel:
+        "Avoided spend, avoided iterations, and avoided verifier retries are directional local estimates unless backed by provider usage receipts."
+    },
+    verifier: {
+      status: verification.status,
+      summary: verification.summary,
+      eventCount: verification.eventCount,
+      warnings: verification.warnings
+    },
+    rollbackEvidence: {
+      exists: rollbackArtifacts.length > 0,
+      count: rollbackArtifacts.length,
+      artifacts: rollbackArtifacts.slice(0, 5)
+    },
+    nextSafeAction: selectNextSafeAction(loop, verification, rollbackArtifacts.length)
+  };
+}
+
 export function buildRunDossier(detail: PersistedLoopDetail): Record<string, unknown> {
   const verification = buildVerificationSummary(detail.loop);
   const artifactSummary = buildArtifactSummary(detail.loop);
+  const receipt = buildRunReceipt(detail.loop, verification);
 
   return {
     source: detail.source,
@@ -306,6 +347,7 @@ export function buildRunDossier(detail: PersistedLoopDetail): Record<string, unk
     },
     loop: detail.loop,
     verification,
+    receipt,
     artifacts: artifactSummary,
     recentEvents: detail.loop.events.slice(-10)
   };
@@ -325,6 +367,57 @@ export async function triagePersistedLoops(
     findings,
     warnings: listed.warnings
   };
+}
+
+function buildPreventionSummary(
+  loop: LoopRecord,
+  verification: VerificationSummary,
+  stopConditionReached: boolean
+): string[] {
+  const prevented: string[] = [];
+  const latestAttempt = loop.attempts.at(-1);
+
+  if (stopConditionReached) {
+    prevented.push("another unsafe or uneconomical retry before operator review");
+  }
+  if (verification.status === "failed") {
+    prevented.push("false success claims after a failed verifier");
+  }
+  if (latestAttempt?.failureClass) {
+    prevented.push(`unlabeled retry drift after ${latestAttempt.failureClass}`);
+  }
+  if (loop.cost.avoidedUsd > 0) {
+    prevented.push("estimated additional provider spend");
+  }
+  if (loop.attempts.length >= loop.budget.maxIterations) {
+    prevented.push("iteration cap overrun");
+  }
+
+  return prevented.length > 0
+    ? prevented
+    : ["no additional prevention claim is available from this run record"];
+}
+
+function selectNextSafeAction(
+  loop: LoopRecord,
+  verification: VerificationSummary,
+  rollbackEvidenceCount: number
+): string {
+  if (verification.status === "failed") {
+    return `Debug loop ${loop.loopId} before another attempt; start with verifier evidence and the latest failed attempt.`;
+  }
+
+  if (loop.lifecycleState === "budget_exit" || loop.lifecycleState === "diminishing_returns") {
+    return `Triage loop ${loop.loopId} and reset the budget or task scope only after reviewing the receipt.`;
+  }
+
+  if (loop.status === "completed" && verification.status === "passed") {
+    return rollbackEvidenceCount > 0
+      ? "Share the proof receipt with verifier and rollback evidence attached."
+      : "Share the proof receipt only after deciding whether rollback evidence is required for this workflow.";
+  }
+
+  return `Run preflight before retrying loop ${loop.loopId}; keep verifier, budget, and path scope explicit.`;
 }
 
 function scoreLoop(loop: LoopRecord): TriageFinding {
