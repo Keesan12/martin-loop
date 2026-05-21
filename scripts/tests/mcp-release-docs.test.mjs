@@ -90,7 +90,7 @@ test("current MCP release packet exists for the package version and records proo
     "Commands Run",
     "Versions Tested",
     "Host Matrix Receipts",
-    "Mirror Parity Receipts",
+    "Source Parity Receipts",
     "Known Non-Goals",
     "Publish Gates Still Pending Explicit Approval",
     "Ready-To-Push Rule"
@@ -228,18 +228,78 @@ test("MCP release docs preserve publish gates and current cockpit claims", async
   assert.match(checklistDoc, /MCP-X\.Y\.Z-RELEASE-PACKET\.md/);
   assert.match(checklistDoc, /Candidate Branch Proof/i);
   assert.match(checklistDoc, /packages\/mcp/);
-  assert.match(checklistDoc, /oss-core/i);
+  assert.match(checklistDoc, /private mirror or handoff coordination stays outside public release docs/i);
+  assert.doesNotMatch(checklistDoc, /oss-core/i);
   assert.match(versionLedger, /@martinloop\/mcp/);
-  assert.match(versionLedger, /0\.1\.3/);
+  assert.match(versionLedger, /0\.2\.0/);
   assert.match(versionLedger, /0\.2\.5/);
   assert.match(releasePacket, /candidate branch CI is green on Windows, Linux, and macOS/i);
   assert.match(deliveryMap, /0\.1\.4/);
   assert.match(deliveryMap, /0\.2\.0/);
   assert.match(deliveryMap, /0\.2\.5/);
-  assert.match(deliveryMap, /enterprise\/apps\/control-plane/);
+  assert.match(deliveryMap, /private application packages/i);
+  assert.match(deliveryMap, /private trace and routing packages/i);
+  assert.doesNotMatch(deliveryMap, /enterprise\/apps\/control-plane/);
+  assert.doesNotMatch(deliveryMap, /enterprise\/packages/);
   assert.match(deliveryMap, /martin_run` remains the only write-capable entrypoint/i);
 
   for (const contents of [publishingDoc, compatibilityDoc, releaseNotes]) {
     assert.doesNotMatch(contents, /0\.3\.0/);
   }
+});
+
+test("OSS tier docs keep the paid-tier ladder separate from the public MCP train", async () => {
+  const [rootReadme, contextDoc, versionLedger, deliveryMap, publishingDoc, releaseNotes, releasePacket] =
+    await Promise.all([
+      readRepoFile("README.md"),
+      readRepoFile("CONTEXT.md"),
+      readRepoFile(path.join("docs", "release", "VERSION-LEDGER.md")),
+      readRepoFile(path.join("docs", "release", "MCP-DELIVERY-SLICE-MAP.md")),
+      readRepoFile(path.join("docs", "release", "MCP-PUBLISHING.md")),
+      readRepoFile(path.join("docs", "release", `MCP-${packageJson.version}-RELEASE-NOTES.md`)),
+      readRepoFile(path.join("docs", "release", `MCP-${packageJson.version}-RELEASE-PACKET.md`))
+    ]);
+
+  for (const contents of [rootReadme, contextDoc, versionLedger, deliveryMap, publishingDoc, releaseNotes, releasePacket]) {
+    assert.match(contents, /0\.1\.4/);
+    assert.match(contents, /operator foundation/i);
+    assert.match(contents, /0\.2\.0/);
+    assert.match(contents, /cockpit expansion/i);
+    assert.match(contents, /0\.2\.5/);
+    assert.match(contents, /stable cockpit line/i);
+  }
+
+  for (const contents of [rootReadme, contextDoc, versionLedger, deliveryMap, publishingDoc, releaseNotes, releasePacket]) {
+    assert.match(contents, /Free \/ OSS/);
+    assert.match(contents, /\bPro\b/);
+    assert.match(contents, /\bGrowth\b/);
+    assert.match(contents, /\bEnterprise\b/);
+    assert.match(contents, /\bInternal\b/);
+    assert.doesNotMatch(contents, /\bStarter\b/);
+  }
+
+  assert.match(
+    contextDoc,
+    /Do not treat a public `@martinloop\/mcp` release as a promotion of the private Pro, Growth, Enterprise, or Internal lanes\./,
+  );
+  assert.match(
+    deliveryMap,
+    /should never be implied by a public MCP release note, packet, or README/i,
+  );
+  assert.match(
+    publishingDoc,
+    /Publishing `@martinloop\/mcp` only promotes the public Free \/ OSS MCP lane\./,
+  );
+  assert.match(rootReadme, /remote MCP private beta/i);
+  assert.match(rootReadme, /principal-aware remote config/i);
+  assert.match(contextDoc, /remote MCP private beta/i);
+  assert.match(contextDoc, /principal-aware remote config/i);
+  assert.match(deliveryMap, /remote MCP private beta/i);
+  assert.match(deliveryMap, /principal-aware remote config/i);
+  assert.match(publishingDoc, /remote MCP private beta/i);
+  assert.match(publishingDoc, /principal-aware remote config/i);
+  assert.match(releaseNotes, /remote MCP private beta/i);
+  assert.match(releaseNotes, /principal-aware remote config/i);
+  assert.match(releasePacket, /remote MCP private beta/i);
+  assert.match(releasePacket, /principal-aware remote config/i);
 });

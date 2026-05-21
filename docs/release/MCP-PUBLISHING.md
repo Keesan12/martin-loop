@@ -2,7 +2,19 @@
 
 Use npm trusted publishing from GitHub Actions for `@martinloop/mcp`.
 
-For the current integrated `0.2.5` tip, the publish claim includes tools, resources, resource templates, and prompts, plus the run-triage surface layered into that cockpit. The docs and release checks must describe that full surface honestly, while the public scheduled train stays `0.1.4 -> 0.2.0 -> 0.2.5`.
+For the current integrated `0.2.5` tip, the publish claim covers the public stable cockpit line: tools, resources, resource templates, and prompts, plus the run-triage surface layered into that cockpit. The docs and release checks must describe that full surface honestly, while the public scheduled train stays `0.1.4 -> 0.2.0 -> 0.2.5`.
+
+## Tier Boundary
+
+Publishing `@martinloop/mcp` only promotes the public Free / OSS MCP lane.
+It does not promote the private Pro, Growth, Enterprise, or Internal tiers, and it must not pull private control-plane, autonomy, or router internals into OSS release docs.
+Private Pro capabilities such as the authenticated remote MCP private beta and principal-aware remote config stay outside the public publish claim unless the release-slice map is intentionally updated.
+
+The scheduled public labels are:
+
+- `0.1.4` operator foundation
+- `0.2.0` cockpit expansion
+- `0.2.5` stable cockpit line
 
 ## Canonical Release Path
 
@@ -47,6 +59,8 @@ Before calling the release ready, confirm:
 - docs list the current resources and prompts
 - docs keep current Codex and Claude Code install snippets
 - release notes describe the actual discovery surface as shipped, not as future work
+- docs keep the public Free / OSS MCP train separate from the private Pro, Growth, Enterprise, and Internal tiers
+- docs do not present the private Pro remote MCP beta or principal-aware remote config as part of the public npm package claim
 - `scripts/tests/mcp-release-docs.test.mjs` verifies the tool list, resource list, prompt list, and cockpit flow
 
 ## Gate Semantics
@@ -54,8 +68,9 @@ Before calling the release ready, confirm:
 - `smoke:pack` is the pre-publish local-pack gate
 - `smoke:published:pack` is the install-from-pack gate
 - `smoke:published` is the post-publish npm gate
+- `verify:release` is the release-doc and workflow parity gate
 
-They are separate gates and should stay separate.
+They are separate gates and should stay separate. GitHub Actions must run the pre-publish local-pack gates before `npm publish` and the post-publish npm gate after the package is visible.
 
 ## Trusted Publishing Notes
 
@@ -77,7 +92,7 @@ pnpm build
 pnpm smoke:pack
 pnpm smoke:published:pack
 pnpm verify:release
-npm publish --access public
+npm publish --access public --provenance
 ```
 
 Then verify:

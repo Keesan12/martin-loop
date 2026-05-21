@@ -47,6 +47,7 @@ const IGNORED_TOP_LEVEL_ENTRIES = [
   ".planning",
   "dist",
   "node_modules",
+  "old",
   "output",
   "tests and feedback",
   "tmp",

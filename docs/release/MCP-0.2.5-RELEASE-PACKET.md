@@ -5,15 +5,23 @@ This packet is the local proof bundle for the current integrated `@martinloop/mc
 ## Version Truth
 
 - standalone package: `@martinloop/mcp`
-- live npm latest: `0.1.3`
-- public GitHub `main`: `0.1.3`
+- live npm latest: `0.2.0`
+- public GitHub `main`: `0.2.0`
 - local integrated tip: `0.2.5`
 - public scheduled release train:
   - `0.1.4` operator foundation
   - `0.2.0` cockpit expansion
-  - `0.2.5` polish and hardening
+  - `0.2.5` stable cockpit line
 
 See [VERSION-LEDGER.md](./VERSION-LEDGER.md) for the canonical version map.
+
+## Tier Boundary
+
+This packet is a public Free / OSS MCP artifact only.
+
+- Pro, Growth, Enterprise, and Internal remain private tier lanes.
+- private Pro remote MCP private beta and principal-aware remote config remain outside this packet
+- Reviewing this packet does not approve promotion of private control-plane, autonomy, or router internals into the OSS package or docs.
 
 ## Commands Run
 
@@ -40,23 +48,10 @@ pnpm oss:validate
 pnpm public:smoke
 ```
 
-Focused post-cleanup checks that passed:
-
-```powershell
-pnpm test
-pnpm lint
-pnpm build
-pnpm smoke:remote
-pnpm smoke:remote:live
-```
-
-The focused private checks were run in `enterprise/apps/control-plane` to confirm the remote beta and policy surfaces still match the normalized MCP line.
-
 ## Versions Tested
 
-- root package local integrated tree: `martin-loop@0.1.6`
+- root package local integrated tree: `martin-loop@0.1.7`
 - standalone MCP local integrated tree: `@martinloop/mcp@0.2.5`
-- private control plane local integrated tree: `@martin/control-plane@0.2.5-local`
 
 ## Host Matrix Receipts
 
@@ -72,13 +67,11 @@ Local and documented proof currently includes:
 
 The remaining honesty boundary is unchanged: the current unpushed local tree has not itself been executed on a live macOS runner. That proof requires a pushed candidate branch or another real macOS execution surface.
 
-## Mirror Parity Receipts
+## Source Parity Receipts
 
-- `packages/mcp/package.json` matches the private `oss-core` mirror
-- `packages/mcp/server.json` matches the private `oss-core` mirror
-- `packages/mcp/src/package-version.ts` matches the private `oss-core` mirror
-- MCP-facing `docs/oss` and `docs/release` are synced into the private `oss-core` mirror
-- stale mirror `packages/mcp/dist` artifacts were resynced from the OSS build output so the mirror no longer advertises `0.3.0`
+- `packages/mcp/package.json`, `packages/mcp/server.json`, and `packages/mcp/src/package-version.ts` all declare `0.2.5`
+- MCP-facing `docs/oss` and `docs/release` describe the same public package surface
+- release docs do not advertise removed or future standalone MCP version labels
 
 ## Known Non-Goals
 
@@ -106,7 +99,6 @@ Do not call the train ready to push until all of these are true:
 
 - version truth is still consistent with [VERSION-LEDGER.md](./VERSION-LEDGER.md)
 - release docs, manifest, and `server.json` all align
-- mirror parity still holds
+- source parity still holds across MCP metadata and release docs
 - local OSS gates remain green
 - the exact candidate branch CI is green on Windows, Linux, and macOS
-

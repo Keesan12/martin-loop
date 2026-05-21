@@ -4,18 +4,26 @@ Use this map when cutting the scheduled public deliveries from the current integ
 
 ## Public Version Train
 
-- live npm baseline: `0.1.3`
-- staged public deliveries:
-  - `0.1.4`
-  - `0.2.0`
-  - `0.2.5`
+- live npm baseline: `0.2.0`
+- completed public deliveries:
+  - `0.1.4` operator foundation
+  - `0.2.0` cockpit expansion
+- next staged public delivery:
+  - `0.2.5` stable cockpit line
 - integrated local tip: `0.2.5`
 
 See [VERSION-LEDGER.md](./VERSION-LEDGER.md) for the canonical version truth.
 
+## Tier Boundary
+
+- Free / OSS is the only public tier in this repo. The standalone `@martinloop/mcp` train belongs to that lane.
+- Pro, Growth, Enterprise, and Internal remain private tier names and should never be implied by a public MCP release note, packet, or README.
+- Private Pro surfaces such as the authenticated remote MCP private beta and principal-aware remote config stay out of the public MCP npm train unless this slice map changes first.
+- Keep private control-plane, autonomy, and router internals out of the OSS MCP train even when they exist in the broader workspace.
+
 ## Delivery `0.1.4`
 
-Scope: operator foundation only.
+Scope: operator foundation for the Free / OSS operator lane.
 
 Include:
 
@@ -47,7 +55,7 @@ Do not include:
 
 ## Delivery `0.2.0`
 
-Scope: cockpit expansion.
+Scope: cockpit expansion for the Free / OSS public cockpit lane.
 
 Include:
 
@@ -84,7 +92,7 @@ Do not include:
 
 ## Delivery `0.2.5`
 
-Scope: polish, hardening, and stable cockpit line.
+Scope: stable cockpit line for the Free / OSS public cockpit lane, including the polish and hardening needed to keep that line honest.
 
 Include:
 
@@ -114,9 +122,10 @@ Primary surfaces:
 
 These stay out of the public MCP npm release train for this wave:
 
-- `enterprise/apps/control-plane`
-- `enterprise/packages/trace-intelligence`
-- `enterprise/packages/martin-router`
+- private Pro, Growth, Enterprise, and Internal tier surfaces
+- private Pro remote MCP beta and principal-aware remote config
+- private application packages
+- private trace and routing packages
 - hosted Streamable HTTP remote metadata
 - bearer tokens, audit, rate limits, and other private beta control-plane operations
 - hosted autonomy, self-improvement, and router claims
@@ -128,4 +137,4 @@ Before cutting any staged public branch:
 1. Confirm [VERSION-LEDGER.md](./VERSION-LEDGER.md) still matches live npm and public GitHub `main`.
 2. Confirm the target delivery includes only the intended public slice from above.
 3. Confirm the exact candidate branch is what goes to CI for Windows, Linux, and macOS proof.
-4. Keep the private hosted lane and `oss-core` mirror out of the public branch except where the OSS source-of-truth files already require synchronized docs or tests.
+4. Keep private hosted lanes and internal mirror coordination out of the public branch except where the OSS source-of-truth files already require sanitized public docs or tests.

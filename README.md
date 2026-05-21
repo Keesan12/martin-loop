@@ -157,6 +157,26 @@ The standalone MCP server package is only ready for registry publication after t
 
 Registry/server identifier for the standalone MCP package: `io.github.Keesan12/martin-loop`
 
+### OSS And Paid Tier Map
+
+Martin Loop uses one public Free / OSS lane plus a separate paid-tier ladder. Only the Free / OSS lane and the standalone MCP package ship from this repo.
+
+| Lane | Status in `oss-core` | Public claim boundary |
+|---|---|---|
+| Free / OSS | Public and versioned here | Local runtime, CLI, SDK, root `martin-loop`, and the standalone `@martinloop/mcp` package |
+| Pro | Private only | Authenticated remote MCP private beta, principal-aware remote config, and team proof surfaces layered on OSS receipts; not shipped from `oss-core` |
+| Growth | Private only | Broader team policy and collaboration controls layered above Pro; not shipped from `oss-core` |
+| Enterprise | Private only | Enterprise governance, diagnostics, scorecards, and hosted operations; not shipped from `oss-core` |
+| Internal | Private only | Internal operator and shadow-promotion lanes; never part of the public OSS/MCP manifest |
+
+The public MCP release train is separate from the paid-tier ladder:
+
+- `0.1.4` operator foundation
+- `0.2.0` cockpit expansion
+- `0.2.5` stable cockpit line
+
+A public `@martinloop/mcp` release does not promote the private Pro, Growth, Enterprise, or Internal lanes.
+
 ### Claude Code MCP install
 
 Use the published MCP package directly:

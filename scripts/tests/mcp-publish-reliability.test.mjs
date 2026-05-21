@@ -35,6 +35,10 @@ test("publish-mcp workflow keeps bounded npm view and smoke retries with backoff
   const workflowPath = path.join(ROOT_DIR, ".github", "workflows", "publish-mcp.yml");
   const workflow = await readFile(workflowPath, "utf8");
 
+  assert.match(workflow, /pnpm --filter @martinloop\/mcp smoke:pack/);
+  assert.match(workflow, /pnpm --filter @martinloop\/mcp smoke:published:pack/);
+  assert.match(workflow, /pnpm --filter @martinloop\/mcp verify:release/);
+  assert.match(workflow, /npm publish --provenance --access public/);
   assert.match(workflow, /MCP_PACKAGE_SPEC:/);
   assert.match(workflow, /for attempt in 1 2 3 4 5; do/);
   assert.match(workflow, /npm view "\$\{MCP_PACKAGE_SPEC\}" version/);

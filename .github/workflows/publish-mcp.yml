@@ -107,7 +107,7 @@ jobs:
       - name: Publish MCP to npm
         if: steps.npm-version.outputs.exists != 'true'
         working-directory: packages/mcp
-        run: npm publish --access public --provenance
+        run: npm publish --provenance --access public
 
       - name: Skip duplicate MCP publish
         if: steps.npm-version.outputs.exists == 'true'
