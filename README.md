@@ -112,12 +112,13 @@ Martin Loop matters because it turns AI coding from an opaque experiment into so
 </div>
 
 
-Reproducible locally:
+Try the packaged demo locally:
 
 ```sh
-pnpm --filter @martin/benchmarks test
-pnpm --filter @martin/benchmarks eval
-pnpm --filter @martin/benchmarks eval:phase12
+npx martin-loop demo
+cd martin-loop-demo
+npm install
+MARTIN_LIVE=false npx martin-loop run "Summarize the demo workspace and confirm the verifier is green" --verify "npm test"
 ```
 
 Challenge page: [Can your AI coding agent finish this task under $3?](./docs/distribution/UNDER-3-CHALLENGE.md)
@@ -132,50 +133,39 @@ If the problem is familiar, star the repo so other builders can find the runtime
 npm install -g martin-loop
 ```
 
-This installs both the `martin-loop` package and the `martin` command alias. The root package in this repo is on the `0.1.x` line; check [`docs/release/VERSION-LEDGER.md`](./docs/release/VERSION-LEDGER.md) before doing any release work so the root and standalone MCP version lines do not get conflated.
+This installs the public `martin-loop` CLI and SDK package. This README is synced for `martin-loop@0.1.7`.
 
 Want a safe sandbox first? Run `npx martin-loop demo` and MartinLoop will copy a disposable local workspace into `./martin-loop-demo`.
 
 ### Public Package Surface
 
-The frozen public package surface for this release candidate is:
+The public package surface is:
 
 - Install target: `npm install martin-loop`
 - CLI target: `npx martin-loop`
 - SDK target: `import { MartinLoop } from "martin-loop"`
-- MCP target (registry-ready package): `npx -y @martinloop/mcp`
+- MCP package: `@martinloop/mcp@0.2.5`
+- MCP launch target: `npx -y @martinloop/mcp`
 
-The `martin` command alias is installed for local operator convenience, but the public CLI surface is `npx martin-loop`.
-The standalone MCP server package is only ready for registry publication after the full MCP prepublish lane passes locally:
+`martin-loop` and `@martinloop/mcp` are published separately. The root package is for CLI and SDK use; the MCP package is for MCP hosts.
 
-- `pnpm --filter @martinloop/mcp lint`
-- `pnpm --filter @martinloop/mcp test`
-- `pnpm --filter @martinloop/mcp build`
-- `pnpm --filter @martinloop/mcp smoke:pack`
+### MCP server
+
+`@martinloop/mcp@0.2.5` exposes ten stdio tools plus read-only resources, resource templates, and prompts. `martin_run` remains the only tool that can execute work; the cockpit tools are read-only helpers for recent runs, dossiers, attempts, verifier results, and triage.
+
+MCP package proof before publishing includes:
+
 - `pnpm --filter @martinloop/mcp smoke:published:pack`
 - `pnpm --filter @martinloop/mcp verify:release`
 
-Registry/server identifier for the standalone MCP package: `io.github.Keesan12/martin-loop`
+MCP server identifier: `io.github.Keesan12/martin-loop`
 
-### OSS And Paid Tier Map
+Recommended first-use flow:
 
-Martin Loop uses one public Free / OSS lane plus a separate paid-tier ladder. Only the Free / OSS lane and the standalone MCP package ship from this repo.
-
-| Lane | Status in `oss-core` | Public claim boundary |
-|---|---|---|
-| Free / OSS | Public and versioned here | Local runtime, CLI, SDK, root `martin-loop`, and the standalone `@martinloop/mcp` package |
-| Pro | Private only | Authenticated remote MCP private beta, principal-aware remote config, and team proof surfaces layered on OSS receipts; not shipped from `oss-core` |
-| Growth | Private only | Broader team policy and collaboration controls layered above Pro; not shipped from `oss-core` |
-| Enterprise | Private only | Enterprise governance, diagnostics, scorecards, and hosted operations; not shipped from `oss-core` |
-| Internal | Private only | Internal operator and shadow-promotion lanes; never part of the public OSS/MCP manifest |
-
-The public MCP release train is separate from the paid-tier ladder:
-
-- `0.1.4` operator foundation
-- `0.2.0` cockpit expansion
-- `0.2.5` stable cockpit line
-
-A public `@martinloop/mcp` release does not promote the private Pro, Growth, Enterprise, or Internal lanes.
+1. `martin_doctor`
+2. `martin_preflight`
+3. `martin_run`
+4. `martin_list_runs`, `martin_run_dossier`, `martin_inspect`, or `martin_status`
 
 ### Claude Code MCP install
 
@@ -196,12 +186,12 @@ npx -y @martinloop/mcp
 - Gemini CLI and generic wrapper hosts: generate the exact local or remote profile with `martin mcp print-config --host gemini|generic --transport stdio|remote --profile starter|full`
 - Claude, Codex, Gemini, and generic hosts all support generated starter/full profiles through `martin mcp print-config` and `martin mcp install`
 
-Martin Loop keeps the public package local-first and stdio-first. Remote Streamable HTTP profiles are generated from the same shared contract, but the hosted remote lane remains a private beta in the main workspace until it is explicitly promoted.
+Martin Loop keeps the public package local-first and stdio-first. Remote profile generation is configuration output only; the published packages launch the local CLI, SDK, and stdio MCP surfaces described above.
 
 ### Run a governed task
 
 ```sh
-martin run "fix the auth regression" \
+npx martin-loop run "fix the auth regression" \
   --budget 3.00 \
   --verify "pnpm test"
 ```
@@ -209,34 +199,30 @@ martin run "fix the auth regression" \
 You can also pass the objective explicitly:
 
 ```sh
-martin run --objective "fix the auth regression" --budget 3.00 --verify "pnpm test"
+npx martin-loop run --objective "fix the auth regression" --budget 3.00 --verify "pnpm test"
 ```
 
 For a no-spend repo-local dry run, use the stub adapter:
 
-```powershell
-$env:MARTIN_LIVE='false'
-pnpm run:cli -- run --objective "Summarize the current runtime state" --verify "pnpm --filter @martin/core test"
-Remove-Item Env:MARTIN_LIVE
+```sh
+MARTIN_LIVE=false npx martin-loop run --objective "Summarize the current runtime state" --verify "pnpm --filter @martin/core test"
 ```
 
 ### Inspect, triage, or resume runs
 
 ```sh
-martin doctor
-martin triage
-martin dossier --latest
-martin runs get --loop-id <loopId>
+npx martin-loop inspect --file ~/.martin/runs/<workspaceId>.jsonl
+npx martin-loop resume <loopId>
 ```
 
-`doctor` checks environment readiness, `triage` ranks persisted runs that need attention, `dossier` gives you the richest single-run view, and `runs get` loads a persisted loop by selector. The legacy `inspect` and `resume` commands still work, but they are now compatibility aliases.
+`inspect` prints a portfolio summary for records in the file. `resume` looks up a persisted loop record by ID under `~/.martin/runs/`.
 
 ---
 
 ## CLI
 
 ```text
-martin run <objective> [options]
+npx martin-loop run <objective> [options]
 
   --objective <text>      The task to accomplish, or pass it as the first positional arg
   --budget <n>            Hard cost cap in USD
@@ -257,23 +243,23 @@ martin run <objective> [options]
   --metadata <key=value>  Attach metadata to the run record; repeatable
 ```
 
-The public CLI also includes `demo`, `inspect`, `resume`, and a `bench` redirect that points reviewers to the workspace benchmark harness.
+The public CLI also includes `demo`, `inspect`, and `resume`.
 
 New operator-first workflows are available through:
 
 ```text
-martin doctor
-martin preflight <objective> [options]
-martin triage [options]
-martin dossier (--loop-id <id> | --file <path> | --latest)
-martin runs list|get|attempt|verify ...
-martin mcp print-config --host codex|claude|gemini|generic --transport stdio|remote --profile starter|full
-martin mcp install --host codex|claude|gemini|generic --scope user|project [--dry-run]
+npx martin-loop doctor
+npx martin-loop preflight <objective> [options]
+npx martin-loop triage [options]
+npx martin-loop dossier (--loop-id <id> | --file <path> | --latest)
+npx martin-loop runs list|get|attempt|verify ...
+npx martin-loop mcp print-config --host codex|claude|gemini|generic --transport stdio|remote --profile starter|full
+npx martin-loop mcp install --host codex|claude|gemini|generic --scope user|project [--dry-run]
 ```
 
 Use `--json` for stable machine-readable output and `--quiet` for script-friendly minimal output.
 
-The public OSS package remains local-first and stdio-first. The private/main workspace now carries the hosted Streamable HTTP beta and control-plane hardening, but that hosted lane is not yet part of the public package manifest.
+The public package remains local-first and stdio-first.
 
 <div align="center">
   <img src="./docs/assets/cli-static.svg" alt="MartinLoop CLI terminal output" width="720">
@@ -363,13 +349,10 @@ The lower-level `runMartin` function is also exported for callers that want to a
 | `@martin/contracts` | Shared types for loops, policy, governance, budget, telemetry, and rollback. |
 | `@martin/core` | Runtime controller, policy engine, safety leash, grounding, persistence, and rollback logic. |
 | `@martin/adapters` | Claude CLI, Codex CLI, direct-provider, and stub adapter surfaces. |
-| `@martin/cli` | Local CLI implementation for `run`, `inspect`, `resume`, and the benchmark redirect. |
+| `@martin/cli` | Local CLI implementation for `run`, `demo`, `inspect`, `resume`, and operator helper commands. |
 | `@martinloop/mcp` | Governed execution cockpit over MCP: doctor, preflight, run, inspection tools, resources, and prompts. |
-| `benchmarks/` | Workspace-only deterministic benchmark and RC validation harness. |
 
-The `@martin/core`, `@martin/adapters`, and `@martin/contracts` package manifests are still private workspace packages. The public runtime install target is the root `martin-loop` facade, while `@martinloop/mcp` is packaged as a standalone MCP server with vendored internal runtime dependencies for registry publication.
-
-Private control-plane, dashboard, audit, and handoff material now lives outside this OSS repo. See [`CONTEXT.md`](./CONTEXT.md) for the current public/private workspace map and MCP verification lane.
+Users install the root `martin-loop` package for the CLI and SDK, or the standalone `@martinloop/mcp` package for MCP hosts.
 
 ---
 ## Development
@@ -395,15 +378,11 @@ Current RC gate commands:
 ```sh
 pnpm oss:validate
 pnpm public:smoke
-pnpm repo:smoke
 pnpm rc:validate
-pnpm pilot:prep:validate
 pnpm release:matrix:local
 ```
 
-> **Caution:** This package is live on npm. Treat registry publication as a guarded release step — verify the RC gate commands, confirm semantic versioning, and document breaking changes before publishing.
-
-The repository is organized as a dual-track workspace: the OSS runtime and package facade are present and published, while the hosted control-plane, local dashboard, and benchmark harness remain gated in private workspace for future release rather than the primary npm package API.
+> **Caution:** This package is live on npm. Treat every publish as a guarded release step: verify the RC gate commands, confirm semantic versioning, and document breaking changes before publishing.
 
 Helpful docs:
 
@@ -414,7 +393,6 @@ Helpful docs:
 - [Integration outreach pack](./docs/distribution/INTEGRATION-OUTREACH.md)
 - [Claude Code walkthrough](./docs/oss/CLAUDE-CODE-WALKTHROUGH.md)
 - [Ralph-style loop safety guide](./docs/oss/RALPH-LOOP-SAFETY.md)
-- [OSS boundary report](./docs/oss/OSS-BOUNDARY-REPORT.md)
 - [Release surface report](./docs/oss/RELEASE-SURFACE-REPORT.md)
 
 ---

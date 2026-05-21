@@ -1,6 +1,7 @@
 import { evaluateCostGovernor, type LoopRunRecord } from "@martin/core";
 
 import { loadLoopRecordForStatus, loadLoopRecordsForInspect } from "./run-store.js";
+import type { InspectableLoopRecord } from "./tool-support.js";
 
 export interface RunSelectorInput {
   loopId?: string;
@@ -32,7 +33,8 @@ export interface VerificationResultSummary {
   summary?: string;
 }
 
-export function summarizeRun(loop: LoopRunRecord): RunSummary {
+export function summarizeRun(loop: InspectableLoopRecord): RunSummary {
+  const task = summarizeTask(loop);
   const costState = evaluateCostGovernor({
     budget: loop.budget,
     cost: {
@@ -46,8 +48,8 @@ export function summarizeRun(loop: LoopRunRecord): RunSummary {
 
   return {
     loopId: loop.loopId,
-    title: loop.task.title,
-    objective: loop.task.objective,
+    title: task.title,
+    objective: task.objective,
     status: loop.status,
     lifecycleState: loop.lifecycleState,
     createdAt: loop.createdAt,
@@ -74,7 +76,7 @@ export async function listRunSummaries(input: { runsDir?: string; limit?: number
   return summaries.slice(0, input.limit ?? 20);
 }
 
-export async function loadSelectedRun(input: RunSelectorInput): Promise<LoopRunRecord> {
+export async function loadSelectedRun(input: RunSelectorInput): Promise<InspectableLoopRecord> {
   const selectors = [input.loopId ? "loopId" : null, input.latest ? "latest" : null].filter(Boolean);
   if (selectors.length !== 1) {
     throw new Error("Provide exactly one of loopId or latest.");
@@ -88,7 +90,7 @@ export async function loadSelectedRun(input: RunSelectorInput): Promise<LoopRunR
   return source.loop;
 }
 
-export function extractVerificationResults(loop: LoopRunRecord): VerificationResultSummary[] {
+export function extractVerificationResults(loop: InspectableLoopRecord): VerificationResultSummary[] {
   const events = "events" in loop && Array.isArray(loop.events) ? loop.events : [];
   return events
     .filter((event) => event?.type === "verification.completed")
@@ -104,7 +106,7 @@ export function extractVerificationResults(loop: LoopRunRecord): VerificationRes
     });
 }
 
-export function getAttempt(loop: LoopRunRecord, attemptIndex: number) {
+export function getAttempt(loop: InspectableLoopRecord, attemptIndex: number) {
   const attempt = loop.attempts.find((candidate) => candidate.index === attemptIndex);
   if (!attempt) {
     throw new Error("Attempt not found.");
@@ -112,7 +114,7 @@ export function getAttempt(loop: LoopRunRecord, attemptIndex: number) {
   return attempt;
 }
 
-export function buildRunDossier(loop: LoopRunRecord) {
+export function buildRunDossier(loop: InspectableLoopRecord) {
   return {
     loopId: loop.loopId,
     generatedAt: new Date().toISOString(),
@@ -123,7 +125,7 @@ export function buildRunDossier(loop: LoopRunRecord) {
       },
       {
         kind: "task",
-        content: loop.task
+        content: summarizeTask(loop)
       },
       {
         kind: "budget",
@@ -146,4 +148,11 @@ export function buildRunDossier(loop: LoopRunRecord) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function summarizeTask(loop: Pick<InspectableLoopRecord, "loopId" | "task">): LoopRunRecord["task"] {
+  return {
+    title: loop.task?.title ?? loop.loopId,
+    objective: loop.task?.objective ?? "Loop record summary"
+  };
 }

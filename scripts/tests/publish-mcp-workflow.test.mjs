@@ -47,7 +47,7 @@ test("publish-mcp workflow covers trusted publishing, local-pack proof, and publ
   assert.match(workflow, /pnpm --filter @martinloop\/mcp smoke:pack/);
   assert.match(workflow, /pnpm --filter @martinloop\/mcp smoke:published:pack/);
   assert.match(workflow, /pnpm --filter @martinloop\/mcp verify:release/);
-  assert.match(workflow, /npm publish --access public --provenance/);
+  assert.match(workflow, /npm publish (?=.*--access public)(?=.*--provenance)/);
   assert.match(workflow, /npm view "@martinloop\/mcp@\$\{\{ steps\.mcp-metadata\.outputs\.package_version \}\}" version/);
   assert.match(workflow, /pnpm --filter @martinloop\/mcp smoke:published/);
   assert.match(workflow, /softprops\/action-gh-release@v2/);

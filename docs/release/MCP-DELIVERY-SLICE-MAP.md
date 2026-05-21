@@ -87,7 +87,7 @@ Keep public execution semantics unchanged:
 Do not include:
 
 - private remote beta
-- hosted control-plane claims
+- hosted service claims
 - autonomy/router claims
 
 ## Delivery `0.2.5`

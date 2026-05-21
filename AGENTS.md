@@ -60,7 +60,7 @@ This repository is a public surface. Keep all docs, release notes, PRs, package 
 
 ### Public Repo Boundary
 
-- Rule: keep this repository's public docs, release notes, package metadata, examples, and workflow files free of private workspace names, local paths, and internal mirror details.
+- Rule: keep this repository's public docs, release notes, package metadata, examples, and workflow files free of non-public workspace names, local paths, and internal mirror details.
 - Guardrail: use relative repo paths in public instructions, and keep private handoffs or mirror coordination in private planning docs outside this public repo.
 - Verification: before public release, run a forbidden-term scan across public docs, package metadata, scripts, workflows, and examples.
 

@@ -28,37 +28,33 @@ The canonical public surface in this repo is:
 
 If a folder is not needed to ship or verify the OSS runtime, it does not belong here by default.
 
-## Tier Boundary Map
+## Public Release Lines
 
-Use the current product-lane names consistently in OSS-safe docs:
+Keep the root package and standalone MCP package release lines separate:
 
-- Free / OSS: the only public tier in this tree; includes the root `martin-loop` facade and the standalone `@martinloop/mcp` package.
-- Pro: private paid tier for authenticated remote MCP private beta, principal-aware remote config, and team proof surfaces; do not describe it as shipped from this repo.
-- Growth: private paid tier for broader team policy and collaboration controls; do not describe it as shipped from this repo.
-- Enterprise: private paid tier for governance, diagnostics, scorecards, and hosted operations; do not describe it as shipped from this repo.
-- Internal: private operator and shadow-promotion tier; never mirror its implementation details into this repo.
+- root `martin-loop`: CLI and SDK facade
+- standalone `@martinloop/mcp`: MCP server package
 
-The public MCP schedule inside the Free / OSS lane is:
+Current public package versions are recorded in:
 
-- `0.1.4` operator foundation
-- `0.2.0` cockpit expansion
-- `0.2.5` stable cockpit line
+- `package.json`
+- `packages/mcp/package.json`
+- `docs/release/VERSION-LEDGER.md`
 
-Do not treat a public `@martinloop/mcp` release as a promotion of the private Pro, Growth, Enterprise, or Internal lanes.
-Keep private control-plane, autonomy, and router internals out of this repo even when naming the paid tiers.
+Keep non-public service, roadmap, and operations details out of this repo.
 
-## Private Workspace Boundary
+## Non-Public Work Boundary
 
-Private archive, handoff, and internal coordination work belongs in the internal MartinLoop repo workspace that embeds this mirror under `oss-core/`.
+Archive, handoff, and internal coordination notes belong outside this public repo.
 
-Use the private workspace for:
+Keep these materials out of tracked public files:
 
 - handoffs and execution notes
 - quarantine or archive material moved out of the OSS repo
-- private app, enterprise, audit, or release-pack work
+- non-public app, audit, or release-pack work
 - internal-only plans or review packs
 
-Do not reintroduce private residue into this OSS repo.
+Do not reintroduce non-public residue into this OSS repo.
 
 ## MCP Work Lane
 
@@ -85,12 +81,7 @@ pnpm --filter @martinloop/mcp verify:release
 
 ## Handoff Discipline
 
-Durable handoff notes for this repo should be updated in the private workspace, not inside this OSS repo.
-
-Current private planning lane:
-
-- `MASTERPLAN.md`
-- `docs/internal/autonomy/MARTINLOOP-AUTONOMY-MASTER-PLAN.md`
+Durable handoff notes for this repo should be updated outside this public repo.
 
 ## Cleanup Rules
 

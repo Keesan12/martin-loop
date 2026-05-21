@@ -260,7 +260,7 @@ test("OSS tier docs keep the paid-tier ladder separate from the public MCP train
       readRepoFile(path.join("docs", "release", `MCP-${packageJson.version}-RELEASE-PACKET.md`))
     ]);
 
-  for (const contents of [rootReadme, contextDoc, versionLedger, deliveryMap, publishingDoc, releaseNotes, releasePacket]) {
+  for (const contents of [versionLedger, deliveryMap, publishingDoc, releaseNotes, releasePacket]) {
     assert.match(contents, /0\.1\.4/);
     assert.match(contents, /operator foundation/i);
     assert.match(contents, /0\.2\.0/);
@@ -269,7 +269,15 @@ test("OSS tier docs keep the paid-tier ladder separate from the public MCP train
     assert.match(contents, /stable cockpit line/i);
   }
 
-  for (const contents of [rootReadme, contextDoc, versionLedger, deliveryMap, publishingDoc, releaseNotes, releasePacket]) {
+  for (const contents of [rootReadme, contextDoc]) {
+    assert.doesNotMatch(contents, /0\.1\.4/);
+    assert.doesNotMatch(contents, /operator foundation/i);
+    assert.doesNotMatch(contents, /\bPro\b/);
+    assert.doesNotMatch(contents, /\bGrowth\b/);
+    assert.doesNotMatch(contents, /\bInternal\b/);
+  }
+
+  for (const contents of [versionLedger, deliveryMap, publishingDoc, releaseNotes, releasePacket]) {
     assert.match(contents, /Free \/ OSS/);
     assert.match(contents, /\bPro\b/);
     assert.match(contents, /\bGrowth\b/);
@@ -280,7 +288,7 @@ test("OSS tier docs keep the paid-tier ladder separate from the public MCP train
 
   assert.match(
     contextDoc,
-    /Do not treat a public `@martinloop\/mcp` release as a promotion of the private Pro, Growth, Enterprise, or Internal lanes\./,
+    /Keep non-public service, roadmap, and operations details out of this repo\./,
   );
   assert.match(
     deliveryMap,
@@ -290,10 +298,6 @@ test("OSS tier docs keep the paid-tier ladder separate from the public MCP train
     publishingDoc,
     /Publishing `@martinloop\/mcp` only promotes the public Free \/ OSS MCP lane\./,
   );
-  assert.match(rootReadme, /remote MCP private beta/i);
-  assert.match(rootReadme, /principal-aware remote config/i);
-  assert.match(contextDoc, /remote MCP private beta/i);
-  assert.match(contextDoc, /principal-aware remote config/i);
   assert.match(deliveryMap, /remote MCP private beta/i);
   assert.match(deliveryMap, /principal-aware remote config/i);
   assert.match(publishingDoc, /remote MCP private beta/i);
