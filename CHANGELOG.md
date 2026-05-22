@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.2.0] — 2026-05-22
+
+### Added
+- **First-value local CLI path** — Add `npx martin-loop doctor` for local readiness checks and `npx martin-loop dossier --latest` for receipt-style follow-up after a run.
+- **No-spend demo proof flow** — Document the fastest local path from install to proof: doctor, demo workspace, stubbed run, and dossier review.
+
+### Changed
+- Promote the root `martin-loop` package to the `0.2.x` line while keeping the `0.1.8` Red-Blue Testing and public git-surface guard as baseline features, not new `0.2.0` launch claims.
+- Refresh the packed README and quickstart so the published npm surface shows the `doctor`, no-spend demo, and `dossier --latest` flow directly.
+
 ## [0.1.8] — 2026-05-21
 
 ### Added

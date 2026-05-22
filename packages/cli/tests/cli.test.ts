@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { createLoopRecord } from "../../contracts/src/index.js";
 import { executeCli, parseCliArguments } from "../src/index.js";
+import { persistLoopArtifacts } from "../src/persistence.js";
 
 describe("parseCliArguments", () => {
   it("parses a run command into a typed request", () => {
@@ -60,6 +61,23 @@ describe("parseCliArguments", () => {
           softLimitUsd: 9.5
         }
       }
+    });
+  });
+
+  it("parses doctor and dossier selectors", () => {
+    expect(parseCliArguments(["doctor"])).toEqual({
+      command: "doctor"
+    });
+
+    expect(parseCliArguments(["dossier", "--latest"])).toEqual({
+      command: "dossier",
+      latest: true
+    });
+
+    expect(parseCliArguments(["dossier", "--loop-id", "loop_123"])).toEqual({
+      command: "dossier",
+      latest: false,
+      loopId: "loop_123"
     });
   });
 });
@@ -385,6 +403,98 @@ describe("executeCli", () => {
       );
     } finally {
       await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("reports local readiness through doctor", async () => {
+    const previousLive = process.env.MARTIN_LIVE;
+    process.env.MARTIN_LIVE = "false";
+
+    try {
+      const result = await executeCli(["doctor"]);
+      expect(result.exitCode).toBe(0);
+
+      const payload = JSON.parse(result.stdout);
+      expect(payload.command).toBe("doctor");
+      expect(payload.ready).toBe(true);
+      expect(payload.liveMode).toBe("stub");
+      expect(payload.nextSteps).toContain("npx martin-loop demo");
+      expect(payload.nextSteps).toContain("npx martin-loop dossier --latest");
+    } finally {
+      if (previousLive === undefined) {
+        delete process.env.MARTIN_LIVE;
+      } else {
+        process.env.MARTIN_LIVE = previousLive;
+      }
+    }
+  });
+
+  it("loads the latest persisted run through dossier", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-cli-dossier-"));
+    const previousRunsRoot = process.env.MARTIN_RUNS_DIR;
+
+    try {
+      process.env.MARTIN_RUNS_DIR = runsRoot;
+
+      const loop = createLoopRecord({
+        workspaceId: "ws_ops",
+        projectId: "proj_runtime",
+        status: "failed",
+        lifecycleState: "budget_exit",
+        task: {
+          title: "Repair the flaky CI gate",
+          objective: "Repair the flaky CI gate",
+          verificationPlan: ["pnpm test"]
+        },
+        cost: {
+          actualUsd: 3,
+          avoidedUsd: 7,
+          tokensIn: 1200,
+          tokensOut: 450
+        },
+        artifacts: [
+          {
+            artifactId: "artifact_diff",
+            kind: "diff",
+            label: "Latest diff",
+            uri: "file:///tmp/diff.patch"
+          }
+        ],
+        events: [
+          {
+            eventId: "evt_1",
+            type: "verification.completed",
+            timestamp: "2026-05-22T20:00:00.000Z",
+            lifecycleState: "verifying",
+            payload: {
+              passed: false,
+              summary: "The verifier still failed after the latest attempt."
+            }
+          }
+        ]
+      });
+
+      await persistLoopArtifacts(loop, { runsRoot });
+
+      const result = await executeCli(["dossier", "--latest"]);
+      expect(result.exitCode).toBe(0);
+
+      const payload = JSON.parse(result.stdout);
+      expect(payload.command).toBe("dossier");
+      expect(payload.loop.loopId).toBe(loop.loopId);
+      expect(payload.verification.status).toBe("failed");
+      expect(payload.receipt.whatMartinPrevented).toContain(
+        "false success claims after a failed verifier"
+      );
+      expect(payload.receipt.tokenWasteReceipt.estimateLabel).toContain("directional local estimates");
+    } finally {
+      if (previousRunsRoot === undefined) {
+        delete process.env.MARTIN_RUNS_DIR;
+      } else {
+        process.env.MARTIN_RUNS_DIR = previousRunsRoot;
+      }
+
+      await rm(runsRoot, { force: true, recursive: true });
     }
   });
 

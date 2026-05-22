@@ -134,9 +134,29 @@ If the problem is familiar, star the repo so other builders can find the runtime
 npm install -g martin-loop
 ```
 
-This installs the public `martin-loop` CLI package. This README is synced for `martin-loop@0.1.8`.
+This installs the public `martin-loop` CLI package. This README is synced for `martin-loop@0.2.0`.
 
 Want a safe sandbox first? Run `npx martin-loop demo` and MartinLoop will copy a disposable local workspace into `./martin-loop-demo`.
+
+### Three-Minute First Value
+
+Start with the local readiness check:
+
+```sh
+npx martin-loop doctor
+```
+
+Then run the no-spend proof path:
+
+```sh
+npx martin-loop demo
+cd martin-loop-demo
+npm install
+MARTIN_LIVE=false npx martin-loop run "Summarize the demo workspace and confirm the verifier is green" --verify "npm test"
+npx martin-loop dossier --latest
+```
+
+`dossier --latest` gives you the receipt-style follow-up: what happened, verifier evidence, rollback or artifact evidence, directional token and cost totals, and the next safe action.
 
 ### Public Package Surface
 
@@ -205,12 +225,20 @@ npx martin-loop resume <loopId>
 
 `inspect` prints a portfolio summary for records in the file. `resume` looks up a persisted loop record by ID under `~/.martin/runs/`.
 
+For the richer operator view, use:
+
+```sh
+npx martin-loop dossier --latest
+```
+
 ---
 
 ## CLI
 
 ```text
 martin-loop run <objective> [options]
+martin-loop doctor
+martin-loop dossier (--latest | --loop-id <id> | --file <path>)
 
   --objective <text>      The task to accomplish, or pass it as the first positional arg
   --budget <n>            Hard cost cap in USD
@@ -231,7 +259,7 @@ martin-loop run <objective> [options]
   --metadata <key=value>  Attach metadata to the run record; repeatable
 ```
 
-The public CLI also includes `demo`, `inspect`, and `resume`.
+The public CLI includes `doctor`, `demo`, `dossier`, `inspect`, and `resume`. `inspect` and `resume` remain useful compatibility views; `dossier` is the fastest way to review the latest run with receipt-style evidence.
 
 <div align="center">
   <img src="./docs/assets/cli-static.svg" alt="MartinLoop CLI terminal output" width="720">
