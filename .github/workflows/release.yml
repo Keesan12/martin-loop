@@ -57,6 +57,16 @@ jobs:
           VERSION="$(node -p "require('./package.json').version")"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
+      - name: Extract changelog entry
+        id: changelog
+        run: |
+          BODY="$(node ./scripts/extract-changelog-entry.mjs --version "${{ steps.package-version.outputs.version }}")"
+          {
+            echo "body<<EOF_CHANGELOG"
+            printf '%s\n' "$BODY"
+            echo "EOF_CHANGELOG"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Check npm for existing version
         id: npm-version
         run: |
@@ -89,4 +99,4 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ steps.root-pack.outputs.tarball }}
-          generate_release_notes: true
+          body: ${{ steps.changelog.outputs.body }}
