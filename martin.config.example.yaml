@@ -11,8 +11,8 @@ budget:
 governance:
   # Policy used when the run would take a destructive action.
   destructiveActionPolicy: approval
-  # Keep OSS telemetry local by default.
-  telemetryDestination: local-only
+  # Where governance/telemetry events should be sent.
+  telemetryDestination: control-plane
   # Verification commands used when --verify is not supplied.
   verifierRules:
     - pnpm test

@@ -3,7 +3,7 @@
   "private": false,
   "version": "0.1.8",
   "type": "module",
-  "description": "Govern AI coding agents with budgets, verifier gates, rollback evidence, and inspectable run receipts.",
+  "description": "Control AI coding agents with budgets, verifier gates, rollback evidence, and inspectable run receipts.",
   "packageManager": "pnpm@10.33.0",
   "keywords": [
     "ai-agent",
