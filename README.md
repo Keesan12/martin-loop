@@ -61,6 +61,7 @@ It does not try to replace the agent pattern. It makes that pattern safe to run.
 | Failure taxonomy | Classifies failures across 11 current classes, including hallucination, test regression, scope creep, repo grounding failure, environment mismatch, and budget pressure, that distinguishes real success from unsafe, invalid, or terminal behavior.|
 | Safety leash | Evaluates verifier commands, file scope, dependency or migration changes that require approval, and secret-like values in task text. **Policy-as-code**. |
 | Context integrity | Scans user prompts and tool output for injection patterns (authority inversion, instruction override, identity redefinition) before any attempt is admitted. Aborts with human escalation on detection. |
+| Red-Blue Testing | Adversarial probe suite that runs before a patch is accepted. Six deterministic probes detect assertion deletion, silent reverts, context poisoning, budget self-reporting, and grounding evasion. Three risk tiers: `baseline`, `high_risk`, and `release_critical` (adds a Haiku model call). A single block-severity finding rejects the patch. |
 | Rollback evidence | Captures rollback boundaries and restore outcomes for repo-backed attempts when a persistence store is configured. |
 | Context distillation | Carries a distilled summary of recent attempts and remaining constraints into subsequent attempts. |
 | Run records | The CLI appends JSONL loop records under `~/.martin/runs/<workspaceId>.jsonl`; lower-level stores can also persist contracts, ledgers, and attempt artifacts.
@@ -133,7 +134,7 @@ If the problem is familiar, star the repo so other builders can find the runtime
 npm install -g martin-loop
 ```
 
-This installs the public `martin-loop` CLI package. This README is synced for `martin-loop@0.1.7`.
+This installs the public `martin-loop` CLI package. This README is synced for `martin-loop@0.1.8`.
 
 Want a safe sandbox first? Run `npx martin-loop demo` and MartinLoop will copy a disposable local workspace into `./martin-loop-demo`.
 
