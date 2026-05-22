@@ -366,7 +366,7 @@ Helpful docs:
 - [Integration outreach pack](./docs/distribution/INTEGRATION-OUTREACH.md)
 - [Claude Code walkthrough](./docs/oss/CLAUDE-CODE-WALKTHROUGH.md)
 - [Ralph-style loop safety guide](./docs/oss/RALPH-LOOP-SAFETY.md)
-- [Release surface report](./docs/oss/RELEASE-SURFACE-REPORT.md)
+- [OSS surface overview](./docs/oss/README.md)
 
 ---
 
