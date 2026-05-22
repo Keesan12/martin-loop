@@ -8,18 +8,20 @@ import {
   assertRootVersionPolicy,
   runRootReleaseGuard,
 } from "../root-release-guard.mjs";
+import rootPackageJson from "../../package.json" with { type: "json" };
 
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const ROOT_TAG = `v${rootPackageJson.version}`;
 
 test("runRootReleaseGuard accepts the current OSS-safe root package shape", async () => {
   const result = await runRootReleaseGuard({
     rootDir: ROOT_DIR,
-    tag: "v0.1.7",
+    tag: ROOT_TAG,
   });
 
   assert.equal(result.name, "martin-loop");
-  assert.equal(result.version, "0.1.7");
-  assert.equal(result.tag, "v0.1.7");
+  assert.equal(result.version, rootPackageJson.version);
+  assert.equal(result.tag, ROOT_TAG);
   assert.equal(result.packChecked, false);
 });
 
