@@ -1,16 +1,9 @@
 # Changelog
 
-<<<<<<< HEAD
 ## [0.1.8] — 2026-05-21
 
 ### Added
 - **Red-Blue Testing** — Adversarial probe suite that runs before a patch is accepted. Detects patch-level cheating across six deterministic probes: assertion deletion (T01), silent export reverts (T02), manifest scope creep (T03), context directory poisoning (T07), budget self-reporting (T10), and grounding evasion pragmas (T11). Runs in three risk tiers — `baseline` (6-probe sweep), `high_risk` (paranoid 12-probe scan), and `release_critical` (paranoid scan + optional Haiku model call). A single `block`-severity finding rejects the patch; `warn` findings are recorded but do not block. Exported as `runRedPhase`, `shouldAcceptPatch`, `buildRedFindings`, and `resolveRedBudgetPolicy` from `@martin/core`.
-=======
-## Unreleased
-
-### Changed
-- Clarify public README and OSS documentation copy for the agent proof workflow and package surface.
->>>>>>> 3b330fab725f03f883c66bd32466eed436daba80
 
 ## [0.1.7] — 2026-05-20
 

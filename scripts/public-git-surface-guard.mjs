@@ -37,16 +37,19 @@ export async function readCommitSubjects(options = {}) {
   const rootDir = options.rootDir ?? process.cwd();
   const head = options.head ?? "HEAD";
   const base = options.base ?? null;
-  const rangeArgs = base ? [`${base}..${head}`] : ["--max-count=1", head];
-  const log = await runGit(["log", "--format=%H%x00%s", ...rangeArgs], { cwd: rootDir });
-  const commits = parseCommitSubjectLog(log.stdout);
 
-  if (base && commits.length === 0) {
-    const fallback = await runGit(["log", "--format=%H%x00%s", "--max-count=1", head], { cwd: rootDir });
-    return parseCommitSubjectLog(fallback.stdout);
+  if (base) {
+    try {
+      const log = await runGit(["log", "--format=%H%x00%s", `${base}..${head}`], { cwd: rootDir });
+      const commits = parseCommitSubjectLog(log.stdout);
+      if (commits.length > 0) return commits;
+    } catch {
+      // base SHA is inaccessible (e.g. after a force push rewrote history) — fall through to HEAD-only check
+    }
   }
 
-  return commits;
+  const fallback = await runGit(["log", "--format=%H%x00%s", "--max-count=1", head], { cwd: rootDir });
+  return parseCommitSubjectLog(fallback.stdout);
 }
 
 export function parseCommitSubjectLog(stdout) {
