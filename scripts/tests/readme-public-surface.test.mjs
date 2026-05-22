@@ -100,8 +100,10 @@ test("root README matches the current public package versions and launch surface
 
   assert.match(readme, new RegExp(`martin-loop@${rootPackageJson.version.replaceAll(".", "\\.")}`));
   assert.match(readme, /npm install -g martin-loop/);
+  assert.match(readme, /npx martin-loop doctor/);
   assert.match(readme, /npx martin-loop demo/);
   assert.match(readme, /MARTIN_LIVE=false npx martin-loop run/);
+  assert.match(readme, /npx martin-loop dossier --latest/);
   assert.match(readme, /npx martin-loop run/);
   assert.match(readme, /npx martin-loop inspect/);
   assert.match(readme, /npx martin-loop resume/);

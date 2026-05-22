@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 import { resolveRcCommandExecution } from "./rc-validation.mjs";
 
-const ROOT_VERSION_PATTERN = /^0\.1\.\d+$/;
+const ROOT_VERSION_PATTERN = /^0\.(1|2)\.\d+$/;
 const ALLOWED_FILES = [
   "CODE_OF_CONDUCT.md",
   "README.md",
@@ -67,7 +67,7 @@ export async function runRootReleaseGuard(options = {}) {
 
 export function assertRootVersionPolicy(version) {
   if (!ROOT_VERSION_PATTERN.test(version)) {
-    throw new Error(`Root martin-loop version must stay on the 0.1.x line. Received ${version}.`);
+    throw new Error(`Root martin-loop version must stay on the approved 0.1.x or 0.2.x line. Received ${version}.`);
   }
 }
 

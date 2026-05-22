@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -42,9 +43,7 @@ export async function createOssBoundaryReport(options = {}) {
   const rootDir = options.rootDir ?? process.cwd();
   const rootManifest = JSON.parse(await readFile(path.join(rootDir, "package.json"), "utf8"));
   const ossCorePackages = await loadPackages(rootDir, OSS_CORE_PATHS);
-  const topLevelEntries = (await readdir(rootDir, { withFileTypes: true }))
-    .map((entry) => entry.name)
-    .sort();
+  const topLevelEntries = listTrackedTopLevelEntries(rootDir);
 
   const forbiddenTopLevelEntries = topLevelEntries.filter((entry) =>
     FORBIDDEN_TOP_LEVEL_ENTRIES.includes(entry),
@@ -92,6 +91,20 @@ export async function createOssBoundaryReport(options = {}) {
       dependencyLeakCount: dependencyLeaks.length,
     },
   };
+}
+
+function listTrackedTopLevelEntries(rootDir) {
+  const output = execFileSync("git", ["ls-tree", "--name-only", "HEAD"], {
+    cwd: rootDir,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  return output
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .sort();
 }
 
 export function renderOssBoundaryReportMarkdown(report) {

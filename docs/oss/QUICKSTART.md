@@ -17,6 +17,26 @@ pnpm install --frozen-lockfile
 pnpm build
 ```
 
+## Three-minute first value
+
+Start with the public CLI readiness check:
+
+```bash
+npx martin-loop doctor
+```
+
+Then prove the flow locally without provider spend:
+
+```bash
+npx martin-loop demo
+cd martin-loop-demo
+npm install
+MARTIN_LIVE=false npx martin-loop run "Summarize the demo workspace and confirm the verifier is green" --verify "npm test"
+npx martin-loop dossier --latest
+```
+
+`dossier --latest` summarizes what happened, verifier evidence, rollback or artifact evidence, directional token or cost totals, and the next safe action.
+
 ## Validate the OSS surface
 
 ```bash

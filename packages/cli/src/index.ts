@@ -1,4 +1,5 @@
-import { appendFile, cp, mkdir, readFile, readdir, rm } from "node:fs/promises";
+import { cp, mkdir, readFile, readdir, rm, stat, unlink, writeFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,6 +18,7 @@ import {
   type LoopRecord,
   type MutationMode
 } from "@martin/contracts";
+import { persistLoopArtifacts, resolveRunsRoot } from "./persistence.js";
 
 export type RunCommandRequest = {
   workspaceId: string;
@@ -75,6 +77,15 @@ export type ParsedCliArguments =
   | {
       command: "inspect";
       file: string;
+    }
+  | {
+      command: "doctor";
+    }
+  | {
+      command: "dossier";
+      latest: boolean;
+      loopId?: string;
+      file?: string;
     }
   | {
       command: "resume";
@@ -168,13 +179,8 @@ export async function executeCli(args: string[]): Promise<{
         };
       }
 
-      // Persist loop record to ~/.martin/runs/<workspaceId>.jsonl
-      // Dashboard and inspect commands read from this file.
       try {
-        const runsDir = join(homedir(), ".martin", "runs");
-        await mkdir(runsDir, { recursive: true });
-        const outFile = join(runsDir, `${resolvedRequest.workspaceId}.jsonl`);
-        await appendFile(outFile, JSON.stringify(result.loop) + "\n", "utf8");
+        await persistLoopArtifacts(result.loop);
       } catch {
         // Non-fatal — persistence failure should not crash the run output
       }
@@ -261,6 +267,12 @@ export async function executeCli(args: string[]): Promise<{
           stderr: `Error: ${message}`
         };
       }
+    }
+    case "doctor": {
+      return await executeDoctorCommand();
+    }
+    case "dossier": {
+      return await executeDossierCommand(parsed);
     }
     case "resume": {
       if (!parsed.loopId) {
@@ -505,6 +517,21 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
     };
   }
 
+  if (command === "doctor") {
+    return {
+      command: "doctor"
+    };
+  }
+
+  if (command === "dossier") {
+    return {
+      command: "dossier",
+      latest: hasFlag(rest, "--latest"),
+      ...(readOption(rest, "--loop-id") ? { loopId: readOption(rest, "--loop-id") } : {}),
+      ...(readOption(rest, "--file") ? { file: readOption(rest, "--file") } : {})
+    };
+  }
+
   if (command === "resume") {
     const loopId = rest[0] ?? readOption(rest, "--loop-id") ?? "";
     return { command: "resume", loopId };
@@ -523,14 +550,18 @@ export function renderCliHelp(): string {
     "  martin-loop run <objective> [options]",
     "  martin run <objective> [options]       (alias)",
     "  martin-loop run --objective <text> [options]",
+    "  martin-loop doctor",
     "  martin-loop demo [--dir <path>] [--force]",
+    "  martin-loop dossier (--latest | --loop-id <id> | --file <path>)",
     "  martin-loop inspect --file <path>",
     "  martin-loop resume <loopId>",
     "  martin-loop bench --suite <suiteId>",
     "",
     "Commands:",
     "  run      Execute a bounded Martin loop against the current repository.",
+    "  doctor   Check local readiness, engine availability, and run-store access.",
     "  demo     Copy a safe local sandbox so you can try MartinLoop outside your own repo.",
+    "  dossier  Read the latest or selected persisted run with receipt-style evidence.",
     "  inspect  Read a persisted loop record and summarize its portfolio metrics.",
     "  resume   Load a persisted loop record by loop ID from ~/.martin/runs/.",
     "  bench    Redirect to the workspace-only RC benchmark harness.",
@@ -554,7 +585,12 @@ export function renderCliHelp(): string {
     "",
     "Demo options:",
     "  --dir <path>            Target directory for the copied demo sandbox.",
-    "  --force                 Replace an existing non-empty demo target."
+    "  --force                 Replace an existing non-empty demo target.",
+    "",
+    "Dossier options:",
+    "  --latest                Load the newest persisted run.",
+    "  --loop-id <id>          Load a persisted run by loop ID.",
+    "  --file <path>           Load a persisted run from a loop.json or .jsonl file."
   ].join("\n");
 }
 
@@ -666,6 +702,249 @@ function renderDemoInstructions(targetDirectory: string): string {
     "Optional live run:",
     '  npx martin-loop run "Add support for a discount percentage to summarizeInvoice and update the tests" --verify "npm test" --engine codex'
   ].join("\n");
+}
+
+async function executeDoctorCommand(): Promise<{
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+}> {
+  const runsRoot = resolveRunsRoot();
+  const tempProbe = join(runsRoot, `.doctor-check-${Date.now()}.tmp`);
+  let runsWritable = false;
+
+  try {
+    await mkdir(runsRoot, { recursive: true });
+    await writeFile(tempProbe, "ok\n", "utf8");
+    await unlink(tempProbe);
+    runsWritable = true;
+  } catch {
+    runsWritable = false;
+  }
+
+  const claudeAvailable = isCommandAvailable("claude");
+  const codexAvailable = isCommandAvailable("codex");
+  const liveMode = process.env.MARTIN_LIVE === "false" ? "stub" : "live";
+  const defaultEngine = codexAvailable ? "codex" : "claude";
+  const ready = runsWritable && (liveMode === "stub" || claudeAvailable || codexAvailable);
+
+  const payload = {
+    command: "doctor",
+    ready,
+    liveMode,
+    defaultEngine,
+    engines: {
+      claudeAvailable,
+      codexAvailable
+    },
+    runsRoot,
+    checks: {
+      runsWritable,
+      demoWorkspaceAvailable: true
+    },
+    nextSteps: [
+      "npx martin-loop demo",
+      "cd martin-loop-demo",
+      "npm install",
+      'MARTIN_LIVE=false npx martin-loop run "Summarize the demo workspace and confirm the verifier is green" --verify "npm test"',
+      "npx martin-loop dossier --latest"
+    ],
+    note:
+      liveMode === "stub"
+        ? "Stub mode is active. You can prove the flow locally without provider spend."
+        : claudeAvailable || codexAvailable
+          ? "At least one live engine is available."
+          : "No live engine was found on PATH. Set MARTIN_LIVE=false for the no-spend proof path."
+  };
+
+  return {
+    exitCode: ready ? 0 : 1,
+    stdout: JSON.stringify(payload, null, 2),
+    stderr: ""
+  };
+}
+
+async function executeDossierCommand(parsed: Extract<ParsedCliArguments, { command: "dossier" }>): Promise<{
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+}> {
+  try {
+    const loop = await resolveLoopForDossier(parsed);
+    const payload = buildRunDossierPayload(loop);
+
+    return {
+      exitCode: 0,
+      stdout: JSON.stringify(payload, null, 2),
+      stderr: ""
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      exitCode: 1,
+      stdout: "",
+      stderr: `Error: ${message}`
+    };
+  }
+}
+
+async function resolveLoopForDossier(
+  parsed: Extract<ParsedCliArguments, { command: "dossier" }>
+): Promise<LoopRecord> {
+  if (parsed.file) {
+    return await loadLoopFromPath(parsed.file);
+  }
+
+  const runsRoot = resolveRunsRoot();
+
+  if (parsed.loopId) {
+    const loopPath = join(runsRoot, parsed.loopId, "loop.json");
+    try {
+      return await loadLoopFromPath(loopPath);
+    } catch {
+      const loop = await findLoopInWorkspaceIndexes(runsRoot, parsed.loopId);
+      if (loop) return loop;
+      throw new Error(`loop ${parsed.loopId} not found in ${runsRoot}`);
+    }
+  }
+
+  if (!parsed.latest) {
+    throw new Error("dossier requires --latest, --loop-id <id>, or --file <path>");
+  }
+
+  const latestLoop = await findLatestPersistedLoop(runsRoot);
+  if (!latestLoop) {
+    throw new Error(`no persisted runs found in ${runsRoot}`);
+  }
+
+  return latestLoop;
+}
+
+async function loadLoopFromPath(targetPath: string): Promise<LoopRecord> {
+  const entry = await stat(targetPath);
+  if (entry.isDirectory()) {
+    return loadLoopFromPath(join(targetPath, "loop.json"));
+  }
+
+  const contents = await readFile(targetPath, "utf8");
+  const loops = parseLoopRecords(contents);
+  const latest = loops.sort(compareLoopsByUpdatedAt).at(-1);
+  if (!latest) {
+    throw new Error(`no loop records found in ${targetPath}`);
+  }
+  return latest;
+}
+
+async function findLatestPersistedLoop(runsRoot: string): Promise<LoopRecord | null> {
+  await mkdir(runsRoot, { recursive: true });
+  const entries = await readdir(runsRoot, { withFileTypes: true });
+  const loops: LoopRecord[] = [];
+
+  for (const entry of entries) {
+    if (entry.isDirectory()) {
+      const loopPath = join(runsRoot, entry.name, "loop.json");
+      try {
+        loops.push(await loadLoopFromPath(loopPath));
+      } catch {
+        // Ignore non-loop directories.
+      }
+    }
+  }
+
+  if (loops.length > 0) {
+    return loops.sort(compareLoopsByUpdatedAt).at(-1) ?? null;
+  }
+
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith(".jsonl")) continue;
+    const contents = await readFile(join(runsRoot, entry.name), "utf8");
+    loops.push(...parseLoopRecords(contents));
+  }
+
+  return loops.length > 0 ? loops.sort(compareLoopsByUpdatedAt).at(-1) ?? null : null;
+}
+
+async function findLoopInWorkspaceIndexes(runsRoot: string, loopId: string): Promise<LoopRecord | null> {
+  const entries = await readdir(runsRoot, { withFileTypes: true });
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith(".jsonl")) continue;
+    const contents = await readFile(join(runsRoot, entry.name), "utf8");
+    const match = parseLoopRecords(contents).find((loop) => loop.loopId === loopId);
+    if (match) return match;
+  }
+
+  return null;
+}
+
+function compareLoopsByUpdatedAt(left: LoopRecord, right: LoopRecord): number {
+  return Date.parse(left.updatedAt) - Date.parse(right.updatedAt);
+}
+
+function buildRunDossierPayload(loop: LoopRecord) {
+  const verificationEvent = [...loop.events]
+    .reverse()
+    .find((event) => event.type === "verification.completed");
+  const verificationPassed =
+    verificationEvent?.payload["passed"] === true || loop.lifecycleState === "completed";
+  const verificationStatus = verificationPassed
+    ? "passed"
+    : verificationEvent
+      ? "failed"
+      : "unknown";
+
+  const preventionNotes = new Set<string>();
+  if (verificationStatus === "failed") {
+    preventionNotes.add("false success claims after a failed verifier");
+  }
+  if (loop.cost.avoidedUsd > 0) {
+    preventionNotes.add("avoidable spend beyond the governed budget envelope");
+  }
+  if (loop.lifecycleState === "human_escalation") {
+    preventionNotes.add("unsafe continuation without a human decision");
+  }
+  if (preventionNotes.size === 0) {
+    preventionNotes.add("unbounded retry loops without an inspectable receipt");
+  }
+
+  return {
+    command: "dossier",
+    loop,
+    summary: {
+      status: loop.status,
+      lifecycleState: loop.lifecycleState,
+      attempts: loop.attempts.length,
+      actualUsd: loop.cost.actualUsd,
+      avoidedUsd: loop.cost.avoidedUsd,
+      updatedAt: loop.updatedAt
+    },
+    verification: {
+      status: verificationStatus,
+      summary:
+        typeof verificationEvent?.payload["summary"] === "string"
+          ? verificationEvent.payload["summary"]
+          : verificationPassed
+            ? "Verifier passed."
+            : "No verifier summary was persisted."
+    },
+    receipt: {
+      whatMartinPrevented: [...preventionNotes],
+      tokenWasteReceipt: {
+        estimateLabel: "directional local estimates",
+        actualUsd: loop.cost.actualUsd,
+        avoidedUsd: loop.cost.avoidedUsd,
+        tokensIn: loop.cost.tokensIn,
+        tokensOut: loop.cost.tokensOut
+      },
+      rollbackEvidence: {
+        artifactCount: loop.artifacts.length,
+        available: loop.artifacts.length > 0
+      },
+      nextSafeAction:
+        loop.status === "completed"
+          ? "Review the persisted artifacts, then ship or archive the run."
+          : "Inspect the verifier evidence, then re-run with a tighter objective or fix the blocking failure."
+    }
+  };
 }
 
 async function resolveGuardrails(
@@ -898,6 +1177,12 @@ function isNodeErrorWithCode(error: unknown, code: string): boolean {
     typeof (error as { code: unknown }).code === "string" &&
     (error as { code: string }).code === code
   );
+}
+
+function isCommandAvailable(command: string): boolean {
+  const executable = process.platform === "win32" ? "where.exe" : "which";
+  const result = spawnSync(executable, [command], { stdio: "ignore" });
+  return result.status === 0;
 }
 
 /**
