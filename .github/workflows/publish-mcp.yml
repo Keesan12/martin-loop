@@ -42,6 +42,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ steps.release-vars.outputs.tag }}
+          fetch-depth: 0
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v6
@@ -56,6 +57,9 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Guard public git surface
+        run: pnpm public:git-surface
 
       - name: Verify MCP package
         run: |
