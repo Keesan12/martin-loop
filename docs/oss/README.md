@@ -1,6 +1,6 @@
 # Martin OSS Core
 
-This repository is the public OSS-safe Martin Loop runtime surface: runtime packages, CLI, MCP server, examples, and release validation for the root `martin-loop` package.
+This directory documents the public MartinLoop OSS runtime surface: runtime packages, CLI, MCP server, examples, and release validation for the root `martin-loop` package.
 
 ## Included packages
 

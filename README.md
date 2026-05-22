@@ -17,7 +17,7 @@ MartinLoop has been accepted into the NVIDIA Inception program.
 **It kept retrying until the bill hit $65.**
 <br>47 attempts. No hard stop. No rollback. No audit trail. Nothing merged.
 <br><br>
-MartinLoop exists so that does not happen silently.
+MartinLoop makes that failure visible, bounded, and reviewable.
 <br>
 
 > AI coding agents are useful. Unbounded retry loops are not.
@@ -124,7 +124,7 @@ MARTIN_LIVE=false npx martin-loop run "Summarize the demo workspace and confirm 
 
 Challenge page: [Can your AI coding agent finish this task under $3?](./docs/distribution/UNDER-3-CHALLENGE.md)
 
-If the problem is familiar, star the repo so other builders can find the runtime before their next runaway agent loop.
+If the problem is familiar, star the repo so other builders can find the runtime before their next unbounded agent loop.
 
 ---
 
