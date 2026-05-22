@@ -25,6 +25,7 @@ From the repo root:
 pnpm install --frozen-lockfile
 pnpm build
 pnpm test
+pnpm public:git-surface
 pnpm oss:validate
 pnpm public:smoke
 pnpm --filter @martinloop/mcp smoke:pack

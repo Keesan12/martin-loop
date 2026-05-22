@@ -55,6 +55,7 @@
     "test": "pnpm -r test && node --test scripts/tests/*.mjs",
     "lint": "pnpm -r lint",
     "oss:validate": "node ./scripts/oss-boundary.mjs",
+    "public:git-surface": "node ./scripts/public-git-surface-guard.mjs",
     "public:smoke": "node ./scripts/public-facade-smoke.mjs",
     "mcp:pack:smoke": "pnpm --filter @martinloop/mcp smoke:pack",
     "mcp:published:smoke": "pnpm --filter @martinloop/mcp smoke:published",

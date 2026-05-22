@@ -26,6 +26,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
@@ -37,6 +39,11 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+
+      - name: Guard public git surface
+        env:
+          PUBLIC_GIT_SURFACE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: pnpm public:git-surface
 
       - name: Run OSS release matrix lane
         env:

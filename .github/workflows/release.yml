@@ -15,6 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
         with:
@@ -33,6 +35,7 @@ jobs:
 
       - name: Validate OSS release surface
         run: |
+          pnpm public:git-surface
           pnpm build
           pnpm test
           pnpm oss:validate
