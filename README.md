@@ -134,7 +134,7 @@ If the problem is familiar, star the repo so other builders can find the runtime
 npm install -g martin-loop
 ```
 
-This installs the public `martin-loop` CLI package. This README is synced for `martin-loop@0.2.0`.
+This installs the public `martin-loop` CLI package. This README is synced for `martin-loop@0.2.1`.
 
 Want a safe sandbox first? Run `npx martin-loop demo` and MartinLoop will copy a disposable local workspace into `./martin-loop-demo`.
 
@@ -188,6 +188,20 @@ Use the published MCP package directly:
 - Claude Code macOS/Linux: `claude mcp add --transport stdio --scope user martin-loop -- npx -y @martinloop/mcp`
 - Claude Code Windows PowerShell/cmd: `claude mcp add --transport stdio --scope user martin-loop -- cmd /c npx -y @martinloop/mcp`
 
+When you want a host-specific config block instead of the default full server install, generate one from the CLI:
+
+- Codex minimal profile: `martin mcp print-config --host codex --profile minimal`
+- Claude diagnostic profile: `martin mcp print-config --host claude --profile diagnostic`
+- Gemini full-local profile: `martin mcp print-config --host gemini --profile full-local`
+- Generic stdio profile: `martin mcp print-config --host generic --transport stdio --profile minimal`
+
+Profile guide:
+
+- `minimal` is the default local stdio profile and stays read-only: `martin_doctor`, `martin_preflight`, `martin_list_runs`, and `martin_run_dossier`
+- `diagnostic` adds deeper read-only inspection: `martin_get_run`, `martin_get_attempt`, and `martin_get_verification_results`
+- `full-local` is the profile that exposes `martin_run` for local execution hosts
+- `starter` and `full` remain compatibility aliases when you need them for older automation or docs
+
 If you just want to launch the server manually, the one-line command is:
 
 ```sh
@@ -229,6 +243,13 @@ For the richer operator view, use:
 
 ```sh
 npx martin-loop dossier --latest
+```
+
+For host setup flows, the CLI also exposes:
+
+```sh
+martin mcp print-config --host codex|claude|gemini|generic --transport stdio|remote --profile minimal|diagnostic|full-local|starter|full
+martin mcp install --host codex|claude|gemini|generic --scope user|project [--dry-run]
 ```
 
 ---

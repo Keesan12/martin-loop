@@ -79,6 +79,22 @@ command = "npx"
 args = ["-y", "@martinloop/mcp"]
 ```
 
+If you want generated host config instead of hand-writing snippets, use the root CLI:
+
+```sh
+martin mcp print-config --host codex --profile minimal
+martin mcp print-config --host claude --profile diagnostic
+martin mcp print-config --host gemini --profile full-local
+martin mcp install --host codex --scope project --dry-run
+```
+
+Profile guide:
+
+- `minimal` is the default read-only local profile.
+- `diagnostic` adds deeper read-only run inspection.
+- `full-local` is the profile that exposes `martin_run`.
+- `starter` and `full` remain compatibility aliases.
+
 ## Requirements
 
 - Node 20+

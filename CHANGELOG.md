@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.2.1] — 2026-05-23
+
+### Added
+- **Local MCP install profiles** — Add `minimal`, `diagnostic`, and `full-local` profile generation for `martin mcp print-config` and `martin mcp install`, with `minimal` as the default local stdio profile.
+- **Read-only-by-default host setup** — Document the default allow-list so local MCP installs start with setup, preflight, run listing, triage, and dossier review before exposing execution.
+
+### Changed
+- Refresh the public README, quickstart, CLI docs, and MCP host guidance so `0.2.1` clearly shows how to choose the right local MCP profile for Codex, Claude Code, Gemini, and generic hosts.
+- Keep the root `martin-loop` package on the `0.2.x` line while leaving `@martinloop/mcp@0.2.0` unchanged for this slice.
+
 ## [0.2.0] — 2026-05-22
 
 ### Added

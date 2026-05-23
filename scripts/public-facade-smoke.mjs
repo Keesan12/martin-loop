@@ -99,7 +99,10 @@ export async function runPublicFacadeSmoke(options = {}) {
       cwd: appDir,
     });
     const demoReadme = await readFile(path.join(demoTarget, "README.md"), "utf8");
-    if (!demoRun.stdout.includes("MartinLoop demo sandbox created at") || !demoReadme.includes("Demo Sandbox")) {
+    if (
+      !demoRun.stdout.includes("Martin Loop demo sandbox created at") ||
+      !demoReadme.includes("MartinLoop Demo Sandbox")
+    ) {
       throw new Error(`Expected demo command to copy the packaged sandbox.\n${demoRun.stdout}${demoRun.stderr}`);
     }
 
