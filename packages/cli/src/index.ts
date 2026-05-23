@@ -961,7 +961,7 @@ async function resolveGuardrails(
     maxTokens: config?.budget?.maxTokens ?? request.budget.maxTokens
   };
 
-  if (hasFlag(tokens, "--budget-usd")) {
+  if (hasFlag(tokens, "--budget-usd") || hasFlag(tokens, "--budget")) {
     budget.maxUsd = request.budget.maxUsd;
   }
   if (hasFlag(tokens, "--soft-limit-usd")) {
