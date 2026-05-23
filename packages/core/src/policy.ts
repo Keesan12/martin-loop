@@ -166,7 +166,7 @@ export function classifyFailure(input: {
     };
   }
 
-  if (containsPositive(message, ["syntax error", "parse error", "typescript error"])) {
+  if (containsPositive(message, ["syntax error", "syntaxerror", "parse error", "typescript error"])) {
     return {
       failureClass: "syntax_error",
       rationale: "The attempt failed on a parser or compiler-style issue.",
@@ -532,7 +532,8 @@ export function evaluateBudgetPreflight(input: BudgetPreflightInput): BudgetPref
     };
   }
 
-  const perAttemptCap = input.perAttemptCapUsd ?? Math.max(input.remainingBudgetUsd * 0.2, 0.05);
+  const perAttemptCap = input.perAttemptCapUsd ?? 
+    Math.min(Math.max(input.remainingBudgetUsd * 0.2, 0.05), input.remainingBudgetUsd);
   if (estimatedAttemptCostUsd > perAttemptCap) {
     return {
       allowed: false,
@@ -827,15 +828,25 @@ export function scorePatchDecision(input: PatchDecisionInput): PatchScore {
 
 function tokenizeDiff(diff: string): Set<string> {
   const tokens = new Set<string>();
+  let added = 0;
+  let removed = 0;
 
   for (const line of diff.split("\n")) {
     if ((!line.startsWith("+") && !line.startsWith("-")) || line.startsWith("+++") || line.startsWith("---")) {
       continue;
     }
 
-    for (const token of line.slice(1).match(/[A-Za-z_][A-Za-z0-9_]{2,}/g) ?? []) {
+    if (line.startsWith("+")) added++;
+    if (line.startsWith("-")) removed++;
+
+    for (const token of line.slice(1).match(/[A-Za-z_][A-Za-z0-9_]{1,}/g) ?? []) {
       tokens.add(token);
     }
+  }
+
+  if (tokens.size < 5) {
+    tokens.add(`__lines_added_${added}`);
+    tokens.add(`__lines_removed_${removed}`);
   }
 
   return tokens;
