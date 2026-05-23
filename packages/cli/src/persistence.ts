@@ -63,6 +63,7 @@ export async function persistLoopArtifacts(
   await Promise.all([
     writeJsonFile(join(loopRoot, "contract.json"), contract),
     writeJsonFile(join(loopRoot, "state.json"), state),
+    writeJsonFile(join(loopRoot, "loop-record.json"), loop),
     writeJsonFile(join(loopRoot, "loop.json"), loop),
     writeEvents(join(loopRoot, "ledger.jsonl"), loop.events),
     ...loop.attempts.map((attempt) =>

@@ -112,6 +112,10 @@ test("root README matches the current public package versions and launch surface
   assert.match(readme, /`martin_run` remains the only tool that can execute work/i);
   assert.match(readme, /martin_list_runs/);
   assert.match(readme, /martin_run_dossier/);
+  assert.match(readme, /martin mcp print-config --host codex --profile minimal/);
+  assert.match(readme, /martin mcp print-config --host claude --profile diagnostic/);
+  assert.match(readme, /martin mcp print-config --host gemini --profile full-local/);
+  assert.match(readme, /`minimal` is the default local stdio profile/i);
 });
 
 test("root README stays clean client-facing public copy", async () => {
