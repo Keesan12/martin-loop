@@ -53,7 +53,7 @@ function runProgrammaticProbes(patch: PatchInput, paranoid: boolean): RedFinding
   const findings: RedFinding[] = [];
 
   // Probe 1: assertion deletion
-  if (/^\-.*expect\(.*\)\.to/m.test(patch.diff)) {
+  if (/^\-.*(?:expect\(.*\)\.to|assert\.(?:equal|is|ok|strictEqual)|t\.(?:is|truthy|falsy|deepEqual))/m.test(patch.diff)) {
     findings.push({
       trapId: "T01",
       severity: "warn",
