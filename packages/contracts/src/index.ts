@@ -170,6 +170,14 @@ export interface LoopRecordDraft {
   updatedAt?: string;
 }
 
+export type {
+  MartinErrorCategory,
+  MartinOutputMode,
+  MartinRunListFilters,
+  MartinRunSelector
+} from "./operator.js";
+export { MARTIN_ERROR_CATEGORIES } from "./operator.js";
+
 export interface LoopEventDraft {
   type: LoopEventType;
   lifecycleState?: LoopLifecycleState;

@@ -12,10 +12,11 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "pnpm --filter @martin/contracts build && pnpm --filter @martin/core build && pnpm --filter @martin/adapters build && tsc -p tsconfig.build.json",
     "test": "vitest run",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "dev": "tsx --tsconfig tsconfig.json src/bin/martin.ts"
+    "dev": "tsx --tsconfig tsconfig.json src/bin/martin.ts",
+    "verify:hosts:live": "node ./scripts/verify-host-matrix-live.mjs"
   },
   "dependencies": {
     "@martin/adapters": "workspace:*",

@@ -104,13 +104,29 @@ Codex install:
 codex mcp add martin-loop -- npx -y @martinloop/mcp
 ```
 
+Generated local profile examples:
+
+```bash
+martin mcp print-config --host codex --profile minimal
+martin mcp print-config --host claude --profile diagnostic
+martin mcp print-config --host gemini --profile full-local
+martin mcp install --host codex --scope project --dry-run
+```
+
+Profile guide:
+
+- `minimal` is the default read-only local profile for readiness, preflight, run listing, triage, and dossier review.
+- `diagnostic` adds deeper read-only run archaeology.
+- `full-local` is the profile that exposes `martin_run` for local execution hosts.
+
 Recommended first-use flow:
 
 ```text
 martin_doctor
 martin_preflight
+martin_list_runs
+martin_run_dossier
 martin_run
-martin_inspect or martin_status
 ```
 
 Repo-local MCP verification:

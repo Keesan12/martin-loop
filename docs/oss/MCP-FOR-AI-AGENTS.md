@@ -82,6 +82,24 @@ MARTIN_MCP_WORKSPACE_ROOT = "C:/path/to/repo"
 MARTIN_RUNS_DIR = "C:/path/to/repo/.martin/runs"
 ```
 
+### Generated install profiles
+
+Use the root CLI when you want a host-ready block for a specific local profile:
+
+```sh
+martin mcp print-config --host codex --profile minimal
+martin mcp print-config --host claude --profile diagnostic
+martin mcp print-config --host gemini --profile full-local
+martin mcp install --host codex --scope project --dry-run
+```
+
+Profile guide:
+
+- `minimal` is the default read-only local profile.
+- `diagnostic` adds deeper read-only run archaeology.
+- `full-local` is the profile that exposes `martin_run`.
+- `starter` and `full` remain compatibility aliases.
+
 ## Concise Tool Contract
 
 | Tool | Use it for | Required fields | Key rules |
