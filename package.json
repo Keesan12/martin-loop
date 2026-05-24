@@ -1,7 +1,7 @@
 {
   "name": "martin-loop",
   "private": false,
-  "version": "0.2.1",
+  "version": "0.2.2",
   "type": "module",
   "description": "Control AI coding agents with budgets, verifier gates, rollback evidence, and inspectable run receipts.",
   "packageManager": "pnpm@10.33.0",

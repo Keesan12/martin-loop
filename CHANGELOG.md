@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.2] — 2026-05-24
+
+### Added
+- **Persisted-run triage in the public release surface** — Promote `npx martin-loop triage` as the fastest way to rank saved runs by failure category, budget pressure, human escalation, and missing verification evidence.
+
+### Changed
+- Refresh the public README, quickstart, CLI docs, and release notes so the `0.2.2` package surface clearly documents triage-first operator review and degraded run-store warnings.
+- Keep the standalone `@martinloop/mcp` package on `0.2.0` for this slice; `0.2.2` is a root `martin-loop` release only.
+
 ## [0.2.1] — 2026-05-23
 
 ### Added

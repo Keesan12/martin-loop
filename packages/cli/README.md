@@ -24,7 +24,7 @@ The CLI now treats execution, diagnosis, persisted-run inspection, and MCP host 
 ## Local vs remote MCP
 
 - local `stdio` is the default and best path for fast local iteration
-- remote config output is reserved for the limited-access Martin Loop Streamable HTTP beta
+- remote config output is an advanced endpoint shape; the public quickstart and release train focus on local `stdio`
 - both `martin mcp print-config` and `martin mcp install` support:
   - `--host codex|claude|gemini|generic`
   - `--transport stdio|remote`

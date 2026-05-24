@@ -37,6 +37,14 @@ npx martin-loop dossier --latest
 
 `dossier --latest` summarizes what happened, verifier evidence, rollback or artifact evidence, directional token or cost totals, and the next safe action.
 
+If you have several saved runs and want the fastest “what should I look at first?” view:
+
+```bash
+npx martin-loop triage
+```
+
+Triage ranks persisted runs by failure category and urgency. Unreadable loop entries are skipped with warnings instead of breaking the whole review pass.
+
 ## Validate the OSS surface
 
 ```bash
@@ -115,7 +123,7 @@ martin mcp install --host codex --scope project --dry-run
 
 Profile guide:
 
-- `minimal` is the default read-only local profile for readiness, preflight, run listing, triage, and dossier review.
+- `minimal` is the default read-only local profile for readiness, preflight, run listing, and dossier review.
 - `diagnostic` adds deeper read-only run archaeology.
 - `full-local` is the profile that exposes `martin_run` for local execution hosts.
 
