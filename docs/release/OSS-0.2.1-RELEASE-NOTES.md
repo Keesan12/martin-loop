@@ -14,8 +14,6 @@
 ## Not Included
 
 - standalone `@martinloop/mcp` version bump
-- hosted endpoint lifecycle
-- remote auth or hosted control-plane promotion
 - run triage scoring changes
 - Context Diet compact resources
 - prompt pack rollout

@@ -29,6 +29,7 @@ test("assertRootVersionPolicy accepts the approved 0.1.x and 0.2.x root lines", 
   assert.doesNotThrow(() => assertRootVersionPolicy("0.1.8"));
   assert.doesNotThrow(() => assertRootVersionPolicy("0.2.0"));
   assert.doesNotThrow(() => assertRootVersionPolicy("0.2.1"));
+  assert.doesNotThrow(() => assertRootVersionPolicy("0.2.2"));
   assert.throws(() => assertRootVersionPolicy("1.3.0"), /0\.1\.x or 0\.2\.x/);
 });
 

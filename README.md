@@ -134,7 +134,7 @@ If the problem is familiar, star the repo so other builders can find the runtime
 npm install -g martin-loop
 ```
 
-This installs the public `martin-loop` CLI package. This README is synced for `martin-loop@0.2.1`.
+This installs the public `martin-loop` CLI package. This README is synced for `martin-loop@0.2.2`.
 
 Want a safe sandbox first? Run `npx martin-loop demo` and MartinLoop will copy a disposable local workspace into `./martin-loop-demo`.
 
@@ -157,6 +157,14 @@ npx martin-loop dossier --latest
 ```
 
 `dossier --latest` gives you the receipt-style follow-up: what happened, verifier evidence, rollback or artifact evidence, directional token and cost totals, and the next safe action.
+
+When you want to decide which saved run needs attention first, use triage:
+
+```sh
+npx martin-loop triage
+```
+
+`triage` ranks persisted runs using failure categories such as failed verification, budget exits, human escalation, and missing verification evidence. If a saved run entry is unreadable, MartinLoop skips it and surfaces a warning instead of aborting the whole review.
 
 ### Public Package Surface
 
@@ -230,7 +238,13 @@ npx martin-loop run --objective "Summarize the current runtime state" --verify "
 Remove-Item Env:MARTIN_LIVE
 ```
 
-### Inspect or resume runs
+### Inspect, triage, or resume runs
+
+```sh
+npx martin-loop triage
+```
+
+Use `triage` first when you want the fastest evidence-first ranking of persisted runs.
 
 ```sh
 npx martin-loop inspect --file ~/.martin/runs/<workspaceId>.jsonl
@@ -280,7 +294,7 @@ martin-loop dossier (--latest | --loop-id <id> | --file <path>)
   --metadata <key=value>  Attach metadata to the run record; repeatable
 ```
 
-The public CLI includes `doctor`, `demo`, `dossier`, `inspect`, and `resume`. `inspect` and `resume` remain useful compatibility views; `dossier` is the fastest way to review the latest run with receipt-style evidence.
+The public CLI includes `doctor`, `demo`, `triage`, `dossier`, `inspect`, and `resume`. `triage` is the fastest way to rank persisted runs by urgency, while `dossier` is the fastest way to review one run with receipt-style evidence. `inspect` and `resume` remain useful compatibility views.
 
 <div align="center">
   <img src="./docs/assets/cli-static.svg" alt="MartinLoop CLI terminal output" width="720">
