@@ -24,18 +24,36 @@ const REQUIRED_TOOLS = [
   "martin_inspect",
   "martin_status",
   "martin_list_runs",
+  "martin_triage_runs",
   "martin_get_run",
   "martin_get_attempt",
   "martin_get_verification_results",
   "martin_run_dossier",
 ];
-const REQUIRED_RESOURCES = ["martin://runs/summary", "martin://runs/latest"];
+const REQUIRED_RESOURCES = [
+  "martin://server/health",
+  "martin://runs/recent",
+  "martin://runs/triage",
+  "martin://guides/mcp-usage",
+  "martin://guides/publish-readiness",
+];
 const REQUIRED_RESOURCE_TEMPLATES = [
   "martin://runs/{loopId}",
   "martin://runs/{loopId}/attempts/{attemptIndex}",
   "martin://runs/{loopId}/verification",
 ];
-const REQUIRED_PROMPTS = ["martin_review_run", "martin_triage_failures"];
+const REQUIRED_PROMPTS = [
+  "martin_start",
+  "martin_preflight",
+  "martin_triage",
+  "martin_resume",
+  "martin_prove",
+  "martin_release_check",
+  "martin_governed_coding_kickoff",
+  "martin_debug_failed_run",
+  "martin_publish_readiness_review",
+  "martin_triage_run_store",
+];
 const INSTALLED_PACKAGE_PATH = path.join("node_modules", ...PUBLISHED_PACKAGE_SPEC.split("/"));
 
 export async function runPublishedMcpSmoke(options = {}) {
@@ -145,14 +163,17 @@ export async function runPublishedMcpSmoke(options = {}) {
       `${JSON.stringify(jsonlOlderLoop)}\n${JSON.stringify(jsonlNewerLoop)}\n`,
       "utf8",
     );
+    await mkdir(path.join(runsRoot, "loop_broken"), { recursive: true });
+    await writeFile(path.join(runsRoot, "loop_broken", "loop-record.json"), "{not-json", "utf8");
     await writeFile(
       path.join(workspaceRoot, "src", "smoke-entry.ts"),
       "export const martinSmokeWorkspace = true;\n",
       "utf8",
     );
 
+    const launch = createInstalledPackageLaunch(installedPackageDir);
     transport = new StdioClientTransport({
-      ...createInstalledPackageLaunch(installedPackageDir),
+      ...launch,
       cwd: workspaceRoot,
       env: {
         ...sanitizePackageManagerEnv(process.env),
@@ -178,23 +199,37 @@ export async function runPublishedMcpSmoke(options = {}) {
 
     const tools = await client.listTools();
     const toolNames = tools.tools.map((tool) => tool.name).sort();
-    const resources = await client.listResources();
-    const resourceUris = resources.resources.map((resource) => resource.uri).sort();
-    const resourceTemplates = await client.listResourceTemplates();
-    const resourceTemplateUris = resourceTemplates.resourceTemplates
-      .map((resourceTemplate) => resourceTemplate.uriTemplate)
-      .sort();
-    const prompts = await client.listPrompts();
-    const promptNames = prompts.prompts.map((prompt) => prompt.name).sort();
-
     for (const toolName of REQUIRED_TOOLS) {
       if (!toolNames.includes(toolName)) {
         throw new Error(`Missing expected tool "${toolName}" in published MCP server.`);
       }
     }
-    assertIncludesAll(resourceUris, REQUIRED_RESOURCES, "resource");
-    assertIncludesAll(resourceTemplateUris, REQUIRED_RESOURCE_TEMPLATES, "resource template");
-    assertIncludesAll(promptNames, REQUIRED_PROMPTS, "prompt");
+
+    const resources = await client.listResources();
+    const resourceUris = resources.resources.map((resource) => resource.uri).sort();
+    for (const resourceUri of REQUIRED_RESOURCES) {
+      if (!resourceUris.includes(resourceUri)) {
+        throw new Error(`Missing expected resource "${resourceUri}" in published MCP server.`);
+      }
+    }
+
+    const resourceTemplates = await client.listResourceTemplates();
+    const resourceTemplateUris = resourceTemplates.resourceTemplates
+      .map((resourceTemplate) => resourceTemplate.uriTemplate)
+      .sort();
+    for (const resourceTemplateUri of REQUIRED_RESOURCE_TEMPLATES) {
+      if (!resourceTemplateUris.includes(resourceTemplateUri)) {
+        throw new Error(`Missing expected resource template "${resourceTemplateUri}" in published MCP server.`);
+      }
+    }
+
+    const prompts = await client.listPrompts();
+    const promptNames = prompts.prompts.map((prompt) => prompt.name).sort();
+    for (const promptName of REQUIRED_PROMPTS) {
+      if (!promptNames.includes(promptName)) {
+        throw new Error(`Missing expected prompt "${promptName}" in published MCP server.`);
+      }
+    }
 
     const canonicalInspect = await client.callTool({
       name: "martin_inspect",
@@ -208,13 +243,39 @@ export async function runPublishedMcpSmoke(options = {}) {
       name: "martin_status",
       arguments: { latest: true },
     });
-    const listRuns = await client.callTool({
-      name: "martin_list_runs",
+    const degradedInspect = await client.callTool({
+      name: "martin_inspect",
       arguments: {},
     });
-    const runDossier = await client.callTool({
-      name: "martin_run_dossier",
-      arguments: { loopId: canonicalLoop.loopId },
+    const triageRuns = await client.callTool({
+      name: "martin_triage_runs",
+      arguments: {},
+    });
+    const invalidInspect = await client.callTool({
+      name: "martin_inspect",
+      arguments: { file: "..\\..\\outside.jsonl" },
+    });
+    const doctorResult = await client.callTool({
+      name: "martin_doctor",
+      arguments: { engine: "codex" },
+    });
+    const serverHealthResource = await client.readResource({
+      uri: "martin://server/health",
+    });
+    const triageResource = await client.readResource({
+      uri: "martin://runs/triage",
+    });
+    const triagePrompt = await client.getPrompt({
+      name: "martin_triage_run_store",
+      arguments: {
+        focus: "verification failures",
+      },
+    });
+    const resumePrompt = await client.getPrompt({
+      name: "martin_resume",
+    });
+    const provePrompt = await client.getPrompt({
+      name: "martin_prove",
     });
     const runResult = await client.callTool({
       name: "martin_run",
@@ -230,25 +291,70 @@ export async function runPublishedMcpSmoke(options = {}) {
       },
     });
 
+    const degradedInspectPayload = JSON.parse(readTextContent(degradedInspect));
+    if (!Array.isArray(degradedInspectPayload.warnings) ||
+      !degradedInspectPayload.warnings.some((warning) => warning.includes("loop_broken"))) {
+      throw new Error("Published martin_inspect did not surface degraded run-store warnings.");
+    }
+
+    const triagePayload = JSON.parse(readTextContent(triageRuns));
+    if (!Array.isArray(triagePayload.findings)) {
+      throw new Error("Published martin_triage_runs did not return findings.");
+    }
+
+    if (!invalidInspect.isError || invalidInspect?._meta?.["martinloop/errorCategory"] !== "invalid_input") {
+      throw new Error("Published MCP server did not return a typed invalid_input error for path traversal.");
+    }
+
+    const doctorPayload = JSON.parse(readTextContent(doctorResult));
+    if (!Array.isArray(doctorPayload.warnings) ||
+      !doctorPayload.warnings.some((warning) => warning.includes("loop_broken"))) {
+      throw new Error("Published martin_doctor did not include degraded run-store warnings.");
+    }
+
+    const triagePromptMessages = Array.isArray(triagePrompt.messages) ? triagePrompt.messages : [];
+    if (triagePromptMessages.length < 4) {
+      throw new Error("Published martin_triage_run_store prompt is missing expected guidance messages.");
+    }
+
+    const resumePromptMessages = Array.isArray(resumePrompt.messages) ? resumePrompt.messages : [];
+    if (resumePromptMessages.length < 5) {
+      throw new Error("Published martin_resume prompt is missing expected compact guidance messages.");
+    }
+
+    const provePromptMessages = Array.isArray(provePrompt.messages) ? provePrompt.messages : [];
+    if (provePromptMessages.length < 5) {
+      throw new Error("Published martin_prove prompt is missing expected proof guidance messages.");
+    }
+
     return {
       packageSpec,
-      npxCommand: packageSpec.startsWith("@") ? `npx ${packageSpec}` : `npm exec --yes --package "${packageSpec}" -- mcp`,
-      launchCommand: `${JSON.stringify(process.execPath)} ${JSON.stringify(path.join(installedPackageDir, "dist", "server.js"))}`,
+      npxCommand: packageSpec.startsWith("@")
+        ? `npx -y ${packageSpec}`
+        : `npm exec --yes --package "${packageSpec}" -- mcp`,
+      launchCommand: [launch.command, ...launch.args].map((value) => JSON.stringify(value)).join(" "),
       toolNames,
-      resourceUris,
-      resourceTemplateUris,
-      promptNames,
       installedManifest: {
         name: installedManifest.name,
         version: installedManifest.version,
         mcpName: installedManifest.mcpName,
       },
       installedServerMetadata,
+      resourceUris,
+      resourceTemplateUris,
+      promptNames,
+      serverHealth: JSON.parse(readResourceText(serverHealthResource)),
+      triageResource: JSON.parse(readResourceText(triageResource)),
+      triagePrompt,
+      resumePrompt,
+      provePrompt,
       canonicalInspect: JSON.parse(readTextContent(canonicalInspect)),
       jsonlInspect: JSON.parse(readTextContent(jsonlInspect)),
       latestStatus: JSON.parse(readTextContent(latestStatus)),
-      listRuns: JSON.parse(readTextContent(listRuns)),
-      runDossier: JSON.parse(readTextContent(runDossier)),
+      degradedInspect: degradedInspectPayload,
+      triageRuns: triagePayload,
+      invalidInspectError: invalidInspect._meta?.["martinloop/error"] ?? null,
+      doctorResult: doctorPayload,
       runResult: JSON.parse(readTextContent(runResult)),
       stderr: stderrChunks.join(""),
     };
@@ -259,13 +365,6 @@ export async function runPublishedMcpSmoke(options = {}) {
     if (!options.keepTempDir) {
       await removeTempDir(tempRoot);
     }
-  }
-}
-
-function assertIncludesAll(actual, expected, label) {
-  const missing = expected.filter((item) => !actual.includes(item));
-  if (missing.length > 0) {
-    throw new Error(`Missing expected MCP ${label}s: ${missing.join(", ")}`);
   }
 }
 
@@ -399,10 +498,12 @@ async function buildLocalFallbackTarballSpec({ packageDir, tempPackDir }) {
 }
 
 function createInstalledPackageLaunch(installedPackageDir) {
-  return {
-    command: process.execPath,
-    args: [path.join(installedPackageDir, "dist", "server.js")],
-  };
+  const binDirectory = path.resolve(installedPackageDir, "..", "..", ".bin");
+  const executable = process.platform === "win32"
+    ? path.join(binDirectory, "mcp.cmd")
+    : path.join(binDirectory, "mcp");
+
+  return createCommandLaunch(executable, []);
 }
 
 function readTextContent(result) {
@@ -413,6 +514,19 @@ function readTextContent(result) {
   const first = result.content[0];
   if (first?.type !== "text" || typeof first.text !== "string") {
     throw new Error("Expected text content from MCP tool call.");
+  }
+
+  return first.text;
+}
+
+function readResourceText(result) {
+  if (!Array.isArray(result.contents) || result.contents.length === 0) {
+    throw new Error("MCP resource read returned no contents.");
+  }
+
+  const first = result.contents[0];
+  if (typeof first?.text !== "string") {
+    throw new Error("Expected text resource content from MCP resource read.");
   }
 
   return first.text;

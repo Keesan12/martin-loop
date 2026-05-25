@@ -103,7 +103,6 @@ export async function martinPreflightTool(
   if ((input.allowedPaths?.length ?? 0) === 0) {
     warnings.push("No allowedPaths were provided; Martin will rely on the broader repo root scope.");
   }
-
   if (overlappingScopes.length > 0) {
     warnings.push(
       `Some path patterns appear in both allowedPaths and deniedPaths: ${overlappingScopes.join(", ")}.`
@@ -137,7 +136,13 @@ export async function martinPreflightTool(
     },
     execution: {
       requestedEngine: engine,
-      engineAvailability,
+      engineAvailability: {
+        available: engineAvailability.available,
+        detail: engineAvailability.detail,
+        ...(engineAvailability.resolvedPath
+          ? { resolvedPath: engineAvailability.resolvedPath }
+          : {})
+      },
       runsRoot: resolveRunsRoot(process.env),
       pathScope: {
         repoRoot: workingDirectory,

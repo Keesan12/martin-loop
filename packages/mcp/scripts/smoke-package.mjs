@@ -18,18 +18,42 @@ const REQUIRED_TOOLS = [
   "martin_inspect",
   "martin_status",
   "martin_list_runs",
+  "martin_triage_runs",
   "martin_get_run",
   "martin_get_attempt",
   "martin_get_verification_results",
   "martin_run_dossier",
 ];
-const REQUIRED_RESOURCES = ["martin://runs/summary", "martin://runs/latest"];
+const REQUIRED_RESOURCES = [
+  "martin://server/health",
+  "martin://runs/recent",
+  "martin://runs/triage",
+  "martin://runs/latest/summary",
+  "martin://runs/latest/proof-card",
+  "martin://runs/latest/budget-status",
+  "martin://runs/latest/verifier-evidence",
+  "martin://runs/latest/rollback-evidence",
+  "martin://agent/next-step",
+  "martin://guides/mcp-usage",
+  "martin://guides/publish-readiness",
+];
 const REQUIRED_RESOURCE_TEMPLATES = [
   "martin://runs/{loopId}",
   "martin://runs/{loopId}/attempts/{attemptIndex}",
   "martin://runs/{loopId}/verification",
 ];
-const REQUIRED_PROMPTS = ["martin_review_run", "martin_triage_failures"];
+const REQUIRED_PROMPTS = [
+  "martin_start",
+  "martin_preflight",
+  "martin_triage",
+  "martin_resume",
+  "martin_prove",
+  "martin_release_check",
+  "martin_governed_coding_kickoff",
+  "martin_debug_failed_run",
+  "martin_publish_readiness_review",
+  "martin_triage_run_store",
+];
 export const PUBLISHED_PACKAGE_SPEC = "@martinloop/mcp";
 const REQUIRED_TARBALL_FILES = [
   "README.md",

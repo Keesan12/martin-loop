@@ -64,13 +64,14 @@ export async function martinDoctorTool(input: MartinDoctorInput): Promise<Martin
   warnings.push(...runStore.warnings);
 
   const status = warnings.length === 0 ? "ok" : "degraded";
+  const summary =
+    status === "ok"
+      ? `Doctor passed: ${runStore.loopCount} run(s) visible in ${runsRoot}.`
+      : `Doctor found ${warnings.length} issue(s); review warnings before live execution.`;
 
   return {
     status,
-    summary:
-      status === "ok"
-        ? `Doctor passed: ${runStore.loopCount} run(s) visible in ${runsRoot}.`
-        : `Doctor found ${warnings.length} issue(s); review warnings before live execution.`,
+    summary,
     server: {
       name: "martin-loop",
       nodeVersion: process.version,
@@ -84,8 +85,16 @@ export async function martinDoctorTool(input: MartinDoctorInput): Promise<Martin
       liveMode: executionMode.liveMode
     },
     engines: {
-      claude,
-      codex
+      claude: {
+        available: claude.available,
+        detail: claude.detail,
+        ...(claude.resolvedPath ? { resolvedPath: claude.resolvedPath } : {})
+      },
+      codex: {
+        available: codex.available,
+        detail: codex.detail,
+        ...(codex.resolvedPath ? { resolvedPath: codex.resolvedPath } : {})
+      }
     },
     ...(input.engine ? { requestedEngine: input.engine } : {}),
     runStore: {

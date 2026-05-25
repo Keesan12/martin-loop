@@ -1,16 +1,18 @@
 # MartinLoop OSS `0.2.2` Release Notes
 
-`martin-loop@0.2.2` makes the persisted-run review flow easier to use and easier to trust in the public package surface.
+`martin-loop@0.2.2` ships the public OSS run-triage hardening and degraded run-store handling slice.
 
 ## Included
 
-- `npx martin-loop triage` as the documented first stop when several saved runs need review
-- failure-category ranking for persisted runs, including failed verification, budget exits, human escalation, and missing verification evidence
-- degraded run-store behavior that skips unreadable saved-run entries with warnings instead of aborting the whole review pass
-- refreshed README, quickstart, and CLI docs so the public npm surface explains the triage-first operator workflow clearly
+- missing explicit `runsDir` paths degrade diagnostic surfaces instead of failing path validation
+- unreadable ledgers now surface partial-data warnings in verification and discovery outputs
+- future-dated verification evidence is ignored and labeled as untrusted
+- conflicting verification evidence for the latest attempt reports as unavailable
+- live routed MCP inspection coverage now proves typed resource, prompt, and run-record handling together
 
-## Compatibility
+## Not Included
 
-- the root `martin-loop` package advances to `0.2.2`
-- the standalone `@martinloop/mcp` package remains at `0.2.0` for this release
-- `inspect` and `resume` remain supported as compatibility views alongside the triage-and-dossier flow
+- compact Context Diet resources
+- prompt pack aliases
+- full-local profile generation
+- separate lifecycle or team evidence features

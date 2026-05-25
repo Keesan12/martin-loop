@@ -1,14 +1,35 @@
-import { getAttempt, loadSelectedRun } from "./cockpit-support.js";
+import { buildAttemptArtifactsReference, buildAttemptSummary, buildLoopPreview } from "./tool-support.js";
+import { loadAttemptFromLoop } from "./run-store.js";
 
-export interface GetAttemptInput {
-  loopId: string;
-  attemptIndex: number;
+export interface MartinGetAttemptInput {
+  file?: string;
+  loopId?: string;
   runsDir?: string;
+  attemptIndex?: number;
 }
 
-export type GetAttemptOutput = ReturnType<typeof getAttempt>;
+export interface MartinGetAttemptOutput {
+  source: string;
+  sourceKind: "file" | "loop_id" | "latest" | "runs_root";
+  loop: ReturnType<typeof buildLoopPreview>;
+  attempt: ReturnType<typeof buildAttemptSummary>;
+  warnings: string[];
+}
 
-export async function getAttemptTool(input: GetAttemptInput): Promise<GetAttemptOutput> {
-  const loop = await loadSelectedRun({ loopId: input.loopId, runsDir: input.runsDir });
-  return getAttempt(loop, input.attemptIndex);
+export async function martinGetAttemptTool(
+  input: MartinGetAttemptInput
+): Promise<MartinGetAttemptOutput> {
+  const { detail, attempt } = await loadAttemptFromLoop(input);
+  const artifacts =
+    detail.canonicalRunDirectory
+      ? await buildAttemptArtifactsReference(detail.runsRoot, detail.loop.loopId, attempt.index)
+      : undefined;
+
+  return {
+    source: detail.source,
+    sourceKind: detail.sourceKind,
+    loop: buildLoopPreview(detail.loop),
+    attempt: buildAttemptSummary(attempt, artifacts),
+    warnings: detail.warnings
+  };
 }

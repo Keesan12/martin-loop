@@ -1,6 +1,6 @@
 # @martinloop/mcp v0.2.0
 
-`0.2.0` turns the Martin Loop MCP server from a governed execution lane into a small local cockpit for reviewing governed agent runs.
+`0.2.0` is the cockpit expansion release for the Martin Loop MCP server. It turns the governed execution lane into a small local cockpit for reviewing governed agent runs.
 
 `0.1.4` introduced the safe operator foundation: check the environment, preflight a contract, run a governed coding task, and inspect saved results. `0.2.0` keeps that contract intact and adds read-only review surfaces so MCP hosts can show what happened after a run: recent runs, one-run dossiers, individual attempts, verifier results, and guided review prompts.
 
