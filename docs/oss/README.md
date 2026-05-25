@@ -35,7 +35,6 @@ For isolated end-to-end validation:
 
 ```bash
 pnpm rc:validate
-pnpm release:matrix:local
 ```
 
 ## Notes
