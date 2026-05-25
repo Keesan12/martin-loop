@@ -11,7 +11,6 @@ This repository is a public surface. Keep all docs, release notes, PRs, package 
 - Use `pnpm@10.33.0`.
 - Install dependencies with `pnpm install --frozen-lockfile`.
 - Run the full test suite with `pnpm test`.
-- Run the release matrix locally with `pnpm release:matrix:local`.
 - Validate MCP release readiness with `pnpm --filter @martinloop/mcp verify:release`.
 - Validate public package boundaries with `pnpm oss:validate`.
 

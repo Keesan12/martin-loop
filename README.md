@@ -435,7 +435,6 @@ Current RC gate commands:
 pnpm oss:validate
 pnpm public:smoke
 pnpm rc:validate
-pnpm release:matrix:local
 pnpm --filter @martinloop/mcp smoke:published:pack
 pnpm --filter @martinloop/mcp verify:release
 ```
