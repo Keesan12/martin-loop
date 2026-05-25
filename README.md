@@ -134,7 +134,7 @@ If the problem is familiar, star the repo so other builders can find the runtime
 npm install -g martin-loop
 ```
 
-This installs the public `martin-loop` CLI package. This README is synced for `martin-loop@0.2.2`.
+This installs the public `martin-loop` CLI package. This README is synced for `martin-loop@0.2.3`.
 
 Want a safe sandbox first? Run `npx martin-loop demo` and MartinLoop will copy a disposable local workspace into `./martin-loop-demo`.
 
@@ -156,7 +156,7 @@ MARTIN_LIVE=false npx martin-loop run "Summarize the demo workspace and confirm 
 npx martin-loop dossier --latest
 ```
 
-`dossier --latest` gives you the receipt-style follow-up: what happened, verifier evidence, rollback or artifact evidence, directional token and cost totals, and the next safe action.
+`dossier --latest` gives you the receipt-style follow-up and Context Diet packet: what happened, a compact proof card, budget status, verifier evidence, rollback or artifact evidence, directional token and cost totals, and the next safe action.
 
 When you want to decide which saved run needs attention first, use triage:
 
@@ -294,7 +294,7 @@ martin-loop dossier (--latest | --loop-id <id> | --file <path>)
   --metadata <key=value>  Attach metadata to the run record; repeatable
 ```
 
-The public CLI includes `doctor`, `demo`, `triage`, `dossier`, `inspect`, and `resume`. `triage` is the fastest way to rank persisted runs by urgency, while `dossier` is the fastest way to review one run with receipt-style evidence. `inspect` and `resume` remain useful compatibility views.
+The public CLI includes `doctor`, `demo`, `triage`, `dossier`, `inspect`, and `resume`. `triage` is the fastest way to rank persisted runs by urgency, while `dossier` is the fastest way to review one run with receipt-style evidence and emit a compact Context Diet handoff packet. `inspect` and `resume` remain useful compatibility views.
 
 <div align="center">
   <img src="./docs/assets/cli-static.svg" alt="MartinLoop CLI terminal output" width="720">

@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.3] — 2026-05-26
+
+### Added
+- **Context Diet release surface** — Promote `npx martin-loop dossier --latest` as the compact context packet for handoffs: summary, proof card, budget status, verifier evidence, rollback or artifact evidence, and the next safe action.
+
+### Changed
+- Refresh the public README, OSS quickstart, and CLI-facing docs so operators and agents can pass smaller evidence-rich run context without digging through raw logs.
+- Keep the standalone `@martinloop/mcp` package on `0.2.0` for this slice; `0.2.3` is a root `martin-loop` release only.
+
 ## [0.2.2] — 2026-05-24
 
 ### Added

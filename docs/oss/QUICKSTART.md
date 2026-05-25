@@ -35,7 +35,7 @@ MARTIN_LIVE=false npx martin-loop run "Summarize the demo workspace and confirm 
 npx martin-loop dossier --latest
 ```
 
-`dossier --latest` summarizes what happened, verifier evidence, rollback or artifact evidence, directional token or cost totals, and the next safe action.
+`dossier --latest` summarizes what happened as a compact Context Diet packet: proof card, budget status, verifier evidence, rollback or artifact evidence, directional token or cost totals, and the next safe action.
 
 If you have several saved runs and want the fastest “what should I look at first?” view:
 
