@@ -327,7 +327,7 @@ async function loadLatestRunForCompactResource(runsRoot: string): Promise<{
 async function buildLatestSummaryResource(runsRoot: string): Promise<Record<string, unknown>> {
   const latest = await loadLatestRunForCompactResource(runsRoot);
   if (latest.empty || !latest.detail) {
-    return compactEmptyState("latest-summary", runsRoot, latest.warnings);
+    return compactEmptyState("latest-summary", latest.warnings);
   }
 
   const ledgerEvents = await readLedgerEvents(latest.detail);
@@ -370,7 +370,7 @@ async function buildLatestSummaryResource(runsRoot: string): Promise<Record<stri
 async function buildLatestBudgetStatusResource(runsRoot: string): Promise<Record<string, unknown>> {
   const latest = await loadLatestRunForCompactResource(runsRoot);
   if (latest.empty || !latest.detail) {
-    return compactEmptyState("budget-status", runsRoot, latest.warnings);
+    return compactEmptyState("budget-status", latest.warnings);
   }
 
   const loop = latest.detail.loop as Parameters<typeof buildPersistedLoopPreview>[0];
@@ -404,7 +404,7 @@ async function buildLatestBudgetStatusResource(runsRoot: string): Promise<Record
 async function buildLatestVerifierEvidenceResource(runsRoot: string): Promise<Record<string, unknown>> {
   const latest = await loadLatestRunForCompactResource(runsRoot);
   if (latest.empty || !latest.detail) {
-    return compactEmptyState("verifier-evidence", runsRoot, latest.warnings);
+    return compactEmptyState("verifier-evidence", latest.warnings);
   }
 
   const ledgerEvents = await readLedgerEvents(latest.detail);
@@ -430,7 +430,7 @@ async function buildLatestVerifierEvidenceResource(runsRoot: string): Promise<Re
 async function buildLatestRollbackEvidenceResource(runsRoot: string): Promise<Record<string, unknown>> {
   const latest = await loadLatestRunForCompactResource(runsRoot);
   if (latest.empty || !latest.detail) {
-    return compactEmptyState("rollback-evidence", runsRoot, latest.warnings);
+    return compactEmptyState("rollback-evidence", latest.warnings);
   }
 
   const loop = latest.detail.loop as Parameters<typeof buildPersistedLoopPreview>[0];
@@ -461,7 +461,7 @@ async function buildAgentNextStepResource(runsRoot: string): Promise<Record<stri
   const latest = await loadLatestRunForCompactResource(runsRoot);
   if (latest.empty || !latest.detail) {
     return {
-      ...compactEmptyState("agent-next-step", runsRoot, latest.warnings),
+      ...compactEmptyState("agent-next-step", latest.warnings),
       nextTool: "martin_doctor",
       reason: "No run store evidence exists yet; confirm environment and run-store visibility first."
     };
@@ -545,11 +545,10 @@ async function buildLatestProofCardResource(runsRoot: string): Promise<string> {
   ].join("\n");
 }
 
-function compactEmptyState(kind: string, runsRoot: string, warnings: string[]): Record<string, unknown> {
+function compactEmptyState(kind: string, warnings: string[]): Record<string, unknown> {
   return {
     kind,
     status: "empty",
-    runsRoot,
     summary: "No Martin run records are available yet.",
     nextStep: "Run `martin doctor`, create the demo workspace with `npx martin-loop demo`, then run a no-spend stub task with MARTIN_LIVE=false.",
     warnings
@@ -611,13 +610,13 @@ function inferAgentNextStep(
   };
 }
 
-function buildMcpUsageGuide(runsRoot: string): string {
+function buildMcpUsageGuide(_runsRoot: string): string {
   const metadata = buildMartinDiscoveryMetadata(MARTIN_MCP_PACKAGE_VERSION);
   return `# Martin Loop MCP Usage
 
 Discovery revision: \`${metadata.discoveryRevision}\`
 Server version: \`${metadata.serverVersion}\`
-Runs root: \`${runsRoot}\`
+Runs root: inspect \`${MARTIN_STATIC_RESOURCE_URIS.serverHealth}\` when you need the active local path.
 
 Martin Loop exposes governed coding workflows over MCP. Use the server health and run-store views to decide when to preflight, execute, inspect, or escalate.
 
@@ -646,13 +645,13 @@ Martin Loop exposes governed coding workflows over MCP. Use the server health an
 `;
 }
 
-function buildPublishReadinessGuide(runsRoot: string): string {
+function buildPublishReadinessGuide(_runsRoot: string): string {
   const metadata = buildMartinDiscoveryMetadata(MARTIN_MCP_PACKAGE_VERSION);
   return `# Martin MCP Publish Readiness
 
 Discovery revision: \`${metadata.discoveryRevision}\`
 Server version: \`${metadata.serverVersion}\`
-Runs root: \`${runsRoot}\`
+Runs root: inspect \`${MARTIN_STATIC_RESOURCE_URIS.serverHealth}\` when you need the active local path.
 
 Use this guide when reviewing whether the public MCP package is ready to publish, promote, or hand off for registry submission.
 
@@ -672,11 +671,10 @@ Use this guide when reviewing whether the public MCP package is ready to publish
 `;
 }
 
-function withDiscoveryMetadata(value: unknown, runsRoot?: string): Record<string, unknown> {
+function withDiscoveryMetadata(value: unknown, _runsRoot?: string): Record<string, unknown> {
   return {
     metadata: {
-      ...buildMartinDiscoveryMetadata(MARTIN_MCP_PACKAGE_VERSION),
-      ...(runsRoot ? { runsRoot } : {})
+      ...buildMartinDiscoveryMetadata(MARTIN_MCP_PACKAGE_VERSION)
     },
     value
   };
