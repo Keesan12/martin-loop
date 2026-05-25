@@ -148,7 +148,8 @@ Claude `--scope local` remains CLI-managed. `martin mcp install --host claude --
 
 ## Discovery metadata
 
-- JSON resources now carry `metadata.serverVersion`, `metadata.discoveryRevision`, and freshness context such as the resolved `runsRoot`.
+- JSON resources now carry `metadata.serverVersion` and `metadata.discoveryRevision`.
+- Environment-specific path details stay in `martin://server/health` instead of low-context discovery metadata.
 - Compact resources expose low-token latest-run summaries, proof cards, budget status, verifier evidence, rollback evidence, and a single recommended next step.
 - Prompts stamp the current server version and discovery revision into their descriptions so hosts can confirm which surface they discovered.
 - The server does **not** advertise `listChanged` yet. That is deliberate: the current discovery surface is stable and versioned, but it does not yet emit authoritative change notifications.
