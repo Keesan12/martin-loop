@@ -67,7 +67,7 @@ export async function runRootReleaseGuard(options = {}) {
 
 export function assertRootVersionPolicy(version) {
   if (!ROOT_VERSION_PATTERN.test(version)) {
-    throw new Error(`Root martin-loop version must stay on the approved 0.1.x or 0.2.x line. Received ${version}.`);
+    throw new Error(`Root martin-loop version must stay on the approved pre-1.0 OSS lines (0.1.x or 0.2.x). Received ${version}.`);
   }
 }
 

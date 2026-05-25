@@ -243,7 +243,7 @@ export async function executeCli(args: string[]): Promise<{
         });
       }
       case "run":
-        return await executeRunCommand(parsed.request, global.commandArgs, outputMode);
+        return await executeRunCommand(parsed.request, outputMode);
       case "inspect":
         return await executeInspectCommand(parsed, outputMode);
       case "resume":
@@ -251,7 +251,7 @@ export async function executeCli(args: string[]): Promise<{
       case "doctor":
         return await executeDoctorCommand(parsed, outputMode);
       case "preflight":
-        return await executePreflightCommand(parsed.request, global.commandArgs, outputMode);
+        return await executePreflightCommand(parsed.request, outputMode);
       case "triage":
         return await executeTriageCommand(parsed.filters, outputMode);
       case "dossier":
@@ -528,10 +528,9 @@ export function renderCliHelp(): string {
 
 async function executeRunCommand(
   request: RunCommandRequest,
-  rawArgs: string[],
   outputMode: MartinOutputMode
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  const resolvedGuardrails = await resolveGuardrails(request, rawArgs);
+  const resolvedGuardrails = await resolveGuardrails(request);
   const verificationPlan =
     request.verificationPlan.length > 0
       ? request.verificationPlan
@@ -804,10 +803,9 @@ async function executeDoctorCommand(
 
 async function executePreflightCommand(
   request: RunCommandRequest,
-  rawArgs: string[],
   outputMode: MartinOutputMode
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  const resolvedGuardrails = await resolveGuardrails(request, rawArgs);
+  const resolvedGuardrails = await resolveGuardrails(request);
   const environment = resolveCliEnvironment({
     cwd: request.cwd,
     engine: request.engine
@@ -1563,10 +1561,8 @@ function renderDemoInstructions(targetDirectory: string): string {
 }
 
 async function resolveGuardrails(
-  request: RunCommandRequest,
-  rawArgs: string[]
+  request: RunCommandRequest
 ): Promise<ResolvedGuardrails> {
-  const tokens = rawArgs.slice(1);
   const { config, configPath } = await loadGuardrailsConfig(request.configPath);
 
   const budget: LoopBudget = {
@@ -1576,7 +1572,7 @@ async function resolveGuardrails(
     maxTokens: config?.budget?.maxTokens ?? request.budget.maxTokens
   };
 
-  if (hasFlag(tokens, "--budget-usd") || hasFlag(tokens, "--budget")) {
+  if (request.budget.maxUsd !== DEFAULT_BUDGET.maxUsd) {
     budget.maxUsd = request.budget.maxUsd;
   }
   if (request.budget.softLimitUsd !== DEFAULT_BUDGET.softLimitUsd) {

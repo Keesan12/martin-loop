@@ -46,7 +46,7 @@ describe("mcp config helpers", () => {
 
     expect(plan.content).toContain('[mcp_servers."martin-loop"]');
     expect(plan.profile).toBe("minimal");
-    expect(plan.content).toContain('enabled_tools = ["martin_doctor", "martin_preflight", "martin_list_runs", "martin_run_dossier"]');
+    expect(plan.content).toContain('enabled_tools = ["martin_doctor", "martin_preflight", "martin_list_runs", "martin_triage_runs", "martin_run_dossier"]');
   });
 
   it("respects CODEX_HOME for user-scope Codex installs", () => {
@@ -84,7 +84,7 @@ describe("mcp config helpers", () => {
     expect(plan.targetPath).toMatch(/\.gemini[\\/]settings\.json$/u);
     expect(plan.content).toContain('"httpUrl": "https://remote.martinloop.local/mcp"');
     expect(plan.content).toContain('"includeTools"');
-    expect(plan.content).toContain('"martin_run_dossier"');
+    expect(plan.content).toContain('"martin_triage_runs"');
   });
 
   it("builds a Claude local-scope install command instead of pretending local scope is a file", () => {

@@ -64,7 +64,7 @@ It does not try to replace the agent pattern. It makes that pattern safe to run.
 | Red-Blue Testing | Adversarial probe suite that runs before a patch is accepted. Six deterministic probes detect assertion deletion, silent reverts, context poisoning, budget self-reporting, and grounding evasion. Three risk tiers: `baseline`, `high_risk`, and `release_critical` (adds a Haiku model call). A single block-severity finding rejects the patch. |
 | Rollback evidence | Captures rollback boundaries and restore outcomes for repo-backed attempts when a persistence store is configured. |
 | Context distillation | Carries a distilled summary of recent attempts and remaining constraints into subsequent attempts. |
-| Run records | The CLI appends JSONL loop records under `~/.martin/runs/<workspaceId>.jsonl`; lower-level stores can also persist contracts, ledgers, and attempt artifacts.
+| Run records | The CLI appends JSONL loop records under `~/.martin/runs/<workspaceId>.jsonl`; lower-level stores can also persist contracts, ledgers, and attempt artifacts. |
 
 
 The result is a runtime that can complete good work, refuse unsafe work, stop uneconomical work, and leave evidence behind.
@@ -134,7 +134,7 @@ If the problem is familiar, star the repo so other builders can find the runtime
 npm install -g martin-loop
 ```
 
-This installs the public `martin-loop` CLI package. This README is synced for `martin-loop@0.2.3`.
+This installs the public `martin-loop` CLI package. This README is synced for `martin-loop@0.2.4`.
 
 Want a safe sandbox first? Run `npx martin-loop demo` and MartinLoop will copy a disposable local workspace into `./martin-loop-demo`.
 
@@ -165,6 +165,18 @@ npx martin-loop triage
 ```
 
 `triage` ranks persisted runs using failure categories such as failed verification, budget exits, human escalation, and missing verification evidence. If a saved run entry is unreadable, MartinLoop skips it and surfaces a warning instead of aborting the whole review.
+
+### What's New In 0.2.4
+
+`martin-loop@0.2.4` adds a public prompt pack for safer governed agent workflows.
+
+- `martin_start` for kickoff and first-pass setup
+- `martin_preflight` for budget, scope, and verifier planning
+- `martin_triage` and `martin_resume` for recovery paths
+- `martin_prove` and `martin_release_check` for evidence-first closeout
+- compatibility aliases for older prompt names so existing host setups keep working
+
+See [OSS-0.2.4 release notes](./docs/release/OSS-0.2.4-RELEASE-NOTES.md) and [Agent Start Here](./docs/oss/AGENT-START-HERE.md) for the public-facing prompt flow.
 
 ### Public Package Surface
 
@@ -215,6 +227,15 @@ If you just want to launch the server manually, the one-line command is:
 ```sh
 npx -y @martinloop/mcp
 ```
+
+For standalone package validation, keep these proof gates green:
+
+```sh
+pnpm --filter @martinloop/mcp smoke:published:pack
+pnpm --filter @martinloop/mcp verify:release
+```
+
+The standalone server identifier is `io.github.Keesan12/martin-loop`.
 
 ### Run a governed task
 
@@ -415,6 +436,7 @@ pnpm oss:validate
 pnpm public:smoke
 pnpm rc:validate
 pnpm release:matrix:local
+pnpm --filter @martinloop/mcp smoke:published:pack
 pnpm --filter @martinloop/mcp verify:release
 ```
 
@@ -423,6 +445,7 @@ pnpm --filter @martinloop/mcp verify:release
 Helpful docs:
 
 - [OSS quickstart](./docs/oss/QUICKSTART.md)
+- [Agent Start Here](./docs/oss/AGENT-START-HERE.md)
 - [OSS examples](./docs/oss/EXAMPLES.md)
 - [Under-$3 benchmark challenge](./docs/distribution/UNDER-3-CHALLENGE.md)
 - [Directory submission pack](./docs/distribution/DIRECTORY-SUBMISSIONS.md)

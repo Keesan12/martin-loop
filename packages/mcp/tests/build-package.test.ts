@@ -78,10 +78,22 @@ describe("package manifest", () => {
   });
 
   it("keeps package and server metadata in parity", () => {
+    const npmPackage = serverJson.packages.find(
+      (pkg) => pkg.registryType === "npm" && pkg.transport?.type === "stdio"
+    );
+
     expect(packageJson.name).toBe("@martinloop/mcp");
     expect(packageJson.mcpName).toBe(serverJson.name);
     expect(packageJson.version).toBe(serverJson.version);
-    expect(serverJson.packages[0]?.identifier).toBe(packageJson.name);
-    expect(serverJson.packages[0]?.version).toBe(packageJson.version);
+    expect(npmPackage?.identifier).toBe(packageJson.name);
+    expect(npmPackage?.version).toBe(packageJson.version);
+  });
+
+  it("keeps the current public manifest stdio-only until a real remote lane exists", () => {
+    const remoteEntries = "remotes" in serverJson && Array.isArray(serverJson.remotes)
+      ? serverJson.remotes
+      : [];
+
+    expect(remoteEntries).toHaveLength(0);
   });
 });

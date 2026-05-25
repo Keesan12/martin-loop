@@ -24,7 +24,7 @@ The CLI now treats execution, diagnosis, persisted-run inspection, and MCP host 
 ## Local vs remote MCP
 
 - local `stdio` is the default and best path for fast local iteration
-- remote config output is an advanced endpoint shape; the public quickstart and release train focus on local `stdio`
+- remote config output is for environments that expose a compatible remote MCP endpoint
 - both `martin mcp print-config` and `martin mcp install` support:
   - `--host codex|claude|gemini|generic`
   - `--transport stdio|remote`
@@ -64,12 +64,13 @@ enabled_tools = [
   "martin_doctor",
   "martin_preflight",
   "martin_list_runs",
+  "martin_triage_runs",
   "martin_run_dossier",
 ]
 env = { MARTIN_RUNS_DIR = "C:\\path\\to\\runs" }
 ```
 
-The minimal allow-list stays aligned with the current public MCP server surface: `martin_doctor`, `martin_preflight`, `martin_list_runs`, and `martin_run_dossier`. Use `diagnostic` for deeper read-only archaeology and `full-local` when the host should expose `martin_run`.
+The minimal allow-list stays aligned with the MCP discovery metadata: `martin_doctor`, `martin_preflight`, `martin_list_runs`, `martin_triage_runs`, and `martin_run_dossier`. Use `diagnostic` for deeper read-only archaeology and `full-local` when the host should expose `martin_run`.
 
 ## Host coverage
 

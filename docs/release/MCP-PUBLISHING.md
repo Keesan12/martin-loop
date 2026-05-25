@@ -1,69 +1,99 @@
 # MCP Publishing
 
-Use npm trusted publishing from GitHub Actions for `@martinloop/mcp` releases. Do not rely on local browser login as the primary release path.
+Use npm trusted publishing from GitHub Actions for `@martinloop/mcp`.
 
-## Canonical release path
+For the current integrated `0.2.5` tip, the publish claim covers the public stable cockpit line: tools, resources, resource templates, and prompts, plus the run-triage surface layered into that cockpit. The docs and release checks must describe that full surface honestly, while the public scheduled train stays `0.1.4 -> 0.2.0 -> 0.2.5`.
 
-1. Bump `packages/mcp/package.json` and `packages/mcp/server.json` to the target version.
-2. Merge the release branch to `main`.
-3. Configure npm trusted publishing once for `@martinloop/mcp`:
-   - npm package: `@martinloop/mcp`
-   - GitHub owner: `Keesan12`
-   - GitHub repository: `martin-loop`
-   - GitHub Actions workflow file: `publish-mcp.yml`
-4. Trigger `.github/workflows/publish-mcp.yml`:
-   - manually with `workflow_dispatch` using the exact existing `mcp-vX.Y.Z` tag in the `tag` input, or
-   - by pushing a tag in the form `mcp-vX.Y.Z`.
-5. Let the workflow:
-   - install with `pnpm install --frozen-lockfile`
-   - run `pnpm --filter @martinloop/mcp lint`
-   - run `pnpm --filter @martinloop/mcp test`
-   - run `pnpm --filter @martinloop/mcp build`
-   - run `pnpm --filter @martinloop/mcp smoke:pack`
-   - run `pnpm --filter @martinloop/mcp smoke:published:pack`
-   - run `pnpm --filter @martinloop/mcp verify:release`
-   - publish `@martinloop/mcp`
-   - verify the live artifact with `pnpm --filter @martinloop/mcp smoke:published`
-   - create the matching GitHub release with the checked-in MCP release notes file as the body
+## Tier Boundary
 
-## One-time npm setup
+Publishing `@martinloop/mcp` only promotes the public Free / OSS MCP lane.
+It does not promote the non-OSS, team-scale, organization-scale, or separate product surfaces, and it must not pull private operation surface, autonomy, or router internals into OSS release docs.
+non-OSS product capabilities stay outside this public release surface.
 
-Set up npm trusted publishing on the `@martinloop/mcp` package page:
+The scheduled public labels are:
 
-1. Open npm package settings for `@martinloop/mcp`.
-2. Go to the trusted publishing section.
-3. Add GitHub Actions as the trusted publisher.
-4. Enter:
-   - GitHub owner: `Keesan12`
-   - repository: `martin-loop`
-   - workflow filename: `publish-mcp.yml`
-5. After trusted publishing works, restrict token access for the package so browser-auth local publishes are not the normal path.
+- `0.1.4` operator foundation
+- `0.2.0` cockpit expansion
+- `0.2.5` stable cockpit line
 
-## Why this is the preferred path
+## Canonical Release Path
 
-- removes the flaky local browser-auth publish loop
-- keeps the publish path reproducible
-- uses the same verified package checks every release
-- publishes only after pack and published-artifact smoke checks pass
-- avoids storing a long-lived npm publish token in GitHub secrets
-- gets npm provenance automatically for public packages published from public GitHub repos
+1. Bump `packages/mcp/package.json` and `packages/mcp/server.json`.
+2. Confirm `docs/release/VERSION-LEDGER.md` still matches live npm, public GitHub `main`, and the local integrated tree.
+3. Refresh:
+   - `packages/mcp/README.md`
+   - `docs/oss/MCP-FOR-AI-AGENTS.md`
+   - `docs/oss/QUICKSTART.md`
+   - `docs/release/MCP-X.Y.Z-RELEASE-NOTES.md`
+   - `docs/release/MCP-X.Y.Z-RELEASE-PACKET.md`
+   - `docs/release/MCP-COMPATIBILITY.md`
+   - `docs/release/MCP-RELEASE-CHECKLIST.md`
+4. Run the pre-publish gates:
+   - `pnpm --filter @martinloop/mcp lint`
+   - `pnpm --filter @martinloop/mcp test`
+   - `pnpm --filter @martinloop/mcp build`
+   - `pnpm --filter @martinloop/mcp smoke:pack`
+   - `pnpm --filter @martinloop/mcp smoke:published:pack`
+   - `pnpm --filter @martinloop/mcp verify:release`
+5. Merge the release branch.
+6. Trigger `.github/workflows/publish-mcp.yml` with `workflow_dispatch` or `mcp-vX.Y.Z`.
+7. Let the workflow publish npm and re-run `pnpm --filter @martinloop/mcp smoke:published`.
 
-## Local emergency fallback
+## Docs and Parity Checklist
+
+Before calling the release ready, confirm:
+
+- the matching `docs/release/MCP-X.Y.Z-RELEASE-PACKET.md` exists and includes the commands run, versions tested, host matrix receipts, known non-goals, and pending publish gates
+- docs list the current tools:
+  - `martin_doctor`
+  - `martin_preflight`
+  - `martin_run`
+  - `martin_inspect`
+  - `martin_status`
+  - `martin_list_runs`
+  - `martin_triage_runs`
+  - `martin_get_run`
+  - `martin_get_attempt`
+  - `martin_get_verification_results`
+  - `martin_run_dossier`
+- docs list the current resources and prompts
+- docs keep current Codex and Claude Code install snippets
+- release notes describe the actual discovery surface as shipped, not as future work
+- docs keep the public Free / OSS MCP train separate from the private separate non-OSS product lines tiers
+- docs do not present the non-OSS additional remote MCP surface or additional remote configuration as part of the public npm package claim
+- `scripts/tests/mcp-release-docs.test.mjs` verifies the tool list, resource list, prompt list, and cockpit flow
+
+## Gate Semantics
+
+- `smoke:pack` is the pre-publish local-pack gate
+- `smoke:published:pack` is the install-from-pack gate
+- `smoke:published` is the post-publish npm gate
+
+They are separate gates and should stay separate.
+
+## Trusted Publishing Notes
+
+- package: `@martinloop/mcp`
+- registry/server identifier: `io.github.Keesan12/martin-loop`
+- GitHub owner: `Keesan12`
+- repository: `martin-loop`
+- workflow: `publish-mcp.yml`
+
+## Emergency Local Fallback
 
 Only use local publish when automation is unavailable:
 
 ```powershell
-cd packages/mcp
-pnpm lint
-pnpm test
-pnpm build
-pnpm smoke:pack
-pnpm smoke:published:pack
-pnpm verify:release
-npm publish --access public --provenance
+pnpm --dir packages/mcp lint
+pnpm --dir packages/mcp test
+pnpm --dir packages/mcp build
+pnpm --dir packages/mcp smoke:pack
+pnpm --dir packages/mcp smoke:published:pack
+pnpm --dir packages/mcp verify:release
+npm publish --access public --workspace @martinloop/mcp
 ```
 
-After local publish, always verify:
+Then verify:
 
 ```powershell
 npm view @martinloop/mcp version

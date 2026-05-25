@@ -1,22 +1,32 @@
-import { extractVerificationResults, loadSelectedRun, type VerificationResultSummary } from "./cockpit-support.js";
+import { buildLoopPreview, buildVerificationSummary } from "./tool-support.js";
+import { loadDetailedLoopRecord, readLedgerEvents } from "./run-store.js";
 
-export interface GetVerificationResultsInput {
+export interface MartinGetVerificationResultsInput {
+  file?: string;
   loopId?: string;
   runsDir?: string;
-  latest?: boolean;
 }
 
-export interface GetVerificationResultsOutput {
-  loopId: string;
-  results: VerificationResultSummary[];
+export interface MartinGetVerificationResultsOutput {
+  source: string;
+  sourceKind: "file" | "loop_id" | "latest" | "runs_root";
+  loop: ReturnType<typeof buildLoopPreview>;
+  verification: ReturnType<typeof buildVerificationSummary>;
+  warnings: string[];
 }
 
-export async function getVerificationResultsTool(
-  input: GetVerificationResultsInput
-): Promise<GetVerificationResultsOutput> {
-  const loop = await loadSelectedRun(input);
+export async function martinGetVerificationResultsTool(
+  input: MartinGetVerificationResultsInput
+): Promise<MartinGetVerificationResultsOutput> {
+  const detail = await loadDetailedLoopRecord(input);
+  const ledgerEvents = await readLedgerEvents(detail);
+  const verification = buildVerificationSummary(detail.loop, ledgerEvents);
+
   return {
-    loopId: loop.loopId,
-    results: extractVerificationResults(loop)
+    source: detail.source,
+    sourceKind: detail.sourceKind,
+    loop: buildLoopPreview(detail.loop),
+    verification,
+    warnings: [...detail.warnings, ...verification.warnings]
   };
 }

@@ -9,6 +9,7 @@ export const MARTIN_STARTER_TOOLS = [
   "martin_doctor",
   "martin_preflight",
   "martin_run",
+  "martin_triage_runs",
   "martin_run_dossier"
 ] as const;
 
@@ -16,6 +17,7 @@ export const MARTIN_MINIMAL_TOOLS = [
   "martin_doctor",
   "martin_preflight",
   "martin_list_runs",
+  "martin_triage_runs",
   "martin_run_dossier"
 ] as const;
 
@@ -23,6 +25,7 @@ export const MARTIN_DIAGNOSTIC_TOOLS = [
   "martin_doctor",
   "martin_preflight",
   "martin_list_runs",
+  "martin_triage_runs",
   "martin_get_run",
   "martin_get_attempt",
   "martin_get_verification_results",
@@ -30,12 +33,13 @@ export const MARTIN_DIAGNOSTIC_TOOLS = [
 ] as const;
 
 export const MARTIN_FULL_TOOLS = [
-  "martin_doctor",
-  "martin_preflight",
   "martin_run",
   "martin_inspect",
   "martin_status",
+  "martin_doctor",
+  "martin_preflight",
   "martin_list_runs",
+  "martin_triage_runs",
   "martin_get_run",
   "martin_get_attempt",
   "martin_get_verification_results",
