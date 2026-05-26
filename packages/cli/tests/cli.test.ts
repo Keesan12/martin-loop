@@ -223,6 +223,58 @@ describe("executeCli", () => {
     }
   });
 
+  it("writes early run-store durability artifacts for CLI-managed runs", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-heartbeat-"));
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-cli-heartbeat-runs-"));
+    const previousRunsRoot = process.env.MARTIN_RUNS_DIR;
+    const previousLive = process.env.MARTIN_LIVE;
+
+    try {
+      process.env.MARTIN_RUNS_DIR = runsRoot;
+      process.env.MARTIN_LIVE = "false";
+
+      const result = await executeCli([
+        "--json",
+        "run",
+        "--objective",
+        "Repair flaky CI gate",
+        "--cwd",
+        directory
+      ]);
+
+      expect(result.exitCode).toBe(0);
+
+      const payload = JSON.parse(result.stdout);
+      const loopId = payload.loop.loopId as string;
+      const contract = JSON.parse(await readFile(join(runsRoot, loopId, "contract.json"), "utf8"));
+      const heartbeat = JSON.parse(
+        await readFile(
+          join(runsRoot, loopId, "artifacts", "attempt-001", "heartbeat.json"),
+          "utf8"
+        )
+      );
+
+      expect(contract.loopId).toBe(loopId);
+      expect(heartbeat.attemptIndex).toBe(1);
+      expect(heartbeat.adapterId).toBeTypeOf("string");
+    } finally {
+      if (previousRunsRoot === undefined) {
+        delete process.env.MARTIN_RUNS_DIR;
+      } else {
+        process.env.MARTIN_RUNS_DIR = previousRunsRoot;
+      }
+
+      if (previousLive === undefined) {
+        delete process.env.MARTIN_LIVE;
+      } else {
+        process.env.MARTIN_LIVE = previousLive;
+      }
+
+      await rm(directory, { force: true, recursive: true });
+      await rm(runsRoot, { force: true, recursive: true });
+    }
+  });
+
   it("resolves a relative --config path from INIT_CWD for filtered dev runs", async () => {
     const directory = await mkdtemp(join(tmpdir(), "martin-cli-init-cwd-"));
     const packageDirectory = join(directory, "packages", "cli");

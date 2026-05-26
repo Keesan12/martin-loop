@@ -6,7 +6,7 @@ export {
   resolveRunsRoot,
   runDir
 } from "./store.js";
-export type { AttemptArtifacts, RunContract, RunStore } from "./store.js";
+export type { AttemptArtifacts, AttemptHeartbeat, RunContract, RunStore } from "./store.js";
 export {
   readAllLoopRecords,
   readLatestLoopRecord,

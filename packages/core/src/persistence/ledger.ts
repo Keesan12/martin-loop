@@ -6,6 +6,8 @@
 export type LedgerEventKind =
   | "contract.created"
   | "attempt.admitted"
+  | "attempt.started"
+  | "attempt.heartbeat"
   | "attempt.rejected"
   | "prompt.compiled"
   | "patch.generated"

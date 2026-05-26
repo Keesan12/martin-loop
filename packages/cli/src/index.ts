@@ -10,7 +10,7 @@ import {
   createStubDirectProviderAdapter,
   createVerifierOnlyAdapter
 } from "@martin/adapters";
-import { runMartin, type MartinAdapter } from "@martin/core";
+import { createFileRunStore, runMartin, type MartinAdapter } from "@martin/core";
 import {
   buildPortfolioSnapshot,
   createLoopRecord,
@@ -575,7 +575,8 @@ async function executeRunCommand(
       },
       budget: resolvedRequest.budget,
       metadata: resolvedRequest.metadata,
-      adapter
+      adapter,
+      store: createFileRunStore({ runsRoot: cliEnvironment.runsRoot })
     });
   } catch (error) {
     const fallbackLoop = createLoopRecord({

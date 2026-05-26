@@ -311,6 +311,43 @@ describe("FileRunStore", () => {
     expect(rollbackOutcome.status).toBe("restored");
     expect(rollbackOutcome.deletedFiles).toContain("src/ghost-new-file.ts");
   });
+
+  it("writes heartbeat.json for an in-flight attempt heartbeat", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-artifact-heartbeat-"));
+    const store = createFileRunStore({ runsRoot });
+
+    await store.initRun({
+      runId: "run_art_heartbeat_001",
+      workspaceId: "ws_a",
+      projectId: "proj_a",
+      task: { title: "T", objective: "O", verificationPlan: [] },
+      budget: { maxUsd: 1, softLimitUsd: 0.5, maxIterations: 1, maxTokens: 1000 },
+      createdAt: "2026-04-01T00:00:00.000Z"
+    });
+
+    await store.writeAttemptHeartbeat?.("run_art_heartbeat_001", 1, {
+      attemptId: "att_001",
+      attemptIndex: 1,
+      adapterId: "agent-cli:codex",
+      providerId: "codex",
+      model: "codex",
+      policyPhase: "PATCH",
+      startedAt: "2026-04-01T00:00:00.000Z",
+      lastHeartbeatAt: "2026-04-01T00:00:01.000Z",
+      elapsedMs: 1000
+    });
+
+    const heartbeat = JSON.parse(
+      await readFile(
+        join(runsRoot, "run_art_heartbeat_001", "artifacts", "attempt-001", "heartbeat.json"),
+        "utf8"
+      )
+    );
+
+    expect(heartbeat.attemptId).toBe("att_001");
+    expect(heartbeat.policyPhase).toBe("PATCH");
+    expect(heartbeat.elapsedMs).toBe(1000);
+  });
 });
 
 describe("compileAndPersistContext", () => {

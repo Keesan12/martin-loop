@@ -42,6 +42,18 @@ export interface AttemptArtifacts {
   rollbackOutcome?: unknown;
 }
 
+export interface AttemptHeartbeat {
+  attemptId: string;
+  attemptIndex: number;
+  adapterId: string;
+  providerId: string;
+  model: string;
+  policyPhase: string;
+  startedAt: string;
+  lastHeartbeatAt: string;
+  elapsedMs: number;
+}
+
 // ─── RunStore interface ───────────────────────────────────────────────────────
 
 /**
@@ -75,6 +87,12 @@ export interface RunStore {
     attemptIndex: number,
     artifacts: AttemptArtifacts
   ): Promise<void>;
+
+  /**
+   * Persist a lightweight heartbeat for an in-flight attempt.
+   * Optional to avoid breaking custom RunStore implementations.
+   */
+  writeAttemptHeartbeat?(runId: string, attemptIndex: number, heartbeat: AttemptHeartbeat): Promise<void>;
 
   /**
    * Persist the latest canonical loop record snapshot when the caller has one.
@@ -173,6 +191,16 @@ export function createFileRunStore(options: { runsRoot?: string } = {}): RunStor
       if (artifacts.rollbackOutcome !== undefined) {
         await writeJsonFile(join(dir, "rollback-outcome.json"), artifacts.rollbackOutcome);
       }
+    },
+
+    async writeAttemptHeartbeat(
+      runId: string,
+      attemptIndex: number,
+      heartbeat: AttemptHeartbeat
+    ): Promise<void> {
+      const dir = artifactDir(runsRoot, runId, attemptIndex);
+      await mkdir(dir, { recursive: true });
+      await writeJsonFile(join(dir, "heartbeat.json"), heartbeat);
     },
 
     async writeLoopRecord(runId: string, loop: LoopRecord): Promise<void> {

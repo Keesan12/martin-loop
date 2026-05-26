@@ -11,6 +11,7 @@ import {
   type LoopArtifact,
   type LoopAttempt,
   type LoopBudget,
+  type MachineState,
   type MutationMode,
   type LoopRecord,
   type LoopTask,
@@ -380,6 +381,8 @@ export interface RunMartinInput {
   fallbackAdapters?: MartinAdapter[];
   /** Optional persistence store. When provided, runMartin writes artifacts on each lifecycle event. */
   store?: RunStore;
+  /** Optional heartbeat interval for in-flight adapter attempts. */
+  attemptHeartbeatIntervalMs?: number;
 }
 
 export interface RunMartinResult {
@@ -800,13 +803,62 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       previousAttempts: loop.attempts
     };
 
+    const currentAttemptIndex = loop.attempts.length + 1;
+    const compiledContext = compilePromptPacket(request);
     const rollbackBoundary = await captureRollbackBoundary({
       repoRoot: request.context.repoRoot,
       capturedAt: attemptStartedAt
     });
-    const result = await executingAdapter.execute(request);
+    if (input.store) {
+      await input.store.writeAttemptArtifacts(loop.loopId, currentAttemptIndex, {
+        compiledContext,
+        ...(rollbackBoundary ? { rollbackBoundary } : {})
+      });
+      await input.store.appendLedger(
+        loop.loopId,
+        makeLedgerEvent({
+          kind: "attempt.started",
+          runId: loop.loopId,
+          attemptIndex: currentAttemptIndex,
+          payload: {
+            attemptId,
+            adapterId: executingAdapter.adapterId,
+            providerId: executingAdapter.metadata.providerId,
+            model: executingAdapter.metadata.model,
+            transport: getAdapterTransport(executingAdapter),
+            policyPhase: currentPhase
+          }
+        })
+      );
+      await persistRuntimeState(input.store, loop, {
+        currentPhase,
+        currentAttempt: currentAttemptIndex,
+        activeModel: executingAdapter.metadata.model,
+        remainingBudgetUsd: distilled.constraints.remainingBudgetUsd,
+        reason: "attempt_started",
+        timestamp: attemptStartedAt
+      });
+      await persistLoopRecordIfSupported(input.store, loop);
+    }
+
+    const heartbeat = createAttemptHeartbeat({
+      store: input.store,
+      loopId: loop.loopId,
+      attemptId,
+      attemptIndex: currentAttemptIndex,
+      adapter: executingAdapter,
+      policyPhase: currentPhase,
+      startedAt: attemptStartedAt,
+      heartbeatIntervalMs: input.attemptHeartbeatIntervalMs
+    });
+
+    let result: MartinAdapterResult;
+    try {
+      result = await executingAdapter.execute(request);
+    } finally {
+      await heartbeat.stop();
+    }
     const attemptCompletedAt = now();
-    const compiledContext = compilePromptPacket(request);
 
     // PATCH → VERIFY
     currentPhase = "VERIFY";
@@ -816,7 +868,6 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         ? classifyFailure({ attempts: loop.attempts, result })
         : undefined;
 
-    const currentAttemptIndex = loop.attempts.length + 1;
     const attempt: LoopAttempt = {
       attemptId,
       index: currentAttemptIndex,
@@ -1628,6 +1679,129 @@ async function persistLoopRecordIfSupported(
   loop: LoopRecord
 ): Promise<void> {
   await store?.writeLoopRecord?.(loop.loopId, loop);
+}
+
+async function persistRuntimeState(
+  store: RunStore | undefined,
+  loop: LoopRecord,
+  input: {
+    currentPhase: PolicyPhase;
+    currentAttempt: number;
+    activeModel: string;
+    remainingBudgetUsd: number;
+    reason: string;
+    timestamp: string;
+  }
+): Promise<void> {
+  if (!store) {
+    return;
+  }
+
+  const state: MachineState = {
+    phase: input.currentPhase,
+    currentAttempt: input.currentAttempt,
+    activeModel: input.activeModel,
+    remainingBudgetUsd: roundUsd(input.remainingBudgetUsd),
+    attemptCountersBySurface: summarizeAttemptCounters(loop),
+    lastFailureSurface: loop.attempts.at(-1)?.failureClass,
+    lastVerifierScore: getLastVerifierScore(loop),
+    openAlerts: [],
+    policyHistory: [
+      {
+        phase: input.currentPhase,
+        reason: input.reason,
+        timestamp: input.timestamp
+      }
+    ]
+  };
+
+  await store.updateState(loop.loopId, state);
+}
+
+function createAttemptHeartbeat(input: {
+  store: RunStore | undefined;
+  loopId: string;
+  attemptId: string;
+  attemptIndex: number;
+  adapter: MartinAdapter;
+  policyPhase: PolicyPhase;
+  startedAt: string;
+  heartbeatIntervalMs?: number;
+}): { stop: () => Promise<void> } {
+  const intervalMs = Math.max(50, input.heartbeatIntervalMs ?? 15_000);
+  if (!input.store) {
+    return {
+      async stop(): Promise<void> {
+        return;
+      }
+    };
+  }
+
+  let stopped = false;
+  let writes = Promise.resolve();
+  const enqueue = (timestamp: string) => {
+    writes = writes.then(async () => {
+      const elapsedMs = Math.max(0, Date.parse(timestamp) - Date.parse(input.startedAt));
+      const heartbeat = {
+        attemptId: input.attemptId,
+        attemptIndex: input.attemptIndex,
+        adapterId: input.adapter.adapterId,
+        providerId: input.adapter.metadata.providerId,
+        model: input.adapter.metadata.model,
+        policyPhase: input.policyPhase,
+        startedAt: input.startedAt,
+        lastHeartbeatAt: timestamp,
+        elapsedMs
+      };
+      await input.store?.writeAttemptHeartbeat?.(input.loopId, input.attemptIndex, heartbeat);
+      await input.store?.appendLedger(
+        input.loopId,
+        makeLedgerEvent({
+          kind: "attempt.heartbeat",
+          runId: input.loopId,
+          attemptIndex: input.attemptIndex,
+          payload: heartbeat,
+          timestamp
+        })
+      );
+    });
+    return writes;
+  };
+
+  void enqueue(input.startedAt);
+  const timer = setInterval(() => {
+    if (stopped) {
+      return;
+    }
+    void enqueue(new Date().toISOString());
+  }, intervalMs);
+  timer.unref?.();
+
+  return {
+    async stop(): Promise<void> {
+      if (stopped) {
+        return writes;
+      }
+
+      stopped = true;
+      clearInterval(timer);
+      await writes;
+    }
+  };
+}
+
+function summarizeAttemptCounters(loop: LoopRecord): Record<string, number> {
+  const counters: Record<string, number> = {};
+
+  for (const attempt of loop.attempts) {
+    if (!attempt.failureClass) {
+      continue;
+    }
+
+    counters[attempt.failureClass] = (counters[attempt.failureClass] ?? 0) + 1;
+  }
+
+  return counters;
 }
 
 function getAdapterTransport(adapter: MartinAdapter): "cli" | "http" | "routed_http" {

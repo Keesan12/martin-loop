@@ -1694,6 +1694,99 @@ describe("runMartin", () => {
       provenance: "actual"
     });
   });
+
+  it("persists a run contract, loop record, and heartbeat before a long-running adapter returns", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-heartbeat-live-"));
+    const store = createFileRunStore({ runsRoot });
+    let resolveExecution: ((value: import("../src/index.js").MartinAdapterResult) => void) | undefined;
+
+    const adapter: MartinAdapter = {
+      adapterId: "agent-cli:codex",
+      kind: "agent-cli",
+      label: "Long running Codex adapter",
+      metadata: {
+        providerId: "codex",
+        model: "codex",
+        transport: "cli"
+      },
+      async execute() {
+        return await new Promise((resolve) => {
+          resolveExecution = resolve;
+        });
+      }
+    };
+
+    const runPromise = runMartin({
+      workspaceId: "ws_ops",
+      projectId: "proj_runtime",
+      task: {
+        title: "Repair the runtime adapter",
+        objective: "Keep durability evidence on disk even while the adapter is still running.",
+        verificationPlan: ["pnpm --filter @martin/core test"]
+      },
+      budget: {
+        maxUsd: 10,
+        softLimitUsd: 8,
+        maxIterations: 2,
+        maxTokens: 2_000
+      },
+      adapter,
+      store,
+      attemptHeartbeatIntervalMs: 25,
+      now: createTimestampSource([
+        "2026-04-10T10:00:00.000Z",
+        "2026-04-10T10:00:01.000Z",
+        "2026-04-10T10:00:02.000Z",
+        "2026-04-10T10:00:03.000Z",
+        "2026-04-10T10:00:04.000Z"
+      ]),
+      idFactory: createIdFactory()
+    });
+
+    const runId = "loop_001";
+    await waitForPath(join(runsRoot, runId, "artifacts", "attempt-001", "heartbeat.json"));
+    const contract = JSON.parse(await readFile(join(runsRoot, runId, "contract.json"), "utf8"));
+    const loopRecord = JSON.parse(await readFile(join(runsRoot, runId, "loop-record.json"), "utf8"));
+    const heartbeat = JSON.parse(
+      await readFile(
+        join(runsRoot, runId, "artifacts", "attempt-001", "heartbeat.json"),
+        "utf8"
+      )
+    );
+    const compiledContext = JSON.parse(
+      await readFile(
+        join(runsRoot, runId, "artifacts", "attempt-001", "compiled-context.json"),
+        "utf8"
+      )
+    );
+    const ledger = await readLedger(runsRoot, runId);
+
+    expect(contract.runId).toBe(runId);
+    expect(loopRecord.events.map((event: { type: string }) => event.type)).toContain("attempt.started");
+    expect(compiledContext.attemptNumber).toBe(1);
+    expect(heartbeat.attemptIndex).toBe(1);
+    expect(heartbeat.attemptId).toBeTypeOf("string");
+    expect(ledger.map((entry) => entry.kind)).toEqual(
+      expect.arrayContaining(["contract.created", "attempt.admitted", "attempt.started", "attempt.heartbeat"])
+    );
+
+    resolveExecution?.({
+      status: "completed",
+      summary: "Completed after the durability checkpoint.",
+      usage: {
+        actualUsd: 0.4,
+        tokensIn: 40,
+        tokensOut: 20
+      },
+      verification: {
+        passed: true,
+        summary: "pnpm --filter @martin/core test passed"
+      }
+    });
+
+    const result = await runPromise;
+    expect(result.loop.status).toBe("completed");
+  });
 });
 
 function attempt(overrides: Partial<LoopAttempt> & Pick<LoopAttempt, "attemptId" | "index">): LoopAttempt {
@@ -1764,6 +1857,25 @@ async function readLedger(
     .split("\n")
     .filter(Boolean)
     .map((line) => JSON.parse(line) as { kind: string; payload: Record<string, unknown> });
+}
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForPath(path: string, timeoutMs = 2_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    try {
+      await readFile(path, "utf8");
+      return;
+    } catch {
+      await sleep(25);
+    }
+  }
+
+  throw new Error(`Timed out waiting for ${path}`);
 }
 
 function initializeGitRepo(repoRoot: string): void {
