@@ -3,14 +3,21 @@
   "private": false,
   "version": "0.2.5",
   "type": "module",
-  "description": "Martin Loop OSS runtime, CLI, and MCP workspace for governed AI coding loops.",
+  "description": "Open-source control plane for AI coding agents with budget caps, verifier gates, and audit trails.",
   "packageManager": "pnpm@10.33.0",
   "keywords": [
-    "ai",
-    "agent",
-    "coding-loop",
-    "llm",
-    "automation",
+    "mcp",
+    "model-context-protocol",
+    "ai-coding-agents",
+    "agent-runtime",
+    "agent-governance",
+    "control-plane",
+    "budget-enforcement",
+    "verifier-gates",
+    "audit-trail",
+    "claude-code",
+    "codex",
+    "llmops",
     "cli"
   ],
   "author": "Vakeesan Mahalingam and Gobi Shanthan",
@@ -19,6 +26,9 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/Keesan12/martin-loop.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Keesan12/martin-loop/issues"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
