@@ -106,7 +106,7 @@ const SECRET_PATTERNS: Array<{ kind: SafetyViolationKind; pattern: RegExp; repla
   },
   {
     kind: "secret_value",
-    pattern: /\b(?:postgres|postgresql):\/\/[^:\s]+:[^@\s]{6,}@/giu,
+    pattern: /\b(?:postgres|postgresql):\/\/[^:\s]+:[^@\s]{1,}@/giu,
     replacement: "postgresql://[REDACTED_SECRET]@"
   },
   {

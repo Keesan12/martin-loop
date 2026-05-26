@@ -281,6 +281,7 @@ describe("compilePromptPacket secret redaction", () => {
   });
 
   it.each([
+    "Use postgres://appuser:pass@db.internal/app in the migration.",
     "Use postgres://appuser:secretpass@db.internal/app in the migration.",
     "Use postgresql://appuser:secretpass@db.internal/app in the migration.",
     "Authorization: Bearer abcdefghijklmnopqrstuvwxyz012345",

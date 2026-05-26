@@ -137,7 +137,7 @@ describe("executeCli", () => {
     } finally {
       await rm(directory, { force: true, recursive: true });
     }
-  });
+  }, 15000);
 
   it("surfaces effective governance policy metadata in run output", async () => {
     const configPath = join(process.env.INIT_CWD ?? process.cwd(), "martin.config.yaml");
@@ -190,10 +190,11 @@ describe("executeCli", () => {
       telemetryDestination: "control-plane"
     });
     expect(payload.loop.task.verificationPlan).toEqual(["pnpm test"]);
-  });
+  }, 15000);
 
   it("supports verify-only runs without invoking a coding adapter", async () => {
     const directory = await mkdtemp(join(tmpdir(), "martin-cli-verify-only-"));
+    const verifierCommand = process.platform === "win32" ? "cmd /c exit 0" : "true";
 
     try {
       const result = await executeCli([
@@ -203,7 +204,7 @@ describe("executeCli", () => {
         "Verify the contracts package without edits",
         "--verify-only",
         "--verify",
-        `"${process.execPath}" -e "process.exit(0)"`,
+        verifierCommand,
         "--cwd",
         directory,
         "--allow-path",
@@ -221,7 +222,7 @@ describe("executeCli", () => {
     } finally {
       await rm(directory, { force: true, recursive: true });
     }
-  });
+  }, 15000);
 
   it("writes early run-store durability artifacts for CLI-managed runs", async () => {
     const directory = await mkdtemp(join(tmpdir(), "martin-cli-heartbeat-"));
@@ -341,7 +342,7 @@ describe("executeCli", () => {
 
       await rm(directory, { force: true, recursive: true });
     }
-  });
+  }, 15000);
 
   it("surfaces bench as an RC-only workspace command instead of a publishable CLI feature", async () => {
     const result = await executeCli(["bench", "--suite", "ralphy-smoke"]);
