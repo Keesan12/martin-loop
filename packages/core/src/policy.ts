@@ -491,6 +491,7 @@ export interface BudgetPreflightInput {
   promptCharCount: number;
   attemptCount: number;
   remainingBudgetUsd: number;
+  model?: string;
   perAttemptCapUsd?: number;
   pricePerMTokenUsd?: number;
 }
@@ -502,7 +503,7 @@ export interface BudgetPreflightDecision {
 }
 
 export function evaluateBudgetPreflight(input: BudgetPreflightInput): BudgetPreflightDecision {
-  const pricePerMToken = input.pricePerMTokenUsd ?? 3.0;
+  const pricePerMToken = resolvePricePerMTokenUsd(input);
   const rawPromptTokens = Math.ceil(input.promptCharCount / 4);
   const estimatedPromptTokens = Math.ceil(rawPromptTokens * 1.2);
   const estimatedToolOverheadTokens = 800 + input.attemptCount * 200;
@@ -547,6 +548,24 @@ export function evaluateBudgetPreflight(input: BudgetPreflightInput): BudgetPref
     reason: "Preflight passed.",
     estimate
   };
+}
+
+const MODEL_PRICES_PER_M_TOKEN_USD: Record<string, number> = {
+  "claude-opus-4-6": 15.0,
+  "claude-sonnet-4-6": 3.0,
+  "claude-haiku-4-5": 0.25
+};
+
+function resolvePricePerMTokenUsd(input: BudgetPreflightInput): number {
+  if (input.pricePerMTokenUsd !== undefined) {
+    return input.pricePerMTokenUsd;
+  }
+
+  if (!input.model) {
+    return 3.0;
+  }
+
+  return MODEL_PRICES_PER_M_TOKEN_USD[input.model] ?? 3.0;
 }
 
 // ─── Phase 4: EvidenceVector + Recovery Recipes ──────────────────────────────

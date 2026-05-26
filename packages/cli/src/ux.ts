@@ -9,7 +9,8 @@ const EXIT_CODES: Record<MartinErrorCategory, number> = {
   verification_failed: 7,
   policy_blocked: 8,
   budget_exit: 9,
-  transient: 10
+  rate_limit: 10,
+  transient: 11
 };
 
 export interface CliFailurePayload {

@@ -1,4 +1,4 @@
-import { PROBE_COUNTS, RED_PHASE_MODEL, resolveRedBudgetPolicy, type RiskTier } from "./risk-tiers.js";
+import { PROBE_COUNTS, resolveRedBudgetPolicy, resolveRedPhaseModel, type RiskTier } from "./risk-tiers.js";
 
 // ─── Public types ─────────────────────────────────────────────────────────────
 
@@ -27,6 +27,8 @@ export interface MockModelClient {
 export interface RunRedPhaseOptions {
   /** Inject a mock or real Anthropic client. Required for release_critical tier. */
   modelClient?: MockModelClient;
+  /** Optional override for the Red phase model name. */
+  model?: string;
   /** Callback fired with each ledger event produced by the phase. */
   onLedgerEvent?: (event: RedLedgerEvent) => void;
 }
@@ -142,7 +144,7 @@ export async function runRedPhase(
     const result = await options.modelClient.complete(prompt);
     findings = [...findings, ...result.findings];
     modelCallMade = true;
-    modelUsed = RED_PHASE_MODEL;
+    modelUsed = resolveRedPhaseModel(options.model);
     budgetUsedUsd += result.costUsd;
   }
 

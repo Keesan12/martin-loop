@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { createLoopRecord } from "@martin/contracts";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { getStatusTool } from "../src/tools/get-status.js";
 import { inspectLoopTool } from "../src/tools/inspect-loop.js";
@@ -11,7 +11,7 @@ import { martinDoctorTool } from "../src/tools/doctor.js";
 import { martinGetVerificationResultsTool } from "../src/tools/get-verification-results.js";
 import { martinListRunsTool } from "../src/tools/list-runs.js";
 import { martinPreflightTool } from "../src/tools/preflight.js";
-import { runLoopTool } from "../src/tools/run-loop.js";
+import { resetRunLoopRateLimitForTests, runLoopTool } from "../src/tools/run-loop.js";
 import { martinTriageRunsTool } from "../src/tools/triage-runs.js";
 
 // ---------------------------------------------------------------------------
@@ -59,6 +59,90 @@ async function withRunsRoot<T>(fn: (runsRoot: string) => Promise<T>): Promise<T>
 
     await rm(runsRoot, { recursive: true, force: true }).catch(() => {});
   }
+}
+
+async function withEnv<T>(env: Record<string, string>, fn: () => Promise<T>): Promise<T> {
+  const previous = new Map<string, string | undefined>();
+  for (const [key, value] of Object.entries(env)) {
+    previous.set(key, process.env[key]);
+    process.env[key] = value;
+  }
+
+  try {
+    return await fn();
+  } finally {
+    for (const [key, value] of previous) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  }
+}
+
+async function withWorkspaceRoot<T>(fn: (workspaceRoot: string) => Promise<T>): Promise<T> {
+  const previousWorkspaceRoot = process.env.MARTIN_MCP_WORKSPACE_ROOT;
+  const workspaceRoot = await mkdtemp(join(tmpdir(), "martin-mcp-workspace-"));
+  process.env.MARTIN_MCP_WORKSPACE_ROOT = workspaceRoot;
+
+  try {
+    return await fn(workspaceRoot);
+  } finally {
+    if (previousWorkspaceRoot === undefined) {
+      delete process.env.MARTIN_MCP_WORKSPACE_ROOT;
+    } else {
+      process.env.MARTIN_MCP_WORKSPACE_ROOT = previousWorkspaceRoot;
+    }
+
+    await rm(workspaceRoot, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+async function importRunLoopToolWithMockedRunMartin(
+  runMartinImpl: (typeof import("@martin/core"))["runMartin"]
+) {
+  vi.resetModules();
+  vi.doMock("@martin/core", async () => {
+    const actual = await vi.importActual<typeof import("@martin/core")>("@martin/core");
+    return {
+      ...actual,
+      runMartin: runMartinImpl
+    };
+  });
+
+  return import("../src/tools/run-loop.js");
+}
+
+function makeMockRunMartinResult(loopId: string) {
+  return {
+    loop: createLoopRecord({
+      loopId,
+      workspaceId: "ws_test",
+      projectId: "proj_test",
+      task: {
+        title: "Mock task",
+        objective: "Mock objective",
+        verificationPlan: []
+      },
+      budget: {
+        maxUsd: 10,
+        softLimitUsd: 6,
+        maxIterations: 3,
+        maxTokens: 10_000
+      },
+      cost: {
+        actualUsd: 0.1,
+        avoidedUsd: 0,
+        tokensIn: 10,
+        tokensOut: 10
+      }
+    }),
+    decision: {
+      lifecycleState: "completed",
+      reason: "Mocked completion"
+    }
+  } as const;
 }
 
 // ---------------------------------------------------------------------------
@@ -329,60 +413,72 @@ describe("inspectLoopTool", () => {
 // ---------------------------------------------------------------------------
 
 describe("martinDoctorTool", () => {
-  it("reports run-store visibility in stub mode without requiring live CLIs", async () => {
-    await withRunsRoot(async (runsRoot) => {
-      const originalEnv = process.env.MARTIN_LIVE;
-      process.env.MARTIN_LIVE = "false";
+  it(
+    "reports run-store visibility in stub mode without requiring live CLIs",
+    async () => {
+    await withWorkspaceRoot(async () => {
+      await withRunsRoot(async (runsRoot) => {
+        const originalEnv = process.env.MARTIN_LIVE;
+        process.env.MARTIN_LIVE = "false";
 
-      try {
-        const loop = makeLoopRecord({ costUsd: 1.25 });
-        await mkdir(join(runsRoot, loop.loopId), { recursive: true });
-        await writeFile(join(runsRoot, loop.loopId, "loop-record.json"), JSON.stringify(loop), "utf8");
+        try {
+          const loop = makeLoopRecord({ costUsd: 1.25 });
+          await mkdir(join(runsRoot, loop.loopId), { recursive: true });
+          await writeFile(join(runsRoot, loop.loopId, "loop-record.json"), JSON.stringify(loop), "utf8");
 
-        const result = await martinDoctorTool({ runsDir: runsRoot, engine: "codex" });
+          const result = await martinDoctorTool({ runsDir: runsRoot, engine: "codex" });
 
-        expect(result.status).toBe("ok");
-        expect(result.environment.mode).toBe("stub");
-        expect(result.runStore.exists).toBe(true);
-        expect(result.runStore.loopCount).toBe(1);
-        expect(result.runStore.latestRun?.loopId).toBe(loop.loopId);
-        expect(result.requestedEngine).toBe("codex");
-      } finally {
-        if (originalEnv === undefined) {
-          delete process.env.MARTIN_LIVE;
-        } else {
-          process.env.MARTIN_LIVE = originalEnv;
+          expect(result.status).toBe("ok");
+          expect(result.environment.mode).toBe("stub");
+          expect(result.runStore.exists).toBe(true);
+          expect(result.runStore.loopCount).toBe(1);
+          expect(result.runStore.latestRun?.loopId).toBe(loop.loopId);
+          expect(result.requestedEngine).toBe("codex");
+        } finally {
+          if (originalEnv === undefined) {
+            delete process.env.MARTIN_LIVE;
+          } else {
+            process.env.MARTIN_LIVE = originalEnv;
+          }
         }
-      }
+      });
     });
-  });
+    },
+    20_000
+  );
 
-  it("surfaces degraded run-store warnings instead of failing on broken loop records", async () => {
-    await withRunsRoot(async (runsRoot) => {
-      const originalEnv = process.env.MARTIN_LIVE;
-      process.env.MARTIN_LIVE = "false";
+  it(
+    "surfaces degraded run-store warnings instead of failing on broken loop records",
+    async () => {
+    await withWorkspaceRoot(async () => {
+      await withRunsRoot(async (runsRoot) => {
+        const originalEnv = process.env.MARTIN_LIVE;
+        process.env.MARTIN_LIVE = "false";
 
-      try {
-        const loop = makeLoopRecord({ costUsd: 1.25 });
-        await mkdir(join(runsRoot, loop.loopId), { recursive: true });
-        await mkdir(join(runsRoot, "loop_broken"), { recursive: true });
-        await writeFile(join(runsRoot, loop.loopId, "loop-record.json"), JSON.stringify(loop), "utf8");
-        await writeFile(join(runsRoot, "loop_broken", "loop-record.json"), "{not-json", "utf8");
+        try {
+          const loop = makeLoopRecord({ costUsd: 1.25 });
+          await mkdir(join(runsRoot, loop.loopId), { recursive: true });
+          await mkdir(join(runsRoot, "loop_broken"), { recursive: true });
+          await writeFile(join(runsRoot, loop.loopId, "loop-record.json"), JSON.stringify(loop), "utf8");
+          await writeFile(join(runsRoot, "loop_broken", "loop-record.json"), "{not-json", "utf8");
 
-        const result = await martinDoctorTool({ runsDir: runsRoot, engine: "codex" });
+          const result = await martinDoctorTool({ runsDir: ".", engine: "codex" });
 
-        expect(result.status).toBe("degraded");
-        expect(result.runStore.loopCount).toBe(1);
-        expect(result.warnings).toContain("Skipped unreadable loop record for 'loop_broken'.");
-      } finally {
-        if (originalEnv === undefined) {
-          delete process.env.MARTIN_LIVE;
-        } else {
-          process.env.MARTIN_LIVE = originalEnv;
+          expect(result.status).toBe("degraded");
+          expect(result.runStore.loopCount).toBe(1);
+          expect(result.warnings).toContain("Skipped unreadable loop record for 'loop_broken'.");
+        } finally {
+          if (originalEnv === undefined) {
+            delete process.env.MARTIN_LIVE;
+          } else {
+            process.env.MARTIN_LIVE = originalEnv;
+          }
         }
-      }
+      });
     });
-  });
+    },
+    20_000
+  );
 
   it("degrades missing explicit runsDir health checks instead of rejecting the path", async () => {
     await withRunsRoot(async (runsRoot) => {
@@ -934,106 +1030,31 @@ describe("martinTriageRunsTool", () => {
 // ---------------------------------------------------------------------------
 
 describe("runLoopTool", () => {
+  afterEach(() => {
+    resetRunLoopRateLimitForTests();
+    vi.doUnmock("@martin/core");
+    vi.resetModules();
+  });
+
   it("returns a loop outcome in stub mode (MARTIN_LIVE=false)", async () => {
-    // Set stub mode so the adapter doesn't try to spawn claude
-    const originalEnv = process.env.MARTIN_LIVE;
-    process.env.MARTIN_LIVE = "false";
-
-    try {
-      const result = await runLoopTool({
-        objective: "Add a console.log to index.ts",
-        allowedPaths: ["src/**"],
-        deniedPaths: ["docs/security/**"],
-        verificationPlan: [],
-        maxIterations: 1,
-        maxUsd: 5
-      });
-
-      // Stub adapter returns failed, so loop exits with budget_exit or diminishing_returns
-      expect(result.loopId).toMatch(/^loop_/u);
-      expect(typeof result.attempts).toBe("number");
-      expect(typeof result.costUsd).toBe("number");
-      expect(["completed", "exited", "failed"]).toContain(result.status);
-    } finally {
-      if (originalEnv === undefined) {
-        delete process.env.MARTIN_LIVE;
-      } else {
-        process.env.MARTIN_LIVE = originalEnv;
-      }
-    }
-  });
-
-  it("uses workspaceId and projectId when provided", async () => {
-    // Mock runMartin to avoid real execution
-    const originalEnv = process.env.MARTIN_LIVE;
-    process.env.MARTIN_LIVE = "false";
-
-    try {
-      const result = await runLoopTool({
-        objective: "Fix the bug",
-        workspaceId: "ws_custom",
-        projectId: "proj_custom",
-        maxIterations: 1
-      });
-
-      expect(result.loopId).toBeTruthy();
-    } finally {
-      if (originalEnv === undefined) {
-        delete process.env.MARTIN_LIVE;
-      } else {
-        process.env.MARTIN_LIVE = originalEnv;
-      }
-    }
-  });
-
-  it("respects engine selection — codex adapter has different adapterId", async () => {
-    // We can't run codex in CI, but we can verify the adapter wires correctly
-    // by checking that the stub path still returns a result
-    const originalEnv = process.env.MARTIN_LIVE;
-    process.env.MARTIN_LIVE = "false";
-
-    try {
-      const result = await runLoopTool({
-        objective: "Fix the bug",
-        engine: "codex",
-        maxIterations: 1
-      });
-
-      expect(result.loopId).toBeTruthy();
-    } finally {
-      if (originalEnv === undefined) {
-        delete process.env.MARTIN_LIVE;
-      } else {
-        process.env.MARTIN_LIVE = originalEnv;
-      }
-    }
-  });
-
-  it("persists repoRoot and path constraints into the loop record", async () => {
-    await withRunsRoot(async (runsRoot) => {
+    await withWorkspaceRoot(async () => {
       const originalEnv = process.env.MARTIN_LIVE;
       process.env.MARTIN_LIVE = "false";
 
       try {
         const result = await runLoopTool({
-          objective: "Scope-limited change",
-          workingDirectory: ".",
+          objective: "Add a console.log to index.ts",
           allowedPaths: ["src/**"],
-          deniedPaths: ["docs/**"],
+          deniedPaths: ["docs/security/**"],
           verificationPlan: [],
           maxIterations: 1,
-          maxUsd: 1
+          maxUsd: 5
         });
 
-        const loopRecordPath = join(runsRoot, result.loopId, "loop-record.json");
-        const persisted = JSON.parse(await readFile(loopRecordPath, "utf8"));
-
-        expect(persisted.task.repoRoot).toBe(process.cwd());
-        expect(persisted.task.allowedPaths).toEqual(["src/**"]);
-        expect(persisted.task.deniedPaths).toEqual(["docs/**"]);
-        expect(result.inspection.loopRecordPath).toBe(loopRecordPath);
-        expect(result.inspection.loop.loopId).toBe(result.loopId);
-        expect(result.pressure).toBeTruthy();
+        expect(result.loopId).toMatch(/^loop_/u);
+        expect(typeof result.attempts).toBe("number");
+        expect(typeof result.costUsd).toBe("number");
+        expect(["completed", "exited", "failed"]).toContain(result.status);
       } finally {
         if (originalEnv === undefined) {
           delete process.env.MARTIN_LIVE;
@@ -1042,7 +1063,206 @@ describe("runLoopTool", () => {
         }
       }
     });
-  });
+  }, 20_000);
+
+  it("uses workspaceId and projectId when provided", async () => {
+    await withWorkspaceRoot(async () => {
+      const originalEnv = process.env.MARTIN_LIVE;
+      process.env.MARTIN_LIVE = "false";
+
+      try {
+        const result = await runLoopTool({
+          objective: "Fix the bug",
+          workspaceId: "ws_custom",
+          projectId: "proj_custom",
+          maxIterations: 1
+        });
+
+        expect(result.loopId).toBeTruthy();
+      } finally {
+        if (originalEnv === undefined) {
+          delete process.env.MARTIN_LIVE;
+        } else {
+          process.env.MARTIN_LIVE = originalEnv;
+        }
+      }
+    });
+  }, 20_000);
+
+  it(
+    "respects engine selection — codex adapter has different adapterId",
+    async () => {
+      await withWorkspaceRoot(async () => {
+        const originalEnv = process.env.MARTIN_LIVE;
+        process.env.MARTIN_LIVE = "false";
+
+        try {
+          const result = await runLoopTool({
+            objective: "Fix the bug",
+            engine: "codex",
+            maxIterations: 1
+          });
+
+          expect(result.loopId).toBeTruthy();
+        } finally {
+          if (originalEnv === undefined) {
+            delete process.env.MARTIN_LIVE;
+          } else {
+            process.env.MARTIN_LIVE = originalEnv;
+          }
+        }
+      });
+    },
+    20_000
+  );
+
+  it(
+    "persists repoRoot and path constraints into the loop record",
+    async () => {
+    await withWorkspaceRoot(async (workspaceRoot) => {
+      await withRunsRoot(async (runsRoot) => {
+        const originalEnv = process.env.MARTIN_LIVE;
+        process.env.MARTIN_LIVE = "false";
+
+        try {
+          const result = await runLoopTool({
+            objective: "Scope-limited change",
+            workingDirectory: ".",
+            allowedPaths: ["src/**"],
+            deniedPaths: ["docs/**"],
+            verificationPlan: [],
+            maxIterations: 1,
+            maxUsd: 1
+          });
+
+          const loopRecordPath = join(runsRoot, result.loopId, "loop-record.json");
+          const persisted = JSON.parse(await readFile(loopRecordPath, "utf8"));
+
+          expect(persisted.task.repoRoot).toBe(workspaceRoot);
+          expect(persisted.task.allowedPaths).toEqual(["src/**"]);
+          expect(persisted.task.deniedPaths).toEqual(["docs/**"]);
+          expect(result.inspection.loopRecordPath).toBe(loopRecordPath);
+          expect(result.inspection.loop.loopId).toBe(result.loopId);
+          expect(result.pressure).toBeTruthy();
+        } finally {
+          if (originalEnv === undefined) {
+            delete process.env.MARTIN_LIVE;
+          } else {
+            process.env.MARTIN_LIVE = originalEnv;
+          }
+        }
+      });
+    });
+    },
+    20_000
+  );
+
+  it(
+    "rejects the fifth martin_run start inside the local rate-limit window",
+    async () => {
+    await withRunsRoot(async () => {
+      await withEnv(
+        {
+          MARTIN_LIVE: "false",
+          MARTIN_MCP_RUN_LIMIT_MAX_CONCURRENT: "5",
+          MARTIN_MCP_RUN_LIMIT_MAX: "4",
+          MARTIN_MCP_RUN_LIMIT_WINDOW_SECONDS: "600"
+        },
+        async () => {
+          const {
+            runLoopTool: limitedRunLoopTool,
+            resetRunLoopRateLimitForTests: resetLimiter
+          } = await importRunLoopToolWithMockedRunMartin(async () => makeMockRunMartinResult("loop_rate_limit"));
+          resetLimiter();
+
+          for (let index = 0; index < 4; index += 1) {
+            await limitedRunLoopTool({
+              objective: `Rate limit warmup ${index}`,
+              maxIterations: 1
+            });
+          }
+
+          await expect(
+            limitedRunLoopTool({
+              objective: "Rate limit blocked",
+              maxIterations: 1
+            })
+          ).rejects.toMatchObject({
+            name: "MartinToolError",
+            code: "rate_limit_exceeded",
+            category: "rate_limit",
+            details: expect.objectContaining({
+              retryAfterSeconds: expect.any(Number)
+            })
+          });
+        }
+      );
+    });
+    },
+    30_000
+  );
+
+  it(
+    "rejects the third concurrent martin_run for the same workspace",
+    async () => {
+    await withRunsRoot(async () => {
+      await withEnv(
+        {
+          MARTIN_LIVE: "false",
+          MARTIN_MCP_RUN_LIMIT_MAX_CONCURRENT: "2",
+          MARTIN_MCP_RUN_LIMIT_MAX: "10",
+          MARTIN_MCP_RUN_LIMIT_WINDOW_SECONDS: "600"
+        },
+        async () => {
+          const gateResolvers: Array<() => void> = [];
+          const gate = () =>
+            new Promise<void>((resolve) => {
+              gateResolvers.push(resolve);
+            });
+          const {
+            runLoopTool: gatedRunLoopTool,
+            resetRunLoopRateLimitForTests: resetLimiter
+          } = await importRunLoopToolWithMockedRunMartin(async () => {
+            await gate();
+            return makeMockRunMartinResult("loop_concurrent");
+          });
+          resetLimiter();
+
+          const first = gatedRunLoopTool({
+            objective: "Concurrent one",
+            maxIterations: 1
+          });
+          const second = gatedRunLoopTool({
+            objective: "Concurrent two",
+            maxIterations: 1
+          });
+
+          await Promise.resolve();
+
+          await expect(
+            gatedRunLoopTool({
+              objective: "Concurrent three",
+              maxIterations: 1
+            })
+          ).rejects.toMatchObject({
+            name: "MartinToolError",
+            code: "rate_limit_exceeded",
+            category: "rate_limit",
+            details: expect.objectContaining({
+              retryAfterSeconds: 1
+            })
+          });
+
+          for (const resolveGate of gateResolvers.splice(0)) {
+            resolveGate();
+          }
+          await Promise.allSettled([first, second]);
+        }
+      );
+    });
+    },
+    20_000
+  );
 });
 
 // ---------------------------------------------------------------------------

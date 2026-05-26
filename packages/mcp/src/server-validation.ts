@@ -147,7 +147,14 @@ export function normalizeSafePathPatterns(value: unknown, name: string): string[
   }
 
   return paths.map((pattern) => {
-    const normalized = pattern.replace(/\\/gu, "/").trim();
+    let decoded: string;
+    try {
+      decoded = decodeURIComponent(pattern);
+    } catch {
+      throw invalidPathError(`Invalid ${name}.`);
+    }
+
+    const normalized = decoded.replace(/\\/gu, "/").trim();
     if (
       normalized.length === 0 ||
       normalized.startsWith("/") ||
@@ -529,9 +536,35 @@ function canonicalizePath(pathValue: string, name: string, requireExisting: bool
     if (requireExisting) {
       throw invalidPathError(`Invalid ${name}.`);
     }
-    return resolvedPath;
+
+    const existingAncestor = findNearestExistingAncestor(resolvedPath);
+    if (!existingAncestor) {
+      return resolvedPath;
+    }
+
+    const canonicalAncestor = canonicalizeExistingPath(existingAncestor, name);
+    const suffix = relative(existingAncestor, resolvedPath);
+    return suffix === "" ? canonicalAncestor : resolve(canonicalAncestor, suffix);
   }
 
+  return canonicalizeExistingPath(resolvedPath, name);
+}
+
+function findNearestExistingAncestor(pathValue: string): string | undefined {
+  let current = resolve(pathValue);
+
+  while (!existsSync(current)) {
+    const parent = dirname(current);
+    if (parent === current) {
+      return undefined;
+    }
+    current = parent;
+  }
+
+  return current;
+}
+
+function canonicalizeExistingPath(resolvedPath: string, name: string): string {
   try {
     const stats = lstatSync(resolvedPath);
     if (stats.isSymbolicLink()) {

@@ -1,0 +1,117 @@
+{
+  "release": "v0.2.6",
+  "summary": "Public OSS audit remediation train for MartinLoop after v0.2.5.",
+  "findings": [
+    {
+      "id": "DOC-01",
+      "status": "fixed_already",
+      "affectedCode": ["README.md"],
+      "proofTests": ["scripts/tests/mcp-release-docs.test.mjs"],
+      "releaseNote": "docs/release/OSS-0.2.6-RELEASE-NOTES.md"
+    },
+    {
+      "id": "BYP-01",
+      "status": "valid_remaining",
+      "affectedCode": ["packages/core/src/leash.ts"],
+      "proofTests": ["packages/core/tests/leash.test.ts"],
+      "releaseNote": "docs/release/OSS-0.2.6-RELEASE-NOTES.md"
+    },
+    {
+      "id": "BYP-02",
+      "status": "valid_remaining",
+      "affectedCode": ["packages/core/src/leash.ts"],
+      "proofTests": ["packages/core/tests/leash.test.ts"],
+      "releaseNote": "docs/release/OSS-0.2.6-RELEASE-NOTES.md"
+    },
+    {
+      "id": "BYP-03",
+      "status": "description_stale_but_risk_valid",
+      "affectedCode": ["packages/core/src/leash.ts"],
+      "proofTests": ["packages/core/tests/leash.test.ts"],
+      "releaseNote": "docs/release/OSS-0.2.6-RELEASE-NOTES.md"
+    },
+    {
+      "id": "BYP-04",
+      "status": "valid_remaining",
+      "affectedCode": ["packages/core/src/leash.ts"],
+      "proofTests": ["packages/core/tests/leash.test.ts"],
+      "releaseNote": "docs/release/OSS-0.2.6-RELEASE-NOTES.md"
+    },
+    {
+      "id": "BYP-05",
+      "status": "valid_remaining",
+      "affectedCode": ["packages/core/src/leash.ts"],
+      "proofTests": ["packages/core/tests/leash.test.ts"],
+      "releaseNote": "docs/release/OSS-0.2.6-RELEASE-NOTES.md"
+    },
+    {
+      "id": "BYP-06",
+      "status": "valid_remaining",
+      "affectedCode": ["packages/core/src/leash.ts"],
+      "proofTests": ["packages/core/tests/leash.test.ts"],
+      "releaseNote": "docs/release/OSS-0.2.6-RELEASE-NOTES.md"
+    },
+    {
+      "id": "INJ-01",
+      "status": "valid_remaining",
+      "affectedCode": [
+        "packages/core/src/context-integrity.ts",
+        "packages/core/src/index.ts"
+      ],
+      "proofTests": ["packages/core/tests/context-integrity.test.ts"],
+      "releaseNote": "docs/release/OSS-0.2.6-RELEASE-NOTES.md"
+    },
+    {
+      "id": "SEC-REGRESS",
+      "status": "description_stale_but_risk_valid",
+      "affectedCode": ["packages/core/src/leash.ts"],
+      "proofTests": ["packages/core/tests/leash.test.ts"],
+      "releaseNote": "docs/release/OSS-0.2.6-RELEASE-NOTES.md"
+    },
+    {
+      "id": "PATH-01",
+      "status": "valid_remaining",
+      "affectedCode": ["packages/mcp/src/server-validation.ts"],
+      "proofTests": ["packages/mcp/tests/server-validation.test.ts"],
+      "releaseNote": "docs/release/OSS-0.2.6-RELEASE-NOTES.md"
+    },
+    {
+      "id": "BUG-01",
+      "status": "valid_remaining",
+      "affectedCode": ["packages/core/src/grounding.ts"],
+      "proofTests": ["packages/core/tests/grounding-cache.test.ts"],
+      "releaseNote": "docs/release/OSS-0.2.6-RELEASE-NOTES.md"
+    },
+    {
+      "id": "BUG-02",
+      "status": "valid_remaining",
+      "affectedCode": [
+        "packages/core/src/policy.ts",
+        "packages/core/src/index.ts"
+      ],
+      "proofTests": ["packages/core/tests/policy.test.ts"],
+      "releaseNote": "docs/release/OSS-0.2.6-RELEASE-NOTES.md"
+    },
+    {
+      "id": "BUG-03",
+      "status": "valid_remaining",
+      "affectedCode": [
+        "packages/core/src/red-blue/risk-tiers.ts",
+        "packages/core/src/red-blue/red-phase.ts"
+      ],
+      "proofTests": ["packages/core/tests/policy.test.ts"],
+      "releaseNote": "docs/release/OSS-0.2.6-RELEASE-NOTES.md"
+    },
+    {
+      "id": "MCP-RATE-LIMIT",
+      "status": "valid_remaining",
+      "affectedCode": [
+        "packages/mcp/src/tools/run-loop.ts",
+        "packages/mcp/src/tools/tool-errors.ts",
+        "packages/contracts/src/operator.ts"
+      ],
+      "proofTests": ["packages/mcp/tests/mcp-tools.test.ts"],
+      "releaseNote": "docs/release/OSS-0.2.6-RELEASE-NOTES.md"
+    }
+  ]
+}

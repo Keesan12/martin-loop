@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -40,6 +40,25 @@ describe("loadOrBuildRepoGroundingIndex cache hardening", () => {
     expect(index.files.some((file) => file.path === "src/core.ts")).toBe(true);
 
     vi.doUnmock("node:fs/promises");
+  });
+
+  it("rebuilds the grounding cache when an indexed file changes", async () => {
+    const root = await mkdtemp(join(tmpdir(), "martin-grounding-fingerprint-"));
+    await mkdir(join(root, "src"), { recursive: true });
+    const sourceFile = join(root, "src", "core.ts");
+    await writeFile(sourceFile, "export const value = 1;", "utf8");
+
+    const { loadOrBuildRepoGroundingIndex } = await import("../src/grounding.js");
+    const initial = await loadOrBuildRepoGroundingIndex(root);
+
+    await writeFile(sourceFile, "export const value = 2;\nexport const next = 3;", "utf8");
+    const nextTime = new Date(Date.now() + 2_000);
+    await utimes(sourceFile, nextTime, nextTime);
+
+    const rebuilt = await loadOrBuildRepoGroundingIndex(root);
+
+    expect(rebuilt.sourceFingerprint).not.toBe(initial.sourceFingerprint);
+    expect(rebuilt.files).not.toEqual(initial.files);
   });
 });
 

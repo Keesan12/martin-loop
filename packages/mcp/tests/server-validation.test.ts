@@ -85,6 +85,29 @@ describe("server validation", () => {
     ).toThrow("Invalid deniedPaths.");
   });
 
+  it("rejects URL-encoded and malformed traversal path patterns", () => {
+    expect(() =>
+      validateToolInput("martin_run", {
+        objective: "Fix the bug",
+        allowedPaths: ["..%2Fetc/**"]
+      })
+    ).toThrow("Invalid allowedPaths.");
+
+    expect(() =>
+      validateToolInput("martin_run", {
+        objective: "Fix the bug",
+        allowedPaths: ["..%5csecret/**"]
+      })
+    ).toThrow("Invalid allowedPaths.");
+
+    expect(() =>
+      validateToolInput("martin_run", {
+        objective: "Fix the bug",
+        allowedPaths: ["%E0%A4%A"]
+      })
+    ).toThrow("Invalid allowedPaths.");
+  });
+
   it("rejects inspect paths that escape the Martin run store", () => {
     return withValidationRunsRoot(async () => {
       expect(() =>

@@ -52,6 +52,61 @@ describe("evaluateBudgetPreflight", () => {
 
     expect(decision.estimate.provenance).toBe("estimated");
   });
+
+  it("uses model-aware pricing for Opus and blocks attempts that Sonnet would allow", () => {
+    const sonnetDecision = evaluateBudgetPreflight({
+      promptCharCount: 800_000,
+      attemptCount: 0,
+      remainingBudgetUsd: 5,
+      model: "claude-sonnet-4-6"
+    });
+    const opusDecision = evaluateBudgetPreflight({
+      promptCharCount: 800_000,
+      attemptCount: 0,
+      remainingBudgetUsd: 5,
+      model: "claude-opus-4-6"
+    });
+
+    expect(sonnetDecision.allowed).toBe(true);
+    expect(opusDecision.allowed).toBe(false);
+    expect(opusDecision.estimate.estimatedAttemptCostUsd).toBeGreaterThan(
+      sonnetDecision.estimate.estimatedAttemptCostUsd
+    );
+  });
+
+  it("uses the lower Haiku price and falls back to the default map for unknown models", () => {
+    const haikuDecision = evaluateBudgetPreflight({
+      promptCharCount: 800_000,
+      attemptCount: 0,
+      remainingBudgetUsd: 1,
+      model: "claude-haiku-4-5"
+    });
+    const fallbackDecision = evaluateBudgetPreflight({
+      promptCharCount: 800_000,
+      attemptCount: 0,
+      remainingBudgetUsd: 5,
+      model: "unknown-model"
+    });
+
+    expect(haikuDecision.allowed).toBe(true);
+    expect(haikuDecision.estimate.estimatedAttemptCostUsd).toBeLessThan(
+      fallbackDecision.estimate.estimatedAttemptCostUsd
+    );
+    expect(fallbackDecision.estimate.estimatedAttemptCostUsd).toBeGreaterThan(0);
+  });
+
+  it("prefers explicit pricePerMTokenUsd over the model price map", () => {
+    const decision = evaluateBudgetPreflight({
+      promptCharCount: 800_000,
+      attemptCount: 0,
+      remainingBudgetUsd: 1,
+      model: "claude-opus-4-6",
+      pricePerMTokenUsd: 0.01
+    });
+
+    expect(decision.allowed).toBe(true);
+    expect(decision.estimate.estimatedAttemptCostUsd).toBeLessThan(0.1);
+  });
 });
 
 describe("computeEvidenceVector", () => {

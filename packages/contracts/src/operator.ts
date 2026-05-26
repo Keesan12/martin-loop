@@ -7,6 +7,7 @@ export const MARTIN_ERROR_CATEGORIES = [
   "verification_failed",
   "policy_blocked",
   "budget_exit",
+  "rate_limit",
   "transient"
 ] as const;
 

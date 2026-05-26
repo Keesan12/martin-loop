@@ -591,6 +591,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       promptCharCount: distilled.focus.length + loop.task.objective.length * 3,
       attemptCount: loop.attempts.length,
       remainingBudgetUsd: distilled.constraints.remainingBudgetUsd,
+      model: executingAdapter.metadata.model,
       perAttemptCapUsd: loop.budget.maxUsd * 0.25
     });
 
@@ -637,6 +638,8 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       loop.attempts.length + 1,
       runDir(resolveRunsRoot(), loop.loopId),
       {
+        taskTitle: loop.task.title,
+        taskObjective: loop.task.objective,
         userPrompt: distilled.focus,
         history: loop.attempts.map(a => a.summary).join("\n")
       }
@@ -903,6 +906,114 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       },
       { now: attemptCompletedAt, idFactory }
     );
+
+    const verifierIntegrityPrecheck = await runContextIntegrityPrecheck(
+      loop.loopId,
+      currentAttemptIndex,
+      runDir(resolveRunsRoot(), loop.loopId),
+      {
+        taskTitle: loop.task.title,
+        taskObjective: loop.task.objective,
+        userPrompt: distilled.focus,
+        toolOutput: result.summary,
+        history: loop.attempts.map((entry) => entry.summary).join("\n"),
+        verifierStdout: result.verification.summary,
+        verifierStderr: result.failure?.message
+      }
+    );
+
+    if (verifierIntegrityPrecheck.verdict === "context_poisoning_block") {
+      const rollbackOutcome = await restoreRollbackBoundary({
+        repoRoot: request.context.repoRoot,
+        boundary: rollbackBoundary,
+        restoredAt: attemptCompletedAt,
+        decision: "DISCARD"
+      });
+      const verifierIntegrityExitDecision: ExitDecision = {
+        shouldExit: true,
+        lifecycleState: "human_escalation",
+        status: "exited",
+        reason: "Verifier output triggered the context integrity gate.",
+        failureClass: "safety_leash_blocked",
+        safetySurface: "context_integrity",
+        reasonCode: "verifier_output_context_poisoning"
+      };
+
+      if (input.store) {
+        const settlement = createBudgetSettlement({
+          runId: loop.loopId,
+          attemptIndex: currentAttemptIndex,
+          usage: result.usage,
+          estimate: budgetPreflight.estimate,
+          settledAt: attemptCompletedAt
+        });
+        await input.store.writeAttemptArtifacts(loop.loopId, currentAttemptIndex, {
+          compiledContext,
+          verifierOutput: result.verification.summary,
+          ...(rollbackBoundary ? { rollbackBoundary } : {}),
+          ...(rollbackOutcome ? { rollbackOutcome } : {})
+        });
+        await input.store.appendLedger(
+          loop.loopId,
+          makeLedgerEvent({
+            kind: "patch.generated",
+            runId: loop.loopId,
+            attemptIndex: currentAttemptIndex,
+            payload: { status: result.status, summary: result.summary }
+          })
+        );
+        await input.store.appendLedger(
+          loop.loopId,
+          makeLedgerEvent({
+            kind: "budget.settled",
+            runId: loop.loopId,
+            attemptIndex: currentAttemptIndex,
+            payload: {
+              actualUsd: settlement.totalActualUsd,
+              estimatedUsd: result.usage.estimatedUsd,
+              tokensIn: result.usage.tokensIn,
+              tokensOut: result.usage.tokensOut,
+              provenance: getUsageProvenance(result.usage),
+              transport: getAdapterTransport(executingAdapter),
+              providerId: executingAdapter.metadata.providerId,
+              model: executingAdapter.metadata.model,
+              patchCost: settlement.patchCost,
+              verificationCost: settlement.verificationCost,
+              varianceUsd: settlement.varianceUsd,
+              preflightEstimateUsd: settlement.preflightEstimateUsd
+            }
+          })
+        );
+        await input.store.appendLedger(
+          loop.loopId,
+          makeLedgerEvent({
+            kind: "safety.violations_found",
+            runId: loop.loopId,
+            attemptIndex: currentAttemptIndex,
+            payload: {
+              verdict: verifierIntegrityPrecheck.verdict,
+              signals: verifierIntegrityPrecheck.detectedSignals,
+              source: "verifier_output_context_integrity"
+            }
+          })
+        );
+        await input.store.appendLedger(
+          loop.loopId,
+          makeLedgerEvent({
+            kind: "run.exited",
+            runId: loop.loopId,
+            payload: createRunExitPayload(verifierIntegrityExitDecision)
+          })
+        );
+      }
+
+      const finalizedLoop = finalizeLoop(loop, verifierIntegrityExitDecision, now(), idFactory);
+      await persistLoopRecordIfSupported(input.store, finalizedLoop);
+      return {
+        loop: finalizedLoop,
+        decision: verifierIntegrityExitDecision
+      };
+    }
 
     const previousVerifierScore = getLastVerifierScore(loop);
 

@@ -16,21 +16,28 @@ export interface ContextIntegrityPrecheck {
     system: boolean;
     user: boolean;
     tools: boolean;
+    retrievedContext: boolean;
     history: boolean;
+    taskTitle: boolean;
+    taskObjective: boolean;
+    verifierStdout: boolean;
+    verifierStderr: boolean;
   };
   timestamp: string;
 }
 
 const POISON_PATTERNS = [
-  /ignore\s+(?:all\s+)?previous\s+instructions/i,
+  /\b(forget|ignore|discard|disregard|override)\b.*\b(prior|previous|earlier|all)\b.*\b(instruction|rule|directive|guideline|policy|constraint)/i,
+  /\bdisregard\b.*\b(?:safety\s+)?(guideline|guidelines|policy|policies|guardrails|constraints?)\b/i,
   /you\s+are\s+now\s+a\s+(?!Martin\s+Loop)/i,
-  /new\s+rule:/i,
-  /disregard\s+(?:safety|policy|guardrails)/i,
+  /\b(new|updated|revised)\s+(instruction|rule|directive|guideline|policy)\s*:/i,
+  /disregard\s+(?:safety|policy|guardrails|guidelines)/i,
   /override\s+system\s+authority/i,
+  /\bsystem\s*override\b/i,
   /hidden\s+instruction:/i,
   /\[system_override\]/i,
   /\[authority_inversion\]/i,
-  /\bact\s+as\s+(?:a\s+)?(?:different|new|another|unrestricted)\b/i,
+  /\bact\s+as\s+(?:a|an)?\s*(?:different|new|another|totally\s+different|unrestricted)\s+(?:ai|assistant|model)\b/i,
   /\bDAN\s+mode\b/i,
   /\bjailbreak\b/i
 ];
@@ -45,21 +52,39 @@ export async function runContextIntegrityPrecheck(
   attemptIndex: number,
   artifactsDir: string,
   inputs: {
+    taskTitle?: string;
+    taskObjective?: string;
     userPrompt?: string;
     toolOutput?: string;
     retrievedContext?: string;
     history?: string;
+    verifierStdout?: string;
+    verifierStderr?: string;
   }
 ): Promise<ContextIntegrityPrecheck> {
   const signals: string[] = [];
   const analyzedChannels = {
     system: true,
+    taskTitle: Boolean(inputs.taskTitle),
+    taskObjective: Boolean(inputs.taskObjective),
     user: Boolean(inputs.userPrompt),
     tools: Boolean(inputs.toolOutput),
-    history: Boolean(inputs.history)
+    retrievedContext: Boolean(inputs.retrievedContext),
+    history: Boolean(inputs.history),
+    verifierStdout: Boolean(inputs.verifierStdout),
+    verifierStderr: Boolean(inputs.verifierStderr)
   };
 
-  const untrustedBuffer = [inputs.userPrompt, inputs.toolOutput, inputs.retrievedContext]
+  const untrustedBuffer = [
+    inputs.taskTitle,
+    inputs.taskObjective,
+    inputs.userPrompt,
+    inputs.toolOutput,
+    inputs.retrievedContext,
+    inputs.history,
+    inputs.verifierStdout,
+    inputs.verifierStderr
+  ]
     .filter(Boolean)
     .join("\n---\n");
 

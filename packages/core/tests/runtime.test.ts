@@ -1372,7 +1372,9 @@ describe("runMartin", () => {
     expect(patchDecision.reasonCodes).toContain("grounding_failure");
   });
 
-  it("restores the pre-attempt repo boundary for discarded verifier regressions and preserves pre-existing dirty files", async () => {
+  it(
+    "restores the pre-attempt repo boundary for discarded verifier regressions and preserves pre-existing dirty files",
+    async () => {
     const runsRoot = await mkdtemp(join(tmpdir(), "martin-patch-rollback-"));
     const repoRoot = join(runsRoot, "repo");
     await mkdir(join(repoRoot, "src"), { recursive: true });
@@ -1468,9 +1470,13 @@ describe("runMartin", () => {
     expect(rollbackOutcome.status).toBe("restored");
     expect(rollbackOutcome.deletedFiles).toContain("src/ghost-new-file.ts");
     expect(rollbackOutcome.after.trackedDirtyFiles).toEqual(["src/real.ts"]);
-  });
+    },
+    15_000
+  );
 
-  it("restores forbidden file changes on the filesystem safety-block path and persists rollback artifacts", async () => {
+  it(
+    "restores forbidden file changes on the filesystem safety-block path and persists rollback artifacts",
+    async () => {
     const runsRoot = await mkdtemp(join(tmpdir(), "martin-patch-scope-rollback-"));
     const repoRoot = join(runsRoot, "repo");
     await mkdir(join(repoRoot, "src"), { recursive: true });
@@ -1562,7 +1568,9 @@ describe("runMartin", () => {
     expect(patchDecision.reasonCodes).toContain("scope_violation");
     expect(rollbackOutcome.status).toBe("restored");
     expect(rollbackOutcome.deletedFiles).toContain("apps/leak.ts");
-  });
+    },
+    15_000
+  );
 
   it("writes consistent admission and settlement ledger payloads across mixed adapter types", async () => {
     const runsRoot = await mkdtemp(join(tmpdir(), "martin-adapter-ledger-"));

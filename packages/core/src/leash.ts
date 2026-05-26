@@ -1,4 +1,4 @@
-import { isAbsolute, relative, resolve } from "node:path";
+import { basename, isAbsolute, relative, resolve } from "node:path";
 
 import type { ApprovalPolicy, ExecutionProfile, LoopTask } from "@martin/contracts";
 
@@ -45,9 +45,9 @@ export interface ResolvedExecutionProfile {
 }
 
 const BLOCKED_PATTERNS: RegExp[] = [
-  /(^|\s)rm\s+-rf(\s|$)/u,
+  /(^|\s)rm\b(?=.*(?:^|\s)(?:-[-A-Za-z]*r[-A-Za-z]*|--recursive)\b)(?=.*(?:^|\s)(?:-[-A-Za-z]*f[-A-Za-z]*|--force)\b)/iu,
   /git\s+reset\s+--hard/iu,
-  /git\s+clean\s+-fd/iu,
+  /git\s+clean\b(?=.*(?:^|\s)(?:-\S*f\S*|--force)\b)(?=.*(?:^|\s)-\S*d\S*\b)/iu,
   /curl\b[^\n|]*\|\s*(sh|bash)/iu,
   /wget\b[^\n|]*\|\s*(sh|bash)/iu,
   /(^|\s)sudo(\s|$)/u,
@@ -64,9 +64,13 @@ const BLOCKED_PATTERNS: RegExp[] = [
   // env prefix before destructive commands
   /(^|\s)env\s+\S+=\S+\s+rm\s+/iu,
   // Interpreter inline exec
-  /(python|python3|ruby|perl)\s+-c\s+/iu,
+  /(^|\s)(python\d*|ruby|perl|node)\s+(-c|-e)\s+/iu,
+  // Destructive filesystem walkers and file shredding
+  /(^|\s)find\b.*(?:^|\s)-delete\b/iu,
+  /(^|\s)find\b.*(?:^|\s)-exec\b.*\brm\b/iu,
+  /(^|\s)(shred|truncate)\b/iu,
   // npx --yes with non-allowlisted packages
-  /\bnpx\s+(--yes|-y)\s+(?!@martinloop|@martin\/)(?!vitest|tsx|tsc|eslint|prettier)[^\s@]/iu
+  /\bnpx\s+(--yes|-y)\s+(?!@martinloop\/)(?!@martin\/)(?!vitest\b|tsx\b|tsc\b|eslint\b|prettier\b)[@A-Za-z0-9_.-]/iu
 ];
 
 const SECRET_PATTERNS: Array<{ kind: SafetyViolationKind; pattern: RegExp; replacement: string }> = [
@@ -102,12 +106,12 @@ const SECRET_PATTERNS: Array<{ kind: SafetyViolationKind; pattern: RegExp; repla
   },
   {
     kind: "secret_value",
-    pattern: /postgresql:\/\/[^:]+:[^@]{6,}@/giu,
+    pattern: /\b(?:postgres|postgresql):\/\/[^:\s]+:[^@\s]{6,}@/giu,
     replacement: "postgresql://[REDACTED_SECRET]@"
   },
   {
     kind: "secret_value",
-    pattern: /\bBearer\s+eyJ[A-Za-z0-9._-]{20,}/gu,
+    pattern: /\bBearer\s+[A-Za-z0-9+/._=-]{20,}/gu,
     replacement: "Bearer [REDACTED_SECRET]"
   }
 ];
@@ -142,9 +146,7 @@ export function evaluateVerificationLeash(
   ].filter(Boolean);
   const profile = resolveExecutionProfile(task);
 
-  const blockedCommands = commands.filter((command) =>
-    BLOCKED_PATTERNS.some((pattern) => pattern.test(command))
-  );
+  const blockedCommands = commands.filter((command) => isBlockedVerificationCommand(command));
 
   const violations = blockedCommands.map((command) => ({
     kind: "command_blocked" as const,
@@ -450,6 +452,36 @@ function normalizeChangedFile(
     file: repoRelative,
     outsideRepo: false
   };
+}
+
+function isBlockedVerificationCommand(command: string): boolean {
+  const normalized = normalizeVerifierCommand(command);
+  return BLOCKED_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+function normalizeVerifierCommand(command: string): string {
+  const collapsed = command.trim().replace(/\s+/gu, " ");
+  const match = collapsed.match(/^("[^"]+"|'[^']+'|`[^`]+`|\S+)/u);
+  const firstToken = stripWrappingQuotes(match?.[1] ?? "");
+
+  if (!firstToken || !isAbsolute(firstToken)) {
+    return collapsed;
+  }
+
+  const remainder = collapsed.slice((match?.[1] ?? "").length).trim();
+  return [basename(firstToken), remainder].filter(Boolean).join(" ");
+}
+
+function stripWrappingQuotes(value: string): string {
+  if (
+    (value.startsWith("\"") && value.endsWith("\"")) ||
+    (value.startsWith("'") && value.endsWith("'")) ||
+    (value.startsWith("`") && value.endsWith("`"))
+  ) {
+    return value.slice(1, -1);
+  }
+
+  return value;
 }
 
 function matchesPathPattern(file: string, pattern: string): boolean {

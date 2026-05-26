@@ -48,3 +48,7 @@ export const PROBE_COUNTS: Record<RiskTier, number> = {
 
 /** The only model ever permitted in the Red phase. */
 export const RED_PHASE_MODEL = "claude-haiku-4-5-20251001" as const;
+
+export function resolveRedPhaseModel(model?: string): string {
+  return model ?? process.env.MARTIN_RED_PHASE_MODEL ?? RED_PHASE_MODEL;
+}

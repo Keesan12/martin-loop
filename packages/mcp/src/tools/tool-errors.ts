@@ -8,6 +8,7 @@ export type ToolFailureCode =
   | "invalid_path"
   | "invalid_selector"
   | "no_loop_records"
+  | "rate_limit_exceeded"
   | "store_unreadable"
   | "tool_execution_failed"
   | "unknown_tool"
@@ -230,5 +231,20 @@ export function unsupportedOperationError(message: string, suggestion?: string):
   return new MartinToolError("unsupported_operation", message, {
     category: "invalid_input",
     suggestion
+  });
+}
+
+export function rateLimitExceededError(
+  message: string,
+  retryAfterSeconds: number,
+  suggestion?: string
+): MartinToolError {
+  return new MartinToolError("rate_limit_exceeded", message, {
+    category: "rate_limit",
+    suggestion,
+    retryable: true,
+    details: {
+      retryAfterSeconds
+    }
   });
 }

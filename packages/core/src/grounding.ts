@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { extname, join, relative } from "node:path";
 
@@ -13,6 +13,7 @@ export interface RepoGroundingIndex {
   repoRoot: string;
   createdAt: string;
   fileCount: number;
+  sourceFingerprint: string;
   files: RepoGroundingFile[];
 }
 
@@ -43,7 +44,10 @@ export async function loadOrBuildRepoGroundingIndex(
   const cachePath = getGroundingCachePath(repoRoot);
   try {
     const cached = JSON.parse(await readFile(cachePath, "utf8")) as RepoGroundingIndex;
-    if (cached?.schemaVersion === "martin.grounding.v1") {
+    if (
+      cached?.schemaVersion === "martin.grounding.v1" &&
+      cached.sourceFingerprint === await buildRepoGroundingFingerprint(repoRoot)
+    ) {
       return cached;
     }
   } catch {}
@@ -69,6 +73,7 @@ export async function buildRepoGroundingIndex(
     repoRoot,
     createdAt: new Date().toISOString(),
     fileCount: discovered.count,
+    sourceFingerprint: await buildRepoGroundingFingerprint(repoRoot),
     files
   };
 }
@@ -123,6 +128,12 @@ function getGroundingCachePath(repoRoot: string): string {
   );
 }
 
+async function buildRepoGroundingFingerprint(repoRoot: string): Promise<string> {
+  const parts: string[] = [];
+  await collectFingerprintParts(repoRoot, repoRoot, parts);
+  return parts.sort().join("|");
+}
+
 async function walk(
   repoRoot: string,
   currentDir: string,
@@ -160,6 +171,41 @@ async function walk(
   }
 
   return state;
+}
+
+async function collectFingerprintParts(
+  repoRoot: string,
+  currentDir: string,
+  parts: string[]
+): Promise<void> {
+  const entries = await readdir(currentDir, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const absPath = join(currentDir, entry.name);
+
+    if (entry.isDirectory()) {
+      if (!IGNORED_DIRS.has(entry.name)) {
+        await collectFingerprintParts(repoRoot, absPath, parts);
+      }
+      continue;
+    }
+
+    if (!entry.isFile()) {
+      continue;
+    }
+
+    if (!TEXT_EXTENSIONS.has(extname(entry.name).toLowerCase())) {
+      continue;
+    }
+
+    try {
+      const fileStat = await stat(absPath);
+      const relPath = relative(repoRoot, absPath).replace(/\\/g, "/");
+      parts.push(`${relPath}:${fileStat.size}:${fileStat.mtimeMs}`);
+    } catch {
+      parts.push(`${relative(repoRoot, absPath).replace(/\\/g, "/")}:missing`);
+    }
+  }
 }
 
 function extractSymbols(content: string): string[] {
