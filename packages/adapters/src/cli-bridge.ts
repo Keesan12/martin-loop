@@ -49,7 +49,8 @@ export async function runSubprocess(
       proc = (options.spawnImpl ?? spawn)(spawnPlan.command, spawnPlan.args, {
         cwd: options.cwd,
         stdio: [stdinMode, "pipe", "pipe"],
-        env: process.env
+        env: process.env,
+        ...(spawnPlan.windowsVerbatimArguments ? { windowsVerbatimArguments: true } : {})
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -212,19 +213,28 @@ export async function readGitExecutionArtifacts(
 interface SpawnPlan {
   command: string;
   args: string[];
+  windowsVerbatimArguments?: boolean;
 }
 
-function createSpawnPlan(
+interface SpawnPlanRuntime {
+  platform?: NodeJS.Platform;
+  comSpec?: string;
+  resolveCommand?: (command: string, cwd: string) => string | undefined;
+}
+
+export function createSpawnPlan(
   command: string,
   args: string[],
   cwd: string,
-  preserveRawForInjectedSpawn: boolean
+  preserveRawForInjectedSpawn: boolean,
+  runtime: SpawnPlanRuntime = {}
 ): SpawnPlan {
-  if (preserveRawForInjectedSpawn || process.platform !== "win32" || isAbsolute(command)) {
+  const platform = runtime.platform ?? process.platform;
+  if (preserveRawForInjectedSpawn || platform !== "win32") {
     return { command, args };
   }
 
-  const resolved = resolveWindowsCommand(command, cwd);
+  const resolved = (runtime.resolveCommand ?? resolveWindowsCommand)(command, cwd);
   if (!resolved) {
     return { command, args };
   }
@@ -232,8 +242,9 @@ function createSpawnPlan(
   const extension = extname(resolved).toLowerCase();
   if (extension === ".cmd" || extension === ".bat") {
     return {
-      command: process.env.ComSpec || "cmd.exe",
-      args: ["/d", "/s", "/c", [quoteWindowsCmdArg(resolved), ...args.map(quoteWindowsCmdArg)].join(" ")]
+      command: runtime.comSpec ?? process.env.ComSpec ?? "cmd.exe",
+      args: ["/d", "/s", "/c", ["call", quoteWindowsCmdArg(resolved), ...args.map(quoteWindowsCmdArg)].join(" ")],
+      windowsVerbatimArguments: true
     };
   }
 

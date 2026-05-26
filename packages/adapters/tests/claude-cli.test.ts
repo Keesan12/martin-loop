@@ -17,7 +17,7 @@ import {
   createVerifierOnlyAdapter,
   type SpawnLike
 } from "../src/index.js";
-import { runSubprocess, splitCommand } from "../src/cli-bridge.js";
+import { createSpawnPlan, runSubprocess, splitCommand } from "../src/cli-bridge.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -376,6 +376,51 @@ describe("runSubprocess", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe("");
     expect(result.timedOut).toBe(false);
+  });
+});
+
+describe("createSpawnPlan", () => {
+  it("wraps absolute Windows cmd launchers with ComSpec", () => {
+    const plan = createSpawnPlan(
+      "C:\\Users\\example\\AppData\\Roaming\\npm\\codex.cmd",
+      ["exec", "--color", "never", "-"],
+      "C:\\repo",
+      false,
+      {
+        platform: "win32",
+        comSpec: "C:\\Windows\\System32\\cmd.exe",
+        resolveCommand: (command) => command
+      }
+    );
+
+    expect(plan).toEqual({
+      command: "C:\\Windows\\System32\\cmd.exe",
+      args: [
+        "/d",
+        "/s",
+        "/c",
+        "call \"C:\\Users\\example\\AppData\\Roaming\\npm\\codex.cmd\" \"exec\" \"--color\" \"never\" \"-\""
+      ],
+      windowsVerbatimArguments: true
+    });
+  });
+
+  it("preserves absolute executables that do not require cmd.exe wrapping", () => {
+    const plan = createSpawnPlan(
+      "C:\\Program Files\\nodejs\\node.exe",
+      ["--version"],
+      "C:\\repo",
+      false,
+      {
+        platform: "win32",
+        resolveCommand: (command) => command
+      }
+    );
+
+    expect(plan).toEqual({
+      command: "C:\\Program Files\\nodejs\\node.exe",
+      args: ["--version"]
+    });
   });
 });
 
