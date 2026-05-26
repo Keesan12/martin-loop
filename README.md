@@ -128,6 +128,16 @@ If the problem is familiar, star the repo so other builders can find the runtime
 
 ---
 
+## Feedback
+
+If you try MartinLoop, I would value blunt feedback on where a control layer should sit in a real workflow: local CLI wrapper, MCP boundary, CI gate, or somewhere else.
+
+- Join the current feedback thread: [Where would a control layer actually fit in your AI coding workflow?](https://github.com/Keesan12/martin-loop/discussions/65)
+- Open a bug, feature request, or workflow feedback issue: [GitHub issues](https://github.com/Keesan12/martin-loop/issues)
+- Want to help more builders find it? A GitHub star still helps a lot at this stage.
+
+---
+
 ## Quick Start
 
 ```sh

@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Public feedback thread
+    url: https://github.com/Keesan12/martin-loop/discussions/65
+    about: Share blunt workflow feedback and integration priorities in the active discussion.
+  - name: GitHub Discussions
+    url: https://github.com/Keesan12/martin-loop/discussions
+    about: Ask questions, share ideas, or start a broader conversation with the community.
