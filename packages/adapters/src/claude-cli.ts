@@ -570,6 +570,7 @@ export function createCodexCliAdapter(options: CodexCliAdapterOptions = {}): Mar
       "exec",
       "--cd",
       workingDirectory,
+      "--skip-git-repo-check",
       "--sandbox",
       sandbox,
       "--color",
