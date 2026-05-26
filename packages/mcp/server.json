@@ -7,12 +7,12 @@
     "url": "https://github.com/Keesan12/martin-loop",
     "source": "github"
   },
-  "version": "0.2.0",
+  "version": "0.2.5",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@martinloop/mcp",
-      "version": "0.2.0",
+      "version": "0.2.5",
       "transport": {
         "type": "stdio"
       }

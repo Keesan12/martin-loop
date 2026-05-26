@@ -1,6 +1,6 @@
 {
   "name": "@martinloop/mcp",
-  "version": "0.2.0",
+  "version": "0.2.5",
   "mcpName": "io.github.Keesan12/martin-loop",
   "private": false,
   "type": "module",
@@ -24,9 +24,10 @@
     "claude",
     "codex",
     "martin_doctor",
-    "martin_preflight",
-    "martin_list_runs",
-    "martin_run_dossier"
+    "martin_triage_runs",
+    "martin_run_dossier",
+    "mcp-resources",
+    "mcp-prompts"
   ],
   "bin": {
     "mcp": "./dist/server.js",
@@ -56,7 +57,8 @@
     "verify:release": "node --test ../../scripts/tests/publish-mcp-workflow.test.mjs ../../scripts/tests/mcp-publish-reliability.test.mjs ../../scripts/tests/mcp-release-docs.test.mjs",
     "test": "vitest run",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "inspect:live": "node ./scripts/inspect-live.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
@@ -66,5 +68,8 @@
     "@opentelemetry/resources": "^2.6.1",
     "@opentelemetry/sdk-logs": "^0.214.0",
     "ts-morph": "^21.0.0"
+  },
+  "devDependencies": {
+    "@martin/contracts": "workspace:*"
   }
 }

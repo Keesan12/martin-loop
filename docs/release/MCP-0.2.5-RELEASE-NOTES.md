@@ -1,12 +1,6 @@
 # @martinloop/mcp v0.2.5
 
-`@martinloop/mcp@0.2.5` is the integrated local governed execution cockpit tip aligned to the public MCP release train. It packages the full read-only cockpit surface, run triage, and degraded-store hardening into the stable cockpit line we plan to publish after the `0.1.4` operator foundation and `0.2.0` cockpit expansion releases.
-
-## Tier Boundary
-
-`0.2.5` is the public Free / OSS stable cockpit line only.
-It does not promote the non-OSS, team-scale, organization-scale, or separate product surfaces, and it does not pull private operation surface, autonomy, or router internals into the MCP package claim.
-non-OSS product capabilities stay outside this public release surface.
+`@martinloop/mcp@0.2.5` is the stable cockpit line for the public MartinLoop MCP package. It follows the `0.1.4` operator foundation and `0.2.0` cockpit expansion releases, then extends that surface with run triage, degraded-store hardening, and release-proof polish while keeping `martin_run` as the single execution entrypoint.
 
 ## What Shipped
 
@@ -52,4 +46,4 @@ non-OSS product capabilities stay outside this public release surface.
 - all newly added MCP surfaces are read-only except `martin_run`
 - verification evidence is derived only from persisted Martin run data
 - no new write-capable MCP tools are introduced in `0.2.5`
-- `0.1.4`, `0.2.0`, and `0.2.5` are the only public MCP deliveries in the current release train
+- `0.1.4`, `0.2.0`, and `0.2.5` are the public MCP deliveries in the current release lineage

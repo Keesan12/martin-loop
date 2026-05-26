@@ -13,7 +13,7 @@ The CLI now treats execution, diagnosis, persisted-run inspection, and MCP host 
 - `martin mcp print-config`
 - `martin mcp install`
 
-`martin mcp install` is intentionally conservative: it only writes a generated config when the target file is absent, or when it already detects a Martin Loop block and can stay idempotent. For mixed host configs, use `martin mcp print-config` and merge the Martin block yourself.
+`martin mcp install` is intentionally conservative: it only writes a starter config when the target file is absent, or when it already detects a Martin Loop block and can stay idempotent. For mixed host configs, use `martin mcp print-config` and merge the Martin block yourself.
 
 ## Output modes
 
@@ -24,11 +24,11 @@ The CLI now treats execution, diagnosis, persisted-run inspection, and MCP host 
 ## Local vs remote MCP
 
 - local `stdio` is the default and best path for fast local iteration
-- remote config output is for environments that expose a compatible remote MCP endpoint
+- remote config output is for the private Martin Loop Streamable HTTP beta in the main workspace
 - both `martin mcp print-config` and `martin mcp install` support:
   - `--host codex|claude|gemini|generic`
   - `--transport stdio|remote`
-  - `--profile minimal|diagnostic|full-local|starter|full`
+  - `--profile starter|full`
   - `--platform windows|macos|linux`
 
 ## Recommended flow
@@ -39,7 +39,6 @@ martin preflight "repair the flaky MCP release lane" --verify "pnpm --filter @ma
 martin run "repair the flaky MCP release lane" --verify "pnpm --filter @martinloop/mcp test"
 martin triage
 martin dossier --latest
-martin mcp print-config --host codex --profile minimal
 ```
 
 ## Compatibility aliases
@@ -49,7 +48,7 @@ martin mcp print-config --host codex --profile minimal
 
 Prefer `martin dossier` and `martin runs get --loop-id` for the richer operator surface.
 
-## MCP minimal profile
+## MCP starter profile
 
 `martin mcp print-config --host codex` emits a quoted TOML server key:
 
@@ -63,14 +62,14 @@ tool_timeout_sec = 180
 enabled_tools = [
   "martin_doctor",
   "martin_preflight",
-  "martin_list_runs",
+  "martin_run",
   "martin_triage_runs",
   "martin_run_dossier",
 ]
 env = { MARTIN_RUNS_DIR = "C:\\path\\to\\runs" }
 ```
 
-The minimal allow-list stays aligned with the MCP discovery metadata: `martin_doctor`, `martin_preflight`, `martin_list_runs`, `martin_triage_runs`, and `martin_run_dossier`. Use `diagnostic` for deeper read-only archaeology and `full-local` when the host should expose `martin_run`.
+The starter allow-list stays aligned with the MCP discovery metadata: `martin_doctor`, `martin_preflight`, `martin_run`, `martin_triage_runs`, and `martin_run_dossier`.
 
 ## Host coverage
 

@@ -330,10 +330,10 @@ describe("createAgentCliAdapter", () => {
 describe("splitCommand", () => {
   it("preserves backslashes inside quoted Windows executable paths", () => {
     const command =
-      '"C:\\Users\\example\\Documents\\Agent Tools\\node.exe" -e "process.exit(0)"';
+      '"C:\\Users\\ExampleUser\\Projects\\node.exe" -e "process.exit(0)"';
 
     expect(splitCommand(command)).toEqual([
-      "C:\\Users\\example\\Documents\\Agent Tools\\node.exe",
+      "C:\\Users\\ExampleUser\\Projects\\node.exe",
       "-e",
       "process.exit(0)",
     ]);

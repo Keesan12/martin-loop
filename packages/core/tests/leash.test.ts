@@ -7,7 +7,7 @@ import {
   evaluateFilesystemLeash,
   evaluateVerificationLeash,
   resolveExecutionProfile
-} from "../src/index.js";
+} from "../src/index";
 
 describe("evaluateVerificationLeash", () => {
   it("blocks destructive verifier commands before the run starts", () => {
@@ -121,6 +121,35 @@ describe("evaluateFilesystemLeash", () => {
         })
       ])
     );
+  });
+
+  it("does not let src/** match sibling prefixes", () => {
+    const decision = evaluateFilesystemLeash({
+      repoRoot: "/repo",
+      changedFiles: ["/repo/src-secret/escape.ts"],
+      allowedPaths: ["src/**"]
+    });
+
+    expect(decision.allowed).toBe(false);
+    expect(decision.violations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          file: "src-secret/escape.ts",
+          kind: "path_not_allowed"
+        })
+      ])
+    );
+  });
+
+  it("still allows true descendants for src/**", () => {
+    const decision = evaluateFilesystemLeash({
+      repoRoot: "/repo",
+      changedFiles: ["/repo/src/components/button.ts"],
+      allowedPaths: ["src/**"]
+    });
+
+    expect(decision.allowed).toBe(true);
+    expect(decision.violations).toEqual([]);
   });
 });
 

@@ -1,10 +1,10 @@
 # Martin MCP Delivery Slice Map
 
-Use this map when cutting the scheduled public deliveries from the current integrated local `0.2.5` tip. The goal is to keep the public release train honest against live npm truth while avoiding accidental bleed from the separate non-OSS product surfaces or unrelated workspace residue.
+Use this map when cutting public MCP deliveries from the `0.2.5` source line. The goal is to keep the public release lineage honest against live npm truth and to limit each release note to the documented package surface.
 
 ## Public Version Train
 
-- live npm baseline: `0.1.3`
+- live npm baseline before the `0.2.5` release: `0.2.0`
 - staged public deliveries:
   - `0.1.4` operator foundation
   - `0.2.0` cockpit expansion
@@ -13,12 +13,11 @@ Use this map when cutting the scheduled public deliveries from the current integ
 
 See [VERSION-LEDGER.md](./VERSION-LEDGER.md) for the canonical version truth.
 
-## Tier Boundary
+## Public Boundary
 
-- Free / OSS is the only public tier in this repo. The standalone `@martinloop/mcp` train belongs to that lane.
-- separate non-OSS product lines remain private tier names and should never be implied by a public MCP release note, packet, or README.
-- non-OSS surfaces such as the authenticated remote MCP later release line and additional remote configuration stay out of the public MCP npm train unless this slice map changes first.
-- Keep private operation surface, autonomy, and router internals out of the OSS MCP train even when they exist in the broader workspace.
+- The standalone `@martinloop/mcp` package is the only MCP package described by this map.
+- Release notes, packets, and README updates must stay limited to documented tools, resources, resource templates, prompts, and supported host installs.
+- Do not broaden the package claim with unrelated applications, hosted operations, or undocumented transports.
 
 ## Delivery `0.1.4`
 
@@ -50,7 +49,7 @@ Do not include:
 - resource templates
 - prompts
 - dossier/triage-heavy discovery story
-- additional remote surface
+- undocumented remote transports
 
 ## Delivery `0.2.0`
 
@@ -85,9 +84,9 @@ Keep public execution semantics unchanged:
 
 Do not include:
 
-- additional remote surface
-- hosted operation surface claims
-- autonomy/router claims
+- undocumented remote transports
+- hosted operations
+- unrelated routing or application claims
 
 ## Delivery `0.2.5`
 
@@ -121,13 +120,11 @@ Primary surfaces:
 
 These stay out of the public MCP npm release train for this wave:
 
-- private separate non-OSS product lines tier surfaces
-- non-OSS additional remote MCP surface and additional remote configuration
-- `enterprise/packages/trace-intelligence`
-- `enterprise/packages/martin-router`
+- non-package application work
+- non-package trace and routing work
 - hosted Streamable HTTP remote metadata
-- auth, audit, rate-limit, and other operation surfaces not shipped in the OSS package
-- other non-OSS product claims
+- bearer tokens, audit, rate limits, and other hosted operations
+- unrelated autonomy or routing claims
 
 ## Release Cut Rule
 
@@ -136,4 +133,4 @@ Before cutting any staged public branch:
 1. Confirm [VERSION-LEDGER.md](./VERSION-LEDGER.md) still matches live npm and public GitHub `main`.
 2. Confirm the target delivery includes only the intended public slice from above.
 3. Confirm the exact candidate branch is what goes to CI for Windows, Linux, and macOS proof.
-4. Keep the separate non-OSS product surfaces and `oss-core` mirror out of the public branch except where the OSS source-of-truth files already require synchronized docs or tests.
+4. Keep unrelated mirrors, scratch artifacts, and non-package documentation out of the public branch except where the OSS source-of-truth files already require synchronized docs or tests.

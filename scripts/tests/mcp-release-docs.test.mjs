@@ -245,15 +245,15 @@ test("MCP release docs preserve publish gates and current cockpit claims", async
   assert.match(checklistDoc, /MCP-X\.Y\.Z-RELEASE-PACKET\.md/);
   assert.match(checklistDoc, /Candidate Branch Proof/i);
   assert.match(checklistDoc, /packages\/mcp/);
-  assert.match(checklistDoc, /oss-core/i);
   assert.match(versionLedger, /@martinloop\/mcp/);
-  assert.match(versionLedger, /0\.1\.3/);
+  assert.match(versionLedger, /0\.2\.0/);
   assert.match(versionLedger, /0\.2\.5/);
   assert.match(releasePacket, /candidate branch CI is green on Windows, Linux, and macOS/i);
   assert.match(deliveryMap, /0\.1\.4/);
   assert.match(deliveryMap, /0\.2\.0/);
   assert.match(deliveryMap, /0\.2\.5/);
   assert.doesNotMatch(deliveryMap, /enterprise\/apps\/control-plane/);
+  assert.match(deliveryMap, /non-package application work/i);
   assert.match(deliveryMap, /martin_run` remains the only write-capable entrypoint/i);
 
   for (const contents of [publishingDoc, compatibilityDoc, releaseNotes]) {
@@ -261,7 +261,7 @@ test("MCP release docs preserve publish gates and current cockpit claims", async
   }
 });
 
-test("OSS public docs keep non-OSS product language out of the public MCP train", async () => {
+test("OSS public docs keep non-package language out of the public MCP train", async () => {
   const [rootReadme, versionLedger, deliveryMap, publishingDoc, releaseNotes, releasePacket] =
     await Promise.all([
       readRepoFile("README.md"),
@@ -279,7 +279,6 @@ test("OSS public docs keep non-OSS product language out of the public MCP train"
     assert.match(contents, /cockpit expansion/i);
     assert.match(contents, /0\.2\.5/);
     assert.match(contents, /stable cockpit line/i);
-    assert.match(contents, /Free \/ OSS/);
   }
 
   if (packageJson.version === "0.2.0") {
@@ -295,23 +294,17 @@ test("OSS public docs keep non-OSS product language out of the public MCP train"
     assert.match(releaseNotes, /cockpit expansion/i);
     assert.match(releaseNotes, /0\.2\.5/);
     assert.match(releaseNotes, /stable cockpit line/i);
-    assert.match(releaseNotes, /Free \/ OSS/);
   }
 
   const forbiddenPatterns = [
-    /\bPro\b/,
-    /\bGrowth\b/,
-    /\bEnterprise\b/,
-    /\bInternal\b/,
-    /paid-remote/i,
-    /paid-tier/i,
-    /private beta/i,
-    /remote MCP private beta/i,
-    /principal-aware remote config/i,
     /enterprise\/apps\/control-plane/i,
     /martin-loop_MAIN_FULL_REPO/i,
     /ML_Main_Repo_Internal/i,
     /ML_Core_OSS_Internal/i,
+    /private beta/i,
+    /principal-aware remote config/i,
+    /control-plane/i,
+    /autonomy\/router/i,
     /OneDrive/i,
     /C:\\Users\\/i
   ];

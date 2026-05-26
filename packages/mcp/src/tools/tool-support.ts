@@ -505,12 +505,6 @@ export function buildSuggestedResourceUris(loopId: string): string[] {
 
 export function buildSuggestedPromptNames(): string[] {
   return [
-    "martin_start",
-    "martin_preflight",
-    "martin_triage",
-    "martin_resume",
-    "martin_prove",
-    "martin_release_check",
     "martin_governed_coding_kickoff",
     "martin_debug_failed_run",
     "martin_publish_readiness_review",

@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 import { resolveRcCommandExecution } from "./rc-validation.mjs";
 
-const ROOT_VERSION_PATTERN = /^0\.(1|2)\.\d+$/;
+const ROOT_VERSION_PATTERN = /^0\.(?:1|2)\.\d+$/;
 const ALLOWED_FILES = [
   "CODE_OF_CONDUCT.md",
   "README.md",

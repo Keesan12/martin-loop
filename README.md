@@ -134,7 +134,7 @@ If the problem is familiar, star the repo so other builders can find the runtime
 npm install -g martin-loop
 ```
 
-This installs the public `martin-loop` CLI package. This README is synced for `martin-loop@0.2.4`.
+This installs the public `martin-loop` CLI package. This README is synced for `martin-loop@0.2.5`.
 
 Want a safe sandbox first? Run `npx martin-loop demo` and MartinLoop will copy a disposable local workspace into `./martin-loop-demo`.
 
@@ -166,17 +166,16 @@ npx martin-loop triage
 
 `triage` ranks persisted runs using failure categories such as failed verification, budget exits, human escalation, and missing verification evidence. If a saved run entry is unreadable, MartinLoop skips it and surfaces a warning instead of aborting the whole review.
 
-### What's New In 0.2.4
+### What's New In 0.2.5
 
-`martin-loop@0.2.4` adds a public prompt pack for safer governed agent workflows.
+`martin-loop@0.2.5` ships the stable cockpit line for the standalone MCP package and the matching root-package release surface.
 
-- `martin_start` for kickoff and first-pass setup
-- `martin_preflight` for budget, scope, and verifier planning
-- `martin_triage` and `martin_resume` for recovery paths
-- `martin_prove` and `martin_release_check` for evidence-first closeout
-- compatibility aliases for older prompt names so existing host setups keep working
+- `martin_triage_runs` for faster review of persisted run failures and warnings
+- compact proof resources such as latest summary, proof card, budget status, verifier evidence, rollback evidence, and next-step guidance
+- degraded run-store hardening so unreadable entries surface warnings instead of taking down the review flow
+- release-proof updates across README, release notes, workflow checks, and package metadata
 
-See [OSS-0.2.4 release notes](./docs/release/OSS-0.2.4-RELEASE-NOTES.md) and [Agent Start Here](./docs/oss/AGENT-START-HERE.md) for the public-facing prompt flow.
+See [OSS-0.2.5 release notes](./docs/release/OSS-0.2.5-RELEASE-NOTES.md) and [MCP 0.2.5 release notes](./docs/release/MCP-0.2.5-RELEASE-NOTES.md) for the public feature contract.
 
 ### Public Package Surface
 
@@ -191,14 +190,16 @@ The public package surface is:
 
 ### MCP server
 
-`@martinloop/mcp@0.2.0` exposes ten stdio tools plus read-only resources, resource templates, and prompts. `martin_run` remains the only tool that can execute work; the newer cockpit tools are read-only review helpers for recent runs, dossiers, attempts, and verifier results.
+`@martinloop/mcp@0.2.5` exposes eleven stdio tools plus read-only resources, resource templates, and prompts. `martin_run` remains the only tool that can execute work; the cockpit tools are review helpers for triage, recent runs, compact proof receipts, dossiers, attempts, and verifier results.
 
 Recommended first-use flow:
 
 1. `martin_doctor`
 2. `martin_preflight`
 3. `martin_run`
-4. `martin_list_runs`, `martin_run_dossier`, `martin_inspect`, or `martin_status`
+4. `martin_triage_runs`
+5. `martin://agent/next-step` or `martin://runs/latest/summary`
+6. `martin_run_dossier`, `martin_inspect`, or `martin_status`
 
 ### MCP install
 

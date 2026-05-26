@@ -43,12 +43,6 @@ const REQUIRED_RESOURCE_TEMPLATES = [
   "martin://runs/{loopId}/verification",
 ];
 const REQUIRED_PROMPTS = [
-  "martin_start",
-  "martin_preflight",
-  "martin_triage",
-  "martin_resume",
-  "martin_prove",
-  "martin_release_check",
   "martin_governed_coding_kickoff",
   "martin_debug_failed_run",
   "martin_publish_readiness_review",
@@ -259,6 +253,36 @@ export async function runPublishedMcpSmoke(options = {}) {
       name: "martin_doctor",
       arguments: { engine: "codex" },
     });
+    const kickoffPrompt = await client.getPrompt({
+      name: "martin_governed_coding_kickoff",
+      arguments: {
+        objective: "Summarize the current runtime state",
+        workingDirectory: workspaceRoot,
+        engine: "claude",
+        verificationPlan: "node --version",
+        allowedPaths: "src/**",
+        deniedPaths: "docs/**",
+        maxUsd: "1",
+        maxIterations: "1",
+        workspaceId: "ws_published_smoke",
+        projectId: "proj_published_smoke",
+      },
+    });
+    const preflightResult = await client.callTool({
+      name: "martin_preflight",
+      arguments: {
+        objective: "Summarize the current runtime state",
+        workingDirectory: workspaceRoot,
+        engine: "claude",
+        verificationPlan: ["node --version"],
+        maxIterations: 1,
+        maxUsd: 1,
+        allowedPaths: ["src/**"],
+        deniedPaths: ["docs/**"],
+        workspaceId: "ws_published_smoke",
+        projectId: "proj_published_smoke",
+      },
+    });
     const serverHealthResource = await client.readResource({
       uri: "martin://server/health",
     });
@@ -270,12 +294,6 @@ export async function runPublishedMcpSmoke(options = {}) {
       arguments: {
         focus: "verification failures",
       },
-    });
-    const resumePrompt = await client.getPrompt({
-      name: "martin_resume",
-    });
-    const provePrompt = await client.getPrompt({
-      name: "martin_prove",
     });
     const runResult = await client.callTool({
       name: "martin_run",
@@ -289,6 +307,74 @@ export async function runPublishedMcpSmoke(options = {}) {
         workspaceId: "ws_published_smoke",
         projectId: "proj_published_smoke",
       },
+    });
+    const runResultPayload = JSON.parse(readTextContent(runResult));
+    const runLoopId = runResultPayload.loopId;
+    if (typeof runLoopId !== "string" || runLoopId.length === 0) {
+      throw new Error("Published martin_run did not return a loopId for follow-up inspection.");
+    }
+    const runAttemptIndex = runResultPayload.inspection?.loop?.lastAttempt?.index;
+    if (!Number.isInteger(runAttemptIndex)) {
+      throw new Error("Published martin_run did not return a last attempt index for follow-up inspection.");
+    }
+    const encodedRunLoopId = encodeURIComponent(runLoopId);
+    const listRuns = await client.callTool({
+      name: "martin_list_runs",
+      arguments: { limit: 10 },
+    });
+    const getRun = await client.callTool({
+      name: "martin_get_run",
+      arguments: { loopId: runLoopId },
+    });
+    const getAttempt = await client.callTool({
+      name: "martin_get_attempt",
+      arguments: { loopId: runLoopId, attemptIndex: runAttemptIndex },
+    });
+    const getVerificationResults = await client.callTool({
+      name: "martin_get_verification_results",
+      arguments: { loopId: runLoopId },
+    });
+    const runDossier = await client.callTool({
+      name: "martin_run_dossier",
+      arguments: { loopId: runLoopId },
+    });
+    const dynamicRunResource = await client.readResource({
+      uri: `martin://runs/${encodedRunLoopId}`,
+    });
+    const dynamicVerificationResource = await client.readResource({
+      uri: `martin://runs/${encodedRunLoopId}/verification`,
+    });
+    const debugPrompt = await client.getPrompt({
+      name: "martin_debug_failed_run",
+      arguments: {
+        loopId: runLoopId,
+        attemptIndex: String(runAttemptIndex),
+      },
+    });
+    const publishReadinessPrompt = await client.getPrompt({
+      name: "martin_publish_readiness_review",
+      arguments: {
+        loopId: runLoopId,
+        focus: "packaged smoke evidence",
+      },
+    });
+
+    const publishedUserJourney = {
+      preflightResult: JSON.parse(readTextContent(preflightResult)),
+      listRuns: JSON.parse(readTextContent(listRuns)),
+      getRun: JSON.parse(readTextContent(getRun)),
+      getAttempt: JSON.parse(readTextContent(getAttempt)),
+      getVerificationResults: JSON.parse(readTextContent(getVerificationResults)),
+      runDossier: JSON.parse(readTextContent(runDossier)),
+      dynamicRunResource: JSON.parse(readResourceText(dynamicRunResource)),
+      dynamicVerificationResource: JSON.parse(readResourceText(dynamicVerificationResource)),
+      kickoffPrompt,
+      debugPrompt,
+      publishReadinessPrompt,
+    };
+    assertPublishedUserJourneyEvidence(publishedUserJourney, {
+      loopId: runLoopId,
+      attemptIndex: runAttemptIndex,
     });
 
     const degradedInspectPayload = JSON.parse(readTextContent(degradedInspect));
@@ -317,16 +403,6 @@ export async function runPublishedMcpSmoke(options = {}) {
       throw new Error("Published martin_triage_run_store prompt is missing expected guidance messages.");
     }
 
-    const resumePromptMessages = Array.isArray(resumePrompt.messages) ? resumePrompt.messages : [];
-    if (resumePromptMessages.length < 5) {
-      throw new Error("Published martin_resume prompt is missing expected compact guidance messages.");
-    }
-
-    const provePromptMessages = Array.isArray(provePrompt.messages) ? provePrompt.messages : [];
-    if (provePromptMessages.length < 5) {
-      throw new Error("Published martin_prove prompt is missing expected proof guidance messages.");
-    }
-
     return {
       packageSpec,
       npxCommand: packageSpec.startsWith("@")
@@ -346,8 +422,6 @@ export async function runPublishedMcpSmoke(options = {}) {
       serverHealth: JSON.parse(readResourceText(serverHealthResource)),
       triageResource: JSON.parse(readResourceText(triageResource)),
       triagePrompt,
-      resumePrompt,
-      provePrompt,
       canonicalInspect: JSON.parse(readTextContent(canonicalInspect)),
       jsonlInspect: JSON.parse(readTextContent(jsonlInspect)),
       latestStatus: JSON.parse(readTextContent(latestStatus)),
@@ -355,7 +429,8 @@ export async function runPublishedMcpSmoke(options = {}) {
       triageRuns: triagePayload,
       invalidInspectError: invalidInspect._meta?.["martinloop/error"] ?? null,
       doctorResult: doctorPayload,
-      runResult: JSON.parse(readTextContent(runResult)),
+      runResult: runResultPayload,
+      publishedUserJourney,
       stderr: stderrChunks.join(""),
     };
   } finally {
@@ -530,6 +605,74 @@ function readResourceText(result) {
   }
 
   return first.text;
+}
+
+function assertPublishedUserJourneyEvidence(journey, expected) {
+  const requiredKeys = [
+    "preflightResult",
+    "listRuns",
+    "getRun",
+    "getAttempt",
+    "getVerificationResults",
+    "runDossier",
+    "dynamicRunResource",
+    "dynamicVerificationResource",
+    "kickoffPrompt",
+    "debugPrompt",
+    "publishReadinessPrompt",
+  ];
+  const missingKeys = requiredKeys.filter((key) => journey[key] === undefined);
+  if (missingKeys.length > 0) {
+    throw new Error(
+      `Published smoke did not exercise installed-package 0.2.0 journey: missing ${missingKeys.join(", ")}.`,
+    );
+  }
+
+  if (journey.preflightResult.normalized?.objective !== "Summarize the current runtime state") {
+    throw new Error("Published martin_preflight did not preserve the packaged smoke objective.");
+  }
+
+  if (!journey.listRuns.recentRuns?.some((run) => run.loopId === expected.loopId)) {
+    throw new Error("Published martin_list_runs did not include the real run created by martin_run.");
+  }
+
+  if (journey.getRun.loop?.loopId !== expected.loopId) {
+    throw new Error("Published martin_get_run did not resolve the real run by loopId.");
+  }
+
+  if (journey.getAttempt.loop?.loopId !== expected.loopId ||
+    journey.getAttempt.attempt?.index !== expected.attemptIndex) {
+    throw new Error("Published martin_get_attempt did not resolve the real run attempt.");
+  }
+
+  if (journey.getVerificationResults.loop?.loopId !== expected.loopId ||
+    typeof journey.getVerificationResults.verification?.status !== "string") {
+    throw new Error("Published martin_get_verification_results did not return verification evidence.");
+  }
+
+  if (journey.runDossier.loop?.loopId !== expected.loopId ||
+    !journey.runDossier.related?.resources?.includes(`martin://runs/${expected.loopId}`) ||
+    !journey.runDossier.related?.resources?.includes(`martin://runs/${expected.loopId}/verification`)) {
+    throw new Error("Published martin_run_dossier did not link the real run to its dynamic resources.");
+  }
+
+  if (journey.dynamicRunResource.value?.loop?.loopId !== expected.loopId) {
+    throw new Error("Published dynamic martin://runs/{loopId} resource did not return the real run.");
+  }
+
+  if (journey.dynamicVerificationResource.value?.loopId !== expected.loopId) {
+    throw new Error("Published dynamic martin://runs/{loopId}/verification resource did not return the real run.");
+  }
+
+  for (const [promptName, prompt] of Object.entries({
+    kickoffPrompt: journey.kickoffPrompt,
+    debugPrompt: journey.debugPrompt,
+    publishReadinessPrompt: journey.publishReadinessPrompt,
+  })) {
+    if (!Array.isArray(prompt.messages) || prompt.messages.length === 0) {
+      throw new Error(`Published ${promptName} fetch did not return prompt messages.`);
+    }
+  }
 }
 
 async function removeTempDir(tempRoot) {

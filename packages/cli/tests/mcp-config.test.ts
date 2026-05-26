@@ -5,17 +5,13 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
-  MARTIN_DIAGNOSTIC_TOOL_NAMES,
-  MARTIN_MINIMAL_TOOL_NAMES,
   MARTIN_STARTER_TOOL_NAMES,
   MARTIN_TOOL_NAMES
 } from "../../mcp/src/discovery-metadata.js";
 import {
   buildMcpInstallPlan,
   installMcpConfig,
-  MARTIN_DIAGNOSTIC_TOOLS,
   MARTIN_FULL_TOOLS,
-  MARTIN_MINIMAL_TOOLS,
   MARTIN_STARTER_TOOLS
 } from "../src/mcp-config.js";
 
@@ -24,19 +20,11 @@ describe("mcp config helpers", () => {
     expect([...MARTIN_STARTER_TOOLS]).toEqual([...MARTIN_STARTER_TOOL_NAMES]);
   });
 
-  it("keeps the CLI minimal allow-list aligned with MCP discovery metadata", () => {
-    expect([...MARTIN_MINIMAL_TOOLS]).toEqual([...MARTIN_MINIMAL_TOOL_NAMES]);
-  });
-
-  it("keeps the CLI diagnostic allow-list aligned with MCP discovery metadata", () => {
-    expect([...MARTIN_DIAGNOSTIC_TOOLS]).toEqual([...MARTIN_DIAGNOSTIC_TOOL_NAMES]);
-  });
-
   it("keeps the CLI full allow-list aligned with MCP discovery metadata", () => {
     expect([...MARTIN_FULL_TOOLS]).toEqual([...MARTIN_TOOL_NAMES]);
   });
 
-  it("builds the canonical Codex minimal snippet with the quoted martin-loop server id", () => {
+  it("builds the canonical Codex starter snippet with the quoted martin-loop server id", () => {
     const plan = buildMcpInstallPlan({
       host: "codex",
       scope: "project",
@@ -45,8 +33,7 @@ describe("mcp config helpers", () => {
     });
 
     expect(plan.content).toContain('[mcp_servers."martin-loop"]');
-    expect(plan.profile).toBe("minimal");
-    expect(plan.content).toContain('enabled_tools = ["martin_doctor", "martin_preflight", "martin_list_runs", "martin_triage_runs", "martin_run_dossier"]');
+    expect(plan.content).toContain('enabled_tools = ["martin_doctor", "martin_preflight", "martin_run", "martin_triage_runs", "martin_run_dossier"]');
   });
 
   it("respects CODEX_HOME for user-scope Codex installs", () => {

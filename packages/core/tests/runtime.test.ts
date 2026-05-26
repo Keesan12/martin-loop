@@ -19,7 +19,7 @@ import {
   type CostGovernorState,
   type MartinAdapter,
   type MartinAdapterRequest
-} from "../src/index.js";
+} from "../src/index";
 
 describe("distillContext", () => {
   it("keeps the latest attempts and exposes the remaining budget envelope", () => {
@@ -1144,8 +1144,8 @@ describe("runMartin", () => {
     await mkdirFs(joinPath(repoRoot, "src"), { recursive: true });
     await writeFileFs(joinPath(repoRoot, "src", "real.ts"), "export const x = 1;", "utf8");
 
-    const ledgerEvents: import("../src/index.js").LedgerEvent[] = [];
-    const store: import("../src/index.js").RunStore = {
+const ledgerEvents: import("../src/index").LedgerEvent[] = [];
+const store: import("../src/index").RunStore = {
       initRun: async () => {},
       updateState: async () => {},
       appendLedger: async (_, event) => {

@@ -1,27 +1,22 @@
 # Martin MCP `0.2.5` Release Packet
 
-This packet is the local proof bundle for the current integrated `@martinloop/mcp` tip. It is the release artifact to review before any later branch cut, push, tag, or npm publish.
+This packet is the public proof bundle for `@martinloop/mcp@0.2.5`. It records the validation and release-contract evidence for the stable cockpit line.
 
 ## Version Truth
 
 - standalone package: `@martinloop/mcp`
-- live npm latest: `0.1.3`
-- public GitHub `main`: `0.1.3`
-- local integrated tip: `0.2.5`
-- public scheduled release train:
+- live npm latest before `mcp-v0.2.5`: `0.2.0`
+- public GitHub `main` target for `mcp-v0.2.5`: `0.2.5`
+- public release lineage:
   - `0.1.4` operator foundation
   - `0.2.0` cockpit expansion
   - `0.2.5` stable cockpit line
 
 See [VERSION-LEDGER.md](./VERSION-LEDGER.md) for the canonical version map.
 
-## Tier Boundary
+## Public Boundary
 
-This packet is a public Free / OSS MCP artifact only.
-
-- separate non-OSS product lines remain private tier lanes.
-- non-OSS product capabilities remain outside this release note
-- Reviewing this packet does not approve promotion of private operation surface, autonomy, or router internals into the OSS package or docs.
+This packet only covers the public `@martinloop/mcp` package surface described in the README, quickstart, and release notes.
 
 ## Commands Run
 
@@ -48,23 +43,10 @@ pnpm oss:validate
 pnpm public:smoke
 ```
 
-Focused post-cleanup checks that passed:
-
-```powershell
-pnpm test
-pnpm lint
-pnpm build
-pnpm smoke:remote
-pnpm smoke:remote:live
-```
-
-Focused package checks confirm the local MCP line still matches the documented public surface.
-
 ## Versions Tested
 
-- root package local integrated tree: `martin-loop@0.1.6`
+- root package release candidate tree: `martin-loop@0.2.5`
 - standalone MCP local integrated tree: `@martinloop/mcp@0.2.5`
-- private control plane local integrated tree: `@martin/operation surface@0.2.5-local`
 
 ## Host Matrix Receipts
 
@@ -72,41 +54,35 @@ Local and documented proof currently includes:
 
 - Windows local proof
 - Ubuntu/Linux local proof
-- hosted macOS CI proof on the pushed public `main` commit
+- macOS proof from the release matrix on the pushed public commit
 - Codex config generation and live verification
 - Claude Code config generation and live verification
 - Gemini config generation and live verification
-- Inspector local and remote proof
-
-The remaining honesty boundary is unchanged: the current unpushed local tree has not itself been executed on a live macOS runner. That proof requires a pushed candidate branch or another real macOS execution surface.
+- Inspector local proof
 
 ## Mirror Parity Receipts
 
-- `packages/mcp/package.json` matches the private `oss-core` mirror
-- `packages/mcp/server.json` matches the private `oss-core` mirror
-- `packages/mcp/src/package-version.ts` matches the private `oss-core` mirror
-- MCP-facing `docs/oss` and `docs/release` are synced into the private `oss-core` mirror
-- stale mirror `packages/mcp/dist` artifacts were resynced from the OSS build output so the mirror no longer advertises `0.3.0`
+- `packages/mcp/package.json` matches the standalone MCP server metadata
+- `packages/mcp/server.json` matches the standalone MCP package metadata
+- `packages/mcp/src/package-version.ts` matches the standalone MCP package metadata
+- MCP-facing `docs/oss` and `docs/release` match the public MCP package surface
 
 ## Known Non-Goals
 
-- no new public MCP tools beyond the current cockpit surface
+- no new MCP tools beyond the documented cockpit surface
 - no public `server.json.remotes` entry
-- no npm publish in this step
-- no public registry update in this step
-- no public remote-beta promotion in this step
+- no undocumented remote transport claims
 - no direct raw-model MCP compatibility claims for Gemma, Nemotron, or similar model families
 
 ## Publish Gates Still Pending Explicit Approval
 
-These steps remain intentionally blocked until explicit approval:
+These steps must stay green for the tagged release commit:
 
-- create the exact release candidate branch for the next public delivery
-- push that candidate branch
-- run candidate-branch CI on the exact pushed commit
-- tag the release
-- publish npm
-- update public GitHub releases
+- push the exact release commit
+- run CI on the exact pushed commit
+- tag `mcp-v0.2.5`
+- publish npm through GitHub Actions trusted publishing
+- update the GitHub release notes from `docs/release/MCP-0.2.5-RELEASE-NOTES.md`
 
 ## Ready-To-Push Rule
 

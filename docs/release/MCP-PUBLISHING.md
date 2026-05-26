@@ -2,13 +2,7 @@
 
 Use npm trusted publishing from GitHub Actions for `@martinloop/mcp`.
 
-For the current integrated `0.2.5` tip, the publish claim covers the public stable cockpit line: tools, resources, resource templates, and prompts, plus the run-triage surface layered into that cockpit. The docs and release checks must describe that full surface honestly, while the public scheduled train stays `0.1.4 -> 0.2.0 -> 0.2.5`.
-
-## Tier Boundary
-
-Publishing `@martinloop/mcp` only promotes the public Free / OSS MCP lane.
-It does not promote the non-OSS, team-scale, organization-scale, or separate product surfaces, and it must not pull private operation surface, autonomy, or router internals into OSS release docs.
-non-OSS product capabilities stay outside this public release surface.
+For the current `0.2.5` line, the publish claim covers the public stable cockpit surface: tools, resources, resource templates, and prompts, plus the run-triage surface layered into that cockpit. The docs and release checks must describe that full surface honestly while the public release lineage stays `0.1.4 -> 0.2.0 -> 0.2.5`.
 
 The scheduled public labels are:
 
@@ -35,9 +29,9 @@ The scheduled public labels are:
    - `pnpm --filter @martinloop/mcp smoke:pack`
    - `pnpm --filter @martinloop/mcp smoke:published:pack`
    - `pnpm --filter @martinloop/mcp verify:release`
-5. Merge the release branch.
-6. Trigger `.github/workflows/publish-mcp.yml` with `workflow_dispatch` or `mcp-vX.Y.Z`.
-7. Let the workflow publish npm and re-run `pnpm --filter @martinloop/mcp smoke:published`.
+5. Trigger `.github/workflows/publish-mcp.yml` with `workflow_dispatch` or `mcp-vX.Y.Z`.
+6. Let the workflow publish npm through trusted publishing and re-run `pnpm --filter @martinloop/mcp smoke:published`.
+7. Confirm the GitHub release body matches `docs/release/MCP-X.Y.Z-RELEASE-NOTES.md`.
 
 ## Docs and Parity Checklist
 
@@ -59,8 +53,8 @@ Before calling the release ready, confirm:
 - docs list the current resources and prompts
 - docs keep current Codex and Claude Code install snippets
 - release notes describe the actual discovery surface as shipped, not as future work
-- docs keep the public Free / OSS MCP train separate from the private separate non-OSS product lines tiers
-- docs do not present the non-OSS additional remote MCP surface or additional remote configuration as part of the public npm package claim
+- docs stay scoped to the public package surface and documented host installs
+- docs do not present hosted-only or undocumented transport claims as part of the npm package claim
 - `scripts/tests/mcp-release-docs.test.mjs` verifies the tool list, resource list, prompt list, and cockpit flow
 
 ## Gate Semantics
@@ -79,23 +73,6 @@ They are separate gates and should stay separate.
 - repository: `martin-loop`
 - workflow: `publish-mcp.yml`
 
-## Emergency Local Fallback
+## Failure Policy
 
-Only use local publish when automation is unavailable:
-
-```powershell
-pnpm --dir packages/mcp lint
-pnpm --dir packages/mcp test
-pnpm --dir packages/mcp build
-pnpm --dir packages/mcp smoke:pack
-pnpm --dir packages/mcp smoke:published:pack
-pnpm --dir packages/mcp verify:release
-npm publish --access public --workspace @martinloop/mcp
-```
-
-Then verify:
-
-```powershell
-npm view @martinloop/mcp version
-pnpm --filter @martinloop/mcp smoke:published
-```
+Do not fall back to local `npm publish`. If trusted publishing fails, debug the GitHub Actions workflow, tag/ref wiring, package metadata, and npm visibility until the automated path succeeds.
