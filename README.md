@@ -209,19 +209,19 @@ Use the published MCP package directly:
 - Claude Code macOS/Linux: `claude mcp add --transport stdio --scope user martin-loop -- npx -y @martinloop/mcp`
 - Claude Code Windows PowerShell/cmd: `claude mcp add --transport stdio --scope user martin-loop -- cmd /c npx -y @martinloop/mcp`
 
-When you want a host-specific config block instead of the default full server install, generate one from the CLI:
+When you want a host-specific config block instead of the default full server install, generate one from the published CLI:
 
-- Codex minimal profile: `martin mcp print-config --host codex --profile minimal`
-- Claude diagnostic profile: `martin mcp print-config --host claude --profile diagnostic`
-- Gemini full-local profile: `martin mcp print-config --host gemini --profile full-local`
-- Generic stdio profile: `martin mcp print-config --host generic --transport stdio --profile minimal`
+- Codex starter profile: `npx martin-loop mcp print-config --host codex --profile starter`
+- Claude full profile: `npx martin-loop mcp print-config --host claude --profile full`
+- Gemini starter profile: `npx martin-loop mcp print-config --host gemini --profile starter`
+- Generic stdio profile: `npx martin-loop mcp print-config --host generic --transport stdio --profile starter`
 
 Profile guide:
 
-- `minimal` is the default local stdio profile and stays read-only: `martin_doctor`, `martin_preflight`, `martin_list_runs`, and `martin_run_dossier`
-- `diagnostic` adds deeper read-only inspection: `martin_get_run`, `martin_get_attempt`, and `martin_get_verification_results`
-- `full-local` is the profile that exposes `martin_run` for local execution hosts
-- `starter` and `full` remain compatibility aliases when you need them for older automation or docs
+- `starter` is the default generated profile: `martin_doctor`, `martin_preflight`, `martin_run`, `martin_triage_runs`, and `martin_run_dossier`
+- `full` adds the deeper inspection tools: `martin_inspect`, `martin_status`, `martin_list_runs`, `martin_get_run`, `martin_get_attempt`, and `martin_get_verification_results`
+- both generated profiles include `martin_run`, because the current public CLI only emits execution-capable profile blocks
+- if you need a strict read-only allow-list, start from the manual config example in `packages/mcp/README.md` or `docs/oss/MCP-FOR-AI-AGENTS.md` and omit `martin_run`
 
 If you just want to launch the server manually, the one-line command is:
 
@@ -284,8 +284,8 @@ npx martin-loop dossier --latest
 For host setup flows, the CLI also exposes:
 
 ```sh
-martin mcp print-config --host codex|claude|gemini|generic --transport stdio|remote --profile minimal|diagnostic|full-local|starter|full
-martin mcp install --host codex|claude|gemini|generic --scope user|project [--dry-run]
+npx martin-loop mcp print-config --host codex|claude|gemini|generic --transport stdio|remote --profile starter|full
+npx martin-loop mcp install --host codex|claude|gemini|generic --scope user|project [--dry-run]
 ```
 
 ---

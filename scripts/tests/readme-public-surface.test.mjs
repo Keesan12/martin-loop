@@ -30,6 +30,9 @@ const FORBIDDEN_README_PATTERNS = [
   /\bbenchmarks\//i,
   /\bPlase\b/i,
   /\bmartin command alias\b/i,
+  /\b--profile minimal\b/i,
+  /\b--profile diagnostic\b/i,
+  /\b--profile full-local\b/i,
   /^martin run\b/im,
   /^martin inspect\b/im,
   /^martin resume\b/im
@@ -113,10 +116,11 @@ test("root README matches the current public package versions and launch surface
   assert.match(readme, /`martin_run` remains the only tool that can execute work/i);
   assert.match(readme, /martin_list_runs/);
   assert.match(readme, /martin_run_dossier/);
-  assert.match(readme, /martin mcp print-config --host codex --profile minimal/);
-  assert.match(readme, /martin mcp print-config --host claude --profile diagnostic/);
-  assert.match(readme, /martin mcp print-config --host gemini --profile full-local/);
-  assert.match(readme, /`minimal` is the default local stdio profile/i);
+  assert.match(readme, /npx martin-loop mcp print-config --host codex --profile starter/);
+  assert.match(readme, /npx martin-loop mcp print-config --host claude --profile full/);
+  assert.match(readme, /npx martin-loop mcp print-config --host gemini --profile starter/);
+  assert.match(readme, /`starter` is the default generated profile/i);
+  assert.match(readme, /both generated profiles include `martin_run`/i);
   assert.match(readme, /ranks persisted runs using failure categories/i);
 });
 

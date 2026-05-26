@@ -42,7 +42,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "pnpm -r --workspace-concurrency=1 build && node ./scripts/build-public-facade.mjs",
+    "build": "pnpm --filter @martin/cli build && pnpm --filter @martinloop/mcp build && node ./scripts/build-public-facade.mjs",
     "prepack": "pnpm build && node ./scripts/root-release-guard.mjs --pack",
     "test": "pnpm -r test && node --test scripts/tests/*.mjs",
     "lint": "pnpm -r lint",

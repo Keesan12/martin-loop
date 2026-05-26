@@ -30,11 +30,11 @@ Expected value: the dossier tells you what happened, what Martin prevented, veri
 
 ## MCP Profile Defaults
 
-- `minimal` is the default: `martin_doctor`, `martin_preflight`, `martin_list_runs`, `martin_triage_runs`, and `martin_run_dossier`.
-- `diagnostic` adds deeper read-only run inspection without `martin_run`.
-- `full-local` exposes the full local cockpit, including `martin_run`.
+- `starter` is the default generated profile: `martin_doctor`, `martin_preflight`, `martin_run`, `martin_triage_runs`, and `martin_run_dossier`.
+- `full` adds deeper inspection without changing the package or transport surface.
+- Both generated profiles include `martin_run` in `0.2.5`.
 
-Only `full-local` exposes `martin_run`; keep hosts on `minimal` or `diagnostic` unless the user explicitly wants local execution.
+If you need a strict read-only allow-list, start from the manual config examples in the MCP docs and omit `martin_run` before saving the block.
 
 ## Host Setup
 
@@ -42,22 +42,21 @@ Codex:
 
 ```sh
 codex mcp add martin-loop -- npx -y @martinloop/mcp
-martin mcp print-config --host codex --profile minimal
+npx martin-loop mcp print-config --host codex --profile starter
 ```
 
 Claude Code:
 
 ```sh
 claude mcp add --transport stdio --scope user martin-loop -- npx -y @martinloop/mcp
-martin mcp print-config --host claude --profile minimal
+npx martin-loop mcp print-config --host claude --profile starter
 ```
 
 Cursor, VS Code, and generic MCP wrappers:
 
 ```sh
-martin mcp print-config --host generic --profile minimal
-martin mcp print-config --host generic --profile diagnostic
-martin mcp print-config --host generic --profile full-local
+npx martin-loop mcp print-config --host generic --profile starter
+npx martin-loop mcp print-config --host generic --profile full
 ```
 
 ## Agent Rule To Paste
@@ -89,4 +88,4 @@ Recommended prompts:
 - If no runs exist, call `martin_doctor` and run the demo path.
 - If the verifier failed, use `martin_triage` or `martin_debug_failed_run` before spending another attempt.
 - If context is tight, read `martin://agent/next-step` first.
-- If a host shows too many tools, switch to `--profile minimal` or `--profile diagnostic`.
+- If a host shows too many tools, start from the manual read-only allow-list instead of the generated `starter` or `full` profiles.

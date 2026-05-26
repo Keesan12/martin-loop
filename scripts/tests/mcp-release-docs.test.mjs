@@ -144,6 +144,8 @@ test("MCP docs stay aligned with the actual cockpit surface", async () => {
     "claude mcp add --transport stdio --scope user martin-loop -- npx -y @martinloop/mcp";
   const claudeWindowsSnippet =
     "claude mcp add --transport stdio --scope user martin-loop -- cmd /c npx -y @martinloop/mcp";
+  const starterConfigSnippet = "npx martin-loop mcp print-config --host codex --transport stdio --profile starter";
+  const fullConfigSnippet = "npx martin-loop mcp print-config --host claude --transport stdio --profile full";
   const toolNames = extractMartinToolNames(serverSource);
 
   assert.deepEqual(toolNames, EXPECTED_TOOLS);
@@ -170,6 +172,14 @@ test("MCP docs stay aligned with the actual cockpit surface", async () => {
     for (const promptName of EXPECTED_PROMPTS) {
       assert.match(contents, new RegExp(escapeRegex(promptName)));
     }
+  }
+
+  for (const contents of [readme, aiGuide]) {
+    assert.match(contents, new RegExp(escapeRegex(starterConfigSnippet)));
+    assert.match(contents, new RegExp(escapeRegex(fullConfigSnippet)));
+    assert.doesNotMatch(contents, /--profile minimal/);
+    assert.doesNotMatch(contents, /--profile diagnostic/);
+    assert.doesNotMatch(contents, /--profile full-local/);
   }
 
   for (const resourceUri of EXPECTED_RESOURCES) {
@@ -280,7 +290,6 @@ test("OSS public docs keep non-package language out of the public MCP train", as
     assert.match(contents, /0\.2\.5/);
     assert.match(contents, /stable cockpit line/i);
   }
-
   if (packageJson.version === "0.2.0") {
     assert.match(releaseNotes, /0\.1\.4/);
     assert.match(releaseNotes, /operator foundation/i);

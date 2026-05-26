@@ -78,7 +78,7 @@ It is not meant to be a generic browser, search engine, or shell replacement.
 6. Use `martin_run_dossier` or the `martin_get_*` tools when compact evidence says deeper inspection is needed.
 7. Use prompts when the host wants discovery-first workflows.
 
-### Recommended minimal allow-list
+### Recommended read-only allow-list
 
 If your host supports tool allow-lists, start here:
 
@@ -88,7 +88,7 @@ If your host supports tool allow-lists, start here:
 - `martin_triage_runs`
 - `martin_run_dossier`
 
-Use `diagnostic` when the host needs deeper read-only run archaeology, and use `full-local` only when the host should execute `martin_run`. This keeps tool bloat down without reducing operator power.
+This manual allow-list is the safest public read-only starting point. The generated CLI profiles in `0.2.5` are `starter` and `full`, and both include `martin_run`.
 
 ## Install
 
@@ -137,7 +137,7 @@ enabled_tools = [
 env = { MARTIN_RUNS_DIR = "C:\\path\\to\\runs" }
 ```
 
-If you generate config from the CLI, `martin mcp install` stays conservative: it only writes when the target file is absent or when it already detects a Martin Loop block. For broader hand-maintained host configs, use `martin mcp print-config` and merge the Martin section intentionally.
+If you generate config from the CLI, `npx martin-loop mcp install` stays conservative: it only writes when the target file is absent or when it already detects a Martin Loop block. For broader hand-maintained host configs, use `npx martin-loop mcp print-config` and merge the Martin section intentionally.
 
 If `CODEX_HOME` is set, Codex user-scope installs target `CODEX_HOME\\config.toml` instead of the default user path.
 
@@ -153,12 +153,12 @@ Martin Loop’s CLI can emit host-ready stdio config for:
 Examples:
 
 ```sh
-martin mcp print-config --host codex --transport stdio --profile minimal
-martin mcp print-config --host claude --transport stdio --profile diagnostic
-martin mcp print-config --host gemini --transport stdio --profile full-local
+npx martin-loop mcp print-config --host codex --transport stdio --profile starter
+npx martin-loop mcp print-config --host claude --transport stdio --profile full
+npx martin-loop mcp print-config --host gemini --transport stdio --profile starter
 ```
 
-`martin mcp install` accepts the same host, transport, profile, scope, and platform options.
+`npx martin-loop mcp install` accepts the same host, transport, profile, scope, and platform options.
 
 Host notes:
 

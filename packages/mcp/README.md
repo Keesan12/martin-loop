@@ -97,15 +97,15 @@ claude mcp add --transport stdio --scope user martin-loop -- npx -y @martinloop/
 claude mcp add --transport stdio --scope user martin-loop -- cmd /c npx -y @martinloop/mcp
 ```
 
-Generate host config from the CLI when you want minimal, diagnostic, or full-local profiles:
+Generate host config from the published root CLI when you want the generated MCP profiles:
 
 ```sh
-martin mcp print-config --host codex --transport stdio --profile minimal
-martin mcp print-config --host claude --transport stdio --profile diagnostic
-martin mcp print-config --host gemini --transport stdio --profile full-local
+npx martin-loop mcp print-config --host codex --transport stdio --profile starter
+npx martin-loop mcp print-config --host claude --transport stdio --profile full
+npx martin-loop mcp print-config --host gemini --transport stdio --profile starter
 ```
 
-`martin mcp install` supports the same host set and only writes when the target file is absent or already contains a Martin Loop block.
+`npx martin-loop mcp install` supports the same host set and only writes when the target file is absent or already contains a Martin Loop block.
 
 Codex also supports `~/.codex/config.toml` and project-scoped `.codex/config.toml`:
 
@@ -126,7 +126,7 @@ enabled_tools = [
 env = { MARTIN_RUNS_DIR = "C:\\path\\to\\runs" }
 ```
 
-If you use `martin mcp install`, it will only write a starter host config when the target file is absent, or when it detects an existing Martin Loop block and can remain idempotent. Otherwise it refuses to overwrite mixed host config so you can merge safely.
+If you use `npx martin-loop mcp install`, it will only write a starter host config when the target file is absent, or when it detects an existing Martin Loop block and can remain idempotent. Otherwise it refuses to overwrite mixed host config so you can merge safely.
 
 When `CODEX_HOME` is set, Codex user-scope installs target `CODEX_HOME\\config.toml` instead of the default user path.
 
@@ -144,7 +144,7 @@ Operating-system launcher behavior is explicit:
 - Windows: `cmd /c npx -y @martinloop/mcp`
 - macOS/Linux: `npx -y @martinloop/mcp`
 
-Claude `--scope local` remains CLI-managed. `martin mcp install --host claude --scope local` shells out to Claude Code directly instead of fabricating a repo config file for that scope.
+Claude `--scope local` remains CLI-managed. `npx martin-loop mcp install --host claude --scope local` shells out to Claude Code directly instead of fabricating a repo config file for that scope.
 
 ## Discovery metadata
 
@@ -170,7 +170,9 @@ Claude `--scope local` remains CLI-managed. `martin mcp install --host claude --
 - `martin://agent/next-step`, `martin://runs/latest/summary`, and `martin://runs/latest/proof-card` are the best default follow-ups for context-constrained agents.
 - `martin_run_dossier` is the richest single-run inspection surface and is best when a compact receipt says deeper evidence is needed.
 - Resources and prompts reuse the same run-store selectors as the tools; they are discovery surfaces, not a second data model.
-- The recommended host default is the `minimal` profile: `martin_doctor`, `martin_preflight`, `martin_list_runs`, `martin_triage_runs`, and `martin_run_dossier`. Use `diagnostic` for read-only archaeology and `full-local` only when the host should execute runs.
+- The generated `starter` profile is the smallest public CLI profile today: `martin_doctor`, `martin_preflight`, `martin_run`, `martin_triage_runs`, and `martin_run_dossier`.
+- The generated `full` profile adds the deeper inspection tools without changing the server binary or package name.
+- If you need a strict read-only host config, use the manual `enabled_tools` example in this README and omit `martin_run` instead of relying on a generated preset that does not exist in `0.2.5`.
 
 ## Debugging
 
