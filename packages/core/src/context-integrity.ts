@@ -29,10 +29,7 @@ const POISON_PATTERNS = [
   /override\s+system\s+authority/i,
   /hidden\s+instruction:/i,
   /\[system_override\]/i,
-  /\[authority_inversion\]/i,
-  /\bact\s+as\s+(?:a\s+)?(?:different|new|another|unrestricted)\b/i,
-  /\bDAN\s+mode\b/i,
-  /\bjailbreak\b/i
+  /\[authority_inversion\]/i
 ];
 
 /**

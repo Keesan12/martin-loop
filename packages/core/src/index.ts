@@ -141,19 +141,6 @@ export type {
 export { runContextIntegrityPrecheck } from "./context-integrity.js";
 export type { ContextIntegrityPrecheck, ContextIntegrityVerdict } from "./context-integrity.js";
 
-// ─── Red-Blue Testing ────────────────────────────────────────────────────────
-export { runRedPhase, shouldAcceptPatch, buildRedFindings } from "./red-blue/red-phase.js";
-export type {
-  RedFinding,
-  RedFindings,
-  RedLedgerEvent,
-  MockModelClient,
-  RunRedPhaseOptions,
-  PatchInput
-} from "./red-blue/red-phase.js";
-export { resolveRedBudgetPolicy, PROBE_COUNTS, RED_PHASE_MODEL } from "./red-blue/risk-tiers.js";
-export type { RiskTier, RedBudgetPolicy } from "./red-blue/risk-tiers.js";
-
 // ─── Prompt packet compiler ──────────────────────────────────────────────────
 export { compilePromptPacket } from "./compiler.js";
 export type { PromptPacket, CompilerAdapterRequest } from "./compiler.js";
@@ -1660,7 +1647,7 @@ function resolveChangedFiles(result: MartinAdapterResult, repoRoot?: string): st
   }
 
   try {
-    const diff = spawnSync("git", ["diff", "--name-only", "HEAD"], {
+    const diff = spawnSync("git", ["diff", "--name-only", "HEAD", "--", "."], {
       cwd: repoRoot,
       encoding: "utf8"
     });

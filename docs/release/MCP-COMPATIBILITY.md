@@ -1,11 +1,10 @@
 # Martin MCP Compatibility
 
-This document is the compatibility statement for the governed execution cockpit line currently documented through the public `0.1.4 -> 0.2.0 -> 0.2.5` release train.
+This document is the compatibility statement for the governed execution cockpit line currently at `@martinloop/mcp@0.2.5`.
 
 ## Stable Contract
 
 - martin_run remains the only execution entrypoint.
-- `martin_run` remains the only execution entrypoint.
 - `martin_inspect`, `martin_status`, `martin_doctor`, and `martin_preflight` remain available and backward-compatible.
 - `martin_list_runs`, `martin_triage_runs`, `martin_get_run`, `martin_get_attempt`, `martin_get_verification_results`, and `martin_run_dossier` are additive read-only surfaces.
 - resources, resource templates, and prompts are additive discovery surfaces over the same persisted Martin run data.

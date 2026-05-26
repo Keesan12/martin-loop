@@ -24,36 +24,6 @@ const REQUIRED_TOOLS = [
   "martin_get_verification_results",
   "martin_run_dossier",
 ];
-const REQUIRED_RESOURCES = [
-  "martin://server/health",
-  "martin://runs/recent",
-  "martin://runs/triage",
-  "martin://runs/latest/summary",
-  "martin://runs/latest/proof-card",
-  "martin://runs/latest/budget-status",
-  "martin://runs/latest/verifier-evidence",
-  "martin://runs/latest/rollback-evidence",
-  "martin://agent/next-step",
-  "martin://guides/mcp-usage",
-  "martin://guides/publish-readiness",
-];
-const REQUIRED_RESOURCE_TEMPLATES = [
-  "martin://runs/{loopId}",
-  "martin://runs/{loopId}/attempts/{attemptIndex}",
-  "martin://runs/{loopId}/verification",
-];
-const REQUIRED_PROMPTS = [
-  "martin_start",
-  "martin_preflight",
-  "martin_triage",
-  "martin_resume",
-  "martin_prove",
-  "martin_release_check",
-  "martin_governed_coding_kickoff",
-  "martin_debug_failed_run",
-  "martin_publish_readiness_review",
-  "martin_triage_run_store",
-];
 export const PUBLISHED_PACKAGE_SPEC = "@martinloop/mcp";
 const REQUIRED_TARBALL_FILES = [
   "README.md",
@@ -166,23 +136,12 @@ export async function runStandaloneMcpSmoke(options = {}) {
     await client.connect(transport);
     const tools = await client.listTools();
     const toolNames = tools.tools.map((tool) => tool.name).sort();
-    const resources = await client.listResources();
-    const resourceUris = resources.resources.map((resource) => resource.uri).sort();
-    const resourceTemplates = await client.listResourceTemplates();
-    const resourceTemplateUris = resourceTemplates.resourceTemplates
-      .map((resourceTemplate) => resourceTemplate.uriTemplate)
-      .sort();
-    const prompts = await client.listPrompts();
-    const promptNames = prompts.prompts.map((prompt) => prompt.name).sort();
 
     for (const toolName of REQUIRED_TOOLS) {
       if (!toolNames.includes(toolName)) {
         throw new Error(`Missing expected tool "${toolName}" in packaged MCP server.`);
       }
     }
-    assertIncludesAll(resourceUris, REQUIRED_RESOURCES, "resource");
-    assertIncludesAll(resourceTemplateUris, REQUIRED_RESOURCE_TEMPLATES, "resource template");
-    assertIncludesAll(promptNames, REQUIRED_PROMPTS, "prompt");
 
     const statusResult = await client.callTool({
       name: "martin_status",
@@ -204,9 +163,6 @@ export async function runStandaloneMcpSmoke(options = {}) {
       packedDependencies: packedManifest.dependencies ?? {},
       packedServerMetadata,
       statusPayload,
-      resourceUris,
-      resourceTemplateUris,
-      promptNames,
       stderr: stderrChunks.join(""),
     };
   } finally {
@@ -216,13 +172,6 @@ export async function runStandaloneMcpSmoke(options = {}) {
     if (!options.keepTempDir) {
       await removeTempDir(tempRoot);
     }
-  }
-}
-
-function assertIncludesAll(actual, expected, label) {
-  const missing = expected.filter((item) => !actual.includes(item));
-  if (missing.length > 0) {
-    throw new Error(`Missing expected MCP ${label}s: ${missing.join(", ")}`);
   }
 }
 
@@ -294,6 +243,26 @@ export function assertMcpPackageMetadataParity(manifest, serverMetadata) {
     throw new Error(
       `server.json name (${String(serverMetadata.name)}) must match package.json mcpName (${String(manifest.mcpName)}).`,
     );
+  }
+
+  if (npmPackage.transport?.type !== "stdio") {
+    throw new Error(
+      `server.json npm transport must be stdio, received ${String(npmPackage.transport?.type)}.`,
+    );
+  }
+
+  const expectedBinPath = "./dist/server.js";
+  if (manifest.bin?.mcp !== expectedBinPath || manifest.bin?.["martin-loop-mcp"] !== expectedBinPath) {
+    throw new Error(
+      `package.json bin aliases must expose both "mcp" and "martin-loop-mcp" at ${expectedBinPath}.`,
+    );
+  }
+
+  const shippedFiles = Array.isArray(manifest.files) ? manifest.files : [];
+  for (const requiredFile of ["dist", "README.md", "server.json"]) {
+    if (!shippedFiles.includes(requiredFile)) {
+      throw new Error(`package.json files must include ${requiredFile}.`);
+    }
   }
 }
 

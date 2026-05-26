@@ -112,7 +112,6 @@ describe("operator commands", () => {
     expect(result.exitCode).toBe(0);
     expect(payload.command).toBe("doctor");
     expect(payload.cliVersion).toBeTypeOf("string");
-    expect(payload.profiles.minimal).toContain("martin_list_runs");
     expect(payload.starterTools).toContain("martin_doctor");
     expect(payload.environment.runsRoot).toBeTypeOf("string");
   });

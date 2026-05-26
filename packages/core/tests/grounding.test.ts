@@ -10,7 +10,7 @@ import {
   loadOrBuildRepoGroundingIndex,
   queryRepoGroundingIndex,
   scanPatchForGroundingViolations
-} from "../src/index.js";
+} from "../src/index";
 
 describe("repo grounding index", () => {
   it("indexes repo files and returns relevant hits for the current objective", async () => {

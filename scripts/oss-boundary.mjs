@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
-import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -15,6 +14,9 @@ const OSS_CORE_PATHS = [
 
 const ALLOWED_TOP_LEVEL_ENTRIES = [
   ".github",
+  "benchmarks",
+  "CONTEXT.md",
+  "deploy",
   "demo",
   "docs",
   "examples",
@@ -36,14 +38,41 @@ const ALLOWED_TOP_LEVEL_ENTRIES = [
   "vitest.workspace.ts",
 ];
 
-const FORBIDDEN_TOP_LEVEL_ENTRIES = [".planning", "apps", "benchmarks", "deploy"];
-const IGNORED_TOP_LEVEL_ENTRIES = [".artifacts", ".git", "dist", "node_modules"];
+const FORBIDDEN_TOP_LEVEL_ENTRIES = ["apps", "enterprise"];
+const IGNORED_TOP_LEVEL_ENTRIES = [
+  ".artifacts",
+  ".cache",
+  ".git",
+  ".npm-cache",
+  ".planning",
+  "dist",
+  "node_modules",
+  "old",
+  "output",
+  "tests and feedback",
+  "tmp",
+  "vitest-results.json",
+];
+const IGNORED_TOP_LEVEL_PATTERNS = [/\.zip$/u, /\.tgz$/u, /\.tar\.gz$/u];
+const FORBIDDEN_PACKAGE_DIRS = [
+  "packages/audit-exporter",
+  "packages/audit-proof-tests",
+  "packages/formal-proof",
+  "packages/fuzzer",
+  "packages/headlessos-core",
+  "packages/policy",
+  "packages/red-team",
+  "packages/sdk",
+  "packages/trace-intelligence",
+];
 
 export async function createOssBoundaryReport(options = {}) {
   const rootDir = options.rootDir ?? process.cwd();
   const rootManifest = JSON.parse(await readFile(path.join(rootDir, "package.json"), "utf8"));
   const ossCorePackages = await loadPackages(rootDir, OSS_CORE_PATHS);
-  const topLevelEntries = listTrackedTopLevelEntries(rootDir);
+  const topLevelEntries = (await readdir(rootDir, { withFileTypes: true }))
+    .map((entry) => entry.name)
+    .sort();
 
   const forbiddenTopLevelEntries = topLevelEntries.filter((entry) =>
     FORBIDDEN_TOP_LEVEL_ENTRIES.includes(entry),
@@ -51,13 +80,17 @@ export async function createOssBoundaryReport(options = {}) {
   const unexpectedTopLevelEntries = topLevelEntries.filter(
     (entry) =>
       !ALLOWED_TOP_LEVEL_ENTRIES.includes(entry) &&
-      !IGNORED_TOP_LEVEL_ENTRIES.includes(entry),
+      !IGNORED_TOP_LEVEL_ENTRIES.includes(entry) &&
+      !IGNORED_TOP_LEVEL_PATTERNS.some((pattern) => pattern.test(entry)),
   );
   const packageDirs = (await readdir(path.join(rootDir, "packages"), { withFileTypes: true }))
     .filter((entry) => entry.isDirectory())
     .map((entry) => `packages/${entry.name}`)
     .sort();
-  const unexpectedPackageDirs = packageDirs.filter((entry) => !OSS_CORE_PATHS.includes(entry));
+  const forbiddenPackageDirs = packageDirs.filter((entry) => FORBIDDEN_PACKAGE_DIRS.includes(entry));
+  const unexpectedPackageDirs = packageDirs.filter(
+    (entry) => !OSS_CORE_PATHS.includes(entry) && !FORBIDDEN_PACKAGE_DIRS.includes(entry),
+  );
   const dependencyLeaks = findDependencyLeaks(ossCorePackages);
 
   return {
@@ -66,6 +99,7 @@ export async function createOssBoundaryReport(options = {}) {
       forbiddenTopLevelEntries.length === 0 &&
       unexpectedTopLevelEntries.length === 0 &&
       unexpectedPackageDirs.length === 0 &&
+      forbiddenPackageDirs.length === 0 &&
       dependencyLeaks.length === 0
         ? "go"
         : "no_go",
@@ -82,29 +116,17 @@ export async function createOssBoundaryReport(options = {}) {
     forbiddenTopLevelEntries,
     unexpectedTopLevelEntries,
     unexpectedPackageDirs,
+    forbiddenPackageDirs,
     dependencyLeaks,
     summary: {
       ossCoreCount: ossCorePackages.length,
       forbiddenTopLevelCount: forbiddenTopLevelEntries.length,
       unexpectedTopLevelCount: unexpectedTopLevelEntries.length,
       unexpectedPackageDirCount: unexpectedPackageDirs.length,
+      forbiddenPackageDirCount: forbiddenPackageDirs.length,
       dependencyLeakCount: dependencyLeaks.length,
     },
   };
-}
-
-function listTrackedTopLevelEntries(rootDir) {
-  const output = execFileSync("git", ["ls-tree", "--name-only", "HEAD"], {
-    cwd: rootDir,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-
-  return output
-    .split(/\r?\n/u)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-    .sort();
 }
 
 export function renderOssBoundaryReportMarkdown(report) {
@@ -134,6 +156,7 @@ export function renderOssBoundaryReportMarkdown(report) {
     "## Boundary Checks",
     `- Forbidden top-level entries: ${report.forbiddenTopLevelEntries.join(", ") || "none"}`,
     `- Unexpected top-level entries: ${report.unexpectedTopLevelEntries.join(", ") || "none"}`,
+    `- Forbidden non-public package directories: ${report.forbiddenPackageDirs.join(", ") || "none"}`,
     `- Unexpected package directories: ${report.unexpectedPackageDirs.join(", ") || "none"}`,
     `- Workspace dependency leaks: ${report.dependencyLeaks.length === 0 ? "none" : report.dependencyLeaks.map((leak) => `${leak.fromPackage} -> ${leak.toPackage}`).join(", ")}`,
     "",
@@ -146,10 +169,17 @@ export async function writeOssBoundaryReport(options = {}) {
   const rootDir = options.rootDir ?? process.cwd();
   const outputDir = options.outputDir ?? path.join(rootDir, "docs", "oss");
   const report = await createOssBoundaryReport({ rootDir });
+  const markdown = renderOssBoundaryReportMarkdown(report);
+
   await mkdir(outputDir, { recursive: true });
   await writeFile(
     path.join(outputDir, "OSS-BOUNDARY-REPORT.json"),
     `${JSON.stringify(report, null, 2)}\n`,
+    "utf8",
+  );
+  await writeFile(
+    path.join(outputDir, "OSS-BOUNDARY-REPORT.md"),
+    `${markdown}\n`,
     "utf8",
   );
 
@@ -209,7 +239,7 @@ async function main() {
 
   process.stdout.write(`${markdown}\n`);
   process.stdout.write(
-    `\nArtifact written to ${path.join(rootDir, "docs", "oss", "OSS-BOUNDARY-REPORT.json")}\n`,
+    `\nArtifacts written to ${path.join(rootDir, "docs", "oss", "OSS-BOUNDARY-REPORT.json")} and ${path.join(rootDir, "docs", "oss", "OSS-BOUNDARY-REPORT.md")}\n`,
   );
 
   process.exitCode = report.verdict === "go" ? 0 : 1;

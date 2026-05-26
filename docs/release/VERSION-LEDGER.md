@@ -4,41 +4,27 @@ This file is the canonical version map for release work. Do not push, tag, or pu
 
 ## Root package: `martin-loop`
 
-- live npm dist-tag `latest`: `0.1.5`
-- live npm versions include: `0.1.0`, `0.1.1`, `0.1.2`, `0.1.3`, `0.1.4`, `0.1.5`, and a historical anomaly `1.3.0`
-- public GitHub `main`: `0.1.6`
-- local OSS candidate tree on `codex/oss-0.2.4-rc`: `0.2.4`
-- release rule: treat the root package as a separate `0.1.x` line and do not infer standalone MCP versioning from it
+- live npm dist-tag `latest` before `v0.2.5`: `0.2.4`
+- public GitHub `main` target for the `v0.2.5` release: `0.2.5`
+- release rule: treat the root package as its own semver line and do not infer standalone MCP versioning from it
 
 ## Standalone MCP package: `@martinloop/mcp`
 
-- live npm dist-tag `latest`: `0.1.3`
-- live npm versions include: `0.1.1`, `0.1.2`, `0.1.3`
-- public GitHub `main`: `0.1.3`
-- local OSS integrated tree: `0.2.5`
-- public scheduled release train:
+- live npm dist-tag `latest` before `mcp-v0.2.5`: `0.2.0`
+- public GitHub `main` target for `mcp-v0.2.5`: `0.2.5`
+- public release lineage:
   - `0.1.4` for operator foundation
   - `0.2.0` for cockpit expansion
   - `0.2.5` for the stable cockpit line
-
-## Tier Boundary
-
-- Free / OSS is the public package lane in this repo: root `martin-loop` on `0.1.x` plus the standalone `@martinloop/mcp` train.
-- Separate non-OSS product surfaces do not inherit semver from either public OSS package.
-- The public MCP train labels are:
-  - `0.1.4` operator foundation
-  - `0.2.0` cockpit expansion
-  - `0.2.5` stable cockpit line
 
 ## Rules
 
 - do not use `0.3.0` as an active standalone MCP release label in OSS or mirror surfaces
 - do not let the root package version line drive standalone MCP release numbering
-- do not use public MCP release docs to imply promotion of the non-OSS, team-scale, organization-scale, or separate product surfaces
-- do not use public MCP release docs to imply promotion of the non-OSS additional remote MCP surface or additional remote configuration lanes
-- keep non-OSS implementation details out of OSS release docs
+- keep public docs scoped to the documented package surface
+- do not use public MCP release docs to imply undocumented hosted or transport features
 - before any push candidate, confirm this ledger against:
   - `npm view martin-loop version versions --json`
   - `npm view @martinloop/mcp version versions --json`
   - public GitHub `main`
-  - local OSS source of truth
+  - the exact local release candidate tree

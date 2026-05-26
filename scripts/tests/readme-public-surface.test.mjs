@@ -109,7 +109,7 @@ test("root README matches the current public package versions and launch surface
   assert.match(readme, /npx martin-loop inspect/);
   assert.match(readme, /npx martin-loop resume/);
   assert.match(readme, new RegExp(`@martinloop/mcp@${mcpPackageJson.version.replaceAll(".", "\\.")}`));
-  assert.match(readme, /ten stdio tools plus read-only resources/i);
+  assert.match(readme, /eleven stdio tools plus read-only resources, resource templates, and prompts/i);
   assert.match(readme, /`martin_run` remains the only tool that can execute work/i);
   assert.match(readme, /martin_list_runs/);
   assert.match(readme, /martin_run_dossier/);

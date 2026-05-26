@@ -1,70 +1,53 @@
 # @martinloop/mcp v0.2.0
 
-`0.2.0` is the cockpit expansion release for the Martin Loop MCP server. It turns the governed execution lane into a small local cockpit for reviewing governed agent runs.
+`@martinloop/mcp@0.2.0` is the public cockpit expansion release for the standalone Martin Loop MCP package. The release keeps `martin_run` as the only write-capable entrypoint and adds read-only inspection, resources, resource templates, and prompts for hosts that need richer post-run context.
 
-`0.1.4` introduced the safe operator foundation: check the environment, preflight a contract, run a governed coding task, and inspect saved results. `0.2.0` keeps that contract intact and adds read-only review surfaces so MCP hosts can show what happened after a run: recent runs, one-run dossiers, individual attempts, verifier results, and guided review prompts.
+## What Shipped
 
-The important safety boundary is unchanged: `martin_run` is still the only tool that can execute work. The new `0.2.0` additions are read-only inspection and review helpers.
+### Read-only cockpit inspection
 
-## What Changed From `0.1.4`
+- added `martin_list_runs`
+- added `martin_get_run`
+- added `martin_get_attempt`
+- added `martin_get_verification_results`
+- added `martin_run_dossier`
+- kept `martin_run` as the only execution entrypoint
 
-| Area | `0.1.4` | `0.2.0` |
-| --- | --- | --- |
-| Environment checks | `martin_doctor` | unchanged |
-| Run preflight | `martin_preflight` | unchanged |
-| Governed execution | `martin_run` | unchanged write boundary |
-| Basic run inspection | `martin_inspect`, `martin_status` | unchanged |
-| Review cockpit | not included | run lists, dossiers, attempts, verifier results |
-| MCP discovery | tools | tools, resources, resource templates, prompts |
+### Resources
 
-## Tools
+- added `martin://server/health`
+- added `martin://runs/recent`
+- added `martin://guides/mcp-usage`
+- added `martin://guides/publish-readiness`
 
-Existing tools:
+### Resource templates
 
-- `martin_doctor`
-- `martin_preflight`
-- `martin_run`
-- `martin_inspect`
-- `martin_status`
+- added `martin://runs/{loopId}`
+- added `martin://runs/{loopId}/attempts/{attemptIndex}`
+- added `martin://runs/{loopId}/verification`
 
-New read-only cockpit tools:
+### Prompts
 
-- `martin_list_runs` lists recent governed run summaries from the local run store.
-- `martin_get_run` returns a run dossier by `loopId` or `latest`.
-- `martin_get_attempt` returns one attempt record by `loopId` and `attemptIndex`.
-- `martin_get_verification_results` extracts verifier completion events.
-- `martin_run_dossier` assembles summary, task, budget, attempts, and verification evidence for review.
+- added `martin_governed_coding_kickoff`
+- added `martin_debug_failed_run`
+- added `martin_publish_readiness_review`
 
-## Resources
+## Release Verification Gates
 
-- `martin://runs/summary`
-- `martin://runs/latest`
+- `pnpm --filter @martinloop/mcp lint`
+- `pnpm --filter @martinloop/mcp test`
+- `pnpm --filter @martinloop/mcp build`
+- `pnpm --filter @martinloop/mcp smoke:pack`
+- `pnpm --filter @martinloop/mcp smoke:published:pack`
+- `pnpm --filter @martinloop/mcp verify:release`
+- `pnpm --filter @martinloop/mcp smoke:published`
 
-## Resource Templates
+## Compatibility Statement
 
-- `martin://runs/{loopId}`
-- `martin://runs/{loopId}/attempts/{attemptIndex}`
-- `martin://runs/{loopId}/verification`
+- `martin_run` remains the only execution entrypoint
+- existing `martin_inspect`, `martin_status`, `martin_doctor`, and `martin_preflight` flows remain backward-compatible
+- all newly added MCP surfaces in `0.2.0` are read-only
 
-## Prompts
+## Later-Line Boundary
 
-- `martin_review_run`
-- `martin_triage_failures`
-
-## Upgrade Notes
-
-- Existing `0.1.4` tool callers do not need to change their current calls.
-- Hosts can opt into the new cockpit surface by listing tools, resources, resource templates, and prompts through normal MCP discovery.
-- The npm package remains `@martinloop/mcp`.
-- The MCP server name remains `io.github.Keesan12/martin-loop`.
-
-## Verification
-
-The published package was verified from npm after release. The published smoke test confirmed:
-
-- package version `@martinloop/mcp@0.2.0`
-- all 10 tools are discoverable
-- both resources are discoverable
-- all 3 resource templates are discoverable
-- both prompts are discoverable
-- local run inspection, status, run listing, dossier generation, and governed stub execution work from the installed npm artifact
+`0.2.0` is the cockpit expansion contract. Later stable-line polish belongs to `0.2.5` and should not be described as part of this release unless it is explicitly labeled as later-line behavior.

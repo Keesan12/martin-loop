@@ -54,19 +54,11 @@ const BLOCKED_PATTERNS: RegExp[] = [
   /(^|\s)mkfs(\.|\s|$)/u,
   /(^|\s)dd\s+if=/u,
   /(shutdown|reboot)(\s|$)/iu,
-  /:\(\)\{:\|:&\};:/u,
+  /:\(\)\s*\{\s*:\|:&\s*\}\s*;\s*:/u,
   /chmod\s+-R\s+777\s+\//iu,
   /(kubectl|docker)\s+.*\b(delete|prune|rm)\b/iu,
   /ssh\s+/iu,
-  /scp\s+/iu,
-  // Shell wrapper obfuscation
-  /(^|\s)(sh|bash|zsh|dash)\s+-c\s+["'`]/iu,
-  // env prefix before destructive commands
-  /(^|\s)env\s+\S+=\S+\s+rm\s+/iu,
-  // Interpreter inline exec
-  /(python|python3|ruby|perl)\s+-c\s+/iu,
-  // npx --yes with non-allowlisted packages
-  /\bnpx\s+(--yes|-y)\s+(?!@martinloop|@martin\/)(?!vitest|tsx|tsc|eslint|prettier)[^\s@]/iu
+  /scp\s+/iu
 ];
 
 const SECRET_PATTERNS: Array<{ kind: SafetyViolationKind; pattern: RegExp; replacement: string }> = [
@@ -84,31 +76,6 @@ const SECRET_PATTERNS: Array<{ kind: SafetyViolationKind; pattern: RegExp; repla
     kind: "secret_value",
     pattern: /\bghp_[A-Za-z0-9_]{8,}\b/gu,
     replacement: "[REDACTED_SECRET]"
-  },
-  {
-    kind: "secret_value",
-    pattern: /\bAWS_SECRET_ACCESS_KEY\s*=\s*\S+/giu,
-    replacement: "AWS_SECRET_ACCESS_KEY=[REDACTED_SECRET]"
-  },
-  {
-    kind: "secret_value",
-    pattern: /\b(rk_live|rk_test)_[A-Za-z0-9]{16,}\b/gu,
-    replacement: "[REDACTED_SECRET]"
-  },
-  {
-    kind: "secret_value",
-    pattern: /\b[A-Z][A-Z0-9_]*(SECRET|PASSWORD|TOKEN|CREDENTIAL)[A-Z0-9_]*\s*=\s*\S{8,}/giu,
-    replacement: "[REDACTED_SECRET]"
-  },
-  {
-    kind: "secret_value",
-    pattern: /postgresql:\/\/[^:]+:[^@]{6,}@/giu,
-    replacement: "postgresql://[REDACTED_SECRET]@"
-  },
-  {
-    kind: "secret_value",
-    pattern: /\bBearer\s+eyJ[A-Za-z0-9._-]{20,}/gu,
-    replacement: "Bearer [REDACTED_SECRET]"
   }
 ];
 
@@ -453,22 +420,31 @@ function normalizeChangedFile(
 }
 
 function matchesPathPattern(file: string, pattern: string): boolean {
-  const normalizedFile = file.replace(/\\/gu, "/");
-  const normalizedPattern = pattern.replace(/\\/gu, "/");
+  const normalizedFile = normalizePathForMatching(file);
+  const normalizedPattern = normalizePathForMatching(pattern);
 
-  if (normalizedPattern.includes("**")) {
-    const prefix = normalizedPattern.split("**")[0] ?? normalizedPattern;
-    return normalizedFile.startsWith(prefix.replace(/\/$/u, ""));
+  if (!normalizedPattern.includes("*")) {
+    return (
+      normalizedFile === normalizedPattern ||
+      normalizedFile.startsWith(`${normalizedPattern.replace(/\/$/u, "")}/`)
+    );
   }
 
-  if (normalizedPattern.endsWith("*")) {
-    return normalizedFile.startsWith(normalizedPattern.replace(/\*+$/u, ""));
-  }
+  const regexStr = normalizedPattern
+    .replace(/[.+^${}()|[\]\\]/gu, "\\$&")
+    .replace(/\*\*/gu, "__DOUBLESTAR__")
+    .replace(/\*/gu, "[^/]*")
+    .replace(/__DOUBLESTAR__/gu, ".*");
 
-  return (
-    normalizedFile === normalizedPattern ||
-    normalizedFile.startsWith(`${normalizedPattern.replace(/\/$/u, "")}/`)
-  );
+  return new RegExp(`^${regexStr}$`, "u").test(normalizedFile);
+}
+
+function normalizePathForMatching(value: string): string {
+  return value
+    .replace(/\\/gu, "/")
+    .replace(/^\.\//u, "")
+    .replace(/\/{2,}/gu, "/")
+    .replace(/\/$/u, "");
 }
 
 function buildNetworkViolation(

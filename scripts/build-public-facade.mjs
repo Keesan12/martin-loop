@@ -39,12 +39,7 @@ export async function buildPublicFacade(options = {}) {
   const rootDir = options.rootDir ?? process.cwd();
   const distDir = path.join(rootDir, "dist");
 
-  await rm(distDir, {
-    force: true,
-    recursive: true,
-    maxRetries: 10,
-    retryDelay: 100,
-  });
+  await rm(distDir, { force: true, recursive: true });
   await mkdir(path.join(distDir, "bin"), { recursive: true });
 
   for (const facade of PACKAGE_FACADES) {
@@ -58,7 +53,6 @@ export async function buildPublicFacade(options = {}) {
 
   await writeFile(path.join(distDir, "index.js"), createRootIndexSource(), "utf8");
   await writeFile(path.join(distDir, "index.d.ts"), createRootTypesSource(), "utf8");
-  await mkdir(path.join(distDir, "bin"), { recursive: true });
   await writeFile(path.join(distDir, "bin", "martin-loop.js"), createRootBinSource(), "utf8");
   await chmod(path.join(distDir, "bin", "martin-loop.js"), 0o755);
 

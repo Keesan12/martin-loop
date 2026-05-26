@@ -9,48 +9,9 @@ This packet is the public proof artifact for the `@martinloop/mcp@0.2.0` cockpit
 - public release train:
   - `0.1.4` operator foundation
   - `0.2.0` cockpit expansion
-  - `0.2.5` stable cockpit line
+  - 0.2.5 stable cockpit line
 
 See [VERSION-LEDGER.md](./VERSION-LEDGER.md) for the canonical version map.
-
-## Tier Boundary
-
-This packet is a public Free / OSS MCP artifact only.
-
-- separate non-OSS product lines remain outside this public packet
-- reviewing this packet does not approve any hosted or non-OSS surface
-
-## Commands Run
-
-The required package-proof gates for this cockpit expansion contract are:
-
-```powershell
-pnpm --filter @martinloop/mcp lint
-pnpm --filter @martinloop/mcp test
-pnpm --filter @martinloop/mcp build
-pnpm --filter @martinloop/mcp smoke:pack
-pnpm --filter @martinloop/mcp smoke:published:pack
-pnpm --filter @martinloop/mcp verify:release
-```
-
-## Versions Tested
-
-- root package release lane aligned in this repo: `martin-loop@0.2.4`
-- standalone cockpit contract in this packet: `@martinloop/mcp@0.2.0`
-- later documented stable cockpit line: `@martinloop/mcp@0.2.5`
-
-## Host Matrix Receipts
-
-- Codex install snippet and profile generation are documented
-- Claude Code install snippets for Unix and Windows are documented
-- Gemini and generic profile generation are documented
-- the public docs align the same tool, resource, and prompt surface across package README, quickstart, and OSS guides
-
-## Mirror Parity Receipts
-
-- `packages/mcp/package.json` and `packages/mcp/server.json` stay aligned to the public docs
-- `packages/mcp/src/server.ts`, `resources.ts`, and `prompts.ts` are the source-of-truth contract for tools, resources, and prompts
-- `docs/oss` and `docs/release` describe the same cockpit expansion boundary
 
 ## 0.2.0 Cockpit Expansion Contract
 
@@ -97,7 +58,7 @@ The 0.2.5 stable cockpit line is separate from this `0.2.0` packet. 0.2.5 stable
 
 ## Contract Boundary
 
-`0.2.0` does not add a second execution entrypoint, remote transport metadata, hosted operations, or any write-capable tool beyond `martin_run`.
+`0.2.0` does not add a second execution entrypoint, remote transport metadata, registry publication, hosted operations, or any write-capable tool beyond `martin_run`.
 
 ## Evidence
 
@@ -123,24 +84,7 @@ pnpm --filter @martinloop/mcp verify:release
 
 - no public npm publish in this packet
 - no GitHub release or tag in this packet
+- no registry publication in this packet
 - no hosted remote-server claim in this packet
 - no new write-capable MCP tool beyond `martin_run`
 - no `0.2.5` stable-line triage claim inside the `0.2.0` contract
-
-## Publish Gates Still Pending Explicit Approval
-
-These steps stay blocked until explicitly approved for a later ship step:
-
-- cut or push a publish candidate branch
-- create a release tag
-- publish the standalone package
-- update public GitHub release state for the standalone package
-
-## Ready-To-Push Rule
-
-Do not call this line ready to push until all of these are true:
-
-- version truth still matches [VERSION-LEDGER.md](./VERSION-LEDGER.md)
-- public docs still match the actual tools, resources, resource templates, and prompts
-- package gates remain green
-- the exact candidate branch CI is green on Windows, Linux, and macOS
