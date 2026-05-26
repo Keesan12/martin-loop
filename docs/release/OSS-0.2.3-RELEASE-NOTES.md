@@ -17,5 +17,5 @@
 
 - prompt pack aliases
 - agent-start guide resource
-- full-local profile generation
+- MCP install-profile changes
 - shared analytics features outside the OSS package

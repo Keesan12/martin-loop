@@ -4,15 +4,15 @@
 
 ## Included
 
-- `minimal` default profile for cheap read-mostly MCP installs
-- `diagnostic` profile for deeper read-only inspection
-- `full-local` profile for local execution hosts
+- generated `starter` profile for small MCP host setups
+- generated `full` profile for deeper MCP inspection and review
+- public manual allow-list guidance for stricter read-only host configs
 - explicit profile maps in `martin doctor` and `martin mcp print-config`
-- compatibility aliases `starter` and `full`
+- public CLI examples that show the shipped profile names directly
 
 ## Not Included
 
-- full-local profile generation
+- additional generated read-only profile presets
 - separate endpoint lifecycle
 - run triage scoring changes
 - Context Diet compact resources

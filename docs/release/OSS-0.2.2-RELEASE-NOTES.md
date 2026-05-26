@@ -14,5 +14,5 @@
 
 - compact Context Diet resources
 - prompt pack aliases
-- full-local profile generation
+- MCP install-profile changes
 - separate lifecycle or team evidence features
