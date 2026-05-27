@@ -6,6 +6,7 @@ import { createLoopRecord, type LoopEventDraft } from "@martin/contracts";
 import { describe, expect, it } from "vitest";
 
 import { executeCli } from "../src/index.js";
+import rootPackageJson from "../../../package.json" with { type: "json" };
 
 function makeLoopRecord() {
   const loop = createLoopRecord({
@@ -111,7 +112,7 @@ describe("operator commands", () => {
 
     expect(result.exitCode).toBe(0);
     expect(payload.command).toBe("doctor");
-    expect(payload.cliVersion).toBeTypeOf("string");
+    expect(payload.cliVersion).toBe(rootPackageJson.version);
     expect(payload.starterTools).toContain("martin_doctor");
     expect(payload.environment.runsRoot).toBeTypeOf("string");
   });
