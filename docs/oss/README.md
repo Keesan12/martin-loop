@@ -34,7 +34,7 @@ pnpm mcp:published:smoke:pack
 For isolated end-to-end validation:
 
 ```bash
-pnpm rc:validate
+pnpm release:validate-local
 pnpm release:matrix:local
 ```
 

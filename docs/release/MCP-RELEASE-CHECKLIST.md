@@ -37,7 +37,7 @@ Use this checklist before calling a Martin MCP release ready.
 - sync MCP-facing docs from the public release source after release-doc tests pass
 - update non-public planning notes outside the public release docs with repo truth, verification, blockers, and next step
 
-## Candidate Branch Proof
+## Release Proof
 
-- the exact candidate branch has CI proof on Windows, Linux, and macOS
-- doc and version parity checks pass in CI on that exact pushed candidate commit
+- the exact release commit has CI proof on Windows, Linux, and macOS
+- doc and version parity checks pass in CI on that exact pushed release commit

@@ -42,7 +42,7 @@ The public MCP schedule inside the Free / OSS lane is:
 
 - `0.1.4` operator foundation
 - `0.2.0` cockpit expansion
-- `0.2.5` stable cockpit line
+- `0.2.5` public MCP package line
 
 Do not treat a public `@martinloop/mcp` release as a promotion of the private Pro, Growth, Enterprise, or Internal lanes.
 Keep private control-plane, autonomy, and router internals out of this repo even when naming the paid tiers.

@@ -157,7 +157,7 @@ The dossier includes what happened, what Martin prevented, verifier evidence, ro
 
 ### Public Package Surface
 
-The frozen public package surface for this release candidate is:
+The current public package surface is:
 
 - Install target: `npm install martin-loop`
 - CLI target: `npx martin-loop`
@@ -192,7 +192,7 @@ The public MCP release train is separate from the paid-tier ladder:
 
 - `0.1.4` operator foundation
 - `0.2.0` cockpit expansion
-- `0.2.5` stable cockpit line
+- `0.2.5` public MCP package line
 
 A public `@martinloop/mcp` release does not promote the private Pro, Growth, Enterprise, or Internal lanes.
 
@@ -416,7 +416,7 @@ Current RC gate commands:
 pnpm oss:validate
 pnpm public:smoke
 pnpm repo:smoke
-pnpm rc:validate
+pnpm release:validate-local
 pnpm pilot:prep:validate
 pnpm release:matrix:local
 ```

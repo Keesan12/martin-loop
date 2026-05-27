@@ -6,7 +6,7 @@ This quickstart covers the public OSS runtime and the standalone `@martinloop/mc
 
 - 0.1.4 operator foundation.
 - 0.2.0 cockpit expansion. 0.2.0 adds resources, resource templates, prompts, and read-only cockpit inspection.
-- 0.2.5 stable cockpit line. 0.2.5 adds triage and degraded run-store hardening.
+- 0.2.5 public MCP package line. 0.2.5 adds triage and degraded run-store hardening.
 
 ## Prerequisites
 

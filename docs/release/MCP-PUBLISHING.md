@@ -2,7 +2,7 @@
 
 Use npm trusted publishing from GitHub Actions for `@martinloop/mcp`.
 
-For the current integrated `0.2.5` tip, the publish claim covers the public stable cockpit line: tools, resources, resource templates, and prompts, plus the run-triage surface layered into that cockpit. The docs and release checks must describe that full surface honestly, while the public scheduled train stays `0.1.4 -> 0.2.0 -> 0.2.5`.
+For the current integrated `0.2.5` tip, the publish claim covers the public MCP package line: tools, resources, resource templates, and prompts, plus the run-triage surface layered into that package. The docs and release checks must describe that full surface honestly, while the public scheduled train stays `0.1.4 -> 0.2.0 -> 0.2.5`.
 
 ## Tier Boundary
 
@@ -14,7 +14,7 @@ The scheduled public labels are:
 
 - `0.1.4` operator foundation
 - `0.2.0` cockpit expansion
-- `0.2.5` stable cockpit line
+- `0.2.5` public MCP package line
 
 ## Canonical Release Path
 

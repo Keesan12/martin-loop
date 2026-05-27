@@ -11,7 +11,7 @@ This packet is the local proof bundle for the current integrated `@martinloop/mc
 - public scheduled release train:
   - `0.1.4` operator foundation
   - `0.2.0` cockpit expansion
-  - `0.2.5` stable cockpit line
+  - `0.2.5` public MCP package line
 
 See [VERSION-LEDGER.md](./VERSION-LEDGER.md) for the canonical version map.
 
@@ -89,8 +89,8 @@ The remaining honesty boundary is unchanged: the current unpushed local tree has
 
 These steps remain intentionally blocked until explicit approval:
 
-- create the exact release candidate branch for the next public delivery
-- push that candidate branch
+- create the exact release branch for the next public delivery
+- push that release branch
 - run candidate-branch CI on the exact pushed commit
 - tag the release
 - publish npm
@@ -104,4 +104,4 @@ Do not call the train ready to push until all of these are true:
 - release docs, manifest, and `server.json` all align
 - source parity still holds
 - local OSS gates remain green
-- the exact candidate branch CI is green on Windows, Linux, and macOS
+- the exact release CI is green on Windows, Linux, and macOS
