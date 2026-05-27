@@ -4,17 +4,18 @@ This file is the canonical version map for release work. Do not push, tag, or pu
 
 ## Root package: `martin-loop`
 
-- live npm dist-tag `latest`: `0.1.5`
-- live npm versions include: `0.1.0`, `0.1.1`, `0.1.2`, `0.1.3`, `0.1.4`, `0.1.5`, and a historical anomaly `1.3.0`
-- public GitHub `main`: `0.1.6`
-- local OSS integrated tree: `0.1.6`
-- release rule: treat the root package as a separate `0.1.x` line and do not infer standalone MCP versioning from it
+- live npm dist-tag `latest`: `0.2.6`
+- live npm versions include: `0.1.0`, `0.1.1`, `0.1.2`, `0.1.3`, `0.1.4`, `0.1.5`, `0.1.6`, `0.2.0`, `0.2.1`, `0.2.2`, `0.2.3`, `0.2.4`, `0.2.5`, `0.2.6`, and a historical anomaly `1.3.0`
+- public GitHub `main`: `0.2.6`
+- local OSS integrated tree target after public sync: `0.2.6`
+- next unreleased scheduled root slice: `0.2.7`
+- release rule: treat the root package as its own public semver line and do not infer standalone MCP versioning from it
 
 ## Standalone MCP package: `@martinloop/mcp`
 
-- live npm dist-tag `latest`: `0.1.3`
-- live npm versions include: `0.1.1`, `0.1.2`, `0.1.3`
-- public GitHub `main`: `0.1.3`
+- live npm dist-tag `latest`: `0.2.5`
+- live npm versions include: `0.1.1`, `0.1.2`, `0.1.3`, `0.1.4`, `0.2.0`, `0.2.5`
+- public GitHub `main`: `0.2.5`
 - local OSS integrated tree: `0.2.5`
 - public scheduled release train:
   - `0.1.4` for operator foundation
