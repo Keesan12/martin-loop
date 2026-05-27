@@ -4,9 +4,9 @@
 
 ### Changed
 
-- Aligned the published root package with the public GitHub repo so the README, release notes, and package metadata now describe the same shipped surface.
-- Added stricter public release guardrails to block internal process language and stray release artifacts from public docs and release workflows.
-- Removed non-doc release artifacts from the public release docs folder so the repo surface stays reviewable for external users.
+- Refreshed the root package README, metadata, and release notes so GitHub and npm present the same public-facing MartinLoop product story.
+- Added stricter release checks to block internal process language and stray non-doc artifacts from public docs and release workflows.
+- Removed leftover release artifacts from the public docs tree so external readers only see docs intended for them.
 
 ## [0.2.6] - 2026-05-27
 

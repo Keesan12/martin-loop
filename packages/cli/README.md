@@ -2,7 +2,7 @@
 
 CLI implementation for MartinLoop.
 
-The CLI groups execution, readiness checks, persisted-run inspection, and MCP host setup into one command surface:
+The CLI groups execution, readiness checks, persisted-run inspection, and MCP host setup into one command set:
 
 - `martin doctor`
 - `martin demo`
@@ -24,8 +24,8 @@ The CLI groups execution, readiness checks, persisted-run inspection, and MCP ho
 
 ```sh
 martin doctor
-martin preflight "repair the flaky MCP release lane" --verify "pnpm --filter @martinloop/mcp test"
-martin run "repair the flaky MCP release lane" --verify "pnpm --filter @martinloop/mcp test"
+martin preflight "inspect the latest MCP run and confirm the verifier stays green" --verify "pnpm --filter @martinloop/mcp test"
+martin run "inspect the latest MCP run and confirm the verifier stays green" --verify "pnpm --filter @martinloop/mcp test"
 martin triage
 martin dossier --latest
 ```
