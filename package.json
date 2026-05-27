@@ -51,8 +51,8 @@
     "mcp:pack:smoke": "pnpm --filter @martinloop/mcp smoke:pack",
     "mcp:published:smoke": "pnpm --filter @martinloop/mcp smoke:published",
     "mcp:published:smoke:pack": "pnpm --filter @martinloop/mcp smoke:published:pack",
-    "rc:validate": "node ./scripts/rc-validation.mjs",
-    "rc:validate:install": "node ./scripts/rc-validation.mjs --install",
+    "release:validate-local": "node ./scripts/rc-validation.mjs",
+    "release:validate-local:install": "node ./scripts/rc-validation.mjs --install",
     "release:matrix:local": "node ./scripts/release-matrix.mjs",
     "release:root:guard": "node ./scripts/root-release-guard.mjs --pack",
     "run:cli": "pnpm --filter @martin/cli dev"

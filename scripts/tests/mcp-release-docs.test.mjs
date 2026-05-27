@@ -217,17 +217,17 @@ test("MCP 0.2.0 release packet proves the cockpit-expansion contract without inh
     for (const laterSurface of LATER_025_SURFACES) {
       assert.doesNotMatch(contents, new RegExp(escapeRegex(laterSurface), "i"));
     }
-    assert.doesNotMatch(contents, /stable cockpit line/i);
+    assert.doesNotMatch(contents, /public MCP package line/i);
   }
 
-  assert.match(releasePacket, /0\.2\.5 stable cockpit line/i);
+  assert.match(releasePacket, /0\.2\.5 public MCP package line/i);
   for (const laterSurface of LATER_025_SURFACES) {
     assert.match(releasePacket, new RegExp(escapeRegex(laterSurface), "i"));
   }
 
   for (const contents of [packageReadme, aiGuide, quickstart]) {
     assert.match(contents, /0\.2\.0 cockpit expansion/i);
-    assert.match(contents, /0\.2\.5 stable cockpit line/i);
+    assert.match(contents, /0\.2\.5 public MCP package line/i);
     assert.match(contents, /0\.2\.0 adds resources, resource templates, prompts, and read-only cockpit inspection/i);
     assert.match(contents, /0\.2\.5 adds triage and degraded run-store hardening/i);
   }
@@ -371,13 +371,13 @@ test("MCP release docs preserve publish gates and current cockpit claims", async
   assert.match(compatibilityDoc, /martin_run remains the only execution entrypoint/i);
   assert.match(compatibilityDoc, /resources, resource templates, and prompts are additive/i);
   assert.match(checklistDoc, /MCP-X\.Y\.Z-RELEASE-PACKET\.md/);
-  assert.match(checklistDoc, /Candidate Branch Proof/i);
+  assert.match(checklistDoc, /Release Proof/i);
   assert.match(checklistDoc, /packages\/mcp/);
   assert.match(checklistDoc, /downstream workspace copy/i);
   assert.match(versionLedger, /@martinloop\/mcp/);
   assert.match(versionLedger, /0\.1\.3/);
   assert.match(versionLedger, /0\.2\.5/);
-  assert.match(releasePacket, /candidate branch CI is green on Windows, Linux, and macOS/i);
+  assert.match(releasePacket, /release CI is green on Windows, Linux, and macOS/i);
   assert.match(deliveryMap, /0\.1\.4/);
   assert.match(deliveryMap, /0\.2\.0/);
   assert.match(deliveryMap, /0\.2\.5/);
@@ -408,7 +408,7 @@ test("OSS tier docs keep the paid-tier ladder separate from the public MCP train
     assert.match(contents, /0\.2\.0/);
     assert.match(contents, /cockpit expansion/i);
     assert.match(contents, /0\.2\.5/);
-    assert.match(contents, /stable cockpit line/i);
+    assert.match(contents, /public MCP package line/i);
   }
 
   for (const contents of [rootReadme, contextDoc, versionLedger, deliveryMap, publishingDoc, releaseNotes, releasePacket]) {

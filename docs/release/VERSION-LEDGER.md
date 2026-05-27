@@ -20,7 +20,7 @@ This file is the canonical version map for release work. Do not push, tag, or pu
 - public scheduled release train:
   - `0.1.4` for operator foundation
   - `0.2.0` for cockpit expansion
-  - `0.2.5` for the stable cockpit line
+  - `0.2.5` for the public MCP package line
 
 ## Tier Boundary
 
@@ -29,7 +29,7 @@ This file is the canonical version map for release work. Do not push, tag, or pu
 - The public MCP train labels are:
   - `0.1.4` operator foundation
   - `0.2.0` cockpit expansion
-  - `0.2.5` stable cockpit line
+  - `0.2.5` public MCP package line
 
 ## Rules
 

@@ -8,7 +8,7 @@ Use this map when cutting the scheduled public deliveries from the current integ
 - staged public deliveries:
   - `0.1.4` operator foundation
   - `0.2.0` cockpit expansion
-  - `0.2.5` stable cockpit line
+  - `0.2.5` public MCP package line
 - integrated local tip: `0.2.5`
 
 See [VERSION-LEDGER.md](./VERSION-LEDGER.md) for the canonical version truth.
@@ -91,7 +91,7 @@ Do not include:
 
 ## Delivery `0.2.5`
 
-Scope: stable cockpit line for the Free / OSS public cockpit lane, including the polish and hardening needed to keep that line honest.
+Scope: the public MCP package line for the Free / OSS lane, including the polish and hardening needed to keep that line honest.
 
 Include:
 
