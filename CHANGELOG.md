@@ -1,78 +1,86 @@
 # Changelog
 
-## [0.2.6] — 2026-05-28
+## [0.2.6] - 2026-05-27
 
 ### Added
-- **Audit remediation closure** — Added the root `0.2.6` public release notes for the completed OSS security and correctness follow-up slice.
+
+- Added public release notes for the root `martin-loop` package.
 
 ### Changed
-- **Runtime hardening** — Closed the remaining root-package remediation items across verifier-command blocking, context-integrity coverage, secret redaction, safe-path validation, pricing, and cache invalidation.
-- **Release proof lane** — Synced the root package version, public README surfaces, quickstart docs, and root release guard to the shipped `0.2.6` contract while keeping `@martinloop/mcp` on `0.2.5`.
 
-## [0.2.5] — 2026-05-26
+- Improved verifier-command blocking, context-integrity coverage, secret redaction, safe-path validation, model-aware budget pricing, and grounding-cache handling.
+- Updated README, quickstart docs, workflow checks, and package metadata for the shipped root package.
+
+## [0.2.5] - 2026-05-26
 
 ### Added
-- **Stable cockpit line** — Promoted the public `@martinloop/mcp@0.2.5` surface with run triage, compact proof resources, and richer discovery guidance.
-- **Run-store hardening** — Discovery and review flows now degrade cleanly when run-store entries or explicit `runsDir` paths are missing or unreadable.
+
+- Added run triage, compact proof resources, and richer MCP discovery guidance for `@martinloop/mcp`.
 
 ### Changed
-- **Release proof lane** — Synced root README, MCP release docs, package metadata, smoke scripts, and trusted-publishing workflows to the shipped `0.2.5` contract.
 
-## [0.2.4] — 2026-05-25
+- Hardened degraded run-store handling and documented MCP host setup for Codex, Claude, Gemini, and generic MCP hosts.
 
-### Added
-- **Agent prompt pack** — Added the public `martin_start`, `martin_preflight`, `martin_triage`, `martin_resume`, `martin_prove`, and `martin_release_check` prompts plus compatibility aliases.
-- **Prompt-pack docs** — Added guidance for when to use prompt-led kickoff, proof review, and release-check flows in agent hosts.
-
-## [0.2.3] — 2026-05-25
+## [0.2.4] - 2026-05-25
 
 ### Added
-- **Compact Context Diet receipts** — Added latest summary, proof-card, budget-status, verifier-evidence, rollback-evidence, and next-step surfaces for low-context follow-up.
+
+- Added MCP prompt support and expanded discovery metadata for host integrations.
+
+## [0.2.3] - 2026-05-25
+
+### Added
+
+- Added compact receipt and dossier flows for reviewing persisted runs.
 
 ### Changed
-- **Receipt docs** — Synced the public README and OSS guides to the compact dossier and receipt workflow.
 
-## [0.2.2] — 2026-05-24
+- Improved run-record summaries and next-step recommendations for context-constrained agents.
+
+## [0.2.2] - 2026-05-24
 
 ### Added
-- **Run triage lane** — Added the public persisted-run triage workflow with urgency-first ranking and warning-aware review.
+
+- Added run triage for persisted MartinLoop records.
 
 ### Changed
-- **Degraded run-store handling** — Unreadable or conflicting persisted verification evidence now surfaces warnings instead of breaking the whole review flow.
 
-## [0.2.1] — 2026-05-23
+- Improved behavior when a saved run entry is unreadable, so triage can continue and report a warning.
+
+## [0.2.1] - 2026-05-23
 
 ### Added
-- **MCP install profiles** — Added generated `starter` and `full` host-config profiles plus public guidance for manual read-only allow-lists.
+
+- Added local MCP install and config generation profiles for common hosts.
 
 ### Changed
-- **Host setup docs** — Synced Codex, Claude, Gemini, and generic MCP install guidance to the shipped public CLI commands.
 
-## [0.2.0] — 2026-05-22
+- Improved host-specific guidance for Codex, Claude, Gemini, and generic MCP wrappers.
+
+## [0.2.0] - 2026-05-22
 
 ### Added
-- **First-value OSS lane** — Added the public `doctor`, `demo`, and `dossier --latest` path for getting from install to proof quickly.
+
+- Added the first public CLI first-value path for governed agent runs, demo setup, and evidence review.
 
 ### Changed
-- **OSS quickstart surface** — Synced the root package README and quickstart docs to the governed local demo and receipt workflow.
 
-## [0.1.5] — 2026-05-08
+- Improved package boundaries and public validation checks.
+
+## [0.1.5] - 2026-05-08
 
 ### Added
-- **Context Integrity Pre-gate** — Scans user prompts and tool output for injection patterns before any attempt is admitted to the ADMIT phase. Detects authority inversion, instruction override, identity redefinition, and hidden command injection. Aborts with `human_escalation` lifecycle state on detection, with a signed artifact written to the run directory (`context-integrity-precheck.json`). Exported as `runContextIntegrityPrecheck` from `@martin/core`.
 
-## [0.1.4] — 2025-04-25
+- Added early public CLI and runtime packaging.
 
-- MCP server published as `@martinloop/mcp`
-- Windows smoke test hardening
-- One-line install docs updated
+## [0.1.4] - 2025-04-25
 
-## [0.1.0] — Initial release
+### Added
 
-- Budget governance (maxUsd, softLimitUsd, maxIterations, maxTokens)
-- Verifier gate
-- 11-class failure taxonomy
-- Safety leash (verifier commands, file scope, approval, secrets)
-- Rollback evidence
-- Context distillation
-- JSONL run records
+- Added the initial MCP server package foundation.
+
+## [0.1.0] - Initial release
+
+### Added
+
+- Initial MartinLoop runtime packages, contracts, adapters, and CLI surface.
