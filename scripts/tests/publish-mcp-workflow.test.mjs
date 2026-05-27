@@ -51,7 +51,10 @@ test("publish-mcp workflow covers trusted publishing, local-pack proof, and publ
   assert.match(workflow, /npm view "@martinloop\/mcp@\$\{\{ steps\.mcp-metadata\.outputs\.package_version \}\}" version/);
   assert.match(workflow, /pnpm --filter @martinloop\/mcp smoke:published/);
   assert.match(workflow, /softprops\/action-gh-release@v2/);
-  assert.match(workflow, /body_path:\s*docs\/release\/MCP-\$\{\{ steps\.mcp-metadata\.outputs\.package_version \}\}-RELEASE-NOTES\.md/);
+  assert.match(workflow, /body:\s*\|/);
+  assert.match(workflow, /docs\/getting-started\/mcp\.md/);
+  assert.match(workflow, /docs\/reference\/mcp-tools\.md/);
+  assert.match(workflow, /docs\/reference\/mcp-compatibility\.md/);
   assert.doesNotMatch(workflow, /registry-url/);
   assert.doesNotMatch(workflow, /NODE_AUTH_TOKEN/);
   assert.doesNotMatch(workflow, /NPM_TOKEN/);

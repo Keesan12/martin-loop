@@ -4,43 +4,46 @@ import { access, readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import rootPackageJson from "../../package.json" with { type: "json" };
-import mcpPackageJson from "../../packages/mcp/package.json" with { type: "json" };
-
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+
 const PUBLIC_LINK_SURFACES = [
   "README.md",
-  "docs/oss",
-  "docs/distribution",
+  "AGENTS.md",
+  "CHANGELOG.md",
+  "CONTRIBUTING.md",
+  "SECURITY.md",
+  "docs/getting-started",
+  "docs/concepts",
+  "docs/reference",
+  "docs/security",
+  "docs/release",
+  "packages/cli/README.md",
   "packages/mcp/README.md",
 ];
 
-const FORBIDDEN_README_PATTERNS = [
-  /\b0\.1\.4\b/i,
-  /\brelease candidate\b/i,
-  /\bregistry publication\b/i,
-  /\brepo:smoke\b/i,
-  /\bpilot:prep:validate\b/i,
-  /\bworkspace-only\b/i,
-  /\bprivate workspace\b/i,
-  /\bhosted control-plane\b/i,
-  /\blocal dashboard\b/i,
-  /\bapps\/control-plane\b/i,
-  /\bapps\/local-dashboard\b/i,
-  /\bbenchmarks\//i,
-  /\bPlase\b/i,
-  /\bmartin command alias\b/i,
-  /\b--profile minimal\b/i,
-  /\b--profile diagnostic\b/i,
-  /\b--profile full-local\b/i,
-  /^martin run\b/im,
-  /^martin inspect\b/im,
-  /^martin resume\b/im
+const FORBIDDEN_PUBLIC_COPY_PATTERNS = [
+  /\bremediation\b/i,
+  /\bstable cockpit line\b/i,
+  /\brelease-proof\b/i,
+  /\bpublic feature contract\b/i,
+  /\bversion anomal(?:y|ies)\b/i,
+  /\bhistorical anomalies\b/i,
+  /\bdelivery slice\b/i,
+  /\brelease packet\b/i,
+  /\bhandoff packet\b/i,
+  /\bworkspace chatter\b/i,
+  /\bprivate roadmap\b/i,
+  /\blocal machine\b/i,
+  /\bKeesan explicitly\b/i,
+  /\bpending directory\b/i,
+  /\bdirectory submission\b/i,
+  /\bintegration outreach\b/i,
+  /\bpublic OSS-safe\b/i,
+  /\brelease focus\b/i,
+  /\broot facade\b/i,
+  /\bmain workspace\b/i,
+  /\bprivate beta\b/i,
 ];
-
-async function readReadme() {
-  return readFile(path.join(ROOT_DIR, "README.md"), "utf8");
-}
 
 async function readRepoFile(relativePath) {
   return readFile(path.join(ROOT_DIR, relativePath), "utf8");
@@ -98,37 +101,48 @@ function extractLocalMarkdownLinks(contents) {
   )].sort();
 }
 
-test("root README matches the current public package versions and launch surfaces", async () => {
-  const readme = await readReadme();
+test("root README is a public product entry point", async () => {
+  const readme = await readRepoFile("README.md");
 
-  assert.match(readme, new RegExp(`martin-loop@${rootPackageJson.version.replaceAll(".", "\\.")}`));
-  assert.match(readme, /npm install -g martin-loop/);
-  assert.match(readme, /npx martin-loop doctor/);
+  const expectedOrder = [
+    "## Why MartinLoop",
+    "## Quick Start",
+    "## What It Does",
+    "## How It Works",
+    "## CLI",
+    "## MCP",
+    "## SDK",
+    "## Examples",
+    "## Development",
+    "## Contributing",
+    "## License",
+  ];
+
+  let previousIndex = -1;
+  for (const heading of expectedOrder) {
+    const index = readme.indexOf(heading);
+    assert.notEqual(index, -1, `README must include ${heading}`);
+    assert.ok(index > previousIndex, `${heading} must appear after the previous public README section`);
+    previousIndex = index;
+  }
+
+  assert.match(readme, /The open-source control plane for AI coding agents/i);
   assert.match(readme, /npx martin-loop demo/);
   assert.match(readme, /MARTIN_LIVE=false npx martin-loop run/);
-  assert.match(readme, /npx martin-loop triage/);
   assert.match(readme, /npx martin-loop dossier --latest/);
-  assert.match(readme, /npx martin-loop run/);
-  assert.match(readme, /npx martin-loop inspect/);
-  assert.match(readme, /npx martin-loop resume/);
-  assert.match(readme, new RegExp(`@martinloop/mcp@${mcpPackageJson.version.replaceAll(".", "\\.")}`));
-  assert.match(readme, /eleven stdio tools plus read-only resources, resource templates, and prompts/i);
-  assert.match(readme, /`martin_run` remains the only tool that can execute work/i);
-  assert.match(readme, /martin_list_runs/);
-  assert.match(readme, /martin_run_dossier/);
-  assert.match(readme, /npx martin-loop mcp print-config --host codex --profile starter/);
-  assert.match(readme, /npx martin-loop mcp print-config --host claude --profile full/);
-  assert.match(readme, /npx martin-loop mcp print-config --host gemini --profile starter/);
-  assert.match(readme, /`starter` is the default generated profile/i);
-  assert.match(readme, /both generated profiles include `martin_run`/i);
-  assert.match(readme, /ranks persisted runs using failure categories/i);
+  assert.match(readme, /npx -y @martinloop\/mcp/);
+  assert.match(readme, /import \{ MartinLoop, createClaudeCliAdapter \} from "martin-loop"/);
+  assert.doesNotMatch(readme, /What's New In/i);
 });
 
-test("root README stays clean client-facing public copy", async () => {
-  const readme = await readReadme();
+test("public markdown copy avoids non-public process language", async () => {
+  const markdownFiles = await listPublicMarkdownSurfaces();
 
-  for (const pattern of FORBIDDEN_README_PATTERNS) {
-    assert.doesNotMatch(readme, pattern);
+  for (const relativePath of markdownFiles) {
+    const contents = await readRepoFile(relativePath);
+    for (const pattern of FORBIDDEN_PUBLIC_COPY_PATTERNS) {
+      assert.doesNotMatch(contents, pattern, `${relativePath} contains ${pattern}`);
+    }
   }
 });
 
@@ -146,33 +160,13 @@ test("public markdown links resolve inside the repo", async () => {
   }
 });
 
-test("docs/posts does not contain unlinked markdown artifacts", async () => {
-  const postDir = path.join(ROOT_DIR, "docs", "posts");
-  let postFiles = [];
+test("old public launch-workspace doc folders are absent", async () => {
+  const removedPaths = [
+    path.join(ROOT_DIR, "docs", "oss"),
+    path.join(ROOT_DIR, "docs", "distribution"),
+  ];
 
-  try {
-    postFiles = (await readdir(postDir, { withFileTypes: true }))
-      .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
-      .map((entry) => entry.name)
-      .sort();
-  } catch (error) {
-    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
-      return;
-    }
-
-    throw error;
-  }
-
-  const surfaceFiles = await listPublicMarkdownSurfaces();
-  const surfaceContents = await Promise.all(surfaceFiles.map((relativePath) => readRepoFile(relativePath)));
-  const referenceText = surfaceContents.join("\n");
-
-  for (const postFile of postFiles) {
-    const linked =
-      referenceText.includes(`docs/posts/${postFile}`) ||
-      referenceText.includes(`./docs/posts/${postFile}`) ||
-      referenceText.includes(postFile);
-
-    assert.equal(linked, true, `docs/posts/${postFile} must be linked from a public markdown surface`);
+  for (const removedPath of removedPaths) {
+    await assert.rejects(access(removedPath), /ENOENT/);
   }
 });

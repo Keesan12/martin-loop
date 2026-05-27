@@ -1,10 +1,11 @@
 # @martin/cli
 
-Operator-first CLI for Martin Loop.
+CLI implementation for MartinLoop.
 
-The CLI now treats execution, diagnosis, persisted-run inspection, and MCP host setup as one product family:
+The CLI groups execution, readiness checks, persisted-run inspection, and MCP host setup into one product surface:
 
 - `martin doctor`
+- `martin demo`
 - `martin preflight`
 - `martin run`
 - `martin triage`
@@ -13,25 +14,13 @@ The CLI now treats execution, diagnosis, persisted-run inspection, and MCP host 
 - `martin mcp print-config`
 - `martin mcp install`
 
-`martin mcp install` is intentionally conservative: it only writes a starter config when the target file is absent, or when it already detects a Martin Loop block and can stay idempotent. For mixed host configs, use `martin mcp print-config` and merge the Martin block yourself.
-
-## Output modes
+## Output Modes
 
 - default: human-readable summaries
-- `--json`: stable machine-readable payloads
+- `--json`: machine-readable payloads
 - `--quiet`: script-friendly primary identifier or path only
 
-## Local vs remote MCP
-
-- local `stdio` is the default and best path for fast local iteration
-- remote config output is for the private Martin Loop Streamable HTTP beta in the main workspace
-- both `martin mcp print-config` and `martin mcp install` support:
-  - `--host codex|claude|gemini|generic`
-  - `--transport stdio|remote`
-  - `--profile starter|full`
-  - `--platform windows|macos|linux`
-
-## Recommended flow
+## Recommended Flow
 
 ```sh
 martin doctor
@@ -41,14 +30,7 @@ martin triage
 martin dossier --latest
 ```
 
-## Compatibility aliases
-
-- `martin inspect --file <path>` remains supported
-- `martin resume <loopId>` remains supported
-
-Prefer `martin dossier` and `martin runs get --loop-id` for the richer operator surface.
-
-## MCP starter profile
+## MCP Config
 
 `martin mcp print-config --host codex` emits a quoted TOML server key:
 
@@ -69,13 +51,13 @@ enabled_tools = [
 env = { MARTIN_RUNS_DIR = "C:\\path\\to\\runs" }
 ```
 
-The starter allow-list stays aligned with the MCP discovery metadata: `martin_doctor`, `martin_preflight`, `martin_run`, `martin_triage_runs`, and `martin_run_dossier`.
+`martin mcp install` is conservative: it writes only when the target file is absent or when it detects an existing MartinLoop block it can update safely. For mixed host configs, use `martin mcp print-config` and merge the MartinLoop block yourself.
 
-## Host coverage
+## Host Coverage
 
-- `codex`: local stdio and remote URL profiles
-- `claude`: local, user, and project scopes plus remote HTTP profiles
-- `gemini`: local and remote `settings.json` snippets plus `includeTools`
+- `codex`: local stdio profiles
+- `claude`: local, user, and project scopes
+- `gemini`: local `settings.json` snippets with `includeTools`
 - `generic`: JSON config for wrapper hosts and MCP-aware agent shells
 
 Generated stdio launchers are platform-aware:
@@ -83,26 +65,17 @@ Generated stdio launchers are platform-aware:
 - Windows uses `cmd /c npx -y @martinloop/mcp`
 - macOS and Linux use `npx -y @martinloop/mcp`
 
-### Host-specific notes
+## Compatibility Aliases
 
-- Codex user-scope installs respect `CODEX_HOME` when it is set. Otherwise they target the default `~/.codex/config.toml`.
-- Claude `--scope local` is CLI-managed. Martin Loop shells out to `claude mcp add ... --scope local ...` instead of writing a repo file for that scope.
-- Claude `user` and `project` scopes remain file-backed so `martin mcp print-config` can show you the exact block before you install it.
-- Gemini config uses `includeTools` and `trust` in `settings.json`, not the older `enabledTools` field.
-- Cross-platform proof should install dependencies on the native platform before you validate there. Reusing Windows `node_modules` from WSL or Linux will break native packages such as `esbuild`.
+- `martin inspect --file <path>` remains supported
+- `martin resume <loopId>` remains supported
 
-## Live verification
+Prefer `martin dossier` and `martin runs get --loop-id` for richer evidence review.
 
-Use the host matrix verifier when you want proof that the generated config works with the real host CLIs on this machine:
+## Live Verification
+
+Use the host matrix verifier when you want proof that generated config works with local host CLIs:
 
 ```sh
 pnpm --filter @martin/cli verify:hosts:live
 ```
-
-The current live matrix proves:
-
-- generated cross-platform snippets
-- Codex remote config load
-- Claude project remote config load
-- Claude local remote install
-- Gemini remote config load

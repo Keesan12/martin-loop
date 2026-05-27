@@ -3,7 +3,7 @@
   "private": false,
   "version": "0.2.6",
   "type": "module",
-  "description": "Open-source control plane for AI coding agents with budget caps, verifier gates, and audit trails.",
+  "description": "Open-source control plane for AI coding agents: budget caps, verifier gates, rollback evidence, and audit trails.",
   "packageManager": "pnpm@10.33.0",
   "keywords": [
     "mcp",
@@ -20,7 +20,7 @@
     "llmops",
     "cli"
   ],
-  "author": "Vakeesan Mahalingam and Gobi Shanthan",
+  "author": "MartinLoop contributors",
   "license": "Apache-2.0",
   "homepage": "https://martinloop.com/",
   "repository": {
