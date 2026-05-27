@@ -49,6 +49,13 @@ import { CliCommandError, renderCliError, renderCliSuccess } from "./ux.js";
 
 const require = createRequire(import.meta.url);
 const packageJson = require("../package.json") as { version: string };
+const rootPackageVersion = (() => {
+  try {
+    return (require("../../../package.json") as { version?: string }).version ?? packageJson.version;
+  } catch {
+    return packageJson.version;
+  }
+})();
 
 export type RunCommandRequest = {
   workspaceId: string;
@@ -756,7 +763,7 @@ async function executeDoctorCommand(
 
   const data = {
     command: "doctor",
-    cliVersion: packageJson.version,
+    cliVersion: rootPackageVersion,
     environment,
     config: {
       path: configPath,
@@ -779,7 +786,7 @@ async function executeDoctorCommand(
   return renderCliSuccess(outputMode, {
     data,
     human: [
-      `Martin CLI doctor (${packageJson.version})`,
+      `Martin CLI doctor (${rootPackageVersion})`,
       `Working directory: ${environment.workingDirectory} (${workingDirectoryReady ? "ready" : "missing"})`,
       `Runs root: ${environment.runsRoot} (${runsRootReady ? "ready" : "not created yet"})`,
       `Live mode: ${environment.liveMode}`,
