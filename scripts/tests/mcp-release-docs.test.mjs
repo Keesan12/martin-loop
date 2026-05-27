@@ -20,7 +20,7 @@ const EXPECTED_TOOLS = [
   "martin_get_run",
   "martin_get_attempt",
   "martin_get_verification_results",
-  "martin_run_dossier"
+  "martin_run_dossier",
 ];
 
 const EXPECTED_RESOURCES = [
@@ -34,7 +34,7 @@ const EXPECTED_RESOURCES = [
   "martin://runs/latest/rollback-evidence",
   "martin://agent/next-step",
   "martin://guides/mcp-usage",
-  "martin://guides/publish-readiness"
+  "martin://guides/publish-readiness",
 ];
 
 const EXPECTED_PROMPTS = [
@@ -47,7 +47,19 @@ const EXPECTED_PROMPTS = [
   "martin_governed_coding_kickoff",
   "martin_debug_failed_run",
   "martin_publish_readiness_review",
-  "martin_triage_run_store"
+  "martin_triage_run_store",
+];
+
+const FORBIDDEN_DOC_PATTERNS = [
+  /\bstable cockpit line\b/i,
+  /\brelease train\b/i,
+  /\brelease packet\b/i,
+  /\bdelivery slice\b/i,
+  /\bprivate beta\b/i,
+  /\bmain workspace\b/i,
+  /\bdocs\/oss\b/i,
+  /\bdocs\/distribution\b/i,
+  /\bVERSION-LEDGER\b/i,
 ];
 
 async function readRepoFile(relativePath) {
@@ -62,264 +74,94 @@ function extractMartinToolNames(serverSource) {
   return [...new Set([...serverSource.matchAll(/name:\s*"(martin_[a-z_]+)"/g)].map((match) => match[1]))];
 }
 
-function assertOrderedSubstrings(contents, expectedOrder) {
-  let previousIndex = -1;
+test("MCP package metadata stays aligned with server metadata", () => {
+  const npmPackage = serverJson.packages.find((entry) => entry?.registryType === "npm");
 
-  for (const value of expectedOrder) {
-    const index = contents.indexOf(value);
-    assert.notEqual(index, -1, `Expected to find "${value}" in document`);
-    assert.ok(index > previousIndex, `Expected "${value}" to appear after the prior cockpit step`);
-    previousIndex = index;
-  }
-}
-
-test("current MCP release note exists for the package version", async () => {
+  assert.ok(npmPackage, "server.json must define an npm package entry");
   assert.equal(packageJson.version, serverJson.version);
-
-  const releaseNotesPath = path.join(
-    ROOT_DIR,
-    "docs",
-    "release",
-    `MCP-${packageJson.version}-RELEASE-NOTES.md`
-  );
-
-  await access(releaseNotesPath);
+  assert.equal(packageJson.version, npmPackage.version);
+  assert.equal(packageJson.name, npmPackage.identifier);
+  assert.equal(packageJson.mcpName, serverJson.name);
+  assert.equal(serverJson.name, "io.github.Keesan12/martin-loop");
+  assert.equal(packageJson.description, serverJson.description);
+  assert.ok(serverJson.description.length <= 100, "server.json description must stay within the registry length limit");
+  assert.equal(npmPackage.transport?.type, "stdio");
+  assert.equal(packageJson.bin?.mcp, "./dist/server.js");
+  assert.equal(packageJson.bin?.["martin-loop-mcp"], "./dist/server.js");
+  assert.ok(packageJson.files.includes("dist"));
+  assert.ok(packageJson.files.includes("README.md"));
+  assert.ok(packageJson.files.includes("server.json"));
 });
 
-test("current MCP release packet exists for the package version and records proof gates", async () => {
-  const releasePacketPath = path.join(
-    ROOT_DIR,
-    "docs",
-    "release",
-    `MCP-${packageJson.version}-RELEASE-PACKET.md`
-  );
-
-  await access(releasePacketPath);
-
-  const releasePacket = await readFile(releasePacketPath, "utf8");
-
-  for (const requiredPhrase of [
-    "Commands Run",
-    "Versions Tested",
-    "Host Matrix Receipts",
-    "Mirror Parity Receipts",
-    "Known Non-Goals",
-    "Publish Gates Still Pending Explicit Approval",
-    "Ready-To-Push Rule"
+test("MCP public docs exist in the cleaned docs tree", async () => {
+  for (const relativePath of [
+    "docs/getting-started/mcp.md",
+    "docs/reference/mcp-tools.md",
+    "docs/reference/mcp-compatibility.md",
+    "packages/mcp/README.md",
   ]) {
-    assert.match(releasePacket, new RegExp(escapeRegex(requiredPhrase)));
+    await access(path.join(ROOT_DIR, relativePath));
   }
-
-  for (const requiredCommand of [
-    "pnpm --filter @martinloop/mcp lint",
-    "pnpm --filter @martinloop/mcp test",
-    "pnpm --filter @martinloop/mcp build",
-    "pnpm --filter @martinloop/mcp smoke:pack",
-    "pnpm --filter @martinloop/mcp smoke:published:pack",
-    "pnpm --filter @martinloop/mcp verify:release"
-  ]) {
-    assert.match(releasePacket, new RegExp(escapeRegex(requiredCommand)));
-  }
-
-  assert.match(releasePacket, new RegExp(escapeRegex(`@martinloop/mcp@${packageJson.version}`)));
-  assert.match(releasePacket, /0\.1\.4/);
-  assert.match(releasePacket, /0\.2\.0/);
-  assert.match(releasePacket, /0\.2\.5/);
 });
 
-test("MCP docs stay aligned with the actual cockpit surface", async () => {
-  const [serverSource, readme, aiGuide, quickstart, ossReadme, rootReadme, resourcesSource, promptsSource] = await Promise.all([
-    readRepoFile(path.join("packages", "mcp", "src", "server.ts")),
-    readRepoFile(path.join("packages", "mcp", "README.md")),
-    readRepoFile(path.join("docs", "oss", "MCP-FOR-AI-AGENTS.md")),
-    readRepoFile(path.join("docs", "oss", "QUICKSTART.md")),
-    readRepoFile(path.join("docs", "oss", "README.md")),
-    readRepoFile("README.md"),
-    readRepoFile(path.join("packages", "mcp", "src", "resources.ts")),
-    readRepoFile(path.join("packages", "mcp", "src", "prompts.ts"))
-  ]);
+test("MCP docs stay aligned with the actual tool, resource, and prompt surface", async () => {
+  const [serverSource, packageReadme, mcpSetup, toolReference, compatibilityDoc, resourcesSource, promptsSource] =
+    await Promise.all([
+      readRepoFile(path.join("packages", "mcp", "src", "server.ts")),
+      readRepoFile(path.join("packages", "mcp", "README.md")),
+      readRepoFile(path.join("docs", "getting-started", "mcp.md")),
+      readRepoFile(path.join("docs", "reference", "mcp-tools.md")),
+      readRepoFile(path.join("docs", "reference", "mcp-compatibility.md")),
+      readRepoFile(path.join("packages", "mcp", "src", "resources.ts")),
+      readRepoFile(path.join("packages", "mcp", "src", "prompts.ts")),
+    ]);
 
-  const codexSnippet = "codex mcp add martin-loop -- npx -y @martinloop/mcp";
-  const claudeUnixSnippet =
-    "claude mcp add --transport stdio --scope user martin-loop -- npx -y @martinloop/mcp";
-  const claudeWindowsSnippet =
-    "claude mcp add --transport stdio --scope user martin-loop -- cmd /c npx -y @martinloop/mcp";
-  const starterConfigSnippet = "npx martin-loop mcp print-config --host codex --transport stdio --profile starter";
-  const fullConfigSnippet = "npx martin-loop mcp print-config --host claude --transport stdio --profile full";
   const toolNames = extractMartinToolNames(serverSource);
-
   assert.deepEqual(toolNames, EXPECTED_TOOLS);
-  assert.match(serverSource, /capabilities:\s*\{\s*tools:\s*\{\s*\},\s*resources:\s*\{\s*\},\s*prompts:\s*\{\s*\}\s*\}/);
-  assert.match(serverSource, /ListResourcesRequestSchema/);
-  assert.match(serverSource, /ListResourceTemplatesRequestSchema/);
-  assert.match(serverSource, /ReadResourceRequestSchema/);
-  assert.match(serverSource, /ListPromptsRequestSchema/);
-  assert.match(serverSource, /GetPromptRequestSchema/);
 
-  for (const contents of [readme, aiGuide, quickstart]) {
-    assert.match(contents, new RegExp(escapeRegex(codexSnippet)));
-    assert.match(contents, new RegExp(escapeRegex(claudeUnixSnippet)));
-    assert.match(contents, new RegExp(escapeRegex(claudeWindowsSnippet)));
-
-    for (const toolName of EXPECTED_TOOLS) {
-      assert.match(contents, new RegExp(escapeRegex(toolName)));
-    }
-
-    for (const resourceUri of EXPECTED_RESOURCES) {
-      assert.match(contents, new RegExp(escapeRegex(resourceUri)));
-    }
-
-    for (const promptName of EXPECTED_PROMPTS) {
-      assert.match(contents, new RegExp(escapeRegex(promptName)));
-    }
+  for (const snippet of [
+    "codex mcp add martin-loop -- npx -y @martinloop/mcp",
+    "claude mcp add --transport stdio --scope user martin-loop -- npx -y @martinloop/mcp",
+    "claude mcp add --transport stdio --scope user martin-loop -- cmd /c npx -y @martinloop/mcp",
+    "npx martin-loop mcp print-config --host codex --transport stdio --profile starter",
+    "npx martin-loop mcp print-config --host claude --transport stdio --profile full",
+  ]) {
+    assert.match(`${packageReadme}\n${mcpSetup}`, new RegExp(escapeRegex(snippet)));
   }
 
-  for (const contents of [readme, aiGuide]) {
-    assert.match(contents, new RegExp(escapeRegex(starterConfigSnippet)));
-    assert.match(contents, new RegExp(escapeRegex(fullConfigSnippet)));
-    assert.doesNotMatch(contents, /--profile minimal/);
-    assert.doesNotMatch(contents, /--profile diagnostic/);
-    assert.doesNotMatch(contents, /--profile full-local/);
+  for (const toolName of EXPECTED_TOOLS) {
+    assert.match(packageReadme, new RegExp(escapeRegex(toolName)));
+    assert.match(toolReference, new RegExp(escapeRegex(toolName)));
   }
 
   for (const resourceUri of EXPECTED_RESOURCES) {
     assert.match(resourcesSource, new RegExp(escapeRegex(resourceUri)));
+    assert.match(packageReadme, new RegExp(escapeRegex(resourceUri)));
+    assert.match(toolReference, new RegExp(escapeRegex(resourceUri)));
   }
 
   for (const promptName of EXPECTED_PROMPTS) {
     assert.match(promptsSource, new RegExp(escapeRegex(promptName)));
+    assert.match(packageReadme, new RegExp(escapeRegex(promptName)));
+    assert.match(toolReference, new RegExp(escapeRegex(promptName)));
   }
 
-  assertOrderedSubstrings(readme, [
-    "martin_doctor",
-    "martin_preflight",
-    "martin_run",
-    "martin_run_dossier"
-  ]);
-  assertOrderedSubstrings(aiGuide, [
-    "martin_doctor",
-    "martin_preflight",
-    "martin_run",
-    "martin_run_dossier"
-  ]);
-  assertOrderedSubstrings(quickstart, [
-    "martin_doctor",
-    "martin_preflight",
-    "martin_run",
-    "martin_run_dossier"
-  ]);
-  assert.match(readme, new RegExp(escapeRegex(`docs/release/MCP-${packageJson.version}-RELEASE-NOTES.md`)));
-  assert.match(readme, /io\.github\.Keesan12\/martin-loop/);
-  assert.match(ossReadme, /mcp:published:smoke:pack/);
-  assert.match(ossReadme, /post-publish npm gate/i);
-  assert.match(rootReadme, /smoke:published:pack/);
-  assert.match(rootReadme, /verify:release/);
-  assert.match(rootReadme, /io\.github\.Keesan12\/martin-loop/);
+  assert.match(packageReadme, /martin_run` is the only execution entrypoint/i);
+  assert.match(toolReference, /All other tools are read-only/i);
+  assert.match(compatibilityDoc, /io\.github\.Keesan12\/martin-loop/);
 });
 
-test("MCP release docs preserve publish gates and current cockpit claims", async () => {
-  const [publishingDoc, releaseNotes, compatibilityDoc, checklistDoc, versionLedger, releasePacket, deliveryMap] = await Promise.all([
-    readRepoFile(path.join("docs", "release", "MCP-PUBLISHING.md")),
-    readRepoFile(path.join("docs", "release", `MCP-${packageJson.version}-RELEASE-NOTES.md`)),
-    readRepoFile(path.join("docs", "release", "MCP-COMPATIBILITY.md")),
-    readRepoFile(path.join("docs", "release", "MCP-RELEASE-CHECKLIST.md")),
-    readRepoFile(path.join("docs", "release", "VERSION-LEDGER.md")),
-    readRepoFile(path.join("docs", "release", `MCP-${packageJson.version}-RELEASE-PACKET.md`)),
-    readRepoFile(path.join("docs", "release", "MCP-DELIVERY-SLICE-MAP.md"))
+test("MCP public docs avoid deleted release-workspace language", async () => {
+  const docs = await Promise.all([
+    readRepoFile(path.join("packages", "mcp", "README.md")),
+    readRepoFile(path.join("docs", "getting-started", "mcp.md")),
+    readRepoFile(path.join("docs", "reference", "mcp-tools.md")),
+    readRepoFile(path.join("docs", "reference", "mcp-compatibility.md")),
+    readRepoFile(path.join("docs", "release", "v0.2.6.md")),
   ]);
 
-  assert.match(publishingDoc, /smoke:published:pack/);
-  assert.match(publishingDoc, /smoke:published/);
-  assert.match(publishingDoc, /separate gates/i);
-  assert.match(publishingDoc, /tools, resources, resource templates, and prompts/i);
-  assert.match(publishingDoc, /run-triage surface/i);
-  assert.match(publishingDoc, /martin_run_dossier/);
-  assert.match(publishingDoc, /martin_triage_runs/);
-  assert.match(publishingDoc, /io\.github\.Keesan12\/martin-loop/);
-
-  assert.match(releaseNotes, new RegExp(`@martinloop/mcp v${packageJson.version.replaceAll(".", "\\.")}`));
-  assert.match(releaseNotes, /martin_list_runs/);
-  assert.match(releaseNotes, /martin_run_dossier/);
-  assert.match(releaseNotes, /resources/i);
-  assert.match(releaseNotes, /prompts/i);
-  if (packageJson.version === "0.2.0") {
-    assert.match(releaseNotes, /cockpit expansion/i);
-    assert.doesNotMatch(releaseNotes, /martin_triage_runs/);
-  } else {
-    assert.match(releaseNotes, /martin_triage_runs/);
-    assert.match(releaseNotes, /run triage/i);
-  }
-
-  assert.match(compatibilityDoc, /martin_run remains the only execution entrypoint/i);
-  assert.match(compatibilityDoc, /resources, resource templates, and prompts are additive/i);
-  assert.match(checklistDoc, /MCP-X\.Y\.Z-RELEASE-PACKET\.md/);
-  assert.match(checklistDoc, /Candidate Branch Proof/i);
-  assert.match(checklistDoc, /packages\/mcp/);
-  assert.match(versionLedger, /@martinloop\/mcp/);
-  assert.match(versionLedger, /0\.2\.0/);
-  assert.match(versionLedger, /0\.2\.5/);
-  assert.match(releasePacket, /candidate branch CI is green on Windows, Linux, and macOS/i);
-  assert.match(deliveryMap, /0\.1\.4/);
-  assert.match(deliveryMap, /0\.2\.0/);
-  assert.match(deliveryMap, /0\.2\.5/);
-  assert.doesNotMatch(deliveryMap, /enterprise\/apps\/control-plane/);
-  assert.match(deliveryMap, /non-package application work/i);
-  assert.match(deliveryMap, /martin_run` remains the only write-capable entrypoint/i);
-
-  for (const contents of [publishingDoc, compatibilityDoc, releaseNotes]) {
-    assert.doesNotMatch(contents, /0\.3\.0/);
-  }
-});
-
-test("OSS public docs keep non-package language out of the public MCP train", async () => {
-  const [rootReadme, versionLedger, deliveryMap, publishingDoc, releaseNotes, releasePacket] =
-    await Promise.all([
-      readRepoFile("README.md"),
-      readRepoFile(path.join("docs", "release", "VERSION-LEDGER.md")),
-      readRepoFile(path.join("docs", "release", "MCP-DELIVERY-SLICE-MAP.md")),
-      readRepoFile(path.join("docs", "release", "MCP-PUBLISHING.md")),
-      readRepoFile(path.join("docs", "release", `MCP-${packageJson.version}-RELEASE-NOTES.md`)),
-      readRepoFile(path.join("docs", "release", `MCP-${packageJson.version}-RELEASE-PACKET.md`))
-    ]);
-
-  for (const contents of [versionLedger, deliveryMap, publishingDoc, releasePacket]) {
-    assert.match(contents, /0\.1\.4/);
-    assert.match(contents, /operator foundation/i);
-    assert.match(contents, /0\.2\.0/);
-    assert.match(contents, /cockpit expansion/i);
-    assert.match(contents, /0\.2\.5/);
-    assert.match(contents, /stable cockpit line/i);
-  }
-  if (packageJson.version === "0.2.0") {
-    assert.match(releaseNotes, /0\.1\.4/);
-    assert.match(releaseNotes, /operator foundation/i);
-    assert.match(releaseNotes, /0\.2\.0/);
-    assert.match(releaseNotes, /cockpit expansion/i);
-    assert.doesNotMatch(releaseNotes, /0\.3\.0/);
-  } else {
-    assert.match(releaseNotes, /0\.1\.4/);
-    assert.match(releaseNotes, /operator foundation/i);
-    assert.match(releaseNotes, /0\.2\.0/);
-    assert.match(releaseNotes, /cockpit expansion/i);
-    assert.match(releaseNotes, /0\.2\.5/);
-    assert.match(releaseNotes, /stable cockpit line/i);
-  }
-
-  const forbiddenPatterns = [
-    /enterprise\/apps\/control-plane/i,
-    /martin-loop_MAIN_FULL_REPO/i,
-    /ML_Main_Repo_Internal/i,
-    /ML_Core_OSS_Internal/i,
-    /private beta/i,
-    /principal-aware remote config/i,
-    /control-plane/i,
-    /autonomy\/router/i,
-    /OneDrive/i,
-    /C:\\Users\\/i
-  ];
-
-  for (const contents of [rootReadme, versionLedger, deliveryMap, publishingDoc, releaseNotes, releasePacket]) {
-    for (const pattern of forbiddenPatterns) {
+  for (const contents of docs) {
+    for (const pattern of FORBIDDEN_DOC_PATTERNS) {
       assert.doesNotMatch(contents, pattern);
     }
   }

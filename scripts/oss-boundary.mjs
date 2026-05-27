@@ -167,7 +167,7 @@ export function renderOssBoundaryReportMarkdown(report) {
 
 export async function writeOssBoundaryReport(options = {}) {
   const rootDir = options.rootDir ?? process.cwd();
-  const outputDir = options.outputDir ?? path.join(rootDir, "docs", "oss");
+  const outputDir = options.outputDir ?? path.join(rootDir, "docs", "reference");
   const report = await createOssBoundaryReport({ rootDir });
   const markdown = renderOssBoundaryReportMarkdown(report);
 
@@ -234,13 +234,18 @@ function findDependencyLeaks(ossCorePackages) {
 
 async function main() {
   const rootDir = process.cwd();
-  const report = await writeOssBoundaryReport({ rootDir });
+  const write = process.argv.includes("--write");
+  const report = write
+    ? await writeOssBoundaryReport({ rootDir })
+    : await createOssBoundaryReport({ rootDir });
   const markdown = renderOssBoundaryReportMarkdown(report);
 
   process.stdout.write(`${markdown}\n`);
-  process.stdout.write(
-    `\nArtifacts written to ${path.join(rootDir, "docs", "oss", "OSS-BOUNDARY-REPORT.json")} and ${path.join(rootDir, "docs", "oss", "OSS-BOUNDARY-REPORT.md")}\n`,
-  );
+  if (write) {
+    process.stdout.write(
+      `\nArtifacts written to ${path.join(rootDir, "docs", "reference", "OSS-BOUNDARY-REPORT.json")} and ${path.join(rootDir, "docs", "reference", "OSS-BOUNDARY-REPORT.md")}\n`,
+    );
+  }
 
   process.exitCode = report.verdict === "go" ? 0 : 1;
 }
