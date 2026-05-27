@@ -2,7 +2,7 @@
 
 Governed MCP server for AI coding agents with budgets, verifier gates, and inspectable runs.
 
-`@martinloop/mcp` is local-first and stdio-first. It gives MCP hosts one governed execution entrypoint plus read-only tools, resources, and prompts for reviewing persisted MartinLoop run records.
+`@martinloop/mcp` is local-first and stdio-first. It gives MCP hosts one governed execution entrypoint plus read-only tools, resources, and prompts for reviewing persisted MartinLoop run records before human review.
 
 For host-facing setup, see [MCP setup](https://github.com/Keesan12/martin-loop/blob/main/docs/getting-started/mcp.md).
 

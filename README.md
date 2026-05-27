@@ -227,8 +227,6 @@ pnpm install --frozen-lockfile
 pnpm test
 pnpm lint
 pnpm build
-pnpm oss:validate
-pnpm public:smoke
 ```
 
 ## Contributing

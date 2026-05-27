@@ -31,6 +31,14 @@ test("public git surface guard rejects internal-process commit subjects", () => 
       sha: "111111111111",
       subject: "docs: update internal handoff for ML_Core_OSS_Internal",
     },
+    {
+      sha: "222222222222",
+      subject: "docs: clean public repo surface",
+    },
+    {
+      sha: "333333333333",
+      subject: "chore: release martin-loop 0.2.7",
+    },
   ]);
 
   assert.deepEqual(
@@ -41,6 +49,8 @@ test("public git surface guard rejects internal-process commit subjects", () => 
       "internal snapshot-for-CI wording",
       "internal repo name",
       "handoff process language",
+      "public cleanup process wording",
+      "release bookkeeping subject",
     ],
   );
 });

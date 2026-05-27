@@ -5,9 +5,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const FORBIDDEN_SUBJECT_PATTERNS = [
+  { label: "release bookkeeping subject", pattern: /^chore:\s+release\b/i },
   { label: "internal phase numbering", pattern: /\bphase\s*\d+\b/i },
   { label: "internal RC-state wording", pattern: /\brc\s+state\b/i },
   { label: "internal snapshot-for-CI wording", pattern: /\bsnapshot\b.*\bci\b/i },
+  { label: "public cleanup process wording", pattern: /\bclean public repo\b/i },
+  { label: "public surface cleanup wording", pattern: /\bpublic(?:-| )surface cleanup\b/i },
   { label: "planning directory reference", pattern: /\.planning\b/i },
   { label: "private workspace wording", pattern: /\bprivate workspace\b/i },
   { label: "internal repo name", pattern: /\b(?:ML_Core_OSS_Internal|ML_Main_Repo_Internal)\b/i },

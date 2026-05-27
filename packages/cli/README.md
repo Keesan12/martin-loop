@@ -2,7 +2,7 @@
 
 CLI implementation for MartinLoop.
 
-The CLI groups execution, readiness checks, persisted-run inspection, and MCP host setup into one product surface:
+The CLI groups execution, readiness checks, persisted-run inspection, and MCP host setup into one command surface:
 
 - `martin doctor`
 - `martin demo`

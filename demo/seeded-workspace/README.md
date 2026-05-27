@@ -1,6 +1,7 @@
 # MartinLoop Demo Sandbox
 
 This workspace is the safe public demo copied by `martin-loop demo`.
+It is intentionally small enough to understand in one quick review pass.
 
 It is intentionally small:
 

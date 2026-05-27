@@ -1,2 +1,3 @@
+# Keep workspace package discovery explicit at the repo root.
 packages:
   - "packages/*"

@@ -2,24 +2,24 @@
 
 ## [0.2.6] - 2026-05-27
 
-### Added
-
-- Added public release notes for the root `martin-loop` package.
-
 ### Changed
 
-- Improved verifier-command blocking, context-integrity coverage, secret redaction, safe-path validation, model-aware budget pricing, and grounding-cache handling.
-- Updated README, quickstart docs, workflow checks, and package metadata for the shipped root package.
+- Strengthened verifier-command blocking for destructive command patterns that should be rejected before a run starts.
+- Expanded prompt and verifier-output integrity checks so high-signal override attempts are less likely to re-enter the loop.
+- Improved secret redaction, safe-path validation, model-aware budget pricing, and grounding-cache handling.
+- Updated the root package documentation so the CLI and SDK surface is easier to evaluate and safer to adopt.
 
 ## [0.2.5] - 2026-05-26
 
 ### Added
 
-- Added run triage, compact proof resources, and richer MCP discovery guidance for `@martinloop/mcp`.
+- Added triage views for saved MartinLoop runs so operators can review persisted records faster.
+- Added compact proof resources for `@martinloop/mcp` so hosts can inspect saved run evidence with smaller responses.
 
 ### Changed
 
-- Hardened degraded run-store handling and documented MCP host setup for Codex, Claude, Gemini, and generic MCP hosts.
+- Inspection flows can now skip unreadable saved entries and continue with warnings.
+- Tightened packaged host setup guidance for Codex, Claude, Gemini, and generic MCP hosts.
 
 ## [0.2.4] - 2026-05-25
 

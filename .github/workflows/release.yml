@@ -36,6 +36,7 @@ jobs:
       - name: Validate OSS release surface
         run: |
           pnpm lint
+          pnpm public:copy-scan
           pnpm public:git-surface
           pnpm test
           pnpm build
