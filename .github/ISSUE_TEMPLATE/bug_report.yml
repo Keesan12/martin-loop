@@ -28,7 +28,7 @@ body:
     attributes:
       label: Environment
       description: Include OS, Node version, client or host, and package version.
-      placeholder: Windows 11, Node 22, Codex CLI, martin-loop 0.2.5
+      placeholder: Windows 11, Node 22, Codex CLI, martin-loop 0.2.7
     validations:
       required: true
   - type: textarea

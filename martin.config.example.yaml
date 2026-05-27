@@ -1,4 +1,4 @@
-# Example MartinLoop defaults for a local governed run.
+# Example MartinLoop defaults for a local-first governed run.
 policyProfile: balanced
 budget:
   # Hard cost cap for a run.
@@ -12,7 +12,7 @@ budget:
 governance:
   # Policy used when the run would take a destructive action.
   destructiveActionPolicy: approval
-  # Where governance/telemetry events should be sent.
+  # Where governance and telemetry events should be sent.
   telemetryDestination: control-plane
   # Verification commands used when --verify is not supplied.
   verifierRules:

@@ -29,6 +29,12 @@ Safe first run:
 MARTIN_LIVE=false npx martin-loop run "Summarize the demo workspace and confirm the verifier is green" --verify "npm test"
 ```
 
+Review the run evidence afterward:
+
+```sh
+npx martin-loop dossier --latest
+```
+
 Optional live run:
 
 ```sh
