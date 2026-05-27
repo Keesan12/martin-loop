@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.2.6] — 2026-05-28
+
+### Added
+- **Audit remediation closure** — Added the root `0.2.6` public release notes for the completed OSS security and correctness follow-up slice.
+
+### Changed
+- **Runtime hardening** — Closed the remaining root-package remediation items across verifier-command blocking, context-integrity coverage, secret redaction, safe-path validation, pricing, and cache invalidation.
+- **Release proof lane** — Synced the root package version, public README surfaces, quickstart docs, and root release guard to the shipped `0.2.6` contract while keeping `@martinloop/mcp` on `0.2.5`.
+
 ## [0.2.5] — 2026-05-26
 
 ### Added

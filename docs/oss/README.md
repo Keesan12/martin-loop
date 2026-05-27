@@ -39,7 +39,7 @@ pnpm rc:validate
 
 ## Notes
 
-- Release focus: stable cockpit guidance for local triage, compact proof receipts, and degraded run-store hardening.
+- Release focus: root `0.2.6` remediation for the public local runtime and CLI while the standalone MCP package remains on `0.2.5`.
 
 - The root `martin-loop` package and the standalone `@martinloop/mcp` package use separate release tracks. Always verify both lines in [`../release/VERSION-LEDGER.md`](../release/VERSION-LEDGER.md) before release work.
 - `@martinloop/mcp` is published and released independently from the root package.
@@ -52,5 +52,5 @@ pnpm rc:validate
 - [QUICKSTART.md](./QUICKSTART.md)
 - [AGENT-START-HERE.md](./AGENT-START-HERE.md)
 - [EXAMPLES.md](./EXAMPLES.md)
-- [OSS-0.2.5-RELEASE-NOTES.md](../release/OSS-0.2.5-RELEASE-NOTES.md)
+- [OSS-0.2.6-RELEASE-NOTES.md](../release/OSS-0.2.6-RELEASE-NOTES.md)
 - [../../README.md](../../README.md)
