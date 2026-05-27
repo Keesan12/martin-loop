@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 
 import packageJson from "../../packages/mcp/package.json" with { type: "json" };
 import serverJson from "../../packages/mcp/server.json" with { type: "json" };
+import rootPackageJson from "../../package.json" with { type: "json" };
 
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -157,7 +158,7 @@ test("MCP public docs avoid deleted release-workspace language", async () => {
     readRepoFile(path.join("docs", "getting-started", "mcp.md")),
     readRepoFile(path.join("docs", "reference", "mcp-tools.md")),
     readRepoFile(path.join("docs", "reference", "mcp-compatibility.md")),
-    readRepoFile(path.join("docs", "release", "v0.2.6.md")),
+    readRepoFile(path.join("docs", "release", `v${rootPackageJson.version}.md`)),
   ]);
 
   for (const contents of docs) {
