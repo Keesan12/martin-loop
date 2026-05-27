@@ -1,12 +1,13 @@
 # Quickstart
 
-This quickstart covers the public OSS runtime and the standalone `@martinloop/mcp` package.
+This quickstart covers the public OSS runtime at `martin-loop@0.2.6` and the standalone `@martinloop/mcp@0.2.5` package.
 
 ## Public Release Train
 
 - 0.1.4 operator foundation.
 - 0.2.0 cockpit expansion. 0.2.0 adds resources, resource templates, prompts, and read-only cockpit inspection.
 - 0.2.5 stable cockpit line with local triage and degraded run-store hardening.
+- 0.2.6 root remediation slice for the public runtime and CLI.
 
 ## Prerequisites
 

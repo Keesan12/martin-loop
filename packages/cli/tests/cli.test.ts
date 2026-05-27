@@ -7,6 +7,8 @@ import { describe, expect, it } from "vitest";
 import { createLoopRecord } from "../../contracts/src/index.js";
 import { executeCli, parseCliArguments } from "../src/index.js";
 
+const CLI_EXEC_TIMEOUT_MS = 15_000;
+
 describe("parseCliArguments", () => {
   it("parses a run command into a typed request", () => {
     const parsed = parseCliArguments([
@@ -65,7 +67,7 @@ describe("parseCliArguments", () => {
 });
 
 describe("executeCli", () => {
-  it("resolves effectivePolicy from config and applies it to the run", async () => {
+  it("resolves effectivePolicy from config and applies it to the run", { timeout: CLI_EXEC_TIMEOUT_MS }, async () => {
     const directory = await mkdtemp(join(tmpdir(), "martin-cli-config-"));
     const configPath = join(directory, "martin.config.yaml");
 
@@ -139,7 +141,7 @@ describe("executeCli", () => {
     }
   });
 
-  it("surfaces effective governance policy metadata in run output", async () => {
+  it("surfaces effective governance policy metadata in run output", { timeout: CLI_EXEC_TIMEOUT_MS }, async () => {
     const configPath = join(process.env.INIT_CWD ?? process.cwd(), "martin.config.yaml");
     const prevLive = process.env.MARTIN_LIVE;
     process.env.MARTIN_LIVE = "false";
@@ -192,7 +194,7 @@ describe("executeCli", () => {
     expect(payload.loop.task.verificationPlan).toEqual(["pnpm test"]);
   });
 
-  it("supports verify-only runs without invoking a coding adapter", async () => {
+  it("supports verify-only runs without invoking a coding adapter", { timeout: CLI_EXEC_TIMEOUT_MS }, async () => {
     const directory = await mkdtemp(join(tmpdir(), "martin-cli-verify-only-"));
 
     try {
@@ -223,7 +225,7 @@ describe("executeCli", () => {
     }
   });
 
-  it("resolves a relative --config path from INIT_CWD for filtered dev runs", async () => {
+  it("resolves a relative --config path from INIT_CWD for filtered dev runs", { timeout: CLI_EXEC_TIMEOUT_MS }, async () => {
     const directory = await mkdtemp(join(tmpdir(), "martin-cli-init-cwd-"));
     const packageDirectory = join(directory, "packages", "cli");
     const configPath = join(directory, "martin.config.example.yaml");

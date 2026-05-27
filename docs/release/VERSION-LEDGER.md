@@ -4,8 +4,8 @@ This file is the canonical version map for release work. Do not push, tag, or pu
 
 ## Root package: `martin-loop`
 
-- live npm dist-tag `latest` before `v0.2.5`: `0.2.4`
-- public GitHub `main` target for the `v0.2.5` release: `0.2.5`
+- live npm dist-tag `latest` before `v0.2.6`: `0.2.5`
+- public GitHub `main` target for the `v0.2.6` release: `0.2.6`
 - release rule: treat the root package as its own semver line and do not infer standalone MCP versioning from it
 
 ## Standalone MCP package: `@martinloop/mcp`

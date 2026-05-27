@@ -144,7 +144,7 @@ If you try MartinLoop, I would value blunt feedback on where a control layer sho
 npm install -g martin-loop
 ```
 
-This installs the public `martin-loop` CLI package. This README is synced for `martin-loop@0.2.5`.
+This installs the public `martin-loop` CLI package. This README is synced for `martin-loop@0.2.6`.
 
 Want a safe sandbox first? Run `npx martin-loop demo` and MartinLoop will copy a disposable local workspace into `./martin-loop-demo`.
 
@@ -176,16 +176,16 @@ npx martin-loop triage
 
 `triage` ranks persisted runs using failure categories such as failed verification, budget exits, human escalation, and missing verification evidence. If a saved run entry is unreadable, MartinLoop skips it and surfaces a warning instead of aborting the whole review.
 
-### What's New In 0.2.5
+### What's New In 0.2.6
 
-`martin-loop@0.2.5` ships the stable cockpit line for the standalone MCP package and the matching root-package release surface.
+`martin-loop@0.2.6` closes the public root-package remediation slice while keeping the standalone MCP package on the stable `0.2.5` line.
 
-- `martin_triage_runs` for faster review of persisted run failures and warnings
-- compact proof resources such as latest summary, proof card, budget status, verifier evidence, rollback evidence, and next-step guidance
-- degraded run-store hardening so unreadable entries surface warnings instead of taking down the review flow
+- hardened verifier blocking for destructive command bypass families and high-signal secret patterns
+- broader context-integrity scanning across task metadata and verifier output before those channels re-enter the loop
+- model-aware budget pricing, grounding cache invalidation, and safer local `martin_run` abuse controls
 - release-proof updates across README, release notes, workflow checks, and package metadata
 
-See [OSS-0.2.5 release notes](./docs/release/OSS-0.2.5-RELEASE-NOTES.md) and [MCP 0.2.5 release notes](./docs/release/MCP-0.2.5-RELEASE-NOTES.md) for the public feature contract.
+See [OSS-0.2.6 release notes](./docs/release/OSS-0.2.6-RELEASE-NOTES.md) and [MCP 0.2.5 release notes](./docs/release/MCP-0.2.5-RELEASE-NOTES.md) for the public feature contract.
 
 ### Public Package Surface
 
