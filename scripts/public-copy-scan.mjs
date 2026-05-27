@@ -36,6 +36,19 @@ export const FORBIDDEN_PUBLIC_COPY_PATTERNS = [
   /\bpublic(?:-| )surface cleanup\b/i,
 ];
 
+export const FORBIDDEN_PUBLIC_ARTIFACT_RULES = [
+  {
+    label: "release handoff archive",
+    test: (relativePath) =>
+      relativePath.startsWith("docs/release/") &&
+      (relativePath.endsWith(".zip") || /\bhandoff\b/i.test(relativePath)),
+  },
+  {
+    label: "public html artifact",
+    test: (relativePath) => relativePath.endsWith(".html"),
+  },
+];
+
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ROOT_FILES = [
   "README.md",
@@ -102,10 +115,42 @@ export async function runPublicCopyScan(options = {}) {
     throw new Error(`Public copy scan found forbidden release/process language:\n${details}`);
   }
 
+  const publicArtifacts = await collectPublicArtifacts(rootDir);
+  const artifactViolations = findForbiddenPublicArtifacts(publicArtifacts);
+
+  if (artifactViolations.length > 0) {
+    const details = artifactViolations
+      .map((violation) => `- ${violation.relativePath} violates ${violation.rule}`)
+      .join("\n");
+    throw new Error(`Public copy scan found forbidden public artifacts:\n${details}`);
+  }
+
   return {
     checkedFiles: files.length,
+    checkedArtifacts: publicArtifacts.length,
     rootDir,
   };
+}
+
+export async function collectPublicArtifacts(rootDir = ROOT_DIR) {
+  return collectFiles(path.join(rootDir, "docs"), () => true, rootDir);
+}
+
+export function findForbiddenPublicArtifacts(relativePaths) {
+  const violations = [];
+
+  for (const relativePath of relativePaths) {
+    for (const rule of FORBIDDEN_PUBLIC_ARTIFACT_RULES) {
+      if (rule.test(relativePath)) {
+        violations.push({
+          relativePath,
+          rule: rule.label,
+        });
+      }
+    }
+  }
+
+  return violations;
 }
 
 async function main() {

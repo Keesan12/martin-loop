@@ -5,7 +5,9 @@ import os from "node:os";
 import path from "node:path";
 
 import {
+  collectPublicArtifacts,
   collectPublicCopyFiles,
+  findForbiddenPublicArtifacts,
   findPublicCopyViolations,
   runPublicCopyScan,
 } from "../public-copy-scan.mjs";
@@ -63,4 +65,34 @@ test("runPublicCopyScan passes when surfaces are clean", async () => {
 
   const result = await runPublicCopyScan({ rootDir });
   assert.ok(result.checkedFiles >= 9);
+});
+
+test("findForbiddenPublicArtifacts rejects release handoff archives and html artifacts", async () => {
+  const artifacts = [
+    "docs/release/v0.2.7.md",
+    "docs/release/martin-loop-external-audit-handoff-2026-04-24.zip",
+    "docs/assets/phase3c-demo.html",
+  ];
+
+  const violations = findForbiddenPublicArtifacts(artifacts);
+
+  assert.deepEqual(
+    violations.map((violation) => [violation.relativePath, violation.rule]),
+    [
+      ["docs/release/martin-loop-external-audit-handoff-2026-04-24.zip", "release handoff archive"],
+      ["docs/assets/phase3c-demo.html", "public html artifact"],
+    ],
+  );
+});
+
+test("collectPublicArtifacts includes docs files for artifact checks", async () => {
+  const rootDir = await mkdtemp(path.join(os.tmpdir(), "martin-public-artifacts-"));
+  await mkdir(path.join(rootDir, "docs", "release"), { recursive: true });
+  await writeFile(path.join(rootDir, "docs", "release", "v0.2.7.md"), "# Release\n");
+  await writeFile(path.join(rootDir, "docs", "release", "artifact.zip"), "zip\n");
+
+  const files = await collectPublicArtifacts(rootDir);
+
+  assert.ok(files.includes("docs/release/v0.2.7.md"));
+  assert.ok(files.includes("docs/release/artifact.zip"));
 });

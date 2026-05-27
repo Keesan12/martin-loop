@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.7] - 2026-05-27
+
+### Changed
+
+- Aligned the published root package with the public GitHub repo so the README, release notes, and package metadata now describe the same shipped surface.
+- Added stricter public release guardrails to block internal process language and stray release artifacts from public docs and release workflows.
+- Removed non-doc release artifacts from the public release docs folder so the repo surface stays reviewable for external users.
+
 ## [0.2.6] - 2026-05-27
 
 ### Changed
