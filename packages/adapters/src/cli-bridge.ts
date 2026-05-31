@@ -209,25 +209,22 @@ export async function readGitExecutionArtifacts(
   };
 }
 
-interface SpawnPlan {
+export interface SpawnPlan {
   command: string;
   args: string[];
 }
 
-function createSpawnPlan(
+export function createSpawnPlan(
   command: string,
   args: string[],
   cwd: string,
   preserveRawForInjectedSpawn: boolean
 ): SpawnPlan {
-  if (preserveRawForInjectedSpawn || process.platform !== "win32" || isAbsolute(command)) {
+  if (preserveRawForInjectedSpawn || process.platform !== "win32") {
     return { command, args };
   }
 
-  const resolved = resolveWindowsCommand(command, cwd);
-  if (!resolved) {
-    return { command, args };
-  }
+  const resolved = isAbsolute(command) ? command : resolveWindowsCommand(command, cwd) ?? command;
 
   const extension = extname(resolved).toLowerCase();
   if (extension === ".cmd" || extension === ".bat") {

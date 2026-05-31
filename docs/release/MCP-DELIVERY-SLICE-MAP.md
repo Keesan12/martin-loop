@@ -17,7 +17,7 @@ See [VERSION-LEDGER.md](./VERSION-LEDGER.md) for the canonical version truth.
 
 - Free / OSS is the only public tier in this repo. The standalone `@martinloop/mcp` train belongs to that lane.
 - Pro, Growth, Enterprise, and Internal remain private tier names and should never be implied by a public MCP release note, packet, or README.
-- Private Pro surfaces such as the authenticated remote MCP private beta and principal-aware remote config stay out of the public MCP npm train unless this slice map changes first.
+- Private hosted and team-only capabilities stay out of the public MCP npm train unless this slice map changes first.
 - Keep private control-plane, autonomy, and router internals out of the OSS MCP train even when they exist in the broader workspace.
 
 ## Delivery `0.1.4`
@@ -122,7 +122,7 @@ Primary surfaces:
 These stay out of the public MCP npm release train for this wave:
 
 - private Pro, Growth, Enterprise, and Internal tier surfaces
-- private Pro remote MCP beta and principal-aware remote config
+- private hosted and team-only capabilities
 - product-internal application packages
 - product-internal trace and routing packages
 - hosted Streamable HTTP remote metadata

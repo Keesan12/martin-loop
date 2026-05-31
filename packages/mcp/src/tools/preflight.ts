@@ -8,15 +8,30 @@ import {
   resolveExecutionMode,
   type MartinEngine
 } from "./tool-support.js";
+import {
+  buildPlanProposal,
+  buildRunContract,
+  buildPolicyPackDefinition,
+  inspectRepoSignals,
+  type MartinPlanProposal,
+  type MartinPolicyPack,
+  type MartinRiskAssessment,
+  type MartinRunContract
+} from "./workflow-governance.js";
 
 export interface MartinPreflightInput {
   objective: string;
   workingDirectory?: string;
   engine?: MartinEngine;
   model?: string;
+  context?: string;
+  policyPack?: MartinPolicyPack;
   maxUsd?: number;
   maxIterations?: number;
   maxTokens?: number;
+  maxMinutes?: number;
+  maxFilesChanged?: number;
+  maxCommands?: number;
   verificationPlan?: string[];
   allowedPaths?: string[];
   deniedPaths?: string[];
@@ -64,11 +79,15 @@ export interface MartinPreflightOutput {
       deniedPathsCount: number;
       hasScopeConflicts: boolean;
     };
-    expectedRunLayout: {
-      runDirectoryPattern: string;
-      loopRecordPathPattern: string;
+      expectedRunLayout: {
+        runDirectoryPattern: string;
+        loopRecordPathPattern: string;
+      };
     };
-  };
+  policy: ReturnType<typeof buildPolicyPackDefinition>;
+  risk: MartinRiskAssessment;
+  runContract: MartinRunContract;
+  plan: MartinPlanProposal;
 }
 
 export async function martinPreflightTool(
@@ -76,6 +95,7 @@ export async function martinPreflightTool(
 ): Promise<MartinPreflightOutput> {
   const executionMode = resolveExecutionMode();
   const workingDirectory = resolveSafeRepoRoot(input.workingDirectory);
+  const signals = inspectRepoSignals(workingDirectory);
   const engine = input.engine ?? "claude";
   const engineAvailability = getEngineAvailability(engine);
   const warnings: string[] = [];
@@ -109,12 +129,16 @@ export async function martinPreflightTool(
     );
   }
 
+  const plan = buildPlanProposal(workingDirectory, input);
+  const runContract = buildRunContract(workingDirectory, input);
+  const policy = buildPolicyPackDefinition(input.policyPack, signals);
+
   const ok = !executionMode.liveMode || engineAvailability.available;
 
   return {
     ok,
     summary: ok
-      ? `Preflight ready for ${engine} in ${workingDirectory} with a ${formatUsd(budget.maxUsd)} budget cap.`
+      ? `Preflight ready for ${engine} in ${workingDirectory} with a ${formatUsd(budget.maxUsd)} budget cap and ${runContract.risk.level} risk.`
       : `Preflight blocked: ${engine} is not available for live execution.`,
     warnings,
     readiness: {
@@ -154,6 +178,10 @@ export async function martinPreflightTool(
         runDirectoryPattern: "<runsRoot>/<loopId>/",
         loopRecordPathPattern: "<runsRoot>/<loopId>/loop-record.json"
       }
-    }
+    },
+    policy,
+    risk: runContract.risk,
+    runContract,
+    plan
   };
 }

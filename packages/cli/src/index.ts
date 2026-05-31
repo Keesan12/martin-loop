@@ -23,6 +23,13 @@ import {
 } from "@martin/contracts";
 
 import {
+  buildNativePhaseRunRequest,
+  createNativePhaseCommandCenterSnapshot,
+  renderNativePhaseHuman,
+  selectNativePhasePayload,
+  type NativePhaseSubcommand
+} from "./phase-command-center.js";
+import {
   buildMcpInstallPlan,
   installMcpConfig,
   type MartinMcpHost,
@@ -32,8 +39,8 @@ import {
   type MartinMcpTransport,
   MARTIN_DIAGNOSTIC_TOOLS,
   MARTIN_FULL_TOOLS,
+  MARTIN_GITHUB_REVIEW_TOOLS,
   MARTIN_MINIMAL_TOOLS,
-  MARTIN_PAID_REMOTE_TOOLS,
   MARTIN_STARTER_TOOLS
 } from "./mcp-config.js";
 import { persistLoopArtifacts } from "./persistence.js";
@@ -116,6 +123,16 @@ type DoctorCommand = {
   configPath?: string;
 };
 
+type NativePhaseCommand = {
+  command: "native_phase";
+  subcommand: NativePhaseSubcommand;
+  cwd?: string;
+  runsDir?: string;
+  host?: string;
+  runScanLimit?: number;
+  execute: boolean;
+};
+
 type PreflightCommand = {
   command: "preflight";
   request: RunCommandRequest;
@@ -196,6 +213,7 @@ export type ParsedCliArguments =
   | InspectCommand
   | ResumeCommand
   | DoctorCommand
+  | NativePhaseCommand
   | PreflightCommand
   | TriageCommand
   | DossierCommand
@@ -251,6 +269,8 @@ export async function executeCli(args: string[]): Promise<{
         return await executeResumeCommand(parsed, outputMode);
       case "doctor":
         return await executeDoctorCommand(parsed, outputMode);
+      case "native_phase":
+        return await executeNativePhaseCommand(parsed, outputMode);
       case "preflight":
         return await executePreflightCommand(parsed.request, outputMode);
       case "triage":
@@ -332,6 +352,23 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
       ...(readOption(rest, "--engine") === "codex" ? { engine: "codex" as const } : {}),
       ...(readOption(rest, "--engine") === "claude" ? { engine: "claude" as const } : {})
     };
+  }
+
+  if (command === "session-start") {
+    return parseNativePhaseCommand("session-start", rest);
+  }
+
+  if (command === "phase" || command === "gsd") {
+    const [subcommand, ...subcommandArgs] = rest;
+    if (
+      subcommand === "status" ||
+      subcommand === "contract" ||
+      subcommand === "preflight" ||
+      subcommand === "run"
+    ) {
+      return parseNativePhaseCommand(subcommand, subcommandArgs);
+    }
+    return { command: "help" };
   }
 
   if (command === "triage") {
@@ -446,6 +483,8 @@ export function renderCliHelp(): string {
     "  martin-loop run <objective> [options]    (published alias)",
     "  martin preflight <objective> [options]",
     "  martin doctor [options]",
+    "  martin session-start [--host <claude|codex|generic>] [options]",
+    "  martin phase status|contract|preflight|run [--execute] [options]",
     "  martin triage [options]",
     "  martin dossier (--loop-id <id> | --file <path> | --latest) [options]",
     "  martin runs list [options]",
@@ -464,6 +503,11 @@ export function renderCliHelp(): string {
     "",
     "Operator commands:",
     "  doctor       Check CLI, engine, working directory, and run-store readiness.",
+    "  session-start Show latest local run state, phase state, and command hints.",
+    "  phase status    Read local phase state and run-store posture.",
+    "  phase contract  Compile local phase state into a MartinLoop run contract.",
+    "  phase preflight Convert the phase contract into a MartinLoop preflight invocation; dry-run by default.",
+    "  phase run       Convert the phase contract into a MartinLoop run invocation; dry-run by default.",
     "  preflight    Validate a governed run request before spend.",
     "  triage       Rank persisted runs that need attention first.",
     "  dossier      Produce a structured dossier for one persisted run.",
@@ -489,13 +533,18 @@ export function renderCliHelp(): string {
     "  --latest                 Select the most recently updated loop.",
     "  --attempt-index <n>      Select a specific attempt for attempt inspection.",
     "",
+    "Phase command-center options:",
+    "  --cwd <path>             Repo root containing phase state; imports .gsd state when present.",
+    "  --runs-dir <path>        Override the Martin runs root.",
+    "  --host <name>            Host name for session-start guidance.",
+    "  --run-scan-limit <n>     Max recent run directories to inspect (default: 40).",
+    "  --execute                Execute generated preflight/run command after contract validation.",
+    "",
     "MCP config options:",
     "  --host <name>            codex, claude, gemini, or generic.",
     "  --scope <name>           user or project for all hosts; Claude also supports local.",
-    "  --transport <name>       stdio (default) or remote.",
-    "  --profile <name>         minimal (default), diagnostic, full-local, paid-remote, starter, or full.",
-    "  --remote-url <url>       Override the private remote MCP endpoint URL.",
-    "  --remote-token-env <var> Env var used for remote bearer auth (default: MARTIN_REMOTE_TOKEN).",
+    "  --transport <name>       stdio (default).",
+    "  --profile <name>         minimal (default), diagnostic, github-review, full-local, starter, or full.",
     "  --platform <name>        windows, macos, or linux recipe shaping.",
     "",
     "Run options:",
@@ -774,7 +823,6 @@ async function executeDoctorCommand(
       minimal: [...MARTIN_MINIMAL_TOOLS],
       diagnostic: [...MARTIN_DIAGNOSTIC_TOOLS],
       "full-local": [...MARTIN_FULL_TOOLS],
-      "paid-remote": [...MARTIN_PAID_REMOTE_TOOLS],
       starter: [...MARTIN_STARTER_TOOLS],
       full: [...MARTIN_FULL_TOOLS]
     },
@@ -800,6 +848,58 @@ async function executeDoctorCommand(
     ],
     quiet: environment.runsRoot,
     warnings
+  });
+}
+
+async function executeNativePhaseCommand(
+  command: NativePhaseCommand,
+  outputMode: MartinOutputMode
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  const snapshot = await createNativePhaseCommandCenterSnapshot({
+    rootDir: command.cwd,
+    runsDir: command.runsDir,
+    host: command.host,
+    runScanLimit: command.runScanLimit
+  });
+
+  if ((command.subcommand === "preflight" || command.subcommand === "run") && command.execute) {
+    if (snapshot.contract.requiresApproval) {
+      return renderCliSuccess(outputMode, {
+        data: selectNativePhasePayload(snapshot, command.subcommand),
+        human: [
+          `Phase ${command.subcommand} blocked: contract requires approval.`,
+          `Missing safeguards: ${snapshot.contract.missingSafeguards.join(", ") || "none"}`
+        ],
+        quiet: "blocked"
+      });
+    }
+
+    const request = buildNativePhaseRunRequest(snapshot.contract, command.cwd);
+    return command.subcommand === "run"
+      ? executeRunCommand(request, outputMode)
+      : executePreflightCommand(request, outputMode);
+  }
+
+  const data = selectNativePhasePayload(snapshot, command.subcommand);
+  const human =
+    command.subcommand === "session-start"
+      ? renderNativePhaseHuman(snapshot)
+      : [
+          `Phase ${command.subcommand} ${snapshot.contract.requiresApproval ? "requires approval" : "ready"}.`,
+          `Objective: ${snapshot.contract.objective}`,
+          `Risk: ${snapshot.contract.riskLevel}`,
+          `Verifiers: ${snapshot.contract.verifiers.join(", ") || "missing"}`
+        ];
+
+  return renderCliSuccess(outputMode, {
+    data,
+    human,
+    quiet:
+      command.subcommand === "contract"
+        ? snapshot.contract.requiresApproval
+          ? "approval_required"
+          : "ready"
+        : snapshot.sessionStart.recommendedNextAction
   });
 }
 
@@ -1072,8 +1172,8 @@ async function executeMcpPrintConfigCommand(
       profiles: {
         minimal: [...MARTIN_MINIMAL_TOOLS],
         diagnostic: [...MARTIN_DIAGNOSTIC_TOOLS],
+        "github-review": [...MARTIN_GITHUB_REVIEW_TOOLS],
         "full-local": [...MARTIN_FULL_TOOLS],
-        "paid-remote": [...MARTIN_PAID_REMOTE_TOOLS],
         starter: [...MARTIN_STARTER_TOOLS],
         full: [...MARTIN_FULL_TOOLS]
       },
@@ -1408,7 +1508,7 @@ function parseMcpTransport(tokens: string[]): MartinMcpTransport {
   }
 
   throw new CliCommandError("invalid_input", `Invalid --transport value: ${transport}.`, {
-    suggestion: "Use --transport stdio or --transport remote."
+    suggestion: "Use --transport stdio."
   });
 }
 
@@ -1422,8 +1522,8 @@ function parseMcpProfile(tokens: string[]): MartinMcpProfile {
   if (
     profile === "minimal" ||
     profile === "diagnostic" ||
+    profile === "github-review" ||
     profile === "full-local" ||
-    profile === "paid-remote" ||
     profile === "starter" ||
     profile === "full"
   ) {
@@ -1431,7 +1531,7 @@ function parseMcpProfile(tokens: string[]): MartinMcpProfile {
   }
 
   throw new CliCommandError("invalid_input", `Invalid --profile value: ${profile}.`, {
-    suggestion: "Use --profile minimal, diagnostic, full-local, paid-remote, starter, or full."
+    suggestion: "Use --profile minimal, diagnostic, github-review, full-local, starter, or full."
   });
 }
 
@@ -1458,6 +1558,24 @@ function readOption(tokens: string[], flag: string): string | undefined {
 
 function hasFlag(tokens: string[], flag: string): boolean {
   return tokens.includes(flag);
+}
+
+function parseNativePhaseCommand(subcommand: NativePhaseSubcommand, tokens: string[]): NativePhaseCommand {
+  const runScanLimit = readOption(tokens, "--run-scan-limit");
+  const parsedRunScanLimit = runScanLimit ? Number(runScanLimit) : undefined;
+  if (parsedRunScanLimit !== undefined && (!Number.isFinite(parsedRunScanLimit) || parsedRunScanLimit < 1)) {
+    throw new CliCommandError("invalid_input", "--run-scan-limit must be a positive number.");
+  }
+
+  return {
+    command: "native_phase",
+    subcommand,
+    ...(readOption(tokens, "--cwd") ? { cwd: readOption(tokens, "--cwd") } : {}),
+    ...(readOption(tokens, "--runs-dir") ? { runsDir: readOption(tokens, "--runs-dir") } : {}),
+    ...(readOption(tokens, "--host") ? { host: readOption(tokens, "--host") } : {}),
+    ...(parsedRunScanLimit !== undefined ? { runScanLimit: parsedRunScanLimit } : {}),
+    execute: hasFlag(tokens, "--execute")
+  };
 }
 
 function parseLoopRecords(contents: string): LoopRecord[] {

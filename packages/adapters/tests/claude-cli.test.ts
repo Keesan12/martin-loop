@@ -12,6 +12,7 @@ import type { MartinAdapterRequest } from "@martin/core";
 
 import {
   createAgentCliAdapter,
+  createSpawnPlan,
   createClaudeCliAdapter,
   createCodexCliAdapter,
   createVerifierOnlyAdapter,
@@ -337,6 +338,25 @@ describe("splitCommand", () => {
       "-e",
       "process.exit(0)",
     ]);
+  });
+});
+
+describe("createSpawnPlan", () => {
+  it("wraps absolute Windows .cmd verifiers with cmd.exe", () => {
+    if (process.platform !== "win32") {
+      expect(true).toBe(true);
+      return;
+    }
+
+    const pnpmPath = "C:\\Users\\Torram\\AppData\\Roaming\\npm\\pnpm.cmd";
+    const plan = createSpawnPlan(pnpmPath, ["verify:shared-baseline"], process.cwd(), false);
+
+    expect(plan.command.toLowerCase()).toContain("cmd.exe");
+    expect(plan.args[0]).toBe("/d");
+    expect(plan.args[1]).toBe("/s");
+    expect(plan.args[2]).toBe("/c");
+    expect(plan.args[3]).toContain("pnpm.cmd");
+    expect(plan.args[3]).toContain("verify:shared-baseline");
   });
 });
 

@@ -33,7 +33,7 @@ If a folder is not needed to ship or verify the OSS runtime, it does not belong 
 Use the current product-lane names consistently in OSS-safe docs:
 
 - Free / OSS: the only public tier in this tree; includes the root `martin-loop` facade and the standalone `@martinloop/mcp` package.
-- Pro: private paid tier for authenticated remote MCP private beta, principal-aware remote config, and team proof surfaces; do not describe it as shipped from this repo.
+- Pro: private paid tier for hosted team surfaces layered on OSS receipts; do not describe it as shipped from this repo.
 - Growth: private paid tier for broader team policy and collaboration controls; do not describe it as shipped from this repo.
 - Enterprise: private paid tier for governance, diagnostics, scorecards, and hosted operations; do not describe it as shipped from this repo.
 - Internal: private operator and shadow-promotion tier; never mirror its implementation details into this repo.

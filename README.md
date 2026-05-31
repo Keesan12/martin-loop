@@ -132,7 +132,7 @@ Challenge page: [Can your AI coding agent finish this task under $3?](./docs/dis
 npm install -g martin-loop
 ```
 
-This installs both the `martin-loop` package and the `martin` command alias. The root package in this repo is on the `0.1.x` line; check [`docs/release/VERSION-LEDGER.md`](./docs/release/VERSION-LEDGER.md) before doing any release work so the root and standalone MCP version lines do not get conflated.
+This installs both the `martin-loop` package and the `martin` command alias. Check [`docs/release/VERSION-LEDGER.md`](./docs/release/VERSION-LEDGER.md) before doing release work so the root and standalone MCP lines do not get conflated.
 
 Want a safe sandbox first? Run `npx martin-loop demo` and MartinLoop will copy a disposable local workspace into `./martin-loop-demo`.
 
@@ -183,7 +183,7 @@ Martin Loop uses one public Free / OSS lane plus a separate paid-tier ladder. On
 | Lane | Status in `oss-core` | Public claim boundary |
 |---|---|---|
 | Free / OSS | Public and versioned here | Local runtime, CLI, SDK, root `martin-loop`, and the standalone `@martinloop/mcp` package |
-| Pro | Private only | Authenticated remote MCP private beta, principal-aware remote config, and team proof surfaces layered on OSS receipts; not shipped from `oss-core` |
+| Pro | Private only | Hosted team surfaces layered on OSS receipts; not shipped from `oss-core` |
 | Growth | Private only | Broader team policy and collaboration controls layered above Pro; not shipped from `oss-core` |
 | Enterprise | Private only | Enterprise governance, diagnostics, scorecards, and hosted operations; not shipped from `oss-core` |
 | Internal | Private only | Internal operator and shadow-promotion lanes; never part of the public OSS/MCP manifest |
@@ -212,10 +212,10 @@ npx -y @martinloop/mcp
 ### Other MCP host installs
 
 - Codex: `codex mcp add martin-loop -- npx -y @martinloop/mcp`
-- Gemini CLI and generic wrapper hosts: generate the exact local or remote profile with `martin mcp print-config --host gemini|generic --transport stdio|remote --profile minimal|diagnostic|full-local|paid-remote`
-- Claude, Codex, Gemini, and generic hosts all support generated minimal, diagnostic, full-local, paid-remote, and compatibility profiles through `martin mcp print-config` and `martin mcp install`
+- Gemini CLI and generic wrapper hosts: generate exact local stdio profiles with `martin mcp print-config --host gemini|generic --transport stdio --profile minimal|diagnostic|full-local|github-review`
+- Claude, Codex, Gemini, and generic hosts all support generated minimal, diagnostic, full-local, github-review, and compatibility profiles through `martin mcp print-config` and `martin mcp install`
 
-Martin Loop keeps the public package local-first and stdio-first. Remote Streamable HTTP profiles are generated from the same shared contract, but the hosted remote lane remains a private beta in the main workspace until it is explicitly promoted.
+Martin Loop keeps the public package local-first and stdio-first. Hosted and remote execution lanes remain private and are not part of the current public package claim.
 
 ### Run a governed task
 
@@ -243,13 +243,16 @@ Remove-Item Env:MARTIN_LIVE
 
 ```sh
 martin doctor
+martin session-start
+martin phase contract --json
+martin phase preflight
 martin triage
 martin dossier --latest
 martin runs get --loop-id <loopId>
 martin mcp print-config --host codex --profile minimal
 ```
 
-`doctor` checks environment readiness, `triage` ranks persisted runs that need attention, `dossier` gives you the richest single-run view, and `runs get` loads a persisted loop by selector. The legacy `inspect` and `resume` commands still work, but they are now compatibility aliases.
+`doctor` checks environment readiness, `session-start` summarizes local run and phase state, `phase contract` compiles local phase state into a run contract, `phase preflight` previews the governed preflight command, `triage` ranks persisted runs that need attention, `dossier` gives you the richest single-run view, and `runs get` loads a persisted loop by selector. The legacy `inspect` and `resume` commands still work, but they are now compatibility aliases.
 
 ---
 
@@ -283,17 +286,21 @@ New operator-first workflows are available through:
 
 ```text
 martin doctor
+martin session-start [--host claude|codex|generic]
+martin phase status|contract|preflight|run [--execute]
 martin preflight <objective> [options]
 martin triage [options]
 martin dossier (--loop-id <id> | --file <path> | --latest)
 martin runs list|get|attempt|verify ...
-martin mcp print-config --host codex|claude|gemini|generic --transport stdio|remote --profile minimal|diagnostic|full-local|paid-remote
+martin mcp print-config --host codex|claude|gemini|generic --transport stdio --profile minimal|diagnostic|full-local|github-review
 martin mcp install --host codex|claude|gemini|generic --scope user|project [--dry-run]
 ```
 
 Use `--json` for stable machine-readable output and `--quiet` for script-friendly minimal output.
 
-The public OSS package remains local-first and stdio-first. Hosted Streamable HTTP support is not part of the public package manifest until it has release evidence and an explicit public promotion.
+Native phase commands are local-only. They import `.gsd/PLAN.md`, `.gsd/state.json`, and `.gsd/martin-contract.json` when present as a compatibility workspace format, inspect recent local MartinLoop run records, and fail closed when allowed paths or verifiers are missing. `martin phase preflight` and `martin phase run` are dry-run by default; use `--execute` only after the contract is safe.
+
+The public OSS package remains local-first and stdio-first. Remote HTTP operation is not part of this local-first package.
 
 <div align="center">
   <img src="./docs/assets/cli-static.svg" alt="MartinLoop CLI terminal output" width="720">
@@ -423,7 +430,7 @@ pnpm release:matrix:local
 
 > **Caution:** This package is live on npm. Treat registry publication as a guarded release step — verify the RC gate commands, confirm semantic versioning, and document breaking changes before publishing.
 
-The repository is organized as a dual-track workspace: the OSS runtime and package facade are present and published, while hosted operations, local dashboard work, and benchmark expansion remain outside the primary npm package API.
+The published package surface in this repo is the OSS runtime, CLI, MCP server, and local proof materials. Hosted operations and broader benchmark expansion remain outside the current npm package API.
 
 Helpful docs:
 

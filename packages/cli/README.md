@@ -5,6 +5,8 @@ Operator-first CLI for Martin Loop.
 The CLI now treats execution, diagnosis, persisted-run inspection, and MCP host setup as one product family:
 
 - `martin doctor`
+- `martin session-start`
+- `martin phase status|contract|preflight|run`
 - `martin preflight`
 - `martin run`
 - `martin triage`
@@ -21,26 +23,30 @@ The CLI now treats execution, diagnosis, persisted-run inspection, and MCP host 
 - `--json`: stable machine-readable payloads
 - `--quiet`: script-friendly primary identifier or path only
 
-## Local vs remote MCP
+## MCP profiles
 
 - local `stdio` is the default and best path for fast local iteration
-- remote config output is for the private Martin Loop Streamable HTTP beta in the main workspace
-- both `martin mcp print-config` and `martin mcp install` support:
+- public OSS guidance covers:
   - `--host codex|claude|gemini|generic`
-  - `--transport stdio|remote`
-  - `--profile minimal|diagnostic|full-local|paid-remote|starter|full`
+  - `--transport stdio`
+  - `--profile minimal|diagnostic|github-review|full-local|starter|full`
   - `--platform windows|macos|linux`
 
 ## Recommended flow
 
 ```sh
 martin doctor
+martin session-start
+martin phase contract --json
+martin phase preflight
 martin preflight "repair the flaky MCP release lane" --verify "pnpm --filter @martinloop/mcp test"
 martin run "repair the flaky MCP release lane" --verify "pnpm --filter @martinloop/mcp test"
 martin triage
 martin dossier --latest
 martin mcp print-config --host codex --profile minimal
 ```
+
+`martin session-start` and `martin phase` are local-first command-center helpers. They read local phase state and local MartinLoop run receipts, then produce an explicit run contract before any work is executed. Existing `.gsd` workspaces are imported as a compatibility format when present. `martin phase preflight` and `martin phase run` are dry-run by default; add `--execute` only after the generated contract has the right verifier, budget, allowed paths, and blocked paths.
 
 ## Compatibility aliases
 
@@ -74,9 +80,9 @@ The minimal allow-list stays aligned with the MCP discovery metadata: `martin_do
 
 ## Host coverage
 
-- `codex`: local stdio and remote URL profiles
-- `claude`: local, user, and project scopes plus remote HTTP profiles
-- `gemini`: local and remote `settings.json` snippets plus `includeTools`
+- `codex`: local stdio profiles
+- `claude`: local, user, and project scopes
+- `gemini`: local `settings.json` snippets plus `includeTools`
 - `generic`: JSON config for wrapper hosts and MCP-aware agent shells
 
 Generated stdio launchers are platform-aware:

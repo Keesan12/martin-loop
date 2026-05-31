@@ -20,7 +20,7 @@ See [VERSION-LEDGER.md](./VERSION-LEDGER.md) for the canonical version map.
 This packet is a public Free / OSS MCP artifact only.
 
 - Pro, Growth, Enterprise, and Internal remain private tier lanes.
-- private Pro remote MCP private beta and principal-aware remote config remain outside this packet
+- private hosted and team-only capabilities remain outside this packet
 - Reviewing this packet does not approve promotion of private control-plane, autonomy, or router internals into the OSS package or docs.
 
 ## Commands Run
@@ -52,7 +52,7 @@ Additional non-public integration receipts are intentionally tracked outside thi
 
 ## Versions Tested
 
-- root package local integrated tree: `martin-loop@0.1.6`
+- root package local integrated tree: `martin-loop@0.2.7`
 - standalone MCP local integrated tree: `@martinloop/mcp@0.2.5`
 
 ## Host Matrix Receipts

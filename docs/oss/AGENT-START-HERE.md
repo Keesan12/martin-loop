@@ -33,7 +33,6 @@ Expected value: the dossier tells you what happened, what Martin prevented, veri
 - `minimal` is the default: `martin_doctor`, `martin_preflight`, `martin_list_runs`, `martin_triage_runs`, and `martin_run_dossier`.
 - `diagnostic` adds deeper read-only run inspection without `martin_run`.
 - `full-local` exposes the full local cockpit, including `martin_run`.
-- `paid-remote` is shaped for hosted/remote operation with execution plus compact inspection.
 - `starter` and `full` remain compatibility aliases.
 
 ## Host Setup

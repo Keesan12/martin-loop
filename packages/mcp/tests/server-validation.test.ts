@@ -260,6 +260,7 @@ describe("server validation", () => {
   it("allows missing explicit runsDir for diagnostic run-store surfaces", () => {
     return withValidationRunsRoot(async (runsRoot) => {
       const missingRunsRoot = join(runsRoot, "missing");
+      const missingAbsoluteRunsRoot = join(tmpdir(), "martin-mcp-missing-runs-root");
 
       expect(
         validateToolInput("martin_doctor", {
@@ -292,6 +293,20 @@ describe("server validation", () => {
       ).toEqual({
         runsDir: missingRunsRoot
       });
+
+      expect(
+        validateToolInput("martin_doctor", {
+          runsDir: missingAbsoluteRunsRoot
+        })
+      ).toEqual({
+        runsDir: missingAbsoluteRunsRoot
+      });
+
+      expect(() =>
+        validateToolInput("martin_doctor", {
+          runsDir: "../missing"
+        })
+      ).toThrow("Invalid runsDir.");
     });
   });
 

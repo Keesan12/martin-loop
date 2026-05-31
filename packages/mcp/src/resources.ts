@@ -9,6 +9,8 @@ import { MARTIN_MCP_PACKAGE_VERSION } from "./package-version.js";
 import { inspectLoopTool } from "./tools/inspect-loop.js";
 import { martinDoctorTool } from "./tools/doctor.js";
 import { martinTriageRunsTool } from "./tools/triage-runs.js";
+import { martinRunDossierTool } from "./tools/run-dossier.js";
+import { inspectRepoSignals, buildPolicyPackDefinition, buildRepoRiskMap } from "./tools/workflow-governance.js";
 import {
   buildAttemptSnapshot,
   buildPersistedLoopPreview,
@@ -24,11 +26,15 @@ export const MARTIN_STATIC_RESOURCE_URIS = {
   serverHealth: "martin://server/health",
   recentRuns: "martin://runs/recent",
   triage: "martin://runs/triage",
+  latestRun: "martin://runs/latest",
   latestSummary: "martin://runs/latest/summary",
   latestProofCard: "martin://runs/latest/proof-card",
   latestBudgetStatus: "martin://runs/latest/budget-status",
   latestVerifierEvidence: "martin://runs/latest/verifier-evidence",
   latestRollbackEvidence: "martin://runs/latest/rollback-evidence",
+  currentPolicies: "martin://policies/current",
+  repoRiskMap: "martin://repo/risk-map",
+  verifierResults: "martin://verifiers/results",
   agentNextStep: "martin://agent/next-step",
   mcpUsageGuide: "martin://guides/mcp-usage",
   agentStartGuide: "martin://guides/agent-start",
@@ -41,6 +47,12 @@ export const MARTIN_RESOURCE_TEMPLATES: ResourceTemplate[] = [
     title: "Martin Run Record",
     uriTemplate: "martin://runs/{loopId}",
     description: "Read a canonical Martin loop record using the same selector path as martin_status."
+  },
+  {
+    name: "martin_run_dossier_resource",
+    title: "Martin Run Dossier",
+    uriTemplate: "martin://runs/{loopId}/dossier",
+    description: "Read the dossier-shaped summary for a persisted Martin loop."
   },
   {
     name: "martin_run_attempt",
@@ -79,6 +91,13 @@ export const MARTIN_STATIC_RESOURCES: Resource[] = [
     mimeType: "application/json"
   },
   {
+    uri: MARTIN_STATIC_RESOURCE_URIS.latestRun,
+    name: "martin_latest_run",
+    title: "Martin Latest Run",
+    description: "Full latest-run dossier surface for agents that need more than the compact summary.",
+    mimeType: "application/json"
+  },
+  {
     uri: MARTIN_STATIC_RESOURCE_URIS.latestSummary,
     name: "martin_latest_summary",
     title: "Martin Latest Summary",
@@ -111,6 +130,27 @@ export const MARTIN_STATIC_RESOURCES: Resource[] = [
     name: "martin_latest_rollback_evidence",
     title: "Martin Latest Rollback Evidence",
     description: "Compact rollback and artifact evidence for the latest run.",
+    mimeType: "application/json"
+  },
+  {
+    uri: MARTIN_STATIC_RESOURCE_URIS.currentPolicies,
+    name: "martin_current_policies",
+    title: "Martin Current Policies",
+    description: "Local policy-pack presets and the recommended default pack for the current repo.",
+    mimeType: "application/json"
+  },
+  {
+    uri: MARTIN_STATIC_RESOURCE_URIS.repoRiskMap,
+    name: "martin_repo_risk_map",
+    title: "Martin Repo Risk Map",
+    description: "Sensitive repo surfaces and the recommended policy pack for this workspace.",
+    mimeType: "application/json"
+  },
+  {
+    uri: MARTIN_STATIC_RESOURCE_URIS.verifierResults,
+    name: "martin_latest_verifier_results",
+    title: "Martin Latest Verifier Results",
+    description: "Latest verifier results alias for compact run evidence.",
     mimeType: "application/json"
   },
   {
@@ -189,6 +229,15 @@ export async function readMartinResource(
       return jsonResource(input.uri, withDiscoveryMetadata(triage, context.runsRoot));
     }
 
+    case MARTIN_STATIC_RESOURCE_URIS.latestRun:
+      return jsonResource(
+        input.uri,
+        withDiscoveryMetadata(
+          await martinRunDossierTool({ latest: true, runsDir: context.runsRoot }),
+          context.runsRoot
+        )
+      );
+
     case MARTIN_STATIC_RESOURCE_URIS.latestSummary:
       return jsonResource(input.uri, withDiscoveryMetadata(await buildLatestSummaryResource(context.runsRoot), context.runsRoot));
 
@@ -203,6 +252,15 @@ export async function readMartinResource(
 
     case MARTIN_STATIC_RESOURCE_URIS.latestRollbackEvidence:
       return jsonResource(input.uri, withDiscoveryMetadata(await buildLatestRollbackEvidenceResource(context.runsRoot), context.runsRoot));
+
+    case MARTIN_STATIC_RESOURCE_URIS.currentPolicies:
+      return jsonResource(input.uri, withDiscoveryMetadata(buildCurrentPoliciesResource(context.workingDirectory), context.runsRoot));
+
+    case MARTIN_STATIC_RESOURCE_URIS.repoRiskMap:
+      return jsonResource(input.uri, withDiscoveryMetadata(buildRepoRiskMap(inspectRepoSignals(context.workingDirectory)), context.runsRoot));
+
+    case MARTIN_STATIC_RESOURCE_URIS.verifierResults:
+      return jsonResource(input.uri, withDiscoveryMetadata(await buildLatestVerifierEvidenceResource(context.runsRoot), context.runsRoot));
 
     case MARTIN_STATIC_RESOURCE_URIS.agentNextStep:
       return jsonResource(input.uri, withDiscoveryMetadata(await buildAgentNextStepResource(context.runsRoot), context.runsRoot));
@@ -266,6 +324,13 @@ async function readDynamicMartinResource(input: {
       verification,
       warnings: [...detail.warnings, ...verification.warnings]
     }, input.runsDir));
+  }
+
+  const dossierMatch = /^martin:\/\/runs\/([^/]+)\/dossier$/u.exec(input.uri);
+  if (dossierMatch?.[1]) {
+    const loopId = decodeURIComponent(dossierMatch[1]);
+    const dossier = await martinRunDossierTool({ loopId, runsDir: input.runsDir });
+    return jsonResource(input.uri, withDiscoveryMetadata(dossier, input.runsDir));
   }
 
   const attemptMatch = /^martin:\/\/runs\/([^/]+)\/attempts\/([^/]+)$/u.exec(input.uri);
@@ -567,6 +632,21 @@ function compactEmptyState(kind: string, runsRoot: string, warnings: string[]): 
   };
 }
 
+function buildCurrentPoliciesResource(workingDirectory: string): Record<string, unknown> {
+  const signals = inspectRepoSignals(workingDirectory);
+  const recommended = buildPolicyPackDefinition(undefined, signals);
+  return {
+    recommended: recommended.name,
+    packs: [
+      buildPolicyPackDefinition("solo-founder", signals),
+      buildPolicyPackDefinition("startup-team", signals),
+      buildPolicyPackDefinition("enterprise-strict", signals),
+      buildPolicyPackDefinition("oss-maintainer", signals),
+      buildPolicyPackDefinition("security-sensitive", signals)
+    ]
+  };
+}
+
 function describePrevention(loop: Parameters<typeof buildPersistedLoopPreview>[0]): string[] {
   const prevented = [];
   const latestAttempt = loop.attempts.at(-1);
@@ -680,7 +760,7 @@ Use Martin Loop as the local governor before you spend agent tokens or retry a f
 - \`minimal\` (default): doctor, preflight, list, triage, dossier. Good for low tool bloat.
 - \`diagnostic\`: read-only inspection tools for debugging without execution.
 - \`full-local\`: all local tools, including \`martin_run\`.
-- \`paid-remote\`: hosted/remote-appropriate paid profile with execution plus compact inspection.
+- \`github-review\`: review-oriented local profile for PR drafting and reviewer evidence.
 - \`starter\` and \`full\`: compatibility aliases.
 
 ## Copy-Paste Agent Rule

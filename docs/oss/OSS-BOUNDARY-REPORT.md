@@ -1,12 +1,12 @@
 # Martin Loop OSS Boundary Report
 
-Generated: 2026-05-19T02:49:24.776Z
+Generated: 2026-05-31T20:48:50.007Z
 
 ## Verdict
 **GO**
 
-## Public Surface
-- Root package: `martin-loop@0.1.6`
+## Published Interface
+- Root package: `martin-loop@0.2.8`
 - Install target: `npm install martin-loop`
 - CLI target: `npx martin-loop`
 - SDK target: `import { MartinLoop } from "martin-loop"`
@@ -27,3 +27,4 @@ Generated: 2026-05-19T02:49:24.776Z
 - Forbidden non-OSS package directories: none
 - Unexpected package directories: none
 - Workspace dependency leaks: none
+
