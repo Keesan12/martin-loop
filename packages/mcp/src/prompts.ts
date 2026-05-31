@@ -125,6 +125,56 @@ export const MARTIN_PROMPTS: Prompt[] = [
     arguments: [
       { name: "focus", description: "Optional triage focus, such as verification failures, budget pressure, or publish blockers." }
     ]
+  },
+  {
+    name: "safe_bug_fix",
+    title: "Safe Bug Fix",
+    description: appendPromptMetadata("Plan a small scoped bug fix through doctor, plan, preflight, run, and dossier."),
+    arguments: [
+      { name: "objective", description: "Bug fix objective.", required: true }
+    ]
+  },
+  {
+    name: "write_tests_first",
+    title: "Write Tests First",
+    description: appendPromptMetadata("Constrain the plan around failing tests first, then a small fix."),
+    arguments: [
+      { name: "objective", description: "Objective to satisfy with tests-first discipline.", required: true }
+    ]
+  },
+  {
+    name: "small_refactor",
+    title: "Small Refactor",
+    description: appendPromptMetadata("Keep a refactor small, verifier-backed, and path-scoped."),
+    arguments: [
+      { name: "objective", description: "Refactor objective.", required: true }
+    ]
+  },
+  {
+    name: "security_review",
+    title: "Security Review",
+    description: appendPromptMetadata("Review a risky change with Martin risk, scope, and verifier evidence first."),
+    arguments: [
+      { name: "objective", description: "Security review focus.", required: true }
+    ]
+  },
+  {
+    name: "pr_review",
+    title: "PR Review",
+    description: appendPromptMetadata("Generate a Martin-aware PR review checklist with dossier and eval evidence."),
+    arguments: [
+      { name: "objective", description: "Review objective.", required: true },
+      { name: "loopId", description: "Optional loop identifier to review." }
+    ]
+  },
+  {
+    name: "release_check",
+    title: "Release Check",
+    description: appendPromptMetadata("Run a release-readiness check grounded in Martin evidence."),
+    arguments: [
+      { name: "objective", description: "Release check objective.", required: true },
+      { name: "loopId", description: "Optional loop identifier for concrete evidence." }
+    ]
   }
 ];
 
@@ -173,6 +223,7 @@ export async function getMartinPrompt(
 
     case "martin_release_check":
     case "martin_publish_readiness_review":
+    case "release_check":
       return buildPublishReadinessPrompt({
         args,
         runsDir: context.runsRoot
@@ -196,6 +247,21 @@ export async function getMartinPrompt(
         args,
         runsDir: context.runsRoot
       });
+
+    case "safe_bug_fix":
+      return buildWorkflowPrompt(args, "safe bug fix", "Keep the file scope narrow and verifier-backed.");
+
+    case "write_tests_first":
+      return buildWorkflowPrompt(args, "tests-first change", "Write or update the targeted verifier before widening the implementation.");
+
+    case "small_refactor":
+      return buildWorkflowPrompt(args, "small refactor", "Preserve behavior and keep the diff easy to review.");
+
+    case "security_review":
+      return buildWorkflowPrompt(args, "security-sensitive change", "Escalate if auth, secrets, payments, or infra paths are involved.");
+
+    case "pr_review":
+      return buildWorkflowPrompt(args, "PR review", "Use martin_dossier and martin_eval before any approval decision.");
 
     default:
       throw invalidArgumentsError(
@@ -412,6 +478,35 @@ async function buildTriageRunStorePrompt(input: {
           "- the highest-priority run or runs,",
           "- the evidence that makes them priority items,",
           "- the best follow-up tool, resource, or prompt to use next."
+        ])
+      )
+    ]
+  };
+}
+
+async function buildWorkflowPrompt(
+  args: Record<string, string>,
+  label: string,
+  guardrail: string
+): Promise<GetPromptResult> {
+  const objective = requirePromptArgument(args, "objective");
+  return {
+    description: appendPromptMetadata(`Guide an agent through a ${label} with Martin governance.`),
+    messages: [
+      textMessage(
+        "assistant",
+        "Use Martin as the command center: doctor first, then plan, preflight, run, dossier, and eval. Do not jump directly to execution."
+      ),
+      textMessage(
+        "user",
+        joinSections([
+          `Objective: ${objective}`,
+          `Guardrail: ${guardrail}`,
+          "Return:",
+          "- the first Martin tool to call,",
+          "- the proposed file scope,",
+          "- the verifier plan,",
+          "- the conditions that should block or escalate the run."
         ])
       )
     ]

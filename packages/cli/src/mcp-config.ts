@@ -7,29 +7,45 @@ import { CliCommandError } from "./ux.js";
 
 export const MARTIN_STARTER_TOOLS = [
   "martin_doctor",
+  "martin_plan",
   "martin_preflight",
   "martin_run",
   "martin_triage_runs",
-  "martin_run_dossier"
+  "martin_dossier"
 ] as const;
 
 export const MARTIN_MINIMAL_TOOLS = [
   "martin_doctor",
+  "martin_plan",
   "martin_preflight",
   "martin_list_runs",
   "martin_triage_runs",
-  "martin_run_dossier"
+  "martin_dossier"
 ] as const;
 
 export const MARTIN_DIAGNOSTIC_TOOLS = [
   "martin_doctor",
+  "martin_plan",
   "martin_preflight",
+  "martin_logs",
   "martin_list_runs",
   "martin_triage_runs",
   "martin_get_run",
   "martin_get_attempt",
   "martin_get_verification_results",
-  "martin_run_dossier"
+  "martin_dossier",
+  "martin_eval"
+] as const;
+
+export const MARTIN_GITHUB_REVIEW_TOOLS = [
+  "martin_doctor",
+  "martin_plan",
+  "martin_preflight",
+  "martin_dossier",
+  "martin_eval",
+  "martin_pr_summary",
+  "martin_create_pr",
+  "martin_review_pr"
 ] as const;
 
 export const MARTIN_FULL_TOOLS = [
@@ -37,30 +53,42 @@ export const MARTIN_FULL_TOOLS = [
   "martin_inspect",
   "martin_status",
   "martin_doctor",
+  "martin_plan",
   "martin_preflight",
+  "martin_logs",
+  "martin_pause",
+  "martin_cancel",
+  "martin_continue",
   "martin_list_runs",
   "martin_triage_runs",
   "martin_get_run",
   "martin_get_attempt",
   "martin_get_verification_results",
-  "martin_run_dossier"
+  "martin_run_dossier",
+  "martin_dossier",
+  "martin_eval",
+  "martin_pr_summary",
+  "martin_create_pr",
+  "martin_review_pr"
 ] as const;
 
 export const MARTIN_PAID_REMOTE_TOOLS = [
   "martin_doctor",
+  "martin_plan",
   "martin_preflight",
   "martin_run",
   "martin_list_runs",
   "martin_triage_runs",
   "martin_get_run",
   "martin_get_verification_results",
-  "martin_run_dossier"
+  "martin_dossier",
+  "martin_eval"
 ] as const;
 
 export type MartinMcpHost = "codex" | "claude" | "gemini" | "generic";
 export type MartinMcpScope = "user" | "project" | "local";
 export type MartinMcpTransport = "stdio" | "remote";
-export type MartinMcpProfile = "minimal" | "diagnostic" | "full-local" | "paid-remote" | "starter" | "full";
+export type MartinMcpProfile = "minimal" | "diagnostic" | "github-review" | "full-local" | "paid-remote" | "starter" | "full";
 export type MartinMcpPlatform = "windows" | "macos" | "linux";
 
 export interface MartinMcpConfigInput {
@@ -432,6 +460,8 @@ function selectTools(profile: MartinMcpProfile): readonly string[] {
       return MARTIN_MINIMAL_TOOLS;
     case "diagnostic":
       return MARTIN_DIAGNOSTIC_TOOLS;
+    case "github-review":
+      return MARTIN_GITHUB_REVIEW_TOOLS;
     case "full-local":
     case "full":
       return MARTIN_FULL_TOOLS;

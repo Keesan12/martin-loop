@@ -496,13 +496,18 @@ export function buildSuggestedResourceUris(loopId: string): string[] {
     "martin://server/health",
     "martin://runs/recent",
     "martin://runs/triage",
+    "martin://runs/latest",
     "martin://runs/latest/summary",
     "martin://runs/latest/proof-card",
     "martin://runs/latest/budget-status",
     "martin://runs/latest/verifier-evidence",
     "martin://runs/latest/rollback-evidence",
+    "martin://policies/current",
+    "martin://repo/risk-map",
+    "martin://verifiers/results",
     "martin://agent/next-step",
     `martin://runs/${loopId}`,
+    `martin://runs/${loopId}/dossier`,
     `martin://runs/${loopId}/verification`,
     "martin://guides/mcp-usage",
     "martin://guides/agent-start",
@@ -521,7 +526,13 @@ export function buildSuggestedPromptNames(): string[] {
     "martin_governed_coding_kickoff",
     "martin_debug_failed_run",
     "martin_publish_readiness_review",
-    "martin_triage_run_store"
+    "martin_triage_run_store",
+    "safe_bug_fix",
+    "write_tests_first",
+    "small_refactor",
+    "security_review",
+    "pr_review",
+    "release_check"
   ];
 }
 

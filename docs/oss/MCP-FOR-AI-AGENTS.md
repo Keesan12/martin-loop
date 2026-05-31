@@ -1,6 +1,6 @@
 # MCP For AI Agents
 
-`@martinloop/mcp@0.2.5` is the integrated local governed execution cockpit tip for coding-agent hosts. It is built for agents that need one bounded execution tool, strong read-only inspection, run triage, and progressive discovery through MCP resources and prompts.
+`@martinloop/mcp@0.2.5` is the integrated local governed execution cockpit tip for coding-agent hosts. It is built for agents that need one bounded execution tool, a contract-first workflow, strong read-only inspection, and progressive discovery through MCP resources and prompts.
 
 It is intentionally local-first and stdio-first in the OSS package.
 
@@ -8,7 +8,7 @@ It is intentionally local-first and stdio-first in the OSS package.
 
 - 0.1.4 operator foundation.
 - 0.2.0 cockpit expansion. 0.2.0 adds resources, resource templates, prompts, and read-only cockpit inspection.
-- 0.2.5 public MCP package line. 0.2.5 adds triage and degraded run-store hardening.
+- 0.2.5 public MCP package line. 0.2.5 adds triage and degraded run-store hardening, plus the command-center workflow surfaces.
 
 ## What This MCP Is Good At
 
@@ -19,32 +19,46 @@ It is intentionally local-first and stdio-first in the OSS package.
 
 It is not meant to be a generic browser, search engine, or shell replacement.
 
-## Public Surface
+## Published Interface
 
 ### Tools
 
 - `martin_doctor`
+- `martin_plan`
 - `martin_preflight`
 - `martin_run`
 - `martin_inspect`
 - `martin_status`
+- `martin_logs`
+- `martin_pause`
+- `martin_cancel`
+- `martin_continue`
 - `martin_list_runs`
 - `martin_triage_runs`
 - `martin_get_run`
 - `martin_get_attempt`
 - `martin_get_verification_results`
 - `martin_run_dossier`
+- `martin_dossier`
+- `martin_eval`
+- `martin_pr_summary`
+- `martin_create_pr`
+- `martin_review_pr`
 
 ### Resources
 
 - `martin://server/health`
 - `martin://runs/recent`
 - `martin://runs/triage`
+- `martin://runs/latest`
 - `martin://runs/latest/summary`
 - `martin://runs/latest/proof-card`
 - `martin://runs/latest/budget-status`
 - `martin://runs/latest/verifier-evidence`
 - `martin://runs/latest/rollback-evidence`
+- `martin://policies/current`
+- `martin://repo/risk-map`
+- `martin://verifiers/results`
 - `martin://agent/next-step`
 - `martin://guides/mcp-usage`
 - `martin://guides/agent-start`
@@ -53,6 +67,7 @@ It is not meant to be a generic browser, search engine, or shell replacement.
 ### Resource templates
 
 - `martin://runs/{loopId}`
+- `martin://runs/{loopId}/dossier`
 - `martin://runs/{loopId}/attempts/{attemptIndex}`
 - `martin://runs/{loopId}/verification`
 
@@ -68,28 +83,35 @@ It is not meant to be a generic browser, search engine, or shell replacement.
 - `martin_debug_failed_run`
 - `martin_publish_readiness_review`
 - `martin_triage_run_store`
+- `safe_bug_fix`
+- `write_tests_first`
+- `small_refactor`
+- `security_review`
+- `pr_review`
+- `release_check`
 
 ## Host Flow
 
 1. Call `martin_doctor` first.
-2. Call `martin_preflight` before non-trivial execution.
-3. Use `martin_run` as the only execution entrypoint.
-4. Use `martin_triage_runs` to rank which persisted run needs attention.
-5. Read `martin://agent/next-step`, `martin://runs/latest/summary`, or `martin://runs/latest/proof-card` when context budget matters.
-6. Use `martin_run_dossier` or the `martin_get_*` tools when compact evidence says deeper inspection is needed.
-7. Use prompts when the host wants discovery-first workflows.
+2. Call `martin_plan` to propose scope, verifiers, budget, and risk without spending a run.
+3. Call `martin_preflight` to lock the run contract before non-trivial execution.
+4. Use `martin_run` as the only execution entrypoint.
+5. Use `martin_status` or `martin_logs` while the run is live.
+6. Use `martin_dossier` or the `martin_get_*` tools when compact evidence says deeper inspection is needed.
+7. Use `martin_eval` and PR helpers when the host needs review posture, not just raw receipts.
 
 ### Recommended minimal allow-list
 
 If your host supports tool allow-lists, start here:
 
 - `martin_doctor`
+- `martin_plan`
 - `martin_preflight`
 - `martin_list_runs`
 - `martin_triage_runs`
-- `martin_run_dossier`
+- `martin_dossier`
 
-Use `diagnostic` when the host needs deeper read-only run archaeology, and use `full-local` only when the host should execute `martin_run`. This keeps tool bloat down without reducing operator power.
+Use `diagnostic` when the host needs deeper read-only run archaeology, `full-local` only when the host should execute `martin_run`, and `github-review` only when PR mutation is explicitly desired. This keeps tool bloat down without reducing operator power.
 
 ## Install
 
@@ -157,10 +179,10 @@ Examples:
 martin mcp print-config --host codex --transport stdio --profile minimal
 martin mcp print-config --host claude --transport stdio --profile diagnostic
 martin mcp print-config --host gemini --transport stdio --profile full-local
-martin mcp print-config --host generic --transport remote --profile paid-remote
+martin mcp print-config --host generic --transport stdio --profile github-review
 ```
 
-`martin mcp install` accepts the same host, transport, profile, scope, and platform options.
+`martin mcp install` accepts the same public local host, profile, scope, and platform options.
 
 Host notes:
 
@@ -177,6 +199,12 @@ Use local `stdio` when you want the fastest local iteration loop and fully local
 - `workingDirectory` remains bounded to the configured workspace root.
 - `file` and `runsDir` remain bounded to the configured Martin runs root.
 - `allowedPaths` and `deniedPaths` must stay repo-relative.
+- `martin_doctor` now scores repo hygiene, verifier readiness, safeguard posture, and recommended policy strength for the current workspace.
+- `martin_plan` is read-only and proposes file scope, verifier coverage, risk factors, and approval posture before preflight.
+- `martin_preflight` now emits a structured run contract with policy-pack, blocked paths, budgets, and risk scoring.
+- `martin_status`, `martin_logs`, `martin_pause`, `martin_cancel`, and `martin_continue` are the live control layer around `martin_run`.
+- `martin_dossier` is the preferred evidence entrypoint; `martin_run_dossier` remains for compatibility.
+- `martin_eval` converts raw receipts into mergeability and reviewability guidance.
 - Verification summaries come only from persisted `verification.completed` evidence. Missing evidence is reported as `unavailable`, not guessed.
 - Resources and prompts reuse the same persisted run data as the tools.
 - Compact resources are cheap by default: latest summary, proof card, budget status, verifier evidence, rollback evidence, and one next-step recommendation.
@@ -203,4 +231,4 @@ If those two paths look sane, move on to the host-specific config and timeout se
 
 ## Recommendation Blurb
 
-> `@martinloop/mcp` is a stdio MCP server for governed AI coding work. It gives hosts a bounded execution entrypoint, compact proof receipts, rich read-only run inspection, MCP resources for discovery, and prompts for kickoff, triage, resume, proof, debugging, and release review.
+> `@martinloop/mcp` is a stdio MCP server for governed AI coding work. It gives hosts a bounded execution entrypoint, contract-first planning and preflight, compact proof receipts, live run observability, rich read-only run inspection, MCP resources for discovery, and prompts for kickoff, debugging, review, and release checks.

@@ -14,24 +14,38 @@ const EXPECTED_TOOLS = [
   "martin_inspect",
   "martin_status",
   "martin_doctor",
+  "martin_plan",
   "martin_preflight",
+  "martin_logs",
+  "martin_pause",
+  "martin_cancel",
+  "martin_continue",
   "martin_list_runs",
   "martin_triage_runs",
   "martin_get_run",
   "martin_get_attempt",
   "martin_get_verification_results",
-  "martin_run_dossier"
+  "martin_run_dossier",
+  "martin_dossier",
+  "martin_eval",
+  "martin_pr_summary",
+  "martin_create_pr",
+  "martin_review_pr"
 ];
 
 const EXPECTED_RESOURCES = [
   "martin://server/health",
   "martin://runs/recent",
   "martin://runs/triage",
+  "martin://runs/latest",
   "martin://runs/latest/summary",
   "martin://runs/latest/proof-card",
   "martin://runs/latest/budget-status",
   "martin://runs/latest/verifier-evidence",
   "martin://runs/latest/rollback-evidence",
+  "martin://policies/current",
+  "martin://repo/risk-map",
+  "martin://verifiers/results",
   "martin://agent/next-step",
   "martin://guides/mcp-usage",
   "martin://guides/agent-start",
@@ -48,7 +62,13 @@ const EXPECTED_PROMPTS = [
   "martin_governed_coding_kickoff",
   "martin_debug_failed_run",
   "martin_publish_readiness_review",
-  "martin_triage_run_store"
+  "martin_triage_run_store",
+  "safe_bug_fix",
+  "write_tests_first",
+  "small_refactor",
+  "security_review",
+  "pr_review",
+  "release_check"
 ];
 
 const COCKPIT_020_TOOLS = [
@@ -315,21 +335,27 @@ test("MCP docs stay aligned with the actual cockpit surface", async () => {
 
   assertOrderedSubstrings(readme, [
     "martin_doctor",
+    "martin_plan",
     "martin_preflight",
     "martin_run",
-    "martin_run_dossier"
+    "martin_status",
+    "martin_dossier"
   ]);
   assertOrderedSubstrings(aiGuide, [
     "martin_doctor",
+    "martin_plan",
     "martin_preflight",
     "martin_run",
-    "martin_run_dossier"
+    "martin_status",
+    "martin_dossier"
   ]);
   assertOrderedSubstrings(quickstart, [
     "martin_doctor",
+    "martin_plan",
     "martin_preflight",
     "martin_run",
-    "martin_run_dossier"
+    "martin_status",
+    "martin_dossier"
   ]);
   assert.match(readme, new RegExp(escapeRegex(`docs/release/MCP-${packageJson.version}-RELEASE-NOTES.md`)));
   assert.match(readme, /io\.github\.Keesan12\/martin-loop/);
@@ -338,6 +364,10 @@ test("MCP docs stay aligned with the actual cockpit surface", async () => {
   assert.match(rootReadme, /smoke:published:pack/);
   assert.match(rootReadme, /verify:release/);
   assert.match(rootReadme, /io\.github\.Keesan12\/martin-loop/);
+  for (const contents of [readme, aiGuide, quickstart, ossReadme, rootReadme]) {
+    assert.doesNotMatch(contents, /paid-remote/i);
+    assert.doesNotMatch(contents, /principal-aware remote config/i);
+  }
 });
 
 test("MCP release docs preserve publish gates and current cockpit claims", async () => {
@@ -432,16 +462,9 @@ test("OSS tier docs keep the paid-tier ladder separate from the public MCP train
     publishingDoc,
     /Publishing `@martinloop\/mcp` only promotes the public Free \/ OSS MCP lane\./,
   );
-  assert.match(rootReadme, /remote MCP private beta/i);
-  assert.match(rootReadme, /principal-aware remote config/i);
-  assert.match(contextDoc, /remote MCP private beta/i);
-  assert.match(contextDoc, /principal-aware remote config/i);
-  assert.match(deliveryMap, /remote MCP private beta/i);
-  assert.match(deliveryMap, /principal-aware remote config/i);
-  assert.match(publishingDoc, /remote MCP private beta/i);
-  assert.match(publishingDoc, /principal-aware remote config/i);
-  assert.match(releaseNotes, /remote MCP private beta/i);
-  assert.match(releaseNotes, /principal-aware remote config/i);
-  assert.match(releasePacket, /remote MCP private beta/i);
-  assert.match(releasePacket, /principal-aware remote config/i);
+  for (const contents of [rootReadme, contextDoc, deliveryMap, publishingDoc, releaseNotes, releasePacket]) {
+    assert.doesNotMatch(contents, /paid-remote/i);
+    assert.doesNotMatch(contents, /remote MCP private beta/i);
+    assert.doesNotMatch(contents, /principal-aware remote config/i);
+  }
 });

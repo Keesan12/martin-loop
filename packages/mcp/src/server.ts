@@ -42,14 +42,19 @@ import {
   readMartinResource
 } from "./resources.js";
 import { martinDoctorTool } from "./tools/doctor.js";
+import { martinEvalTool } from "./tools/eval.js";
 import { martinGetAttemptTool } from "./tools/get-attempt.js";
 import { martinGetRunTool } from "./tools/get-run.js";
 import { martinGetVerificationResultsTool } from "./tools/get-verification-results.js";
 import { getStatusTool } from "./tools/get-status.js";
 import { inspectLoopTool } from "./tools/inspect-loop.js";
 import { martinListRunsTool } from "./tools/list-runs.js";
+import { martinLogsTool } from "./tools/logs.js";
+import { martinPlanTool } from "./tools/plan.js";
 import { martinPreflightTool } from "./tools/preflight.js";
+import { martinCreatePrTool, martinPrSummaryTool, martinReviewPrTool } from "./tools/pr-tools.js";
 import { martinRunDossierTool } from "./tools/run-dossier.js";
+import { createRunControlReceipt } from "./tools/run-controls.js";
 import { martinTriageRunsTool } from "./tools/triage-runs.js";
 import { runLoopTool } from "./tools/run-loop.js";
 import { createToolErrorResult, createToolSuccessResult } from "./tools/tool-response.js";
@@ -688,6 +693,36 @@ const dossierOutputSchema = {
   ]
 } as const;
 
+const planOutputSchema = {
+  type: "object",
+  additionalProperties: true
+} as const;
+
+const logsOutputSchema = {
+  type: "object",
+  additionalProperties: true
+} as const;
+
+const controlOutputSchema = {
+  type: "object",
+  additionalProperties: true
+} as const;
+
+const evalOutputSchema = {
+  type: "object",
+  additionalProperties: true
+} as const;
+
+const prSummaryOutputSchema = {
+  type: "object",
+  additionalProperties: true
+} as const;
+
+const prReviewOutputSchema = {
+  type: "object",
+  additionalProperties: true
+} as const;
+
 export function createMartinMcpServer(serverInfo?: {
   name?: string;
   version?: string;
@@ -872,6 +907,42 @@ export function createMartinMcpServer(serverInfo?: {
       outputSchema: doctorOutputSchema
     },
     {
+      name: "martin_plan",
+      description:
+        "Read-only planning step that turns an objective into a scoped implementation plan, verifier proposal, policy pack, and risk recommendation.",
+      annotations: {
+        readOnlyHint: true,
+        idempotentHint: true
+      },
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          objective: { type: "string", description: "The coding objective to plan." },
+          workingDirectory: {
+            type: "string",
+            description: "Optional repo-root override resolved under the MCP workspace root."
+          },
+          context: { type: "string", description: "Optional extra issue or bug context." },
+          policyPack: {
+            type: "string",
+            enum: ["solo-founder", "startup-team", "enterprise-strict", "oss-maintainer", "security-sensitive"]
+          },
+          verificationPlan: { type: "array", items: { type: "string" } },
+          allowedPaths: { type: "array", items: { type: "string" } },
+          deniedPaths: { type: "array", items: { type: "string" } },
+          maxUsd: { type: "number", exclusiveMinimum: 0 },
+          maxIterations: { type: "integer", exclusiveMinimum: 0 },
+          maxTokens: { type: "integer", exclusiveMinimum: 0 },
+          maxMinutes: { type: "integer", exclusiveMinimum: 0 },
+          maxFilesChanged: { type: "integer", exclusiveMinimum: 0 },
+          maxCommands: { type: "integer", exclusiveMinimum: 0 }
+        },
+        required: ["objective"]
+      },
+      outputSchema: planOutputSchema
+    },
+    {
       name: "martin_preflight",
       description:
         "Read-only validation of a planned Martin run before any execution or spend.",
@@ -900,6 +971,14 @@ export function createMartinMcpServer(serverInfo?: {
             type: "string",
             description: "Model override passed to the CLI."
           },
+          context: {
+            type: "string",
+            description: "Optional issue context carried into the run contract."
+          },
+          policyPack: {
+            type: "string",
+            enum: ["solo-founder", "startup-team", "enterprise-strict", "oss-maintainer", "security-sensitive"]
+          },
           maxUsd: {
             type: "number",
             exclusiveMinimum: 0,
@@ -914,6 +993,21 @@ export function createMartinMcpServer(serverInfo?: {
             type: "integer",
             exclusiveMinimum: 0,
             description: "Maximum total tokens across all attempts."
+          },
+          maxMinutes: {
+            type: "integer",
+            exclusiveMinimum: 0,
+            description: "Estimated wall-clock minutes allowed for the run contract."
+          },
+          maxFilesChanged: {
+            type: "integer",
+            exclusiveMinimum: 0,
+            description: "Estimated maximum files changed for the run contract."
+          },
+          maxCommands: {
+            type: "integer",
+            exclusiveMinimum: 0,
+            description: "Estimated maximum commands allowed for the run contract."
           },
           verificationPlan: {
             type: "array",
@@ -936,6 +1030,97 @@ export function createMartinMcpServer(serverInfo?: {
         required: ["objective"]
       },
       outputSchema: preflightOutputSchema
+    },
+    {
+      name: "martin_logs",
+      description:
+        "Read recent Martin loop events, ledger entries, and operator control receipts for live observability.",
+      annotations: {
+        readOnlyHint: true,
+        idempotentHint: true
+      },
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          file: { type: "string" },
+          loopId: { type: "string" },
+          runsDir: { type: "string" },
+          latest: { const: true },
+          limit: { type: "integer", minimum: 1 }
+        },
+        oneOf: [{ required: ["file"] }, { required: ["loopId"] }, { required: ["latest"] }]
+      },
+      outputSchema: logsOutputSchema
+    },
+    {
+      name: "martin_pause",
+      description:
+        "Record a durable pause request for a Martin run so humans and runtimes can see that execution should pause before risky follow-up work.",
+      annotations: {
+        destructiveHint: true,
+        idempotentHint: false
+      },
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          file: { type: "string" },
+          loopId: { type: "string" },
+          runsDir: { type: "string" },
+          latest: { const: true },
+          reason: { type: "string" },
+          requestedBy: { type: "string" }
+        },
+        oneOf: [{ required: ["file"] }, { required: ["loopId"] }, { required: ["latest"] }]
+      },
+      outputSchema: controlOutputSchema
+    },
+    {
+      name: "martin_cancel",
+      description:
+        "Record a durable cancellation request for a Martin run. This writes a control receipt; it does not silently kill a process without evidence.",
+      annotations: {
+        destructiveHint: true,
+        idempotentHint: false
+      },
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          file: { type: "string" },
+          loopId: { type: "string" },
+          runsDir: { type: "string" },
+          latest: { const: true },
+          reason: { type: "string" },
+          requestedBy: { type: "string" }
+        },
+        oneOf: [{ required: ["file"] }, { required: ["loopId"] }, { required: ["latest"] }]
+      },
+      outputSchema: controlOutputSchema
+    },
+    {
+      name: "martin_continue",
+      description:
+        "Record a durable continue or resume request for a Martin run after a human pause or approval checkpoint.",
+      annotations: {
+        destructiveHint: true,
+        idempotentHint: false
+      },
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          file: { type: "string" },
+          loopId: { type: "string" },
+          runsDir: { type: "string" },
+          latest: { const: true },
+          reason: { type: "string" },
+          requestedBy: { type: "string" }
+        },
+        oneOf: [{ required: ["file"] }, { required: ["loopId"] }, { required: ["latest"] }]
+      },
+      outputSchema: controlOutputSchema
     },
     {
       name: "martin_list_runs",
@@ -1116,6 +1301,119 @@ export function createMartinMcpServer(serverInfo?: {
         ]
       },
       outputSchema: dossierOutputSchema
+    },
+    {
+      name: "martin_dossier",
+      description:
+        "Alias for martin_run_dossier with support for JSON, Markdown, or GitHub PR formatting.",
+      annotations: {
+        readOnlyHint: true,
+        idempotentHint: true
+      },
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          file: { type: "string" },
+          loopId: { type: "string" },
+          runsDir: { type: "string" },
+          latest: { const: true },
+          format: { type: "string", enum: ["json", "md", "github-pr"] }
+        },
+        oneOf: [{ required: ["file"] }, { required: ["loopId"] }, { required: ["latest"] }]
+      },
+      outputSchema: dossierOutputSchema
+    },
+    {
+      name: "martin_eval",
+      description:
+        "Grade a Martin run for task completion, verifier health, diff discipline, risk, and reviewability.",
+      annotations: {
+        readOnlyHint: true,
+        idempotentHint: true
+      },
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          file: { type: "string" },
+          loopId: { type: "string" },
+          runsDir: { type: "string" },
+          latest: { const: true }
+        },
+        oneOf: [{ required: ["file"] }, { required: ["loopId"] }, { required: ["latest"] }]
+      },
+      outputSchema: evalOutputSchema
+    },
+    {
+      name: "martin_pr_summary",
+      description:
+        "Generate a PR title and body with a MartinLoop dossier block for a completed run.",
+      annotations: {
+        readOnlyHint: true,
+        idempotentHint: true
+      },
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          file: { type: "string" },
+          loopId: { type: "string" },
+          runsDir: { type: "string" },
+          latest: { const: true },
+          format: { type: "string", enum: ["json", "md", "github-pr"] }
+        },
+        oneOf: [{ required: ["file"] }, { required: ["loopId"] }, { required: ["latest"] }]
+      },
+      outputSchema: prSummaryOutputSchema
+    },
+    {
+      name: "martin_create_pr",
+      description:
+        "Create or preview a GitHub PR with a MartinLoop dossier body. Use execute=true to actually call gh.",
+      annotations: {
+        destructiveHint: true,
+        idempotentHint: false
+      },
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          file: { type: "string" },
+          loopId: { type: "string" },
+          runsDir: { type: "string" },
+          latest: { const: true },
+          format: { type: "string", enum: ["json", "md", "github-pr"] },
+          title: { type: "string" },
+          base: { type: "string" },
+          execute: { type: "boolean" }
+        },
+        oneOf: [{ required: ["file"] }, { required: ["loopId"] }, { required: ["latest"] }]
+      },
+      outputSchema: prSummaryOutputSchema
+    },
+    {
+      name: "martin_review_pr",
+      description:
+        "Review a PR or PR draft against the Martin dossier and evaluation evidence.",
+      annotations: {
+        readOnlyHint: true,
+        idempotentHint: true
+      },
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          file: { type: "string" },
+          loopId: { type: "string" },
+          runsDir: { type: "string" },
+          latest: { const: true },
+          format: { type: "string", enum: ["json", "md", "github-pr"] },
+          prBody: { type: "string" }
+        },
+        oneOf: [{ required: ["file"] }, { required: ["loopId"] }, { required: ["latest"] }]
+      },
+      outputSchema: prReviewOutputSchema
     }
   ]
   }));
@@ -1194,9 +1492,45 @@ export function createMartinMcpServer(serverInfo?: {
       return createToolSuccessResult(output, output.summary);
     }
 
+    if (name === "martin_plan") {
+      const input = validateToolInput("martin_plan", args) as Parameters<typeof martinPlanTool>[0];
+      const output = await martinPlanTool(input);
+      return createToolSuccessResult(
+        output,
+        `Plan ready for ${output.objective} with ${output.risk.level} risk and ${output.approvalRecommendation.replace(/_/gu, " ")} approval.`
+      );
+    }
+
     if (name === "martin_preflight") {
       const input = validateToolInput("martin_preflight", args) as Parameters<typeof martinPreflightTool>[0];
       const output = await martinPreflightTool(input);
+      return createToolSuccessResult(output, output.summary);
+    }
+
+    if (name === "martin_logs") {
+      const input = validateToolInput("martin_logs", args) as Parameters<typeof martinLogsTool>[0];
+      const output = await martinLogsTool(input);
+      return createToolSuccessResult(
+        output,
+        `Loaded ${output.logCount} log entries for Martin run ${output.loopId}.`
+      );
+    }
+
+    if (name === "martin_pause") {
+      const input = validateToolInput("martin_pause", args) as Parameters<typeof createRunControlReceipt>[1];
+      const output = await createRunControlReceipt("pause", input);
+      return createToolSuccessResult(output, output.summary);
+    }
+
+    if (name === "martin_cancel") {
+      const input = validateToolInput("martin_cancel", args) as Parameters<typeof createRunControlReceipt>[1];
+      const output = await createRunControlReceipt("cancel", input);
+      return createToolSuccessResult(output, output.summary);
+    }
+
+    if (name === "martin_continue") {
+      const input = validateToolInput("martin_continue", args) as Parameters<typeof createRunControlReceipt>[1];
+      const output = await createRunControlReceipt("continue", input);
       return createToolSuccessResult(output, output.summary);
     }
 
@@ -1251,6 +1585,53 @@ export function createMartinMcpServer(serverInfo?: {
       return createToolSuccessResult(
         output,
         `Dossier ready for Martin run ${output.loop.loopId} with ${output.attempts.length} attempt(s).`
+      );
+    }
+
+    if (name === "martin_dossier") {
+      const input = validateToolInput("martin_dossier", args) as Parameters<typeof martinRunDossierTool>[0];
+      const output = await martinRunDossierTool(input);
+      return createToolSuccessResult(
+        output,
+        `Dossier ready for Martin run ${output.loop.loopId} in ${output.format} format.`
+      );
+    }
+
+    if (name === "martin_eval") {
+      const input = validateToolInput("martin_eval", args) as Parameters<typeof martinEvalTool>[0];
+      const output = await martinEvalTool(input);
+      return createToolSuccessResult(
+        output,
+        `Evaluation for ${output.loopId}: ${output.grade} (${output.score}).`
+      );
+    }
+
+    if (name === "martin_pr_summary") {
+      const input = validateToolInput("martin_pr_summary", args) as Parameters<typeof martinPrSummaryTool>[0];
+      const output = await martinPrSummaryTool(input);
+      return createToolSuccessResult(
+        output,
+        `PR summary ready for Martin run ${output.loopId}.`
+      );
+    }
+
+    if (name === "martin_create_pr") {
+      const input = validateToolInput("martin_create_pr", args) as Parameters<typeof martinCreatePrTool>[0];
+      const output = await martinCreatePrTool(input);
+      return createToolSuccessResult(
+        output,
+        output.created
+          ? `Created PR for Martin run ${output.loopId}.`
+          : `PR preview ready for Martin run ${output.loopId}.`
+      );
+    }
+
+    if (name === "martin_review_pr") {
+      const input = validateToolInput("martin_review_pr", args) as Parameters<typeof martinReviewPrTool>[0];
+      const output = await martinReviewPrTool(input);
+      return createToolSuccessResult(
+        output,
+        `PR review verdict for ${output.loopId}: ${output.verdict}.`
       );
     }
 

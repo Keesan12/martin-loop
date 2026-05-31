@@ -1,9 +1,9 @@
 {
   "name": "martin-loop",
   "private": false,
-  "version": "0.1.6",
+  "version": "0.2.8",
   "type": "module",
-  "description": "Martin Loop OSS runtime, CLI, and MCP workspace for governed AI coding loops.",
+  "description": "Open-source command center for governed AI coding agents: CLI, MCP, verifier gates, and run receipts.",
   "packageManager": "pnpm@10.33.0",
   "keywords": [
     "ai",
@@ -44,7 +44,7 @@
   "scripts": {
     "build": "pnpm -r --workspace-concurrency=1 build && node ./scripts/build-public-facade.mjs",
     "prepack": "pnpm build && node ./scripts/root-release-guard.mjs --pack",
-    "test": "pnpm -r test && node --test scripts/tests/*.mjs",
+    "test": "pnpm -r --workspace-concurrency=1 test && node --test scripts/tests/*.mjs",
     "lint": "pnpm -r lint",
     "oss:validate": "node ./scripts/oss-boundary.mjs",
     "public:smoke": "node ./scripts/public-facade-smoke.mjs",

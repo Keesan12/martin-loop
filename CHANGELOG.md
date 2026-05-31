@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.8] — Release Candidate
+
+### Added
+- **Native phase command-center flow** — Adds local `martin phase status`, `martin phase contract`, `martin phase preflight`, `martin phase run`, and `martin session-start` commands.
+- **Local phase contracts** — Converts local phase state into an explicit MartinLoop run contract with objective, allowed paths, blocked paths, verifier commands, budget, risk, and approval posture. Existing `.gsd` workspaces are imported as a compatibility format when present.
+- **Safe session start** — Shows the latest local run state, phase state, recommended next action, and common command hints without executing work.
+
+### Safety
+- `phase preflight` and `phase run` are dry-run by default and require `--execute` before they call the normal MartinLoop preflight/run path.
+- Missing phase state, missing allowed paths, or missing verifiers fail closed with `contract_requires_approval`.
+- Run-store inspection is bounded to recent run directories so large local histories do not stall session startup.
+
 ## [0.1.5] — 2026-05-08
 
 ### Added

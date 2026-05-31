@@ -8,6 +8,11 @@ import {
   type LoopPreview,
   type MartinEngine
 } from "./tool-support.js";
+import {
+  buildReadinessReport,
+  inspectRepoSignals,
+  type MartinReadinessReport
+} from "./workflow-governance.js";
 
 export interface MartinDoctorInput {
   workingDirectory?: string;
@@ -37,6 +42,7 @@ export interface MartinDoctorOutput {
     loopCount: number;
     latestRun?: LoopPreview;
   };
+  readiness: MartinReadinessReport;
   warnings: string[];
 }
 
@@ -47,6 +53,8 @@ export async function martinDoctorTool(input: MartinDoctorInput): Promise<Martin
   const claude = getEngineAvailability("claude");
   const codex = getEngineAvailability("codex");
   const runStore = await inspectRunsRoot(runsRoot);
+  const signals = inspectRepoSignals(workingDirectory);
+  const readiness = buildReadinessReport(signals, runStore);
 
   const warnings: string[] = [];
   if (!runStore.exists) {
@@ -66,8 +74,8 @@ export async function martinDoctorTool(input: MartinDoctorInput): Promise<Martin
   const status = warnings.length === 0 ? "ok" : "degraded";
   const summary =
     status === "ok"
-      ? `Doctor passed: ${runStore.loopCount} run(s) visible in ${runsRoot}.`
-      : `Doctor found ${warnings.length} issue(s); review warnings before live execution.`;
+      ? `Doctor passed: repo readiness ${readiness.score}/100 with ${runStore.loopCount} visible run(s).`
+      : `Doctor found ${warnings.length} issue(s); readiness ${readiness.score}/100 before live execution.`;
 
   return {
     status,
@@ -102,6 +110,7 @@ export async function martinDoctorTool(input: MartinDoctorInput): Promise<Martin
       loopCount: runStore.loopCount,
       ...(runStore.latestRun ? { latestRun: runStore.latestRun } : {})
     },
+    readiness,
     warnings
   };
 }

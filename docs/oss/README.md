@@ -1,6 +1,6 @@
 # Martin OSS Core
 
-This repository is the public OSS-safe Martin Loop runtime surface: runtime packages, CLI, MCP server, examples, and release validation for the root `martin-loop` package.
+This repository is the public Martin Loop runtime surface: runtime packages, CLI, MCP server, examples, and release validation for the root `martin-loop` package.
 
 ## Included packages
 
@@ -40,7 +40,7 @@ pnpm release:matrix:local
 
 ## Notes
 
-- The root `martin-loop` package remains on the `0.1.x` version line.
+- The root `martin-loop` package follows the release line recorded in [`../release/VERSION-LEDGER.md`](../release/VERSION-LEDGER.md).
 - `@martinloop/mcp` is published and released independently from the root package.
 - Use [`../release/VERSION-LEDGER.md`](../release/VERSION-LEDGER.md) before any release work; it is the canonical version map for the root package, the standalone MCP package, and known historical anomalies.
 - `pnpm mcp:published:smoke` is a post-publish npm gate; use `pnpm mcp:published:smoke:pack` for local prepublish validation.

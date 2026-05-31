@@ -114,11 +114,15 @@ describe("Martin MCP discovery resources", () => {
       MARTIN_STATIC_RESOURCE_URIS.serverHealth,
       MARTIN_STATIC_RESOURCE_URIS.recentRuns,
       MARTIN_STATIC_RESOURCE_URIS.triage,
+      MARTIN_STATIC_RESOURCE_URIS.latestRun,
       MARTIN_STATIC_RESOURCE_URIS.latestSummary,
       MARTIN_STATIC_RESOURCE_URIS.latestProofCard,
       MARTIN_STATIC_RESOURCE_URIS.latestBudgetStatus,
       MARTIN_STATIC_RESOURCE_URIS.latestVerifierEvidence,
       MARTIN_STATIC_RESOURCE_URIS.latestRollbackEvidence,
+      MARTIN_STATIC_RESOURCE_URIS.currentPolicies,
+      MARTIN_STATIC_RESOURCE_URIS.repoRiskMap,
+      MARTIN_STATIC_RESOURCE_URIS.verifierResults,
       MARTIN_STATIC_RESOURCE_URIS.agentNextStep,
       MARTIN_STATIC_RESOURCE_URIS.mcpUsageGuide,
       MARTIN_STATIC_RESOURCE_URIS.agentStartGuide,
@@ -126,6 +130,7 @@ describe("Martin MCP discovery resources", () => {
     ]);
     expect(listedTemplates.resourceTemplates.map((template) => template.uriTemplate)).toEqual([
       "martin://runs/{loopId}",
+      "martin://runs/{loopId}/dossier",
       "martin://runs/{loopId}/attempts/{attemptIndex}",
       "martin://runs/{loopId}/verification"
     ]);
@@ -376,7 +381,13 @@ describe("Martin MCP discovery prompts", () => {
       "martin_governed_coding_kickoff",
       "martin_debug_failed_run",
       "martin_publish_readiness_review",
-      "martin_triage_run_store"
+      "martin_triage_run_store",
+      "safe_bug_fix",
+      "write_tests_first",
+      "small_refactor",
+      "security_review",
+      "pr_review",
+      "release_check"
     ]);
   });
 

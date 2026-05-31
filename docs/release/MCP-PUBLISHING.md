@@ -8,7 +8,7 @@ For the current integrated `0.2.5` tip, the publish claim covers the public MCP 
 
 Publishing `@martinloop/mcp` only promotes the public Free / OSS MCP lane.
 It does not promote the private Pro, Growth, Enterprise, or Internal tiers, and it must not pull private control-plane, autonomy, or router internals into OSS release docs.
-Private Pro capabilities such as the authenticated remote MCP private beta and principal-aware remote config stay outside the public publish claim unless the release-slice map is intentionally updated.
+Private hosted and team-only capabilities stay outside the public publish claim unless the release-slice map is intentionally updated.
 
 The scheduled public labels are:
 
@@ -60,7 +60,7 @@ Before calling the release ready, confirm:
 - docs keep current Codex and Claude Code install snippets
 - release notes describe the actual discovery surface as shipped, not as future work
 - docs keep the public Free / OSS MCP train separate from the private Pro, Growth, Enterprise, and Internal tiers
-- docs do not present the private Pro remote MCP beta or principal-aware remote config as part of the public npm package claim
+- docs do not present private hosted or team-only capabilities as part of the public npm package claim
 - `scripts/tests/mcp-release-docs.test.mjs` verifies the tool list, resource list, prompt list, and cockpit flow
 
 ## Gate Semantics

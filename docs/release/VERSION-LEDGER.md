@@ -4,11 +4,12 @@ This file is the canonical version map for release work. Do not push, tag, or pu
 
 ## Root package: `martin-loop`
 
-- live npm dist-tag `latest`: `0.2.6`
-- live npm versions include: `0.1.0`, `0.1.1`, `0.1.2`, `0.1.3`, `0.1.4`, `0.1.5`, `0.1.6`, `0.2.0`, `0.2.1`, `0.2.2`, `0.2.3`, `0.2.4`, `0.2.5`, `0.2.6`, and a historical anomaly `1.3.0`
-- public GitHub `main`: `0.2.6`
-- local OSS integrated tree target after public sync: `0.2.6`
-- next unreleased scheduled root slice: `0.2.7`
+- live npm dist-tag `latest`: `0.2.7`
+- live npm versions include: `0.1.0`, `0.1.1`, `0.1.2`, `0.1.3`, `0.1.4`, `0.1.5`, `0.1.6`, `0.2.0`, `0.2.1`, `0.2.2`, `0.2.3`, `0.2.4`, `0.2.5`, `0.2.6`, `0.2.7`, and a historical anomaly `1.3.0`
+- public GitHub `main`: `0.2.7`
+- local OSS integrated tree target after public sync: `0.2.7`
+- release candidate: `0.2.8` local command center
+- next root-package release candidate: `0.2.8` after explicit public approval
 - release rule: treat the root package as its own public semver line and do not infer standalone MCP versioning from it
 
 ## Standalone MCP package: `@martinloop/mcp`
@@ -24,7 +25,7 @@ This file is the canonical version map for release work. Do not push, tag, or pu
 
 ## Tier Boundary
 
-- Free / OSS is the public package lane in this repo: root `martin-loop` on `0.1.x` plus the standalone `@martinloop/mcp` train.
+- Free / OSS is the public package lane in this repo: root `martin-loop` on the `0.2.x` line plus the standalone `@martinloop/mcp` train.
 - Pro, Growth, Enterprise, and Internal are private paid-tier names. They do not inherit semver from either public OSS package.
 - The public MCP train labels are:
   - `0.1.4` operator foundation
@@ -36,8 +37,8 @@ This file is the canonical version map for release work. Do not push, tag, or pu
 - do not use `0.3.0` as an active standalone MCP release label in OSS or mirror surfaces
 - do not let the root package version line drive standalone MCP release numbering
 - do not use public MCP release docs to imply promotion of the private Pro, Growth, Enterprise, or Internal tiers
-- do not use public MCP release docs to imply promotion of the private Pro remote MCP beta or principal-aware remote config lanes
-- keep private control-plane, autonomy, and router internals out of OSS release docs
+- do not use public MCP release docs to imply promotion of private hosted or team-only capabilities
+- keep server-side services, organization policy, and advanced routing internals out of OSS release docs
 - before any push candidate, confirm this ledger against:
   - `npm view martin-loop version versions --json`
   - `npm view @martinloop/mcp version versions --json`

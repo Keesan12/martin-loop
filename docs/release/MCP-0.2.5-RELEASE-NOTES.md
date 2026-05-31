@@ -6,7 +6,7 @@
 
 `0.2.5` is the public Free / OSS MCP package line only.
 It does not promote the private Pro, Growth, Enterprise, or Internal tiers, and it does not pull private control-plane, autonomy, or router internals into the MCP package claim.
-Private Pro capabilities such as the authenticated remote MCP private beta and principal-aware remote config remain outside this release note.
+Private hosted and team-only capabilities remain outside this release note.
 
 ## What Shipped
 
