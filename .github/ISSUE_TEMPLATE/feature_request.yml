@@ -21,8 +21,25 @@ body:
     validations:
       required: true
   - type: textarea
+    id: workflow
+    attributes:
+      label: Example workflow
+      description: Show the command, API, MCP flow, or contributor workflow you want to exist.
+      placeholder: |
+        martin-loop preflight "..."
+        martin-loop run "..." --verify "pnpm test" --budget-usd 3
+  - type: textarea
     id: context
     attributes:
       label: Extra context
       description: Tell us which tools, hosts, or environments this matters for.
       placeholder: Codex CLI, Claude Code, GitHub Actions, MCP host, local repo loop...
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and discussions.
+          required: true
+        - label: This request is about local MartinLoop behavior, docs, examples, or integrations.
+          required: true
