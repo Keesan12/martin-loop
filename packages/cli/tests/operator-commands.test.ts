@@ -291,3 +291,48 @@ describe("operator commands", () => {
     expect(missingHost.stderr).toContain("require --host");
   });
 });
+
+describe("challenge command", () => {
+  it("renders a seeded challenge proof card without requiring a persisted run", async () => {
+    const result = await executeCli(["challenge"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("Martin Loop Under-$3 Challenge");
+    expect(result.stdout).toContain("$2.30");
+    expect(result.stdout).toContain("$3.00");
+    expect(result.stdout).toContain("passed");
+    expect(result.stdout).toContain("Martin stopped Ralph here.");
+    expect(result.stdout).not.toMatch(/[A-Z]:\\/);
+  });
+
+  it("renders challenge proof cards from persisted runs as JSON", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const loop = makeLoopRecord();
+      const loopDir = join(runsRoot, loop.loopId);
+      await mkdir(loopDir, { recursive: true });
+      await writeFile(join(loopDir, "loop-record.json"), JSON.stringify(loop, null, 2), "utf8");
+
+      const result = await executeCli(["--json", "challenge", "--loop-id", loop.loopId]);
+      const payload = JSON.parse(result.stdout) as { command: string; card: { loopId: string }; markdown: string };
+
+      expect(result.exitCode).toBe(0);
+      expect(payload.command).toBe("challenge");
+      expect(payload.card.loopId).toBe(loop.loopId);
+      expect(payload.markdown).toContain("Repair the failing MCP lane");
+      expect(payload.markdown).not.toContain(runsRoot);
+    });
+  });
+});
+
+describe("badge command", () => {
+  it("renders an OSS reliability badge as SVG without autonomy claims", async () => {
+    const result = await executeCli(["badge", "--format", "svg"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("<svg");
+    expect(result.stdout).toContain("agent reliability");
+    expect(result.stdout).not.toContain("full autonomy");
+    expect(result.stdout).not.toContain("self-learning");
+    expect(result.stdout).not.toMatch(/[A-Z]:\\/);
+  });
+});
