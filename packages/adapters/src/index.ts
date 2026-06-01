@@ -24,6 +24,10 @@ export {
   type VerifierOnlyAdapterOptions
 } from "./verifier-only.js";
 export {
+  createOpenAiCompatibleAdapter,
+  type OpenAiCompatibleAdapterOptions
+} from "./openai-compatible.js";
+export {
   createSpawnPlan,
   type SpawnLike,
   type SpawnPlan,
