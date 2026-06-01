@@ -6,10 +6,11 @@
 
 **The open-source control plane for AI coding agents.**
 
-[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue?logo=apache)](./LICENSE)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square&logo=apache)](./LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&logo=typescript&logoColor=white)](./tsconfig.base.json)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-3c873a?style=flat-square&logo=nodedotjs&logoColor=white)](#quick-start)
-[![npm](https://img.shields.io/badge/npm-martin--loop-cc3534?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/martin-loop)
+[![npm version](https://img.shields.io/npm/v/martin-loop?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/martin-loop)
+[![npm downloads](https://img.shields.io/npm/dm/martin-loop?style=flat-square&label=downloads)](https://www.npmjs.com/package/martin-loop)
 
 MartinLoop wraps Claude Code, Codex, and custom coding agents with budget caps, verifier gates, rollback evidence, policy checks, and auditable run records.
 
