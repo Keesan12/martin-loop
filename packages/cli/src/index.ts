@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import {
   createClaudeCliAdapter,
   createCodexCliAdapter,
+  createOpenAiCompatibleAdapter,
   createStubDirectProviderAdapter,
   createVerifierOnlyAdapter
 } from "@martin/adapters";
@@ -133,7 +134,7 @@ type DoctorCommand = {
   command: "doctor";
   cwd?: string;
   runsDir?: string;
-  engine?: "claude" | "codex";
+  engine?: "claude" | "codex" | "openai";
   configPath?: string;
 };
 
@@ -381,7 +382,8 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
       ...(readOption(rest, "--runs-dir") ? { runsDir: readOption(rest, "--runs-dir") } : {}),
       ...(readOption(rest, "--config") ? { configPath: readOption(rest, "--config") } : {}),
       ...(readOption(rest, "--engine") === "codex" ? { engine: "codex" as const } : {}),
-      ...(readOption(rest, "--engine") === "claude" ? { engine: "claude" as const } : {})
+      ...(readOption(rest, "--engine") === "claude" ? { engine: "claude" as const } : {}),
+      ...(readOption(rest, "--engine") === "openai" ? { engine: "openai" as const } : {})
     };
   }
 
@@ -599,7 +601,11 @@ export function renderCliHelp(): string {
     "  --platform <name>        windows, macos, or linux recipe shaping.",
     "",
     "Run options:",
-    "  --engine <name>          Adapter to use: claude (default) or codex.",
+    "  --engine <name>          Adapter: claude (default), codex, or openai.",
+    "                           openai routes to any OpenAI-compatible endpoint.",
+    "                           Set MARTIN_OPENAI_BASE_URL, MARTIN_OPENAI_API_KEY,",
+    "                           MARTIN_OPENAI_MODEL. Works with Ollama, OpenRouter,",
+    "                           Together.ai, LM Studio, and any local model server.",
     "  --model <name>           Override the model.",
     "  --cwd <path>             Set the repo root used for repo-backed runs.",
     "  --budget-usd <n>         Set the hard cost cap in USD.",
@@ -1533,18 +1539,23 @@ function parseRunSelector(
 function parseMcpHost(tokens: string[]): MartinMcpHost {
   const host = readOption(tokens, "--host");
 
-  if (host === "codex" || host === "claude" || host === "gemini" || host === "generic") {
+  if (
+    host === "codex" || host === "claude" || host === "gemini" || host === "generic" ||
+    host === "cursor" || host === "copilot" || host === "continue"
+  ) {
     return host;
   }
 
   if (host === undefined) {
-    throw new CliCommandError("invalid_input", "mcp commands require --host <codex|claude|gemini|generic>.", {
-      suggestion: "Pass --host codex, --host claude, --host gemini, or --host generic."
-    });
+    throw new CliCommandError(
+      "invalid_input",
+      "mcp commands require --host <codex|claude|gemini|cursor|copilot|continue|generic>.",
+      { suggestion: "Pass --host codex, --host claude, --host cursor, --host copilot, --host continue, or --host generic." }
+    );
   }
 
   throw new CliCommandError("invalid_input", `Invalid --host value: ${host}.`, {
-    suggestion: "Use --host codex, --host claude, --host gemini, or --host generic."
+    suggestion: "Use --host codex, --host claude, --host gemini, --host cursor, --host copilot, --host continue, or --host generic."
   });
 }
 
@@ -2007,12 +2018,19 @@ function selectAdapter(
     return createCodexCliAdapter({ workingDirectory, ...(modelOverride ? { model: modelOverride } : {}) });
   }
 
+  if (engine === "openai") {
+    const baseUrl = process.env["MARTIN_OPENAI_BASE_URL"] ?? "http://localhost:11434";
+    const apiKey = process.env["MARTIN_OPENAI_API_KEY"] ?? "";
+    const model = modelOverride ?? process.env["MARTIN_OPENAI_MODEL"] ?? "llama3.3";
+    return createOpenAiCompatibleAdapter({ baseUrl, apiKey, model, workingDirectory });
+  }
+
   return createClaudeCliAdapter({ workingDirectory, ...(modelOverride ? { model: modelOverride } : {}) });
 }
 
 function buildDoctorRecommendations(input: {
   liveMode: "live" | "stub";
-  engine: "claude" | "codex";
+  engine: "claude" | "codex" | "openai" | string;
   claudeAvailable: boolean;
   codexAvailable: boolean;
   workingDirectoryReady: boolean;
@@ -2023,8 +2041,18 @@ function buildDoctorRecommendations(input: {
     recommendations.push("Point `--cwd` at a valid repository before running Martin.");
   }
 
+  if (input.liveMode === "live" && input.engine === "openai") {
+    const baseUrl = process.env["MARTIN_OPENAI_BASE_URL"];
+    const model = process.env["MARTIN_OPENAI_MODEL"];
+    if (!baseUrl) recommendations.push("Set MARTIN_OPENAI_BASE_URL (e.g. http://localhost:11434 for Ollama or https://openrouter.ai/api for OpenRouter).");
+    if (!model) recommendations.push("Set MARTIN_OPENAI_MODEL (e.g. llama3.3, deepseek/deepseek-chat, mistralai/codestral-latest).");
+    if (baseUrl?.includes("openrouter") && !process.env["MARTIN_OPENAI_API_KEY"]) {
+      recommendations.push("Set MARTIN_OPENAI_API_KEY for OpenRouter.");
+    }
+  }
+
   if (input.liveMode === "live" && input.engine === "claude" && !input.claudeAvailable) {
-    recommendations.push("Install or expose the Claude CLI on PATH, or switch to `--engine codex`.");
+    recommendations.push("Install or expose the Claude CLI on PATH, or switch to `--engine codex` or `--engine openai`.");
   }
 
   if (input.liveMode === "live" && input.engine === "codex" && !input.codexAvailable) {

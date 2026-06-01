@@ -85,7 +85,7 @@ export const MARTIN_PAID_REMOTE_TOOLS = [
   "martin_eval"
 ] as const;
 
-export type MartinMcpHost = "codex" | "claude" | "gemini" | "generic";
+export type MartinMcpHost = "codex" | "claude" | "gemini" | "generic" | "cursor" | "copilot" | "continue";
 export type MartinMcpScope = "user" | "project" | "local";
 export type MartinMcpTransport = "stdio" | "remote";
 export type MartinMcpProfile = "minimal" | "diagnostic" | "github-review" | "full-local" | "paid-remote" | "starter" | "full";
@@ -190,6 +190,12 @@ function buildHostConfig(
       return buildClaudeConfigSnippet(input);
     case "gemini":
       return buildGeminiConfigSnippet(input);
+    case "cursor":
+      return buildCursorConfigSnippet(input);
+    case "copilot":
+      return buildCopilotConfigSnippet(input);
+    case "continue":
+      return buildContinueConfigSnippet(input);
     case "generic":
       return buildGenericConfigSnippet(input);
   }
@@ -406,6 +412,25 @@ function resolveTargetPath(
       : joinTargetPath(input.cwd, ".gemini", "settings.json");
   }
 
+  if (input.host === "cursor") {
+    return input.scope === "user"
+      ? path.join(homedir(), ".cursor", "mcp.json")
+      : joinTargetPath(input.cwd, ".cursor", "mcp.json");
+  }
+
+  if (input.host === "copilot") {
+    // GitHub Copilot agent mode reads MCP config from VS Code settings.json
+    return input.scope === "user"
+      ? path.join(homedir(), ".vscode", "settings.json")
+      : joinTargetPath(input.cwd, ".vscode", "settings.json");
+  }
+
+  if (input.host === "continue") {
+    return input.scope === "user"
+      ? path.join(homedir(), ".continue", "config.json")
+      : joinTargetPath(input.cwd, ".continue", "config.json");
+  }
+
   return input.scope === "user"
     ? path.join(homedir(), ".martin-loop", "mcp.generic.json")
     : joinTargetPath(input.cwd, ".martin-loop", "mcp.generic.json");
@@ -431,6 +456,98 @@ function joinTargetPath(basePath: string, ...segments: string[]): string {
   return usesWindowsSeparators(basePath)
     ? path.win32.join(basePath, ...segments)
     : path.join(basePath, ...segments);
+}
+
+// ---------------------------------------------------------------------------
+// Cursor IDE config builder
+// Writes to .cursor/mcp.json (project) or ~/.cursor/mcp.json (user)
+// https://cursor.com/docs — Settings > Tools & MCP
+// ---------------------------------------------------------------------------
+
+function buildCursorConfigSnippet(
+  input: Required<Omit<MartinMcpConfigInput, "remoteUrl">> & { remoteUrl?: string }
+): string {
+  const launcher = buildStdioLauncher(input.platform);
+  const serverId = "martin-loop";
+  return (
+    JSON.stringify(
+      {
+        mcpServers: {
+          [serverId]: {
+            command: launcher.command,
+            args: launcher.args,
+            env: {
+              MARTIN_RUNS_DIR: input.runsRoot
+            }
+          }
+        }
+      },
+      null,
+      2
+    ) + "\n"
+  );
+}
+
+// ---------------------------------------------------------------------------
+// GitHub Copilot config builder
+// Writes to .vscode/settings.json under "github.copilot.chat.mcpServers"
+// Compatible with VS Code Copilot agent mode (GA May 2025)
+// ---------------------------------------------------------------------------
+
+function buildCopilotConfigSnippet(
+  input: Required<Omit<MartinMcpConfigInput, "remoteUrl">> & { remoteUrl?: string }
+): string {
+  const launcher = buildStdioLauncher(input.platform);
+  const serverId = "martin-loop";
+  return (
+    JSON.stringify(
+      {
+        "github.copilot.chat.mcpServers": {
+          [serverId]: {
+            command: launcher.command,
+            args: launcher.args,
+            env: {
+              MARTIN_RUNS_DIR: input.runsRoot
+            }
+          }
+        }
+      },
+      null,
+      2
+    ) + "\n"
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Continue.dev config builder
+// Appends MCP context provider to .continue/config.json
+// https://docs.continue.dev/customize/model-providers/overview
+// ---------------------------------------------------------------------------
+
+function buildContinueConfigSnippet(
+  input: Required<Omit<MartinMcpConfigInput, "remoteUrl">> & { remoteUrl?: string }
+): string {
+  const launcher = buildStdioLauncher(input.platform);
+  const tools = selectTools(input.profile);
+  return (
+    JSON.stringify(
+      {
+        mcpServers: [
+          {
+            name: "martin-loop",
+            command: launcher.command,
+            args: launcher.args,
+            env: {
+              MARTIN_RUNS_DIR: input.runsRoot
+            },
+            includeTools: tools
+          }
+        ]
+      },
+      null,
+      2
+    ) + "\n"
+  );
 }
 
 function usesWindowsSeparators(pathValue: string): boolean {
