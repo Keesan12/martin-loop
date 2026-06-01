@@ -224,17 +224,29 @@ export function createSpawnPlan(
     return { command, args };
   }
 
-  const resolved = isAbsolute(command) ? command : resolveWindowsCommand(command, cwd) ?? command;
+  // Try to resolve the command to an absolute path using the Windows PATH.
+  const resolvedOrUndefined = isAbsolute(command) ? command : resolveWindowsCommand(command, cwd);
 
-  const extension = extname(resolved).toLowerCase();
-  if (extension === ".cmd" || extension === ".bat") {
+  // If resolution failed (command not found in PATH), fall back to cmd.exe shell execution so
+  // Windows can resolve the command itself — this covers cases like `pnpm` where the npm global
+  // bin directory is present in the shell PATH but not yet visible to this Node.js process.
+  if (resolvedOrUndefined === undefined) {
+    const cmdStr = [quoteWindowsCmdArg(command), ...args.map(quoteWindowsCmdArg)].join(" ");
     return {
       command: process.env.ComSpec || "cmd.exe",
-      args: ["/d", "/s", "/c", [quoteWindowsCmdArg(resolved), ...args.map(quoteWindowsCmdArg)].join(" ")]
+      args: ["/d", "/s", "/c", cmdStr]
     };
   }
 
-  return { command: resolved, args };
+  const extension = extname(resolvedOrUndefined).toLowerCase();
+  if (extension === ".cmd" || extension === ".bat") {
+    return {
+      command: process.env.ComSpec || "cmd.exe",
+      args: ["/d", "/s", "/c", [quoteWindowsCmdArg(resolvedOrUndefined), ...args.map(quoteWindowsCmdArg)].join(" ")]
+    };
+  }
+
+  return { command: resolvedOrUndefined, args };
 }
 
 function resolveWindowsCommand(command: string, cwd: string): string | undefined {

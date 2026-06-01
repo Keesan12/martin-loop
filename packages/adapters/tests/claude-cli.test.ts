@@ -358,6 +358,33 @@ describe("createSpawnPlan", () => {
     expect(plan.args[3]).toContain("pnpm.cmd");
     expect(plan.args[3]).toContain("verify:shared-baseline");
   });
+
+  it("falls back to cmd.exe shell when command is not found in PATH on Windows (regression: loop_b6800tz2)", () => {
+    if (process.platform !== "win32") {
+      // On non-Windows the plan passes the command through unchanged.
+      const plan = createSpawnPlan("pnpm-not-in-path", ["test"], process.cwd(), false);
+      expect(plan.command).toBe("pnpm-not-in-path");
+      return;
+    }
+
+    // Use a command that will never be on disk so resolveWindowsCommand returns undefined.
+    const plan = createSpawnPlan("__martin_nonexistent_verifier_cmd__", ["run", "test"], process.cwd(), false);
+
+    // Must route through cmd.exe so Windows can try PATH resolution itself.
+    expect(plan.command.toLowerCase()).toMatch(/cmd\.exe|comspec/i);
+    expect(plan.args[0]).toBe("/d");
+    expect(plan.args[1]).toBe("/s");
+    expect(plan.args[2]).toBe("/c");
+    expect(plan.args[3]).toContain("__martin_nonexistent_verifier_cmd__");
+    expect(plan.args[3]).toContain("run");
+    expect(plan.args[3]).toContain("test");
+  });
+
+  it("preserves raw command when preserveRawForInjectedSpawn is true regardless of platform", () => {
+    const plan = createSpawnPlan("pnpm", ["test"], process.cwd(), true);
+    expect(plan.command).toBe("pnpm");
+    expect(plan.args).toEqual(["test"]);
+  });
 });
 
 describe("runSubprocess", () => {

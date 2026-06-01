@@ -45,12 +45,26 @@ import {
 } from "./mcp-config.js";
 import { persistLoopArtifacts } from "./persistence.js";
 import {
+  buildMartinProofCard,
+  renderMartinProofCardMarkdown,
+  renderMartinProofCardSvg,
+  type MartinProofCardInput
+} from "./proof-card.js";
+import {
+  computeMartinReliabilityScore,
+  renderMartinReliabilityBadgeJson,
+  renderMartinReliabilityBadgeSvg,
+  type MartinReliabilityScoreInput
+} from "./reliability-score.js";
+import {
   buildArtifactSummary,
   buildRunDossier,
   buildVerificationSummary,
+  computeScopeFingerprint,
   listPersistedLoops,
   loadPersistedAttempt,
   loadPersistedLoop,
+  readLocalCorpusRisk,
   resolveCliEnvironment,
   resolveInvocationRoot,
   triagePersistedLoops
@@ -193,6 +207,17 @@ type McpCommand =
       dryRun: boolean;
     };
 
+type ChallengeCommand = {
+  command: "challenge";
+  selector?: MartinRunSelector;
+  format: "markdown" | "svg";
+};
+
+type BadgeCommand = {
+  command: "badge";
+  format: "svg" | "json";
+};
+
 export type ParsedCliArguments =
   | {
       command: "help";
@@ -218,7 +243,9 @@ export type ParsedCliArguments =
   | TriageCommand
   | DossierCommand
   | RunsCommand
-  | McpCommand;
+  | McpCommand
+  | ChallengeCommand
+  | BadgeCommand;
 
 export async function executeCli(args: string[]): Promise<{
   exitCode: number;
@@ -289,6 +316,10 @@ export async function executeCli(args: string[]): Promise<{
         return await executeMcpPrintConfigCommand(parsed, outputMode);
       case "mcp_install":
         return await executeMcpInstallCommand(parsed, outputMode);
+      case "challenge":
+        return await executeChallengeCommand(parsed, outputMode);
+      case "badge":
+        return await executeBadgeCommand(parsed, outputMode);
     }
   } catch (error) {
     return renderCliError(outputMode, error);
@@ -471,6 +502,22 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
     return { command: "help" };
   }
 
+  if (command === "challenge") {
+    const selector = parseOptionalRunSelector(rest);
+    return {
+      command: "challenge",
+      ...(selector ? { selector } : {}),
+      format: parseChallengeFormat(rest)
+    };
+  }
+
+  if (command === "badge") {
+    return {
+      command: "badge",
+      format: parseBadgeFormat(rest)
+    };
+  }
+
   return { command: "help" };
 }
 
@@ -500,6 +547,8 @@ export function renderCliHelp(): string {
     "  martin resume <loopId>",
     "  martin-loop resume <loopId>              (published alias)",
     "  martin bench --suite <suiteId>",
+    "  martin challenge [--loop-id <id> | --file <path> | --latest] [--format markdown|svg]",
+    "  martin badge [--format svg|json]",
     "",
     "Operator commands:",
     "  doctor       Check CLI, engine, working directory, and run-store readiness.",
@@ -517,6 +566,8 @@ export function renderCliHelp(): string {
     "  runs verify  Read persisted verification evidence for one loop.",
     "  mcp print-config  Print a known-good MCP config snippet for Codex, Claude, Gemini, or generic hosts.",
     "  mcp install       Write a starter MCP config, or call Claude Code directly for local scope.",
+    "  challenge    Print a shareable local proof card for the Under-$3 challenge.",
+    "  badge        Print an agent reliability readiness badge from local evidence.",
     "",
     "Compatibility aliases:",
     "  inspect      Legacy file-based summary view. Prefer `martin dossier` or `martin runs get`.",
@@ -942,6 +993,24 @@ async function executePreflightCommand(
     warnings.push(`The same path appears in both allow and deny lists: ${overlappingPaths.join(", ")}`);
   }
 
+  // Corpus intelligence: surface failure hotspots for this working directory.
+  // Degrades gracefully when corpus is empty or not yet populated.
+  const scopeFingerprint = computeScopeFingerprint(environment.workingDirectory);
+  const corpusRisk = await readLocalCorpusRisk().catch(() => ({ hotspots: [], corpusRecords: 0, corpusPath: "" }));
+  const scopeHotspots = corpusRisk.hotspots.filter(
+    (hotspot) => hotspot.scopeFingerprint === scopeFingerprint
+  ).slice(0, 3);
+
+  for (const hotspot of scopeHotspots) {
+    const pct = Math.round(hotspot.failureRate * 100);
+    const classes = hotspot.commonFailureClasses.length > 0
+      ? ` (${hotspot.commonFailureClasses.join(", ")})`
+      : "";
+    warnings.push(
+      `Corpus risk: this scope has a ${pct}% failure rate across ${hotspot.sampleSize} recorded runs${classes}. Risk score: ${hotspot.riskScore}.`
+    );
+  }
+
   const ready = blockingIssues.length === 0;
   const data = {
     command: "preflight",
@@ -949,6 +1018,10 @@ async function executePreflightCommand(
     blockingIssues,
     warnings,
     environment,
+    corpus: {
+      records: corpusRisk.corpusRecords,
+      scopeHotspots
+    },
     request: {
       ...request,
       verificationPlan,
@@ -962,6 +1035,10 @@ async function executePreflightCommand(
     }
   };
 
+  const corpusLine = corpusRisk.corpusRecords > 0
+    ? `Corpus: ${corpusRisk.corpusRecords} records${scopeHotspots.length > 0 ? `, ${scopeHotspots.length} scope hotspot(s)` : ", no scope hotspots"}`
+    : `Corpus: no data yet — run Martin to start building prediction intelligence`;
+
   return renderCliSuccess(outputMode, {
     data,
     human: [
@@ -969,6 +1046,7 @@ async function executePreflightCommand(
       `Working directory: ${environment.workingDirectory}`,
       `Engine: ${environment.engine} (${environment.liveMode})`,
       `Verification plan: ${verificationPlan.join(", ") || "none"}`,
+      corpusLine,
       ...(blockingIssues.length > 0 ? ["Blocking issues:", ...blockingIssues.map((issue) => `- ${issue}`)] : [])
     ],
     quiet: ready ? "ready" : "blocked",
@@ -1960,4 +2038,212 @@ function isCommandAvailable(command: string): boolean {
   const executable = process.platform === "win32" ? "where.exe" : "which";
   const result = spawnSync(executable, [command], { stdio: "ignore" });
   return result.status === 0;
+}
+
+// ---------------------------------------------------------------------------
+// Challenge command
+// ---------------------------------------------------------------------------
+
+async function executeChallengeCommand(
+  command: ChallengeCommand,
+  outputMode: MartinOutputMode
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  const input = command.selector
+    ? proofCardInputFromLoop((await loadPersistedLoop(command.selector)).loop)
+    : defaultChallengeProofCardInput();
+  const card = buildMartinProofCard(input);
+  const markdown = renderMartinProofCardMarkdown(card);
+  const svg = renderMartinProofCardSvg(card);
+
+  if (command.format === "svg" && outputMode === "human") {
+    return { exitCode: 0, stdout: svg, stderr: "" };
+  }
+
+  return renderCliSuccess(outputMode, {
+    data: {
+      command: "challenge",
+      card: { loopId: input.loopId, ...card },
+      markdown,
+      svg
+    },
+    human: [
+      `Martin Loop Under-$3 Challenge`,
+      `Loop: ${input.loopId}`,
+      `Objective: ${input.objective}`,
+      `Status: ${input.status} / ${input.lifecycle}`,
+      `Spend: ${input.costSpend} / ${input.budget}`,
+      `Verifier: ${input.verifierStatus}`,
+      `Rollback: ${input.rollbackStatus}`,
+      `Halt reason: ${input.haltReason}`,
+      ``,
+      card.evidenceLine
+    ],
+    quiet: input.loopId
+  });
+}
+
+function proofCardInputFromLoop(loop: LoopRecord): MartinProofCardInput {
+  const verification = buildVerificationSummary(loop);
+  const rollbackStatus = loop.artifacts.some((artifact) =>
+    artifact.kind.toLowerCase().includes("rollback")
+  )
+    ? "captured"
+    : "not-recorded";
+
+  return {
+    loopId: loop.loopId,
+    objective: loop.task.objective,
+    status: loop.status,
+    lifecycle: loop.lifecycleState,
+    verifierStatus: verification.status,
+    costSpend: `$${loop.cost.actualUsd.toFixed(2)}`,
+    budget: `$${loop.budget.maxUsd.toFixed(2)}`,
+    attempts: loop.attempts.length,
+    rollbackStatus,
+    haltReason: latestExitReason(loop),
+    evidenceBoundaryNotes: [
+      "Generated from a local Martin Loop run record.",
+      "Hosted dashboards and private team telemetry are intentionally excluded from OSS proof cards."
+    ],
+    generatedAt: loop.updatedAt
+  };
+}
+
+function defaultChallengeProofCardInput(): MartinProofCardInput {
+  return {
+    loopId: "loop_demo_challenge",
+    objective: "Repair the failing MCP lane so the agent can reconnect.",
+    status: "completed",
+    lifecycle: "verified",
+    verifierStatus: "passed",
+    costSpend: "$2.30",
+    budget: "$3.00",
+    attempts: 2,
+    rollbackStatus: "captured",
+    haltReason: "verifier_passed",
+    evidenceBoundaryNotes: [
+      "Generated from a local Martin Loop run record.",
+      "Hosted dashboards and private team telemetry are intentionally excluded from OSS proof cards."
+    ],
+    generatedAt: new Date().toISOString()
+  };
+}
+
+function latestExitReason(loop: LoopRecord): string {
+  const exitEvent = [...loop.events].reverse().find((event) => event.type === "run.completed");
+  const reason = exitEvent?.payload["reason"];
+  return typeof reason === "string" && reason.trim().length > 0
+    ? reason
+    : `${loop.status}/${loop.lifecycleState}`;
+}
+
+function parseChallengeFormat(tokens: string[]): "markdown" | "svg" {
+  const format = readOption(tokens, "--format");
+  return format === "svg" ? "svg" : "markdown";
+}
+
+// ---------------------------------------------------------------------------
+// Badge command
+// ---------------------------------------------------------------------------
+
+async function executeBadgeCommand(
+  command: BadgeCommand,
+  outputMode: MartinOutputMode
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  const input = await buildLocalReliabilityScoreInput();
+  const score = computeMartinReliabilityScore(input);
+  const svg = renderMartinReliabilityBadgeSvg(score);
+  const json = renderMartinReliabilityBadgeJson(score);
+
+  if (command.format === "svg" && outputMode === "human") {
+    return { exitCode: 0, stdout: svg, stderr: "" };
+  }
+
+  if (command.format === "json" && outputMode === "human") {
+    return { exitCode: 0, stdout: JSON.stringify(json, null, 2), stderr: "" };
+  }
+
+  return renderCliSuccess(outputMode, {
+    data: { command: "badge", score, svg, json },
+    human: [
+      `Martin Loop agent reliability readiness: ${score.points}/${score.maxPoints} (${score.grade})`,
+      score.summary,
+      ...(score.missingReasons.length > 0 ? ["", "Missing:", ...score.missingReasons.map((r) => `  • ${r}`)] : [])
+    ],
+    quiet: score.grade
+  });
+}
+
+async function buildLocalReliabilityScoreInput(): Promise<MartinReliabilityScoreInput> {
+  const environment = resolveCliEnvironment();
+  const shouldInspectRunStore = process.env["MARTIN_RUNS_DIR"] !== undefined;
+  const loops = shouldInspectRunStore
+    ? await listPersistedLoops({ limit: 20 }).catch(() => ({ loops: [] as LoopRecord[] }))
+    : { loops: [] as LoopRecord[] };
+  const latestLoop = loops.loops[0];
+  const configPath = join(environment.invocationRoot, "martin.config.yaml");
+  const configExists = await stat(configPath).then((entry) => entry.isFile()).catch(() => false);
+  const budgetConfigured =
+    configExists ||
+    (latestLoop !== undefined && latestLoop.budget.maxUsd > 0 && latestLoop.budget.maxIterations > 0);
+  const verifierConfigured =
+    latestLoop?.task.verificationPlan.some((cmd) => cmd.trim().length > 0) ?? configExists;
+  const runReceiptsPresent = loops.loops.length > 0;
+  const rollbackEvidencePresent =
+    latestLoop?.artifacts.some((artifact) => artifact.kind.toLowerCase().includes("rollback")) ?? false;
+  const mcpDoctorPassing = isCommandAvailable("node");
+
+  return {
+    signals: {
+      budgetConfigured: {
+        present: budgetConfigured,
+        detail: budgetConfigured
+          ? "Budget evidence found in config or latest run."
+          : "No config or run budget evidence found."
+      },
+      verifierConfigured: {
+        present: verifierConfigured,
+        detail: verifierConfigured ? "Verifier evidence found." : "No verifier plan evidence found."
+      },
+      runReceiptsPresent: {
+        present: runReceiptsPresent,
+        detail: runReceiptsPresent ? "Local run receipts found." : "No local run receipts found."
+      },
+      rollbackEvidencePresent: {
+        present: rollbackEvidencePresent,
+        detail: rollbackEvidencePresent
+          ? "Rollback artifact evidence found."
+          : "No rollback artifact evidence found."
+      },
+      mcpDoctorPassing: {
+        present: mcpDoctorPassing,
+        detail: mcpDoctorPassing
+          ? "Local runtime can execute MCP doctor prerequisites."
+          : "Node runtime unavailable."
+      }
+    }
+  };
+}
+
+function parseBadgeFormat(tokens: string[]): "svg" | "json" {
+  const format = readOption(tokens, "--format");
+  return format === "json" ? "json" : "svg";
+}
+
+function parseOptionalRunSelector(tokens: string[]): MartinRunSelector | undefined {
+  const loopId = readOption(tokens, "--loop-id");
+  const file = readOption(tokens, "--file");
+  const latest = hasFlag(tokens, "--latest");
+  const runsDir = readOption(tokens, "--runs-dir");
+
+  if (!loopId && !file && !latest) {
+    return undefined;
+  }
+
+  return {
+    ...(loopId ? { loopId } : {}),
+    ...(file ? { file } : {}),
+    ...(latest ? { latest } : {}),
+    ...(runsDir ? { runsDir } : {})
+  };
 }

@@ -1,4 +1,6 @@
+import { createHash } from "node:crypto";
 import { readFile, readdir, stat } from "node:fs/promises";
+import { homedir } from "node:os";
 import path from "node:path";
 
 import { resolveRunsRoot } from "@martin/core";
@@ -11,6 +13,99 @@ import type {
 } from "@martin/contracts";
 
 import { CliCommandError } from "./ux.js";
+
+// ---------------------------------------------------------------------------
+// Local corpus hotspot reader (Layer 5 — proactive issue detection)
+// Reads the local learning corpus JSONL without importing from enterprise.
+// ---------------------------------------------------------------------------
+
+export interface LocalCorpusHotspot {
+  scopeFingerprint: string;
+  failureRate: number;
+  sampleSize: number;
+  riskScore: number;
+  commonFailureClasses: string[];
+}
+
+export interface LocalCorpusRisk {
+  hotspots: LocalCorpusHotspot[];
+  corpusRecords: number;
+  corpusPath: string;
+}
+
+interface CorpusRecord {
+  scopeFingerprint?: string | null;
+  outcome?: string;
+  failureClass?: string | null;
+}
+
+function resolveLocalCorpusPath(): string {
+  if (process.env["MARTIN_LEARNING_CORPUS_PATH"]) {
+    return process.env["MARTIN_LEARNING_CORPUS_PATH"];
+  }
+  return path.join(homedir(), ".martin", "autonomy", "learning-corpus", "attempt-records.jsonl");
+}
+
+export async function readLocalCorpusRisk(
+  options: { corpusPath?: string; minSampleSize?: number; minRiskScore?: number } = {}
+): Promise<LocalCorpusRisk> {
+  const corpusPath = options.corpusPath ?? resolveLocalCorpusPath();
+  const minSampleSize = options.minSampleSize ?? 3;
+  const minRiskScore = options.minRiskScore ?? 0.4;
+
+  const raw = await readFile(corpusPath, "utf8").catch((error: unknown) => {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return "";
+    throw error;
+  });
+
+  const records = raw
+    .split(/\r?\n/g)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      try {
+        return JSON.parse(line) as CorpusRecord;
+      } catch {
+        return null;
+      }
+    })
+    .filter((record): record is CorpusRecord => record !== null);
+
+  const byScope = new Map<string, CorpusRecord[]>();
+  for (const record of records) {
+    if (!record.scopeFingerprint) continue;
+    const key = record.scopeFingerprint;
+    byScope.set(key, [...(byScope.get(key) ?? []), record]);
+  }
+
+  const hotspots = [...byScope.entries()]
+    .map(([scopeFingerprint, group]): LocalCorpusHotspot => {
+      const failures = group.filter((record) => record.outcome !== "completed");
+      const failureRate = failures.length / group.length;
+      const riskScore = Math.min(1, failureRate + Math.min(0.25, group.length / 400));
+      return {
+        scopeFingerprint,
+        failureRate: Number(failureRate.toFixed(2)),
+        sampleSize: group.length,
+        riskScore: Number(riskScore.toFixed(2)),
+        commonFailureClasses: [
+          ...new Set(
+            failures
+              .map((record) => record.failureClass)
+              .filter((cls): cls is string => typeof cls === "string")
+          )
+        ].slice(0, 3)
+      };
+    })
+    .filter((hotspot) => hotspot.sampleSize >= minSampleSize && hotspot.riskScore >= minRiskScore)
+    .sort((left, right) => right.riskScore - left.riskScore);
+
+  return { hotspots, corpusRecords: records.length, corpusPath };
+}
+
+export function computeScopeFingerprint(workingDirectory: string): string {
+  return createHash("sha256").update(workingDirectory.replace(/\\/g, "/").toLowerCase()).digest("hex").slice(0, 16);
+}
 
 export interface CliEnvironment {
   invocationRoot: string;
