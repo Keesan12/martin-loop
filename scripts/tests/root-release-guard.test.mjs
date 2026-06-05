@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -64,5 +65,38 @@ test("assertPackedSurface rejects forbidden vendored implementation paths", () =
 });
 
 test("assertVendoredCliManifest accepts the sanitized vendored CLI package manifest", async () => {
-  await assertVendoredCliManifest(ROOT_DIR);
+  await withTempRoot(async (tempRoot) => {
+    const manifestDir = path.join(tempRoot, "dist", "vendor", "cli");
+    await mkdir(manifestDir, { recursive: true });
+    await writeFile(
+      path.join(manifestDir, "package.json"),
+      `${JSON.stringify({
+        name: "@martin/cli",
+        version: "0.1.0",
+        type: "module",
+        description: "@martin/cli vendored for the martin-loop root package.",
+        main: "./index.js",
+        types: "./index.d.ts",
+        exports: {
+          ".": {
+            types: "./index.d.ts",
+            default: "./index.js",
+          },
+          "./package.json": "./package.json",
+        },
+      }, null, 2)}\n`,
+      "utf8",
+    );
+
+    await assertVendoredCliManifest(tempRoot);
+  });
 });
+
+async function withTempRoot(run) {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "martin-root-release-guard-"));
+  try {
+    await run(tempRoot);
+  } finally {
+    await rm(tempRoot, { force: true, recursive: true });
+  }
+}
