@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { readdir, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 import { probeCliCommand } from "@martin/adapters";
 import type {
@@ -176,7 +176,8 @@ export async function detectCliAvailability(
   command: string,
   workingDirectory = process.cwd()
 ): Promise<CliAvailability> {
-  const cacheKey = `${process.platform}:${command}`;
+  const normalizedWorkingDirectory = resolve(workingDirectory);
+  const cacheKey = `${process.platform}:${command}:${normalizedWorkingDirectory}`;
   const cached = cliAvailabilityCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
     return cached.value;
@@ -200,7 +201,7 @@ export async function detectCliAvailability(
     result.status === 0
       ? await (async () => {
           const probe = await probeCliCommand(command, ["--version"], {
-            cwd: workingDirectory,
+            cwd: normalizedWorkingDirectory,
             timeoutMs: 10_000
           });
 

@@ -677,9 +677,12 @@ async function executeInspectCommand(
     throw new CliCommandError("invalid_input", "inspect requires --file <path>.");
   }
 
+  const inspectRoot = command.runsDir
+    ? resolveCliEnvironment({ runsDir: command.runsDir }).runsRoot
+    : resolveInvocationRoot();
   const sourcePath = isAbsolute(command.file)
     ? command.file
-    : resolve(resolveInvocationRoot(), command.file);
+    : resolve(inspectRoot, command.file);
   const sourceStats = await stat(sourcePath).catch((error: unknown) => {
     if (isNodeErrorWithCode(error, "ENOENT")) {
       throw new CliCommandError("not_found", `Persisted loop file not found: ${sourcePath}`);
@@ -844,19 +847,23 @@ async function executePreflightCommand(
     runsDir: request.runsDir,
     engine: request.engine
   });
+  const proofMode = environment.liveMode === "proof" && request.mutationMode !== "verify_only";
+  const mutationMode = proofMode ? "verify_only" : request.mutationMode;
   const warnings: string[] = [];
   const blockingIssues: string[] = [];
   const verificationPlan =
     request.verificationPlan.length > 0
       ? request.verificationPlan
-      : resolvedGuardrails.verifierRules;
+      : proofMode
+        ? []
+        : resolvedGuardrails.verifierRules;
 
   const workingDirectoryExists = await stat(environment.workingDirectory).then(() => true).catch(() => false);
   if (!workingDirectoryExists) {
     blockingIssues.push("Working directory does not exist.");
   }
 
-  const engineRequired = request.mutationMode !== "verify_only" && environment.liveMode === "live";
+  const engineRequired = mutationMode !== "verify_only" && environment.liveMode === "live";
   const engineHealth = engineRequired
     ? await inspectEngineHealth(environment.engine, environment.workingDirectory)
     : undefined;
@@ -883,6 +890,7 @@ async function executePreflightCommand(
     environment,
     request: {
       ...request,
+      ...(mutationMode ? { mutationMode } : {}),
       verificationPlan,
       budget: resolvedGuardrails.budget
     },

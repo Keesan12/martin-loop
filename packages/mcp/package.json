@@ -61,7 +61,7 @@
     "inspect:live": "node ./scripts/inspect-live.mjs"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@open-policy-agent/opa-wasm": "^1.10.0",
     "@opentelemetry/api-logs": "^0.214.0",
     "@opentelemetry/exporter-logs-otlp-http": "^0.214.0",

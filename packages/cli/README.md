@@ -51,7 +51,7 @@ enabled_tools = [
 env = { MARTIN_RUNS_DIR = "C:\\path\\to\\runs" }
 ```
 
-`martin-loop mcp install` is conservative: it writes only when the target file is absent or when it detects an existing MartinLoop block it can update safely. For mixed host configs, use `martin-loop mcp print-config` and merge the MartinLoop block yourself.
+`martin-loop mcp install` is conservative: it writes only when the target file is absent. If `martin-loop mcp install` detects an existing MartinLoop block, it returns without writing anything. For mixed host configs, use `martin-loop mcp print-config` and merge the MartinLoop block yourself.
 
 ## Host Coverage
 
