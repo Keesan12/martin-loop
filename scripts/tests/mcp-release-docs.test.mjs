@@ -133,6 +133,7 @@ test("MCP public docs exist in the cleaned docs tree", async () => {
     "docs/getting-started/mcp.md",
     "docs/reference/mcp-tools.md",
     "docs/reference/mcp-compatibility.md",
+    `docs/release/MCP-${packageJson.version}-RELEASE-NOTES.md`,
     "packages/mcp/README.md",
     "packages/cli/README.md",
   ]) {
@@ -210,6 +211,7 @@ test("MCP public docs avoid deleted release-workspace language", async () => {
     readRepoFile(path.join("docs", "getting-started", "mcp.md")),
     readRepoFile(path.join("docs", "reference", "mcp-tools.md")),
     readRepoFile(path.join("docs", "reference", "mcp-compatibility.md")),
+    readRepoFile(path.join("docs", "release", `MCP-${packageJson.version}-RELEASE-NOTES.md`)),
     readRepoFile(path.join("docs", "release", `OSS-${rootPackageJson.version}-RELEASE-NOTES.md`)),
   ]);
 
@@ -242,4 +244,16 @@ test("root release note captures onboarding and governance changes", async () =>
   assert.match(releaseNotes, /doctor/i);
   assert.match(releaseNotes, /preflight/i);
   assert.match(releaseNotes, /--unsafe-allow-unguarded-run/);
+});
+
+test("MCP release note matches the current package line and the governed flow", async () => {
+  const releaseNotes = await readRepoFile(path.join("docs", "release", `MCP-${packageJson.version}-RELEASE-NOTES.md`));
+
+  assert.match(releaseNotes, new RegExp(`@martinloop/mcp ${packageJson.version.replaceAll(".", "\\.")}`));
+  assert.match(releaseNotes, /martin_run/i);
+  assert.match(releaseNotes, /martin_doctor/i);
+  assert.match(releaseNotes, /martin_plan/i);
+  assert.match(releaseNotes, /martin_preflight/i);
+  assert.match(releaseNotes, /local-first/i);
+  assert.match(releaseNotes, /stdio-first/i);
 });

@@ -1,6 +1,6 @@
 {
   "name": "@martinloop/mcp",
-  "version": "0.2.5",
+  "version": "0.2.7",
   "mcpName": "io.github.Keesan12/martin-loop",
   "private": false,
   "type": "module",

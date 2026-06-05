@@ -7,6 +7,7 @@
 - The root `martin-loop` package provides the public CLI, SDK, demo workspace, and top-level release notes.
 - The standalone `@martinloop/mcp` package stays on its own version line.
 - The server identifier remains `io.github.Keesan12/martin-loop`.
+- The current public standalone MCP package line is `0.2.7`.
 
 ## Stability Commitments
 
@@ -43,6 +44,7 @@ Resources and prompts include version metadata so hosts can confirm which discov
 ## Safety Model
 
 - `martin_plan`, `martin_doctor`, `martin_preflight`, `martin_status`, `martin_logs`, `martin_dossier`, `martin_eval`, and the `martin_get_*` family are intended for planning and inspection.
+- `martin_run` now expects matching `martin_doctor`, `martin_plan`, and `martin_preflight` receipts for the same task before it will execute.
 - `martin_pause`, `martin_cancel`, `martin_continue`, and `martin_create_pr` are explicit follow-on helpers and stay out of the default `minimal` profile.
 - Live governed runs require a supported local agent CLI on `PATH`.
 - Stub and smoke flows use `MARTIN_LIVE=false`.
