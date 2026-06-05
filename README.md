@@ -112,7 +112,7 @@ npx martin-loop mcp print-config --host gemini --transport stdio --profile full-
 npx martin-loop mcp print-config --host generic --transport stdio --profile github-review
 ```
 
-The root `martin-loop` package and the standalone `@martinloop/mcp` package move on separate version lines. The root package is `0.2.8`; the current standalone MCP package stays on `0.2.5`.
+The root `martin-loop` package and the standalone `@martinloop/mcp` package move on separate version lines. The root package is `0.2.8`; the current standalone MCP package is `0.2.7`.
 
 More detail: [MCP setup](./docs/getting-started/mcp.md), [MCP tool reference](./docs/reference/mcp-tools.md), and [MCP compatibility](./docs/reference/mcp-compatibility.md).
 

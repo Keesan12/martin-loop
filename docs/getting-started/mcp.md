@@ -2,6 +2,8 @@
 
 The `@martinloop/mcp` package exposes MartinLoop through stdio for MCP-capable hosts.
 
+`0.2.7` is the current public MCP package line. It adds a stronger guided flow for hosts and a stricter run gate so `martin_run` only starts after the matching readiness, planning, and preflight steps have happened.
+
 ## Install
 
 Run the packaged server directly:
@@ -49,6 +51,8 @@ npx martin-loop mcp print-config --host generic --transport stdio --profile gith
 4. Use `martin_run` for the governed execution step.
 5. Use `martin_status` or `martin_logs` for live posture when the host needs it.
 6. Use `martin_dossier`, `martin_eval`, or the `martin_get_*` tools for evidence review.
+
+If the host tries to skip straight to `martin_run`, MartinLoop now blocks the call and points back to the missing step. That is deliberate. It keeps the "safe by default" path visible instead of relying on convention.
 
 ## Start Safe
 

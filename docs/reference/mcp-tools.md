@@ -9,7 +9,7 @@ The `@martinloop/mcp` package exposes one primary coding execution entrypoint pl
 | `martin_doctor` | Check local MartinLoop and agent readiness. |
 | `martin_plan` | Outline scope, verification, and budget posture before spending a run. |
 | `martin_preflight` | Validate a proposed run contract before execution. |
-| `martin_run` | Execute a governed coding run. |
+| `martin_run` | Execute a governed coding run after matching doctor, plan, and preflight receipts exist. |
 
 ## Status and Run Control
 
@@ -97,5 +97,7 @@ The `@martinloop/mcp` package exposes one primary coding execution entrypoint pl
 - `diagnostic` adds deeper run-store and evaluation helpers.
 - `full-local` adds `martin_run` plus run-control helpers for local operators.
 - `github-review` adds PR-oriented helpers when the host explicitly needs them.
+
+The `0.2.7` package line also adds guide resources meant for hosts that want MartinLoop to feel built in rather than bolted on. Start with `martin://agent/next-step`, `martin://guides/command-map`, and `martin://guides/operating-rules` before you open full run JSON.
 
 For installation and host setup, see [MCP setup](../getting-started/mcp.md). For platform commitments, see [MCP compatibility](./mcp-compatibility.md).

@@ -152,12 +152,5 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.release-vars.outputs.tag }}
-          body: |
-            @martinloop/mcp ${{ steps.mcp-metadata.outputs.package_version }}
-
-            Governed MCP server for AI coding agents with budgets, verifier gates, and inspectable runs.
-
-            See the MCP setup and reference docs:
-            - docs/getting-started/mcp.md
-            - docs/reference/mcp-tools.md
-            - docs/reference/mcp-compatibility.md
+          name: @martinloop/mcp ${{ steps.mcp-metadata.outputs.package_version }}
+          body_path: docs/release/MCP-${{ steps.mcp-metadata.outputs.package_version }}-RELEASE-NOTES.md

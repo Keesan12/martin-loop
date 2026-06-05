@@ -1,10 +1,24 @@
 # @martinloop/mcp
 
-Governed MCP server for AI coding agents with budgets, onboarding guides, run receipts, and review-ready evidence.
+Governed MCP server for AI coding agents with budgets, receipts, and review-ready evidence.
 
-`@martinloop/mcp` is local-first and stdio-first. It gives MCP hosts a clean way to plan work, verify readiness, run a governed task, inspect receipts, and hand a review summary back to a human.
+`@martinloop/mcp` is the standalone MartinLoop server for MCP hosts. It stays local-first and stdio-first, and it gives hosts one clear execution path: check readiness, plan the work, preflight the contract, run it, and inspect the result with enough evidence to decide what happens next.
 
 The root `martin-loop` package and the standalone `@martinloop/mcp` package move on separate version lines. For the current root release, see [MartinLoop 0.2.8 release notes](../../docs/release/OSS-0.2.8-RELEASE-NOTES.md).
+
+## What is new in 0.2.7
+
+- better onboarding inside MCP, including guide resources for command mapping, IDE setup, and operating rules
+- a stricter governed run sequence, so `martin_run` refuses to start until matching `martin_doctor`, `martin_plan`, and `martin_preflight` receipts exist for the same task
+- cleaner review and handoff surfaces, especially around dossier, eval, and publish-readiness guidance
+
+If you are installing MartinLoop for the first time, start with the root CLI first:
+
+```sh
+npx martin-loop start
+npx martin-loop tour
+npx martin-loop doctor
+```
 
 ## Install
 
@@ -49,7 +63,7 @@ Registry/server identifier: `io.github.Keesan12/martin-loop`
 7. `martin_eval`
 8. `martin_pr_summary` or `martin_review_pr` when a host is preparing GitHub review output
 
-`martin_run` is the primary coding execution entrypoint. Expanded profiles can also expose run-control helpers and GitHub review helpers when the host genuinely needs them.
+`martin_run` is the primary coding execution entrypoint. In `0.2.7`, it hard-blocks until the matching readiness, planning, and preflight receipts exist for the same task. That keeps the default flow honest for both humans and agents.
 
 ## Profiles
 
@@ -134,6 +148,7 @@ Registry/server identifier: `io.github.Keesan12/martin-loop`
 ## Runtime Model
 
 - `martin_run` is the primary coding execution entrypoint.
+- `martin_run` now blocks until the same task has matching `martin_doctor`, `martin_plan`, and `martin_preflight` receipts.
 - `martin_plan`, `martin_doctor`, `martin_preflight`, `martin_status`, `martin_logs`, `martin_dossier`, `martin_eval`, and the `martin_get_*` family are planning or inspection surfaces.
 - `martin_pause`, `martin_cancel`, `martin_continue`, and `martin_create_pr` are explicit follow-on control helpers and stay out of the default `minimal` profile.
 - Live runs require `claude` or `codex` on `PATH`.
