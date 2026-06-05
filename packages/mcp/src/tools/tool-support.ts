@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 
+import { probeCliCommand } from "@martin/adapters";
 import type {
   LoopArtifact,
   LoopBudget,
@@ -122,6 +123,7 @@ export interface LoopCollectionSummary {
 export interface CliAvailability {
   command: string;
   available: boolean;
+  launchReady: boolean;
   locator: string;
   detail: string;
   resolvedPath?: string;
@@ -129,7 +131,7 @@ export interface CliAvailability {
 
 export interface ExecutionMode {
   liveMode: boolean;
-  mode: "live" | "stub";
+  mode: "live" | "proof";
   detail: string;
 }
 
@@ -163,14 +165,17 @@ export function resolveExecutionMode(): ExecutionMode {
   const liveMode = process.env.MARTIN_LIVE !== "false";
   return {
     liveMode,
-    mode: liveMode ? "live" : "stub",
+    mode: liveMode ? "live" : "proof",
     detail: liveMode
       ? "Live CLI execution is enabled."
-      : "Stub mode is active because MARTIN_LIVE=false."
+      : "No-spend proof mode is active because MARTIN_LIVE=false."
   };
 }
 
-export function detectCliAvailability(command: string): CliAvailability {
+export async function detectCliAvailability(
+  command: string,
+  workingDirectory = process.cwd()
+): Promise<CliAvailability> {
   const cacheKey = `${process.platform}:${command}`;
   const cached = cliAvailabilityCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
@@ -193,16 +198,27 @@ export function detectCliAvailability(command: string): CliAvailability {
 
   const value: CliAvailability =
     result.status === 0
-      ? {
-          command,
-          available: true,
-          locator,
-          detail: `${command} is available on PATH.`,
-          ...(resolvedPath ? { resolvedPath } : {})
-        }
+      ? await (async () => {
+          const probe = await probeCliCommand(command, ["--version"], {
+            cwd: workingDirectory,
+            timeoutMs: 10_000
+          });
+
+          return {
+            command,
+            available: true,
+            launchReady: probe.ready,
+            locator,
+            detail: probe.ready
+              ? `${command} is available on PATH and passed a launch check.`
+              : `${command} is available on PATH but failed a launch check. ${probe.detail}`,
+            ...(resolvedPath ? { resolvedPath } : {})
+          } satisfies CliAvailability;
+        })()
       : {
           command,
           available: false,
+          launchReady: false,
           locator,
           detail: `${command} is not available on PATH.`
         };
@@ -215,8 +231,40 @@ export function detectCliAvailability(command: string): CliAvailability {
   return value;
 }
 
-export function getEngineAvailability(engine: MartinEngine): CliAvailability {
-  return detectCliAvailability(engine);
+export function detectCliAvailabilitySync(
+  command: string
+): Pick<CliAvailability, "available" | "detail" | "resolvedPath"> {
+  const locator = process.platform === "win32" ? "where.exe" : "which";
+  const result = spawnSync(locator, [command], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+
+  const resolvedPath =
+    result.status === 0
+      ? (result.stdout ?? "")
+          .split(/\r?\n/u)
+          .map((line) => line.trim())
+          .find(Boolean)
+      : undefined;
+
+  return result.status === 0
+    ? {
+        available: true,
+        detail: `${command} is available on PATH.`,
+        ...(resolvedPath ? { resolvedPath } : {})
+      }
+    : {
+        available: false,
+        detail: `${command} is not available on PATH.`
+      };
+}
+
+export async function getEngineAvailability(
+  engine: MartinEngine,
+  workingDirectory = process.cwd()
+): Promise<CliAvailability> {
+  return await detectCliAvailability(engine, workingDirectory);
 }
 
 export function formatUsd(value: number): string {
@@ -496,43 +544,19 @@ export function buildSuggestedResourceUris(loopId: string): string[] {
     "martin://server/health",
     "martin://runs/recent",
     "martin://runs/triage",
-    "martin://runs/latest",
-    "martin://runs/latest/summary",
-    "martin://runs/latest/proof-card",
-    "martin://runs/latest/budget-status",
-    "martin://runs/latest/verifier-evidence",
-    "martin://runs/latest/rollback-evidence",
-    "martin://policies/current",
-    "martin://repo/risk-map",
-    "martin://verifiers/results",
-    "martin://agent/next-step",
     `martin://runs/${loopId}`,
-    `martin://runs/${loopId}/dossier`,
     `martin://runs/${loopId}/verification`,
     "martin://guides/mcp-usage",
-    "martin://guides/agent-start",
     "martin://guides/publish-readiness"
   ];
 }
 
 export function buildSuggestedPromptNames(): string[] {
   return [
-    "martin_start",
-    "martin_preflight",
-    "martin_triage",
-    "martin_resume",
-    "martin_prove",
-    "martin_release_check",
     "martin_governed_coding_kickoff",
     "martin_debug_failed_run",
     "martin_publish_readiness_review",
-    "martin_triage_run_store",
-    "safe_bug_fix",
-    "write_tests_first",
-    "small_refactor",
-    "security_review",
-    "pr_review",
-    "release_check"
+    "martin_triage_run_store"
   ];
 }
 

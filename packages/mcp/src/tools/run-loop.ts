@@ -1,7 +1,7 @@
 import {
   createClaudeCliAdapter,
   createCodexCliAdapter,
-  createStubDirectProviderAdapter
+  createVerifierOnlyAdapter
 } from "@martin/adapters";
 
 import { createFileRunStore, evaluateCostGovernor, resolveRunsRoot, runMartin } from "@martin/core";
@@ -68,19 +68,31 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
   const allowedPaths = normalizeSafePathPatterns(input.allowedPaths, "allowedPaths");
   const deniedPaths = normalizeSafePathPatterns(input.deniedPaths, "deniedPaths");
   const executionMode = resolveExecutionMode();
-  const engineAvailability = getEngineAvailability(engine);
+  if (executionMode.liveMode) {
+    const engineAvailability = await getEngineAvailability(engine, workingDirectory);
 
-  if (executionMode.liveMode && !engineAvailability.available) {
-    throw new MartinToolError("engine_unavailable", `Engine '${engine}' is not available on PATH.`, {
-      category: "environment",
-      suggestion: "Install the requested CLI or set MARTIN_LIVE=false for stub execution.",
-      retryable: false
-    });
+    if (!engineAvailability.launchReady) {
+      throw new MartinToolError("engine_unavailable", `Engine '${engine}' is not launch-ready.`, {
+        category: "environment",
+        suggestion: "Install the requested CLI or set MARTIN_LIVE=false for a no-spend proof run.",
+        retryable: false
+      });
+    }
   }
 
   const adapter =
-    process.env.MARTIN_LIVE === "false"
-      ? createStubDirectProviderAdapter({ label: "Stub adapter (MARTIN_LIVE=false)", providerId: "stub", model: "stub" })
+    !executionMode.liveMode
+      ? createVerifierOnlyAdapter({
+          workingDirectory,
+          adapterId: "direct:proof:verifier-only",
+          label: "Proof mode adapter (MARTIN_LIVE=false)",
+          providerId: "proof",
+          model: "verify-only",
+          successSummary: "Proof mode completed without contacting a live provider.",
+          successWithChangesSummary:
+            "Proof mode completed without contacting a live provider, but the verifier changed files.",
+          failureSummary: "Proof mode failed during verifier execution."
+        })
       : engine === "codex"
         ? createCodexCliAdapter({ workingDirectory, ...(model ? { model } : {}) })
         : createClaudeCliAdapter({ workingDirectory, ...(model ? { model } : {}) });
@@ -109,6 +121,7 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
       title: input.objective.slice(0, 100),
       objective: input.objective,
       verificationPlan: input.verificationPlan ?? [],
+      ...(executionMode.liveMode ? {} : { mutationMode: "verify_only" as const }),
       repoRoot: workingDirectory,
       ...(allowedPaths ? { allowedPaths } : {}),
       ...(deniedPaths ? { deniedPaths } : {})

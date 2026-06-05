@@ -28,9 +28,12 @@ export {
   type OpenAiCompatibleAdapterOptions
 } from "./openai-compatible.js";
 export {
-  createSpawnPlan,
-  type SpawnLike,
-  type SpawnPlan,
-  type SubprocessResult,
-  type VerificationOutcome
+  probeCliCommand,
+  runSubprocess
+} from "./cli-bridge.js";
+export type {
+  CliCommandProbe,
+  SpawnLike,
+  SubprocessResult,
+  VerificationOutcome
 } from "./cli-bridge.js";

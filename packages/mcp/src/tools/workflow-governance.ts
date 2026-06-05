@@ -5,7 +5,7 @@ import { spawnSync } from "node:child_process";
 import { DEFAULT_BUDGET } from "@martin/contracts";
 
 import {
-  detectCliAvailability,
+  detectCliAvailabilitySync,
   type MartinEngine,
   type RunStoreInspection
 } from "./tool-support.js";
@@ -265,10 +265,10 @@ export function inspectRepoSignals(workingDirectory: string): RepoSignals {
     git: detectGitState(workingDirectory),
     sensitivePaths: detectSensitivePaths(workingDirectory),
     availableHosts: {
-      claude: detectCliAvailability(HOST_COMMANDS.claude),
-      codex: detectCliAvailability(HOST_COMMANDS.codex),
-      cursor: detectCliAvailability(HOST_COMMANDS.cursor),
-      gemini: detectCliAvailability(HOST_COMMANDS.gemini)
+      claude: detectCliAvailabilitySync(HOST_COMMANDS.claude),
+      codex: detectCliAvailabilitySync(HOST_COMMANDS.codex),
+      cursor: detectCliAvailabilitySync(HOST_COMMANDS.cursor),
+      gemini: detectCliAvailabilitySync(HOST_COMMANDS.gemini)
     }
   };
 }

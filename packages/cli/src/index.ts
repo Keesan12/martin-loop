@@ -8,8 +8,8 @@ import {
   createClaudeCliAdapter,
   createCodexCliAdapter,
   createOpenAiCompatibleAdapter,
-  createStubDirectProviderAdapter,
-  createVerifierOnlyAdapter
+  createVerifierOnlyAdapter,
+  probeCliCommand
 } from "@martin/adapters";
 import { runMartin, type MartinAdapter } from "@martin/core";
 import {
@@ -74,6 +74,13 @@ import { CliCommandError, renderCliError, renderCliSuccess } from "./ux.js";
 
 const require = createRequire(import.meta.url);
 const packageJson = require("../package.json") as { version: string };
+const rootPackageVersion = (() => {
+  try {
+    return (require("../../../package.json") as { version?: string }).version ?? packageJson.version;
+  } catch {
+    return packageJson.version;
+  }
+})();
 
 export type RunCommandRequest = {
   workspaceId: string;
@@ -85,6 +92,7 @@ export type RunCommandRequest = {
   budget: LoopBudget;
   configPath?: string;
   cwd?: string;
+  runsDir?: string;
   model?: string;
   engine?: string;
   mutationMode?: MutationMode;
@@ -110,6 +118,14 @@ type ResolvedGuardrails = {
   destructiveActionPolicy: string;
   verifierRules: string[];
   budget: LoopBudget;
+};
+
+type EngineHealth = {
+  available: boolean;
+  launchReady: boolean;
+  detail: string;
+  launchDetail: string;
+  resolvedPath?: string;
 };
 
 const DEFAULT_BUDGET: LoopBudget = {
@@ -638,12 +654,17 @@ async function executeRunCommand(
   outputMode: MartinOutputMode
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   const resolvedGuardrails = await resolveGuardrails(request);
+  const proofMode = process.env.MARTIN_LIVE === "false" && request.mutationMode !== "verify_only";
+  const mutationMode = proofMode ? "verify_only" : request.mutationMode;
   const verificationPlan =
     request.verificationPlan.length > 0
       ? request.verificationPlan
-      : resolvedGuardrails.verifierRules;
+      : proofMode
+        ? []
+        : resolvedGuardrails.verifierRules;
   const resolvedRequest: RunCommandRequest = {
     ...request,
+    ...(mutationMode ? { mutationMode } : {}),
     budget: resolvedGuardrails.budget,
     verificationPlan,
     metadata: {
@@ -654,6 +675,7 @@ async function executeRunCommand(
   };
   const cliEnvironment = resolveCliEnvironment({
     cwd: resolvedRequest.cwd,
+    runsDir: resolvedRequest.runsDir,
     engine: resolvedRequest.engine
   });
   const adapter = selectAdapter(
@@ -705,7 +727,7 @@ async function executeRunCommand(
 
     throw new CliCommandError("environment", "Martin could not start the requested execution adapter.", {
       suggestion:
-        "Run `martin doctor` to verify engine availability, or set MARTIN_LIVE=false to use the stub adapter locally.",
+        "Run `martin doctor` to verify actual engine launch readiness, or set MARTIN_LIVE=false for a no-spend proof run.",
       details: {
         loopId: fallbackLoop.loopId,
         reason: error instanceof Error ? error.message : String(error)
@@ -769,13 +791,23 @@ async function executeInspectCommand(
   const sourcePath = isAbsolute(command.file)
     ? command.file
     : resolve(resolveInvocationRoot(), command.file);
-  const contents = await readFile(sourcePath, "utf8").catch((error: unknown) => {
+  const sourceStats = await stat(sourcePath).catch((error: unknown) => {
     if (isNodeErrorWithCode(error, "ENOENT")) {
       throw new CliCommandError("not_found", `Persisted loop file not found: ${sourcePath}`);
     }
     throw error;
   });
-  const loops = parseLoopRecords(contents);
+  const loops = sourceStats.isDirectory()
+    ? (
+        await listPersistedLoops(
+          {
+            runsDir: sourcePath,
+            limit: Number.MAX_SAFE_INTEGER
+          },
+          { invocationRoot: resolveInvocationRoot() }
+        )
+      ).loops
+    : parseLoopRecords(await readFile(sourcePath, "utf8"));
 
   return renderCliSuccess(outputMode, {
     data: {
@@ -840,14 +872,17 @@ async function executeDoctorCommand(
     runsDir: command.runsDir,
     engine: command.engine
   });
+  const selectedEngine = command.engine ?? environment.engine;
   const configPath = command.configPath
     ? resolveConfigPath(command.configPath)
     : join(environment.invocationRoot, "martin.config.yaml");
   const configExists = await stat(configPath).then(() => true).catch(() => false);
   const workingDirectoryReady = await stat(environment.workingDirectory).then(() => true).catch(() => false);
   const runsRootReady = await stat(environment.runsRoot).then(() => true).catch(() => false);
-  const claudeAvailable = isCommandAvailable("claude");
-  const codexAvailable = isCommandAvailable("codex");
+  const [claudeHealth, codexHealth] = await Promise.all([
+    inspectEngineHealth("claude", environment.workingDirectory),
+    inspectEngineHealth("codex", environment.workingDirectory)
+  ]);
   const warnings: string[] = [];
 
   if (!workingDirectoryReady) {
@@ -856,24 +891,37 @@ async function executeDoctorCommand(
   if (!runsRootReady) {
     warnings.push("The Martin runs root does not exist yet; it will be created on the first persisted run.");
   }
-  if (environment.liveMode === "live" && environment.engine === "claude" && !claudeAvailable) {
-    warnings.push("Claude CLI is not available on PATH for live execution.");
+  if (environment.liveMode === "live" && selectedEngine === "claude" && !claudeHealth.launchReady) {
+    warnings.push(claudeHealth.detail);
   }
-  if (environment.liveMode === "live" && environment.engine === "codex" && !codexAvailable) {
-    warnings.push("Codex CLI is not available on PATH for live execution.");
+  if (environment.liveMode === "live" && selectedEngine === "codex" && !codexHealth.launchReady) {
+    warnings.push(codexHealth.detail);
   }
 
   const data = {
     command: "doctor",
-    cliVersion: packageJson.version,
-    environment,
+    cliVersion: rootPackageVersion,
+    environment: {
+      ...environment,
+      engine: selectedEngine
+    },
     config: {
       path: configPath,
       exists: configExists
     },
     engines: {
-      claude: { available: claudeAvailable },
-      codex: { available: codexAvailable }
+      claude: {
+        available: claudeHealth.available,
+        launchReady: claudeHealth.launchReady,
+        detail: claudeHealth.detail,
+        ...(claudeHealth.resolvedPath ? { resolvedPath: claudeHealth.resolvedPath } : {})
+      },
+      codex: {
+        available: codexHealth.available,
+        launchReady: codexHealth.launchReady,
+        detail: codexHealth.detail,
+        ...(codexHealth.resolvedPath ? { resolvedPath: codexHealth.resolvedPath } : {})
+      }
     },
     starterTools: [...MARTIN_STARTER_TOOLS],
     profiles: {
@@ -885,9 +933,9 @@ async function executeDoctorCommand(
     },
     recommendations: buildDoctorRecommendations({
       liveMode: environment.liveMode,
-      engine: environment.engine,
-      claudeAvailable,
-      codexAvailable,
+      engine: selectedEngine,
+      claudeLaunchReady: claudeHealth.launchReady,
+      codexLaunchReady: codexHealth.launchReady,
       workingDirectoryReady
     })
   };
@@ -895,12 +943,12 @@ async function executeDoctorCommand(
   return renderCliSuccess(outputMode, {
     data,
     human: [
-      `Martin CLI doctor (${packageJson.version})`,
+      `Martin CLI doctor (${rootPackageVersion})`,
       `Working directory: ${environment.workingDirectory} (${workingDirectoryReady ? "ready" : "missing"})`,
       `Runs root: ${environment.runsRoot} (${runsRootReady ? "ready" : "not created yet"})`,
-      `Live mode: ${environment.liveMode}`,
-      `Claude CLI: ${claudeAvailable ? "available" : "missing"}`,
-      `Codex CLI: ${codexAvailable ? "available" : "missing"}`,
+      `Engine: ${selectedEngine} (${environment.liveMode})`,
+      `Claude CLI: ${claudeHealth.launchReady ? "launch-ready" : claudeHealth.available ? "available but failed launch check" : "missing"}`,
+      `Codex CLI: ${codexHealth.launchReady ? "launch-ready" : codexHealth.available ? "available but failed launch check" : "missing"}`,
       `Config: ${configExists ? configPath : `not found at ${configPath}`}`
     ],
     quiet: environment.runsRoot,
@@ -931,7 +979,10 @@ async function executeNativePhaseCommand(
       });
     }
 
-    const request = buildNativePhaseRunRequest(snapshot.contract, command.cwd);
+    const request = {
+      ...buildNativePhaseRunRequest(snapshot.contract, command.cwd),
+      ...(command.runsDir ? { runsDir: command.runsDir } : {})
+    };
     return command.subcommand === "run"
       ? executeRunCommand(request, outputMode)
       : executePreflightCommand(request, outputMode);
@@ -967,8 +1018,10 @@ async function executePreflightCommand(
   const resolvedGuardrails = await resolveGuardrails(request);
   const environment = resolveCliEnvironment({
     cwd: request.cwd,
+    runsDir: request.runsDir,
     engine: request.engine
   });
+  const selectedEngine = request.engine ?? environment.engine;
   const warnings: string[] = [];
   const blockingIssues: string[] = [];
   const verificationPlan =
@@ -982,11 +1035,12 @@ async function executePreflightCommand(
   }
 
   const engineRequired = request.mutationMode !== "verify_only" && environment.liveMode === "live";
-  if (engineRequired && environment.engine === "claude" && !isCommandAvailable("claude")) {
-    blockingIssues.push("Claude CLI is not available on PATH.");
-  }
-  if (engineRequired && environment.engine === "codex" && !isCommandAvailable("codex")) {
-    blockingIssues.push("Codex CLI is not available on PATH.");
+  const engineHealth =
+    engineRequired && (selectedEngine === "claude" || selectedEngine === "codex")
+      ? await inspectEngineHealth(selectedEngine, environment.workingDirectory)
+      : undefined;
+  if (engineHealth && !engineHealth.launchReady) {
+    blockingIssues.push(engineHealth.detail);
   }
   if (verificationPlan.length === 0) {
     warnings.push("No verification plan is configured for this run.");
@@ -1019,15 +1073,18 @@ async function executePreflightCommand(
 
   const ready = blockingIssues.length === 0;
   const data = {
-    command: "preflight",
-    ready,
-    blockingIssues,
-    warnings,
-    environment,
-    corpus: {
-      records: corpusRisk.corpusRecords,
-      scopeHotspots
-    },
+      command: "preflight",
+      ready,
+      blockingIssues,
+      warnings,
+      environment: {
+        ...environment,
+        engine: selectedEngine
+      },
+      corpus: {
+        records: corpusRisk.corpusRecords,
+        scopeHotspots
+      },
     request: {
       ...request,
       verificationPlan,
@@ -1046,15 +1103,15 @@ async function executePreflightCommand(
     : `Corpus: no data yet — run Martin to start building prediction intelligence`;
 
   return renderCliSuccess(outputMode, {
-    data,
-    human: [
-      `Preflight ${ready ? "passed" : "blocked"} for ${request.title}`,
-      `Working directory: ${environment.workingDirectory}`,
-      `Engine: ${environment.engine} (${environment.liveMode})`,
-      `Verification plan: ${verificationPlan.join(", ") || "none"}`,
-      corpusLine,
-      ...(blockingIssues.length > 0 ? ["Blocking issues:", ...blockingIssues.map((issue) => `- ${issue}`)] : [])
-    ],
+      data,
+      human: [
+        `Preflight ${ready ? "passed" : "blocked"} for ${request.title}`,
+        `Working directory: ${environment.workingDirectory}`,
+        `Engine: ${selectedEngine} (${environment.liveMode})`,
+        `Verification plan: ${verificationPlan.join(", ") || "none"}`,
+        corpusLine,
+        ...(blockingIssues.length > 0 ? ["Blocking issues:", ...blockingIssues.map((issue) => `- ${issue}`)] : [])
+      ],
     quiet: ready ? "ready" : "blocked",
     warnings
   });
@@ -1450,6 +1507,10 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
         request.cwd = next;
         index += 1;
         break;
+      case "--runs-dir":
+        request.runsDir = next;
+        index += 1;
+        break;
       case "--verify-only":
         request.mutationMode = "verify_only";
         break;
@@ -1494,6 +1555,7 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
     budget: request.budget as LoopBudget,
     ...(request.configPath ? { configPath: request.configPath } : {}),
     ...(request.cwd ? { cwd: request.cwd } : {}),
+    ...(request.runsDir ? { runsDir: request.runsDir } : {}),
     ...(request.model ? { model: request.model } : {}),
     ...(request.engine ? { engine: request.engine } : {}),
     ...(request.mutationMode ? { mutationMode: request.mutationMode } : {}),
@@ -1761,11 +1823,11 @@ function renderDemoInstructions(targetDirectory: string): string {
     "  npm install",
     "  npm test",
     "",
-    "Safe first run (no provider spend):",
-    '  MARTIN_LIVE=false npx martin run "Summarize the demo workspace and confirm the verifier is green" --verify "npm test"',
+    "Safe first run (no-spend proof mode):",
+    '  MARTIN_LIVE=false npx martin-loop run "Summarize the demo workspace and confirm the verifier is green" --verify "npm test"',
     "",
     "Optional live run:",
-    '  npx martin run "Add support for a discount percentage to summarizeInvoice and update the tests" --verify "npm test" --engine codex',
+    '  npx martin-loop run "Add support for a discount percentage to summarizeInvoice and update the tests" --verify "npm test" --engine codex',
     "",
     `Task ideas live in ${join(targetDirectory, "TASKS.md")}`
   ].join("\n");
@@ -2007,10 +2069,16 @@ function selectAdapter(
   }
 
   if (process.env.MARTIN_LIVE === "false") {
-    return createStubDirectProviderAdapter({
-      label: "Stub adapter (MARTIN_LIVE=false)",
-      providerId: "stub",
-      model: "stub"
+    return createVerifierOnlyAdapter({
+      workingDirectory,
+      adapterId: "direct:proof:verifier-only",
+      label: "Proof mode adapter (MARTIN_LIVE=false)",
+      providerId: "proof",
+      model: "verify-only",
+      successSummary: "Proof mode completed without contacting a live provider.",
+      successWithChangesSummary:
+        "Proof mode completed without contacting a live provider, but the verifier changed files.",
+      failureSummary: "Proof mode failed during verifier execution."
     });
   }
 
@@ -2029,10 +2097,10 @@ function selectAdapter(
 }
 
 function buildDoctorRecommendations(input: {
-  liveMode: "live" | "stub";
+  liveMode: "live" | "proof";
   engine: "claude" | "codex" | "openai" | string;
-  claudeAvailable: boolean;
-  codexAvailable: boolean;
+  claudeLaunchReady: boolean;
+  codexLaunchReady: boolean;
   workingDirectoryReady: boolean;
 }): string[] {
   const recommendations = ["Run `martin preflight` before non-trivial governed coding work."];
@@ -2051,15 +2119,65 @@ function buildDoctorRecommendations(input: {
     }
   }
 
-  if (input.liveMode === "live" && input.engine === "claude" && !input.claudeAvailable) {
+  if (input.liveMode === "live" && input.engine === "claude" && !input.claudeLaunchReady) {
     recommendations.push("Install or expose the Claude CLI on PATH, or switch to `--engine codex` or `--engine openai`.");
   }
 
-  if (input.liveMode === "live" && input.engine === "codex" && !input.codexAvailable) {
-    recommendations.push("Install or expose the Codex CLI on PATH, or set MARTIN_LIVE=false while iterating locally.");
+  if (input.liveMode === "live" && input.engine === "codex" && !input.codexLaunchReady) {
+    recommendations.push("Install or expose the Codex CLI on PATH, or set MARTIN_LIVE=false for a no-spend proof run.");
   }
 
   return recommendations;
+}
+
+function resolveCommandPath(command: string): string | undefined {
+  const executable = process.platform === "win32" ? "where.exe" : "which";
+  const result = spawnSync(executable, [command], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  if (result.status !== 0) {
+    return undefined;
+  }
+
+  return (result.stdout ?? "")
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .find(Boolean);
+}
+
+async function inspectEngineHealth(
+  engine: "claude" | "codex",
+  workingDirectory: string
+): Promise<EngineHealth> {
+  const resolvedPath = resolveCommandPath(engine);
+  if (!resolvedPath) {
+    return {
+      available: false,
+      launchReady: false,
+      detail: `${capitalizeEngine(engine)} CLI is not available on PATH.`,
+      launchDetail: `${engine} is not available on PATH.`
+    };
+  }
+
+  const probe = await probeCliCommand(engine, ["--version"], {
+    cwd: workingDirectory,
+    timeoutMs: 10_000
+  });
+
+  return {
+    available: true,
+    launchReady: probe.ready,
+    detail: probe.ready
+      ? `${capitalizeEngine(engine)} CLI is available on PATH and passed a launch check.`
+      : `${capitalizeEngine(engine)} CLI is available on PATH but failed a launch check. ${probe.detail}`,
+    launchDetail: probe.detail,
+    resolvedPath
+  };
+}
+
+function capitalizeEngine(engine: "claude" | "codex"): string {
+  return engine === "claude" ? "Claude" : "Codex";
 }
 
 function isCommandAvailable(command: string): boolean {
