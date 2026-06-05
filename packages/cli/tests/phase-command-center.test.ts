@@ -76,6 +76,21 @@ async function createPhaseFixture() {
     }),
     "utf8"
   );
+  await mkdir(join(runsDir, "loop_invalid_dates"), { recursive: true });
+  await writeFile(
+    join(runsDir, "loop_invalid_dates", "loop-record.json"),
+    JSON.stringify({
+      loopId: "loop_invalid_dates",
+      status: "completed",
+      lifecycleState: "completed",
+      task: { title: "Invalid timestamp run" },
+      cost: { actualUsd: 0.05 },
+      events: [{ type: "verification.completed", payload: { passed: true } }],
+      createdAt: "not-a-date",
+      updatedAt: "still-not-a-date"
+    }),
+    "utf8"
+  );
 
   return { rootDir, runsDir };
 }
@@ -118,6 +133,7 @@ describe("native phase command center", () => {
       expect(snapshot.contract.allowedPaths).toEqual(["packages/cli/src/**", "packages/cli/tests/**"]);
       expect(snapshot.runStore.latestRun?.loopId).toBe("loop_needs_triage");
       expect(snapshot.runStore.runsNeedingTriage.map((run) => run.loopId)).toEqual(["loop_needs_triage"]);
+      expect(snapshot.runStore.totalRuns).toBe(3);
     } finally {
       await rm(rootDir, { recursive: true, force: true });
     }

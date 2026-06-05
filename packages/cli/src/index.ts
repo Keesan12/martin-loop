@@ -2845,9 +2845,13 @@ function buildDoctorRecommendations(input: {
 }
 
 function isCommandAvailable(command: string): boolean {
-  const executable = process.platform === "win32" ? "where.exe" : "which";
-  const result = spawnSync(executable, [command], { stdio: "ignore" });
-  return result.status === 0;
+  try {
+    const executable = process.platform === "win32" ? "where.exe" : "which";
+    const result = spawnSync(executable, [command], { stdio: "ignore" });
+    return result.status === 0;
+  } catch {
+    return false;
+  }
 }
 
 // ---------------------------------------------------------------------------

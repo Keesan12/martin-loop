@@ -241,11 +241,10 @@ export function createOpenAiCompatibleAdapter(
       let responseText = "";
       let tokensIn = estimated.tokensIn;
       let tokensOut = 0;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
 
       try {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), timeoutMs);
-
         const headers: Record<string, string> = { "Content-Type": "application/json" };
         if (options.apiKey) headers["Authorization"] = `Bearer ${options.apiKey}`;
         // OpenRouter requires a site URL header for attribution
@@ -269,7 +268,6 @@ export function createOpenAiCompatibleAdapter(
           signal: controller.signal
         });
 
-        clearTimeout(timer);
         const body = (await res.json()) as OpenAiResponse;
 
         if (!res.ok || body.error) {
@@ -300,6 +298,8 @@ export function createOpenAiCompatibleAdapter(
           verification: { passed: false, summary: isAbort ? "Request timed out." : "Network error." },
           failure: { message, classHint: "infrastructure_error" as FailureClass }
         };
+      } finally {
+        clearTimeout(timer);
       }
 
       if (!responseText.trim()) {

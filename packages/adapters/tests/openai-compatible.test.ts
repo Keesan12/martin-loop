@@ -5,7 +5,7 @@
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { createLoopRecord } from "@martin/contracts";
 import { createOpenAiCompatibleAdapter } from "../src/openai-compatible.js";
 
@@ -126,6 +126,28 @@ describe("createOpenAiCompatibleAdapter", () => {
 
     expect(result.status).toBe("failed");
     expect(result.failure?.message).toContain("Rate limit exceeded");
+  });
+
+  it("clears the timeout when the request fails before parsing a response", async () => {
+    const clearTimeoutSpy = vi.spyOn(globalThis, "clearTimeout");
+
+    try {
+      const adapter = createOpenAiCompatibleAdapter({
+        baseUrl: "http://127.0.0.1:1",
+        model: "test-model",
+        fetchImpl: async () => {
+          throw new Error("network exploded");
+        }
+      });
+
+      const result = await adapter.execute(makeRequest() as any);
+
+      expect(result.status).toBe("failed");
+      expect(result.failure?.message).toContain("network exploded");
+      expect(clearTimeoutSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      clearTimeoutSpy.mockRestore();
+    }
   });
 
   it("returns failed when the model returns an empty response", async () => {

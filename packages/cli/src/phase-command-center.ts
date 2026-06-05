@@ -381,7 +381,7 @@ async function collectRunStore(
     }
   }
 
-  loops.sort((left, right) => Date.parse(right.updatedAt ?? right.createdAt ?? "") - Date.parse(left.updatedAt ?? left.createdAt ?? ""));
+  loops.sort((left, right) => loopTimestamp(right) - loopTimestamp(left));
 
   return {
     available: true,
@@ -397,6 +397,15 @@ async function collectRunStore(
       .filter((loop): loop is NativePhaseRunSummary => loop !== null),
     warnings
   };
+}
+
+function loopTimestamp(loop: LocalLoopRecord): number {
+  const candidate = loop.updatedAt ?? loop.createdAt;
+  if (!candidate) {
+    return 0;
+  }
+  const parsed = Date.parse(candidate);
+  return Number.isNaN(parsed) ? 0 : parsed;
 }
 
 async function buildPhaseContract(rootDir: string, phaseWorkspace: PhaseWorkspaceState): Promise<NativePhaseContract> {
