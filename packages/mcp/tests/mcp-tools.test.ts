@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -59,6 +59,41 @@ async function withRunsRoot<T>(fn: (runsRoot: string) => Promise<T>): Promise<T>
 
     await rm(runsRoot, { recursive: true, force: true }).catch(() => {});
   }
+}
+
+async function withPathPrefix<T>(directory: string, fn: () => Promise<T>): Promise<T> {
+  const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === "path") ?? "PATH";
+  const original = process.env[pathKey];
+  process.env[pathKey] =
+    original && original.length > 0
+      ? `${directory}${process.platform === "win32" ? ";" : ":"}${original}`
+      : directory;
+
+  try {
+    return await fn();
+  } finally {
+    if (original === undefined) {
+      delete process.env[pathKey];
+    } else {
+      process.env[pathKey] = original;
+    }
+  }
+}
+
+async function installFakeCliProbe(directory: string, command: string, markerPath: string): Promise<void> {
+  if (process.platform === "win32") {
+    const commandPath = join(directory, `${command}.cmd`);
+    await writeFile(commandPath, `@echo off\r\necho invoked>>\"${markerPath}\"\r\nexit /b 0\r\n`, "utf8");
+    return;
+  }
+
+  const commandPath = join(directory, command);
+  await writeFile(
+    commandPath,
+    `#!/bin/sh\necho invoked >> \"${markerPath}\"\nexit 0\n`,
+    "utf8"
+  );
+  await chmod(commandPath, 0o755);
 }
 
 // ---------------------------------------------------------------------------
@@ -982,6 +1017,36 @@ describe("runLoopTool", () => {
       } else {
         process.env.MARTIN_LIVE = originalEnv;
       }
+    }
+  });
+
+  it("skips engine launch probing in proof mode", async () => {
+    const originalEnv = process.env.MARTIN_LIVE;
+    process.env.MARTIN_LIVE = "false";
+    const fakeCliDir = await mkdtemp(join(tmpdir(), "martin-mcp-cli-"));
+    const markerPath = join(fakeCliDir, "probe-invoked.txt");
+
+    try {
+      await installFakeCliProbe(fakeCliDir, "claude", markerPath);
+
+      await withPathPrefix(fakeCliDir, async () => {
+        const result = await runLoopTool({
+          objective: "Proof mode should not probe the requested engine",
+          maxIterations: 1
+        });
+
+        expect(result.status).toBe("completed");
+      });
+
+      await expect(stat(markerPath)).rejects.toThrow();
+    } finally {
+      if (originalEnv === undefined) {
+        delete process.env.MARTIN_LIVE;
+      } else {
+        process.env.MARTIN_LIVE = originalEnv;
+      }
+
+      await rm(fakeCliDir, { recursive: true, force: true }).catch(() => {});
     }
   });
 

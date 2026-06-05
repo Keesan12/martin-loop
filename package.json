@@ -54,7 +54,7 @@
   "scripts": {
     "build": "pnpm --filter @martin/cli build && pnpm --filter @martinloop/mcp build && node ./scripts/build-public-facade.mjs",
     "prepack": "pnpm build && node ./scripts/root-release-guard.mjs --pack",
-    "test": "pnpm -r test && node --test scripts/tests/*.mjs",
+    "test": "pnpm -r --workspace-concurrency=1 test && node --test scripts/tests/*.mjs",
     "lint": "pnpm -r lint",
     "oss:validate": "node ./scripts/oss-boundary.mjs",
     "public:copy-scan": "node ./scripts/public-copy-scan.mjs",
