@@ -16,6 +16,7 @@ import {
   createClaudeCliAdapter,
   createCodexCliAdapter,
   createVerifierOnlyAdapter,
+  readGitChangedFiles,
   type SpawnLike
 } from "../src/index.js";
 import { runSubprocess, splitCommand } from "../src/cli-bridge.js";
@@ -533,8 +534,23 @@ describe("runSubprocess", () => {
   });
 });
 
+describe("readGitChangedFiles", () => {
+  it("parses NUL-delimited rename entries and keeps the destination path", async () => {
+    const calls: SpawnCall[] = [];
+    const changedFiles = await readGitChangedFiles(process.cwd(), 5_000, createScriptedSpawn(calls, [
+      {
+        stdout: ` M spaced name.ts\u0000R  old-name.ts\u0000renamed name.ts\u0000`
+      }
+    ]));
+
+    expect(calls[0]?.command).toBe("git");
+    expect(calls[0]?.args).toContain("-z");
+    expect(changedFiles).toEqual(["spaced name.ts", "renamed name.ts"]);
+  });
+});
+
 describe("createVerifierOnlyAdapter", () => {
-  it("reports verifier-created file changes instead of treating verify-only as clean", async () => {
+  it("reports verifier-created file changes in proof-mode runs", async () => {
     const directory = await mkdtemp(join(tmpdir(), "martin-verify-only-"));
 
     try {
@@ -564,7 +580,6 @@ describe("createVerifierOnlyAdapter", () => {
             verificationPlan: [
               `"${process.execPath}" -e "require('node:fs').writeFileSync('tracked.txt','changed')"`
             ],
-            mutationMode: "verify_only",
             focus: "verify only",
             remainingBudgetUsd: 8,
             remainingIterations: 1,
@@ -609,7 +624,6 @@ describe("createVerifierOnlyAdapter", () => {
             taskTitle: "verify only",
             objective: "Run verification only",
             verificationPlan: [`"${process.execPath}" -e "process.exit(0)"`],
-            mutationMode: "verify_only",
             focus: "verify only",
             remainingBudgetUsd: 8,
             remainingIterations: 1,

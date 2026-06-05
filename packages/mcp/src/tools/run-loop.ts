@@ -108,6 +108,7 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
       : engine === "codex"
         ? createCodexCliAdapter({ workingDirectory, ...(model ? { model } : {}) })
         : createClaudeCliAdapter({ workingDirectory, ...(model ? { model } : {}) });
+  const mutationMode = process.env.MARTIN_LIVE === "false" ? "verify_only" : undefined;
 
   const partialBudget: Partial<LoopBudget> = {};
   if (input.maxUsd !== undefined) {
@@ -133,6 +134,7 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
       title: input.objective.slice(0, 100),
       objective: input.objective,
       verificationPlan: input.verificationPlan ?? [],
+      ...(mutationMode ? { mutationMode } : {}),
       repoRoot: workingDirectory,
       ...(allowedPaths ? { allowedPaths } : {}),
       ...(deniedPaths ? { deniedPaths } : {})

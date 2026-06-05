@@ -1292,7 +1292,8 @@ async function executePreflightCommand(
   const resolvedGuardrails = await resolveGuardrails(request);
   const environment = resolveCliEnvironment({
     cwd: request.cwd,
-    engine: request.engine
+    engine: request.engine,
+    ...(request.proofMode ? { liveMode: "proof" as const } : {})
   });
   const warnings: string[] = [];
   const blockingIssues: string[] = [];
@@ -2211,7 +2212,7 @@ function buildStartHuman(input: {
     '  martin-loop run "Summarize the demo workspace and confirm the verifier is green" --proof --verify "npm test"',
     "",
     `Recommended MCP bootstrap: ${hostPlan.installCommand}`,
-    `Preview config: ${hostPlan.printConfigCommand.replace(/\bmartin\b/gu, "martin-loop")}`
+    `Preview config: ${hostPlan.printConfigCommand}`
   ];
 }
 

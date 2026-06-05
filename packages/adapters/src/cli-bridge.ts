@@ -218,7 +218,7 @@ export async function readGitChangedFiles(
 ): Promise<string[]> {
   const statusResult = await runSubprocess(
     "git",
-    ["status", "--porcelain=v1", "--untracked-files=no", "--ignore-submodules=all"],
+    ["status", "-z", "--porcelain=v1", "--untracked-files=no", "--ignore-submodules=all"],
     { cwd: repoRoot, timeoutMs, spawnImpl }
   );
 
@@ -226,11 +226,7 @@ export async function readGitChangedFiles(
     return [];
   }
 
-  return statusResult.stdout
-    .split(/\r?\n/u)
-    .map((line) => line.trimEnd())
-    .filter(Boolean)
-    .map((line) => parsePorcelainPath(line))
+  return parsePorcelainEntries(statusResult.stdout)
     .filter((entry): entry is string => typeof entry === "string" && entry.length > 0);
 }
 
@@ -392,14 +388,35 @@ function quoteWindowsCmdArg(value: string): string {
   return `"${escaped}"`;
 }
 
-function parsePorcelainPath(line: string): string | undefined {
-  const payload = line.slice(3).trim();
-  if (!payload) {
-    return undefined;
+function parsePorcelainEntries(stdout: string): string[] {
+  const entries = stdout.split("\u0000").filter((entry) => entry.length > 0);
+  const changedFiles: string[] = [];
+
+  for (let index = 0; index < entries.length; index += 1) {
+    const entry = entries[index];
+    if (entry === undefined || entry.length < 4) {
+      continue;
+    }
+
+    const status = entry.slice(0, 2);
+    const payload = entry.slice(3);
+    if (!payload) {
+      continue;
+    }
+
+    if (status.includes("R") || status.includes("C")) {
+      const renamedPath = entries[index + 1];
+      if (renamedPath && renamedPath.length > 0) {
+        changedFiles.push(renamedPath);
+        index += 1;
+        continue;
+      }
+    }
+
+    changedFiles.push(payload);
   }
 
-  const renameMarker = " -> ";
-  return payload.includes(renameMarker) ? payload.split(renameMarker).at(-1)?.trim() : payload;
+  return changedFiles;
 }
 
 export function splitCommand(command: string): string[] {
