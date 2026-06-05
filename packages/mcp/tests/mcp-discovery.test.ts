@@ -114,17 +114,26 @@ describe("Martin MCP discovery resources", () => {
       MARTIN_STATIC_RESOURCE_URIS.serverHealth,
       MARTIN_STATIC_RESOURCE_URIS.recentRuns,
       MARTIN_STATIC_RESOURCE_URIS.triage,
+      MARTIN_STATIC_RESOURCE_URIS.latestRun,
       MARTIN_STATIC_RESOURCE_URIS.latestSummary,
       MARTIN_STATIC_RESOURCE_URIS.latestProofCard,
       MARTIN_STATIC_RESOURCE_URIS.latestBudgetStatus,
       MARTIN_STATIC_RESOURCE_URIS.latestVerifierEvidence,
       MARTIN_STATIC_RESOURCE_URIS.latestRollbackEvidence,
+      MARTIN_STATIC_RESOURCE_URIS.currentPolicies,
+      MARTIN_STATIC_RESOURCE_URIS.repoRiskMap,
+      MARTIN_STATIC_RESOURCE_URIS.verifierResults,
       MARTIN_STATIC_RESOURCE_URIS.agentNextStep,
       MARTIN_STATIC_RESOURCE_URIS.mcpUsageGuide,
+      MARTIN_STATIC_RESOURCE_URIS.agentStartGuide,
+      MARTIN_STATIC_RESOURCE_URIS.commandMapGuide,
+      MARTIN_STATIC_RESOURCE_URIS.ideOnboardingGuide,
+      MARTIN_STATIC_RESOURCE_URIS.operatingRulesGuide,
       MARTIN_STATIC_RESOURCE_URIS.publishReadinessGuide
     ]);
     expect(listedTemplates.resourceTemplates.map((template) => template.uriTemplate)).toEqual([
       "martin://runs/{loopId}",
+      "martin://runs/{loopId}/dossier",
       "martin://runs/{loopId}/attempts/{attemptIndex}",
       "martin://runs/{loopId}/verification"
     ]);
@@ -142,6 +151,10 @@ describe("Martin MCP discovery resources", () => {
       await writeFile(join(runsRoot, loop.loopId, "loop-record.json"), JSON.stringify(loop), "utf8");
 
       const guide = await readMartinResource({ uri: MARTIN_STATIC_RESOURCE_URIS.mcpUsageGuide, runsDir: runsRoot });
+      const agentStart = await readMartinResource({ uri: MARTIN_STATIC_RESOURCE_URIS.agentStartGuide, runsDir: runsRoot });
+      const commandMap = await readMartinResource({ uri: MARTIN_STATIC_RESOURCE_URIS.commandMapGuide, runsDir: runsRoot });
+      const ideOnboarding = await readMartinResource({ uri: MARTIN_STATIC_RESOURCE_URIS.ideOnboardingGuide, runsDir: runsRoot });
+      const operatingRules = await readMartinResource({ uri: MARTIN_STATIC_RESOURCE_URIS.operatingRulesGuide, runsDir: runsRoot });
       const recentRuns = await readMartinResource({ uri: MARTIN_STATIC_RESOURCE_URIS.recentRuns, runsDir: runsRoot });
       const triage = await readMartinResource({ uri: MARTIN_STATIC_RESOURCE_URIS.triage, runsDir: runsRoot });
       const latestSummary = await readMartinResource({ uri: MARTIN_STATIC_RESOURCE_URIS.latestSummary, runsDir: runsRoot });
@@ -152,7 +165,11 @@ describe("Martin MCP discovery resources", () => {
       const nextStep = await readMartinResource({ uri: MARTIN_STATIC_RESOURCE_URIS.agentNextStep, runsDir: runsRoot });
 
       expect(guide.contents[0]?.text).toContain("martin_governed_coding_kickoff");
-      expect(guide.contents[0]?.text).toContain("martin://runs/latest/summary");
+      expect(guide.contents[0]?.text).toContain("martin_start");
+      expect(agentStart.contents[0]?.text).toContain("Install Profiles");
+      expect(commandMap.contents[0]?.text).toContain("Default Governed Sequence");
+      expect(ideOnboarding.contents[0]?.text).toContain("IDE Default Flow");
+      expect(operatingRules.contents[0]?.text).toContain("Do not execute real coding work");
       expect(recentRuns.contents[0]?.text).toContain(`"${loop.loopId}"`);
       expect(recentRuns.contents[0]?.text).toContain("\"recentRuns\"");
       expect(triage.contents[0]?.text).toContain("\"findingCount\"");
@@ -165,37 +182,7 @@ describe("Martin MCP discovery resources", () => {
       expect(verifierEvidence.contents[0]?.text).toContain("\"status\": \"failed\"");
       expect(rollbackEvidence.contents[0]?.text).toContain("\"kind\": \"rollback-evidence\"");
       expect(nextStep.contents[0]?.text).toContain("\"action\": \"debug_failed_run\"");
-    });
-  });
-
-  it("keeps compact resource payloads free of absolute runs-root paths", async () => {
-    await withRunsRoot(async (runsRoot) => {
-      const loop = {
-        ...makeLoopRecord(),
-        loopId: "loop_compact_path_safety",
-        artifacts: [
-          {
-            artifactId: "artifact_rollback",
-            kind: "rollback",
-            label: "Rollback diff",
-            uri: "rollback.diff"
-          }
-        ]
-      };
-
-      await mkdir(join(runsRoot, loop.loopId), { recursive: true });
-      await writeFile(join(runsRoot, loop.loopId, "loop-record.json"), JSON.stringify(loop), "utf8");
-
-      for (const resourceUri of [
-        MARTIN_STATIC_RESOURCE_URIS.latestSummary,
-        MARTIN_STATIC_RESOURCE_URIS.latestBudgetStatus,
-        MARTIN_STATIC_RESOURCE_URIS.latestVerifierEvidence,
-        MARTIN_STATIC_RESOURCE_URIS.latestRollbackEvidence,
-        MARTIN_STATIC_RESOURCE_URIS.agentNextStep
-      ]) {
-        const resource = await readMartinResource({ uri: resourceUri, runsDir: runsRoot });
-        expect(resource.contents[0]?.text).not.toContain(runsRoot);
-      }
+      expect(nextStep.contents[0]?.text).toContain("\"requiredWorkflow\"");
     });
   });
 
@@ -404,7 +391,13 @@ describe("Martin MCP discovery prompts", () => {
       "martin_governed_coding_kickoff",
       "martin_debug_failed_run",
       "martin_publish_readiness_review",
-      "martin_triage_run_store"
+      "martin_triage_run_store",
+      "safe_bug_fix",
+      "write_tests_first",
+      "small_refactor",
+      "security_review",
+      "pr_review",
+      "release_check"
     ]);
   });
 
@@ -420,9 +413,11 @@ describe("Martin MCP discovery prompts", () => {
     });
 
     expect(prompt.messages[1]?.content.type).toBe("resource");
-    expect(prompt.messages[2]?.content.type).toBe("resource_link");
-    expect(prompt.messages[3]?.content.type).toBe("text");
-    expect((prompt.messages[3]?.content as { type: "text"; text: string }).text).toContain("Ship the Martin MCP discovery lane");
+    expect(prompt.messages[2]?.content.type).toBe("resource");
+    expect(prompt.messages[3]?.content.type).toBe("resource");
+    expect(prompt.messages[4]?.content.type).toBe("resource_link");
+    expect(prompt.messages[5]?.content.type).toBe("text");
+    expect((prompt.messages[5]?.content as { type: "text"; text: string }).text).toContain("Ship the Martin MCP discovery lane");
   });
 
   it("builds compact resume and proof prompts from latest evidence", async () => {

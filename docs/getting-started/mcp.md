@@ -4,7 +4,7 @@ The `@martinloop/mcp` package exposes MartinLoop through stdio for MCP-capable h
 
 ## Install
 
-Run the server directly:
+Run the packaged server directly:
 
 ```sh
 npx -y @martinloop/mcp
@@ -18,11 +18,13 @@ codex mcp add martin-loop -- npx -y @martinloop/mcp
 
 Add it to Claude Code:
 
+macOS/Linux:
+
 ```sh
 claude mcp add --transport stdio --scope user martin-loop -- npx -y @martinloop/mcp
 ```
 
-Windows PowerShell or cmd.exe:
+Windows:
 
 ```sh
 claude mcp add --transport stdio --scope user martin-loop -- cmd /c npx -y @martinloop/mcp
@@ -31,32 +33,34 @@ claude mcp add --transport stdio --scope user martin-loop -- cmd /c npx -y @mart
 ## Generate Host Config
 
 ```sh
-npx martin-loop mcp print-config --host codex --transport stdio --profile starter
-npx martin-loop mcp print-config --host claude --transport stdio --profile full
-npx martin-loop mcp print-config --host gemini --transport stdio --profile starter
+npx martin-loop mcp print-config --host codex --transport stdio --profile minimal
+npx martin-loop mcp print-config --host claude --transport stdio --profile diagnostic
+npx martin-loop mcp print-config --host gemini --transport stdio --profile full-local
+npx martin-loop mcp print-config --host generic --transport stdio --profile github-review
 ```
 
 `npx martin-loop mcp install` writes only when the target file is absent or when it detects an existing MartinLoop block it can update safely. For hand-maintained host configs, print the config and merge it yourself.
 
-## Recommended Flow
+## Recommended Host Flow
 
 1. Call `martin_doctor`.
-2. Call `martin_preflight` before non-trivial execution.
-3. Use `martin_run` as the execution entrypoint.
-4. Use `martin_triage_runs` to rank persisted runs.
-5. Read `martin://agent/next-step`, `martin://runs/latest/summary`, or `martin://runs/latest/proof-card`.
-6. Use `martin_run_dossier` or the `martin_get_*` tools when compact evidence says deeper inspection is needed.
+2. Call `martin_plan` to outline the task before spending a run.
+3. Call `martin_preflight` to validate verifier, scope, and budget.
+4. Use `martin_run` for the governed execution step.
+5. Use `martin_status` or `martin_logs` for live posture when the host needs it.
+6. Use `martin_dossier`, `martin_eval`, or the `martin_get_*` tools for evidence review.
 
-## Read-Only Starting Point
+## Start Safe
 
-If your host supports tool allow-lists, start with:
+If your host supports allow-lists, start with the `minimal` profile or an equivalent manual allow-list:
 
 - `martin_doctor`
+- `martin_plan`
 - `martin_preflight`
 - `martin_list_runs`
 - `martin_triage_runs`
-- `martin_run_dossier`
+- `martin_dossier`
 
-The generated starter and full profiles include `martin_run`, so use a manual allow-list when you want inspection without execution.
+Expanded profiles add `martin_run`, run-control helpers, and GitHub review helpers only when the host actually needs them.
 
-More detail: [MCP tool reference](../reference/mcp-tools.md).
+More detail: [MCP tool reference](../reference/mcp-tools.md) and [MCP compatibility](../reference/mcp-compatibility.md).

@@ -12,8 +12,6 @@
  * MCP tools and integration tests use the same factories.
  */
 
-import { spawnSync } from "node:child_process";
-
 import type {
   FailureClass,
   MartinAdapter,
@@ -557,7 +555,6 @@ export function createCodexCliAdapter(options: CodexCliAdapterOptions = {}): Mar
   const extraArgs = options.extraArgs ?? [];
   const sandbox = options.sandbox ?? "workspace-write";
   const workingDirectory = options.workingDirectory ?? process.cwd();
-  const gitRepoCheckArgs = shouldSkipCodexGitRepoCheck(workingDirectory) ? ["--skip-git-repo-check"] : [];
 
   return createAgentCliAdapter({
     command: "codex",
@@ -570,12 +567,9 @@ export function createCodexCliAdapter(options: CodexCliAdapterOptions = {}): Mar
     supportsJsonOutput: false,
     spawnImpl: options.spawnImpl,
     argsBuilder: () => [
-      "--ask-for-approval",
-      "never",
       "exec",
       "--cd",
       workingDirectory,
-      ...gitRepoCheckArgs,
       "--sandbox",
       sandbox,
       "--color",
@@ -719,21 +713,6 @@ function truncate(text: string, maxLength: number): string {
   }
 
   return `...${text.slice(-(maxLength - 3))}`;
-}
-
-function shouldSkipCodexGitRepoCheck(workingDirectory: string): boolean {
-  try {
-    const probe = spawnSync("git", ["rev-parse", "--is-inside-work-tree"], {
-      cwd: workingDirectory,
-      windowsHide: true,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"]
-    });
-
-    return probe.status !== 0 || probe.stdout.trim() !== "true";
-  } catch {
-    return true;
-  }
 }
 
 function formatPreVerifierSubprocessFailure(command: string, stderr: string, exitCode: number): string {

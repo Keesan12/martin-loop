@@ -1,9 +1,9 @@
 {
   "name": "martin-loop",
   "private": false,
-  "version": "0.2.7",
+  "version": "0.2.8",
   "type": "module",
-  "description": "Open-source control plane for AI coding agents: budget caps, verifier gates, rollback evidence, and audit trails.",
+  "description": "Open-source command center for governed AI coding agents with built-in onboarding, hard gates, CLI, MCP, and run receipts.",
   "packageManager": "pnpm@10.33.0",
   "keywords": [
     "mcp",
@@ -56,9 +56,9 @@
     "prepack": "pnpm build && node ./scripts/root-release-guard.mjs --pack",
     "test": "pnpm -r --workspace-concurrency=1 test && node --test scripts/tests/*.mjs",
     "lint": "pnpm -r lint",
-    "oss:validate": "node ./scripts/oss-boundary.mjs",
     "public:copy-scan": "node ./scripts/public-copy-scan.mjs",
     "public:git-surface": "node ./scripts/public-git-surface-guard.mjs",
+    "oss:validate": "node ./scripts/oss-boundary.mjs",
     "public:smoke": "node ./scripts/public-facade-smoke.mjs",
     "mcp:pack:smoke": "pnpm --filter @martinloop/mcp smoke:pack",
     "mcp:published:smoke": "pnpm --filter @martinloop/mcp smoke:published",
@@ -66,7 +66,8 @@
     "release:validate-local": "node ./scripts/rc-validation.mjs",
     "release:validate-local:install": "node ./scripts/rc-validation.mjs --install",
     "release:root:guard": "node ./scripts/root-release-guard.mjs --pack",
-    "run:cli": "pnpm --filter @martin/cli dev"
+    "run:cli": "pnpm --filter @martin/cli dev",
+    "release:validate:platforms": "node ./scripts/release-matrix.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.13.10",

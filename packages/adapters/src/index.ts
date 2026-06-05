@@ -24,12 +24,13 @@ export {
   type VerifierOnlyAdapterOptions
 } from "./verifier-only.js";
 export {
-  probeCliCommand,
-  runSubprocess
-} from "./cli-bridge.js";
-export type {
-  CliCommandProbe,
-  SpawnLike,
-  SubprocessResult,
-  VerificationOutcome
+  createOpenAiCompatibleAdapter,
+  type OpenAiCompatibleAdapterOptions
+} from "./openai-compatible.js";
+export {
+  createSpawnPlan,
+  type SpawnLike,
+  type SpawnPlan,
+  type SubprocessResult,
+  type VerificationOutcome
 } from "./cli-bridge.js";

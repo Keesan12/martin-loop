@@ -21,8 +21,6 @@ import {
   type MartinAdapterRequest
 } from "../src/index";
 
-const RUNTIME_REPO_FIXTURE_TIMEOUT_MS = 15_000;
-
 describe("distillContext", () => {
   it("keeps the latest attempts and exposes the remaining budget envelope", () => {
     const loop = createLoopRecord({
@@ -762,10 +760,7 @@ describe("runMartin", () => {
     });
   });
 
-  it(
-    "challenge 11: discards the attempt and exits with human escalation when a forbidden path write is detected",
-    { timeout: RUNTIME_REPO_FIXTURE_TIMEOUT_MS },
-    async () => {
+  it("challenge 11: discards the attempt and exits with human escalation when a forbidden path write is detected", async () => {
     const runsRoot = await mkdtemp(join(tmpdir(), "martin-safety-filesystem-"));
     const repoRoot = join(runsRoot, "repo");
     await mkdir(repoRoot, { recursive: true });
@@ -846,13 +841,9 @@ describe("runMartin", () => {
       blocked: true,
       attemptIndex: 1
     });
-    }
-  );
+  });
 
-  it(
-    "challenge 13: blocks dependency-related changes without approval and persists leash.json",
-    { timeout: RUNTIME_REPO_FIXTURE_TIMEOUT_MS },
-    async () => {
+  it("challenge 13: blocks dependency-related changes without approval and persists leash.json", async () => {
     const runsRoot = await mkdtemp(join(tmpdir(), "martin-safety-dependency-"));
     const repoRoot = join(runsRoot, "repo");
     await mkdir(repoRoot, { recursive: true });
@@ -947,13 +938,9 @@ describe("runMartin", () => {
         })
       ])
     );
-    }
-  );
+  });
 
-  it(
-    "blocks deployment config changes without approval and persists the config violation artifact",
-    { timeout: RUNTIME_REPO_FIXTURE_TIMEOUT_MS },
-    async () => {
+  it("blocks deployment config changes without approval and persists the config violation artifact", async () => {
     const runsRoot = await mkdtemp(join(tmpdir(), "martin-safety-config-"));
     const repoRoot = join(runsRoot, "repo");
     await mkdir(join(repoRoot, ".github", "workflows"), { recursive: true });
@@ -1047,8 +1034,7 @@ describe("runMartin", () => {
         })
       ])
     );
-    }
-  );
+  });
 
   it("rotates to the next adapter when switch_adapter is selected", async () => {
     let primaryExecutions = 0;
@@ -1386,10 +1372,7 @@ const store: import("../src/index").RunStore = {
     expect(patchDecision.reasonCodes).toContain("grounding_failure");
   });
 
-  it(
-    "restores the pre-attempt repo boundary for discarded verifier regressions and preserves pre-existing dirty files",
-    { timeout: RUNTIME_REPO_FIXTURE_TIMEOUT_MS },
-    async () => {
+  it("restores the pre-attempt repo boundary for discarded verifier regressions and preserves pre-existing dirty files", async () => {
     const runsRoot = await mkdtemp(join(tmpdir(), "martin-patch-rollback-"));
     const repoRoot = join(runsRoot, "repo");
     await mkdir(join(repoRoot, "src"), { recursive: true });
@@ -1485,13 +1468,9 @@ const store: import("../src/index").RunStore = {
     expect(rollbackOutcome.status).toBe("restored");
     expect(rollbackOutcome.deletedFiles).toContain("src/ghost-new-file.ts");
     expect(rollbackOutcome.after.trackedDirtyFiles).toEqual(["src/real.ts"]);
-    }
-  );
+  });
 
-  it(
-    "restores forbidden file changes on the filesystem safety-block path and persists rollback artifacts",
-    { timeout: RUNTIME_REPO_FIXTURE_TIMEOUT_MS },
-    async () => {
+  it("restores forbidden file changes on the filesystem safety-block path and persists rollback artifacts", async () => {
     const runsRoot = await mkdtemp(join(tmpdir(), "martin-patch-scope-rollback-"));
     const repoRoot = join(runsRoot, "repo");
     await mkdir(join(repoRoot, "src"), { recursive: true });
@@ -1583,8 +1562,7 @@ const store: import("../src/index").RunStore = {
     expect(patchDecision.reasonCodes).toContain("scope_violation");
     expect(rollbackOutcome.status).toBe("restored");
     expect(rollbackOutcome.deletedFiles).toContain("apps/leak.ts");
-    }
-  );
+  });
 
   it("writes consistent admission and settlement ledger payloads across mixed adapter types", async () => {
     const runsRoot = await mkdtemp(join(tmpdir(), "martin-adapter-ledger-"));

@@ -7,10 +7,45 @@ import { CliCommandError } from "./ux.js";
 
 export const MARTIN_STARTER_TOOLS = [
   "martin_doctor",
+  "martin_plan",
   "martin_preflight",
   "martin_run",
   "martin_triage_runs",
-  "martin_run_dossier"
+  "martin_dossier"
+] as const;
+
+export const MARTIN_MINIMAL_TOOLS = [
+  "martin_doctor",
+  "martin_plan",
+  "martin_preflight",
+  "martin_list_runs",
+  "martin_triage_runs",
+  "martin_dossier"
+] as const;
+
+export const MARTIN_DIAGNOSTIC_TOOLS = [
+  "martin_doctor",
+  "martin_plan",
+  "martin_preflight",
+  "martin_logs",
+  "martin_list_runs",
+  "martin_triage_runs",
+  "martin_get_run",
+  "martin_get_attempt",
+  "martin_get_verification_results",
+  "martin_dossier",
+  "martin_eval"
+] as const;
+
+export const MARTIN_GITHUB_REVIEW_TOOLS = [
+  "martin_doctor",
+  "martin_plan",
+  "martin_preflight",
+  "martin_dossier",
+  "martin_eval",
+  "martin_pr_summary",
+  "martin_create_pr",
+  "martin_review_pr"
 ] as const;
 
 export const MARTIN_FULL_TOOLS = [
@@ -18,19 +53,42 @@ export const MARTIN_FULL_TOOLS = [
   "martin_inspect",
   "martin_status",
   "martin_doctor",
+  "martin_plan",
   "martin_preflight",
+  "martin_logs",
+  "martin_pause",
+  "martin_cancel",
+  "martin_continue",
   "martin_list_runs",
   "martin_triage_runs",
   "martin_get_run",
   "martin_get_attempt",
   "martin_get_verification_results",
-  "martin_run_dossier"
+  "martin_run_dossier",
+  "martin_dossier",
+  "martin_eval",
+  "martin_pr_summary",
+  "martin_create_pr",
+  "martin_review_pr"
 ] as const;
 
-export type MartinMcpHost = "codex" | "claude" | "gemini" | "generic";
+export const MARTIN_PAID_REMOTE_TOOLS = [
+  "martin_doctor",
+  "martin_plan",
+  "martin_preflight",
+  "martin_run",
+  "martin_list_runs",
+  "martin_triage_runs",
+  "martin_get_run",
+  "martin_get_verification_results",
+  "martin_dossier",
+  "martin_eval"
+] as const;
+
+export type MartinMcpHost = "codex" | "claude" | "gemini" | "generic" | "cursor" | "copilot" | "continue";
 export type MartinMcpScope = "user" | "project" | "local";
 export type MartinMcpTransport = "stdio" | "remote";
-export type MartinMcpProfile = "starter" | "full";
+export type MartinMcpProfile = "minimal" | "diagnostic" | "github-review" | "full-local" | "paid-remote" | "starter" | "full";
 export type MartinMcpPlatform = "windows" | "macos" | "linux";
 
 export interface MartinMcpConfigInput {
@@ -96,7 +154,7 @@ export async function installMcpConfig(
       `Refusing to overwrite existing MCP config: ${plan.targetPath}`,
       {
         suggestion:
-          "Use `martin-loop mcp print-config` and merge the Martin Loop block into the existing host config."
+          "Use `martin mcp print-config` and merge the Martin Loop block into the existing host config."
       }
     );
   }
@@ -115,7 +173,7 @@ function normalizeInput(input: MartinMcpConfigInput): Required<Omit<MartinMcpCon
     cwd: input.cwd,
     runsRoot: input.runsRoot,
     transport: input.transport ?? "stdio",
-    profile: input.profile ?? "starter",
+    profile: input.profile ?? "minimal",
     remoteUrl: input.remoteUrl ?? DEFAULT_REMOTE_URL,
     remoteTokenEnv: input.remoteTokenEnv ?? DEFAULT_REMOTE_TOKEN_ENV,
     platform: input.platform ?? detectPlatform()
@@ -132,6 +190,12 @@ function buildHostConfig(
       return buildClaudeConfigSnippet(input);
     case "gemini":
       return buildGeminiConfigSnippet(input);
+    case "cursor":
+      return buildCursorConfigSnippet(input);
+    case "copilot":
+      return buildCopilotConfigSnippet(input);
+    case "continue":
+      return buildContinueConfigSnippet(input);
     case "generic":
       return buildGenericConfigSnippet(input);
   }
@@ -290,7 +354,7 @@ function buildGenericConfigSnippet(
     JSON.stringify(
       {
         version: 1,
-        generatedBy: "martin-loop mcp print-config",
+        generatedBy: "martin mcp print-config",
         host: "generic",
         transport: input.transport,
         profile: input.profile,
@@ -348,6 +412,25 @@ function resolveTargetPath(
       : joinTargetPath(input.cwd, ".gemini", "settings.json");
   }
 
+  if (input.host === "cursor") {
+    return input.scope === "user"
+      ? path.join(homedir(), ".cursor", "mcp.json")
+      : joinTargetPath(input.cwd, ".cursor", "mcp.json");
+  }
+
+  if (input.host === "copilot") {
+    // GitHub Copilot agent mode reads MCP config from VS Code settings.json
+    return input.scope === "user"
+      ? path.join(homedir(), ".vscode", "settings.json")
+      : joinTargetPath(input.cwd, ".vscode", "settings.json");
+  }
+
+  if (input.host === "continue") {
+    return input.scope === "user"
+      ? path.join(homedir(), ".continue", "config.json")
+      : joinTargetPath(input.cwd, ".continue", "config.json");
+  }
+
   return input.scope === "user"
     ? path.join(homedir(), ".martin-loop", "mcp.generic.json")
     : joinTargetPath(input.cwd, ".martin-loop", "mcp.generic.json");
@@ -375,6 +458,98 @@ function joinTargetPath(basePath: string, ...segments: string[]): string {
     : path.join(basePath, ...segments);
 }
 
+// ---------------------------------------------------------------------------
+// Cursor IDE config builder
+// Writes to .cursor/mcp.json (project) or ~/.cursor/mcp.json (user)
+// https://cursor.com/docs — Settings > Tools & MCP
+// ---------------------------------------------------------------------------
+
+function buildCursorConfigSnippet(
+  input: Required<Omit<MartinMcpConfigInput, "remoteUrl">> & { remoteUrl?: string }
+): string {
+  const launcher = buildStdioLauncher(input.platform);
+  const serverId = "martin-loop";
+  return (
+    JSON.stringify(
+      {
+        mcpServers: {
+          [serverId]: {
+            command: launcher.command,
+            args: launcher.args,
+            env: {
+              MARTIN_RUNS_DIR: input.runsRoot
+            }
+          }
+        }
+      },
+      null,
+      2
+    ) + "\n"
+  );
+}
+
+// ---------------------------------------------------------------------------
+// GitHub Copilot config builder
+// Writes to .vscode/settings.json under "github.copilot.chat.mcpServers"
+// Compatible with VS Code Copilot agent mode (GA May 2025)
+// ---------------------------------------------------------------------------
+
+function buildCopilotConfigSnippet(
+  input: Required<Omit<MartinMcpConfigInput, "remoteUrl">> & { remoteUrl?: string }
+): string {
+  const launcher = buildStdioLauncher(input.platform);
+  const serverId = "martin-loop";
+  return (
+    JSON.stringify(
+      {
+        "github.copilot.chat.mcpServers": {
+          [serverId]: {
+            command: launcher.command,
+            args: launcher.args,
+            env: {
+              MARTIN_RUNS_DIR: input.runsRoot
+            }
+          }
+        }
+      },
+      null,
+      2
+    ) + "\n"
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Continue.dev config builder
+// Appends MCP context provider to .continue/config.json
+// https://docs.continue.dev/customize/model-providers/overview
+// ---------------------------------------------------------------------------
+
+function buildContinueConfigSnippet(
+  input: Required<Omit<MartinMcpConfigInput, "remoteUrl">> & { remoteUrl?: string }
+): string {
+  const launcher = buildStdioLauncher(input.platform);
+  const tools = selectTools(input.profile);
+  return (
+    JSON.stringify(
+      {
+        mcpServers: [
+          {
+            name: "martin-loop",
+            command: launcher.command,
+            args: launcher.args,
+            env: {
+              MARTIN_RUNS_DIR: input.runsRoot
+            },
+            includeTools: tools
+          }
+        ]
+      },
+      null,
+      2
+    ) + "\n"
+  );
+}
+
 function usesWindowsSeparators(pathValue: string): boolean {
   return /^[A-Za-z]:([\\/]|$)/u.test(pathValue) || pathValue.includes("\\");
 }
@@ -397,7 +572,21 @@ function buildStdioLauncher(platform: MartinMcpPlatform): {
 }
 
 function selectTools(profile: MartinMcpProfile): readonly string[] {
-  return profile === "full" ? MARTIN_FULL_TOOLS : MARTIN_STARTER_TOOLS;
+  switch (profile) {
+    case "minimal":
+      return MARTIN_MINIMAL_TOOLS;
+    case "diagnostic":
+      return MARTIN_DIAGNOSTIC_TOOLS;
+    case "github-review":
+      return MARTIN_GITHUB_REVIEW_TOOLS;
+    case "full-local":
+    case "full":
+      return MARTIN_FULL_TOOLS;
+    case "paid-remote":
+      return MARTIN_PAID_REMOTE_TOOLS;
+    case "starter":
+      return MARTIN_STARTER_TOOLS;
+  }
 }
 
 function escapeTomlString(value: string): string {

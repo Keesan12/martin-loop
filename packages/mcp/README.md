@@ -1,69 +1,10 @@
 # @martinloop/mcp
 
-Governed MCP server for AI coding agents with budgets, verifier gates, and inspectable runs.
+Governed MCP server for AI coding agents with budgets, onboarding guides, run receipts, and review-ready evidence.
 
-`@martinloop/mcp` is local-first and stdio-first. It gives MCP hosts one governed execution entrypoint plus read-only tools, resources, and prompts for reviewing persisted MartinLoop run records before human review.
+`@martinloop/mcp` is local-first and stdio-first. It gives MCP hosts a clean way to plan work, verify readiness, run a governed task, inspect receipts, and hand a review summary back to a human.
 
-For host-facing setup, see [MCP setup](https://github.com/Keesan12/martin-loop/blob/main/docs/getting-started/mcp.md).
-
-## What Ships
-
-### Tools
-
-- `martin_doctor`
-- `martin_preflight`
-- `martin_run`
-- `martin_inspect`
-- `martin_status`
-- `martin_list_runs`
-- `martin_triage_runs`
-- `martin_get_run`
-- `martin_get_attempt`
-- `martin_get_verification_results`
-- `martin_run_dossier`
-
-### Resources
-
-- `martin://server/health`
-- `martin://runs/recent`
-- `martin://runs/triage`
-- `martin://runs/latest/summary`
-- `martin://runs/latest/proof-card`
-- `martin://runs/latest/budget-status`
-- `martin://runs/latest/verifier-evidence`
-- `martin://runs/latest/rollback-evidence`
-- `martin://agent/next-step`
-- `martin://guides/mcp-usage`
-- `martin://guides/publish-readiness`
-
-### Resource Templates
-
-- `martin://runs/{loopId}`
-- `martin://runs/{loopId}/attempts/{attemptIndex}`
-- `martin://runs/{loopId}/verification`
-
-### Prompts
-
-- `martin_start`
-- `martin_preflight`
-- `martin_triage`
-- `martin_resume`
-- `martin_prove`
-- `martin_release_check`
-- `martin_governed_coding_kickoff`
-- `martin_debug_failed_run`
-- `martin_publish_readiness_review`
-- `martin_triage_run_store`
-
-## Recommended Flow
-
-1. `martin_doctor`
-2. `martin_preflight`
-3. `martin_run`
-4. `martin_triage_runs`
-5. `martin://agent/next-step` or `martin://runs/latest/summary`
-6. `martin_run_dossier` or the `martin_get_*` tools when compact evidence says deeper inspection is needed
-7. `martin://runs/latest/proof-card` or `martin_prove` for a shareable receipt
+The root `martin-loop` package and the standalone `@martinloop/mcp` package move on separate version lines. For the current root release, see [MartinLoop 0.2.8 release notes](../../docs/release/OSS-0.2.8-RELEASE-NOTES.md).
 
 ## Install
 
@@ -83,62 +24,135 @@ Add it to Claude Code:
 
 ```sh
 claude mcp add --transport stdio --scope user martin-loop -- npx -y @martinloop/mcp
-```
-
-Windows PowerShell or cmd.exe:
-
-```sh
 claude mcp add --transport stdio --scope user martin-loop -- cmd /c npx -y @martinloop/mcp
 ```
 
 Generate host config from the root CLI:
 
 ```sh
-npx martin-loop mcp print-config --host codex --transport stdio --profile starter
-npx martin-loop mcp print-config --host claude --transport stdio --profile full
-npx martin-loop mcp print-config --host gemini --transport stdio --profile starter
+npx martin-loop mcp print-config --host codex --transport stdio --profile minimal
+npx martin-loop mcp print-config --host claude --transport stdio --profile diagnostic
+npx martin-loop mcp print-config --host gemini --transport stdio --profile full-local
+npx martin-loop mcp print-config --host generic --transport stdio --profile github-review
 ```
 
 Registry/server identifier: `io.github.Keesan12/martin-loop`
 
+## Recommended Flow
+
+1. `martin_doctor`
+2. `martin_plan`
+3. `martin_preflight`
+4. `martin_run`
+5. `martin_status` or `martin_logs`
+6. `martin_dossier` or the `martin_get_*` tools
+7. `martin_eval`
+8. `martin_pr_summary` or `martin_review_pr` when a host is preparing GitHub review output
+
+`martin_run` is the primary coding execution entrypoint. Expanded profiles can also expose run-control helpers and GitHub review helpers when the host genuinely needs them.
+
+## Profiles
+
+- `minimal`: read-heavy default for safe host setup
+- `diagnostic`: deeper inspection and evaluator support
+- `full-local`: includes execution and run-control helpers for local workflows
+- `github-review`: adds PR review helpers for GitHub-oriented hosts
+- `starter` and `full`: compatibility aliases that map onto the same discovery surface
+
+## Tools
+
+- `martin_doctor`
+- `martin_plan`
+- `martin_preflight`
+- `martin_run`
+- `martin_inspect`
+- `martin_status`
+- `martin_logs`
+- `martin_pause`
+- `martin_cancel`
+- `martin_continue`
+- `martin_list_runs`
+- `martin_triage_runs`
+- `martin_get_run`
+- `martin_get_attempt`
+- `martin_get_verification_results`
+- `martin_run_dossier`
+- `martin_dossier`
+- `martin_eval`
+- `martin_pr_summary`
+- `martin_create_pr`
+- `martin_review_pr`
+
+## Resources
+
+- `martin://server/health`
+- `martin://runs/recent`
+- `martin://runs/triage`
+- `martin://runs/latest`
+- `martin://runs/latest/summary`
+- `martin://runs/latest/proof-card`
+- `martin://runs/latest/budget-status`
+- `martin://runs/latest/verifier-evidence`
+- `martin://runs/latest/rollback-evidence`
+- `martin://policies/current`
+- `martin://repo/risk-map`
+- `martin://verifiers/results`
+- `martin://agent/next-step`
+- `martin://guides/mcp-usage`
+- `martin://guides/agent-start`
+- `martin://guides/command-map`
+- `martin://guides/ide-onboarding`
+- `martin://guides/operating-rules`
+- `martin://guides/publish-readiness`
+
+## Resource Templates
+
+- `martin://runs/{loopId}`
+- `martin://runs/{loopId}/dossier`
+- `martin://runs/{loopId}/attempts/{attemptIndex}`
+- `martin://runs/{loopId}/verification`
+
+## Prompts
+
+- `martin_start`
+- `martin_preflight`
+- `martin_triage`
+- `martin_resume`
+- `martin_prove`
+- `martin_release_check`
+- `martin_governed_coding_kickoff`
+- `martin_debug_failed_run`
+- `martin_publish_readiness_review`
+- `martin_triage_run_store`
+- `safe_bug_fix`
+- `write_tests_first`
+- `small_refactor`
+- `security_review`
+- `pr_review`
+- `release_check`
+
 ## Runtime Model
 
-- `martin_run` is the only execution entrypoint.
-- All other Martin MCP tools are read-only.
+- `martin_run` is the primary coding execution entrypoint.
+- `martin_plan`, `martin_doctor`, `martin_preflight`, `martin_status`, `martin_logs`, `martin_dossier`, `martin_eval`, and the `martin_get_*` family are planning or inspection surfaces.
+- `martin_pause`, `martin_cancel`, `martin_continue`, and `martin_create_pr` are explicit follow-on control helpers and stay out of the default `minimal` profile.
 - Live runs require `claude` or `codex` on `PATH`.
-- No-spend proof or smoke flows use `MARTIN_LIVE=false`.
+- Stub or smoke flows use `MARTIN_LIVE=false`.
 - Paths stay bounded to the configured workspace root and runs root.
-- Direct raw-model compatibility is not the target. MartinLoop supports hosts and wrappers that speak MCP.
-
-## Host Notes
-
-- `codex`: local stdio profiles
-- `claude`: local, user, and project scopes
-- `gemini`: local `settings.json` snippets with `includeTools`
-- `generic`: JSON config for MCP-aware wrappers
-
-Operating-system launcher behavior:
-
-- Windows: `cmd /c npx -y @martinloop/mcp`
-- macOS/Linux: `npx -y @martinloop/mcp`
-
-If you need a strict read-only host config, use a manual allow-list and omit `martin_run`.
 
 ## Debugging
 
-Use the live handshake inspector before debugging a host configuration:
+Use the live handshake inspector before you blame a host config:
 
 ```sh
 pnpm --filter @martinloop/mcp inspect:live
 ```
 
-For the official MCP Inspector UI:
+If you want the official MCP Inspector UI, point it at the same stdio launch command:
 
 ```sh
 npx @modelcontextprotocol/inspector --command npx --args "-y,@martinloop/mcp"
 ```
-
-The stdio server keeps protocol output on stdout and diagnostic logging on stderr.
 
 ## Verification
 
@@ -151,6 +165,7 @@ pnpm --filter @martinloop/mcp build
 pnpm --filter @martinloop/mcp smoke:pack
 pnpm --filter @martinloop/mcp smoke:published:pack
 pnpm --filter @martinloop/mcp verify:release
+pnpm --filter @martin/cli verify:hosts:live
 ```
 
-See the [MCP tool reference](https://github.com/Keesan12/martin-loop/blob/main/docs/reference/mcp-tools.md) and [MCP compatibility](https://github.com/Keesan12/martin-loop/blob/main/docs/reference/mcp-compatibility.md).
+See [MCP setup](../../docs/getting-started/mcp.md), [MCP tool reference](../../docs/reference/mcp-tools.md), and [MCP compatibility](../../docs/reference/mcp-compatibility.md).

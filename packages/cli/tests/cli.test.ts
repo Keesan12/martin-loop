@@ -7,8 +7,6 @@ import { describe, expect, it } from "vitest";
 import { createLoopRecord } from "../../contracts/src/index.js";
 import { executeCli, parseCliArguments } from "../src/index.js";
 
-const CLI_EXEC_TIMEOUT_MS = 15_000;
-
 describe("parseCliArguments", () => {
   it("parses a run command into a typed request", () => {
     const parsed = parseCliArguments([
@@ -64,10 +62,46 @@ describe("parseCliArguments", () => {
       }
     });
   });
+
+  it("parses the built-in guide command", () => {
+    expect(parseCliArguments(["guide", "mcp", "--host", "claude"])).toEqual({
+      command: "guide",
+      topic: "mcp",
+      host: "claude"
+    });
+  });
+
+  it("parses the interactive tour command", () => {
+    expect(parseCliArguments(["tour", "--host", "codex"])).toEqual({
+      command: "tour",
+      host: "codex"
+    });
+  });
 });
 
-describe("executeCli", () => {
-  it("resolves effectivePolicy from config and applies it to the run", { timeout: CLI_EXEC_TIMEOUT_MS }, async () => {
+describe.sequential("executeCli", () => {
+  it("renders the built-in command guide", async () => {
+    const result = await executeCli(["--json", "guide", "start"]);
+    const payload = JSON.parse(result.stdout);
+
+    expect(result.exitCode).toBe(0);
+    expect(payload.command).toBe("guide");
+    expect(payload.topic).toBe("start");
+    expect(payload.recommendedSequence).toContain("martin session-start");
+    expect(payload.commandMap.some((entry: { topic: string }) => entry.topic === "mcp")).toBe(true);
+  });
+
+  it("renders the interactive tour", async () => {
+    const result = await executeCli(["--json", "tour", "--host", "claude"]);
+    const payload = JSON.parse(result.stdout);
+
+    expect(result.exitCode).toBe(0);
+    expect(payload.command).toBe("tour");
+    expect(payload.steps[0].command).toBe("martin start");
+    expect(payload.steps.some((step: { command: string }) => step.command.includes("martin preflight"))).toBe(true);
+  });
+
+  it("resolves effectivePolicy from config and applies it to the run", async () => {
     const directory = await mkdtemp(join(tmpdir(), "martin-cli-config-"));
     const configPath = join(directory, "martin.config.yaml");
 
@@ -99,7 +133,8 @@ describe("executeCli", () => {
         "--objective",
         "Repair flaky CI gate",
         "--config",
-        configPath
+        configPath,
+        "--unsafe-allow-unguarded-run"
       ]);
       if (prevLive === undefined) {
         delete process.env.MARTIN_LIVE;
@@ -135,66 +170,105 @@ describe("executeCli", () => {
         maxIterations: 6,
         maxTokens: 45000
       });
-      expect(payload.loop.task.verificationPlan).toEqual([]);
+      expect(payload.loop.task.verificationPlan).toEqual(["pnpm test", "pnpm lint"]);
     } finally {
       await rm(directory, { force: true, recursive: true });
     }
   });
 
-  it("surfaces effective governance policy metadata in run output", { timeout: CLI_EXEC_TIMEOUT_MS }, async () => {
-    const configPath = join(process.env.INIT_CWD ?? process.cwd(), "martin.config.yaml");
+  it("surfaces effective governance policy metadata in run output", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-effective-policy-"));
+    const configPath = join(directory, "martin.config.yaml");
+    const previousCwd = process.cwd();
+    const previousInitCwd = process.env.INIT_CWD;
     const prevLive = process.env.MARTIN_LIVE;
-    process.env.MARTIN_LIVE = "false";
-    const result = await executeCli([
-      "--json",
-      "run",
-      "--objective",
-      "Repair flaky CI gate",
-      "--budget-usd",
-      "8",
-      "--soft-limit-usd",
-      "5",
-      "--max-iterations",
-      "3",
-      "--max-tokens",
-      "20000",
-      "--policy",
-      "balanced",
-      "--telemetry",
-      "control-plane"
-    ]);
-    if (prevLive === undefined) {
-      delete process.env.MARTIN_LIVE;
-    } else {
-      process.env.MARTIN_LIVE = prevLive;
-    }
 
-    expect(result.exitCode).toBe(0);
+    try {
+      await writeFile(
+        configPath,
+        [
+          "policyProfile: strict",
+          "budget:",
+          "  maxUsd: 5",
+          "  softLimitUsd: 3",
+          "  maxIterations: 5",
+          "  maxTokens: 30000",
+          "governance:",
+          "  destructiveActionPolicy: approval",
+          "  telemetryDestination: local-only",
+          "  verifierRules:",
+          "    - pnpm verify:shared-baseline"
+        ].join("\n"),
+        "utf8"
+      );
 
-    const payload = JSON.parse(result.stdout);
+      process.chdir(directory);
+      process.env.INIT_CWD = directory;
+      process.env.MARTIN_LIVE = "false";
 
-    expect(payload.command).toBe("run");
-    expect(payload.effectivePolicy).toEqual({
-      configPath,
-      destructiveActionPolicy: "approval",
-      policyProfile: "balanced",
-      budget: {
+      const result = await executeCli([
+        "--json",
+        "run",
+        "--objective",
+        "Repair flaky CI gate",
+        "--budget-usd",
+        "8",
+        "--soft-limit-usd",
+        "5",
+        "--max-iterations",
+        "3",
+        "--max-tokens",
+        "20000",
+        "--policy",
+        "balanced",
+        "--telemetry",
+        "control-plane",
+        "--unsafe-allow-unguarded-run"
+      ]);
+
+      expect(result.exitCode).toBe(0);
+
+      const payload = JSON.parse(result.stdout);
+
+      expect(payload.command).toBe("run");
+      expect(payload.effectivePolicy).toEqual({
+        configPath,
+        destructiveActionPolicy: "approval",
+        policyProfile: "balanced",
+        budget: {
+          maxUsd: 8,
+          softLimitUsd: 5,
+          maxIterations: 5,
+          maxTokens: 30000
+        },
+        verifierRules: ["pnpm verify:shared-baseline"],
         maxUsd: 8,
         softLimitUsd: 5,
-        maxIterations: 3,
-        maxTokens: 20000
-      },
-      verifierRules: ["pnpm test"],
-      maxUsd: 8,
-      softLimitUsd: 5,
-      maxIterations: 3,
-      maxTokens: 20000,
-      telemetryDestination: "control-plane"
-    });
-    expect(payload.loop.task.verificationPlan).toEqual([]);
+        maxIterations: 5,
+        maxTokens: 30000,
+        telemetryDestination: "control-plane"
+      });
+      expect(payload.loop.task.verificationPlan).toEqual(["pnpm verify:shared-baseline"]);
+    } finally {
+      process.chdir(previousCwd);
+
+      if (previousInitCwd === undefined) {
+        delete process.env.INIT_CWD;
+      } else {
+        process.env.INIT_CWD = previousInitCwd;
+      }
+
+      if (prevLive === undefined) {
+        delete process.env.MARTIN_LIVE;
+      } else {
+        process.env.MARTIN_LIVE = prevLive;
+      }
+
+      await rm(directory, { force: true, recursive: true });
+    }
   });
 
-  it("supports verify-only runs without invoking a coding adapter", { timeout: CLI_EXEC_TIMEOUT_MS }, async () => {
+  it("supports verify-only runs without invoking a coding adapter", async () => {
     const directory = await mkdtemp(join(tmpdir(), "martin-cli-verify-only-"));
 
     try {
@@ -225,16 +299,13 @@ describe("executeCli", () => {
     }
   });
 
-  it("resolves a relative --config path from INIT_CWD for filtered dev runs", { timeout: CLI_EXEC_TIMEOUT_MS }, async () => {
+  it("resolves a relative --config path from INIT_CWD for filtered dev runs", async () => {
     const directory = await mkdtemp(join(tmpdir(), "martin-cli-init-cwd-"));
-    const packageDirectory = join(directory, "packages", "cli");
     const configPath = join(directory, "martin.config.example.yaml");
-    const previousCwd = process.cwd();
     const previousInitCwd = process.env.INIT_CWD;
     const previousMarinLive = process.env.MARTIN_LIVE;
 
     try {
-      await mkdir(packageDirectory, { recursive: true });
       await writeFile(
         configPath,
         [
@@ -254,7 +325,6 @@ describe("executeCli", () => {
         "utf8"
       );
 
-      process.chdir(packageDirectory);
       process.env.INIT_CWD = directory;
 
       process.env.MARTIN_LIVE = "false";
@@ -264,7 +334,8 @@ describe("executeCli", () => {
         "--objective",
         "Repair flaky CI gate",
         "--config",
-        ".\\martin.config.example.yaml"
+        ".\\martin.config.example.yaml",
+        "--unsafe-allow-unguarded-run"
       ]);
 
       expect(result.exitCode).toBe(0);
@@ -273,10 +344,8 @@ describe("executeCli", () => {
 
       expect(payload.effectivePolicy.configPath).toBe(configPath);
       expect(payload.effectivePolicy.policyProfile).toBe("strict");
-      expect(payload.loop.task.verificationPlan).toEqual([]);
+      expect(payload.loop.task.verificationPlan).toEqual(["pnpm test", "pnpm lint"]);
     } finally {
-      process.chdir(previousCwd);
-
       if (previousInitCwd === undefined) {
         delete process.env.INIT_CWD;
       } else {

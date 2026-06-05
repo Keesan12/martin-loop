@@ -8,6 +8,7 @@ export type ToolFailureCode =
   | "invalid_path"
   | "invalid_selector"
   | "no_loop_records"
+  | "policy_blocked"
   | "store_unreadable"
   | "tool_execution_failed"
   | "unknown_tool"
@@ -140,7 +141,7 @@ export function toToolFailure(error: unknown): ToolFailure {
       code: "engine_unavailable",
       category: "environment",
       message,
-      suggestion: "Install the requested CLI or set MARTIN_LIVE=false for a no-spend proof run.",
+      suggestion: "Install the requested CLI or set MARTIN_LIVE=false for stub execution.",
       retryable: false
     };
   }
