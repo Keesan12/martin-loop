@@ -2,10 +2,19 @@
 
 CLI implementation for MartinLoop.
 
-The CLI groups execution, readiness checks, persisted-run inspection, and MCP host setup into one command set:
+The published binary is `martin-loop`. Inside this workspace package you may also see the local development alias `martin`, but the public install target remains `martin-loop`.
 
+## Product Flow
+
+The CLI groups onboarding, readiness checks, governed execution, evidence review, and MCP host setup into one command family:
+
+- `martin-loop start`
+- `martin-loop tour`
+- `martin-loop guide`
 - `martin-loop doctor`
 - `martin-loop demo`
+- `martin-loop session-start`
+- `martin-loop phase status|contract|preflight|run`
 - `martin-loop preflight`
 - `martin-loop run`
 - `martin-loop triage`
@@ -23,12 +32,24 @@ The CLI groups execution, readiness checks, persisted-run inspection, and MCP ho
 ## Recommended Flow
 
 ```sh
-martin-loop doctor
-martin-loop preflight "inspect the latest MCP run and confirm the verifier stays green" --verify "pnpm --filter @martinloop/mcp test"
-martin-loop run "inspect the latest MCP run and confirm the verifier stays green" --verify "pnpm --filter @martinloop/mcp test"
-martin-loop triage
-martin-loop dossier --latest
+npx martin-loop start
+npx martin-loop tour
+npx martin-loop doctor
+npx martin-loop session-start
+npx martin-loop preflight "repair the flaky MCP release lane" --verify "pnpm --filter @martinloop/mcp test"
+npx martin-loop run "repair the flaky MCP release lane" --verify "pnpm --filter @martinloop/mcp test"
+npx martin-loop triage
+npx martin-loop dossier --latest
+npx martin-loop mcp print-config --host codex --profile minimal
 ```
+
+Built-in onboarding:
+
+- `start` tells the operator or host the safest next MartinLoop command.
+- `tour` walks through the product flow with exact commands and expected output.
+- `guide` explains what each command does and when to use it.
+
+Governed runs are hard-blocked by default until `doctor`, a local session step, and `preflight` receipts exist for the same repo and task. Use `--unsafe-allow-unguarded-run` only when you intentionally need to bypass that local gate.
 
 ## MCP Config
 
@@ -43,15 +64,16 @@ startup_timeout_sec = 20
 tool_timeout_sec = 180
 enabled_tools = [
   "martin_doctor",
+  "martin_plan",
   "martin_preflight",
-  "martin_run",
+  "martin_list_runs",
   "martin_triage_runs",
-  "martin_run_dossier",
+  "martin_dossier",
 ]
 env = { MARTIN_RUNS_DIR = "C:\\path\\to\\runs" }
 ```
 
-`martin-loop mcp install` is conservative: it writes only when the target file is absent. If `martin-loop mcp install` detects an existing MartinLoop block, it returns without writing anything. For mixed host configs, use `martin-loop mcp print-config` and merge the MartinLoop block yourself.
+The default `minimal` profile is read-heavy. Use `diagnostic` for deeper inspection, `full-local` when the host should run tasks, and `github-review` only when review helpers are needed.
 
 ## Host Coverage
 
@@ -65,19 +87,9 @@ Generated stdio launchers are platform-aware:
 - Windows uses `cmd /c npx -y @martinloop/mcp`
 - macOS and Linux use `npx -y @martinloop/mcp`
 
-## Compatibility Aliases
+## Docs
 
-- `martin-loop inspect --file <path>` remains supported
-- `martin-loop resume <loopId>` remains supported
-
-Prefer `martin-loop dossier` and `martin-loop runs get --loop-id` for richer evidence review.
-
-Inside the `@martin/cli` workspace package you may also see the local development alias `martin`, but the published npm binary is `martin-loop`.
-
-## Live Verification
-
-Use the host matrix verifier when you want proof that generated config works with local host CLIs:
-
-```sh
-pnpm --filter @martin/cli verify:hosts:live
-```
+- [Quickstart](../../docs/getting-started/quickstart.md)
+- [CLI reference](../../docs/reference/cli.md)
+- [Config reference](../../docs/reference/config.md)
+- [MCP setup](../../docs/getting-started/mcp.md)

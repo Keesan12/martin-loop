@@ -1,4 +1,6 @@
+import { createHash } from "node:crypto";
 import { readFile, readdir, stat } from "node:fs/promises";
+import { homedir } from "node:os";
 import path from "node:path";
 
 import { resolveRunsRoot } from "@martin/core";
@@ -12,12 +14,105 @@ import type {
 
 import { CliCommandError } from "./ux.js";
 
+// ---------------------------------------------------------------------------
+// Local corpus hotspot reader (Layer 5 — proactive issue detection)
+// Reads the local learning corpus JSONL without importing from enterprise.
+// ---------------------------------------------------------------------------
+
+export interface LocalCorpusHotspot {
+  scopeFingerprint: string;
+  failureRate: number;
+  sampleSize: number;
+  riskScore: number;
+  commonFailureClasses: string[];
+}
+
+export interface LocalCorpusRisk {
+  hotspots: LocalCorpusHotspot[];
+  corpusRecords: number;
+  corpusPath: string;
+}
+
+interface CorpusRecord {
+  scopeFingerprint?: string | null;
+  outcome?: string;
+  failureClass?: string | null;
+}
+
+function resolveLocalCorpusPath(): string {
+  if (process.env["MARTIN_LEARNING_CORPUS_PATH"]) {
+    return process.env["MARTIN_LEARNING_CORPUS_PATH"];
+  }
+  return path.join(homedir(), ".martin", "autonomy", "learning-corpus", "attempt-records.jsonl");
+}
+
+export async function readLocalCorpusRisk(
+  options: { corpusPath?: string; minSampleSize?: number; minRiskScore?: number } = {}
+): Promise<LocalCorpusRisk> {
+  const corpusPath = options.corpusPath ?? resolveLocalCorpusPath();
+  const minSampleSize = options.minSampleSize ?? 3;
+  const minRiskScore = options.minRiskScore ?? 0.4;
+
+  const raw = await readFile(corpusPath, "utf8").catch((error: unknown) => {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return "";
+    throw error;
+  });
+
+  const records = raw
+    .split(/\r?\n/g)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      try {
+        return JSON.parse(line) as CorpusRecord;
+      } catch {
+        return null;
+      }
+    })
+    .filter((record): record is CorpusRecord => record !== null);
+
+  const byScope = new Map<string, CorpusRecord[]>();
+  for (const record of records) {
+    if (!record.scopeFingerprint) continue;
+    const key = record.scopeFingerprint;
+    byScope.set(key, [...(byScope.get(key) ?? []), record]);
+  }
+
+  const hotspots = [...byScope.entries()]
+    .map(([scopeFingerprint, group]): LocalCorpusHotspot => {
+      const failures = group.filter((record) => record.outcome !== "completed");
+      const failureRate = failures.length / group.length;
+      const riskScore = Math.min(1, failureRate + Math.min(0.25, group.length / 400));
+      return {
+        scopeFingerprint,
+        failureRate: Number(failureRate.toFixed(2)),
+        sampleSize: group.length,
+        riskScore: Number(riskScore.toFixed(2)),
+        commonFailureClasses: [
+          ...new Set(
+            failures
+              .map((record) => record.failureClass)
+              .filter((cls): cls is string => typeof cls === "string")
+          )
+        ].slice(0, 3)
+      };
+    })
+    .filter((hotspot) => hotspot.sampleSize >= minSampleSize && hotspot.riskScore >= minRiskScore)
+    .sort((left, right) => right.riskScore - left.riskScore);
+
+  return { hotspots, corpusRecords: records.length, corpusPath };
+}
+
+export function computeScopeFingerprint(workingDirectory: string): string {
+  return createHash("sha256").update(workingDirectory.replace(/\\/g, "/").toLowerCase()).digest("hex").slice(0, 16);
+}
+
 export interface CliEnvironment {
   invocationRoot: string;
   workingDirectory: string;
   runsRoot: string;
   engine: "claude" | "codex";
-  liveMode: "live" | "proof";
+  liveMode: "live" | "stub";
 }
 
 export interface PersistedLoopDetail {
@@ -77,7 +172,7 @@ export function resolveCliEnvironment(input: {
     workingDirectory,
     runsRoot,
     engine,
-    liveMode: env.MARTIN_LIVE === "false" ? "proof" : "live"
+    liveMode: env.MARTIN_LIVE === "false" ? "stub" : "live"
   };
 }
 
@@ -293,9 +388,50 @@ export function buildArtifactSummary(loop: LoopRecord): ArtifactSummary {
   };
 }
 
+export function buildRunReceipt(loop: LoopRecord, verification = buildVerificationSummary(loop)): Record<string, unknown> {
+  const latestAttempt = loop.attempts.at(-1);
+  const rollbackArtifacts = loop.artifacts.filter((artifact) =>
+    /rollback|restore|diff|patch/iu.test(`${artifact.kind} ${artifact.label} ${artifact.uri}`)
+  );
+  const stopConditionReached =
+    loop.lifecycleState === "budget_exit" ||
+    loop.lifecycleState === "diminishing_returns" ||
+    loop.lifecycleState === "stuck_exit" ||
+    loop.lifecycleState === "human_escalation";
+  const prevented = buildPreventionSummary(loop, verification, stopConditionReached);
+
+  return {
+    whatHappened: latestAttempt?.summary ?? verification.summary ?? loop.task.objective,
+    whatMartinPrevented: prevented,
+    tokenWasteReceipt: {
+      actualUsd: loop.cost.actualUsd,
+      avoidedUsdEstimate: loop.cost.avoidedUsd,
+      tokensIn: loop.cost.tokensIn,
+      tokensOut: loop.cost.tokensOut,
+      avoidedIterationsEstimate: stopConditionReached ? 1 : 0,
+      avoidedVerifierRetriesEstimate: verification.status === "failed" && stopConditionReached ? 1 : 0,
+      estimateLabel:
+        "Avoided spend, avoided iterations, and avoided verifier retries are directional local estimates unless backed by provider usage receipts."
+    },
+    verifier: {
+      status: verification.status,
+      summary: verification.summary,
+      eventCount: verification.eventCount,
+      warnings: verification.warnings
+    },
+    rollbackEvidence: {
+      exists: rollbackArtifacts.length > 0,
+      count: rollbackArtifacts.length,
+      artifacts: rollbackArtifacts.slice(0, 5)
+    },
+    nextSafeAction: selectNextSafeAction(loop, verification, rollbackArtifacts.length)
+  };
+}
+
 export function buildRunDossier(detail: PersistedLoopDetail): Record<string, unknown> {
   const verification = buildVerificationSummary(detail.loop);
   const artifactSummary = buildArtifactSummary(detail.loop);
+  const receipt = buildRunReceipt(detail.loop, verification);
 
   return {
     source: detail.source,
@@ -306,6 +442,7 @@ export function buildRunDossier(detail: PersistedLoopDetail): Record<string, unk
     },
     loop: detail.loop,
     verification,
+    receipt,
     artifacts: artifactSummary,
     recentEvents: detail.loop.events.slice(-10)
   };
@@ -325,6 +462,57 @@ export async function triagePersistedLoops(
     findings,
     warnings: listed.warnings
   };
+}
+
+function buildPreventionSummary(
+  loop: LoopRecord,
+  verification: VerificationSummary,
+  stopConditionReached: boolean
+): string[] {
+  const prevented: string[] = [];
+  const latestAttempt = loop.attempts.at(-1);
+
+  if (stopConditionReached) {
+    prevented.push("another unsafe or uneconomical retry before operator review");
+  }
+  if (verification.status === "failed") {
+    prevented.push("false success claims after a failed verifier");
+  }
+  if (latestAttempt?.failureClass) {
+    prevented.push(`unlabeled retry drift after ${latestAttempt.failureClass}`);
+  }
+  if (loop.cost.avoidedUsd > 0) {
+    prevented.push("estimated additional provider spend");
+  }
+  if (loop.attempts.length >= loop.budget.maxIterations) {
+    prevented.push("iteration cap overrun");
+  }
+
+  return prevented.length > 0
+    ? prevented
+    : ["no additional prevention claim is available from this run record"];
+}
+
+function selectNextSafeAction(
+  loop: LoopRecord,
+  verification: VerificationSummary,
+  rollbackEvidenceCount: number
+): string {
+  if (verification.status === "failed") {
+    return `Debug loop ${loop.loopId} before another attempt; start with verifier evidence and the latest failed attempt.`;
+  }
+
+  if (loop.lifecycleState === "budget_exit" || loop.lifecycleState === "diminishing_returns") {
+    return `Triage loop ${loop.loopId} and reset the budget or task scope only after reviewing the receipt.`;
+  }
+
+  if (loop.status === "completed" && verification.status === "passed") {
+    return rollbackEvidenceCount > 0
+      ? "Share the proof receipt with verifier and rollback evidence attached."
+      : "Share the proof receipt only after deciding whether rollback evidence is required for this workflow.";
+  }
+
+  return `Run preflight before retrying loop ${loop.loopId}; keep verifier, budget, and path scope explicit.`;
 }
 
 function scoreLoop(loop: LoopRecord): TriageFinding {

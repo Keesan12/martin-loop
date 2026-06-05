@@ -2,6 +2,7 @@ import { evaluateCostGovernor } from "@martin/core";
 
 import { loadLoopRecordForStatus } from "./run-store.js";
 import { buildLoopPreview, type LoopPreview } from "./tool-support.js";
+import { readRunControlState } from "./run-controls.js";
 
 export interface GetStatusInput {
   /** JSON-serialized LoopRecord. */
@@ -38,11 +39,29 @@ export interface GetStatusOutput {
   inspection: {
     loop: LoopPreview;
   };
+  live: {
+    phase: string;
+    pauseState: "active" | "paused" | "cancellation_requested";
+    approvalState: "not_required" | "resume_requested";
+    commandsRun: number;
+    filesTouched: number;
+    verifierStep?: string;
+  };
 }
 
 export async function getStatusTool(input: GetStatusInput): Promise<GetStatusOutput> {
   const resolved = await loadLoopRecordForStatus(input);
   const loop = resolved.loop;
+  const control =
+    input.loopJson !== undefined
+      ? {
+          requestedState: "active" as const,
+          approvalState: "not_required" as const,
+          receipts: []
+        }
+      : await readRunControlState(input);
+  const latestEvent = loop.events?.at(-1);
+  const changedFiles = loop.artifacts?.filter((artifact) => artifact.kind === "diff").length ?? 0;
 
   const costState = evaluateCostGovernor({
     budget: loop.budget,
@@ -76,6 +95,14 @@ export async function getStatusTool(input: GetStatusInput): Promise<GetStatusOut
     },
     inspection: {
       loop: buildLoopPreview(loop)
+    },
+    live: {
+      phase: latestEvent?.lifecycleState ?? loop.lifecycleState,
+      pauseState: control.requestedState,
+      approvalState: control.approvalState,
+      commandsRun: loop.attempts.length,
+      filesTouched: changedFiles,
+      ...(loop.task?.verificationPlan?.[0] ? { verifierStep: loop.task.verificationPlan[0] } : {})
     }
   };
 }

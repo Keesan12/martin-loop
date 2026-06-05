@@ -9,6 +9,8 @@ import { MARTIN_MCP_PACKAGE_VERSION } from "./package-version.js";
 import { inspectLoopTool } from "./tools/inspect-loop.js";
 import { martinDoctorTool } from "./tools/doctor.js";
 import { martinTriageRunsTool } from "./tools/triage-runs.js";
+import { martinRunDossierTool } from "./tools/run-dossier.js";
+import { inspectRepoSignals, buildPolicyPackDefinition, buildRepoRiskMap } from "./tools/workflow-governance.js";
 import {
   buildAttemptSnapshot,
   buildPersistedLoopPreview,
@@ -24,13 +26,21 @@ export const MARTIN_STATIC_RESOURCE_URIS = {
   serverHealth: "martin://server/health",
   recentRuns: "martin://runs/recent",
   triage: "martin://runs/triage",
+  latestRun: "martin://runs/latest",
   latestSummary: "martin://runs/latest/summary",
   latestProofCard: "martin://runs/latest/proof-card",
   latestBudgetStatus: "martin://runs/latest/budget-status",
   latestVerifierEvidence: "martin://runs/latest/verifier-evidence",
   latestRollbackEvidence: "martin://runs/latest/rollback-evidence",
+  currentPolicies: "martin://policies/current",
+  repoRiskMap: "martin://repo/risk-map",
+  verifierResults: "martin://verifiers/results",
   agentNextStep: "martin://agent/next-step",
   mcpUsageGuide: "martin://guides/mcp-usage",
+  agentStartGuide: "martin://guides/agent-start",
+  commandMapGuide: "martin://guides/command-map",
+  ideOnboardingGuide: "martin://guides/ide-onboarding",
+  operatingRulesGuide: "martin://guides/operating-rules",
   publishReadinessGuide: "martin://guides/publish-readiness"
 } as const;
 
@@ -40,6 +50,12 @@ export const MARTIN_RESOURCE_TEMPLATES: ResourceTemplate[] = [
     title: "Martin Run Record",
     uriTemplate: "martin://runs/{loopId}",
     description: "Read a canonical Martin loop record using the same selector path as martin_status."
+  },
+  {
+    name: "martin_run_dossier_resource",
+    title: "Martin Run Dossier",
+    uriTemplate: "martin://runs/{loopId}/dossier",
+    description: "Read the dossier-shaped summary for a persisted Martin loop."
   },
   {
     name: "martin_run_attempt",
@@ -78,6 +94,13 @@ export const MARTIN_STATIC_RESOURCES: Resource[] = [
     mimeType: "application/json"
   },
   {
+    uri: MARTIN_STATIC_RESOURCE_URIS.latestRun,
+    name: "martin_latest_run",
+    title: "Martin Latest Run",
+    description: "Full latest-run dossier surface for agents that need more than the compact summary.",
+    mimeType: "application/json"
+  },
+  {
     uri: MARTIN_STATIC_RESOURCE_URIS.latestSummary,
     name: "martin_latest_summary",
     title: "Martin Latest Summary",
@@ -113,6 +136,27 @@ export const MARTIN_STATIC_RESOURCES: Resource[] = [
     mimeType: "application/json"
   },
   {
+    uri: MARTIN_STATIC_RESOURCE_URIS.currentPolicies,
+    name: "martin_current_policies",
+    title: "Martin Current Policies",
+    description: "Local policy-pack presets and the recommended default pack for the current repo.",
+    mimeType: "application/json"
+  },
+  {
+    uri: MARTIN_STATIC_RESOURCE_URIS.repoRiskMap,
+    name: "martin_repo_risk_map",
+    title: "Martin Repo Risk Map",
+    description: "Sensitive repo surfaces and the recommended policy pack for this workspace.",
+    mimeType: "application/json"
+  },
+  {
+    uri: MARTIN_STATIC_RESOURCE_URIS.verifierResults,
+    name: "martin_latest_verifier_results",
+    title: "Martin Latest Verifier Results",
+    description: "Latest verifier results alias for compact run evidence.",
+    mimeType: "application/json"
+  },
+  {
     uri: MARTIN_STATIC_RESOURCE_URIS.agentNextStep,
     name: "martin_agent_next_step",
     title: "Martin Agent Next Step",
@@ -124,6 +168,34 @@ export const MARTIN_STATIC_RESOURCES: Resource[] = [
     name: "martin_mcp_usage_guide",
     title: "Martin MCP Usage Guide",
     description: "Recommended workflow for using Martin Loop over MCP.",
+    mimeType: "text/markdown"
+  },
+  {
+    uri: MARTIN_STATIC_RESOURCE_URIS.agentStartGuide,
+    name: "martin_agent_start_guide",
+    title: "Martin Agent Start Guide",
+    description: "Short agent-facing guide for using Martin with minimal context and low tool bloat.",
+    mimeType: "text/markdown"
+  },
+  {
+    uri: MARTIN_STATIC_RESOURCE_URIS.commandMapGuide,
+    name: "martin_command_map_guide",
+    title: "Martin Command Map Guide",
+    description: "Command-by-command guide for choosing the right Martin tool or surface.",
+    mimeType: "text/markdown"
+  },
+  {
+    uri: MARTIN_STATIC_RESOURCE_URIS.ideOnboardingGuide,
+    name: "martin_ide_onboarding_guide",
+    title: "Martin IDE Onboarding Guide",
+    description: "IDE-facing setup guide for making MartinLoop part of the default MCP workflow.",
+    mimeType: "text/markdown"
+  },
+  {
+    uri: MARTIN_STATIC_RESOURCE_URIS.operatingRulesGuide,
+    name: "martin_operating_rules_guide",
+    title: "Martin Operating Rules",
+    description: "Built-in operating rules that tell agents when Martin commands must be used before work proceeds.",
     mimeType: "text/markdown"
   },
   {
@@ -181,6 +253,15 @@ export async function readMartinResource(
       return jsonResource(input.uri, withDiscoveryMetadata(triage, context.runsRoot));
     }
 
+    case MARTIN_STATIC_RESOURCE_URIS.latestRun:
+      return jsonResource(
+        input.uri,
+        withDiscoveryMetadata(
+          await martinRunDossierTool({ latest: true, runsDir: context.runsRoot }),
+          context.runsRoot
+        )
+      );
+
     case MARTIN_STATIC_RESOURCE_URIS.latestSummary:
       return jsonResource(input.uri, withDiscoveryMetadata(await buildLatestSummaryResource(context.runsRoot), context.runsRoot));
 
@@ -196,11 +277,32 @@ export async function readMartinResource(
     case MARTIN_STATIC_RESOURCE_URIS.latestRollbackEvidence:
       return jsonResource(input.uri, withDiscoveryMetadata(await buildLatestRollbackEvidenceResource(context.runsRoot), context.runsRoot));
 
+    case MARTIN_STATIC_RESOURCE_URIS.currentPolicies:
+      return jsonResource(input.uri, withDiscoveryMetadata(buildCurrentPoliciesResource(context.workingDirectory), context.runsRoot));
+
+    case MARTIN_STATIC_RESOURCE_URIS.repoRiskMap:
+      return jsonResource(input.uri, withDiscoveryMetadata(buildRepoRiskMap(inspectRepoSignals(context.workingDirectory)), context.runsRoot));
+
+    case MARTIN_STATIC_RESOURCE_URIS.verifierResults:
+      return jsonResource(input.uri, withDiscoveryMetadata(await buildLatestVerifierEvidenceResource(context.runsRoot), context.runsRoot));
+
     case MARTIN_STATIC_RESOURCE_URIS.agentNextStep:
       return jsonResource(input.uri, withDiscoveryMetadata(await buildAgentNextStepResource(context.runsRoot), context.runsRoot));
 
     case MARTIN_STATIC_RESOURCE_URIS.mcpUsageGuide:
       return textResource(input.uri, "text/markdown", buildMcpUsageGuide(context.runsRoot));
+
+    case MARTIN_STATIC_RESOURCE_URIS.agentStartGuide:
+      return textResource(input.uri, "text/markdown", buildAgentStartGuide(context.runsRoot));
+
+    case MARTIN_STATIC_RESOURCE_URIS.commandMapGuide:
+      return textResource(input.uri, "text/markdown", buildCommandMapGuide(context.runsRoot));
+
+    case MARTIN_STATIC_RESOURCE_URIS.ideOnboardingGuide:
+      return textResource(input.uri, "text/markdown", buildIdeOnboardingGuide(context.runsRoot));
+
+    case MARTIN_STATIC_RESOURCE_URIS.operatingRulesGuide:
+      return textResource(input.uri, "text/markdown", buildOperatingRulesGuide(context.runsRoot));
 
     case MARTIN_STATIC_RESOURCE_URIS.publishReadinessGuide:
       return textResource(input.uri, "text/markdown", buildPublishReadinessGuide(context.runsRoot));
@@ -255,6 +357,13 @@ async function readDynamicMartinResource(input: {
       verification,
       warnings: [...detail.warnings, ...verification.warnings]
     }, input.runsDir));
+  }
+
+  const dossierMatch = /^martin:\/\/runs\/([^/]+)\/dossier$/u.exec(input.uri);
+  if (dossierMatch?.[1]) {
+    const loopId = decodeURIComponent(dossierMatch[1]);
+    const dossier = await martinRunDossierTool({ loopId, runsDir: input.runsDir });
+    return jsonResource(input.uri, withDiscoveryMetadata(dossier, input.runsDir));
   }
 
   const attemptMatch = /^martin:\/\/runs\/([^/]+)\/attempts\/([^/]+)$/u.exec(input.uri);
@@ -327,7 +436,7 @@ async function loadLatestRunForCompactResource(runsRoot: string): Promise<{
 async function buildLatestSummaryResource(runsRoot: string): Promise<Record<string, unknown>> {
   const latest = await loadLatestRunForCompactResource(runsRoot);
   if (latest.empty || !latest.detail) {
-    return compactEmptyState("latest-summary", latest.warnings);
+    return compactEmptyState("latest-summary", runsRoot, latest.warnings);
   }
 
   const ledgerEvents = await readLedgerEvents(latest.detail);
@@ -370,7 +479,7 @@ async function buildLatestSummaryResource(runsRoot: string): Promise<Record<stri
 async function buildLatestBudgetStatusResource(runsRoot: string): Promise<Record<string, unknown>> {
   const latest = await loadLatestRunForCompactResource(runsRoot);
   if (latest.empty || !latest.detail) {
-    return compactEmptyState("budget-status", latest.warnings);
+    return compactEmptyState("budget-status", runsRoot, latest.warnings);
   }
 
   const loop = latest.detail.loop as Parameters<typeof buildPersistedLoopPreview>[0];
@@ -404,7 +513,7 @@ async function buildLatestBudgetStatusResource(runsRoot: string): Promise<Record
 async function buildLatestVerifierEvidenceResource(runsRoot: string): Promise<Record<string, unknown>> {
   const latest = await loadLatestRunForCompactResource(runsRoot);
   if (latest.empty || !latest.detail) {
-    return compactEmptyState("verifier-evidence", latest.warnings);
+    return compactEmptyState("verifier-evidence", runsRoot, latest.warnings);
   }
 
   const ledgerEvents = await readLedgerEvents(latest.detail);
@@ -430,7 +539,7 @@ async function buildLatestVerifierEvidenceResource(runsRoot: string): Promise<Re
 async function buildLatestRollbackEvidenceResource(runsRoot: string): Promise<Record<string, unknown>> {
   const latest = await loadLatestRunForCompactResource(runsRoot);
   if (latest.empty || !latest.detail) {
-    return compactEmptyState("rollback-evidence", latest.warnings);
+    return compactEmptyState("rollback-evidence", runsRoot, latest.warnings);
   }
 
   const loop = latest.detail.loop as Parameters<typeof buildPersistedLoopPreview>[0];
@@ -461,7 +570,7 @@ async function buildAgentNextStepResource(runsRoot: string): Promise<Record<stri
   const latest = await loadLatestRunForCompactResource(runsRoot);
   if (latest.empty || !latest.detail) {
     return {
-      ...compactEmptyState("agent-next-step", latest.warnings),
+      ...compactEmptyState("agent-next-step", runsRoot, latest.warnings),
       nextTool: "martin_doctor",
       reason: "No run store evidence exists yet; confirm environment and run-store visibility first."
     };
@@ -487,8 +596,17 @@ async function buildAgentNextStepResource(runsRoot: string): Promise<Record<stri
           ? "failed"
           : "unavailable"
     },
+    requiredWorkflow: [
+      "martin_doctor",
+      "martin_plan",
+      "martin_preflight",
+      "martin_run",
+      "martin_dossier",
+      "martin_eval"
+    ],
     preferredResource: MARTIN_STATIC_RESOURCE_URIS.latestSummary,
-    proofCard: MARTIN_STATIC_RESOURCE_URIS.latestProofCard
+    proofCard: MARTIN_STATIC_RESOURCE_URIS.latestProofCard,
+    operatingRules: MARTIN_STATIC_RESOURCE_URIS.operatingRulesGuide
   };
 }
 
@@ -545,13 +663,29 @@ async function buildLatestProofCardResource(runsRoot: string): Promise<string> {
   ].join("\n");
 }
 
-function compactEmptyState(kind: string, warnings: string[]): Record<string, unknown> {
+function compactEmptyState(kind: string, runsRoot: string, warnings: string[]): Record<string, unknown> {
   return {
     kind,
     status: "empty",
+    runsRoot,
     summary: "No Martin run records are available yet.",
-    nextStep: "Run `martin-loop doctor`, create the demo workspace with `npx martin-loop demo`, then run a no-spend proof task with MARTIN_LIVE=false.",
+    nextStep: "Run `martin doctor`, create the demo workspace with `npx martin-loop demo`, then run a no-spend stub task with MARTIN_LIVE=false.",
     warnings
+  };
+}
+
+function buildCurrentPoliciesResource(workingDirectory: string): Record<string, unknown> {
+  const signals = inspectRepoSignals(workingDirectory);
+  const recommended = buildPolicyPackDefinition(undefined, signals);
+  return {
+    recommended: recommended.name,
+    packs: [
+      buildPolicyPackDefinition("solo-founder", signals),
+      buildPolicyPackDefinition("startup-team", signals),
+      buildPolicyPackDefinition("enterprise-strict", signals),
+      buildPolicyPackDefinition("oss-maintainer", signals),
+      buildPolicyPackDefinition("security-sensitive", signals)
+    ]
   };
 }
 
@@ -610,13 +744,13 @@ function inferAgentNextStep(
   };
 }
 
-function buildMcpUsageGuide(_runsRoot: string): string {
+function buildMcpUsageGuide(runsRoot: string): string {
   const metadata = buildMartinDiscoveryMetadata(MARTIN_MCP_PACKAGE_VERSION);
   return `# Martin Loop MCP Usage
 
 Discovery revision: \`${metadata.discoveryRevision}\`
 Server version: \`${metadata.serverVersion}\`
-Runs root: inspect \`${MARTIN_STATIC_RESOURCE_URIS.serverHealth}\` when you need the active local path.
+Runs root: \`${runsRoot}\`
 
 Martin Loop exposes governed coding workflows over MCP. Use the server health and run-store views to decide when to preflight, execute, inspect, or escalate.
 
@@ -633,7 +767,7 @@ Martin Loop exposes governed coding workflows over MCP. Use the server health an
 ## Current Martin MCP Surface
 
 - Tools: \`martin_run\`, \`martin_inspect\`, \`martin_status\`, \`martin_doctor\`, \`martin_preflight\`, \`martin_list_runs\`, \`martin_triage_runs\`, \`martin_get_run\`, \`martin_get_attempt\`, \`martin_get_verification_results\`, \`martin_run_dossier\`
-- Static resources: \`${MARTIN_STATIC_RESOURCE_URIS.serverHealth}\`, \`${MARTIN_STATIC_RESOURCE_URIS.recentRuns}\`, \`${MARTIN_STATIC_RESOURCE_URIS.triage}\`, \`${MARTIN_STATIC_RESOURCE_URIS.latestSummary}\`, \`${MARTIN_STATIC_RESOURCE_URIS.latestProofCard}\`, \`${MARTIN_STATIC_RESOURCE_URIS.latestBudgetStatus}\`, \`${MARTIN_STATIC_RESOURCE_URIS.latestVerifierEvidence}\`, \`${MARTIN_STATIC_RESOURCE_URIS.latestRollbackEvidence}\`, \`${MARTIN_STATIC_RESOURCE_URIS.agentNextStep}\`, \`${MARTIN_STATIC_RESOURCE_URIS.mcpUsageGuide}\`, \`${MARTIN_STATIC_RESOURCE_URIS.publishReadinessGuide}\`
+- Static resources: \`${MARTIN_STATIC_RESOURCE_URIS.serverHealth}\`, \`${MARTIN_STATIC_RESOURCE_URIS.recentRuns}\`, \`${MARTIN_STATIC_RESOURCE_URIS.triage}\`, \`${MARTIN_STATIC_RESOURCE_URIS.latestSummary}\`, \`${MARTIN_STATIC_RESOURCE_URIS.latestProofCard}\`, \`${MARTIN_STATIC_RESOURCE_URIS.latestBudgetStatus}\`, \`${MARTIN_STATIC_RESOURCE_URIS.latestVerifierEvidence}\`, \`${MARTIN_STATIC_RESOURCE_URIS.latestRollbackEvidence}\`, \`${MARTIN_STATIC_RESOURCE_URIS.agentNextStep}\`, \`${MARTIN_STATIC_RESOURCE_URIS.mcpUsageGuide}\`, \`${MARTIN_STATIC_RESOURCE_URIS.agentStartGuide}\`, \`${MARTIN_STATIC_RESOURCE_URIS.publishReadinessGuide}\`
 - Resource templates: \`martin://runs/{loopId}\`, \`martin://runs/{loopId}/attempts/{attemptIndex}\`, \`martin://runs/{loopId}/verification\`
 - Prompts: \`martin_start\`, \`martin_preflight\`, \`martin_triage\`, \`martin_resume\`, \`martin_prove\`, \`martin_release_check\`, \`martin_governed_coding_kickoff\`, \`martin_debug_failed_run\`, \`martin_publish_readiness_review\`, \`martin_triage_run_store\`
 
@@ -645,13 +779,129 @@ Martin Loop exposes governed coding workflows over MCP. Use the server health an
 `;
 }
 
-function buildPublishReadinessGuide(_runsRoot: string): string {
+function buildAgentStartGuide(runsRoot: string): string {
+  const metadata = buildMartinDiscoveryMetadata(MARTIN_MCP_PACKAGE_VERSION);
+  return `# Agent Start Here
+
+Discovery revision: \`${metadata.discoveryRevision}\`
+Server version: \`${metadata.serverVersion}\`
+Runs root: \`${runsRoot}\`
+
+Use Martin Loop as the local governor before you spend agent tokens or retry a failed coding loop.
+
+## Cheap Default Flow
+
+1. Read \`${MARTIN_STATIC_RESOURCE_URIS.agentNextStep}\` first. It is the smallest "what should I do now?" payload.
+2. If no runs exist, call \`martin_doctor\`, then \`martin_preflight\`.
+3. If a run exists, read \`${MARTIN_STATIC_RESOURCE_URIS.latestSummary}\` before reading full run JSON.
+4. If the verifier failed, use prompt \`martin_debug_failed_run\` or \`martin_triage\`.
+5. If you need a shareable receipt, read \`${MARTIN_STATIC_RESOURCE_URIS.latestProofCard}\`.
+
+## Install Profiles
+
+- \`minimal\` (default): doctor, preflight, list, triage, dossier. Good for low tool bloat.
+- \`diagnostic\`: read-only inspection tools for debugging without execution.
+- \`full-local\`: all local tools, including \`martin_run\`.
+- \`github-review\`: review-oriented local profile for PR drafting and reviewer evidence.
+- \`starter\` and \`full\`: compatibility aliases.
+
+## Copy-Paste Agent Rule
+
+Before running or retrying an autonomous coding task, call Martin. Prefer compact resources first, then full dossiers only when the compact receipt says more evidence is needed. Never claim success unless Martin shows verifier-backed completion or a clear blocked reason.
+`;
+}
+
+function buildCommandMapGuide(runsRoot: string): string {
+  const metadata = buildMartinDiscoveryMetadata(MARTIN_MCP_PACKAGE_VERSION);
+  return `# Martin Command Map
+
+Discovery revision: \`${metadata.discoveryRevision}\`
+Server version: \`${metadata.serverVersion}\`
+Runs root: \`${runsRoot}\`
+
+Use this guide when an IDE or agent needs to know which Martin surface to call next.
+
+## Default Governed Sequence
+
+1. \`martin_doctor\` — confirm environment and visibility.
+2. \`martin_plan\` — propose the bounded approach without spending a run.
+3. \`martin_preflight\` — turn the plan into an explicit contract.
+4. \`martin_run\` — execute only after the contract is safe.
+5. \`martin_dossier\` — inspect what happened and what Martin prevented.
+6. \`martin_eval\` — convert the result into review posture when needed.
+
+## When To Use Which Surface
+
+- Need the smallest next action: \`${MARTIN_STATIC_RESOURCE_URIS.agentNextStep}\`
+- Need a quick receipt: \`${MARTIN_STATIC_RESOURCE_URIS.latestSummary}\`
+- Need a shareable proof object: \`${MARTIN_STATIC_RESOURCE_URIS.latestProofCard}\`
+- Need a full run review: \`martin_dossier\`
+- Need to decide whether to retry: \`martin_triage_runs\`
+- Need IDE setup guidance: \`${MARTIN_STATIC_RESOURCE_URIS.ideOnboardingGuide}\`
+`;
+}
+
+function buildIdeOnboardingGuide(runsRoot: string): string {
+  const metadata = buildMartinDiscoveryMetadata(MARTIN_MCP_PACKAGE_VERSION);
+  return `# Martin IDE Onboarding
+
+Discovery revision: \`${metadata.discoveryRevision}\`
+Server version: \`${metadata.serverVersion}\`
+Runs root: \`${runsRoot}\`
+
+Use this guide after the MCP server is installed so the host naturally uses MartinLoop during real work.
+
+## IDE Default Flow
+
+1. Read \`${MARTIN_STATIC_RESOURCE_URIS.agentStartGuide}\`
+2. Read \`${MARTIN_STATIC_RESOURCE_URIS.operatingRulesGuide}\`
+3. Use prompt \`martin_start\` or \`martin_governed_coding_kickoff\`
+4. Call \`martin_doctor\`
+5. Call \`martin_plan\`
+6. Call \`martin_preflight\`
+7. Only then call \`martin_run\`
+
+## Goal
+
+MartinLoop should become the normal path for coding work in the host, not a manual extra step the human has to remember.
+`;
+}
+
+function buildOperatingRulesGuide(runsRoot: string): string {
+  const metadata = buildMartinDiscoveryMetadata(MARTIN_MCP_PACKAGE_VERSION);
+  return `# Martin Operating Rules
+
+Discovery revision: \`${metadata.discoveryRevision}\`
+Server version: \`${metadata.serverVersion}\`
+Runs root: \`${runsRoot}\`
+
+Use these rules inside the IDE or MCP host as the default MartinLoop operating posture.
+
+## Required Sequence Before Real Work
+
+1. \`martin_doctor\`
+2. \`martin_plan\`
+3. \`martin_preflight\`
+4. \`martin_run\`
+5. \`martin_dossier\`
+
+## Enforcement Rule
+
+Do not execute real coding work through MartinLoop until doctor and preflight have both been used for the current task.
+
+## Completion Rule
+
+Do not claim success until MartinLoop shows verifier-backed completion or an explicit blocked reason backed by evidence.
+`;
+}
+
+function buildPublishReadinessGuide(runsRoot: string): string {
   const metadata = buildMartinDiscoveryMetadata(MARTIN_MCP_PACKAGE_VERSION);
   return `# Martin MCP Publish Readiness
 
 Discovery revision: \`${metadata.discoveryRevision}\`
 Server version: \`${metadata.serverVersion}\`
-Runs root: inspect \`${MARTIN_STATIC_RESOURCE_URIS.serverHealth}\` when you need the active local path.
+Runs root: \`${runsRoot}\`
 
 Use this guide when reviewing whether the public MCP package is ready to publish, promote, or hand off for registry submission.
 
@@ -671,10 +921,11 @@ Use this guide when reviewing whether the public MCP package is ready to publish
 `;
 }
 
-function withDiscoveryMetadata(value: unknown, _runsRoot?: string): Record<string, unknown> {
+function withDiscoveryMetadata(value: unknown, runsRoot?: string): Record<string, unknown> {
   return {
     metadata: {
-      ...buildMartinDiscoveryMetadata(MARTIN_MCP_PACKAGE_VERSION)
+      ...buildMartinDiscoveryMetadata(MARTIN_MCP_PACKAGE_VERSION),
+      ...(runsRoot ? { runsRoot } : {})
     },
     value
   };
