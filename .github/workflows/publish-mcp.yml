@@ -152,5 +152,5 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.release-vars.outputs.tag }}
-          name: @martinloop/mcp ${{ steps.mcp-metadata.outputs.package_version }}
-          body_path: docs/release/MCP-${{ steps.mcp-metadata.outputs.package_version }}-RELEASE-NOTES.md
+          name: "@martinloop/mcp ${{ steps.mcp-metadata.outputs.package_version }}"
+          body_path: "docs/release/MCP-${{ steps.mcp-metadata.outputs.package_version }}-RELEASE-NOTES.md"
