@@ -65,7 +65,7 @@
 
   <!-- L01: command -->
   <text x="22" y="66" class="text green l01">$</text>
-  <text x="34" y="66" class="text l01"> martin run "repair flaky CI gate" --budget 5.00 --verify "pnpm test"</text>
+  <text x="34" y="66" class="text l01"> martin-loop run "repair flaky CI gate" --budget 5.00 --verify "pnpm test"</text>
 
   <!-- L02: opening brace -->
   <text x="22" y="86" class="text l02">{</text>
@@ -130,8 +130,8 @@
   <!-- Summary box -->
   <rect x="18" y="476" width="782" height="44" rx="8" fill="#161b22" class="card-bg"/>
   <rect x="18" y="476" width="782" height="44" rx="8" fill="none" stroke="#238636" stroke-width="1" class="card-bg"/>
-  <text x="30" y="493" class="text blue card-text" font-size="12">── Inspect: martin inspect --file ~/.martin/runs/ws_default.jsonl</text>
-  <text x="30" y="511" class="text green card-text" font-size="12">── Resume:  martin resume loop_a7f2b9</text>
+  <text x="30" y="493" class="text blue card-text" font-size="12">── Inspect: martin-loop inspect --file ~/.martin/runs/ws_default.jsonl</text>
+  <text x="30" y="511" class="text green card-text" font-size="12">── Resume:  martin-loop resume loop_a7f2b9</text>
 
   <!-- Prompt -->
   <text x="22" y="530" class="text green prompt-end">$</text>

@@ -27,10 +27,10 @@ export interface MartinDoctorOutput {
     workspaceRoot: string;
     workingDirectory: string;
     runsRoot: string;
-    mode: "live" | "stub";
+    mode: "live" | "proof";
     liveMode: boolean;
   };
-  engines: Record<MartinEngine, { available: boolean; detail: string; resolvedPath?: string }>;
+  engines: Record<MartinEngine, { available: boolean; launchReady: boolean; detail: string; resolvedPath?: string }>;
   requestedEngine?: MartinEngine;
   runStore: {
     exists: boolean;
@@ -44,21 +44,23 @@ export async function martinDoctorTool(input: MartinDoctorInput): Promise<Martin
   const workingDirectory = resolveSafeRepoRoot(input.workingDirectory);
   const runsRoot = resolveSafeRunsRootPath(input.runsDir, resolveRunsRoot(process.env));
   const executionMode = resolveExecutionMode();
-  const claude = getEngineAvailability("claude");
-  const codex = getEngineAvailability("codex");
+  const [claude, codex] = await Promise.all([
+    getEngineAvailability("claude", workingDirectory),
+    getEngineAvailability("codex", workingDirectory)
+  ]);
   const runStore = await inspectRunsRoot(runsRoot);
 
   const warnings: string[] = [];
   if (!runStore.exists) {
     warnings.push("Configured Martin runs root does not exist yet.");
   }
-  if (executionMode.liveMode && !claude.available && !codex.available) {
-    warnings.push("Neither claude nor codex is currently available on PATH for live runs.");
+  if (executionMode.liveMode && !claude.launchReady && !codex.launchReady) {
+    warnings.push("Neither claude nor codex is currently launch-ready for live runs.");
   }
   if (input.engine && executionMode.liveMode) {
     const selected = input.engine === "claude" ? claude : codex;
-    if (!selected.available) {
-      warnings.push(`Requested engine '${input.engine}' is not available on PATH.`);
+    if (!selected.launchReady) {
+      warnings.push(`Requested engine '${input.engine}' is not launch-ready. ${selected.detail}`);
     }
   }
   warnings.push(...runStore.warnings);
@@ -87,11 +89,13 @@ export async function martinDoctorTool(input: MartinDoctorInput): Promise<Martin
     engines: {
       claude: {
         available: claude.available,
+        launchReady: claude.launchReady,
         detail: claude.detail,
         ...(claude.resolvedPath ? { resolvedPath: claude.resolvedPath } : {})
       },
       codex: {
         available: codex.available,
+        launchReady: codex.launchReady,
         detail: codex.detail,
         ...(codex.resolvedPath ? { resolvedPath: codex.resolvedPath } : {})
       }

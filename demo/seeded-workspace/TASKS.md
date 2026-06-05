@@ -1,6 +1,6 @@
 # Suggested Demo Tasks
 
-## Stub-safe first run
+## Proof-mode first run
 
 Use this when you want to see MartinLoop create a governed run record without spending provider budget:
 

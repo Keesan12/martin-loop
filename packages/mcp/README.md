@@ -106,7 +106,7 @@ Registry/server identifier: `io.github.Keesan12/martin-loop`
 - `martin_run` is the only execution entrypoint.
 - All other Martin MCP tools are read-only.
 - Live runs require `claude` or `codex` on `PATH`.
-- Stub or smoke flows use `MARTIN_LIVE=false`.
+- No-spend proof or smoke flows use `MARTIN_LIVE=false`.
 - Paths stay bounded to the configured workspace root and runs root.
 - Direct raw-model compatibility is not the target. MartinLoop supports hosts and wrappers that speak MCP.
 
