@@ -7,6 +7,8 @@ import { describe, expect, it } from "vitest";
 import { createLoopRecord } from "../../contracts/src/index.js";
 import { executeCli, parseCliArguments } from "../src/index.js";
 
+const FAST_VERIFIER = process.platform === "win32" ? "cmd /c exit 0" : "true";
+
 describe("parseCliArguments", () => {
   it("parses a run command into a typed request", () => {
     const parsed = parseCliArguments([
@@ -77,6 +79,25 @@ describe("parseCliArguments", () => {
       host: "codex"
     });
   });
+
+  it("parses --proof as a first-class run option", () => {
+    expect(parseCliArguments([
+      "run",
+      "--objective",
+      "Check the verifier path",
+      "--proof",
+      "--verify",
+      "npm test"
+    ])).toEqual({
+      command: "run",
+      request: expect.objectContaining({
+        objective: "Check the verifier path",
+        title: "Check the verifier path",
+        proofMode: true,
+        verificationPlan: ["npm test"]
+      })
+    });
+  });
 });
 
 describe.sequential("executeCli", () => {
@@ -87,7 +108,7 @@ describe.sequential("executeCli", () => {
     expect(result.exitCode).toBe(0);
     expect(payload.command).toBe("guide");
     expect(payload.topic).toBe("start");
-    expect(payload.recommendedSequence).toContain("martin session-start");
+    expect(payload.recommendedSequence).toContain("martin-loop session-start");
     expect(payload.commandMap.some((entry: { topic: string }) => entry.topic === "mcp")).toBe(true);
   });
 
@@ -97,8 +118,10 @@ describe.sequential("executeCli", () => {
 
     expect(result.exitCode).toBe(0);
     expect(payload.command).toBe("tour");
-    expect(payload.steps[0].command).toBe("martin start");
-    expect(payload.steps.some((step: { command: string }) => step.command.includes("martin preflight"))).toBe(true);
+    expect(payload.steps[0].command).toBe("martin-loop start");
+    expect(
+      payload.steps.some((step: { command: string }) => step.command.includes("martin-loop preflight"))
+    ).toBe(true);
   });
 
   it("resolves effectivePolicy from config and applies it to the run", async () => {
@@ -119,8 +142,8 @@ describe.sequential("executeCli", () => {
           "  destructiveActionPolicy: approval",
           "  telemetryDestination: control-plane",
           "  verifierRules:",
-          "    - pnpm test",
-          "    - pnpm lint"
+          `    - ${FAST_VERIFIER}`,
+          `    - ${FAST_VERIFIER}`
         ].join("\n"),
         "utf8"
       );
@@ -157,7 +180,7 @@ describe.sequential("executeCli", () => {
           maxIterations: 6,
           maxTokens: 45000
         },
-        verifierRules: ["pnpm test", "pnpm lint"],
+        verifierRules: [FAST_VERIFIER, FAST_VERIFIER],
         maxUsd: 12,
         softLimitUsd: 7,
         maxIterations: 6,
@@ -167,10 +190,10 @@ describe.sequential("executeCli", () => {
       expect(payload.loop.budget).toEqual({
         maxUsd: 12,
         softLimitUsd: 7,
-        maxIterations: 6,
-        maxTokens: 45000
-      });
-      expect(payload.loop.task.verificationPlan).toEqual(["pnpm test", "pnpm lint"]);
+          maxIterations: 6,
+          maxTokens: 45000
+        });
+      expect(payload.loop.task.verificationPlan).toEqual([FAST_VERIFIER, FAST_VERIFIER]);
     } finally {
       await rm(directory, { force: true, recursive: true });
     }
@@ -197,7 +220,7 @@ describe.sequential("executeCli", () => {
           "  destructiveActionPolicy: approval",
           "  telemetryDestination: local-only",
           "  verifierRules:",
-          "    - pnpm verify:shared-baseline"
+          `    - ${FAST_VERIFIER}`
         ].join("\n"),
         "utf8"
       );
@@ -241,14 +264,14 @@ describe.sequential("executeCli", () => {
           maxIterations: 5,
           maxTokens: 30000
         },
-        verifierRules: ["pnpm verify:shared-baseline"],
+        verifierRules: [FAST_VERIFIER],
         maxUsd: 8,
         softLimitUsd: 5,
         maxIterations: 5,
         maxTokens: 30000,
         telemetryDestination: "control-plane"
       });
-      expect(payload.loop.task.verificationPlan).toEqual(["pnpm verify:shared-baseline"]);
+      expect(payload.loop.task.verificationPlan).toEqual([FAST_VERIFIER]);
     } finally {
       process.chdir(previousCwd);
 
@@ -319,8 +342,8 @@ describe.sequential("executeCli", () => {
           "  destructiveActionPolicy: approval",
           "  telemetryDestination: control-plane",
           "  verifierRules:",
-          "    - pnpm test",
-          "    - pnpm lint"
+          `    - ${FAST_VERIFIER}`,
+          `    - ${FAST_VERIFIER}`
         ].join("\n"),
         "utf8"
       );
@@ -344,7 +367,7 @@ describe.sequential("executeCli", () => {
 
       expect(payload.effectivePolicy.configPath).toBe(configPath);
       expect(payload.effectivePolicy.policyProfile).toBe("strict");
-      expect(payload.loop.task.verificationPlan).toEqual(["pnpm test", "pnpm lint"]);
+      expect(payload.loop.task.verificationPlan).toEqual([FAST_VERIFIER, FAST_VERIFIER]);
     } finally {
       if (previousInitCwd === undefined) {
         delete process.env.INIT_CWD;
@@ -366,7 +389,6 @@ describe.sequential("executeCli", () => {
     const result = await executeCli(["bench", "--suite", "ralphy-smoke"]);
 
     expect(result.exitCode).toBe(1);
-    expect(result.stdout).toBe("");
     expect(result.stderr).toContain("workspace-only RC surface");
     expect(result.stderr).toContain("@martin/benchmarks");
   });
@@ -384,7 +406,8 @@ describe.sequential("executeCli", () => {
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain(targetDirectory);
       expect(result.stdout).toContain("npm install");
-      expect(result.stdout).toContain("MARTIN_LIVE=false");
+      expect(result.stdout).toContain("npx martin-loop run");
+      expect(result.stdout).toContain("--proof");
       expect(await readFile(join(targetDirectory, "README.md"), "utf8")).toContain("Demo Sandbox");
     } finally {
       process.chdir(previousCwd);

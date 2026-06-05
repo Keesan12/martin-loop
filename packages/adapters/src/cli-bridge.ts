@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
-import { delimiter, extname, isAbsolute, join, resolve } from "node:path";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { delimiter, dirname, extname, isAbsolute, join, resolve } from "node:path";
 
 import { diffStatsFromNumstat } from "./runtime-support.js";
 
@@ -182,16 +182,18 @@ export async function readGitExecutionArtifacts(
   changedFiles?: string[];
   diffStats?: ReturnType<typeof diffStatsFromNumstat>;
 }> {
-  const changedFilesResult = await runSubprocess(
-    "git",
-    ["diff", "--name-only", "HEAD"],
-    { cwd: repoRoot, timeoutMs, spawnImpl }
-  );
-  const numstatResult = await runSubprocess(
-    "git",
-    ["diff", "--numstat", "HEAD"],
-    { cwd: repoRoot, timeoutMs, spawnImpl }
-  );
+  const [changedFilesResult, numstatResult] = await Promise.all([
+    runSubprocess(
+      "git",
+      ["diff", "--name-only", "HEAD"],
+      { cwd: repoRoot, timeoutMs, spawnImpl }
+    ),
+    runSubprocess(
+      "git",
+      ["diff", "--numstat", "HEAD"],
+      { cwd: repoRoot, timeoutMs, spawnImpl }
+    )
+  ]);
 
   const changedFiles =
     changedFilesResult.exitCode === 0
@@ -207,6 +209,25 @@ export async function readGitExecutionArtifacts(
     ...(changedFiles.length > 0 ? { changedFiles } : {}),
     ...(diffStats ? { diffStats } : {})
   };
+}
+
+export async function readGitChangedFiles(
+  repoRoot: string,
+  timeoutMs: number,
+  spawnImpl?: SpawnLike
+): Promise<string[]> {
+  const statusResult = await runSubprocess(
+    "git",
+    ["status", "-z", "--porcelain=v1", "--untracked-files=all", "--ignore-submodules=all"],
+    { cwd: repoRoot, timeoutMs, spawnImpl }
+  );
+
+  if (statusResult.exitCode !== 0) {
+    return [];
+  }
+
+  return parsePorcelainEntries(statusResult.stdout)
+    .filter((entry): entry is string => typeof entry === "string" && entry.length > 0);
 }
 
 export interface SpawnPlan {
@@ -240,9 +261,24 @@ export function createSpawnPlan(
 
   const extension = extname(resolvedOrUndefined).toLowerCase();
   if (extension === ".cmd" || extension === ".bat") {
+    const nodeShim = resolveWindowsNodeShim(resolvedOrUndefined);
+    if (nodeShim) {
+      return {
+        command: nodeShim.nodeCommand,
+        args: [nodeShim.scriptPath, ...args]
+      };
+    }
+
     return {
-      command: process.env.ComSpec || "cmd.exe",
-      args: ["/d", "/s", "/c", [quoteWindowsCmdArg(resolvedOrUndefined), ...args.map(quoteWindowsCmdArg)].join(" ")]
+      command: resolveWindowsPowerShellHost(),
+      args: [
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        buildPowerShellBatchInvocation(resolvedOrUndefined, args)
+      ]
     };
   }
 
@@ -292,6 +328,55 @@ function windowsPathDirectories(): string[] {
     .filter(Boolean);
 }
 
+function resolveWindowsNodeShim(
+  shimPath: string
+): { nodeCommand: string; scriptPath: string } | undefined {
+  try {
+    const contents = readFileSync(shimPath, "utf8");
+    const scriptMatch = contents.match(/"%_prog%"\s+"%dp0%\\([^"]+)"\s+%\*/iu);
+    const relativeScriptPath = scriptMatch?.[1];
+    if (!relativeScriptPath) {
+      return undefined;
+    }
+
+    const scriptPath = resolve(dirname(shimPath), relativeScriptPath.replace(/\\/gu, "/"));
+    if (!existsSync(scriptPath)) {
+      return undefined;
+    }
+
+    const bundledNode = join(dirname(shimPath), "node.exe");
+    return {
+      nodeCommand: existsSync(bundledNode) ? bundledNode : "node",
+      scriptPath
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function resolveWindowsPowerShellHost(): string {
+  const systemRoot = process.env.SystemRoot?.trim();
+  if (systemRoot) {
+    const bundled = join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+    if (existsSync(bundled)) {
+      return bundled;
+    }
+  }
+
+  return "powershell.exe";
+}
+
+function buildPowerShellBatchInvocation(commandPath: string, args: string[]): string {
+  const quotedCommand = quotePowerShellArg(commandPath);
+  const quotedArgs = args.map(quotePowerShellArg).join(" ");
+  return quotedArgs.length > 0 ? `& ${quotedCommand} ${quotedArgs}` : `& ${quotedCommand}`;
+}
+
+function quotePowerShellArg(value: string): string {
+  const normalized = value.replace(/\r?\n/gu, " ");
+  return `'${normalized.replace(/'/gu, "''")}'`;
+}
+
 function quoteWindowsCmdArg(value: string): string {
   const normalized = value.replace(/\r?\n/gu, " ");
   const escaped = normalized
@@ -301,6 +386,37 @@ function quoteWindowsCmdArg(value: string): string {
     .replace(/!/gu, "^^!")
     .replace(/[&|<>()]/gu, (match) => `^${match}`);
   return `"${escaped}"`;
+}
+
+function parsePorcelainEntries(stdout: string): string[] {
+  const entries = stdout.split("\u0000").filter((entry) => entry.length > 0);
+  const changedFiles: string[] = [];
+
+  for (let index = 0; index < entries.length; index += 1) {
+    const entry = entries[index];
+    if (entry === undefined || entry.length < 4) {
+      continue;
+    }
+
+    const status = entry.slice(0, 2);
+    const payload = entry.slice(3);
+    if (!payload) {
+      continue;
+    }
+
+    if (status.includes("R") || status.includes("C")) {
+      const renamedPath = entries[index + 1];
+      if (renamedPath && renamedPath.length > 0) {
+        changedFiles.push(renamedPath);
+        index += 1;
+        continue;
+      }
+    }
+
+    changedFiles.push(payload);
+  }
+
+  return changedFiles;
 }
 
 export function splitCommand(command: string): string[] {

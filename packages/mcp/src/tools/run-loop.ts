@@ -1,7 +1,7 @@
 import {
   createClaudeCliAdapter,
   createCodexCliAdapter,
-  createStubDirectProviderAdapter
+  createVerifierOnlyAdapter
 } from "@martin/adapters";
 
 import { createFileRunStore, evaluateCostGovernor, resolveRunsRoot, runMartin } from "@martin/core";
@@ -94,17 +94,21 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
   if (executionMode.liveMode && !engineAvailability.available) {
     throw new MartinToolError("engine_unavailable", `Engine '${engine}' is not available on PATH.`, {
       category: "environment",
-      suggestion: "Install the requested CLI or set MARTIN_LIVE=false for stub execution.",
+      suggestion: "Install the requested CLI or set MARTIN_LIVE=false for a no-spend proof run.",
       retryable: false
     });
   }
 
   const adapter =
     process.env.MARTIN_LIVE === "false"
-      ? createStubDirectProviderAdapter({ label: "Stub adapter (MARTIN_LIVE=false)", providerId: "stub", model: "stub" })
+      ? createVerifierOnlyAdapter({
+          workingDirectory,
+          label: "Proof mode adapter (MARTIN_LIVE=false)"
+        })
       : engine === "codex"
         ? createCodexCliAdapter({ workingDirectory, ...(model ? { model } : {}) })
         : createClaudeCliAdapter({ workingDirectory, ...(model ? { model } : {}) });
+  const mutationMode = process.env.MARTIN_LIVE === "false" ? "verify_only" : undefined;
 
   const partialBudget: Partial<LoopBudget> = {};
   if (input.maxUsd !== undefined) {
@@ -130,6 +134,7 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
       title: input.objective.slice(0, 100),
       objective: input.objective,
       verificationPlan: input.verificationPlan ?? [],
+      ...(mutationMode ? { mutationMode } : {}),
       repoRoot: workingDirectory,
       ...(allowedPaths ? { allowedPaths } : {}),
       ...(deniedPaths ? { deniedPaths } : {})

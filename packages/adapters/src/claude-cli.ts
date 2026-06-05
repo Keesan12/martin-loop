@@ -20,7 +20,7 @@ import type {
 } from "@martin/core";
 
 import {
-  readGitExecutionArtifacts,
+  readGitChangedFiles,
   runSubprocess,
   runVerification,
   type SpawnLike
@@ -275,6 +275,10 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
 
       const args = options.argsBuilder(prompt);
       const stdinData = options.stdinBuilder?.(prompt);
+      const repoRoot = (request.context as { repoRoot?: string }).repoRoot;
+      const baselineChangedFiles = repoRoot
+        ? new Set(await readGitChangedFiles(repoRoot, 5_000, options.spawnImpl))
+        : undefined;
 
       const agentResult = await runSubprocess(options.command, args, {
         cwd: workingDirectory,
@@ -350,41 +354,34 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
         options.spawnImpl
       );
 
-      // Check for zero-diff (agent ran but made no file changes)
-      const repoRoot = (request.context as { repoRoot?: string }).repoRoot;
-      let noDiff = false;
-      if (repoRoot) {
-        noDiff = await checkNoDiff(repoRoot);
-      }
-
       // Extract structured errors from stderr/stdout for better failure context
       const structuredErrors = normalizeStructuredErrors(
         extractStructuredErrors(agentResult.stderr, agentResult.stdout)
       );
-      const executionArtifacts = repoRoot
-        ? await readGitExecutionArtifacts(repoRoot, 5000, options.spawnImpl)
-        : undefined;
+      const changedFiles = repoRoot
+        ? (await readGitChangedFiles(repoRoot, 5_000, options.spawnImpl)).filter(
+            (file) => !(baselineChangedFiles?.has(file) ?? false)
+          )
+        : [];
+      const executionArtifacts = repoRoot ? { changedFiles } : undefined;
+      const noDiff = repoRoot ? changedFiles.length === 0 : false;
 
       // Scope contract enforcement: check touched files against allowedPaths/deniedPaths
       let scopeViolations: string[] = [];
       const scopeCtx = request.context as { allowedPaths?: string[]; deniedPaths?: string[] };
-      if (repoRoot && (scopeCtx.allowedPaths?.length || scopeCtx.deniedPaths?.length)) {
-        const diffResult = await runSubprocess("git", ["diff", "--name-only", "HEAD"], { cwd: repoRoot, timeoutMs: 5000 });
-        if (diffResult.exitCode === 0 && diffResult.stdout.trim()) {
-          const touchedFiles = diffResult.stdout.trim().split("\n").filter(Boolean);
-          const allowed = scopeCtx.allowedPaths ?? [];
-          const denied = scopeCtx.deniedPaths ?? [];
+      if (repoRoot && executionArtifacts && (scopeCtx.allowedPaths?.length || scopeCtx.deniedPaths?.length)) {
+        const allowed = scopeCtx.allowedPaths ?? [];
+        const denied = scopeCtx.deniedPaths ?? [];
 
-          for (const file of touchedFiles) {
-            // Check denied patterns (simple glob-like: prefix or exact)
-            if (denied.some((d) => file === d || file.startsWith(d.replace(/\*+$/, "")))) {
-              scopeViolations.push(file);
-              continue;
-            }
-            // If allowedPaths specified, file must match at least one
-            if (allowed.length > 0 && !allowed.some((a) => file === a || file.startsWith(a.replace(/\*+$/, "")))) {
-              scopeViolations.push(file);
-            }
+        for (const file of executionArtifacts.changedFiles) {
+          // Check denied patterns (simple glob-like: prefix or exact)
+          if (denied.some((d) => file === d || file.startsWith(d.replace(/\*+$/, "")))) {
+            scopeViolations.push(file);
+            continue;
+          }
+          // If allowedPaths specified, file must match at least one
+          if (allowed.length > 0 && !allowed.some((a) => file === a || file.startsWith(a.replace(/\*+$/, "")))) {
+            scopeViolations.push(file);
           }
         }
       }
@@ -502,7 +499,7 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
 // ---------------------------------------------------------------------------
 
 /**
- * Spawns `claude --output-format json --print "<prompt>" --dangerously-skip-permissions [extraArgs]`.
+ * Spawns `claude --output-format json --print "<prompt>" [extraArgs]`.
  *
  * The --output-format json flag causes Claude CLI to return structured JSON
  * including real token usage counts, enabling accurate cost tracking.
@@ -528,7 +525,6 @@ export function createClaudeCliAdapter(options: ClaudeCliAdapterOptions = {}): M
       "--output-format",
       "json",
       "--print",
-      "--dangerously-skip-permissions",
       ...modelArgs,
       ...extraArgs
     ],
@@ -802,7 +798,3 @@ function extractStructuredErrors(stderr: string, stdout: string): StructuredErro
   return errors.slice(0, 10); // cap at 10 to avoid bloating prompts
 }
 
-async function checkNoDiff(repoRoot: string): Promise<boolean> {
-  const result = await runSubprocess("git", ["diff", "--name-only", "HEAD"], { cwd: repoRoot, timeoutMs: 5000 });
-  return result.exitCode === 0 && result.stdout.trim().length === 0;
-}
