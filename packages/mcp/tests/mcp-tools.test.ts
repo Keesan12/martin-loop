@@ -63,16 +63,20 @@ async function withRunsRoot<T>(fn: (runsRoot: string) => Promise<T>): Promise<T>
 
 async function withPathPrefix<T>(directory: string, fn: () => Promise<T>): Promise<T> {
   const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === "path") ?? "PATH";
-  const original = process.env[pathKey] ?? "";
+  const original = process.env[pathKey];
   process.env[pathKey] =
-    original.length > 0
+    original && original.length > 0
       ? `${directory}${process.platform === "win32" ? ";" : ":"}${original}`
       : directory;
 
   try {
     return await fn();
   } finally {
-    process.env[pathKey] = original;
+    if (original === undefined) {
+      delete process.env[pathKey];
+    } else {
+      process.env[pathKey] = original;
+    }
   }
 }
 
