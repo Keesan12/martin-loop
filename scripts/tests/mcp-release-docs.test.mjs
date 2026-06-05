@@ -128,6 +128,12 @@ test("root release note exists for the current root package version", async () =
   await access(path.join(ROOT_DIR, "docs", "release", `OSS-${rootPackageJson.version}-RELEASE-NOTES.md`));
 });
 
+test("historical root release notes keep canonical OSS filenames for the 0.2.x line", async () => {
+  for (const version of ["0.2.6", "0.2.7", "0.2.8", rootPackageJson.version]) {
+    await access(path.join(ROOT_DIR, "docs", "release", `OSS-${version}-RELEASE-NOTES.md`));
+  }
+});
+
 test("MCP public docs exist in the cleaned docs tree", async () => {
   for (const relativePath of [
     "docs/getting-started/mcp.md",
@@ -242,8 +248,11 @@ test("root release note captures onboarding and governance changes", async () =>
   assert.match(releaseNotes, /martin-loop start/);
   assert.match(releaseNotes, /martin-loop tour/);
   assert.match(releaseNotes, /doctor/i);
+  assert.match(releaseNotes, /session-start/i);
   assert.match(releaseNotes, /preflight/i);
   assert.match(releaseNotes, /--unsafe-allow-unguarded-run/);
+  assert.match(releaseNotes, /vendored internal CLI bin surface/i);
+  assert.match(releaseNotes, /root-release-guard/i);
 });
 
 test("MCP release note matches the current package line and the governed flow", async () => {

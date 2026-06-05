@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { loadDetailedLoopRecord } from "./run-store.js";
 import { martinRunDossierTool, type MartinRunDossierInput } from "./run-dossier.js";
 import { martinEvalTool } from "./eval.js";
+import { resolveTrustedLoopRepoRoot } from "../server-validation.js";
 import { detectCliAvailability } from "./tool-support.js";
 import { MartinToolError } from "./tool-errors.js";
 
@@ -60,7 +61,7 @@ export async function martinCreatePrTool(
 ): Promise<MartinCreatePrOutput> {
   const summary = await martinPrSummaryTool(input);
   const detail = await loadDetailedLoopRecord(input);
-  const repoRoot = detail.loop.task?.repoRoot ?? process.cwd();
+  const repoRoot = resolveTrustedLoopRepoRoot(detail.loop.task?.repoRoot);
   const branch = readGitValue(repoRoot, ["branch", "--show-current"]);
   const title = input.title?.trim() || summary.title;
 

@@ -109,6 +109,20 @@ export function resolveSafeRepoRoot(
   return candidate;
 }
 
+export function resolveTrustedLoopRepoRoot(
+  repoRoot?: string,
+  workspaceRoot: string = process.env.MARTIN_MCP_WORKSPACE_ROOT ?? process.cwd()
+): string {
+  try {
+    return resolveSafeRepoRoot(repoRoot, workspaceRoot);
+  } catch {
+    throw invalidPathError(
+      "Run record points outside the trusted workspace.",
+      "Inspect or promote only loop records that were created under the current workspace root."
+    );
+  }
+}
+
 export function resolveSafeRunsJsonPath(
   file: string,
   runsRoot: string = resolveRunsRoot(process.env)

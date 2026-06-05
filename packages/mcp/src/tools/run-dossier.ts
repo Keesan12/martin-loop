@@ -13,6 +13,7 @@ import {
   readAttemptArtifactFiles,
   readLedgerEvents
 } from "./run-store.js";
+import { resolveTrustedLoopRepoRoot } from "../server-validation.js";
 import { readRunControlState } from "./run-controls.js";
 import { martinEvalTool } from "./eval.js";
 import { assessRunRisk, inspectRepoSignals } from "./workflow-governance.js";
@@ -77,7 +78,7 @@ export async function martinRunDossierTool(
   const verification = buildVerificationSummary(detail.loop, ledgerEvents);
   const control = await readRunControlState(detail);
   const evaluation = await martinEvalTool(input);
-  const repoRoot = detail.loop.task?.repoRoot ?? process.cwd();
+  const repoRoot = resolveTrustedLoopRepoRoot(detail.loop.task?.repoRoot);
   const risk = assessRunRisk({
     objective: detail.loop.task?.objective ?? detail.loop.loopId,
     allowedPaths: detail.loop.task?.allowedPaths ?? [],
