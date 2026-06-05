@@ -9,14 +9,19 @@ import {
   invalidSelectorError
 } from "./tools/tool-errors.js";
 import type { MartinDoctorInput } from "./tools/doctor.js";
+import type { MartinEvalInput } from "./tools/eval.js";
 import type { MartinGetAttemptInput } from "./tools/get-attempt.js";
 import type { MartinGetRunInput } from "./tools/get-run.js";
 import type { MartinGetVerificationResultsInput } from "./tools/get-verification-results.js";
 import type { GetStatusInput } from "./tools/get-status.js";
 import type { InspectLoopInput } from "./tools/inspect-loop.js";
 import type { MartinListRunsInput } from "./tools/list-runs.js";
+import type { MartinLogsInput } from "./tools/logs.js";
+import type { MartinPlanInput } from "./tools/plan.js";
 import type { MartinPreflightInput } from "./tools/preflight.js";
+import type { MartinCreatePrInput, MartinReviewPrInput } from "./tools/pr-tools.js";
 import type { MartinRunDossierInput } from "./tools/run-dossier.js";
+import type { MartinRunControlRequestInput } from "./tools/run-controls.js";
 import type { RunLoopInput } from "./tools/run-loop.js";
 import type { MartinTriageRunsInput } from "./tools/triage-runs.js";
 
@@ -25,13 +30,23 @@ type ToolName =
   | "martin_inspect"
   | "martin_status"
   | "martin_doctor"
+  | "martin_plan"
   | "martin_preflight"
+  | "martin_logs"
+  | "martin_cancel"
+  | "martin_pause"
+  | "martin_continue"
   | "martin_list_runs"
   | "martin_triage_runs"
   | "martin_get_run"
   | "martin_get_attempt"
   | "martin_get_verification_results"
-  | "martin_run_dossier";
+  | "martin_run_dossier"
+  | "martin_dossier"
+  | "martin_eval"
+  | "martin_pr_summary"
+  | "martin_create_pr"
+  | "martin_review_pr";
 
 export { sanitizeToolErrorMessage } from "./tools/tool-errors.js";
 
@@ -45,8 +60,16 @@ export function validateToolInput(name: ToolName, args: unknown): unknown {
       return validateStatusInput(args);
     case "martin_doctor":
       return validateDoctorInput(args);
+    case "martin_plan":
+      return validatePlanInput(args);
     case "martin_preflight":
       return validatePreflightInput(args);
+    case "martin_logs":
+      return validateLogsInput(args);
+    case "martin_cancel":
+    case "martin_pause":
+    case "martin_continue":
+      return validateRunControlInput(args);
     case "martin_list_runs":
       return validateListRunsInput(args);
     case "martin_triage_runs":
@@ -58,7 +81,16 @@ export function validateToolInput(name: ToolName, args: unknown): unknown {
     case "martin_get_verification_results":
       return validateGetVerificationResultsInput(args);
     case "martin_run_dossier":
+    case "martin_dossier":
       return validateRunDossierInput(args);
+    case "martin_eval":
+      return validateEvalInput(args);
+    case "martin_pr_summary":
+      return validateRunDossierInput(args);
+    case "martin_create_pr":
+      return validateCreatePrInput(args);
+    case "martin_review_pr":
+      return validateReviewPrInput(args);
     default:
       throw invalidArgumentsError(`Unknown tool: ${name}`, "Refresh the Martin tool manifest and retry.");
   }
@@ -125,11 +157,27 @@ export function resolveSafeRunsRootPath(
 ): string {
   const baseRoot = resolve(fallbackRunsRoot);
   const candidate = runsRoot ? resolve(baseRoot, runsRoot) : baseRoot;
+  if (runsRoot && !existsSync(candidate)) {
+    if (!isAbsolute(runsRoot)) {
+      assertRawPathWithinRoot(candidate, baseRoot, "runsDir");
+    }
+    return candidate;
+  }
   assertPathWithinRoot(candidate, baseRoot, "runsDir", {
     requireExistingCandidate: false,
     requireExistingRoot: false
   });
   return candidate;
+}
+
+function assertRawPathWithinRoot(candidatePath: string, rootPath: string, name: string): void {
+  const relativePath = relative(resolve(rootPath), resolve(candidatePath));
+  if (relativePath === "" || relativePath === ".") {
+    return;
+  }
+  if (relativePath.startsWith("..") || isAbsolute(relativePath)) {
+    throw invalidPathError(`Invalid ${name}.`);
+  }
 }
 
 export function resolveSafeLoopRecordPath(
@@ -167,9 +215,14 @@ function validateRunInput(args: unknown): RunLoopInput {
     "workingDirectory",
     "engine",
     "model",
+    "context",
+    "policyPack",
     "maxUsd",
     "maxIterations",
     "maxTokens",
+    "maxMinutes",
+    "maxFilesChanged",
+    "maxCommands",
     "verificationPlan",
     "allowedPaths",
     "deniedPaths",
@@ -185,9 +238,20 @@ function validateRunInput(args: unknown): RunLoopInput {
       : {}),
     ...(engine ? { engine } : {}),
     ...optionalString(record.model, "model"),
+    ...optionalString(record.context, "context"),
+    ...optionalEnumAsObject(record.policyPack, "policyPack", [
+      "solo-founder",
+      "startup-team",
+      "enterprise-strict",
+      "oss-maintainer",
+      "security-sensitive"
+    ] as const),
     ...optionalPositiveNumber(record.maxUsd, "maxUsd"),
     ...optionalPositiveInteger(record.maxIterations, "maxIterations"),
     ...optionalPositiveInteger(record.maxTokens, "maxTokens"),
+    ...optionalPositiveInteger(record.maxMinutes, "maxMinutes"),
+    ...optionalPositiveInteger(record.maxFilesChanged, "maxFilesChanged"),
+    ...optionalPositiveInteger(record.maxCommands, "maxCommands"),
     ...optionalStringArrayAsObject(record.verificationPlan, "verificationPlan"),
     ...optionalPathPatternArrayAsObject(record.allowedPaths, "allowedPaths"),
     ...optionalPathPatternArrayAsObject(record.deniedPaths, "deniedPaths"),
@@ -282,6 +346,47 @@ function validateDoctorInput(args: unknown): MartinDoctorInput {
 
 function validatePreflightInput(args: unknown): MartinPreflightInput {
   return validateRunInput(args);
+}
+
+function validatePlanInput(args: unknown): MartinPlanInput {
+  return validateRunInput(args);
+}
+
+function validateLogsInput(args: unknown): MartinLogsInput {
+  const record = requireObject(args);
+  assertAllowedKeys(record, ["file", "loopId", "runsDir", "latest", "limit"]);
+  const resolvedRunsDir =
+    record.runsDir !== undefined
+      ? resolveSafeRunsRootPath(requireString(record.runsDir, "runsDir"))
+      : undefined;
+
+  const selectors = [
+    record.file !== undefined ? "file" : null,
+    record.loopId !== undefined ? "loopId" : null,
+    record.latest !== undefined ? "latest" : null
+  ].filter((value): value is string => value !== null);
+
+  if (selectors.length !== 1) {
+    throw invalidSelectorError(
+      "Provide exactly one of file, loopId, or latest.",
+      "Choose exactly one run selector per call."
+    );
+  }
+
+  return {
+    ...(record.file !== undefined
+      ? {
+          file: resolveSafeRunsPath(
+            requireString(record.file, "file"),
+            resolvedRunsDir ?? resolveRunsRoot(process.env)
+          )
+        }
+      : {}),
+    ...(record.loopId !== undefined ? { loopId: requireLoopId(record.loopId, "loopId") } : {}),
+    ...(resolvedRunsDir ? { runsDir: resolvedRunsDir } : {}),
+    ...(record.latest === true ? { latest: true } : {}),
+    ...optionalPositiveInteger(record.limit, "limit")
+  };
 }
 
 function validateListRunsInput(args: unknown): MartinListRunsInput {
@@ -454,7 +559,50 @@ function validateGetVerificationResultsInput(
 }
 
 function validateRunDossierInput(args: unknown): MartinRunDossierInput {
+  const record = requireObject(args);
+  assertAllowedKeys(record, ["file", "loopId", "runsDir", "latest", "format"]);
+  const base = validateGetRunInput(args);
+  return {
+    ...base,
+    ...optionalEnumAsObject(record.format, "format", ["json", "md", "github-pr"] as const)
+  };
+}
+
+function validateEvalInput(args: unknown): MartinEvalInput {
   return validateGetRunInput(args);
+}
+
+function validateRunControlInput(args: unknown): MartinRunControlRequestInput {
+  const record = requireObject(args);
+  assertAllowedKeys(record, ["file", "loopId", "runsDir", "latest", "reason", "requestedBy"]);
+  const base = validateGetRunInput(args);
+  return {
+    ...base,
+    ...optionalString(record.reason, "reason"),
+    ...optionalString(record.requestedBy, "requestedBy")
+  };
+}
+
+function validateCreatePrInput(args: unknown): MartinCreatePrInput {
+  const record = requireObject(args);
+  assertAllowedKeys(record, ["file", "loopId", "runsDir", "latest", "format", "title", "base", "execute"]);
+  const base = validateRunDossierInput(args);
+  return {
+    ...base,
+    ...optionalString(record.title, "title"),
+    ...optionalString(record.base, "base"),
+    ...optionalBoolean(record.execute, "execute")
+  };
+}
+
+function validateReviewPrInput(args: unknown): MartinReviewPrInput {
+  const record = requireObject(args);
+  assertAllowedKeys(record, ["file", "loopId", "runsDir", "latest", "format", "prBody"]);
+  const base = validateRunDossierInput(args);
+  return {
+    ...base,
+    ...optionalString(record.prBody, "prBody")
+  };
 }
 
 function requireObject(value: unknown): Record<string, unknown> {

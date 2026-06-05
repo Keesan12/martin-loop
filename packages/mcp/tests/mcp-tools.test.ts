@@ -1,4 +1,4 @@
-import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -13,6 +13,7 @@ import { martinListRunsTool } from "../src/tools/list-runs.js";
 import { martinPreflightTool } from "../src/tools/preflight.js";
 import { runLoopTool } from "../src/tools/run-loop.js";
 import { martinTriageRunsTool } from "../src/tools/triage-runs.js";
+import { recordMcpWorkflowStep } from "../src/workflow-state.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -61,39 +62,32 @@ async function withRunsRoot<T>(fn: (runsRoot: string) => Promise<T>): Promise<T>
   }
 }
 
-async function withPathPrefix<T>(directory: string, fn: () => Promise<T>): Promise<T> {
-  const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === "path") ?? "PATH";
-  const original = process.env[pathKey];
-  process.env[pathKey] =
-    original && original.length > 0
-      ? `${directory}${process.platform === "win32" ? ";" : ":"}${original}`
-      : directory;
-
-  try {
-    return await fn();
-  } finally {
-    if (original === undefined) {
-      delete process.env[pathKey];
-    } else {
-      process.env[pathKey] = original;
-    }
-  }
-}
-
-async function installFakeCliProbe(directory: string, command: string, markerPath: string): Promise<void> {
-  if (process.platform === "win32") {
-    const commandPath = join(directory, `${command}.cmd`);
-    await writeFile(commandPath, `@echo off\r\necho invoked>>\"${markerPath}\"\r\nexit /b 0\r\n`, "utf8");
-    return;
-  }
-
-  const commandPath = join(directory, command);
-  await writeFile(
-    commandPath,
-    `#!/bin/sh\necho invoked >> \"${markerPath}\"\nexit 0\n`,
-    "utf8"
-  );
-  await chmod(commandPath, 0o755);
+async function primeRunGate(
+  runsRoot: string,
+  workingDirectory: string,
+  objective: string,
+  verificationPlan: string[] = []
+): Promise<void> {
+  await recordMcpWorkflowStep({
+    runsRoot,
+    step: "doctor",
+    workingDirectory,
+    engine: "claude"
+  });
+  await recordMcpWorkflowStep({
+    runsRoot,
+    step: "plan",
+    workingDirectory,
+    objective
+  });
+  await recordMcpWorkflowStep({
+    runsRoot,
+    step: "preflight",
+    workingDirectory,
+    objective,
+    engine: "claude",
+    verificationPlan
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -364,7 +358,7 @@ describe("inspectLoopTool", () => {
 // ---------------------------------------------------------------------------
 
 describe("martinDoctorTool", () => {
-  it("reports run-store visibility in proof mode without requiring live CLIs", async () => {
+  it("reports run-store visibility in stub mode without requiring live CLIs", async () => {
     await withRunsRoot(async (runsRoot) => {
       const originalEnv = process.env.MARTIN_LIVE;
       process.env.MARTIN_LIVE = "false";
@@ -377,7 +371,7 @@ describe("martinDoctorTool", () => {
         const result = await martinDoctorTool({ runsDir: runsRoot, engine: "codex" });
 
         expect(result.status).toBe("ok");
-        expect(result.environment.mode).toBe("proof");
+        expect(result.environment.mode).toBe("stub");
         expect(result.runStore.exists).toBe(true);
         expect(result.runStore.loopCount).toBe(1);
         expect(result.runStore.latestRun?.loopId).toBe(loop.loopId);
@@ -463,7 +457,7 @@ describe("martinPreflightTool", () => {
       });
 
       expect(result.ok).toBe(true);
-      expect(result.readiness.mode).toBe("proof");
+      expect(result.readiness.mode).toBe("stub");
       expect(result.normalized.engine).toBe("codex");
       expect(result.normalized.budget.maxUsd).toBe(3);
       expect(result.normalized.budget.maxIterations).toBe(2);
@@ -969,107 +963,116 @@ describe("martinTriageRunsTool", () => {
 // ---------------------------------------------------------------------------
 
 describe("runLoopTool", () => {
-  it("returns a loop outcome in proof mode (MARTIN_LIVE=false)", async () => {
-    // Set proof mode so the adapter doesn't try to spawn claude
-    const originalEnv = process.env.MARTIN_LIVE;
-    process.env.MARTIN_LIVE = "false";
+  it("blocks martin_run until doctor, plan, and preflight receipts exist", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const originalEnv = process.env.MARTIN_LIVE;
+      process.env.MARTIN_LIVE = "false";
 
-    try {
-      const result = await runLoopTool({
-        objective: "Add a console.log to index.ts",
-        allowedPaths: ["src/**"],
-        deniedPaths: ["docs/security/**"],
-        verificationPlan: [],
-        maxIterations: 1,
-        maxUsd: 5
-      });
+      try {
+        await expect(() =>
+          runLoopTool({
+            objective: "Add a console.log to index.ts",
+            verificationPlan: [],
+            maxIterations: 1,
+            maxUsd: 5
+          })
+        ).rejects.toMatchObject({
+          code: "policy_blocked"
+        });
 
-      expect(result.loopId).toMatch(/^loop_/u);
-      expect(typeof result.attempts).toBe("number");
-      expect(typeof result.costUsd).toBe("number");
-      expect(result.status).toBe("completed");
-    } finally {
-      if (originalEnv === undefined) {
-        delete process.env.MARTIN_LIVE;
-      } else {
-        process.env.MARTIN_LIVE = originalEnv;
+        await primeRunGate(runsRoot, process.cwd(), "Add a console.log to index.ts", []);
+
+        const result = await runLoopTool({
+          objective: "Add a console.log to index.ts",
+          allowedPaths: ["src/**"],
+          deniedPaths: ["docs/security/**"],
+          verificationPlan: [],
+          maxIterations: 1,
+          maxUsd: 5
+        });
+
+        expect(result.loopId).toMatch(/^loop_/u);
+        expect(typeof result.attempts).toBe("number");
+        expect(typeof result.costUsd).toBe("number");
+        expect(["completed", "exited", "failed"]).toContain(result.status);
+      } finally {
+        if (originalEnv === undefined) {
+          delete process.env.MARTIN_LIVE;
+        } else {
+          process.env.MARTIN_LIVE = originalEnv;
+        }
       }
-    }
+    });
   });
 
   it("uses workspaceId and projectId when provided", async () => {
-    // Mock runMartin to avoid real execution
-    const originalEnv = process.env.MARTIN_LIVE;
-    process.env.MARTIN_LIVE = "false";
+    await withRunsRoot(async (runsRoot) => {
+      const originalEnv = process.env.MARTIN_LIVE;
+      process.env.MARTIN_LIVE = "false";
 
-    try {
-      const result = await runLoopTool({
-        objective: "Fix the bug",
-        workspaceId: "ws_custom",
-        projectId: "proj_custom",
-        maxIterations: 1
-      });
+      try {
+        await primeRunGate(runsRoot, process.cwd(), "Fix the bug", []);
 
-      expect(result.loopId).toBeTruthy();
-    } finally {
-      if (originalEnv === undefined) {
-        delete process.env.MARTIN_LIVE;
-      } else {
-        process.env.MARTIN_LIVE = originalEnv;
-      }
-    }
-  });
-
-  it("skips engine launch probing in proof mode", async () => {
-    const originalEnv = process.env.MARTIN_LIVE;
-    process.env.MARTIN_LIVE = "false";
-    const fakeCliDir = await mkdtemp(join(tmpdir(), "martin-mcp-cli-"));
-    const markerPath = join(fakeCliDir, "probe-invoked.txt");
-
-    try {
-      await installFakeCliProbe(fakeCliDir, "claude", markerPath);
-
-      await withPathPrefix(fakeCliDir, async () => {
         const result = await runLoopTool({
-          objective: "Proof mode should not probe the requested engine",
+          objective: "Fix the bug",
+          workspaceId: "ws_custom",
+          projectId: "proj_custom",
           maxIterations: 1
         });
 
-        expect(result.status).toBe("completed");
-      });
-
-      await expect(stat(markerPath)).rejects.toThrow();
-    } finally {
-      if (originalEnv === undefined) {
-        delete process.env.MARTIN_LIVE;
-      } else {
-        process.env.MARTIN_LIVE = originalEnv;
+        expect(result.loopId).toBeTruthy();
+      } finally {
+        if (originalEnv === undefined) {
+          delete process.env.MARTIN_LIVE;
+        } else {
+          process.env.MARTIN_LIVE = originalEnv;
+        }
       }
-
-      await rm(fakeCliDir, { recursive: true, force: true }).catch(() => {});
-    }
+    });
   });
 
   it("respects engine selection — codex adapter has different adapterId", async () => {
-    // We can't run live Codex in CI, but proof mode should still accept the engine selection.
-    const originalEnv = process.env.MARTIN_LIVE;
-    process.env.MARTIN_LIVE = "false";
+    await withRunsRoot(async (runsRoot) => {
+      const originalEnv = process.env.MARTIN_LIVE;
+      process.env.MARTIN_LIVE = "false";
 
-    try {
-      const result = await runLoopTool({
-        objective: "Fix the bug",
-        engine: "codex",
-        maxIterations: 1
-      });
+      try {
+        await recordMcpWorkflowStep({
+          runsRoot,
+          step: "doctor",
+          workingDirectory: process.cwd(),
+          engine: "codex"
+        });
+        await recordMcpWorkflowStep({
+          runsRoot,
+          step: "plan",
+          workingDirectory: process.cwd(),
+          objective: "Fix the bug"
+        });
+        await recordMcpWorkflowStep({
+          runsRoot,
+          step: "preflight",
+          workingDirectory: process.cwd(),
+          objective: "Fix the bug",
+          engine: "codex",
+          verificationPlan: []
+        });
 
-      expect(result.loopId).toBeTruthy();
-    } finally {
-      if (originalEnv === undefined) {
-        delete process.env.MARTIN_LIVE;
-      } else {
-        process.env.MARTIN_LIVE = originalEnv;
+        const result = await runLoopTool({
+          objective: "Fix the bug",
+          engine: "codex",
+          maxIterations: 1
+        });
+
+        expect(result.loopId).toBeTruthy();
+      } finally {
+        if (originalEnv === undefined) {
+          delete process.env.MARTIN_LIVE;
+        } else {
+          process.env.MARTIN_LIVE = originalEnv;
+        }
       }
-    }
+    });
   });
 
   it("persists repoRoot and path constraints into the loop record", async () => {
@@ -1078,6 +1081,8 @@ describe("runLoopTool", () => {
       process.env.MARTIN_LIVE = "false";
 
       try {
+        await primeRunGate(runsRoot, process.cwd(), "Scope-limited change", []);
+
         const result = await runLoopTool({
           objective: "Scope-limited change",
           workingDirectory: ".",

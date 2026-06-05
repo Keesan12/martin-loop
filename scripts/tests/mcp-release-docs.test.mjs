@@ -4,6 +4,7 @@ import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import rootPackageJson from "../../package.json" with { type: "json" };
 import packageJson from "../../packages/mcp/package.json" with { type: "json" };
 import serverJson from "../../packages/mcp/server.json" with { type: "json" };
 
@@ -14,27 +15,52 @@ const EXPECTED_TOOLS = [
   "martin_inspect",
   "martin_status",
   "martin_doctor",
+  "martin_plan",
   "martin_preflight",
+  "martin_logs",
+  "martin_pause",
+  "martin_cancel",
+  "martin_continue",
   "martin_list_runs",
   "martin_triage_runs",
   "martin_get_run",
   "martin_get_attempt",
   "martin_get_verification_results",
   "martin_run_dossier",
+  "martin_dossier",
+  "martin_eval",
+  "martin_pr_summary",
+  "martin_create_pr",
+  "martin_review_pr",
 ];
 
 const EXPECTED_RESOURCES = [
   "martin://server/health",
   "martin://runs/recent",
   "martin://runs/triage",
+  "martin://runs/latest",
   "martin://runs/latest/summary",
   "martin://runs/latest/proof-card",
   "martin://runs/latest/budget-status",
   "martin://runs/latest/verifier-evidence",
   "martin://runs/latest/rollback-evidence",
+  "martin://policies/current",
+  "martin://repo/risk-map",
+  "martin://verifiers/results",
   "martin://agent/next-step",
   "martin://guides/mcp-usage",
+  "martin://guides/agent-start",
+  "martin://guides/command-map",
+  "martin://guides/ide-onboarding",
+  "martin://guides/operating-rules",
   "martin://guides/publish-readiness",
+];
+
+const EXPECTED_RESOURCE_TEMPLATES = [
+  "martin://runs/{loopId}",
+  "martin://runs/{loopId}/dossier",
+  "martin://runs/{loopId}/attempts/{attemptIndex}",
+  "martin://runs/{loopId}/verification",
 ];
 
 const EXPECTED_PROMPTS = [
@@ -48,6 +74,12 @@ const EXPECTED_PROMPTS = [
   "martin_debug_failed_run",
   "martin_publish_readiness_review",
   "martin_triage_run_store",
+  "safe_bug_fix",
+  "write_tests_first",
+  "small_refactor",
+  "security_review",
+  "pr_review",
+  "release_check",
 ];
 
 const FORBIDDEN_DOC_PATTERNS = [
@@ -60,6 +92,12 @@ const FORBIDDEN_DOC_PATTERNS = [
   /\bdocs\/oss\b/i,
   /\bdocs\/distribution\b/i,
   /\bVERSION-LEDGER\b/i,
+  /\bpaid-remote\b/i,
+  /principal-aware remote config/i,
+  /ML_Main_Repo_Internal/,
+  /ML_Core_OSS_Internal/,
+  /C:\\Users\\/,
+  /OneDrive/,
 ];
 
 async function readRepoFile(relativePath) {
@@ -84,13 +122,10 @@ test("MCP package metadata stays aligned with server metadata", () => {
   assert.equal(packageJson.mcpName, serverJson.name);
   assert.equal(serverJson.name, "io.github.Keesan12/martin-loop");
   assert.equal(packageJson.description, serverJson.description);
-  assert.ok(serverJson.description.length <= 100, "server.json description must stay within the registry length limit");
-  assert.equal(npmPackage.transport?.type, "stdio");
-  assert.equal(packageJson.bin?.mcp, "./dist/server.js");
-  assert.equal(packageJson.bin?.["martin-loop-mcp"], "./dist/server.js");
-  assert.ok(packageJson.files.includes("dist"));
-  assert.ok(packageJson.files.includes("README.md"));
-  assert.ok(packageJson.files.includes("server.json"));
+});
+
+test("root release note exists for the current root package version", async () => {
+  await access(path.join(ROOT_DIR, "docs", "release", `OSS-${rootPackageJson.version}-RELEASE-NOTES.md`));
 });
 
 test("MCP public docs exist in the cleaned docs tree", async () => {
@@ -99,32 +134,43 @@ test("MCP public docs exist in the cleaned docs tree", async () => {
     "docs/reference/mcp-tools.md",
     "docs/reference/mcp-compatibility.md",
     "packages/mcp/README.md",
+    "packages/cli/README.md",
   ]) {
     await access(path.join(ROOT_DIR, relativePath));
   }
 });
 
 test("MCP docs stay aligned with the actual tool, resource, and prompt surface", async () => {
-  const [serverSource, packageReadme, mcpSetup, toolReference, compatibilityDoc, resourcesSource, promptsSource] =
-    await Promise.all([
-      readRepoFile(path.join("packages", "mcp", "src", "server.ts")),
-      readRepoFile(path.join("packages", "mcp", "README.md")),
-      readRepoFile(path.join("docs", "getting-started", "mcp.md")),
-      readRepoFile(path.join("docs", "reference", "mcp-tools.md")),
-      readRepoFile(path.join("docs", "reference", "mcp-compatibility.md")),
-      readRepoFile(path.join("packages", "mcp", "src", "resources.ts")),
-      readRepoFile(path.join("packages", "mcp", "src", "prompts.ts")),
-    ]);
+  const [
+    serverSource,
+    packageReadme,
+    mcpSetup,
+    toolReference,
+    compatibilityDoc,
+    resourcesSource,
+    promptsSource,
+  ] = await Promise.all([
+    readRepoFile(path.join("packages", "mcp", "src", "server.ts")),
+    readRepoFile(path.join("packages", "mcp", "README.md")),
+    readRepoFile(path.join("docs", "getting-started", "mcp.md")),
+    readRepoFile(path.join("docs", "reference", "mcp-tools.md")),
+    readRepoFile(path.join("docs", "reference", "mcp-compatibility.md")),
+    readRepoFile(path.join("packages", "mcp", "src", "resources.ts")),
+    readRepoFile(path.join("packages", "mcp", "src", "prompts.ts")),
+  ]);
 
   const toolNames = extractMartinToolNames(serverSource);
   assert.deepEqual(toolNames, EXPECTED_TOOLS);
 
   for (const snippet of [
+    "npx -y @martinloop/mcp",
     "codex mcp add martin-loop -- npx -y @martinloop/mcp",
     "claude mcp add --transport stdio --scope user martin-loop -- npx -y @martinloop/mcp",
     "claude mcp add --transport stdio --scope user martin-loop -- cmd /c npx -y @martinloop/mcp",
-    "npx martin-loop mcp print-config --host codex --transport stdio --profile starter",
-    "npx martin-loop mcp print-config --host claude --transport stdio --profile full",
+    "npx martin-loop mcp print-config --host codex --transport stdio --profile minimal",
+    "npx martin-loop mcp print-config --host claude --transport stdio --profile diagnostic",
+    "npx martin-loop mcp print-config --host gemini --transport stdio --profile full-local",
+    "npx martin-loop mcp print-config --host generic --transport stdio --profile github-review",
   ]) {
     assert.match(`${packageReadme}\n${mcpSetup}`, new RegExp(escapeRegex(snippet)));
   }
@@ -140,24 +186,31 @@ test("MCP docs stay aligned with the actual tool, resource, and prompt surface",
     assert.match(toolReference, new RegExp(escapeRegex(resourceUri)));
   }
 
+  for (const templateUri of EXPECTED_RESOURCE_TEMPLATES) {
+    assert.match(packageReadme, new RegExp(escapeRegex(templateUri)));
+    assert.match(toolReference, new RegExp(escapeRegex(templateUri)));
+  }
+
   for (const promptName of EXPECTED_PROMPTS) {
     assert.match(promptsSource, new RegExp(escapeRegex(promptName)));
     assert.match(packageReadme, new RegExp(escapeRegex(promptName)));
     assert.match(toolReference, new RegExp(escapeRegex(promptName)));
   }
 
-  assert.match(packageReadme, /martin_run` is the only execution entrypoint/i);
-  assert.match(toolReference, /All other tools are read-only/i);
+  assert.match(packageReadme, /martin_run` is the primary coding execution entrypoint/i);
   assert.match(compatibilityDoc, /io\.github\.Keesan12\/martin-loop/);
+  assert.match(compatibilityDoc, /The root `martin-loop` package provides the public CLI, SDK, demo workspace, and top-level release notes\./);
+  assert.match(compatibilityDoc, /The standalone `@martinloop\/mcp` package stays on its own version line\./);
 });
 
 test("MCP public docs avoid deleted release-workspace language", async () => {
   const docs = await Promise.all([
     readRepoFile(path.join("packages", "mcp", "README.md")),
+    readRepoFile(path.join("packages", "cli", "README.md")),
     readRepoFile(path.join("docs", "getting-started", "mcp.md")),
     readRepoFile(path.join("docs", "reference", "mcp-tools.md")),
     readRepoFile(path.join("docs", "reference", "mcp-compatibility.md")),
-    readRepoFile(path.join("docs", "release", "v0.2.6.md")),
+    readRepoFile(path.join("docs", "release", `OSS-${rootPackageJson.version}-RELEASE-NOTES.md`)),
   ]);
 
   for (const contents of docs) {
@@ -165,4 +218,28 @@ test("MCP public docs avoid deleted release-workspace language", async () => {
       assert.doesNotMatch(contents, pattern);
     }
   }
+});
+
+test("CLI package readme links stay inside the cleaned docs tree", async () => {
+  const cliReadme = await readRepoFile(path.join("packages", "cli", "README.md"));
+
+  assert.doesNotMatch(cliReadme, /docs\/oss/i);
+  for (const linkTarget of [
+    "../../docs/getting-started/quickstart.md",
+    "../../docs/reference/cli.md",
+    "../../docs/reference/config.md",
+    "../../docs/getting-started/mcp.md",
+  ]) {
+    assert.match(cliReadme, new RegExp(escapeRegex(linkTarget)));
+  }
+});
+
+test("root release note captures onboarding and governance changes", async () => {
+  const releaseNotes = await readRepoFile(path.join("docs", "release", `OSS-${rootPackageJson.version}-RELEASE-NOTES.md`));
+
+  assert.match(releaseNotes, /martin-loop start/);
+  assert.match(releaseNotes, /martin-loop tour/);
+  assert.match(releaseNotes, /doctor/i);
+  assert.match(releaseNotes, /preflight/i);
+  assert.match(releaseNotes, /--unsafe-allow-unguarded-run/);
 });

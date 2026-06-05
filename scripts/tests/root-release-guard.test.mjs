@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -12,24 +13,24 @@ import {
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
 test("runRootReleaseGuard accepts the current OSS-safe root package shape", async () => {
+  const manifest = JSON.parse(await readFile(path.join(ROOT_DIR, "package.json"), "utf8"));
+  const expectedTag = `v${manifest.version}`;
   const result = await runRootReleaseGuard({
     rootDir: ROOT_DIR,
-    tag: "v0.2.7",
+    tag: expectedTag,
   });
 
   assert.equal(result.name, "martin-loop");
-  assert.equal(result.version, "0.2.7");
-  assert.equal(result.tag, "v0.2.7");
+  assert.equal(result.version, manifest.version);
+  assert.equal(result.tag, expectedTag);
   assert.equal(result.packChecked, false);
 });
 
-test("assertRootVersionPolicy rejects versions outside approved pre-1.0 OSS lines", () => {
-  assert.doesNotThrow(() => assertRootVersionPolicy("0.1.6"));
-  assert.doesNotThrow(() => assertRootVersionPolicy("0.2.0"));
-  assert.throws(() => assertRootVersionPolicy("1.3.0"), /approved pre-1\.0 OSS lines/);
+test("assertRootVersionPolicy rejects non-0.2.x root versions", () => {
+  assert.throws(() => assertRootVersionPolicy("1.3.0"), /0\.2\.x/);
 });
 
-test("assertPackedSurface rejects unexpected private paths", () => {
+test("assertPackedSurface rejects unexpected non-OSS paths", () => {
   assert.throws(
     () =>
       assertPackedSurface([
@@ -39,7 +40,7 @@ test("assertPackedSurface rejects unexpected private paths", () => {
         "dist/index.js",
         "dist/index.d.ts",
         "dist/bin/martin-loop.js",
-        "apps/control-plane/secrets.json",
+        "server/secrets.json",
       ]),
     /unexpected path/i,
   );

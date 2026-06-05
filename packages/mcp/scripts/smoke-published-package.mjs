@@ -19,6 +19,7 @@ import {
 
 const REQUIRED_TOOLS = [
   "martin_doctor",
+  "martin_plan",
   "martin_preflight",
   "martin_run",
   "martin_inspect",
@@ -251,7 +252,18 @@ export async function runPublishedMcpSmoke(options = {}) {
     });
     const doctorResult = await client.callTool({
       name: "martin_doctor",
-      arguments: { engine: "codex" },
+      arguments: {
+        workingDirectory: workspaceRoot,
+        engine: "claude",
+      },
+    });
+    const planResult = await client.callTool({
+      name: "martin_plan",
+      arguments: {
+        objective: "Summarize the current runtime state",
+        workingDirectory: workspaceRoot,
+        context: "Keep the smoke run local and within the seeded workspace.",
+      },
     });
     const kickoffPrompt = await client.getPrompt({
       name: "martin_governed_coding_kickoff",
@@ -299,7 +311,9 @@ export async function runPublishedMcpSmoke(options = {}) {
       name: "martin_run",
       arguments: {
         objective: "Summarize the current runtime state",
-        verificationPlan: [],
+        workingDirectory: workspaceRoot,
+        engine: "claude",
+        verificationPlan: ["node --version"],
         maxIterations: 1,
         maxUsd: 1,
         allowedPaths: ["src/**"],
@@ -360,6 +374,7 @@ export async function runPublishedMcpSmoke(options = {}) {
     });
 
     const publishedUserJourney = {
+      planResult: JSON.parse(readTextContent(planResult)),
       preflightResult: JSON.parse(readTextContent(preflightResult)),
       listRuns: JSON.parse(readTextContent(listRuns)),
       getRun: JSON.parse(readTextContent(getRun)),
