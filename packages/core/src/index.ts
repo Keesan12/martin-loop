@@ -1001,6 +1001,9 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     // a git repo) and silently return [], which would falsely trigger no_code_change.
     const changedFileEvidenceAvailable =
       result.execution?.changedFiles !== undefined || changedFiles.length > 0;
+    const isVerifierOnlyAdapter = executingAdapter.adapterId === "direct:verifier:verify-only";
+    const patchTruthCountsEdits =
+      !isVerifyOnly && !isVerifierOnlyAdapter && changedFileEvidenceAvailable;
 
     if (isVerifyOnly && changedFiles.length > 0) {
       const patchDecision = evaluatePatchDecision({
@@ -1321,10 +1324,8 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         previousVerifierScore,
         verifierScore: result.verification.passed ? 1 : 0,
         groundingViolationCount: groundingScanResult?.violations.length ?? 0,
-        changedFileCount:
-          !isVerifyOnly && changedFileEvidenceAvailable ? changedFiles.length : undefined,
-        diffNovelty:
-          !isVerifyOnly && changedFileEvidenceAvailable ? (changedFiles.length > 0 ? 1 : 0) : undefined,
+        changedFileCount: patchTruthCountsEdits ? changedFiles.length : undefined,
+        diffNovelty: patchTruthCountsEdits ? (changedFiles.length > 0 ? 1 : 0) : undefined,
         diffStats: result.execution?.diffStats,
         costUsd: getUsageUsd(result.usage),
         summary: result.summary

@@ -27,7 +27,7 @@ const perfectInput: MartinReliabilityScoreInput = {
     },
     mcpDoctorPassing: {
       present: true,
-      detail: "martin doctor passed for MCP host config"
+      detail: "martin-loop doctor passed for MCP host config"
     }
   }
 };
@@ -57,7 +57,7 @@ describe("Martin Reliability Score", () => {
         runReceiptsPresent: { present: true },
         rollbackEvidencePresent: {
           present: false,
-          detail: "Missing rollback proof at C:\\Users\\Torram\\private\\rollback.md"
+          detail: "Missing rollback proof at C:\\workspace\\private\\rollback.md"
         },
         mcpDoctorPassing: { present: false, detail: "doctor exited 1" }
       }

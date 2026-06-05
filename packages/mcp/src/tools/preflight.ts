@@ -44,7 +44,7 @@ export interface MartinPreflightOutput {
   summary: string;
   warnings: string[];
   readiness: {
-    mode: "live" | "stub";
+    mode: "live" | "proof";
     liveMode: boolean;
     engineReady: boolean;
   };
@@ -111,7 +111,7 @@ export async function martinPreflightTool(
   };
 
   if (!executionMode.liveMode) {
-    warnings.push("Stub mode is active; preflight only proves configuration shape, not live CLI readiness.");
+    warnings.push("Proof mode is active; preflight only proves configuration shape, not live CLI readiness.");
   } else if (!engineAvailability.available) {
     warnings.push(`Requested engine '${engine}' is not available on PATH.`);
   }

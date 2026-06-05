@@ -47,4 +47,5 @@ Resources and prompts include version metadata so hosts can confirm which discov
 - `martin_run` now expects matching `martin_doctor`, `martin_plan`, and `martin_preflight` receipts for the same task before it will execute.
 - `martin_pause`, `martin_cancel`, `martin_continue`, and `martin_create_pr` are explicit follow-on helpers and stay out of the default `minimal` profile.
 - Live governed runs require a supported local agent CLI on `PATH`.
-- Stub and smoke flows use `MARTIN_LIVE=false`.
+- CLI proof flows use `martin-loop run ... --proof`.
+- Host-managed smoke flows can still set `MARTIN_LIVE=false` when the launcher owns the environment.

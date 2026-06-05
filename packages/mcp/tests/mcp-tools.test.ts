@@ -358,7 +358,7 @@ describe("inspectLoopTool", () => {
 // ---------------------------------------------------------------------------
 
 describe("martinDoctorTool", () => {
-  it("reports run-store visibility in stub mode without requiring live CLIs", async () => {
+  it("reports run-store visibility in proof mode without requiring live CLIs", async () => {
     await withRunsRoot(async (runsRoot) => {
       const originalEnv = process.env.MARTIN_LIVE;
       process.env.MARTIN_LIVE = "false";
@@ -371,7 +371,7 @@ describe("martinDoctorTool", () => {
         const result = await martinDoctorTool({ runsDir: runsRoot, engine: "codex" });
 
         expect(result.status).toBe("ok");
-        expect(result.environment.mode).toBe("stub");
+        expect(result.environment.mode).toBe("proof");
         expect(result.runStore.exists).toBe(true);
         expect(result.runStore.loopCount).toBe(1);
         expect(result.runStore.latestRun?.loopId).toBe(loop.loopId);
@@ -457,7 +457,7 @@ describe("martinPreflightTool", () => {
       });
 
       expect(result.ok).toBe(true);
-      expect(result.readiness.mode).toBe("stub");
+      expect(result.readiness.mode).toBe("proof");
       expect(result.normalized.engine).toBe("codex");
       expect(result.normalized.budget.maxUsd).toBe(3);
       expect(result.normalized.budget.maxIterations).toBe(2);
@@ -993,8 +993,9 @@ describe("runLoopTool", () => {
 
         expect(result.loopId).toMatch(/^loop_/u);
         expect(typeof result.attempts).toBe("number");
-        expect(typeof result.costUsd).toBe("number");
-        expect(["completed", "exited", "failed"]).toContain(result.status);
+        expect(result.costUsd).toBe(0);
+        expect(result.status).toBe("completed");
+        expect(result.verificationPassed).toBe(true);
       } finally {
         if (originalEnv === undefined) {
           delete process.env.MARTIN_LIVE;

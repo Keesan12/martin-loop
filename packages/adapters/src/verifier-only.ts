@@ -1,6 +1,6 @@
 import type { MartinAdapter } from "@martin/core";
 
-import { readGitExecutionArtifacts, runVerification } from "./cli-bridge.js";
+import { readGitChangedFiles, runVerification } from "./cli-bridge.js";
 import { createAdapterCapabilities, normalizeUsage } from "./runtime-support.js";
 
 export interface VerifierOnlyAdapterOptions {
@@ -29,14 +29,22 @@ export function createVerifierOnlyAdapter(
       })
     },
     async execute(request) {
+      const shouldInspectChangedFiles = request.context.mutationMode === "verify_only";
+      const baselineChangedFiles = shouldInspectChangedFiles
+        ? new Set(await readGitChangedFiles(workingDirectory, 5_000))
+        : new Set<string>();
       const verification = await runVerification(
         request.context.verificationPlan,
         workingDirectory,
         verifyTimeoutMs,
         request.context.verificationStack
       );
-      const execution = await readGitExecutionArtifacts(workingDirectory, 5_000);
-      const changedFiles = execution.changedFiles ?? [];
+      const changedFiles = shouldInspectChangedFiles
+        ? (await readGitChangedFiles(workingDirectory, 5_000)).filter(
+            (file) => !baselineChangedFiles.has(file)
+          )
+        : [];
+      const execution = { changedFiles };
 
       if (verification.passed) {
         return {

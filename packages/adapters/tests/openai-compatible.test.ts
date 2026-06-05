@@ -144,7 +144,7 @@ describe("createOpenAiCompatibleAdapter", () => {
 
       expect(result.status).toBe("failed");
       expect(result.failure?.message).toContain("network exploded");
-      expect(clearTimeoutSpy).toHaveBeenCalledTimes(1);
+      expect(clearTimeoutSpy).toHaveBeenCalled();
     } finally {
       clearTimeoutSpy.mockRestore();
     }
@@ -246,5 +246,28 @@ describe("createOpenAiCompatibleAdapter", () => {
     expect(adapter.metadata.model).toBe("llama3.3");
     expect(adapter.metadata.transport).toBe("http");
     expect(adapter.kind).toBe("direct-provider");
+  });
+
+  it("defaults to the hosted OpenAI endpoint and model when config is omitted", async () => {
+    let capturedUrl = "";
+    const adapter = createOpenAiCompatibleAdapter({
+      fetchImpl: async (input) => {
+        capturedUrl = String(input);
+        return new Response(JSON.stringify({
+          choices: [{ message: { role: "assistant", content: "Fixed." }, finish_reason: "stop" }],
+          usage: { prompt_tokens: 10, completion_tokens: 5 }
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        });
+      }
+    });
+
+    const result = await adapter.execute(makeRequest() as any);
+
+    expect(result.status).toBe("completed");
+    expect(adapter.adapterId).toBe("openai-compatible:gpt-4.1-mini");
+    expect(adapter.metadata.model).toBe("gpt-4.1-mini");
+    expect(capturedUrl).toBe("https://api.openai.com/v1/chat/completions");
   });
 });

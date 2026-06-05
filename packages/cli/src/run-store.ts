@@ -112,7 +112,7 @@ export interface CliEnvironment {
   workingDirectory: string;
   runsRoot: string;
   engine: "claude" | "codex" | "openai";
-  liveMode: "live" | "stub";
+  liveMode: "live" | "proof";
 }
 
 export interface PersistedLoopDetail {
@@ -159,6 +159,7 @@ export function resolveCliEnvironment(input: {
   cwd?: string;
   runsDir?: string;
   engine?: string;
+  liveMode?: CliEnvironment["liveMode"];
   env?: NodeJS.ProcessEnv;
 } = {}): CliEnvironment {
   const env = input.env ?? process.env;
@@ -177,7 +178,7 @@ export function resolveCliEnvironment(input: {
     workingDirectory,
     runsRoot,
     engine,
-    liveMode: env.MARTIN_LIVE === "false" ? "stub" : "live"
+    liveMode: input.liveMode ?? (env.MARTIN_LIVE === "false" ? "proof" : "live")
   };
 }
 
