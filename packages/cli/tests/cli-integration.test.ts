@@ -89,6 +89,23 @@ async function withFakeCodexCli<T>(fn: () => Promise<T>): Promise<T> {
 // ---------------------------------------------------------------------------
 
 describe("MARTIN_LIVE=false — no-spend proof mode", () => {
+  it("preflight resolves proof mode when --proof is passed", async () => {
+    const result = await executeCli([
+      "--json",
+      "preflight",
+      "--objective",
+      "Add a greeting function",
+      "--proof",
+      "--verify",
+      NOOP_VERIFIER
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    const payload = JSON.parse(result.stdout);
+    expect(payload.command).toBe("preflight");
+    expect(payload.environment.liveMode).toBe("proof");
+  });
+
   it("run command completes as a verifier-backed proof when --proof is passed", async () => {
     const result = await executeCli([
       "--json",

@@ -29,21 +29,16 @@ export function createVerifierOnlyAdapter(
       })
     },
     async execute(request) {
-      const shouldInspectChangedFiles = request.context.mutationMode === "verify_only";
-      const baselineChangedFiles = shouldInspectChangedFiles
-        ? new Set(await readGitChangedFiles(workingDirectory, 5_000))
-        : new Set<string>();
+      const baselineChangedFiles = new Set(await readGitChangedFiles(workingDirectory, 5_000));
       const verification = await runVerification(
         request.context.verificationPlan,
         workingDirectory,
         verifyTimeoutMs,
         request.context.verificationStack
       );
-      const changedFiles = shouldInspectChangedFiles
-        ? (await readGitChangedFiles(workingDirectory, 5_000)).filter(
-            (file) => !baselineChangedFiles.has(file)
-          )
-        : [];
+      const changedFiles = (await readGitChangedFiles(workingDirectory, 5_000)).filter(
+        (file) => !baselineChangedFiles.has(file)
+      );
       const execution = { changedFiles };
 
       if (verification.passed) {

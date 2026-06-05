@@ -996,6 +996,10 @@ describe("runLoopTool", () => {
         expect(result.costUsd).toBe(0);
         expect(result.status).toBe("completed");
         expect(result.verificationPassed).toBe(true);
+        const persisted = JSON.parse(
+          await readFile(result.inspection.loopRecordPath, "utf8")
+        );
+        expect(persisted.task.mutationMode).toBe("verify_only");
       } finally {
         if (originalEnv === undefined) {
           delete process.env.MARTIN_LIVE;
