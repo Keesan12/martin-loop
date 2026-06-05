@@ -762,7 +762,10 @@ describe("runMartin", () => {
     });
   });
 
-  it("challenge 11: discards the attempt and exits with human escalation when a forbidden path write is detected", async () => {
+  it(
+    "challenge 11: discards the attempt and exits with human escalation when a forbidden path write is detected",
+    { timeout: RUNTIME_REPO_FIXTURE_TIMEOUT_MS },
+    async () => {
     const runsRoot = await mkdtemp(join(tmpdir(), "martin-safety-filesystem-"));
     const repoRoot = join(runsRoot, "repo");
     await mkdir(repoRoot, { recursive: true });
@@ -843,9 +846,13 @@ describe("runMartin", () => {
       blocked: true,
       attemptIndex: 1
     });
-  });
+    }
+  );
 
-  it("challenge 13: blocks dependency-related changes without approval and persists leash.json", async () => {
+  it(
+    "challenge 13: blocks dependency-related changes without approval and persists leash.json",
+    { timeout: RUNTIME_REPO_FIXTURE_TIMEOUT_MS },
+    async () => {
     const runsRoot = await mkdtemp(join(tmpdir(), "martin-safety-dependency-"));
     const repoRoot = join(runsRoot, "repo");
     await mkdir(repoRoot, { recursive: true });
@@ -940,9 +947,13 @@ describe("runMartin", () => {
         })
       ])
     );
-  });
+    }
+  );
 
-  it("blocks deployment config changes without approval and persists the config violation artifact", async () => {
+  it(
+    "blocks deployment config changes without approval and persists the config violation artifact",
+    { timeout: RUNTIME_REPO_FIXTURE_TIMEOUT_MS },
+    async () => {
     const runsRoot = await mkdtemp(join(tmpdir(), "martin-safety-config-"));
     const repoRoot = join(runsRoot, "repo");
     await mkdir(join(repoRoot, ".github", "workflows"), { recursive: true });
@@ -1036,7 +1047,8 @@ describe("runMartin", () => {
         })
       ])
     );
-  });
+    }
+  );
 
   it("rotates to the next adapter when switch_adapter is selected", async () => {
     let primaryExecutions = 0;

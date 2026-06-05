@@ -81,7 +81,7 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
   }
 
   const adapter =
-    process.env.MARTIN_LIVE === "false"
+    !executionMode.liveMode
       ? createVerifierOnlyAdapter({
           workingDirectory,
           adapterId: "direct:proof:verifier-only",
