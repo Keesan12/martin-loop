@@ -42,6 +42,7 @@ export function createRcValidationEnvironment(baseEnv, cleanHomeRoot) {
 
   return {
     ...baseEnv,
+    CI: "true",
     HOME: cleanHomeRoot,
     USERPROFILE: cleanHomeRoot,
     APPDATA: roamingRoot,
