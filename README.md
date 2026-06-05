@@ -85,7 +85,7 @@ MartinLoop sits around the coding agent instead of replacing it:
 |---|---|
 | Task contract | Objective, verifier plan, repo root, allowed paths, denied paths, acceptance criteria, workspace, project, and budget. |
 | Policy and budget | Defaults from `martin.config.yaml`; CLI flags override. Budget preflight blocks attempts that would exceed policy. |
-| Agent adapters | Claude CLI, Codex CLI, direct-provider, and stub adapters normalize execution results. |
+| Agent adapters | Claude CLI, Codex CLI, direct-provider, and verifier-only proof adapters normalize execution results. |
 | Safety and verification | Scope checks, verifier command checks, prompt/context integrity, and grounding decide whether work can continue. |
 | Persistence | JSONL run records, evidence summaries, and repo-backed artifacts make each run inspectable later. |
 

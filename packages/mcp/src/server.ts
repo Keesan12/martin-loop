@@ -393,7 +393,7 @@ const doctorOutputSchema = {
         workspaceRoot: { type: "string" },
         workingDirectory: { type: "string" },
         runsRoot: { type: "string" },
-        mode: { type: "string", enum: ["live", "stub"] },
+        mode: { type: "string", enum: ["live", "proof"] },
         liveMode: { type: "boolean" }
       },
       required: ["workspaceRoot", "workingDirectory", "runsRoot", "mode", "liveMode"]
@@ -429,7 +429,7 @@ const preflightOutputSchema = {
       type: "object",
       additionalProperties: false,
       properties: {
-        mode: { type: "string", enum: ["live", "stub"] },
+        mode: { type: "string", enum: ["live", "proof"] },
         liveMode: { type: "boolean" },
         engineReady: { type: "boolean" }
       },

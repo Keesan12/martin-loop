@@ -1,7 +1,8 @@
 import { spawnSync } from "node:child_process";
 import { readdir, stat } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
+import { probeCliCommand } from "@martin/adapters";
 import type {
   LoopArtifact,
   LoopBudget,
@@ -122,6 +123,7 @@ export interface LoopCollectionSummary {
 export interface CliAvailability {
   command: string;
   available: boolean;
+  launchReady: boolean;
   locator: string;
   detail: string;
   resolvedPath?: string;
@@ -129,7 +131,7 @@ export interface CliAvailability {
 
 export interface ExecutionMode {
   liveMode: boolean;
-  mode: "live" | "stub";
+  mode: "live" | "proof";
   detail: string;
 }
 
@@ -163,15 +165,19 @@ export function resolveExecutionMode(): ExecutionMode {
   const liveMode = process.env.MARTIN_LIVE !== "false";
   return {
     liveMode,
-    mode: liveMode ? "live" : "stub",
+    mode: liveMode ? "live" : "proof",
     detail: liveMode
       ? "Live CLI execution is enabled."
-      : "Stub mode is active because MARTIN_LIVE=false."
+      : "No-spend proof mode is active because MARTIN_LIVE=false."
   };
 }
 
-export function detectCliAvailability(command: string): CliAvailability {
-  const cacheKey = `${process.platform}:${command}`;
+export async function detectCliAvailability(
+  command: string,
+  workingDirectory = process.cwd()
+): Promise<CliAvailability> {
+  const normalizedWorkingDirectory = resolve(workingDirectory);
+  const cacheKey = `${process.platform}:${command}:${normalizedWorkingDirectory}`;
   const cached = cliAvailabilityCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
     return cached.value;
@@ -193,16 +199,27 @@ export function detectCliAvailability(command: string): CliAvailability {
 
   const value: CliAvailability =
     result.status === 0
-      ? {
-          command,
-          available: true,
-          locator,
-          detail: `${command} is available on PATH.`,
-          ...(resolvedPath ? { resolvedPath } : {})
-        }
+      ? await (async () => {
+          const probe = await probeCliCommand(command, ["--version"], {
+            cwd: normalizedWorkingDirectory,
+            timeoutMs: 10_000
+          });
+
+          return {
+            command,
+            available: true,
+            launchReady: probe.ready,
+            locator,
+            detail: probe.ready
+              ? `${command} is available on PATH and passed a launch check.`
+              : `${command} is available on PATH but failed a launch check. ${probe.detail}`,
+            ...(resolvedPath ? { resolvedPath } : {})
+          } satisfies CliAvailability;
+        })()
       : {
           command,
           available: false,
+          launchReady: false,
           locator,
           detail: `${command} is not available on PATH.`
         };
@@ -215,8 +232,11 @@ export function detectCliAvailability(command: string): CliAvailability {
   return value;
 }
 
-export function getEngineAvailability(engine: MartinEngine): CliAvailability {
-  return detectCliAvailability(engine);
+export async function getEngineAvailability(
+  engine: MartinEngine,
+  workingDirectory = process.cwd()
+): Promise<CliAvailability> {
+  return await detectCliAvailability(engine, workingDirectory);
 }
 
 export function formatUsd(value: number): string {

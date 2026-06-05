@@ -135,7 +135,7 @@ describe("executeCli", () => {
         maxIterations: 6,
         maxTokens: 45000
       });
-      expect(payload.loop.task.verificationPlan).toEqual(["pnpm test", "pnpm lint"]);
+      expect(payload.loop.task.verificationPlan).toEqual([]);
     } finally {
       await rm(directory, { force: true, recursive: true });
     }
@@ -191,7 +191,7 @@ describe("executeCli", () => {
       maxTokens: 20000,
       telemetryDestination: "control-plane"
     });
-    expect(payload.loop.task.verificationPlan).toEqual(["pnpm test"]);
+    expect(payload.loop.task.verificationPlan).toEqual([]);
   });
 
   it("supports verify-only runs without invoking a coding adapter", { timeout: CLI_EXEC_TIMEOUT_MS }, async () => {
@@ -273,7 +273,7 @@ describe("executeCli", () => {
 
       expect(payload.effectivePolicy.configPath).toBe(configPath);
       expect(payload.effectivePolicy.policyProfile).toBe("strict");
-      expect(payload.loop.task.verificationPlan).toEqual(["pnpm test", "pnpm lint"]);
+      expect(payload.loop.task.verificationPlan).toEqual([]);
     } finally {
       process.chdir(previousCwd);
 

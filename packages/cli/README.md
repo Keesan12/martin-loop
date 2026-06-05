@@ -4,15 +4,15 @@ CLI implementation for MartinLoop.
 
 The CLI groups execution, readiness checks, persisted-run inspection, and MCP host setup into one command set:
 
-- `martin doctor`
-- `martin demo`
-- `martin preflight`
-- `martin run`
-- `martin triage`
-- `martin dossier`
-- `martin runs list|get|attempt|verify`
-- `martin mcp print-config`
-- `martin mcp install`
+- `martin-loop doctor`
+- `martin-loop demo`
+- `martin-loop preflight`
+- `martin-loop run`
+- `martin-loop triage`
+- `martin-loop dossier`
+- `martin-loop runs list|get|attempt|verify`
+- `martin-loop mcp print-config`
+- `martin-loop mcp install`
 
 ## Output Modes
 
@@ -23,16 +23,16 @@ The CLI groups execution, readiness checks, persisted-run inspection, and MCP ho
 ## Recommended Flow
 
 ```sh
-martin doctor
-martin preflight "inspect the latest MCP run and confirm the verifier stays green" --verify "pnpm --filter @martinloop/mcp test"
-martin run "inspect the latest MCP run and confirm the verifier stays green" --verify "pnpm --filter @martinloop/mcp test"
-martin triage
-martin dossier --latest
+martin-loop doctor
+martin-loop preflight "inspect the latest MCP run and confirm the verifier stays green" --verify "pnpm --filter @martinloop/mcp test"
+martin-loop run "inspect the latest MCP run and confirm the verifier stays green" --verify "pnpm --filter @martinloop/mcp test"
+martin-loop triage
+martin-loop dossier --latest
 ```
 
 ## MCP Config
 
-`martin mcp print-config --host codex` emits a quoted TOML server key:
+`martin-loop mcp print-config --host codex` emits a quoted TOML server key:
 
 ```toml
 [mcp_servers."martin-loop"]
@@ -51,7 +51,7 @@ enabled_tools = [
 env = { MARTIN_RUNS_DIR = "C:\\path\\to\\runs" }
 ```
 
-`martin mcp install` is conservative: it writes only when the target file is absent or when it detects an existing MartinLoop block it can update safely. For mixed host configs, use `martin mcp print-config` and merge the MartinLoop block yourself.
+`martin-loop mcp install` is conservative: it writes only when the target file is absent. If `martin-loop mcp install` detects an existing MartinLoop block, it returns without writing anything. For mixed host configs, use `martin-loop mcp print-config` and merge the MartinLoop block yourself.
 
 ## Host Coverage
 
@@ -67,10 +67,12 @@ Generated stdio launchers are platform-aware:
 
 ## Compatibility Aliases
 
-- `martin inspect --file <path>` remains supported
-- `martin resume <loopId>` remains supported
+- `martin-loop inspect --file <path>` remains supported
+- `martin-loop resume <loopId>` remains supported
 
-Prefer `martin dossier` and `martin runs get --loop-id` for richer evidence review.
+Prefer `martin-loop dossier` and `martin-loop runs get --loop-id` for richer evidence review.
+
+Inside the `@martin/cli` workspace package you may also see the local development alias `martin`, but the published npm binary is `martin-loop`.
 
 ## Live Verification
 

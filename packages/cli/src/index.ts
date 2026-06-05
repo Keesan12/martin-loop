@@ -7,8 +7,8 @@ import { fileURLToPath } from "node:url";
 import {
   createClaudeCliAdapter,
   createCodexCliAdapter,
-  createStubDirectProviderAdapter,
-  createVerifierOnlyAdapter
+  createVerifierOnlyAdapter,
+  probeCliCommand
 } from "@martin/adapters";
 import { runMartin, type MartinAdapter } from "@martin/core";
 import {
@@ -67,6 +67,7 @@ export type RunCommandRequest = {
   budget: LoopBudget;
   configPath?: string;
   cwd?: string;
+  runsDir?: string;
   model?: string;
   engine?: string;
   mutationMode?: MutationMode;
@@ -92,6 +93,14 @@ type ResolvedGuardrails = {
   destructiveActionPolicy: string;
   verifierRules: string[];
   budget: LoopBudget;
+};
+
+type EngineHealth = {
+  available: boolean;
+  launchReady: boolean;
+  detail: string;
+  launchDetail: string;
+  resolvedPath?: string;
 };
 
 const DEFAULT_BUDGET: LoopBudget = {
@@ -446,25 +455,23 @@ export function renderCliHelp(): string {
     "Martin Loop CLI",
     "",
     "Usage:",
-    "  martin run <objective> [options]",
     "  martin-loop run <objective> [options]    (published alias)",
-    "  martin preflight <objective> [options]",
-    "  martin doctor [options]",
-    "  martin triage [options]",
-    "  martin dossier (--loop-id <id> | --file <path> | --latest) [options]",
-    "  martin runs list [options]",
-    "  martin runs get (--loop-id <id> | --file <path> | --latest) [options]",
-    "  martin runs attempt (--loop-id <id> | --file <path>) [--attempt-index <n>] [options]",
-    "  martin runs verify (--loop-id <id> | --file <path>) [options]",
-    "  martin mcp print-config --host <codex|claude|gemini|generic> [--scope <user|project|local>] [options]",
-    "  martin mcp install --host <codex|claude|gemini|generic> [--scope <user|project|local>] [--dry-run] [options]",
-    "  martin demo [--dir <path>] [--force]",
+    "  martin-loop preflight <objective> [options]",
+    "  martin-loop doctor [options]",
+    "  martin-loop triage [options]",
+    "  martin-loop dossier (--loop-id <id> | --file <path> | --latest) [options]",
+    "  martin-loop runs list [options]",
+    "  martin-loop runs get (--loop-id <id> | --file <path> | --latest) [options]",
+    "  martin-loop runs attempt (--loop-id <id> | --file <path>) [--attempt-index <n>] [options]",
+    "  martin-loop runs verify (--loop-id <id> | --file <path>) [options]",
+    "  martin-loop mcp print-config --host <codex|claude|gemini|generic> [--scope <user|project|local>] [options]",
+    "  martin-loop mcp install --host <codex|claude|gemini|generic> [--scope <user|project|local>] [--dry-run] [options]",
     "  martin-loop demo [--dir <path>] [--force] (published alias)",
-    "  martin inspect --file <path>",
     "  martin-loop inspect --file <path>        (published alias)",
-    "  martin resume <loopId>",
     "  martin-loop resume <loopId>              (published alias)",
-    "  martin bench --suite <suiteId>",
+    "",
+    "Workspace CLI alias:",
+    "  martin <command> ...    (available inside the @martin/cli workspace package)",
     "",
     "Operator commands:",
     "  doctor       Check CLI, engine, working directory, and run-store readiness.",
@@ -479,8 +486,8 @@ export function renderCliHelp(): string {
     "  mcp install       Write a starter MCP config, or call Claude Code directly for local scope.",
     "",
     "Compatibility aliases:",
-    "  inspect      Legacy file-based summary view. Prefer `martin dossier` or `martin runs get`.",
-    "  resume       Legacy loop lookup alias. Prefer `martin runs get --loop-id`.",
+    "  inspect      Legacy file-based summary view. Prefer `martin-loop dossier` or `martin-loop runs get`.",
+    "  resume       Legacy loop lookup alias. Prefer `martin-loop runs get --loop-id`.",
     "",
     "Global output modes:",
     "  --json       Emit stable machine-readable JSON.",
@@ -536,12 +543,17 @@ async function executeRunCommand(
   outputMode: MartinOutputMode
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   const resolvedGuardrails = await resolveGuardrails(request);
+  const proofMode = process.env.MARTIN_LIVE === "false" && request.mutationMode !== "verify_only";
+  const mutationMode = proofMode ? "verify_only" : request.mutationMode;
   const verificationPlan =
     request.verificationPlan.length > 0
       ? request.verificationPlan
-      : resolvedGuardrails.verifierRules;
+      : proofMode
+        ? []
+        : resolvedGuardrails.verifierRules;
   const resolvedRequest: RunCommandRequest = {
     ...request,
+    ...(mutationMode ? { mutationMode } : {}),
     budget: resolvedGuardrails.budget,
     verificationPlan,
     metadata: {
@@ -552,6 +564,7 @@ async function executeRunCommand(
   };
   const cliEnvironment = resolveCliEnvironment({
     cwd: resolvedRequest.cwd,
+    runsDir: resolvedRequest.runsDir,
     engine: resolvedRequest.engine
   });
   const adapter = selectAdapter(
@@ -603,7 +616,7 @@ async function executeRunCommand(
 
     throw new CliCommandError("environment", "Martin could not start the requested execution adapter.", {
       suggestion:
-        "Run `martin doctor` to verify engine availability, or set MARTIN_LIVE=false to use the stub adapter locally.",
+        "Run `martin-loop doctor` to verify actual engine launch readiness, or set MARTIN_LIVE=false for a no-spend proof run.",
       details: {
         loopId: fallbackLoop.loopId,
         reason: error instanceof Error ? error.message : String(error)
@@ -664,16 +677,29 @@ async function executeInspectCommand(
     throw new CliCommandError("invalid_input", "inspect requires --file <path>.");
   }
 
+  const inspectRoot = command.runsDir
+    ? resolveCliEnvironment({ runsDir: command.runsDir }).runsRoot
+    : resolveInvocationRoot();
   const sourcePath = isAbsolute(command.file)
     ? command.file
-    : resolve(resolveInvocationRoot(), command.file);
-  const contents = await readFile(sourcePath, "utf8").catch((error: unknown) => {
+    : resolve(inspectRoot, command.file);
+  const sourceStats = await stat(sourcePath).catch((error: unknown) => {
     if (isNodeErrorWithCode(error, "ENOENT")) {
       throw new CliCommandError("not_found", `Persisted loop file not found: ${sourcePath}`);
     }
     throw error;
   });
-  const loops = parseLoopRecords(contents);
+  const loops = sourceStats.isDirectory()
+    ? (
+        await listPersistedLoops(
+          {
+            runsDir: sourcePath,
+            limit: Number.MAX_SAFE_INTEGER
+          },
+          { invocationRoot: resolveInvocationRoot() }
+        )
+      ).loops
+    : parseLoopRecords(await readFile(sourcePath, "utf8"));
 
   return renderCliSuccess(outputMode, {
     data: {
@@ -682,13 +708,13 @@ async function executeInspectCommand(
       summary: buildPortfolioSnapshot(loops),
       compatibility: {
         alias: "inspect",
-        preferredCommand: "martin dossier"
+        preferredCommand: "martin-loop dossier"
       }
     },
     human: [
       `Inspect summary for ${sourcePath}`,
       `Loops found: ${loops.length}`,
-      "Compatibility note: `martin inspect` is still supported, but `martin dossier` and `martin runs get` are the preferred operator flows."
+      "Compatibility note: `martin-loop inspect` is still supported, but `martin-loop dossier` and `martin-loop runs get` are the preferred operator flows."
     ],
     quiet: sourcePath
   });
@@ -700,7 +726,7 @@ async function executeResumeCommand(
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   if (!command.selector.loopId) {
     throw new CliCommandError("invalid_input", "resume requires a loop ID.", {
-      suggestion: "Use `martin resume <loopId>` or `martin runs get --loop-id <loopId>`."
+      suggestion: "Use `martin-loop resume <loopId>` or `martin-loop runs get --loop-id <loopId>`."
     });
   }
 
@@ -715,14 +741,14 @@ async function executeResumeCommand(
       verification,
       compatibility: {
         alias: "resume",
-        preferredCommand: "martin runs get --loop-id"
+        preferredCommand: "martin-loop runs get --loop-id"
       }
     },
     human: [
       `Loaded persisted loop ${detail.loop.loopId}`,
       `Status: ${detail.loop.status} / ${detail.loop.lifecycleState}`,
       `Verification: ${verification.status}`,
-      "Compatibility note: `martin resume` is still supported, but `martin runs get --loop-id` is the preferred operator flow."
+      "Compatibility note: `martin-loop resume` is still supported, but `martin-loop runs get --loop-id` is the preferred operator flow."
     ],
     quiet: detail.loop.loopId,
     warnings: detail.warnings
@@ -744,8 +770,10 @@ async function executeDoctorCommand(
   const configExists = await stat(configPath).then(() => true).catch(() => false);
   const workingDirectoryReady = await stat(environment.workingDirectory).then(() => true).catch(() => false);
   const runsRootReady = await stat(environment.runsRoot).then(() => true).catch(() => false);
-  const claudeAvailable = isCommandAvailable("claude");
-  const codexAvailable = isCommandAvailable("codex");
+  const [claudeHealth, codexHealth] = await Promise.all([
+    inspectEngineHealth("claude", environment.workingDirectory),
+    inspectEngineHealth("codex", environment.workingDirectory)
+  ]);
   const warnings: string[] = [];
 
   if (!workingDirectoryReady) {
@@ -754,11 +782,11 @@ async function executeDoctorCommand(
   if (!runsRootReady) {
     warnings.push("The Martin runs root does not exist yet; it will be created on the first persisted run.");
   }
-  if (environment.liveMode === "live" && environment.engine === "claude" && !claudeAvailable) {
-    warnings.push("Claude CLI is not available on PATH for live execution.");
+  if (environment.liveMode === "live" && environment.engine === "claude" && !claudeHealth.launchReady) {
+    warnings.push(claudeHealth.detail);
   }
-  if (environment.liveMode === "live" && environment.engine === "codex" && !codexAvailable) {
-    warnings.push("Codex CLI is not available on PATH for live execution.");
+  if (environment.liveMode === "live" && environment.engine === "codex" && !codexHealth.launchReady) {
+    warnings.push(codexHealth.detail);
   }
 
   const data = {
@@ -770,15 +798,25 @@ async function executeDoctorCommand(
       exists: configExists
     },
     engines: {
-      claude: { available: claudeAvailable },
-      codex: { available: codexAvailable }
+      claude: {
+        available: claudeHealth.available,
+        launchReady: claudeHealth.launchReady,
+        detail: claudeHealth.detail,
+        ...(claudeHealth.resolvedPath ? { resolvedPath: claudeHealth.resolvedPath } : {})
+      },
+      codex: {
+        available: codexHealth.available,
+        launchReady: codexHealth.launchReady,
+        detail: codexHealth.detail,
+        ...(codexHealth.resolvedPath ? { resolvedPath: codexHealth.resolvedPath } : {})
+      }
     },
     starterTools: [...MARTIN_STARTER_TOOLS],
     recommendations: buildDoctorRecommendations({
       liveMode: environment.liveMode,
       engine: environment.engine,
-      claudeAvailable,
-      codexAvailable,
+      claudeLaunchReady: claudeHealth.launchReady,
+      codexLaunchReady: codexHealth.launchReady,
       workingDirectoryReady
     })
   };
@@ -790,8 +828,8 @@ async function executeDoctorCommand(
       `Working directory: ${environment.workingDirectory} (${workingDirectoryReady ? "ready" : "missing"})`,
       `Runs root: ${environment.runsRoot} (${runsRootReady ? "ready" : "not created yet"})`,
       `Live mode: ${environment.liveMode}`,
-      `Claude CLI: ${claudeAvailable ? "available" : "missing"}`,
-      `Codex CLI: ${codexAvailable ? "available" : "missing"}`,
+      `Claude CLI: ${claudeHealth.launchReady ? "launch-ready" : claudeHealth.available ? "on PATH but launch check failed" : "missing"}`,
+      `Codex CLI: ${codexHealth.launchReady ? "launch-ready" : codexHealth.available ? "on PATH but launch check failed" : "missing"}`,
       `Config: ${configExists ? configPath : `not found at ${configPath}`}`
     ],
     quiet: environment.runsRoot,
@@ -806,26 +844,31 @@ async function executePreflightCommand(
   const resolvedGuardrails = await resolveGuardrails(request);
   const environment = resolveCliEnvironment({
     cwd: request.cwd,
+    runsDir: request.runsDir,
     engine: request.engine
   });
+  const proofMode = environment.liveMode === "proof" && request.mutationMode !== "verify_only";
+  const mutationMode = proofMode ? "verify_only" : request.mutationMode;
   const warnings: string[] = [];
   const blockingIssues: string[] = [];
   const verificationPlan =
     request.verificationPlan.length > 0
       ? request.verificationPlan
-      : resolvedGuardrails.verifierRules;
+      : proofMode
+        ? []
+        : resolvedGuardrails.verifierRules;
 
   const workingDirectoryExists = await stat(environment.workingDirectory).then(() => true).catch(() => false);
   if (!workingDirectoryExists) {
     blockingIssues.push("Working directory does not exist.");
   }
 
-  const engineRequired = request.mutationMode !== "verify_only" && environment.liveMode === "live";
-  if (engineRequired && environment.engine === "claude" && !isCommandAvailable("claude")) {
-    blockingIssues.push("Claude CLI is not available on PATH.");
-  }
-  if (engineRequired && environment.engine === "codex" && !isCommandAvailable("codex")) {
-    blockingIssues.push("Codex CLI is not available on PATH.");
+  const engineRequired = mutationMode !== "verify_only" && environment.liveMode === "live";
+  const engineHealth = engineRequired
+    ? await inspectEngineHealth(environment.engine, environment.workingDirectory)
+    : undefined;
+  if (engineRequired && !engineHealth?.launchReady) {
+    blockingIssues.push(engineHealth?.detail ?? `${environment.engine} launch readiness could not be confirmed.`);
   }
   if (verificationPlan.length === 0) {
     warnings.push("No verification plan is configured for this run.");
@@ -847,6 +890,7 @@ async function executePreflightCommand(
     environment,
     request: {
       ...request,
+      ...(mutationMode ? { mutationMode } : {}),
       verificationPlan,
       budget: resolvedGuardrails.budget
     },
@@ -1246,6 +1290,10 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
         request.cwd = next;
         index += 1;
         break;
+      case "--runs-dir":
+        request.runsDir = next;
+        index += 1;
+        break;
       case "--verify-only":
         request.mutationMode = "verify_only";
         break;
@@ -1290,6 +1338,7 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
     budget: request.budget as LoopBudget,
     ...(request.configPath ? { configPath: request.configPath } : {}),
     ...(request.cwd ? { cwd: request.cwd } : {}),
+    ...(request.runsDir ? { runsDir: request.runsDir } : {}),
     ...(request.model ? { model: request.model } : {}),
     ...(request.engine ? { engine: request.engine } : {}),
     ...(request.mutationMode ? { mutationMode: request.mutationMode } : {}),
@@ -1527,11 +1576,11 @@ function renderDemoInstructions(targetDirectory: string): string {
     "  npm install",
     "  npm test",
     "",
-    "Safe first run (no provider spend):",
-    '  MARTIN_LIVE=false npx martin run "Summarize the demo workspace and confirm the verifier is green" --verify "npm test"',
+    "Safe first run (no-spend proof mode):",
+    '  MARTIN_LIVE=false npx martin-loop run "Summarize the demo workspace and confirm the verifier is green" --verify "npm test"',
     "",
     "Optional live run:",
-    '  npx martin run "Add support for a discount percentage to summarizeInvoice and update the tests" --verify "npm test" --engine codex',
+    '  npx martin-loop run "Add support for a discount percentage to summarizeInvoice and update the tests" --verify "npm test" --engine codex',
     "",
     `Task ideas live in ${join(targetDirectory, "TASKS.md")}`
   ].join("\n");
@@ -1773,10 +1822,16 @@ function selectAdapter(
   }
 
   if (process.env.MARTIN_LIVE === "false") {
-    return createStubDirectProviderAdapter({
-      label: "Stub adapter (MARTIN_LIVE=false)",
-      providerId: "stub",
-      model: "stub"
+    return createVerifierOnlyAdapter({
+      workingDirectory,
+      adapterId: "direct:proof:verifier-only",
+      label: "Proof mode adapter (MARTIN_LIVE=false)",
+      providerId: "proof",
+      model: "verify-only",
+      successSummary: "Proof mode completed without contacting a live provider.",
+      successWithChangesSummary:
+        "Proof mode completed without contacting a live provider, but the verifier changed files.",
+      failureSummary: "Proof mode failed during verifier execution."
     });
   }
 
@@ -1788,31 +1843,75 @@ function selectAdapter(
 }
 
 function buildDoctorRecommendations(input: {
-  liveMode: "live" | "stub";
+  liveMode: "live" | "proof";
   engine: "claude" | "codex";
-  claudeAvailable: boolean;
-  codexAvailable: boolean;
+  claudeLaunchReady: boolean;
+  codexLaunchReady: boolean;
   workingDirectoryReady: boolean;
 }): string[] {
-  const recommendations = ["Run `martin preflight` before non-trivial governed coding work."];
+  const recommendations = ["Run `martin-loop preflight` before non-trivial governed coding work."];
 
   if (!input.workingDirectoryReady) {
     recommendations.push("Point `--cwd` at a valid repository before running Martin.");
   }
 
-  if (input.liveMode === "live" && input.engine === "claude" && !input.claudeAvailable) {
+  if (input.liveMode === "live" && input.engine === "claude" && !input.claudeLaunchReady) {
     recommendations.push("Install or expose the Claude CLI on PATH, or switch to `--engine codex`.");
   }
 
-  if (input.liveMode === "live" && input.engine === "codex" && !input.codexAvailable) {
-    recommendations.push("Install or expose the Codex CLI on PATH, or set MARTIN_LIVE=false while iterating locally.");
+  if (input.liveMode === "live" && input.engine === "codex" && !input.codexLaunchReady) {
+    recommendations.push("Install or expose the Codex CLI on PATH, or set MARTIN_LIVE=false for a no-spend proof run.");
   }
 
   return recommendations;
 }
 
-function isCommandAvailable(command: string): boolean {
+function resolveCommandPath(command: string): string | undefined {
   const executable = process.platform === "win32" ? "where.exe" : "which";
-  const result = spawnSync(executable, [command], { stdio: "ignore" });
-  return result.status === 0;
+  const result = spawnSync(executable, [command], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  if (result.status !== 0) {
+    return undefined;
+  }
+
+  return (result.stdout ?? "")
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .find(Boolean);
+}
+
+async function inspectEngineHealth(
+  engine: "claude" | "codex",
+  workingDirectory: string
+): Promise<EngineHealth> {
+  const resolvedPath = resolveCommandPath(engine);
+  if (!resolvedPath) {
+    return {
+      available: false,
+      launchReady: false,
+      detail: `${capitalizeEngine(engine)} CLI is not available on PATH.`,
+      launchDetail: `${engine} is not available on PATH.`
+    };
+  }
+
+  const probe = await probeCliCommand(engine, ["--version"], {
+    cwd: workingDirectory,
+    timeoutMs: 10_000
+  });
+
+  return {
+    available: true,
+    launchReady: probe.ready,
+    detail: probe.ready
+      ? `${capitalizeEngine(engine)} CLI is available on PATH and passed a launch check.`
+      : `${capitalizeEngine(engine)} CLI is available on PATH but failed a launch check. ${probe.detail}`,
+    launchDetail: probe.detail,
+    resolvedPath
+  };
+}
+
+function capitalizeEngine(engine: "claude" | "codex"): string {
+  return engine === "claude" ? "Claude" : "Codex";
 }
