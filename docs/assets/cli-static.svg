@@ -17,7 +17,7 @@
   <circle cx="64" cy="20" r="6" class="dot-g"/>
   <text x="410" y="25" text-anchor="middle" class="text dim">martin-loop - governed AI coding runtime</text>
 
-  <text x="24" y="72" class="text green">$ martin run "repair flaky CI gate" --budget 5 --verify "pnpm test"</text>
+  <text x="24" y="72" class="text green">$ martin-loop run "repair flaky CI gate" --budget 5 --verify "pnpm test"</text>
   <text x="24" y="100" class="text dim">[martin] workspace=ws_default  project=proj_default  budget.maxUsd=$5.00</text>
   <text x="24" y="124" class="text blue">[policy] martin.config.yaml defaults loaded; CLI flags applied</text>
   <text x="24" y="148" class="text dim">[leash] verifier command allowed; secret scan clean; file scope checked</text>
@@ -30,5 +30,5 @@
 
   <rect x="22" y="318" width="690" height="74" rx="8" fill="#0e1a2e" stroke="#238636"/>
   <text x="38" y="346" class="text">summary: verifier passed, budget respected, inspectable run record written</text>
-  <text x="38" y="372" class="text dim">next: martin inspect --file ~/.martin/runs/ws_default.jsonl</text>
+  <text x="38" y="372" class="text dim">next: martin-loop inspect --file ~/.martin/runs/ws_default.jsonl</text>
 </svg>

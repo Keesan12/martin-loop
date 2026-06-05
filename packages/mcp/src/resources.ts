@@ -550,7 +550,7 @@ function compactEmptyState(kind: string, warnings: string[]): Record<string, unk
     kind,
     status: "empty",
     summary: "No Martin run records are available yet.",
-    nextStep: "Run `martin doctor`, create the demo workspace with `npx martin-loop demo`, then run a no-spend stub task with MARTIN_LIVE=false.",
+    nextStep: "Run `martin-loop doctor`, create the demo workspace with `npx martin-loop demo`, then run a no-spend proof task with MARTIN_LIVE=false.",
     warnings
   };
 }

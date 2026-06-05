@@ -23,4 +23,13 @@ export {
   createVerifierOnlyAdapter,
   type VerifierOnlyAdapterOptions
 } from "./verifier-only.js";
-export type { SpawnLike, SubprocessResult, VerificationOutcome } from "./cli-bridge.js";
+export {
+  probeCliCommand,
+  runSubprocess
+} from "./cli-bridge.js";
+export type {
+  CliCommandProbe,
+  SpawnLike,
+  SubprocessResult,
+  VerificationOutcome
+} from "./cli-bridge.js";

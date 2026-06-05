@@ -29,7 +29,7 @@ export interface MartinPreflightOutput {
   summary: string;
   warnings: string[];
   readiness: {
-    mode: "live" | "stub";
+    mode: "live" | "proof";
     liveMode: boolean;
     engineReady: boolean;
   };
@@ -54,6 +54,7 @@ export interface MartinPreflightOutput {
     requestedEngine: MartinEngine;
     engineAvailability: {
       available: boolean;
+      launchReady: boolean;
       detail: string;
       resolvedPath?: string;
     };
@@ -77,7 +78,7 @@ export async function martinPreflightTool(
   const executionMode = resolveExecutionMode();
   const workingDirectory = resolveSafeRepoRoot(input.workingDirectory);
   const engine = input.engine ?? "claude";
-  const engineAvailability = getEngineAvailability(engine);
+  const engineAvailability = await getEngineAvailability(engine, workingDirectory);
   const warnings: string[] = [];
   const allowedPaths = input.allowedPaths ?? [];
   const deniedPaths = input.deniedPaths ?? [];
@@ -91,9 +92,9 @@ export async function martinPreflightTool(
   };
 
   if (!executionMode.liveMode) {
-    warnings.push("Stub mode is active; preflight only proves configuration shape, not live CLI readiness.");
-  } else if (!engineAvailability.available) {
-    warnings.push(`Requested engine '${engine}' is not available on PATH.`);
+    warnings.push("Proof mode is active; preflight only proves configuration shape, not live CLI readiness.");
+  } else if (!engineAvailability.launchReady) {
+    warnings.push(`Requested engine '${engine}' is not launch-ready. ${engineAvailability.detail}`);
   }
 
   if ((input.verificationPlan?.length ?? 0) === 0) {
@@ -109,7 +110,7 @@ export async function martinPreflightTool(
     );
   }
 
-  const ok = !executionMode.liveMode || engineAvailability.available;
+  const ok = !executionMode.liveMode || engineAvailability.launchReady;
 
   return {
     ok,
@@ -120,7 +121,7 @@ export async function martinPreflightTool(
     readiness: {
       mode: executionMode.mode,
       liveMode: executionMode.liveMode,
-      engineReady: !executionMode.liveMode || engineAvailability.available
+      engineReady: !executionMode.liveMode || engineAvailability.launchReady
     },
     normalized: {
       objective: input.objective,
@@ -138,6 +139,7 @@ export async function martinPreflightTool(
       requestedEngine: engine,
       engineAvailability: {
         available: engineAvailability.available,
+        launchReady: engineAvailability.launchReady,
         detail: engineAvailability.detail,
         ...(engineAvailability.resolvedPath
           ? { resolvedPath: engineAvailability.resolvedPath }

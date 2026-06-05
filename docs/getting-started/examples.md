@@ -2,7 +2,7 @@
 
 These examples use the public CLI and MCP package.
 
-## Stub-Backed Run
+## Proof-Mode Run
 
 PowerShell:
 

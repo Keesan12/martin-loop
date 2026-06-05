@@ -19,7 +19,7 @@ MARTIN_LIVE=false npx martin-loop run "Summarize the demo workspace and confirm 
 npx martin-loop dossier --latest
 ```
 
-This uses stub mode, so it validates the loop, verifier, persistence, and dossier path without model spend.
+This uses no-spend proof mode, so it validates the loop, verifier, persistence, and dossier path without model spend.
 
 ## Install The CLI
 

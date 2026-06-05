@@ -17,7 +17,7 @@ The idea is simple:
 
 The runnable path in this folder uses `MARTIN_LIVE=false` so you can validate the governance flow, config loading, verifier gate, and run-record shape without needing a live provider or OpenCode account.
 
-That means this example proves the MartinLoop side of the integration contract first. A future native adapter can replace the stub execution layer without changing the budget, verifier, or record-keeping expectations.
+That means this example proves the MartinLoop side of the integration contract first. A future native adapter can replace the proof-mode execution path with a live runtime without changing the budget, verifier, or record-keeping expectations.
 
 ## Example config
 
