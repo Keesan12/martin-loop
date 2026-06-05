@@ -24,7 +24,7 @@ npx martin-loop preflight "Summarize the demo workspace and prove tests still pa
 Then run the no-spend proof path:
 
 ```sh
-MARTIN_LIVE=false npx martin-loop run "Summarize the demo workspace and prove tests still pass" --verify "npm test"
+npx martin-loop run "Summarize the demo workspace and prove tests still pass" --proof --verify "npm test"
 npx martin-loop dossier --latest
 ```
 

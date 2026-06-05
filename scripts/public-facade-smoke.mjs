@@ -73,10 +73,16 @@ export async function runPublicFacadeSmoke(options = {}) {
     await writeFile(
       path.join(appDir, "sdk-smoke.mjs"),
       [
-        'import { MartinLoop } from "martin-loop";',
+        'import * as martinLoop from "martin-loop";',
         "",
-        'if (typeof MartinLoop !== "function") {',
+        'if (typeof martinLoop.MartinLoop !== "function") {',
         '  throw new Error("MartinLoop export missing");',
+        "}",
+        'if (typeof martinLoop.createVerifierOnlyAdapter !== "function") {',
+        '  throw new Error("createVerifierOnlyAdapter export missing");',
+        "}",
+        'if ("createStubDirectProviderAdapter" in martinLoop || "createStubAgentCliAdapter" in martinLoop) {',
+        '  throw new Error("Stub adapter exports leaked into the public root package.");',
         "}",
         "",
         'console.log("MartinLoop");',

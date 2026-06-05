@@ -69,9 +69,9 @@ export async function consumeFirstRunBanner(runsRoot: string): Promise<string | 
 
   return [
     "MartinLoop quick start",
-    "  martin tour",
-    "  martin start",
-    "  martin doctor",
+    "  martin-loop tour",
+    "  martin-loop start",
+    "  martin-loop doctor",
     "",
     "MartinLoop will block real governed runs until doctor and preflight receipts exist for this repo."
   ].join("\n");
@@ -97,7 +97,7 @@ export async function evaluateCliRunGate(input: CliRunGateInput): Promise<CliRun
   if (input.mutationMode === "verify_only") {
     return {
       allowed: true,
-      nextCommand: "martin run --verify-only",
+      nextCommand: "martin-loop run --verify-only",
       message: "verify_only mode does not require a governed coding receipt chain.",
       missingSteps: []
     };
@@ -139,7 +139,7 @@ export async function evaluateCliRunGate(input: CliRunGateInput): Promise<CliRun
   if (missingSteps.length === 0) {
     return {
       allowed: true,
-      nextCommand: "martin run",
+      nextCommand: "martin-loop run",
       message: "Governed CLI workflow receipts are present for this task.",
       missingSteps
     };
@@ -160,15 +160,15 @@ function selectNextCommand(
   verificationPlan: string[]
 ): string {
   if (missingSteps.includes("doctor")) {
-    return "martin doctor";
+    return "martin-loop doctor";
   }
 
   if (missingSteps.includes("session-start")) {
-    return "martin session-start";
+    return "martin-loop session-start";
   }
 
   const verify = verificationPlan[0] ? ` --verify "${verificationPlan[0]}"` : "";
-  return `martin preflight "${objective}"${verify}`;
+  return `martin-loop preflight "${objective}"${verify}`;
 }
 
 function buildBlockedMessage(missingSteps: CliWorkflowStepName[], nextCommand: string): string {

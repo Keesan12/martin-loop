@@ -29,6 +29,7 @@ export {
 } from "./openai-compatible.js";
 export {
   createSpawnPlan,
+  readGitChangedFiles,
   type SpawnLike,
   type SpawnPlan,
   type SubprocessResult,

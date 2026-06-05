@@ -27,6 +27,10 @@ const ALLOWED_PACKED_PREFIXES = [
   "dist/",
   "package.json",
 ];
+const FORBIDDEN_PACKED_PATH_PATTERNS = [
+  /^dist\/vendor\/cli\/bin\//u,
+  /^dist\/vendor\/adapters\/stub-(agent-cli|direct-provider)\.(?:js|d\.ts)$/u,
+];
 
 export async function runRootReleaseGuard(options = {}) {
   const rootDir = options.rootDir ?? process.cwd();
@@ -55,6 +59,7 @@ export async function runRootReleaseGuard(options = {}) {
   }
 
   await assertDistArtifactsPresent(rootDir);
+  await assertVendoredCliManifest(rootDir);
   const packedFiles = await inspectPackedFiles({ rootDir });
   assertPackedSurface(packedFiles);
 
@@ -63,6 +68,28 @@ export async function runRootReleaseGuard(options = {}) {
     packChecked: true,
     packedFiles,
   };
+}
+
+export async function assertVendoredCliManifest(rootDir) {
+  const manifestPath = path.join(rootDir, "dist", "vendor", "cli", "package.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+
+  if (manifest.main !== "./index.js") {
+    throw new Error(`Vendored CLI manifest must point main at ./index.js. Received ${String(manifest.main)}.`);
+  }
+
+  if (manifest.types !== "./index.d.ts") {
+    throw new Error(`Vendored CLI manifest must point types at ./index.d.ts. Received ${String(manifest.types)}.`);
+  }
+
+  if (manifest.bin !== undefined) {
+    throw new Error("Vendored CLI manifest must not publish its internal bin surface inside the root package facade.");
+  }
+
+  const manifestText = JSON.stringify(manifest);
+  if (/workspace:\*/u.test(manifestText)) {
+    throw new Error("Vendored CLI manifest must not leak workspace:* dependencies into the public root package.");
+  }
 }
 
 export function assertRootVersionPolicy(version) {
@@ -83,6 +110,10 @@ export function assertPackedSurface(packedFiles) {
   for (const packedFile of uniqueFiles) {
     if (!ALLOWED_PACKED_PREFIXES.some((prefix) => packedFile === prefix || packedFile.startsWith(prefix))) {
       throw new Error(`Packed tarball includes unexpected path ${packedFile}.`);
+    }
+
+    if (FORBIDDEN_PACKED_PATH_PATTERNS.some((pattern) => pattern.test(packedFile))) {
+      throw new Error(`Packed tarball includes forbidden vendored implementation path ${packedFile}.`);
     }
   }
 }

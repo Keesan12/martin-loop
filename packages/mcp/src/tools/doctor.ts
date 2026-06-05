@@ -32,7 +32,7 @@ export interface MartinDoctorOutput {
     workspaceRoot: string;
     workingDirectory: string;
     runsRoot: string;
-    mode: "live" | "stub";
+    mode: "live" | "proof";
     liveMode: boolean;
   };
   engines: Record<MartinEngine, { available: boolean; detail: string; resolvedPath?: string }>;

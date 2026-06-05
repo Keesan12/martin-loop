@@ -8,7 +8,6 @@ import {
   createClaudeCliAdapter,
   createCodexCliAdapter,
   createOpenAiCompatibleAdapter,
-  createStubDirectProviderAdapter,
   createVerifierOnlyAdapter
 } from "@martin/adapters";
 import { runMartin, type MartinAdapter } from "@martin/core";
@@ -93,6 +92,7 @@ export type RunCommandRequest = {
   model?: string;
   engine?: string;
   mutationMode?: MutationMode;
+  proofMode?: boolean;
   allowedPaths?: string[];
   deniedPaths?: string[];
   acceptanceCriteria?: string[];
@@ -641,32 +641,28 @@ export function renderCliHelp(): string {
     "Martin Loop CLI",
     "",
     "Usage:",
-    "  martin run <objective> [options]",
-    "  martin-loop run <objective> [options]    (published alias)",
-    "  martin preflight <objective> [options]",
-    "  martin start [--host <codex|claude|gemini|generic>] [options]",
-    "  martin tour [--host <codex|claude|gemini|generic>]",
-    "  martin guide [start|tour|doctor|demo|session-start|plan|preflight|run|dossier|mcp] [--host <codex|claude|gemini|generic>]",
-    "  martin doctor [options]",
-    "  martin session-start [--host <claude|codex|generic>] [options]",
-    "  martin phase status|contract|preflight|run [--execute] [options]",
-    "  martin triage [options]",
-    "  martin dossier (--loop-id <id> | --file <path> | --latest) [options]",
-    "  martin runs list [options]",
-    "  martin runs get (--loop-id <id> | --file <path> | --latest) [options]",
-    "  martin runs attempt (--loop-id <id> | --file <path>) [--attempt-index <n>] [options]",
-    "  martin runs verify (--loop-id <id> | --file <path>) [options]",
-    "  martin mcp print-config --host <codex|claude|gemini|generic> [--scope <user|project|local>] [options]",
-    "  martin mcp install --host <codex|claude|gemini|generic> [--scope <user|project|local>] [--dry-run] [options]",
-    "  martin demo [--dir <path>] [--force]",
-    "  martin-loop demo [--dir <path>] [--force] (published alias)",
-    "  martin inspect --file <path>",
-    "  martin-loop inspect --file <path>        (published alias)",
-    "  martin resume <loopId>",
-    "  martin-loop resume <loopId>              (published alias)",
-    "  martin bench --suite <suiteId>",
-    "  martin challenge [--loop-id <id> | --file <path> | --latest] [--format markdown|svg]",
-    "  martin badge [--format svg|json]",
+    "  martin-loop run <objective> [options]",
+    "  martin-loop preflight <objective> [options]",
+    "  martin-loop start [--host <codex|claude|gemini|generic>] [options]",
+    "  martin-loop tour [--host <codex|claude|gemini|generic>]",
+    "  martin-loop guide [start|tour|doctor|demo|session-start|plan|preflight|run|dossier|mcp] [--host <codex|claude|gemini|generic>]",
+    "  martin-loop doctor [options]",
+    "  martin-loop session-start [--host <claude|codex|generic>] [options]",
+    "  martin-loop phase status|contract|preflight|run [--execute] [options]",
+    "  martin-loop triage [options]",
+    "  martin-loop dossier (--loop-id <id> | --file <path> | --latest) [options]",
+    "  martin-loop runs list [options]",
+    "  martin-loop runs get (--loop-id <id> | --file <path> | --latest) [options]",
+    "  martin-loop runs attempt (--loop-id <id> | --file <path>) [--attempt-index <n>] [options]",
+    "  martin-loop runs verify (--loop-id <id> | --file <path>) [options]",
+    "  martin-loop mcp print-config --host <codex|claude|gemini|generic> [--scope <user|project|local>] [options]",
+    "  martin-loop mcp install --host <codex|claude|gemini|generic> [--scope <user|project|local>] [--dry-run] [options]",
+    "  martin-loop demo [--dir <path>] [--force]",
+    "  martin-loop inspect --file <path>",
+    "  martin-loop resume <loopId>",
+    "  martin-loop bench --suite <suiteId>",
+    "  martin-loop challenge [--loop-id <id> | --file <path> | --latest] [--format markdown|svg]",
+    "  martin-loop badge [--format svg|json]",
     "",
     "Operator commands:",
     "  start        Guided onboarding for humans and MCP hosts; picks the safest next command.",
@@ -691,8 +687,8 @@ export function renderCliHelp(): string {
     "  badge        Print an agent reliability readiness badge from local evidence.",
     "",
     "Compatibility aliases:",
-    "  inspect      Legacy file-based summary view. Prefer `martin dossier` or `martin runs get`.",
-    "  resume       Legacy loop lookup alias. Prefer `martin runs get --loop-id`.",
+    "  inspect      Legacy file-based summary view. Prefer `martin-loop dossier` or `martin-loop runs get`.",
+    "  resume       Legacy loop lookup alias. Prefer `martin-loop runs get --loop-id`.",
     "",
     "Global output modes:",
     "  --json       Emit stable machine-readable JSON.",
@@ -721,10 +717,11 @@ export function renderCliHelp(): string {
     "",
     "Run options:",
     "  --engine <name>          Adapter: claude (default), codex, or openai.",
-    "                           openai routes to any OpenAI-compatible endpoint.",
-    "                           Set MARTIN_OPENAI_BASE_URL, MARTIN_OPENAI_API_KEY,",
-    "                           MARTIN_OPENAI_MODEL. Works with Ollama, OpenRouter,",
-    "                           Together.ai, LM Studio, and any local model server.",
+    "                           openai defaults to the hosted OpenAI endpoint.",
+    "                           Set MARTIN_OPENAI_API_KEY and optionally",
+    "                           MARTIN_OPENAI_MODEL. Override MARTIN_OPENAI_BASE_URL",
+    "                           for Ollama, OpenRouter, Together.ai, LM Studio,",
+    "                           or any other OpenAI-compatible endpoint.",
     "  --model <name>           Override the model.",
     "  --cwd <path>             Set the repo root used for repo-backed runs.",
     "  --budget-usd <n>         Set the hard cost cap in USD.",
@@ -732,6 +729,7 @@ export function renderCliHelp(): string {
     "  --max-iterations <n>     Set the maximum number of attempts.",
     "  --max-tokens <n>         Set the maximum total token budget.",
     "  --verify <cmd>           Shell command to run as the verifier after each attempt.",
+    "  --proof                  Use the no-spend proof adapter instead of a live coding CLI.",
     "  --verify-only            Skip the coding adapter and run the verifier only.",
     "  --unsafe-allow-unguarded-run  Override the local governance gate for this one run.",
     "  --allow-path <glob>      Restrict agent writes to this path pattern (repeatable).",
@@ -774,11 +772,10 @@ async function executeRunCommand(
   };
   const cliEnvironment = resolveCliEnvironment({
     cwd: resolvedRequest.cwd,
-    engine: resolvedRequest.engine
+    engine: resolvedRequest.engine,
+    ...(resolvedRequest.proofMode ? { liveMode: "proof" as const } : {})
   });
-  const allowUngovernedRun =
-    resolvedRequest.allowUngovernedRun === true ||
-    process.env["MARTIN_ALLOW_UNGUARDED_RUN"] === "true";
+  const allowUngovernedRun = resolvedRequest.allowUngovernedRun === true;
   if (!allowUngovernedRun) {
     const gate = await evaluateCliRunGate({
       runsRoot: cliEnvironment.runsRoot,
@@ -791,7 +788,7 @@ async function executeRunCommand(
 
     if (!gate.allowed) {
       throw new CliCommandError("policy_blocked", gate.message, {
-        suggestion: `${gate.nextCommand}${outputMode === "human" ? "\nNeed the guided walkthrough? Run `martin tour`." : ""}`,
+        suggestion: `${gate.nextCommand}${outputMode === "human" ? "\nNeed the guided walkthrough? Run `martin-loop tour`." : ""}`,
         details: {
           missingSteps: gate.missingSteps,
           nextCommand: gate.nextCommand
@@ -804,7 +801,8 @@ async function executeRunCommand(
     resolvedRequest.engine,
     cliEnvironment.workingDirectory,
     resolvedRequest.model,
-    resolvedRequest.mutationMode
+    resolvedRequest.mutationMode,
+    cliEnvironment.liveMode
   );
 
   let result: Awaited<ReturnType<typeof runMartin>>;
@@ -849,7 +847,7 @@ async function executeRunCommand(
 
     throw new CliCommandError("environment", "Martin could not start the requested execution adapter.", {
       suggestion:
-        "Run `martin doctor` to verify engine availability, or set MARTIN_LIVE=false to use the stub adapter locally.",
+        "Run `martin-loop doctor` to verify engine availability, or rerun with `--proof` for a no-spend verification pass.",
       details: {
         loopId: fallbackLoop.loopId,
         reason: error instanceof Error ? error.message : String(error)
@@ -933,13 +931,13 @@ async function executeInspectCommand(
       summary: buildPortfolioSnapshot(loops),
       compatibility: {
         alias: "inspect",
-        preferredCommand: "martin dossier"
+        preferredCommand: "martin-loop dossier"
       }
     },
     human: [
       `Inspect summary for ${sourcePath}`,
       `Loops found: ${loops.length}`,
-      "Compatibility note: `martin inspect` is still supported, but `martin dossier` and `martin runs get` are the preferred operator flows."
+      "Compatibility note: `martin-loop inspect` is still supported, but `martin-loop dossier` and `martin-loop runs get` are the preferred operator flows."
     ],
     quiet: sourcePath
   });
@@ -951,7 +949,7 @@ async function executeResumeCommand(
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   if (!command.selector.loopId) {
     throw new CliCommandError("invalid_input", "resume requires a loop ID.", {
-      suggestion: "Use `martin resume <loopId>` or `martin runs get --loop-id <loopId>`."
+      suggestion: "Use `martin-loop resume <loopId>` or `martin-loop runs get --loop-id <loopId>`."
     });
   }
 
@@ -966,14 +964,14 @@ async function executeResumeCommand(
       verification,
       compatibility: {
         alias: "resume",
-        preferredCommand: "martin runs get --loop-id"
+        preferredCommand: "martin-loop runs get --loop-id"
       }
     },
     human: [
       `Loaded persisted loop ${detail.loop.loopId}`,
       `Status: ${detail.loop.status} / ${detail.loop.lifecycleState}`,
       `Verification: ${verification.status}`,
-      "Compatibility note: `martin resume` is still supported, but `martin runs get --loop-id` is the preferred operator flow."
+      "Compatibility note: `martin-loop resume` is still supported, but `martin-loop runs get --loop-id` is the preferred operator flow."
     ],
     quiet: detail.loop.loopId,
     warnings: detail.warnings
@@ -1111,14 +1109,14 @@ async function executeStartCommand(
       liveMode: environment.liveMode,
       availableHosts,
       bestNextCommand,
-      tourCommand: "martin tour",
+      tourCommand: "martin-loop tour",
       recommendedFlow: [
-        "martin tour",
-        "martin doctor",
-        "martin session-start",
-        'martin phase contract --json',
-        'martin phase preflight',
-        'martin dossier --latest'
+        "martin-loop tour",
+        "martin-loop doctor",
+        "martin-loop session-start",
+        'martin-loop phase contract --json',
+        'martin-loop phase preflight',
+        'martin-loop dossier --latest'
       ],
       hostBootstrap: buildHostBootstrapPlan({
         preferredHost: command.host,
@@ -1161,19 +1159,19 @@ async function executeGuideCommand(
       topic: command.topic ?? "overview",
       host: command.host ?? "codex",
       recommendedSequence: [
-        "martin start",
-        "martin tour",
-        "martin doctor",
-        "martin session-start",
-        "martin phase contract --json",
-        "martin phase preflight",
-        "martin run <objective> --verify <command>",
-        "martin dossier --latest"
+        "martin-loop start",
+        "martin-loop tour",
+        "martin-loop doctor",
+        "martin-loop session-start",
+        "martin-loop phase contract --json",
+        "martin-loop phase preflight",
+        "martin-loop run <objective> --verify <command>",
+        "martin-loop dossier --latest"
       ],
       commandMap
     },
     human: selected ? renderGuideTopic(selected) : renderGuideOverview(commandMap, command.host),
-    quiet: selected?.command ?? "martin start"
+    quiet: selected?.command ?? "martin-loop start"
   });
 }
 
@@ -1201,11 +1199,11 @@ async function executeTourCommand(
       command: "tour",
       host: hostBootstrap.host,
       steps,
-      demoCommand: "martin demo",
+      demoCommand: "martin-loop demo",
       hostBootstrap
     },
     human: renderTourHuman(steps, hostBootstrap),
-    quiet: "martin doctor"
+    quiet: "martin-loop doctor"
   });
 }
 
@@ -1294,7 +1292,8 @@ async function executePreflightCommand(
   const resolvedGuardrails = await resolveGuardrails(request);
   const environment = resolveCliEnvironment({
     cwd: request.cwd,
-    engine: request.engine
+    engine: request.engine,
+    ...(request.proofMode ? { liveMode: "proof" as const } : {})
   });
   const warnings: string[] = [];
   const blockingIssues: string[] = [];
@@ -1729,6 +1728,9 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
         }
         index += 1;
         break;
+      case "--proof":
+        request.proofMode = true;
+        break;
       case "--metadata":
         if (next) {
           const [key, value] = next.split("=");
@@ -1837,6 +1839,7 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
     ...(request.model ? { model: request.model } : {}),
     ...(request.engine ? { engine: request.engine } : {}),
     ...(request.mutationMode ? { mutationMode: request.mutationMode } : {}),
+    ...(request.proofMode ? { proofMode: true } : {}),
     ...(request.allowedPaths?.length ? { allowedPaths: request.allowedPaths } : {}),
     ...(request.deniedPaths?.length ? { deniedPaths: request.deniedPaths } : {}),
     ...(request.acceptanceCriteria?.length ? { acceptanceCriteria: request.acceptanceCriteria } : {}),
@@ -2121,10 +2124,10 @@ function renderDemoInstructions(targetDirectory: string): string {
     "  npm test",
     "",
     "Safe first run (no provider spend):",
-    '  MARTIN_LIVE=false npx martin run "Summarize the demo workspace and confirm the verifier is green" --verify "npm test"',
+    '  npx martin-loop run "Summarize the demo workspace and confirm the verifier is green" --proof --verify "npm test"',
     "",
     "Optional live run:",
-    '  npx martin run "Add support for a discount percentage to summarizeInvoice and update the tests" --verify "npm test" --engine codex',
+    '  npx martin-loop run "Add support for a discount percentage to summarizeInvoice and update the tests" --verify "npm test" --engine codex',
     "",
     `Task ideas live in ${join(targetDirectory, "TASKS.md")}`
   ].join("\n");
@@ -2156,13 +2159,13 @@ function renderDoctorHuman(input: {
     "",
     `Best next command: ${bestNextCommand}`,
     "Agent-native path:",
-    "  martin session-start",
-    "  martin phase contract --json",
-    "  martin phase preflight",
+    "  martin-loop session-start",
+    "  martin-loop phase contract --json",
+    "  martin-loop phase preflight",
     "",
     "Human-first proof path:",
-    "  martin demo",
-    "  martin dossier --latest"
+    "  martin-loop demo",
+    "  martin-loop dossier --latest"
   ];
 }
 
@@ -2193,20 +2196,20 @@ function buildStartHuman(input: {
       : []),
     "",
     "Need the interactive product tour?",
-    "  martin tour",
+    "  martin-loop tour",
     "Need the static command map?",
-    "  martin guide",
+    "  martin-loop guide",
     "",
     "Safe local flow:",
-    "  martin doctor",
-    "  martin session-start",
-    "  martin phase contract --json",
-    "  martin phase preflight",
-    "  martin dossier --latest",
+    "  martin-loop doctor",
+    "  martin-loop session-start",
+    "  martin-loop phase contract --json",
+    "  martin-loop phase preflight",
+    "  martin-loop dossier --latest",
     "",
     "No-spend proof path:",
-    "  martin demo",
-    '  MARTIN_LIVE=false martin run "Summarize the demo workspace and confirm the verifier is green" --verify "npm test"',
+    "  martin-loop demo",
+    '  martin-loop run "Summarize the demo workspace and confirm the verifier is green" --proof --verify "npm test"',
     "",
     `Recommended MCP bootstrap: ${hostPlan.installCommand}`,
     `Preview config: ${hostPlan.printConfigCommand}`
@@ -2229,49 +2232,49 @@ function buildTourSteps(host?: MartinMcpHost): Array<{
   return [
     {
       step: 1,
-      command: "martin start",
+      command: "martin-loop start",
       why: "See the safest next command for this repo and your preferred host.",
       expected: "You get the recommended flow plus one MCP bootstrap path."
     },
     {
       step: 2,
-      command: "martin doctor",
+      command: "martin-loop doctor",
       why: "Confirm the working directory, runs root, engine availability, and local policy posture.",
       expected: "Doctor prints readiness plus the best next command."
     },
     {
       step: 3,
-      command: "martin demo",
+      command: "martin-loop demo",
       why: "Create a disposable workspace so you can learn the flow without risking a real repo.",
       expected: "A local martin-loop-demo directory is created with safe task ideas."
     },
     {
       step: 4,
-      command: "martin session-start",
+      command: "martin-loop session-start",
       why: "Get the current local run state and the next governed action before doing real work.",
       expected: "Session-start prints the recommended next action and phase hints."
     },
     {
       step: 5,
-      command: "martin phase contract --json",
+      command: "martin-loop phase contract --json",
       why: "Turn the local plan into an explicit governed contract.",
       expected: "You see objective, verifiers, allowed paths, and risk posture in one payload."
     },
     {
       step: 6,
-      command: 'martin preflight "Summarize the demo workspace and confirm tests still pass" --verify "npm test"',
+      command: 'martin-loop preflight "Summarize the demo workspace and confirm tests still pass" --verify "npm test"',
       why: "Create the receipt MartinLoop requires before a governed run is allowed.",
       expected: "Preflight returns ready=true when the task is safe to run."
     },
     {
       step: 7,
-      command: 'MARTIN_LIVE=false martin run "Summarize the demo workspace and confirm tests still pass" --verify "npm test"',
+      command: 'martin-loop run "Summarize the demo workspace and confirm tests still pass" --proof --verify "npm test"',
       why: "Practice the full workflow with no model spend and the governance gate still active.",
       expected: "Martin writes a run receipt and keeps the verifier honest."
     },
     {
       step: 8,
-      command: "martin dossier --latest",
+      command: "martin-loop dossier --latest",
       why: "Review what happened, what Martin prevented, and the next safe move.",
       expected: "You get the richest single-run summary and proof surface."
     },
@@ -2340,66 +2343,66 @@ function buildGuideCommandMap(host?: MartinMcpHost): Array<{
   return [
     {
       topic: "start",
-      command: "martin start",
+      command: "martin-loop start",
       purpose: "Show the safest next MartinLoop command and the recommended host bootstrap path.",
       when: "First install or first run in a new repo.",
-      example: "martin start"
+      example: "martin-loop start"
     },
     {
       topic: "tour",
-      command: "martin tour",
+      command: "martin-loop tour",
       purpose: "Walk through the full MartinLoop flow with exact commands, expected output, and a safe demo path.",
       when: "Right after install or when onboarding a human or agent host.",
-      example: "martin tour --host codex"
+      example: "martin-loop tour --host codex"
     },
     {
       topic: "doctor",
-      command: "martin doctor",
+      command: "martin-loop doctor",
       purpose: "Check runtime readiness, engine availability, runs root, and starter MCP profile guidance.",
       when: "Before the first governed run or when setup looks wrong.",
-      example: "martin doctor --engine codex"
+      example: "martin-loop doctor --engine codex"
     },
     {
       topic: "demo",
-      command: "martin demo",
+      command: "martin-loop demo",
       purpose: "Create a disposable local sandbox so a user or agent can learn MartinLoop without touching a real repo.",
       when: "When you want a safe demo or proof path.",
-      example: "martin demo --dir ./martin-loop-demo"
+      example: "martin-loop demo --dir ./martin-loop-demo"
     },
     {
       topic: "session-start",
-      command: "martin session-start",
+      command: "martin-loop session-start",
       purpose: "Summarize local phase state, latest run evidence, and the recommended next action.",
       when: "At the start of a real coding session.",
-      example: "martin session-start --host codex"
+      example: "martin-loop session-start --host codex"
     },
     {
       topic: "plan",
-      command: "martin phase contract --json",
+      command: "martin-loop phase contract --json",
       purpose: "Compile the local phase state into an explicit governed contract before spend.",
       when: "Before preflight when MartinLoop should turn the plan into a real contract.",
-      example: "martin phase contract --json"
+      example: "martin-loop phase contract --json"
     },
     {
       topic: "preflight",
-      command: "martin phase preflight",
+      command: "martin-loop phase preflight",
       purpose: "Preview the governed run shape and block bad verifier, scope, or budget decisions before execution.",
       when: "Before any non-trivial run.",
-      example: "martin preflight \"Fix auth regression\" --verify \"pnpm test\""
+      example: "martin-loop preflight \"Fix auth regression\" --verify \"pnpm test\""
     },
     {
       topic: "run",
-      command: "martin run",
+      command: "martin-loop run",
       purpose: "Execute the governed task after the safety envelope is explicit.",
       when: "Only after doctor and preflight are sane.",
-      example: "martin run \"Fix auth regression\" --verify \"pnpm test\" --budget-usd 3"
+      example: "martin-loop run \"Fix auth regression\" --verify \"pnpm test\" --budget-usd 3"
     },
     {
       topic: "dossier",
-      command: "martin dossier --latest",
+      command: "martin-loop dossier --latest",
       purpose: "Show what happened, what Martin prevented, and what the next safe action is.",
       when: "Immediately after a run or before sharing results.",
-      example: "martin dossier --latest"
+      example: "martin-loop dossier --latest"
     },
     {
       topic: "mcp",
@@ -2419,14 +2422,14 @@ function renderGuideOverview(
     "Martin Loop guide",
     "",
     "Use this as the built-in tour after install. MartinLoop's default operating sequence is:",
-    "  1. martin start",
-    "  2. martin tour",
-    "  3. martin doctor",
-    "  4. martin session-start",
-    "  5. martin phase contract --json",
-    "  6. martin phase preflight",
-    "  7. martin run <objective> --verify <command>",
-    "  8. martin dossier --latest",
+    "  1. martin-loop start",
+    "  2. martin-loop tour",
+    "  3. martin-loop doctor",
+    "  4. martin-loop session-start",
+    "  5. martin-loop phase contract --json",
+    "  6. martin-loop phase preflight",
+    "  7. martin-loop run <objective> --verify <command>",
+    "  8. martin-loop dossier --latest",
     "",
     "Command map:",
     ...commandMap.map((entry) => `  ${entry.command} — ${entry.purpose}`),
@@ -2435,9 +2438,9 @@ function renderGuideOverview(
     `  ${commandMap.find((entry) => entry.topic === "mcp")?.example}`,
     "",
     "For a focused explanation, run:",
-    "  martin tour",
-    "  martin guide start",
-    "  martin guide mcp"
+    "  martin-loop tour",
+    "  martin-loop guide start",
+    "  martin-loop guide mcp"
   ];
 }
 
@@ -2463,14 +2466,14 @@ function selectBestNextCommand(input: {
   hasClaude: boolean;
 }): string {
   if (!input.workingDirectoryReady) {
-    return "martin demo";
+    return "martin-loop demo";
   }
 
   if (input.hasCodex || input.hasClaude) {
-    return "martin session-start";
+    return "martin-loop session-start";
   }
 
-  return "martin doctor";
+  return "martin-loop doctor";
 }
 
 async function resolveFirstRunBanner(
@@ -2526,30 +2529,30 @@ function buildHostBootstrapPlan(input: {
         process.platform === "win32"
           ? "claude mcp add --transport stdio --scope user martin-loop -- cmd /c npx -y @martinloop/mcp"
           : "claude mcp add --transport stdio --scope user martin-loop -- npx -y @martinloop/mcp",
-      printConfigCommand: "martin mcp print-config --host claude --profile minimal"
+      printConfigCommand: "martin-loop mcp print-config --host claude --profile minimal"
     };
   }
 
   if (host === "gemini") {
     return {
       host,
-      installCommand: "martin mcp install --host gemini --scope user --dry-run",
-      printConfigCommand: "martin mcp print-config --host gemini --profile minimal"
+      installCommand: "martin-loop mcp install --host gemini --scope user --dry-run",
+      printConfigCommand: "martin-loop mcp print-config --host gemini --profile minimal"
     };
   }
 
   if (host === "generic") {
     return {
       host,
-      installCommand: "martin mcp install --host generic --scope project --dry-run",
-      printConfigCommand: "martin mcp print-config --host generic --profile minimal"
+      installCommand: "martin-loop mcp install --host generic --scope project --dry-run",
+      printConfigCommand: "martin-loop mcp print-config --host generic --profile minimal"
     };
   }
 
   return {
     host: "codex",
     installCommand: "codex mcp add martin-loop -- npx -y @martinloop/mcp",
-    printConfigCommand: "martin mcp print-config --host codex --profile minimal"
+    printConfigCommand: "martin-loop mcp print-config --host codex --profile minimal"
   };
 }
 
@@ -2782,17 +2785,17 @@ function selectAdapter(
   engine: string | undefined,
   workingDirectory: string,
   modelOverride?: string,
-  mutationMode?: MutationMode
+  mutationMode?: MutationMode,
+  liveMode: "live" | "proof" = process.env.MARTIN_LIVE === "false" ? "proof" : "live"
 ): MartinAdapter {
   if (mutationMode === "verify_only") {
     return createVerifierOnlyAdapter({ workingDirectory });
   }
 
-  if (process.env.MARTIN_LIVE === "false") {
-    return createStubDirectProviderAdapter({
-      label: "Stub adapter (MARTIN_LIVE=false)",
-      providerId: "stub",
-      model: "stub"
+  if (liveMode === "proof") {
+    return createVerifierOnlyAdapter({
+      workingDirectory,
+      label: "Proof mode adapter"
     });
   }
 
@@ -2801,23 +2804,28 @@ function selectAdapter(
   }
 
   if (engine === "openai") {
-    const baseUrl = process.env["MARTIN_OPENAI_BASE_URL"] ?? "http://localhost:11434";
-    const apiKey = process.env["MARTIN_OPENAI_API_KEY"] ?? "";
-    const model = modelOverride ?? process.env["MARTIN_OPENAI_MODEL"] ?? "llama3.3";
-    return createOpenAiCompatibleAdapter({ baseUrl, apiKey, model, workingDirectory });
+    const baseUrl = process.env["MARTIN_OPENAI_BASE_URL"]?.trim() || undefined;
+    const apiKey = process.env["MARTIN_OPENAI_API_KEY"]?.trim();
+    const model = modelOverride ?? process.env["MARTIN_OPENAI_MODEL"]?.trim();
+    return createOpenAiCompatibleAdapter({
+      ...(baseUrl ? { baseUrl } : {}),
+      ...(apiKey ? { apiKey } : {}),
+      ...(model ? { model } : {}),
+      workingDirectory
+    });
   }
 
   return createClaudeCliAdapter({ workingDirectory, ...(modelOverride ? { model: modelOverride } : {}) });
 }
 
 function buildDoctorRecommendations(input: {
-  liveMode: "live" | "stub";
+  liveMode: "live" | "proof";
   engine: "claude" | "codex" | "openai" | string;
   claudeAvailable: boolean;
   codexAvailable: boolean;
   workingDirectoryReady: boolean;
 }): string[] {
-  const recommendations = ["Run `martin preflight` before non-trivial governed coding work."];
+  const recommendations = ["Run `martin-loop preflight` before non-trivial governed coding work."];
 
   if (!input.workingDirectoryReady) {
     recommendations.push("Point `--cwd` at a valid repository before running Martin.");
@@ -2825,11 +2833,12 @@ function buildDoctorRecommendations(input: {
 
   if (input.liveMode === "live" && input.engine === "openai") {
     const baseUrl = process.env["MARTIN_OPENAI_BASE_URL"];
-    const model = process.env["MARTIN_OPENAI_MODEL"];
-    if (!baseUrl) recommendations.push("Set MARTIN_OPENAI_BASE_URL (e.g. http://localhost:11434 for Ollama or https://openrouter.ai/api for OpenRouter).");
-    if (!model) recommendations.push("Set MARTIN_OPENAI_MODEL (e.g. llama3.3, deepseek/deepseek-chat, mistralai/codestral-latest).");
+    const apiKey = process.env["MARTIN_OPENAI_API_KEY"];
     if (baseUrl?.includes("openrouter") && !process.env["MARTIN_OPENAI_API_KEY"]) {
       recommendations.push("Set MARTIN_OPENAI_API_KEY for OpenRouter.");
+    }
+    if (!baseUrl && !apiKey) {
+      recommendations.push("Set MARTIN_OPENAI_API_KEY to use the default OpenAI endpoint, or set MARTIN_OPENAI_BASE_URL for a different provider.");
     }
   }
 
@@ -2838,7 +2847,7 @@ function buildDoctorRecommendations(input: {
   }
 
   if (input.liveMode === "live" && input.engine === "codex" && !input.codexAvailable) {
-    recommendations.push("Install or expose the Codex CLI on PATH, or set MARTIN_LIVE=false while iterating locally.");
+    recommendations.push("Install or expose the Codex CLI on PATH, or rerun with `--proof` for a no-spend verifier-backed pass.");
   }
 
   return recommendations;

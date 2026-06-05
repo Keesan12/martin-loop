@@ -32,6 +32,6 @@ That makes a coding-agent result easier to trust, replay, compare, and audit.
 npx martin-loop demo
 cd martin-loop-demo
 npm install
-MARTIN_LIVE=false npx martin-loop run "Summarize the demo workspace and confirm the verifier is green" --verify "npm test"
+npx martin-loop run "Summarize the demo workspace and confirm the verifier is green" --proof --verify "npm test"
 npx martin-loop dossier --latest
 ```
