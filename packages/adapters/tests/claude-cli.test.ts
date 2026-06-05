@@ -545,6 +545,7 @@ describe("readGitChangedFiles", () => {
 
     expect(calls[0]?.command).toBe("git");
     expect(calls[0]?.args).toContain("-z");
+    expect(calls[0]?.args).toContain("--untracked-files=all");
     expect(changedFiles).toEqual(["spaced name.ts", "renamed name.ts"]);
   });
 });
@@ -590,6 +591,51 @@ describe("createVerifierOnlyAdapter", () => {
 
       expect(result.verification.passed).toBe(true);
       expect(result.execution?.changedFiles).toContain("tracked.txt");
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("reports verifier-created untracked files in proof-mode runs", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-verify-only-untracked-"));
+
+    try {
+      spawnSync("git", ["init"], { cwd: directory, stdio: "ignore" });
+      await writeFile(join(directory, "tracked.txt"), "original", "utf8");
+      spawnSync("git", ["add", "tracked.txt"], { cwd: directory, stdio: "ignore" });
+      spawnSync(
+        "git",
+        [
+          "-c",
+          "user.email=martin@example.com",
+          "-c",
+          "user.name=Martin Test",
+          "commit",
+          "-m",
+          "seed"
+        ],
+        { cwd: directory, stdio: "ignore" }
+      );
+
+      const adapter = createVerifierOnlyAdapter({ workingDirectory: directory });
+      const result = await adapter.execute(
+        makeRequest({
+          context: {
+            taskTitle: "verify only",
+            objective: "Create a fresh proof artifact",
+            verificationPlan: [
+              `"${process.execPath}" -e "require('node:fs').writeFileSync('proof-artifact.txt','created')"`
+            ],
+            focus: "verify only",
+            remainingBudgetUsd: 8,
+            remainingIterations: 1,
+            remainingTokens: 10_000
+          }
+        })
+      );
+
+      expect(result.verification.passed).toBe(true);
+      expect(result.execution?.changedFiles).toContain("proof-artifact.txt");
     } finally {
       await rm(directory, { force: true, recursive: true });
     }

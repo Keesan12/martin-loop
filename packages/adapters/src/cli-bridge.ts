@@ -218,7 +218,7 @@ export async function readGitChangedFiles(
 ): Promise<string[]> {
   const statusResult = await runSubprocess(
     "git",
-    ["status", "-z", "--porcelain=v1", "--untracked-files=no", "--ignore-submodules=all"],
+    ["status", "-z", "--porcelain=v1", "--untracked-files=all", "--ignore-submodules=all"],
     { cwd: repoRoot, timeoutMs, spawnImpl }
   );
 
