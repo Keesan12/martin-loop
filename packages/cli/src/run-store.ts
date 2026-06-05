@@ -111,7 +111,7 @@ export interface CliEnvironment {
   invocationRoot: string;
   workingDirectory: string;
   runsRoot: string;
-  engine: "claude" | "codex";
+  engine: "claude" | "codex" | "openai";
   liveMode: "live" | "stub";
 }
 
@@ -165,7 +165,12 @@ export function resolveCliEnvironment(input: {
   const invocationRoot = resolveInvocationRoot(env);
   const workingDirectory = path.resolve(invocationRoot, input.cwd ?? process.cwd());
   const runsRoot = path.resolve(resolveRunsRoot({ ...env, MARTIN_RUNS_DIR: input.runsDir ?? env.MARTIN_RUNS_DIR }));
-  const engine = input.engine === "codex" ? "codex" : "claude";
+  const engine =
+    input.engine === "codex"
+      ? "codex"
+      : input.engine === "openai"
+        ? "openai"
+        : "claude";
 
   return {
     invocationRoot,

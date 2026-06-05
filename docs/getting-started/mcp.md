@@ -18,8 +18,15 @@ codex mcp add martin-loop -- npx -y @martinloop/mcp
 
 Add it to Claude Code:
 
+macOS/Linux:
+
 ```sh
 claude mcp add --transport stdio --scope user martin-loop -- npx -y @martinloop/mcp
+```
+
+Windows:
+
+```sh
 claude mcp add --transport stdio --scope user martin-loop -- cmd /c npx -y @martinloop/mcp
 ```
 

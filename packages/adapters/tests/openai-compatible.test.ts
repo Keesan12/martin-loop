@@ -202,27 +202,16 @@ describe("createOpenAiCompatibleAdapter", () => {
     });
     mockClose = close;
 
-    // Patch the URL to look like OpenRouter for header injection
     const adapter = createOpenAiCompatibleAdapter({
-      baseUrl: url,
+      baseUrl: `${url}/openrouter`,
       model: "deepseek/deepseek-chat",
-      apiKey: "sk-or-test",
-      fetchImpl: (input, init) => {
-        // Inject openrouter into URL string for header logic without redirecting
-        const modifiedInit = {
-          ...init,
-          headers: {
-            ...(init?.headers as Record<string, string>),
-            "HTTP-Referer": "https://martinloop.com",
-            "X-Title": "MartinLoop"
-          }
-        };
-        return fetch(input, modifiedInit);
-      }
+      apiKey: "sk-or-test"
     });
 
     const result = await adapter.execute(makeRequest() as any);
     expect(result.status).toBe("completed");
+    expect(capturedHeaders["http-referer"]).toBe("https://martinloop.com");
+    expect(capturedHeaders["x-title"]).toBe("MartinLoop");
   });
 
   it("uses known model pricing for deepseek/deepseek-chat", async () => {

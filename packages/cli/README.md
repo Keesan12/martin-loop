@@ -29,6 +29,13 @@ The CLI groups onboarding, readiness checks, governed execution, evidence review
 - `--json`: machine-readable payloads
 - `--quiet`: script-friendly primary identifier or path only
 
+## Install
+
+```sh
+npm install -g martin-loop
+# or run commands with npx martin-loop <command>
+```
+
 ## Recommended Flow
 
 ```sh

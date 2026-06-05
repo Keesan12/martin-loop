@@ -38,9 +38,14 @@ npx martin-loop dossier --latest
 
 `0.2.8` is intended to pass the local public release gates:
 
+- `pnpm install --frozen-lockfile`
 - `pnpm lint`
 - `pnpm test`
 - `pnpm build`
+- `pnpm public:copy-scan`
+- `pnpm public:git-surface`
 - `pnpm oss:validate`
 - `pnpm public:smoke`
+- `pnpm release:validate-local`
 - `pnpm release:validate:platforms`
+- `pnpm --filter @martinloop/mcp verify:release`

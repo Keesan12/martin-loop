@@ -388,7 +388,7 @@ async function collectRunStore(
     inspectedRuns: loopDirs.length,
     scanLimit: options.scanLimit,
     scanLimited: loopEntries.length > loopDirs.length,
-    totalRuns: loops.length,
+    totalRuns: loopEntries.length,
     latestRun: summarizeLoop(loops[0]),
     runsNeedingTriage: loops
       .filter((loop) => loop.status !== "completed" || loop.lifecycleState !== "completed")
