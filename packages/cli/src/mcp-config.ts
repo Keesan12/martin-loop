@@ -154,7 +154,7 @@ export async function installMcpConfig(
       `Refusing to overwrite existing MCP config: ${plan.targetPath}`,
       {
         suggestion:
-          "Use `martin mcp print-config` and merge the Martin Loop block into the existing host config."
+          "Use `martin-loop mcp print-config` and merge the Martin Loop block into the existing host config."
       }
     );
   }
@@ -354,7 +354,7 @@ function buildGenericConfigSnippet(
     JSON.stringify(
       {
         version: 1,
-        generatedBy: "martin mcp print-config",
+        generatedBy: "martin-loop mcp print-config",
         host: "generic",
         transport: input.transport,
         profile: input.profile,

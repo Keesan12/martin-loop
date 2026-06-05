@@ -424,7 +424,7 @@ async function loadLatestRunForCompactResource(runsRoot: string): Promise<{
         empty: true,
         warnings: [
           "No Martin run records were found yet.",
-          "Run `npx martin-loop demo`, then run a governed task or set MARTIN_LIVE=false for a no-spend local proof run."
+          "Run `npx martin-loop demo`, then run `npx martin-loop run ... --proof --verify <command>` for a no-spend local proof pass."
         ]
       };
     }
@@ -669,7 +669,7 @@ function compactEmptyState(kind: string, runsRoot: string, warnings: string[]): 
     status: "empty",
     runsRoot,
     summary: "No Martin run records are available yet.",
-    nextStep: "Run `martin doctor`, create the demo workspace with `npx martin-loop demo`, then run a no-spend stub task with MARTIN_LIVE=false.",
+    nextStep: "Run `npx martin-loop doctor`, create the demo workspace with `npx martin-loop demo`, then run `npx martin-loop run ... --proof --verify <command>`.",
     warnings
   };
 }

@@ -1,6 +1,6 @@
 # CLI Reference
 
-The published binary is `martin-loop`. Inside the workspace you may also see the shorter development alias `martin`, but public installs should assume `martin-loop`.
+The published binary is `martin-loop`. Public installs, docs, and examples should use `martin-loop`.
 
 ## Commands
 
@@ -33,6 +33,7 @@ npx martin-loop tour
 npx martin-loop doctor
 npx martin-loop session-start
 npx martin-loop preflight "Summarize the workspace and prove tests still pass" --verify "npm test"
+npx martin-loop run "Summarize the workspace and prove tests still pass" --proof --verify "npm test"
 ```
 
 ## Run Options
@@ -43,11 +44,12 @@ npx martin-loop preflight "Summarize the workspace and prove tests still pass" -
 --budget-usd <n>        Alias for --budget
 --soft-limit-usd <n>    Soft budget threshold in USD
 --verify <cmd>          Verifier command after each attempt
+--proof                 Use the no-spend proof adapter instead of a live coding CLI
 --unsafe-allow-unguarded-run
                         Bypass the local governance gate for this one run
 --max-iterations <n>    Maximum number of attempts
 --max-tokens <n>        Maximum token budget
---engine <name>         Adapter to use: claude or codex
+--engine <name>         Adapter to use: claude, codex, or openai
 --model <name>          Override the adapter model
 --cwd <path>            Repo root for the run
 --allow-path <glob>     Restrict writes to this path pattern; repeatable

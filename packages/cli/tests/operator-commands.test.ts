@@ -125,7 +125,7 @@ describe.sequential("operator commands", () => {
     expect(result.exitCode).toBe(0);
     expect(payload.command).toBe("start");
     expect(payload.bestNextCommand).toBeTypeOf("string");
-    expect(payload.recommendedFlow).toContain("martin doctor");
+    expect(payload.recommendedFlow).toContain("martin-loop doctor");
     expect(payload.hostBootstrap.host).toBe("codex");
     expect(payload.hostBootstrap.printConfigCommand).toContain("--host codex");
   });
@@ -136,7 +136,7 @@ describe.sequential("operator commands", () => {
 
     expect(result.exitCode).toBe(0);
     expect(payload.command).toBe("tour");
-    expect(payload.steps[0].command).toBe("martin start");
+    expect(payload.steps[0].command).toBe("martin-loop start");
     expect(payload.steps.at(-1).command).toContain("@martinloop/mcp");
   });
 

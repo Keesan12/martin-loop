@@ -4,7 +4,7 @@ Governed MCP server for AI coding agents with budgets, receipts, and review-read
 
 `@martinloop/mcp` is the standalone MartinLoop server for MCP hosts. It stays local-first and stdio-first, and it gives hosts one clear execution path: check readiness, plan the work, preflight the contract, run it, and inspect the result with enough evidence to decide what happens next.
 
-The root `martin-loop` package and the standalone `@martinloop/mcp` package move on separate version lines. For the current root release, see [MartinLoop 0.2.8 release notes](../../docs/release/OSS-0.2.8-RELEASE-NOTES.md).
+The root `martin-loop` package and the standalone `@martinloop/mcp` package move on separate version lines. For the current root release, see [MartinLoop 0.2.9 release notes](../../docs/release/OSS-0.2.9-RELEASE-NOTES.md).
 
 ## What is new in 0.2.7
 
@@ -152,7 +152,8 @@ Registry/server identifier: `io.github.Keesan12/martin-loop`
 - `martin_plan`, `martin_doctor`, `martin_preflight`, `martin_status`, `martin_logs`, `martin_dossier`, `martin_eval`, and the `martin_get_*` family are planning or inspection surfaces.
 - `martin_pause`, `martin_cancel`, `martin_continue`, and `martin_create_pr` are explicit follow-on control helpers and stay out of the default `minimal` profile.
 - Live runs require `claude` or `codex` on `PATH`.
-- Stub or smoke flows use `MARTIN_LIVE=false`.
+- CLI proof flows use `martin-loop run ... --proof`.
+- Host-managed smoke flows can still set `MARTIN_LIVE=false`.
 - Paths stay bounded to the configured workspace root and runs root.
 
 ## Debugging

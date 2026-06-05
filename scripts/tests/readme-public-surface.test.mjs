@@ -49,6 +49,10 @@ async function readRepoFile(relativePath) {
   return readFile(path.join(ROOT_DIR, relativePath), "utf8");
 }
 
+async function readRootManifest() {
+  return JSON.parse(await readRepoFile("package.json"));
+}
+
 async function collectMarkdownFiles(relativePath) {
   const fullPath = path.join(ROOT_DIR, relativePath);
   const entries = await readdir(fullPath, { withFileTypes: true });
@@ -103,6 +107,7 @@ function extractLocalMarkdownLinks(contents) {
 
 test("root README is a public product entry point", async () => {
   const readme = await readRepoFile("README.md");
+  const manifest = await readRootManifest();
 
   const expectedOrder = [
     "## Why MartinLoop",
@@ -128,10 +133,11 @@ test("root README is a public product entry point", async () => {
 
   assert.match(readme, /The open-source control plane for AI coding agents/i);
   assert.match(readme, /npx martin-loop demo/);
-  assert.match(readme, /MARTIN_LIVE=false npx martin-loop run/);
+  assert.match(readme, /npx martin-loop run .* --proof --verify "npm test"/);
   assert.match(readme, /npx martin-loop dossier --latest/);
   assert.match(readme, /npx -y @martinloop\/mcp/);
   assert.match(readme, /import \{ MartinLoop, createClaudeCliAdapter \} from "martin-loop"/);
+  assert.match(readme, new RegExp(`docs/release/OSS-${manifest.version.replace(/\./g, "\\.")}-RELEASE-NOTES\\.md`));
   assert.doesNotMatch(readme, /What's New In/i);
 });
 

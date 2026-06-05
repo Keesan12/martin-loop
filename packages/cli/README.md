@@ -1,8 +1,8 @@
 # @martin/cli
 
-CLI implementation for MartinLoop.
+Workspace package that powers the public `martin-loop` binary.
 
-The published binary is `martin-loop`. Inside this workspace package you may also see the local development alias `martin`, but the public install target remains `martin-loop`.
+The public install target is `martin-loop`. External users should install and invoke `martin-loop`.
 
 ## Product Flow
 

@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import {
   assertPackedSurface,
   assertRootVersionPolicy,
+  assertVendoredCliManifest,
   runRootReleaseGuard,
 } from "../root-release-guard.mjs";
 
@@ -44,4 +45,24 @@ test("assertPackedSurface rejects unexpected non-OSS paths", () => {
       ]),
     /unexpected path/i,
   );
+});
+
+test("assertPackedSurface rejects forbidden vendored implementation paths", () => {
+  assert.throws(
+    () =>
+      assertPackedSurface([
+        "package.json",
+        "README.md",
+        "CODE_OF_CONDUCT.md",
+        "dist/index.js",
+        "dist/index.d.ts",
+        "dist/bin/martin-loop.js",
+        "dist/vendor/cli/bin/martin.js",
+      ]),
+    /forbidden vendored implementation path/i,
+  );
+});
+
+test("assertVendoredCliManifest accepts the sanitized vendored CLI package manifest", async () => {
+  await assertVendoredCliManifest(ROOT_DIR);
 });

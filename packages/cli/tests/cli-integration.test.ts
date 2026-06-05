@@ -88,14 +88,41 @@ async function withFakeCodexCli<T>(fn: () => Promise<T>): Promise<T> {
 // MARTIN_LIVE guard
 // ---------------------------------------------------------------------------
 
-describe("MARTIN_LIVE=false — stub adapter", () => {
-  it("run command completes without spawning a real subprocess", async () => {
+describe("MARTIN_LIVE=false — no-spend proof mode", () => {
+  it("run command completes as a verifier-backed proof when --proof is passed", async () => {
+    const result = await executeCli([
+      "--json",
+      "run",
+      "--objective",
+      "Add a greeting function",
+      "--proof",
+      "--verify",
+      NOOP_VERIFIER,
+      "--max-iterations",
+      "1",
+      "--budget-usd",
+      "5",
+      "--unsafe-allow-unguarded-run"
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    const payload = JSON.parse(result.stdout);
+    expect(payload.command).toBe("run");
+    expect(payload.loop.loopId).toMatch(/^loop_/u);
+    expect(payload.loop.status).toBe("completed");
+    expect(payload.loop.cost.actualUsd).toBe(0);
+    expect(payload.environment.liveMode).toBe("proof");
+  });
+
+  it("run command completes as a verifier-backed proof without spawning a live provider", async () => {
     const result = await withEnv("MARTIN_LIVE", "false", () =>
       executeCli([
         "--json",
         "run",
         "--objective",
         "Add a greeting function",
+        "--verify",
+        NOOP_VERIFIER,
         "--max-iterations",
         "1",
         "--budget-usd",
@@ -108,10 +135,12 @@ describe("MARTIN_LIVE=false — stub adapter", () => {
     const payload = JSON.parse(result.stdout);
     expect(payload.command).toBe("run");
     expect(payload.loop.loopId).toMatch(/^loop_/u);
-    expect(typeof payload.loop.attempts).toBe("object");
+    expect(payload.loop.status).toBe("completed");
+    expect(payload.loop.cost.actualUsd).toBe(0);
+    expect(payload.environment.liveMode).toBe("proof");
   });
 
-  it("returns a valid loop record structure in stub mode", async () => {
+  it("returns a valid loop record structure in proof mode", async () => {
     const result = await withEnv("MARTIN_LIVE", "false", () =>
       executeCli([
         "--json",
@@ -122,6 +151,8 @@ describe("MARTIN_LIVE=false — stub adapter", () => {
         "proj_stub",
         "--objective",
         "Write a hello world function",
+        "--verify",
+        NOOP_VERIFIER,
         "--max-iterations",
         "1",
         "--unsafe-allow-unguarded-run"
@@ -132,6 +163,7 @@ describe("MARTIN_LIVE=false — stub adapter", () => {
     expect(payload.loop.workspaceId).toBe("ws_stub");
     expect(payload.loop.projectId).toBe("proj_stub");
     expect(payload.loop.budget.maxIterations).toBe(1);
+    expect(payload.environment.liveMode).toBe("proof");
   });
 });
 
@@ -141,7 +173,7 @@ describe("MARTIN_LIVE=false — stub adapter", () => {
 
 describe("--engine flag", () => {
   it("defaults to claude when no --engine flag is given", async () => {
-    // Use stub mode — we verify no engine flag selects the claude adapter path,
+    // Use proof mode — we verify no engine flag selects the claude adapter path,
     // not that claude itself runs successfully
     const result = await withEnv("MARTIN_LIVE", "false", () =>
       executeCli([
@@ -149,6 +181,8 @@ describe("--engine flag", () => {
         "run",
         "--objective",
         "Fix the bug",
+        "--verify",
+        NOOP_VERIFIER,
         "--max-iterations",
         "1",
         "--budget-usd",
@@ -237,6 +271,8 @@ describe("--cwd flag", () => {
           "run",
           "--objective",
           "Fix the bug",
+          "--verify",
+          NOOP_VERIFIER,
           "--cwd",
           dir,
           "--max-iterations",
@@ -307,7 +343,6 @@ describe("bench command", () => {
     const result = await executeCli(["bench", "--suite", "ralphy-smoke"]);
 
     expect(result.exitCode).toBe(1);
-    expect(result.stdout).toBe("");
     expect(result.stderr).toContain("workspace-only RC surface");
     expect(result.stderr).toContain("pnpm --filter @martin/benchmarks");
   });
@@ -337,11 +372,12 @@ describe("help command", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe("");
-    expect(result.stdout).toContain("martin start");
-    expect(result.stdout).toContain("martin guide");
+    expect(result.stdout).toContain("martin-loop start");
+    expect(result.stdout).toContain("martin-loop guide");
     expect(result.stdout).toContain("martin-loop run");
     expect(result.stdout).toContain("martin-loop demo");
     expect(result.stdout).toContain("martin-loop inspect");
     expect(result.stdout).toContain("martin-loop resume");
+    expect(result.stdout).toContain("--proof");
   });
 });

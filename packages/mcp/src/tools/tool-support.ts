@@ -129,7 +129,7 @@ export interface CliAvailability {
 
 export interface ExecutionMode {
   liveMode: boolean;
-  mode: "live" | "stub";
+  mode: "live" | "proof";
   detail: string;
 }
 
@@ -163,10 +163,10 @@ export function resolveExecutionMode(): ExecutionMode {
   const liveMode = process.env.MARTIN_LIVE !== "false";
   return {
     liveMode,
-    mode: liveMode ? "live" : "stub",
+    mode: liveMode ? "live" : "proof",
     detail: liveMode
       ? "Live CLI execution is enabled."
-      : "Stub mode is active because MARTIN_LIVE=false."
+      : "Proof mode is active because MARTIN_LIVE=false."
   };
 }
 

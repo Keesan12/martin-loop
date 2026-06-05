@@ -141,7 +141,7 @@ export function toToolFailure(error: unknown): ToolFailure {
       code: "engine_unavailable",
       category: "environment",
       message,
-      suggestion: "Install the requested CLI or set MARTIN_LIVE=false for stub execution.",
+      suggestion: "Install the requested CLI or set MARTIN_LIVE=false for a no-spend proof run.",
       retryable: false
     };
   }

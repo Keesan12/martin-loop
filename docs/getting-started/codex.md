@@ -24,7 +24,7 @@ npx martin-loop run "fix the auth regression" \
 npx martin-loop demo
 cd martin-loop-demo
 npm install
-MARTIN_LIVE=false npx martin-loop run "Summarize the demo workspace and confirm the verifier is green" --verify "npm test"
+npx martin-loop run "Summarize the demo workspace and confirm the verifier is green" --proof --verify "npm test"
 npx martin-loop dossier --latest
 ```
 

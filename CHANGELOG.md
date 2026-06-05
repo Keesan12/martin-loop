@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.9]
+
+### Fixed
+- **No-spend proof runs now complete honestly** - `martin-loop run ... --proof` no longer misclassifies a clean verifier-only pass as `no_code_change`, which previously cascaded into a false `budget_exit`.
+- **Portable Windows Codex execution** - Windows command resolution now handles npm-style `.cmd` shims correctly, including real `codex.cmd` and verifier commands launched through npm wrappers.
+- **Hosted OpenAI defaults** - `--engine openai` now targets the hosted OpenAI endpoint by default, so local proofs do not require `MARTIN_OPENAI_BASE_URL` just to avoid a localhost misroute.
+- **Claude live runs honor provider permissions again** - the public Claude adapter no longer force-adds `--dangerously-skip-permissions` on live governed runs.
+
+### Changed
+- Public CLI guidance now consistently uses `martin-loop` in help, tour, onboarding, workflow receipts, and MCP config hints.
+- The public root tarball no longer exposes the vendored internal CLI bin surface inside `dist/vendor/cli/package.json`.
+
 ## [0.2.8]
 
 ### Added

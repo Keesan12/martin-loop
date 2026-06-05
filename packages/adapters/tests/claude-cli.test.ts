@@ -4,7 +4,7 @@ import type { ChildProcess, SpawnOptions } from "node:child_process";
 
 import { describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -101,6 +101,21 @@ function createScriptedSpawn(
 
     return child as ChildProcess;
   };
+}
+
+async function withPathPrefix<T>(directory: string, fn: () => Promise<T>): Promise<T> {
+  const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === "path") ?? "PATH";
+  const original = process.env[pathKey] ?? "";
+  process.env[pathKey] =
+    original.length > 0
+      ? `${directory}${process.platform === "win32" ? ";" : ":"}${original}`
+      : directory;
+
+  try {
+    return await fn();
+  } finally {
+    process.env[pathKey] = original;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -342,21 +357,34 @@ describe("splitCommand", () => {
 });
 
 describe("createSpawnPlan", () => {
-  it("wraps absolute Windows .cmd verifiers with cmd.exe", () => {
+  it("unwraps Windows npm-style .cmd shims into a launchable host", async () => {
     if (process.platform !== "win32") {
       expect(true).toBe(true);
       return;
     }
 
-    const pnpmPath = "C:\\Users\\Torram\\AppData\\Roaming\\npm\\pnpm.cmd";
-    const plan = createSpawnPlan(pnpmPath, ["verify:shared-baseline"], process.cwd(), false);
+    const tempRoot = await mkdtemp(join(tmpdir(), "martin-pnpm-shim-"));
+    const pnpmPath = join(tempRoot, "pnpm.cmd");
+    const scriptPath = join(tempRoot, "node_modules", "pnpm", "bin", "pnpm.cjs");
 
-    expect(plan.command.toLowerCase()).toContain("cmd.exe");
-    expect(plan.args[0]).toBe("/d");
-    expect(plan.args[1]).toBe("/s");
-    expect(plan.args[2]).toBe("/c");
-    expect(plan.args[3]).toContain("pnpm.cmd");
-    expect(plan.args[3]).toContain("verify:shared-baseline");
+    try {
+      await mkdir(join(tempRoot, "node_modules", "pnpm", "bin"), { recursive: true });
+      await writeFile(scriptPath, "console.log('pnpm shim');\n", "utf8");
+      await writeFile(
+        pnpmPath,
+        '@SETLOCAL\r\n@SET "_prog=node"\r\n"%_prog%" "%dp0%\\node_modules\\pnpm\\bin\\pnpm.cjs" %*\r\n',
+        "utf8"
+      );
+
+      const plan = createSpawnPlan(pnpmPath, ["verify:shared-baseline"], process.cwd(), false);
+
+      expect(plan.command.toLowerCase()).toMatch(/node(\.exe)?$/);
+      expect(plan.args[0]?.toLowerCase()).toContain("pnpm");
+      expect(plan.args[0]?.toLowerCase()).toContain("node_modules");
+      expect(plan.args).toContain("verify:shared-baseline");
+    } finally {
+      await rm(tempRoot, { force: true, recursive: true });
+    }
   });
 
   it("falls back to cmd.exe shell when command is not found in PATH on Windows (regression: loop_b6800tz2)", () => {
@@ -424,6 +452,85 @@ describe("runSubprocess", () => {
     expect(result.stderr).toBe("");
     expect(result.timedOut).toBe(false);
   });
+
+  it("launches Windows batch commands through a working shell path", async () => {
+    if (process.platform !== "win32") {
+      return;
+    }
+
+    const directory = await mkdtemp(join(tmpdir(), "martin-run-subprocess-batch-"));
+    const commandPath = join(directory, "fake-cli.cmd");
+
+    try {
+      await writeFile(commandPath, "@echo off\r\necho OK:%1,%2\r\n", "utf8");
+
+      const result = await runSubprocess(commandPath, ["foo", "bar"], {
+        cwd: directory,
+        timeoutMs: 5_000
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.trim()).toBe("OK:foo,bar");
+      expect(result.stderr).toBe("");
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("unwraps Windows npm-style command shims so verifier launches can run", async () => {
+    if (process.platform !== "win32") {
+      return;
+    }
+
+    const directory = await mkdtemp(join(tmpdir(), "martin-run-subprocess-shim-"));
+    const shimPath = join(directory, "fake-cli.cmd");
+    const shimModuleDirectory = join(directory, "node_modules", "fake-cli", "bin");
+    const scriptPath = join(shimModuleDirectory, "fake-cli.js");
+
+    try {
+      await mkdir(shimModuleDirectory, { recursive: true });
+      await writeFile(
+        shimPath,
+        [
+          "@ECHO off",
+          "GOTO start",
+          ":find_dp0",
+          "SET dp0=%~dp0",
+          "EXIT /b",
+          ":start",
+          "SETLOCAL",
+          "CALL :find_dp0",
+          'IF EXIST "%dp0%\\node.exe" (',
+          '  SET "_prog=%dp0%\\node.exe"',
+          ") ELSE (",
+          '  SET "_prog=node"',
+          '  SET PATHEXT=%PATHEXT:;.JS;=;%',
+          ")",
+          'endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%dp0%\\node_modules\\fake-cli\\bin\\fake-cli.js" %*',
+          ""
+        ].join("\r\n"),
+        "utf8"
+      );
+      await writeFile(
+        scriptPath,
+        'process.stdout.write(`ARGS:${process.argv.slice(2).join(",")}`);',
+        "utf8"
+      );
+
+      const result = await withPathPrefix(directory, async () =>
+        runSubprocess("fake-cli", ["alpha", "beta"], {
+          cwd: directory,
+          timeoutMs: 5_000
+        })
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.trim()).toBe("ARGS:alpha,beta");
+      expect(result.stderr).toBe("");
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
 });
 
 describe("createVerifierOnlyAdapter", () => {
@@ -472,6 +579,51 @@ describe("createVerifierOnlyAdapter", () => {
       await rm(directory, { force: true, recursive: true });
     }
   });
+
+  it("ignores pre-existing dirty files when the verifier itself makes no new edits", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-verify-only-dirty-"));
+
+    try {
+      spawnSync("git", ["init"], { cwd: directory, stdio: "ignore" });
+      await writeFile(join(directory, "tracked.txt"), "original", "utf8");
+      spawnSync("git", ["add", "tracked.txt"], { cwd: directory, stdio: "ignore" });
+      spawnSync(
+        "git",
+        [
+          "-c",
+          "user.email=martin@example.com",
+          "-c",
+          "user.name=Martin Test",
+          "commit",
+          "-m",
+          "seed"
+        ],
+        { cwd: directory, stdio: "ignore" }
+      );
+      await writeFile(join(directory, "tracked.txt"), "pre-existing dirty change", "utf8");
+
+      const adapter = createVerifierOnlyAdapter({ workingDirectory: directory });
+      const result = await adapter.execute(
+        makeRequest({
+          context: {
+            taskTitle: "verify only",
+            objective: "Run verification only",
+            verificationPlan: [`"${process.execPath}" -e "process.exit(0)"`],
+            mutationMode: "verify_only",
+            focus: "verify only",
+            remainingBudgetUsd: 8,
+            remainingIterations: 1,
+            remainingTokens: 10_000
+          }
+        })
+      );
+
+      expect(result.verification.passed).toBe(true);
+      expect(result.execution?.changedFiles).toEqual([]);
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -507,6 +659,19 @@ describe("createClaudeCliAdapter", () => {
 
     expect(result.status).toBe("failed");
     expect(result.failure?.message).toContain("environment_mismatch");
+  });
+
+  it("does not force-skip Claude permissions by default", async () => {
+    const calls: SpawnCall[] = [];
+    const adapter = createClaudeCliAdapter({
+      spawnImpl: createScriptedSpawn(calls)
+    });
+
+    const result = await adapter.execute(makeRequest());
+
+    expect(result.status).toBe("completed");
+    expect(calls[0]?.command).toBe("claude");
+    expect(calls[0]?.args).not.toContain("--dangerously-skip-permissions");
   });
 });
 

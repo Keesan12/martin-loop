@@ -471,6 +471,68 @@ describe("runMartin", () => {
     expect(result.loop.attempts[0]?.failureClass).toBeUndefined();
   });
 
+  it("allows proof adapters to complete without edits when verification passes", async () => {
+    const adapter: MartinAdapter = {
+      adapterId: "direct:verifier:verify-only",
+      kind: "direct-provider",
+      label: "Verifier-only proof adapter",
+      metadata: {
+        providerId: "openai",
+        model: "gpt-5-mini"
+      },
+      async execute() {
+        return {
+          status: "completed",
+          summary: "Verified the workspace without code changes.",
+          usage: {
+            actualUsd: 0,
+            tokensIn: 0,
+            tokensOut: 0
+          },
+          verification: {
+            passed: true,
+            summary: "Verification passed without changes."
+          },
+          execution: {
+            changedFiles: []
+          }
+        };
+      }
+    };
+
+    const result = await runMartin({
+      workspaceId: "ws_ops",
+      projectId: "proj_runtime",
+      task: {
+        title: "Prove the verifier path",
+        objective: "Run the proof adapter without making edits.",
+        verificationPlan: ["pnpm --filter @martin/contracts test"],
+        allowedPaths: ["packages/contracts/**"]
+      },
+      budget: {
+        maxUsd: 10,
+        softLimitUsd: 6,
+        maxIterations: 1,
+        maxTokens: 2_000
+      },
+      adapter,
+      now: createTimestampSource([
+        "2026-05-11T12:10:00.000Z",
+        "2026-05-11T12:10:01.000Z",
+        "2026-05-11T12:10:02.000Z",
+        "2026-05-11T12:10:03.000Z",
+        "2026-05-11T12:10:04.000Z"
+      ]),
+      idFactory: createIdFactory()
+    });
+
+    expect(result.decision.lifecycleState).toBe("completed");
+    expect(result.loop.lifecycleState).toBe("completed");
+    expect(result.loop.status).toBe("completed");
+    expect(result.loop.attempts).toHaveLength(1);
+    expect(result.loop.attempts[0]?.failureClass).toBeUndefined();
+  });
+
   it("exits on budget pressure after repeated failed attempts", async () => {
     const timestamps = createTimestampSource([
       "2026-03-27T16:10:00.000Z",
