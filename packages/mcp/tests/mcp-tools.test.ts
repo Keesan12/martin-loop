@@ -8,10 +8,13 @@ import { describe, expect, it, vi } from "vitest";
 import { getStatusTool } from "../src/tools/get-status.js";
 import { inspectLoopTool } from "../src/tools/inspect-loop.js";
 import { martinDoctorTool } from "../src/tools/doctor.js";
+import { martinEvalTool } from "../src/tools/eval.js";
 import { martinGetVerificationResultsTool } from "../src/tools/get-verification-results.js";
 import { martinListRunsTool } from "../src/tools/list-runs.js";
 import { martinPreflightTool } from "../src/tools/preflight.js";
+import { martinCreatePrTool } from "../src/tools/pr-tools.js";
 import { runLoopTool } from "../src/tools/run-loop.js";
+import { martinRunDossierTool } from "../src/tools/run-dossier.js";
 import { martinTriageRunsTool } from "../src/tools/triage-runs.js";
 import { recordMcpWorkflowStep } from "../src/workflow-state.js";
 
@@ -60,6 +63,28 @@ async function withRunsRoot<T>(fn: (runsRoot: string) => Promise<T>): Promise<T>
 
     await rm(runsRoot, { recursive: true, force: true }).catch(() => {});
   }
+}
+
+async function withWorkspaceRoot<T>(fn: (workspaceRoot: string) => Promise<T>): Promise<T> {
+  const previousWorkspaceRoot = process.env.MARTIN_MCP_WORKSPACE_ROOT;
+  const workspaceRoot = await mkdtemp(join(tmpdir(), "martin-mcp-workspace-"));
+  process.env.MARTIN_MCP_WORKSPACE_ROOT = workspaceRoot;
+  try {
+    return await fn(workspaceRoot);
+  } finally {
+    if (previousWorkspaceRoot === undefined) {
+      delete process.env.MARTIN_MCP_WORKSPACE_ROOT;
+    } else {
+      process.env.MARTIN_MCP_WORKSPACE_ROOT = previousWorkspaceRoot;
+    }
+
+    await rm(workspaceRoot, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+async function writeLoopRecord(runsRoot: string, loop: ReturnType<typeof makeLoopRecord>): Promise<void> {
+  await mkdir(join(runsRoot, loop.loopId), { recursive: true });
+  await writeFile(join(runsRoot, loop.loopId, "loop-record.json"), JSON.stringify(loop), "utf8");
 }
 
 async function primeRunGate(
@@ -1114,6 +1139,61 @@ describe("runLoopTool", () => {
           process.env.MARTIN_LIVE = originalEnv;
         }
       }
+    });
+  });
+
+  it("uses a persisted repoRoot when it remains inside the trusted workspace", async () => {
+    await withWorkspaceRoot(async (workspaceRoot) => {
+      await withRunsRoot(async (runsRoot) => {
+        const loop = makeLoopRecord();
+        loop.task = {
+          ...loop.task,
+          repoRoot: workspaceRoot
+        };
+
+        await writeLoopRecord(runsRoot, loop);
+
+        await expect(martinEvalTool({ loopId: loop.loopId })).resolves.toMatchObject({
+          loopId: loop.loopId
+        });
+        await expect(martinRunDossierTool({ loopId: loop.loopId })).resolves.toMatchObject({
+          loop: { loopId: loop.loopId }
+        });
+        await expect(martinCreatePrTool({ loopId: loop.loopId, execute: false })).resolves.toMatchObject({
+          loopId: loop.loopId,
+          created: false,
+          execute: false
+        });
+      });
+    });
+  });
+
+  it("rejects eval, dossier, and PR preview when a persisted repoRoot escapes the trusted workspace", async () => {
+    await withWorkspaceRoot(async () => {
+      await withRunsRoot(async (runsRoot) => {
+        const outsideRepoRoot = await mkdtemp(join(tmpdir(), "martin-mcp-outside-repo-"));
+        try {
+          const loop = makeLoopRecord();
+          loop.task = {
+            ...loop.task,
+            repoRoot: outsideRepoRoot
+          };
+
+          await writeLoopRecord(runsRoot, loop);
+
+          await expect(martinEvalTool({ loopId: loop.loopId })).rejects.toThrow(
+            "Run record points outside the trusted workspace."
+          );
+          await expect(martinRunDossierTool({ loopId: loop.loopId })).rejects.toThrow(
+            "Run record points outside the trusted workspace."
+          );
+          await expect(martinCreatePrTool({ loopId: loop.loopId, execute: false })).rejects.toThrow(
+            "Run record points outside the trusted workspace."
+          );
+        } finally {
+          await rm(outsideRepoRoot, { recursive: true, force: true }).catch(() => {});
+        }
+      });
     });
   });
 });
