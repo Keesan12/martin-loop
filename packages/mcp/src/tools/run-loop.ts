@@ -68,14 +68,16 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
   const allowedPaths = normalizeSafePathPatterns(input.allowedPaths, "allowedPaths");
   const deniedPaths = normalizeSafePathPatterns(input.deniedPaths, "deniedPaths");
   const executionMode = resolveExecutionMode();
-  const engineAvailability = await getEngineAvailability(engine, workingDirectory);
+  if (executionMode.liveMode) {
+    const engineAvailability = await getEngineAvailability(engine, workingDirectory);
 
-  if (executionMode.liveMode && !engineAvailability.launchReady) {
-    throw new MartinToolError("engine_unavailable", `Engine '${engine}' is not launch-ready.`, {
-      category: "environment",
-      suggestion: "Install the requested CLI or set MARTIN_LIVE=false for a no-spend proof run.",
-      retryable: false
-    });
+    if (!engineAvailability.launchReady) {
+      throw new MartinToolError("engine_unavailable", `Engine '${engine}' is not launch-ready.`, {
+        category: "environment",
+        suggestion: "Install the requested CLI or set MARTIN_LIVE=false for a no-spend proof run.",
+        retryable: false
+      });
+    }
   }
 
   const adapter =
