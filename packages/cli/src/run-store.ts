@@ -112,7 +112,7 @@ export interface CliEnvironment {
   workingDirectory: string;
   runsRoot: string;
   engine: "claude" | "codex";
-  liveMode: "live" | "stub";
+  liveMode: "live" | "proof";
 }
 
 export interface PersistedLoopDetail {
@@ -172,7 +172,7 @@ export function resolveCliEnvironment(input: {
     workingDirectory,
     runsRoot,
     engine,
-    liveMode: env.MARTIN_LIVE === "false" ? "stub" : "live"
+    liveMode: env.MARTIN_LIVE === "false" ? "proof" : "live"
   };
 }
 

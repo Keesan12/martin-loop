@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
-import { delimiter, extname, isAbsolute, join, resolve } from "node:path";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { delimiter, dirname, extname, isAbsolute, join, resolve } from "node:path";
 
 import { diffStatsFromNumstat } from "./runtime-support.js";
 
@@ -20,6 +20,11 @@ export interface SubprocessResult {
 export interface VerificationOutcome {
   passed: boolean;
   summary: string;
+}
+
+export interface CliCommandProbe extends SubprocessResult {
+  ready: boolean;
+  detail: string;
 }
 
 export async function runSubprocess(
@@ -174,6 +179,37 @@ export async function runVerification(
   return { passed: true, summary: `All ${String(steps.length)} verification step(s) passed.` };
 }
 
+export async function probeCliCommand(
+  command: string,
+  args: string[],
+  options: { cwd: string; timeoutMs: number }
+): Promise<CliCommandProbe> {
+  const result = await runSubprocess(command, args, options);
+
+  if (result.timedOut) {
+    return {
+      ...result,
+      ready: false,
+      detail: `${command} launch check timed out after ${String(options.timeoutMs)}ms.`
+    };
+  }
+
+  if (result.exitCode !== 0) {
+    const detail = truncate(result.stderr.trim() || result.stdout.trim() || `Exit code ${String(result.exitCode)}`, 500);
+    return {
+      ...result,
+      ready: false,
+      detail: `${command} launch check failed: ${detail}`
+    };
+  }
+
+  return {
+    ...result,
+    ready: true,
+    detail: `${command} launch check passed.`
+  };
+}
+
 export async function readGitExecutionArtifacts(
   repoRoot: string,
   timeoutMs: number,
@@ -209,12 +245,12 @@ export async function readGitExecutionArtifacts(
   };
 }
 
-export interface SpawnPlan {
+interface SpawnPlan {
   command: string;
   args: string[];
 }
 
-export function createSpawnPlan(
+function createSpawnPlan(
   command: string,
   args: string[],
   cwd: string,
@@ -224,29 +260,35 @@ export function createSpawnPlan(
     return { command, args };
   }
 
-  // Try to resolve the command to an absolute path using the Windows PATH.
-  const resolvedOrUndefined = isAbsolute(command) ? command : resolveWindowsCommand(command, cwd);
-
-  // If resolution failed (command not found in PATH), fall back to cmd.exe shell execution so
-  // Windows can resolve the command itself — this covers cases like `pnpm` where the npm global
-  // bin directory is present in the shell PATH but not yet visible to this Node.js process.
-  if (resolvedOrUndefined === undefined) {
-    const cmdStr = [quoteWindowsCmdArg(command), ...args.map(quoteWindowsCmdArg)].join(" ");
-    return {
-      command: process.env.ComSpec || "cmd.exe",
-      args: ["/d", "/s", "/c", cmdStr]
-    };
+  const resolved = isAbsolute(command) ? command : resolveWindowsCommand(command, cwd);
+  if (!resolved) {
+    return { command, args };
   }
 
-  const extension = extname(resolvedOrUndefined).toLowerCase();
+  const extension = extname(resolved).toLowerCase();
   if (extension === ".cmd" || extension === ".bat") {
+    const nodeShim = resolveWindowsNodeShim(resolved);
+    if (nodeShim) {
+      return {
+        command: nodeShim.nodeCommand,
+        args: [nodeShim.scriptPath, ...args]
+      };
+    }
+
     return {
-      command: process.env.ComSpec || "cmd.exe",
-      args: ["/d", "/s", "/c", [quoteWindowsCmdArg(resolvedOrUndefined), ...args.map(quoteWindowsCmdArg)].join(" ")]
+      command: resolveWindowsPowerShellHost(),
+      args: [
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        buildPowerShellBatchInvocation(resolved, args)
+      ]
     };
   }
 
-  return { command: resolvedOrUndefined, args };
+  return { command: resolved, args };
 }
 
 function resolveWindowsCommand(command: string, cwd: string): string | undefined {
@@ -292,15 +334,53 @@ function windowsPathDirectories(): string[] {
     .filter(Boolean);
 }
 
-function quoteWindowsCmdArg(value: string): string {
+function resolveWindowsNodeShim(
+  shimPath: string
+): { nodeCommand: string; scriptPath: string } | undefined {
+  try {
+    const contents = readFileSync(shimPath, "utf8");
+    const scriptMatch = contents.match(/"%_prog%"\s+"%dp0%\\([^"]+)"\s+%\*/iu);
+    const relativeScriptPath = scriptMatch?.[1];
+    if (!relativeScriptPath) {
+      return undefined;
+    }
+
+    const scriptPath = resolve(dirname(shimPath), relativeScriptPath.replace(/\\/gu, "/"));
+    if (!existsSync(scriptPath)) {
+      return undefined;
+    }
+
+    const bundledNode = join(dirname(shimPath), "node.exe");
+    return {
+      nodeCommand: existsSync(bundledNode) ? bundledNode : "node",
+      scriptPath
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function resolveWindowsPowerShellHost(): string {
+  const systemRoot = process.env.SystemRoot?.trim();
+  if (systemRoot) {
+    const bundled = join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+    if (existsSync(bundled)) {
+      return bundled;
+    }
+  }
+
+  return "powershell.exe";
+}
+
+function buildPowerShellBatchInvocation(commandPath: string, args: string[]): string {
+  const quotedCommand = quotePowerShellArg(commandPath);
+  const quotedArgs = args.map(quotePowerShellArg).join(" ");
+  return quotedArgs.length > 0 ? `& ${quotedCommand} ${quotedArgs}` : `& ${quotedCommand}`;
+}
+
+function quotePowerShellArg(value: string): string {
   const normalized = value.replace(/\r?\n/gu, " ");
-  const escaped = normalized
-    .replace(/\^/gu, "^^")
-    .replace(/"/gu, '^"')
-    .replace(/%/gu, "%%")
-    .replace(/!/gu, "^^!")
-    .replace(/[&|<>()]/gu, (match) => `^${match}`);
-  return `"${escaped}"`;
+  return `'${normalized.replace(/'/gu, "''")}'`;
 }
 
 export function splitCommand(command: string): string[] {

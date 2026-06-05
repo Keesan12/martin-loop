@@ -8,7 +8,7 @@
   <circle cx="62" cy="19" r="6" fill="#28c840"/>
   <text x="390" y="24" text-anchor="middle" fill="#8b949e" font-family="SF Mono, Cascadia Code, Consolas, monospace" font-size="12">martin-loop - governed AI coding runtime</text>
   <g font-family="SF Mono, Cascadia Code, Consolas, monospace" font-size="13">
-    <text x="24" y="70" fill="#3fb950">$ martin run "repair flaky CI gate" --budget 5 --verify "pnpm test"</text>
+    <text x="24" y="70" fill="#3fb950">$ martin-loop run "repair flaky CI gate" --budget 5 --verify "pnpm test"</text>
     <text x="24" y="104" fill="#8b949e">[policy] loaded martin.config.yaml defaults and CLI overrides</text>
     <text x="24" y="130" fill="#79c0ff">[leash] verifier command allowed; secret scan clean; file scope checked</text>
     <text x="24" y="156" fill="#d29922">[budget] preflight estimate within remaining budget</text>
@@ -18,6 +18,6 @@
     <text x="24" y="276" fill="#bc8cff">[record] appended JSONL loop record to ~/.martin/runs/ws_default.jsonl</text>
     <rect x="22" y="318" width="650" height="76" rx="8" fill="#0e1a2e" stroke="#238636"/>
     <text x="38" y="350" fill="#e6edf3">summary: budget respected, verifier passed, run record written</text>
-    <text x="38" y="376" fill="#8b949e">next: martin inspect --file ~/.martin/runs/ws_default.jsonl</text>
+    <text x="38" y="376" fill="#8b949e">next: martin-loop inspect --file ~/.martin/runs/ws_default.jsonl</text>
   </g>
 </svg>

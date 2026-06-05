@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { loadDetailedLoopRecord } from "./run-store.js";
 import { martinRunDossierTool, type MartinRunDossierInput } from "./run-dossier.js";
 import { martinEvalTool } from "./eval.js";
-import { detectCliAvailability } from "./tool-support.js";
+import { detectCliAvailabilitySync } from "./tool-support.js";
 import { MartinToolError } from "./tool-errors.js";
 
 export interface MartinPrSummaryOutput {
@@ -74,7 +74,7 @@ export async function martinCreatePrTool(
     };
   }
 
-  const gh = detectCliAvailability("gh");
+  const gh = detectCliAvailabilitySync("gh");
   if (!gh.available) {
     throw new MartinToolError("engine_unavailable", "GitHub CLI is not available on PATH.", {
       category: "environment",

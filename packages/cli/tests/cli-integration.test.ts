@@ -3,7 +3,7 @@
  * and the MARTIN_LIVE guard introduced with the real adapter.
  */
 
-import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -88,8 +88,8 @@ async function withFakeCodexCli<T>(fn: () => Promise<T>): Promise<T> {
 // MARTIN_LIVE guard
 // ---------------------------------------------------------------------------
 
-describe("MARTIN_LIVE=false — stub adapter", () => {
-  it("run command completes without spawning a real subprocess", async () => {
+describe("MARTIN_LIVE=false — no-spend proof mode", () => {
+  it("run command completes without requiring a live provider", async () => {
     const result = await withEnv("MARTIN_LIVE", "false", () =>
       executeCli([
         "--json",
@@ -107,10 +107,12 @@ describe("MARTIN_LIVE=false — stub adapter", () => {
     const payload = JSON.parse(result.stdout);
     expect(payload.command).toBe("run");
     expect(payload.loop.loopId).toMatch(/^loop_/u);
-    expect(typeof payload.loop.attempts).toBe("object");
+    expect(payload.loop.lifecycleState).toBe("completed");
+    expect(payload.loop.cost.actualUsd).toBe(0);
+    expect(payload.environment.liveMode).toBe("proof");
   });
 
-  it("returns a valid loop record structure in stub mode", async () => {
+  it("returns a valid loop record structure in proof mode", async () => {
     const result = await withEnv("MARTIN_LIVE", "false", () =>
       executeCli([
         "--json",
@@ -130,6 +132,7 @@ describe("MARTIN_LIVE=false — stub adapter", () => {
     expect(payload.loop.workspaceId).toBe("ws_stub");
     expect(payload.loop.projectId).toBe("proj_stub");
     expect(payload.loop.budget.maxIterations).toBe(1);
+    expect(payload.loop.lifecycleState).toBe("completed");
   });
 });
 
@@ -139,7 +142,7 @@ describe("MARTIN_LIVE=false — stub adapter", () => {
 
 describe("--engine flag", () => {
   it("defaults to claude when no --engine flag is given", async () => {
-    // Use stub mode — we verify no engine flag selects the claude adapter path,
+    // Use proof mode — we verify no engine flag selects the claude adapter path,
     // not that claude itself runs successfully
     const result = await withEnv("MARTIN_LIVE", "false", () =>
       executeCli([
@@ -242,6 +245,51 @@ describe("--cwd flag", () => {
       expect(result.exitCode).toBe(0);
     });
   });
+
+  it("honors --runs-dir for preflight and persisted runs", async () => {
+    await withTempDir(async (workspace) => {
+      await withTempDir(async (runsDir) => {
+        const preflight = await executeCli([
+          "--json",
+          "preflight",
+          "--objective",
+          "Fix the bug",
+          "--cwd",
+          workspace,
+          "--runs-dir",
+          runsDir,
+          "--verify",
+          NOOP_VERIFIER
+        ]);
+
+        expect(preflight.exitCode).toBe(0);
+        const preflightPayload = JSON.parse(preflight.stdout);
+        expect(preflightPayload.environment.runsRoot).toBe(runsDir);
+
+        const run = await withEnv("MARTIN_LIVE", "false", () =>
+          executeCli([
+            "--json",
+            "run",
+            "--objective",
+            "Fix the bug",
+            "--cwd",
+            workspace,
+            "--runs-dir",
+            runsDir,
+            "--verify",
+            NOOP_VERIFIER,
+            "--max-iterations",
+            "1"
+          ])
+        );
+
+        expect(run.exitCode).toBe(0);
+        const runPayload = JSON.parse(run.stdout);
+        expect(runPayload.environment.runsRoot).toBe(runsDir);
+        await expect(access(join(runsDir, runPayload.loop.loopId, "loop-record.json"))).resolves.toBeUndefined();
+      });
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -289,6 +337,39 @@ describe("inspect command", () => {
 
     expect(result.exitCode).toBe(5);
     expect(result.stderr).toContain("Persisted loop file not found");
+  });
+
+  it("summarizes persisted run directories instead of throwing EISDIR", async () => {
+    await withTempDir(async (dir) => {
+      const runDirectory = join(dir, "loop_123");
+      const loop = createLoopRecord({
+        workspaceId: "ws_test",
+        projectId: "proj_test",
+        task: {
+          title: "Fix auth bug",
+          objective: "Fix auth bug",
+          verificationPlan: ["pnpm test"]
+        },
+        cost: {
+          actualUsd: 2,
+          avoidedUsd: 3,
+          tokensIn: 400,
+          tokensOut: 150
+        }
+      });
+
+      await mkdir(runDirectory, { recursive: true });
+      await writeFile(join(runDirectory, "loop-record.json"), JSON.stringify(loop), "utf8");
+
+      const result = await executeCli(["--json", "inspect", "--file", runDirectory]);
+
+      expect(result.exitCode).toBe(0);
+      const payload = JSON.parse(result.stdout);
+      expect(payload.command).toBe("inspect");
+      expect(payload.source).toBe(runDirectory);
+      expect(payload.summary.totalActualUsd).toBe(2);
+      expect(payload.summary.activeLoops).toBe(1);
+    });
   });
 });
 
