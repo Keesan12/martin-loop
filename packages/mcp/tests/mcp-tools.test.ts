@@ -674,6 +674,81 @@ describe("martinTriageRunsTool", () => {
     });
   });
 
+  it("surfaces verification warnings and step evidence from the authoritative MartinLoop verifier", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const loop = {
+        ...makeLoopRecord({ costUsd: 2 }),
+        loopId: "loop_verification_warning_steps",
+        status: "completed",
+        lifecycleState: "completed",
+        attempts: [
+          {
+            attemptId: "att_warning_steps",
+            index: 1,
+            adapterId: "codex-cli",
+            model: "gpt-5-codex",
+            summary: "Verification passed with contradiction warnings."
+          }
+        ],
+        events: [
+          {
+            eventId: "evt_1",
+            timestamp: "2026-06-06T04:00:00.000Z",
+            type: "verification.completed",
+            lifecycleState: "verifying",
+            payload: {
+              attemptId: "att_warning_steps",
+              attemptIndex: 1,
+              passed: true,
+              summary: "All 1 verification step(s) passed.",
+              warnings: [
+                "Adapter output reported a tool-launch problem before MartinLoop ran its own verifier: CreateProcessAsUserW failed: 5"
+              ],
+              steps: [
+                {
+                  command: "npm test",
+                  launched: true,
+                  exitCode: 0,
+                  timedOut: false,
+                  fastFail: true,
+                  detail: "tests passed"
+                }
+              ]
+            }
+          }
+        ]
+      };
+
+      await mkdir(join(runsRoot, loop.loopId), { recursive: true });
+      await writeFile(join(runsRoot, loop.loopId, "loop-record.json"), JSON.stringify(loop), "utf8");
+
+      const verification = await martinGetVerificationResultsTool({ loopId: loop.loopId });
+      const dossier = await martinRunDossierTool({ loopId: loop.loopId });
+
+      expect(verification.verification.status).toBe("passed");
+      expect(verification.verification.warnings).toContain(
+        "Adapter output reported a tool-launch problem before MartinLoop ran its own verifier: CreateProcessAsUserW failed: 5"
+      );
+      expect(verification.verification.steps).toEqual([
+        expect.objectContaining({
+          command: "npm test",
+          launched: true,
+          exitCode: 0
+        })
+      ]);
+      expect(dossier.verification.warnings).toContain(
+        "Adapter output reported a tool-launch problem before MartinLoop ran its own verifier: CreateProcessAsUserW failed: 5"
+      );
+      expect(dossier.verification.steps).toEqual([
+        expect.objectContaining({
+          command: "npm test",
+          launched: true,
+          exitCode: 0
+        })
+      ]);
+    });
+  });
+
   it("distinguishes unreadable ledger evidence from absent ledger verification evidence", async () => {
     await withRunsRoot(async (runsRoot) => {
       const loop = {

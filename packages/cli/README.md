@@ -22,6 +22,8 @@ The CLI groups onboarding, readiness checks, governed execution, evidence review
 - `martin-loop runs list|get|attempt|verify`
 - `martin-loop mcp print-config`
 - `martin-loop mcp install`
+- `martin-loop challenge`
+- `martin-loop badge`
 
 ## Output Modes
 
@@ -57,6 +59,8 @@ Built-in onboarding:
 - `guide` explains what each command does and when to use it.
 
 Governed runs are hard-blocked by default until `doctor`, a local session step, and `preflight` receipts exist for the same repo and task. Use `--unsafe-allow-unguarded-run` only when you intentionally need to bypass that local gate.
+
+`run --help` and `preflight --help` stay ungated so operators can inspect the public surface without generating local receipts first.
 
 ## MCP Config
 

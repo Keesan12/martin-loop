@@ -128,11 +128,12 @@ async function resolveReleaseMatrixOutputRoot(configuredOutputRoot) {
 async function runCommand(step, options) {
   const execution = resolveRcCommandExecution(step.command, process.platform);
   const stepLogPath = path.join(logDirFor(options), `${String(options.index).padStart(2, "0")}-${slugify(step.label)}.log`);
+  const env = createReleaseMatrixEnvironment(process.env);
 
   return new Promise((resolve, reject) => {
     const child = spawn(execution.command, execution.args, {
       cwd: options.cwd,
-      env: process.env,
+      env,
       stdio: ["ignore", "pipe", "pipe"],
       shell: execution.shell,
     });
@@ -167,6 +168,17 @@ async function runCommand(step, options) {
       reject(new Error(`Command failed (${code ?? "unknown"}): ${step.label}`));
     });
   });
+}
+
+export function createReleaseMatrixEnvironment(baseEnv = process.env) {
+  return {
+    ...baseEnv,
+    CI: baseEnv.CI && baseEnv.CI.trim().length > 0 ? baseEnv.CI : "true",
+    npm_config_confirm_modules_purge:
+      baseEnv.npm_config_confirm_modules_purge && baseEnv.npm_config_confirm_modules_purge.trim().length > 0
+        ? baseEnv.npm_config_confirm_modules_purge
+        : "false",
+  };
 }
 
 function logDirFor(options) {

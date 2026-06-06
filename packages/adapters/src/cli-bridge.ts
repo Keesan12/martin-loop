@@ -15,11 +15,23 @@ export interface SubprocessResult {
   stdout: string;
   stderr: string;
   timedOut: boolean;
+  launched: boolean;
+}
+
+export interface VerificationStepOutcome {
+  command: string;
+  launched: boolean;
+  exitCode?: number;
+  timedOut: boolean;
+  fastFail: boolean;
+  detail?: string;
 }
 
 export interface VerificationOutcome {
   passed: boolean;
   summary: string;
+  steps: VerificationStepOutcome[];
+  warnings?: string[];
 }
 
 export async function runSubprocess(
@@ -57,7 +69,8 @@ export async function runSubprocess(
         exitCode: 1,
         stdout: "",
         stderr: message,
-        timedOut: false
+        timedOut: false,
+        launched: false
       });
       return;
     }
@@ -90,7 +103,8 @@ export async function runSubprocess(
         exitCode: 1,
         stdout: "",
         stderr: error.message,
-        timedOut: false
+        timedOut: false,
+        launched: false
       });
     });
 
@@ -100,7 +114,8 @@ export async function runSubprocess(
         exitCode: code ?? 1,
         stdout: Buffer.concat(stdoutChunks).toString("utf8"),
         stderr: Buffer.concat(stderrChunks).toString("utf8"),
-        timedOut
+        timedOut,
+        launched: true
       });
     });
 
@@ -115,7 +130,8 @@ export async function runSubprocess(
             exitCode: 1,
             stdout: Buffer.concat(stdoutChunks).toString("utf8"),
             stderr: stdinError.message,
-            timedOut: false
+            timedOut: false,
+            launched: false
           });
         }
       }
@@ -138,10 +154,11 @@ export async function runVerification(
     : commands.map((command) => ({ command, fastFail: true }));
 
   if (steps.length === 0) {
-    return { passed: true, summary: "No verification commands specified." };
+    return { passed: true, summary: "No verification commands specified.", steps: [] };
   }
 
   const failedSteps: string[] = [];
+  const stepOutcomes: VerificationStepOutcome[] = [];
 
   for (const step of steps) {
     const parts = splitCommand(step.command);
@@ -152,26 +169,55 @@ export async function runVerification(
     }
 
     const result = await runSubprocess(bin, args, { cwd, timeoutMs, spawnImpl });
+    const detail = truncate(result.stderr.trim() || result.stdout.trim(), 500);
+    stepOutcomes.push({
+      command: step.command,
+      launched: result.launched,
+      ...(result.launched ? { exitCode: result.exitCode } : {}),
+      timedOut: result.timedOut,
+      fastFail: step.fastFail,
+      ...(detail ? { detail } : {})
+    });
+
+    if (!result.launched) {
+      const summary = `Verification could not launch: ${step.command}\n${detail || "Launch failed."}`;
+      if (step.fastFail) {
+        return { passed: false, summary, steps: stepOutcomes };
+      }
+      failedSteps.push(step.command);
+      continue;
+    }
 
     if (result.timedOut) {
-      return { passed: false, summary: `Verification timed out: ${step.command}` };
+      return {
+        passed: false,
+        summary: `Verification timed out: ${step.command}`,
+        steps: stepOutcomes
+      };
     }
 
     if (result.exitCode !== 0) {
-      const detail = truncate(result.stderr.trim() || result.stdout.trim(), 500);
       const summary = `Verification failed: ${step.command}\n${detail}`;
       if (step.fastFail) {
-        return { passed: false, summary };
+        return { passed: false, summary, steps: stepOutcomes };
       }
       failedSteps.push(step.command);
     }
   }
 
   if (failedSteps.length > 0) {
-    return { passed: false, summary: `Failed steps: ${failedSteps.join(", ")}` };
+    return {
+      passed: false,
+      summary: `Failed steps: ${failedSteps.join(", ")}`,
+      steps: stepOutcomes
+    };
   }
 
-  return { passed: true, summary: `All ${String(steps.length)} verification step(s) passed.` };
+  return {
+    passed: true,
+    summary: `All ${String(steps.length)} verification step(s) passed.`,
+    steps: stepOutcomes
+  };
 }
 
 export async function readGitExecutionArtifacts(

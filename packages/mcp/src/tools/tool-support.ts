@@ -90,7 +90,17 @@ export interface VerificationSummary {
   latestAttemptIndex?: number;
   completedAt?: string;
   summary?: string;
+  steps: VerificationStepSummary[];
   warnings: string[];
+}
+
+export interface VerificationStepSummary {
+  command: string;
+  launched: boolean;
+  exitCode?: number;
+  timedOut: boolean;
+  fastFail: boolean;
+  detail?: string;
 }
 
 interface NormalizedVerificationEvidence {
@@ -99,6 +109,8 @@ interface NormalizedVerificationEvidence {
   summary?: string;
   attemptId?: string;
   attemptIndex?: number;
+  warnings?: string[];
+  steps?: VerificationStepSummary[];
 }
 
 export interface RunWarningEnvelope {
@@ -329,9 +341,12 @@ export function buildVerificationSummary(
       status: "unavailable",
       eventCount: verificationEvents.length,
       ledgerEventCount: verificationLedgerEvents.length,
+      steps: [],
       warnings
     };
   }
+
+  warnings.push(...(latestEvidence.warnings ?? []));
 
   return {
     status:
@@ -347,6 +362,7 @@ export function buildVerificationSummary(
     ...(typeof latestEvidence.summary === "string" && latestEvidence.summary.trim().length > 0
       ? { summary: latestEvidence.summary.trim() }
       : {}),
+    steps: latestEvidence.steps ?? [],
     warnings
   };
 }
@@ -643,7 +659,9 @@ function normalizeLoopVerificationEvidence(
     ...(matchedAttempt.attemptId ? { attemptId: matchedAttempt.attemptId } : {}),
     attemptIndex: matchedAttempt.index,
     ...(typeof payload?.["passed"] === "boolean" ? { passed: payload["passed"] } : {}),
-    ...(typeof payload?.["summary"] === "string" ? { summary: payload["summary"] } : {})
+    ...(typeof payload?.["summary"] === "string" ? { summary: payload["summary"] } : {}),
+    ...(readVerificationWarnings(payload).length ? { warnings: readVerificationWarnings(payload) } : {}),
+    ...(readVerificationSteps(payload).length ? { steps: readVerificationSteps(payload) } : {})
   };
 }
 
@@ -671,7 +689,9 @@ function normalizeLedgerVerificationEvidence(
     ...(matchedAttempt?.attemptId ? { attemptId: matchedAttempt.attemptId } : {}),
     attemptIndex: event.attemptIndex,
     ...(typeof payload?.["passed"] === "boolean" ? { passed: payload["passed"] } : {}),
-    ...(typeof payload?.["summary"] === "string" ? { summary: payload["summary"] } : {})
+    ...(typeof payload?.["summary"] === "string" ? { summary: payload["summary"] } : {}),
+    ...(readVerificationWarnings(payload).length ? { warnings: readVerificationWarnings(payload) } : {}),
+    ...(readVerificationSteps(payload).length ? { steps: readVerificationSteps(payload) } : {})
   };
 }
 
@@ -702,4 +722,41 @@ function getLedgerWarnings(ledgerEvents: LedgerEvent[]): string[] {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function readVerificationWarnings(payload: Record<string, unknown> | undefined): string[] {
+  if (!Array.isArray(payload?.["warnings"])) {
+    return [];
+  }
+
+  return payload["warnings"].filter((warning): warning is string => typeof warning === "string");
+}
+
+function readVerificationSteps(payload: Record<string, unknown> | undefined): VerificationStepSummary[] {
+  if (!Array.isArray(payload?.["steps"])) {
+    return [];
+  }
+
+  return payload["steps"]
+    .map((candidate) => normalizeVerificationStep(candidate))
+    .filter((candidate): candidate is VerificationStepSummary => candidate !== undefined);
+}
+
+function normalizeVerificationStep(candidate: unknown): VerificationStepSummary | undefined {
+  if (!isRecord(candidate)) {
+    return undefined;
+  }
+
+  if (typeof candidate["command"] !== "string" || typeof candidate["launched"] !== "boolean") {
+    return undefined;
+  }
+
+  return {
+    command: candidate["command"],
+    launched: candidate["launched"],
+    ...(typeof candidate["exitCode"] === "number" ? { exitCode: candidate["exitCode"] } : {}),
+    timedOut: candidate["timedOut"] === true,
+    fastFail: candidate["fastFail"] !== false,
+    ...(typeof candidate["detail"] === "string" ? { detail: candidate["detail"] } : {})
+  };
 }
