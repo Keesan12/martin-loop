@@ -156,7 +156,7 @@ const verificationSchema = {
           fastFail: { type: "boolean" },
           detail: { type: "string" }
         },
-        required: ["command", "launched", "timedOut", "fastFail"]
+        required: ["command", "launched"]
       }
     },
     warnings: stringArraySchema

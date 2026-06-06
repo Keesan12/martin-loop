@@ -171,14 +171,30 @@ async function runCommand(step, options) {
 }
 
 export function createReleaseMatrixEnvironment(baseEnv = process.env) {
+  const ci = readEnvValueCaseInsensitive(baseEnv, "CI");
+  const confirmModulesPurge = readEnvValueCaseInsensitive(baseEnv, "npm_config_confirm_modules_purge");
+
   return {
     ...baseEnv,
-    CI: baseEnv.CI && baseEnv.CI.trim().length > 0 ? baseEnv.CI : "true",
+    CI: ci && ci.trim().length > 0 ? ci : "true",
     npm_config_confirm_modules_purge:
-      baseEnv.npm_config_confirm_modules_purge && baseEnv.npm_config_confirm_modules_purge.trim().length > 0
-        ? baseEnv.npm_config_confirm_modules_purge
-        : "false",
+      confirmModulesPurge && confirmModulesPurge.trim().length > 0 ? confirmModulesPurge : "false",
   };
+}
+
+function readEnvValueCaseInsensitive(baseEnv, key) {
+  const direct = baseEnv[key];
+  if (typeof direct === "string") {
+    return direct;
+  }
+
+  const matchedKey = Object.keys(baseEnv).find((candidate) => candidate.toLowerCase() === key.toLowerCase());
+  if (!matchedKey) {
+    return undefined;
+  }
+
+  const matchedValue = baseEnv[matchedKey];
+  return typeof matchedValue === "string" ? matchedValue : undefined;
 }
 
 function logDirFor(options) {

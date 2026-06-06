@@ -98,8 +98,8 @@ export interface VerificationStepSummary {
   command: string;
   launched: boolean;
   exitCode?: number;
-  timedOut: boolean;
-  fastFail: boolean;
+  timedOut?: boolean;
+  fastFail?: boolean;
   detail?: string;
 }
 
@@ -755,8 +755,8 @@ function normalizeVerificationStep(candidate: unknown): VerificationStepSummary 
     command: candidate["command"],
     launched: candidate["launched"],
     ...(typeof candidate["exitCode"] === "number" ? { exitCode: candidate["exitCode"] } : {}),
-    timedOut: candidate["timedOut"] === true,
-    fastFail: candidate["fastFail"] !== false,
+    ...(typeof candidate["timedOut"] === "boolean" ? { timedOut: candidate["timedOut"] } : {}),
+    ...(typeof candidate["fastFail"] === "boolean" ? { fastFail: candidate["fastFail"] } : {}),
     ...(typeof candidate["detail"] === "string" ? { detail: candidate["detail"] } : {})
   };
 }

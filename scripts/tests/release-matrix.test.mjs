@@ -35,3 +35,23 @@ test("createReleaseMatrixEnvironment forces non-interactive install defaults", (
   assert.equal(env.CI, "true");
   assert.equal(env.npm_config_confirm_modules_purge, "false");
 });
+
+test("createReleaseMatrixEnvironment preserves explicit non-empty values", () => {
+  const env = createReleaseMatrixEnvironment({
+    PATH: process.env.PATH ?? "",
+    CI: "already-set",
+    npm_config_confirm_modules_purge: "preserve-me",
+  });
+
+  assert.equal(env.CI, "already-set");
+  assert.equal(env.npm_config_confirm_modules_purge, "preserve-me");
+});
+
+test("createReleaseMatrixEnvironment honors mixed-case install env keys", () => {
+  const env = createReleaseMatrixEnvironment({
+    PATH: process.env.PATH ?? "",
+    NPM_CONFIG_CONFIRM_MODULES_PURGE: "mixed-case-value",
+  });
+
+  assert.equal(env.npm_config_confirm_modules_purge, "mixed-case-value");
+});
