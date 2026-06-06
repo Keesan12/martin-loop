@@ -24,6 +24,8 @@ export interface RunContract {
 export interface AttemptArtifacts {
   /** Compiled PromptPacket written as compiled-context.json */
   compiledContext: unknown;
+  /** Structured verification evidence captured from the authoritative MartinLoop verifier (optional) */
+  verification?: unknown;
   /** Unified diff string from the patch (optional) */
   diff?: string;
   /** Raw verifier command output (optional) */
@@ -50,6 +52,12 @@ export interface AttemptArtifacts {
  * is durably written before the run proceeds to the next step.
  */
 export interface RunStore {
+  /**
+   * Optional runs root hint for filesystem-backed stores.
+   * Orchestration should prefer this over recomputing the default home store.
+   */
+  runsRoot?: string;
+
   /**
    * Write contract.json for a new run. Called once at run start.
    * The contract is immutable after this point.
@@ -104,6 +112,7 @@ export function artifactDir(runsRoot: string, runId: string, attemptIndex: numbe
  *   <runsRoot>/<runId>/state.json
  *   <runsRoot>/<runId>/ledger.jsonl
  *   <runsRoot>/<runId>/artifacts/attempt-<n>/compiled-context.json
+ *   <runsRoot>/<runId>/artifacts/attempt-<n>/verification.json (if verification provided)
  *   <runsRoot>/<runId>/artifacts/attempt-<n>/diff.patch (if diff provided)
  *   <runsRoot>/<runId>/artifacts/attempt-<n>/verifier-output.txt (if provided)
  *   <runsRoot>/<runId>/artifacts/attempt-<n>/grounding-scan.json (if provided)
@@ -117,6 +126,8 @@ export function createFileRunStore(options: { runsRoot?: string } = {}): RunStor
   const runsRoot = options.runsRoot ?? resolveRunsRoot();
 
   return {
+    runsRoot,
+
     async initRun(contract: RunContract): Promise<void> {
       const dir = runDir(runsRoot, contract.runId);
       await mkdir(dir, { recursive: true });
@@ -148,6 +159,9 @@ export function createFileRunStore(options: { runsRoot?: string } = {}): RunStor
       await mkdir(dir, { recursive: true });
 
       await writeJsonFile(join(dir, "compiled-context.json"), artifacts.compiledContext);
+      if (artifacts.verification !== undefined) {
+        await writeJsonFile(join(dir, "verification.json"), artifacts.verification);
+      }
 
       if (artifacts.diff !== undefined) {
         await writeFile(join(dir, "diff.patch"), artifacts.diff, "utf8");

@@ -1,11 +1,11 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
 import { createLoopRecord } from "../../contracts/src/index.js";
-import { executeCli, parseCliArguments } from "../src/index.js";
+import { executeCli, parseCliArguments, renderCliHelp } from "../src/index.js";
 
 const FAST_VERIFIER = process.platform === "win32" ? "cmd /c exit 0" : "true";
 
@@ -98,9 +98,73 @@ describe("parseCliArguments", () => {
       })
     });
   });
+
+  it("treats subcommand help as an ungated help request", () => {
+    expect(parseCliArguments(["run", "--help"])).toEqual({ command: "help" });
+    expect(parseCliArguments(["preflight", "-h"])).toEqual({ command: "help" });
+  });
 });
 
 describe.sequential("executeCli", () => {
+  it("renders help for run --help and preflight --help without entering the governed flow", async () => {
+    const runHelp = await executeCli(["run", "--help"]);
+    const preflightHelp = await executeCli(["preflight", "--help"]);
+
+    expect(runHelp.exitCode).toBe(0);
+    expect(preflightHelp.exitCode).toBe(0);
+    expect(runHelp.stdout).toContain("Martin Loop CLI");
+    expect(preflightHelp.stdout).toContain("Martin Loop CLI");
+  });
+
+  it("does not persist first-run workflow state when rendering help", async () => {
+    const homeDir = await mkdtemp(join(tmpdir(), "martin-cli-help-home-"));
+    const previousEnv = {
+      HOME: process.env.HOME,
+      USERPROFILE: process.env.USERPROFILE,
+      HOMEDRIVE: process.env.HOMEDRIVE,
+      HOMEPATH: process.env.HOMEPATH,
+      LOCALAPPDATA: process.env.LOCALAPPDATA,
+      APPDATA: process.env.APPDATA,
+      INIT_CWD: process.env.INIT_CWD
+    };
+    const previousCwd = process.cwd();
+
+    try {
+      process.env.HOME = homeDir;
+      process.env.USERPROFILE = homeDir;
+      process.env.HOMEDRIVE = homeDir.slice(0, 2);
+      process.env.HOMEPATH = homeDir.slice(2);
+      process.env.LOCALAPPDATA = join(homeDir, "AppData", "Local");
+      process.env.APPDATA = join(homeDir, "AppData", "Roaming");
+      process.env.INIT_CWD = homeDir;
+      process.chdir(homeDir);
+      await mkdir(process.env.LOCALAPPDATA, { recursive: true });
+      await mkdir(process.env.APPDATA, { recursive: true });
+
+      const result = await executeCli(["run", "--help"]);
+
+      expect(result.exitCode).toBe(0);
+      await expect(access(join(homeDir, ".martin", "runs", "_martin", "workflow-state.json"))).rejects.toThrow();
+    } finally {
+      process.chdir(previousCwd);
+      for (const [key, value] of Object.entries(previousEnv)) {
+        if (value === undefined) {
+          delete process.env[key];
+        } else {
+          process.env[key] = value;
+        }
+      }
+      await rm(homeDir, { force: true, recursive: true });
+    }
+  });
+
+  it("keeps the public help surface honest for 0.2.10", () => {
+    const help = renderCliHelp();
+
+    expect(help).not.toContain("martin-loop bench");
+    expect(help).toContain("martin-loop badge [--format svg|json] [--runs-dir <path>]");
+  });
+
   it("renders the built-in command guide", async () => {
     const result = await executeCli(["--json", "guide", "start"]);
     const payload = JSON.parse(result.stdout);
@@ -385,12 +449,12 @@ describe.sequential("executeCli", () => {
     }
   });
 
-  it("surfaces bench as an RC-only workspace command instead of a publishable CLI feature", async () => {
+  it("rejects unsupported bench invocations from the public CLI surface", async () => {
     const result = await executeCli(["bench", "--suite", "ralphy-smoke"]);
 
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain("workspace-only RC surface");
-    expect(result.stderr).toContain("@martin/benchmarks");
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("Unknown command 'bench'.");
+    expect(result.stderr).toContain("martin-loop --help");
   });
 
   it("copies the seeded demo workspace into the default target directory", async () => {
