@@ -749,6 +749,55 @@ describe("martinTriageRunsTool", () => {
     });
   });
 
+  it("does not fabricate missing timedOut or fastFail fields in verification step summaries", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const loop = {
+        ...makeLoopRecord({ costUsd: 2 }),
+        loopId: "loop_sparse_verification_steps",
+        status: "completed",
+        lifecycleState: "completed",
+        attempts: [
+          {
+            attemptId: "att_sparse_steps",
+            index: 1,
+            adapterId: "codex-cli",
+            model: "gpt-5-codex",
+            summary: "Verification passed with sparse step metadata."
+          }
+        ],
+        events: [
+          {
+            eventId: "evt_sparse_steps",
+            timestamp: "2026-06-06T04:05:00.000Z",
+            type: "verification.completed",
+            lifecycleState: "verifying",
+            payload: {
+              attemptId: "att_sparse_steps",
+              attemptIndex: 1,
+              passed: true,
+              summary: "All 1 verification step(s) passed.",
+              steps: [
+                {
+                  command: "npm test",
+                  launched: true
+                }
+              ]
+            }
+          }
+        ]
+      };
+
+      await mkdir(join(runsRoot, loop.loopId), { recursive: true });
+      await writeFile(join(runsRoot, loop.loopId, "loop-record.json"), JSON.stringify(loop), "utf8");
+
+      const verification = await martinGetVerificationResultsTool({ loopId: loop.loopId });
+      const dossier = await martinRunDossierTool({ loopId: loop.loopId });
+
+      expect(verification.verification.steps).toEqual([{ command: "npm test", launched: true }]);
+      expect(dossier.verification.steps).toEqual([{ command: "npm test", launched: true }]);
+    });
+  });
+
   it("distinguishes unreadable ledger evidence from absent ledger verification evidence", async () => {
     await withRunsRoot(async (runsRoot) => {
       const loop = {

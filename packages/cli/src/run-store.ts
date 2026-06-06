@@ -144,8 +144,8 @@ export interface VerificationStepSummary {
   command: string;
   launched: boolean;
   exitCode?: number;
-  timedOut: boolean;
-  fastFail: boolean;
+  timedOut?: boolean;
+  fastFail?: boolean;
   detail?: string;
 }
 
@@ -378,7 +378,7 @@ export function buildVerificationSummary(loop: LoopRecord): VerificationSummary 
   }
 
   const payload = isRecord(latestEvent.payload) ? latestEvent.payload : undefined;
-  const passed = latestEvent.payload["passed"] === true;
+  const passed = payload?.["passed"] === true;
   const latestAttemptIndex =
     typeof payload?.["attemptIndex"] === "number"
       ? (payload["attemptIndex"] as number)
@@ -529,7 +529,9 @@ export async function findPersistedLoopEvidence(
         }
 
         const loop = await readLoopRecordFile(canonical);
-        if (!latestLoop || loopTimestamp(loop) >= loopTimestamp(latestLoop)) {
+        const candidateTimestamp = loopTimestamp(loop);
+        const latestTimestamp = latestLoop ? loopTimestamp(latestLoop) : Number.NEGATIVE_INFINITY;
+        if (candidateTimestamp > latestTimestamp) {
           latestLoop = loop;
         }
         continue;
@@ -542,7 +544,9 @@ export async function findPersistedLoopEvidence(
       const loop = (await readLoopsFromFile(path.join(runsRoot, entryName), runsRoot)).sort(
         (left, right) => loopTimestamp(right) - loopTimestamp(left)
       )[0];
-      if (loop && (!latestLoop || loopTimestamp(loop) >= loopTimestamp(latestLoop))) {
+      const candidateTimestamp = loop ? loopTimestamp(loop) : Number.NEGATIVE_INFINITY;
+      const latestTimestamp = latestLoop ? loopTimestamp(latestLoop) : Number.NEGATIVE_INFINITY;
+      if (loop && candidateTimestamp > latestTimestamp) {
         latestLoop = loop;
       }
     } catch (error) {
@@ -578,7 +582,11 @@ async function loadLatestLoopFromWorkspaceIndexes(
         continue;
       }
 
-      if (!latestSummary || Date.parse(candidate.updatedAt) >= Date.parse(latestSummary.updatedAt)) {
+      const candidateTimestamp = parseTimestamp(candidate.updatedAt);
+      const latestTimestamp = latestSummary
+        ? parseTimestamp(latestSummary.updatedAt)
+        : Number.NEGATIVE_INFINITY;
+      if (candidateTimestamp > latestTimestamp) {
         latestSummary = candidate;
       }
     } catch (error) {
@@ -931,8 +939,8 @@ function normalizeVerificationStep(candidate: unknown): VerificationStepSummary 
     command: candidate["command"],
     launched: candidate["launched"],
     ...(typeof candidate["exitCode"] === "number" ? { exitCode: candidate["exitCode"] } : {}),
-    timedOut: candidate["timedOut"] === true,
-    fastFail: candidate["fastFail"] !== false,
+    ...(typeof candidate["timedOut"] === "boolean" ? { timedOut: candidate["timedOut"] } : {}),
+    ...(typeof candidate["fastFail"] === "boolean" ? { fastFail: candidate["fastFail"] } : {}),
     ...(typeof candidate["detail"] === "string" ? { detail: candidate["detail"] } : {})
   };
 }
@@ -953,7 +961,16 @@ function upsertLoop(target: Map<string, LoopRecord>, loop: LoopRecord): void {
 }
 
 function loopTimestamp(loop: LoopRecord): number {
-  return Date.parse(loop.updatedAt || loop.createdAt || "");
+  return parseTimestamp(loop.updatedAt || loop.createdAt || "");
+}
+
+function parseTimestamp(timestamp: string | undefined): number {
+  if (typeof timestamp !== "string") {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  const parsed = Date.parse(timestamp);
+  return Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY;
 }
 
 function isMissing(error: unknown): boolean {
