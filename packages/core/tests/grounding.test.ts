@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -278,7 +278,7 @@ describe("scanPatchForGroundingViolations", () => {
 });
 
 describe("loadOrBuildRepoGroundingIndex anatomy artifact", () => {
-  it("writes a schema-valid anatomy artifact to ~/.martin/grounding/ on first call", async () => {
+  it("writes a schema-valid anatomy artifact to MARTIN_GROUNDING_DIR on first call", async () => {
     const root = await mkdtemp(join(tmpdir(), "martin-anatomy-"));
     await mkdir(join(root, "src"), { recursive: true });
     await writeFile(
@@ -287,7 +287,20 @@ describe("loadOrBuildRepoGroundingIndex anatomy artifact", () => {
       "utf8"
     );
 
-    const index = await loadOrBuildRepoGroundingIndex(root);
+    const groundingDir = await mkdtemp(join(tmpdir(), "martin-grounding-dir-"));
+    const previousGroundingDir = process.env.MARTIN_GROUNDING_DIR;
+    process.env.MARTIN_GROUNDING_DIR = groundingDir;
+
+    let index: Awaited<ReturnType<typeof loadOrBuildRepoGroundingIndex>>;
+    try {
+      index = await loadOrBuildRepoGroundingIndex(root);
+    } finally {
+      if (previousGroundingDir === undefined) {
+        delete process.env.MARTIN_GROUNDING_DIR;
+      } else {
+        process.env.MARTIN_GROUNDING_DIR = previousGroundingDir;
+      }
+    }
 
     // Verify index in memory is valid
     expect(index.schemaVersion).toBe("martin.grounding.v1");
@@ -296,10 +309,9 @@ describe("loadOrBuildRepoGroundingIndex anatomy artifact", () => {
     expect(index.fileCount).toBeGreaterThanOrEqual(1);
     expect(Array.isArray(index.files)).toBe(true);
 
-    // Verify artifact was written to disk
-    const cacheDir = join(homedir(), ".martin", "grounding");
+    // Verify artifact was written to the isolated grounding directory, not ~/.martin/grounding
     const cacheFile = join(
-      cacheDir,
+      groundingDir,
       `${Buffer.from(root).toString("base64url")}.json`
     );
     expect(existsSync(cacheFile)).toBe(true);
