@@ -67,14 +67,18 @@ import {
   buildRunDossier,
   buildVerificationSummary,
   computeScopeFingerprint,
+  describeCostProvenance,
+  findPersistedLoopEvidence,
   listPersistedLoops,
   loadPersistedAttempt,
   loadPersistedLoop,
+  readCostProvenance,
   readLocalCorpusRisk,
   resolveCliEnvironment,
   resolveInvocationRoot,
   resolveReceiptScope,
-  triagePersistedLoops
+  triagePersistedLoops,
+  type IntegrityStatus
 } from "./run-store.js";
 import { CliCommandError, renderCliError, renderCliSuccess } from "./ux.js";
 import { evaluateCliRunGate, recordCliWorkflowStep } from "./workflow-state.js";
@@ -233,6 +237,7 @@ type ShareCommand = {
 type BadgeCommand = {
   command: "badge";
   format: "svg" | "json";
+  runsDir?: string;
 };
 
 type Under3BenchFixture = {
@@ -586,7 +591,8 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
   if (command === "badge") {
     return {
       command: "badge",
-      format: parseBadgeFormat(rest)
+      format: parseBadgeFormat(rest),
+      ...(readOption(rest, "--runs-dir") ? { runsDir: readOption(rest, "--runs-dir") } : {})
     };
   }
 
@@ -855,11 +861,14 @@ async function executeRunCommand(
     );
   });
 
+  const costProvenance = readCostProvenance(result.loop);
+
   return renderCliSuccess(outputMode, {
     data: {
       command: "run",
       decision: result.decision,
       loop: result.loop,
+      costProvenance,
       effectivePolicy: {
         configPath: resolvedGuardrails.configPath,
         policyProfile: resolvedGuardrails.policyProfile,
@@ -887,7 +896,7 @@ async function executeRunCommand(
       `Runs root: ${cliEnvironment.runsRoot}`,
       `Verification plan: ${resolvedRequest.verificationPlan.join(", ") || "none"}`,
       `Attempts: ${result.loop.attempts.length}`,
-      `Actual cost (USD): ${result.loop.cost.actualUsd.toFixed(2)}`
+      `Actual cost (USD): ${result.loop.cost.actualUsd.toFixed(2)} — provenance: ${describeCostProvenance(costProvenance)}`
     ],
     quiet: result.loop.loopId,
     warnings
@@ -1206,6 +1215,25 @@ async function executeNativePhaseCommand(
       receiptScope: snapshot.receiptScope
     }).catch(() => {});
   }
+  if (command.subcommand === "preflight" && !snapshot.contract.requiresApproval) {
+    const environment = resolveCliEnvironment({
+      cwd: command.cwd,
+      runsDir: command.runsDir
+    });
+    const request = buildNativePhaseRunRequest(snapshot.contract, {
+      cwd: command.cwd,
+      runsDir: command.runsDir
+    });
+    await recordCliWorkflowStep({
+      runsRoot: environment.runsRoot,
+      step: "preflight",
+      workingDirectory: environment.workingDirectory,
+      objective: request.objective,
+      engine: "claude",
+      verificationPlan: request.verificationPlan,
+      receiptScope: buildCliReceiptScope(environment)
+    }).catch(() => {});
+  }
   const human =
     command.subcommand === "session-start"
       ? renderNativePhaseHuman(snapshot)
@@ -1406,6 +1434,7 @@ async function executeDossierCommand(
   const detail = await loadPersistedLoop(selector);
   const dossier = buildRunDossier(detail);
   const verification = buildVerificationSummary(detail.loop);
+  const costProvenance = readCostProvenance(detail.loop);
   const receipt = dossier["receipt"] as {
     whatHappened?: string;
     whatMartinPrevented?: string[];
@@ -1415,12 +1444,15 @@ async function executeDossierCommand(
   return renderCliSuccess(outputMode, {
     data: {
       command: "dossier",
-      ...dossier
+      ...dossier,
+      integrity: detail.integrity
     },
     human: [
       `Run dossier for ${detail.loop.loopId}`,
       `Status: ${detail.loop.status} / ${detail.loop.lifecycleState}`,
       `Verification: ${verification.status}`,
+      `Integrity: ${describeIntegrity(detail.integrity)}`,
+      `Cost (USD): ${detail.loop.cost.actualUsd.toFixed(2)} — provenance: ${describeCostProvenance(costProvenance)}`,
       `Artifacts: ${detail.loop.artifacts.length}`,
       `Attempts: ${detail.loop.attempts.length}`,
       `What happened: ${receipt.whatHappened ?? "No attempt summary was recorded."}`,
@@ -1465,6 +1497,7 @@ async function executeRunsGetCommand(
   const verification = buildVerificationSummary(detail.loop);
   const artifacts = buildArtifactSummary(detail.loop);
   const receiptScope = resolveReceiptScope(detail.loop, detail.runsRoot);
+  const costProvenance = readCostProvenance(detail.loop);
 
   return renderCliSuccess(outputMode, {
     data: {
@@ -1474,13 +1507,17 @@ async function executeRunsGetCommand(
       receiptIntegrity: detail.integrity,
       ...(receiptScope ? { receiptScope } : {}),
       verification,
-      artifacts
+      artifacts,
+      integrity: detail.integrity,
+      costProvenance
     },
     human: [
       `Loaded persisted loop ${detail.loop.loopId}`,
       `Status: ${detail.loop.status} / ${detail.loop.lifecycleState}`,
       `Verification: ${verification.status}`,
       `Artifacts: ${artifacts.totalCount}`,
+      `Integrity: ${describeIntegrity(detail.integrity)}`,
+      `Cost (USD): ${detail.loop.cost.actualUsd.toFixed(2)} — provenance: ${describeCostProvenance(costProvenance)}`,
       `Source: ${detail.source}`
     ],
     quiet: detail.loop.loopId,
@@ -1500,13 +1537,15 @@ async function executeRunsAttemptCommand(
       source: loaded.detail.source,
       loopId: loaded.detail.loop.loopId,
       attempt: loaded.attempt,
-      verification: loaded.verification
+      verification: loaded.verification,
+      integrity: loaded.detail.integrity
     },
     human: [
       `Attempt ${loaded.attempt.index} for ${loaded.detail.loop.loopId}`,
       `Adapter: ${loaded.attempt.adapterId}`,
       `Model: ${loaded.attempt.model}`,
       `Verification: ${loaded.verification.status}`,
+      `Integrity: ${describeIntegrity(loaded.detail.integrity)}`,
       loaded.attempt.summary ?? "No attempt summary was recorded."
     ],
     quiet: `${loaded.detail.loop.loopId}:${loaded.attempt.index}`,
@@ -1529,16 +1568,29 @@ async function executeRunsVerifyCommand(
       source: detail.source,
       receiptIntegrity: detail.integrity,
       ...(receiptScope ? { receiptScope } : {}),
-      verification
+      verification,
+      integrity: detail.integrity
     },
     human: [
       `Verification for ${detail.loop.loopId}`,
       `Status: ${verification.status}`,
+      `Integrity: ${describeIntegrity(detail.integrity)}`,
       verification.summary
     ],
     quiet: verification.status,
     warnings: [...detail.warnings, ...verification.warnings]
   });
+}
+
+function describeIntegrity(integrity: IntegrityStatus): string {
+  switch (integrity) {
+    case "verified":
+      return "verified — record matches its signed snapshot";
+    case "tamper_detected":
+      return "TAMPER DETECTED — record does not match its signed snapshot";
+    case "unsigned":
+      return "unsigned — no integrity sidecar found (pre-upgrade or hand-authored record)";
+  }
 }
 
 async function executeMcpPrintConfigCommand(
@@ -2500,9 +2552,11 @@ async function executeChallengeCommand(
   command: ChallengeCommand,
   outputMode: MartinOutputMode
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  const input = command.selector
-    ? proofCardInputFromLoop((await loadPersistedLoop(command.selector)).loop)
+  const loadedDetail = command.selector ? await loadPersistedLoop(command.selector) : undefined;
+  const input = loadedDetail
+    ? proofCardInputFromLoop(loadedDetail.loop)
     : defaultChallengeProofCardInput();
+  const integrity: IntegrityStatus | undefined = loadedDetail?.integrity;
   const card = buildMartinProofCard(input);
   const markdown = renderMartinProofCardMarkdown(card);
   const svg = renderMartinProofCardSvg(card);
@@ -2516,7 +2570,8 @@ async function executeChallengeCommand(
       command: "challenge",
       card: { loopId: input.loopId, ...card },
       markdown,
-      svg
+      svg,
+      ...(integrity ? { integrity } : {})
     },
     human: [
       `Martin Loop Under-$3 Challenge`,
@@ -2527,6 +2582,7 @@ async function executeChallengeCommand(
       `Verifier: ${input.verifierStatus}`,
       `Rollback: ${input.rollbackStatus}`,
       `Halt reason: ${input.haltReason}`,
+      ...(integrity ? [`Integrity: ${describeIntegrity(integrity)}`] : []),
       ``,
       card.evidenceLine
     ],
@@ -2803,10 +2859,11 @@ async function executeBadgeCommand(
   command: BadgeCommand,
   outputMode: MartinOutputMode
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  const input = await buildLocalReliabilityScoreInput();
+  const input = await buildLocalReliabilityScoreInput(command.runsDir);
   const score = computeMartinReliabilityScore(input);
   const svg = renderMartinReliabilityBadgeSvg(score);
   const json = renderMartinReliabilityBadgeJson(score);
+  const integrity = await loadLatestLoopIntegrity(command.runsDir);
 
   if (command.format === "svg" && outputMode === "human") {
     return { exitCode: 0, stdout: svg, stderr: "" };
@@ -2817,18 +2874,36 @@ async function executeBadgeCommand(
   }
 
   return renderCliSuccess(outputMode, {
-    data: { command: "badge", score, svg, json },
+    data: { command: "badge", score, svg, json, ...(integrity ? { integrity } : {}) },
     human: [
       `Martin Loop agent reliability readiness: ${score.points}/${score.maxPoints} (${score.grade})`,
       score.summary,
+      ...(integrity ? [`Latest run integrity: ${describeIntegrity(integrity)}`] : []),
       ...(score.missingReasons.length > 0 ? ["", "Missing:", ...score.missingReasons.map((r) => `  • ${r}`)] : [])
     ],
     quiet: score.grade
   });
 }
 
-async function buildLocalReliabilityScoreInput(): Promise<MartinReliabilityScoreInput> {
-  const environment = resolveCliEnvironment();
+async function loadLatestLoopIntegrity(runsDir?: string): Promise<IntegrityStatus | undefined> {
+  const evidence = await findPersistedLoopEvidence(runsDir).catch(() => ({
+    loop: undefined as LoopRecord | undefined
+  }));
+
+  if (evidence.loop === undefined) {
+    return undefined;
+  }
+
+  try {
+    const loaded = await loadPersistedLoop({ loopId: evidence.loop.loopId, ...(runsDir ? { runsDir } : {}) });
+    return loaded.integrity.state;
+  } catch {
+    return "unsigned";
+  }
+}
+
+async function buildLocalReliabilityScoreInput(runsDir?: string): Promise<MartinReliabilityScoreInput> {
+  const environment = resolveCliEnvironment({ ...(runsDir ? { runsDir } : {}) });
   const shouldInspectRunStore = process.env["MARTIN_RUNS_DIR"] !== undefined;
   const loops = shouldInspectRunStore
     ? await listPersistedLoops({ limit: 20 }).catch(() => ({ loops: [] as LoopRecord[] }))

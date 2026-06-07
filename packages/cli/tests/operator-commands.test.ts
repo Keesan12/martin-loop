@@ -104,8 +104,14 @@ function makeLoopRecord(): LoopRecord {
 
 async function withRunsRoot<T>(fn: (runsRoot: string) => Promise<T>): Promise<T> {
   const previousRunsRoot = process.env.MARTIN_RUNS_DIR;
-  const runsRoot = await mkdtemp(join(tmpdir(), "martin-cli-operator-"));
+  const previousGroundingDir = process.env.MARTIN_GROUNDING_DIR;
+  const root = await mkdtemp(join(tmpdir(), "martin-cli-operator-"));
+  const runsRoot = join(root, "runs");
+  const groundingDir = join(root, "grounding");
+  await mkdir(runsRoot, { recursive: true });
+  await mkdir(groundingDir, { recursive: true });
   process.env.MARTIN_RUNS_DIR = runsRoot;
+  process.env.MARTIN_GROUNDING_DIR = groundingDir;
 
   try {
     return await fn(runsRoot);
@@ -116,7 +122,13 @@ async function withRunsRoot<T>(fn: (runsRoot: string) => Promise<T>): Promise<T>
       process.env.MARTIN_RUNS_DIR = previousRunsRoot;
     }
 
-    await rm(runsRoot, { force: true, recursive: true }).catch(() => {});
+    if (previousGroundingDir === undefined) {
+      delete process.env.MARTIN_GROUNDING_DIR;
+    } else {
+      process.env.MARTIN_GROUNDING_DIR = previousGroundingDir;
+    }
+
+    await rm(root, { force: true, recursive: true }).catch(() => {});
   }
 }
 
