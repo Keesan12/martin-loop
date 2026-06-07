@@ -37,6 +37,11 @@ const IGNORED_DIRS = new Set([
 const MAX_FILE_BYTES = 64_000;
 const MAX_FILES = 500;
 
+export function resolveGroundingRoot(env: NodeJS.ProcessEnv = process.env): string {
+  return (env["MARTIN_GROUNDING_DIR"] as string | undefined)?.trim() ??
+    join(homedir(), ".martin", "grounding");
+}
+
 export async function loadOrBuildRepoGroundingIndex(
   repoRoot: string
 ): Promise<RepoGroundingIndex> {
@@ -50,7 +55,7 @@ export async function loadOrBuildRepoGroundingIndex(
 
   const index = await buildRepoGroundingIndex(repoRoot);
   try {
-    await mkdir(join(homedir(), ".martin", "grounding"), { recursive: true });
+    await mkdir(resolveGroundingRoot(), { recursive: true });
     await writeFile(cachePath, JSON.stringify(index, null, 2), "utf8");
   } catch {
     // Cache persistence is best-effort; runtime grounding must still work even
@@ -116,9 +121,7 @@ export function queryRepoGroundingIndex(
 
 function getGroundingCachePath(repoRoot: string): string {
   return join(
-    homedir(),
-    ".martin",
-    "grounding",
+    resolveGroundingRoot(),
     `${Buffer.from(repoRoot).toString("base64url")}.json`
   );
 }

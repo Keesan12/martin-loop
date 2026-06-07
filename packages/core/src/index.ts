@@ -647,12 +647,27 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     currentPhase = "ADMIT";
 
     // T05: Context Integrity Pre-gate — blocks authority inversion / injection before reasoning
+    //
+    // Untrusted "tool output" re-entering the loop is verifier command output from prior
+    // attempts (e.g. test runners echoing attacker-controlled strings). Pull that text from
+    // already-persisted verification.completed events so the gate scans what actually
+    // re-enters subsequent prompts, matching the documented "tool output / test output" scope.
+    const priorVerifierOutput = loop.events
+      .filter((event): event is typeof event & { payload: { steps?: Array<{ detail?: string }> } } =>
+        event.type === "verification.completed"
+      )
+      .flatMap((event) => event.payload.steps ?? [])
+      .map((step) => step.detail)
+      .filter((detail): detail is string => Boolean(detail))
+      .join("\n---\n");
+
     const contextPrecheck = await runContextIntegrityPrecheck(
       loop.loopId,
       loop.attempts.length + 1,
       runDir(resolveActiveRunsRoot(input.store), loop.loopId),
       {
         userPrompt: distilled.focus,
+        toolOutput: priorVerifierOutput || undefined,
         history: loop.attempts.map(a => a.summary).join("\n")
       }
     );

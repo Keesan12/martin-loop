@@ -67,6 +67,7 @@ import {
   buildRunDossier,
   buildVerificationSummary,
   computeScopeFingerprint,
+  describeCostProvenance,
   listPersistedLoops,
   loadPersistedAttempt,
   loadPersistedLoop,
@@ -887,7 +888,7 @@ async function executeRunCommand(
       `Runs root: ${cliEnvironment.runsRoot}`,
       `Verification plan: ${resolvedRequest.verificationPlan.join(", ") || "none"}`,
       `Attempts: ${result.loop.attempts.length}`,
-      `Actual cost (USD): ${result.loop.cost.actualUsd.toFixed(2)}`
+      `Actual cost (USD): ${result.loop.cost.actualUsd.toFixed(2)} — provenance: ${describeCostProvenance(result.loop)}`
     ],
     quiet: result.loop.loopId,
     warnings
@@ -1423,6 +1424,7 @@ async function executeDossierCommand(
       `Verification: ${verification.status}`,
       `Artifacts: ${detail.loop.artifacts.length}`,
       `Attempts: ${detail.loop.attempts.length}`,
+      `Cost (USD): ${detail.loop.cost.actualUsd.toFixed(2)} — provenance: ${describeCostProvenance(detail.loop)}`,
       `What happened: ${receipt.whatHappened ?? "No attempt summary was recorded."}`,
       `What Martin prevented: ${(receipt.whatMartinPrevented ?? []).join("; ") || "No prevention claim is available."}`,
       `Next safe action: ${receipt.nextSafeAction ?? "Run preflight before the next attempt."}`,
@@ -1472,6 +1474,7 @@ async function executeRunsGetCommand(
       source: detail.source,
       loop: detail.loop,
       receiptIntegrity: detail.integrity,
+      costProvenance: detail.loop.cost.provenance ?? "unavailable",
       ...(receiptScope ? { receiptScope } : {}),
       verification,
       artifacts
@@ -1481,7 +1484,8 @@ async function executeRunsGetCommand(
       `Status: ${detail.loop.status} / ${detail.loop.lifecycleState}`,
       `Verification: ${verification.status}`,
       `Artifacts: ${artifacts.totalCount}`,
-      `Source: ${detail.source}`
+      `Source: ${detail.source}`,
+      `Cost (USD): ${detail.loop.cost.actualUsd.toFixed(2)} — provenance: ${describeCostProvenance(detail.loop)}`
     ],
     quiet: detail.loop.loopId,
     warnings: [...detail.warnings, ...verification.warnings]

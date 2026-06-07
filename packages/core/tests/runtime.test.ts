@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createLoopRecord, type LoopAttempt } from "@martin/contracts";
 
@@ -334,6 +334,39 @@ describe("inferExit", () => {
 });
 
 describe("runMartin", () => {
+  let scratchRoot: string | undefined;
+  let previousRunsDir: string | undefined;
+  let previousGroundingDir: string | undefined;
+  let previousIntegrityKeyDir: string | undefined;
+
+  beforeEach(async () => {
+    scratchRoot = await mkdtemp(join(tmpdir(), "martin-runtime-isolation-"));
+    previousRunsDir = process.env["MARTIN_RUNS_DIR"];
+    previousGroundingDir = process.env["MARTIN_GROUNDING_DIR"];
+    previousIntegrityKeyDir = process.env["MARTIN_INTEGRITY_KEY_DIR"];
+    process.env["MARTIN_RUNS_DIR"] = join(scratchRoot, "runs");
+    process.env["MARTIN_GROUNDING_DIR"] = join(scratchRoot, "grounding");
+    process.env["MARTIN_INTEGRITY_KEY_DIR"] = join(scratchRoot, "receipt-integrity");
+  });
+
+  afterEach(() => {
+    if (previousRunsDir === undefined) {
+      delete process.env["MARTIN_RUNS_DIR"];
+    } else {
+      process.env["MARTIN_RUNS_DIR"] = previousRunsDir;
+    }
+    if (previousGroundingDir === undefined) {
+      delete process.env["MARTIN_GROUNDING_DIR"];
+    } else {
+      process.env["MARTIN_GROUNDING_DIR"] = previousGroundingDir;
+    }
+    if (previousIntegrityKeyDir === undefined) {
+      delete process.env["MARTIN_INTEGRITY_KEY_DIR"];
+    } else {
+      process.env["MARTIN_INTEGRITY_KEY_DIR"] = previousIntegrityKeyDir;
+    }
+  });
+
   it("records a completed run when the adapter returns a verified result", async () => {
     const timestamps = createTimestampSource([
       "2026-03-27T16:00:00.000Z",
@@ -854,6 +887,7 @@ describe("runMartin", () => {
     expect(result.loop.lifecycleState).toBe("budget_exit");
     expect(result.loop.events.map((event) => event.type)).toContain("budget.updated");
     expect(result.decision.shouldExit).toBe(true);
+    expect(result.loop.cost.provenance).toBe("actual");
   });
 
   it("rejects an attempt during budget preflight before the adapter runs and records the ledger source", async () => {

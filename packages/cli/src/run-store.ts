@@ -451,6 +451,18 @@ export function buildArtifactSummary(loop: LoopRecord): ArtifactSummary {
   };
 }
 
+export function describeCostProvenance(loop: LoopRecord): string {
+  const provenance = loop.cost.provenance ?? "unavailable";
+  switch (provenance) {
+    case "actual":
+      return "actual (provider-reported usage)";
+    case "estimated":
+      return "estimated (local pricing-table approximation)";
+    default:
+      return "unavailable (no usage receipt recorded)";
+  }
+}
+
 export function buildRunReceipt(
   loop: LoopRecord,
   verification = buildVerificationSummary(loop),
@@ -482,6 +494,8 @@ export function buildRunReceipt(
       avoidedUsdEstimate: loop.cost.avoidedUsd,
       tokensIn: loop.cost.tokensIn,
       tokensOut: loop.cost.tokensOut,
+      costProvenance: loop.cost.provenance ?? "unavailable",
+      costProvenanceLabel: describeCostProvenance(loop),
       trustworthy,
       integrityState: integrity.state,
       avoidedIterationsEstimate: stopConditionReached ? 1 : 0,

@@ -33,6 +33,24 @@ const POISON_PATTERNS = [
 ];
 
 /**
+ * Identity-redefinition / persona-override patterns.
+ *
+ * These intentionally require an *override framing* (e.g. "now", "no longer",
+ * "forget", "pretend", or an explicit authority-role claim) rather than any
+ * sentence shaped like "you are X" / "I am X" — the latter matches ordinary
+ * benign text (e.g. "You are welcome to try MartinLoop") and produced
+ * false-positive hard aborts.
+ */
+const IDENTITY_REDEFINITION_PATTERNS = [
+  /\byou(?:'re|\s+are)\s+now\s+(?:a|an|the)\b(?!\s+(?:martin\s+loop|ai\s+coding\s+agent))/i,
+  /\byou(?:'re|\s+are)\s+no\s+longer\s+(?!.*\b(?:martin\s+loop|an?\s+ai)\b)/i,
+  /\bforget\s+(?:that\s+)?you(?:'re|\s+are)\s+martin\s+loop\b/i,
+  /\b(?:pretend|imagine)\s+(?:that\s+)?you(?:'re|\s+are)\b/i,
+  /\bact\s+as\s+(?:if\s+you(?:'re|\s+are)\s+)?(?:a|an)\s+(?:different|new|unrestricted|jailbroken)\b/i,
+  /\bi\s+am\s+(?:the|your)\s+(?:new\s+)?(?:system|developer|admin(?:istrator)?|root\s*user|owner|creator|operator)\b/i
+];
+
+/**
  * T05: Context Poisoning Pre-gate.
  * Scans untrusted input channels for authority inversion or instruction re-injection.
  * Runs BEFORE admission control and core reasoning.
@@ -56,7 +74,12 @@ export async function runContextIntegrityPrecheck(
     history: Boolean(inputs.history)
   };
 
-  const untrustedBuffer = [inputs.userPrompt, inputs.toolOutput, inputs.retrievedContext]
+  const untrustedBuffer = [
+    inputs.userPrompt,
+    inputs.toolOutput,
+    inputs.retrievedContext,
+    inputs.history
+  ]
     .filter(Boolean)
     .join("\n---\n");
 
@@ -66,8 +89,11 @@ export async function runContextIntegrityPrecheck(
     }
   }
 
-  if (/\b(?:I am|You are)\s+(?!Martin\s+Loop|an\s+AI)\b/i.test(untrustedBuffer)) {
-    signals.push("Identity redefinition attempt detected.");
+  for (const pattern of IDENTITY_REDEFINITION_PATTERNS) {
+    if (pattern.test(untrustedBuffer)) {
+      signals.push("Identity redefinition attempt detected.");
+      break;
+    }
   }
 
   const verdict: ContextIntegrityVerdict =

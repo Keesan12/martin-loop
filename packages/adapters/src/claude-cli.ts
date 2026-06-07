@@ -72,6 +72,7 @@ interface ClaudeJsonOutput {
   subtype?: string;
   result?: string;
   error?: string;
+  total_cost_usd?: number;
   usage?: {
     // camelCase (older SDK versions)
     inputTokens?: number;
@@ -144,10 +145,14 @@ function extractUsage(
     (modelLabel ? MODEL_PRICING[modelLabel] : undefined) ??
     { inputPer1K: BLENDED_INPUT_COST_PER_1K, outputPer1K: BLENDED_OUTPUT_COST_PER_1K };
 
-  const actualUsd =
+  const estimatedUsd =
     (promptTokens / 1000) * pricing.inputPer1K +
     (cachedInputTokens / 1000) * (pricing.cachedInputPer1K ?? pricing.inputPer1K) +
     (tokensOut / 1000) * pricing.outputPer1K;
+  const actualUsd =
+    typeof parsed.total_cost_usd === "number" && Number.isFinite(parsed.total_cost_usd)
+      ? parsed.total_cost_usd
+      : estimatedUsd;
 
   return normalizeUsage({
     actualUsd: Number(actualUsd.toFixed(6)),
@@ -1137,7 +1142,15 @@ function redactSecretsForPrompt(input: string): string {
   return input
     .replace(/\bOPENAI_API_KEY\s*=\s*[^\s"'`]+/giu, "OPENAI_API_KEY=[REDACTED_SECRET]")
     .replace(/\bsk-[A-Za-z0-9_-]{8,}\b/gu, "[REDACTED_SECRET]")
-    .replace(/\bghp_[A-Za-z0-9_]{8,}\b/gu, "[REDACTED_SECRET]")
+    .replace(/\bgh[ps]_[A-Za-z0-9_]{16,}\b/giu, "[REDACTED_SECRET]")
+    .replace(/\bgithub_pat_[A-Za-z0-9_]{16,}\b/giu, "[REDACTED_SECRET]")
+    .replace(/\bAKIA[A-Z0-9]{12,}\b/gu, "[REDACTED_SECRET]")
+    .replace(/\bAWS_SECRET_ACCESS_KEY\s*=\s*[^\s"'`]+/giu, "AWS_SECRET_ACCESS_KEY=[REDACTED_SECRET]")
+    .replace(/\bxox[baprs]-[A-Za-z0-9-]{10,}\b/giu, "[REDACTED_SECRET]")
+    .replace(/\bAIza[A-Za-z0-9_-]{20,}\b/gu, "[REDACTED_SECRET]")
+    .replace(/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/gu, "[REDACTED_SECRET]")
+    .replace(/-----BEGIN[ A-Z]*PRIVATE KEY-----[\s\S]*?-----END[ A-Z]*PRIVATE KEY-----/gu, "[REDACTED_SECRET]")
+    .replace(/\b(?:api[_-]?key|secret|password|token)\s*[:=]\s*["']?[A-Za-z0-9_\-/+=]{8,}["']?/giu, "[REDACTED_SECRET]")
     .replace(/\B\.env(?!\.example\b)(?:\.[A-Za-z0-9._-]+)?\b/giu, "[REDACTED_PATH]");
 }
 
