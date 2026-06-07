@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.11]
+
+### Fixed
+- **`runs verify --latest` now works on the public CLI** - the persisted verification view now honors `--latest` the same way `dossier` and `runs get` already do, including when `--runs-dir` points at an explicit store.
+- **Post-release selector parity is now aligned** - public phase guidance, release notes, and the shipped root package no longer disagree about the supported verification selector path.
+
 ## [0.2.10]
 
 ### Fixed

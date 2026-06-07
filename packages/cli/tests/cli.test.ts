@@ -158,11 +158,12 @@ describe.sequential("executeCli", () => {
     }
   });
 
-  it("keeps the public help surface honest for 0.2.10", () => {
+  it("keeps the public help surface honest for 0.2.11", () => {
     const help = renderCliHelp();
 
     expect(help).not.toContain("martin-loop bench");
     expect(help).toContain("martin-loop badge [--format svg|json] [--runs-dir <path>]");
+    expect(help).toContain("martin-loop runs verify (--loop-id <id> | --file <path> | --latest) [options]");
   });
 
   it("renders the built-in command guide", async () => {
