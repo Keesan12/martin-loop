@@ -32,7 +32,7 @@ test("version ledger records live public truth and the next release train", asyn
   for (const requiredText of [
     "root public baseline: `0.2.11`",
     "standalone MCP public baseline: `0.3.0`",
-    "next planned root release: `0.3.0`",
+    "current in-repo root release line: `0.3.0`",
     "next planned root follow-on: `0.3.1`",
     "next planned standalone release: `0.3.1`",
     "`0.3.2` opt-in execution controls"

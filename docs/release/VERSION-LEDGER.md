@@ -12,7 +12,7 @@ This file is the release source of truth for package/version mapping in this rep
   - `0.2.9` fixed proof-run classification, Windows `.cmd` resolution, and public provider defaults
   - `0.2.10` tightened verifier evidence, `--runs-dir` consistency, and public help output
   - `0.2.11` fixed `runs verify --latest` selector parity in the public CLI
-- next planned root release: `0.3.0` for shareable run receipts
+- current in-repo root release line: `0.3.0` for shareable run receipts, benchmark reproducibility, and public trust proofs
 - next planned root follow-on: `0.3.1` for multi-model and multi-IDE compatibility
 
 ## Standalone package: `@martinloop/mcp`

@@ -66,6 +66,7 @@ martin-loop session-start [--host <claude|codex|gemini|generic>]
 martin-loop phase status|contract|session-start|preflight|run [--execute]
 martin-loop preflight <objective> [options]
 martin-loop run <objective> [options]
+martin-loop bench --suite <suiteId>
 martin-loop triage
 martin-loop dossier (--latest | --loop-id <id> | --file <path>)
 martin-loop runs list|get|attempt|verify ...
@@ -81,6 +82,29 @@ Examples below use `npx martin-loop` so they work without a global install. If y
 Use `martin-loop share --latest` after `dossier` when you want a redacted bundle you can hand to another person without sending raw run-store files.
 
 More detail: [CLI reference](./docs/reference/cli.md) and [configuration reference](./docs/reference/config.md).
+
+## Benchmarks
+
+MartinLoop ships a public deterministic benchmark workspace in `benchmarks/` plus the installed-package `bench` command.
+
+From an installed package:
+
+```sh
+npx martin-loop bench --suite under-3-challenge
+npx martin-loop bench --suite ralphy-engineering-50
+```
+
+From a clean public clone:
+
+```sh
+pnpm install --frozen-lockfile
+pnpm --filter @martin/benchmarks build
+pnpm --filter @martin/benchmarks test
+pnpm --filter @martin/benchmarks eval
+pnpm --filter @martin/benchmarks report:ralphy
+```
+
+The installed-package command reads the shipped public fixtures. The repo-clone workflow runs the public benchmark workspace directly.
 
 ## MCP
 
