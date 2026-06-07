@@ -242,17 +242,16 @@ test("CLI package readme links stay inside the cleaned docs tree", async () => {
   }
 });
 
-test("root release note captures onboarding and governance changes", async () => {
+test("root release note stays public-facing and runnable", async () => {
   const releaseNotes = await readRepoFile(path.join("docs", "release", `OSS-${rootPackageJson.version}-RELEASE-NOTES.md`));
 
-  assert.match(releaseNotes, /martin-loop start/);
-  assert.match(releaseNotes, /martin-loop tour/);
+  assert.match(releaseNotes, new RegExp(`0\\.${rootPackageJson.version.split(".").slice(1).join("\\.")}`));
+  assert.match(releaseNotes, /root-package-only|root package/i);
+  assert.match(releaseNotes, /runs verify --latest/i);
+  assert.match(releaseNotes, /dossier --latest/i);
   assert.match(releaseNotes, /doctor/i);
   assert.match(releaseNotes, /session-start/i);
   assert.match(releaseNotes, /preflight/i);
-  assert.match(releaseNotes, /--unsafe-allow-unguarded-run/);
-  assert.match(releaseNotes, /vendored internal CLI bin surface/i);
-  assert.match(releaseNotes, /root-release-guard/i);
 });
 
 test("MCP release note matches the current package line and the governed flow", async () => {

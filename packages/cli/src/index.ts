@@ -551,7 +551,7 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
     if (subcommand === "verify") {
       return {
         command: "runs_verify",
-        selector: parseRunSelector(subcommandArgs, { allowLatest: false })
+        selector: parseRunSelector(subcommandArgs, { allowLatest: true })
       };
     }
     return { command: "help" };
@@ -654,7 +654,7 @@ export function renderCliHelp(): string {
     "  martin-loop runs list [options]",
     "  martin-loop runs get (--loop-id <id> | --file <path> | --latest) [options]",
     "  martin-loop runs attempt (--loop-id <id> | --file <path>) [--attempt-index <n>] [options]",
-    "  martin-loop runs verify (--loop-id <id> | --file <path>) [options]",
+    "  martin-loop runs verify (--loop-id <id> | --file <path> | --latest) [options]",
     "  martin-loop mcp print-config --host <codex|claude|gemini|generic> [--scope <user|project|local>] [options]",
     "  martin-loop mcp install --host <codex|claude|gemini|generic> [--scope <user|project|local>] [--dry-run] [options]",
     "  martin-loop demo [--dir <path>] [--force]",
