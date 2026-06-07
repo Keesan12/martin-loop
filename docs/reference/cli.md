@@ -16,6 +16,7 @@ martin-loop dossier (--latest | --loop-id <id> | --file <path>)
 martin-loop inspect --file <path>
 martin-loop resume <loopId>
 martin-loop challenge [--loop-id <id> | --file <path> | --latest] [--format markdown|svg]
+martin-loop share (--loop-id <id> | --file <path> | --latest) [--out-dir <path>]
 martin-loop badge [--format svg|json] [--runs-dir <path>]
 martin-loop runs list|get|attempt|verify ...
 martin-loop mcp print-config --host <codex|claude|gemini|generic>
@@ -34,6 +35,7 @@ npx martin-loop doctor
 npx martin-loop session-start
 npx martin-loop preflight "Summarize the workspace and prove tests still pass" --verify "npm test"
 npx martin-loop run "Summarize the workspace and prove tests still pass" --proof --verify "npm test"
+npx martin-loop share --latest
 ```
 
 ## Run Options
@@ -66,6 +68,7 @@ npx martin-loop run "Summarize the workspace and prove tests still pass" --proof
 
 ```text
 --runs-dir <path>       Override the Martin runs root for guided flow receipts, persisted evidence views, and badge generation
+--out-dir <path>        Override where `martin share` writes the local share bundle
 ```
 
 ## Evidence Commands
@@ -88,8 +91,28 @@ Compatibility views remain available:
 npx martin-loop inspect --file ~/.martin/runs/<workspaceId>.jsonl
 npx martin-loop resume <loopId>
 npx martin-loop challenge --latest
+npx martin-loop share --latest
 npx martin-loop badge --format json --runs-dir ~/.martin/runs
 ```
+
+## Share command
+
+Use `share` when you want a reviewable bundle for the latest governed run or a specific saved run.
+
+```sh
+npx martin-loop share --latest
+npx martin-loop share --loop-id <loopId>
+npx martin-loop share --file ~/.martin/runs/<loopId>/loop-record.json
+npx martin-loop share --latest --out-dir ./receipts
+```
+
+By default MartinLoop writes:
+
+- `run-receipt.json`
+- `run-receipt.md`
+- `proof-card.svg`
+
+The default output location is the selected run directory under `share/`.
 
 ## Phase Commands
 

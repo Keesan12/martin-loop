@@ -16,6 +16,9 @@ export function createStubDirectProviderAdapter(
     providerId: options.providerId,
     model: options.model,
     label: options.label ?? `Stub direct provider (${options.providerId}/${options.model})`,
+    capabilities: {
+      workspaceMutations: false
+    },
     responder: options.responder
   });
 }

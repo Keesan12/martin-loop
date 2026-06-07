@@ -12,6 +12,7 @@ export function createAdapterCapabilities(
     diffArtifacts: false,
     structuredErrors: false,
     cachingSignals: false,
+    workspaceMutations: true,
     ...overrides
   };
 }

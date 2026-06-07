@@ -20,6 +20,7 @@ describe("createStubDirectProviderAdapter", () => {
     expect(adapter.metadata.providerId).toBe("openai");
     expect(adapter.metadata.transport).toBe("http");
     expect(adapter.metadata.capabilities.usageSettlement).toBe(true);
+    expect(adapter.metadata.capabilities.workspaceMutations).toBe(false);
     expect(result.status).toBe("failed");
     expect(result.failure?.message).toContain("not configured");
     expect(result.usage.actualUsd).toBe(0);

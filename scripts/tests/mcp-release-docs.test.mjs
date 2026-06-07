@@ -31,11 +31,10 @@ test("version ledger records live public truth and the next release train", asyn
 
   for (const requiredText of [
     "root public baseline: `0.2.11`",
-    "standalone MCP public baseline: `0.2.7`",
+    "standalone MCP public baseline: `0.3.0`",
     "next planned root release: `0.3.0`",
     "next planned root follow-on: `0.3.1`",
-    "next planned standalone release: `0.3.0`",
-    "`0.3.1` review and handoff controls",
+    "next planned standalone release: `0.3.1`",
     "`0.3.2` opt-in execution controls"
   ]) {
     assert.match(ledger, new RegExp(escapeRegex(requiredText)));
@@ -46,12 +45,11 @@ test("MCP slice map defines the 0.3.x train without private-hosted bleed", async
   const sliceMap = await readRepoFile(path.join("docs", "release", "MCP-DELIVERY-SLICE-MAP.md"));
 
   for (const requiredText of [
-    "## `0.3.0` — Adoption Pack",
     "## `0.3.1` — Review And Handoff Controls",
     "## `0.3.2` — Opt-In Execution Controls",
-    "hosted endpoints",
-    "tenant or org language",
-    "billing or mission-control claims"
+    "hosted audit export",
+    "tenant or billing features",
+    "non-OSS transport"
   ]) {
     assert.match(sliceMap, new RegExp(escapeRegex(requiredText)));
   }
@@ -66,7 +64,6 @@ test("public MCP docs describe the current baseline and the next train in human-
   ]);
 
   for (const contents of [packageReadme, aiGuide]) {
-    assert.match(contents, /0\.2\.7/);
     assert.match(contents, /0\.3\.0/);
     assert.match(contents, /local-first/i);
     assert.match(contents, /martin_doctor/);
