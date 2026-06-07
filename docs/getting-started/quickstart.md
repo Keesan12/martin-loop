@@ -20,6 +20,7 @@ npx martin-loop session-start
 npx martin-loop preflight "Summarize the demo workspace and prove tests still pass" --verify "npm test"
 npx martin-loop run "Summarize the demo workspace and prove tests still pass" --proof --verify "npm test"
 npx martin-loop dossier --latest
+npx martin-loop share --latest
 ```
 
 This path creates the local receipts MartinLoop expects before a real governed run, then proves the run/dossier loop without model spend.
@@ -47,9 +48,12 @@ By default, MartinLoop expects recent `doctor`, `session-start`, and `preflight`
 ```sh
 npx martin-loop triage
 npx martin-loop dossier --latest
+npx martin-loop share --latest
 ```
 
-Use `triage` to rank saved runs by urgency. Use `dossier` when you want one run receipt: stop reason, verifier evidence, budget status, rollback or artifact evidence, and the next safe action.
+Use `triage` to rank saved runs by urgency. Use `dossier` when you want one run receipt: stop reason, verifier evidence, budget status, rollback or artifact evidence, and the next safe action. Use `share` when you want a redacted bundle you can attach to a ticket, send to a teammate, or keep with the run directory.
+
+The share bundle contains `run-receipt.json`, `run-receipt.md`, and `proof-card.svg`.
 
 ## Repository Development
 

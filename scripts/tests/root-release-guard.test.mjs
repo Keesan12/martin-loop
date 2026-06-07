@@ -28,8 +28,12 @@ test("runRootReleaseGuard accepts the current OSS-safe root package shape", asyn
   assert.equal(result.packChecked, false);
 });
 
-test("assertRootVersionPolicy rejects non-0.2.x root versions", () => {
-  assert.throws(() => assertRootVersionPolicy("1.3.0"), /0\.2\.x/);
+test("assertRootVersionPolicy accepts the public 0.3.x root release line", () => {
+  assert.doesNotThrow(() => assertRootVersionPolicy("0.3.0"));
+});
+
+test("assertRootVersionPolicy rejects versions outside the public 0.2.x and 0.3.x lines", () => {
+  assert.throws(() => assertRootVersionPolicy("1.3.0"), /0\.2\.x or 0\.3\.x/);
 });
 
 test("assertPackedSurface rejects unexpected non-OSS paths", () => {

@@ -1,6 +1,6 @@
 # Version Ledger
 
-This file is the internal source of truth for release work. Check it before you cut a branch, update docs, or talk about npm state.
+This file is the release source of truth for package/version mapping in this repo. Check it before you cut a branch, update docs, or talk about npm state.
 
 ## Root package: `martin-loop`
 
@@ -17,13 +17,12 @@ This file is the internal source of truth for release work. Check it before you 
 
 ## Standalone package: `@martinloop/mcp`
 
-- live npm dist-tag `latest`: `0.2.7`
-- live public GitHub release: `mcp-v0.2.7`
-- live public baseline in this train: `0.2.7`
-- standalone MCP public baseline: `0.2.7`
-- next planned standalone release: `0.3.0` for host adoption and onboarding
+- live npm dist-tag `latest`: `0.3.0`
+- live public GitHub release: `mcp-v0.3.0`
+- live public baseline in this train: `0.3.0`
+- standalone MCP public baseline: `0.3.0`
+- next planned standalone release: `0.3.1` for review and handoff controls
 - next planned follow-ons:
-  - `0.3.1` review and handoff controls
   - `0.3.2` opt-in execution controls
 
 ## Release rules

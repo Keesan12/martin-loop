@@ -1,9 +1,9 @@
 {
   "name": "martin-loop",
   "private": false,
-  "version": "0.2.11",
+  "version": "0.3.0",
   "type": "module",
-  "description": "Open-source command center for governed AI coding agents with built-in onboarding, hard gates, CLI, MCP, and run receipts.",
+  "description": "Open-source command center for governed AI coding agents with built-in onboarding, hard gates, MCP, and shareable run receipts.",
   "packageManager": "pnpm@10.33.0",
   "keywords": [
     "mcp",
@@ -14,6 +14,8 @@
     "budget-enforcement",
     "verifier-gates",
     "audit-trail",
+    "run-receipts",
+    "agent-receipts",
     "claude-code",
     "codex",
     "llmops",

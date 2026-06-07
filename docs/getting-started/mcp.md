@@ -2,7 +2,7 @@
 
 The `@martinloop/mcp` package exposes MartinLoop through stdio for MCP-capable hosts.
 
-`0.2.7` is the current public MCP package line. It adds a stronger guided flow for hosts and a stricter run gate so `martin_run` only starts after the matching readiness, planning, and preflight steps have happened.
+`0.3.0` is the current public MCP package line. It adds a stronger guided flow for hosts and a stricter run gate so `martin_run` only starts after the matching readiness, planning, and preflight steps have happened.
 
 ## Install
 
