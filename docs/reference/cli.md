@@ -5,13 +5,10 @@ The published binary is `martin-loop`. Public installs, docs, and examples shoul
 ## Commands
 
 ```text
-martin-loop start [--host <codex|claude|gemini|generic>]
-martin-loop tour [--host <codex|claude|gemini|generic>]
-martin-loop guide [topic]
 martin-loop doctor
 martin-loop demo
-martin-loop session-start [--host <claude|codex|generic>]
-martin-loop phase status|contract|preflight|run [--execute]
+martin-loop session-start [--host <claude|codex|gemini|generic>]
+martin-loop phase status|contract|session-start|preflight|run [--execute]
 martin-loop preflight <objective> [options]
 martin-loop run <objective> [options]
 martin-loop triage
@@ -30,8 +27,9 @@ martin-loop mcp install --host <codex|claude|gemini|generic>
 Use this sequence when you are new to the product or setting up a fresh repo:
 
 ```sh
-npx martin-loop start
-npx martin-loop tour
+npx martin-loop demo
+cd martin-loop-demo
+npm install
 npx martin-loop doctor
 npx martin-loop session-start
 npx martin-loop preflight "Summarize the workspace and prove tests still pass" --verify "npm test"

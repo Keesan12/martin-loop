@@ -3,9 +3,11 @@ import {
   buildBudgetSnapshot,
   buildCostSnapshot,
   buildLoopPreview,
+  resolveReceiptIntegrity,
   buildVerificationSummary
 } from "./tool-support.js";
 import { loadDetailedLoopRecord, readLedgerEvents } from "./run-store.js";
+import type { ReceiptIntegritySummary } from "@martin/contracts";
 
 export interface MartinGetRunInput {
   file?: string;
@@ -21,6 +23,7 @@ export interface MartinGetRunOutput {
   budget: ReturnType<typeof buildBudgetSnapshot>;
   cost: ReturnType<typeof buildCostSnapshot>;
   verification: ReturnType<typeof buildVerificationSummary>;
+  receiptIntegrity: ReceiptIntegritySummary;
   artifacts: ReturnType<typeof buildArtifactSummary>;
   inspection: {
     runsRoot: string;
@@ -45,6 +48,7 @@ export async function martinGetRunTool(
     budget: buildBudgetSnapshot(detail.loop.budget),
     cost: buildCostSnapshot(detail.loop.cost),
     verification,
+    receiptIntegrity: resolveReceiptIntegrity(detail.loop),
     artifacts: buildArtifactSummary(detail.loop),
     inspection: {
       runsRoot: detail.runsRoot,

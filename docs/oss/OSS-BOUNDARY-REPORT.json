@@ -1,0 +1,98 @@
+{
+  "generatedAt": "2026-06-07T06:12:03.577Z",
+  "verdict": "go",
+  "publicSurface": {
+    "packageName": "martin-loop",
+    "packageVersion": "0.2.8",
+    "installCommand": "npm install martin-loop",
+    "npxCommand": "npx martin-loop",
+    "sdkImportPath": "martin-loop",
+    "mcpCommand": "npx -y @martinloop/mcp"
+  },
+  "ossCorePackages": [
+    {
+      "name": "@martin/contracts",
+      "path": "packages/contracts",
+      "private": true,
+      "publishAccess": null,
+      "workspaceDependencies": []
+    },
+    {
+      "name": "@martin/core",
+      "path": "packages/core",
+      "private": true,
+      "publishAccess": null,
+      "workspaceDependencies": [
+        "@martin/contracts"
+      ]
+    },
+    {
+      "name": "@martin/adapters",
+      "path": "packages/adapters",
+      "private": true,
+      "publishAccess": null,
+      "workspaceDependencies": [
+        "@martin/core"
+      ]
+    },
+    {
+      "name": "@martin/cli",
+      "path": "packages/cli",
+      "private": false,
+      "publishAccess": "public",
+      "workspaceDependencies": [
+        "@martin/adapters",
+        "@martin/contracts",
+        "@martin/core"
+      ]
+    },
+    {
+      "name": "@martinloop/mcp",
+      "path": "packages/mcp",
+      "private": false,
+      "publishAccess": "public",
+      "workspaceDependencies": [
+        "@martin/contracts"
+      ]
+    }
+  ],
+  "topLevelEntries": [
+    ".github",
+    ".gitignore",
+    "AGENTS.md",
+    "CHANGELOG.md",
+    "CODE_OF_CONDUCT.md",
+    "CONTEXT.md",
+    "CONTRIBUTING.md",
+    "LICENSE",
+    "README.md",
+    "SECURITY.md",
+    "benchmarks",
+    "demo",
+    "dist",
+    "docs",
+    "examples",
+    "martin.config.example.yaml",
+    "node_modules",
+    "package.json",
+    "packages",
+    "pnpm-lock.yaml",
+    "pnpm-workspace.yaml",
+    "scripts",
+    "tsconfig.base.json",
+    "vitest.workspace.ts"
+  ],
+  "forbiddenTopLevelEntries": [],
+  "unexpectedTopLevelEntries": [],
+  "unexpectedPackageDirs": [],
+  "forbiddenPackageDirs": [],
+  "dependencyLeaks": [],
+  "summary": {
+    "ossCoreCount": 5,
+    "forbiddenTopLevelCount": 0,
+    "unexpectedTopLevelCount": 0,
+    "unexpectedPackageDirCount": 0,
+    "forbiddenPackageDirCount": 0,
+    "dependencyLeakCount": 0
+  }
+}

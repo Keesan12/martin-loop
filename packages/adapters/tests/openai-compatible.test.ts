@@ -270,4 +270,35 @@ describe("createOpenAiCompatibleAdapter", () => {
     expect(adapter.metadata.model).toBe("gpt-4.1-mini");
     expect(capturedUrl).toBe("https://api.openai.com/v1/chat/completions");
   });
+
+  it("uses the runtime API key when options.apiKey is unset", async () => {
+    let capturedHeaders: Record<string, string | string[] | undefined> = {};
+    const previousApiKey = process.env.MARTIN_OPENAI_API_KEY;
+
+    try {
+      process.env.MARTIN_OPENAI_API_KEY = "sk-env-fallback";
+      const { url, close } = await startMockServer((req) => {
+        capturedHeaders = req.headers as Record<string, string | string[] | undefined>;
+        return {
+          body: {
+            choices: [{ message: { role: "assistant", content: "Fixed." }, finish_reason: "stop" }],
+            usage: { prompt_tokens: 10, completion_tokens: 5 }
+          }
+        };
+      });
+      mockClose = close;
+
+      const adapter = createOpenAiCompatibleAdapter({ baseUrl: url, model: "test-model" });
+      const result = await adapter.execute(makeRequest() as any);
+
+      expect(result.status).toBe("completed");
+      expect(capturedHeaders["authorization"]).toBe("Bearer sk-env-fallback");
+    } finally {
+      if (previousApiKey === undefined) {
+        delete process.env.MARTIN_OPENAI_API_KEY;
+      } else {
+        process.env.MARTIN_OPENAI_API_KEY = previousApiKey;
+      }
+    }
+  });
 });

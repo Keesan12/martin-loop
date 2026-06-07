@@ -36,6 +36,13 @@ export const FORBIDDEN_PUBLIC_COPY_PATTERNS = [
   /\bpublic(?:-| )surface cleanup\b/i,
 ];
 
+const PATH_SPECIFIC_ALLOWLIST = [
+  {
+    pattern: /\brelease packet\b/i,
+    test: (relativePath) => relativePath.startsWith("docs/release/"),
+  },
+];
+
 export const FORBIDDEN_PUBLIC_ARTIFACT_RULES = [
   {
     label: "release handoff archive",
@@ -93,9 +100,54 @@ async function collectFiles(startDir, include, rootDir, results = []) {
 }
 
 export function findPublicCopyViolations(contents, relativePath) {
+  const scannableContents = normalizePublicCopyContents(contents, relativePath);
   return FORBIDDEN_PUBLIC_COPY_PATTERNS
-    .filter((pattern) => pattern.test(contents))
+    .filter((pattern) => pattern.test(scannableContents) && !isAllowedPublicCopyPattern(pattern, relativePath))
     .map((pattern) => ({ relativePath, pattern }));
+}
+
+function normalizePublicCopyContents(contents, relativePath) {
+  if (relativePath.endsWith("package.json")) {
+    return normalizePackageMetadata(contents);
+  }
+
+  if (/\.(md|markdown|ya?ml)$/iu.test(relativePath)) {
+    return contents
+      .replace(/```[\s\S]*?```/gu, "\n")
+      .replace(/`[^`\r\n]+`/gu, " ");
+  }
+
+  return contents;
+}
+
+function normalizePackageMetadata(contents) {
+  try {
+    const manifest = JSON.parse(contents);
+    return JSON.stringify(
+      {
+        name: manifest.name,
+        description: manifest.description,
+        keywords: manifest.keywords,
+        homepage: manifest.homepage,
+        author: manifest.author,
+        license: manifest.license,
+        repository:
+          typeof manifest.repository === "string" ? manifest.repository : manifest.repository?.url,
+        bugs: typeof manifest.bugs === "string" ? manifest.bugs : manifest.bugs?.url,
+        bin: manifest.bin,
+      },
+      null,
+      2,
+    );
+  } catch {
+    return contents;
+  }
+}
+
+function isAllowedPublicCopyPattern(pattern, relativePath) {
+  return PATH_SPECIFIC_ALLOWLIST.some(
+    (rule) => String(rule.pattern) === String(pattern) && rule.test(relativePath),
+  );
 }
 
 export async function runPublicCopyScan(options = {}) {

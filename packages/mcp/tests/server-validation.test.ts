@@ -14,6 +14,7 @@ import {
 } from "../src/discovery-metadata.js";
 import {
   sanitizeToolErrorMessage,
+  resolveTrustedLoopRepoRoot,
   validateToolInput
 } from "../src/server-validation.js";
 import { createMartinMcpServer } from "../src/server.js";
@@ -178,6 +179,28 @@ describe("server validation", () => {
             workingDirectory: "workspace_link/repo"
           })
         ).toThrow("Invalid workingDirectory.");
+      } finally {
+        await rm(outsideRoot, { recursive: true, force: true }).catch(() => {});
+      }
+    });
+  });
+
+  it("uses the configured workspace root as the trusted loop repo fallback", async () => {
+    await withValidationWorkspaceRoot(async (workspaceRoot) => {
+      expect(resolveTrustedLoopRepoRoot(undefined)).toBe(workspaceRoot);
+    });
+  });
+
+  it("rejects loop repo roots that point outside the trusted workspace", async () => {
+    await withValidationWorkspaceRoot(async (workspaceRoot) => {
+      const outsideRoot = await mkdtemp(join(tmpdir(), "martin-mcp-validation-untrusted-workspace-"));
+
+      try {
+        const escapedPath = join(outsideRoot, "repo");
+        await mkdir(escapedPath, { recursive: true });
+        expect(() => resolveTrustedLoopRepoRoot(escapedPath, workspaceRoot)).toThrow(
+          "Run record points outside the trusted workspace."
+        );
       } finally {
         await rm(outsideRoot, { recursive: true, force: true }).catch(() => {});
       }

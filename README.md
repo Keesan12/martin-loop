@@ -5,14 +5,14 @@
 
   **The open-source control plane for AI coding agents.**
 
-  MartinLoop wraps Claude Code, Codex, and MCP-aware agent workflows with budgets, verifier gates, policy checks, run receipts, and review-ready evidence.
+  MartinLoop wraps Claude Code, Codex, Gemini, and MCP-aware agent workflows with budgets, verifier gates, policy checks, run receipts, and review-ready evidence.
 </div>
 
 ## Why MartinLoop
 
 AI coding agents are useful, but unbounded retry loops are expensive.
 
-A task that looked like a $2.40 fix can become dozens of attempts, a blown token budget, and a diff nobody trusts. MartinLoop gives every run an explicit contract: objective, verifier, budget, scope, receipts, and a clear stop condition.
+A task that looked like a small fix can become dozens of attempts, a blown token budget, and a diff nobody trusts. MartinLoop gives every run an explicit contract: objective, verifier, budget, scope, receipts, and a clear stop condition.
 
 Use it when AI coding work needs to stay bounded, inspectable, and safe to review before it becomes expensive or destructive.
 
@@ -21,8 +21,6 @@ Use it when AI coding work needs to stay bounded, inspectable, and safe to revie
 Try MartinLoop in a disposable demo workspace:
 
 ```sh
-npx martin-loop start
-npx martin-loop tour
 npx martin-loop demo
 cd martin-loop-demo
 npm install
@@ -33,7 +31,7 @@ npx martin-loop run "Summarize the demo workspace and prove tests still pass" --
 npx martin-loop dossier --latest
 ```
 
-`start` and `tour` walk a new operator through the product flow. `doctor`, `session-start`, and `preflight` create the local receipts MartinLoop expects before a real governed run. If you intentionally need to bypass that local gate for a one-off run, use `--unsafe-allow-unguarded-run` explicitly.
+`doctor`, `session-start`, and `preflight` create the local receipts MartinLoop expects before a real governed run. If you intentionally need to bypass that local gate for a one-off run, use `--unsafe-allow-unguarded-run` explicitly.
 
 Release notes for the current root package: [MartinLoop 0.2.11](./docs/release/OSS-0.2.11-RELEASE-NOTES.md).
 
@@ -42,9 +40,8 @@ Release notes for the current root package: [MartinLoop 0.2.11](./docs/release/O
 - Budget caps stop the next attempt before a configured USD, token, or iteration limit is exceeded.
 - Verifier gates require a real check, such as `npm test`, before a run can count as complete.
 - Policy checks block unsafe verifier commands, risky path changes, and secret-like task inputs before execution.
-- Run receipts capture stop reason, verifier evidence, verifier-step warnings, budget posture, and next safe action.
-- Local onboarding commands (`start`, `tour`, `guide`, `session-start`) help operators adopt the governed flow without memorizing it.
-- MCP integration gives hosts one primary coding execution entrypoint plus richer planning, inspection, and review helpers.
+- Run receipts capture stop reason, verifier evidence, budget posture, integrity state, and the next safe action.
+- MCP integration gives hosts one write-capable execution entrypoint plus richer planning, inspection, and review helpers.
 
 ## How It Works
 
@@ -52,20 +49,17 @@ Release notes for the current root package: [MartinLoop 0.2.11](./docs/release/O
 | --- | --- |
 | Task contract | Objective, verifier plan, repo root, allowed paths, denied paths, acceptance criteria, workspace, project, and budget. |
 | Policy and budget | Defaults come from `martin.config.yaml`; CLI flags can override them. Budget preflight blocks attempts that would exceed policy. |
-| Agent adapters | Claude CLI, Codex CLI, direct-provider, and verifier-only adapters normalize execution results. |
+| Agent adapters | Claude CLI, Codex CLI, Gemini CLI, direct-provider, and verifier-only adapters normalize execution results. |
 | Safety and verification | Scope checks, verifier command checks, prompt integrity, and grounding decide whether work can continue. |
 | Persistence | JSONL run records, evidence summaries, and repo-backed artifacts make every run inspectable later. |
 
 ## CLI
 
 ```text
-martin-loop start [--host <codex|claude|gemini|generic>]
-martin-loop tour [--host <codex|claude|gemini|generic>]
-martin-loop guide [topic]
 martin-loop doctor
 martin-loop demo
-martin-loop session-start [--host <claude|codex|generic>]
-martin-loop phase status|contract|preflight|run [--execute]
+martin-loop session-start [--host <claude|codex|gemini|generic>]
+martin-loop phase status|contract|session-start|preflight|run [--execute]
 martin-loop preflight <objective> [options]
 martin-loop run <objective> [options]
 martin-loop triage
@@ -77,15 +71,7 @@ martin-loop challenge [--loop-id <id> | --file <path> | --latest]
 martin-loop badge [--format svg|json] [--runs-dir <path>]
 ```
 
-The local-first onboarding flow is:
-
-1. `martin-loop start`
-2. `martin-loop tour`
-3. `martin-loop doctor`
-4. `martin-loop session-start`
-5. `martin-loop preflight ...`
-6. `martin-loop run ...`
-7. `martin-loop dossier --latest`
+Examples below use `npx martin-loop` so they work without a global install. If you install `martin-loop` globally, the `martin` alias works too.
 
 More detail: [CLI reference](./docs/reference/cli.md) and [configuration reference](./docs/reference/config.md).
 
@@ -116,6 +102,15 @@ npx martin-loop mcp print-config --host generic --transport stdio --profile gith
 
 The root `martin-loop` package and the standalone `@martinloop/mcp` package move on separate version lines. The root package is `0.2.11`; the current standalone MCP package is `0.2.7`.
 
+The public MCP release train labels are:
+
+- `0.1.4` operator foundation
+- `0.2.0` cockpit expansion
+- `0.2.5` public MCP package line
+- `0.2.7` usability and review release
+
+The standalone MCP registry/server identifier is `io.github.Keesan12/martin-loop`.
+
 More detail: [MCP setup](./docs/getting-started/mcp.md), [MCP tool reference](./docs/reference/mcp-tools.md), and [MCP compatibility](./docs/reference/mcp-compatibility.md).
 
 ## SDK
@@ -133,7 +128,7 @@ const loop = new MartinLoop({
     workspaceId: "my-workspace",
     projectId: "my-project",
     budget: {
-      maxUsd: 3.0,
+      maxUsd: 3,
       softLimitUsd: 2.25,
       maxIterations: 3,
       maxTokens: 20_000,
@@ -153,6 +148,8 @@ const result = await loop.run({
 console.log(result.decision.status);
 ```
 
+The root SDK also exports `createCodexCliAdapter`, `createGeminiCliAdapter`, `createDirectProviderAdapter`, `createOpenAiCompatibleAdapter`, and `createVerifierOnlyAdapter`.
+
 More detail: [SDK reference](./docs/reference/sdk.md) and [package map](./docs/reference/packages.md).
 
 ## Examples
@@ -162,6 +159,7 @@ More detail: [SDK reference](./docs/reference/sdk.md) and [package map](./docs/r
 - [Claude Code walkthrough](./docs/getting-started/claude-code.md)
 - [Codex setup](./docs/getting-started/codex.md)
 - [MCP setup](./docs/getting-started/mcp.md)
+- [MCP tool reference](./docs/reference/mcp-tools.md)
 - [GitHub Actions budget gate](./examples/github-actions-budget-gate/)
 - [OpenCode-style adapter](./examples/opencode-adapter/)
 
@@ -183,7 +181,18 @@ pnpm public:copy-scan
 pnpm public:git-surface
 pnpm oss:validate
 pnpm public:smoke
-pnpm release:validate-local
+pnpm release:matrix:local
+```
+
+Standalone MCP validation:
+
+```sh
+pnpm --filter @martinloop/mcp lint
+pnpm --filter @martinloop/mcp test
+pnpm --filter @martinloop/mcp build
+pnpm --filter @martinloop/mcp smoke:pack
+pnpm --filter @martinloop/mcp smoke:published:pack
+pnpm --filter @martinloop/mcp verify:release
 ```
 
 ## Contributing

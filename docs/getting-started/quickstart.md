@@ -12,8 +12,6 @@ Use this guide to get one governed MartinLoop run and one evidence review in a f
 ## Recommended First Run
 
 ```sh
-npx martin-loop start
-npx martin-loop tour
 npx martin-loop demo
 cd martin-loop-demo
 npm install
@@ -24,7 +22,7 @@ npx martin-loop run "Summarize the demo workspace and prove tests still pass" --
 npx martin-loop dossier --latest
 ```
 
-This path shows the onboarding flow, creates the local receipts MartinLoop expects before a real governed run, and then proves the run/dossier loop without model spend.
+This path creates the local receipts MartinLoop expects before a real governed run, then proves the run/dossier loop without model spend.
 
 ## Install the CLI
 

@@ -183,7 +183,7 @@ export interface MartinGetPromptInput {
   arguments?: Record<string, string>;
   runsDir?: string;
   workingDirectory?: string;
-  engine?: "claude" | "codex";
+  engine?: "claude" | "codex" | "gemini";
 }
 
 export function listMartinPrompts(): { prompts: Prompt[] } {

@@ -1,3 +1,8 @@
+import {
+  probeCodexLaunch,
+  resolveCliCommandAvailability,
+  type CodexHostPlatform
+} from "@martin/adapters";
 import { DEFAULT_BUDGET } from "@martin/contracts";
 import { resolveRunsRoot } from "@martin/core";
 
@@ -43,6 +48,12 @@ export interface MartinPreflightOutput {
   ok: boolean;
   summary: string;
   warnings: string[];
+  scope: {
+    invocationRoot: string;
+    workingDirectory: string;
+    repoRoot: string;
+    runsRoot: string;
+  };
   readiness: {
     mode: "live" | "proof";
     liveMode: boolean;
@@ -72,6 +83,12 @@ export interface MartinPreflightOutput {
       detail: string;
       resolvedPath?: string;
     };
+    codexDiagnostics?: {
+      hostPlatform: CodexHostPlatform;
+      nativeInstallValid: boolean;
+      launchReady: boolean;
+      summary: string;
+    };
     runsRoot: string;
     pathScope: {
       repoRoot: string;
@@ -94,10 +111,19 @@ export async function martinPreflightTool(
   input: MartinPreflightInput
 ): Promise<MartinPreflightOutput> {
   const executionMode = resolveExecutionMode();
+  const workspaceRoot = resolveSafeRepoRoot();
   const workingDirectory = resolveSafeRepoRoot(input.workingDirectory);
   const signals = inspectRepoSignals(workingDirectory);
   const engine = input.engine ?? "claude";
-  const engineAvailability = getEngineAvailability(engine);
+  const engineAvailability =
+    engine === "codex" ? resolveCliCommandAvailability("codex") : getEngineAvailability(engine);
+  const codexProbe =
+    executionMode.liveMode && engine === "codex" && engineAvailability.available
+      ? probeCodexLaunch({
+          workingDirectory,
+          availability: engineAvailability
+        })
+      : undefined;
   const warnings: string[] = [];
   const allowedPaths = input.allowedPaths ?? [];
   const deniedPaths = input.deniedPaths ?? [];
@@ -114,6 +140,8 @@ export async function martinPreflightTool(
     warnings.push("Proof mode is active; preflight only proves configuration shape, not live CLI readiness.");
   } else if (!engineAvailability.available) {
     warnings.push(`Requested engine '${engine}' is not available on PATH.`);
+  } else if (engine === "codex" && codexProbe && !codexProbe.ok) {
+    warnings.push(codexProbe.summary);
   }
 
   if ((input.verificationPlan?.length ?? 0) === 0) {
@@ -133,18 +161,31 @@ export async function martinPreflightTool(
   const runContract = buildRunContract(workingDirectory, input);
   const policy = buildPolicyPackDefinition(input.policyPack, signals);
 
-  const ok = !executionMode.liveMode || engineAvailability.available;
+  const engineReady =
+    !executionMode.liveMode ||
+    (engineAvailability.available && (engine !== "codex" || codexProbe?.ok !== false));
+  const ok = engineReady;
 
   return {
     ok,
     summary: ok
       ? `Preflight ready for ${engine} in ${workingDirectory} with a ${formatUsd(budget.maxUsd)} budget cap and ${runContract.risk.level} risk.`
-      : `Preflight blocked: ${engine} is not available for live execution.`,
+      : `Preflight blocked: ${
+          engine === "codex" && codexProbe && !codexProbe.ok
+            ? codexProbe.summary
+            : `${engine} is not available for live execution.`
+        }`,
     warnings,
+    scope: {
+      invocationRoot: workspaceRoot,
+      workingDirectory,
+      repoRoot: workingDirectory,
+      runsRoot: resolveRunsRoot(process.env)
+    },
     readiness: {
       mode: executionMode.mode,
       liveMode: executionMode.liveMode,
-      engineReady: !executionMode.liveMode || engineAvailability.available
+      engineReady
     },
     normalized: {
       objective: input.objective,
@@ -167,6 +208,16 @@ export async function martinPreflightTool(
           ? { resolvedPath: engineAvailability.resolvedPath }
           : {})
       },
+      ...(codexProbe
+        ? {
+            codexDiagnostics: {
+              hostPlatform: codexProbe.diagnosis.hostPlatform,
+              nativeInstallValid: codexProbe.diagnosis.nativeInstallValid,
+              launchReady: codexProbe.ok,
+              summary: codexProbe.summary
+            }
+          }
+        : {}),
       runsRoot: resolveRunsRoot(process.env),
       pathScope: {
         repoRoot: workingDirectory,
