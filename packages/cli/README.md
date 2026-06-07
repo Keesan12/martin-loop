@@ -19,6 +19,15 @@ The CLI now treats execution, diagnosis, persisted-run inspection, and MCP host 
 
 `martin mcp install` is intentionally conservative: it only writes a generated config when the target file is absent, or when it already detects a Martin Loop block and can stay idempotent. For mixed host configs, use `martin mcp print-config` and merge the Martin block yourself.
 
+## Install
+
+Use the public root package when you want the CLI locally or in CI:
+
+```sh
+npm install martin-loop
+npx martin-loop doctor
+```
+
 ## Output modes
 
 - default: human-readable summaries

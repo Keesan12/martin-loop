@@ -708,7 +708,10 @@ async function executeRunCommand(
   );
 
   let result: Awaited<ReturnType<typeof runMartin>>;
-  if (cliEnvironment.liveMode === "live" && cliEnvironment.engine === "codex") {
+  const engineRequired =
+    resolvedRequest.mutationMode !== "verify_only" && cliEnvironment.liveMode === "live";
+
+  if (engineRequired && cliEnvironment.engine === "codex") {
     const codexProbe = probeCodexLaunch({
       workingDirectory: cliEnvironment.workingDirectory
     });

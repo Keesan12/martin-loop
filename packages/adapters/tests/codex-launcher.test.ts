@@ -44,6 +44,24 @@ describe("resolveCliCommandAvailability", () => {
     expect(availability.available).toBe(true);
     expect(availability.resolvedPath).toBe("C:\\Users\\ExampleUser\\AppData\\Roaming\\npm\\codex.cmd");
   });
+
+  it("preserves where.exe order when equally preferred Windows shims match", () => {
+    const availability = resolveCliCommandAvailability("codex", {
+      platform: "win32",
+      spawnSyncImpl: vi.fn(() => ({
+        status: 0,
+        stdout: [
+          "C:\\Zeta Tools\\codex.cmd",
+          "C:\\Alpha Tools\\codex.cmd",
+          ""
+        ].join("\r\n"),
+        stderr: ""
+      })) as never
+    });
+
+    expect(availability.available).toBe(true);
+    expect(availability.resolvedPath).toBe("C:\\Zeta Tools\\codex.cmd");
+  });
 });
 
 describe("diagnoseCodexHost", () => {

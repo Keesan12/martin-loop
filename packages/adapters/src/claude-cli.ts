@@ -315,7 +315,7 @@ function extractGeminiJsonResult(
   const pricing =
     (modelLabel ? MODEL_PRICING[modelLabel] : undefined) ??
     { inputPer1K: BLENDED_INPUT_COST_PER_1K, outputPer1K: BLENDED_OUTPUT_COST_PER_1K };
-  const estimatedUsd =
+  const actualUsd =
     (promptTokens / 1000) * pricing.inputPer1K +
     (cachedInputTokens / 1000) * (pricing.cachedInputPer1K ?? pricing.inputPer1K) +
     (tokensOut / 1000) * pricing.outputPer1K;
@@ -323,13 +323,12 @@ function extractGeminiJsonResult(
   return {
     summary,
     usage: normalizeUsage({
-      actualUsd: Number(estimatedUsd.toFixed(6)),
-      estimatedUsd: Number(estimatedUsd.toFixed(6)),
+      actualUsd: Number(actualUsd.toFixed(6)),
       tokensIn,
       tokensOut,
       cachedInputTokens,
       reasoningTokensOut: reasoningOutputTokens,
-      provenance: "estimated",
+      provenance: "actual",
       providerSettlement: {
         providerId: "gemini",
         model: modelLabel ?? "flash",

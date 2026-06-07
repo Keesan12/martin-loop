@@ -240,6 +240,8 @@ describe("executeCli", () => {
         "run",
         "--objective",
         "Verify the contracts package without edits",
+        "--engine",
+        "codex",
         "--verify-only",
         "--verify",
         `"${process.execPath}" -e "process.exit(0)"`,

@@ -5,7 +5,6 @@ This document is the compatibility statement for the governed execution cockpit 
 ## Stable Contract
 
 - MartinLoop compatibility guarantee: martin_run remains the only execution entrypoint.
-- `martin_run` remains the only execution entrypoint.
 - `martin_inspect`, `martin_status`, `martin_doctor`, and `martin_preflight` remain available and backward-compatible.
 - `martin_list_runs`, `martin_triage_runs`, `martin_get_run`, `martin_get_attempt`, `martin_get_verification_results`, and `martin_run_dossier` are additive read-only surfaces.
 - resources, resource templates, and prompts are additive discovery surfaces over the same persisted Martin run data.

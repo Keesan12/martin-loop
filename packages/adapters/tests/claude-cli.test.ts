@@ -853,7 +853,7 @@ describe("createGeminiCliAdapter", () => {
     ]);
     expect(calls[0]?.stdin).toContain("OBJECTIVE:");
     expect(result.summary).toContain("Patched the failing function");
-    expect(result.usage.provenance).toBe("estimated");
+    expect(result.usage.provenance).toBe("actual");
     expect(result.usage.tokensIn).toBe(150);
     expect(result.usage.tokensOut).toBe(55);
     expect(result.usage.cachedInputTokens).toBe(30);

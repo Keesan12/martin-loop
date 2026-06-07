@@ -79,9 +79,23 @@ function selectResolvedPath(candidates: string[], platform: NodeJS.Platform): st
     }
   };
 
-  return cleaned
-    .slice()
-    .sort((left, right) => preference(left) - preference(right) || left.localeCompare(right))[0];
+  const [firstCandidate, ...remainingCandidates] = cleaned;
+  if (firstCandidate === undefined) {
+    return undefined;
+  }
+
+  let bestCandidate = firstCandidate;
+  let bestPreference = preference(bestCandidate);
+
+  for (const candidate of remainingCandidates) {
+    const candidatePreference = preference(candidate);
+    if (candidatePreference < bestPreference) {
+      bestCandidate = candidate;
+      bestPreference = candidatePreference;
+    }
+  }
+
+  return bestCandidate;
 }
 
 function buildProbeCommand(
