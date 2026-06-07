@@ -702,6 +702,88 @@ describe("runMartin", () => {
     expect(result.loop.attempts[0]?.failureClass).toBeUndefined();
   });
 
+  it("skips rollback snapshots for adapters that cannot mutate the workspace", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-proof-no-rollback-"));
+    const repoRoot = join(runsRoot, "repo");
+    await mkdir(join(repoRoot, "src"), { recursive: true });
+    await writeFile(join(repoRoot, "src", "real.ts"), "export const real = 1;\n", "utf8");
+    initializeGitRepo(repoRoot);
+    await writeFile(join(repoRoot, "src", "real.ts"), "export const real = 2;\n", "utf8");
+
+    const store = createFileRunStore({ runsRoot });
+    const adapter: MartinAdapter = {
+      adapterId: "direct:proof:no-mutation",
+      kind: "direct-provider",
+      label: "Proof adapter without workspace mutation",
+      metadata: {
+        providerId: "stub",
+        model: "stub",
+        capabilities: {
+          preflight: true,
+          usageSettlement: true,
+          diffArtifacts: false,
+          structuredErrors: true,
+          cachingSignals: false,
+          workspaceMutations: false
+        }
+      },
+      async execute() {
+        return {
+          status: "failed",
+          summary: "Proof adapter refused live inference, but it did not edit the workspace.",
+          usage: {
+            actualUsd: 0,
+            tokensIn: 0,
+            tokensOut: 0,
+            provenance: "unavailable"
+          },
+          verification: {
+            passed: false,
+            summary: "No live provider request was attempted."
+          },
+          failure: {
+            message: "Proof adapter is not configured for live inference."
+          }
+        };
+      }
+    };
+
+    const result = await runMartin({
+      workspaceId: "ws_ops",
+      projectId: "proj_runtime",
+      task: {
+        title: "Confirm proof-mode runs stay off the rollback path",
+        objective: "Keep non-mutating proof adapters from snapshotting the dirty repo.",
+        verificationPlan: ["pnpm --filter @martin/core test"],
+        repoRoot
+      },
+      budget: {
+        maxUsd: 10,
+        softLimitUsd: 6,
+        maxIterations: 1,
+        maxTokens: 2_000
+      },
+      adapter,
+      store,
+      now: createTimestampSource([
+        "2026-05-11T12:20:00.000Z",
+        "2026-05-11T12:20:01.000Z",
+        "2026-05-11T12:20:02.000Z",
+        "2026-05-11T12:20:03.000Z",
+        "2026-05-11T12:20:04.000Z"
+      ]),
+      idFactory: createIdFactory()
+    });
+
+    await expect(
+      readFile(
+        join(runsRoot, result.loop.loopId, "artifacts", "attempt-001", "rollback-boundary.json"),
+        "utf8"
+      )
+    ).rejects.toThrow();
+    expect(result.loop.attempts).toHaveLength(1);
+  });
+
   it("exits on budget pressure after repeated failed attempts", async () => {
     const timestamps = createTimestampSource([
       "2026-03-27T16:10:00.000Z",

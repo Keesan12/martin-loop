@@ -29,11 +29,14 @@ npx martin-loop session-start
 npx martin-loop preflight "Summarize the demo workspace and prove tests still pass" --verify "npm test"
 npx martin-loop run "Summarize the demo workspace and prove tests still pass" --proof --verify "npm test"
 npx martin-loop dossier --latest
+npx martin-loop share --latest
 ```
 
 `doctor`, `session-start`, and `preflight` create the local receipts MartinLoop expects before a real governed run. If you intentionally need to bypass that local gate for a one-off run, use `--unsafe-allow-unguarded-run` explicitly.
 
-Release notes for the current root package: [MartinLoop 0.2.11](./docs/release/OSS-0.2.11-RELEASE-NOTES.md).
+`share --latest` writes three files into the selected run directory under `share/`: `run-receipt.json`, `run-receipt.md`, and `proof-card.svg`.
+
+Release notes for the current root package: [MartinLoop 0.3.0](./docs/release/OSS-0.3.0-RELEASE-NOTES.md).
 
 ## What It Does
 
@@ -41,6 +44,7 @@ Release notes for the current root package: [MartinLoop 0.2.11](./docs/release/O
 - Verifier gates require a real check, such as `npm test`, before a run can count as complete.
 - Policy checks block unsafe verifier commands, risky path changes, and secret-like task inputs before execution.
 - Run receipts capture stop reason, verifier evidence, budget posture, integrity state, and the next safe action.
+- `martin share --latest` turns the latest governed run into a local share bundle with a redacted JSON receipt, Markdown recap, and proof-card SVG.
 - MCP integration gives hosts one write-capable execution entrypoint plus richer planning, inspection, and review helpers.
 
 ## How It Works
@@ -68,10 +72,13 @@ martin-loop runs list|get|attempt|verify ...
 martin-loop mcp print-config --host <codex|claude|gemini|generic>
 martin-loop mcp install --host <codex|claude|gemini|generic>
 martin-loop challenge [--loop-id <id> | --file <path> | --latest]
+martin-loop share (--loop-id <id> | --file <path> | --latest) [--out-dir <path>]
 martin-loop badge [--format svg|json] [--runs-dir <path>]
 ```
 
 Examples below use `npx martin-loop` so they work without a global install. If you install `martin-loop` globally, the `martin` alias works too.
+
+Use `martin-loop share --latest` after `dossier` when you want a redacted bundle you can hand to another person without sending raw run-store files.
 
 More detail: [CLI reference](./docs/reference/cli.md) and [configuration reference](./docs/reference/config.md).
 
@@ -100,7 +107,7 @@ npx martin-loop mcp print-config --host gemini --transport stdio --profile full-
 npx martin-loop mcp print-config --host generic --transport stdio --profile github-review
 ```
 
-The root `martin-loop` package and the standalone `@martinloop/mcp` package move on separate version lines. The root package is `0.2.11`; the current standalone MCP package is `0.2.7`.
+The root `martin-loop` package and the standalone `@martinloop/mcp` package move on separate version lines. The root package is `0.3.0`; the current standalone MCP package is `0.3.0`.
 
 The public MCP release train labels are:
 
@@ -108,6 +115,7 @@ The public MCP release train labels are:
 - `0.2.0` cockpit expansion
 - `0.2.5` public MCP package line
 - `0.2.7` usability and review release
+- `0.3.0` host adoption and onboarding release
 
 The standalone MCP registry/server identifier is `io.github.Keesan12/martin-loop`.
 

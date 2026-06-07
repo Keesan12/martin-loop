@@ -275,6 +275,7 @@ export interface MartinAdapter {
       diffArtifacts?: boolean;
       structuredErrors?: boolean;
       cachingSignals?: boolean;
+      workspaceMutations?: boolean;
     };
     [key: string]: unknown;
   };
@@ -817,10 +818,16 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       previousAttempts: loop.attempts
     };
 
-    const rollbackBoundary = await captureRollbackBoundary({
-      repoRoot: request.context.repoRoot,
-      capturedAt: attemptStartedAt
-    });
+    const tracksWorkspaceMutations =
+      request.context.repoRoot !== undefined &&
+      executingAdapter.metadata.capabilities?.workspaceMutations !== false;
+
+    const rollbackBoundary = tracksWorkspaceMutations
+      ? await captureRollbackBoundary({
+          repoRoot: request.context.repoRoot,
+          capturedAt: attemptStartedAt
+        })
+      : undefined;
     const result = await executingAdapter.execute(request);
     const attemptCompletedAt = now();
     const compiledContext = compilePromptPacket(request);
@@ -1050,7 +1057,9 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       );
     }
 
-    const changedFiles = resolveChangedFiles(result, request.context.repoRoot);
+    const changedFiles = tracksWorkspaceMutations
+      ? resolveChangedFiles(result, request.context.repoRoot)
+      : [];
     // Evidence is only reliable when the adapter explicitly reported files OR git actually
     // returned a non-empty list. A repoRoot alone is insufficient — git may fail (e.g. not
     // a git repo) and silently return [], which would falsely trigger no_code_change.

@@ -146,6 +146,12 @@ const HOST_COMMANDS = {
   gemini: "gemini"
 } as const;
 
+const GIT_STATE_CACHE_TTL_MS = 60_000;
+const repoGitStateCache = new Map<
+  string,
+  { expiresAt: number; value: RepoGitState }
+>();
+
 const POLICY_PACKS: Record<MartinPolicyPack, Omit<MartinPolicyPackDefinition, "defaultVerifiers">> = {
   "solo-founder": {
     name: "solo-founder",
@@ -612,54 +618,62 @@ function detectVerifierCommands(
 }
 
 function detectGitState(workingDirectory: string): RepoGitState {
-  const availability = spawnSync("git", ["--version"], {
-    cwd: workingDirectory,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"]
-  });
-
-  if (availability.status !== 0) {
-    return {
-      available: false,
-      isRepo: false,
-      clean: false
-    };
+  const cacheKey = workingDirectory;
+  const cached = repoGitStateCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value;
   }
 
-  const isRepo = spawnSync("git", ["rev-parse", "--is-inside-work-tree"], {
-    cwd: workingDirectory,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"]
-  });
-  if (isRepo.status !== 0 || !/true/u.test(isRepo.stdout ?? "")) {
-    return {
-      available: true,
-      isRepo: false,
-      clean: false
-    };
-  }
-
-  const branch = spawnSync("git", ["branch", "--show-current"], {
-    cwd: workingDirectory,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"]
-  }).stdout.trim();
   const status = spawnSync("git", ["status", "--porcelain", "--branch"], {
     cwd: workingDirectory,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"]
   });
+
+  if (status.status !== 0) {
+    const availability = spawnSync("git", ["--version"], {
+      cwd: workingDirectory,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+
+    const value =
+      availability.status !== 0
+        ? {
+            available: false,
+            isRepo: false,
+            clean: false
+          }
+        : {
+            available: true,
+            isRepo: false,
+            clean: false
+          };
+
+    repoGitStateCache.set(cacheKey, {
+      expiresAt: Date.now() + GIT_STATE_CACHE_TTL_MS,
+      value
+    });
+
+    return value;
+  }
+
   const statusLines = (status.stdout ?? "")
     .split(/\r?\n/u)
     .map((line) => line.trim())
     .filter(Boolean);
   const dirty = statusLines.some((line) => !line.startsWith("##"));
   const header = statusLines.find((line) => line.startsWith("##"));
+  const branch = header
+    ?.replace(/^##\s+/u, "")
+    .split("...")[0]
+    ?.trim()
+    .replace(/\s+\[.*$/u, "");
   const upstream = header?.match(/\.\.\.([^\s[]+)/u)?.[1];
   const ahead = parseCount(header, /ahead (\d+)/u);
   const behind = parseCount(header, /behind (\d+)/u);
 
-  return {
+  const value: RepoGitState = {
     available: true,
     isRepo: true,
     clean: !dirty,
@@ -668,6 +682,13 @@ function detectGitState(workingDirectory: string): RepoGitState {
     ...(ahead !== undefined ? { ahead } : {}),
     ...(behind !== undefined ? { behind } : {})
   };
+
+  repoGitStateCache.set(cacheKey, {
+    expiresAt: Date.now() + GIT_STATE_CACHE_TTL_MS,
+    value
+  });
+
+  return value;
 }
 
 function detectSensitivePaths(workingDirectory: string): string[] {
