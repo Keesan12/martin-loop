@@ -2,6 +2,7 @@ import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "n
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { writeReceiptIntegrityMaterial } from "@martin/core";
 import { createLoopRecord } from "@martin/contracts";
 import { describe, expect, it, vi } from "vitest";
 
@@ -812,6 +813,74 @@ describe("martinTriageRunsTool", () => {
     },
     20_000
   );
+
+  it("verifies canonical events.jsonl receipts and backfills missing receipt scope", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const repoRoot = join(runsRoot, "workspace");
+      const baseLoop = makeLoopRecord();
+      const loop = {
+        ...baseLoop,
+        task: {
+          ...baseLoop.task,
+          repoRoot
+        },
+        events: [
+          {
+            eventId: "evt_events_1",
+            timestamp: "2026-06-07T12:00:00.000Z",
+            type: "verification.completed" as const,
+            lifecycleState: "verifying" as const,
+            payload: {
+              attemptId: "att_events_1",
+              passed: true,
+              summary: "Verification completed from events.jsonl."
+            }
+          }
+        ]
+      };
+      const loopDir = join(runsRoot, loop.loopId);
+      const loopRecordPath = join(loopDir, "loop-record.json");
+      const eventsPath = join(loopDir, "events.jsonl");
+
+      await mkdir(loopDir, { recursive: true });
+      await writeFile(loopRecordPath, `${JSON.stringify(loop, null, 2)}\n`, "utf8");
+      await writeFile(
+        eventsPath,
+        loop.events.map((entry) => JSON.stringify(entry)).join("\n").concat("\n"),
+        "utf8"
+      );
+      await writeReceiptIntegrityMaterial({
+        runId: loop.loopId,
+        runsRoot,
+        loopRecord: loop,
+        ledgerEntries: loop.events,
+        scope: {
+          repoRoot,
+          workingDirectory: repoRoot,
+          runsRoot
+        },
+        signedAt: loop.updatedAt
+      });
+
+      const run = await martinGetRunTool({ loopId: loop.loopId });
+      const verification = await martinGetVerificationResultsTool({ loopId: loop.loopId });
+
+      expect(run.receiptIntegrity.state).toBe("verified");
+      expect(run.receiptScope).toMatchObject({
+        repoRoot,
+        workingDirectory: repoRoot,
+        runsRoot
+      });
+      expect(run.inspection.ledgerPath).toBe(eventsPath);
+
+      expect(verification.receiptIntegrity.state).toBe("verified");
+      expect(verification.receiptScope).toMatchObject({
+        repoRoot,
+        workingDirectory: repoRoot,
+        runsRoot
+      });
+    });
+  });
 
   it("reports unavailable verification when the latest attempt has conflicting evidence", async () => {
     await withRunsRoot(async (runsRoot) => {

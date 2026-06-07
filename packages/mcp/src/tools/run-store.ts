@@ -46,13 +46,16 @@ export interface DetailedLoopSource {
 }
 
 async function attachReceiptIntegrity(detail: DetailedLoopSource): Promise<DetailedLoopSource> {
+  const ledgerPath = detail.canonicalRunDirectory
+    ? await resolveReceiptEvidencePath(detail.canonicalRunDirectory)
+    : detail.ledgerPath;
   const integrity =
-    detail.canonicalLoopRecordPath && detail.canonicalRunDirectory
+    detail.canonicalLoopRecordPath && detail.canonicalRunDirectory && ledgerPath
       ? await verifyReceiptIntegrityFromFiles({
           runId: detail.loop.loopId,
           runsRoot: detail.runsRoot,
           loopRecordPath: detail.canonicalLoopRecordPath,
-          ledgerPath: path.join(detail.canonicalRunDirectory, "ledger.jsonl")
+          ledgerPath
         }).catch(() => ({
           state: "unsigned" as const,
           reason: "Receipt integrity verification could not be completed."
@@ -61,12 +64,15 @@ async function attachReceiptIntegrity(detail: DetailedLoopSource): Promise<Detai
           state: "unsigned" as const,
           reason: "Receipt integrity is only available for canonical run directories."
         });
+  const receiptScope = resolveReceiptScope(detail.loop, detail.runsRoot);
 
   return {
     ...detail,
+    ...(ledgerPath ? { ledgerPath } : {}),
     loop: {
       ...detail.loop,
-      receiptIntegrity: integrity
+      receiptIntegrity: integrity,
+      ...(receiptScope ? { receiptScope } : {})
     }
   };
 }
@@ -93,6 +99,37 @@ export type LedgerEventsWithDiagnostics = LedgerEvent[] & {
   unreadable?: boolean;
   ledgerPath?: string;
 };
+
+function resolveReceiptScope(
+  loop: InspectableLoopRecord,
+  runsRoot?: string
+): InspectableLoopRecord["receiptScope"] | undefined {
+  if (loop.receiptScope) {
+    return loop.receiptScope;
+  }
+
+  if (!loop.task?.repoRoot && !runsRoot) {
+    return undefined;
+  }
+
+  return {
+    ...(loop.task?.repoRoot ? { repoRoot: loop.task.repoRoot } : {}),
+    ...(loop.task?.repoRoot ? { workingDirectory: loop.task.repoRoot } : {}),
+    ...(runsRoot ? { runsRoot } : {})
+  };
+}
+
+async function resolveReceiptEvidencePath(runDirectory: string): Promise<string | undefined> {
+  for (const candidate of ["ledger.jsonl", "events.jsonl"]) {
+    const candidatePath = path.join(runDirectory, candidate);
+    const candidateStats = await safeStat(candidatePath);
+    if (candidateStats?.isFile()) {
+      return candidatePath;
+    }
+  }
+
+  return undefined;
+}
 
 export async function loadLoopRecordsForInspect(input: {
   file?: string;

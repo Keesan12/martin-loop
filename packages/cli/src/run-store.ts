@@ -735,13 +735,13 @@ export function resolveReceiptScope(loop: LoopRecord, runsRoot?: string): Receip
     return loop.receiptScope;
   }
 
-  if (!loop.task.repoRoot && !runsRoot) {
+  if (!loop.task?.repoRoot && !runsRoot) {
     return undefined;
   }
 
   return {
-    ...(loop.task.repoRoot ? { repoRoot: loop.task.repoRoot } : {}),
-    ...(loop.task.repoRoot ? { workingDirectory: loop.task.repoRoot } : {}),
+    ...(loop.task?.repoRoot ? { repoRoot: loop.task.repoRoot } : {}),
+    ...(loop.task?.repoRoot ? { workingDirectory: loop.task.repoRoot } : {}),
     ...(runsRoot ? { runsRoot } : {})
   };
 }
