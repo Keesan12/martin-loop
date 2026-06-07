@@ -2,12 +2,13 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createLoopRecord, type LoopEventDraft } from "@martin/contracts";
+import { writeReceiptIntegrityMaterial } from "@martin/core";
+import { createLoopRecord, type LoopEventDraft, type LoopRecord } from "@martin/contracts";
 import { describe, expect, it } from "vitest";
 
 import { executeCli } from "../src/index.js";
 
-function makeLoopRecord() {
+function makeLoopRecord(): LoopRecord {
   const loop = createLoopRecord({
     workspaceId: "ws_ops",
     projectId: "proj_runtime",
@@ -31,7 +32,7 @@ function makeLoopRecord() {
   });
 
   const attemptId = "att_001";
-  const events: LoopEventDraft[] = [
+  const events: Array<LoopEventDraft & { lifecycleState: LoopRecord["lifecycleState"] }> = [
     {
       type: "run.started",
       lifecycleState: "running",
@@ -188,6 +189,90 @@ describe("operator commands", () => {
       expect(triage.command).toBe("triage");
       expect(triage.findings[0].loopId).toBe(loop.loopId);
       expect(triage.findings[0].reasons).toContain("verification_failed");
+    });
+  });
+
+  it("fails closed on tampered canonical receipts and surfaces receipt scope on persisted-run commands", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const repoRoot = join(runsRoot, "workspace");
+      const workingDirectory = join(repoRoot, "packages", "cli");
+      const baseLoop = makeLoopRecord();
+      const loop = {
+        ...baseLoop,
+        task: {
+          ...baseLoop.task,
+          repoRoot
+        },
+        receiptScope: {
+          repoRoot,
+          workingDirectory,
+          invocationRoot: repoRoot,
+          runsRoot
+        }
+      };
+      const loopDir = join(runsRoot, loop.loopId);
+      const loopRecordPath = join(loopDir, "loop-record.json");
+      const ledgerPath = join(loopDir, "ledger.jsonl");
+      const ledgerEntries = loop.events;
+
+      await mkdir(loopDir, { recursive: true });
+      await writeFile(loopRecordPath, JSON.stringify(loop, null, 2), "utf8");
+      await writeFile(
+        ledgerPath,
+        ledgerEntries.map((entry) => JSON.stringify(entry)).join("\n").concat("\n"),
+        "utf8"
+      );
+      await writeReceiptIntegrityMaterial({
+        runId: loop.loopId,
+        runsRoot,
+        loopRecord: loop,
+        ledgerEntries,
+        scope: loop.receiptScope,
+        signedAt: loop.updatedAt
+      });
+
+      const tamperedLoop = {
+        ...loop,
+        status: "completed" as const,
+        updatedAt: "2026-05-16T12:05:00.000Z"
+      };
+      await writeFile(loopRecordPath, JSON.stringify(tamperedLoop, null, 2), "utf8");
+
+      const dossier = JSON.parse((await executeCli(["--json", "dossier", "--loop-id", loop.loopId])).stdout);
+      const getRun = JSON.parse((await executeCli(["--json", "runs", "get", "--loop-id", loop.loopId])).stdout);
+      const verify = JSON.parse(
+        (await executeCli(["--json", "runs", "verify", "--loop-id", loop.loopId])).stdout
+      );
+
+      for (const payload of [dossier, getRun, verify]) {
+        expect(payload.receiptIntegrity.state).toBe("tamper_detected");
+        expect(payload.receiptScope).toMatchObject({
+          repoRoot,
+          workingDirectory,
+          invocationRoot: repoRoot,
+          runsRoot
+        });
+      }
+
+      expect(dossier.receipt.receiptScope).toMatchObject({
+        repoRoot,
+        workingDirectory,
+        invocationRoot: repoRoot,
+        runsRoot
+      });
+      expect(dossier.receipt.trustworthy).toBe(false);
+      expect(dossier.verification.warnings).toContain(
+        "Receipt integrity is tamper_detected; persisted verifier evidence is not trustworthy yet."
+      );
+      expect(dossier.warnings).toContain(
+        "Receipt integrity is tamper_detected; persisted verifier evidence is not trustworthy yet."
+      );
+      expect(getRun.warnings).toContain(
+        "Receipt integrity is tamper_detected; persisted verifier evidence is not trustworthy yet."
+      );
+      expect(verify.warnings).toContain(
+        "Receipt integrity is tamper_detected; persisted verifier evidence is not trustworthy yet."
+      );
     });
   });
 

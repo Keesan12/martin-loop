@@ -5,6 +5,7 @@ import {
   readLatestLoopRecordFromFile,
   readLoopRecordsFromFile,
   resolveRunsRoot,
+  verifyReceiptIntegrityFromFiles,
   type LedgerEvent
 } from "@martin/core";
 
@@ -42,6 +43,32 @@ export interface DetailedLoopSource {
   canonicalRunDirectory?: string;
   canonicalLoopRecordPath?: string;
   ledgerPath?: string;
+}
+
+async function attachReceiptIntegrity(detail: DetailedLoopSource): Promise<DetailedLoopSource> {
+  const integrity =
+    detail.canonicalLoopRecordPath && detail.canonicalRunDirectory
+      ? await verifyReceiptIntegrityFromFiles({
+          runId: detail.loop.loopId,
+          runsRoot: detail.runsRoot,
+          loopRecordPath: detail.canonicalLoopRecordPath,
+          ledgerPath: path.join(detail.canonicalRunDirectory, "ledger.jsonl")
+        }).catch(() => ({
+          state: "unsigned" as const,
+          reason: "Receipt integrity verification could not be completed."
+        }))
+      : ({
+          state: "unsigned" as const,
+          reason: "Receipt integrity is only available for canonical run directories."
+        });
+
+  return {
+    ...detail,
+    loop: {
+      ...detail.loop,
+      receiptIntegrity: integrity
+    }
+  };
 }
 
 export interface LoopListInput {
@@ -220,14 +247,14 @@ export async function loadDetailedLoopRecord(input: {
         const canonicalStats = await safeStat(canonicalLoopRecordPath);
         if (canonicalStats?.isFile()) {
           const loop = await readCanonicalLoopRecord(canonicalLoopRecordPath);
-          return buildDetailedLoopSource({
+          return await attachReceiptIntegrity(buildDetailedLoopSource({
             source: canonicalLoopRecordPath,
             sourceKind: "file",
             runsRoot,
             loop,
             canonicalLoopRecordPath,
             canonicalRunDirectory: path.dirname(canonicalLoopRecordPath)
-          });
+          }));
         }
       }
 
@@ -243,10 +270,10 @@ export async function loadDetailedLoopRecord(input: {
         runsRoot,
         loop
       });
-      return {
+      return await attachReceiptIntegrity({
         ...detail,
         warnings: [...detail.warnings, ...inspected.warnings]
-      };
+      });
     }
 
     const latest = await readLatestLoopRecordFromFile(targetPath);
@@ -256,22 +283,22 @@ export async function loadDetailedLoopRecord(input: {
 
     if (path.basename(targetPath) === "loop-record.json") {
       const loop = await readCanonicalLoopRecord(targetPath);
-      return buildDetailedLoopSource({
+      return await attachReceiptIntegrity(buildDetailedLoopSource({
         source: targetPath,
         sourceKind: "file",
         runsRoot,
         loop,
         canonicalLoopRecordPath: targetPath,
         canonicalRunDirectory: path.dirname(targetPath)
-      });
+      }));
     }
 
-    return await buildDetailedLoopSourceFromDiscoveredLoop({
+    return await attachReceiptIntegrity(await buildDetailedLoopSourceFromDiscoveredLoop({
       source: targetPath,
       sourceKind: "file",
       runsRoot,
       loop: latest as InspectableLoopRecord
-    });
+    }));
   }
 
   if (input.loopId) {
@@ -279,14 +306,14 @@ export async function loadDetailedLoopRecord(input: {
     const canonicalStats = await safeStat(canonicalLoopRecordPath);
     if (canonicalStats?.isFile()) {
       const loop = await readCanonicalLoopRecord(canonicalLoopRecordPath);
-      return buildDetailedLoopSource({
+      return await attachReceiptIntegrity(buildDetailedLoopSource({
         source: canonicalLoopRecordPath,
         sourceKind: "loop_id",
         runsRoot,
         loop,
         canonicalLoopRecordPath,
         canonicalRunDirectory: path.dirname(canonicalLoopRecordPath)
-      });
+      }));
     }
 
     const inspected = await readAllLoopRecordsSafely(runsRoot);
@@ -301,10 +328,10 @@ export async function loadDetailedLoopRecord(input: {
       runsRoot,
       loop
     });
-    return {
+    return await attachReceiptIntegrity({
       ...detail,
       warnings: [...detail.warnings, ...inspected.warnings]
-    };
+    });
   }
 
   const inspected = await readAllLoopRecordsSafely(runsRoot);
@@ -319,10 +346,10 @@ export async function loadDetailedLoopRecord(input: {
     runsRoot,
     loop
   });
-  return {
+  return await attachReceiptIntegrity({
     ...detail,
     warnings: [...detail.warnings, ...inspected.warnings]
-  };
+  });
 }
 
 export async function loadAttemptFromLoop(input: {
