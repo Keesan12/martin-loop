@@ -9,7 +9,7 @@ MartinLoop `0.2.10` is the public trust hotfix for the root package. It closes t
 - If adapter output says a tool or verifier failed before execution but MartinLoop’s own verifier passed, MartinLoop now records that contradiction as a warning instead of presenting a silent clean pass.
 - `doctor`, `session-start`, `preflight`, `run`, `dossier`, and `badge` now honor the same explicit `--runs-dir` target.
 - `run --help` and `preflight --help` now exit cleanly before governed-flow checks.
-- Public help/version output now reports the published root `martin-loop` version, and `bench` is not part of the public `0.2.10` CLI surface while the portable harness is being prepared.
+- Public help/version output now reports the published root `martin-loop` version, without changing the `0.2.10` hotfix scope.
 - `--unsafe-allow-unguarded-run` remains available as an explicit local override when an operator intentionally needs to bypass the guarded flow for one run.
 - The public root tarball still excludes the vendored CLI bin manifest, and the same `root-release-guard` remains in the release gate.
 

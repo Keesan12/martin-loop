@@ -5,7 +5,7 @@ import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "n
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { writeReceiptIntegrityMaterial } from "@martin/core";
+import { writeReceiptIntegrityMaterial, type RunStore } from "@martin/core";
 import { createLoopRecord } from "@martin/contracts";
 import type { SpawnLike } from "@martin/adapters";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -18,7 +18,11 @@ import { martinGetVerificationResultsTool } from "../src/tools/get-verification-
 import { martinListRunsTool } from "../src/tools/list-runs.js";
 import { martinPreflightTool } from "../src/tools/preflight.js";
 import { martinRunDossierTool } from "../src/tools/run-dossier.js";
-import { __setProofModeVerifierSpawnImplForTests, runLoopTool } from "../src/tools/run-loop.js";
+import {
+  __setProofModeVerifierSpawnImplForTests,
+  __setRunStoreOverrideForTests,
+  runLoopTool
+} from "../src/tools/run-loop.js";
 import { martinTriageRunsTool } from "../src/tools/triage-runs.js";
 
 // ---------------------------------------------------------------------------
@@ -64,6 +68,16 @@ async function withRunsRoot<T>(fn: (runsRoot: string) => Promise<T>): Promise<T>
       process.env.MARTIN_RUNS_DIR = previousRunsRoot;
     }
 
+    await rm(runsRoot, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+async function withMemoryRunStore<T>(fn: (store: RunStore) => Promise<T>): Promise<T> {
+  const runsRoot = await mkdtemp(join(tmpdir(), "martin-mcp-memory-runs-"));
+
+  try {
+    return await fn(createMemoryRunStore(runsRoot));
+  } finally {
     await rm(runsRoot, { recursive: true, force: true }).catch(() => {});
   }
 }
@@ -122,7 +136,19 @@ function createImmediateSpawn(calls: Array<{ command: string; args: readonly str
 
 afterEach(() => {
   __setProofModeVerifierSpawnImplForTests(undefined);
+  __setRunStoreOverrideForTests(undefined);
 });
+
+function createMemoryRunStore(runsRoot: string): RunStore {
+  return {
+    runsRoot,
+    async initRun() {},
+    async updateState() {},
+    async appendLedger() {},
+    async writeAttemptArtifacts() {},
+    async writeLoopRecord() {}
+  };
+}
 
 // ---------------------------------------------------------------------------
 // martin_status
@@ -1187,17 +1213,21 @@ describe("runLoopTool", () => {
       __setProofModeVerifierSpawnImplForTests(createImmediateSpawn(calls));
 
       try {
-        const result = await runLoopTool({
-          objective: "Validate proof-mode verifier seams",
-          verificationPlan: ["node --version"],
-          maxIterations: 1,
-          maxUsd: 1
-        });
+        await withMemoryRunStore(async (store) => {
+          __setRunStoreOverrideForTests(store);
 
-        expect(result.loopId).toMatch(/^loop_/u);
-        expect(calls).toHaveLength(1);
-        expect(calls[0]?.command).toBe("node");
-        expect(calls[0]?.args).toEqual(["--version"]);
+          const result = await runLoopTool({
+            objective: "Validate proof-mode verifier seams",
+            verificationPlan: ["node --version"],
+            maxIterations: 1,
+            maxUsd: 1
+          });
+
+          expect(result.loopId).toMatch(/^loop_/u);
+          expect(calls).toHaveLength(1);
+          expect(calls[0]?.command).toBe("node");
+          expect(calls[0]?.args).toEqual(["--version"]);
+        });
       } finally {
         if (originalEnv === undefined) {
           delete process.env.MARTIN_LIVE;
@@ -1244,14 +1274,18 @@ describe("runLoopTool", () => {
     process.env.MARTIN_LIVE = "false";
 
     try {
-      const result = await runLoopTool({
-        objective: "Fix the bug",
-        workspaceId: "ws_custom",
-        projectId: "proj_custom",
-        maxIterations: 1
-      });
+      await withMemoryRunStore(async (store) => {
+        __setRunStoreOverrideForTests(store);
 
-      expect(result.loopId).toBeTruthy();
+        const result = await runLoopTool({
+          objective: "Fix the bug",
+          workspaceId: "ws_custom",
+          projectId: "proj_custom",
+          maxIterations: 1
+        });
+
+        expect(result.loopId).toBeTruthy();
+      });
     } finally {
       if (originalEnv === undefined) {
         delete process.env.MARTIN_LIVE;

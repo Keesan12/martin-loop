@@ -28,10 +28,12 @@ That makes a coding-agent result easier to trust, replay, compare, and audit.
 
 ## Try The Demo
 
+Canonical public benchmark inputs live at `benchmarks/fixtures/under-3-challenge.json`.
+
 ```sh
-npx martin-loop demo
-cd martin-loop-demo
-npm install
-npx martin-loop run "Summarize the demo workspace and confirm the verifier is green" --proof --verify "npm test"
-npx martin-loop dossier --latest
+npx martin-loop bench --suite under-3-challenge
+pnpm install --frozen-lockfile
+pnpm --filter @martin/benchmarks build
+pnpm --filter @martin/benchmarks test
+pnpm --filter @martin/benchmarks eval
 ```

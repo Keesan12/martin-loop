@@ -11,6 +11,7 @@ martin-loop session-start [--host <claude|codex|gemini|generic>]
 martin-loop phase status|contract|session-start|preflight|run [--execute]
 martin-loop preflight <objective> [options]
 martin-loop run <objective> [options]
+martin-loop bench --suite <suiteId>
 martin-loop triage
 martin-loop dossier (--latest | --loop-id <id> | --file <path>)
 martin-loop inspect --file <path>
@@ -62,6 +63,25 @@ npx martin-loop share --latest
 --workspace <id>        Workspace ID for the run record
 --project <id>          Project ID for the run record
 --metadata <key=value>  Attach metadata to the run record; repeatable
+```
+
+## Benchmark Reproduction
+
+Use `bench` when you want the shipped public benchmark summary from an installed package:
+
+```sh
+npx martin-loop bench --suite under-3-challenge
+npx martin-loop bench --suite ralphy-engineering-50
+```
+
+Use the public benchmark workspace when you want clean-clone repro from the repository:
+
+```sh
+pnpm install --frozen-lockfile
+pnpm --filter @martin/benchmarks build
+pnpm --filter @martin/benchmarks test
+pnpm --filter @martin/benchmarks eval
+pnpm --filter @martin/benchmarks report:ralphy
 ```
 
 ## Shared persisted-run options
