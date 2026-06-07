@@ -27,6 +27,7 @@ export {
 } from "./verifier-only.js";
 export {
   createOpenAiCompatibleAdapter,
+  resolveOpenAiCompatibleRuntimeConfig,
   type OpenAiCompatibleAdapterOptions
 } from "./openai-compatible.js";
 export {

@@ -42,4 +42,14 @@ describe("generateRalphyEngineeringStressReport", () => {
     expect(markdown).toContain("0 failed");
     expect(markdown).toContain("Weak spots");
   });
+
+  it("reuses a single generated timestamp across the suite report and top-level metadata", async () => {
+    let tick = 0;
+    const report = await generateRalphyEngineeringStressReport({
+      now: () => `2026-06-07T00:00:0${tick += 1}.000Z`
+    });
+
+    expect(report.generatedAt).toBe("2026-06-07T00:00:01.000Z");
+    expect(report.suite.generatedAt).toBe(report.generatedAt);
+  });
 });

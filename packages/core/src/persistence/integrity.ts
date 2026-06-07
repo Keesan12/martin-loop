@@ -138,11 +138,25 @@ export async function verifyReceiptIntegrityFromFiles(input: {
     };
   }
 
-  const parsedLedgerEntries = rawLedger
-    .split(/\r?\n/u)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => JSON.parse(line) as unknown);
+  let parsedLedgerEntries: unknown[];
+  try {
+    parsedLedgerEntries = rawLedger
+      .split(/\r?\n/u)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as unknown);
+  } catch {
+    return {
+      state: "tamper_detected",
+      keyId: material.keyId,
+      signedAt: material.signedAt,
+      loopRecordSha256: material.loopRecordSha256,
+      ledgerSha256: material.ledgerSha256,
+      ledgerHeadHash: material.ledgerHeadHash,
+      entryCount: material.entryCount,
+      reason: "ledger_entry_parse_error"
+    };
+  }
   const actualChain = buildReceiptIntegrityChain(parsedLedgerEntries);
   if (actualChain.length !== material.chain.length) {
     return {

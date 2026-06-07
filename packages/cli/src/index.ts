@@ -9,6 +9,7 @@ import {
   createCodexCliAdapter,
   createGeminiCliAdapter,
   createOpenAiCompatibleAdapter,
+  resolveOpenAiCompatibleRuntimeConfig,
   probeCodexLaunch,
   resolveCliCommandAvailability,
   createStubDirectProviderAdapter,
@@ -1051,6 +1052,10 @@ async function executeDoctorCommand(
             }
           : {})
       },
+      openai: {
+        available: true,
+        ...resolveOpenAiCompatibleRuntimeConfig()
+      },
       gemini: {
         available: geminiAvailable,
         ...(geminiAvailability.resolvedPath ? { resolvedPath: geminiAvailability.resolvedPath } : {})
@@ -1084,6 +1089,7 @@ async function executeDoctorCommand(
       `Claude CLI: ${claudeAvailable ? "available" : "missing"}`,
       `Codex CLI: ${codexAvailable ? "available" : "missing"}`,
       `Gemini CLI: ${geminiAvailable ? "available" : "missing"}`,
+      `OpenAI-compatible: ${resolveOpenAiCompatibleRuntimeConfig().baseUrl} (${resolveOpenAiCompatibleRuntimeConfig().model})`,
       ...(codexProbe ? [`Codex launch probe: ${codexProbe.ok ? "ready" : codexProbe.summary}`] : []),
       `Config: ${configExists ? configPath : `not found at ${configPath}`}`
     ],
@@ -2275,9 +2281,10 @@ function selectAdapter(
   }
 
   if (engine === "openai") {
-    const baseUrl = process.env["MARTIN_OPENAI_BASE_URL"] ?? "http://localhost:11434";
-    const apiKey = process.env["MARTIN_OPENAI_API_KEY"] ?? "";
-    const model = modelOverride ?? process.env["MARTIN_OPENAI_MODEL"] ?? "llama3.3";
+    const openAiConfig = resolveOpenAiCompatibleRuntimeConfig();
+    const baseUrl = openAiConfig.baseUrl;
+    const apiKey = openAiConfig.apiKey;
+    const model = modelOverride ?? openAiConfig.model;
     return createOpenAiCompatibleAdapter({ baseUrl, apiKey, model, workingDirectory });
   }
 

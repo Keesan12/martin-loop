@@ -9,6 +9,7 @@ import {
   buildSuggestedResourceUris,
   buildVerificationSummary
 } from "./tool-support.js";
+import { resolveTrustedLoopRepoRoot } from "../server-validation.js";
 import {
   loadDetailedLoopRecord,
   readAttemptArtifactFiles,
@@ -80,7 +81,7 @@ export async function martinRunDossierTool(
   const verification = buildVerificationSummary(detail.loop, ledgerEvents);
   const control = await readRunControlState(detail);
   const evaluation = await martinEvalTool(input);
-  const repoRoot = detail.loop.task?.repoRoot ?? process.cwd();
+  const repoRoot = resolveTrustedLoopRepoRoot(detail.loop.task?.repoRoot);
   const risk = assessRunRisk({
     objective: detail.loop.task?.objective ?? detail.loop.loopId,
     allowedPaths: detail.loop.task?.allowedPaths ?? [],

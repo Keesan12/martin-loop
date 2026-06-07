@@ -118,6 +118,13 @@ describe("operator commands", () => {
     expect(payload.scope.invocationRoot).toBeTypeOf("string");
     expect(payload.scope.repoRoot).toBe(payload.environment.workingDirectory);
     expect(payload.scope.runsRoot).toBe(payload.environment.runsRoot);
+    expect(payload.engines.openai).toMatchObject({
+      available: true,
+      baseUrl: "https://api.openai.com",
+      model: "gpt-4.1-mini",
+      apiKeyConfigured: false,
+      authPosture: "anonymous_or_local"
+    });
   });
 
   it("preflight reports blocked state when the working directory is missing", async () => {

@@ -109,7 +109,12 @@ async function withFakeCodexCli<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 function initializeGitRepo(directory: string): void {
-  spawnSync("git", ["init"], { cwd: directory, stdio: "ignore" });
+  const result = spawnSync("git", ["init"], { cwd: directory, encoding: "utf8" });
+  if (result.status !== 0 || result.error) {
+    throw new Error(
+      `Failed to initialize git repository for CLI integration test. status=${String(result.status)} error=${result.error?.message ?? "none"} stdout=${result.stdout ?? ""} stderr=${result.stderr ?? ""}`
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------

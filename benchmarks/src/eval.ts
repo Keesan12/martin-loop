@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -12,10 +12,31 @@ import {
 } from "./challenge.js";
 
 const outputDir = fileURLToPath(new URL("../output/", import.meta.url));
+const entryFilePath = fileURLToPath(import.meta.url);
 
-function readSuiteId(argv: string[]): string {
-  const index = argv.findIndex((token) => token === "--suite");
-  return index >= 0 ? (argv[index + 1] ?? "under-3-challenge") : "under-3-challenge";
+export function readSuiteId(argv: string[]): string {
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+    if (!token) {
+      continue;
+    }
+    if (token === "--suite") {
+      const suiteId = argv[index + 1];
+      if (!suiteId || suiteId.startsWith("--")) {
+        throw new Error("Missing value for --suite.");
+      }
+      return suiteId;
+    }
+
+    if (token.startsWith("--suite=")) {
+      const suiteId = token.slice("--suite=".length).trim();
+      if (suiteId.length === 0) {
+        throw new Error("Missing value for --suite.");
+      }
+      return suiteId;
+    }
+  }
+  return "under-3-challenge";
 }
 
 async function writeArtifacts(filePrefix: string, payload: unknown, markdown: string): Promise<void> {
@@ -47,8 +68,10 @@ async function main(): Promise<void> {
   throw new Error(`Unknown benchmark suite: ${suiteId}`);
 }
 
-main().catch((error: unknown) => {
-  const message = error instanceof Error ? error.message : String(error);
-  process.stderr.write(`Benchmark evaluation failed: ${message}\n`);
-  process.exitCode = 1;
-});
+if (process.argv[1] && resolve(process.argv[1]) === entryFilePath) {
+  main().catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    process.stderr.write(`Benchmark evaluation failed: ${message}\n`);
+    process.exitCode = 1;
+  });
+}

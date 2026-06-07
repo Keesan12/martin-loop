@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -10,6 +10,8 @@ import {
   createFileRunStore,
   makeLedgerEvent,
   resolveRunsRoot,
+  resolveReceiptIntegrityPath,
+  verifyReceiptIntegrityFromFiles,
   writeReceiptIntegrityMaterial
 } from "../src/index";
 
@@ -446,6 +448,94 @@ describe("receipt integrity persistence", () => {
     } finally {
       await rm(runsRoot, { recursive: true, force: true });
       await rm(keyDir, { recursive: true, force: true }).catch(() => {});
+    }
+  });
+
+  it("fails closed when the persisted ledger contains malformed JSON", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-integrity-parse-"));
+    const runId = "run_integrity_parse";
+    const runDir = join(runsRoot, runId);
+    const loopRecordPath = join(runDir, "loop-record.json");
+    const ledgerPath = join(runDir, "ledger.jsonl");
+    const loopRecord: Parameters<typeof writeReceiptIntegrityMaterial>[0]["loopRecord"] = {
+      loopId: runId,
+      workspaceId: "ws_test",
+      projectId: "proj_test",
+      status: "completed",
+      lifecycleState: "completed",
+      task: {
+        title: "Integrity parse test",
+        objective: "Detect malformed ledger entries.",
+        verificationPlan: []
+      },
+      budget: { maxUsd: 1, softLimitUsd: 0.5, maxIterations: 1, maxTokens: 1000 },
+      cost: {
+        actualUsd: 0,
+        estimatedUsd: 0,
+        avoidedUsd: 0,
+        tokensIn: 0,
+        tokensOut: 0,
+        provenance: "actual"
+      },
+      artifacts: [],
+      attempts: [],
+      events: [],
+      metadata: {},
+      createdAt: "2026-06-07T00:00:00.000Z",
+      updatedAt: "2026-06-07T00:00:00.000Z"
+    };
+    const ledgerEntries = [
+      makeLedgerEvent({
+        kind: "run.exited",
+        runId,
+        payload: { status: "completed" },
+        timestamp: "2026-06-07T00:00:01.000Z"
+      })
+    ];
+
+    try {
+      await createFileRunStore({ runsRoot }).initRun({
+        runId,
+        workspaceId: "ws_test",
+        projectId: "proj_test",
+        task: {
+          title: "Integrity parse test",
+          objective: "Detect malformed ledger entries.",
+          verificationPlan: []
+        },
+        budget: { maxUsd: 1, softLimitUsd: 0.5, maxIterations: 1, maxTokens: 1000 },
+        createdAt: "2026-06-07T00:00:00.000Z"
+      });
+      await writeFile(loopRecordPath, `${JSON.stringify(loopRecord, null, 2)}\n`, "utf8");
+      await writeFile(ledgerPath, `${JSON.stringify(ledgerEntries[0])}\n`, "utf8");
+      await writeReceiptIntegrityMaterial({
+        runId,
+        runsRoot,
+        loopRecord,
+        ledgerEntries
+      });
+      const malformedLedger = "{not-json\n";
+      await writeFile(ledgerPath, malformedLedger, "utf8");
+      const integrityPath = resolveReceiptIntegrityPath(runsRoot, runId);
+      const integrityMaterial = JSON.parse(await readFile(integrityPath, "utf8")) as {
+        ledgerSha256: string;
+      };
+      integrityMaterial.ledgerSha256 = createHash("sha256").update(malformedLedger).digest("hex");
+      await writeFile(integrityPath, `${JSON.stringify(integrityMaterial, null, 2)}\n`, "utf8");
+
+      await expect(
+        verifyReceiptIntegrityFromFiles({
+          runId,
+          runsRoot,
+          loopRecordPath,
+          ledgerPath
+        })
+      ).resolves.toMatchObject({
+        state: "tamper_detected",
+        reason: "ledger_entry_parse_error"
+      });
+    } finally {
+      await rm(runsRoot, { recursive: true, force: true });
     }
   });
 });

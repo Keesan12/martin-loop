@@ -151,8 +151,27 @@ Follow these rules exactly:
 - Be precise, minimal, and test-backed in all changes.
 - State what you changed and why at the end of your response.`;
 
-const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com";
-const DEFAULT_OPENAI_MODEL = "gpt-4.1-mini";
+export const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com";
+export const DEFAULT_OPENAI_MODEL = "gpt-4.1-mini";
+
+export function resolveOpenAiCompatibleRuntimeConfig(
+  env: NodeJS.ProcessEnv = process.env
+): {
+  baseUrl: string;
+  model: string;
+  apiKey: string;
+  apiKeyConfigured: boolean;
+  authPosture: "api_key" | "anonymous_or_local";
+} {
+  const apiKey = env["MARTIN_OPENAI_API_KEY"] ?? "";
+  return {
+    baseUrl: env["MARTIN_OPENAI_BASE_URL"] ?? DEFAULT_OPENAI_BASE_URL,
+    model: env["MARTIN_OPENAI_MODEL"] ?? DEFAULT_OPENAI_MODEL,
+    apiKey,
+    apiKeyConfigured: apiKey.length > 0,
+    authPosture: apiKey.length > 0 ? "api_key" : "anonymous_or_local"
+  };
+}
 
 function buildPrompt(request: MartinAdapterRequest): string {
   const lines: string[] = [
@@ -205,8 +224,9 @@ export function createOpenAiCompatibleAdapter(
   const verifyTimeoutMs = options.verifyTimeoutMs ?? 60_000;
   const systemPrompt = options.systemPrompt ?? DEFAULT_SYSTEM_PROMPT;
   const fetchFn = options.fetchImpl ?? globalThis.fetch;
-  const baseUrl = (options.baseUrl ?? DEFAULT_OPENAI_BASE_URL).replace(/\/$/, "");
-  const model = options.model ?? DEFAULT_OPENAI_MODEL;
+  const runtimeConfig = resolveOpenAiCompatibleRuntimeConfig();
+  const baseUrl = (options.baseUrl ?? runtimeConfig.baseUrl).replace(/\/$/, "");
+  const model = options.model ?? runtimeConfig.model;
 
   return {
     adapterId: `openai-compatible:${model}`,

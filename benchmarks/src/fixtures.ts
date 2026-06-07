@@ -11,6 +11,9 @@ async function readFixture<T>(fileName: string): Promise<T> {
 }
 
 export async function loadBenchmarkSuiteFixture(suiteId: string): Promise<BenchmarkSuite> {
+  if (!/^[a-z0-9-]+$/u.test(suiteId)) {
+    throw new Error(`Invalid suite ID: ${suiteId}`);
+  }
   return readFixture<BenchmarkSuite>(`${suiteId}.json`);
 }
 

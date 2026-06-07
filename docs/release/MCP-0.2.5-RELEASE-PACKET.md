@@ -1,13 +1,13 @@
 # Martin MCP `0.2.5` Release Packet
 
-This packet is the proof bundle for the `@martinloop/mcp@0.2.5` public package line. Review it before any branch cut, push, tag, or npm publish.
+This packet is the archived proof bundle for the `@martinloop/mcp@0.2.5` public package line. It remains in the repo as historical release evidence; use [MCP-0.2.7-RELEASE-PACKET.md](./MCP-0.2.7-RELEASE-PACKET.md) for the current standalone MCP package line.
 
 ## Version Truth
 
-- standalone package: `@martinloop/mcp`
-- live npm latest: `0.1.3`
-- public GitHub `main`: `0.1.3`
-- current repo package manifest: `0.2.5`
+- standalone package line covered by this packet: `@martinloop/mcp@0.2.5`
+- live npm latest now: `0.2.7`
+- public GitHub `main` now tracks: `0.2.7`
+- current repo package manifest now: `0.2.7`
 - public scheduled release train:
   - `0.1.4` operator foundation
   - `0.2.0` cockpit expansion
@@ -25,7 +25,7 @@ This packet covers only the public MCP package surface documented in this repo.
 
 ## Commands Run
 
-Release gates that passed for this package line:
+Historical release gates recorded for this package line:
 
 ```powershell
 pnpm --filter @martin/contracts lint
@@ -53,7 +53,8 @@ Additional experiments or unpublished work do not expand or alter the public `@m
 ## Versions Tested
 
 - root package current repo manifest: `martin-loop@0.2.11`
-- standalone MCP current repo manifest: `@martinloop/mcp@0.2.7`
+- standalone MCP release line covered by this packet: `@martinloop/mcp@0.2.5`
+- current standalone MCP repo manifest: `@martinloop/mcp@0.2.7`
 
 ## Host Matrix Receipts
 

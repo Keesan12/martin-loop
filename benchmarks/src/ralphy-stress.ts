@@ -439,18 +439,19 @@ export async function generateRalphyEngineeringStressReport(
   options: { now?: () => string } = {}
 ): Promise<RalphLoopStressReport> {
   const now = options.now ?? (() => new Date().toISOString());
+  const generatedAt = now();
   const suite = await loadBenchmarkSuiteFixture(RALPHY_ENGINEERING_SUITE_ID);
   const scenarios = buildRalphyScenarioMap(suite.cases);
   const suiteReport = await runBenchmarkSuite(
     suite,
     createDeterministicComparisonRunner(scenarios),
-    { now }
+    { now: () => generatedAt }
   );
   const focusAreas = buildFocusAreaSummaries(suite.cases, suiteReport);
   const weakSpots = buildWeakSpots(suite.cases, suiteReport);
 
   return {
-    generatedAt: now(),
+    generatedAt,
     suite: suiteReport,
     focusAreas,
     weakSpots,
