@@ -385,6 +385,9 @@ describe.sequential("operator commands", () => {
       const verify = JSON.parse(
         (await executeCli(["--json", "runs", "verify", "--loop-id", loop.loopId])).stdout
       );
+      const verifyLatest = JSON.parse(
+        (await executeCli(["--json", "runs", "verify", "--latest", "--runs-dir", runsRoot])).stdout
+      );
       const triage = JSON.parse((await executeCli(["--json", "triage"])).stdout);
 
       expect(dossier.command).toBe("dossier");
@@ -395,7 +398,10 @@ describe.sequential("operator commands", () => {
       expect(attempt.command).toBe("runs_attempt");
       expect(attempt.attempt.index).toBe(1);
       expect(verify.command).toBe("runs_verify");
+      expect(verifyLatest.command).toBe("runs_verify");
+      expect(verifyLatest.loopId).toBe(loop.loopId);
       expect(verify.verification.summary).toContain("verification lane");
+      expect(verifyLatest.verification.summary).toContain("verification lane");
       expect(triage.command).toBe("triage");
       expect(triage.findings[0].loopId).toBe(loop.loopId);
       expect(triage.findings[0].reasons).toContain("verification_failed");
