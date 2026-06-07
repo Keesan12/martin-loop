@@ -19,7 +19,7 @@ import {
   readGitChangedFiles,
   type SpawnLike
 } from "../src/index.js";
-import { runSubprocess, splitCommand } from "../src/cli-bridge.js";
+import { runSubprocess, runVerification, splitCommand } from "../src/cli-bridge.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -534,6 +534,30 @@ describe("runSubprocess", () => {
   });
 });
 
+describe("runVerification", () => {
+  it("fails closed and records launched=false when a verifier step cannot start", async () => {
+    const spawnImpl: SpawnLike = () => {
+      const error = new Error("CreateProcessAsUserW failed: 5");
+      Object.assign(error, { code: "EPERM" });
+      throw error;
+    };
+
+    const result = await runVerification(["npm test"], process.cwd(), 1_000, undefined, spawnImpl);
+
+    expect(result.passed).toBe(false);
+    expect(result.summary).toContain("Verification could not launch: npm test");
+    expect(result.steps).toEqual([
+      expect.objectContaining({
+        command: "npm test",
+        launched: false,
+        timedOut: false,
+        fastFail: true,
+        detail: "CreateProcessAsUserW failed: 5"
+      })
+    ]);
+  });
+});
+
 describe("readGitChangedFiles", () => {
   it("parses NUL-delimited rename entries and keeps the destination path", async () => {
     const calls: SpawnCall[] = [];
@@ -855,6 +879,15 @@ describe("createCodexCliAdapter", () => {
 
     expect(result.status).toBe("completed");
     expect(result.verification.passed).toBe(true);
+    expect(result.verification.steps).toEqual([
+      expect.objectContaining({
+        command: process.platform === "win32" ? "cmd /c exit 0" : "true",
+        launched: true,
+        exitCode: 0,
+        timedOut: false,
+        fastFail: true
+      })
+    ]);
     expect(calls[0]?.command).toBe("codex");
     expect(calls[1]?.command).toBe(process.platform === "win32" ? "cmd" : "true");
   });

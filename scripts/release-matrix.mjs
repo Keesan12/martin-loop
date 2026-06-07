@@ -128,11 +128,12 @@ async function resolveReleaseMatrixOutputRoot(configuredOutputRoot) {
 async function runCommand(step, options) {
   const execution = resolveRcCommandExecution(step.command, process.platform);
   const stepLogPath = path.join(logDirFor(options), `${String(options.index).padStart(2, "0")}-${slugify(step.label)}.log`);
+  const env = createReleaseMatrixEnvironment(process.env);
 
   return new Promise((resolve, reject) => {
     const child = spawn(execution.command, execution.args, {
       cwd: options.cwd,
-      env: process.env,
+      env,
       stdio: ["ignore", "pipe", "pipe"],
       shell: execution.shell,
     });
@@ -167,6 +168,33 @@ async function runCommand(step, options) {
       reject(new Error(`Command failed (${code ?? "unknown"}): ${step.label}`));
     });
   });
+}
+
+export function createReleaseMatrixEnvironment(baseEnv = process.env) {
+  const ci = readEnvValueCaseInsensitive(baseEnv, "CI");
+  const confirmModulesPurge = readEnvValueCaseInsensitive(baseEnv, "npm_config_confirm_modules_purge");
+
+  return {
+    ...baseEnv,
+    CI: ci && ci.trim().length > 0 ? ci : "true",
+    npm_config_confirm_modules_purge:
+      confirmModulesPurge && confirmModulesPurge.trim().length > 0 ? confirmModulesPurge : "false",
+  };
+}
+
+function readEnvValueCaseInsensitive(baseEnv, key) {
+  const direct = baseEnv[key];
+  if (typeof direct === "string") {
+    return direct;
+  }
+
+  const matchedKey = Object.keys(baseEnv).find((candidate) => candidate.toLowerCase() === key.toLowerCase());
+  if (!matchedKey) {
+    return undefined;
+  }
+
+  const matchedValue = baseEnv[matchedKey];
+  return typeof matchedValue === "string" ? matchedValue : undefined;
 }
 
 function logDirFor(options) {

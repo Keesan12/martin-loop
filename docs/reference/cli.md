@@ -18,6 +18,8 @@ martin-loop triage
 martin-loop dossier (--latest | --loop-id <id> | --file <path>)
 martin-loop inspect --file <path>
 martin-loop resume <loopId>
+martin-loop challenge [--loop-id <id> | --file <path> | --latest] [--format markdown|svg]
+martin-loop badge [--format svg|json] [--runs-dir <path>]
 martin-loop runs list|get|attempt|verify ...
 martin-loop mcp print-config --host <codex|claude|gemini|generic>
 martin-loop mcp install --host <codex|claude|gemini|generic>
@@ -45,6 +47,7 @@ npx martin-loop run "Summarize the workspace and prove tests still pass" --proof
 --soft-limit-usd <n>    Soft budget threshold in USD
 --verify <cmd>          Verifier command after each attempt
 --proof                 Use the no-spend proof adapter instead of a live coding CLI
+--verify-only           Skip the coding adapter and run the verifier only
 --unsafe-allow-unguarded-run
                         Bypass the local governance gate for this one run
 --max-iterations <n>    Maximum number of attempts
@@ -59,6 +62,12 @@ npx martin-loop run "Summarize the workspace and prove tests still pass" --proof
 --workspace <id>        Workspace ID for the run record
 --project <id>          Project ID for the run record
 --metadata <key=value>  Attach metadata to the run record; repeatable
+```
+
+## Shared persisted-run options
+
+```text
+--runs-dir <path>       Override the Martin runs root for guided flow receipts, persisted evidence views, and badge generation
 ```
 
 ## Evidence Commands
@@ -80,6 +89,8 @@ Compatibility views remain available:
 ```sh
 npx martin-loop inspect --file ~/.martin/runs/<workspaceId>.jsonl
 npx martin-loop resume <loopId>
+npx martin-loop challenge --latest
+npx martin-loop badge --format json --runs-dir ~/.martin/runs
 ```
 
 ## Phase Commands

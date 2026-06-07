@@ -39,6 +39,12 @@ interface CorpusRecord {
   failureClass?: string | null;
 }
 
+type RunsDirEntry = {
+  name: string | { toString(): string };
+  isFile(): boolean;
+  isDirectory(): boolean;
+};
+
 function resolveLocalCorpusPath(): string {
   if (process.env["MARTIN_LEARNING_CORPUS_PATH"]) {
     return process.env["MARTIN_LEARNING_CORPUS_PATH"];
@@ -130,7 +136,17 @@ export interface VerificationSummary {
   eventCount: number;
   latestAttemptIndex?: number;
   completedAt?: string;
+  steps: VerificationStepSummary[];
   warnings: string[];
+}
+
+export interface VerificationStepSummary {
+  command: string;
+  launched: boolean;
+  exitCode?: number;
+  timedOut?: boolean;
+  fastFail?: boolean;
+  detail?: string;
 }
 
 export interface ArtifactSummary {
@@ -356,28 +372,33 @@ export function buildVerificationSummary(loop: LoopRecord): VerificationSummary 
       status: "unavailable",
       summary: "No persisted verification evidence was found for this loop.",
       eventCount: 0,
+      steps: [],
       warnings: ["Verification evidence is unavailable for this persisted loop."]
     };
   }
 
-  const passed = latestEvent.payload["passed"] === true;
+  const payload = isRecord(latestEvent.payload) ? latestEvent.payload : undefined;
+  const passed = payload?.["passed"] === true;
   const latestAttemptIndex =
-    typeof latestEvent.payload["attemptIndex"] === "number"
-      ? (latestEvent.payload["attemptIndex"] as number)
+    typeof payload?.["attemptIndex"] === "number"
+      ? (payload["attemptIndex"] as number)
       : loop.attempts.at(-1)?.index;
+  const warnings = readVerificationWarnings(payload);
+  const steps = readVerificationSteps(payload);
 
   return {
     status: passed ? "passed" : "failed",
     summary:
-      typeof latestEvent.payload["summary"] === "string"
-        ? (latestEvent.payload["summary"] as string)
+      typeof payload?.["summary"] === "string"
+        ? (payload["summary"] as string)
         : passed
           ? "Verification passed."
           : "Verification failed.",
     eventCount: verificationEvents.length,
     ...(latestAttemptIndex !== undefined ? { latestAttemptIndex } : {}),
     completedAt: latestEvent.timestamp,
-    warnings: []
+    steps,
+    warnings
   };
 }
 
@@ -423,6 +444,7 @@ export function buildRunReceipt(loop: LoopRecord, verification = buildVerificati
       status: verification.status,
       summary: verification.summary,
       eventCount: verification.eventCount,
+      steps: verification.steps,
       warnings: verification.warnings
     },
     rollbackEvidence: {
@@ -468,6 +490,124 @@ export async function triagePersistedLoops(
     findings,
     warnings: listed.warnings
   };
+}
+
+export async function findPersistedLoopEvidence(
+  runsDir: string | undefined,
+  options: { invocationRoot?: string } = {}
+): Promise<{ runsRoot: string; loop?: LoopRecord; warnings: string[] }> {
+  const runsRoot = resolveRunsRootPath(runsDir, options.invocationRoot);
+  const entries = await readdir(runsRoot, { withFileTypes: true }).catch((error: unknown) => {
+    if (isMissing(error)) {
+      return [] as Awaited<ReturnType<typeof readdir>>;
+    }
+
+    throw new CliCommandError("store_unreadable", "Unable to read the Martin runs directory.", {
+      suggestion: "Check MARTIN_RUNS_DIR or pass --runs-dir with a readable path."
+    });
+  });
+
+  entries.sort((left, right) => String(left.name).localeCompare(String(right.name)));
+  const warnings: string[] = [];
+  const indexedLoop = await loadLatestLoopFromWorkspaceIndexes(runsRoot, entries, warnings);
+  if (indexedLoop) {
+    return {
+      runsRoot,
+      loop: indexedLoop,
+      warnings
+    };
+  }
+
+  let latestLoop: LoopRecord | undefined;
+  for (const entry of entries) {
+    try {
+      const entryName = String(entry.name);
+      if (entry.isDirectory()) {
+        const canonical = await findCanonicalLoopRecordPath(path.join(runsRoot, entryName));
+        if (!canonical) {
+          continue;
+        }
+
+        const loop = await readLoopRecordFile(canonical);
+        const candidateTimestamp = loopTimestamp(loop);
+        const latestTimestamp = latestLoop ? loopTimestamp(latestLoop) : Number.NEGATIVE_INFINITY;
+        if (candidateTimestamp > latestTimestamp) {
+          latestLoop = loop;
+        }
+        continue;
+      }
+
+      if (!entry.isFile() || (!entryName.endsWith(".json") && !entryName.endsWith(".jsonl"))) {
+        continue;
+      }
+
+      const loop = (await readLoopsFromFile(path.join(runsRoot, entryName), runsRoot)).sort(
+        (left, right) => loopTimestamp(right) - loopTimestamp(left)
+      )[0];
+      const candidateTimestamp = loop ? loopTimestamp(loop) : Number.NEGATIVE_INFINITY;
+      const latestTimestamp = latestLoop ? loopTimestamp(latestLoop) : Number.NEGATIVE_INFINITY;
+      if (loop && candidateTimestamp > latestTimestamp) {
+        latestLoop = loop;
+      }
+    } catch (error) {
+      warnings.push(
+        `Skipped unreadable persisted loop entry '${String(entry.name)}': ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  return {
+    runsRoot,
+    ...(latestLoop ? { loop: latestLoop } : {}),
+    warnings
+  };
+}
+
+async function loadLatestLoopFromWorkspaceIndexes(
+  runsRoot: string,
+  entries: ReadonlyArray<RunsDirEntry>,
+  warnings: string[]
+): Promise<LoopRecord | undefined> {
+  let latestSummary: { loopId: string; updatedAt: string } | undefined;
+
+  for (const entry of entries) {
+    const entryName = String(entry.name);
+    if (!entry.isFile() || !entryName.endsWith(".jsonl")) {
+      continue;
+    }
+
+    try {
+      const candidate = await readLatestWorkspaceIndexSummary(path.join(runsRoot, entryName));
+      if (!candidate) {
+        continue;
+      }
+
+      const candidateTimestamp = parseTimestamp(candidate.updatedAt);
+      const latestTimestamp = latestSummary
+        ? parseTimestamp(latestSummary.updatedAt)
+        : Number.NEGATIVE_INFINITY;
+      if (candidateTimestamp > latestTimestamp) {
+        latestSummary = candidate;
+      }
+    } catch (error) {
+      warnings.push(
+        `Skipped unreadable workspace index '${entryName}': ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  if (!latestSummary) {
+    return undefined;
+  }
+
+  try {
+    return (await loadLoopById(latestSummary.loopId, runsRoot)).loop;
+  } catch (error) {
+    warnings.push(
+      `Workspace index pointed at unreadable loop '${latestSummary.loopId}': ${error instanceof Error ? error.message : String(error)}`
+    );
+    return undefined;
+  }
 }
 
 function buildPreventionSummary(
@@ -683,6 +823,30 @@ async function readLoopRecordFile(file: string): Promise<LoopRecord> {
   return parsed;
 }
 
+async function readLatestWorkspaceIndexSummary(
+  file: string
+): Promise<{ loopId: string; updatedAt: string } | undefined> {
+  const contents = await readFile(file, "utf8");
+  const lines = contents
+    .split(/\r?\n/gu)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  const latestLine = lines.at(-1);
+  if (!latestLine) {
+    return undefined;
+  }
+
+  const parsed = JSON.parse(latestLine) as unknown;
+  if (!isWorkspaceIndexSummary(parsed)) {
+    return undefined;
+  }
+
+  return {
+    loopId: parsed.loopId,
+    updatedAt: parsed.updatedAt
+  };
+}
+
 function parseUnknownLoopValues(contents: string, file: string): unknown[] {
   if (file.endsWith(".jsonl")) {
     return contents
@@ -726,6 +890,61 @@ function isLoopSummary(value: unknown): value is { loopId: string } {
   );
 }
 
+function isWorkspaceIndexSummary(
+  candidate: unknown
+): candidate is {
+  loopId: string;
+  updatedAt: string;
+} {
+  return (
+    typeof candidate === "object" &&
+    candidate !== null &&
+    typeof (candidate as { loopId?: unknown }).loopId === "string" &&
+    typeof (candidate as { updatedAt?: unknown }).updatedAt === "string"
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function readVerificationWarnings(payload: Record<string, unknown> | undefined): string[] {
+  if (!Array.isArray(payload?.["warnings"])) {
+    return [];
+  }
+
+  return payload["warnings"].filter((warning): warning is string => typeof warning === "string");
+}
+
+function readVerificationSteps(payload: Record<string, unknown> | undefined): VerificationStepSummary[] {
+  if (!Array.isArray(payload?.["steps"])) {
+    return [];
+  }
+
+  return payload["steps"]
+    .map((candidate) => normalizeVerificationStep(candidate))
+    .filter((candidate): candidate is VerificationStepSummary => candidate !== undefined);
+}
+
+function normalizeVerificationStep(candidate: unknown): VerificationStepSummary | undefined {
+  if (!isRecord(candidate)) {
+    return undefined;
+  }
+
+  if (typeof candidate["command"] !== "string" || typeof candidate["launched"] !== "boolean") {
+    return undefined;
+  }
+
+  return {
+    command: candidate["command"],
+    launched: candidate["launched"],
+    ...(typeof candidate["exitCode"] === "number" ? { exitCode: candidate["exitCode"] } : {}),
+    ...(typeof candidate["timedOut"] === "boolean" ? { timedOut: candidate["timedOut"] } : {}),
+    ...(typeof candidate["fastFail"] === "boolean" ? { fastFail: candidate["fastFail"] } : {}),
+    ...(typeof candidate["detail"] === "string" ? { detail: candidate["detail"] } : {})
+  };
+}
+
 function dedupeLoops(loops: LoopRecord[]): LoopRecord[] {
   const byId = new Map<string, LoopRecord>();
   for (const loop of loops) {
@@ -742,7 +961,16 @@ function upsertLoop(target: Map<string, LoopRecord>, loop: LoopRecord): void {
 }
 
 function loopTimestamp(loop: LoopRecord): number {
-  return Date.parse(loop.updatedAt || loop.createdAt || "");
+  return parseTimestamp(loop.updatedAt || loop.createdAt || "");
+}
+
+function parseTimestamp(timestamp: string | undefined): number {
+  if (typeof timestamp !== "string") {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  const parsed = Date.parse(timestamp);
+  return Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY;
 }
 
 function isMissing(error: unknown): boolean {
