@@ -7,6 +7,7 @@ import { resolveRunsRoot } from "@martin/core";
 
 import { resolveSafeRepoRoot, resolveSafeRunsRootPath } from "../server-validation.js";
 import {
+  createSkippedCliAvailability,
   getEngineAvailability,
   inspectRunsRoot,
   resolveExecutionMode,
@@ -46,16 +47,43 @@ export interface MartinDoctorOutput {
     repoRoot: string;
     runsRoot: string;
   };
+  receiptScope: {
+    invocationRoot: string;
+    workingDirectory: string;
+    repoRoot: string;
+    runsRoot: string;
+  };
   engines: Record<
     MartinEngine,
     {
       available: boolean;
       detail: string;
       resolvedPath?: string;
+      candidatePaths?: string[];
+      selectedPath?: string;
       hostPlatform?: CodexHostPlatform;
+      installKind?: string;
       nativeInstallValid?: boolean;
+      invocationMode?: string;
+      sandboxMode?: string;
+      sandboxCompatible?: boolean;
+      nativeDependencyStatus?: string;
+      nativeDependencyPackage?: string;
       launchReady?: boolean;
       probeSummary?: string;
+      remediation?: string;
+      candidateProbeResults?: Array<{
+        path: string;
+        installKind: string;
+        invocationMode: string;
+        nativeInstallValid: boolean;
+        sandboxCompatible: boolean;
+        launchReady: boolean;
+        summary: string;
+        remediation?: string;
+        nativeDependencyStatus?: string;
+        nativeDependencyPackage?: string;
+      }>;
     }
   >;
   requestedEngine?: MartinEngine;
@@ -73,21 +101,35 @@ export async function martinDoctorTool(input: MartinDoctorInput): Promise<Martin
   const runsRoot = resolveSafeRunsRootPath(input.runsDir, resolveRunsRoot(process.env));
   const workspaceRoot = resolveSafeRepoRoot();
   const executionMode = resolveExecutionMode();
-  const claude = getEngineAvailability("claude");
-  const codex = resolveCliCommandAvailability("codex");
-  const gemini = getEngineAvailability("gemini");
+  const claude = executionMode.liveMode
+    ? getEngineAvailability("claude")
+    : createSkippedCliAvailability("claude");
+  const codex = executionMode.liveMode
+    ? resolveCliCommandAvailability("codex")
+    : createSkippedCliAvailability("codex");
+  const gemini = executionMode.liveMode
+    ? getEngineAvailability("gemini")
+    : createSkippedCliAvailability("gemini");
   const codexProbe =
-    executionMode.liveMode && codex.available
+    executionMode.liveMode && input.engine === "codex" && codex.available
       ? probeCodexLaunch({
           workingDirectory,
           availability: codex
         })
       : undefined;
   const runStore = await inspectRunsRoot(runsRoot);
-  const signals = inspectRepoSignals(workingDirectory);
+  const signals = inspectRepoSignals(workingDirectory, {
+    includeHostAvailability: executionMode.liveMode
+  });
   const readiness = buildReadinessReport(signals, runStore);
 
   const warnings: string[] = [];
+  const receiptScope = {
+    invocationRoot: workspaceRoot,
+    workingDirectory,
+    repoRoot: workingDirectory,
+    runsRoot
+  };
   if (!runStore.exists) {
     warnings.push("Configured Martin runs root does not exist yet.");
   }
@@ -128,11 +170,9 @@ export async function martinDoctorTool(input: MartinDoctorInput): Promise<Martin
       liveMode: executionMode.liveMode
     },
     scope: {
-      invocationRoot: workspaceRoot,
-      workingDirectory,
-      repoRoot: workingDirectory,
-      runsRoot
+      ...receiptScope
     },
+    receiptScope,
     engines: {
       claude: {
         available: claude.available,
@@ -143,12 +183,28 @@ export async function martinDoctorTool(input: MartinDoctorInput): Promise<Martin
         available: codex.available,
         detail: codex.detail,
         ...(codex.resolvedPath ? { resolvedPath: codex.resolvedPath } : {}),
+        ...(codex.candidatePaths?.length ? { candidatePaths: codex.candidatePaths } : {}),
         ...(codexProbe
           ? {
+              selectedPath: codexProbe.command,
               hostPlatform: codexProbe.diagnosis.hostPlatform,
+              installKind: codexProbe.diagnosis.installKind,
               nativeInstallValid: codexProbe.diagnosis.nativeInstallValid,
+              invocationMode: codexProbe.diagnosis.invocationMode,
+              sandboxMode: codexProbe.diagnosis.sandboxMode,
+              sandboxCompatible: codexProbe.diagnosis.sandboxCompatible,
+              ...(codexProbe.diagnosis.nativeDependencyStatus
+                ? { nativeDependencyStatus: codexProbe.diagnosis.nativeDependencyStatus }
+                : {}),
+              ...(codexProbe.diagnosis.nativeDependencyPackage
+                ? { nativeDependencyPackage: codexProbe.diagnosis.nativeDependencyPackage }
+                : {}),
               launchReady: codexProbe.ok,
-              probeSummary: codexProbe.summary
+              probeSummary: codexProbe.summary,
+              ...(codexProbe.diagnosis.remediation ? { remediation: codexProbe.diagnosis.remediation } : {}),
+              ...(codexProbe.candidateProbeResults?.length
+                ? { candidateProbeResults: codexProbe.candidateProbeResults }
+                : {})
             }
           : {})
       },

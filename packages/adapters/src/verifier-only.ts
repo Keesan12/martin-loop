@@ -1,12 +1,13 @@
 import type { MartinAdapter } from "@martin/core";
 
-import { readGitChangedFiles, runVerification } from "./cli-bridge.js";
+import { readGitChangedFiles, runVerification, type SpawnLike } from "./cli-bridge.js";
 import { createAdapterCapabilities, normalizeUsage } from "./runtime-support.js";
 
 export interface VerifierOnlyAdapterOptions {
   workingDirectory?: string;
   verifyTimeoutMs?: number;
   label?: string;
+  spawnImpl?: SpawnLike;
 }
 
 export function createVerifierOnlyAdapter(
@@ -29,16 +30,24 @@ export function createVerifierOnlyAdapter(
       })
     },
     async execute(request) {
-      const baselineChangedFiles = new Set(await readGitChangedFiles(workingDirectory, 5_000));
+      const hasVerificationSteps =
+        request.context.verificationPlan.length > 0 ||
+        (request.context.verificationStack?.length ?? 0) > 0;
+      const baselineChangedFiles = hasVerificationSteps
+        ? new Set(await readGitChangedFiles(workingDirectory, 5_000))
+        : new Set<string>();
       const verification = await runVerification(
         request.context.verificationPlan,
         workingDirectory,
         verifyTimeoutMs,
-        request.context.verificationStack
+        request.context.verificationStack,
+        options.spawnImpl
       );
-      const changedFiles = (await readGitChangedFiles(workingDirectory, 5_000)).filter(
-        (file) => !baselineChangedFiles.has(file)
-      );
+      const changedFiles = hasVerificationSteps
+        ? (await readGitChangedFiles(workingDirectory, 5_000)).filter(
+            (file) => !baselineChangedFiles.has(file)
+          )
+        : [];
       const execution = { changedFiles };
 
       if (verification.passed) {

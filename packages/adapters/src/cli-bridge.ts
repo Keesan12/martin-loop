@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
-import { delimiter, extname, isAbsolute, join, resolve } from "node:path";
+import { delimiter, dirname, extname, isAbsolute, join, resolve } from "node:path";
 import { existsSync } from "node:fs";
 
 import { diffStatsFromNumstat } from "./runtime-support.js";
@@ -21,6 +21,8 @@ export interface VerificationOutcome {
   passed: boolean;
   summary: string;
 }
+
+const gitRepositoryRootCache = new Map<string, string | null>();
 
 export async function runSubprocess(
   command: string,
@@ -182,6 +184,10 @@ export async function readGitExecutionArtifacts(
   changedFiles?: string[];
   diffStats?: ReturnType<typeof diffStatsFromNumstat>;
 }> {
+  if (!resolveGitRepositoryRoot(repoRoot)) {
+    return {};
+  }
+
   const changedFilesResult = await runSubprocess(
     "git",
     ["diff", "--name-only", "HEAD"],
@@ -214,9 +220,13 @@ export async function readGitChangedFiles(
   timeoutMs: number,
   spawnImpl?: SpawnLike
 ): Promise<string[]> {
+  if (!resolveGitRepositoryRoot(repoRoot)) {
+    return [];
+  }
+
   const statusResult = await runSubprocess(
     "git",
-    ["status", "-z", "--porcelain=v1", "--untracked-files=all", "--ignore-submodules=all"],
+    ["status", "-z", "--porcelain=v1", "--untracked-files=all", "--ignore-submodules=all", "--", "."],
     { cwd: repoRoot, timeoutMs, spawnImpl }
   );
 
@@ -227,6 +237,46 @@ export async function readGitChangedFiles(
   return parsePorcelainEntries(statusResult.stdout).filter(
     (entry): entry is string => typeof entry === "string" && entry.length > 0
   );
+}
+
+export function resolveGitRepositoryRoot(workingDirectory: string): string | undefined {
+  const resolvedWorkingDirectory = resolve(workingDirectory);
+  const cached = gitRepositoryRootCache.get(resolvedWorkingDirectory);
+  if (cached !== undefined) {
+    return cached ?? undefined;
+  }
+
+  const visited: string[] = [];
+  let current = resolvedWorkingDirectory;
+
+  while (true) {
+    visited.push(current);
+
+    const currentCached = gitRepositoryRootCache.get(current);
+    if (currentCached !== undefined) {
+      for (const candidate of visited) {
+        gitRepositoryRootCache.set(candidate, currentCached);
+      }
+      return currentCached ?? undefined;
+    }
+
+    if (existsSync(resolve(current, ".git"))) {
+      for (const candidate of visited) {
+        gitRepositoryRootCache.set(candidate, current);
+      }
+      return current;
+    }
+
+    const parent = dirname(current);
+    if (parent === current) {
+      for (const candidate of visited) {
+        gitRepositoryRootCache.set(candidate, null);
+      }
+      return undefined;
+    }
+
+    current = parent;
+  }
 }
 
 export interface SpawnPlan {
@@ -251,19 +301,17 @@ export function createSpawnPlan(
   // Windows can resolve the command itself — this covers cases like `pnpm` where the npm global
   // bin directory is present in the shell PATH but not yet visible to this Node.js process.
   if (resolvedOrUndefined === undefined) {
-    const cmdStr = [quoteWindowsCmdArg(command), ...args.map(quoteWindowsCmdArg)].join(" ");
     return {
       command: process.env.ComSpec || "cmd.exe",
-      args: ["/d", "/c", cmdStr]
+      args: ["/d", "/c", command, ...args]
     };
   }
 
   const extension = extname(resolvedOrUndefined).toLowerCase();
   if (extension === ".cmd" || extension === ".bat") {
-    const cmdStr = [quoteWindowsCmdArg(resolvedOrUndefined), ...args.map(quoteWindowsCmdArg)].join(" ");
     return {
       command: process.env.ComSpec || "cmd.exe",
-      args: ["/d", "/s", "/c", cmdStr]
+      args: ["/d", "/c", resolvedOrUndefined, ...args]
     };
   }
 
@@ -352,17 +400,6 @@ function windowsPathDirectories(): string[] {
     .split(delimiter)
     .map((entry) => entry.trim().replace(/^"|"$/g, ""))
     .filter(Boolean);
-}
-
-function quoteWindowsCmdArg(value: string): string {
-  const normalized = value.replace(/\r?\n/gu, " ");
-  const escaped = normalized
-    .replace(/\^/gu, "^^")
-    .replace(/"/gu, '^"')
-    .replace(/%/gu, "%%")
-    .replace(/!/gu, "^^!")
-    .replace(/[&|<>()]/gu, (match) => `^${match}`);
-  return `"${escaped}"`;
 }
 
 export function splitCommand(command: string): string[] {

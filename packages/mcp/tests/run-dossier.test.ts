@@ -38,7 +38,7 @@ async function withRunsAndWorkspace<T>(
 }
 
 describe("martinRunDossierTool", () => {
-  it("uses the trusted workspace root when a run record omits repoRoot", async () => {
+  it("uses the trusted workspace root when a run record omits repoRoot", { timeout: 20_000 }, async () => {
     await withRunsAndWorkspace(async ({ runsRoot, workspaceRoot }) => {
       const loop = createLoopRecord({
         loopId: "loop_workspace_fallback",

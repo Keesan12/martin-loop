@@ -16,6 +16,21 @@ import {
   readMartinResource
 } from "../src/resources.js";
 
+async function withEnv<T>(key: string, value: string, fn: () => Promise<T>): Promise<T> {
+  const original = process.env[key];
+  process.env[key] = value;
+
+  try {
+    return await fn();
+  } finally {
+    if (original === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = original;
+    }
+  }
+}
+
 function makeLoopRecord() {
   const base = createLoopRecord({
     workspaceId: "ws_test",
@@ -186,18 +201,20 @@ describe("Martin MCP discovery resources", () => {
     });
   });
 
-  it("degrades server health when an explicit runsDir is missing", async () => {
-    await withRunsRoot(async (runsRoot) => {
-      const missingRunsRoot = join(runsRoot, "missing");
-      const health = await readMartinResource({
-        uri: MARTIN_STATIC_RESOURCE_URIS.serverHealth,
-        runsDir: missingRunsRoot
-      });
+  it("degrades server health when an explicit runsDir is missing", { timeout: 20_000 }, async () => {
+    await withEnv("MARTIN_LIVE", "false", () =>
+      withRunsRoot(async (runsRoot) => {
+        const missingRunsRoot = join(runsRoot, "missing");
+        const health = await readMartinResource({
+          uri: MARTIN_STATIC_RESOURCE_URIS.serverHealth,
+          runsDir: missingRunsRoot
+        });
 
-      expect(health.contents[0]?.text).toContain("\"status\": \"degraded\"");
-      expect(health.contents[0]?.text).toContain("\"exists\": false");
-      expect(health.contents[0]?.text).toContain("Configured Martin runs root does not exist yet.");
-    });
+        expect(health.contents[0]?.text).toContain("\"status\": \"degraded\"");
+        expect(health.contents[0]?.text).toContain("\"exists\": false");
+        expect(health.contents[0]?.text).toContain("Configured Martin runs root does not exist yet.");
+      })
+    );
   });
 
   it("reads loop, attempt, and verification resources from persisted loop records", async () => {

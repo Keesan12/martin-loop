@@ -1,10 +1,14 @@
+import { EventEmitter } from "node:events";
+import type { ChildProcess, SpawnOptions } from "node:child_process";
+import { PassThrough } from "node:stream";
 import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { writeReceiptIntegrityMaterial } from "@martin/core";
 import { createLoopRecord } from "@martin/contracts";
-import { describe, expect, it, vi } from "vitest";
+import type { SpawnLike } from "@martin/adapters";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { getStatusTool } from "../src/tools/get-status.js";
 import { martinGetRunTool } from "../src/tools/get-run.js";
@@ -14,7 +18,7 @@ import { martinGetVerificationResultsTool } from "../src/tools/get-verification-
 import { martinListRunsTool } from "../src/tools/list-runs.js";
 import { martinPreflightTool } from "../src/tools/preflight.js";
 import { martinRunDossierTool } from "../src/tools/run-dossier.js";
-import { runLoopTool } from "../src/tools/run-loop.js";
+import { __setProofModeVerifierSpawnImplForTests, runLoopTool } from "../src/tools/run-loop.js";
 import { martinTriageRunsTool } from "../src/tools/triage-runs.js";
 
 // ---------------------------------------------------------------------------
@@ -98,6 +102,27 @@ async function installFakeCliProbe(directory: string, command: string, markerPat
   );
   await chmod(commandPath, 0o755);
 }
+
+function createImmediateSpawn(calls: Array<{ command: string; args: readonly string[]; options?: SpawnOptions }>): SpawnLike {
+  return (command, args = [], options) => {
+    calls.push({ command, args, options });
+    const child = new EventEmitter() as Partial<ChildProcess> & {
+      stdout: PassThrough;
+      stderr: PassThrough;
+      stdin: PassThrough;
+    };
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    child.stdin = new PassThrough();
+    child.kill = () => true;
+    process.nextTick(() => child.emit("close", 0));
+    return child as ChildProcess;
+  };
+}
+
+afterEach(() => {
+  __setProofModeVerifierSpawnImplForTests(undefined);
+});
 
 // ---------------------------------------------------------------------------
 // martin_status
@@ -385,6 +410,7 @@ describe("martinDoctorTool", () => {
         expect(result.runStore.loopCount).toBe(1);
         expect(result.runStore.latestRun?.loopId).toBe(loop.loopId);
         expect(result.requestedEngine).toBe("codex");
+        expect(result.receiptScope).toEqual(result.scope);
         expect(result.scope.repoRoot).toBe(result.environment.workingDirectory);
         expect(result.scope.runsRoot).toBe(runsRoot);
       } finally {
@@ -471,8 +497,10 @@ describe("martinPreflightTool", () => {
       expect(result.readiness.mode).toBe("proof");
       expect(result.normalized.engine).toBe("codex");
       expect(result.normalized.budget.maxUsd).toBe(3);
+      expect(result.normalized.budget.softLimitUsd).toBe(3);
       expect(result.normalized.budget.maxIterations).toBe(2);
       expect(result.normalized.allowedPaths).toEqual(["src/**", "tests/**"]);
+      expect(result.receiptScope).toEqual(result.scope);
       expect(result.scope.repoRoot).toBe(result.normalized.workingDirectory);
       expect(result.scope.runsRoot).toBe(result.execution.runsRoot);
       expect(result.execution.expectedRunLayout.loopRecordPathPattern).toBe(
@@ -1151,6 +1179,35 @@ describe("martinTriageRunsTool", () => {
 // ---------------------------------------------------------------------------
 
 describe("runLoopTool", () => {
+  it("uses the injected proof-mode verifier spawn for verification-only contract tests", async () => {
+    await withRunsRoot(async () => {
+      const originalEnv = process.env.MARTIN_LIVE;
+      process.env.MARTIN_LIVE = "false";
+      const calls: Array<{ command: string; args: readonly string[]; options?: SpawnOptions }> = [];
+      __setProofModeVerifierSpawnImplForTests(createImmediateSpawn(calls));
+
+      try {
+        const result = await runLoopTool({
+          objective: "Validate proof-mode verifier seams",
+          verificationPlan: ["node --version"],
+          maxIterations: 1,
+          maxUsd: 1
+        });
+
+        expect(result.loopId).toMatch(/^loop_/u);
+        expect(calls).toHaveLength(1);
+        expect(calls[0]?.command).toBe("node");
+        expect(calls[0]?.args).toEqual(["--version"]);
+      } finally {
+        if (originalEnv === undefined) {
+          delete process.env.MARTIN_LIVE;
+        } else {
+          process.env.MARTIN_LIVE = originalEnv;
+        }
+      }
+    });
+  });
+
   it("returns a loop outcome in stub mode (MARTIN_LIVE=false)", async () => {
     // Set stub mode so the adapter doesn't try to spawn claude
     const originalEnv = process.env.MARTIN_LIVE;
@@ -1166,12 +1223,13 @@ describe("runLoopTool", () => {
         maxUsd: 5
       });
 
-      // Stub adapter returns failed, so loop exits with budget_exit or diminishing_returns
-      expect(result.loopId).toMatch(/^loop_/u);
-      expect(typeof result.attempts).toBe("number");
-      expect(typeof result.costUsd).toBe("number");
-      expect(["completed", "exited", "failed"]).toContain(result.status);
-    } finally {
+        // Stub adapter returns failed, so loop exits with budget_exit or diminishing_returns
+        expect(result.loopId).toMatch(/^loop_/u);
+        expect(typeof result.attempts).toBe("number");
+        expect(typeof result.costUsd).toBe("number");
+        expect(result.budget.softLimitUsd).toBe(5);
+        expect(["completed", "exited", "failed"]).toContain(result.status);
+      } finally {
       if (originalEnv === undefined) {
         delete process.env.MARTIN_LIVE;
       } else {

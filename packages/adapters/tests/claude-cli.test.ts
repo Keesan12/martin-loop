@@ -19,7 +19,7 @@ import {
   createVerifierOnlyAdapter,
   type SpawnLike
 } from "../src/index.js";
-import { runSubprocess, splitCommand } from "../src/cli-bridge.js";
+import { readGitChangedFiles, readGitExecutionArtifacts, runSubprocess, splitCommand } from "../src/cli-bridge.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -332,10 +332,10 @@ describe("createAgentCliAdapter", () => {
 describe("splitCommand", () => {
   it("preserves backslashes inside quoted Windows executable paths", () => {
     const command =
-      '"C:\\Users\\ExampleUser\\Projects\\node.exe" -e "process.exit(0)"';
+      '"C:\\Projects\\Example\\node.exe" -e "process.exit(0)"';
 
     expect(splitCommand(command)).toEqual([
-      "C:\\Users\\ExampleUser\\Projects\\node.exe",
+      "C:\\Projects\\Example\\node.exe",
       "-e",
       "process.exit(0)",
     ]);
@@ -349,7 +349,7 @@ describe("createSpawnPlan", () => {
       return;
     }
 
-    const pnpmPath = "C:\\Users\\Example User\\AppData\\Roaming\\npm\\pnpm.cmd";
+    const pnpmPath = "C:\\Tools\\Example Path\\npm\\pnpm.cmd";
     const plan = createSpawnPlan(
       pnpmPath,
       ["verify shared baseline", "--filter", "pkg with spaces"],
@@ -359,11 +359,10 @@ describe("createSpawnPlan", () => {
 
     expect(plan.command.toLowerCase()).toContain("cmd.exe");
     expect(plan.args[0]).toBe("/d");
-    expect(plan.args[1]).toBe("/s");
-    expect(plan.args[2]).toBe("/c");
-    expect(plan.args[3]).toContain('"C:\\Users\\Example User\\AppData\\Roaming\\npm\\pnpm.cmd"');
-    expect(plan.args[3]).toContain('"verify shared baseline"');
-    expect(plan.args[3]).toContain('"pkg with spaces"');
+    expect(plan.args[1]).toBe("/c");
+    expect(plan.args[2]).toBe("C:\\Tools\\Example Path\\npm\\pnpm.cmd");
+    expect(plan.args[3]).toBe("verify shared baseline");
+    expect(plan.args[5]).toBe("pkg with spaces");
   });
 
   it("wraps absolute Windows PowerShell scripts through powershell.exe", () => {
@@ -372,7 +371,7 @@ describe("createSpawnPlan", () => {
       return;
     }
 
-    const scriptPath = "C:\\Users\\ExampleUser\\AppData\\Roaming\\npm\\codex.ps1";
+    const scriptPath = "C:\\Tools\\npm\\codex.ps1";
     const plan = createSpawnPlan(scriptPath, ["--version"], process.cwd(), false);
 
     expect(plan.command.toLowerCase()).toContain("powershell.exe");
@@ -402,8 +401,8 @@ describe("createSpawnPlan", () => {
     expect(plan.args[0]).toBe("/d");
     expect(plan.args[1]).toBe("/c");
     expect(plan.args[2]).toContain("__martin_nonexistent_verifier_cmd__");
-    expect(plan.args[2]).toContain("run");
-    expect(plan.args[2]).toContain("test");
+    expect(plan.args[3]).toBe("run");
+    expect(plan.args[4]).toBe("test");
   });
 
   it("preserves raw command when preserveRawForInjectedSpawn is true regardless of platform", () => {
@@ -453,6 +452,51 @@ describe("runSubprocess", () => {
 });
 
 describe("createVerifierOnlyAdapter", () => {
+  it("short-circuits git inspection outside a repository", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-no-git-"));
+    let spawnCalls = 0;
+    const spawnImpl: SpawnLike = () => {
+      spawnCalls += 1;
+      throw new Error("git subprocess should not run outside a repository");
+    };
+
+    try {
+      await expect(readGitChangedFiles(directory, 1_000, spawnImpl)).resolves.toEqual([]);
+      await expect(readGitExecutionArtifacts(directory, 1_000, spawnImpl)).resolves.toEqual({});
+      expect(spawnCalls).toBe(0);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("skips baseline diff scans when verify-only has no verification steps", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-verify-empty-"));
+
+    try {
+      const adapter = createVerifierOnlyAdapter({ workingDirectory: directory });
+      const result = await adapter.execute(
+        makeRequest({
+          context: {
+            taskTitle: "verify only",
+            objective: "Run verification only",
+            verificationPlan: [],
+            verificationStack: [],
+            mutationMode: "verify_only",
+            focus: "verify only",
+            remainingBudgetUsd: 8,
+            remainingIterations: 1,
+            remainingTokens: 10_000
+          }
+        })
+      );
+
+      expect(result.status).toBe("completed");
+      expect(result.execution?.changedFiles).toEqual([]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("reports verifier-created file changes instead of treating verify-only as clean", { timeout: 15000 }, async () => {
     const directory = await mkdtemp(join(tmpdir(), "martin-verify-only-"));
 
@@ -535,7 +579,7 @@ describe("createClaudeCliAdapter", () => {
     expect(result.failure?.message).toContain("environment_mismatch");
   });
 
-  it("routes no-diff and scope git probes through the injected spawn implementation", async () => {
+  it("skips git probes when repoRoot is outside a repository", async () => {
     const calls: SpawnCall[] = [];
     const adapter = createClaudeCliAdapter({
       spawnImpl: createScriptedSpawn(calls, [
@@ -573,11 +617,8 @@ describe("createClaudeCliAdapter", () => {
     );
 
     expect(result.status).toBe("completed");
-    expect(calls).toHaveLength(5);
+    expect(calls).toHaveLength(1);
     expect(calls[0]?.command).toBe("claude");
-    expect(calls.slice(1).map((call) => call.command)).toEqual(["git", "git", "git", "git"]);
-    expect(calls[1]?.args).toEqual(["diff", "--name-only", "HEAD"]);
-    expect(calls[4]?.args).toEqual(["diff", "--name-only", "HEAD"]);
   });
 });
 
@@ -705,6 +746,37 @@ describe("createCodexCliAdapter", () => {
     expect(result.verification.passed).toBe(true);
     expect(calls[0]?.command).toBe("codex");
     expect(calls[1]?.command).toBe(process.platform === "win32" ? "cmd" : "true");
+  });
+
+  it("fails closed when Codex exits non-zero before emitting structured completion", async () => {
+    const calls: SpawnCall[] = [];
+    const adapter = createCodexCliAdapter({
+      spawnImpl: createScriptedSpawn(calls, [
+        {
+          stdout: "usage: codex exec ...\n",
+          stderr: "launch failed\n",
+          exitCode: 2
+        }
+      ])
+    });
+    const result = await adapter.execute(
+      makeRequest({
+        context: {
+          taskTitle: "test",
+          objective: "patch then verify",
+          verificationPlan: process.platform === "win32" ? ["cmd /c exit 0"] : ["true"],
+          focus: "test",
+          remainingBudgetUsd: 8,
+          remainingIterations: 3,
+          remainingTokens: 10_000
+        }
+      })
+    );
+
+    expect(result.status).toBe("failed");
+    expect(result.summary).toContain("exited before verifier execution");
+    expect(result.verification.passed).toBe(false);
+    expect(calls).toHaveLength(1);
   });
 
   it("settles authoritative Codex usage from JSONL turn.completed output", async () => {

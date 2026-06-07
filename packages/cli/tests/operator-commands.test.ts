@@ -8,6 +8,21 @@ import { describe, expect, it } from "vitest";
 
 import { executeCli } from "../src/index.js";
 
+async function withEnv<T>(key: string, value: string, fn: () => Promise<T>): Promise<T> {
+  const original = process.env[key];
+  process.env[key] = value;
+
+  try {
+    return await fn();
+  } finally {
+    if (original === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = original;
+    }
+  }
+}
+
 function makeLoopRecord(): LoopRecord {
   const loop = createLoopRecord({
     workspaceId: "ws_ops",
@@ -107,7 +122,7 @@ async function withRunsRoot<T>(fn: (runsRoot: string) => Promise<T>): Promise<T>
 
 describe("operator commands", () => {
   it("doctor reports environment readiness and starter MCP tools", async () => {
-    const result = await executeCli(["--json", "doctor"]);
+    const result = await withEnv("MARTIN_LIVE", "false", () => executeCli(["--json", "doctor"]));
     const payload = JSON.parse(result.stdout);
 
     expect(result.exitCode).toBe(0);
@@ -116,6 +131,7 @@ describe("operator commands", () => {
     expect(payload.profiles.minimal).toContain("martin_list_runs");
     expect(payload.starterTools).toContain("martin_doctor");
     expect(payload.environment.runsRoot).toBeTypeOf("string");
+    expect(payload.receiptScope).toEqual(payload.scope);
     expect(payload.scope.invocationRoot).toBeTypeOf("string");
     expect(payload.scope.repoRoot).toBe(payload.environment.workingDirectory);
     expect(payload.scope.runsRoot).toBe(payload.environment.runsRoot);
@@ -144,9 +160,59 @@ describe("operator commands", () => {
     expect(payload.command).toBe("preflight");
     expect(payload.ready).toBe(false);
     expect(payload.blockingIssues).toContain("Working directory does not exist.");
+    expect(payload.receiptScope).toEqual(payload.scope);
     expect(payload.scope.workingDirectory).toBe(missingDirectory);
     expect(payload.scope.repoRoot).toBe(missingDirectory);
     expect(payload.scope.runsRoot).toBeTypeOf("string");
+  });
+
+  it("preserves explicit --runs-dir overrides for preflight commands after the objective token", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const workingDirectory = await mkdtemp(join(tmpdir(), "martin-cli-preflight-workspace-"));
+      const narrowedRunsRoot = join(runsRoot, "team-a");
+
+      try {
+        const result = await executeCli([
+          "--json",
+          "preflight",
+          "Repair the failing MCP lane",
+          "--cwd",
+          workingDirectory,
+          "--runs-dir",
+          narrowedRunsRoot
+        ]);
+        const payload = JSON.parse(result.stdout);
+
+        expect(result.exitCode).toBe(0);
+        expect(payload.environment.workingDirectory).toBe(workingDirectory);
+        expect(payload.environment.runsRoot).toBe(narrowedRunsRoot);
+        expect(payload.receiptScope.runsRoot).toBe(narrowedRunsRoot);
+      } finally {
+        await rm(workingDirectory, { force: true, recursive: true }).catch(() => {});
+      }
+    });
+  });
+
+  it("blocks live run execution before spend when the governed receipt chain is missing", async () => {
+    await withRunsRoot(async () => {
+      const result = await executeCli([
+        "run",
+        "--objective",
+        "Repair the failing MCP lane",
+        "--engine",
+        "codex",
+        "--verify",
+        "pnpm --filter @martinloop/mcp test",
+        "--budget-usd",
+        "2",
+        "--max-iterations",
+        "1"
+      ]);
+
+      expect(result.exitCode).toBe(8);
+      expect(result.stderr).toContain("Governed run blocked until MartinLoop receipts exist");
+      expect(result.stderr).toContain("martin-loop doctor");
+    });
   });
 
   it("loads persisted runs through dossier, attempt, verify, and triage commands", async () => {
