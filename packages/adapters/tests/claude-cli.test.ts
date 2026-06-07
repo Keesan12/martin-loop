@@ -349,14 +349,21 @@ describe("createSpawnPlan", () => {
       return;
     }
 
-    const pnpmPath = "C:\\Users\\ExampleUser\\AppData\\Roaming\\npm\\pnpm.cmd";
-    const plan = createSpawnPlan(pnpmPath, ["verify:shared-baseline"], process.cwd(), false);
+    const pnpmPath = "C:\\Users\\Example User\\AppData\\Roaming\\npm\\pnpm.cmd";
+    const plan = createSpawnPlan(
+      pnpmPath,
+      ["verify shared baseline", "--filter", "pkg with spaces"],
+      process.cwd(),
+      false
+    );
 
     expect(plan.command.toLowerCase()).toContain("cmd.exe");
     expect(plan.args[0]).toBe("/d");
-    expect(plan.args[1]).toBe("/c");
-    expect(plan.args[2]).toContain("pnpm.cmd");
-    expect(plan.args[3]).toBe("verify:shared-baseline");
+    expect(plan.args[1]).toBe("/s");
+    expect(plan.args[2]).toBe("/c");
+    expect(plan.args[3]).toContain('"C:\\Users\\Example User\\AppData\\Roaming\\npm\\pnpm.cmd"');
+    expect(plan.args[3]).toContain('"verify shared baseline"');
+    expect(plan.args[3]).toContain('"pkg with spaces"');
   });
 
   it("wraps absolute Windows PowerShell scripts through powershell.exe", () => {
@@ -526,6 +533,51 @@ describe("createClaudeCliAdapter", () => {
 
     expect(result.status).toBe("failed");
     expect(result.failure?.message).toContain("environment_mismatch");
+  });
+
+  it("routes no-diff and scope git probes through the injected spawn implementation", async () => {
+    const calls: SpawnCall[] = [];
+    const adapter = createClaudeCliAdapter({
+      spawnImpl: createScriptedSpawn(calls, [
+        {
+          stdout: JSON.stringify({
+            type: "result",
+            result: "Patched the target file.",
+            usage: {
+              input_tokens: 12,
+              output_tokens: 8
+            }
+          })
+        },
+        { stdout: "" },
+        { stdout: "src/index.ts\n" },
+        { stdout: "1\t0\tsrc/index.ts\n" },
+        { stdout: "src/index.ts\n" }
+      ])
+    });
+
+    const result = await adapter.execute(
+      makeRequest({
+        context: {
+          taskTitle: "test",
+          objective: "patch then check scope",
+          verificationPlan: [],
+          focus: "test",
+          remainingBudgetUsd: 8,
+          remainingIterations: 3,
+          remainingTokens: 10_000,
+          repoRoot: "C:\\repo with spaces",
+          allowedPaths: ["src/**"]
+        }
+      })
+    );
+
+    expect(result.status).toBe("completed");
+    expect(calls).toHaveLength(5);
+    expect(calls[0]?.command).toBe("claude");
+    expect(calls.slice(1).map((call) => call.command)).toEqual(["git", "git", "git", "git"]);
+    expect(calls[1]?.args).toEqual(["diff", "--name-only", "HEAD"]);
+    expect(calls[4]?.args).toEqual(["diff", "--name-only", "HEAD"]);
   });
 });
 

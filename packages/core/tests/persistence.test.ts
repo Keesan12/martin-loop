@@ -1,5 +1,6 @@
-import { mkdtemp, readFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { createHash } from "node:crypto";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -8,7 +9,8 @@ import {
   compileAndPersistContext,
   createFileRunStore,
   makeLedgerEvent,
-  resolveRunsRoot
+  resolveRunsRoot,
+  writeReceiptIntegrityMaterial
 } from "../src/index";
 
 describe("makeLedgerEvent", () => {
@@ -388,5 +390,62 @@ describe("compileAndPersistContext", () => {
     expect(result.packet).toBeDefined();
     expect(result.packet.attemptNumber).toBe(1);
     // No store — no side effects, no error
+  });
+});
+
+describe("receipt integrity persistence", () => {
+  it("writes receipt-integrity keys with restricted permissions where the platform supports POSIX modes", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-integrity-"));
+    const runId = `run_integrity_${Date.now()}`;
+    const rootHash = createHash("sha256").update(runsRoot).digest("hex").slice(0, 16);
+    const keyDir = join(homedir(), ".martin", "receipt-integrity", rootHash);
+    const keyPath = join(keyDir, `${runId}.key`);
+
+    try {
+      await writeReceiptIntegrityMaterial({
+        runId,
+        runsRoot,
+        loopRecord: {
+          loopId: runId,
+          workspaceId: "ws_test",
+          projectId: "proj_test",
+          status: "completed",
+          lifecycleState: "completed",
+          task: {
+            title: "Integrity test",
+            objective: "Write receipt integrity key material.",
+            verificationPlan: []
+          },
+          budget: { maxUsd: 1, softLimitUsd: 0.5, maxIterations: 1, maxTokens: 1000 },
+          cost: {
+            actualUsd: 0,
+            estimatedUsd: 0,
+            avoidedUsd: 0,
+            tokensIn: 0,
+            tokensOut: 0,
+            provenance: "actual"
+          },
+          artifacts: [],
+          attempts: [],
+          events: [],
+          metadata: {},
+          createdAt: "2026-06-07T00:00:00.000Z",
+          updatedAt: "2026-06-07T00:00:00.000Z"
+        },
+        ledgerEntries: []
+      });
+
+      const keyStats = await stat(keyPath);
+      expect(keyStats.isFile()).toBe(true);
+
+      if (process.platform !== "win32") {
+        const keyDirStats = await stat(keyDir);
+        expect(keyDirStats.mode & 0o777).toBe(0o700);
+        expect(keyStats.mode & 0o777).toBe(0o600);
+      }
+    } finally {
+      await rm(runsRoot, { recursive: true, force: true });
+      await rm(keyDir, { recursive: true, force: true }).catch(() => {});
+    }
   });
 });

@@ -34,6 +34,8 @@ export interface StoredReceiptIntegrityMaterial {
 }
 
 const RECEIPT_INTEGRITY_SCHEMA_VERSION = "martin.receipt-integrity.v1";
+const RECEIPT_INTEGRITY_KEY_DIR_MODE = 0o700;
+const RECEIPT_INTEGRITY_KEY_FILE_MODE = 0o600;
 
 export async function writeReceiptIntegrityMaterial(input: {
   runId: string;
@@ -264,8 +266,11 @@ async function ensureReceiptIntegrityKey(runsRoot: string, runId: string): Promi
   }
 
   const generated = randomBytes(32).toString("hex");
-  await mkdir(dirname(keyPath), { recursive: true });
-  await writeFile(keyPath, `${generated}\n`, "utf8");
+  await mkdir(dirname(keyPath), { recursive: true, mode: RECEIPT_INTEGRITY_KEY_DIR_MODE });
+  await writeFile(keyPath, `${generated}\n`, {
+    encoding: "utf8",
+    mode: RECEIPT_INTEGRITY_KEY_FILE_MODE
+  });
   return [generated, sha256(generated).slice(0, 16)];
 }
 

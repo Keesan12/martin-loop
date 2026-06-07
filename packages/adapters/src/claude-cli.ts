@@ -644,7 +644,7 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
       const repoRoot = (request.context as { repoRoot?: string }).repoRoot;
       let noDiff = false;
       if (repoRoot) {
-        noDiff = await checkNoDiff(repoRoot);
+        noDiff = await checkNoDiff(repoRoot, options.spawnImpl);
       }
 
       // Extract structured errors from stderr/stdout for better failure context
@@ -659,7 +659,11 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
       let scopeViolations: string[] = [];
       const scopeCtx = request.context as { allowedPaths?: string[]; deniedPaths?: string[] };
       if (repoRoot && (scopeCtx.allowedPaths?.length || scopeCtx.deniedPaths?.length)) {
-        const diffResult = await runSubprocess("git", ["diff", "--name-only", "HEAD"], { cwd: repoRoot, timeoutMs: 5000 });
+        const diffResult = await runSubprocess("git", ["diff", "--name-only", "HEAD"], {
+          cwd: repoRoot,
+          timeoutMs: 5000,
+          spawnImpl: options.spawnImpl
+        });
         if (diffResult.exitCode === 0 && diffResult.stdout.trim()) {
           const touchedFiles = diffResult.stdout.trim().split("\n").filter(Boolean);
           const allowed = scopeCtx.allowedPaths ?? [];
@@ -1137,7 +1141,11 @@ function extractStructuredErrors(stderr: string, stdout: string): StructuredErro
   return errors.slice(0, 10); // cap at 10 to avoid bloating prompts
 }
 
-async function checkNoDiff(repoRoot: string): Promise<boolean> {
-  const result = await runSubprocess("git", ["diff", "--name-only", "HEAD"], { cwd: repoRoot, timeoutMs: 5000 });
+async function checkNoDiff(repoRoot: string, spawnImpl?: SpawnLike): Promise<boolean> {
+  const result = await runSubprocess("git", ["diff", "--name-only", "HEAD"], {
+    cwd: repoRoot,
+    timeoutMs: 5000,
+    spawnImpl
+  });
   return result.exitCode === 0 && result.stdout.trim().length === 0;
 }

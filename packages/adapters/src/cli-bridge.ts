@@ -260,9 +260,10 @@ export function createSpawnPlan(
 
   const extension = extname(resolvedOrUndefined).toLowerCase();
   if (extension === ".cmd" || extension === ".bat") {
+    const cmdStr = [quoteWindowsCmdArg(resolvedOrUndefined), ...args.map(quoteWindowsCmdArg)].join(" ");
     return {
       command: process.env.ComSpec || "cmd.exe",
-      args: ["/d", "/c", resolvedOrUndefined, ...args]
+      args: ["/d", "/s", "/c", cmdStr]
     };
   }
 
