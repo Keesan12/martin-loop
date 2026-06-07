@@ -35,7 +35,7 @@ npx martin-loop dossier --latest
 
 `start` and `tour` walk a new operator through the product flow. `doctor`, `session-start`, and `preflight` create the local receipts MartinLoop expects before a real governed run. If you intentionally need to bypass that local gate for a one-off run, use `--unsafe-allow-unguarded-run` explicitly.
 
-Release notes for the current root package: [MartinLoop 0.2.10](./docs/release/OSS-0.2.10-RELEASE-NOTES.md).
+Release notes for the current root package: [MartinLoop 0.2.11](./docs/release/OSS-0.2.11-RELEASE-NOTES.md).
 
 ## What It Does
 
@@ -114,7 +114,7 @@ npx martin-loop mcp print-config --host gemini --transport stdio --profile full-
 npx martin-loop mcp print-config --host generic --transport stdio --profile github-review
 ```
 
-The root `martin-loop` package and the standalone `@martinloop/mcp` package move on separate version lines. The root package is `0.2.10`; the current standalone MCP package is `0.2.7`.
+The root `martin-loop` package and the standalone `@martinloop/mcp` package move on separate version lines. The root package is `0.2.11`; the current standalone MCP package is `0.2.7`.
 
 More detail: [MCP setup](./docs/getting-started/mcp.md), [MCP tool reference](./docs/reference/mcp-tools.md), and [MCP compatibility](./docs/reference/mcp-compatibility.md).
 
