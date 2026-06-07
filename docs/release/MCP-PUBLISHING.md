@@ -1,101 +1,34 @@
 # MCP Publishing
 
-Use npm trusted publishing from GitHub Actions for `@martinloop/mcp`.
+The standalone MCP line is published as its own package. Treat it like a product surface, not a side effect of the root package.
 
-For `@martinloop/mcp@0.2.7`, the publish claim covers the public MCP package line: tools, resources, resource templates, and prompts, plus the run-triage surface layered into that package. The docs and release checks must describe that surface honestly, while the public scheduled train stays `0.1.4 -> 0.2.0 -> 0.2.5 -> 0.2.7`.
+## Current public truth
 
-## Public Boundary
+- live public standalone release: `@martinloop/mcp@0.2.7`
+- next planned standalone release: `0.3.0`
+- publish authority: GitHub Actions trusted publishing / OIDC
 
-Publishing `@martinloop/mcp` only updates the public MCP package surface documented in this repo.
-Do not expand release notes, README copy, or publish claims beyond the tools, resources, prompts, docs, and verification artifacts shipped here.
+## Before publish
 
-The scheduled public labels are:
+- confirm package metadata, server metadata, and release notes all describe the same version
+- confirm docs and README copy match the exact shipped MCP surface
+- confirm the release notes sound customer-facing, not internal
+- confirm packed tarball contents stay limited to the package payload
 
-- `0.1.4` operator foundation
-- `0.2.0` cockpit expansion
-- `0.2.5` public MCP package line
-- `0.2.7` usability and review release
+## Required gates
 
-## Canonical Release Path
+- `pnpm --filter @martinloop/mcp lint`
+- `pnpm --filter @martinloop/mcp test`
+- `pnpm --filter @martinloop/mcp build`
+- `pnpm --filter @martinloop/mcp smoke:pack`
+- `pnpm --filter @martinloop/mcp smoke:published:pack`
+- `pnpm --filter @martinloop/mcp verify:release`
 
-1. Bump `packages/mcp/package.json` and `packages/mcp/server.json`.
-2. Confirm `docs/release/VERSION-LEDGER.md` still matches live npm, public GitHub `main`, and the current repo package manifests.
-3. Refresh:
-   - `packages/mcp/README.md`
-   - `docs/oss/MCP-FOR-AI-AGENTS.md`
-   - `docs/oss/QUICKSTART.md`
-   - `docs/release/MCP-X.Y.Z-RELEASE-NOTES.md`
-   - `docs/release/MCP-X.Y.Z-RELEASE-PACKET.md`
-   - `docs/release/MCP-COMPATIBILITY.md`
-   - `docs/release/MCP-RELEASE-CHECKLIST.md`
-4. Run the pre-publish gates:
-   - `pnpm --filter @martinloop/mcp lint`
-   - `pnpm --filter @martinloop/mcp test`
-   - `pnpm --filter @martinloop/mcp build`
-   - `pnpm --filter @martinloop/mcp smoke:pack`
-   - `pnpm --filter @martinloop/mcp smoke:published:pack`
-   - `pnpm --filter @martinloop/mcp verify:release`
-5. Merge the release branch.
-6. Trigger `.github/workflows/publish-mcp.yml` with `workflow_dispatch` or `mcp-vX.Y.Z`.
-7. Let the workflow publish npm and re-run `pnpm --filter @martinloop/mcp smoke:published`.
+## Release-note rule
 
-## Docs and Parity Checklist
+Each standalone release needs release notes that answer four things plainly:
 
-Before calling the release ready, confirm:
-
-- the matching `docs/release/MCP-X.Y.Z-RELEASE-PACKET.md` exists and includes the commands run, versions tested, host matrix receipts, known non-goals, and pending publish gates
-- docs list the current tools:
-  - `martin_doctor`
-  - `martin_preflight`
-  - `martin_run`
-  - `martin_inspect`
-  - `martin_status`
-  - `martin_list_runs`
-  - `martin_triage_runs`
-  - `martin_get_run`
-  - `martin_get_attempt`
-  - `martin_get_verification_results`
-  - `martin_run_dossier`
-- docs list the current resources and prompts
-- docs keep current Codex and Claude Code install snippets
-- release notes describe the actual discovery surface as shipped, not as future work
-- docs describe only the public MCP package surface shipped from this repo
-- docs do not present experimental or non-public capabilities as part of the public npm package claim
-- `scripts/tests/mcp-release-docs.test.mjs` verifies the tool list, resource list, prompt list, and cockpit flow
-
-## Gate Semantics
-
-- `smoke:pack` is the pre-publish local-pack gate
-- `smoke:published:pack` is the install-from-pack gate
-- `smoke:published` is the post-publish npm gate
-
-They are separate gates and should stay separate.
-
-## Trusted Publishing Notes
-
-- package: `@martinloop/mcp`
-- registry/server identifier: `io.github.Keesan12/martin-loop`
-- GitHub owner: `Keesan12`
-- repository: `martin-loop`
-- workflow: `publish-mcp.yml`
-
-## Emergency Local Fallback
-
-Only use local publish when automation is unavailable:
-
-```powershell
-pnpm --dir packages/mcp lint
-pnpm --dir packages/mcp test
-pnpm --dir packages/mcp build
-pnpm --dir packages/mcp smoke:pack
-pnpm --dir packages/mcp smoke:published:pack
-pnpm --dir packages/mcp verify:release
-npm publish --access public --workspace @martinloop/mcp
-```
-
-Then verify:
-
-```powershell
-npm view @martinloop/mcp version
-pnpm --filter @martinloop/mcp smoke:published
-```
+- what changed
+- why it matters
+- how to start using it
+- what was verified before release
