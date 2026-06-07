@@ -24,7 +24,8 @@ import {
   type MartinOutputMode,
   type MartinRunListFilters,
   type MartinRunSelector,
-  type MutationMode
+  type MutationMode,
+  type ReceiptScope
 } from "@martin/contracts";
 
 import {
@@ -76,9 +77,11 @@ import {
   triagePersistedLoops
 } from "./run-store.js";
 import { CliCommandError, renderCliError, renderCliSuccess } from "./ux.js";
+import { evaluateCliRunGate, recordCliWorkflowStep } from "./workflow-state.js";
 
 const require = createRequire(import.meta.url);
 const packageJson = require("../package.json") as { version: string };
+let runAdapterOverrideForTests: MartinAdapter | undefined;
 
 export type RunCommandRequest = {
   workspaceId: string;
@@ -91,6 +94,7 @@ export type RunCommandRequest = {
   budgetOverrides?: Partial<Record<keyof LoopBudget, true>>;
   configPath?: string;
   cwd?: string;
+  runsDir?: string;
   model?: string;
   engine?: string;
   mutationMode?: MutationMode;
@@ -378,6 +382,10 @@ export async function executeCli(args: string[]): Promise<{
   } catch (error) {
     return renderCliError(outputMode, error);
   }
+}
+
+export function __setRunAdapterOverrideForTests(adapter?: MartinAdapter): void {
+  runAdapterOverrideForTests = adapter;
 }
 
 export function parseCliArguments(args: string[]): ParsedCliArguments {
@@ -719,22 +727,46 @@ async function executeRunCommand(
   };
   const cliEnvironment = resolveCliEnvironment({
     cwd: resolvedRequest.cwd,
+    runsDir: resolvedRequest.runsDir,
     engine: resolvedRequest.engine
   });
-  const adapter = selectAdapter(
-    resolvedRequest.engine,
-    cliEnvironment.workingDirectory,
-    resolvedRequest.model,
-    resolvedRequest.mutationMode
-  );
-
-  let result: Awaited<ReturnType<typeof runMartin>>;
+  const receiptScope = buildCliReceiptScope(cliEnvironment);
   const engineRequired =
     resolvedRequest.mutationMode !== "verify_only" && cliEnvironment.liveMode === "live";
 
+  if (engineRequired) {
+    const gate = await evaluateCliRunGate({
+      runsRoot: cliEnvironment.runsRoot,
+      workingDirectory: cliEnvironment.workingDirectory,
+      objective: resolvedRequest.objective,
+      engine: cliEnvironment.engine,
+      verificationPlan: resolvedRequest.verificationPlan,
+      mutationMode: resolvedRequest.mutationMode,
+      receiptScope,
+      allowedPaths: resolvedRequest.allowedPaths,
+      deniedPaths: resolvedRequest.deniedPaths,
+      budget: resolvedRequest.budget
+    });
+
+    if (!gate.allowed) {
+      throw new CliCommandError("policy_blocked", gate.message, {
+        suggestion: gate.nextCommand,
+        details: {
+          missingSteps: gate.missingSteps,
+          receiptScope
+        }
+      });
+    }
+  }
+
+  let result: Awaited<ReturnType<typeof runMartin>>;
+  let codexCommandOverride: string | undefined;
+
   if (engineRequired && cliEnvironment.engine === "codex") {
+    const codexAvailability = resolveCliCommandAvailability("codex");
     const codexProbe = probeCodexLaunch({
-      workingDirectory: cliEnvironment.workingDirectory
+      workingDirectory: cliEnvironment.workingDirectory,
+      availability: codexAvailability
     });
     if (!codexProbe.ok) {
       throw new CliCommandError("environment", codexProbe.summary, {
@@ -743,20 +775,30 @@ async function executeRunCommand(
           command: codexProbe.command,
           args: codexProbe.args,
           resolvedPath: codexProbe.availability.resolvedPath,
-          hostPlatform: codexProbe.diagnosis.hostPlatform
+          hostPlatform: codexProbe.diagnosis.hostPlatform,
+          invocationMode: codexProbe.diagnosis.invocationMode,
+          installKind: codexProbe.diagnosis.installKind,
+          sandboxCompatible: codexProbe.diagnosis.sandboxCompatible,
+          remediation: codexProbe.diagnosis.remediation
         }
       });
     }
+    codexCommandOverride = codexProbe.command;
   }
+
+  const adapter = selectAdapter(
+    resolvedRequest.engine,
+    cliEnvironment.workingDirectory,
+    resolvedRequest.model,
+    resolvedRequest.mutationMode,
+    codexCommandOverride
+  );
   try {
     result = await runMartin({
       workspaceId: resolvedRequest.workspaceId,
       projectId: resolvedRequest.projectId,
       receiptScope: {
-        invocationRoot: cliEnvironment.invocationRoot,
-        workingDirectory: cliEnvironment.workingDirectory,
-        repoRoot: cliEnvironment.workingDirectory,
-        runsRoot: cliEnvironment.runsRoot
+        ...receiptScope
       },
       task: {
         title: resolvedRequest.title,
@@ -788,10 +830,7 @@ async function executeRunCommand(
       budget: resolvedRequest.budget,
       metadata: resolvedRequest.metadata,
       receiptScope: {
-        invocationRoot: cliEnvironment.invocationRoot,
-        workingDirectory: cliEnvironment.workingDirectory,
-        repoRoot: cliEnvironment.workingDirectory,
-        runsRoot: cliEnvironment.runsRoot
+        ...receiptScope
       },
       status: "exited",
       lifecycleState: "human_escalation"
@@ -838,7 +877,8 @@ async function executeRunCommand(
         runsRoot: cliEnvironment.runsRoot,
         engine: cliEnvironment.engine,
         liveMode: cliEnvironment.liveMode
-      }
+      },
+      receiptScope
     },
     human: [
       `Started Martin Loop run ${result.loop.loopId}`,
@@ -1021,12 +1061,13 @@ async function executeDoctorCommand(
   const geminiAvailability = resolveCliCommandAvailability("gemini");
   const geminiAvailable = geminiAvailability.available;
   const codexProbe =
-    environment.liveMode === "live" && workingDirectoryReady
+    environment.liveMode === "live" && environment.engine === "codex" && workingDirectoryReady
       ? probeCodexLaunch({
           workingDirectory: environment.workingDirectory,
           availability: codexAvailability
         })
       : undefined;
+  const receiptScope = buildCliReceiptScope(environment);
   const warnings: string[] = [];
 
   if (!workingDirectoryReady) {
@@ -1052,11 +1093,9 @@ async function executeDoctorCommand(
     command: "doctor",
     cliVersion: packageJson.version,
     environment,
+    receiptScope,
     scope: {
-      invocationRoot: environment.invocationRoot,
-      workingDirectory: environment.workingDirectory,
-      repoRoot: environment.workingDirectory,
-      runsRoot: environment.runsRoot
+      ...receiptScope
     },
     config: {
       path: configPath,
@@ -1065,16 +1104,7 @@ async function executeDoctorCommand(
     engines: {
       claude: { available: claudeAvailable },
       codex: {
-        available: codexAvailable,
-        ...(codexAvailability.resolvedPath ? { resolvedPath: codexAvailability.resolvedPath } : {}),
-        ...(codexProbe
-          ? {
-              hostPlatform: codexProbe.diagnosis.hostPlatform,
-              nativeInstallValid: codexProbe.diagnosis.nativeInstallValid,
-              launchReady: codexProbe.ok,
-              probeSummary: codexProbe.summary
-            }
-          : {})
+        ...buildCodexEngineDiagnostics(codexAvailability, codexProbe)
       },
       openai: {
         available: true,
@@ -1099,9 +1129,19 @@ async function executeDoctorCommand(
       claudeAvailable,
       codexAvailable,
       geminiAvailable,
-      workingDirectoryReady
+      workingDirectoryReady,
+      codexLaunchReady: codexProbe?.ok,
+      codexRemediation: codexProbe?.diagnosis.remediation
     })
   };
+
+  await recordCliWorkflowStep({
+    runsRoot: environment.runsRoot,
+    step: "doctor",
+    workingDirectory: environment.workingDirectory,
+    engine: environment.engine,
+    receiptScope
+  }).catch(() => {});
 
   return renderCliSuccess(outputMode, {
     data,
@@ -1115,6 +1155,7 @@ async function executeDoctorCommand(
       `Gemini CLI: ${geminiAvailable ? "available" : "missing"}`,
       `OpenAI-compatible: ${resolveOpenAiCompatibleRuntimeConfig().baseUrl} (${resolveOpenAiCompatibleRuntimeConfig().model})`,
       ...(codexProbe ? [`Codex launch probe: ${codexProbe.ok ? "ready" : codexProbe.summary}`] : []),
+      `Receipt scope: repo=${receiptScope.repoRoot} runs=${receiptScope.runsRoot}`,
       `Config: ${configExists ? configPath : `not found at ${configPath}`}`
     ],
     quiet: environment.runsRoot,
@@ -1128,6 +1169,7 @@ async function executeNativePhaseCommand(
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   const snapshot = await createNativePhaseCommandCenterSnapshot({
     rootDir: command.cwd,
+    invocationRoot: resolveInvocationRoot(),
     runsDir: command.runsDir,
     host: command.host,
     runScanLimit: command.runScanLimit
@@ -1145,13 +1187,25 @@ async function executeNativePhaseCommand(
       });
     }
 
-    const request = buildNativePhaseRunRequest(snapshot.contract, command.cwd);
+    const request = buildNativePhaseRunRequest(snapshot.contract, {
+      cwd: command.cwd,
+      runsDir: command.runsDir
+    });
     return command.subcommand === "run"
       ? executeRunCommand(request, outputMode)
       : executePreflightCommand(request, outputMode);
   }
 
   const data = selectNativePhasePayload(snapshot, command.subcommand);
+  if (command.subcommand === "session-start") {
+    await recordCliWorkflowStep({
+      runsRoot: snapshot.receiptScope.runsRoot,
+      step: "session-start",
+      workingDirectory: snapshot.receiptScope.workingDirectory,
+      ...(snapshot.sessionStart.host === "codex" ? { engine: "codex" as const } : {}),
+      receiptScope: snapshot.receiptScope
+    }).catch(() => {});
+  }
   const human =
     command.subcommand === "session-start"
       ? renderNativePhaseHuman(snapshot)
@@ -1181,6 +1235,7 @@ async function executePreflightCommand(
   const resolvedGuardrails = await resolveGuardrails(request);
   const environment = resolveCliEnvironment({
     cwd: request.cwd,
+    runsDir: request.runsDir,
     engine: request.engine
   });
   const warnings: string[] = [];
@@ -1190,6 +1245,7 @@ async function executePreflightCommand(
       ? request.verificationPlan
       : resolvedGuardrails.verifierRules;
   const engineRequired = request.mutationMode !== "verify_only" && environment.liveMode === "live";
+  const receiptScope = buildCliReceiptScope(environment);
 
   const workingDirectoryExists = await stat(environment.workingDirectory).then(() => true).catch(() => false);
   const codexAvailability = resolveCliCommandAvailability("codex");
@@ -1253,26 +1309,13 @@ async function executePreflightCommand(
     blockingIssues,
     warnings,
     environment,
+    receiptScope,
     scope: {
-      invocationRoot: environment.invocationRoot,
-      workingDirectory: environment.workingDirectory,
-      repoRoot: environment.workingDirectory,
-      runsRoot: environment.runsRoot
+      ...receiptScope
     },
     engineProbe:
       environment.engine === "codex"
-        ? {
-            available: codexAvailability.available,
-            ...(codexAvailability.resolvedPath ? { resolvedPath: codexAvailability.resolvedPath } : {}),
-            ...(codexProbe
-              ? {
-                  hostPlatform: codexProbe.diagnosis.hostPlatform,
-                  nativeInstallValid: codexProbe.diagnosis.nativeInstallValid,
-                  launchReady: codexProbe.ok,
-                  summary: codexProbe.summary
-                }
-              : {})
-          }
+        ? buildCodexEngineDiagnostics(codexAvailability, codexProbe)
         : environment.engine === "gemini"
           ? {
               available: geminiAvailability.available,
@@ -1296,6 +1339,21 @@ async function executePreflightCommand(
     }
   };
 
+  if (ready) {
+    await recordCliWorkflowStep({
+      runsRoot: environment.runsRoot,
+      step: "preflight",
+      workingDirectory: environment.workingDirectory,
+      objective: request.objective,
+      engine: environment.engine,
+      verificationPlan,
+      receiptScope,
+      allowedPaths: request.allowedPaths,
+      deniedPaths: request.deniedPaths,
+      budget: resolvedGuardrails.budget
+    }).catch(() => {});
+  }
+
   const corpusLine = corpusRisk.corpusRecords > 0
     ? `Corpus: ${corpusRisk.corpusRecords} records${scopeHotspots.length > 0 ? `, ${scopeHotspots.length} scope hotspot(s)` : ", no scope hotspots"}`
     : `Corpus: no data yet — run Martin to start building prediction intelligence`;
@@ -1307,6 +1365,7 @@ async function executePreflightCommand(
       `Working directory: ${environment.workingDirectory}`,
       `Engine: ${environment.engine} (${environment.liveMode})`,
       `Verification plan: ${verificationPlan.join(", ") || "none"}`,
+      `Receipt scope: repo=${receiptScope.repoRoot} runs=${receiptScope.runsRoot}`,
       corpusLine,
       ...(blockingIssues.length > 0 ? ["Blocking issues:", ...blockingIssues.map((issue) => `- ${issue}`)] : [])
     ],
@@ -1717,6 +1776,10 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
         request.cwd = next;
         index += 1;
         break;
+      case "--runs-dir":
+        request.runsDir = next;
+        index += 1;
+        break;
       case "--verify-only":
         request.mutationMode = "verify_only";
         break;
@@ -1762,6 +1825,7 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
     ...(Object.keys(budgetOverrides).length > 0 ? { budgetOverrides } : {}),
     ...(request.configPath ? { configPath: request.configPath } : {}),
     ...(request.cwd ? { cwd: request.cwd } : {}),
+    ...(request.runsDir ? { runsDir: request.runsDir } : {}),
     ...(request.model ? { model: request.model } : {}),
     ...(request.engine ? { engine: request.engine } : {}),
     ...(request.mutationMode ? { mutationMode: request.mutationMode } : {}),
@@ -2288,8 +2352,13 @@ function selectAdapter(
   engine: string | undefined,
   workingDirectory: string,
   modelOverride?: string,
-  mutationMode?: MutationMode
+  mutationMode?: MutationMode,
+  codexCommandOverride?: string
 ): MartinAdapter {
+  if (runAdapterOverrideForTests) {
+    return runAdapterOverrideForTests;
+  }
+
   if (mutationMode === "verify_only") {
     return createVerifierOnlyAdapter({ workingDirectory });
   }
@@ -2303,7 +2372,11 @@ function selectAdapter(
   }
 
   if (engine === "codex") {
-    return createCodexCliAdapter({ workingDirectory, ...(modelOverride ? { model: modelOverride } : {}) });
+    return createCodexCliAdapter({
+      workingDirectory,
+      ...(modelOverride ? { model: modelOverride } : {}),
+      ...(codexCommandOverride ? { command: codexCommandOverride } : {})
+    });
   }
 
   if (engine === "gemini") {
@@ -2328,6 +2401,8 @@ function buildDoctorRecommendations(input: {
   codexAvailable: boolean;
   geminiAvailable: boolean;
   workingDirectoryReady: boolean;
+  codexLaunchReady?: boolean;
+  codexRemediation?: string;
 }): string[] {
   const recommendations = ["Run `martin preflight` before non-trivial governed coding work."];
 
@@ -2352,12 +2427,63 @@ function buildDoctorRecommendations(input: {
   if (input.liveMode === "live" && input.engine === "codex" && !input.codexAvailable) {
     recommendations.push("Install or expose the Codex CLI on PATH, or set MARTIN_LIVE=false while iterating locally.");
   }
+  if (input.liveMode === "live" && input.engine === "codex" && input.codexAvailable && input.codexLaunchReady === false) {
+    recommendations.push(input.codexRemediation ?? "Run `martin preflight --engine codex` and fix the reported Codex host issue before governed work.");
+  }
 
   if (input.liveMode === "live" && input.engine === "gemini" && !input.geminiAvailable) {
     recommendations.push("Install or expose the Gemini CLI on PATH, or set MARTIN_LIVE=false while iterating locally.");
   }
 
   return recommendations;
+}
+
+function buildCliReceiptScope(environment: {
+  invocationRoot: string;
+  workingDirectory: string;
+  runsRoot: string;
+}): ReceiptScope {
+  return {
+    invocationRoot: environment.invocationRoot,
+    workingDirectory: environment.workingDirectory,
+    repoRoot: environment.workingDirectory,
+    runsRoot: environment.runsRoot
+  };
+}
+
+function buildCodexEngineDiagnostics(
+  availability: ReturnType<typeof resolveCliCommandAvailability>,
+  probe?: ReturnType<typeof probeCodexLaunch>
+): Record<string, unknown> {
+  return {
+    available: availability.available,
+    detail: availability.detail,
+    ...(availability.resolvedPath ? { resolvedPath: availability.resolvedPath } : {}),
+    ...(availability.candidatePaths?.length ? { candidatePaths: availability.candidatePaths } : {}),
+    ...(probe
+      ? {
+          selectedPath: probe.command,
+          hostPlatform: probe.diagnosis.hostPlatform,
+          installKind: probe.diagnosis.installKind,
+          nativeInstallValid: probe.diagnosis.nativeInstallValid,
+          invocationMode: probe.diagnosis.invocationMode,
+          sandboxMode: probe.diagnosis.sandboxMode,
+          sandboxCompatible: probe.diagnosis.sandboxCompatible,
+          launchReady: probe.ok,
+          probeSummary: probe.summary,
+          ...(probe.diagnosis.nativeDependencyStatus
+            ? { nativeDependencyStatus: probe.diagnosis.nativeDependencyStatus }
+            : {}),
+          ...(probe.diagnosis.nativeDependencyPackage
+            ? { nativeDependencyPackage: probe.diagnosis.nativeDependencyPackage }
+            : {}),
+          ...(probe.diagnosis.remediation ? { remediation: probe.diagnosis.remediation } : {}),
+          ...(probe.candidateProbeResults?.length
+            ? { candidateProbeResults: probe.candidateProbeResults }
+            : {})
+        }
+      : {})
+  };
 }
 
 function isCommandAvailable(command: string): boolean {

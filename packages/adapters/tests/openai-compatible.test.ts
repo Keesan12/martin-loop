@@ -5,6 +5,9 @@
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { createLoopRecord } from "@martin/contracts";
 import { createOpenAiCompatibleAdapter } from "../src/openai-compatible.js";
@@ -164,6 +167,32 @@ describe("createOpenAiCompatibleAdapter", () => {
 
     expect(result.status).toBe("failed");
     expect(result.failure?.message).toBe("empty_response");
+  });
+
+  it("skips git diff scans when no verification steps are configured", async () => {
+    const { url, close } = await startMockServer(() => ({
+      body: {
+        choices: [{ message: { role: "assistant", content: "No repo required." }, finish_reason: "stop" }],
+        usage: { prompt_tokens: 50, completion_tokens: 10 }
+      }
+    }));
+    mockClose = close;
+    const workingDirectory = await mkdtemp(join(tmpdir(), "martin-openai-no-git-"));
+
+    try {
+      const adapter = createOpenAiCompatibleAdapter({
+        baseUrl: url,
+        model: "test-model",
+        workingDirectory
+      });
+
+      const result = await adapter.execute(makeRequest() as any);
+
+      expect(result.status).toBe("completed");
+      expect(result.execution?.changedFiles).toEqual([]);
+    } finally {
+      await rm(workingDirectory, { recursive: true, force: true });
+    }
   });
 
   it("blocks on budget preflight when projected cost exceeds remaining budget", async () => {

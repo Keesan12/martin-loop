@@ -3,11 +3,11 @@ import {
   resolveCliCommandAvailability,
   type CodexHostPlatform
 } from "@martin/adapters";
-import { DEFAULT_BUDGET } from "@martin/contracts";
 import { resolveRunsRoot } from "@martin/core";
 
 import { resolveSafeRepoRoot } from "../server-validation.js";
 import {
+  createSkippedCliAvailability,
   formatUsd,
   getEngineAvailability,
   resolveExecutionMode,
@@ -15,6 +15,7 @@ import {
 } from "./tool-support.js";
 import {
   buildPlanProposal,
+  normalizeLoopBudget,
   buildRunContract,
   buildPolicyPackDefinition,
   inspectRepoSignals,
@@ -48,6 +49,12 @@ export interface MartinPreflightOutput {
   ok: boolean;
   summary: string;
   warnings: string[];
+  receiptScope: {
+    invocationRoot: string;
+    workingDirectory: string;
+    repoRoot: string;
+    runsRoot: string;
+  };
   scope: {
     invocationRoot: string;
     workingDirectory: string;
@@ -82,12 +89,33 @@ export interface MartinPreflightOutput {
       available: boolean;
       detail: string;
       resolvedPath?: string;
+      candidatePaths?: string[];
     };
     codexDiagnostics?: {
+      selectedPath?: string;
       hostPlatform: CodexHostPlatform;
+      installKind: string;
       nativeInstallValid: boolean;
+      invocationMode: string;
+      sandboxMode: string;
+      sandboxCompatible: boolean;
+      nativeDependencyStatus?: string;
+      nativeDependencyPackage?: string;
       launchReady: boolean;
       summary: string;
+      remediation?: string;
+      candidateProbeResults?: Array<{
+        path: string;
+        installKind: string;
+        invocationMode: string;
+        nativeInstallValid: boolean;
+        sandboxCompatible: boolean;
+        launchReady: boolean;
+        summary: string;
+        remediation?: string;
+        nativeDependencyStatus?: string;
+        nativeDependencyPackage?: string;
+      }>;
     };
     runsRoot: string;
     pathScope: {
@@ -113,10 +141,16 @@ export async function martinPreflightTool(
   const executionMode = resolveExecutionMode();
   const workspaceRoot = resolveSafeRepoRoot();
   const workingDirectory = resolveSafeRepoRoot(input.workingDirectory);
-  const signals = inspectRepoSignals(workingDirectory);
+  const signals = inspectRepoSignals(workingDirectory, {
+    includeHostAvailability: executionMode.liveMode
+  });
   const engine = input.engine ?? "claude";
   const engineAvailability =
-    engine === "codex" ? resolveCliCommandAvailability("codex") : getEngineAvailability(engine);
+    executionMode.liveMode
+      ? engine === "codex"
+        ? resolveCliCommandAvailability("codex")
+        : getEngineAvailability(engine)
+      : createSkippedCliAvailability(engine);
   const codexProbe =
     executionMode.liveMode && engine === "codex" && engineAvailability.available
       ? probeCodexLaunch({
@@ -129,12 +163,11 @@ export async function martinPreflightTool(
   const deniedPaths = input.deniedPaths ?? [];
   const overlappingScopes = allowedPaths.filter((candidate) => deniedPaths.includes(candidate));
 
-  const budget = {
-    ...DEFAULT_BUDGET,
-    ...(input.maxUsd !== undefined ? { maxUsd: input.maxUsd } : {}),
-    ...(input.maxIterations !== undefined ? { maxIterations: input.maxIterations } : {}),
-    ...(input.maxTokens !== undefined ? { maxTokens: input.maxTokens } : {})
-  };
+  const budget = normalizeLoopBudget({
+    maxUsd: input.maxUsd,
+    maxIterations: input.maxIterations,
+    maxTokens: input.maxTokens
+  });
 
   if (!executionMode.liveMode) {
     warnings.push("Proof mode is active; preflight only proves configuration shape, not live CLI readiness.");
@@ -157,14 +190,20 @@ export async function martinPreflightTool(
     );
   }
 
-  const plan = buildPlanProposal(workingDirectory, input);
-  const runContract = buildRunContract(workingDirectory, input);
+  const plan = buildPlanProposal(workingDirectory, input, { signals });
+  const runContract = buildRunContract(workingDirectory, input, { signals, plan });
   const policy = buildPolicyPackDefinition(input.policyPack, signals);
 
   const engineReady =
     !executionMode.liveMode ||
     (engineAvailability.available && (engine !== "codex" || codexProbe?.ok !== false));
   const ok = engineReady;
+  const receiptScope = {
+    invocationRoot: workspaceRoot,
+    workingDirectory,
+    repoRoot: workingDirectory,
+    runsRoot: resolveRunsRoot(process.env)
+  };
 
   return {
     ok,
@@ -176,11 +215,9 @@ export async function martinPreflightTool(
             : `${engine} is not available for live execution.`
         }`,
     warnings,
+    receiptScope,
     scope: {
-      invocationRoot: workspaceRoot,
-      workingDirectory,
-      repoRoot: workingDirectory,
-      runsRoot: resolveRunsRoot(process.env)
+      ...receiptScope
     },
     readiness: {
       mode: executionMode.mode,
@@ -204,17 +241,33 @@ export async function martinPreflightTool(
       engineAvailability: {
         available: engineAvailability.available,
         detail: engineAvailability.detail,
-        ...(engineAvailability.resolvedPath
-          ? { resolvedPath: engineAvailability.resolvedPath }
+        ...(engineAvailability.resolvedPath ? { resolvedPath: engineAvailability.resolvedPath } : {}),
+        ...(engineAvailability.candidatePaths?.length
+          ? { candidatePaths: engineAvailability.candidatePaths }
           : {})
       },
       ...(codexProbe
         ? {
             codexDiagnostics: {
+              selectedPath: codexProbe.command,
               hostPlatform: codexProbe.diagnosis.hostPlatform,
+              installKind: codexProbe.diagnosis.installKind,
               nativeInstallValid: codexProbe.diagnosis.nativeInstallValid,
+              invocationMode: codexProbe.diagnosis.invocationMode,
+              sandboxMode: codexProbe.diagnosis.sandboxMode,
+              sandboxCompatible: codexProbe.diagnosis.sandboxCompatible,
+              ...(codexProbe.diagnosis.nativeDependencyStatus
+                ? { nativeDependencyStatus: codexProbe.diagnosis.nativeDependencyStatus }
+                : {}),
+              ...(codexProbe.diagnosis.nativeDependencyPackage
+                ? { nativeDependencyPackage: codexProbe.diagnosis.nativeDependencyPackage }
+                : {}),
               launchReady: codexProbe.ok,
-              summary: codexProbe.summary
+              summary: codexProbe.summary,
+              ...(codexProbe.diagnosis.remediation ? { remediation: codexProbe.diagnosis.remediation } : {}),
+              ...(codexProbe.candidateProbeResults?.length
+                ? { candidateProbeResults: codexProbe.candidateProbeResults }
+                : {})
             }
           }
         : {}),

@@ -4,11 +4,12 @@ import {
   createGeminiCliAdapter,
   probeCodexLaunch,
   resolveCliCommandAvailability,
-  createVerifierOnlyAdapter
+  createVerifierOnlyAdapter,
+  type SpawnLike
 } from "@martin/adapters";
 
 import { createFileRunStore, evaluateCostGovernor, resolveRunsRoot, runMartin } from "@martin/core";
-import { DEFAULT_BUDGET, type LoopBudget, type ReceiptScope } from "@martin/contracts";
+import type { LoopBudget, ReceiptScope } from "@martin/contracts";
 
 import { normalizeSafePathPatterns, resolveSafeRepoRoot } from "../server-validation.js";
 import { MartinToolError } from "./tool-errors.js";
@@ -21,6 +22,7 @@ import {
   resolveExecutionMode,
   type MartinEngine
 } from "./tool-support.js";
+import { normalizeLoopBudget } from "./workflow-governance.js";
 
 export interface RunLoopInput {
   objective: string;
@@ -65,6 +67,12 @@ export interface RunLoopOutput {
   };
 }
 
+let proofModeVerifierSpawnImpl: SpawnLike | undefined;
+
+export function __setProofModeVerifierSpawnImplForTests(spawnImpl?: SpawnLike): void {
+  proofModeVerifierSpawnImpl = spawnImpl;
+}
+
 export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
   const workingDirectory = resolveSafeRepoRoot(input.workingDirectory);
   const engine = input.engine ?? "claude";
@@ -80,6 +88,7 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
     repoRoot: workingDirectory,
     runsRoot
   };
+  let codexCommandOverride: string | undefined;
   if (executionMode.liveMode) {
     if (engine === "codex") {
       const engineAvailability = resolveCliCommandAvailability("codex");
@@ -102,6 +111,7 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
           retryable: false
         });
       }
+      codexCommandOverride = codexProbe.command;
     } else {
       const engineAvailability = getEngineAvailability(engine);
       if (!engineAvailability.available) {
@@ -118,10 +128,15 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
     !executionMode.liveMode
       ? createVerifierOnlyAdapter({
           workingDirectory,
-          label: "Proof mode adapter (MARTIN_LIVE=false)"
+          label: "Proof mode adapter (MARTIN_LIVE=false)",
+          ...(proofModeVerifierSpawnImpl ? { spawnImpl: proofModeVerifierSpawnImpl } : {})
         })
       : engine === "codex"
-        ? createCodexCliAdapter({ workingDirectory, ...(model ? { model } : {}) })
+        ? createCodexCliAdapter({
+            workingDirectory,
+            ...(model ? { model } : {}),
+            ...(codexCommandOverride ? { command: codexCommandOverride } : {})
+          })
         : engine === "gemini"
           ? createGeminiCliAdapter({ workingDirectory, ...(model ? { model } : {}) })
         : createClaudeCliAdapter({ workingDirectory, ...(model ? { model } : {}) });
@@ -137,10 +152,7 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
     partialBudget.maxTokens = input.maxTokens;
   }
 
-  const budget: LoopBudget = {
-    ...DEFAULT_BUDGET,
-    ...partialBudget
-  };
+  const budget: LoopBudget = normalizeLoopBudget(partialBudget);
 
   const result = await runMartin({
     workspaceId: input.workspaceId ?? "ws_mcp",

@@ -129,6 +129,7 @@ export interface CliAvailability {
   locator: string;
   detail: string;
   resolvedPath?: string;
+  candidatePaths?: string[];
 }
 
 export interface ExecutionMode {
@@ -256,6 +257,18 @@ function isExecutablePath(candidatePath: string): boolean {
 
 export function getEngineAvailability(engine: MartinEngine): CliAvailability {
   return detectCliAvailability(engine);
+}
+
+export function createSkippedCliAvailability(
+  command: string,
+  detail = "Proof mode skipped live CLI availability detection."
+): CliAvailability {
+  return {
+    command,
+    available: false,
+    locator: "skipped",
+    detail
+  };
 }
 
 export function formatUsd(value: number): string {

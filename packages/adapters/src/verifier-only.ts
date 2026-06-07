@@ -1,12 +1,13 @@
 import type { MartinAdapter } from "@martin/core";
 
-import { readGitChangedFiles, runVerification } from "./cli-bridge.js";
+import { readGitChangedFiles, runVerification, type SpawnLike } from "./cli-bridge.js";
 import { createAdapterCapabilities, normalizeUsage } from "./runtime-support.js";
 
 export interface VerifierOnlyAdapterOptions {
   workingDirectory?: string;
   verifyTimeoutMs?: number;
   label?: string;
+  spawnImpl?: SpawnLike;
 }
 
 export function createVerifierOnlyAdapter(
@@ -40,7 +41,8 @@ export function createVerifierOnlyAdapter(
         request.context.verificationPlan,
         workingDirectory,
         verifyTimeoutMs,
-        request.context.verificationStack
+        request.context.verificationStack,
+        options.spawnImpl
       );
       const changedFiles = shouldTrackVerifierWrites
         ? (await readGitChangedFiles(workingDirectory, 5_000)).filter(

@@ -21,10 +21,12 @@ import type {
 
 import {
   readGitExecutionArtifacts,
+  resolveGitRepositoryRoot,
   runSubprocess,
   runVerification,
   type SpawnLike
 } from "./cli-bridge.js";
+import { buildCodexExecArgs } from "./codex-launcher.js";
 import {
   createAdapterCapabilities,
   normalizeStructuredErrors,
@@ -433,6 +435,8 @@ export interface ClaudeCliAdapterOptions {
 }
 
 export interface CodexCliAdapterOptions {
+  /** Override the executable or absolute command path used to launch Codex. */
+  command?: string;
   workingDirectory?: string;
   timeoutMs?: number;
   verifyTimeoutMs?: number;
@@ -588,6 +592,32 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
         !supportsJsonOutput && options.command === "gemini"
           ? extractGeminiJsonResult(agentResult.stdout, options.model)
           : undefined;
+      const producedStructuredCompletion =
+        parsed?.result !== undefined ||
+        codexJsonlResult !== undefined ||
+        geminiJsonResult !== undefined;
+      if (agentResult.exitCode !== 0 && !producedStructuredCompletion) {
+        const failureMessage = formatPreVerifierSubprocessFailure(
+          options.command,
+          agentResult.stderr || agentResult.stdout,
+          agentResult.exitCode
+        );
+        return {
+          status: "failed",
+          summary: `${options.command} subprocess exited before verifier execution.`,
+          usage: normalizeUsage({
+            actualUsd: 0,
+            tokensIn: 0,
+            tokensOut: 0,
+            provenance: "unavailable"
+          }),
+          verification: { passed: false, summary: `Verifier not run: ${failureMessage}` },
+          failure: {
+            message: failureMessage
+          }
+        };
+      }
+
       const agentText =
         codexJsonlResult?.summary ??
         geminiJsonResult?.summary ??
@@ -641,25 +671,26 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
 
       // Check for zero-diff (agent ran but made no file changes)
       const repoRoot = (request.context as { repoRoot?: string }).repoRoot;
+      const gitRepoRoot = repoRoot ? resolveGitRepositoryRoot(repoRoot) : undefined;
       let noDiff = false;
-      if (repoRoot) {
-        noDiff = await checkNoDiff(repoRoot, options.spawnImpl);
+      if (gitRepoRoot) {
+        noDiff = await checkNoDiff(gitRepoRoot, options.spawnImpl);
       }
 
       // Extract structured errors from stderr/stdout for better failure context
       const structuredErrors = normalizeStructuredErrors(
         extractStructuredErrors(agentResult.stderr, agentResult.stdout)
       );
-      const executionArtifacts = repoRoot
-        ? await readGitExecutionArtifacts(repoRoot, 5000, options.spawnImpl)
+      const executionArtifacts = gitRepoRoot
+        ? await readGitExecutionArtifacts(gitRepoRoot, 5000, options.spawnImpl)
         : undefined;
 
       // Scope contract enforcement: check touched files against allowedPaths/deniedPaths
       let scopeViolations: string[] = [];
       const scopeCtx = request.context as { allowedPaths?: string[]; deniedPaths?: string[] };
-      if (repoRoot && (scopeCtx.allowedPaths?.length || scopeCtx.deniedPaths?.length)) {
+      if (gitRepoRoot && (scopeCtx.allowedPaths?.length || scopeCtx.deniedPaths?.length)) {
         const diffResult = await runSubprocess("git", ["diff", "--name-only", "HEAD"], {
-          cwd: repoRoot,
+          cwd: gitRepoRoot,
           timeoutMs: 5000,
           spawnImpl: options.spawnImpl
         });
@@ -743,7 +774,12 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
 
         // Reset tracked files to HEAD so next attempt starts from clean state
         try {
-          await runSubprocess("git", ["restore", "--staged", "--worktree", "."], { cwd: repoRoot, timeoutMs: 5000 });
+          if (gitRepoRoot) {
+            await runSubprocess("git", ["restore", "--staged", "--worktree", "."], {
+              cwd: gitRepoRoot,
+              timeoutMs: 5000
+            });
+          }
         } catch {
           // Non-fatal
         }
@@ -844,13 +880,13 @@ export function createClaudeCliAdapter(options: ClaudeCliAdapterOptions = {}): M
  *   npm install -g @openai/codex
  */
 export function createCodexCliAdapter(options: CodexCliAdapterOptions = {}): MartinAdapter {
-  const modelArgs: string[] = options.model ? ["--model", options.model] : [];
   const extraArgs = options.extraArgs ?? [];
   const sandbox = options.sandbox ?? "workspace-write";
   const workingDirectory = options.workingDirectory ?? process.cwd();
+  const command = options.command ?? "codex";
 
   return createAgentCliAdapter({
-    command: "codex",
+    command,
     adapterIdSuffix: "codex",
     model: options.model ?? "codex",
     label: options.label ?? "Codex CLI adapter",
@@ -859,19 +895,14 @@ export function createCodexCliAdapter(options: CodexCliAdapterOptions = {}): Mar
     verifyTimeoutMs: options.verifyTimeoutMs,
     supportsJsonOutput: false,
     spawnImpl: options.spawnImpl,
-    argsBuilder: () => [
-      "exec",
-      "--cd",
-      workingDirectory,
-      "--sandbox",
-      sandbox,
-      "--json",
-      "--color",
-      "never",
-      ...modelArgs,
-      ...extraArgs,
-      "-"
-    ],
+    argsBuilder: () =>
+      buildCodexExecArgs({
+        workingDirectory,
+        sandbox,
+        ...(options.model ? { model: options.model } : {}),
+        extraArgs,
+        mode: "prompt"
+      }),
     stdinBuilder: (prompt) => prompt
   });
 }

@@ -10,13 +10,13 @@ This map defines the next public standalone MCP releases after the live `0.3.0` 
 
 ## `0.3.1` — Review And Handoff Controls
 
-Story: make review, triage, and handoff easier after a governed run finishes.
+Story: make review, triage, and follow-through easier after a governed run finishes.
 
 Include:
 - stronger dossier and eval guidance
 - clearer failed-run and publish-readiness flows
 - compact review resources for what happened, what failed, and what to do next
-- handoff-safe expected outputs for humans and agents
+- compact expected outputs for humans and agents
 
 Do not include:
 - hosted audit export
@@ -55,6 +55,6 @@ Primary public surfaces:
 Before a public-prep branch opens:
 
 1. Reconfirm `VERSION-LEDGER.md` against live npm and public GitHub.
-2. Keep the changed-path set limited to the slice being shipped.
+2. Keep the changed-path set limited to the release in progress.
 3. Run the full public release gates on the exact candidate commit.
 4. Audit packed tarball contents, README, and release notes before publish.

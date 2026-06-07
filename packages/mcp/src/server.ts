@@ -23,6 +23,7 @@ import { realpathSync } from "node:fs";
 import path from "node:path";
 
 import { resolveRunsRoot } from "@martin/core";
+import type { LoopBudget, ReceiptScope } from "@martin/contracts";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -60,8 +61,9 @@ import { martinTriageRunsTool } from "./tools/triage-runs.js";
 import { runLoopTool } from "./tools/run-loop.js";
 import { createToolErrorResult, createToolSuccessResult } from "./tools/tool-response.js";
 import { MartinToolError, toToolFailure } from "./tools/tool-errors.js";
-import { sanitizeToolErrorMessage, validateToolInput } from "./server-validation.js";
-import { recordMcpWorkflowStep } from "./workflow-state.js";
+import { normalizeLoopBudget } from "./tools/workflow-governance.js";
+import { resolveSafeRepoRoot, sanitizeToolErrorMessage, validateToolInput } from "./server-validation.js";
+import { evaluateMcpRunGate, recordMcpWorkflowStep } from "./workflow-state.js";
 
 const stringArraySchema = {
   type: "array",
@@ -162,6 +164,18 @@ const verificationSchema = {
     warnings: stringArraySchema
   },
   required: ["status", "eventCount", "ledgerEventCount", "warnings"]
+} as const;
+
+const receiptScopeSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    invocationRoot: { type: "string" },
+    workingDirectory: { type: "string" },
+    repoRoot: { type: "string" },
+    runsRoot: { type: "string" }
+  },
+  required: ["invocationRoot", "workingDirectory", "repoRoot", "runsRoot"]
 } as const;
 
 const artifactSummarySchema = {
@@ -421,6 +435,7 @@ const doctorOutputSchema = {
       },
       required: ["workspaceRoot", "workingDirectory", "runsRoot", "mode", "liveMode"]
     },
+    receiptScope: receiptScopeSchema,
     engines: {
       type: "object",
       additionalProperties: true
@@ -438,7 +453,7 @@ const doctorOutputSchema = {
     },
     warnings: stringArraySchema
   },
-  required: ["status", "summary", "server", "environment", "engines", "runStore", "warnings"]
+  required: ["status", "summary", "server", "environment", "receiptScope", "engines", "runStore", "warnings"]
 } as const;
 
 const preflightOutputSchema = {
@@ -448,6 +463,7 @@ const preflightOutputSchema = {
     ok: { type: "boolean" },
     summary: { type: "string" },
     warnings: stringArraySchema,
+    receiptScope: receiptScopeSchema,
     readiness: {
       type: "object",
       additionalProperties: false,
@@ -523,7 +539,7 @@ const preflightOutputSchema = {
       required: ["requestedEngine", "engineAvailability", "runsRoot", "pathScope", "expectedRunLayout"]
     }
   },
-  required: ["ok", "summary", "warnings", "readiness", "normalized", "execution"]
+  required: ["ok", "summary", "warnings", "receiptScope", "readiness", "normalized", "execution"]
 } as const;
 
 const listRunsOutputSchema = {
@@ -1479,6 +1495,36 @@ export function createMartinMcpServer(serverInfo?: {
   try {
     if (name === "martin_run") {
       const input = validateToolInput("martin_run", args) as Parameters<typeof runLoopTool>[0];
+      const runsRoot = resolveRunsRoot(process.env);
+      const workingDirectory = input.workingDirectory ?? resolveSafeRepoRoot();
+      const receiptScope: ReceiptScope = {
+        invocationRoot: resolveSafeRepoRoot(),
+        workingDirectory,
+        repoRoot: workingDirectory,
+        runsRoot
+      };
+      const gate = await evaluateMcpRunGate({
+        runsRoot,
+        workingDirectory,
+        objective: input.objective,
+        engine: input.engine,
+        verificationPlan: input.verificationPlan,
+        receiptScope,
+        allowedPaths: input.allowedPaths,
+        deniedPaths: input.deniedPaths,
+        budget: normalizeRunBudget(input)
+      });
+      if (!gate.allowed) {
+        throw new MartinToolError("policy_blocked", gate.summary, {
+          category: "policy_blocked",
+          suggestion: gate.nextAction,
+          retryable: false,
+          details: {
+            missingSteps: gate.missingSteps,
+            receiptScope
+          }
+        });
+      }
       const output = await runLoopTool(input);
       return createToolSuccessResult(
         output,
@@ -1511,7 +1557,8 @@ export function createMartinMcpServer(serverInfo?: {
         runsRoot: output.environment.runsRoot,
         step: "doctor",
         workingDirectory: output.environment.workingDirectory,
-        engine: input.engine
+        engine: input.engine,
+        receiptScope: output.receiptScope
       }).catch(() => {});
       return createToolSuccessResult(output, output.summary);
     }
@@ -1523,7 +1570,13 @@ export function createMartinMcpServer(serverInfo?: {
         runsRoot: resolveRunsRoot(process.env),
         step: "plan",
         workingDirectory: output.workingDirectory,
-        objective: output.objective
+        objective: output.objective,
+        receiptScope: {
+          invocationRoot: resolveSafeRepoRoot(),
+          workingDirectory: output.workingDirectory,
+          repoRoot: output.workingDirectory,
+          runsRoot: resolveRunsRoot(process.env)
+        }
       }).catch(() => {});
       return createToolSuccessResult(
         output,
@@ -1541,7 +1594,11 @@ export function createMartinMcpServer(serverInfo?: {
           workingDirectory: output.normalized.workingDirectory,
           objective: output.normalized.objective,
           engine: output.normalized.engine,
-          verificationPlan: output.normalized.verificationPlan
+          verificationPlan: output.normalized.verificationPlan,
+          receiptScope: output.receiptScope,
+          allowedPaths: output.normalized.allowedPaths,
+          deniedPaths: output.normalized.deniedPaths,
+          budget: output.normalized.budget
         }).catch(() => {});
       }
       return createToolSuccessResult(output, output.summary);
@@ -1682,6 +1739,14 @@ export function createMartinMcpServer(serverInfo?: {
   });
 
   return server;
+}
+
+function normalizeRunBudget(input: Parameters<typeof runLoopTool>[0]): LoopBudget {
+  return normalizeLoopBudget({
+    maxUsd: input.maxUsd,
+    maxIterations: input.maxIterations,
+    maxTokens: input.maxTokens
+  });
 }
 
 export async function connectMartinMcpStdioServer() {

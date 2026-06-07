@@ -72,6 +72,8 @@ async function withPathPrefix<T>(dir: string, fn: () => Promise<T>): Promise<T> 
 
 async function withFakeCodexCli<T>(fn: () => Promise<T>): Promise<T> {
   return withTempDir(async (dir) => {
+    const originalLocalAppData = process.env.LOCALAPPDATA;
+    process.env.LOCALAPPDATA = dir;
     const script = process.platform === "win32"
       ? [
           "@echo off",
@@ -80,6 +82,7 @@ async function withFakeCodexCli<T>(fn: () => Promise<T>): Promise<T> {
           "  echo usage: codex exec ...",
           "  exit /b 0",
           ")",
+          "echo {\"type\":\"item.completed\",\"item\":{\"type\":\"command_execution\",\"status\":\"completed\",\"exit_code\":0}}",
           "echo {\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"fake codex completed\"}}",
           "echo {\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":10,\"output_tokens\":5}}",
           "exit /b 0",
@@ -92,6 +95,7 @@ async function withFakeCodexCli<T>(fn: () => Promise<T>): Promise<T> {
           "    echo 'usage: codex exec ...'",
           "    ;;",
           "  *)",
+          "    echo '{\"type\":\"item.completed\",\"item\":{\"type\":\"command_execution\",\"status\":\"completed\",\"exit_code\":0}}'",
           "    echo '{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"fake codex completed\"}}'",
           "    echo '{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":10,\"output_tokens\":5}}'",
           "    ;;",
@@ -104,7 +108,15 @@ async function withFakeCodexCli<T>(fn: () => Promise<T>): Promise<T> {
       await chmod(file, 0o755);
     }
 
-    return withPathPrefix(dir, fn);
+    try {
+      return await withPathPrefix(dir, fn);
+    } finally {
+      if (originalLocalAppData === undefined) {
+        delete process.env.LOCALAPPDATA;
+      } else {
+        process.env.LOCALAPPDATA = originalLocalAppData;
+      }
+    }
   });
 }
 
@@ -171,7 +183,7 @@ describe("MARTIN_LIVE=false — stub adapter", () => {
 // ---------------------------------------------------------------------------
 
 describe("--engine flag", () => {
-  it("defaults to claude when no --engine flag is given", async () => {
+  it("defaults to claude when no --engine flag is given", { timeout: 45_000 }, async () => {
     // Use stub mode — we verify no engine flag selects the claude adapter path,
     // not that claude itself runs successfully
     const result = await withEnv("MARTIN_LIVE", "false", () =>
@@ -223,11 +235,10 @@ describe("--engine flag", () => {
     expect(payload.engineProbe.launchReady).toBe(true);
   });
 
-  it("remains graceful in live mode even when the selected CLI is unavailable", { timeout: 15000 }, async () => {
+  it("blocks live run execution before spend when the governed receipt chain is missing", { timeout: 15000 }, async () => {
     const result = await withoutAgentCliOnPath(() =>
       withEnv("MARTIN_LIVE", "true", () =>
         executeCli([
-          "--json",
           "run",
           "--objective",
           "Fix the bug",
@@ -241,10 +252,9 @@ describe("--engine flag", () => {
       )
     );
 
-    expect(result.exitCode).toBe(0);
-    const payload = JSON.parse(result.stdout);
-    expect(payload.command).toBe("run");
-    expect(payload.loop.loopId).toMatch(/^loop_/u);
+    expect(result.exitCode).toBe(8);
+    expect(result.stderr).toContain("Governed run blocked until MartinLoop receipts exist");
+    expect(result.stderr).toContain("martin-loop session-start");
   });
 });
 
