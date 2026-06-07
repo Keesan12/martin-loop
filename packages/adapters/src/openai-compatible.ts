@@ -247,7 +247,12 @@ export function createOpenAiCompatibleAdapter(
     async execute(request: MartinAdapterRequest): Promise<MartinAdapterResult> {
       const prompt = buildPrompt(request);
       const estimated = estimateCost(model, prompt.length, 2000);
-      const baselineChangedFiles = new Set(await readGitChangedFiles(workingDirectory, 5_000));
+      const hasVerificationSteps =
+        request.context.verificationPlan.length > 0 ||
+        (request.context.verificationStack?.length ?? 0) > 0;
+      const baselineChangedFiles = hasVerificationSteps
+        ? new Set(await readGitChangedFiles(workingDirectory, 5_000))
+        : new Set<string>();
 
       // Preflight: bail if projected cost exceeds remaining budget
       if (
@@ -354,9 +359,11 @@ export function createOpenAiCompatibleAdapter(
       );
 
       const execution = {
-        changedFiles: (await readGitChangedFiles(workingDirectory, 5_000)).filter(
-          (file) => !baselineChangedFiles.has(file)
-        )
+        changedFiles: hasVerificationSteps
+          ? (await readGitChangedFiles(workingDirectory, 5_000)).filter(
+              (file) => !baselineChangedFiles.has(file)
+            )
+          : []
       };
 
       const pricing = KNOWN_MODEL_PRICING[model] ?? {

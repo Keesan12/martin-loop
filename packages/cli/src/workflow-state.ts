@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
-import type { MutationMode } from "@martin/contracts";
+import type { LoopBudget, MutationMode, ReceiptScope } from "@martin/contracts";
 
 const WORKFLOW_STATE_DIRECTORY = "_martin";
 const WORKFLOW_STATE_FILENAME = "workflow-state.json";
@@ -25,6 +25,9 @@ interface CliWorkflowReceipt {
   objectiveKey?: string;
   engine?: string;
   verificationPlanKey?: string;
+  scopeKey?: string;
+  pathScopeKey?: string;
+  budgetKey?: string;
 }
 
 interface WorkflowState {
@@ -40,6 +43,10 @@ export interface CliWorkflowStepInput {
   objective?: string;
   engine?: string;
   verificationPlan?: string[];
+  receiptScope?: ReceiptScope;
+  allowedPaths?: string[];
+  deniedPaths?: string[];
+  budget?: LoopBudget;
 }
 
 export interface CliRunGateInput {
@@ -49,6 +56,10 @@ export interface CliRunGateInput {
   engine?: string;
   verificationPlan: string[];
   mutationMode?: MutationMode;
+  receiptScope?: ReceiptScope;
+  allowedPaths?: string[];
+  deniedPaths?: string[];
+  budget?: LoopBudget;
 }
 
 export interface CliRunGateResult {
@@ -85,7 +96,12 @@ export async function recordCliWorkflowStep(input: CliWorkflowStepInput): Promis
     workingDirectory: normalizeWorkingDirectory(input.workingDirectory),
     ...(input.objective ? { objectiveKey: normalizeObjective(input.objective) } : {}),
     ...(input.engine ? { engine: input.engine } : {}),
-    ...(input.verificationPlan ? { verificationPlanKey: hashVerificationPlan(input.verificationPlan) } : {})
+    ...(input.verificationPlan ? { verificationPlanKey: hashVerificationPlan(input.verificationPlan) } : {}),
+    ...(input.receiptScope ? { scopeKey: hashReceiptScope(input.receiptScope) } : {}),
+    ...(input.allowedPaths || input.deniedPaths
+      ? { pathScopeKey: hashPathScope(input.allowedPaths ?? [], input.deniedPaths ?? []) }
+      : {}),
+    ...(input.budget ? { budgetKey: hashBudget(input.budget) } : {})
   };
 
   state.cli ??= {};
@@ -109,19 +125,39 @@ export async function evaluateCliRunGate(input: CliRunGateInput): Promise<CliRun
   const objectiveKey = normalizeObjective(input.objective);
   const verificationPlanKey = hashVerificationPlan(input.verificationPlan);
   const engine = input.engine ?? "claude";
+  const scopeKey = hashReceiptScope(
+    input.receiptScope ?? {
+      invocationRoot: input.workingDirectory,
+      workingDirectory: input.workingDirectory,
+      repoRoot: input.workingDirectory,
+      runsRoot: input.runsRoot
+    }
+  );
+  const pathScopeKey = hashPathScope(input.allowedPaths ?? [], input.deniedPaths ?? []);
+  const budgetKey = input.budget ? hashBudget(input.budget) : undefined;
   const missingSteps: CliWorkflowStepName[] = [];
 
   const doctorReady = isFresh(cliState["doctor"], DOCTOR_TTL_MS, (receipt) =>
-    receipt.workingDirectory === workingDirectory
+    receipt.workingDirectory === workingDirectory &&
+    receipt.scopeKey === scopeKey
   );
   if (!doctorReady) {
     missingSteps.push("doctor");
   }
 
   const sessionReady =
-    isFresh(cliState["session-start"], SESSION_TTL_MS, (receipt) => receipt.workingDirectory === workingDirectory) ||
-    isFresh(cliState["start"], SESSION_TTL_MS, (receipt) => receipt.workingDirectory === workingDirectory) ||
-    isFresh(cliState["tour"], SESSION_TTL_MS, (receipt) => receipt.workingDirectory === workingDirectory);
+    isFresh(cliState["session-start"], SESSION_TTL_MS, (receipt) =>
+      receipt.workingDirectory === workingDirectory &&
+      receipt.scopeKey === scopeKey
+    ) ||
+    isFresh(cliState["start"], SESSION_TTL_MS, (receipt) =>
+      receipt.workingDirectory === workingDirectory &&
+      receipt.scopeKey === scopeKey
+    ) ||
+    isFresh(cliState["tour"], SESSION_TTL_MS, (receipt) =>
+      receipt.workingDirectory === workingDirectory &&
+      receipt.scopeKey === scopeKey
+    );
   if (!sessionReady) {
     missingSteps.push("session-start");
   }
@@ -130,7 +166,10 @@ export async function evaluateCliRunGate(input: CliRunGateInput): Promise<CliRun
     receipt.workingDirectory === workingDirectory &&
     receipt.objectiveKey === objectiveKey &&
     receipt.engine === engine &&
-    receipt.verificationPlanKey === verificationPlanKey
+    receipt.verificationPlanKey === verificationPlanKey &&
+    receipt.scopeKey === scopeKey &&
+    receipt.pathScopeKey === pathScopeKey &&
+    (budgetKey === undefined || receipt.budgetKey === budgetKey)
   );
   if (!preflightReady) {
     missingSteps.push("preflight");
@@ -227,5 +266,37 @@ function normalizeObjective(objective: string): string {
 
 function hashVerificationPlan(verificationPlan: string[]): string {
   const normalized = verificationPlan.map((step) => step.trim()).filter(Boolean);
+  return createHash("sha256").update(JSON.stringify(normalized)).digest("hex").slice(0, 12);
+}
+
+function hashReceiptScope(receiptScope: ReceiptScope): string {
+  const normalized = {
+    invocationRoot: normalizeWorkingDirectory(
+      receiptScope.invocationRoot ?? receiptScope.workingDirectory ?? ""
+    ),
+    workingDirectory: normalizeWorkingDirectory(
+      receiptScope.workingDirectory ?? receiptScope.repoRoot ?? ""
+    ),
+    repoRoot: normalizeWorkingDirectory(receiptScope.repoRoot ?? receiptScope.workingDirectory ?? ""),
+    runsRoot: normalizeWorkingDirectory(receiptScope.runsRoot ?? "")
+  };
+  return createHash("sha256").update(JSON.stringify(normalized)).digest("hex").slice(0, 12);
+}
+
+function hashPathScope(allowedPaths: string[], deniedPaths: string[]): string {
+  const normalized = {
+    allowedPaths: [...new Set(allowedPaths.map((entry) => entry.trim()).filter(Boolean))].sort(),
+    deniedPaths: [...new Set(deniedPaths.map((entry) => entry.trim()).filter(Boolean))].sort()
+  };
+  return createHash("sha256").update(JSON.stringify(normalized)).digest("hex").slice(0, 12);
+}
+
+function hashBudget(budget: LoopBudget): string {
+  const normalized = {
+    maxUsd: Number(budget.maxUsd.toFixed(4)),
+    softLimitUsd: Number(budget.softLimitUsd.toFixed(4)),
+    maxIterations: budget.maxIterations,
+    maxTokens: budget.maxTokens
+  };
   return createHash("sha256").update(JSON.stringify(normalized)).digest("hex").slice(0, 12);
 }
