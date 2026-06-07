@@ -10,7 +10,8 @@ import type {
   LoopRecord,
   MartinRunListFilters,
   MartinRunSelector,
-  ReceiptIntegritySummary
+  ReceiptIntegritySummary,
+  ReceiptScope
 } from "@martin/contracts";
 
 import { CliCommandError } from "./ux.js";
@@ -450,7 +451,11 @@ export function buildArtifactSummary(loop: LoopRecord): ArtifactSummary {
   };
 }
 
-export function buildRunReceipt(loop: LoopRecord, verification = buildVerificationSummary(loop)): Record<string, unknown> {
+export function buildRunReceipt(
+  loop: LoopRecord,
+  verification = buildVerificationSummary(loop),
+  receiptScope = resolveReceiptScope(loop)
+): Record<string, unknown> {
   const latestAttempt = loop.attempts.at(-1);
   const integrity = resolveReceiptIntegrity(loop);
   const trustworthy = integrity.state === "verified";
@@ -469,6 +474,7 @@ export function buildRunReceipt(loop: LoopRecord, verification = buildVerificati
   return {
     trustworthy,
     receiptIntegrity: integrity,
+    ...(receiptScope ? { receiptScope } : {}),
     whatHappened: latestAttempt?.summary ?? verification.summary ?? loop.task.objective,
     whatMartinPrevented: prevented,
     tokenWasteReceipt: {
@@ -506,7 +512,8 @@ export function buildRunReceipt(loop: LoopRecord, verification = buildVerificati
 export function buildRunDossier(detail: PersistedLoopDetail): Record<string, unknown> {
   const verification = buildVerificationSummary(detail.loop);
   const artifactSummary = buildArtifactSummary(detail.loop);
-  const receipt = buildRunReceipt(detail.loop, verification);
+  const receiptScope = resolveReceiptScope(detail.loop, detail.runsRoot);
+  const receipt = buildRunReceipt(detail.loop, verification, receiptScope);
 
   return {
     source: detail.source,
@@ -517,6 +524,7 @@ export function buildRunDossier(detail: PersistedLoopDetail): Record<string, unk
     },
     loop: detail.loop,
     receiptIntegrity: detail.integrity,
+    ...(receiptScope ? { receiptScope } : {}),
     verification,
     receipt,
     artifacts: artifactSummary,
@@ -720,6 +728,22 @@ function resolveReceiptIntegrity(loop: LoopRecord): ReceiptIntegritySummary {
       reason: "Receipt integrity metadata was not available on the loop record."
     }
   );
+}
+
+export function resolveReceiptScope(loop: LoopRecord, runsRoot?: string): ReceiptScope | undefined {
+  if (loop.receiptScope) {
+    return loop.receiptScope;
+  }
+
+  if (!loop.task?.repoRoot && !runsRoot) {
+    return undefined;
+  }
+
+  return {
+    ...(loop.task?.repoRoot ? { repoRoot: loop.task.repoRoot } : {}),
+    ...(loop.task?.repoRoot ? { workingDirectory: loop.task.repoRoot } : {}),
+    ...(runsRoot ? { runsRoot } : {})
+  };
 }
 
 async function resolveReceiptEvidencePath(runDirectory: string): Promise<string> {

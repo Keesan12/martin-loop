@@ -72,6 +72,7 @@ import {
   readLocalCorpusRisk,
   resolveCliEnvironment,
   resolveInvocationRoot,
+  resolveReceiptScope,
   triagePersistedLoops
 } from "./run-store.js";
 import { CliCommandError, renderCliError, renderCliSuccess } from "./ux.js";
@@ -1349,7 +1350,7 @@ async function executeDossierCommand(
       `Source: ${detail.source}`
     ],
     quiet: detail.loop.loopId,
-    warnings: detail.warnings
+    warnings: [...detail.warnings, ...verification.warnings]
   });
 }
 
@@ -1384,12 +1385,15 @@ async function executeRunsGetCommand(
   const detail = await loadPersistedLoop(selector);
   const verification = buildVerificationSummary(detail.loop);
   const artifacts = buildArtifactSummary(detail.loop);
+  const receiptScope = resolveReceiptScope(detail.loop, detail.runsRoot);
 
   return renderCliSuccess(outputMode, {
     data: {
       command: "runs_get",
       source: detail.source,
       loop: detail.loop,
+      receiptIntegrity: detail.integrity,
+      ...(receiptScope ? { receiptScope } : {}),
       verification,
       artifacts
     },
@@ -1401,7 +1405,7 @@ async function executeRunsGetCommand(
       `Source: ${detail.source}`
     ],
     quiet: detail.loop.loopId,
-    warnings: detail.warnings
+    warnings: [...detail.warnings, ...verification.warnings]
   });
 }
 
@@ -1437,12 +1441,15 @@ async function executeRunsVerifyCommand(
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   const detail = await loadPersistedLoop(selector);
   const verification = buildVerificationSummary(detail.loop);
+  const receiptScope = resolveReceiptScope(detail.loop, detail.runsRoot);
 
   return renderCliSuccess(outputMode, {
     data: {
       command: "runs_verify",
       loopId: detail.loop.loopId,
       source: detail.source,
+      receiptIntegrity: detail.integrity,
+      ...(receiptScope ? { receiptScope } : {}),
       verification
     },
     human: [
