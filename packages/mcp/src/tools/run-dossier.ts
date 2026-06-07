@@ -4,19 +4,21 @@ import {
   buildCostSnapshot,
   buildEventSummaries,
   buildLoopPreview,
+  resolveReceiptIntegrity,
   buildSuggestedPromptNames,
   buildSuggestedResourceUris,
   buildVerificationSummary
 } from "./tool-support.js";
+import { resolveTrustedLoopRepoRoot } from "../server-validation.js";
 import {
   loadDetailedLoopRecord,
   readAttemptArtifactFiles,
   readLedgerEvents
 } from "./run-store.js";
-import { resolveTrustedLoopRepoRoot } from "../server-validation.js";
 import { readRunControlState } from "./run-controls.js";
 import { martinEvalTool } from "./eval.js";
 import { assessRunRisk, inspectRepoSignals } from "./workflow-governance.js";
+import type { ReceiptIntegritySummary } from "@martin/contracts";
 
 export interface MartinRunDossierInput {
   file?: string;
@@ -32,6 +34,7 @@ export interface MartinRunDossierOutput {
   loop: ReturnType<typeof buildLoopPreview>;
   budget: ReturnType<typeof buildBudgetSnapshot>;
   cost: ReturnType<typeof buildCostSnapshot>;
+  receiptIntegrity: ReceiptIntegritySummary;
   attempts: Array<{
     index: number;
     attemptId?: string;
@@ -127,6 +130,7 @@ export async function martinRunDossierTool(
     loop: buildLoopPreview(detail.loop),
     budget: buildBudgetSnapshot(detail.loop.budget),
     cost: buildCostSnapshot(detail.loop.cost),
+    receiptIntegrity: resolveReceiptIntegrity(detail.loop),
     attempts,
     verification,
     artifacts: buildArtifactSummary(detail.loop),

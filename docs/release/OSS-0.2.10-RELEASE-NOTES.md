@@ -7,11 +7,11 @@ MartinLoop `0.2.10` is the public trust hotfix for the root package. It closes t
 - `verification.completed` now reflects the MartinLoop-launched verifier only.
 - Verification evidence now persists per-step launch state, exit code, timeout state, and concise command detail.
 - If adapter output says a tool or verifier failed before execution but MartinLoop’s own verifier passed, MartinLoop now records that contradiction as a warning instead of presenting a silent clean pass.
-- `doctor`, `start`, `preflight`, `run`, `dossier`, and `badge` now honor the same explicit `--runs-dir` target.
+- `doctor`, `session-start`, `preflight`, `run`, `dossier`, and `badge` now honor the same explicit `--runs-dir` target.
 - `run --help` and `preflight --help` now exit cleanly before governed-flow checks.
 - Public help/version output now reports the published root `martin-loop` version, and `bench` is not part of the public `0.2.10` CLI surface while the portable harness is being prepared.
 - `--unsafe-allow-unguarded-run` remains available as an explicit local override when an operator intentionally needs to bypass the guarded flow for one run.
-- The public root tarball still excludes the vendored internal CLI bin surface, and the same `root-release-guard` remains in the release gate.
+- The public root tarball still excludes the vendored CLI bin manifest, and the same `root-release-guard` remains in the release gate.
 
 ## Operator impact
 
@@ -22,8 +22,8 @@ MartinLoop `0.2.10` is the public trust hotfix for the root package. It closes t
 ## Start here
 
 ```sh
-npx martin-loop start
-npx martin-loop tour
+npx martin-loop demo
+cd martin-loop-demo
 npx martin-loop doctor --runs-dir ~/.martin/runs
 npx martin-loop session-start
 npx martin-loop preflight "Summarize the demo workspace and confirm the verifier is green" --verify "npm test" --runs-dir ~/.martin/runs

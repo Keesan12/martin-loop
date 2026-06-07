@@ -1,11 +1,12 @@
 /// <reference types="node" />
-import { appendFile, mkdir, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
 import type { LoopBudget, LoopRecord, LoopTask, MachineState } from "@martin/contracts";
 
 import { type LedgerEvent } from "./ledger.js";
+import { writeReceiptIntegrityMaterial } from "./integrity.js";
 
 // ─── Run contract (immutable after initRun) ──────────────────────────────────
 
@@ -112,7 +113,6 @@ export function artifactDir(runsRoot: string, runId: string, attemptIndex: numbe
  *   <runsRoot>/<runId>/state.json
  *   <runsRoot>/<runId>/ledger.jsonl
  *   <runsRoot>/<runId>/artifacts/attempt-<n>/compiled-context.json
- *   <runsRoot>/<runId>/artifacts/attempt-<n>/verification.json (if verification provided)
  *   <runsRoot>/<runId>/artifacts/attempt-<n>/diff.patch (if diff provided)
  *   <runsRoot>/<runId>/artifacts/attempt-<n>/verifier-output.txt (if provided)
  *   <runsRoot>/<runId>/artifacts/attempt-<n>/grounding-scan.json (if provided)
@@ -193,6 +193,26 @@ export function createFileRunStore(options: { runsRoot?: string } = {}): RunStor
       const dir = runDir(runsRoot, runId);
       await mkdir(dir, { recursive: true });
       await writeJsonFile(join(dir, "loop-record.json"), loop);
+      const ledgerRaw = await readFile(join(dir, "ledger.jsonl"), "utf8").catch(() => "");
+      const ledgerEntries = ledgerRaw
+        .split(/\r?\n/u)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => JSON.parse(line) as unknown);
+      await writeReceiptIntegrityMaterial({
+        runId,
+        runsRoot,
+        loopRecord: loop,
+        ledgerEntries,
+        scope:
+          loop.receiptScope ??
+          {
+            ...(loop.task.repoRoot ? { repoRoot: loop.task.repoRoot } : {}),
+            ...(loop.task.repoRoot ? { workingDirectory: loop.task.repoRoot } : {}),
+            runsRoot
+          },
+        signedAt: loop.updatedAt
+      });
     }
   };
 }

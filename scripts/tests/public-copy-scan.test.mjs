@@ -22,6 +22,38 @@ test("findPublicCopyViolations detects forbidden public-process language", () =>
   assert.match(String(violations[0]?.pattern), /release candidate/i);
 });
 
+test("findPublicCopyViolations ignores fenced command blocks and package scripts", () => {
+  const readmeViolations = findPublicCopyViolations(
+    "```sh\npnpm release:matrix:local\n```",
+    "README.md",
+  );
+  const manifestViolations = findPublicCopyViolations(
+    JSON.stringify(
+      {
+        name: "martin-loop",
+        scripts: {
+          "release:matrix:local": "node ./scripts/release-matrix.mjs",
+        },
+      },
+      null,
+      2,
+    ),
+    "package.json",
+  );
+
+  assert.equal(readmeViolations.length, 0);
+  assert.equal(manifestViolations.length, 0);
+});
+
+test("findPublicCopyViolations allows release packet wording inside release docs", () => {
+  const violations = findPublicCopyViolations(
+    "# Martin MCP 0.2.7 Release Packet\n",
+    "docs/release/MCP-0.2.7-RELEASE-PACKET.md",
+  );
+
+  assert.equal(violations.length, 0);
+});
+
 test("collectPublicCopyFiles includes root docs and public metadata surfaces", async () => {
   const rootDir = await mkdtemp(path.join(os.tmpdir(), "martin-public-copy-"));
   await mkdir(path.join(rootDir, "docs"), { recursive: true });

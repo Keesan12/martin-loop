@@ -78,7 +78,7 @@
   <text x="715" y="125" text-anchor="middle" class="m" font-size="10" fill="#8b949e">martin — governed</text>
 
   <!-- Martin content -->
-  <text x="504" y="154" class="m" font-size="11" fill="#3fb950">$ martin-loop run "repair flaky CI gate" \</text>
+  <text x="504" y="154" class="m" font-size="11" fill="#3fb950">$ martin run "repair flaky CI gate" \</text>
   <text x="504" y="170" class="m" font-size="11" fill="#3fb950">    --budget 5.00 --verify "pnpm test"</text>
   <text x="504" y="191" class="m" font-size="11" fill="#79c0ff">&#x2713; Budget $5.00 · Safety leash · Verifier set</text>
 
@@ -129,6 +129,6 @@
 
   <!-- Note -->
   <text x="576" y="528" class="m" font-size="11" fill="#e6edf3" font-weight="bold">55% lower cost. Verified pass vs failed outcome.</text>
-  <text x="576" y="549" class="m" font-size="10" fill="#8b949e">Illustrative comparison: bounded, verified work vs unbounded retries.</text>
+  <text x="576" y="549" class="m" font-size="10" fill="#8b949e">Public deterministic fixture: benchmarks/fixtures/under-3-challenge.json</text>
 
 </svg>

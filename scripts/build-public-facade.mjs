@@ -157,7 +157,7 @@ function shouldSkipFile(name, relativePath, packageName) {
     name.endsWith(".map") ||
     (
       packageName === "@martin/adapters" &&
-      /^stub-(agent-cli|direct-provider)\.(?:js|d\.ts)$/u.test(relativePath)
+      /^stub-agent-cli\.(?:js|d\.ts)$/u.test(relativePath)
     )
   );
 }
@@ -191,15 +191,10 @@ function rewritePackageJsonSpecifier(contents, input) {
 }
 
 function sanitizeVendoredAdaptersIndex(contents) {
-  return contents
-    .replace(
-      /^export \{.*createStubDirectProviderAdapter.*\} from "\.\/stub-direct-provider\.js";\r?\n?/gmu,
-      "",
-    )
-    .replace(
-      /^export \{.*createStubAgentCliAdapter.*\} from "\.\/stub-agent-cli\.js";\r?\n?/gmu,
-      "",
-    );
+  return contents.replace(
+    /^export \{.*createStubAgentCliAdapter.*\} from "\.\/stub-agent-cli\.js";\r?\n?/gmu,
+    "",
+  );
 }
 
 function sanitizeVendoredPackageJson(manifest, packageName) {
@@ -233,7 +228,7 @@ function createRootIndexSource() {
     "",
     'export { runMartin, compilePromptPacket, createFileRunStore, makeLedgerEvent, resolveRunsRoot } from "./vendor/core/index.js";',
     'export { executeCli, parseCliArguments, renderCliHelp } from "./vendor/cli/index.js";',
-    'export { createClaudeCliAdapter, createCodexCliAdapter, createDirectProviderAdapter, createOpenAiCompatibleAdapter, createVerifierOnlyAdapter } from "./vendor/adapters/index.js";',
+    'export { createClaudeCliAdapter, createCodexCliAdapter, createGeminiCliAdapter, createDirectProviderAdapter, createOpenAiCompatibleAdapter, createVerifierOnlyAdapter } from "./vendor/adapters/index.js";',
     'export { appendLoopEvent, buildPortfolioSnapshot, createGovernanceSnapshot, createLoopRecord, createTelemetryEnvelope, DEFAULT_BUDGET, EMPTY_COST, validateTelemetryBatch, validateTelemetryEnvelope } from "./vendor/contracts/index.js";',
     "",
     "export class MartinLoop {",
@@ -270,8 +265,8 @@ function createRootTypesSource() {
     'export type { CompileResult, MartinAdapter, MartinAdapterRequest, MartinAdapterResult, PromptPacket, RunMartinInput, RunMartinResult, RunStore } from "./vendor/core/index.js";',
     'export { executeCli, parseCliArguments, renderCliHelp } from "./vendor/cli/index.js";',
     'export type { ParsedCliArguments, RunCommandRequest } from "./vendor/cli/index.js";',
-    'export { createClaudeCliAdapter, createCodexCliAdapter, createDirectProviderAdapter, createOpenAiCompatibleAdapter, createVerifierOnlyAdapter } from "./vendor/adapters/index.js";',
-    'export type { AgentCliAdapterOptions, ClaudeCliAdapterOptions, CliArgsBuilder, CodexCliAdapterOptions, DirectProviderAdapterOptions, OpenAiCompatibleAdapterOptions, SpawnLike, SubprocessResult, VerificationOutcome, VerifierOnlyAdapterOptions } from "./vendor/adapters/index.js";',
+    'export { createClaudeCliAdapter, createCodexCliAdapter, createGeminiCliAdapter, createDirectProviderAdapter, createOpenAiCompatibleAdapter, createVerifierOnlyAdapter } from "./vendor/adapters/index.js";',
+    'export type { AgentCliAdapterOptions, ClaudeCliAdapterOptions, CliArgsBuilder, CodexCliAdapterOptions, GeminiCliAdapterOptions, DirectProviderAdapterOptions, OpenAiCompatibleAdapterOptions, SpawnLike, SubprocessResult, VerificationOutcome, VerifierOnlyAdapterOptions } from "./vendor/adapters/index.js";',
     'export { appendLoopEvent, buildPortfolioSnapshot, createGovernanceSnapshot, createLoopRecord, createTelemetryEnvelope, DEFAULT_BUDGET, EMPTY_COST, validateTelemetryBatch, validateTelemetryEnvelope } from "./vendor/contracts/index.js";',
     'export type { ApprovalPolicy, ExecutionProfile, LoopBudget, LoopRecord, LoopTask } from "./vendor/contracts/index.js";',
     "",

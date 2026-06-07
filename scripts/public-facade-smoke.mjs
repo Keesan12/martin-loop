@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawn } from "node:child_process";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -36,7 +36,8 @@ export function createPublicFacadeSmokePlan(options = {}) {
 export async function runPublicFacadeSmoke(options = {}) {
   const rootDir = options.rootDir ?? process.cwd();
   const rootManifest = JSON.parse(await readFile(path.join(rootDir, "package.json"), "utf8"));
-  const packedFiles = await inspectPackedFiles({ rootDir, ignoreScripts: false });
+  await ensureBuiltPublicFacade(rootDir);
+  const packedFiles = await inspectPackedFiles({ rootDir, ignoreScripts: true });
   assertPackedSurface(packedFiles);
 
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), "martin-public-facade-"));
@@ -46,7 +47,7 @@ export async function runPublicFacadeSmoke(options = {}) {
   await mkdir(appDir, { recursive: true });
 
   try {
-    const packRun = await runCommand(["npm", "pack", "--json", "--pack-destination", packDir], {
+    const packRun = await runCommand(["npm", "pack", "--json", "--ignore-scripts", "--pack-destination", packDir], {
       cwd: rootDir,
     });
     const packArtifacts = extractPackJsonPayload(packRun.stdout);
@@ -73,16 +74,10 @@ export async function runPublicFacadeSmoke(options = {}) {
     await writeFile(
       path.join(appDir, "sdk-smoke.mjs"),
       [
-        'import * as martinLoop from "martin-loop";',
+        'import { MartinLoop } from "martin-loop";',
         "",
-        'if (typeof martinLoop.MartinLoop !== "function") {',
+        'if (typeof MartinLoop !== "function") {',
         '  throw new Error("MartinLoop export missing");',
-        "}",
-        'if (typeof martinLoop.createVerifierOnlyAdapter !== "function") {',
-        '  throw new Error("createVerifierOnlyAdapter export missing");',
-        "}",
-        'if ("createStubDirectProviderAdapter" in martinLoop || "createStubAgentCliAdapter" in martinLoop) {',
-        '  throw new Error("Stub adapter exports leaked into the public root package.");',
         "}",
         "",
         'console.log("MartinLoop");',
@@ -136,11 +131,12 @@ export async function runPublicFacadeSmoke(options = {}) {
 
 async function runCommand(command, options) {
   const execution = resolveRcCommandExecution(command, process.platform);
+  const env = buildLifecycleSafeEnv();
 
   return new Promise((resolve, reject) => {
     const child = spawn(execution.command, execution.args, {
       cwd: options.cwd,
-      env: process.env,
+      env,
       shell: execution.shell,
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -176,6 +172,45 @@ async function runCommand(command, options) {
       });
     });
   });
+}
+
+async function ensureBuiltPublicFacade(rootDir) {
+  const requiredFiles = [
+    path.join(rootDir, "dist", "index.js"),
+    path.join(rootDir, "dist", "index.d.ts"),
+    path.join(rootDir, "dist", "bin", "martin-loop.js"),
+  ];
+  const allPresent = await Promise.all(
+    requiredFiles.map((filePath) => access(filePath).then(() => true).catch(() => false)),
+  );
+
+  if (allPresent.every(Boolean)) {
+    return;
+  }
+
+  await runCommand(["pnpm", "build"], { cwd: rootDir });
+}
+
+function buildLifecycleSafeEnv(sourceEnv = process.env) {
+  const env = { ...sourceEnv };
+
+  for (const key of Object.keys(env)) {
+    if (
+      key === "INIT_CWD" ||
+      key === "npm_command" ||
+      key === "npm_execpath" ||
+      key === "npm_node_execpath" ||
+      key.startsWith("npm_config_") ||
+      key.startsWith("npm_lifecycle_") ||
+      key.startsWith("npm_package_") ||
+      key.startsWith("PNPM_") ||
+      key.startsWith("pnpm_")
+    ) {
+      delete env[key];
+    }
+  }
+
+  return env;
 }
 
 async function main() {

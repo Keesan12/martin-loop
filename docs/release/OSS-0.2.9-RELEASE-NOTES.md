@@ -9,13 +9,13 @@ MartinLoop `0.2.9` is an incident-response hotfix for the public root package. I
 - `--engine openai` now defaults to the hosted OpenAI endpoint instead of assuming a localhost-compatible server.
 - Live Claude runs no longer force `--dangerously-skip-permissions`.
 - Public CLI help, onboarding, tour output, workflow receipts, and MCP config guidance now consistently use `martin-loop`.
-- The public root tarball no longer exposes the vendored internal CLI bin surface inside `dist/vendor/cli/package.json`.
+- The public root tarball no longer exposes the vendored CLI bin manifest inside `dist/vendor/cli/package.json`.
 
 ## Start here
 
 ```sh
-npx martin-loop start
-npx martin-loop tour
+npx martin-loop demo
+cd martin-loop-demo
 npx martin-loop doctor
 npx martin-loop session-start
 npx martin-loop preflight "Summarize the demo workspace and confirm the verifier is green" --verify "npm test"
@@ -25,7 +25,7 @@ npx martin-loop dossier --latest
 
 ## Upgrade notes
 
-- The recommended no-spend path is the same local-first guarded flow the root README documents: `start` -> `tour` -> `doctor` -> `session-start` -> `preflight` -> `run`.
+- The recommended no-spend path is the same local-first guarded flow the root README documents: `demo` -> `doctor` -> `session-start` -> `preflight` -> `run`.
 - `--proof` is the public no-spend entrypoint. Host-managed smoke flows can still use environment-owned proof lanes when the launcher controls the process, but normal operator guidance should stay on `--proof`.
 - Live Claude users should expect the normal Claude permission model to apply again.
 - Windows users can keep using real CLI shims on PATH instead of rewriting commands to machine-specific executables.
