@@ -1,36 +1,12 @@
 # Martin MCP Release Map
 
-This map defines the next public standalone MCP releases after the live `0.2.7` baseline. The point is to keep each release narrow, legible, and easy to validate.
+This map defines the next public standalone MCP releases after the live `0.3.0` baseline. The point is to keep each release narrow, legible, and easy to validate.
 
 ## Live baseline
 
-- public npm baseline: `0.2.7`
-- public GitHub release baseline: `mcp-v0.2.7`
-- next release to prepare: `0.3.0`
-
-## `0.3.0` — Adoption Pack
-
-Story: make MartinLoop feel native inside agent hosts without widening into hosted or non-OSS territory.
-
-Include:
-- stronger setup and bootstrap guidance for Codex, Claude Code, Gemini, Cursor, and VS Code
-- clearer `martin_start` guidance and next-step resources
-- built-in command map and operating-rules resources
-- safer discovery metadata and first-run guidance
-- public docs that show the recommended local-first workflow end to end
-
-Do not include:
-- hosted endpoints
-- bearer-auth remote config defaults
-- tenant or org language
-- billing or mission-control claims
-- non-OSS review routes
-
-Primary public surfaces:
-- `packages/mcp/README.md`
-- `docs/oss/MCP-FOR-AI-AGENTS.md`
-- `docs/oss/QUICKSTART.md`
-- `docs/release/MCP-0.3.0-RELEASE-NOTES.md`
+- public npm baseline: `0.3.0`
+- public GitHub release baseline: `mcp-v0.3.0`
+- next release to prepare: `0.3.1`
 
 ## `0.3.1` — Review And Handoff Controls
 

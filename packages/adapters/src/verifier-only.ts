@@ -30,10 +30,11 @@ export function createVerifierOnlyAdapter(
       })
     },
     async execute(request) {
-      const hasVerificationSteps =
+      const shouldTrackVerifierWrites =
         request.context.verificationPlan.length > 0 ||
         (request.context.verificationStack?.length ?? 0) > 0;
-      const baselineChangedFiles = hasVerificationSteps
+
+      const baselineChangedFiles = shouldTrackVerifierWrites
         ? new Set(await readGitChangedFiles(workingDirectory, 5_000))
         : new Set<string>();
       const verification = await runVerification(
@@ -43,7 +44,7 @@ export function createVerifierOnlyAdapter(
         request.context.verificationStack,
         options.spawnImpl
       );
-      const changedFiles = hasVerificationSteps
+      const changedFiles = shouldTrackVerifierWrites
         ? (await readGitChangedFiles(workingDirectory, 5_000)).filter(
             (file) => !baselineChangedFiles.has(file)
           )

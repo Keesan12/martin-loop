@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.0]
+
+### Added
+- **`martin share --latest`** - the public CLI can now write a local share bundle for the latest governed run, including a redacted JSON receipt, a Markdown recap, and a proof-card SVG.
+
+### Changed
+- Root public docs now treat share receipts as a first-class part of the governed workflow instead of an internal follow-up step.
+- Public release bookkeeping now reflects the live standalone MCP `0.3.0` baseline and keeps the root and MCP lines separate.
+
 ## [0.2.11]
 
 ### Fixed

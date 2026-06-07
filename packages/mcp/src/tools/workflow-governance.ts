@@ -163,6 +163,11 @@ const repoSignalsCache = new Map<
     value: RepoSignals;
   }
 >();
+const GIT_STATE_CACHE_TTL_MS = 60_000;
+const repoGitStateCache = new Map<
+  string,
+  { expiresAt: number; value: RepoGitState }
+>();
 
 const POLICY_PACKS: Record<MartinPolicyPack, Omit<MartinPolicyPackDefinition, "defaultVerifiers">> = {
   "solo-founder": {
@@ -677,18 +682,10 @@ function detectVerifierCommands(
 }
 
 function detectGitState(workingDirectory: string): RepoGitState {
-  const availability = spawnSync("git", ["--version"], {
-    cwd: workingDirectory,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"]
-  });
-
-  if (availability.status !== 0) {
-    return {
-      available: false,
-      isRepo: false,
-      clean: false
-    };
+  const cacheKey = workingDirectory;
+  const cached = repoGitStateCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value;
   }
 
   const isRepo = spawnSync("git", ["rev-parse", "--is-inside-work-tree"], {
@@ -697,11 +694,31 @@ function detectGitState(workingDirectory: string): RepoGitState {
     stdio: ["ignore", "pipe", "pipe"]
   });
   if (isRepo.status !== 0 || !/true/u.test(isRepo.stdout ?? "")) {
-    return {
-      available: true,
-      isRepo: false,
-      clean: false
-    };
+    const availability = spawnSync("git", ["--version"], {
+      cwd: workingDirectory,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+
+    const value =
+      availability.status !== 0
+        ? {
+            available: false,
+            isRepo: false,
+            clean: false
+          }
+        : {
+            available: true,
+            isRepo: false,
+            clean: false
+          };
+
+    repoGitStateCache.set(cacheKey, {
+      expiresAt: Date.now() + GIT_STATE_CACHE_TTL_MS,
+      value
+    });
+
+    return value;
   }
 
   const status = spawnSync(
@@ -742,7 +759,7 @@ function detectGitState(workingDirectory: string): RepoGitState {
       ? Number.parseInt(behindToken.slice(1), 10)
       : undefined;
 
-  return {
+  const value: RepoGitState = {
     available: true,
     isRepo: true,
     clean: !dirty,
@@ -751,6 +768,13 @@ function detectGitState(workingDirectory: string): RepoGitState {
     ...(Number.isFinite(ahead) ? { ahead } : {}),
     ...(Number.isFinite(behind) ? { behind } : {})
   };
+
+  repoGitStateCache.set(cacheKey, {
+    expiresAt: Date.now() + GIT_STATE_CACHE_TTL_MS,
+    value
+  });
+
+  return value;
 }
 
 function detectSensitivePaths(workingDirectory: string): string[] {

@@ -1,4 +1,4 @@
-import { cp, mkdir, readFile, readdir, rm, stat } from "node:fs/promises";
+import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -224,6 +224,12 @@ type ChallengeCommand = {
   format: "markdown" | "svg";
 };
 
+type ShareCommand = {
+  command: "share";
+  selector: MartinRunSelector;
+  outputDir?: string;
+};
+
 type BadgeCommand = {
   command: "badge";
   format: "svg" | "json";
@@ -299,6 +305,7 @@ export type ParsedCliArguments =
   | RunsCommand
   | McpCommand
   | ChallengeCommand
+  | ShareCommand
   | BadgeCommand;
 
 export async function executeCli(args: string[]): Promise<{
@@ -367,6 +374,8 @@ export async function executeCli(args: string[]): Promise<{
         return await executeMcpInstallCommand(parsed, outputMode);
       case "challenge":
         return await executeChallengeCommand(parsed, outputMode);
+      case "share":
+        return await executeShareCommand(parsed, outputMode);
       case "badge":
         return await executeBadgeCommand(parsed, outputMode);
     }
@@ -566,6 +575,14 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
     };
   }
 
+  if (command === "share") {
+    return {
+      command: "share",
+      selector: parseRunSelector(rest, { allowLatest: true }),
+      ...(readOption(rest, "--out-dir") ? { outputDir: readOption(rest, "--out-dir") } : {})
+    };
+  }
+
   if (command === "badge") {
     return {
       command: "badge",
@@ -603,6 +620,7 @@ export function renderCliHelp(): string {
     "  martin-loop resume <loopId>              (published alias)",
     "  martin bench --suite <suiteId>",
     "  martin challenge [--loop-id <id> | --file <path> | --latest] [--format markdown|svg]",
+    "  martin share (--loop-id <id> | --file <path> | --latest) [--out-dir <path>]",
     "  martin badge [--format svg|json]",
     "",
     "Operator commands:",
@@ -622,6 +640,7 @@ export function renderCliHelp(): string {
     "  mcp print-config  Print a known-good MCP config snippet for Codex, Claude, Gemini, or generic hosts.",
     "  mcp install       Write a starter MCP config, or call Claude Code directly for local scope.",
     "  challenge    Print a shareable local proof card for the Under-$3 challenge.",
+    "  share        Write a local share bundle with a redacted receipt JSON, proof Markdown, and proof SVG.",
     "  badge        Print an agent reliability readiness badge from local evidence.",
     "",
     "Compatibility aliases:",
@@ -638,6 +657,7 @@ export function renderCliHelp(): string {
     "  --file <path>            Select a persisted loop via file or run directory.",
     "  --latest                 Select the most recently updated loop.",
     "  --attempt-index <n>      Select a specific attempt for attempt inspection.",
+    "  --out-dir <path>         Override where `martin share` writes the local bundle.",
     "",
     "Phase command-center options:",
     "  --cwd <path>             Repo root containing phase state; imports .gsd state when present.",
@@ -2573,6 +2593,206 @@ function latestExitReason(loop: LoopRecord): string {
 function parseChallengeFormat(tokens: string[]): "markdown" | "svg" {
   const format = readOption(tokens, "--format");
   return format === "svg" ? "svg" : "markdown";
+}
+
+async function executeShareCommand(
+  command: ShareCommand,
+  outputMode: MartinOutputMode
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  const selected = await loadPersistedLoop(command.selector);
+  const detail =
+    command.outputDir || selected.runDirectory
+      ? selected
+      : await loadPersistedLoop({
+          loopId: selected.loop.loopId,
+          ...(command.selector.runsDir ? { runsDir: command.selector.runsDir } : {})
+        });
+  const outputDir = resolveShareOutputDirectory(detail, command.outputDir);
+  const shareBundle = buildShareBundle(detail);
+
+  await mkdir(outputDir, { recursive: true });
+
+  const files = {
+    receiptJson: join(outputDir, "run-receipt.json"),
+    receiptMarkdown: join(outputDir, "run-receipt.md"),
+    proofCardSvg: join(outputDir, "proof-card.svg")
+  };
+
+  await writeFile(files.receiptJson, `${JSON.stringify(shareBundle.receipt, null, 2)}\n`, "utf8");
+  await writeFile(files.receiptMarkdown, shareBundle.markdown, "utf8");
+  await writeFile(files.proofCardSvg, shareBundle.svg, "utf8");
+
+  return renderCliSuccess(outputMode, {
+    data: {
+      command: "share",
+      loopId: detail.loop.loopId,
+      outputDir,
+      files,
+      receipt: shareBundle.receipt
+    },
+    human: [
+      `Share bundle written for ${detail.loop.loopId}`,
+      `Output directory: ${outputDir}`,
+      `JSON receipt: ${files.receiptJson}`,
+      `Markdown receipt: ${files.receiptMarkdown}`,
+      `Proof card SVG: ${files.proofCardSvg}`
+    ],
+    quiet: outputDir,
+    warnings: dedupeWarnings([...selected.warnings, ...detail.warnings, ...shareBundle.warnings])
+  });
+}
+
+function buildShareBundle(detail: Awaited<ReturnType<typeof loadPersistedLoop>>): {
+  receipt: Record<string, unknown>;
+  markdown: string;
+  svg: string;
+  warnings: string[];
+} {
+  const dossier = buildRunDossier(detail);
+  const verification = buildVerificationSummary(detail.loop);
+  const card = buildMartinProofCard(proofCardInputFromLoop(detail.loop));
+  const receiptWarnings = dedupeWarnings([...detail.warnings, ...verification.warnings]);
+  const receipt = redactShareValue({
+    schemaVersion: "martin.share-receipt.v1",
+    generatedAt: new Date().toISOString(),
+    loop: {
+      loopId: detail.loop.loopId,
+      title: detail.loop.task.title,
+      objective: detail.loop.task.objective,
+      status: detail.loop.status,
+      lifecycleState: detail.loop.lifecycleState,
+      updatedAt: detail.loop.updatedAt,
+      attempts: detail.loop.attempts.length,
+      spendUsd: detail.loop.cost.actualUsd,
+      budgetUsd: detail.loop.budget.maxUsd
+    },
+    receiptIntegrity: detail.integrity,
+    verification: dossier["verification"],
+    receipt: dossier["receipt"],
+    artifacts: dossier["artifacts"],
+    proofCard: {
+      title: card.title,
+      evidenceLine: card.evidenceLine,
+      completeEvidence: card.completeEvidence,
+      generatedAt: card.generatedAt,
+      fields: card.fields
+    },
+    warnings: receiptWarnings
+  }) as Record<string, unknown>;
+
+  return {
+    receipt,
+    markdown: renderShareReceiptMarkdown({
+      loop: detail.loop,
+      card,
+      verification,
+      receipt: receipt["receipt"] as {
+        nextSafeAction?: string;
+      },
+      receiptIntegrity: detail.integrity.state,
+      warnings: receiptWarnings
+    }),
+    svg: renderMartinProofCardSvg(card),
+    warnings: receiptWarnings
+  };
+}
+
+function renderShareReceiptMarkdown(input: {
+  loop: LoopRecord;
+  card: ReturnType<typeof buildMartinProofCard>;
+  verification: ReturnType<typeof buildVerificationSummary>;
+  receipt: {
+    nextSafeAction?: string;
+  };
+  receiptIntegrity: string;
+  warnings: string[];
+}): string {
+  const proofCardMarkdown = renderMartinProofCardMarkdown(input.card).trimEnd();
+  return [
+    "# Martin Loop Share Receipt",
+    "",
+    `Generated from local Martin Loop evidence for loop ${redactAbsolutePaths(input.loop.loopId)}.`,
+    "",
+    `- Status: ${redactAbsolutePaths(input.loop.status)} / ${redactAbsolutePaths(input.loop.lifecycleState)}`,
+    `- Receipt integrity: ${redactAbsolutePaths(input.receiptIntegrity)}`,
+    `- Verification: ${redactAbsolutePaths(input.verification.status)}`,
+    `- Attempts: ${String(input.loop.attempts.length)}`,
+    `- Next safe action: ${redactAbsolutePaths(input.receipt.nextSafeAction ?? "Run preflight before the next attempt.")}`,
+    "",
+    "## Proof Card",
+    "",
+    proofCardMarkdown,
+    ...(input.warnings.length > 0
+      ? ["", "## Warnings", "", ...input.warnings.map((warning) => `- ${redactAbsolutePaths(warning)}`)]
+      : []),
+    "",
+    "## Notes",
+    "",
+    "- This bundle is generated from local Martin Loop run evidence.",
+    "- Absolute machine paths are redacted so the receipt can be shared without leaking workstation details.",
+    ""
+  ].join("\n");
+}
+
+function resolveShareOutputDirectory(
+  detail: Awaited<ReturnType<typeof loadPersistedLoop>>,
+  outputDir?: string
+): string {
+  if (outputDir && outputDir.trim().length > 0) {
+    return isAbsolute(outputDir) ? outputDir : resolve(resolveInvocationRoot(), outputDir);
+  }
+
+  if (detail.runDirectory) {
+    return join(detail.runDirectory, "share");
+  }
+
+  throw new CliCommandError(
+    "invalid_input",
+    "martin share needs a canonical run directory or an explicit --out-dir.",
+    {
+      suggestion:
+        "Use --latest or --loop-id against the Martin runs root, or pass --out-dir when sharing from an ad hoc file."
+    }
+  );
+}
+
+function redactShareValue(value: unknown): unknown {
+  if (typeof value === "string") {
+    return redactAbsolutePaths(value);
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => redactShareValue(item));
+  }
+
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, redactShareValue(item)])
+    );
+  }
+
+  return value;
+}
+
+function redactAbsolutePaths(text: string): string {
+  return text
+    .replace(/file:\/\/\/[^\s")\]]+/gu, redactPathMatch)
+    .replace(/\\\\[^\\/\r\n]+[\\/][^\r\n]+/gu, redactPathMatch)
+    .replace(/[A-Za-z]:[\\/][^\r\n]+/gu, redactPathMatch)
+    .replace(/\/(?:Users|home|tmp|var|private|mnt|workspace|repo|opt)\/[^\r\n]+/gu, redactPathMatch);
+}
+
+function redactPathMatch(match: string): string {
+  const normalized = match.replace(/^file:\/\/\//u, "").replace(/\\/gu, "/").trim();
+  const trimmed = normalized.replace(/[),.;:]+$/u, "");
+  const suffix = normalized.slice(trimmed.length);
+  const basename = trimmed.split("/").filter(Boolean).at(-1) ?? "artifact";
+
+  return `[redacted-path]/${basename}${suffix}`;
+}
+
+function dedupeWarnings(warnings: string[]): string[] {
+  return [...new Set(warnings.filter((warning) => warning.trim().length > 0))];
 }
 
 // ---------------------------------------------------------------------------

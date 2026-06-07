@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -500,6 +500,54 @@ describe("challenge command", () => {
       );
       expect(payload.markdown).not.toContain("Martin stopped Ralph here.");
       expect(payload.markdown).not.toContain(runsRoot);
+    });
+  });
+});
+
+describe("share command", () => {
+  it("writes a shareable receipt bundle for the latest persisted run", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const loop = makeLoopRecord();
+      const loopDir = join(runsRoot, loop.loopId);
+      await mkdir(loopDir, { recursive: true });
+      await writeFile(join(loopDir, "loop-record.json"), JSON.stringify(loop, null, 2), "utf8");
+      await writeFile(
+        join(runsRoot, `${loop.workspaceId}.jsonl`),
+        `${JSON.stringify({ loopId: loop.loopId, status: loop.status, updatedAt: loop.updatedAt })}\n`,
+        "utf8"
+      );
+
+      const result = await executeCli(["--json", "share", "--latest"]);
+      const payload = JSON.parse(result.stdout) as {
+        command: string;
+        loopId: string;
+        outputDir: string;
+        files: {
+          receiptJson: string;
+          receiptMarkdown: string;
+          proofCardSvg: string;
+        };
+      };
+
+      expect(result.exitCode).toBe(0);
+      expect(payload.command).toBe("share");
+      expect(payload.loopId).toBe(loop.loopId);
+      expect(payload.outputDir).toBe(join(loopDir, "share"));
+
+      const receiptJson = await readFile(payload.files.receiptJson, "utf8");
+      const receiptMarkdown = await readFile(payload.files.receiptMarkdown, "utf8");
+      const proofCardSvg = await readFile(payload.files.proofCardSvg, "utf8");
+
+      expect(receiptJson).toContain('"schemaVersion": "martin.share-receipt.v1"');
+      expect(receiptJson).toContain('"loopId": "loop_');
+      expect(receiptJson).not.toContain(runsRoot);
+      expect(receiptJson).not.toContain("file:///tmp/diff.patch");
+      expect(receiptJson).toContain("[redacted-path]/diff.patch");
+      expect(receiptMarkdown).toContain("# Martin Loop Share Receipt");
+      expect(receiptMarkdown).toContain("Receipt integrity unavailable: Martin proof is not yet trustworthy.");
+      expect(receiptMarkdown).not.toContain(runsRoot);
+      expect(proofCardSvg).toContain("Martin Loop Proof Card");
+      expect(proofCardSvg).not.toContain(runsRoot);
     });
   });
 });

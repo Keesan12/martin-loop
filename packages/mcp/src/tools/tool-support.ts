@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { accessSync, constants } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -182,22 +182,11 @@ export function detectCliAvailability(command: string): CliAvailability {
     return cached.value;
   }
 
-  const locator = process.platform === "win32" ? "where.exe" : "which";
-  const result = spawnSync(locator, [command], {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"]
-  });
-
-  const resolvedPath =
-    result.status === 0
-      ? (result.stdout ?? "")
-          .split(/\r?\n/u)
-          .map((line) => line.trim())
-          .find(Boolean)
-      : undefined;
+  const locator = process.platform === "win32" ? "path-scan(win32)" : "path-scan(posix)";
+  const resolvedPath = findCommandOnPath(command);
 
   const value: CliAvailability =
-    result.status === 0
+    resolvedPath
       ? {
           command,
           available: true,
@@ -218,6 +207,52 @@ export function detectCliAvailability(command: string): CliAvailability {
   });
 
   return value;
+}
+
+function findCommandOnPath(command: string): string | undefined {
+  const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === "path");
+  const rawPath = pathKey ? process.env[pathKey] : undefined;
+  if (!rawPath) {
+    return undefined;
+  }
+
+  const pathEntries = rawPath
+    .split(process.platform === "win32" ? ";" : ":")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+  const hasExtension = /\.[A-Za-z0-9]+$/u.test(command);
+  const candidateNames =
+    process.platform === "win32" && !hasExtension
+      ? (process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD")
+          .split(";")
+          .map((extension) => extension.trim())
+          .filter(Boolean)
+          .map((extension) => `${command}${extension.toLowerCase()}`)
+      : [command];
+
+  for (const directory of pathEntries) {
+    for (const candidateName of candidateNames) {
+      const candidatePath = join(directory, candidateName);
+      if (isExecutablePath(candidatePath)) {
+        return candidatePath;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function isExecutablePath(candidatePath: string): boolean {
+  try {
+    accessSync(
+      candidatePath,
+      process.platform === "win32" ? constants.F_OK : constants.X_OK
+    );
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function getEngineAvailability(engine: MartinEngine): CliAvailability {
