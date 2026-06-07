@@ -1,6 +1,6 @@
 # Quickstart
 
-This quickstart covers the public OSS runtime and the standalone `@martinloop/mcp@0.2.7` cockpit line.
+This quickstart covers the public OSS runtime and the standalone `@martinloop/mcp@0.3.0` adoption line.
 
 ## Public Release Train
 
@@ -8,6 +8,7 @@ This quickstart covers the public OSS runtime and the standalone `@martinloop/mc
 - 0.2.0 cockpit expansion. 0.2.0 adds resources, resource templates, prompts, and read-only cockpit inspection.
 - 0.2.5 public MCP package line. 0.2.5 adds triage and degraded run-store hardening, plus the command-center workflow surfaces.
 - 0.2.7 usability and review release. 0.2.7 clarifies the guided path and tightens public package presentation.
+- 0.3.0 adoption release. 0.3.0 makes MartinLoop feel more native inside common agent hosts.
 
 ## Prerequisites
 

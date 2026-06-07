@@ -1,6 +1,6 @@
 # MCP For AI Agents
 
-`@martinloop/mcp@0.2.7` is the current public standalone MCP baseline for MartinLoop.
+`@martinloop/mcp@0.3.0` is the current public standalone MCP baseline for MartinLoop.
 
 It is built for hosts that need a governed local-first workflow, not a vague bag of tools.
 

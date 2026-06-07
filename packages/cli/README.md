@@ -13,6 +13,7 @@ The CLI now treats execution, diagnosis, persisted-run inspection, and MCP host 
 - `martin run`
 - `martin triage`
 - `martin dossier`
+- `martin share`
 - `martin runs list|get|attempt|verify`
 - `martin mcp print-config`
 - `martin mcp install`
@@ -54,10 +55,13 @@ martin preflight "repair the flaky MCP release lane" --verify "pnpm --filter @ma
 martin run "repair the flaky MCP release lane" --verify "pnpm --filter @martinloop/mcp test"
 martin triage
 martin dossier --latest
+martin share --latest
 martin mcp print-config --host codex --profile minimal
 ```
 
 `martin session-start` and `martin phase` are local-first command-center helpers. They read local phase state and local MartinLoop run receipts, then produce an explicit run contract before any work is executed. Existing `.gsd` workspaces are imported as a compatibility format when present. `martin phase preflight` and `martin phase run` are dry-run by default; add `--execute` only after the generated contract has the right verifier, budget, allowed paths, and blocked paths.
+
+`martin share --latest` is the handoff step. It writes a redacted JSON receipt, a Markdown summary, and a proof-card SVG for the selected run.
 
 ## Compatibility aliases
 

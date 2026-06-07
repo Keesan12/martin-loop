@@ -52,6 +52,20 @@ pnpm run:cli -- run \
   --max-iterations 2
 ```
 
+## Share The Latest Receipt
+
+```sh
+pnpm run:cli -- share --latest
+```
+
+By default MartinLoop writes the bundle into the selected run directory under `share/`:
+
+- `run-receipt.json`
+- `run-receipt.md`
+- `proof-card.svg`
+
+Use `--out-dir <path>` when you want the bundle somewhere else.
+
 ## MCP Invocation Shape
 
 Example `martin_run` payload:
