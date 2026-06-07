@@ -1,24 +1,37 @@
-# Martin MCP Compatibility
+# MCP Compatibility
 
-This document is the compatibility statement for the governed execution cockpit line currently at `@martinloop/mcp@0.2.7`.
+This document describes the compatibility posture for the public standalone MCP line after `@martinloop/mcp@0.2.7`.
 
-## Stable Contract
+## Current baseline
 
-- MartinLoop compatibility guarantee: martin_run remains the only execution entrypoint.
-- `martin_inspect`, `martin_status`, `martin_doctor`, and `martin_preflight` remain available and backward-compatible.
-- `martin_list_runs`, `martin_triage_runs`, `martin_get_run`, `martin_get_attempt`, `martin_get_verification_results`, and `martin_run_dossier` are additive read-only surfaces.
-- resources, resource templates, and prompts are additive discovery surfaces over the same persisted Martin run data.
+`0.2.7` is the current public baseline.
 
-## Data Expectations
+It keeps the standalone server local-first and stdio-first, and it assumes a governed MartinLoop workflow:
 
-- run inspection is sourced from persisted loop records, artifacts, and verification events
-- missing verification evidence is reported as unavailable instead of synthesized
-- safe-root behavior for `workingDirectory`, `file`, and `runsDir` remains enforced
+1. `martin_doctor`
+2. `martin_plan`
+3. `martin_preflight`
+4. `martin_run`
+5. `martin_status` or `martin_logs`
+6. `martin_dossier`
+7. `martin_eval`
 
-## Follow-On Direction
+## What later `0.3.x` releases must preserve
 
-Any follow-on release after `0.2.7` should:
+- `martin_run` stays the single execution entrypoint.
+- Read-only inspection remains available without requiring execution-capable profiles.
+- Hosts can discover the guided MartinLoop workflow without private context.
+- Public docs stay local-first and do not imply hosted transport or private control-plane features.
 
-- preserve the `0.2.5` public MCP package line compatibility expectations unless migration notes explicitly say otherwise
-- avoid adding new write-capable MCP tools without a documented approval model
-- keep install snippets, manifests, and discovery docs in parity with the actual server surface
+## What later `0.3.x` releases may add
+
+- stronger onboarding resources and examples
+- clearer handoff and review helpers
+- explicit opt-in execution profiles
+- broader host coverage and compatibility guidance
+
+## What later `0.3.x` releases may not imply
+
+- that MartinLoop automatically intercepts agent behavior invisibly
+- that hosted or tenant-aware transport is part of the public package
+- that billing, mission-control, or evidence-explorer surfaces are part of the standalone OSS package

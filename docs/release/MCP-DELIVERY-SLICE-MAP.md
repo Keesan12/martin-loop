@@ -1,136 +1,84 @@
-# Martin MCP Release Lane Map
+# Martin MCP Delivery Slice Map
 
-Use this map when preparing scheduled public deliveries from the current repo checkout. The goal is to keep the public release train honest against live npm truth while keeping docs, tests, and packaging scoped to the intended release.
+This map defines the next public standalone MCP releases after the live `0.2.7` baseline. The point is to keep each release narrow, legible, and easy to validate.
 
-## Public Version Train
+## Live baseline
 
-- live npm baseline: `0.2.7`
-- staged public deliveries:
-  - `0.1.4` operator foundation
-  - `0.2.0` cockpit expansion
-  - `0.2.5` public MCP package line
-  - `0.2.7` usability and review release
-- current repo package manifest: `0.2.7`
+- public npm baseline: `0.2.7`
+- public GitHub release baseline: `mcp-v0.2.7`
+- next release to prepare: `0.3.0`
 
-See [VERSION-LEDGER.md](./VERSION-LEDGER.md) for the canonical version truth.
+## `0.3.0` — Adoption Pack
 
-## Public Boundary
-
-- the standalone `@martinloop/mcp` train is the public MCP surface in this repo
-- public release notes, packets, and README files should describe only shipped public capabilities
-- keep experimental, unpublished, or unrelated material out of the OSS MCP train
-
-## Delivery `0.1.4`
-
-Scope: operator foundation for the Free / OSS operator lane.
+Story: make MartinLoop feel native inside agent hosts without widening into hosted or non-OSS territory.
 
 Include:
+- stronger setup and bootstrap guidance for Codex, Claude Code, Gemini, Cursor, and VS Code
+- clearer `martin_start` guidance and next-step resources
+- built-in command map and operating-rules resources
+- safer discovery metadata and first-run guidance
+- public docs that show the recommended local-first workflow end to end
 
-- `martin_doctor`
-- `martin_preflight`
-- install/config generation improvements
-- version-truth and release-evidence docs
-- public verification hardening needed to support the operator foundation story
+Do not include:
+- hosted endpoints
+- bearer-auth remote config defaults
+- tenant or org language
+- billing or mission-control claims
+- non-OSS review routes
 
-Primary surfaces:
-
-- `packages/mcp/src/tools/doctor.ts`
-- `packages/mcp/src/tools/preflight.ts`
-- `packages/mcp/src/server.ts`
-- `packages/cli/src/index.ts`
-- `packages/cli/src/mcp-config.ts`
+Primary public surfaces:
 - `packages/mcp/README.md`
 - `docs/oss/MCP-FOR-AI-AGENTS.md`
 - `docs/oss/QUICKSTART.md`
-- `docs/release/MCP-0.1.4-RELEASE-NOTES.md`
+- `docs/release/MCP-0.3.0-RELEASE-NOTES.md`
 
-Do not include:
+## `0.3.1` — Review And Handoff Controls
 
-- resources
-- resource templates
-- prompts
-- dossier/triage-heavy discovery story
-
-## Delivery `0.2.0`
-
-Scope: cockpit expansion for the Free / OSS public cockpit lane.
+Story: make review, triage, and handoff easier after a governed run finishes.
 
 Include:
-
-- additive read-only inspection expansion
-- resources
-- resource templates
-- prompts
-- dossier/discovery surfaces
-
-Primary surfaces:
-
-- `packages/mcp/src/resources.ts`
-- `packages/mcp/src/prompts.ts`
-- `packages/mcp/src/discovery-metadata.ts`
-- `packages/mcp/src/discovery-support.ts`
-- `packages/mcp/src/tools/list-runs.ts`
-- `packages/mcp/src/tools/get-run.ts`
-- `packages/mcp/src/tools/get-attempt.ts`
-- `packages/mcp/src/tools/get-verification-results.ts`
-- `packages/mcp/src/tools/run-dossier.ts`
-- `packages/mcp/tests/mcp-discovery.test.ts`
-- `packages/mcp/tests/server-live.test.ts`
-- `docs/release/MCP-0.2.0-RELEASE-NOTES.md`
-
-Keep public execution semantics unchanged:
-
-- `martin_run` remains the only write-capable entrypoint
+- stronger dossier and eval guidance
+- clearer failed-run and publish-readiness flows
+- compact review resources for what happened, what failed, and what to do next
+- handoff-safe expected outputs for humans and agents
 
 Do not include:
+- hosted audit export
+- org policy
+- fleet controls
+- evidence-dashboard claims
 
-- unpublished remote experiments
-- capabilities without public code and reproducible proof
-- unrelated workflow or packaging changes
+Primary public surfaces:
+- `packages/mcp/README.md`
+- `docs/oss/MCP-FOR-AI-AGENTS.md`
+- `docs/release/MCP-0.3.1-RELEASE-NOTES.md`
 
-## Delivery `0.2.5`
+## `0.3.2` — Opt-In Execution Controls
 
-Scope: the public MCP package line, including the polish and hardening needed to keep that line honest.
+Story: widen control for power users without making execution feel implicit or invisible.
 
 Include:
+- explicit execution-capable profiles
+- clearer refusal and escalation messages
+- stronger docs for read-only versus execution-capable usage
+- install snippets that make the safe default obvious
 
-- triage
-- degraded run-store handling
-- release documentation bundle
-- compatibility and publishing docs
-- stronger release guards
-- final proof artifacts for the public cockpit line
+Do not include:
+- hidden auto-execution
+- hosted orchestration
+- tenant or billing features
+- non-OSS transport
 
-Primary surfaces:
+Primary public surfaces:
+- `packages/mcp/README.md`
+- `docs/oss/MCP-FOR-AI-AGENTS.md`
+- `docs/release/MCP-0.3.2-RELEASE-NOTES.md`
 
-- `packages/mcp/src/tools/triage-runs.ts`
-- `packages/mcp/src/tools/run-store.ts`
-- `packages/mcp/src/tools/tool-errors.ts`
-- `packages/mcp/src/tools/tool-response.ts`
-- `packages/mcp/src/tools/tool-support.ts`
-- `packages/mcp/tests/mcp-tools.test.ts`
-- `scripts/tests/mcp-release-docs.test.mjs`
-- `docs/release/MCP-0.2.5-RELEASE-NOTES.md`
-- `docs/release/MCP-0.2.5-RELEASE-PACKET.md`
-- `docs/release/MCP-COMPATIBILITY.md`
-- `docs/release/MCP-PUBLISHING.md`
-- `docs/release/MCP-RELEASE-CHECKLIST.md`
+## Release cut rule
 
-## Explicit Exclusions From The Public Train
+Before a public-prep branch opens:
 
-These stay out of the public MCP npm release train for this wave:
-
-- unpublished or experimental capabilities
-- unrelated application packages
-- unrelated tracing or routing packages
-- remote metadata that is not part of the shipped public package
-- credentials, rate limits, or operational material that is not part of the public package contract
-
-## Release Cut Rule
-
-Before cutting any staged public branch:
-
-1. Confirm [VERSION-LEDGER.md](./VERSION-LEDGER.md) still matches live npm and public GitHub `main`.
-2. Confirm the target delivery includes only the intended public slice from above.
-3. Confirm the exact release branch or commit is what goes to CI for Windows, Linux, and macOS proof.
-4. Keep unrelated changes out of the release branch; only ship the files required for the release slice.
+1. Reconfirm `VERSION-LEDGER.md` against live npm and public GitHub.
+2. Keep the changed-path set limited to the slice being shipped.
+3. Run the full public release gates on the exact candidate commit.
+4. Audit packed tarball contents, README, and release notes before publish.
