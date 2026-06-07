@@ -399,7 +399,7 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
           status: "completed",
           summary,
           usage,
-          verification: { passed: true, summary: verification.summary },
+          verification,
           ...(executionArtifacts
             ? {
                 execution: {
@@ -459,7 +459,7 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
           ? `${summary}${errorBlock}${scopeViolations.length > 0 ? `\nScope violations: ${scopeViolations.join(", ")}` : ""}`
           : summary,
         usage,
-        verification: { passed: false, summary: verification.summary },
+        verification,
         ...(executionArtifacts
           ? {
               execution: {

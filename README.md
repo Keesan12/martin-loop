@@ -35,14 +35,14 @@ npx martin-loop dossier --latest
 
 `start` and `tour` walk a new operator through the product flow. `doctor`, `session-start`, and `preflight` create the local receipts MartinLoop expects before a real governed run. If you intentionally need to bypass that local gate for a one-off run, use `--unsafe-allow-unguarded-run` explicitly.
 
-Release notes for the current root package: [MartinLoop 0.2.9](./docs/release/OSS-0.2.9-RELEASE-NOTES.md).
+Release notes for the current root package: [MartinLoop 0.2.10](./docs/release/OSS-0.2.10-RELEASE-NOTES.md).
 
 ## What It Does
 
 - Budget caps stop the next attempt before a configured USD, token, or iteration limit is exceeded.
 - Verifier gates require a real check, such as `npm test`, before a run can count as complete.
 - Policy checks block unsafe verifier commands, risky path changes, and secret-like task inputs before execution.
-- Run receipts capture stop reason, verifier evidence, budget posture, and next safe action.
+- Run receipts capture stop reason, verifier evidence, verifier-step warnings, budget posture, and next safe action.
 - Local onboarding commands (`start`, `tour`, `guide`, `session-start`) help operators adopt the governed flow without memorizing it.
 - MCP integration gives hosts one primary coding execution entrypoint plus richer planning, inspection, and review helpers.
 
@@ -73,6 +73,8 @@ martin-loop dossier (--latest | --loop-id <id> | --file <path>)
 martin-loop runs list|get|attempt|verify ...
 martin-loop mcp print-config --host <codex|claude|gemini|generic>
 martin-loop mcp install --host <codex|claude|gemini|generic>
+martin-loop challenge [--loop-id <id> | --file <path> | --latest]
+martin-loop badge [--format svg|json] [--runs-dir <path>]
 ```
 
 The local-first onboarding flow is:
@@ -112,7 +114,7 @@ npx martin-loop mcp print-config --host gemini --transport stdio --profile full-
 npx martin-loop mcp print-config --host generic --transport stdio --profile github-review
 ```
 
-The root `martin-loop` package and the standalone `@martinloop/mcp` package move on separate version lines. The root package is `0.2.9`; the current standalone MCP package is `0.2.7`.
+The root `martin-loop` package and the standalone `@martinloop/mcp` package move on separate version lines. The root package is `0.2.10`; the current standalone MCP package is `0.2.7`.
 
 More detail: [MCP setup](./docs/getting-started/mcp.md), [MCP tool reference](./docs/reference/mcp-tools.md), and [MCP compatibility](./docs/reference/mcp-compatibility.md).
 

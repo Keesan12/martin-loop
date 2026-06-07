@@ -356,12 +356,12 @@ describe.sequential("inspect command", () => {
 // ---------------------------------------------------------------------------
 
 describe("bench command", () => {
-  it("guides operators to the workspace benchmark harness instead of shipping bench in the public CLI", async () => {
+  it("treats bench as an unsupported public command", async () => {
     const result = await executeCli(["bench", "--suite", "ralphy-smoke"]);
 
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain("workspace-only RC surface");
-    expect(result.stderr).toContain("pnpm --filter @martin/benchmarks");
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("Unknown command 'bench'.");
+    expect(result.stderr).toContain("martin-loop --help");
   });
 });
 

@@ -409,6 +409,175 @@ describe("runMartin", () => {
     expect(result.decision.lifecycleState).toBe("completed");
   });
 
+  it("persists authoritative verification steps and contradiction warnings for successful runs", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-verification-evidence-"));
+    const store = createFileRunStore({ runsRoot });
+
+    const adapter: MartinAdapter = {
+      adapterId: "agent-cli:codex",
+      kind: "agent-cli",
+      label: "Codex CLI adapter",
+      metadata: {
+        providerId: "codex",
+        model: "codex",
+        transport: "cli"
+      },
+      async execute() {
+        return {
+          status: "completed",
+          summary: "CreateProcessAsUserW failed: 5 before verifier execution in the adapter transcript.",
+          usage: {
+            actualUsd: 0.02,
+            tokensIn: 12,
+            tokensOut: 6
+          },
+          verification: {
+            passed: true,
+            summary: "All 1 verification step(s) passed.",
+            steps: [
+              {
+                command: "npm test",
+                launched: true,
+                exitCode: 0,
+                timedOut: false,
+                fastFail: true,
+                detail: "tests passed"
+              }
+            ]
+          }
+        };
+      }
+    };
+
+    const result = await runMartin({
+      workspaceId: "ws_ops",
+      projectId: "proj_runtime",
+      task: {
+        title: "Repair the Windows Codex verifier path",
+        objective: "Persist contradiction warnings instead of silently claiming a clean verification pass.",
+        verificationPlan: ["npm test"]
+      },
+      budget: {
+        maxUsd: 10,
+        softLimitUsd: 6,
+        maxIterations: 1,
+        maxTokens: 2_000
+      },
+      adapter,
+      store,
+      now: createTimestampSource([
+        "2026-06-06T10:00:00.000Z",
+        "2026-06-06T10:00:01.000Z",
+        "2026-06-06T10:00:02.000Z",
+        "2026-06-06T10:00:03.000Z",
+        "2026-06-06T10:00:04.000Z",
+        "2026-06-06T10:00:05.000Z",
+        "2026-06-06T10:00:06.000Z"
+      ]),
+      idFactory: createIdFactory()
+    });
+
+    const verificationEvent = result.loop.events.find((event) => event.type === "verification.completed");
+    const verificationArtifact = JSON.parse(
+      await readFile(join(runsRoot, result.loop.loopId, "artifacts", "attempt-001", "verification.json"), "utf8")
+    );
+    const ledger = await readLedger(runsRoot, result.loop.loopId);
+    const verificationLedger = ledger.find((entry) => entry.kind === "verification.completed");
+
+    expect(verificationEvent?.payload["passed"]).toBe(true);
+    expect(verificationEvent?.payload["warnings"]).toContain(
+      "Adapter output reported a tool-launch problem before MartinLoop ran its own verifier: CreateProcessAsUserW failed: 5 before verifier execution in the adapter transcript."
+    );
+    expect(verificationEvent?.payload["steps"]).toEqual([
+      expect.objectContaining({
+        command: "npm test",
+        launched: true,
+        exitCode: 0
+      })
+    ]);
+    expect(verificationArtifact.warnings).toContain(
+      "Adapter output reported a tool-launch problem before MartinLoop ran its own verifier: CreateProcessAsUserW failed: 5 before verifier execution in the adapter transcript."
+    );
+    expect(verificationArtifact.steps[0].command).toBe("npm test");
+    expect(verificationLedger?.payload["warnings"]).toContain(
+      "Adapter output reported a tool-launch problem before MartinLoop ran its own verifier: CreateProcessAsUserW failed: 5 before verifier execution in the adapter transcript."
+    );
+    expect(verificationLedger?.payload["steps"]).toEqual([
+      expect.objectContaining({
+        command: "npm test",
+        launched: true,
+        exitCode: 0
+      })
+    ]);
+  });
+
+  it("writes context integrity precheck artifacts into the active runs root", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-context-precheck-"));
+    const store = createFileRunStore({ runsRoot });
+
+    const adapter: MartinAdapter = {
+      adapterId: "direct:proof",
+      kind: "direct-provider",
+      label: "Proof adapter",
+      metadata: {
+        providerId: "openai",
+        model: "gpt-5-mini"
+      },
+      async execute() {
+        return {
+          status: "completed",
+          summary: "Verified the workspace without code changes.",
+          usage: {
+            actualUsd: 0,
+            tokensIn: 0,
+            tokensOut: 0
+          },
+          verification: {
+            passed: true,
+            summary: "All 1 verification step(s) passed."
+          },
+          execution: {
+            changedFiles: []
+          }
+        };
+      }
+    };
+
+    const result = await runMartin({
+      workspaceId: "ws_ops",
+      projectId: "proj_runtime",
+      task: {
+        title: "Verify context integrity persistence",
+        objective: "Keep context integrity artifacts inside the active runs root.",
+        verificationPlan: ["pnpm test"]
+      },
+      budget: {
+        maxUsd: 10,
+        softLimitUsd: 6,
+        maxIterations: 1,
+        maxTokens: 2_000
+      },
+      adapter,
+      store,
+      now: createTimestampSource([
+        "2026-06-06T10:10:00.000Z",
+        "2026-06-06T10:10:01.000Z",
+        "2026-06-06T10:10:02.000Z",
+        "2026-06-06T10:10:03.000Z",
+        "2026-06-06T10:10:04.000Z"
+      ]),
+      idFactory: createIdFactory()
+    });
+
+    const artifact = JSON.parse(
+      await readFile(join(runsRoot, result.loop.loopId, "context-integrity-precheck.json"), "utf8")
+    );
+
+    expect(artifact.runId).toBe(result.loop.loopId);
+    expect(artifact.attemptIndex).toBe(1);
+    expect(artifact.verdict).toBe("clean");
+  });
+
   it("allows verifier-only runs to complete without code changes when verification passes", async () => {
     const adapter: MartinAdapter = {
       adapterId: "direct:verify-only",

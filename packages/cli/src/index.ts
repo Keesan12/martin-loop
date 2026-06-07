@@ -10,7 +10,7 @@ import {
   createOpenAiCompatibleAdapter,
   createVerifierOnlyAdapter
 } from "@martin/adapters";
-import { runMartin, type MartinAdapter } from "@martin/core";
+import { createFileRunStore, runMartin, type MartinAdapter } from "@martin/core";
 import {
   buildPortfolioSnapshot,
   createLoopRecord,
@@ -61,6 +61,7 @@ import {
   buildRunDossier,
   buildVerificationSummary,
   computeScopeFingerprint,
+  findPersistedLoopEvidence,
   listPersistedLoops,
   loadPersistedAttempt,
   loadPersistedLoop,
@@ -77,7 +78,8 @@ import {
 } from "./workflow-state.js";
 
 const require = createRequire(import.meta.url);
-const packageJson = require("../package.json") as { version: string };
+const rootPackageJson = require("../../../package.json") as { version: string };
+const CLI_VERSION = rootPackageJson.version;
 
 export type RunCommandRequest = {
   workspaceId: string;
@@ -89,6 +91,7 @@ export type RunCommandRequest = {
   budget: LoopBudget;
   configPath?: string;
   cwd?: string;
+  runsDir?: string;
   model?: string;
   engine?: string;
   mutationMode?: MutationMode;
@@ -167,11 +170,15 @@ type GuideCommand = {
   command: "guide";
   topic?: GuideTopic;
   host?: MartinMcpHost;
+  cwd?: string;
+  runsDir?: string;
 };
 
 type TourCommand = {
   command: "tour";
   host?: MartinMcpHost;
+  cwd?: string;
+  runsDir?: string;
 };
 
 type NativePhaseCommand = {
@@ -253,6 +260,7 @@ type ChallengeCommand = {
 type BadgeCommand = {
   command: "badge";
   format: "svg" | "json";
+  runsDir?: string;
 };
 
 export type ParsedCliArguments =
@@ -262,10 +270,6 @@ export type ParsedCliArguments =
   | {
       command: "run";
       request: RunCommandRequest;
-    }
-  | {
-      command: "bench";
-      suiteId: string;
     }
   | {
       command: "demo";
@@ -317,14 +321,6 @@ export async function executeCli(args: string[]): Promise<{
           exitCode: 0,
           stdout: renderCliHelp(),
           stderr: ""
-        };
-        break;
-      case "bench":
-        result = {
-          exitCode: 1,
-          stdout: "",
-          stderr:
-            "The benchmark harness remains a workspace-only RC surface and is not part of the publishable @martin/cli boundary yet. Use pnpm --filter @martin/benchmarks test or pnpm --filter @martin/benchmarks eval:phase12 from the repo root instead."
         };
         break;
       case "demo": {
@@ -419,18 +415,15 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
     return { command: "help" };
   }
 
+  if (hasFlag(rest, "--help") || hasFlag(rest, "-h")) {
+    return { command: "help" };
+  }
+
   if (command === "run" || command === "preflight") {
     const request = parseRunRequest(rest);
     return command === "run"
       ? { command: "run", request }
       : { command: "preflight", request };
-  }
-
-  if (command === "bench") {
-    return {
-      command: "bench",
-      suiteId: readOption(rest, "--suite") ?? "ralphy-smoke"
-    };
   }
 
   if (command === "demo") {
@@ -487,6 +480,8 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
     const topic = parseGuideTopic(rest);
     return {
       command: "guide",
+      ...(readOption(rest, "--cwd") ? { cwd: readOption(rest, "--cwd") } : {}),
+      ...(readOption(rest, "--runs-dir") ? { runsDir: readOption(rest, "--runs-dir") } : {}),
       ...(host ? { host } : {}),
       ...(topic ? { topic } : {})
     };
@@ -496,6 +491,8 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
     const host = parseOptionalMcpHost(rest);
     return {
       command: "tour",
+      ...(readOption(rest, "--cwd") ? { cwd: readOption(rest, "--cwd") } : {}),
+      ...(readOption(rest, "--runs-dir") ? { runsDir: readOption(rest, "--runs-dir") } : {}),
       ...(host ? { host } : {})
     };
   }
@@ -629,11 +626,14 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
   if (command === "badge") {
     return {
       command: "badge",
-      format: parseBadgeFormat(rest)
+      format: parseBadgeFormat(rest),
+      ...(readOption(rest, "--runs-dir") ? { runsDir: readOption(rest, "--runs-dir") } : {})
     };
   }
 
-  return { command: "help" };
+  throw new CliCommandError("invalid_input", `Unknown command '${command}'.`, {
+    suggestion: "Run 'martin-loop --help' to see the supported public CLI commands."
+  });
 }
 
 export function renderCliHelp(): string {
@@ -660,9 +660,8 @@ export function renderCliHelp(): string {
     "  martin-loop demo [--dir <path>] [--force]",
     "  martin-loop inspect --file <path>",
     "  martin-loop resume <loopId>",
-    "  martin-loop bench --suite <suiteId>",
     "  martin-loop challenge [--loop-id <id> | --file <path> | --latest] [--format markdown|svg]",
-    "  martin-loop badge [--format svg|json]",
+    "  martin-loop badge [--format svg|json] [--runs-dir <path>]",
     "",
     "Operator commands:",
     "  start        Guided onboarding for humans and MCP hosts; picks the safest next command.",
@@ -772,9 +771,11 @@ async function executeRunCommand(
   };
   const cliEnvironment = resolveCliEnvironment({
     cwd: resolvedRequest.cwd,
+    runsDir: resolvedRequest.runsDir,
     engine: resolvedRequest.engine,
     ...(resolvedRequest.proofMode ? { liveMode: "proof" as const } : {})
   });
+  const store = createFileRunStore({ runsRoot: cliEnvironment.runsRoot });
   const allowUngovernedRun = resolvedRequest.allowUngovernedRun === true;
   if (!allowUngovernedRun) {
     const gate = await evaluateCliRunGate({
@@ -824,7 +825,8 @@ async function executeRunCommand(
       },
       budget: resolvedRequest.budget,
       metadata: resolvedRequest.metadata,
-      adapter
+      adapter,
+      store
     });
   } catch (error) {
     const fallbackLoop = createLoopRecord({
@@ -1012,7 +1014,7 @@ async function executeDoctorCommand(
 
   const data = {
     command: "doctor",
-    cliVersion: packageJson.version,
+    cliVersion: CLI_VERSION,
     environment,
     config: {
       path: configPath,
@@ -1070,7 +1072,7 @@ async function executeStartCommand(
   command: StartCommand,
   outputMode: MartinOutputMode
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  const environment = resolveCliEnvironment({ cwd: command.cwd });
+  const environment = resolveCliEnvironment({ cwd: command.cwd, runsDir: command.runsDir });
   const codexAvailable = isCommandAvailable("codex");
   const claudeAvailable = isCommandAvailable("claude");
   const geminiAvailable = isCommandAvailable("gemini");
@@ -1103,7 +1105,7 @@ async function executeStartCommand(
   return renderCliSuccess(outputMode, {
     data: {
       command: "start",
-      cliVersion: packageJson.version,
+      cliVersion: CLI_VERSION,
       workingDirectory: environment.workingDirectory,
       runsRoot: environment.runsRoot,
       liveMode: environment.liveMode,
@@ -1142,7 +1144,7 @@ async function executeGuideCommand(
   command: GuideCommand,
   outputMode: MartinOutputMode
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  const environment = resolveCliEnvironment({});
+  const environment = resolveCliEnvironment({ cwd: command.cwd, runsDir: command.runsDir });
   const commandMap = buildGuideCommandMap(command.host);
   const selected = command.topic
     ? commandMap.find((entry) => entry.topic === command.topic)
@@ -1179,7 +1181,7 @@ async function executeTourCommand(
   command: TourCommand,
   outputMode: MartinOutputMode
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  const environment = resolveCliEnvironment({});
+  const environment = resolveCliEnvironment({ cwd: command.cwd, runsDir: command.runsDir });
   const hostBootstrap = buildHostBootstrapPlan({
     preferredHost: command.host,
     codexAvailable: true,
@@ -1292,6 +1294,7 @@ async function executePreflightCommand(
   const resolvedGuardrails = await resolveGuardrails(request);
   const environment = resolveCliEnvironment({
     cwd: request.cwd,
+    runsDir: request.runsDir,
     engine: request.engine,
     ...(request.proofMode ? { liveMode: "proof" as const } : {})
   });
@@ -1451,7 +1454,7 @@ async function executeDossierCommand(
       `Source: ${detail.source}`
     ],
     quiet: detail.loop.loopId,
-    warnings: detail.warnings
+    warnings: [...detail.warnings, ...verification.warnings]
   });
 }
 
@@ -1503,7 +1506,7 @@ async function executeRunsGetCommand(
       `Source: ${detail.source}`
     ],
     quiet: detail.loop.loopId,
-    warnings: detail.warnings
+    warnings: [...detail.warnings, ...verification.warnings]
   });
 }
 
@@ -1529,7 +1532,7 @@ async function executeRunsAttemptCommand(
       loaded.attempt.summary ?? "No attempt summary was recorded."
     ],
     quiet: `${loaded.detail.loop.loopId}:${loaded.attempt.index}`,
-    warnings: loaded.detail.warnings
+    warnings: [...loaded.detail.warnings, ...loaded.verification.warnings]
   });
 }
 
@@ -1789,6 +1792,10 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
         request.cwd = next;
         index += 1;
         break;
+      case "--runs-dir":
+        request.runsDir = next;
+        index += 1;
+        break;
       case "--verify-only":
         request.mutationMode = "verify_only";
         break;
@@ -1836,6 +1843,7 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
     budget: request.budget as LoopBudget,
     ...(request.configPath ? { configPath: request.configPath } : {}),
     ...(request.cwd ? { cwd: request.cwd } : {}),
+    ...(request.runsDir ? { runsDir: request.runsDir } : {}),
     ...(request.model ? { model: request.model } : {}),
     ...(request.engine ? { engine: request.engine } : {}),
     ...(request.mutationMode ? { mutationMode: request.mutationMode } : {}),
@@ -2149,7 +2157,7 @@ function renderDoctorHuman(input: {
   });
 
   return [
-    `Martin CLI doctor (${packageJson.version})`,
+    `Martin CLI doctor (${CLI_VERSION})`,
     `Working directory: ${input.environment.workingDirectory} (${input.workingDirectoryReady ? "ready" : "missing"})`,
     `Runs root: ${input.environment.runsRoot} (${input.runsRootReady ? "ready" : "not created yet"})`,
     `Live mode: ${input.environment.liveMode}`,
@@ -2186,7 +2194,7 @@ function buildStartHuman(input: {
   });
 
   return [
-    `Martin Loop start (${packageJson.version})`,
+    `Martin Loop start (${CLI_VERSION})`,
     input.workingDirectoryReady
       ? "Current working directory looks ready for local MartinLoop commands."
       : "No ready working directory detected yet. Use the demo path first or point Martin at a repo with --cwd.",
@@ -2481,6 +2489,7 @@ async function resolveFirstRunBanner(
   commandArgs: string[]
 ): Promise<string | undefined> {
   if (
+    parsed.command === "help" ||
     parsed.command === "tour" ||
     parsed.command === "mcp_print_config" ||
     parsed.command === "mcp_install"
@@ -2973,7 +2982,7 @@ async function executeBadgeCommand(
   command: BadgeCommand,
   outputMode: MartinOutputMode
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  const input = await buildLocalReliabilityScoreInput();
+  const input = await buildLocalReliabilityScoreInput(command.runsDir);
   const score = computeMartinReliabilityScore(input);
   const svg = renderMartinReliabilityBadgeSvg(score);
   const json = renderMartinReliabilityBadgeJson(score);
@@ -2997,13 +3006,12 @@ async function executeBadgeCommand(
   });
 }
 
-async function buildLocalReliabilityScoreInput(): Promise<MartinReliabilityScoreInput> {
-  const environment = resolveCliEnvironment();
-  const shouldInspectRunStore = process.env["MARTIN_RUNS_DIR"] !== undefined;
-  const loops = shouldInspectRunStore
-    ? await listPersistedLoops({ limit: 20 }).catch(() => ({ loops: [] as LoopRecord[] }))
-    : { loops: [] as LoopRecord[] };
-  const latestLoop = loops.loops[0];
+async function buildLocalReliabilityScoreInput(runsDir?: string): Promise<MartinReliabilityScoreInput> {
+  const environment = resolveCliEnvironment({ ...(runsDir ? { runsDir } : {}) });
+  const persistedEvidence = await findPersistedLoopEvidence(runsDir).catch(() => ({
+    loop: undefined as LoopRecord | undefined
+  }));
+  const latestLoop = persistedEvidence.loop;
   const configPath = join(environment.invocationRoot, "martin.config.yaml");
   const configExists = await stat(configPath).then((entry) => entry.isFile()).catch(() => false);
   const budgetConfigured =
@@ -3011,7 +3019,7 @@ async function buildLocalReliabilityScoreInput(): Promise<MartinReliabilityScore
     (latestLoop !== undefined && latestLoop.budget.maxUsd > 0 && latestLoop.budget.maxIterations > 0);
   const verifierConfigured =
     latestLoop?.task.verificationPlan.some((cmd) => cmd.trim().length > 0) ?? configExists;
-  const runReceiptsPresent = loops.loops.length > 0;
+  const runReceiptsPresent = latestLoop !== undefined;
   const rollbackEvidencePresent =
     latestLoop?.artifacts.some((artifact) => artifact.kind.toLowerCase().includes("rollback")) ?? false;
   const mcpDoctorPassing = isCommandAvailable("node");

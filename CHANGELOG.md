@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.10]
+
+### Fixed
+- **Verifier receipts now stay trustworthy** - `verification.completed` now reflects the MartinLoop-launched verifier only, with persisted step-by-step evidence for launch state, exit code, timeout state, and concise command output.
+- **Contradictions are surfaced instead of hidden** - when adapter output says a tool or verifier failed before execution but MartinLoop’s own verifier passed, the run now keeps the pass result and records a warning/contradiction receipt instead of presenting a silent clean pass.
+- **`--runs-dir` is consistent across the governed flow** - `doctor`, `start`, `preflight`, `run`, `dossier`, and `badge` now honor the same explicit runs root without relying on `MARTIN_RUNS_DIR`.
+- **Public help is honest again** - `run --help` and `preflight --help` exit cleanly before any governed-flow checks, root-version reporting now uses the published `martin-loop` version, and `bench` is not part of the public `0.2.10` CLI surface while the public harness is being prepared.
+
+### Changed
+- CLI and MCP verification views now include verifier warnings plus step-level evidence, so operators can inspect what actually launched instead of trusting a single summary line.
+- Badge generation now uses a lightweight persisted-run probe for readiness evidence, which keeps the default command responsive even when the local runs store is large.
+
 ## [0.2.9]
 
 ### Fixed

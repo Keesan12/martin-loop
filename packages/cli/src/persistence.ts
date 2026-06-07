@@ -36,7 +36,7 @@ export function resolveRunsRoot(env: NodeJS.ProcessEnv = process.env): string {
  * Uses the Phase 3 flat path: ~/.martin/runs/<loopId>/
  *   - contract.json   (task + budget, immutable)
  *   - state.json      (status, cost, metrics summary)
- *   - ledger.jsonl    (all events, one JSON per line)
+ *   - events.jsonl    (loop events, one JSON per line; the core ledger stays authoritative)
  *   - attempts/       (per-attempt JSON files)
  */
 export async function persistLoopArtifacts(
@@ -65,7 +65,7 @@ export async function persistLoopArtifacts(
     writeJsonFile(join(loopRoot, "state.json"), state),
     writeJsonFile(join(loopRoot, "loop-record.json"), loop),
     writeJsonFile(join(loopRoot, "loop.json"), loop),
-    writeEvents(join(loopRoot, "ledger.jsonl"), loop.events),
+    writeEvents(join(loopRoot, "events.jsonl"), loop.events),
     ...loop.attempts.map((attempt) =>
       writeJsonFile(
         join(attemptsRoot, `${String(attempt.index).padStart(3, "0")}-${attempt.attemptId}.json`),

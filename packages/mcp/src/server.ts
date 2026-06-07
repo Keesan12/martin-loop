@@ -143,6 +143,22 @@ const verificationSchema = {
     latestAttemptIndex: { type: "integer" },
     completedAt: { type: "string" },
     summary: { type: "string" },
+    steps: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: true,
+        properties: {
+          command: { type: "string" },
+          launched: { type: "boolean" },
+          exitCode: { type: "integer" },
+          timedOut: { type: "boolean" },
+          fastFail: { type: "boolean" },
+          detail: { type: "string" }
+        },
+        required: ["command", "launched"]
+      }
+    },
     warnings: stringArraySchema
   },
   required: ["status", "eventCount", "ledgerEventCount", "warnings"]
