@@ -7,7 +7,9 @@ import type {
   LoopBudget,
   LoopCost,
   LoopEvent,
-  LoopTask
+  LoopTask,
+  ReceiptIntegritySummary,
+  ReceiptScope
 } from "@martin/contracts";
 import {
   evaluateCostGovernor,
@@ -19,7 +21,7 @@ import {
 
 import { readAllLoopRecordsSafely } from "./run-store.js";
 
-export type MartinEngine = "claude" | "codex";
+export type MartinEngine = "claude" | "codex" | "gemini";
 
 export interface InspectableLoopAttempt extends LoopAttemptRecord {
   attemptId?: string;
@@ -32,6 +34,8 @@ export interface InspectableLoopRecord extends Omit<LoopRunRecord, "attempts" | 
   artifacts?: LoopArtifact[];
   events?: LoopEvent[];
   metadata?: Record<string, string>;
+  receiptIntegrity?: ReceiptIntegritySummary;
+  receiptScope?: ReceiptScope;
 }
 
 export interface LoopPreview {
@@ -90,17 +94,7 @@ export interface VerificationSummary {
   latestAttemptIndex?: number;
   completedAt?: string;
   summary?: string;
-  steps: VerificationStepSummary[];
   warnings: string[];
-}
-
-export interface VerificationStepSummary {
-  command: string;
-  launched: boolean;
-  exitCode?: number;
-  timedOut?: boolean;
-  fastFail?: boolean;
-  detail?: string;
 }
 
 interface NormalizedVerificationEvidence {
@@ -109,8 +103,6 @@ interface NormalizedVerificationEvidence {
   summary?: string;
   attemptId?: string;
   attemptIndex?: number;
-  warnings?: string[];
-  steps?: VerificationStepSummary[];
 }
 
 export interface RunWarningEnvelope {
@@ -318,7 +310,13 @@ export function buildVerificationSummary(
   );
 
   const warnings: string[] = [];
+  const integrity = resolveReceiptIntegrity(loop);
   const ledgerWarnings = getLedgerWarnings(ledgerEvents);
+  if (integrity.state !== "verified") {
+    warnings.push(
+      `Receipt integrity is ${integrity.state}; persisted verifier evidence is not trustworthy yet.`
+    );
+  }
   warnings.push(...ledgerWarnings);
 
   if (verificationEvents.length === 0) {
@@ -341,12 +339,9 @@ export function buildVerificationSummary(
       status: "unavailable",
       eventCount: verificationEvents.length,
       ledgerEventCount: verificationLedgerEvents.length,
-      steps: [],
       warnings
     };
   }
-
-  warnings.push(...(latestEvidence.warnings ?? []));
 
   return {
     status:
@@ -362,9 +357,17 @@ export function buildVerificationSummary(
     ...(typeof latestEvidence.summary === "string" && latestEvidence.summary.trim().length > 0
       ? { summary: latestEvidence.summary.trim() }
       : {}),
-    steps: latestEvidence.steps ?? [],
     warnings
   };
+}
+
+export function resolveReceiptIntegrity(loop: InspectableLoopRecord): ReceiptIntegritySummary {
+  return (
+    loop.receiptIntegrity ?? {
+      state: "unsigned",
+      reason: "Receipt integrity metadata was not available on the loop record."
+    }
+  );
 }
 
 export function buildEventSummaries(loop: InspectableLoopRecord, limit = 5): EventSummary[] {
@@ -527,9 +530,6 @@ export function buildSuggestedResourceUris(loopId: string): string[] {
     `martin://runs/${loopId}/verification`,
     "martin://guides/mcp-usage",
     "martin://guides/agent-start",
-    "martin://guides/command-map",
-    "martin://guides/ide-onboarding",
-    "martin://guides/operating-rules",
     "martin://guides/publish-readiness"
   ];
 }
@@ -659,9 +659,7 @@ function normalizeLoopVerificationEvidence(
     ...(matchedAttempt.attemptId ? { attemptId: matchedAttempt.attemptId } : {}),
     attemptIndex: matchedAttempt.index,
     ...(typeof payload?.["passed"] === "boolean" ? { passed: payload["passed"] } : {}),
-    ...(typeof payload?.["summary"] === "string" ? { summary: payload["summary"] } : {}),
-    ...(readVerificationWarnings(payload).length ? { warnings: readVerificationWarnings(payload) } : {}),
-    ...(readVerificationSteps(payload).length ? { steps: readVerificationSteps(payload) } : {})
+    ...(typeof payload?.["summary"] === "string" ? { summary: payload["summary"] } : {})
   };
 }
 
@@ -689,9 +687,7 @@ function normalizeLedgerVerificationEvidence(
     ...(matchedAttempt?.attemptId ? { attemptId: matchedAttempt.attemptId } : {}),
     attemptIndex: event.attemptIndex,
     ...(typeof payload?.["passed"] === "boolean" ? { passed: payload["passed"] } : {}),
-    ...(typeof payload?.["summary"] === "string" ? { summary: payload["summary"] } : {}),
-    ...(readVerificationWarnings(payload).length ? { warnings: readVerificationWarnings(payload) } : {}),
-    ...(readVerificationSteps(payload).length ? { steps: readVerificationSteps(payload) } : {})
+    ...(typeof payload?.["summary"] === "string" ? { summary: payload["summary"] } : {})
   };
 }
 
@@ -722,41 +718,4 @@ function getLedgerWarnings(ledgerEvents: LedgerEvent[]): string[] {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
-}
-
-function readVerificationWarnings(payload: Record<string, unknown> | undefined): string[] {
-  if (!Array.isArray(payload?.["warnings"])) {
-    return [];
-  }
-
-  return payload["warnings"].filter((warning): warning is string => typeof warning === "string");
-}
-
-function readVerificationSteps(payload: Record<string, unknown> | undefined): VerificationStepSummary[] {
-  if (!Array.isArray(payload?.["steps"])) {
-    return [];
-  }
-
-  return payload["steps"]
-    .map((candidate) => normalizeVerificationStep(candidate))
-    .filter((candidate): candidate is VerificationStepSummary => candidate !== undefined);
-}
-
-function normalizeVerificationStep(candidate: unknown): VerificationStepSummary | undefined {
-  if (!isRecord(candidate)) {
-    return undefined;
-  }
-
-  if (typeof candidate["command"] !== "string" || typeof candidate["launched"] !== "boolean") {
-    return undefined;
-  }
-
-  return {
-    command: candidate["command"],
-    launched: candidate["launched"],
-    ...(typeof candidate["exitCode"] === "number" ? { exitCode: candidate["exitCode"] } : {}),
-    ...(typeof candidate["timedOut"] === "boolean" ? { timedOut: candidate["timedOut"] } : {}),
-    ...(typeof candidate["fastFail"] === "boolean" ? { fastFail: candidate["fastFail"] } : {}),
-    ...(typeof candidate["detail"] === "string" ? { detail: candidate["detail"] } : {})
-  };
 }

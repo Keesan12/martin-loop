@@ -5,7 +5,7 @@ MartinLoop `0.2.7` refreshed the public root package surface and tightened relea
 ## What changed
 
 - the published package README, npm metadata, and GitHub-facing release docs now describe the same MartinLoop product surface
-- release validation now blocks internal-process language and stray non-doc artifacts before a public release can publish
+- release validation now blocks unsupported process notes and stray non-doc artifacts before a public release can publish
 - the public docs tree no longer includes leftover release archives or other non-doc artifacts
 
 ## Why it mattered

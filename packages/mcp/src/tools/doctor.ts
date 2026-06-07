@@ -1,3 +1,8 @@
+import {
+  probeCodexLaunch,
+  resolveCliCommandAvailability,
+  type CodexHostPlatform
+} from "@martin/adapters";
 import { resolveRunsRoot } from "@martin/core";
 
 import { resolveSafeRepoRoot, resolveSafeRunsRootPath } from "../server-validation.js";
@@ -35,7 +40,24 @@ export interface MartinDoctorOutput {
     mode: "live" | "proof";
     liveMode: boolean;
   };
-  engines: Record<MartinEngine, { available: boolean; detail: string; resolvedPath?: string }>;
+  scope: {
+    invocationRoot: string;
+    workingDirectory: string;
+    repoRoot: string;
+    runsRoot: string;
+  };
+  engines: Record<
+    MartinEngine,
+    {
+      available: boolean;
+      detail: string;
+      resolvedPath?: string;
+      hostPlatform?: CodexHostPlatform;
+      nativeInstallValid?: boolean;
+      launchReady?: boolean;
+      probeSummary?: string;
+    }
+  >;
   requestedEngine?: MartinEngine;
   runStore: {
     exists: boolean;
@@ -49,9 +71,18 @@ export interface MartinDoctorOutput {
 export async function martinDoctorTool(input: MartinDoctorInput): Promise<MartinDoctorOutput> {
   const workingDirectory = resolveSafeRepoRoot(input.workingDirectory);
   const runsRoot = resolveSafeRunsRootPath(input.runsDir, resolveRunsRoot(process.env));
+  const workspaceRoot = resolveSafeRepoRoot();
   const executionMode = resolveExecutionMode();
   const claude = getEngineAvailability("claude");
-  const codex = getEngineAvailability("codex");
+  const codex = resolveCliCommandAvailability("codex");
+  const gemini = getEngineAvailability("gemini");
+  const codexProbe =
+    executionMode.liveMode && codex.available
+      ? probeCodexLaunch({
+          workingDirectory,
+          availability: codex
+        })
+      : undefined;
   const runStore = await inspectRunsRoot(runsRoot);
   const signals = inspectRepoSignals(workingDirectory);
   const readiness = buildReadinessReport(signals, runStore);
@@ -60,13 +91,17 @@ export async function martinDoctorTool(input: MartinDoctorInput): Promise<Martin
   if (!runStore.exists) {
     warnings.push("Configured Martin runs root does not exist yet.");
   }
-  if (executionMode.liveMode && !claude.available && !codex.available) {
-    warnings.push("Neither claude nor codex is currently available on PATH for live runs.");
+  if (executionMode.liveMode && !claude.available && !codex.available && !gemini.available) {
+    warnings.push("None of claude, codex, or gemini is currently available on PATH for live runs.");
   }
   if (input.engine && executionMode.liveMode) {
-    const selected = input.engine === "claude" ? claude : codex;
+    const selected =
+      input.engine === "claude" ? claude : input.engine === "gemini" ? gemini : codex;
     if (!selected.available) {
       warnings.push(`Requested engine '${input.engine}' is not available on PATH.`);
+    }
+    if (input.engine === "codex" && codexProbe && !codexProbe.ok) {
+      warnings.push(codexProbe.summary);
     }
   }
   warnings.push(...runStore.warnings);
@@ -86,11 +121,17 @@ export async function martinDoctorTool(input: MartinDoctorInput): Promise<Martin
       platform: process.platform
     },
     environment: {
-      workspaceRoot: resolveSafeRepoRoot(),
+      workspaceRoot,
       workingDirectory,
       runsRoot,
       mode: executionMode.mode,
       liveMode: executionMode.liveMode
+    },
+    scope: {
+      invocationRoot: workspaceRoot,
+      workingDirectory,
+      repoRoot: workingDirectory,
+      runsRoot
     },
     engines: {
       claude: {
@@ -101,7 +142,20 @@ export async function martinDoctorTool(input: MartinDoctorInput): Promise<Martin
       codex: {
         available: codex.available,
         detail: codex.detail,
-        ...(codex.resolvedPath ? { resolvedPath: codex.resolvedPath } : {})
+        ...(codex.resolvedPath ? { resolvedPath: codex.resolvedPath } : {}),
+        ...(codexProbe
+          ? {
+              hostPlatform: codexProbe.diagnosis.hostPlatform,
+              nativeInstallValid: codexProbe.diagnosis.nativeInstallValid,
+              launchReady: codexProbe.ok,
+              probeSummary: codexProbe.summary
+            }
+          : {})
+      },
+      gemini: {
+        available: gemini.available,
+        detail: gemini.detail,
+        ...(gemini.resolvedPath ? { resolvedPath: gemini.resolvedPath } : {})
       }
     },
     ...(input.engine ? { requestedEngine: input.engine } : {}),

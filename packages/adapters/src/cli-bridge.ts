@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
-import { delimiter, dirname, extname, isAbsolute, join, resolve } from "node:path";
+import { delimiter, extname, isAbsolute, join, resolve } from "node:path";
+import { existsSync } from "node:fs";
 
 import { diffStatsFromNumstat } from "./runtime-support.js";
 
@@ -15,23 +15,11 @@ export interface SubprocessResult {
   stdout: string;
   stderr: string;
   timedOut: boolean;
-  launched: boolean;
-}
-
-export interface VerificationStepOutcome {
-  command: string;
-  launched: boolean;
-  exitCode?: number;
-  timedOut: boolean;
-  fastFail: boolean;
-  detail?: string;
 }
 
 export interface VerificationOutcome {
   passed: boolean;
   summary: string;
-  steps: VerificationStepOutcome[];
-  warnings?: string[];
 }
 
 export async function runSubprocess(
@@ -69,8 +57,7 @@ export async function runSubprocess(
         exitCode: 1,
         stdout: "",
         stderr: message,
-        timedOut: false,
-        launched: false
+        timedOut: false
       });
       return;
     }
@@ -103,8 +90,7 @@ export async function runSubprocess(
         exitCode: 1,
         stdout: "",
         stderr: error.message,
-        timedOut: false,
-        launched: false
+        timedOut: false
       });
     });
 
@@ -114,8 +100,7 @@ export async function runSubprocess(
         exitCode: code ?? 1,
         stdout: Buffer.concat(stdoutChunks).toString("utf8"),
         stderr: Buffer.concat(stderrChunks).toString("utf8"),
-        timedOut,
-        launched: true
+        timedOut
       });
     });
 
@@ -130,8 +115,7 @@ export async function runSubprocess(
             exitCode: 1,
             stdout: Buffer.concat(stdoutChunks).toString("utf8"),
             stderr: stdinError.message,
-            timedOut: false,
-            launched: false
+            timedOut: false
           });
         }
       }
@@ -154,11 +138,10 @@ export async function runVerification(
     : commands.map((command) => ({ command, fastFail: true }));
 
   if (steps.length === 0) {
-    return { passed: true, summary: "No verification commands specified.", steps: [] };
+    return { passed: true, summary: "No verification commands specified." };
   }
 
   const failedSteps: string[] = [];
-  const stepOutcomes: VerificationStepOutcome[] = [];
 
   for (const step of steps) {
     const parts = splitCommand(step.command);
@@ -169,55 +152,26 @@ export async function runVerification(
     }
 
     const result = await runSubprocess(bin, args, { cwd, timeoutMs, spawnImpl });
-    const detail = truncate(result.stderr.trim() || result.stdout.trim(), 500);
-    stepOutcomes.push({
-      command: step.command,
-      launched: result.launched,
-      ...(result.launched ? { exitCode: result.exitCode } : {}),
-      timedOut: result.timedOut,
-      fastFail: step.fastFail,
-      ...(detail ? { detail } : {})
-    });
-
-    if (!result.launched) {
-      const summary = `Verification could not launch: ${step.command}\n${detail || "Launch failed."}`;
-      if (step.fastFail) {
-        return { passed: false, summary, steps: stepOutcomes };
-      }
-      failedSteps.push(step.command);
-      continue;
-    }
 
     if (result.timedOut) {
-      return {
-        passed: false,
-        summary: `Verification timed out: ${step.command}`,
-        steps: stepOutcomes
-      };
+      return { passed: false, summary: `Verification timed out: ${step.command}` };
     }
 
     if (result.exitCode !== 0) {
+      const detail = truncate(result.stderr.trim() || result.stdout.trim(), 500);
       const summary = `Verification failed: ${step.command}\n${detail}`;
       if (step.fastFail) {
-        return { passed: false, summary, steps: stepOutcomes };
+        return { passed: false, summary };
       }
       failedSteps.push(step.command);
     }
   }
 
   if (failedSteps.length > 0) {
-    return {
-      passed: false,
-      summary: `Failed steps: ${failedSteps.join(", ")}`,
-      steps: stepOutcomes
-    };
+    return { passed: false, summary: `Failed steps: ${failedSteps.join(", ")}` };
   }
 
-  return {
-    passed: true,
-    summary: `All ${String(steps.length)} verification step(s) passed.`,
-    steps: stepOutcomes
-  };
+  return { passed: true, summary: `All ${String(steps.length)} verification step(s) passed.` };
 }
 
 export async function readGitExecutionArtifacts(
@@ -228,18 +182,16 @@ export async function readGitExecutionArtifacts(
   changedFiles?: string[];
   diffStats?: ReturnType<typeof diffStatsFromNumstat>;
 }> {
-  const [changedFilesResult, numstatResult] = await Promise.all([
-    runSubprocess(
-      "git",
-      ["diff", "--name-only", "HEAD"],
-      { cwd: repoRoot, timeoutMs, spawnImpl }
-    ),
-    runSubprocess(
-      "git",
-      ["diff", "--numstat", "HEAD"],
-      { cwd: repoRoot, timeoutMs, spawnImpl }
-    )
-  ]);
+  const changedFilesResult = await runSubprocess(
+    "git",
+    ["diff", "--name-only", "HEAD"],
+    { cwd: repoRoot, timeoutMs, spawnImpl }
+  );
+  const numstatResult = await runSubprocess(
+    "git",
+    ["diff", "--numstat", "HEAD"],
+    { cwd: repoRoot, timeoutMs, spawnImpl }
+  );
 
   const changedFiles =
     changedFilesResult.exitCode === 0
@@ -272,8 +224,9 @@ export async function readGitChangedFiles(
     return [];
   }
 
-  return parsePorcelainEntries(statusResult.stdout)
-    .filter((entry): entry is string => typeof entry === "string" && entry.length > 0);
+  return parsePorcelainEntries(statusResult.stdout).filter(
+    (entry): entry is string => typeof entry === "string" && entry.length > 0
+  );
 }
 
 export interface SpawnPlan {
@@ -301,30 +254,22 @@ export function createSpawnPlan(
     const cmdStr = [quoteWindowsCmdArg(command), ...args.map(quoteWindowsCmdArg)].join(" ");
     return {
       command: process.env.ComSpec || "cmd.exe",
-      args: ["/d", "/s", "/c", cmdStr]
+      args: ["/d", "/c", cmdStr]
     };
   }
 
   const extension = extname(resolvedOrUndefined).toLowerCase();
   if (extension === ".cmd" || extension === ".bat") {
-    const nodeShim = resolveWindowsNodeShim(resolvedOrUndefined);
-    if (nodeShim) {
-      return {
-        command: nodeShim.nodeCommand,
-        args: [nodeShim.scriptPath, ...args]
-      };
-    }
-
     return {
-      command: resolveWindowsPowerShellHost(),
-      args: [
-        "-NoProfile",
-        "-NonInteractive",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-Command",
-        buildPowerShellBatchInvocation(resolvedOrUndefined, args)
-      ]
+      command: process.env.ComSpec || "cmd.exe",
+      args: ["/d", "/c", resolvedOrUndefined, ...args]
+    };
+  }
+
+  if (extension === ".ps1") {
+    return {
+      command: "powershell.exe",
+      args: ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", resolvedOrUndefined, ...args]
     };
   }
 
@@ -359,79 +304,14 @@ function expandWindowsCommandCandidates(command: string): string[] {
   }
 
   const pathExt = process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD";
-  return pathExt
+  const fromPathExt = pathExt
     .split(";")
     .map((extension) => extension.trim())
     .filter(Boolean)
     .map((extension) => `${command}${extension.toLowerCase()}`);
-}
 
-function windowsPathDirectories(): string[] {
-  const rawPath = process.env.Path ?? process.env.PATH ?? "";
-  return rawPath
-    .split(delimiter)
-    .map((entry) => entry.trim().replace(/^"|"$/g, ""))
-    .filter(Boolean);
-}
-
-function resolveWindowsNodeShim(
-  shimPath: string
-): { nodeCommand: string; scriptPath: string } | undefined {
-  try {
-    const contents = readFileSync(shimPath, "utf8");
-    const scriptMatch = contents.match(/"%_prog%"\s+"%dp0%\\([^"]+)"\s+%\*/iu);
-    const relativeScriptPath = scriptMatch?.[1];
-    if (!relativeScriptPath) {
-      return undefined;
-    }
-
-    const scriptPath = resolve(dirname(shimPath), relativeScriptPath.replace(/\\/gu, "/"));
-    if (!existsSync(scriptPath)) {
-      return undefined;
-    }
-
-    const bundledNode = join(dirname(shimPath), "node.exe");
-    return {
-      nodeCommand: existsSync(bundledNode) ? bundledNode : "node",
-      scriptPath
-    };
-  } catch {
-    return undefined;
-  }
-}
-
-function resolveWindowsPowerShellHost(): string {
-  const systemRoot = process.env.SystemRoot?.trim();
-  if (systemRoot) {
-    const bundled = join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
-    if (existsSync(bundled)) {
-      return bundled;
-    }
-  }
-
-  return "powershell.exe";
-}
-
-function buildPowerShellBatchInvocation(commandPath: string, args: string[]): string {
-  const quotedCommand = quotePowerShellArg(commandPath);
-  const quotedArgs = args.map(quotePowerShellArg).join(" ");
-  return quotedArgs.length > 0 ? `& ${quotedCommand} ${quotedArgs}` : `& ${quotedCommand}`;
-}
-
-function quotePowerShellArg(value: string): string {
-  const normalized = value.replace(/\r?\n/gu, " ");
-  return `'${normalized.replace(/'/gu, "''")}'`;
-}
-
-function quoteWindowsCmdArg(value: string): string {
-  const normalized = value.replace(/\r?\n/gu, " ");
-  const escaped = normalized
-    .replace(/\^/gu, "^^")
-    .replace(/"/gu, '^"')
-    .replace(/%/gu, "%%")
-    .replace(/!/gu, "^^!")
-    .replace(/[&|<>()]/gu, (match) => `^${match}`);
-  return `"${escaped}"`;
+  const candidates = [...fromPathExt, `${command}.ps1`];
+  return Array.from(new Set(candidates));
 }
 
 function parsePorcelainEntries(stdout: string): string[] {
@@ -463,6 +343,25 @@ function parsePorcelainEntries(stdout: string): string[] {
   }
 
   return changedFiles;
+}
+
+function windowsPathDirectories(): string[] {
+  const rawPath = process.env.Path ?? process.env.PATH ?? "";
+  return rawPath
+    .split(delimiter)
+    .map((entry) => entry.trim().replace(/^"|"$/g, ""))
+    .filter(Boolean);
+}
+
+function quoteWindowsCmdArg(value: string): string {
+  const normalized = value.replace(/\r?\n/gu, " ");
+  const escaped = normalized
+    .replace(/\^/gu, "^^")
+    .replace(/"/gu, '^"')
+    .replace(/%/gu, "%%")
+    .replace(/!/gu, "^^!")
+    .replace(/[&|<>()]/gu, (match) => `^${match}`);
+  return `"${escaped}"`;
 }
 
 export function splitCommand(command: string): string[] {

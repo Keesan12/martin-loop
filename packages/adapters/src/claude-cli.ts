@@ -20,7 +20,7 @@ import type {
 } from "@martin/core";
 
 import {
-  readGitChangedFiles,
+  readGitExecutionArtifacts,
   runSubprocess,
   runVerification,
   type SpawnLike
@@ -44,14 +44,21 @@ const BLENDED_INPUT_COST_PER_1K = 0.003;   // $/1K input tokens
 const BLENDED_OUTPUT_COST_PER_1K = 0.012;  // $/1K output tokens
 
 // Per-model overrides for common Claude models (fallback: blended average)
-const MODEL_PRICING: Record<string, { inputPer1K: number; outputPer1K: number }> = {
-  "claude-opus-4-6":   { inputPer1K: 0.015,  outputPer1K: 0.075 },
-  "claude-sonnet-4-6": { inputPer1K: 0.003,  outputPer1K: 0.015 },
+const MODEL_PRICING: Record<string, { inputPer1K: number; cachedInputPer1K?: number; outputPer1K: number }> = {
+  "claude-opus-4-6":   { inputPer1K: 0.015, outputPer1K: 0.075 },
+  "claude-sonnet-4-6": { inputPer1K: 0.003, outputPer1K: 0.015 },
   "claude-haiku-4-5":  { inputPer1K: 0.00025, outputPer1K: 0.00125 },
   // Keep legacy names working
-  "claude-opus":       { inputPer1K: 0.015,  outputPer1K: 0.075 },
-  "claude-sonnet":     { inputPer1K: 0.003,  outputPer1K: 0.015 },
-  "claude-haiku":      { inputPer1K: 0.00025, outputPer1K: 0.00125 }
+  "claude-opus":       { inputPer1K: 0.015, outputPer1K: 0.075 },
+  "claude-sonnet":     { inputPer1K: 0.003, outputPer1K: 0.015 },
+  "claude-haiku":      { inputPer1K: 0.00025, outputPer1K: 0.00125 },
+  // OpenAI coding models
+  "codex":             { inputPer1K: 0.00125, cachedInputPer1K: 0.000125, outputPer1K: 0.01 },
+  "gpt-5-codex":       { inputPer1K: 0.00125, cachedInputPer1K: 0.000125, outputPer1K: 0.01 },
+  "gpt-5.1-codex":     { inputPer1K: 0.00125, cachedInputPer1K: 0.000125, outputPer1K: 0.01 },
+  "gpt-5.1-codex-max": { inputPer1K: 0.00125, cachedInputPer1K: 0.000125, outputPer1K: 0.01 },
+  "gpt-5.2-codex":     { inputPer1K: 0.00175, cachedInputPer1K: 0.000175, outputPer1K: 0.014 },
+  "codex-mini-latest": { inputPer1K: 0.0015, cachedInputPer1K: 0.000375, outputPer1K: 0.006 }
 };
 
 // ---------------------------------------------------------------------------
@@ -77,6 +84,39 @@ interface ClaudeJsonOutput {
   };
 }
 
+interface CodexJsonEvent {
+  type?: string;
+  item?: {
+    id?: string;
+    type?: string;
+    text?: string;
+  };
+  usage?: {
+    input_tokens?: number;
+    cached_input_tokens?: number;
+    output_tokens?: number;
+    reasoning_output_tokens?: number;
+  };
+}
+
+interface GeminiJsonOutput {
+  session_id?: string;
+  response?: string;
+  stats?: {
+    cachedReadTokens?: number;
+    cachedWriteTokens?: number;
+    inputTokens?: number;
+    outputTokens?: number;
+    thoughtTokens?: number;
+    totalTokens?: number;
+  };
+  error?: {
+    type?: string;
+    message?: string;
+    code?: number;
+  };
+}
+
 function extractUsage(
   parsed: ClaudeJsonOutput | undefined,
   modelLabel: string | undefined
@@ -90,10 +130,12 @@ function extractUsage(
     });
   }
 
-  const tokensIn =
+  const promptTokens =
     (parsed.usage.inputTokens ?? parsed.usage.input_tokens ?? 0) +
-    (parsed.usage.cacheReadInputTokens ?? parsed.usage.cache_read_input_tokens ?? 0) +
     (parsed.usage.cacheCreationInputTokens ?? parsed.usage.cache_creation_input_tokens ?? 0);
+  const cachedInputTokens =
+    parsed.usage.cacheReadInputTokens ?? parsed.usage.cache_read_input_tokens ?? 0;
+  const tokensIn = promptTokens + cachedInputTokens;
   const tokensOut = parsed.usage.outputTokens ?? parsed.usage.output_tokens ?? 0;
 
   const pricing =
@@ -101,15 +143,207 @@ function extractUsage(
     { inputPer1K: BLENDED_INPUT_COST_PER_1K, outputPer1K: BLENDED_OUTPUT_COST_PER_1K };
 
   const actualUsd =
-    (tokensIn / 1000) * pricing.inputPer1K +
+    (promptTokens / 1000) * pricing.inputPer1K +
+    (cachedInputTokens / 1000) * (pricing.cachedInputPer1K ?? pricing.inputPer1K) +
     (tokensOut / 1000) * pricing.outputPer1K;
 
   return normalizeUsage({
     actualUsd: Number(actualUsd.toFixed(6)),
     tokensIn,
     tokensOut,
-    provenance: "actual"
+    cachedInputTokens,
+    provenance: "actual",
+    providerSettlement: {
+      providerId: "claude",
+      model: modelLabel ?? "claude",
+      transport: "cli",
+      source: "claude_json",
+      inputTokens: promptTokens,
+      cachedInputTokens,
+      outputTokens: tokensOut,
+      rawUsageAvailable: true,
+      settledAt: new Date().toISOString()
+    }
   });
+}
+
+function extractCodexJsonlResult(
+  stdout: string,
+  modelLabel: string | undefined
+): { summary: string; usage: MartinAdapterResult["usage"] } | undefined {
+  const events = stdout
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      try {
+        return JSON.parse(line) as CodexJsonEvent;
+      } catch {
+        return undefined;
+      }
+    })
+    .filter((event): event is CodexJsonEvent => event !== undefined);
+
+  if (events.length === 0) {
+    return undefined;
+  }
+
+  const latestAgentMessage = [...events]
+    .reverse()
+    .find((event) => event.type === "item.completed" && event.item?.type === "agent_message");
+  const latestTurnCompleted = [...events]
+    .reverse()
+    .find((event) => event.type === "turn.completed" && event.usage !== undefined);
+
+  const summary =
+    typeof latestAgentMessage?.item?.text === "string" && latestAgentMessage.item.text.trim().length > 0
+      ? latestAgentMessage.item.text.trim()
+      : stdout.trim();
+
+  if (!latestTurnCompleted?.usage) {
+    return {
+      summary,
+      usage: normalizeUsage({
+        actualUsd: 0,
+        tokensIn: 0,
+        tokensOut: 0,
+        provenance: "unavailable",
+        providerSettlement: {
+          providerId: "codex",
+          model: modelLabel ?? "codex",
+          transport: "cli",
+          source: "unavailable",
+          inputTokens: 0,
+          outputTokens: 0,
+          rawUsageAvailable: false,
+          settledAt: new Date().toISOString()
+        }
+      })
+    };
+  }
+
+  const promptTokens = latestTurnCompleted.usage.input_tokens ?? 0;
+  const cachedInputTokens = latestTurnCompleted.usage.cached_input_tokens ?? 0;
+  const outputTokens = latestTurnCompleted.usage.output_tokens ?? 0;
+  const reasoningOutputTokens = latestTurnCompleted.usage.reasoning_output_tokens ?? 0;
+  const tokensIn = promptTokens + cachedInputTokens;
+  const tokensOut = outputTokens + reasoningOutputTokens;
+  const pricing =
+    (modelLabel ? MODEL_PRICING[modelLabel] : undefined) ??
+    MODEL_PRICING["codex"] ??
+    { inputPer1K: BLENDED_INPUT_COST_PER_1K, outputPer1K: BLENDED_OUTPUT_COST_PER_1K };
+  const actualUsd =
+    (promptTokens / 1000) * pricing.inputPer1K +
+    (cachedInputTokens / 1000) * (pricing.cachedInputPer1K ?? pricing.inputPer1K) +
+    (tokensOut / 1000) * pricing.outputPer1K;
+
+  return {
+    summary,
+    usage: normalizeUsage({
+      actualUsd: Number(actualUsd.toFixed(6)),
+      tokensIn,
+      tokensOut,
+      cachedInputTokens,
+      reasoningTokensOut: reasoningOutputTokens,
+      provenance: "actual",
+      providerSettlement: {
+        providerId: "codex",
+        model: modelLabel ?? "codex",
+        transport: "cli",
+        source: "codex_jsonl",
+        inputTokens: promptTokens,
+        cachedInputTokens,
+        outputTokens,
+        reasoningOutputTokens,
+        rawUsageAvailable: true,
+        settledAt: new Date().toISOString()
+      }
+    })
+  };
+}
+
+function extractGeminiJsonResult(
+  stdout: string,
+  modelLabel: string | undefined
+): { summary: string; usage: MartinAdapterResult["usage"] } | undefined {
+  let parsed: GeminiJsonOutput | undefined;
+  try {
+    parsed = JSON.parse(stdout) as GeminiJsonOutput;
+  } catch {
+    return undefined;
+  }
+
+  const summary =
+    typeof parsed.response === "string" && parsed.response.trim().length > 0
+      ? parsed.response.trim()
+      : typeof parsed.error?.message === "string" && parsed.error.message.trim().length > 0
+        ? parsed.error.message.trim()
+        : stdout.trim();
+
+  const promptTokens = parsed.stats?.inputTokens ?? 0;
+  const cachedInputTokens = parsed.stats?.cachedReadTokens ?? 0;
+  const outputTokens = parsed.stats?.outputTokens ?? 0;
+  const reasoningOutputTokens = parsed.stats?.thoughtTokens ?? 0;
+  const hasUsage =
+    parsed.stats !== undefined &&
+    (promptTokens > 0 || cachedInputTokens > 0 || outputTokens > 0 || reasoningOutputTokens > 0);
+
+  if (!hasUsage) {
+    return {
+      summary,
+      usage: normalizeUsage({
+        actualUsd: 0,
+        tokensIn: 0,
+        tokensOut: 0,
+        provenance: "unavailable",
+        providerSettlement: {
+          providerId: "gemini",
+          model: modelLabel ?? "flash",
+          transport: "cli",
+          source: "unavailable",
+          inputTokens: 0,
+          outputTokens: 0,
+          rawUsageAvailable: false,
+          settledAt: new Date().toISOString()
+        }
+      })
+    };
+  }
+
+  const tokensIn = promptTokens + cachedInputTokens;
+  const tokensOut = outputTokens + reasoningOutputTokens;
+  const pricing =
+    (modelLabel ? MODEL_PRICING[modelLabel] : undefined) ??
+    { inputPer1K: BLENDED_INPUT_COST_PER_1K, outputPer1K: BLENDED_OUTPUT_COST_PER_1K };
+  const estimatedUsd =
+    (promptTokens / 1000) * pricing.inputPer1K +
+    (cachedInputTokens / 1000) * (pricing.cachedInputPer1K ?? pricing.inputPer1K) +
+    (tokensOut / 1000) * pricing.outputPer1K;
+
+  return {
+    summary,
+    usage: normalizeUsage({
+      actualUsd: Number(estimatedUsd.toFixed(6)),
+      estimatedUsd: Number(estimatedUsd.toFixed(6)),
+      tokensIn,
+      tokensOut,
+      cachedInputTokens,
+      reasoningTokensOut: reasoningOutputTokens,
+      provenance: "estimated",
+      providerSettlement: {
+        providerId: "gemini",
+        model: modelLabel ?? "flash",
+        transport: "cli",
+        source: "gemini_json",
+        inputTokens: promptTokens,
+        cachedInputTokens,
+        outputTokens,
+        reasoningOutputTokens,
+        rawUsageAvailable: true,
+        settledAt: new Date().toISOString()
+      }
+    })
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -221,6 +455,22 @@ export interface CodexCliAdapterOptions {
   spawnImpl?: SpawnLike;
 }
 
+export interface GeminiCliAdapterOptions {
+  workingDirectory?: string;
+  timeoutMs?: number;
+  verifyTimeoutMs?: number;
+  label?: string;
+  /** Override the model passed via --model flag. Defaults to the Gemini `flash` alias. */
+  model?: string;
+  /** Approval mode for headless Gemini runs. Defaults to yolo for autonomous execution. */
+  approvalMode?: "default" | "auto_edit" | "yolo" | "plan";
+  /** Enable Gemini sandbox mode when the host is configured for it. Disabled by default. */
+  sandbox?: boolean;
+  /** Extra args appended after core args. */
+  extraArgs?: string[];
+  spawnImpl?: SpawnLike;
+}
+
 // ---------------------------------------------------------------------------
 // Generic factory
 // ---------------------------------------------------------------------------
@@ -231,6 +481,8 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
   const verifyTimeoutMs = options.verifyTimeoutMs ?? 60_000;
   const adapterId = `agent-cli:${options.adapterIdSuffix ?? options.command}`;
   const supportsJsonOutput = options.supportsJsonOutput === true;
+  const supportsUsageSettlement =
+    supportsJsonOutput || options.command === "codex" || options.command === "gemini";
 
   const adapter: MartinAdapter = {
     adapterId,
@@ -242,10 +494,10 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
       transport: "cli",
       capabilities: createAdapterCapabilities({
         preflight: true,
-        usageSettlement: supportsJsonOutput,
+        usageSettlement: supportsUsageSettlement,
         diffArtifacts: true,
         structuredErrors: true,
-        cachingSignals: supportsJsonOutput
+        cachingSignals: supportsUsageSettlement
       })
     },
 
@@ -275,10 +527,6 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
 
       const args = options.argsBuilder(prompt);
       const stdinData = options.stdinBuilder?.(prompt);
-      const repoRoot = (request.context as { repoRoot?: string }).repoRoot;
-      const baselineChangedFiles = repoRoot
-        ? new Set(await readGitChangedFiles(repoRoot, 5_000, options.spawnImpl))
-        : undefined;
 
       const agentResult = await runSubprocess(options.command, args, {
         cwd: workingDirectory,
@@ -333,16 +581,54 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
         }
       }
 
-      const agentText = parsed?.result ?? agentResult.stdout.trim();
+      const codexJsonlResult =
+        !supportsJsonOutput && options.command === "codex"
+          ? extractCodexJsonlResult(agentResult.stdout, options.model)
+          : undefined;
+      const geminiJsonResult =
+        !supportsJsonOutput && options.command === "gemini"
+          ? extractGeminiJsonResult(agentResult.stdout, options.model)
+          : undefined;
+      const agentText =
+        codexJsonlResult?.summary ??
+        geminiJsonResult?.summary ??
+        parsed?.result ??
+        agentResult.stdout.trim();
       const summary = truncate(agentText, 2000);
       const usage = parsed?.usage
         ? extractUsage(parsed, options.model)
-        : normalizeUsage({
+        : codexJsonlResult?.usage ??
+          geminiJsonResult?.usage ??
+          normalizeUsage({
             actualUsd: estimatedUsage.actualUsd,
             estimatedUsd: estimatedUsage.actualUsd,
             tokensIn: estimatedUsage.tokensIn,
             tokensOut: Math.max(estimatedUsage.tokensOut, Math.ceil(agentText.length / 4)),
-            provenance: "estimated"
+            provenance: "estimated",
+            providerSettlement:
+              options.command === "codex"
+                ? {
+                    providerId: "codex",
+                    model: options.model ?? "codex",
+                    transport: "cli",
+                    source: "estimated_fallback",
+                    inputTokens: estimatedUsage.tokensIn,
+                    outputTokens: Math.max(estimatedUsage.tokensOut, Math.ceil(agentText.length / 4)),
+                    rawUsageAvailable: false,
+                    settledAt: new Date().toISOString()
+                  }
+                : options.command === "gemini"
+                  ? {
+                      providerId: "gemini",
+                      model: options.model ?? "flash",
+                      transport: "cli",
+                      source: "estimated_fallback",
+                      inputTokens: estimatedUsage.tokensIn,
+                      outputTokens: Math.max(estimatedUsage.tokensOut, Math.ceil(agentText.length / 4)),
+                      rawUsageAvailable: false,
+                      settledAt: new Date().toISOString()
+                    }
+                : undefined
           });
 
       const verificationStack = (request.context as { verificationStack?: Array<{ command: string; type: string; fastFail?: boolean }> }).verificationStack;
@@ -354,34 +640,41 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
         options.spawnImpl
       );
 
+      // Check for zero-diff (agent ran but made no file changes)
+      const repoRoot = (request.context as { repoRoot?: string }).repoRoot;
+      let noDiff = false;
+      if (repoRoot) {
+        noDiff = await checkNoDiff(repoRoot);
+      }
+
       // Extract structured errors from stderr/stdout for better failure context
       const structuredErrors = normalizeStructuredErrors(
         extractStructuredErrors(agentResult.stderr, agentResult.stdout)
       );
-      const changedFiles = repoRoot
-        ? (await readGitChangedFiles(repoRoot, 5_000, options.spawnImpl)).filter(
-            (file) => !(baselineChangedFiles?.has(file) ?? false)
-          )
-        : [];
-      const executionArtifacts = repoRoot ? { changedFiles } : undefined;
-      const noDiff = repoRoot ? changedFiles.length === 0 : false;
+      const executionArtifacts = repoRoot
+        ? await readGitExecutionArtifacts(repoRoot, 5000, options.spawnImpl)
+        : undefined;
 
       // Scope contract enforcement: check touched files against allowedPaths/deniedPaths
       let scopeViolations: string[] = [];
       const scopeCtx = request.context as { allowedPaths?: string[]; deniedPaths?: string[] };
-      if (repoRoot && executionArtifacts && (scopeCtx.allowedPaths?.length || scopeCtx.deniedPaths?.length)) {
-        const allowed = scopeCtx.allowedPaths ?? [];
-        const denied = scopeCtx.deniedPaths ?? [];
+      if (repoRoot && (scopeCtx.allowedPaths?.length || scopeCtx.deniedPaths?.length)) {
+        const diffResult = await runSubprocess("git", ["diff", "--name-only", "HEAD"], { cwd: repoRoot, timeoutMs: 5000 });
+        if (diffResult.exitCode === 0 && diffResult.stdout.trim()) {
+          const touchedFiles = diffResult.stdout.trim().split("\n").filter(Boolean);
+          const allowed = scopeCtx.allowedPaths ?? [];
+          const denied = scopeCtx.deniedPaths ?? [];
 
-        for (const file of executionArtifacts.changedFiles) {
-          // Check denied patterns (simple glob-like: prefix or exact)
-          if (denied.some((d) => file === d || file.startsWith(d.replace(/\*+$/, "")))) {
-            scopeViolations.push(file);
-            continue;
-          }
-          // If allowedPaths specified, file must match at least one
-          if (allowed.length > 0 && !allowed.some((a) => file === a || file.startsWith(a.replace(/\*+$/, "")))) {
-            scopeViolations.push(file);
+          for (const file of touchedFiles) {
+            // Check denied patterns (simple glob-like: prefix or exact)
+            if (denied.some((d) => file === d || file.startsWith(d.replace(/\*+$/, "")))) {
+              scopeViolations.push(file);
+              continue;
+            }
+            // If allowedPaths specified, file must match at least one
+            if (allowed.length > 0 && !allowed.some((a) => file === a || file.startsWith(a.replace(/\*+$/, "")))) {
+              scopeViolations.push(file);
+            }
           }
         }
       }
@@ -399,7 +692,7 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
           status: "completed",
           summary,
           usage,
-          verification,
+          verification: { passed: true, summary: verification.summary },
           ...(executionArtifacts
             ? {
                 execution: {
@@ -459,7 +752,7 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
           ? `${summary}${errorBlock}${scopeViolations.length > 0 ? `\nScope violations: ${scopeViolations.join(", ")}` : ""}`
           : summary,
         usage,
-        verification,
+        verification: { passed: false, summary: verification.summary },
         ...(executionArtifacts
           ? {
               execution: {
@@ -499,7 +792,7 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
 // ---------------------------------------------------------------------------
 
 /**
- * Spawns `claude --output-format json --print "<prompt>" [extraArgs]`.
+ * Spawns `claude --output-format json --print "<prompt>" --dangerously-skip-permissions [extraArgs]`.
  *
  * The --output-format json flag causes Claude CLI to return structured JSON
  * including real token usage counts, enabling accurate cost tracking.
@@ -525,6 +818,7 @@ export function createClaudeCliAdapter(options: ClaudeCliAdapterOptions = {}): M
       "--output-format",
       "json",
       "--print",
+      "--dangerously-skip-permissions",
       ...modelArgs,
       ...extraArgs
     ],
@@ -568,11 +862,56 @@ export function createCodexCliAdapter(options: CodexCliAdapterOptions = {}): Mar
       workingDirectory,
       "--sandbox",
       sandbox,
+      "--json",
       "--color",
       "never",
       ...modelArgs,
       ...extraArgs,
       "-"
+    ],
+    stdinBuilder: (prompt) => prompt
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Pre-configured: Gemini CLI
+// ---------------------------------------------------------------------------
+
+/**
+ * Spawns `gemini --model <model> --prompt "" --approval-mode <mode> --output-format json [...]`.
+ *
+ * The prompt is delivered via stdin while forcing headless mode with `--prompt ""`,
+ * which keeps large MartinLoop prompts off the command line on Windows.
+ *
+ * Requires the Gemini CLI to be installed and authenticated:
+ *   npm install -g @google/gemini-cli
+ */
+export function createGeminiCliAdapter(options: GeminiCliAdapterOptions = {}): MartinAdapter {
+  const model = options.model ?? "flash";
+  const approvalMode = options.approvalMode ?? "yolo";
+  const extraArgs = options.extraArgs ?? [];
+
+  return createAgentCliAdapter({
+    command: "gemini",
+    adapterIdSuffix: "gemini",
+    model,
+    label: options.label ?? "Gemini CLI adapter",
+    workingDirectory: options.workingDirectory,
+    timeoutMs: options.timeoutMs,
+    verifyTimeoutMs: options.verifyTimeoutMs,
+    supportsJsonOutput: false,
+    spawnImpl: options.spawnImpl,
+    argsBuilder: () => [
+      "--model",
+      model,
+      "--prompt",
+      "",
+      "--approval-mode",
+      approvalMode,
+      ...(options.sandbox ? ["--sandbox"] : []),
+      "--output-format",
+      "json",
+      ...extraArgs
     ],
     stdinBuilder: (prompt) => prompt
   });
@@ -798,3 +1137,7 @@ function extractStructuredErrors(stderr: string, stdout: string): StructuredErro
   return errors.slice(0, 10); // cap at 10 to avoid bloating prompts
 }
 
+async function checkNoDiff(repoRoot: string): Promise<boolean> {
+  const result = await runSubprocess("git", ["diff", "--name-only", "HEAD"], { cwd: repoRoot, timeoutMs: 5000 });
+  return result.exitCode === 0 && result.stdout.trim().length === 0;
+}

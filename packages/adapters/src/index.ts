@@ -14,9 +14,11 @@ export {
   createAgentCliAdapter,
   createClaudeCliAdapter,
   createCodexCliAdapter,
+  createGeminiCliAdapter,
   type AgentCliAdapterOptions,
   type ClaudeCliAdapterOptions,
   type CodexCliAdapterOptions,
+  type GeminiCliAdapterOptions,
   type CliArgsBuilder
 } from "./claude-cli.js";
 export {
@@ -28,8 +30,17 @@ export {
   type OpenAiCompatibleAdapterOptions
 } from "./openai-compatible.js";
 export {
+  detectCodexHostPlatform,
+  diagnoseCodexHost,
+  probeCodexLaunch,
+  resolveCliCommandAvailability,
+  type CliCommandAvailability,
+  type CodexHostDiagnosis,
+  type CodexHostPlatform,
+  type CodexLaunchProbeResult
+} from "./codex-launcher.js";
+export {
   createSpawnPlan,
-  readGitChangedFiles,
   type SpawnLike,
   type SpawnPlan,
   type SubprocessResult,

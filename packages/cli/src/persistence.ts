@@ -2,6 +2,7 @@ import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+import { writeReceiptIntegrityMaterial } from "@martin/core";
 import type { LoopRecord } from "@martin/contracts";
 
 export type PersistedLoopState = {
@@ -36,7 +37,7 @@ export function resolveRunsRoot(env: NodeJS.ProcessEnv = process.env): string {
  * Uses the Phase 3 flat path: ~/.martin/runs/<loopId>/
  *   - contract.json   (task + budget, immutable)
  *   - state.json      (status, cost, metrics summary)
- *   - events.jsonl    (loop events, one JSON per line; the core ledger stays authoritative)
+ *   - ledger.jsonl    (all events, one JSON per line)
  *   - attempts/       (per-attempt JSON files)
  */
 export async function persistLoopArtifacts(
@@ -80,6 +81,21 @@ export async function persistLoopArtifacts(
     `${JSON.stringify({ loopId: loop.loopId, status: loop.status, cost: loop.cost, updatedAt: loop.updatedAt })}\n`,
     "utf8"
   );
+
+  await writeReceiptIntegrityMaterial({
+    runId: loop.loopId,
+    runsRoot,
+    loopRecord: loop,
+    ledgerEntries: loop.events,
+    scope:
+      loop.receiptScope ??
+      {
+        ...(loop.task.repoRoot ? { repoRoot: loop.task.repoRoot } : {}),
+        ...(loop.task.repoRoot ? { workingDirectory: loop.task.repoRoot } : {}),
+        runsRoot
+      },
+    signedAt: loop.updatedAt
+  });
 }
 
 function buildLoopState(loop: LoopRecord): PersistedLoopState {

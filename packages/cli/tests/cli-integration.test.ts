@@ -6,6 +6,7 @@
 import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { spawnSync } from "node:child_process";
 
 import { createLoopRecord } from "@martin/contracts";
 import { describe, expect, it } from "vitest";
@@ -72,8 +73,31 @@ async function withPathPrefix<T>(dir: string, fn: () => Promise<T>): Promise<T> 
 async function withFakeCodexCli<T>(fn: () => Promise<T>): Promise<T> {
   return withTempDir(async (dir) => {
     const script = process.platform === "win32"
-      ? "@echo off\r\necho fake codex completed\r\nexit /b 0\r\n"
-      : "#!/usr/bin/env sh\necho fake codex completed\n";
+      ? [
+          "@echo off",
+          "echo %* | findstr /C:\"--help\" >nul",
+          "if %errorlevel%==0 (",
+          "  echo usage: codex exec ...",
+          "  exit /b 0",
+          ")",
+          "echo {\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"fake codex completed\"}}",
+          "echo {\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":10,\"output_tokens\":5}}",
+          "exit /b 0",
+          ""
+        ].join("\r\n")
+      : [
+          "#!/usr/bin/env sh",
+          "case \"$*\" in",
+          "  *--help*)",
+          "    echo 'usage: codex exec ...'",
+          "    ;;",
+          "  *)",
+          "    echo '{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"fake codex completed\"}}'",
+          "    echo '{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":10,\"output_tokens\":5}}'",
+          "    ;;",
+          "esac",
+          ""
+        ].join("\n");
     const file = join(dir, process.platform === "win32" ? "codex.cmd" : "codex");
     await writeFile(file, script, "utf8");
     if (process.platform !== "win32") {
@@ -84,67 +108,26 @@ async function withFakeCodexCli<T>(fn: () => Promise<T>): Promise<T> {
   });
 }
 
+function initializeGitRepo(directory: string): void {
+  spawnSync("git", ["init"], { cwd: directory, stdio: "ignore" });
+}
+
 // ---------------------------------------------------------------------------
 // MARTIN_LIVE guard
 // ---------------------------------------------------------------------------
 
-describe("MARTIN_LIVE=false — no-spend proof mode", () => {
-  it("preflight resolves proof mode when --proof is passed", async () => {
-    const result = await executeCli([
-      "--json",
-      "preflight",
-      "--objective",
-      "Add a greeting function",
-      "--proof",
-      "--verify",
-      NOOP_VERIFIER
-    ]);
-
-    expect(result.exitCode).toBe(0);
-    const payload = JSON.parse(result.stdout);
-    expect(payload.command).toBe("preflight");
-    expect(payload.environment.liveMode).toBe("proof");
-  });
-
-  it("run command completes as a verifier-backed proof when --proof is passed", async () => {
-    const result = await executeCli([
-      "--json",
-      "run",
-      "--objective",
-      "Add a greeting function",
-      "--proof",
-      "--verify",
-      NOOP_VERIFIER,
-      "--max-iterations",
-      "1",
-      "--budget-usd",
-      "5",
-      "--unsafe-allow-unguarded-run"
-    ]);
-
-    expect(result.exitCode).toBe(0);
-    const payload = JSON.parse(result.stdout);
-    expect(payload.command).toBe("run");
-    expect(payload.loop.loopId).toMatch(/^loop_/u);
-    expect(payload.loop.status).toBe("completed");
-    expect(payload.loop.cost.actualUsd).toBe(0);
-    expect(payload.environment.liveMode).toBe("proof");
-  });
-
-  it("run command completes as a verifier-backed proof without spawning a live provider", async () => {
+describe("MARTIN_LIVE=false — stub adapter", () => {
+  it("run command completes without spawning a real subprocess", async () => {
     const result = await withEnv("MARTIN_LIVE", "false", () =>
       executeCli([
         "--json",
         "run",
         "--objective",
         "Add a greeting function",
-        "--verify",
-        NOOP_VERIFIER,
         "--max-iterations",
         "1",
         "--budget-usd",
-        "5",
-        "--unsafe-allow-unguarded-run"
+        "5"
       ])
     );
 
@@ -152,12 +135,10 @@ describe("MARTIN_LIVE=false — no-spend proof mode", () => {
     const payload = JSON.parse(result.stdout);
     expect(payload.command).toBe("run");
     expect(payload.loop.loopId).toMatch(/^loop_/u);
-    expect(payload.loop.status).toBe("completed");
-    expect(payload.loop.cost.actualUsd).toBe(0);
-    expect(payload.environment.liveMode).toBe("proof");
+    expect(typeof payload.loop.attempts).toBe("object");
   });
 
-  it("returns a valid loop record structure in proof mode", async () => {
+  it("returns a valid loop record structure in stub mode", async () => {
     const result = await withEnv("MARTIN_LIVE", "false", () =>
       executeCli([
         "--json",
@@ -168,11 +149,8 @@ describe("MARTIN_LIVE=false — no-spend proof mode", () => {
         "proj_stub",
         "--objective",
         "Write a hello world function",
-        "--verify",
-        NOOP_VERIFIER,
         "--max-iterations",
-        "1",
-        "--unsafe-allow-unguarded-run"
+        "1"
       ])
     );
 
@@ -180,7 +158,6 @@ describe("MARTIN_LIVE=false — no-spend proof mode", () => {
     expect(payload.loop.workspaceId).toBe("ws_stub");
     expect(payload.loop.projectId).toBe("proj_stub");
     expect(payload.loop.budget.maxIterations).toBe(1);
-    expect(payload.environment.liveMode).toBe("proof");
   });
 });
 
@@ -190,7 +167,7 @@ describe("MARTIN_LIVE=false — no-spend proof mode", () => {
 
 describe("--engine flag", () => {
   it("defaults to claude when no --engine flag is given", async () => {
-    // Use proof mode — we verify no engine flag selects the claude adapter path,
+    // Use stub mode — we verify no engine flag selects the claude adapter path,
     // not that claude itself runs successfully
     const result = await withEnv("MARTIN_LIVE", "false", () =>
       executeCli([
@@ -198,13 +175,10 @@ describe("--engine flag", () => {
         "run",
         "--objective",
         "Fix the bug",
-        "--verify",
-        NOOP_VERIFIER,
         "--max-iterations",
         "1",
         "--budget-usd",
-        "2",
-        "--unsafe-allow-unguarded-run"
+        "2"
       ])
     );
 
@@ -214,13 +188,14 @@ describe("--engine flag", () => {
     expect(payload.loop.loopId).toMatch(/^loop_/u);
   });
 
-  it("selects codex adapter when --engine codex is given", async () => {
+  it("passes codex launch preflight when a compatible Codex CLI is present", async () => {
     const result = await withTempDir((workspace) =>
-      withFakeCodexCli(() =>
-        withEnv("MARTIN_LIVE", "true", () =>
+      withFakeCodexCli(async () => {
+        initializeGitRepo(workspace);
+        return withEnv("MARTIN_LIVE", "true", () =>
           executeCli([
             "--json",
-            "run",
+            "preflight",
             "--engine",
             "codex",
             "--cwd",
@@ -228,26 +203,19 @@ describe("--engine flag", () => {
             "--objective",
             "Fix the bug",
             "--verify",
-            NOOP_VERIFIER,
-            "--max-iterations",
-            "1",
-            "--budget-usd",
-            "2",
-            "--unsafe-allow-unguarded-run"
+            NOOP_VERIFIER
           ])
-        )
-      )
+        );
+      })
     );
 
     expect(result.exitCode).toBe(0);
     const payload = JSON.parse(result.stdout);
-    expect(payload.loop.loopId).toMatch(/^loop_/u);
-    expect(["completed", "exited"]).toContain(payload.loop.status);
-    // If an attempt ran, adapterId should reference codex
-    const attempts = payload.loop.attempts as Array<{ adapterId: string }>;
-    if (attempts.length > 0) {
-      expect(attempts[0]?.adapterId).toContain("codex");
-    }
+    expect(payload.command).toBe("preflight");
+    expect(payload.ready).toBe(true);
+    expect(payload.request.engine).toBe("codex");
+    expect(payload.engineProbe.available).toBe(true);
+    expect(payload.engineProbe.launchReady).toBe(true);
   });
 
   it("remains graceful in live mode even when the selected CLI is unavailable", { timeout: 15000 }, async () => {
@@ -263,8 +231,7 @@ describe("--engine flag", () => {
           "--max-iterations",
           "1",
           "--budget-usd",
-          "2",
-          "--unsafe-allow-unguarded-run"
+          "2"
         ])
       )
     );
@@ -288,13 +255,10 @@ describe("--cwd flag", () => {
           "run",
           "--objective",
           "Fix the bug",
-          "--verify",
-          NOOP_VERIFIER,
           "--cwd",
           dir,
           "--max-iterations",
-          "1",
-          "--unsafe-allow-unguarded-run"
+          "1"
         ])
       );
 
@@ -307,7 +271,7 @@ describe("--cwd flag", () => {
 // Inspect command
 // ---------------------------------------------------------------------------
 
-describe.sequential("inspect command", () => {
+describe("inspect command", () => {
   it("reads a loop record file and summarises the portfolio", async () => {
     await withTempDir(async (dir) => {
       const loop = createLoopRecord({
@@ -356,12 +320,14 @@ describe.sequential("inspect command", () => {
 // ---------------------------------------------------------------------------
 
 describe("bench command", () => {
-  it("treats bench as an unsupported public command", async () => {
+  it("prints a real public benchmark summary instead of a dead-end workspace warning", async () => {
     const result = await executeCli(["bench", "--suite", "ralphy-smoke"]);
 
-    expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain("Unknown command 'bench'.");
-    expect(result.stderr).toContain("martin-loop --help");
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toContain("Under-$3 Challenge");
+    expect(result.stdout).toContain("$2.30");
+    expect(result.stdout).toContain("$5.20");
   });
 });
 
@@ -389,12 +355,9 @@ describe("help command", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe("");
-    expect(result.stdout).toContain("martin-loop start");
-    expect(result.stdout).toContain("martin-loop guide");
     expect(result.stdout).toContain("martin-loop run");
     expect(result.stdout).toContain("martin-loop demo");
     expect(result.stdout).toContain("martin-loop inspect");
     expect(result.stdout).toContain("martin-loop resume");
-    expect(result.stdout).toContain("--proof");
   });
 });

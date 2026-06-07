@@ -1,3 +1,5 @@
+import type { ReceiptIntegrityState } from "@martin/contracts";
+
 export interface MartinProofCardInput {
   loopId: string;
   objective: string;
@@ -11,6 +13,7 @@ export interface MartinProofCardInput {
   haltReason: string;
   evidenceBoundaryNotes: string | readonly string[];
   generatedAt: string;
+  receiptIntegrityState?: ReceiptIntegrityState;
 }
 
 export interface MartinProofCardField {
@@ -29,6 +32,8 @@ export interface MartinProofCard {
 const COMPLETE_EVIDENCE_LINE = "Martin stopped Ralph here.";
 const INCOMPLETE_EVIDENCE_LINE =
   "Incomplete Martin proof: missing budget, rollback, or verifier evidence.";
+const UNSIGNED_EVIDENCE_LINE = "Receipt integrity unavailable: Martin proof is not yet trustworthy.";
+const TAMPERED_EVIDENCE_LINE = "Receipt integrity failed: Martin proof is not trustworthy.";
 
 const FIELD_LABELS = {
   loopId: "Loop ID",
@@ -40,6 +45,7 @@ const FIELD_LABELS = {
   budget: "Budget",
   attempts: "Attempts",
   rollbackStatus: "Rollback",
+  receiptIntegrityState: "Receipt integrity",
   haltReason: "Halt reason",
   evidenceBoundaryNotes: "Evidence boundary",
   generatedAt: "Generated at"
@@ -62,6 +68,14 @@ export function buildMartinProofCard(input: MartinProofCardInput): MartinProofCa
     { label: FIELD_LABELS.budget, value: sanitizeText(input.budget) },
     { label: FIELD_LABELS.attempts, value: sanitizeText(input.attempts) },
     { label: FIELD_LABELS.rollbackStatus, value: sanitizeText(input.rollbackStatus) },
+    ...(input.receiptIntegrityState
+      ? [
+          {
+            label: FIELD_LABELS.receiptIntegrityState,
+            value: sanitizeText(input.receiptIntegrityState)
+          }
+        ]
+      : []),
     { label: FIELD_LABELS.haltReason, value: sanitizeText(input.haltReason) },
     {
       label: FIELD_LABELS.evidenceBoundaryNotes,
@@ -70,15 +84,26 @@ export function buildMartinProofCard(input: MartinProofCardInput): MartinProofCa
     { label: FIELD_LABELS.generatedAt, value: generatedAt }
   ];
 
+  const trustworthyReceipt =
+    input.receiptIntegrityState === undefined || input.receiptIntegrityState === "verified";
   const completeEvidence =
+    trustworthyReceipt &&
     hasEvidence(input.budget) &&
     hasEvidence(input.rollbackStatus) &&
     hasEvidence(input.verifierStatus);
+  const evidenceLine =
+    input.receiptIntegrityState === "tamper_detected"
+      ? TAMPERED_EVIDENCE_LINE
+      : input.receiptIntegrityState === "unsigned"
+        ? UNSIGNED_EVIDENCE_LINE
+        : completeEvidence
+          ? COMPLETE_EVIDENCE_LINE
+          : INCOMPLETE_EVIDENCE_LINE;
 
   return {
     title: "Martin Loop Proof Card",
     fields,
-    evidenceLine: completeEvidence ? COMPLETE_EVIDENCE_LINE : INCOMPLETE_EVIDENCE_LINE,
+    evidenceLine,
     generatedAt,
     completeEvidence
   };

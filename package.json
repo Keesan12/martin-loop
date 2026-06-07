@@ -11,7 +11,6 @@
     "ai-coding-agents",
     "agent-runtime",
     "agent-governance",
-    "control-plane",
     "budget-enforcement",
     "verifier-gates",
     "audit-trail",
@@ -33,6 +32,7 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
+    "martin": "./dist/bin/martin-loop.js",
     "martin-loop": "./dist/bin/martin-loop.js"
   },
   "exports": {
@@ -46,13 +46,14 @@
     "dist",
     "README.md",
     "CODE_OF_CONDUCT.md",
-    "demo/seeded-workspace"
+    "demo/seeded-workspace",
+    "benchmarks/fixtures"
   ],
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
-    "build": "pnpm --filter @martin/cli build && pnpm --filter @martinloop/mcp build && node ./scripts/build-public-facade.mjs",
+    "build": "pnpm --filter @martin/contracts build && pnpm --filter @martin/core build && pnpm --filter @martin/adapters build && pnpm --filter @martin/benchmarks build && pnpm --filter @martin/cli build && pnpm --filter @martinloop/mcp build && node ./scripts/build-public-facade.mjs",
     "prepack": "pnpm build && node ./scripts/root-release-guard.mjs --pack",
     "test": "pnpm -r --workspace-concurrency=1 test && node --test scripts/tests/*.mjs",
     "lint": "pnpm -r lint",
@@ -66,8 +67,9 @@
     "release:validate-local": "node ./scripts/rc-validation.mjs",
     "release:validate-local:install": "node ./scripts/rc-validation.mjs --install",
     "release:root:guard": "node ./scripts/root-release-guard.mjs --pack",
-    "run:cli": "pnpm --filter @martin/cli dev",
-    "release:validate:platforms": "node ./scripts/release-matrix.mjs"
+    "release:validate:platforms": "node ./scripts/release-matrix.mjs",
+    "release:matrix:local": "node ./scripts/release-matrix.mjs",
+    "run:cli": "pnpm --filter @martin/cli dev"
   },
   "devDependencies": {
     "@types/node": "^22.13.10",
@@ -86,7 +88,8 @@
     "ts-morph": "^21.0.0"
   },
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "benchmarks"
   ],
   "pnpm": {
     "overrides": {
@@ -95,6 +98,7 @@
       "fast-uri": "^3.1.2",
       "hono": "^4.12.21",
       "ip-address": "^10.1.1",
+      "postcss": "^8.5.15",
       "qs": "^6.15.2",
       "vite": "^7.3.2"
     }

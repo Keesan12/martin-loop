@@ -4,6 +4,7 @@ import {
   buildCostSnapshot,
   buildEventSummaries,
   buildLoopPreview,
+  resolveReceiptIntegrity,
   buildSuggestedPromptNames,
   buildSuggestedResourceUris,
   buildVerificationSummary
@@ -13,10 +14,10 @@ import {
   readAttemptArtifactFiles,
   readLedgerEvents
 } from "./run-store.js";
-import { resolveTrustedLoopRepoRoot } from "../server-validation.js";
 import { readRunControlState } from "./run-controls.js";
 import { martinEvalTool } from "./eval.js";
 import { assessRunRisk, inspectRepoSignals } from "./workflow-governance.js";
+import type { ReceiptIntegritySummary } from "@martin/contracts";
 
 export interface MartinRunDossierInput {
   file?: string;
@@ -32,6 +33,7 @@ export interface MartinRunDossierOutput {
   loop: ReturnType<typeof buildLoopPreview>;
   budget: ReturnType<typeof buildBudgetSnapshot>;
   cost: ReturnType<typeof buildCostSnapshot>;
+  receiptIntegrity: ReceiptIntegritySummary;
   attempts: Array<{
     index: number;
     attemptId?: string;
@@ -78,7 +80,7 @@ export async function martinRunDossierTool(
   const verification = buildVerificationSummary(detail.loop, ledgerEvents);
   const control = await readRunControlState(detail);
   const evaluation = await martinEvalTool(input);
-  const repoRoot = resolveTrustedLoopRepoRoot(detail.loop.task?.repoRoot);
+  const repoRoot = detail.loop.task?.repoRoot ?? process.cwd();
   const risk = assessRunRisk({
     objective: detail.loop.task?.objective ?? detail.loop.loopId,
     allowedPaths: detail.loop.task?.allowedPaths ?? [],
@@ -127,6 +129,7 @@ export async function martinRunDossierTool(
     loop: buildLoopPreview(detail.loop),
     budget: buildBudgetSnapshot(detail.loop.budget),
     cost: buildCostSnapshot(detail.loop.cost),
+    receiptIntegrity: resolveReceiptIntegrity(detail.loop),
     attempts,
     verification,
     artifacts: buildArtifactSummary(detail.loop),

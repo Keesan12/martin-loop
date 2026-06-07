@@ -1,8 +1,15 @@
-# @martinloop/mcp 0.2.7
+# @martinloop/mcp v0.2.7
 
 `@martinloop/mcp@0.2.7` is a usability and review release for the standalone MartinLoop MCP server.
 
 The package already had the core pieces for governed coding work. This release makes that flow easier to adopt in real hosts and harder to use incorrectly.
+
+## Public Release Train
+
+- `0.1.4` operator foundation
+- `0.2.0` cockpit expansion
+- `0.2.5` public MCP package line
+- `0.2.7` usability and review release
 
 ## What changed
 
@@ -10,6 +17,12 @@ The package already had the core pieces for governed coding work. This release m
 - guide resources now cover command mapping, IDE onboarding, and the operating rules MartinLoop expects hosts to follow
 - the review loop is easier to navigate through dossier, eval, triage, and publish-readiness helpers
 - package metadata, server metadata, and public docs now describe the same `0.2.7` MCP surface
+
+## Current cockpit surface
+
+- read-only inspection still includes `martin_list_runs`, `martin_get_run`, `martin_get_attempt`, `martin_get_verification_results`, and `martin_run_dossier`
+- run triage remains part of the public cockpit through `martin_triage_runs` and the run triage flow
+- the package continues to ship resources, resource templates, and prompts alongside the write-capable `martin_run` entrypoint
 
 ## Why it matters
 
@@ -30,9 +43,10 @@ If an MCP host is going to drive real coding work, it should not have to guess w
 For a fresh machine, start with the root CLI first:
 
 ```sh
-npx martin-loop start
-npx martin-loop tour
+npx martin-loop demo
+cd martin-loop-demo
 npx martin-loop doctor
+npx martin-loop session-start
 ```
 
 Then install the standalone server:

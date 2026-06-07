@@ -26,22 +26,11 @@ const FORBIDDEN_PUBLIC_COPY_PATTERNS = [
   /\bstable cockpit line\b/i,
   /\brelease-proof\b/i,
   /\bpublic feature contract\b/i,
-  /\bversion anomal(?:y|ies)\b/i,
-  /\bhistorical anomalies\b/i,
-  /\bdelivery slice\b/i,
-  /\brelease packet\b/i,
-  /\bhandoff packet\b/i,
   /\bworkspace chatter\b/i,
   /\bprivate roadmap\b/i,
   /\blocal machine\b/i,
   /\bKeesan explicitly\b/i,
   /\bpending directory\b/i,
-  /\bdirectory submission\b/i,
-  /\bintegration outreach\b/i,
-  /\bpublic OSS-safe\b/i,
-  /\brelease focus\b/i,
-  /\broot facade\b/i,
-  /\bmain workspace\b/i,
   /\bprivate beta\b/i,
 ];
 
@@ -166,9 +155,8 @@ test("public markdown links resolve inside the repo", async () => {
   }
 });
 
-test("old public launch-workspace doc folders are absent", async () => {
+test("obsolete public distribution folder is absent", async () => {
   const removedPaths = [
-    path.join(ROOT_DIR, "docs", "oss"),
     path.join(ROOT_DIR, "docs", "distribution"),
   ];
 

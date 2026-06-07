@@ -211,7 +211,7 @@ export interface MartinReadResourceInput {
   uri: string;
   runsDir?: string;
   workingDirectory?: string;
-  engine?: "claude" | "codex";
+  engine?: "claude" | "codex" | "gemini";
 }
 
 export function listMartinResources(): { resources: Resource[] } {

@@ -1,0 +1,658 @@
+{
+  "suiteId": "ralphy-engineering-50",
+  "label": "Ralph Loop Engineering 50",
+  "description": "Fifty common engineering loop scenarios that stress Martin Loop against Ralph-style retry behavior.",
+  "baselineAdapter": "ralphy",
+  "cases": [
+    {
+      "caseId": "verification-flaky-ci",
+      "label": "Repair flaky CI gate",
+      "task": {
+        "title": "Repair flaky CI gate",
+        "objective": "Recover a red CI gate without repeating the same unverifiable patch.",
+        "verificationPlan": ["pnpm test", "pnpm build"]
+      },
+      "budget": { "maxUsd": 8, "softLimitUsd": 4, "maxIterations": 3, "maxTokens": 20000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["verification", "ci"],
+      "metadata": { "focusArea": "verification", "scenarioId": "verified_repair_fast" }
+    },
+    {
+      "caseId": "verification-unit-test-flake",
+      "label": "Stabilize flaky unit test",
+      "task": {
+        "title": "Stabilize flaky unit test",
+        "objective": "Land a small deterministic test repair instead of iterating on the same flake.",
+        "verificationPlan": ["pnpm exec vitest run", "pnpm lint"]
+      },
+      "budget": { "maxUsd": 8, "softLimitUsd": 4, "maxIterations": 3, "maxTokens": 20000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["verification", "test"],
+      "metadata": { "focusArea": "verification", "scenarioId": "verified_repair_fast" }
+    },
+    {
+      "caseId": "verification-e2e-timing",
+      "label": "Fix E2E timing regression",
+      "task": {
+        "title": "Fix E2E timing regression",
+        "objective": "Recover a browser test loop where timing changes keep regressing the same user flow.",
+        "verificationPlan": ["pnpm exec playwright test", "pnpm build"]
+      },
+      "budget": { "maxUsd": 9, "softLimitUsd": 5, "maxIterations": 4, "maxTokens": 24000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["verification", "e2e"],
+      "metadata": { "focusArea": "verification", "scenarioId": "slow_verified_recovery" }
+    },
+    {
+      "caseId": "verification-snapshot-churn",
+      "label": "Resolve snapshot churn",
+      "task": {
+        "title": "Resolve snapshot churn",
+        "objective": "Reduce an overbroad UI test patch into the minimal snapshot correction.",
+        "verificationPlan": ["pnpm test", "pnpm lint"]
+      },
+      "budget": { "maxUsd": 8, "softLimitUsd": 4, "maxIterations": 3, "maxTokens": 22000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["verification", "snapshot"],
+      "metadata": { "focusArea": "verification", "scenarioId": "narrow_scope_recovery" }
+    },
+    {
+      "caseId": "verification-typecheck-regression",
+      "label": "Recover typecheck regression",
+      "task": {
+        "title": "Recover typecheck regression",
+        "objective": "Fix a rolling typecheck break without widening the patch on every retry.",
+        "verificationPlan": ["pnpm typecheck", "pnpm test"]
+      },
+      "budget": { "maxUsd": 9, "softLimitUsd": 5, "maxIterations": 4, "maxTokens": 24000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["verification", "typecheck"],
+      "metadata": { "focusArea": "verification", "scenarioId": "slow_verified_recovery" }
+    },
+    {
+      "caseId": "budget-api-guardrail",
+      "label": "Trip API budget guardrail",
+      "task": {
+        "title": "Trip API budget guardrail",
+        "objective": "Exit the loop early when retries stop making economic sense for an API repair.",
+        "verificationPlan": ["pnpm test"]
+      },
+      "budget": { "maxUsd": 6, "softLimitUsd": 3, "maxIterations": 2, "maxTokens": 14000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["budget-governance", "api"],
+      "metadata": { "focusArea": "budget-governance", "scenarioId": "budget_guard_exit" }
+    },
+    {
+      "caseId": "budget-refactor-cost-creep",
+      "label": "Stop refactor cost creep",
+      "task": {
+        "title": "Stop refactor cost creep",
+        "objective": "Prevent a cleanup loop from turning into a runaway spend problem.",
+        "verificationPlan": ["pnpm lint", "pnpm typecheck"]
+      },
+      "budget": { "maxUsd": 6, "softLimitUsd": 3, "maxIterations": 2, "maxTokens": 14000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["budget-governance", "refactor"],
+      "metadata": { "focusArea": "budget-governance", "scenarioId": "budget_guard_exit" }
+    },
+    {
+      "caseId": "budget-retry-storm",
+      "label": "Contain retry storm",
+      "task": {
+        "title": "Contain retry storm",
+        "objective": "Break a retry storm before it keeps burning tokens on the same failing surface.",
+        "verificationPlan": ["pnpm test"]
+      },
+      "budget": { "maxUsd": 6, "softLimitUsd": 3, "maxIterations": 2, "maxTokens": 14000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["budget-governance", "retry"],
+      "metadata": { "focusArea": "budget-governance", "scenarioId": "budget_guard_exit" }
+    },
+    {
+      "caseId": "budget-verifier-dead-end",
+      "label": "Exit verifier dead end",
+      "task": {
+        "title": "Exit verifier dead end",
+        "objective": "Recognize when the verifier is not giving a credible route back to green.",
+        "verificationPlan": ["pnpm test", "pnpm build"]
+      },
+      "budget": { "maxUsd": 6, "softLimitUsd": 3, "maxIterations": 2, "maxTokens": 14000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["budget-governance", "verification"],
+      "metadata": { "focusArea": "budget-governance", "scenarioId": "budget_guard_exit" }
+    },
+    {
+      "caseId": "budget-context-burn",
+      "label": "Stop context-window burn",
+      "task": {
+        "title": "Stop context-window burn",
+        "objective": "Avoid repeating the same broad prompt when the loop is only adding cost.",
+        "verificationPlan": ["pnpm test"]
+      },
+      "budget": { "maxUsd": 6, "softLimitUsd": 3, "maxIterations": 2, "maxTokens": 14000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["budget-governance", "context"],
+      "metadata": { "focusArea": "budget-governance", "scenarioId": "budget_guard_exit" }
+    },
+    {
+      "caseId": "routing-cli-missing-tool",
+      "label": "Recover from missing CLI tool",
+      "task": {
+        "title": "Recover from missing CLI tool",
+        "objective": "Switch routes when the current adapter cannot execute in the environment.",
+        "verificationPlan": ["pnpm test"]
+      },
+      "budget": { "maxUsd": 6, "softLimitUsd": 3, "maxIterations": 3, "maxTokens": 16000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["adapter-routing", "cli"],
+      "metadata": { "focusArea": "adapter-routing", "scenarioId": "fallback_recovery" }
+    },
+    {
+      "caseId": "routing-provider-rate-limit",
+      "label": "Reroute provider rate limit",
+      "task": {
+        "title": "Reroute provider rate limit",
+        "objective": "Handle provider saturation by rerouting instead of blindly retrying the same lane.",
+        "verificationPlan": ["pnpm test", "pnpm build"]
+      },
+      "budget": { "maxUsd": 6, "softLimitUsd": 3, "maxIterations": 3, "maxTokens": 16000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["adapter-routing", "rate-limit"],
+      "metadata": { "focusArea": "adapter-routing", "scenarioId": "fallback_recovery" }
+    },
+    {
+      "caseId": "routing-model-timeout",
+      "label": "Recover model timeout lane",
+      "task": {
+        "title": "Recover model timeout lane",
+        "objective": "Switch out of a timing-out model path before it becomes a retry loop.",
+        "verificationPlan": ["pnpm test"]
+      },
+      "budget": { "maxUsd": 6, "softLimitUsd": 3, "maxIterations": 3, "maxTokens": 16000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["adapter-routing", "timeout"],
+      "metadata": { "focusArea": "adapter-routing", "scenarioId": "fallback_recovery" }
+    },
+    {
+      "caseId": "routing-token-window",
+      "label": "Narrow token-window routing issue",
+      "task": {
+        "title": "Narrow token-window routing issue",
+        "objective": "Fix a routing decision that widens prompt scope and causes repeated failures.",
+        "verificationPlan": ["pnpm test", "pnpm typecheck"]
+      },
+      "budget": { "maxUsd": 8, "softLimitUsd": 4, "maxIterations": 3, "maxTokens": 22000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["adapter-routing", "tokens"],
+      "metadata": { "focusArea": "adapter-routing", "scenarioId": "narrow_scope_recovery" }
+    },
+    {
+      "caseId": "routing-transport-degradation",
+      "label": "Recover degraded transport",
+      "task": {
+        "title": "Recover degraded transport",
+        "objective": "Detect a broken transport lane and recover through a healthier fallback path.",
+        "verificationPlan": ["pnpm test", "pnpm build"]
+      },
+      "budget": { "maxUsd": 6, "softLimitUsd": 3, "maxIterations": 3, "maxTokens": 16000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["adapter-routing", "transport"],
+      "metadata": { "focusArea": "adapter-routing", "scenarioId": "fallback_recovery" }
+    },
+    {
+      "caseId": "env-missing-secret",
+      "label": "Detect missing runtime secret",
+      "task": {
+        "title": "Detect missing runtime secret",
+        "objective": "Stop retrying when a missing secret blocks any meaningful recovery path.",
+        "verificationPlan": ["pnpm test"]
+      },
+      "budget": { "maxUsd": 6, "softLimitUsd": 3, "maxIterations": 3, "maxTokens": 16000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["environment-config", "secrets"],
+      "metadata": { "focusArea": "environment-config", "scenarioId": "stuck_env_exit" }
+    },
+    {
+      "caseId": "env-wrong-env-file",
+      "label": "Recover wrong env file",
+      "task": {
+        "title": "Recover wrong env file",
+        "objective": "Stop repeating execution when the workspace is wired to the wrong environment file.",
+        "verificationPlan": ["pnpm test", "pnpm build"]
+      },
+      "budget": { "maxUsd": 6, "softLimitUsd": 3, "maxIterations": 3, "maxTokens": 16000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["environment-config", "env"],
+      "metadata": { "focusArea": "environment-config", "scenarioId": "stuck_env_exit" }
+    },
+    {
+      "caseId": "env-cwd-mismatch",
+      "label": "Recover cwd mismatch",
+      "task": {
+        "title": "Recover cwd mismatch",
+        "objective": "Avoid retrying against the wrong working directory when the repo root is wrong.",
+        "verificationPlan": ["pnpm test"]
+      },
+      "budget": { "maxUsd": 6, "softLimitUsd": 3, "maxIterations": 3, "maxTokens": 16000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["environment-config", "cwd"],
+      "metadata": { "focusArea": "environment-config", "scenarioId": "stuck_env_exit" }
+    },
+    {
+      "caseId": "env-denied-path-scope",
+      "label": "Handle denied path scope",
+      "task": {
+        "title": "Handle denied path scope",
+        "objective": "Exit when the allowed change surface excludes the files the repair actually needs.",
+        "verificationPlan": ["pnpm test"]
+      },
+      "budget": { "maxUsd": 6, "softLimitUsd": 3, "maxIterations": 3, "maxTokens": 16000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["environment-config", "scope"],
+      "metadata": { "focusArea": "environment-config", "scenarioId": "stuck_env_exit" }
+    },
+    {
+      "caseId": "env-repo-root-mismatch",
+      "label": "Recover repo-root mismatch",
+      "task": {
+        "title": "Recover repo-root mismatch",
+        "objective": "Recognize when the runtime is pointed at the wrong repo and stop the loop quickly.",
+        "verificationPlan": ["pnpm test", "pnpm build"]
+      },
+      "budget": { "maxUsd": 6, "softLimitUsd": 3, "maxIterations": 3, "maxTokens": 16000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["environment-config", "repo-root"],
+      "metadata": { "focusArea": "environment-config", "scenarioId": "stuck_env_exit" }
+    },
+    {
+      "caseId": "deps-lockfile-conflict",
+      "label": "Resolve lockfile conflict",
+      "task": {
+        "title": "Resolve lockfile conflict",
+        "objective": "Reduce a dependency loop to the minimal reproducible lockfile repair.",
+        "verificationPlan": ["pnpm install --frozen-lockfile", "pnpm test"]
+      },
+      "budget": { "maxUsd": 8, "softLimitUsd": 4, "maxIterations": 3, "maxTokens": 22000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["dependency-management", "lockfile"],
+      "metadata": { "focusArea": "dependency-management", "scenarioId": "narrow_scope_recovery" }
+    },
+    {
+      "caseId": "deps-peer-dependency-loop",
+      "label": "Untangle peer dependency loop",
+      "task": {
+        "title": "Untangle peer dependency loop",
+        "objective": "Handle a cross-package dependency knot without overheating the runtime on repeated guesses.",
+        "verificationPlan": ["pnpm install", "pnpm test"]
+      },
+      "budget": { "maxUsd": 7, "softLimitUsd": 3.5, "maxIterations": 3, "maxTokens": 20000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["dependency-management", "peer-deps"],
+      "metadata": { "focusArea": "dependency-management", "scenarioId": "stubborn_cross_system" }
+    },
+    {
+      "caseId": "deps-package-manager-mismatch",
+      "label": "Recover package manager mismatch",
+      "task": {
+        "title": "Recover package manager mismatch",
+        "objective": "Stop retrying when the workspace is running with the wrong package manager assumptions.",
+        "verificationPlan": ["pnpm install --frozen-lockfile", "pnpm test"]
+      },
+      "budget": { "maxUsd": 6, "softLimitUsd": 3, "maxIterations": 3, "maxTokens": 16000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["dependency-management", "package-manager"],
+      "metadata": { "focusArea": "dependency-management", "scenarioId": "stuck_env_exit" }
+    },
+    {
+      "caseId": "deps-semver-drift",
+      "label": "Recover semver drift",
+      "task": {
+        "title": "Recover semver drift",
+        "objective": "Stabilize a semver drift regression without letting the fix widen on every retry.",
+        "verificationPlan": ["pnpm install", "pnpm test", "pnpm build"]
+      },
+      "budget": { "maxUsd": 9, "softLimitUsd": 5, "maxIterations": 4, "maxTokens": 24000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["dependency-management", "semver"],
+      "metadata": { "focusArea": "dependency-management", "scenarioId": "slow_verified_recovery" }
+    },
+    {
+      "caseId": "deps-transitive-toolchain-break",
+      "label": "Repair transitive toolchain break",
+      "task": {
+        "title": "Repair transitive toolchain break",
+        "objective": "Handle a graph-wide toolchain break that crosses package boundaries.",
+        "verificationPlan": ["pnpm install", "pnpm typecheck", "pnpm build"]
+      },
+      "budget": { "maxUsd": 7, "softLimitUsd": 3.5, "maxIterations": 3, "maxTokens": 20000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["dependency-management", "toolchain"],
+      "metadata": { "focusArea": "dependency-management", "scenarioId": "heavy_dependency_graph" }
+    },
+    {
+      "caseId": "build-docker-repair",
+      "label": "Repair Docker build break",
+      "task": {
+        "title": "Repair Docker build break",
+        "objective": "Reduce a broad build failure down to the minimal layer fix.",
+        "verificationPlan": ["docker build .", "pnpm test"]
+      },
+      "budget": { "maxUsd": 8, "softLimitUsd": 4, "maxIterations": 3, "maxTokens": 22000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["build-release", "docker"],
+      "metadata": { "focusArea": "build-release", "scenarioId": "narrow_scope_recovery" }
+    },
+    {
+      "caseId": "build-canary-rollback",
+      "label": "Verify canary rollback fix",
+      "task": {
+        "title": "Verify canary rollback fix",
+        "objective": "Recover deploy confidence by proving the rollback patch instead of relaunching it blindly.",
+        "verificationPlan": ["pnpm test", "pnpm build"]
+      },
+      "budget": { "maxUsd": 8, "softLimitUsd": 4, "maxIterations": 3, "maxTokens": 20000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["build-release", "deploy"],
+      "metadata": { "focusArea": "build-release", "scenarioId": "verified_repair_fast" }
+    },
+    {
+      "caseId": "build-asset-pipeline-break",
+      "label": "Recover asset pipeline break",
+      "task": {
+        "title": "Recover asset pipeline break",
+        "objective": "Stabilize a frontend asset pipeline without ballooning the patch size on each try.",
+        "verificationPlan": ["pnpm build", "pnpm test"]
+      },
+      "budget": { "maxUsd": 9, "softLimitUsd": 5, "maxIterations": 4, "maxTokens": 24000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["build-release", "assets"],
+      "metadata": { "focusArea": "build-release", "scenarioId": "slow_verified_recovery" }
+    },
+    {
+      "caseId": "build-monorepo-graph-break",
+      "label": "Repair monorepo graph break",
+      "task": {
+        "title": "Repair monorepo graph break",
+        "objective": "Handle a graph-wide build break that crosses too many package boundaries for blind retries.",
+        "verificationPlan": ["pnpm -r build", "pnpm test"]
+      },
+      "budget": { "maxUsd": 7, "softLimitUsd": 3.5, "maxIterations": 3, "maxTokens": 20000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["build-release", "monorepo"],
+      "metadata": { "focusArea": "build-release", "scenarioId": "heavy_dependency_graph" }
+    },
+    {
+      "caseId": "build-cache-poison",
+      "label": "Recover poisoned build cache",
+      "task": {
+        "title": "Recover poisoned build cache",
+        "objective": "Separate a bad cache state from a real code regression before retrying the same build again.",
+        "verificationPlan": ["pnpm build", "pnpm test"]
+      },
+      "budget": { "maxUsd": 8, "softLimitUsd": 4, "maxIterations": 3, "maxTokens": 22000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["build-release", "cache"],
+      "metadata": { "focusArea": "build-release", "scenarioId": "narrow_scope_recovery" }
+    },
+    {
+      "caseId": "data-migration-rollback",
+      "label": "Verify migration rollback",
+      "task": {
+        "title": "Verify migration rollback",
+        "objective": "Reduce a risky migration rollback into the smallest safe repair path.",
+        "verificationPlan": ["pnpm prisma migrate status", "pnpm test"]
+      },
+      "budget": { "maxUsd": 8, "softLimitUsd": 4, "maxIterations": 3, "maxTokens": 22000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["data-migrations", "migration"],
+      "metadata": { "focusArea": "data-migrations", "scenarioId": "narrow_scope_recovery" }
+    },
+    {
+      "caseId": "data-schema-drift",
+      "label": "Recover schema drift",
+      "task": {
+        "title": "Recover schema drift",
+        "objective": "Bring application and database schema back into sync without looping the same patch.",
+        "verificationPlan": ["pnpm prisma migrate status", "pnpm test", "pnpm build"]
+      },
+      "budget": { "maxUsd": 9, "softLimitUsd": 5, "maxIterations": 4, "maxTokens": 24000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["data-migrations", "schema"],
+      "metadata": { "focusArea": "data-migrations", "scenarioId": "slow_verified_recovery" }
+    },
+    {
+      "caseId": "data-seed-divergence",
+      "label": "Untangle seed-data divergence",
+      "task": {
+        "title": "Untangle seed-data divergence",
+        "objective": "Handle conflicting test-data expectations when the intended ground truth is unclear.",
+        "verificationPlan": ["pnpm test", "pnpm lint"]
+      },
+      "budget": { "maxUsd": 5, "softLimitUsd": 2.5, "maxIterations": 3, "maxTokens": 16000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["data-migrations", "seed-data"],
+      "metadata": { "focusArea": "data-migrations", "scenarioId": "ambiguous_acceptance_gap" }
+    },
+    {
+      "caseId": "data-queue-backfill-safety",
+      "label": "Guard queue backfill retry",
+      "task": {
+        "title": "Guard queue backfill retry",
+        "objective": "Exit early when a queue backfill fix keeps consuming budget without proving safe progress.",
+        "verificationPlan": ["pnpm test"]
+      },
+      "budget": { "maxUsd": 6, "softLimitUsd": 3, "maxIterations": 2, "maxTokens": 14000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["data-migrations", "queue"],
+      "metadata": { "focusArea": "data-migrations", "scenarioId": "budget_guard_exit" }
+    },
+    {
+      "caseId": "data-contract-break",
+      "label": "Repair data contract break",
+      "task": {
+        "title": "Repair data contract break",
+        "objective": "Handle a producer-consumer contract break that spans multiple service boundaries.",
+        "verificationPlan": ["pnpm test", "pnpm build"]
+      },
+      "budget": { "maxUsd": 7, "softLimitUsd": 3.5, "maxIterations": 3, "maxTokens": 20000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["data-migrations", "data-contract"],
+      "metadata": { "focusArea": "data-migrations", "scenarioId": "stubborn_cross_system" }
+    },
+    {
+      "caseId": "auth-session-regression",
+      "label": "Recover session regression",
+      "task": {
+        "title": "Recover session regression",
+        "objective": "Repair a broken sign-in loop with verifier proof instead of repeated auth guesses.",
+        "verificationPlan": ["pnpm test", "pnpm build"]
+      },
+      "budget": { "maxUsd": 8, "softLimitUsd": 4, "maxIterations": 3, "maxTokens": 20000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["auth-api", "session"],
+      "metadata": { "focusArea": "auth-api", "scenarioId": "verified_repair_fast" }
+    },
+    {
+      "caseId": "auth-oauth-callback-loop",
+      "label": "Untangle OAuth callback loop",
+      "task": {
+        "title": "Untangle OAuth callback loop",
+        "objective": "Resolve an auth flow where the technical failure and product expectation are both moving.",
+        "verificationPlan": ["pnpm test", "pnpm build"]
+      },
+      "budget": { "maxUsd": 5, "softLimitUsd": 2.5, "maxIterations": 3, "maxTokens": 16000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["auth-api", "oauth"],
+      "metadata": { "focusArea": "auth-api", "scenarioId": "ambiguous_acceptance_gap" }
+    },
+    {
+      "caseId": "auth-webhook-signature",
+      "label": "Recover webhook signature mismatch",
+      "task": {
+        "title": "Recover webhook signature mismatch",
+        "objective": "Avoid looping on a webhook flow when the runtime environment is misconfigured.",
+        "verificationPlan": ["pnpm test"]
+      },
+      "budget": { "maxUsd": 6, "softLimitUsd": 3, "maxIterations": 3, "maxTokens": 16000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["auth-api", "webhook"],
+      "metadata": { "focusArea": "auth-api", "scenarioId": "stuck_env_exit" }
+    },
+    {
+      "caseId": "auth-api-schema-drift",
+      "label": "Recover API schema drift",
+      "task": {
+        "title": "Recover API schema drift",
+        "objective": "Repair a drifting API contract without keeping the whole auth surface unstable.",
+        "verificationPlan": ["pnpm test", "pnpm build"]
+      },
+      "budget": { "maxUsd": 9, "softLimitUsd": 5, "maxIterations": 4, "maxTokens": 24000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["auth-api", "schema"],
+      "metadata": { "focusArea": "auth-api", "scenarioId": "slow_verified_recovery" }
+    },
+    {
+      "caseId": "auth-rate-limit-backoff",
+      "label": "Reroute auth rate limit",
+      "task": {
+        "title": "Reroute auth rate limit",
+        "objective": "Handle auth rate limiting by switching lanes instead of repeating the same blocked path.",
+        "verificationPlan": ["pnpm test"]
+      },
+      "budget": { "maxUsd": 6, "softLimitUsd": 3, "maxIterations": 3, "maxTokens": 16000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["auth-api", "rate-limit"],
+      "metadata": { "focusArea": "auth-api", "scenarioId": "fallback_recovery" }
+    },
+    {
+      "caseId": "quality-lint-autofix-trap",
+      "label": "Escape lint autofix trap",
+      "task": {
+        "title": "Escape lint autofix trap",
+        "objective": "Stop a broad lint patch from churning the codebase without proving the real fix.",
+        "verificationPlan": ["pnpm lint", "pnpm test"]
+      },
+      "budget": { "maxUsd": 8, "softLimitUsd": 4, "maxIterations": 3, "maxTokens": 22000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["code-quality", "lint"],
+      "metadata": { "focusArea": "code-quality", "scenarioId": "narrow_scope_recovery" }
+    },
+    {
+      "caseId": "quality-import-cycle",
+      "label": "Repair import cycle",
+      "task": {
+        "title": "Repair import cycle",
+        "objective": "Untangle an import cycle without letting the fix sprawl across the repo on every attempt.",
+        "verificationPlan": ["pnpm typecheck", "pnpm test"]
+      },
+      "budget": { "maxUsd": 9, "softLimitUsd": 5, "maxIterations": 4, "maxTokens": 24000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["code-quality", "imports"],
+      "metadata": { "focusArea": "code-quality", "scenarioId": "slow_verified_recovery" }
+    },
+    {
+      "caseId": "quality-merge-conflict-retry",
+      "label": "Recover merge-conflict retry loop",
+      "task": {
+        "title": "Recover merge-conflict retry loop",
+        "objective": "Handle a merge conflict that keeps reopening because upstream and downstream edits are both moving.",
+        "verificationPlan": ["pnpm test", "pnpm build"]
+      },
+      "budget": { "maxUsd": 7, "softLimitUsd": 3.5, "maxIterations": 3, "maxTokens": 20000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["code-quality", "merge-conflict"],
+      "metadata": { "focusArea": "code-quality", "scenarioId": "stubborn_cross_system" }
+    },
+    {
+      "caseId": "quality-overbroad-refactor",
+      "label": "Abort overbroad refactor loop",
+      "task": {
+        "title": "Abort overbroad refactor loop",
+        "objective": "Exit when a cleanup loop keeps broadening and the economics no longer work.",
+        "verificationPlan": ["pnpm lint", "pnpm typecheck"]
+      },
+      "budget": { "maxUsd": 6, "softLimitUsd": 3, "maxIterations": 2, "maxTokens": 14000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["code-quality", "refactor"],
+      "metadata": { "focusArea": "code-quality", "scenarioId": "budget_guard_exit" }
+    },
+    {
+      "caseId": "quality-dead-fixture-cleanup",
+      "label": "Verify dead fixture cleanup",
+      "task": {
+        "title": "Verify dead fixture cleanup",
+        "objective": "Finish a small test-fixture cleanup with proof instead of repeated cosmetic edits.",
+        "verificationPlan": ["pnpm test", "pnpm lint"]
+      },
+      "budget": { "maxUsd": 8, "softLimitUsd": 4, "maxIterations": 3, "maxTokens": 20000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["code-quality", "fixtures"],
+      "metadata": { "focusArea": "code-quality", "scenarioId": "verified_repair_fast" }
+    },
+    {
+      "caseId": "observability-missing-logs",
+      "label": "Recover missing logs path",
+      "task": {
+        "title": "Recover missing logs path",
+        "objective": "Stop retrying when the runtime is simply not emitting the evidence needed to debug.",
+        "verificationPlan": ["pnpm test"]
+      },
+      "budget": { "maxUsd": 6, "softLimitUsd": 3, "maxIterations": 3, "maxTokens": 16000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["observability", "logs"],
+      "metadata": { "focusArea": "observability", "scenarioId": "stuck_env_exit" }
+    },
+    {
+      "caseId": "observability-tracing-regression",
+      "label": "Recover tracing regression",
+      "task": {
+        "title": "Recover tracing regression",
+        "objective": "Repair tracing instrumentation without keeping a broad observability patch alive forever.",
+        "verificationPlan": ["pnpm test", "pnpm build"]
+      },
+      "budget": { "maxUsd": 9, "softLimitUsd": 5, "maxIterations": 4, "maxTokens": 24000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["observability", "tracing"],
+      "metadata": { "focusArea": "observability", "scenarioId": "slow_verified_recovery" }
+    },
+    {
+      "caseId": "observability-silent-failure",
+      "label": "Classify silent failure",
+      "task": {
+        "title": "Classify silent failure",
+        "objective": "Get to a verified failure classification instead of retrying the same blind patch.",
+        "verificationPlan": ["pnpm test", "pnpm build"]
+      },
+      "budget": { "maxUsd": 8, "softLimitUsd": 4, "maxIterations": 3, "maxTokens": 20000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["observability", "classification"],
+      "metadata": { "focusArea": "observability", "scenarioId": "verified_repair_fast" }
+    },
+    {
+      "caseId": "observability-alert-threshold-noise",
+      "label": "Untangle alert-threshold noise",
+      "task": {
+        "title": "Untangle alert-threshold noise",
+        "objective": "Handle an alerting loop where infrastructure ceilings and unclear targets both keep shifting.",
+        "verificationPlan": ["pnpm test"]
+      },
+      "budget": { "maxUsd": 6, "softLimitUsd": 3, "maxIterations": 3, "maxTokens": 18000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["observability", "alerts"],
+      "metadata": { "focusArea": "observability", "scenarioId": "observability_noise_shaping" }
+    },
+    {
+      "caseId": "observability-cache-invalidation",
+      "label": "Recover stale observability cache",
+      "task": {
+        "title": "Recover stale observability cache",
+        "objective": "Reduce a stale telemetry cache problem to the minimal reproducible fix.",
+        "verificationPlan": ["pnpm test", "pnpm build"]
+      },
+      "budget": { "maxUsd": 8, "softLimitUsd": 4, "maxIterations": 3, "maxTokens": 22000 },
+      "baseline": { "adapterId": "ralphy", "model": "gpt-5-mini", "strategy": "single-loop" },
+      "tags": ["observability", "cache"],
+      "metadata": { "focusArea": "observability", "scenarioId": "narrow_scope_recovery" }
+    }
+  ]
+}

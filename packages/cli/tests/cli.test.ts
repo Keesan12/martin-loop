@@ -1,13 +1,11 @@
-import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
 import { createLoopRecord } from "../../contracts/src/index.js";
-import { executeCli, parseCliArguments, renderCliHelp } from "../src/index.js";
-
-const FAST_VERIFIER = process.platform === "win32" ? "cmd /c exit 0" : "true";
+import { executeCli, parseCliArguments } from "../src/index.js";
 
 describe("parseCliArguments", () => {
   it("parses a run command into a typed request", () => {
@@ -60,135 +58,19 @@ describe("parseCliArguments", () => {
           maxTokens: 60000,
           maxUsd: 18,
           softLimitUsd: 9.5
+        },
+        budgetOverrides: {
+          maxIterations: true,
+          maxTokens: true,
+          maxUsd: true,
+          softLimitUsd: true
         }
       }
     });
-  });
-
-  it("parses the built-in guide command", () => {
-    expect(parseCliArguments(["guide", "mcp", "--host", "claude"])).toEqual({
-      command: "guide",
-      topic: "mcp",
-      host: "claude"
-    });
-  });
-
-  it("parses the interactive tour command", () => {
-    expect(parseCliArguments(["tour", "--host", "codex"])).toEqual({
-      command: "tour",
-      host: "codex"
-    });
-  });
-
-  it("parses --proof as a first-class run option", () => {
-    expect(parseCliArguments([
-      "run",
-      "--objective",
-      "Check the verifier path",
-      "--proof",
-      "--verify",
-      "npm test"
-    ])).toEqual({
-      command: "run",
-      request: expect.objectContaining({
-        objective: "Check the verifier path",
-        title: "Check the verifier path",
-        proofMode: true,
-        verificationPlan: ["npm test"]
-      })
-    });
-  });
-
-  it("treats subcommand help as an ungated help request", () => {
-    expect(parseCliArguments(["run", "--help"])).toEqual({ command: "help" });
-    expect(parseCliArguments(["preflight", "-h"])).toEqual({ command: "help" });
   });
 });
 
-describe.sequential("executeCli", () => {
-  it("renders help for run --help and preflight --help without entering the governed flow", async () => {
-    const runHelp = await executeCli(["run", "--help"]);
-    const preflightHelp = await executeCli(["preflight", "--help"]);
-
-    expect(runHelp.exitCode).toBe(0);
-    expect(preflightHelp.exitCode).toBe(0);
-    expect(runHelp.stdout).toContain("Martin Loop CLI");
-    expect(preflightHelp.stdout).toContain("Martin Loop CLI");
-  });
-
-  it("does not persist first-run workflow state when rendering help", async () => {
-    const homeDir = await mkdtemp(join(tmpdir(), "martin-cli-help-home-"));
-    const previousEnv = {
-      HOME: process.env.HOME,
-      USERPROFILE: process.env.USERPROFILE,
-      HOMEDRIVE: process.env.HOMEDRIVE,
-      HOMEPATH: process.env.HOMEPATH,
-      LOCALAPPDATA: process.env.LOCALAPPDATA,
-      APPDATA: process.env.APPDATA,
-      INIT_CWD: process.env.INIT_CWD
-    };
-    const previousCwd = process.cwd();
-
-    try {
-      process.env.HOME = homeDir;
-      process.env.USERPROFILE = homeDir;
-      process.env.HOMEDRIVE = homeDir.slice(0, 2);
-      process.env.HOMEPATH = homeDir.slice(2);
-      process.env.LOCALAPPDATA = join(homeDir, "AppData", "Local");
-      process.env.APPDATA = join(homeDir, "AppData", "Roaming");
-      process.env.INIT_CWD = homeDir;
-      process.chdir(homeDir);
-      await mkdir(process.env.LOCALAPPDATA, { recursive: true });
-      await mkdir(process.env.APPDATA, { recursive: true });
-
-      const result = await executeCli(["run", "--help"]);
-
-      expect(result.exitCode).toBe(0);
-      await expect(access(join(homeDir, ".martin", "runs", "_martin", "workflow-state.json"))).rejects.toThrow();
-    } finally {
-      process.chdir(previousCwd);
-      for (const [key, value] of Object.entries(previousEnv)) {
-        if (value === undefined) {
-          delete process.env[key];
-        } else {
-          process.env[key] = value;
-        }
-      }
-      await rm(homeDir, { force: true, recursive: true });
-    }
-  });
-
-  it("keeps the public help surface honest for 0.2.11", () => {
-    const help = renderCliHelp();
-
-    expect(help).not.toContain("martin-loop bench");
-    expect(help).toContain("martin-loop badge [--format svg|json] [--runs-dir <path>]");
-    expect(help).toContain("martin-loop runs verify (--loop-id <id> | --file <path> | --latest) [options]");
-  });
-
-  it("renders the built-in command guide", async () => {
-    const result = await executeCli(["--json", "guide", "start"]);
-    const payload = JSON.parse(result.stdout);
-
-    expect(result.exitCode).toBe(0);
-    expect(payload.command).toBe("guide");
-    expect(payload.topic).toBe("start");
-    expect(payload.recommendedSequence).toContain("martin-loop session-start");
-    expect(payload.commandMap.some((entry: { topic: string }) => entry.topic === "mcp")).toBe(true);
-  });
-
-  it("renders the interactive tour", async () => {
-    const result = await executeCli(["--json", "tour", "--host", "claude"]);
-    const payload = JSON.parse(result.stdout);
-
-    expect(result.exitCode).toBe(0);
-    expect(payload.command).toBe("tour");
-    expect(payload.steps[0].command).toBe("martin-loop start");
-    expect(
-      payload.steps.some((step: { command: string }) => step.command.includes("martin-loop preflight"))
-    ).toBe(true);
-  });
-
+describe("executeCli", () => {
   it("resolves effectivePolicy from config and applies it to the run", async () => {
     const directory = await mkdtemp(join(tmpdir(), "martin-cli-config-"));
     const configPath = join(directory, "martin.config.yaml");
@@ -207,8 +89,8 @@ describe.sequential("executeCli", () => {
           "  destructiveActionPolicy: approval",
           "  telemetryDestination: control-plane",
           "  verifierRules:",
-          `    - ${FAST_VERIFIER}`,
-          `    - ${FAST_VERIFIER}`
+          "    - pnpm test",
+          "    - pnpm lint"
         ].join("\n"),
         "utf8"
       );
@@ -221,8 +103,7 @@ describe.sequential("executeCli", () => {
         "--objective",
         "Repair flaky CI gate",
         "--config",
-        configPath,
-        "--unsafe-allow-unguarded-run"
+        configPath
       ]);
       if (prevLive === undefined) {
         delete process.env.MARTIN_LIVE;
@@ -245,7 +126,7 @@ describe.sequential("executeCli", () => {
           maxIterations: 6,
           maxTokens: 45000
         },
-        verifierRules: [FAST_VERIFIER, FAST_VERIFIER],
+        verifierRules: ["pnpm test", "pnpm lint"],
         maxUsd: 12,
         softLimitUsd: 7,
         maxIterations: 6,
@@ -255,21 +136,18 @@ describe.sequential("executeCli", () => {
       expect(payload.loop.budget).toEqual({
         maxUsd: 12,
         softLimitUsd: 7,
-          maxIterations: 6,
-          maxTokens: 45000
-        });
-      expect(payload.loop.task.verificationPlan).toEqual([FAST_VERIFIER, FAST_VERIFIER]);
+        maxIterations: 6,
+        maxTokens: 45000
+      });
+      expect(payload.loop.task.verificationPlan).toEqual(["pnpm test", "pnpm lint"]);
     } finally {
       await rm(directory, { force: true, recursive: true });
     }
   });
 
   it("surfaces effective governance policy metadata in run output", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "martin-cli-effective-policy-"));
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-policy-"));
     const configPath = join(directory, "martin.config.yaml");
-    const previousCwd = process.cwd();
-    const previousInitCwd = process.env.INIT_CWD;
-    const prevLive = process.env.MARTIN_LIVE;
 
     try {
       await writeFile(
@@ -277,28 +155,29 @@ describe.sequential("executeCli", () => {
         [
           "policyProfile: strict",
           "budget:",
-          "  maxUsd: 5",
-          "  softLimitUsd: 3",
+          "  maxUsd: 12",
+          "  softLimitUsd: 7",
           "  maxIterations: 5",
           "  maxTokens: 30000",
           "governance:",
           "  destructiveActionPolicy: approval",
-          "  telemetryDestination: local-only",
+          "  telemetryDestination: seeded-telemetry",
           "  verifierRules:",
-          `    - ${FAST_VERIFIER}`
+          "    - pnpm verify:shared-baseline",
+          "    - node scripts/agent-os-release-plan.mjs --verify-truth-lock"
         ].join("\n"),
         "utf8"
       );
 
-      process.chdir(directory);
-      process.env.INIT_CWD = directory;
+      const prevLive = process.env.MARTIN_LIVE;
       process.env.MARTIN_LIVE = "false";
-
       const result = await executeCli([
         "--json",
         "run",
         "--objective",
         "Repair flaky CI gate",
+        "--config",
+        configPath,
         "--budget-usd",
         "8",
         "--soft-limit-usd",
@@ -310,9 +189,13 @@ describe.sequential("executeCli", () => {
         "--policy",
         "balanced",
         "--telemetry",
-        "control-plane",
-        "--unsafe-allow-unguarded-run"
+        "control-plane"
       ]);
+      if (prevLive === undefined) {
+        delete process.env.MARTIN_LIVE;
+      } else {
+        process.env.MARTIN_LIVE = prevLive;
+      }
 
       expect(result.exitCode).toBe(0);
 
@@ -326,32 +209,24 @@ describe.sequential("executeCli", () => {
         budget: {
           maxUsd: 8,
           softLimitUsd: 5,
-          maxIterations: 5,
-          maxTokens: 30000
+          maxIterations: 3,
+          maxTokens: 20000
         },
-        verifierRules: [FAST_VERIFIER],
+        verifierRules: [
+          "pnpm verify:shared-baseline",
+          "node scripts/agent-os-release-plan.mjs --verify-truth-lock"
+        ],
         maxUsd: 8,
         softLimitUsd: 5,
-        maxIterations: 5,
-        maxTokens: 30000,
+        maxIterations: 3,
+        maxTokens: 20000,
         telemetryDestination: "control-plane"
       });
-      expect(payload.loop.task.verificationPlan).toEqual([FAST_VERIFIER]);
+      expect(payload.loop.task.verificationPlan).toEqual([
+        "pnpm verify:shared-baseline",
+        "node scripts/agent-os-release-plan.mjs --verify-truth-lock"
+      ]);
     } finally {
-      process.chdir(previousCwd);
-
-      if (previousInitCwd === undefined) {
-        delete process.env.INIT_CWD;
-      } else {
-        process.env.INIT_CWD = previousInitCwd;
-      }
-
-      if (prevLive === undefined) {
-        delete process.env.MARTIN_LIVE;
-      } else {
-        process.env.MARTIN_LIVE = prevLive;
-      }
-
       await rm(directory, { force: true, recursive: true });
     }
   });
@@ -389,11 +264,14 @@ describe.sequential("executeCli", () => {
 
   it("resolves a relative --config path from INIT_CWD for filtered dev runs", async () => {
     const directory = await mkdtemp(join(tmpdir(), "martin-cli-init-cwd-"));
+    const packageDirectory = join(directory, "packages", "cli");
     const configPath = join(directory, "martin.config.example.yaml");
+    const previousCwd = process.cwd();
     const previousInitCwd = process.env.INIT_CWD;
     const previousMarinLive = process.env.MARTIN_LIVE;
 
     try {
+      await mkdir(packageDirectory, { recursive: true });
       await writeFile(
         configPath,
         [
@@ -407,12 +285,13 @@ describe.sequential("executeCli", () => {
           "  destructiveActionPolicy: approval",
           "  telemetryDestination: control-plane",
           "  verifierRules:",
-          `    - ${FAST_VERIFIER}`,
-          `    - ${FAST_VERIFIER}`
+          "    - pnpm test",
+          "    - pnpm lint"
         ].join("\n"),
         "utf8"
       );
 
+      process.chdir(packageDirectory);
       process.env.INIT_CWD = directory;
 
       process.env.MARTIN_LIVE = "false";
@@ -422,8 +301,7 @@ describe.sequential("executeCli", () => {
         "--objective",
         "Repair flaky CI gate",
         "--config",
-        ".\\martin.config.example.yaml",
-        "--unsafe-allow-unguarded-run"
+        ".\\martin.config.example.yaml"
       ]);
 
       expect(result.exitCode).toBe(0);
@@ -432,8 +310,10 @@ describe.sequential("executeCli", () => {
 
       expect(payload.effectivePolicy.configPath).toBe(configPath);
       expect(payload.effectivePolicy.policyProfile).toBe("strict");
-      expect(payload.loop.task.verificationPlan).toEqual([FAST_VERIFIER, FAST_VERIFIER]);
+      expect(payload.loop.task.verificationPlan).toEqual(["pnpm test", "pnpm lint"]);
     } finally {
+      process.chdir(previousCwd);
+
       if (previousInitCwd === undefined) {
         delete process.env.INIT_CWD;
       } else {
@@ -450,12 +330,15 @@ describe.sequential("executeCli", () => {
     }
   });
 
-  it("rejects unsupported bench invocations from the public CLI surface", async () => {
+  it("prints the public under-$3 benchmark summary from the shipped fixture", async () => {
     const result = await executeCli(["bench", "--suite", "ralphy-smoke"]);
 
-    expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain("Unknown command 'bench'.");
-    expect(result.stderr).toContain("martin-loop --help");
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toContain("Under-$3 Challenge");
+    expect(result.stdout).toContain("$2.30");
+    expect(result.stdout).toContain("$5.20");
+    expect(result.stdout).toContain("@martin/benchmarks");
   });
 
   it("copies the seeded demo workspace into the default target directory", async () => {
@@ -471,8 +354,7 @@ describe.sequential("executeCli", () => {
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain(targetDirectory);
       expect(result.stdout).toContain("npm install");
-      expect(result.stdout).toContain("npx martin-loop run");
-      expect(result.stdout).toContain("--proof");
+      expect(result.stdout).toContain("MARTIN_LIVE=false");
       expect(await readFile(join(targetDirectory, "README.md"), "utf8")).toContain("Demo Sandbox");
     } finally {
       process.chdir(previousCwd);

@@ -11,11 +11,13 @@ import {
   type LoopArtifact,
   type LoopAttempt,
   type LoopBudget,
+  type ProviderUsageSettlement,
   type MutationMode,
   type LoopRecord,
   type LoopTask,
   type PatchDecisionArtifact,
   type PatchScore,
+  type ReceiptScope,
   type RollbackOutcomeArtifact,
   type PolicyPhase
 } from "@martin/contracts";
@@ -153,7 +155,10 @@ export {
   readLatestLoopRecord,
   readLatestLoopRecordFromFile,
   readLoopRecordsFromFile,
-  resolveRunsRoot
+  resolveRunsRoot,
+  resolveReceiptIntegrityPath,
+  verifyReceiptIntegrityFromFiles,
+  writeReceiptIntegrityMaterial
 } from "./persistence/index.js";
 export type {
   AttemptArtifacts,
@@ -161,8 +166,10 @@ export type {
   LedgerEventKind,
   LoopAttemptRecord,
   LoopRunRecord,
+  ReceiptIntegrityChainEntry,
   RunContract,
-  RunStore
+  RunStore,
+  StoredReceiptIntegrityMaterial
 } from "./persistence/index.js";
 export { compileAndPersistContext } from "./persistence/index.js";
 export type { CompileResult } from "./persistence/index.js";
@@ -221,9 +228,17 @@ export interface MartinAdapterResult {
     estimatedUsd?: number;
     tokensIn: number;
     tokensOut: number;
+    cachedInputTokens?: number;
+    reasoningTokensOut?: number;
     provenance?: CostProvenance;
+    providerSettlement?: ProviderUsageSettlement;
   };
-  verification: MartinVerificationOutcome;
+  verification: {
+    passed: boolean;
+    summary: string;
+    steps?: MartinVerificationStep[];
+    warnings?: string[];
+  };
   execution?: {
     changedFiles?: string[];
     diffStats?: {
@@ -378,6 +393,7 @@ export interface RunMartinInput {
   maxRecentAttempts?: number;
   fallbackModels?: string[];
   fallbackAdapters?: MartinAdapter[];
+  receiptScope?: ReceiptScope;
   /** Optional persistence store. When provided, runMartin writes artifacts on each lifecycle event. */
   store?: RunStore;
 }
@@ -418,6 +434,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       projectId: input.projectId,
       task: input.task,
       budget: input.budget,
+      ...(input.receiptScope ? { receiptScope: input.receiptScope } : {}),
       ...(input.teamId ? { teamId: input.teamId } : {}),
       ...(input.metadata ? { metadata: input.metadata } : {})
     },
@@ -839,7 +856,18 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         actualUsd: roundUsd(loop.cost.actualUsd + getUsageUsd(result.usage)),
         avoidedUsd: loop.cost.avoidedUsd,
         tokensIn: loop.cost.tokensIn + result.usage.tokensIn,
-        tokensOut: loop.cost.tokensOut + result.usage.tokensOut
+        tokensOut: loop.cost.tokensOut + result.usage.tokensOut,
+        ...(result.usage.estimatedUsd !== undefined
+          ? {
+              estimatedUsd: roundUsd(
+                (loop.cost.estimatedUsd ?? loop.cost.actualUsd) + result.usage.estimatedUsd
+              )
+            }
+          : {}),
+        provenance: getUsageProvenance(result.usage),
+        ...(result.usage.providerSettlement
+          ? { providerSettlement: result.usage.providerSettlement }
+          : {})
       },
       updatedAt: attemptCompletedAt
     };
@@ -1006,10 +1034,13 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
             estimatedUsd: result.usage.estimatedUsd,
             tokensIn: result.usage.tokensIn,
             tokensOut: result.usage.tokensOut,
+            cachedInputTokens: result.usage.cachedInputTokens,
+            reasoningTokensOut: result.usage.reasoningTokensOut,
             provenance: getUsageProvenance(result.usage),
             transport: getAdapterTransport(executingAdapter),
             providerId: executingAdapter.metadata.providerId,
             model: executingAdapter.metadata.model,
+            providerSettlement: result.usage.providerSettlement,
             patchCost: settlement.patchCost,
             verificationCost: settlement.verificationCost,
             varianceUsd: settlement.varianceUsd,
@@ -1139,9 +1170,9 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
 
     if (!filesystemDecision.allowed) {
       const patchDecision = evaluatePatchDecision({
-        verificationPassed: verification.passed,
+        verificationPassed: result.verification.passed,
         previousVerifierScore,
-        verifierScore: verification.passed ? 1 : 0,
+        verifierScore: result.verification.passed ? 1 : 0,
         scopeViolationCount: filesystemDecision.violations.length,
         changedFileCount: changedFiles.length,
         diffNovelty: changedFiles.length > 0 ? 1 : 0,
@@ -1226,9 +1257,9 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
 
     if (!changeApprovalDecision.allowed) {
       const patchDecision = evaluatePatchDecision({
-        verificationPassed: verification.passed,
+        verificationPassed: result.verification.passed,
         previousVerifierScore,
-        verifierScore: verification.passed ? 1 : 0,
+        verifierScore: result.verification.passed ? 1 : 0,
         safetyViolationCount: changeApprovalDecision.violations.length,
         changedFileCount: changedFiles.length,
         diffNovelty: changedFiles.length > 0 ? 1 : 0,
@@ -1642,11 +1673,6 @@ async function persistLoopRecordIfSupported(
   await store?.writeLoopRecord?.(loop.loopId, loop);
 }
 
-function resolveActiveRunsRoot(store: RunStore | undefined): string {
-  const configuredRunsRoot = store?.runsRoot?.trim();
-  return configuredRunsRoot && configuredRunsRoot.length > 0 ? configuredRunsRoot : resolveRunsRoot();
-}
-
 function getAdapterTransport(adapter: MartinAdapter): "cli" | "http" | "routed_http" {
   return adapter.metadata.transport ?? (adapter.kind === "agent-cli" ? "cli" : "http");
 }
@@ -1733,6 +1759,9 @@ function createBudgetSettlement(input: {
       usd: 0,
       provenance: "unavailable" as CostProvenance
     },
+    ...(input.usage.providerSettlement
+      ? { providerSettlement: input.usage.providerSettlement }
+      : {}),
     totalActualUsd,
     preflightEstimateUsd: input.estimate.estimatedAttemptCostUsd,
     varianceUsd: roundUsd(totalActualUsd - input.estimate.estimatedAttemptCostUsd),
@@ -1840,6 +1869,11 @@ function detectVerificationContradiction(result: MartinAdapterResult): string | 
   }
 
   return undefined;
+}
+
+function resolveActiveRunsRoot(store: RunStore | undefined): string {
+  const configuredRunsRoot = store?.runsRoot?.trim();
+  return configuredRunsRoot && configuredRunsRoot.length > 0 ? configuredRunsRoot : resolveRunsRoot();
 }
 
 function toPatchDecisionArtifact(decision: EvaluatedPatchDecision): PatchDecisionArtifact {

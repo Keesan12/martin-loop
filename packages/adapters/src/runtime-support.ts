@@ -21,7 +21,10 @@ export function normalizeUsage(input: {
   estimatedUsd?: number;
   tokensIn?: number;
   tokensOut?: number;
+  cachedInputTokens?: number;
+  reasoningTokensOut?: number;
   provenance?: MartinAdapterResult["usage"]["provenance"];
+  providerSettlement?: MartinAdapterResult["usage"]["providerSettlement"];
 }): MartinAdapterResult["usage"] {
   const provenance =
     input.provenance ??
@@ -38,7 +41,14 @@ export function normalizeUsage(input: {
       : {}),
     tokensIn: input.tokensIn ?? 0,
     tokensOut: input.tokensOut ?? 0,
-    provenance
+    ...(input.cachedInputTokens !== undefined
+      ? { cachedInputTokens: input.cachedInputTokens }
+      : {}),
+    ...(input.reasoningTokensOut !== undefined
+      ? { reasoningTokensOut: input.reasoningTokensOut }
+      : {}),
+    provenance,
+    ...(input.providerSettlement ? { providerSettlement: input.providerSettlement } : {})
   };
 }
 

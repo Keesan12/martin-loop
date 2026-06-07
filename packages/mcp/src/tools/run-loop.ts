@@ -1,14 +1,16 @@
 import {
   createClaudeCliAdapter,
   createCodexCliAdapter,
+  createGeminiCliAdapter,
+  probeCodexLaunch,
+  resolveCliCommandAvailability,
   createVerifierOnlyAdapter
 } from "@martin/adapters";
 
 import { createFileRunStore, evaluateCostGovernor, resolveRunsRoot, runMartin } from "@martin/core";
-import { DEFAULT_BUDGET, type LoopBudget } from "@martin/contracts";
+import { DEFAULT_BUDGET, type LoopBudget, type ReceiptScope } from "@martin/contracts";
 
 import { normalizeSafePathPatterns, resolveSafeRepoRoot } from "../server-validation.js";
-import { evaluateMcpRunGate } from "../workflow-state.js";
 import { MartinToolError } from "./tool-errors.js";
 import {
   buildArtifactSummary,
@@ -23,7 +25,7 @@ import {
 export interface RunLoopInput {
   objective: string;
   workingDirectory?: string;
-  engine?: "claude" | "codex";
+  engine?: "claude" | "codex" | "gemini";
   model?: string;
   maxUsd?: number;
   maxIterations?: number;
@@ -56,6 +58,7 @@ export interface RunLoopOutput {
     runDirectory: string;
     loopRecordPath: string;
     ledgerPath: string;
+    receiptScope: ReceiptScope;
     loop: ReturnType<typeof buildLoopPreview>;
     verification: ReturnType<typeof buildVerificationSummary>;
     artifacts: ReturnType<typeof buildArtifactSummary>;
@@ -69,46 +72,59 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
   const allowedPaths = normalizeSafePathPatterns(input.allowedPaths, "allowedPaths");
   const deniedPaths = normalizeSafePathPatterns(input.deniedPaths, "deniedPaths");
   const executionMode = resolveExecutionMode();
-  const engineAvailability = getEngineAvailability(engine);
+  const workspaceRoot = resolveSafeRepoRoot();
   const runsRoot = resolveRunsRoot(process.env);
-
-  const gate = await evaluateMcpRunGate({
-    runsRoot,
+  const receiptScope = {
+    invocationRoot: workspaceRoot,
     workingDirectory,
-    objective: input.objective,
-    engine,
-    verificationPlan: input.verificationPlan
-  });
-  if (!gate.allowed) {
-    throw new MartinToolError("policy_blocked", gate.summary, {
-      category: "policy_blocked",
-      suggestion: gate.nextAction,
-      retryable: false,
-      details: {
-        missingSteps: gate.missingSteps,
-        nextAction: gate.nextAction
+    repoRoot: workingDirectory,
+    runsRoot
+  };
+  if (executionMode.liveMode) {
+    if (engine === "codex") {
+      const engineAvailability = resolveCliCommandAvailability("codex");
+      if (!engineAvailability.available) {
+        throw new MartinToolError("engine_unavailable", `Engine '${engine}' is not available on PATH.`, {
+          category: "environment",
+          suggestion: "Install the requested CLI or set MARTIN_LIVE=false for a no-spend proof run.",
+          retryable: false
+        });
       }
-    });
-  }
 
-  if (executionMode.liveMode && !engineAvailability.available) {
-    throw new MartinToolError("engine_unavailable", `Engine '${engine}' is not available on PATH.`, {
-      category: "environment",
-      suggestion: "Install the requested CLI or set MARTIN_LIVE=false for a no-spend proof run.",
-      retryable: false
-    });
+      const codexProbe = probeCodexLaunch({
+        workingDirectory,
+        availability: engineAvailability
+      });
+      if (!codexProbe.ok) {
+        throw new MartinToolError("engine_unavailable", codexProbe.summary, {
+          category: "environment",
+          suggestion: "Run martin_doctor or martin_preflight with engine='codex' before retrying live governed work.",
+          retryable: false
+        });
+      }
+    } else {
+      const engineAvailability = getEngineAvailability(engine);
+      if (!engineAvailability.available) {
+        throw new MartinToolError("engine_unavailable", `Engine '${engine}' is not available on PATH.`, {
+          category: "environment",
+          suggestion: "Install the requested CLI or set MARTIN_LIVE=false for a no-spend proof run.",
+          retryable: false
+        });
+      }
+    }
   }
 
   const adapter =
-    process.env.MARTIN_LIVE === "false"
+    !executionMode.liveMode
       ? createVerifierOnlyAdapter({
           workingDirectory,
           label: "Proof mode adapter (MARTIN_LIVE=false)"
         })
       : engine === "codex"
         ? createCodexCliAdapter({ workingDirectory, ...(model ? { model } : {}) })
+        : engine === "gemini"
+          ? createGeminiCliAdapter({ workingDirectory, ...(model ? { model } : {}) })
         : createClaudeCliAdapter({ workingDirectory, ...(model ? { model } : {}) });
-  const mutationMode = process.env.MARTIN_LIVE === "false" ? "verify_only" : undefined;
 
   const partialBudget: Partial<LoopBudget> = {};
   if (input.maxUsd !== undefined) {
@@ -130,11 +146,11 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
     workspaceId: input.workspaceId ?? "ws_mcp",
     projectId: input.projectId ?? "proj_mcp",
     store: createFileRunStore({ runsRoot }),
+    receiptScope,
     task: {
       title: input.objective.slice(0, 100),
       objective: input.objective,
       verificationPlan: input.verificationPlan ?? [],
-      ...(mutationMode ? { mutationMode } : {}),
       repoRoot: workingDirectory,
       ...(allowedPaths ? { allowedPaths } : {}),
       ...(deniedPaths ? { deniedPaths } : {})
@@ -178,6 +194,7 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
     budget,
     inspection: {
       ...recordPaths,
+      receiptScope: result.loop.receiptScope ?? receiptScope,
       loop: buildLoopPreview(result.loop),
       verification,
       artifacts

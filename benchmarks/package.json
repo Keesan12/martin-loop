@@ -1,0 +1,19 @@
+{
+  "name": "@martin/benchmarks",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Public deterministic benchmark harness for MartinLoop OSS claims.",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "eval": "tsx src/eval.ts --suite under-3-challenge",
+    "eval:phase12": "tsx src/eval.ts --suite under-3-challenge",
+    "report:ralphy": "tsx src/eval.ts --suite ralphy-engineering-50"
+  },
+  "dependencies": {
+    "@martin/contracts": "workspace:*",
+    "@martin/core": "workspace:*"
+  }
+}

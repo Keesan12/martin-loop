@@ -13,7 +13,7 @@ const FORBIDDEN_SUBJECT_PATTERNS = [
   { label: "public surface cleanup wording", pattern: /\bpublic(?:-| )surface cleanup\b/i },
   { label: "planning directory reference", pattern: /\.planning\b/i },
   { label: "private workspace wording", pattern: /\bprivate workspace\b/i },
-  { label: "internal repo name", pattern: /\b(?:ML_Core_OSS_Internal|ML_Main_Repo_Internal)\b/i },
+  { label: "internal repo name", pattern: /\b[A-Za-z0-9._-]+_Internal\b/i },
   { label: "local Windows user path", pattern: /\bC:\\Users\\/i },
   { label: "local OneDrive path", pattern: /\bOneDrive\\/i },
   { label: "handoff process language", pattern: /\bhandoff\b/i },
