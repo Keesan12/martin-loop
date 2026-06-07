@@ -8,7 +8,13 @@ import {
   type SpawnLike
 } from "@martin/adapters";
 
-import { createFileRunStore, evaluateCostGovernor, resolveRunsRoot, runMartin } from "@martin/core";
+import {
+  createFileRunStore,
+  evaluateCostGovernor,
+  resolveRunsRoot,
+  runMartin,
+  type RunStore
+} from "@martin/core";
 import type { LoopBudget, ReceiptScope } from "@martin/contracts";
 
 import { normalizeSafePathPatterns, resolveSafeRepoRoot } from "../server-validation.js";
@@ -68,9 +74,14 @@ export interface RunLoopOutput {
 }
 
 let proofModeVerifierSpawnImpl: SpawnLike | undefined;
+let runStoreOverrideForTests: RunStore | undefined;
 
 export function __setProofModeVerifierSpawnImplForTests(spawnImpl?: SpawnLike): void {
   proofModeVerifierSpawnImpl = spawnImpl;
+}
+
+export function __setRunStoreOverrideForTests(store?: RunStore): void {
+  runStoreOverrideForTests = store;
 }
 
 export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
@@ -157,7 +168,7 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
   const result = await runMartin({
     workspaceId: input.workspaceId ?? "ws_mcp",
     projectId: input.projectId ?? "proj_mcp",
-    store: createFileRunStore({ runsRoot }),
+    store: runStoreOverrideForTests ?? createFileRunStore({ runsRoot }),
     receiptScope,
     task: {
       title: input.objective.slice(0, 100),

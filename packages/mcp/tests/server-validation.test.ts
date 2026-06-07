@@ -21,7 +21,10 @@ import {
   resolveTrustedLoopRepoRoot,
   validateToolInput
 } from "../src/server-validation.js";
-import { __setProofModeVerifierSpawnImplForTests } from "../src/tools/run-loop.js";
+import {
+  __setProofModeVerifierSpawnImplForTests,
+  __setRunStoreOverrideForTests
+} from "../src/tools/run-loop.js";
 import { createMartinMcpServer } from "../src/server.js";
 
 type ServerRequestHandler = (request: unknown, extra: unknown) => Promise<unknown>;
@@ -48,7 +51,29 @@ function createImmediateSpawn(calls: Array<{ command: string; args: readonly str
 
 afterEach(() => {
   __setProofModeVerifierSpawnImplForTests(undefined);
+  __setRunStoreOverrideForTests(undefined);
 });
+
+function createMemoryRunStore(runsRoot: string) {
+  return {
+    runsRoot,
+    async initRun() {},
+    async updateState() {},
+    async appendLedger() {},
+    async writeAttemptArtifacts() {},
+    async writeLoopRecord() {}
+  };
+}
+
+async function withMemoryRunStore<T>(fn: (runsRoot: string) => Promise<T>): Promise<T> {
+  const runsRoot = await mkdtemp(join(tmpdir(), "martin-mcp-memory-runs-"));
+
+  try {
+    return await fn(runsRoot);
+  } finally {
+    await rm(runsRoot, { recursive: true, force: true }).catch(() => {});
+  }
+}
 
 function readToolText(result: unknown): string {
   const content = (result as { content?: Array<{ type?: string; text?: string }> })?.content;
@@ -521,96 +546,100 @@ describe("server validation", () => {
         __setProofModeVerifierSpawnImplForTests(createImmediateSpawn(verifierCalls));
 
         try {
-          const server = createMartinMcpServer() as unknown as ServerWithRequestHandlers;
-          const callTool = server._requestHandlers.get("tools/call");
-          if (!callTool) {
-            throw new Error("Expected tools/call request handler.");
-          }
+          await withMemoryRunStore(async (memoryRunsRoot) => {
+            __setRunStoreOverrideForTests(createMemoryRunStore(memoryRunsRoot));
 
-          const doctorResult = await callTool(
-            {
-              method: "tools/call",
-              params: {
-                name: "martin_doctor",
-                arguments: {
-                  workingDirectory: workspaceRoot,
-                  engine: "claude"
-                }
-              }
-            },
-            {}
-          );
-          expect((doctorResult as { isError?: boolean }).isError).not.toBe(true);
-
-          const planResult = await callTool(
-            {
-              method: "tools/call",
-              params: {
-                name: "martin_plan",
-                arguments: {
-                  objective: "Summarize the current runtime state",
-                  workingDirectory: workspaceRoot
-                }
-              }
-            },
-            {}
-          );
-          expect((planResult as { isError?: boolean }).isError).not.toBe(true);
-
-          const preflightResult = await callTool(
-            {
-              method: "tools/call",
-              params: {
-                name: "martin_preflight",
-                arguments: {
-                  objective: "Summarize the current runtime state",
-                  workingDirectory: workspaceRoot,
-                  engine: "claude",
-                  verificationPlan: ["node --version"],
-                  maxUsd: 1,
-                  maxIterations: 1,
-                  allowedPaths: ["src/**"],
-                  deniedPaths: ["docs/**"]
-                }
-              }
-            },
-            {}
-          );
-
-          expect((preflightResult as { isError?: boolean }).isError).not.toBe(true);
-          expect(JSON.parse(readToolText(preflightResult)).normalized.budget.softLimitUsd).toBe(1);
-
-          const runResult = await callTool(
-            {
-              method: "tools/call",
-              params: {
-                name: "martin_run",
-                arguments: {
-                  objective: "Summarize the current runtime state",
-                  workingDirectory: workspaceRoot,
-                  engine: "claude",
-                  verificationPlan: ["node --version"],
-                  maxUsd: 1,
-                  maxIterations: 1,
-                  allowedPaths: ["src/**"],
-                  deniedPaths: ["docs/**"]
-                }
-              }
-            },
-            {}
-          );
-
-          expect((runResult as { isError?: boolean }).isError).not.toBe(true);
-          expect(JSON.parse(readToolText(runResult))).toMatchObject({
-            budget: {
-              maxUsd: 1,
-              softLimitUsd: 1,
-              maxIterations: 1
+            const server = createMartinMcpServer() as unknown as ServerWithRequestHandlers;
+            const callTool = server._requestHandlers.get("tools/call");
+            if (!callTool) {
+              throw new Error("Expected tools/call request handler.");
             }
+
+            const doctorResult = await callTool(
+              {
+                method: "tools/call",
+                params: {
+                  name: "martin_doctor",
+                  arguments: {
+                    workingDirectory: workspaceRoot,
+                    engine: "claude"
+                  }
+                }
+              },
+              {}
+            );
+            expect((doctorResult as { isError?: boolean }).isError).not.toBe(true);
+
+            const planResult = await callTool(
+              {
+                method: "tools/call",
+                params: {
+                  name: "martin_plan",
+                  arguments: {
+                    objective: "Summarize the current runtime state",
+                    workingDirectory: workspaceRoot
+                  }
+                }
+              },
+              {}
+            );
+            expect((planResult as { isError?: boolean }).isError).not.toBe(true);
+
+            const preflightResult = await callTool(
+              {
+                method: "tools/call",
+                params: {
+                  name: "martin_preflight",
+                  arguments: {
+                    objective: "Summarize the current runtime state",
+                    workingDirectory: workspaceRoot,
+                    engine: "claude",
+                    verificationPlan: ["node --version"],
+                    maxUsd: 1,
+                    maxIterations: 1,
+                    allowedPaths: ["src/**"],
+                    deniedPaths: ["docs/**"]
+                  }
+                }
+              },
+              {}
+            );
+
+            expect((preflightResult as { isError?: boolean }).isError).not.toBe(true);
+            expect(JSON.parse(readToolText(preflightResult)).normalized.budget.softLimitUsd).toBe(1);
+
+            const runResult = await callTool(
+              {
+                method: "tools/call",
+                params: {
+                  name: "martin_run",
+                  arguments: {
+                    objective: "Summarize the current runtime state",
+                    workingDirectory: workspaceRoot,
+                    engine: "claude",
+                    verificationPlan: ["node --version"],
+                    maxUsd: 1,
+                    maxIterations: 1,
+                    allowedPaths: ["src/**"],
+                    deniedPaths: ["docs/**"]
+                  }
+                }
+              },
+              {}
+            );
+
+            expect((runResult as { isError?: boolean }).isError).not.toBe(true);
+            expect(JSON.parse(readToolText(runResult))).toMatchObject({
+              budget: {
+                maxUsd: 1,
+                softLimitUsd: 1,
+                maxIterations: 1
+              }
+            });
+            expect(verifierCalls).toHaveLength(1);
+            expect(verifierCalls[0]?.command).toBe("node");
+            expect(verifierCalls[0]?.args).toEqual(["--version"]);
           });
-          expect(verifierCalls).toHaveLength(1);
-          expect(verifierCalls[0]?.command).toBe("node");
-          expect(verifierCalls[0]?.args).toEqual(["--version"]);
         } finally {
           if (previousLive === undefined) {
             delete process.env.MARTIN_LIVE;

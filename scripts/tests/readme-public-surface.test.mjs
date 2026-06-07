@@ -104,6 +104,7 @@ test("root README is a public product entry point", async () => {
     "## What It Does",
     "## How It Works",
     "## CLI",
+    "## Benchmarks",
     "## MCP",
     "## SDK",
     "## Examples",
@@ -124,6 +125,9 @@ test("root README is a public product entry point", async () => {
   assert.match(readme, /npx martin-loop demo/);
   assert.match(readme, /npx martin-loop run .* --proof --verify "npm test"/);
   assert.match(readme, /npx martin-loop dossier --latest/);
+  assert.match(readme, /npx martin-loop bench --suite under-3-challenge/);
+  assert.match(readme, /pnpm --filter @martin\/benchmarks build/);
+  assert.match(readme, /pnpm --filter @martin\/benchmarks eval/);
   assert.match(readme, /npx -y @martinloop\/mcp/);
   assert.match(readme, /import \{ MartinLoop, createClaudeCliAdapter \} from "martin-loop"/);
   assert.match(readme, new RegExp(`docs/release/OSS-${manifest.version.replace(/\./g, "\\.")}-RELEASE-NOTES\\.md`));
