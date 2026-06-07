@@ -1,6 +1,6 @@
 import { buildLoopPreview, buildVerificationSummary, resolveReceiptIntegrity } from "./tool-support.js";
 import { loadDetailedLoopRecord, readLedgerEvents } from "./run-store.js";
-import type { ReceiptIntegritySummary } from "@martin/contracts";
+import type { ReceiptIntegritySummary, ReceiptScope } from "@martin/contracts";
 
 export interface MartinGetVerificationResultsInput {
   file?: string;
@@ -14,6 +14,7 @@ export interface MartinGetVerificationResultsOutput {
   loop: ReturnType<typeof buildLoopPreview>;
   verification: ReturnType<typeof buildVerificationSummary>;
   receiptIntegrity: ReceiptIntegritySummary;
+  receiptScope?: ReceiptScope;
   warnings: string[];
 }
 
@@ -30,6 +31,7 @@ export async function martinGetVerificationResultsTool(
     loop: buildLoopPreview(detail.loop),
     verification,
     receiptIntegrity: resolveReceiptIntegrity(detail.loop),
+    ...(detail.loop.receiptScope ? { receiptScope: detail.loop.receiptScope } : {}),
     warnings: [...detail.warnings, ...verification.warnings]
   };
 }

@@ -5,6 +5,7 @@ import {
   readLatestLoopRecordFromFile,
   readLoopRecordsFromFile,
   resolveRunsRoot,
+  verifyReceiptIntegrityFromFiles,
   type LedgerEvent
 } from "@martin/core";
 
@@ -44,6 +45,38 @@ export interface DetailedLoopSource {
   ledgerPath?: string;
 }
 
+async function attachReceiptIntegrity(detail: DetailedLoopSource): Promise<DetailedLoopSource> {
+  const ledgerPath = detail.canonicalRunDirectory
+    ? await resolveReceiptEvidencePath(detail.canonicalRunDirectory)
+    : detail.ledgerPath;
+  const integrity =
+    detail.canonicalLoopRecordPath && detail.canonicalRunDirectory && ledgerPath
+      ? await verifyReceiptIntegrityFromFiles({
+          runId: detail.loop.loopId,
+          runsRoot: detail.runsRoot,
+          loopRecordPath: detail.canonicalLoopRecordPath,
+          ledgerPath
+        }).catch(() => ({
+          state: "unsigned" as const,
+          reason: "Receipt integrity verification could not be completed."
+        }))
+      : ({
+          state: "unsigned" as const,
+          reason: "Receipt integrity is only available for canonical run directories."
+        });
+  const receiptScope = resolveReceiptScope(detail.loop, detail.runsRoot);
+
+  return {
+    ...detail,
+    ...(ledgerPath ? { ledgerPath } : {}),
+    loop: {
+      ...detail.loop,
+      receiptIntegrity: integrity,
+      ...(receiptScope ? { receiptScope } : {})
+    }
+  };
+}
+
 export interface LoopListInput {
   runsDir?: string;
   limit?: number;
@@ -66,6 +99,37 @@ export type LedgerEventsWithDiagnostics = LedgerEvent[] & {
   unreadable?: boolean;
   ledgerPath?: string;
 };
+
+function resolveReceiptScope(
+  loop: InspectableLoopRecord,
+  runsRoot?: string
+): InspectableLoopRecord["receiptScope"] | undefined {
+  if (loop.receiptScope) {
+    return loop.receiptScope;
+  }
+
+  if (!loop.task?.repoRoot && !runsRoot) {
+    return undefined;
+  }
+
+  return {
+    ...(loop.task?.repoRoot ? { repoRoot: loop.task.repoRoot } : {}),
+    ...(loop.task?.repoRoot ? { workingDirectory: loop.task.repoRoot } : {}),
+    ...(runsRoot ? { runsRoot } : {})
+  };
+}
+
+async function resolveReceiptEvidencePath(runDirectory: string): Promise<string | undefined> {
+  for (const candidate of ["ledger.jsonl", "events.jsonl"]) {
+    const candidatePath = path.join(runDirectory, candidate);
+    const candidateStats = await safeStat(candidatePath);
+    if (candidateStats?.isFile()) {
+      return candidatePath;
+    }
+  }
+
+  return undefined;
+}
 
 export async function loadLoopRecordsForInspect(input: {
   file?: string;
@@ -220,14 +284,14 @@ export async function loadDetailedLoopRecord(input: {
         const canonicalStats = await safeStat(canonicalLoopRecordPath);
         if (canonicalStats?.isFile()) {
           const loop = await readCanonicalLoopRecord(canonicalLoopRecordPath);
-          return buildDetailedLoopSource({
+          return await attachReceiptIntegrity(buildDetailedLoopSource({
             source: canonicalLoopRecordPath,
             sourceKind: "file",
             runsRoot,
             loop,
             canonicalLoopRecordPath,
             canonicalRunDirectory: path.dirname(canonicalLoopRecordPath)
-          });
+          }));
         }
       }
 
@@ -243,10 +307,10 @@ export async function loadDetailedLoopRecord(input: {
         runsRoot,
         loop
       });
-      return {
+      return await attachReceiptIntegrity({
         ...detail,
         warnings: [...detail.warnings, ...inspected.warnings]
-      };
+      });
     }
 
     const latest = await readLatestLoopRecordFromFile(targetPath);
@@ -256,22 +320,22 @@ export async function loadDetailedLoopRecord(input: {
 
     if (path.basename(targetPath) === "loop-record.json") {
       const loop = await readCanonicalLoopRecord(targetPath);
-      return buildDetailedLoopSource({
+      return await attachReceiptIntegrity(buildDetailedLoopSource({
         source: targetPath,
         sourceKind: "file",
         runsRoot,
         loop,
         canonicalLoopRecordPath: targetPath,
         canonicalRunDirectory: path.dirname(targetPath)
-      });
+      }));
     }
 
-    return await buildDetailedLoopSourceFromDiscoveredLoop({
+    return await attachReceiptIntegrity(await buildDetailedLoopSourceFromDiscoveredLoop({
       source: targetPath,
       sourceKind: "file",
       runsRoot,
       loop: latest as InspectableLoopRecord
-    });
+    }));
   }
 
   if (input.loopId) {
@@ -279,14 +343,14 @@ export async function loadDetailedLoopRecord(input: {
     const canonicalStats = await safeStat(canonicalLoopRecordPath);
     if (canonicalStats?.isFile()) {
       const loop = await readCanonicalLoopRecord(canonicalLoopRecordPath);
-      return buildDetailedLoopSource({
+      return await attachReceiptIntegrity(buildDetailedLoopSource({
         source: canonicalLoopRecordPath,
         sourceKind: "loop_id",
         runsRoot,
         loop,
         canonicalLoopRecordPath,
         canonicalRunDirectory: path.dirname(canonicalLoopRecordPath)
-      });
+      }));
     }
 
     const inspected = await readAllLoopRecordsSafely(runsRoot);
@@ -301,10 +365,10 @@ export async function loadDetailedLoopRecord(input: {
       runsRoot,
       loop
     });
-    return {
+    return await attachReceiptIntegrity({
       ...detail,
       warnings: [...detail.warnings, ...inspected.warnings]
-    };
+    });
   }
 
   const inspected = await readAllLoopRecordsSafely(runsRoot);
@@ -319,10 +383,10 @@ export async function loadDetailedLoopRecord(input: {
     runsRoot,
     loop
   });
-  return {
+  return await attachReceiptIntegrity({
     ...detail,
     warnings: [...detail.warnings, ...inspected.warnings]
-  };
+  });
 }
 
 export async function loadAttemptFromLoop(input: {

@@ -2,6 +2,7 @@ import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "n
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { writeReceiptIntegrityMaterial } from "@martin/core";
 import { createLoopRecord } from "@martin/contracts";
 import { describe, expect, it, vi } from "vitest";
 
@@ -12,6 +13,7 @@ import { martinDoctorTool } from "../src/tools/doctor.js";
 import { martinGetVerificationResultsTool } from "../src/tools/get-verification-results.js";
 import { martinListRunsTool } from "../src/tools/list-runs.js";
 import { martinPreflightTool } from "../src/tools/preflight.js";
+import { martinRunDossierTool } from "../src/tools/run-dossier.js";
 import { runLoopTool } from "../src/tools/run-loop.js";
 import { martinTriageRunsTool } from "../src/tools/triage-runs.js";
 
@@ -750,6 +752,133 @@ describe("martinTriageRunsTool", () => {
       expect(run.warnings).toContain(
         "Receipt integrity is unsigned; persisted verifier evidence is not trustworthy yet."
       );
+    });
+  });
+
+  it(
+    "detects tampering in canonical persisted runs and surfaces receipt scope",
+    async () => {
+      await withRunsRoot(async (runsRoot) => {
+        const originalEnv = process.env.MARTIN_LIVE;
+        process.env.MARTIN_LIVE = "false";
+
+        try {
+          const result = await runLoopTool({
+            objective: "Create a canonical run, then tamper with the persisted loop record.",
+            workingDirectory: ".",
+            verificationPlan: ["pnpm --filter @martinloop/mcp test -- --runInBand"],
+            maxIterations: 1,
+            maxUsd: 1
+          });
+          const loopRecordPath = join(runsRoot, result.loopId, "loop-record.json");
+          const tamperWarning =
+            "Receipt integrity is tamper_detected; persisted verifier evidence is not trustworthy yet.";
+          const expectedReceiptScope = {
+            workingDirectory: process.cwd(),
+            repoRoot: process.cwd(),
+            runsRoot
+          };
+
+          const baselineRun = await martinGetRunTool({ loopId: result.loopId });
+          expect(baselineRun.receiptIntegrity.state).toBe("verified");
+          expect(baselineRun.receiptScope).toMatchObject(expectedReceiptScope);
+
+          const persisted = JSON.parse(await readFile(loopRecordPath, "utf8"));
+          persisted.task.title = "Tampered after receipt material was created.";
+          await writeFile(loopRecordPath, JSON.stringify(persisted, null, 2), "utf8");
+
+          const run = await martinGetRunTool({ loopId: result.loopId });
+          const verification = await martinGetVerificationResultsTool({ loopId: result.loopId });
+          const dossier = await martinRunDossierTool({ loopId: result.loopId });
+
+          expect(run.receiptIntegrity.state).toBe("tamper_detected");
+          expect(run.receiptScope).toMatchObject(expectedReceiptScope);
+          expect(run.warnings).toContain(tamperWarning);
+
+          expect(verification.receiptIntegrity.state).toBe("tamper_detected");
+          expect(verification.receiptScope).toMatchObject(expectedReceiptScope);
+          expect(verification.warnings).toContain(tamperWarning);
+
+          expect(dossier.receiptIntegrity.state).toBe("tamper_detected");
+          expect(dossier.receiptScope).toMatchObject(expectedReceiptScope);
+          expect(dossier.warnings).toContain(tamperWarning);
+        } finally {
+          if (originalEnv === undefined) {
+            delete process.env.MARTIN_LIVE;
+          } else {
+            process.env.MARTIN_LIVE = originalEnv;
+          }
+        }
+      });
+    },
+    20_000
+  );
+
+  it("verifies canonical events.jsonl receipts and backfills missing receipt scope", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const repoRoot = join(runsRoot, "workspace");
+      const baseLoop = makeLoopRecord();
+      const loop = {
+        ...baseLoop,
+        task: {
+          ...baseLoop.task,
+          repoRoot
+        },
+        events: [
+          {
+            eventId: "evt_events_1",
+            timestamp: "2026-06-07T12:00:00.000Z",
+            type: "verification.completed" as const,
+            lifecycleState: "verifying" as const,
+            payload: {
+              attemptId: "att_events_1",
+              passed: true,
+              summary: "Verification completed from events.jsonl."
+            }
+          }
+        ]
+      };
+      const loopDir = join(runsRoot, loop.loopId);
+      const loopRecordPath = join(loopDir, "loop-record.json");
+      const eventsPath = join(loopDir, "events.jsonl");
+
+      await mkdir(loopDir, { recursive: true });
+      await writeFile(loopRecordPath, `${JSON.stringify(loop, null, 2)}\n`, "utf8");
+      await writeFile(
+        eventsPath,
+        loop.events.map((entry) => JSON.stringify(entry)).join("\n").concat("\n"),
+        "utf8"
+      );
+      await writeReceiptIntegrityMaterial({
+        runId: loop.loopId,
+        runsRoot,
+        loopRecord: loop,
+        ledgerEntries: loop.events,
+        scope: {
+          repoRoot,
+          workingDirectory: repoRoot,
+          runsRoot
+        },
+        signedAt: loop.updatedAt
+      });
+
+      const run = await martinGetRunTool({ loopId: loop.loopId });
+      const verification = await martinGetVerificationResultsTool({ loopId: loop.loopId });
+
+      expect(run.receiptIntegrity.state).toBe("verified");
+      expect(run.receiptScope).toMatchObject({
+        repoRoot,
+        workingDirectory: repoRoot,
+        runsRoot
+      });
+      expect(run.inspection.ledgerPath).toBe(eventsPath);
+
+      expect(verification.receiptIntegrity.state).toBe("verified");
+      expect(verification.receiptScope).toMatchObject({
+        repoRoot,
+        workingDirectory: repoRoot,
+        runsRoot
+      });
     });
   });
 
