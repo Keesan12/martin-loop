@@ -227,6 +227,7 @@ export function createOpenAiCompatibleAdapter(
   const runtimeConfig = resolveOpenAiCompatibleRuntimeConfig();
   const baseUrl = (options.baseUrl ?? runtimeConfig.baseUrl).replace(/\/$/, "");
   const model = options.model ?? runtimeConfig.model;
+  const apiKey = options.apiKey ?? runtimeConfig.apiKey;
 
   return {
     adapterId: `openai-compatible:${model}`,
@@ -278,7 +279,7 @@ export function createOpenAiCompatibleAdapter(
 
         try {
           const headers: Record<string, string> = { "Content-Type": "application/json" };
-          if (options.apiKey) headers["Authorization"] = `Bearer ${options.apiKey}`;
+          if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
           // OpenRouter requires a site URL header for attribution
           if (baseUrl.includes("openrouter")) {
             headers["HTTP-Referer"] = "https://martinloop.com";
