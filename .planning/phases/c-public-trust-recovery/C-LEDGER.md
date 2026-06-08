@@ -119,3 +119,13 @@
 - C.9 unknown-field warning on copied receipts: closed in code + tests.
 - C.10 full client rerun contract: internal gate rerun complete; external field rerun still pending.
 - C.11 staging/public promotion: pending.
+
+## Public-copy scan hygiene follow-up
+
+- Hardened `scripts/public-copy-scan.mjs` scope to scan `.github` markdown surfaces only (not workflow YAML), preventing false positives from CI script names.
+- Validation:
+  - `node --test scripts/tests/public-copy-scan.test.mjs` passed.
+- Current scan output still flags two existing artifact-policy violations in this repo baseline:
+  - `docs/assets/phase3c-sidesidebyside-demo.html`
+  - `docs/release/OSS-M2-HARVEST-HANDOFF.md`
+- These are pre-existing repository artifacts and require explicit disposition before claiming a fully green public-copy gate for promotion.
