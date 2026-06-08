@@ -657,44 +657,46 @@ describe("createClaudeCliAdapter", () => {
 
   it("skips git probes when repoRoot is outside a repository", async () => {
     const calls: SpawnCall[] = [];
-    const adapter = createClaudeCliAdapter({
-      spawnImpl: createScriptedSpawn(calls, [
-        {
-          stdout: JSON.stringify({
-            type: "result",
-            result: "Patched the target file.",
-            usage: {
-              input_tokens: 12,
-              output_tokens: 8
-            }
-          })
-        },
-        { stdout: "" },
-        { stdout: "src/index.ts\n" },
-        { stdout: "1\t0\tsrc/index.ts\n" },
-        { stdout: "src/index.ts\n" }
-      ])
-    });
+    const externalRepoRoot = await mkdtemp(join(tmpdir(), "martin-nonrepo-root-"));
 
-    const result = await adapter.execute(
-      makeRequest({
-        context: {
-          taskTitle: "test",
-          objective: "patch then check scope",
-          verificationPlan: [],
-          focus: "test",
-          remainingBudgetUsd: 8,
-          remainingIterations: 3,
-          remainingTokens: 10_000,
-          repoRoot: "C:\\repo with spaces",
-          allowedPaths: ["src/**"]
-        }
-      })
-    );
+    try {
+      const adapter = createClaudeCliAdapter({
+        spawnImpl: createScriptedSpawn(calls, [
+          {
+            stdout: JSON.stringify({
+              type: "result",
+              result: "Patched the target file.",
+              usage: {
+                input_tokens: 12,
+                output_tokens: 8
+              }
+            })
+          }
+        ])
+      });
 
-    expect(result.status).toBe("completed");
-    expect(calls).toHaveLength(1);
-    expect(calls[0]?.command).toBe("claude");
+      const result = await adapter.execute(
+        makeRequest({
+          context: {
+            taskTitle: "test",
+            objective: "patch then check scope",
+            verificationPlan: [],
+            focus: "test",
+            remainingBudgetUsd: 8,
+            remainingIterations: 3,
+            remainingTokens: 10_000,
+            repoRoot: externalRepoRoot,
+            allowedPaths: ["src/**"]
+          }
+        })
+      );
+
+      expect(result.status).toBe("completed");
+      expect(calls).toHaveLength(1);
+      expect(calls[0]?.command).toBe("claude");
+    } finally {
+      await rm(externalRepoRoot, { force: true, recursive: true }).catch(() => {});
+    }
   });
 
   it("requests stream-json output so usage can be observed incrementally", async () => {
