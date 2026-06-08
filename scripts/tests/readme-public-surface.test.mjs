@@ -122,9 +122,9 @@ test("root README is a public product entry point", async () => {
   }
 
   assert.match(readme, /The open-source control plane for AI coding agents/i);
-  assert.match(readme, /npx martin-loop demo/);
-  assert.match(readme, /npx martin-loop run .* --proof --verify "npm test"/);
-  assert.match(readme, /npx martin-loop dossier --latest/);
+  assert.match(readme, /npx(?: -y)? martin-loop(?:@latest)? demo/);
+  assert.match(readme, /npx(?: -y)? martin-loop(?:@latest)? run .* --proof --verify "npm test"/);
+  assert.match(readme, /npx(?: -y)? martin-loop(?:@latest)? dossier --latest/);
   assert.match(readme, /npx martin-loop bench --suite under-3-challenge/);
   assert.match(readme, /pnpm --filter @martin\/benchmarks build/);
   assert.match(readme, /pnpm --filter @martin\/benchmarks eval/);

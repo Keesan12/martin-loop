@@ -30,6 +30,9 @@ export function createPublicFacadeSmokePlan(options = {}) {
     demoSmoke: {
       description: "npx martin-loop demo copies the packaged sandbox from a clean temp install.",
     },
+    unsafeBypassSmoke: {
+      description: "npx martin-loop run --unsafe-allow-unguarded-run bypasses the local receipt gate in packaged CLI builds.",
+    },
   };
 }
 
@@ -104,6 +107,30 @@ export async function runPublicFacadeSmoke(options = {}) {
       throw new Error(`Expected demo command to copy the packaged sandbox.\n${demoRun.stdout}${demoRun.stderr}`);
     }
 
+    // This command is expected to fail in clean temp installs when an adapter cannot launch,
+    // but it must not fail with local receipt-gate policy_blocked when unsafe bypass is explicit.
+    const unsafeBypassRun = await runCommandAllowFailure(
+      [
+        "npx",
+        "martin-loop",
+        "run",
+        "--objective",
+        "Unsafe bypass smoke",
+        "--verify",
+        "node -e \"process.exit(0)\"",
+        "--unsafe-allow-unguarded-run",
+      ],
+      { cwd: appDir },
+    );
+    if (/Governed run blocked until MartinLoop receipts exist/u.test(unsafeBypassRun.stderr)) {
+      throw new Error(
+        [
+          "Expected --unsafe-allow-unguarded-run to bypass local receipt gating in packaged CLI.",
+          unsafeBypassRun.stderr || unsafeBypassRun.stdout,
+        ].join("\n"),
+      );
+    }
+
     return {
       packageName: rootManifest.name,
       tarballPath,
@@ -120,6 +147,11 @@ export async function runPublicFacadeSmoke(options = {}) {
       demoSmoke: {
         ok: true,
         command: "npx martin-loop demo --dir ./martin-loop-demo",
+      },
+      unsafeBypassSmoke: {
+        ok: true,
+        command: "npx martin-loop run --objective \"Unsafe bypass smoke\" --verify \"node -e \\\"process.exit(0)\\\"\" --unsafe-allow-unguarded-run",
+        exitCode: unsafeBypassRun.exitCode,
       },
     };
   } finally {
@@ -169,6 +201,43 @@ async function runCommand(command, options) {
       resolve({
         stdout,
         stderr,
+      });
+    });
+  });
+}
+
+async function runCommandAllowFailure(command, options) {
+  const execution = resolveRcCommandExecution(command, process.platform);
+  const env = buildLifecycleSafeEnv();
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(execution.command, execution.args, {
+      cwd: options.cwd,
+      env,
+      shell: execution.shell,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    child.on("error", (error) => {
+      reject(error);
+    });
+
+    child.on("close", (code) => {
+      resolve({
+        stdout,
+        stderr,
+        exitCode: code ?? 1,
       });
     });
   });

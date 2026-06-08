@@ -30,15 +30,15 @@ martin-loop mcp install --host <codex|claude|gemini|generic>
 Use this sequence when you are new to the product or setting up a fresh repo:
 
 ```sh
-npx martin-loop --version
-npx martin-loop demo
+npx -y martin-loop@latest --version
+npx -y martin-loop@latest demo
 cd martin-loop-demo
 npm install
-npx martin-loop doctor
-npx martin-loop session-start
-npx martin-loop preflight "Summarize the workspace and prove tests still pass" --verify "npm test"
-npx martin-loop run "Summarize the workspace and prove tests still pass" --proof --verify "npm test"
-npx martin-loop share --latest
+npx -y martin-loop@latest doctor
+npx -y martin-loop@latest session-start
+npx -y martin-loop@latest preflight "Summarize the workspace and prove tests still pass" --verify "npm test"
+npx -y martin-loop@latest run "Summarize the workspace and prove tests still pass" --proof --verify "npm test"
+npx -y martin-loop@latest share --latest
 ```
 
 ## Run Options
