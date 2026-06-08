@@ -1,6 +1,6 @@
 # MCP For AI Agents
 
-`@martinloop/mcp@0.3.0` is the current public standalone MCP baseline for MartinLoop.
+`@martinloop/mcp@0.3.0` is the live public standalone MCP baseline for MartinLoop. `0.3.1` is staged as the next standalone release line.
 
 It is built for hosts that need a governed local-first workflow, not a vague bag of tools.
 
@@ -62,8 +62,8 @@ claude mcp add --transport stdio --scope user martin-loop -- cmd /c npx -y @mart
 
 ## What comes next in the train
 
-- `0.3.0` focuses on adoption and host onboarding.
-- `0.3.1` focuses on review and handoff.
-- `0.3.2` focuses on opt-in execution controls.
+- `0.3.0` is the live adoption and host-onboarding baseline.
+- `0.3.1` is the staged review-and-handoff follow-up.
+- `0.3.2` stays planned for opt-in execution controls.
 
 None of those slices should imply hosted transport, tenant features, or billing surfaces.
