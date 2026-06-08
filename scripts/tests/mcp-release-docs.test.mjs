@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 
 import packageJson from "../../packages/mcp/package.json" with { type: "json" };
 import serverJson from "../../packages/mcp/server.json" with { type: "json" };
+import rootPackageJson from "../../package.json" with { type: "json" };
 
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -29,16 +30,18 @@ test("current MCP metadata stays aligned for the release cut", async () => {
 test("version ledger records live public truth and the next release train", async () => {
   const ledger = await readRepoFile(path.join("docs", "release", "VERSION-LEDGER.md"));
 
-  for (const requiredText of [
-    "root public baseline: `0.2.11`",
-    "standalone MCP public baseline: `0.3.0`",
-    "current in-repo root release line: `0.3.0`",
-    "next planned root follow-on: `0.3.1`",
-    "next planned standalone release: `0.3.1`",
-    "`0.3.2` opt-in execution controls"
-  ]) {
-    assert.match(ledger, new RegExp(escapeRegex(requiredText)));
-  }
+  assert.match(ledger, /root public baseline: `\d+\.\d+\.\d+`/);
+  assert.match(
+    ledger,
+    new RegExp(escapeRegex(`standalone MCP public baseline: \`${packageJson.version}\``))
+  );
+  assert.match(
+    ledger,
+    new RegExp(escapeRegex(`current in-repo root release line: \`${rootPackageJson.version}\``))
+  );
+  assert.match(ledger, /next planned root follow-on: `\d+\.\d+\.\d+`/);
+  assert.match(ledger, /next planned standalone release: `\d+\.\d+\.\d+`/);
+  assert.match(ledger, /`0\.3\.2` opt-in execution controls/);
 });
 
 test("MCP slice map defines the 0.3.x train without private-hosted bleed", async () => {

@@ -36,6 +36,12 @@ afterEach(() => {
 });
 
 describe("parseCliArguments", () => {
+  it("parses version flags and subcommand", () => {
+    expect(parseCliArguments(["--version"])).toEqual({ command: "version" });
+    expect(parseCliArguments(["-V"])).toEqual({ command: "version" });
+    expect(parseCliArguments(["version"])).toEqual({ command: "version" });
+  });
+
   it("parses a run command into a typed request", () => {
     const parsed = parseCliArguments([
       "run",
@@ -99,6 +105,19 @@ describe("parseCliArguments", () => {
 });
 
 describe("executeCli", () => {
+  it("prints the public root package version", async () => {
+    const rootPackageVersion = (
+      JSON.parse(await readFile(join(process.cwd(), "..", "..", "package.json"), "utf8")) as {
+        version: string;
+      }
+    ).version;
+    const result = await executeCli(["--version"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toBe(rootPackageVersion);
+  });
+
   it("resolves effectivePolicy from config and applies it to the run", async () => {
     const directory = await mkdtemp(join(tmpdir(), "martin-cli-config-"));
     const configPath = join(directory, "martin.config.yaml");

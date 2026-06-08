@@ -85,6 +85,13 @@ import { evaluateCliRunGate, recordCliWorkflowStep } from "./workflow-state.js";
 
 const require = createRequire(import.meta.url);
 const packageJson = require("../package.json") as { version: string };
+const rootPackageVersion = (() => {
+  try {
+    return (require("../../../package.json") as { version?: string }).version ?? packageJson.version;
+  } catch {
+    return packageJson.version;
+  }
+})();
 let runAdapterOverrideForTests: MartinAdapter | undefined;
 
 export type RunCommandRequest = {
@@ -288,6 +295,9 @@ export type ParsedCliArguments =
       command: "help";
     }
   | {
+      command: "version";
+    }
+  | {
       command: "run";
       request: RunCommandRequest;
     }
@@ -330,6 +340,12 @@ export async function executeCli(args: string[]): Promise<{
         return {
           exitCode: 0,
           stdout: renderCliHelp(),
+          stderr: ""
+        };
+      case "version":
+        return {
+          exitCode: 0,
+          stdout: rootPackageVersion,
           stderr: ""
         };
       case "bench":
@@ -395,6 +411,10 @@ export function __setRunAdapterOverrideForTests(adapter?: MartinAdapter): void {
 
 export function parseCliArguments(args: string[]): ParsedCliArguments {
   const [command, ...rest] = args;
+
+  if (command === "--version" || command === "-V" || command === "version") {
+    return { command: "version" };
+  }
 
   if (!command || command === "help" || command === "--help" || command === "-h") {
     return { command: "help" };
@@ -1100,7 +1120,7 @@ async function executeDoctorCommand(
 
   const data = {
     command: "doctor",
-    cliVersion: packageJson.version,
+    cliVersion: rootPackageVersion,
     environment,
     receiptScope,
     scope: {
@@ -1155,7 +1175,7 @@ async function executeDoctorCommand(
   return renderCliSuccess(outputMode, {
     data,
     human: [
-      `Martin CLI doctor (${packageJson.version})`,
+      `Martin CLI doctor (${rootPackageVersion})`,
       `Working directory: ${environment.workingDirectory} (${workingDirectoryReady ? "ready" : "missing"})`,
       `Runs root: ${environment.runsRoot} (${runsRootReady ? "ready" : "not created yet"})`,
       `Live mode: ${environment.liveMode}`,
