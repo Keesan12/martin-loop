@@ -1009,6 +1009,13 @@ export function resolveReceiptScope(loop: LoopRecord, runsRoot?: string): Receip
   };
 }
 
+function isWithinRunsRoot(runsRoot: string, candidatePath: string): boolean {
+  const resolvedRoot = path.resolve(runsRoot);
+  const resolvedCandidate = path.resolve(candidatePath);
+  const relative = path.relative(resolvedRoot, resolvedCandidate);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
 async function resolveReceiptEvidencePath(runDirectory: string): Promise<string> {
   for (const candidate of ["ledger.jsonl", "events.jsonl"]) {
     const candidatePath = path.join(runDirectory, candidate);

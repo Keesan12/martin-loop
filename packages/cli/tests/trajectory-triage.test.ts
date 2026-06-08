@@ -107,7 +107,7 @@ describe("CLI trajectory triage", () => {
 
       expect(triage.findings[0]?.reasons).toContain("trajectory_stalled");
       expect(triage.findings[0]?.summary).toContain("Trajectory stalled");
-      expect(dossier.receipt.receiptIntegrity.state).toBe("unsigned");
+      expect(dossier.receipt.receiptIntegrity.state).toBe("material_missing");
       expect(dossier.receipt.whatMartinPrevented).toContain(
         "trust claim unavailable until receipt integrity verifies"
       );
