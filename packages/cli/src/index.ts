@@ -1,4 +1,5 @@
 import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -83,13 +84,44 @@ import { evaluateCliRunGate, recordCliWorkflowStep } from "./workflow-state.js";
 
 const require = createRequire(import.meta.url);
 const packageJson = require("../package.json") as { version: string };
-const rootPackageVersion = (() => {
+type PackageManifest = {
+  name?: string;
+  version?: string;
+};
+
+function readPackageManifest(path: string): PackageManifest | undefined {
   try {
-    return (require("../../../package.json") as { version?: string }).version ?? packageJson.version;
+    const parsed = JSON.parse(readFileSync(path, "utf8")) as PackageManifest;
+    return parsed;
   } catch {
-    return packageJson.version;
+    return undefined;
   }
-})();
+}
+
+function resolveRootPackageVersion(): string {
+  let cursor = dirname(fileURLToPath(import.meta.url));
+  for (let depth = 0; depth < 10; depth += 1) {
+    const manifest = readPackageManifest(join(cursor, "package.json"));
+    if (manifest?.name === "martin-loop" && typeof manifest.version === "string" && manifest.version.length > 0) {
+      return manifest.version;
+    }
+
+    const parent = dirname(cursor);
+    if (parent === cursor) {
+      break;
+    }
+    cursor = parent;
+  }
+
+  const envVersion = process.env["npm_package_name"] === "martin-loop" ? process.env["npm_package_version"] : undefined;
+  if (typeof envVersion === "string" && envVersion.length > 0) {
+    return envVersion;
+  }
+
+  return packageJson.version;
+}
+
+const rootPackageVersion = resolveRootPackageVersion();
 let runAdapterOverrideForTests: MartinAdapter | undefined;
 
 export type RunCommandRequest = {

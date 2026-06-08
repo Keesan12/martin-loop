@@ -19,7 +19,7 @@ function escapeRegex(input) {
 }
 
 test("current MCP metadata stays aligned for the release cut", async () => {
-  assert.equal(packageJson.version, "0.3.0");
+  assert.equal(packageJson.version, "0.3.1");
   assert.equal(packageJson.version, serverJson.version);
 
   const releaseNotesPath = path.join(ROOT_DIR, "docs", "release", `MCP-${packageJson.version}-RELEASE-NOTES.md`);
@@ -31,9 +31,14 @@ test("version ledger records live public truth and the next release train", asyn
   const ledger = await readRepoFile(path.join("docs", "release", "VERSION-LEDGER.md"));
 
   assert.match(ledger, /root public baseline: `\d+\.\d+\.\d+`/);
+  assert.match(ledger, /live public GitHub release: `v0\.3\.1`/);
   assert.match(
     ledger,
-    new RegExp(escapeRegex(`standalone MCP public baseline: \`${packageJson.version}\``))
+    new RegExp(escapeRegex("standalone MCP public baseline: `0.3.0`"))
+  );
+  assert.match(
+    ledger,
+    new RegExp(escapeRegex(`current in-repo standalone release line: \`${packageJson.version}\``))
   );
   assert.match(
     ledger,
@@ -41,7 +46,7 @@ test("version ledger records live public truth and the next release train", asyn
   );
   assert.match(ledger, /next planned root follow-on: `\d+\.\d+\.\d+`/);
   assert.match(ledger, /next planned standalone release: `\d+\.\d+\.\d+`/);
-  assert.match(ledger, /`0\.3\.2` opt-in execution controls/);
+  assert.match(ledger, /`0\.3\.3` reserved for additional host-coverage follow-ups/);
 });
 
 test("MCP slice map defines the 0.3.x train without private-hosted bleed", async () => {
@@ -68,6 +73,7 @@ test("public MCP docs describe the current baseline and the next train in human-
 
   for (const contents of [packageReadme, aiGuide]) {
     assert.match(contents, /0\.3\.0/);
+    assert.match(contents, /0\.3\.1/);
     assert.match(contents, /local-first/i);
     assert.match(contents, /martin_doctor/);
     assert.match(contents, /martin_plan/);

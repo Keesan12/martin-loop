@@ -1,12 +1,12 @@
 # @martinloop/mcp 0.3.1
 
-`0.3.1` is the review and handoff release for the standalone MartinLoop MCP server.
+`0.3.1` is the staged review and handoff release for the standalone MartinLoop MCP server.
 
 ## Release story
 
 Make post-run review feel crisp instead of forensic.
 
-## Planned scope
+## Scope in this cut
 
 - stronger dossier and eval guidance
 - clearer triage and publish-readiness prompts
@@ -20,6 +20,6 @@ Make post-run review feel crisp instead of forensic.
 - org policy
 - fleet controls
 
-## Release gate
+## Release gate for ship
 
 A human reviewer or AI host should be able to understand a governed run without reconstructing MartinLoop from raw receipts.
