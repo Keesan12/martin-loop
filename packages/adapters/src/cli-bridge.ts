@@ -1,6 +1,13 @@
 import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
 import { delimiter, dirname, extname, isAbsolute, join, resolve } from "node:path";
-import { existsSync } from "node:fs";
+
+import type {
+  VerifierExitReason,
+  VerifierSnapshot,
+  VerifierStepSnapshot,
+  VerifierStepType
+} from "@martin/contracts";
 
 import { diffStatsFromNumstat } from "./runtime-support.js";
 
@@ -15,87 +22,39 @@ export interface SubprocessResult {
   stdout: string;
   stderr: string;
   timedOut: boolean;
-  /**
-   * True when the subprocess was terminated early because its combined
-   * stdout+stderr exceeded `maxOutputBytes` — a circuit breaker against
-   * runaway agent sessions that would otherwise burn far more cost/tokens
-   * than the loop budget allows before MartinLoop can observe the final
-   * (post-hoc) usage report. See `claude-cli.ts` execute() for how this
-   * cap is derived from the remaining loop budget.
-   */
-  outputCapped: boolean;
-  /**
-   * Set to the inspector's reason string when an `onStdoutChunk` callback
-   * requested early termination (e.g. a streaming usage/cost circuit breaker
-   * that detected the agent is on track to blow through its budget). Distinct
-   * from `outputCapped`, which fires on raw byte volume rather than parsed
-   * semantic content.
-   */
-  terminationReason?: string;
-  launched: boolean;
+  spawnError?: boolean;
 }
 
 export interface VerificationOutcome {
   passed: boolean;
   summary: string;
-  steps: VerificationStepOutcome[];
-  warnings?: string[];
+  snapshot: VerifierSnapshot;
 }
 
-export interface VerificationStepOutcome {
-  command: string;
-  launched: boolean;
-  exitCode?: number;
-  timedOut: boolean;
-  fastFail: boolean;
-  detail?: string;
+export interface CliCommandProbe extends SubprocessResult {
+  ready: boolean;
+  detail: string;
 }
-
-const gitRepositoryRootCache = new Map<string, string | null>();
 
 export async function runSubprocess(
   command: string,
   args: string[],
-  options: {
-    cwd: string;
-    timeoutMs: number;
-    spawnImpl?: SpawnLike;
-    stdinData?: string;
-    /**
-     * Optional circuit breaker: terminate the subprocess once combined
-     * stdout+stderr bytes exceed this threshold, instead of waiting for
-     * natural completion. Used to bound runaway agent-CLI cost/token spend
-     * that can't otherwise be observed until the process exits.
-     */
-    maxOutputBytes?: number;
-    /**
-     * Optional semantic inspector invoked with each raw stdout chunk. Used to
-     * parse streaming structured output (e.g. Claude's `stream-json` usage
-     * events) and request early termination via the supplied `terminate`
-     * callback once a semantic threshold (such as cumulative cost) is
-     * crossed — well before the subprocess would exit naturally and report
-     * a runaway final usage figure.
-     */
-    onStdoutChunk?: (chunk: Buffer, terminate: (reason: string) => void) => void;
-  }
+  options: { cwd: string; timeoutMs: number; spawnImpl?: SpawnLike; stdinData?: string }
 ): Promise<SubprocessResult> {
   return new Promise((resolve) => {
     let timedOut = false;
-    let outputCapped = false;
-    let terminationReason: string | undefined;
     let settled = false;
-    let outputBytes = 0;
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
 
     const stdinMode = options.stdinData !== undefined ? "pipe" : "ignore";
 
-    const resolveOnce = (result: Omit<SubprocessResult, "timedOut" | "outputCapped" | "terminationReason">) => {
+    const resolveOnce = (result: SubprocessResult) => {
       if (settled) {
         return;
       }
       settled = true;
-      resolve({ ...result, timedOut, outputCapped, ...(terminationReason ? { terminationReason } : {}) });
+      resolve(result);
     };
 
     let proc: ChildProcess;
@@ -108,39 +67,22 @@ export async function runSubprocess(
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      resolveOnce({ exitCode: 1, stdout: "", stderr: message, launched: false });
+      resolveOnce({
+        exitCode: 1,
+        stdout: "",
+        stderr: message,
+        timedOut: false,
+        spawnError: true
+      });
       return;
     }
 
-    const trackOutput = (chunks: Buffer[], chunk: Buffer) => {
-      chunks.push(chunk);
-      outputBytes += chunk.byteLength;
-      if (
-        options.maxOutputBytes !== undefined &&
-        !outputCapped &&
-        !timedOut &&
-        outputBytes > options.maxOutputBytes
-      ) {
-        outputCapped = true;
-        proc.kill("SIGTERM");
-      }
-    };
-
-    const terminateEarly = (reason: string) => {
-      if (terminationReason || timedOut || outputCapped) {
-        return;
-      }
-      terminationReason = reason;
-      proc.kill("SIGTERM");
-    };
-
     proc.stdout?.on("data", (chunk: Buffer) => {
-      trackOutput(stdoutChunks, chunk);
-      options.onStdoutChunk?.(chunk, terminateEarly);
+      stdoutChunks.push(chunk);
     });
 
     proc.stderr?.on("data", (chunk: Buffer) => {
-      trackOutput(stderrChunks, chunk);
+      stderrChunks.push(chunk);
     });
 
     proc.stdin?.on("error", (error: NodeJS.ErrnoException) => {
@@ -159,7 +101,13 @@ export async function runSubprocess(
 
     proc.on("error", (error) => {
       clearTimeout(timer);
-      resolveOnce({ exitCode: 1, stdout: "", stderr: error.message, launched: false });
+      resolveOnce({
+        exitCode: 1,
+        stdout: "",
+        stderr: error.message,
+        timedOut: false,
+        spawnError: true
+      });
     });
 
     proc.on("close", (code) => {
@@ -168,7 +116,7 @@ export async function runSubprocess(
         exitCode: code ?? 1,
         stdout: Buffer.concat(stdoutChunks).toString("utf8"),
         stderr: Buffer.concat(stderrChunks).toString("utf8"),
-        launched: true
+        timedOut
       });
     });
 
@@ -183,7 +131,7 @@ export async function runSubprocess(
             exitCode: 1,
             stdout: Buffer.concat(stdoutChunks).toString("utf8"),
             stderr: stdinError.message,
-            launched: false
+            timedOut: false
           });
         }
       }
@@ -195,79 +143,160 @@ export async function runVerification(
   commands: string[],
   cwd: string,
   timeoutMs: number,
-  verificationStack?: Array<{ command: string; type: string; fastFail?: boolean }>,
+  verificationStack?: Array<{ command: string; type: VerifierStepType; fastFail?: boolean }>,
   spawnImpl?: SpawnLike
 ): Promise<VerificationOutcome> {
+  const startedAt = new Date().toISOString();
+  const startedAtMs = Date.now();
   const steps = verificationStack && verificationStack.length > 0
     ? verificationStack.map((step) => ({
         command: step.command,
+        type: step.type,
         fastFail: step.fastFail !== false
       }))
-    : commands.map((command) => ({ command, fastFail: true }));
+    : commands.map((command) => ({ command, type: "custom" as const, fastFail: true }));
 
   if (steps.length === 0) {
-    return { passed: true, summary: "No verification commands specified.", steps: [] };
+    return finalizeVerificationOutcome(
+      [],
+      true,
+      "No verification commands specified.",
+      startedAt,
+      startedAtMs
+    );
   }
 
   const failedSteps: string[] = [];
-  const stepOutcomes: VerificationStepOutcome[] = [];
-  const warnings: string[] = [];
+  const snapshots: VerifierStepSnapshot[] = [];
 
   for (const step of steps) {
+    const stepStartedAt = new Date().toISOString();
+    const stepStartedAtMs = Date.now();
     const parts = splitCommand(step.command);
     const [bin, ...args] = parts;
 
     if (!bin) {
+      const invalidSnapshot = createVerifierStepSnapshot({
+        command: step.command,
+        type: step.type,
+        fastFail: step.fastFail,
+        passed: false,
+        exitCode: 1,
+        exitReason: "invalid_command",
+        startedAt: stepStartedAt,
+        completedAt: new Date().toISOString(),
+        durationMs: Date.now() - stepStartedAtMs,
+        stdout: "",
+        stderr: "Verification command was empty or invalid."
+      });
+      snapshots.push(invalidSnapshot);
+
+      if (step.fastFail) {
+        return finalizeVerificationOutcome(
+          snapshots,
+          false,
+          `Verification failed: ${step.command}\nVerification command was empty or invalid.`,
+          startedAt,
+          startedAtMs
+        );
+      }
+
+      failedSteps.push(step.command);
       continue;
     }
 
     const result = await runSubprocess(bin, args, { cwd, timeoutMs, spawnImpl });
-    const detail = truncate(result.stderr.trim() || result.stdout.trim(), 500);
-
-    stepOutcomes.push({
-      command: step.command,
-      launched: result.launched,
-      exitCode: result.exitCode,
-      timedOut: result.timedOut,
-      fastFail: step.fastFail,
-      ...(detail ? { detail } : {})
-    });
+    const stepCompletedAt = new Date().toISOString();
+    const exitReason = inferVerifierExitReason(result);
+    snapshots.push(
+      createVerifierStepSnapshot({
+        command: step.command,
+        type: step.type,
+        fastFail: step.fastFail,
+        passed: result.exitCode === 0 && !result.timedOut && !result.spawnError,
+        exitCode: result.exitCode,
+        exitReason,
+        startedAt: stepStartedAt,
+        completedAt: stepCompletedAt,
+        durationMs: Date.now() - stepStartedAtMs,
+        stdout: result.stdout,
+        stderr: result.stderr
+      })
+    );
 
     if (result.timedOut) {
-      return {
-        passed: false,
-        summary: `Verification timed out: ${step.command}`,
-        steps: stepOutcomes,
-        ...(warnings.length ? { warnings } : {})
-      };
+      return finalizeVerificationOutcome(
+        snapshots,
+        false,
+        `Verification timed out: ${step.command}`,
+        startedAt,
+        startedAtMs
+      );
     }
 
     if (result.exitCode !== 0) {
+      const detail = truncate(result.stderr.trim() || result.stdout.trim(), 500);
       const summary = `Verification failed: ${step.command}\n${detail}`;
-      if (!result.launched) {
-        warnings.push(`Verifier never launched: ${step.command}`);
-      }
       if (step.fastFail) {
-        return { passed: false, summary, steps: stepOutcomes, ...(warnings.length ? { warnings } : {}) };
+        return finalizeVerificationOutcome(
+          snapshots,
+          false,
+          summary,
+          startedAt,
+          startedAtMs
+        );
       }
       failedSteps.push(step.command);
     }
   }
 
   if (failedSteps.length > 0) {
+    return finalizeVerificationOutcome(
+      snapshots,
+      false,
+      `Failed steps: ${failedSteps.join(", ")}`,
+      startedAt,
+      startedAtMs
+    );
+  }
+
+  return finalizeVerificationOutcome(
+    snapshots,
+    true,
+    `All ${String(steps.length)} verification step(s) passed.`,
+    startedAt,
+    startedAtMs
+  );
+}
+
+export async function probeCliCommand(
+  command: string,
+  args: string[],
+  options: { cwd: string; timeoutMs: number }
+): Promise<CliCommandProbe> {
+  const result = await runSubprocess(command, args, options);
+
+  if (result.timedOut) {
     return {
-      passed: false,
-      summary: `Failed steps: ${failedSteps.join(", ")}`,
-      steps: stepOutcomes,
-      ...(warnings.length ? { warnings } : {})
+      ...result,
+      ready: false,
+      detail: `${command} launch check timed out after ${String(options.timeoutMs)}ms.`
+    };
+  }
+
+  if (result.exitCode !== 0) {
+    const detail = truncate(result.stderr.trim() || result.stdout.trim() || `Exit code ${String(result.exitCode)}`, 500);
+    return {
+      ...result,
+      ready: false,
+      detail: `${command} launch check failed: ${detail}`
     };
   }
 
   return {
-    passed: true,
-    summary: `All ${String(steps.length)} verification step(s) passed.`,
-    steps: stepOutcomes,
-    ...(warnings.length ? { warnings } : {})
+    ...result,
+    ready: true,
+    detail: `${command} launch check passed.`
   };
 }
 
@@ -279,33 +308,25 @@ export async function readGitExecutionArtifacts(
   changedFiles?: string[];
   diffStats?: ReturnType<typeof diffStatsFromNumstat>;
 }> {
-  if (!resolveGitRepositoryRoot(repoRoot)) {
-    return {};
-  }
+  const [changedFilesResult, untrackedFilesResult, numstatResult] = await Promise.all([
+    runSubprocess("git", ["diff", "--name-only", "HEAD"], { cwd: repoRoot, timeoutMs, spawnImpl }),
+    runSubprocess("git", ["ls-files", "--others", "--exclude-standard"], {
+      cwd: repoRoot,
+      timeoutMs,
+      spawnImpl
+    }),
+    runSubprocess("git", ["diff", "--numstat", "HEAD"], { cwd: repoRoot, timeoutMs, spawnImpl })
+  ]);
 
-  const changedFilesResult = await runSubprocess(
-    "git",
-    ["diff", "--name-only", "HEAD"],
-    { cwd: repoRoot, timeoutMs, spawnImpl }
-  );
-  const numstatResult = await runSubprocess(
-    "git",
-    ["diff", "--numstat", "HEAD"],
-    { cwd: repoRoot, timeoutMs, spawnImpl }
-  );
-
-  const changedFiles =
-    changedFilesResult.exitCode === 0
-      ? changedFilesResult.stdout
-          .split(/\r?\n/u)
-          .map((entry) => entry.trim())
-          .filter(Boolean)
-      : [];
+  const changedFiles = [
+    ...(changedFilesResult.exitCode === 0 ? parseGitFileList(changedFilesResult.stdout) : []),
+    ...(untrackedFilesResult.exitCode === 0 ? parseGitFileList(untrackedFilesResult.stdout) : [])
+  ];
   const diffStats =
     numstatResult.exitCode === 0 ? diffStatsFromNumstat(numstatResult.stdout) : undefined;
 
   return {
-    ...(changedFiles.length > 0 ? { changedFiles } : {}),
+    ...(changedFiles.length > 0 ? { changedFiles: uniqueSortedFiles(changedFiles) } : {}),
     ...(diffStats ? { diffStats } : {})
   };
 }
@@ -315,13 +336,9 @@ export async function readGitChangedFiles(
   timeoutMs: number,
   spawnImpl?: SpawnLike
 ): Promise<string[]> {
-  if (!resolveGitRepositoryRoot(repoRoot)) {
-    return [];
-  }
-
   const statusResult = await runSubprocess(
     "git",
-    ["status", "-z", "--porcelain=v1", "--untracked-files=all", "--ignore-submodules=all", "--", "."],
+    ["status", "-z", "--porcelain=v1", "--untracked-files=all", "--ignore-submodules=all"],
     { cwd: repoRoot, timeoutMs, spawnImpl }
   );
 
@@ -332,46 +349,6 @@ export async function readGitChangedFiles(
   return parsePorcelainEntries(statusResult.stdout).filter(
     (entry): entry is string => typeof entry === "string" && entry.length > 0
   );
-}
-
-export function resolveGitRepositoryRoot(workingDirectory: string): string | undefined {
-  const resolvedWorkingDirectory = resolve(workingDirectory);
-  const cached = gitRepositoryRootCache.get(resolvedWorkingDirectory);
-  if (cached !== undefined) {
-    return cached ?? undefined;
-  }
-
-  const visited: string[] = [];
-  let current = resolvedWorkingDirectory;
-
-  while (true) {
-    visited.push(current);
-
-    const currentCached = gitRepositoryRootCache.get(current);
-    if (currentCached !== undefined) {
-      for (const candidate of visited) {
-        gitRepositoryRootCache.set(candidate, currentCached);
-      }
-      return currentCached ?? undefined;
-    }
-
-    if (existsSync(resolve(current, ".git"))) {
-      for (const candidate of visited) {
-        gitRepositoryRootCache.set(candidate, current);
-      }
-      return current;
-    }
-
-    const parent = dirname(current);
-    if (parent === current) {
-      for (const candidate of visited) {
-        gitRepositoryRootCache.set(candidate, null);
-      }
-      return undefined;
-    }
-
-    current = parent;
-  }
 }
 
 export interface SpawnPlan {
@@ -396,17 +373,19 @@ export function createSpawnPlan(
   // Windows can resolve the command itself — this covers cases like `pnpm` where the npm global
   // bin directory is present in the shell PATH but not yet visible to this Node.js process.
   if (resolvedOrUndefined === undefined) {
+    const cmdStr = [quoteWindowsCmdArg(command), ...args.map(quoteWindowsCmdArg)].join(" ");
     return {
       command: process.env.ComSpec || "cmd.exe",
-      args: ["/d", "/c", command, ...args]
+      args: ["/d", "/c", cmdStr]
     };
   }
 
   const extension = extname(resolvedOrUndefined).toLowerCase();
   if (extension === ".cmd" || extension === ".bat") {
+    const cmdStr = [quoteWindowsCmdArg(resolvedOrUndefined), ...args.map(quoteWindowsCmdArg)].join(" ");
     return {
       command: process.env.ComSpec || "cmd.exe",
-      args: ["/d", "/c", resolvedOrUndefined, ...args]
+      args: ["/d", "/s", "/c", cmdStr]
     };
   }
 
@@ -497,6 +476,72 @@ function windowsPathDirectories(): string[] {
     .filter(Boolean);
 }
 
+function resolveWindowsNodeShim(
+  shimPath: string
+): { nodeCommand: string; scriptPath: string } | undefined {
+  try {
+    const contents = readFileSync(shimPath, "utf8");
+    const scriptMatch = contents.match(/"%_prog%"\s+"%dp0%\\([^"]+)"\s+%\*/iu);
+    const relativeScriptPath = scriptMatch?.[1];
+    if (!relativeScriptPath) {
+      return undefined;
+    }
+
+    const scriptPath = resolve(dirname(shimPath), relativeScriptPath.replace(/\\/gu, "/"));
+    if (!existsSync(scriptPath)) {
+      return undefined;
+    }
+
+    const bundledNode = join(dirname(shimPath), "node.exe");
+    return {
+      nodeCommand: existsSync(bundledNode) ? bundledNode : "node",
+      scriptPath
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function resolveWindowsPowerShellHost(): string {
+  const systemRoot = process.env.SystemRoot?.trim();
+  if (systemRoot) {
+    const bundled = join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+    if (existsSync(bundled)) {
+      return bundled;
+    }
+  }
+
+  return "powershell.exe";
+}
+
+function buildPowerShellBatchInvocation(commandPath: string, args: string[]): string {
+  const quotedCommand = quotePowerShellArg(commandPath);
+  const quotedArgs = args.map(quotePowerShellArg).join(" ");
+  return quotedArgs.length > 0 ? `& ${quotedCommand} ${quotedArgs}` : `& ${quotedCommand}`;
+}
+
+function quotePowerShellArg(value: string): string {
+  const normalized = value.replace(/\r?\n/gu, " ");
+  return `'${normalized.replace(/'/gu, "''")}'`;
+}
+
+function quoteWindowsCmdArg(value: string): string {
+  const normalized = value.replace(/(\\*)"/gu, '$1$1\\"');
+  const escaped = normalized.replace(/(\\+)$/gu, "$1$1");
+  return /[\s"]/u.test(escaped) ? `"${escaped}"` : escaped;
+}
+
+function parseGitFileList(stdout: string): string[] {
+  return stdout
+    .split(/\r?\n/u)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function uniqueSortedFiles(files: string[]): string[] {
+  return [...new Set(files)].sort((left, right) => left.localeCompare(right));
+}
+
 export function splitCommand(command: string): string[] {
   const tokens: string[] = [];
   let current = "";
@@ -555,4 +600,75 @@ function truncate(text: string, maxLength: number): string {
   }
 
   return `...${text.slice(-(maxLength - 3))}`;
+}
+
+function inferVerifierExitReason(result: SubprocessResult): VerifierExitReason {
+  if (result.spawnError) {
+    return "spawn_error";
+  }
+
+  if (result.timedOut) {
+    return "timed_out";
+  }
+
+  return result.exitCode === 0 ? "passed" : "non_zero_exit";
+}
+
+function createVerifierStepSnapshot(input: {
+  command: string;
+  type: VerifierStepType;
+  fastFail: boolean;
+  passed: boolean;
+  exitCode: number;
+  exitReason: VerifierExitReason;
+  startedAt: string;
+  completedAt: string;
+  durationMs: number;
+  stdout: string;
+  stderr: string;
+}): VerifierStepSnapshot {
+  return {
+    command: input.command,
+    type: input.type,
+    fastFail: input.fastFail,
+    passed: input.passed,
+    exitCode: input.exitCode,
+    exitReason: input.exitReason,
+    startedAt: input.startedAt,
+    completedAt: input.completedAt,
+    durationMs: input.durationMs,
+    ...(input.stdout.trim() ? { stdout: truncate(input.stdout.trim(), 2_000) } : {}),
+    ...(input.stderr.trim() ? { stderr: truncate(input.stderr.trim(), 2_000) } : {})
+  };
+}
+
+function finalizeVerificationOutcome(
+  steps: VerifierStepSnapshot[],
+  passed: boolean,
+  summary: string,
+  startedAt: string,
+  startedAtMs: number
+): VerificationOutcome {
+  const combinedOutput = steps
+    .flatMap((step) => [step.stdout, step.stderr])
+    .filter((value): value is string => typeof value === "string" && value.length > 0)
+    .join("\n\n")
+    .trim();
+
+  return {
+    passed,
+    summary,
+    snapshot: {
+      passed,
+      summary,
+      startedAt,
+      completedAt: new Date().toISOString(),
+      durationMs: Date.now() - startedAtMs,
+      stepCount: steps.length,
+      failedStepCount: steps.filter((step) => !step.passed).length,
+      commands: steps.map((step) => step.command),
+      steps,
+      ...(combinedOutput ? { combinedOutput: truncate(combinedOutput, 8_000) } : {})
+    }
+  };
 }

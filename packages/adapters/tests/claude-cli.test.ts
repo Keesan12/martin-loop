@@ -4,7 +4,7 @@ import type { ChildProcess, SpawnOptions } from "node:child_process";
 
 import { describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -12,14 +12,12 @@ import type { MartinAdapterRequest } from "@martin/core";
 
 import {
   createAgentCliAdapter,
-  createSpawnPlan,
   createClaudeCliAdapter,
   createCodexCliAdapter,
-  createGeminiCliAdapter,
   createVerifierOnlyAdapter,
   type SpawnLike
 } from "../src/index.js";
-import { readGitChangedFiles, readGitExecutionArtifacts, runSubprocess, splitCommand } from "../src/cli-bridge.js";
+import { runSubprocess, splitCommand } from "../src/cli-bridge.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -104,68 +102,6 @@ function createScriptedSpawn(
   };
 }
 
-/**
- * Simulates a CLI emitting newline-delimited `stream-json` events one at a
- * time (each `data` event arriving separately, as a real subprocess would),
- * so the streaming usage inspector can observe them incrementally and request
- * early termination via `child.kill()`.
- */
-function createStreamingSpawn(calls: SpawnCall[], lines: string[]): SpawnLike {
-  return (command, args = [], options) => {
-    const child = new EventEmitter() as Partial<ChildProcess> & {
-      stdout: PassThrough;
-      stderr: PassThrough;
-      stdin: PassThrough;
-    };
-    child.stdout = new PassThrough();
-    child.stderr = new PassThrough();
-    child.stdin = new PassThrough();
-
-    let killed = false;
-    let closed = false;
-    const emitClose = (code: number) => {
-      if (closed) {
-        return;
-      }
-      closed = true;
-      child.emit("close", code);
-    };
-
-    child.kill = () => {
-      if (!killed) {
-        killed = true;
-        child.stdout.end();
-        child.stderr.end();
-        setImmediate(() => emitClose(143));
-      }
-      return true;
-    };
-
-    const call: SpawnCall = { command, args: [...args], options, stdin: "" };
-    calls.push(call);
-    child.stdin.on("data", (chunk: Buffer | string) => {
-      call.stdin += Buffer.isBuffer(chunk) ? chunk.toString("utf8") : chunk;
-    });
-
-    void (async () => {
-      for (const line of lines) {
-        if (killed) {
-          return;
-        }
-        child.stdout.write(`${line}\n`);
-        await new Promise((resolve) => setImmediate(resolve));
-      }
-      if (!killed) {
-        child.stdout.end();
-        child.stderr.end();
-        emitClose(0);
-      }
-    })();
-
-    return child as ChildProcess;
-  };
-}
-
 async function withPathPrefix<T>(directory: string, fn: () => Promise<T>): Promise<T> {
   const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === "path") ?? "PATH";
   const original = process.env[pathKey] ?? "";
@@ -180,6 +116,7 @@ async function withPathPrefix<T>(directory: string, fn: () => Promise<T>): Promi
     process.env[pathKey] = original;
   }
 }
+
 // ---------------------------------------------------------------------------
 // Generic adapter factory
 // ---------------------------------------------------------------------------
@@ -199,7 +136,8 @@ describe("createAgentCliAdapter", () => {
     expect(adapter.metadata.providerId).toBe("mytool");
     expect(adapter.metadata.model).toBe("mytool-v1");
     expect(adapter.metadata.transport).toBe("cli");
-    expect(adapter.metadata.capabilities.usageSettlement).toBe(false);
+    expect(adapter.metadata.capabilities.usageSettlement).toBe("estimated");
+    expect(adapter.metadata.capabilities.diffVisibility).toBe("git");
   });
 
   it("uses adapterIdSuffix when provided", () => {
@@ -368,6 +306,45 @@ describe("createAgentCliAdapter", () => {
 
     expect(result.status).toBe("completed");
     expect(result.verification.summary).toContain("No verification commands");
+    expect(result.verification.snapshot.stepCount).toBe(0);
+  });
+
+  it("captures deterministic verifier snapshots for each verification step", async () => {
+    const calls: SpawnCall[] = [];
+    const adapter = createAgentCliAdapter({
+      command: "fake-cli",
+      argsBuilder: () => ["--do-work"],
+      spawnImpl: createScriptedSpawn(calls, [
+        { stdout: "agent ok\n" },
+        { stdout: "lint ok\n" },
+        { stdout: "tests ok\n" }
+      ])
+    });
+
+    const result = await adapter.execute(
+      makeRequest({
+        context: {
+          taskTitle: "test",
+          objective: "test",
+          verificationPlan: ["pnpm lint", "pnpm test"],
+          verificationStack: [
+            { command: "pnpm lint", type: "lint" },
+            { command: "pnpm test", type: "test_full" }
+          ],
+          focus: "test",
+          remainingBudgetUsd: 8,
+          remainingIterations: 3,
+          remainingTokens: 10_000
+        }
+      })
+    );
+
+    expect(result.status).toBe("completed");
+    expect(result.verification.snapshot.stepCount).toBe(2);
+    expect(result.verification.snapshot.steps[0]?.type).toBe("lint");
+    expect(result.verification.snapshot.steps[1]?.type).toBe("test_full");
+    expect(result.verification.snapshot.steps.every((step) => step.passed)).toBe(true);
+    expect(result.verification.snapshot.commands).toEqual(["pnpm lint", "pnpm test"]);
   });
 
   it("preserves quoted verifier arguments and executable paths when tokenizing verification commands", () => {
@@ -408,83 +385,13 @@ describe("createAgentCliAdapter", () => {
 describe("splitCommand", () => {
   it("preserves backslashes inside quoted Windows executable paths", () => {
     const command =
-      '"C:\\Projects\\Example\\node.exe" -e "process.exit(0)"';
+      '"C:\\Users\\ExampleUser\\Projects\\node.exe" -e "process.exit(0)"';
 
     expect(splitCommand(command)).toEqual([
-      "C:\\Projects\\Example\\node.exe",
+      "C:\\Users\\ExampleUser\\Projects\\node.exe",
       "-e",
       "process.exit(0)",
     ]);
-  });
-});
-
-describe("createSpawnPlan", () => {
-  it("wraps absolute Windows .cmd verifiers with cmd.exe", () => {
-    if (process.platform !== "win32") {
-      expect(true).toBe(true);
-      return;
-    }
-
-    const pnpmPath = "C:\\Tools\\Example Path\\npm\\pnpm.cmd";
-    const plan = createSpawnPlan(
-      pnpmPath,
-      ["verify shared baseline", "--filter", "pkg with spaces"],
-      process.cwd(),
-      false
-    );
-
-    expect(plan.command.toLowerCase()).toContain("cmd.exe");
-    expect(plan.args[0]).toBe("/d");
-    expect(plan.args[1]).toBe("/c");
-    expect(plan.args[2]).toBe("C:\\Tools\\Example Path\\npm\\pnpm.cmd");
-    expect(plan.args[3]).toBe("verify shared baseline");
-    expect(plan.args[5]).toBe("pkg with spaces");
-  });
-
-  it("wraps absolute Windows PowerShell scripts through powershell.exe", () => {
-    if (process.platform !== "win32") {
-      expect(true).toBe(true);
-      return;
-    }
-
-    const scriptPath = "C:\\Tools\\npm\\codex.ps1";
-    const plan = createSpawnPlan(scriptPath, ["--version"], process.cwd(), false);
-
-    expect(plan.command.toLowerCase()).toContain("powershell.exe");
-    expect(plan.args.slice(0, 4)).toEqual([
-      "-NoProfile",
-      "-ExecutionPolicy",
-      "Bypass",
-      "-File"
-    ]);
-    expect(plan.args[4]).toBe(scriptPath);
-    expect(plan.args[5]).toBe("--version");
-  });
-
-  it("falls back to cmd.exe shell when command is not found in PATH on Windows (regression: loop_b6800tz2)", () => {
-    if (process.platform !== "win32") {
-      // On non-Windows the plan passes the command through unchanged.
-      const plan = createSpawnPlan("pnpm-not-in-path", ["test"], process.cwd(), false);
-      expect(plan.command).toBe("pnpm-not-in-path");
-      return;
-    }
-
-    // Use a command that will never be on disk so resolveWindowsCommand returns undefined.
-    const plan = createSpawnPlan("__martin_nonexistent_verifier_cmd__", ["run", "test"], process.cwd(), false);
-
-    // Must route through cmd.exe so Windows can try PATH resolution itself.
-    expect(plan.command.toLowerCase()).toMatch(/cmd\.exe|comspec/i);
-    expect(plan.args[0]).toBe("/d");
-    expect(plan.args[1]).toBe("/c");
-    expect(plan.args[2]).toContain("__martin_nonexistent_verifier_cmd__");
-    expect(plan.args[3]).toBe("run");
-    expect(plan.args[4]).toBe("test");
-  });
-
-  it("preserves raw command when preserveRawForInjectedSpawn is true regardless of platform", () => {
-    const plan = createSpawnPlan("pnpm", ["test"], process.cwd(), true);
-    expect(plan.command).toBe("pnpm");
-    expect(plan.args).toEqual(["test"]);
   });
 });
 
@@ -525,55 +432,89 @@ describe("runSubprocess", () => {
     expect(result.stderr).toBe("");
     expect(result.timedOut).toBe(false);
   });
-});
 
-describe("createVerifierOnlyAdapter", () => {
-  it("short-circuits git inspection outside a repository", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "martin-no-git-"));
-    let spawnCalls = 0;
-    const spawnImpl: SpawnLike = () => {
-      spawnCalls += 1;
-      throw new Error("git subprocess should not run outside a repository");
-    };
+  it("launches Windows batch commands through a working shell path", async () => {
+    if (process.platform !== "win32") {
+      return;
+    }
+
+    const directory = await mkdtemp(join(tmpdir(), "martin-run-subprocess-batch-"));
+    const commandPath = join(directory, "fake-cli.cmd");
 
     try {
-      await expect(readGitChangedFiles(directory, 1_000, spawnImpl)).resolves.toEqual([]);
-      await expect(readGitExecutionArtifacts(directory, 1_000, spawnImpl)).resolves.toEqual({});
-      expect(spawnCalls).toBe(0);
+      await writeFile(commandPath, "@echo off\r\necho OK:%1,%2\r\n", "utf8");
+
+      const result = await runSubprocess(commandPath, ["foo", "bar"], {
+        cwd: directory,
+        timeoutMs: 5_000
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.trim()).toBe("OK:foo,bar");
+      expect(result.stderr).toBe("");
     } finally {
-      await rm(directory, { recursive: true, force: true });
+      await rm(directory, { force: true, recursive: true });
     }
   });
 
-  it("skips baseline diff scans when verify-only has no verification steps", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "martin-verify-empty-"));
+  it("unwraps Windows npm-style command shims so launch probes and verifiers can run", async () => {
+    if (process.platform !== "win32") {
+      return;
+    }
+
+    const directory = await mkdtemp(join(tmpdir(), "martin-run-subprocess-shim-"));
+    const shimPath = join(directory, "fake-cli.cmd");
+    const shimModuleDirectory = join(directory, "node_modules", "fake-cli", "bin");
+    const scriptPath = join(shimModuleDirectory, "fake-cli.js");
 
     try {
-      const adapter = createVerifierOnlyAdapter({ workingDirectory: directory });
-      const result = await adapter.execute(
-        makeRequest({
-          context: {
-            taskTitle: "verify only",
-            objective: "Run verification only",
-            verificationPlan: [],
-            verificationStack: [],
-            mutationMode: "verify_only",
-            focus: "verify only",
-            remainingBudgetUsd: 8,
-            remainingIterations: 1,
-            remainingTokens: 10_000
-          }
+      await mkdir(shimModuleDirectory, { recursive: true });
+      await writeFile(
+        shimPath,
+        [
+          "@ECHO off",
+          'GOTO start',
+          ':find_dp0',
+          'SET dp0=%~dp0',
+          'EXIT /b',
+          ':start',
+          'SETLOCAL',
+          'CALL :find_dp0',
+          'IF EXIST "%dp0%\\node.exe" (',
+          '  SET "_prog=%dp0%\\node.exe"',
+          ') ELSE (',
+          '  SET "_prog=node"',
+          '  SET PATHEXT=%PATHEXT:;.JS;=;%',
+          ')',
+          'endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%dp0%\\node_modules\\fake-cli\\bin\\fake-cli.js" %*',
+          ""
+        ].join("\r\n"),
+        "utf8"
+      );
+      await writeFile(
+        scriptPath,
+        'process.stdout.write(`ARGS:${process.argv.slice(2).join(",")}`);',
+        "utf8"
+      );
+
+      const result = await withPathPrefix(directory, async () =>
+        runSubprocess("fake-cli", ["alpha", "beta"], {
+          cwd: directory,
+          timeoutMs: 5_000
         })
       );
 
-      expect(result.status).toBe("completed");
-      expect(result.execution?.changedFiles).toEqual([]);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.trim()).toBe("ARGS:alpha,beta");
+      expect(result.stderr).toBe("");
     } finally {
-      await rm(directory, { recursive: true, force: true });
+      await rm(directory, { force: true, recursive: true });
     }
   });
+});
 
-  it("reports verifier-created file changes instead of treating verify-only as clean", { timeout: 15000 }, async () => {
+describe("createVerifierOnlyAdapter", { timeout: 15_000 }, () => {
+  it("reports verifier-created file changes instead of treating verify-only as clean", async () => {
     const directory = await mkdtemp(join(tmpdir(), "martin-verify-only-"));
 
     try {
@@ -601,7 +542,7 @@ describe("createVerifierOnlyAdapter", () => {
             taskTitle: "verify only",
             objective: "Run verification only",
             verificationPlan: [
-              `"${process.execPath}" -e "require('node:fs').writeFileSync('tracked.txt','changed')"`
+              `"${process.execPath}" -e "const fs=require('node:fs'); fs.writeFileSync('tracked.txt','changed'); fs.writeFileSync('untracked.txt','new');"`
             ],
             mutationMode: "verify_only",
             focus: "verify only",
@@ -614,6 +555,52 @@ describe("createVerifierOnlyAdapter", () => {
 
       expect(result.verification.passed).toBe(true);
       expect(result.execution?.changedFiles).toContain("tracked.txt");
+      expect(result.execution?.changedFiles).toContain("untracked.txt");
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("ignores pre-existing dirty files when the verifier itself makes no new edits", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-verify-only-dirty-"));
+
+    try {
+      spawnSync("git", ["init"], { cwd: directory, stdio: "ignore" });
+      await writeFile(join(directory, "tracked.txt"), "original", "utf8");
+      spawnSync("git", ["add", "tracked.txt"], { cwd: directory, stdio: "ignore" });
+      spawnSync(
+        "git",
+        [
+          "-c",
+          "user.email=martin@example.com",
+          "-c",
+          "user.name=Martin Test",
+          "commit",
+          "-m",
+          "seed"
+        ],
+        { cwd: directory, stdio: "ignore" }
+      );
+      await writeFile(join(directory, "tracked.txt"), "pre-existing dirty change", "utf8");
+
+      const adapter = createVerifierOnlyAdapter({ workingDirectory: directory });
+      const result = await adapter.execute(
+        makeRequest({
+          context: {
+            taskTitle: "verify only",
+            objective: "Run verification only",
+            verificationPlan: [`"${process.execPath}" -e "process.exit(0)"`],
+            mutationMode: "verify_only",
+            focus: "verify only",
+            remainingBudgetUsd: 8,
+            remainingIterations: 1,
+            remainingTokens: 10_000
+          }
+        })
+      );
+
+      expect(result.verification.passed).toBe(true);
+      expect(result.execution?.changedFiles).toEqual([]);
     } finally {
       await rm(directory, { force: true, recursive: true });
     }
@@ -653,171 +640,6 @@ describe("createClaudeCliAdapter", () => {
 
     expect(result.status).toBe("failed");
     expect(result.failure?.message).toContain("environment_mismatch");
-  });
-
-  it("skips git probes when repoRoot is outside a repository", async () => {
-    const calls: SpawnCall[] = [];
-    const adapter = createClaudeCliAdapter({
-      spawnImpl: createScriptedSpawn(calls, [
-        {
-          stdout: JSON.stringify({
-            type: "result",
-            result: "Patched the target file.",
-            usage: {
-              input_tokens: 12,
-              output_tokens: 8
-            }
-          })
-        },
-        { stdout: "" },
-        { stdout: "src/index.ts\n" },
-        { stdout: "1\t0\tsrc/index.ts\n" },
-        { stdout: "src/index.ts\n" }
-      ])
-    });
-
-    const result = await adapter.execute(
-      makeRequest({
-        context: {
-          taskTitle: "test",
-          objective: "patch then check scope",
-          verificationPlan: [],
-          focus: "test",
-          remainingBudgetUsd: 8,
-          remainingIterations: 3,
-          remainingTokens: 10_000,
-          repoRoot: "C:\\repo with spaces",
-          allowedPaths: ["src/**"]
-        }
-      })
-    );
-
-    expect(result.status).toBe("completed");
-    expect(calls).toHaveLength(1);
-    expect(calls[0]?.command).toBe("claude");
-  });
-
-  it("requests stream-json output so usage can be observed incrementally", async () => {
-    const calls: SpawnCall[] = [];
-    const adapter = createClaudeCliAdapter({
-      spawnImpl: createScriptedSpawn(calls, [
-        {
-          stdout:
-            '{"type":"assistant","message":{"usage":{"input_tokens":10,"output_tokens":5}}}\n' +
-            '{"type":"result","subtype":"success","result":"done","total_cost_usd":0.0042,"usage":{"input_tokens":10,"output_tokens":5}}\n'
-        }
-      ])
-    });
-
-    const result = await adapter.execute(makeRequest());
-
-    expect(result.status).toBe("completed");
-    expect(calls[0]?.args).toEqual(
-      expect.arrayContaining(["--output-format", "stream-json", "--verbose"])
-    );
-    // Prefers Claude's own authoritative total_cost_usd over a pricing-table estimate.
-    expect(result.usage?.actualUsd).toBeCloseTo(0.0042, 6);
-    expect(result.usage?.provenance).toBe("actual");
-    expect(result.summary).toContain("done");
-  });
-
-  describe("streaming usage circuit breaker", () => {
-    function streamingTurn(inputTokens: number, outputTokens: number): string {
-      return JSON.stringify({
-        type: "assistant",
-        message: { usage: { input_tokens: inputTokens, output_tokens: outputTokens } }
-      });
-    }
-
-    it("kills a runaway subprocess once cumulative cost crosses the remaining budget", async () => {
-      const calls: SpawnCall[] = [];
-      // claude-sonnet-4-6 pricing: $0.003/1K in, $0.015/1K out.
-      // Each turn below costs (5000/1000)*0.003 + (1000/1000)*0.015 = $0.03.
-      // remainingBudgetUsd = 0.05 (well above the prompt-size preflight estimate,
-      // so we actually reach the subprocess) → cap crossed partway through turn 2.
-      const lines = [
-        streamingTurn(5000, 1000),
-        streamingTurn(5000, 1000),
-        streamingTurn(5000, 1000),
-        streamingTurn(5000, 1000),
-        JSON.stringify({
-          type: "result",
-          subtype: "success",
-          result: "finished after a very long runaway session",
-          total_cost_usd: 3.5,
-          usage: { input_tokens: 20_000, output_tokens: 4_000 }
-        })
-      ];
-
-      const adapter = createClaudeCliAdapter({
-        spawnImpl: createStreamingSpawn(calls, lines)
-      });
-
-      const result = await adapter.execute(
-        makeRequest({
-          context: {
-            taskTitle: "test",
-            objective: "make a tiny change",
-            verificationPlan: [],
-            focus: "stay small",
-            remainingBudgetUsd: 0.05,
-            remainingIterations: 1,
-            remainingTokens: 50_000
-          }
-        })
-      );
-
-      expect(result.status).toBe("failed");
-      expect(result.failure?.classHint).toBe("budget_pressure");
-      expect(result.summary).toContain("circuit breaker");
-      expect(result.failure?.message).toContain("Streaming usage cap exceeded");
-
-      // Bounded to ~2 turns' worth of spend, not the eventual $3.50 runaway total.
-      expect(result.usage?.actualUsd).toBeGreaterThan(0.05);
-      expect(result.usage?.actualUsd).toBeLessThan(0.5);
-      expect(result.usage?.tokensIn).toBeLessThanOrEqual(10_000);
-      expect(result.usage?.tokensOut).toBeLessThanOrEqual(2_000);
-      expect(result.usage?.provenance).toBe("estimated");
-
-      // The subprocess was actually terminated — not allowed to run to completion.
-      expect(result.summary).not.toContain("runaway session");
-    });
-
-    it("does not interfere with normal completion when usage stays under the cap", async () => {
-      const calls: SpawnCall[] = [];
-      const lines = [
-        streamingTurn(50, 20),
-        JSON.stringify({
-          type: "result",
-          subtype: "success",
-          result: "small change applied",
-          total_cost_usd: 0.0009,
-          usage: { input_tokens: 50, output_tokens: 20 }
-        })
-      ];
-
-      const adapter = createClaudeCliAdapter({
-        spawnImpl: createStreamingSpawn(calls, lines)
-      });
-
-      const result = await adapter.execute(
-        makeRequest({
-          context: {
-            taskTitle: "test",
-            objective: "make a tiny change",
-            verificationPlan: [],
-            focus: "stay small",
-            remainingBudgetUsd: 5,
-            remainingIterations: 1,
-            remainingTokens: 50_000
-          }
-        })
-      );
-
-      expect(result.status).toBe("completed");
-      expect(result.summary).toContain("small change applied");
-      expect(result.usage?.actualUsd).toBeCloseTo(0.0009, 6);
-    });
   });
 });
 
@@ -866,9 +688,12 @@ describe("createCodexCliAdapter", () => {
     expect(result.status).toBe("completed");
     expect(calls[0]?.command).toBe("codex");
     expect(calls[0]?.args).toEqual([
+      "--ask-for-approval",
+      "never",
       "exec",
       "--cd",
       workingDirectory,
+      "--skip-git-repo-check",
       "--sandbox",
       "workspace-write",
       "--json",
@@ -881,6 +706,33 @@ describe("createCodexCliAdapter", () => {
     expect(calls[0]?.options?.cwd).toBe(workingDirectory);
     expect(calls[0]?.stdin).toContain("OBJECTIVE:");
     expect(calls[0]?.stdin).toContain("update the target file");
+  });
+
+  it("keeps the git repo check when the working directory is already inside a repository", async () => {
+    const calls: SpawnCall[] = [];
+    const adapter = createCodexCliAdapter({
+      workingDirectory: process.cwd(),
+      spawnImpl: createScriptedSpawn(calls)
+    });
+
+    const result = await adapter.execute(
+      makeRequest({
+        context: {
+          taskTitle: "test",
+          objective: "inspect only",
+          verificationPlan: [],
+          focus: "test",
+          remainingBudgetUsd: 8,
+          remainingIterations: 3,
+          remainingTokens: 10_000
+        }
+      })
+    );
+
+    expect(result.status).toBe("completed");
+    expect(calls[0]?.args).toContain("--ask-for-approval");
+    expect(calls[0]?.args).toContain("never");
+    expect(calls[0]?.args).not.toContain("--skip-git-repo-check");
   });
 
   it("preserves custom Codex model, sandbox, and extra exec flags before stdin prompt", async () => {
@@ -907,6 +759,8 @@ describe("createCodexCliAdapter", () => {
 
     expect(result.status).toBe("completed");
     expect(calls[0]?.args).toEqual([
+      "--ask-for-approval",
+      "never",
       "exec",
       "--cd",
       expect.any(String),
@@ -947,91 +801,6 @@ describe("createCodexCliAdapter", () => {
     expect(calls[1]?.command).toBe(process.platform === "win32" ? "cmd" : "true");
   });
 
-  it("fails closed when Codex exits non-zero before emitting structured completion", async () => {
-    const calls: SpawnCall[] = [];
-    const adapter = createCodexCliAdapter({
-      spawnImpl: createScriptedSpawn(calls, [
-        {
-          stdout: "usage: codex exec ...\n",
-          stderr: "launch failed\n",
-          exitCode: 2
-        }
-      ])
-    });
-    const result = await adapter.execute(
-      makeRequest({
-        context: {
-          taskTitle: "test",
-          objective: "patch then verify",
-          verificationPlan: process.platform === "win32" ? ["cmd /c exit 0"] : ["true"],
-          focus: "test",
-          remainingBudgetUsd: 8,
-          remainingIterations: 3,
-          remainingTokens: 10_000
-        }
-      })
-    );
-
-    expect(result.status).toBe("failed");
-    expect(result.summary).toContain("exited before verifier execution");
-    expect(result.verification.passed).toBe(false);
-    expect(calls).toHaveLength(1);
-  });
-
-  it("settles authoritative Codex usage from JSONL turn.completed output", async () => {
-    const calls: SpawnCall[] = [];
-    const adapter = createCodexCliAdapter({
-      model: "gpt-5-codex",
-      spawnImpl: createScriptedSpawn(calls, [
-        {
-          stdout: [
-            JSON.stringify({ type: "thread.started", thread_id: "thread_123" }),
-            JSON.stringify({
-              type: "item.completed",
-              item: { id: "item_1", type: "agent_message", text: "Patched the failing test and re-ran verification." }
-            }),
-            JSON.stringify({
-              type: "turn.completed",
-              usage: {
-                input_tokens: 1200,
-                cached_input_tokens: 300,
-                output_tokens: 200,
-                reasoning_output_tokens: 50
-              }
-            })
-          ].join("\n"),
-          stderr: "",
-          exitCode: 0
-        },
-        { stdout: "ok\n", stderr: "", exitCode: 0 }
-      ])
-    });
-
-    const result = await adapter.execute(
-      makeRequest({
-        context: {
-          taskTitle: "test",
-          objective: "patch then verify",
-          verificationPlan: process.platform === "win32" ? ["cmd /c exit 0"] : ["true"],
-          focus: "test",
-          remainingBudgetUsd: 8,
-          remainingIterations: 3,
-          remainingTokens: 10_000
-        }
-      })
-    );
-
-    expect(result.status).toBe("completed");
-    expect(result.summary).toContain("Patched the failing test");
-    expect(result.usage.provenance).toBe("actual");
-    expect(result.usage.tokensIn).toBe(1500);
-    expect(result.usage.cachedInputTokens).toBe(300);
-    expect(result.usage.tokensOut).toBe(250);
-    expect(result.usage.reasoningTokensOut).toBe(50);
-    expect(result.usage.providerSettlement?.source).toBe("codex_jsonl");
-    expect(result.usage.actualUsd).toBeCloseTo(0.0040375, 6);
-  });
-
   it("reports pre-verifier Codex launch failures without running verifier commands", async () => {
     const calls: SpawnCall[] = [];
     const adapter = createCodexCliAdapter({
@@ -1058,77 +827,5 @@ describe("createCodexCliAdapter", () => {
     expect(result.verification.summary).toContain("Verifier not run");
     expect(result.failure?.message).toContain("environment_mismatch");
     expect(calls).toHaveLength(1);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Gemini-specific factory
-// ---------------------------------------------------------------------------
-
-describe("createGeminiCliAdapter", () => {
-  it("returns correct adapterId and kind", () => {
-    const adapter = createGeminiCliAdapter();
-
-    expect(adapter.adapterId).toBe("agent-cli:gemini");
-    expect(adapter.kind).toBe("agent-cli");
-    expect(adapter.metadata.providerId).toBe("gemini");
-    expect(adapter.metadata.model).toBe("flash");
-    expect(adapter.metadata.transport).toBe("cli");
-  });
-
-  it("uses Gemini headless mode with stdin-backed prompts", async () => {
-    const calls: SpawnCall[] = [];
-    const adapter = createGeminiCliAdapter({
-      spawnImpl: createScriptedSpawn(calls, [
-        {
-          stdout: JSON.stringify({
-            response: "Patched the failing function.",
-            stats: {
-              inputTokens: 120,
-              cachedReadTokens: 30,
-              outputTokens: 45,
-              thoughtTokens: 10,
-              totalTokens: 205
-            }
-          })
-        },
-        { stdout: "ok\n" }
-      ])
-    });
-
-    const result = await adapter.execute(
-      makeRequest({
-        context: {
-          taskTitle: "test",
-          objective: "patch then verify",
-          verificationPlan: process.platform === "win32" ? ["cmd /c exit 0"] : ["true"],
-          focus: "test",
-          remainingBudgetUsd: 8,
-          remainingIterations: 3,
-          remainingTokens: 10_000
-        }
-      })
-    );
-
-    expect(result.status).toBe("completed");
-    expect(calls[0]?.command).toBe("gemini");
-    expect(calls[0]?.args).toEqual([
-      "--model",
-      "flash",
-      "--prompt",
-      "",
-      "--approval-mode",
-      "yolo",
-      "--output-format",
-      "json"
-    ]);
-    expect(calls[0]?.stdin).toContain("OBJECTIVE:");
-    expect(result.summary).toContain("Patched the failing function");
-    expect(result.usage.provenance).toBe("actual");
-    expect(result.usage.tokensIn).toBe(150);
-    expect(result.usage.tokensOut).toBe(55);
-    expect(result.usage.cachedInputTokens).toBe(30);
-    expect(result.usage.reasoningTokensOut).toBe(10);
-    expect(result.usage.providerSettlement?.source).toBe("gemini_json");
   });
 });

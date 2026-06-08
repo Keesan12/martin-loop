@@ -31,6 +31,11 @@ export {
   type OpenAiCompatibleAdapterOptions
 } from "./openai-compatible.js";
 export {
+  probeCliCommand,
+  runSubprocess,
+  createSpawnPlan
+} from "./cli-bridge.js";
+export {
   detectCodexHostPlatform,
   diagnoseCodexHost,
   probeCodexLaunch,
@@ -40,10 +45,10 @@ export {
   type CodexHostPlatform,
   type CodexLaunchProbeResult
 } from "./codex-launcher.js";
-export {
-  createSpawnPlan,
-  type SpawnLike,
-  type SpawnPlan,
-  type SubprocessResult,
-  type VerificationOutcome
+export type {
+  CliCommandProbe,
+  SpawnLike,
+  SpawnPlan,
+  SubprocessResult,
+  VerificationOutcome
 } from "./cli-bridge.js";

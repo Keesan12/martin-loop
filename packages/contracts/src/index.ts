@@ -43,6 +43,8 @@ export type LoopEventType =
   | "run.started"
   | "attempt.started"
   | "attempt.completed"
+  | "trajectory.assessed"
+  | "observation.reconciled"
   | "failure.classified"
   | "intervention.selected"
   | "verification.completed"
@@ -225,6 +227,66 @@ export type {
   MartinRunSelector
 } from "./operator.js";
 export { MARTIN_ERROR_CATEGORIES } from "./operator.js";
+export type {
+  AdapterCapabilityDescriptor,
+  AdapterUsageSettlement,
+  DiffVisibilityLevel,
+  LaunchReadiness,
+  SandboxExpectation,
+  VerifierCompatibility
+} from "./adapter-capabilities.js";
+export {
+  createAdapterCapabilityDescriptor,
+  getBuiltInEngineCapabilityDescriptor
+} from "./adapter-capabilities.js";
+export type {
+  VerifierExitReason,
+  VerifierSnapshot,
+  VerifierStepSnapshot,
+  VerifierStepType
+} from "./verification.js";
+export { cloneVerifierSnapshot } from "./verification.js";
+export type {
+  ChangeObservationEvidence,
+  ChangeObservationReconciliation,
+  ChangeObservationStatus
+} from "./observation.js";
+export { cloneChangeObservationReconciliation } from "./observation.js";
+export type {
+  ContextGraphBuildOptions,
+  ContextGraphEdge,
+  ContextGraphEdgeKind,
+  ContextGraphHit,
+  ContextGraphNode,
+  ContextGraphNodeKind,
+  ContextGraphSnapshot,
+  ContextQuery
+} from "./context-graph.js";
+export { cloneContextGraphSnapshot } from "./context-graph.js";
+export type {
+  IdentityAlgorithm,
+  IdentityAttestation,
+  IdentityClaims,
+  IdentityRole,
+  IdentityToken
+} from "./identity.js";
+export {
+  cloneIdentityAttestation,
+  cloneIdentityClaims,
+  cloneIdentityToken
+} from "./identity.js";
+export type {
+  CircuitBreakDecision,
+  TrajectoryAssessment,
+  TrajectoryConfidence,
+  TrajectorySignal,
+  TrajectorySignalCode,
+  TrajectoryStatus
+} from "./trajectory.js";
+export {
+  cloneCircuitBreakDecision,
+  cloneTrajectoryAssessment
+} from "./trajectory.js";
 
 export interface LoopEventDraft {
   type: LoopEventType;
@@ -562,6 +624,8 @@ function nextStatus(current: LoopStatus, eventType: LoopEventType): LoopStatus {
     case "run.started":
     case "attempt.started":
     case "attempt.completed":
+    case "trajectory.assessed":
+    case "observation.reconciled":
     case "failure.classified":
     case "intervention.selected":
     case "budget.updated":
@@ -751,4 +815,18 @@ export interface RollbackOutcomeArtifact {
 }
 
 export { createGovernanceSnapshot } from "./governance.js";
-export type { GovernanceSnapshot } from "./governance.js";
+export type {
+  DestructiveActionPolicy,
+  GovernanceSnapshot,
+  PolicyProfile,
+  TelemetryDestination
+} from "./governance.js";
+export type {
+  ExecutionPolicy,
+  ExecutionPolicyCompileInput,
+  ExecutionPolicyConfigInput,
+  ExecutionPolicyDefaults,
+  ExecutionPolicyProvenanceEntry,
+  ExecutionPolicyRequestInput
+} from "./execution-policy.js";
+export { cloneExecutionPolicy } from "./execution-policy.js";

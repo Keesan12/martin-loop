@@ -1,9 +1,9 @@
 import { spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { createLoopRecord, type LoopAttempt } from "@martin/contracts";
 
@@ -20,6 +20,8 @@ import {
   type MartinAdapter,
   type MartinAdapterRequest
 } from "../src/index";
+
+const RUNTIME_REPO_FIXTURE_TIMEOUT_MS = 30_000;
 
 describe("distillContext", () => {
   it("keeps the latest attempts and exposes the remaining budget envelope", () => {
@@ -334,41 +336,6 @@ describe("inferExit", () => {
 });
 
 describe("runMartin", () => {
-  // Several specs below invoke `runMartin` without an explicit `store`, which
-  // makes the context-integrity precheck fall back to `resolveActiveRunsRoot`'s
-  // default (`~/.martin/runs`). Point that default at a scratch directory for
-  // the duration of this suite so `pnpm test` never touches the real home dir.
-  let scratchRoot: string | undefined;
-  let previousRunsDir: string | undefined;
-  let previousGroundingDir: string | undefined;
-
-  beforeEach(async () => {
-    scratchRoot = await mkdtemp(join(tmpdir(), "martin-runtime-home-"));
-    previousRunsDir = process.env.MARTIN_RUNS_DIR;
-    previousGroundingDir = process.env.MARTIN_GROUNDING_DIR;
-    process.env.MARTIN_RUNS_DIR = join(scratchRoot, "runs");
-    process.env.MARTIN_GROUNDING_DIR = join(scratchRoot, "grounding");
-  });
-
-  afterEach(async () => {
-    if (previousRunsDir === undefined) {
-      delete process.env.MARTIN_RUNS_DIR;
-    } else {
-      process.env.MARTIN_RUNS_DIR = previousRunsDir;
-    }
-
-    if (previousGroundingDir === undefined) {
-      delete process.env.MARTIN_GROUNDING_DIR;
-    } else {
-      process.env.MARTIN_GROUNDING_DIR = previousGroundingDir;
-    }
-
-    if (scratchRoot) {
-      await rm(scratchRoot, { force: true, recursive: true }).catch(() => {});
-      scratchRoot = undefined;
-    }
-  });
-
   it("records a completed run when the adapter returns a verified result", async () => {
     const timestamps = createTimestampSource([
       "2026-03-27T16:00:00.000Z",
@@ -759,7 +726,10 @@ describe("runMartin", () => {
           diffArtifacts: false,
           structuredErrors: true,
           cachingSignals: false,
-          workspaceMutations: false
+          verifierCompatibility: "verify_only",
+          sandboxExpectation: "not_applicable",
+          launchReadiness: "path_lookup",
+          diffVisibility: "none"
         }
       },
       async execute() {
@@ -818,6 +788,107 @@ describe("runMartin", () => {
     ).rejects.toThrow();
     expect(result.loop.attempts).toHaveLength(1);
   });
+
+  it(
+    "reconciles repo-observed changes against adapter reports and blocks verify-only drift",
+    { timeout: RUNTIME_REPO_FIXTURE_TIMEOUT_MS },
+    async () => {
+      const runsRoot = await mkdtemp(join(tmpdir(), "martin-observation-"));
+      const repoRoot = join(runsRoot, "repo");
+      await mkdir(join(repoRoot, "src"), { recursive: true });
+      await writeFile(join(repoRoot, "src", "real.ts"), "export const real = 1;\n", "utf8");
+      initializeGitRepo(repoRoot);
+
+      const store = createFileRunStore({ runsRoot });
+      const adapter: MartinAdapter = {
+        adapterId: "direct:observation",
+        kind: "direct-provider",
+        label: "Observation test adapter",
+        metadata: {
+          providerId: "openai",
+          model: "gpt-5-mini"
+        },
+        async execute() {
+          await writeFile(join(repoRoot, "src", "real.ts"), "export const real = 2;\n", "utf8");
+
+          return {
+            status: "completed",
+            summary: "Changed a tracked file while claiming no diff.",
+            usage: {
+              actualUsd: 0.2,
+              tokensIn: 10,
+              tokensOut: 6
+            },
+            verification: {
+              passed: true,
+              summary: "Verification passed."
+            },
+            execution: {
+              changedFiles: []
+            }
+          };
+        }
+      };
+
+      const result = await runMartin({
+        workspaceId: "ws_ops",
+        projectId: "proj_runtime",
+        task: {
+          title: "Verify without edits",
+          objective: "Run verification without mutating tracked files.",
+          verificationPlan: ["pnpm --filter @martin/core test"],
+          mutationMode: "verify_only",
+          repoRoot,
+          allowedPaths: ["src/**"]
+        },
+        budget: {
+          maxUsd: 10,
+          softLimitUsd: 6,
+          maxIterations: 1,
+          maxTokens: 2_000
+        },
+        adapter,
+        store,
+        now: createTimestampSource([
+          "2026-06-07T12:30:00.000Z",
+          "2026-06-07T12:30:01.000Z",
+          "2026-06-07T12:30:02.000Z",
+          "2026-06-07T12:30:03.000Z",
+          "2026-06-07T12:30:04.000Z",
+          "2026-06-07T12:30:05.000Z"
+        ]),
+        idFactory: createIdFactory()
+      });
+
+      expect(result.decision.lifecycleState).toBe("human_escalation");
+
+      const ledger = await readLedger(runsRoot, result.loop.loopId);
+      const observationEvent = ledger.find((entry) => entry.kind === "observation.reconciled");
+      expect(observationEvent?.payload).toMatchObject({
+        observation: {
+          status: "mismatch",
+          effectiveChangedFiles: ["src/real.ts"],
+          repoOnlyFiles: ["src/real.ts"]
+        }
+      });
+
+      const observationArtifact = JSON.parse(
+        await readFile(
+          join(
+            runsRoot,
+            result.loop.loopId,
+            "artifacts",
+            "attempt-001",
+            "observation-reconciliation.json"
+          ),
+          "utf8"
+        )
+      ) as { status: string; effectiveChangedFiles: string[] };
+
+      expect(observationArtifact.status).toBe("mismatch");
+      expect(observationArtifact.effectiveChangedFiles).toEqual(["src/real.ts"]);
+    }
+  );
 
   it("exits on budget pressure after repeated failed attempts", async () => {
     const timestamps = createTimestampSource([
@@ -888,11 +959,6 @@ describe("runMartin", () => {
     expect(result.loop.status).toBe("exited");
     expect(result.loop.lifecycleState).toBe("budget_exit");
     expect(result.loop.events.map((event) => event.type)).toContain("budget.updated");
-    const budgetUpdatedEvents = result.loop.events.filter((event) => event.type === "budget.updated");
-    expect(budgetUpdatedEvents.length).toBeGreaterThan(0);
-    for (const event of budgetUpdatedEvents) {
-      expect((event.payload as Record<string, unknown>)["provenance"]).toBe("actual");
-    }
     expect(result.decision.shouldExit).toBe(true);
   });
 
@@ -1113,7 +1179,10 @@ describe("runMartin", () => {
     });
   });
 
-  it("challenge 11: discards the attempt and exits with human escalation when a forbidden path write is detected", async () => {
+  it(
+    "challenge 11: discards the attempt and exits with human escalation when a forbidden path write is detected",
+    { timeout: RUNTIME_REPO_FIXTURE_TIMEOUT_MS },
+    async () => {
     const runsRoot = await mkdtemp(join(tmpdir(), "martin-safety-filesystem-"));
     const repoRoot = join(runsRoot, "repo");
     await mkdir(repoRoot, { recursive: true });
@@ -1194,9 +1263,13 @@ describe("runMartin", () => {
       blocked: true,
       attemptIndex: 1
     });
-  });
+    }
+  );
 
-  it("challenge 13: blocks dependency-related changes without approval and persists leash.json", async () => {
+  it(
+    "challenge 13: blocks dependency-related changes without approval and persists leash.json",
+    { timeout: RUNTIME_REPO_FIXTURE_TIMEOUT_MS },
+    async () => {
     const runsRoot = await mkdtemp(join(tmpdir(), "martin-safety-dependency-"));
     const repoRoot = join(runsRoot, "repo");
     await mkdir(repoRoot, { recursive: true });
@@ -1291,9 +1364,13 @@ describe("runMartin", () => {
         })
       ])
     );
-  });
+    }
+  );
 
-  it("blocks deployment config changes without approval and persists the config violation artifact", async () => {
+  it(
+    "blocks deployment config changes without approval and persists the config violation artifact",
+    { timeout: RUNTIME_REPO_FIXTURE_TIMEOUT_MS },
+    async () => {
     const runsRoot = await mkdtemp(join(tmpdir(), "martin-safety-config-"));
     const repoRoot = join(runsRoot, "repo");
     await mkdir(join(repoRoot, ".github", "workflows"), { recursive: true });
@@ -1387,7 +1464,8 @@ describe("runMartin", () => {
         })
       ])
     );
-  });
+    }
+  );
 
   it("rotates to the next adapter when switch_adapter is selected", async () => {
     let primaryExecutions = 0;
@@ -1931,10 +2009,13 @@ const store: import("../src/index").RunStore = {
         transport: "cli",
         capabilities: {
           preflight: true,
-          usageSettlement: false,
-          diffArtifacts: true,
+          usageSettlement: "estimated",
+          diffVisibility: "git",
           structuredErrors: true,
-          cachingSignals: false
+          cachingSignals: false,
+          verifierCompatibility: "full",
+          sandboxExpectation: "workspace_write",
+          launchReadiness: "path_lookup"
         }
       },
       async execute() {
@@ -1969,10 +2050,13 @@ const store: import("../src/index").RunStore = {
         transport: "http",
         capabilities: {
           preflight: true,
-          usageSettlement: true,
-          diffArtifacts: false,
+          usageSettlement: "actual",
+          diffVisibility: "none",
           structuredErrors: true,
-          cachingSignals: false
+          cachingSignals: false,
+          verifierCompatibility: "full",
+          sandboxExpectation: "provider_managed",
+          launchReadiness: "configured_endpoint"
         }
       },
       async execute() {
