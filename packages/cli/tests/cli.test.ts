@@ -388,6 +388,118 @@ describe("executeCli", () => {
     }
   });
 
+  it("loads default doctor config from --cwd instead of invocation root", async () => {
+    const invocationRoot = await mkdtemp(join(tmpdir(), "martin-cli-doctor-invocation-"));
+    const targetRepo = await mkdtemp(join(tmpdir(), "martin-cli-doctor-target-"));
+    const previousCwd = process.cwd();
+
+    try {
+      await writeFile(join(invocationRoot, "martin.config.yaml"), "policyProfile: strict\n", "utf8");
+      process.chdir(invocationRoot);
+
+      const result = await executeCli(["--json", "doctor", "--cwd", targetRepo]);
+      expect(result.exitCode).toBe(0);
+
+      const payload = JSON.parse(result.stdout) as {
+        config: { path: string; exists: boolean };
+        environment: { workingDirectory: string };
+      };
+
+      expect(payload.environment.workingDirectory).toBe(targetRepo);
+      expect(payload.config.path).toBe(join(targetRepo, "martin.config.yaml"));
+      expect(payload.config.exists).toBe(false);
+    } finally {
+      process.chdir(previousCwd);
+      await rm(invocationRoot, { force: true, recursive: true });
+      await rm(targetRepo, { force: true, recursive: true });
+    }
+  });
+
+  it("rejects traversal patterns in --allow-path during preflight", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-preflight-traversal-"));
+
+    try {
+      const result = await executeCli([
+        "preflight",
+        "--objective",
+        "Validate path policy",
+        "--cwd",
+        directory,
+        "--allow-path",
+        "..\\*"
+      ]);
+
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr).toContain("--allow-path cannot escape the repository root");
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("keeps receipt integrity parity between --latest and --loop-id selectors", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-selector-parity-"));
+    const runsRoot = join(directory, "runs");
+    const previousLive = process.env.MARTIN_LIVE;
+
+    try {
+      process.env.MARTIN_LIVE = "false";
+      const runResult = await executeCli([
+        "--json",
+        "run",
+        "--objective",
+        "selector parity",
+        "--verify",
+        `"${process.execPath}" -e "process.exit(0)"`,
+        "--cwd",
+        directory,
+        "--runs-dir",
+        runsRoot
+      ]);
+
+      expect(runResult.exitCode).toBe(0);
+      const runPayload = JSON.parse(runResult.stdout) as { loop: { loopId: string } };
+      const loopId = runPayload.loop.loopId;
+
+      const latestResult = await executeCli([
+        "--json",
+        "runs",
+        "verify",
+        "--latest",
+        "--runs-dir",
+        runsRoot
+      ]);
+      const loopIdResult = await executeCli([
+        "--json",
+        "runs",
+        "verify",
+        "--loop-id",
+        loopId,
+        "--runs-dir",
+        runsRoot
+      ]);
+
+      expect(latestResult.exitCode).toBe(0);
+      expect(loopIdResult.exitCode).toBe(0);
+
+      const latestPayload = JSON.parse(latestResult.stdout) as {
+        receiptIntegrity: { state: string };
+      };
+      const loopIdPayload = JSON.parse(loopIdResult.stdout) as {
+        receiptIntegrity: { state: string };
+      };
+
+      expect(latestPayload.receiptIntegrity.state).toBe(loopIdPayload.receiptIntegrity.state);
+      expect(loopIdPayload.receiptIntegrity.state).toBe("verified");
+    } finally {
+      if (previousLive === undefined) {
+        delete process.env.MARTIN_LIVE;
+      } else {
+        process.env.MARTIN_LIVE = previousLive;
+      }
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
   it("prints the public under-$3 benchmark summary from the shipped fixture", async () => {
     const result = await executeCli(["bench", "--suite", "ralphy-smoke"]);
 

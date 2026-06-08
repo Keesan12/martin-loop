@@ -1,7 +1,7 @@
 import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
@@ -1185,7 +1185,7 @@ async function executeDoctorCommand(
   });
   const configPath = command.configPath
     ? resolveConfigPath(command.configPath)
-    : join(environment.invocationRoot, "martin.config.yaml");
+    : join(environment.workingDirectory, "martin.config.yaml");
   const configExists = await stat(configPath).then(() => true).catch(() => false);
   const workingDirectoryReady = await stat(environment.workingDirectory).then(() => true).catch(() => false);
   const runsRootReady = await stat(environment.runsRoot).then(() => true).catch(() => false);
@@ -2841,7 +2841,14 @@ async function resolveGuardrails(
   request: RunCommandRequest,
   repoRoot: string
 ): Promise<ResolvedGuardrails> {
-  const { config, configPath } = await loadGuardrailsConfig(request.configPath);
+  const normalizedScope = normalizePathPolicyScope({
+    repoRoot,
+    allowedPaths: request.allowedPaths,
+    deniedPaths: request.deniedPaths
+  });
+  const { config, configPath } = await loadGuardrailsConfig(request.configPath, {
+    repoRoot
+  });
   return compileExecutionPolicy({
     configPath,
     defaults: {
@@ -2860,8 +2867,8 @@ async function resolveGuardrails(
       verificationPlan: request.verificationPlan,
       mutationMode: request.mutationMode,
       repoRoot,
-      allowedPaths: request.allowedPaths,
-      deniedPaths: request.deniedPaths,
+      allowedPaths: normalizedScope.allowedPaths,
+      deniedPaths: normalizedScope.deniedPaths,
       acceptanceCriteria: request.acceptanceCriteria
     }
   });
@@ -2892,11 +2899,15 @@ function applyExecutionPolicyToRequest(
 }
 
 async function loadGuardrailsConfig(
-  configPath?: string
+  configPath: string | undefined,
+  options: {
+    repoRoot: string;
+    invocationRoot?: string;
+  }
 ): Promise<{ config: GuardrailsConfig | undefined; configPath: string }> {
   const resolvedPath = configPath
-    ? resolveConfigPath(configPath)
-    : join(resolveInvocationRoot(), "martin.config.yaml");
+    ? resolveConfigPath(configPath, options.invocationRoot ?? resolveInvocationRoot())
+    : join(options.repoRoot, "martin.config.yaml");
   const configIsExplicit = typeof configPath === "string" && configPath.trim().length > 0;
 
   try {
@@ -2921,7 +2932,7 @@ async function loadGuardrailsConfig(
   }
 }
 
-function resolveConfigPath(configPath: string): string {
+function resolveConfigPath(configPath: string, baseDir = resolveInvocationRoot()): string {
   const normalizedConfigPath =
     process.platform === "win32" ? configPath : configPath.replace(/\\/g, "/");
 
@@ -2929,7 +2940,68 @@ function resolveConfigPath(configPath: string): string {
     return normalizedConfigPath;
   }
 
-  return resolve(resolveInvocationRoot(), normalizedConfigPath);
+  return resolve(baseDir, normalizedConfigPath);
+}
+
+function normalizePathPolicyScope(input: {
+  repoRoot: string;
+  allowedPaths?: string[];
+  deniedPaths?: string[];
+}): { allowedPaths?: string[]; deniedPaths?: string[] } {
+  return {
+    ...(input.allowedPaths ? { allowedPaths: normalizePathPolicyList(input.allowedPaths, "allow-path", input.repoRoot) } : {}),
+    ...(input.deniedPaths ? { deniedPaths: normalizePathPolicyList(input.deniedPaths, "deny-path", input.repoRoot) } : {})
+  };
+}
+
+function normalizePathPolicyList(
+  values: string[],
+  flagName: "allow-path" | "deny-path",
+  repoRoot: string
+): string[] {
+  return values.map((value) => normalizePathPolicyValue(value, flagName, repoRoot));
+}
+
+function normalizePathPolicyValue(
+  value: string,
+  flagName: "allow-path" | "deny-path",
+  repoRoot: string
+): string {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    throw new CliCommandError("invalid_input", `--${flagName} cannot be empty.`, {
+      suggestion: `Provide a repo-relative glob for --${flagName}.`
+    });
+  }
+
+  const normalizedSlashes = trimmed.replace(/\\/g, "/");
+  if (isPathTraversalPattern(normalizedSlashes, repoRoot)) {
+    throw new CliCommandError("invalid_input", `--${flagName} cannot escape the repository root: ${value}`, {
+      suggestion: `Use repo-relative paths only (for example src/** or docs/**).`
+    });
+  }
+
+  return trimmed;
+}
+
+function isPathTraversalPattern(pattern: string, repoRoot: string): boolean {
+  if (isAbsolute(pattern)) {
+    return true;
+  }
+
+  const segments = pattern
+    .replace(/\\/g, "/")
+    .split("/")
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0);
+  if (segments.some((segment) => segment === "..")) {
+    return true;
+  }
+
+  const normalizedRoot = resolve(repoRoot);
+  const resolvedPattern = resolve(normalizedRoot, pattern);
+  const relativeToRoot = relative(normalizedRoot, resolvedPattern);
+  return relativeToRoot === ".." || relativeToRoot.startsWith(`..${sep}`) || isAbsolute(relativeToRoot);
 }
 
 function parseGuardrailsYaml(contents: string): GuardrailsConfig {
