@@ -227,7 +227,7 @@ export interface PersistedLoopDetail {
 }
 
 export interface VerificationSummary {
-  status: "passed" | "failed" | "unavailable";
+  status: "passed" | "failed" | "contradicted" | "not_run";
   summary: string;
   eventCount: number;
   latestAttemptIndex?: number;
@@ -427,10 +427,10 @@ export async function loadPersistedLoop(
     throw new CliCommandError("not_found", "No persisted Martin loops were found.");
   }
 
+  const detail = await loadLoopById(loop.loopId, runsRoot);
   return await attachReceiptIntegrity({
-    source: runsRoot,
+    ...detail,
     runsRoot,
-    loop,
     warnings: inspected.warnings
   });
 }
@@ -465,18 +465,23 @@ export async function loadPersistedAttempt(
 async function attachReceiptIntegrity(detail: Omit<PersistedLoopDetail, "integrity">): Promise<PersistedLoopDetail> {
   const integrity =
     detail.loopRecordPath && detail.runDirectory
-      ? await verifyReceiptIntegrityFromFiles({
-          runId: detail.loop.loopId,
-          runsRoot: detail.runsRoot,
-          loopRecordPath: detail.loopRecordPath,
-          ledgerPath: await resolveReceiptEvidencePath(detail.runDirectory)
-        }).catch<ReceiptIntegritySummary>(() => ({
-          state: "unsigned",
-          reason: "Receipt integrity verification could not be completed."
-        }))
+      ? isWithinRunsRoot(detail.runsRoot, detail.runDirectory)
+        ? await verifyReceiptIntegrityFromFiles({
+            runId: detail.loop.loopId,
+            runsRoot: detail.runsRoot,
+            loopRecordPath: detail.loopRecordPath,
+            ledgerPath: await resolveReceiptEvidencePath(detail.runDirectory)
+          }).catch<ReceiptIntegritySummary>(() => ({
+            state: "material_missing",
+            reason: "Receipt integrity verification could not be completed."
+          }))
+        : ({
+            state: "relocated",
+            reason: "Run evidence was loaded from a relocated directory outside the canonical runs root."
+          } satisfies ReceiptIntegritySummary)
       : ({
-          state: "unsigned",
-          reason: "Receipt integrity is only available for canonical run directories."
+          state: "selector_noncanonical",
+          reason: "Receipt integrity is only available for canonical run selectors."
         } satisfies ReceiptIntegritySummary);
 
   return {
@@ -499,11 +504,11 @@ export function buildVerificationSummary(loop: LoopRecord): VerificationSummary 
 
   if (!latestEvent) {
     return {
-      status: "unavailable",
+      status: "not_run",
       summary: "No persisted verification evidence was found for this loop.",
       eventCount: 0,
       steps: [],
-      warnings: [...integrityWarnings, "Verification evidence is unavailable for this persisted loop."]
+      warnings: [...integrityWarnings, "Verification evidence was not recorded for this persisted loop."]
     };
   }
 
@@ -522,12 +527,15 @@ export function buildVerificationSummary(loop: LoopRecord): VerificationSummary 
     ...readVerificationWarnings(payload),
     ...buildObservationWarnings(observation)
   ];
+  const contradicted = passed && hasVerificationContradiction(warnings, steps);
 
   return {
-    status: passed ? "passed" : "failed",
+    status: contradicted ? "contradicted" : passed ? "passed" : "failed",
     summary:
       typeof payload?.["summary"] === "string"
         ? (payload["summary"] as string)
+        : contradicted
+          ? "Verifier evidence is contradicted by launch/runtime diagnostics."
         : passed
           ? "Verification passed."
           : "Verification failed.",
@@ -738,7 +746,7 @@ function buildPreventionSummary(
   if (stopConditionReached) {
     prevented.push("another unsafe or uneconomical retry before operator review");
   }
-  if (verification.status === "failed") {
+  if (verification.status === "failed" || verification.status === "contradicted") {
     prevented.push("false success claims after a failed verifier");
   }
   if (latestAttempt?.failureClass) {
@@ -774,7 +782,7 @@ function selectNextSafeAction(
     remainingIterations: Math.max(loop.budget.maxIterations - loop.attempts.length, 0)
   });
 
-  if (verification.status === "failed") {
+  if (verification.status === "failed" || verification.status === "contradicted") {
     if (circuitBreak.shouldStop) {
       return `Debug loop ${loop.loopId} with verifier evidence first, then resolve the trajectory issue before another attempt: ${circuitBreak.reason}`;
     }
@@ -824,9 +832,13 @@ function scoreLoop(loop: LoopRecord): TriageFinding {
     priority += 40;
     reasons.push("verification_failed");
   }
-  if (verification.status === "unavailable") {
+  if (verification.status === "contradicted") {
+    priority += 55;
+    reasons.push("verification_contradicted");
+  }
+  if (verification.status === "not_run") {
     priority += 10;
-    reasons.push("verification_unavailable");
+    reasons.push("verification_not_run");
   }
   if (verification.observation?.status === "mismatch") {
     priority += 30;
@@ -958,10 +970,27 @@ function resolveAbsolutePath(targetPath: string, base = resolveInvocationRoot())
 function resolveReceiptIntegrity(loop: LoopRecord): ReceiptIntegritySummary {
   return (
     loop.receiptIntegrity ?? {
-      state: "unsigned",
+      state: "selector_noncanonical",
       reason: "Receipt integrity metadata was not available on the loop record."
     }
   );
+}
+
+function hasVerificationContradiction(
+  warnings: string[],
+  steps: VerificationStepSummary[]
+): boolean {
+  const normalizedWarnings = warnings.map((warning) => warning.toLowerCase());
+  if (
+    normalizedWarnings.some((warning) =>
+      warning.includes("tool-launch problem before martinloop ran its own verifier") ||
+      warning.includes("verification evidence conflicts")
+    )
+  ) {
+    return true;
+  }
+
+  return steps.some((step) => step.launched === false);
 }
 
 export function resolveReceiptScope(loop: LoopRecord, runsRoot?: string): ReceiptScope | undefined {

@@ -175,6 +175,10 @@ async function runCommand(command, options) {
 }
 
 async function ensureBuiltPublicFacade(rootDir) {
+  // Always rebuild package dist + facade for smoke checks so stale local
+  // artifacts cannot bypass release-surface guards.
+  await runCommand(["pnpm", "build"], { cwd: rootDir });
+
   const requiredFiles = [
     path.join(rootDir, "dist", "index.js"),
     path.join(rootDir, "dist", "index.d.ts"),
@@ -184,11 +188,9 @@ async function ensureBuiltPublicFacade(rootDir) {
     requiredFiles.map((filePath) => access(filePath).then(() => true).catch(() => false)),
   );
 
-  if (allPresent.every(Boolean)) {
-    return;
+  if (!allPresent.every(Boolean)) {
+    throw new Error("Public facade build is incomplete; required dist artifacts are missing.");
   }
-
-  await runCommand(["pnpm", "build"], { cwd: rootDir });
 }
 
 function buildLifecycleSafeEnv(sourceEnv = process.env) {
