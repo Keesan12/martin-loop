@@ -31,7 +31,10 @@ test("version ledger records live public truth and the next release train", asyn
   const ledger = await readRepoFile(path.join("docs", "release", "VERSION-LEDGER.md"));
 
   assert.match(ledger, /root public baseline: `\d+\.\d+\.\d+`/);
-  assert.match(ledger, /live public GitHub release: `v0\.3\.1`/);
+  assert.match(
+    ledger,
+    new RegExp(escapeRegex(`live public GitHub release: \`v${rootPackageJson.version}\``))
+  );
   assert.match(
     ledger,
     new RegExp(escapeRegex("standalone MCP public baseline: `0.3.1`"))
