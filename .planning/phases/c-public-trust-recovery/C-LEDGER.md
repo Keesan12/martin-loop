@@ -50,3 +50,24 @@
 
 - Improved `--file` selector handling:
   - when file path points at canonical run `loop-record.json` under a run directory, integrity verification now uses canonical run-directory context instead of noncanonical fallback.
+
+## C.8 proof gate alignment
+
+- Added `--proof` parsing back into run/preflight request parsing.
+- Added `liveMode` to run request model and propagation.
+- `executeRunCommand` and `executePreflightCommand` now pass request `liveMode` into environment resolution.
+- Adapter selection now honors proof mode directly (`liveMode === "proof"` => stub adapter), independent of `MARTIN_LIVE`.
+- Regression test added:
+  - `run --proof` works without requiring `MARTIN_LIVE=false`.
+
+## C.9 unknown-field hardening
+
+- Added unknown top-level field detector for file-selected loop records.
+- `runs get --file` and `share --file` now surface explicit untrusted warnings when copied loop records contain unknown top-level keys.
+- Regression test added:
+  - injected `hiddenControlPlaneDirective` triggers an explicit warning instead of silent acceptance.
+
+## Current verification state
+
+- `pnpm --filter @martin/cli test -- cli.test.ts` passed (24/24).
+- `pnpm --filter @martin/cli lint` passed.

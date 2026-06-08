@@ -139,6 +139,7 @@ export type RunCommandRequest = {
   runsDir?: string;
   model?: string;
   engine?: string;
+  liveMode?: "live" | "proof";
   mutationMode?: MutationMode;
   allowedPaths?: string[];
   deniedPaths?: string[];
@@ -877,7 +878,8 @@ async function executeRunCommand(
   const cliEnvironment = resolveCliEnvironment({
     cwd: request.cwd,
     runsDir: request.runsDir,
-    engine: request.engine
+    engine: request.engine,
+    liveMode: request.liveMode
   });
   const resolvedGuardrails = await resolveGuardrails(request, cliEnvironment.workingDirectory);
   const resolvedRequest = applyExecutionPolicyToRequest(request, resolvedGuardrails);
@@ -885,6 +887,7 @@ async function executeRunCommand(
   const adapter = selectAdapter(
     resolvedRequest.engine,
     cliEnvironment.workingDirectory,
+    cliEnvironment.liveMode,
     resolvedRequest.model,
     resolvedRequest.mutationMode
   );
@@ -1904,7 +1907,8 @@ async function executePreflightCommand(
   const environment = resolveCliEnvironment({
     cwd: request.cwd,
     runsDir: request.runsDir,
-    engine: request.engine
+    engine: request.engine,
+    liveMode: request.liveMode
   });
   const resolvedGuardrails = await resolveGuardrails(request, environment.workingDirectory);
   const resolvedRequest = applyExecutionPolicyToRequest(request, resolvedGuardrails);
@@ -2499,6 +2503,9 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
       case "--verify-only":
         request.mutationMode = "verify_only";
         break;
+      case "--proof":
+        request.liveMode = "proof";
+        break;
       case "--allow-path":
         if (next) {
           request.allowedPaths = [...(request.allowedPaths ?? []), next];
@@ -2544,6 +2551,7 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
     ...(request.runsDir ? { runsDir: request.runsDir } : {}),
     ...(request.model ? { model: request.model } : {}),
     ...(request.engine ? { engine: request.engine } : {}),
+    ...(request.liveMode ? { liveMode: request.liveMode } : {}),
     ...(request.mutationMode ? { mutationMode: request.mutationMode } : {}),
     ...(request.allowedPaths?.length ? { allowedPaths: request.allowedPaths } : {}),
     ...(request.deniedPaths?.length ? { deniedPaths: request.deniedPaths } : {}),
@@ -3135,11 +3143,20 @@ function isNodeErrorWithCode(error: unknown, code: string): boolean {
 function selectAdapter(
   engine: string | undefined,
   workingDirectory: string,
+  liveMode: "live" | "proof",
   modelOverride?: string,
   mutationMode?: MutationMode
 ): MartinAdapter {
   if (mutationMode === "verify_only") {
     return createVerifierOnlyAdapter({ workingDirectory });
+  }
+
+  if (liveMode === "proof") {
+    return createStubDirectProviderAdapter({
+      label: "Stub adapter (proof mode)",
+      providerId: "stub",
+      model: "stub"
+    });
   }
 
   if (process.env.MARTIN_LIVE === "false") {
