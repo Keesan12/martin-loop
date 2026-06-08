@@ -900,17 +900,10 @@ async function executeRunCommand(
   const resolvedGuardrails = await resolveGuardrails(request, cliEnvironment.workingDirectory);
   const resolvedRequest = applyExecutionPolicyToRequest(request, resolvedGuardrails);
   const receiptScope = buildCliReceiptScope(cliEnvironment);
-  const adapter = selectAdapter(
-    resolvedRequest.engine,
-    cliEnvironment.workingDirectory,
-    cliEnvironment.liveMode,
-    resolvedRequest.model,
-    resolvedRequest.mutationMode
-  );
-
   let result: Awaited<ReturnType<typeof runMartin>>;
   const engineRequired =
     resolvedRequest.mutationMode !== "verify_only" && cliEnvironment.liveMode === "live";
+  let codexCommandOverride: string | undefined;
 
   if (engineRequired) {
     const gate = await evaluateCliRunGate({
@@ -954,7 +947,16 @@ async function executeRunCommand(
         }
       });
     }
+    codexCommandOverride = codexProbe.command;
   }
+  const runtimeAdapter = selectAdapter(
+    resolvedRequest.engine,
+    cliEnvironment.workingDirectory,
+    cliEnvironment.liveMode,
+    resolvedRequest.model,
+    resolvedRequest.mutationMode,
+    codexCommandOverride
+  );
   try {
     const runTimeoutMs = resolveRunTimeoutMs(process.env.MARTIN_RUN_TIMEOUT_MS);
     result = await runWithTimeout(
@@ -971,7 +973,7 @@ async function executeRunCommand(
         },
         budget: resolvedRequest.budget,
         metadata: resolvedRequest.metadata,
-        adapter,
+        adapter: runtimeAdapter,
         executionPolicy: resolvedGuardrails
       }),
       runTimeoutMs
@@ -3170,7 +3172,8 @@ function selectAdapter(
   workingDirectory: string,
   liveMode: "live" | "proof",
   modelOverride?: string,
-  mutationMode?: MutationMode
+  mutationMode?: MutationMode,
+  codexCommandOverride?: string
 ): MartinAdapter {
   if (runAdapterOverrideForTests) {
     return runAdapterOverrideForTests;
@@ -3197,7 +3200,11 @@ function selectAdapter(
   }
 
   if (engine === "codex") {
-    return createCodexCliAdapter({ workingDirectory, ...(modelOverride ? { model: modelOverride } : {}) });
+    return createCodexCliAdapter({
+      workingDirectory,
+      ...(modelOverride ? { model: modelOverride } : {}),
+      ...(codexCommandOverride ? { command: codexCommandOverride } : {})
+    });
   }
 
   if (engine === "gemini") {
