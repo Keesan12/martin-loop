@@ -1451,7 +1451,7 @@ async function executeDossierCommand(
       `Run dossier for ${detail.loop.loopId}`,
       `Status: ${detail.loop.status} / ${detail.loop.lifecycleState}`,
       `Verification: ${verification.status}`,
-      `Integrity: ${describeIntegrity(detail.integrity)}`,
+      `Integrity: ${describeIntegrity(detail.integrity.state)}`,
       `Cost (USD): ${detail.loop.cost.actualUsd.toFixed(2)} — provenance: ${describeCostProvenance(costProvenance)}`,
       `Artifacts: ${detail.loop.artifacts.length}`,
       `Attempts: ${detail.loop.attempts.length}`,
@@ -1516,7 +1516,7 @@ async function executeRunsGetCommand(
       `Status: ${detail.loop.status} / ${detail.loop.lifecycleState}`,
       `Verification: ${verification.status}`,
       `Artifacts: ${artifacts.totalCount}`,
-      `Integrity: ${describeIntegrity(detail.integrity)}`,
+      `Integrity: ${describeIntegrity(detail.integrity.state)}`,
       `Cost (USD): ${detail.loop.cost.actualUsd.toFixed(2)} — provenance: ${describeCostProvenance(costProvenance)}`,
       `Source: ${detail.source}`
     ],
@@ -1545,7 +1545,7 @@ async function executeRunsAttemptCommand(
       `Adapter: ${loaded.attempt.adapterId}`,
       `Model: ${loaded.attempt.model}`,
       `Verification: ${loaded.verification.status}`,
-      `Integrity: ${describeIntegrity(loaded.detail.integrity)}`,
+      `Integrity: ${describeIntegrity(loaded.detail.integrity.state)}`,
       loaded.attempt.summary ?? "No attempt summary was recorded."
     ],
     quiet: `${loaded.detail.loop.loopId}:${loaded.attempt.index}`,
@@ -1574,7 +1574,7 @@ async function executeRunsVerifyCommand(
     human: [
       `Verification for ${detail.loop.loopId}`,
       `Status: ${verification.status}`,
-      `Integrity: ${describeIntegrity(detail.integrity)}`,
+      `Integrity: ${describeIntegrity(detail.integrity.state)}`,
       verification.summary
     ],
     quiet: verification.status,
@@ -2556,7 +2556,7 @@ async function executeChallengeCommand(
   const input = loadedDetail
     ? proofCardInputFromLoop(loadedDetail.loop)
     : defaultChallengeProofCardInput();
-  const integrity: IntegrityStatus | undefined = loadedDetail?.integrity;
+  const integrity: IntegrityStatus | undefined = loadedDetail?.integrity.state;
   const card = buildMartinProofCard(input);
   const markdown = renderMartinProofCardMarkdown(card);
   const svg = renderMartinProofCardSvg(card);

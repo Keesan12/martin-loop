@@ -150,8 +150,8 @@ function extractUsage(
   // `result` event in json/stream-json output) over our pricing-table estimate,
   // which can drift from real billed cost (cache discounts, surcharges, etc).
   const hasAuthoritativeCost = typeof parsed.total_cost_usd === "number";
-  const actualUsd = hasAuthoritativeCost
-    ? parsed.total_cost_usd
+  const actualUsd: number = hasAuthoritativeCost
+    ? (parsed.total_cost_usd as number)
     : (promptTokens / 1000) * pricing.inputPer1K +
       (cachedInputTokens / 1000) * (pricing.cachedInputPer1K ?? pricing.inputPer1K) +
       (tokensOut / 1000) * pricing.outputPer1K;

@@ -354,6 +354,51 @@ describe("operator commands", () => {
     });
   });
 
+  it("reports unsigned for ad-hoc --file loads outside the selected runs root without minting a new local key", async () => {
+    const externalRunsRoot = await mkdtemp(join(tmpdir(), "martin-cli-external-runs-"));
+
+    try {
+      const loop = makeLoopRecord();
+      const externalLoopDir = join(externalRunsRoot, loop.loopId);
+      const loopRecordPath = join(externalLoopDir, "loop-record.json");
+      const ledgerPath = join(externalLoopDir, "ledger.jsonl");
+      const ledgerEntries = loop.events;
+
+      await mkdir(externalLoopDir, { recursive: true });
+      await writeFile(loopRecordPath, JSON.stringify(loop, null, 2), "utf8");
+      await writeFile(
+        ledgerPath,
+        ledgerEntries.map((entry) => JSON.stringify(entry)).join("\n").concat("\n"),
+        "utf8"
+      );
+      await writeReceiptIntegrityMaterial({
+        runId: loop.loopId,
+        runsRoot: externalRunsRoot,
+        loopRecord: loop,
+        ledgerEntries,
+        signedAt: loop.updatedAt
+      });
+      await expect(
+        readFile(join(externalLoopDir, "receipt-integrity.json"), "utf8")
+      ).resolves.toContain("signatureHmacSha256");
+
+      await withRunsRoot(async (selectedRunsRoot) => {
+        const dossier = JSON.parse(
+          (await executeCli(["--json", "dossier", "--file", externalLoopDir])).stdout
+        );
+        const getRun = JSON.parse(
+          (await executeCli(["--json", "runs", "get", "--file", externalLoopDir])).stdout
+        );
+
+        expect(dossier.receiptIntegrity.state).toBe("unsigned");
+        expect(getRun.receiptIntegrity.state).toBe("unsigned");
+        await expect(readFile(join(selectedRunsRoot, ".integrity-key"), "utf8")).rejects.toThrow();
+      });
+    } finally {
+      await rm(externalRunsRoot, { force: true, recursive: true }).catch(() => {});
+    }
+  });
+
   it("prints dry-run MCP host config for Codex, Claude, Gemini, and generic wrapper hosts", async () => {
     const codex = JSON.parse(
       (
