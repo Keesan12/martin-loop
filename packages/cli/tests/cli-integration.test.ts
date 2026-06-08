@@ -256,6 +256,28 @@ describe("--engine flag", () => {
     expect(result.stderr).toContain("Governed run blocked until MartinLoop receipts exist");
     expect(result.stderr).toMatch(/martin-loop (doctor|session-start)/);
   });
+
+  it("accepts explicit unsafe gate bypass in live mode", { timeout: 15000 }, async () => {
+    const result = await withoutAgentCliOnPath(() =>
+      withEnv("MARTIN_LIVE", "true", () =>
+        executeCli([
+          "run",
+          "--objective",
+          "Fix the bug",
+          "--verify",
+          NOOP_VERIFIER,
+          "--max-iterations",
+          "1",
+          "--budget-usd",
+          "2",
+          "--unsafe-allow-unguarded-run"
+        ])
+      )
+    );
+
+    expect(result.exitCode).not.toBe(8);
+    expect(result.stderr).not.toContain("Governed run blocked until MartinLoop receipts exist");
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -12,15 +12,15 @@ Use this guide to get one governed MartinLoop run and one evidence review in a f
 ## Recommended First Run
 
 ```sh
-npx martin-loop demo
+npx -y martin-loop@latest demo
 cd martin-loop-demo
 npm install
-npx martin-loop doctor
-npx martin-loop session-start
-npx martin-loop preflight "Summarize the demo workspace and prove tests still pass" --verify "npm test"
-npx martin-loop run "Summarize the demo workspace and prove tests still pass" --proof --verify "npm test"
-npx martin-loop dossier --latest
-npx martin-loop share --latest
+npx -y martin-loop@latest doctor
+npx -y martin-loop@latest session-start
+npx -y martin-loop@latest preflight "Summarize the demo workspace and prove tests still pass" --verify "npm test"
+npx -y martin-loop@latest run "Summarize the demo workspace and prove tests still pass" --proof --verify "npm test"
+npx -y martin-loop@latest dossier --latest
+npx -y martin-loop@latest share --latest
 ```
 
 This path creates the local receipts MartinLoop expects before a real governed run, then proves the run/dossier loop without model spend.
@@ -29,7 +29,7 @@ This path creates the local receipts MartinLoop expects before a real governed r
 
 ```sh
 npm install -g martin-loop
-npx martin-loop doctor
+npx -y martin-loop@latest doctor
 ```
 
 `doctor` checks whether MartinLoop can find the local tools, agents, and run directories it needs.
@@ -47,8 +47,8 @@ If `npx martin-loop --version` differs from npm live, run `npx -y martin-loop@la
 ## Run a Governed Task
 
 ```sh
-npx martin-loop preflight "fix the auth regression" --verify "pnpm test"
-npx martin-loop run "fix the auth regression" --budget 3.00 --verify "pnpm test"
+npx -y martin-loop@latest preflight "fix the auth regression" --verify "pnpm test"
+npx -y martin-loop@latest run "fix the auth regression" --budget 3.00 --verify "pnpm test"
 ```
 
 By default, MartinLoop expects recent `doctor`, `session-start`, and `preflight` receipts for the same repo and task before a real run will start.
@@ -56,9 +56,9 @@ By default, MartinLoop expects recent `doctor`, `session-start`, and `preflight`
 ## Review Evidence
 
 ```sh
-npx martin-loop triage
-npx martin-loop dossier --latest
-npx martin-loop share --latest
+npx -y martin-loop@latest triage
+npx -y martin-loop@latest dossier --latest
+npx -y martin-loop@latest share --latest
 ```
 
 Use `triage` to rank saved runs by urgency. Use `dossier` when you want one run receipt: stop reason, verifier evidence, budget status, rollback or artifact evidence, and the next safe action. Use `share` when you want a redacted bundle you can attach to a ticket, send to a teammate, or keep with the run directory.
@@ -68,7 +68,7 @@ The share bundle contains `run-receipt.json`, `run-receipt.md`, and `proof-card.
 To print exact artifact paths from your latest run:
 
 ```sh
-npx martin-loop share --latest --json
+npx -y martin-loop@latest share --latest --json
 ```
 
 ## Repository Development
