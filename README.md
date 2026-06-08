@@ -26,15 +26,20 @@ npx -y martin-loop@latest demo
 npx -y martin-loop@latest --version
 cd martin-loop-demo
 npm install
-npx -y martin-loop@latest doctor
-npx -y martin-loop@latest session-start
-npx -y martin-loop@latest preflight "Summarize the demo workspace and prove tests still pass" --verify "npm test"
 npx -y martin-loop@latest run "Summarize the demo workspace and prove tests still pass" --proof --verify "npm test"
 npx -y martin-loop@latest dossier --latest
 npx -y martin-loop@latest share --latest
 ```
 
-`start` prints the first-run guided path. `doctor`, `session-start`, and `preflight` create the local receipts MartinLoop expects before a real governed run.
+`start` prints the first-run guided path. `run` auto-checks `doctor`, `session-start`, and `preflight`, then executes when the environment is ready. You can still run those commands directly when you want to inspect the governed checks first.
+
+Inspect-first flow:
+
+```sh
+npx -y martin-loop@latest doctor
+npx -y martin-loop@latest session-start
+npx -y martin-loop@latest preflight "Summarize the demo workspace and prove tests still pass" --verify "npm test"
+```
 
 `share --latest` writes three files into the selected run directory under `share/`: `run-receipt.json`, `run-receipt.md`, and `proof-card.svg`.
 
@@ -46,12 +51,10 @@ Use this lane from a clean temp directory to verify the public CLI flow exactly 
 
 ```sh
 npx -y martin-loop@0.3.2 --version
+npx -y martin-loop@0.3.2 start
 npx -y martin-loop@0.3.2 demo
 cd martin-loop-demo
 npm install
-npx -y martin-loop@0.3.2 doctor --json
-npx -y martin-loop@0.3.2 session-start --json
-npx -y martin-loop@0.3.2 preflight "Summarize the demo workspace and prove tests still pass" --verify "npm test" --json
 npx -y martin-loop@0.3.2 run "Summarize the demo workspace and prove tests still pass" --proof --verify "npm test" --json
 npx -y martin-loop@0.3.2 dossier --latest --json
 npx -y martin-loop@0.3.2 share --latest --json

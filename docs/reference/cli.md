@@ -37,12 +37,11 @@ npx -y martin-loop@latest --version
 npx -y martin-loop@latest demo
 cd martin-loop-demo
 npm install
-npx -y martin-loop@latest doctor
-npx -y martin-loop@latest session-start
-npx -y martin-loop@latest preflight "Summarize the workspace and prove tests still pass" --verify "npm test"
 npx -y martin-loop@latest run "Summarize the workspace and prove tests still pass" --proof --verify "npm test"
 npx -y martin-loop@latest share --latest
 ```
+
+`run` auto-checks `doctor`, `session-start`, and `preflight`, then executes when the environment is ready. Run those commands directly when you want to inspect the governed checks first.
 
 ## Run Options
 
@@ -68,6 +67,14 @@ npx -y martin-loop@latest share --latest
 --workspace <id>        Workspace ID for the run record
 --project <id>          Project ID for the run record
 --metadata <key=value>  Attach metadata to the run record; repeatable
+```
+
+## Inspect-First Flow
+
+```sh
+npx -y martin-loop@latest doctor
+npx -y martin-loop@latest session-start
+npx -y martin-loop@latest preflight "fix the auth regression" --verify "pnpm test"
 ```
 
 ## Benchmark Reproduction
