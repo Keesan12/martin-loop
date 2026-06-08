@@ -125,6 +125,22 @@ function resolveRootPackageVersion(): string {
 const rootPackageVersion = resolveRootPackageVersion();
 let runAdapterOverrideForTests: MartinAdapter | undefined;
 
+const DEFAULT_RUN_TIMEOUT_MS = 30 * 60 * 1000;
+
+class RunTimeoutError extends Error {
+  readonly timeoutMs: number;
+
+  constructor(timeoutMs: number) {
+    super(`Martin run timed out after ${timeoutMs}ms`);
+    this.timeoutMs = timeoutMs;
+    this.name = "RunTimeoutError";
+  }
+}
+
+export function setRunAdapterOverrideForTests(adapter: MartinAdapter | undefined): void {
+  runAdapterOverrideForTests = adapter;
+}
+
 export type RunCommandRequest = {
   workspaceId: string;
   projectId: string;
@@ -940,22 +956,26 @@ async function executeRunCommand(
     }
   }
   try {
-    result = await runMartin({
-      workspaceId: resolvedRequest.workspaceId,
-      projectId: resolvedRequest.projectId,
-      receiptScope: {
-        ...receiptScope
-      },
-      task: {
-        title: resolvedRequest.title,
-        objective: resolvedRequest.objective,
-        ...resolvedGuardrails.task
-      },
-      budget: resolvedRequest.budget,
-      metadata: resolvedRequest.metadata,
-      adapter,
-      executionPolicy: resolvedGuardrails
-    });
+    const runTimeoutMs = resolveRunTimeoutMs(process.env.MARTIN_RUN_TIMEOUT_MS);
+    result = await runWithTimeout(
+      runMartin({
+        workspaceId: resolvedRequest.workspaceId,
+        projectId: resolvedRequest.projectId,
+        receiptScope: {
+          ...receiptScope
+        },
+        task: {
+          title: resolvedRequest.title,
+          objective: resolvedRequest.objective,
+          ...resolvedGuardrails.task
+        },
+        budget: resolvedRequest.budget,
+        metadata: resolvedRequest.metadata,
+        adapter,
+        executionPolicy: resolvedGuardrails
+      }),
+      runTimeoutMs
+    );
   } catch (error) {
     const fallbackLoop = createLoopRecord({
       workspaceId: resolvedRequest.workspaceId,
@@ -981,7 +1001,12 @@ async function executeRunCommand(
         "Run `martin doctor` to verify engine availability, or set MARTIN_LIVE=false to use the stub adapter locally.",
       details: {
         loopId: fallbackLoop.loopId,
-        reason: error instanceof Error ? error.message : String(error)
+        reason:
+          error instanceof RunTimeoutError
+            ? `Timed out after ${error.timeoutMs}ms before adapter completion.`
+            : error instanceof Error
+              ? error.message
+              : String(error)
       }
     });
   }
@@ -3147,6 +3172,10 @@ function selectAdapter(
   modelOverride?: string,
   mutationMode?: MutationMode
 ): MartinAdapter {
+  if (runAdapterOverrideForTests) {
+    return runAdapterOverrideForTests;
+  }
+
   if (mutationMode === "verify_only") {
     return createVerifierOnlyAdapter({ workingDirectory });
   }
@@ -3184,6 +3213,33 @@ function selectAdapter(
   }
 
   return createClaudeCliAdapter({ workingDirectory, ...(modelOverride ? { model: modelOverride } : {}) });
+}
+
+function resolveRunTimeoutMs(raw: string | undefined): number {
+  if (!raw) {
+    return DEFAULT_RUN_TIMEOUT_MS;
+  }
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return DEFAULT_RUN_TIMEOUT_MS;
+  }
+  return parsed;
+}
+
+async function runWithTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  let timeoutHandle: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeoutHandle = setTimeout(() => reject(new RunTimeoutError(timeoutMs)), timeoutMs);
+      })
+    ]);
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+  }
 }
 
 function buildDoctorRecommendations(input: {

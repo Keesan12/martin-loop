@@ -1,11 +1,11 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
 import { createLoopRecord } from "../../contracts/src/index.js";
-import { executeCli, parseCliArguments } from "../src/index.js";
+import { executeCli, parseCliArguments, setRunAdapterOverrideForTests } from "../src/index.js";
 
 describe("parseCliArguments", () => {
   it("parses version flags and subcommand", () => {
@@ -659,6 +659,62 @@ describe("executeCli", () => {
         delete process.env.MARTIN_LIVE;
       } else {
         process.env.MARTIN_LIVE = previousLive;
+      }
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("fails closed with persisted fallback loop when adapter hangs beyond timeout", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-timeout-"));
+    const runsRoot = join(directory, "runs");
+    const previousLive = process.env.MARTIN_LIVE;
+    const previousTimeout = process.env.MARTIN_RUN_TIMEOUT_MS;
+
+    try {
+      process.env.MARTIN_LIVE = "true";
+      process.env.MARTIN_RUN_TIMEOUT_MS = "50";
+      setRunAdapterOverrideForTests({
+        adapterId: "hanging-adapter",
+        kind: "agent-cli",
+        label: "Hanging Adapter",
+        metadata: {
+          providerId: "test",
+          model: "test"
+        },
+        execute: async () =>
+          await new Promise(() => {
+            // intentional never-resolve for timeout regression coverage
+          })
+      });
+
+      const result = await executeCli([
+        "--json",
+        "run",
+        "--objective",
+        "timeout hardening",
+        "--proof",
+        "--verify",
+        `"${process.execPath}" -e "process.exit(0)"`,
+        "--cwd",
+        directory,
+        "--runs-dir",
+        runsRoot
+      ]);
+
+      expect(result.exitCode).toBe(3);
+      const dirs = await readdir(runsRoot, { withFileTypes: true });
+      expect(dirs.some((entry) => entry.isDirectory())).toBe(true);
+    } finally {
+      setRunAdapterOverrideForTests(undefined);
+      if (previousLive === undefined) {
+        delete process.env.MARTIN_LIVE;
+      } else {
+        process.env.MARTIN_LIVE = previousLive;
+      }
+      if (previousTimeout === undefined) {
+        delete process.env.MARTIN_RUN_TIMEOUT_MS;
+      } else {
+        process.env.MARTIN_RUN_TIMEOUT_MS = previousTimeout;
       }
       await rm(directory, { force: true, recursive: true });
     }
