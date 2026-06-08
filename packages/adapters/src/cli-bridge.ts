@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess, type SpawnOptions } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { delimiter, dirname, extname, isAbsolute, join, resolve } from "node:path";
 
@@ -23,6 +23,7 @@ export interface SubprocessResult {
   stderr: string;
   timedOut: boolean;
   spawnError?: boolean;
+  terminationReason?: string;
 }
 
 export interface VerificationOutcome {
@@ -39,11 +40,18 @@ export interface CliCommandProbe extends SubprocessResult {
 export async function runSubprocess(
   command: string,
   args: string[],
-  options: { cwd: string; timeoutMs: number; spawnImpl?: SpawnLike; stdinData?: string }
+  options: {
+    cwd: string;
+    timeoutMs: number;
+    spawnImpl?: SpawnLike;
+    stdinData?: string;
+    onStdoutChunk?: (chunk: Buffer, terminate: (reason: string) => void) => void;
+  }
 ): Promise<SubprocessResult> {
   return new Promise((resolve) => {
     let timedOut = false;
     let settled = false;
+    let terminationReason: string | undefined;
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
 
@@ -58,6 +66,14 @@ export async function runSubprocess(
     };
 
     let proc: ChildProcess;
+    const terminate = (reason: string) => {
+      if (settled || terminationReason !== undefined) {
+        return;
+      }
+      terminationReason = reason;
+      proc.kill("SIGTERM");
+    };
+
     try {
       const spawnPlan = createSpawnPlan(command, args, options.cwd, options.spawnImpl !== undefined);
       proc = (options.spawnImpl ?? spawn)(spawnPlan.command, spawnPlan.args, {
@@ -72,13 +88,15 @@ export async function runSubprocess(
         stdout: "",
         stderr: message,
         timedOut: false,
-        spawnError: true
+        spawnError: true,
+        ...(terminationReason ? { terminationReason } : {})
       });
       return;
     }
 
     proc.stdout?.on("data", (chunk: Buffer) => {
       stdoutChunks.push(chunk);
+      options.onStdoutChunk?.(chunk, terminate);
     });
 
     proc.stderr?.on("data", (chunk: Buffer) => {
@@ -106,7 +124,8 @@ export async function runSubprocess(
         stdout: "",
         stderr: error.message,
         timedOut: false,
-        spawnError: true
+        spawnError: true,
+        ...(terminationReason ? { terminationReason } : {})
       });
     });
 
@@ -116,7 +135,8 @@ export async function runSubprocess(
         exitCode: code ?? 1,
         stdout: Buffer.concat(stdoutChunks).toString("utf8"),
         stderr: Buffer.concat(stderrChunks).toString("utf8"),
-        timedOut
+        timedOut,
+        ...(terminationReason ? { terminationReason } : {})
       });
     });
 
@@ -308,14 +328,19 @@ export async function readGitExecutionArtifacts(
   changedFiles?: string[];
   diffStats?: ReturnType<typeof diffStatsFromNumstat>;
 }> {
+  const gitRepoRoot = resolveGitRepositoryRoot(repoRoot);
+  if (!gitRepoRoot) {
+    return {};
+  }
+
   const [changedFilesResult, untrackedFilesResult, numstatResult] = await Promise.all([
-    runSubprocess("git", ["diff", "--name-only", "HEAD"], { cwd: repoRoot, timeoutMs, spawnImpl }),
+    runSubprocess("git", ["diff", "--name-only", "HEAD"], { cwd: gitRepoRoot, timeoutMs, spawnImpl }),
     runSubprocess("git", ["ls-files", "--others", "--exclude-standard"], {
-      cwd: repoRoot,
+      cwd: gitRepoRoot,
       timeoutMs,
       spawnImpl
     }),
-    runSubprocess("git", ["diff", "--numstat", "HEAD"], { cwd: repoRoot, timeoutMs, spawnImpl })
+    runSubprocess("git", ["diff", "--numstat", "HEAD"], { cwd: gitRepoRoot, timeoutMs, spawnImpl })
   ]);
 
   const changedFiles = [
@@ -336,10 +361,15 @@ export async function readGitChangedFiles(
   timeoutMs: number,
   spawnImpl?: SpawnLike
 ): Promise<string[]> {
+  const gitRepoRoot = resolveGitRepositoryRoot(repoRoot);
+  if (!gitRepoRoot) {
+    return [];
+  }
+
   const statusResult = await runSubprocess(
     "git",
     ["status", "-z", "--porcelain=v1", "--untracked-files=all", "--ignore-submodules=all"],
-    { cwd: repoRoot, timeoutMs, spawnImpl }
+    { cwd: gitRepoRoot, timeoutMs, spawnImpl }
   );
 
   if (statusResult.exitCode !== 0) {
@@ -600,6 +630,25 @@ function truncate(text: string, maxLength: number): string {
   }
 
   return `...${text.slice(-(maxLength - 3))}`;
+}
+
+export function resolveGitRepositoryRoot(repoRoot: string): string | undefined {
+  try {
+    const probe = spawnSync("git", ["rev-parse", "--show-toplevel"], {
+      cwd: repoRoot,
+      windowsHide: true,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"]
+    });
+    if (probe.status !== 0) {
+      return undefined;
+    }
+
+    const root = probe.stdout.trim();
+    return root.length > 0 ? root : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function inferVerifierExitReason(result: SubprocessResult): VerifierExitReason {

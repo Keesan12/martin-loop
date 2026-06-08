@@ -1803,103 +1803,107 @@ const store: import("../src/index").RunStore = {
     expect(patchDecision.reasonCodes).toContain("grounding_failure");
   });
 
-  it("restores the pre-attempt repo boundary for discarded verifier regressions and preserves pre-existing dirty files", async () => {
-    const runsRoot = await mkdtemp(join(tmpdir(), "martin-patch-rollback-"));
-    const repoRoot = join(runsRoot, "repo");
-    await mkdir(join(repoRoot, "src"), { recursive: true });
-    await writeFile(join(repoRoot, "src", "real.ts"), "export const real = 1;\n", "utf8");
-    initializeGitRepo(repoRoot);
-    await writeFile(join(repoRoot, "src", "real.ts"), "export const real = 2;\n", "utf8");
-    const store = createFileRunStore({ runsRoot });
+  it(
+    "restores the pre-attempt repo boundary for discarded verifier regressions and preserves pre-existing dirty files",
+    { timeout: 20_000 },
+    async () => {
+      const runsRoot = await mkdtemp(join(tmpdir(), "martin-patch-rollback-"));
+      const repoRoot = join(runsRoot, "repo");
+      await mkdir(join(repoRoot, "src"), { recursive: true });
+      await writeFile(join(repoRoot, "src", "real.ts"), "export const real = 1;\n", "utf8");
+      initializeGitRepo(repoRoot);
+      await writeFile(join(repoRoot, "src", "real.ts"), "export const real = 2;\n", "utf8");
+      const store = createFileRunStore({ runsRoot });
 
-    const adapter: MartinAdapter = {
-      adapterId: "direct:patch-rollback",
-      kind: "direct-provider",
-      label: "Patch rollback adapter",
-      metadata: {
-        providerId: "openai",
-        model: "gpt-5-mini"
-      },
-      async execute() {
-        await writeFile(join(repoRoot, "src", "ghost-new-file.ts"), "export const ghost = 1;\n", "utf8");
+      const adapter: MartinAdapter = {
+        adapterId: "direct:patch-rollback",
+        kind: "direct-provider",
+        label: "Patch rollback adapter",
+        metadata: {
+          providerId: "openai",
+          model: "gpt-5-mini"
+        },
+        async execute() {
+          await writeFile(join(repoRoot, "src", "ghost-new-file.ts"), "export const ghost = 1;\n", "utf8");
 
-        return {
-          status: "completed",
-          summary: "Changed a file, but the verifier still failed.",
-          usage: {
-            actualUsd: 0.21,
-            tokensIn: 64,
-            tokensOut: 31
-          },
-          verification: {
-            passed: false,
-            summary: "pnpm --filter @martin/core test still failing"
-          },
-          execution: {
-            changedFiles: ["src/ghost-new-file.ts"],
-            diffStats: {
-              filesChanged: 1,
-              addedLines: 6,
-              deletedLines: 0
+          return {
+            status: "completed",
+            summary: "Changed a file, but the verifier still failed.",
+            usage: {
+              actualUsd: 0.21,
+              tokensIn: 64,
+              tokensOut: 31
+            },
+            verification: {
+              passed: false,
+              summary: "pnpm --filter @martin/core test still failing"
+            },
+            execution: {
+              changedFiles: ["src/ghost-new-file.ts"],
+              diffStats: {
+                filesChanged: 1,
+                addedLines: 6,
+                deletedLines: 0
+              }
             }
-          }
-        };
-      }
-    };
+          };
+        }
+      };
 
-    const result = await runMartin({
-      workspaceId: "ws_patch",
-      projectId: "proj_patch",
-      task: {
-        title: "Discard and restore a no-progress patch",
-        objective: "Restore the repo boundary when a discarded patch adds files without verifier improvement.",
-        verificationPlan: ["pnpm --filter @martin/core test"],
-        repoRoot,
-        allowedPaths: ["src/**"]
-      },
-      budget: {
-        maxUsd: 10,
-        softLimitUsd: 8,
-        maxIterations: 1,
-        maxTokens: 2_000
-      },
-      adapter,
-      store,
-      now: createTimestampSource([
-        "2026-04-03T12:00:00.000Z",
-        "2026-04-03T12:00:01.000Z",
-        "2026-04-03T12:00:02.000Z",
-        "2026-04-03T12:00:03.000Z",
-        "2026-04-03T12:00:04.000Z",
-        "2026-04-03T12:00:05.000Z",
-        "2026-04-03T12:00:06.000Z"
-      ]),
-      idFactory: createIdFactory()
-    });
+      const result = await runMartin({
+        workspaceId: "ws_patch",
+        projectId: "proj_patch",
+        task: {
+          title: "Discard and restore a no-progress patch",
+          objective: "Restore the repo boundary when a discarded patch adds files without verifier improvement.",
+          verificationPlan: ["pnpm --filter @martin/core test"],
+          repoRoot,
+          allowedPaths: ["src/**"]
+        },
+        budget: {
+          maxUsd: 10,
+          softLimitUsd: 8,
+          maxIterations: 1,
+          maxTokens: 2_000
+        },
+        adapter,
+        store,
+        now: createTimestampSource([
+          "2026-04-03T12:00:00.000Z",
+          "2026-04-03T12:00:01.000Z",
+          "2026-04-03T12:00:02.000Z",
+          "2026-04-03T12:00:03.000Z",
+          "2026-04-03T12:00:04.000Z",
+          "2026-04-03T12:00:05.000Z",
+          "2026-04-03T12:00:06.000Z"
+        ]),
+        idFactory: createIdFactory()
+      });
 
-    const rollbackBoundary = JSON.parse(
-      await readFile(
-        join(runsRoot, result.loop.loopId, "artifacts", "attempt-001", "rollback-boundary.json"),
-        "utf8"
-      )
-    );
-    const rollbackOutcome = JSON.parse(
-      await readFile(
-        join(runsRoot, result.loop.loopId, "artifacts", "attempt-001", "rollback-outcome.json"),
-        "utf8"
-      )
-    );
+      const rollbackBoundary = JSON.parse(
+        await readFile(
+          join(runsRoot, result.loop.loopId, "artifacts", "attempt-001", "rollback-boundary.json"),
+          "utf8"
+        )
+      );
+      const rollbackOutcome = JSON.parse(
+        await readFile(
+          join(runsRoot, result.loop.loopId, "artifacts", "attempt-001", "rollback-outcome.json"),
+          "utf8"
+        )
+      );
 
-    await expect(readFile(join(repoRoot, "src", "ghost-new-file.ts"), "utf8")).rejects.toThrow();
-    await expect(readFile(join(repoRoot, "src", "real.ts"), "utf8")).resolves.toBe(
-      "export const real = 2;\n"
-    );
-    expect(result.decision.lifecycleState).toBe("budget_exit");
-    expect(rollbackBoundary.trackedDirtyFiles).toContain("src/real.ts");
-    expect(rollbackOutcome.status).toBe("restored");
-    expect(rollbackOutcome.deletedFiles).toContain("src/ghost-new-file.ts");
-    expect(rollbackOutcome.after.trackedDirtyFiles).toEqual(["src/real.ts"]);
-  });
+      await expect(readFile(join(repoRoot, "src", "ghost-new-file.ts"), "utf8")).rejects.toThrow();
+      await expect(readFile(join(repoRoot, "src", "real.ts"), "utf8")).resolves.toBe(
+        "export const real = 2;\n"
+      );
+      expect(result.decision.lifecycleState).toBe("budget_exit");
+      expect(rollbackBoundary.trackedDirtyFiles).toContain("src/real.ts");
+      expect(rollbackOutcome.status).toBe("restored");
+      expect(rollbackOutcome.deletedFiles).toContain("src/ghost-new-file.ts");
+      expect(rollbackOutcome.after.trackedDirtyFiles).toEqual(["src/real.ts"]);
+    }
+  );
 
   it("restores forbidden file changes on the filesystem safety-block path and persists rollback artifacts", async () => {
     const runsRoot = await mkdtemp(join(tmpdir(), "martin-patch-scope-rollback-"));

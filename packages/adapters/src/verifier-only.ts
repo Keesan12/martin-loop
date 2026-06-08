@@ -6,6 +6,7 @@ import type { MartinAdapter } from "@martin/core";
 
 import {
   readGitExecutionArtifacts,
+  resolveGitRepositoryRoot,
   runSubprocess,
   runVerification,
   type SpawnLike
@@ -48,10 +49,14 @@ export function createVerifierOnlyAdapter(
       })
     },
     async execute(request) {
-      const beforeSnapshot = await captureWorktreeSnapshot(
-        workingDirectory,
-        verifyTimeoutMs
-      );
+      const hasVerificationSteps =
+        request.context.verificationPlan.length > 0 ||
+        (request.context.verificationStack?.length ?? 0) > 0;
+      const gitRepoRoot = resolveGitRepositoryRoot(workingDirectory);
+      const beforeSnapshot =
+        hasVerificationSteps && gitRepoRoot
+          ? await captureWorktreeSnapshot(gitRepoRoot, verifyTimeoutMs, options.spawnImpl)
+          : undefined;
       const verification = await runVerification(
         request.context.verificationPlan,
         workingDirectory,
@@ -59,18 +64,23 @@ export function createVerifierOnlyAdapter(
         request.context.verificationStack,
         options.spawnImpl
       );
-      const execution = await readGitExecutionArtifacts(workingDirectory, 5_000);
-      const afterSnapshot = await captureWorktreeSnapshot(
-        workingDirectory,
-        verifyTimeoutMs
-      );
-      const changedFiles = diffWorktreeSnapshots(beforeSnapshot, afterSnapshot);
-      const normalizedExecution = {
-        ...execution,
-        ...(execution.changedFiles !== undefined || changedFiles.length > 0
-          ? { changedFiles }
-          : {})
-      };
+      const execution =
+        hasVerificationSteps && gitRepoRoot
+          ? await readGitExecutionArtifacts(gitRepoRoot, 5_000, options.spawnImpl)
+          : {};
+      const afterSnapshot =
+        hasVerificationSteps && gitRepoRoot
+          ? await captureWorktreeSnapshot(gitRepoRoot, verifyTimeoutMs, options.spawnImpl)
+          : undefined;
+      const changedFiles =
+        beforeSnapshot && afterSnapshot ? diffWorktreeSnapshots(beforeSnapshot, afterSnapshot) : [];
+      const normalizedExecution =
+        execution.changedFiles !== undefined || changedFiles.length > 0 || !hasVerificationSteps
+          ? {
+              ...execution,
+              changedFiles
+            }
+          : execution;
 
       if (verification.passed) {
         return {
@@ -111,16 +121,19 @@ export function createVerifierOnlyAdapter(
 
 async function captureWorktreeSnapshot(
   workingDirectory: string,
-  timeoutMs: number
+  timeoutMs: number,
+  spawnImpl?: SpawnLike
 ): Promise<Map<string, string>> {
   const [tracked, untracked] = await Promise.all([
     runSubprocess("git", ["diff", "--name-only", "HEAD"], {
       cwd: workingDirectory,
-      timeoutMs
+      timeoutMs,
+      spawnImpl
     }),
     runSubprocess("git", ["ls-files", "--others", "--exclude-standard"], {
       cwd: workingDirectory,
-      timeoutMs
+      timeoutMs,
+      spawnImpl
     })
   ]);
 
