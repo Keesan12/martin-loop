@@ -1,10 +1,10 @@
 # MCP Compatibility
 
-This document describes the compatibility posture for the public standalone MCP line after the live `@martinloop/mcp@0.3.0` baseline and through the staged `0.3.1` follow-up.
+This document describes the compatibility posture for the public standalone MCP line after the live `@martinloop/mcp@0.3.1` baseline and into the planned `0.3.2` follow-up.
 
 ## Current baseline
 
-`0.3.0` is the current public baseline. `0.3.1` is the staged review-and-handoff follow-up.
+`0.3.1` is the current public baseline. `0.3.2` is the planned opt-in execution-controls follow-up.
 
 It keeps the standalone server local-first and stdio-first, and it assumes a governed MartinLoop workflow:
 
