@@ -199,7 +199,7 @@ describe("createAgentCliAdapter", () => {
     expect(adapter.metadata.providerId).toBe("mytool");
     expect(adapter.metadata.model).toBe("mytool-v1");
     expect(adapter.metadata.transport).toBe("cli");
-    expect(adapter.metadata.capabilities.usageSettlement).toBe(false);
+    expect(adapter.metadata.capabilities.usageSettlement).toBe("unavailable");
   });
 
   it("uses adapterIdSuffix when provided", () => {
