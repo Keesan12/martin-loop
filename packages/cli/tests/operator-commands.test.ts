@@ -23,6 +23,22 @@ async function withEnv<T>(key: string, value: string, fn: () => Promise<T>): Pro
   }
 }
 
+async function withoutAgentCliOnPath<T>(fn: () => Promise<T>): Promise<T> {
+  const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === "path") ?? "PATH";
+  const original = process.env[pathKey];
+  process.env[pathKey] = "";
+
+  try {
+    return await fn();
+  } finally {
+    if (original === undefined) {
+      delete process.env[pathKey];
+    } else {
+      process.env[pathKey] = original;
+    }
+  }
+}
+
 function makeLoopRecord(): LoopRecord {
   const loop = createLoopRecord({
     workspaceId: "ws_ops",
@@ -205,25 +221,27 @@ describe("operator commands", () => {
     });
   });
 
-  it("blocks live run execution before spend when the governed receipt chain is missing", async () => {
+  it("blocks live run execution before spend when the governed receipt chain is missing", { timeout: 45000 }, async () => {
     await withRunsRoot(async () => {
-      const result = await executeCli([
-        "run",
-        "--objective",
-        "Repair the failing MCP lane",
-        "--engine",
-        "codex",
-        "--verify",
-        "pnpm --filter @martinloop/mcp test",
-        "--budget-usd",
-        "2",
-        "--max-iterations",
-        "1"
-      ]);
+      const result = await withoutAgentCliOnPath(() =>
+        executeCli([
+          "run",
+          "--objective",
+          "Repair the failing MCP lane",
+          "--engine",
+          "codex",
+          "--verify",
+          "pnpm --filter @martinloop/mcp test",
+          "--budget-usd",
+          "2",
+          "--max-iterations",
+          "1"
+        ])
+      );
 
       expect(result.exitCode).toBe(8);
-      expect(result.stderr).toContain("Governed run blocked until MartinLoop receipts exist");
-      expect(result.stderr).toContain("martin-loop doctor");
+      expect(result.stderr).toContain("Governed run preflight blocked execution");
+      expect(result.stderr).toContain("martin-loop preflight");
     });
   });
 

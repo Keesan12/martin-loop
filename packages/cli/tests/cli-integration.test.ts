@@ -3,7 +3,7 @@
  * and the MARTIN_LIVE guard introduced with the real adapter.
  */
 
-import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -129,6 +129,22 @@ function initializeGitRepo(directory: string): void {
   }
 }
 
+function normalizeWorkingDirectoryForExpectation(workingDirectory: string): string {
+  return process.platform === "win32" ? workingDirectory.toLowerCase() : workingDirectory;
+}
+
+async function readWorkflowState(
+  runsRoot: string
+): Promise<{ cli?: Record<string, unknown> } | undefined> {
+  try {
+    return JSON.parse(await readFile(join(runsRoot, "_martin", "workflow-state.json"), "utf8")) as {
+      cli?: Record<string, unknown>;
+    };
+  } catch {
+    return undefined;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // MARTIN_LIVE guard
 // ---------------------------------------------------------------------------
@@ -236,25 +252,99 @@ describe("--engine flag", () => {
   });
 
   it("blocks live run execution before spend when the governed receipt chain is missing", { timeout: 15000 }, async () => {
-    const result = await withoutAgentCliOnPath(() =>
-      withEnv("MARTIN_LIVE", "true", () =>
-        executeCli([
-          "run",
-          "--objective",
-          "Fix the bug",
-          "--verify",
-          NOOP_VERIFIER,
-          "--max-iterations",
-          "1",
-          "--budget-usd",
-          "2"
-        ])
-      )
-    );
+    await withTempDir(async (workspace) => {
+      const runsDir = join(workspace, ".martin-runs");
+      const result = await withoutAgentCliOnPath(() =>
+        withEnv("MARTIN_LIVE", "true", () =>
+          executeCli([
+            "run",
+            "--cwd",
+            workspace,
+            "--runs-dir",
+            runsDir,
+            "--objective",
+            "Fix the bug",
+            "--verify",
+            NOOP_VERIFIER,
+            "--max-iterations",
+            "1",
+            "--budget-usd",
+            "2"
+          ])
+        )
+      );
 
-    expect(result.exitCode).toBe(8);
-    expect(result.stderr).toContain("Governed run blocked until MartinLoop receipts exist");
-    expect(result.stderr).toMatch(/martin-loop (doctor|session-start|preflight)/);
+      expect(result.exitCode).toBe(8);
+      expect(result.stderr).toContain("Governed run preflight blocked execution");
+      expect(result.stderr).toContain("martin-loop preflight");
+
+      const workflowState = await readWorkflowState(runsDir);
+      const cliState = (workflowState?.cli ?? {}) as Record<string, unknown>;
+      expect(cliState.doctor).toBeUndefined();
+      expect(cliState["session-start"]).toBeUndefined();
+      expect(cliState.preflight).toBeUndefined();
+    });
+  });
+
+  it("auto-bootstraps governed prerequisites and executes a live Codex run when host is ready", { timeout: 45000 }, async () => {
+    await withTempDir((workspace) =>
+      withFakeCodexCli(async () => {
+        initializeGitRepo(workspace);
+        const runsDir = join(workspace, ".martin-runs");
+        const result = await withEnv("MARTIN_LIVE", "true", () =>
+          executeCli([
+            "--json",
+            "run",
+            "--engine",
+            "codex",
+            "--cwd",
+            workspace,
+            "--runs-dir",
+            runsDir,
+            "--objective",
+            "Fix the bug",
+            "--verify",
+            NOOP_VERIFIER,
+            "--max-iterations",
+            "1",
+            "--budget-usd",
+            "2",
+          ])
+        );
+
+        expect(result.exitCode).toBe(0);
+        const payload = JSON.parse(result.stdout);
+        expect(payload.command).toBe("run");
+        expect(payload.environment.engine).toBe("codex");
+        expect(payload.environment.liveMode).toBe("live");
+        expect(payload.loop.loopId).toMatch(/^loop_/u);
+        expect(payload.loop.attempts).toHaveLength(1);
+        expect(payload.loop.attempts[0].adapterId).toBe("agent-cli:codex");
+        expect(payload.loop.attempts[0].summary).toContain("fake codex completed");
+        const verificationEvent = payload.loop.events.find((event: { type: string }) => event.type === "verification.completed");
+        expect(verificationEvent?.payload?.passed).toBe(true);
+        expect(verificationEvent?.payload?.summary).toContain("passed");
+
+        const workflowState = await readWorkflowState(runsDir);
+        const cliState = (workflowState?.cli ?? {}) as Record<string, { workingDirectory?: string }>;
+        const normalizedWorkingDirectory = normalizeWorkingDirectoryForExpectation(payload.environment.workingDirectory);
+        expect(cliState.doctor?.workingDirectory).toBe(normalizedWorkingDirectory);
+        expect(cliState["session-start"]?.workingDirectory).toBe(normalizedWorkingDirectory);
+        expect(cliState.preflight?.workingDirectory).toBe(normalizedWorkingDirectory);
+
+        const verifyResult = await executeCli([
+          "--json",
+          "runs",
+          "verify",
+          "--latest",
+          "--runs-dir",
+          runsDir
+        ]);
+        expect(verifyResult.exitCode).toBe(0);
+        const verificationPayload = JSON.parse(verifyResult.stdout);
+        expect(verificationPayload.verification.status).toBe("passed");
+      })
+    );
   });
 
   it("accepts explicit unsafe gate bypass in live mode", { timeout: 15000 }, async () => {
@@ -276,7 +366,7 @@ describe("--engine flag", () => {
     );
 
     expect(result.exitCode).not.toBe(8);
-    expect(result.stderr).not.toContain("Governed run blocked until MartinLoop receipts exist");
+    expect(result.stderr).not.toContain("Governed run preflight blocked execution");
   });
 });
 

@@ -16,15 +16,12 @@ npx -y martin-loop@latest start
 npx -y martin-loop@latest demo
 cd martin-loop-demo
 npm install
-npx -y martin-loop@latest doctor
-npx -y martin-loop@latest session-start
-npx -y martin-loop@latest preflight "Summarize the demo workspace and prove tests still pass" --verify "npm test"
 npx -y martin-loop@latest run "Summarize the demo workspace and prove tests still pass" --proof --verify "npm test"
 npx -y martin-loop@latest dossier --latest
 npx -y martin-loop@latest share --latest
 ```
 
-This path creates the local receipts MartinLoop expects before a real governed run, then proves the run/dossier loop without model spend.
+This path proves the run/dossier loop without model spend. `run` auto-checks `doctor`, `session-start`, and `preflight`, then executes when the environment is ready.
 
 ## Install the CLI
 
@@ -52,7 +49,15 @@ npx -y martin-loop@latest preflight "fix the auth regression" --verify "pnpm tes
 npx -y martin-loop@latest run "fix the auth regression" --budget 3.00 --verify "pnpm test"
 ```
 
-By default, MartinLoop expects recent `doctor`, `session-start`, and `preflight` receipts for the same repo and task before a real run will start.
+By default, MartinLoop auto-checks `doctor`, `session-start`, and `preflight` for the same repo and task before a real run will spend money. If preflight finds a real blocker, MartinLoop stops before live spend and tells you what to fix.
+
+If you want to inspect the governed checks first:
+
+```sh
+npx -y martin-loop@latest doctor
+npx -y martin-loop@latest session-start
+npx -y martin-loop@latest preflight "fix the auth regression" --verify "pnpm test"
+```
 
 ## Review Evidence
 
