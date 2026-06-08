@@ -56,6 +56,10 @@
   },
   "scripts": {
     "build": "pnpm --filter @martin/contracts build && pnpm --filter @martin/core build && pnpm --filter @martin/adapters build && pnpm --filter @martin/benchmarks build && pnpm --filter @martin/cli build && pnpm --filter @martinloop/mcp build && node ./scripts/build-public-facade.mjs",
+    "bench:build": "pnpm --filter @martin/benchmarks build",
+    "bench:test": "pnpm --filter @martin/benchmarks test",
+    "bench:eval": "pnpm --filter @martin/benchmarks eval",
+    "bench:report:ralphy": "pnpm --filter @martin/benchmarks report:ralphy",
     "prepack": "pnpm build && node ./scripts/root-release-guard.mjs --pack",
     "test": "pnpm -r --workspace-concurrency=1 test && node --test scripts/tests/*.mjs",
     "lint": "pnpm -r lint",
