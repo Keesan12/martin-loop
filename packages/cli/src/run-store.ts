@@ -16,6 +16,26 @@ import type {
 
 import { CliCommandError } from "./ux.js";
 
+const LOOP_RECORD_TOP_LEVEL_KEYS = new Set([
+  "loopId",
+  "workspaceId",
+  "projectId",
+  "teamId",
+  "status",
+  "lifecycleState",
+  "task",
+  "budget",
+  "cost",
+  "artifacts",
+  "attempts",
+  "events",
+  "metadata",
+  "createdAt",
+  "updatedAt",
+  "receiptScope",
+  "receiptIntegrity"
+]);
+
 // ---------------------------------------------------------------------------
 // Local run-history hotspot reader (Layer 5 — proactive issue detection)
 // Uses persisted Martin run-store evidence only; no hidden machine corpus.
@@ -410,11 +430,12 @@ export async function loadPersistedLoop(
     const runDirectory = path.dirname(targetPath);
     const canonicalFromParent = await findCanonicalLoopRecordPath(runDirectory);
     if (canonicalFromParent && path.resolve(canonicalFromParent) === path.resolve(targetPath)) {
+      const unknownFieldWarnings = await detectUnknownLoopTopLevelFieldWarnings(canonicalFromParent);
       return await attachReceiptIntegrity({
         source: targetPath,
         runsRoot,
         loop: await readLoopRecordFile(canonicalFromParent),
-        warnings: [],
+        warnings: unknownFieldWarnings,
         runDirectory,
         loopRecordPath: canonicalFromParent
       });
@@ -426,11 +447,15 @@ export async function loadPersistedLoop(
       throw new CliCommandError("not_found", "No persisted Martin loops were found in the selected file.");
     }
 
+    const unknownFieldWarnings =
+      targetPath.toLowerCase().endsWith(".json")
+        ? await detectUnknownLoopTopLevelFieldWarnings(targetPath)
+        : [];
     return await attachReceiptIntegrity({
       source: targetPath,
       runsRoot,
       loop,
-      warnings: []
+      warnings: unknownFieldWarnings
     });
   }
 
@@ -1203,6 +1228,22 @@ async function readLoopRecordFile(file: string): Promise<LoopRecord> {
   }
 
   return parsed;
+}
+
+async function detectUnknownLoopTopLevelFieldWarnings(file: string): Promise<string[]> {
+  const parsed = JSON.parse(await readFile(file, "utf8")) as unknown;
+  if (!isRecord(parsed)) {
+    return [];
+  }
+
+  const unknownKeys = Object.keys(parsed).filter((key) => !LOOP_RECORD_TOP_LEVEL_KEYS.has(key));
+  if (unknownKeys.length === 0) {
+    return [];
+  }
+
+  return [
+    `Untrusted loop record includes unknown top-level fields: ${unknownKeys.sort().join(", ")}. Treat this receipt as untrusted copied evidence.`
+  ];
 }
 
 async function readLatestWorkspaceIndexSummary(

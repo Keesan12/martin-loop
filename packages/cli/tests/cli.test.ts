@@ -388,6 +388,39 @@ describe("executeCli", () => {
     }
   });
 
+  it("respects --proof live-mode override without requiring MARTIN_LIVE=false", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-proof-override-"));
+    const previousLive = process.env.MARTIN_LIVE;
+
+    try {
+      delete process.env.MARTIN_LIVE;
+      const result = await executeCli([
+        "--json",
+        "run",
+        "--objective",
+        "proof gate alignment",
+        "--proof",
+        "--verify",
+        `"${process.execPath}" -e "process.exit(0)"`,
+        "--cwd",
+        directory
+      ]);
+
+      expect(result.exitCode).toBe(0);
+      const payload = JSON.parse(result.stdout) as {
+        environment: { liveMode: string };
+      };
+      expect(payload.environment.liveMode).toBe("proof");
+    } finally {
+      if (previousLive === undefined) {
+        delete process.env.MARTIN_LIVE;
+      } else {
+        process.env.MARTIN_LIVE = previousLive;
+      }
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
   it("loads default doctor config from --cwd instead of invocation root", async () => {
     const invocationRoot = await mkdtemp(join(tmpdir(), "martin-cli-doctor-invocation-"));
     const targetRepo = await mkdtemp(join(tmpdir(), "martin-cli-doctor-target-"));
@@ -570,6 +603,57 @@ describe("executeCli", () => {
       expect(receipt.verification.status).toBe("untrusted");
       const evidenceLine = receipt.proofCard.evidenceLine.toLowerCase();
       expect(evidenceLine.includes("not trustworthy") || evidenceLine.includes("canonical verification")).toBe(true);
+    } finally {
+      if (previousLive === undefined) {
+        delete process.env.MARTIN_LIVE;
+      } else {
+        process.env.MARTIN_LIVE = previousLive;
+      }
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("surfaces unknown top-level fields as untrusted warnings for file-selected receipts", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-hidden-field-"));
+    const runsRoot = join(directory, "runs");
+    const previousLive = process.env.MARTIN_LIVE;
+
+    try {
+      process.env.MARTIN_LIVE = "false";
+      const runResult = await executeCli([
+        "--json",
+        "run",
+        "--objective",
+        "hidden field warning",
+        "--verify",
+        `"${process.execPath}" -e "process.exit(0)"`,
+        "--cwd",
+        directory,
+        "--runs-dir",
+        runsRoot
+      ]);
+      expect(runResult.exitCode).toBe(0);
+      const runPayload = JSON.parse(runResult.stdout) as { loop: { loopId: string } };
+      const loopId = runPayload.loop.loopId;
+      const loopRecordPath = join(runsRoot, loopId, "loop-record.json");
+
+      const persisted = JSON.parse(await readFile(loopRecordPath, "utf8")) as Record<string, unknown>;
+      persisted["hiddenControlPlaneDirective"] = "never-accept-me";
+      await writeFile(loopRecordPath, `${JSON.stringify(persisted, null, 2)}\n`, "utf8");
+
+      const getResult = await executeCli([
+        "--json",
+        "runs",
+        "get",
+        "--file",
+        loopRecordPath,
+        "--runs-dir",
+        runsRoot
+      ]);
+
+      expect(getResult.exitCode).toBe(0);
+      const getPayload = JSON.parse(getResult.stdout) as { warnings?: string[] };
+      expect(getPayload.warnings?.some((warning) => warning.includes("unknown top-level fields"))).toBe(true);
     } finally {
       if (previousLive === undefined) {
         delete process.env.MARTIN_LIVE;
