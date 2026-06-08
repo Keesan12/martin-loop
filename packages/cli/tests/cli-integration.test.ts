@@ -3,7 +3,7 @@
  * and the MARTIN_LIVE guard introduced with the real adapter.
  */
 
-import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -236,25 +236,30 @@ describe("--engine flag", () => {
   });
 
   it("blocks live run execution before spend when the governed receipt chain is missing", { timeout: 15000 }, async () => {
-    const result = await withoutAgentCliOnPath(() =>
-      withEnv("MARTIN_LIVE", "true", () =>
-        executeCli([
-          "run",
-          "--objective",
-          "Fix the bug",
-          "--verify",
-          NOOP_VERIFIER,
-          "--max-iterations",
-          "1",
-          "--budget-usd",
-          "2"
-        ])
+    const result = await withTempDir((runsDir) =>
+      withoutAgentCliOnPath(() =>
+        withEnv("MARTIN_LIVE", "true", () =>
+          executeCli([
+            "run",
+            "--objective",
+            "Fix the bug",
+            "--runs-dir",
+            runsDir,
+            "--verify",
+            NOOP_VERIFIER,
+            "--max-iterations",
+            "1",
+            "--budget-usd",
+            "2"
+          ])
+        )
       )
     );
 
     expect(result.exitCode).toBe(8);
     expect(result.stderr).toContain("Governed run blocked until MartinLoop receipts exist");
-    expect(result.stderr).toMatch(/martin-loop (doctor|session-start)/);
+    expect(result.stderr).toContain("session start");
+    expect(result.stderr).toContain("martin-loop doctor");
   });
 });
 
@@ -278,6 +283,51 @@ describe("--cwd flag", () => {
       );
 
       expect(result.exitCode).toBe(0);
+    });
+  });
+
+  it("honors --runs-dir for preflight and persisted runs", async () => {
+    await withTempDir(async (workspace) => {
+      await withTempDir(async (runsDir) => {
+        const preflight = await executeCli([
+          "--json",
+          "preflight",
+          "--objective",
+          "Fix the bug",
+          "--cwd",
+          workspace,
+          "--runs-dir",
+          runsDir,
+          "--verify",
+          NOOP_VERIFIER
+        ]);
+
+        expect(preflight.exitCode).toBe(0);
+        const preflightPayload = JSON.parse(preflight.stdout);
+        expect(preflightPayload.environment.runsRoot).toBe(runsDir);
+
+        const run = await withEnv("MARTIN_LIVE", "false", () =>
+          executeCli([
+            "--json",
+            "run",
+            "--objective",
+            "Fix the bug",
+            "--cwd",
+            workspace,
+            "--runs-dir",
+            runsDir,
+            "--verify",
+            NOOP_VERIFIER,
+            "--max-iterations",
+            "1"
+          ])
+        );
+
+        expect(run.exitCode).toBe(0);
+        const runPayload = JSON.parse(run.stdout);
+        expect(runPayload.environment.runsRoot).toBe(runsDir);
+        await expect(access(join(runsDir, runPayload.loop.loopId, "loop-record.json"))).resolves.toBeUndefined();
+      });
     });
   });
 });
@@ -327,6 +377,39 @@ describe("inspect command", () => {
 
     expect(result.exitCode).toBe(5);
     expect(result.stderr).toContain("Persisted loop file not found");
+  });
+
+  it("summarizes persisted run directories instead of throwing EISDIR", async () => {
+    await withTempDir(async (dir) => {
+      const runDirectory = join(dir, "loop_123");
+      const loop = createLoopRecord({
+        workspaceId: "ws_test",
+        projectId: "proj_test",
+        task: {
+          title: "Fix auth bug",
+          objective: "Fix auth bug",
+          verificationPlan: ["pnpm test"]
+        },
+        cost: {
+          actualUsd: 2,
+          avoidedUsd: 3,
+          tokensIn: 400,
+          tokensOut: 150
+        }
+      });
+
+      await mkdir(runDirectory, { recursive: true });
+      await writeFile(join(runDirectory, "loop-record.json"), JSON.stringify(loop), "utf8");
+
+      const result = await executeCli(["--json", "inspect", "--file", runDirectory]);
+
+      expect(result.exitCode).toBe(0);
+      const payload = JSON.parse(result.stdout);
+      expect(payload.command).toBe("inspect");
+      expect(payload.source).toBe(runDirectory);
+      expect(payload.summary.totalActualUsd).toBe(2);
+      expect(payload.summary.activeLoops).toBe(1);
+    });
   });
 });
 
