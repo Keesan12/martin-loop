@@ -14,28 +14,40 @@ jobs:
     name: Publish to npm
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10.33.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: 22
-          registry-url: "https://registry.npmjs.org"
+          node-version: 24
           cache: pnpm
+
+      - name: Use latest npm for trusted publishing
+        run: npm install -g npm@latest
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Validate OSS release surface
         run: |
-          pnpm build
+          pnpm lint
+          pnpm public:copy-scan
+          pnpm public:git-surface
           pnpm test
+          pnpm build
           pnpm oss:validate
           pnpm public:smoke
+          pnpm --filter @martinloop/mcp lint
+          pnpm --filter @martinloop/mcp test
+          pnpm --filter @martinloop/mcp build
           pnpm --filter @martinloop/mcp smoke:pack
+          pnpm --filter @martinloop/mcp smoke:published:pack
+          pnpm --filter @martinloop/mcp verify:release
           node ./scripts/root-release-guard.mjs --tag "${GITHUB_REF_NAME}" --pack
 
       - name: Pack root tarball
@@ -52,6 +64,16 @@ jobs:
           VERSION="$(node -p "require('./package.json').version")"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
+      - name: Extract changelog entry
+        id: changelog
+        run: |
+          BODY="$(node ./scripts/extract-changelog-entry.mjs --version "${{ steps.package-version.outputs.version }}")"
+          {
+            echo "body<<EOF_CHANGELOG"
+            printf '%s\n' "$BODY"
+            echo "EOF_CHANGELOG"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Check npm for existing version
         id: npm-version
         run: |
@@ -63,7 +85,7 @@ jobs:
 
       - name: Publish to npm
         if: steps.npm-version.outputs.exists != 'true'
-        run: npm publish "${{ steps.root-pack.outputs.tarball }}" --access public
+        run: npm publish "${{ steps.root-pack.outputs.tarball }}" --access public --provenance
 
       - name: Skip duplicate npm publish
         if: steps.npm-version.outputs.exists == 'true'
@@ -81,7 +103,7 @@ jobs:
           exit 1
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: ${{ steps.root-pack.outputs.tarball }}
-          generate_release_notes: true
+          body: ${{ steps.changelog.outputs.body }}

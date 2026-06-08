@@ -1,44 +1,46 @@
 # AGENTS.md
 
-## Project Overview
-- Martin Loop ships both a repo-wide OSS/RC surface and a standalone publishable MCP package at `packages/mcp`.
+## Purpose
 
-## Build and Verify
-- For MCP-only changes, run `pnpm --filter @martinloop/mcp test`, `pnpm --filter @martinloop/mcp build`, and `pnpm --filter @martinloop/mcp smoke:pack`.
-- For release-surface or packaging changes that could affect CI, run `pnpm release:matrix:local`.
+This repository uses AI coding assistants for maintenance tasks.
+Agents must treat this repository as a public open-source project.
 
-## Release Defaults
-- Reload the release-memory docs before making MCP version or publish-path assumptions: `docs/release/VERSION-LEDGER.md`, `docs/release/MCP-DELIVERY-SLICE-MAP.md`, and `docs/release/MCP-PUBLISHING.md`.
-- For public OSS releases, GitHub Actions is the required publish authority for both npm and GitHub releases. Use only tag-driven or workflow-dispatch GitHub Actions paths unless Keesan explicitly approves an exception after GitHub Actions is shown to be unavailable.
+## Public Surface Rule
 
-## Operating Memory Schema
-- Treat remembered operating constraints as incomplete unless they include all three parts:
-- `Rule = policy`
-- `Guardrail = enforcement`
-- `Verification = proof`
+Everything committed to this repo must be appropriate for public users, contributors, package consumers, and external reviewers.
 
-### Release-memory activation
-- Rule: do not start OSS release work in blank-slate mode.
-- Guardrail: read the release-memory docs and the closest instruction layer before touching workflows, tags, versions, or publish paths.
-- Verification: the first execution step and release lane must visibly follow those docs instead of ad hoc assumptions.
+Do not commit:
 
-### Public release surface hygiene
-- Rule: public MCP release work is not complete until the whole public docs/package surface is checked for non-public leakage, not only the files edited in the current slice.
-- Guardrail: run a high-confidence forbidden-term scan across `docs`, `packages/mcp/README.md`, and `packages/mcp/package.json` for internal repo names, local paths, private mirror/package wording, concrete enterprise paths, private package versions, and workspace chatter before final status.
-- Verification: final release status must name the scan surface and whether it returned zero matches or list the exact repaired hits.
+- secrets, credentials, tokens, private URLs, or machine-specific paths
+- internal planning notes or non-public roadmap language
+- customer-sensitive details or unpublished commercial strategy
+- copied private conversation content
+- release-process notes not useful to public contributors
 
-### Browser cleanup
-- Rule: if browser tabs are used during repo work, cleanup is part of done.
-- Guardrail: before claiming completion on browser-involved work, explicitly check whether extra tabs opened for the run should be closed.
-- Verification: either the extra tabs are closed, or the final status states why they were intentionally left open.
+## Setup
 
-### Mirror parity exception
-- Rule: treat `ML_Core_OSS_Internal` as mirroring local truth from `martin-loop_OSS_CORE`, with one explicit preserved exception.
-- Guardrail: ignore `old/pre-sync-2026-05-18` during parity discussions, drift checks, and sync decisions unless Keesan explicitly asks to revisit that archive.
-- Verification: parity summaries and sync work should not flag `old/pre-sync-2026-05-18` as drift or ask for it to be explained again.
+Use pnpm.
 
-## MCP Registry Guardrails
-- Do not call `packages/mcp` registry-ready unless `packages/mcp/package.json` includes `mcpName` and `packages/mcp/server.json` exists with matching `name`, `version`, and npm package `identifier`.
-- npm publication happens before official MCP Registry publication.
-- The official MCP Registry flow runs from `packages/mcp`: `mcp-publisher login github`, then `mcp-publisher publish`.
-- The current official registry server name for the public MCP package is `io.github.Keesan12/martin-loop`.
+```sh
+pnpm install --frozen-lockfile
+pnpm test
+pnpm lint
+pnpm build
+```
+
+## Contribution Standard
+
+Prefer small, auditable changes. Keep docs concise, user-centered, and accurate.
+
+## Before Opening a PR
+
+```sh
+pnpm test
+pnpm lint
+```
+
+## Documentation Style
+
+Write for developers discovering MartinLoop for the first time.
+Explain what the tool does, how to install it, how to run it,
+and how to verify results.

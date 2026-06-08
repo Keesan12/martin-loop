@@ -105,6 +105,50 @@ export interface LoopCost {
   avoidedUsd: number;
   tokensIn: number;
   tokensOut: number;
+  estimatedUsd?: number;
+  provenance?: CostProvenance;
+  providerSettlement?: ProviderUsageSettlement;
+}
+
+export type UsageSettlementSource =
+  | "claude_json"
+  | "codex_jsonl"
+  | "gemini_json"
+  | "estimated_fallback"
+  | "unavailable";
+
+export interface ProviderUsageSettlement {
+  providerId: string;
+  model: string;
+  transport?: "cli" | "http" | "routed_http";
+  source: UsageSettlementSource;
+  inputTokens: number;
+  cachedInputTokens?: number;
+  outputTokens: number;
+  reasoningOutputTokens?: number;
+  rawUsageAvailable: boolean;
+  settledAt: string;
+}
+
+export interface ReceiptScope {
+  repoRoot?: string;
+  workingDirectory?: string;
+  invocationRoot?: string;
+  runsRoot?: string;
+}
+
+export type ReceiptIntegrityState = "verified" | "unsigned" | "tamper_detected";
+
+export interface ReceiptIntegritySummary {
+  state: ReceiptIntegrityState;
+  keyId?: string;
+  signedAt?: string;
+  loopRecordSha256?: string;
+  ledgerSha256?: string;
+  ledgerHeadHash?: string;
+  entryCount?: number;
+  reason?: string;
+  warnings?: string[];
 }
 
 export interface LoopArtifact {
@@ -150,6 +194,8 @@ export interface LoopRecord {
   metadata: Record<string, string>;
   createdAt: string;
   updatedAt: string;
+  receiptScope?: ReceiptScope;
+  receiptIntegrity?: ReceiptIntegritySummary;
 }
 
 export interface LoopRecordDraft {
@@ -168,6 +214,8 @@ export interface LoopRecordDraft {
   metadata?: Record<string, string>;
   createdAt?: string;
   updatedAt?: string;
+  receiptScope?: ReceiptScope;
+  receiptIntegrity?: ReceiptIntegritySummary;
 }
 
 export type {
@@ -314,6 +362,8 @@ export function createLoopRecord(
     },
     createdAt: draft.createdAt ?? now,
     updatedAt: draft.updatedAt ?? now,
+    ...(draft.receiptScope ? { receiptScope: draft.receiptScope } : {}),
+    ...(draft.receiptIntegrity ? { receiptIntegrity: draft.receiptIntegrity } : {}),
     ...(draft.teamId ? { teamId: draft.teamId } : {})
   };
 }
@@ -619,6 +669,7 @@ export interface BudgetSettlement {
     usd: number;
     provenance: CostProvenance;
   };
+  providerSettlement?: ProviderUsageSettlement;
   totalActualUsd: number;
   preflightEstimateUsd: number;
   varianceUsd: number;

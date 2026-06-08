@@ -58,6 +58,15 @@ export interface MartinAdapterResultLike {
   verification: {
     passed: boolean;
     summary: string;
+    steps?: Array<{
+      command: string;
+      launched: boolean;
+      exitCode?: number;
+      timedOut: boolean;
+      fastFail?: boolean;
+      detail?: string;
+    }>;
+    warnings?: string[];
   };
   failure?: {
     message: string;

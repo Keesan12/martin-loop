@@ -1,0 +1,34 @@
+name: Workflow feedback
+description: Share blunt product feedback, friction, or integration requests.
+title: "[Feedback]: "
+labels:
+  - feedback
+body:
+  - type: textarea
+    id: workflow
+    attributes:
+      label: What workflow did you try?
+      description: Tell us the stack, host, and task you were running.
+      placeholder: Codex CLI on a TypeScript repo with `npx -y @martinloop/mcp`.
+    validations:
+      required: true
+  - type: textarea
+    id: strong
+    attributes:
+      label: What felt strong?
+      description: Share the part that delivered value quickly.
+      placeholder: The verifier gate made it obvious why a run stopped.
+  - type: textarea
+    id: friction
+    attributes:
+      label: What felt annoying or unclear?
+      description: Share the rough edges plainly.
+      placeholder: The install path was clear, but I wasn't sure which tools to enable first.
+    validations:
+      required: true
+  - type: textarea
+    id: next
+    attributes:
+      label: What integration or improvement would you most want next?
+      description: One sharp next ask is more helpful than a long wishlist.
+      placeholder: GitHub Actions, Cursor, CI receipts, or a tighter starter profile.

@@ -1,4 +1,5 @@
 import { loadDetailedLoopRecord, readLedgerEvents } from "./run-store.js";
+import { resolveTrustedLoopRepoRoot } from "../server-validation.js";
 import { buildVerificationSummary } from "./tool-support.js";
 import { assessRunRisk, inspectRepoSignals } from "./workflow-governance.js";
 
@@ -36,8 +37,8 @@ export async function martinEvalTool(input: MartinEvalInput): Promise<MartinEval
   const detail = await loadDetailedLoopRecord(input);
   const ledgerEvents = await readLedgerEvents(detail);
   const verification = buildVerificationSummary(detail.loop, ledgerEvents);
-  const repoRoot = detail.loop.task?.repoRoot;
-  const signals = inspectRepoSignals(repoRoot ?? process.cwd());
+  const repoRoot = resolveTrustedLoopRepoRoot(detail.loop.task?.repoRoot);
+  const signals = inspectRepoSignals(repoRoot);
   const risk = assessRunRisk({
     objective: detail.loop.task?.objective ?? detail.loop.loopId,
     allowedPaths: detail.loop.task?.allowedPaths ?? [],

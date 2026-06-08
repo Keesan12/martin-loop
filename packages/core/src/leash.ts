@@ -45,21 +45,54 @@ export interface ResolvedExecutionProfile {
 }
 
 const BLOCKED_PATTERNS: RegExp[] = [
-  /(^|\s)rm\s+-rf(\s|$)/u,
+  /(^|[\s;&|`(])rm\s+-rf(\s|$)/iu,
   /git\s+reset\s+--hard/iu,
   /git\s+clean\s+-fd/iu,
   /curl\b[^\n|]*\|\s*(sh|bash)/iu,
   /wget\b[^\n|]*\|\s*(sh|bash)/iu,
-  /(^|\s)sudo(\s|$)/u,
-  /(^|\s)mkfs(\.|\s|$)/u,
-  /(^|\s)dd\s+if=/u,
+  /(^|[\s;&|`(])sudo(\s|$)/iu,
+  /(^|[\s;&|`(])mkfs(\.|\s|$)/iu,
+  /(^|[\s;&|`(])dd\s+if=/iu,
   /(shutdown|reboot)(\s|$)/iu,
-  /:\(\)\s*\{\s*:\|:&\s*\}\s*;\s*:/u,
+  /:\(\)\s*\{\s*:\|:&\s*\}\s*;\s*:/iu,
   /chmod\s+-R\s+777\s+\//iu,
   /(kubectl|docker)\s+.*\b(delete|prune|rm)\b/iu,
   /ssh\s+/iu,
-  /scp\s+/iu
+  /scp\s+/iu,
+  // bash/sh -c "<destructive command>" wrappers — flags the wrapper shape directly,
+  // since a naive regex on the outer command misses the destructive inner command.
+  /\b(?:bash|sh|zsh)\s+-c\s+["'`]/iu,
+  // recursive directory deletion via `find ... -delete` / `find ... -exec rm`
+  /\bfind\s+\S+(?:\s+-[a-z-]+(?:\s+\S+)?)*\s+-delete\b/iu,
+  /\bfind\s+\S+(?:\s+-[a-z-]+(?:\s+\S+)?)*\s+-exec\s+rm\b/iu,
+  // scripting-language recursive deletion one-liners
+  /\bshutil\.rmtree\s*\(/iu,
+  /\bos\.(?:remove|rmdir|removedirs|unlink)\s*\(/iu,
+  /\.(?:rm|rmdir|unlink)(?:Sync)?\s*\(/iu,
+  /\brimraf\s*\(/iu
 ];
+
+/**
+ * Detects `rm` invocations that combine recursive + force flags regardless of
+ * flag ordering/grouping (`-rf`, `-fr`, `-r -f`, `--recursive --force`),
+ * absolute-path invocation (`/bin/rm`, `/usr/bin/rm`), case, or `${IFS}`-style
+ * shell obfuscation — all of which slip past the literal `rm\s+-rf` pattern.
+ */
+function commandContainsDestructiveRemoval(command: string): boolean {
+  const normalized = command.replace(/\$\{?IFS\}?/giu, " ").toLowerCase();
+
+  const rmInvocation = /(?:^|[\s;&|`(])(?:\/(?:usr\/(?:local\/)?)?s?bin\/)?rm\s+([^\n;|`]+)/giu;
+  let match: RegExpExecArray | null;
+  while ((match = rmInvocation.exec(normalized)) !== null) {
+    const args = match[1] ?? "";
+    const hasRecursive = /(?:^|\s)-[a-z]*r[a-z]*(?:\s|$)|--recursive\b/u.test(args);
+    const hasForce = /(?:^|\s)-[a-z]*f[a-z]*(?:\s|$)|--force\b/u.test(args);
+    if (hasRecursive && hasForce) {
+      return true;
+    }
+  }
+  return false;
+}
 
 const SECRET_PATTERNS: Array<{ kind: SafetyViolationKind; pattern: RegExp; replacement: string }> = [
   {
@@ -74,7 +107,52 @@ const SECRET_PATTERNS: Array<{ kind: SafetyViolationKind; pattern: RegExp; repla
   },
   {
     kind: "secret_value",
-    pattern: /\bghp_[A-Za-z0-9_]{8,}\b/gu,
+    pattern: /\bghp_[A-Za-z0-9_]{16,}\b/gu,
+    replacement: "[REDACTED_SECRET]"
+  },
+  {
+    kind: "secret_value",
+    pattern: /\bgithub_pat_[A-Za-z0-9_]{20,}\b/gu,
+    replacement: "[REDACTED_SECRET]"
+  },
+  {
+    kind: "secret_value",
+    pattern: /\b(?:gho|ghu|ghs|ghr)_[A-Za-z0-9_]{16,}\b/gu,
+    replacement: "[REDACTED_SECRET]"
+  },
+  {
+    kind: "secret_value",
+    pattern: /\bAKIA[0-9A-Z]{16}\b/gu,
+    replacement: "[REDACTED_SECRET]"
+  },
+  {
+    kind: "secret_value",
+    pattern: /\b(?:aws_secret_access_key|AWS_SECRET_ACCESS_KEY)\s*[:=]\s*[^\s"'`]+/giu,
+    replacement: "AWS_SECRET_ACCESS_KEY=[REDACTED_SECRET]"
+  },
+  {
+    kind: "secret_value",
+    pattern: /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/giu,
+    replacement: "[REDACTED_SECRET]"
+  },
+  {
+    kind: "secret_value",
+    pattern: /\bAIza[0-9A-Za-z_-]{30,}\b/gu,
+    replacement: "[REDACTED_SECRET]"
+  },
+  {
+    kind: "secret_value",
+    pattern: /-----BEGIN(?:\s+[A-Z0-9]+)*\s+PRIVATE KEY-----[\s\S]*?-----END(?:\s+[A-Z0-9]+)*\s+PRIVATE KEY-----/gu,
+    replacement: "[REDACTED_SECRET]"
+  },
+  {
+    kind: "secret_value",
+    pattern: /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/gu,
+    replacement: "[REDACTED_SECRET]"
+  },
+  {
+    kind: "secret_value",
+    pattern: /\b(?:api[_-]?key|secret|password|passwd|token)\s*[:=]\s*["']?[A-Za-z0-9_\-/+=]{12,}["']?/giu,
     replacement: "[REDACTED_SECRET]"
   }
 ];
@@ -109,8 +187,10 @@ export function evaluateVerificationLeash(
   ].filter(Boolean);
   const profile = resolveExecutionProfile(task);
 
-  const blockedCommands = commands.filter((command) =>
-    BLOCKED_PATTERNS.some((pattern) => pattern.test(command))
+  const blockedCommands = commands.filter(
+    (command) =>
+      BLOCKED_PATTERNS.some((pattern) => pattern.test(command)) ||
+      commandContainsDestructiveRemoval(command)
   );
 
   const violations = blockedCommands.map((command) => ({

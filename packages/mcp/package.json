@@ -1,12 +1,12 @@
 {
   "name": "@martinloop/mcp",
-  "version": "0.2.5",
+  "version": "0.3.0",
   "mcpName": "io.github.Keesan12/martin-loop",
   "private": false,
   "type": "module",
   "description": "Governed MCP server for AI coding agents with budgets, verifier gates, and inspectable runs.",
   "license": "Apache-2.0",
-  "author": "Vakeesan Mahalingam and Gobi Shanthan",
+  "author": "MartinLoop contributors",
   "homepage": "https://martinloop.com/",
   "repository": {
     "type": "git",
@@ -55,13 +55,13 @@
     "smoke:published": "node ./scripts/smoke-published-package.mjs",
     "smoke:published:pack": "node ./scripts/smoke-published-package.mjs --package-spec=pack",
     "verify:release": "node --test ../../scripts/tests/publish-mcp-workflow.test.mjs ../../scripts/tests/mcp-publish-reliability.test.mjs ../../scripts/tests/mcp-release-docs.test.mjs",
-    "test": "vitest run",
+    "test": "vitest run --maxWorkers=1",
     "lint": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/server.js",
     "inspect:live": "node ./scripts/inspect-live.mjs"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@open-policy-agent/opa-wasm": "^1.10.0",
     "@opentelemetry/api-logs": "^0.214.0",
     "@opentelemetry/exporter-logs-otlp-http": "^0.214.0",

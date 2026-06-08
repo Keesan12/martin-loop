@@ -5,14 +5,14 @@ Use this checklist before calling a Martin MCP release ready.
 ## Source of Truth
 
 - confirm `packages/mcp` is the public release source of truth
-- confirm any downstream workspace copy is treated as a one-way sync target only
+- confirm the candidate checkout contains only the intended public release files
 
 ## Metadata
 
 - `packages/mcp/package.json` version matches `packages/mcp/server.json`
 - the matching `docs/release/MCP-X.Y.Z-RELEASE-NOTES.md` exists
 - the matching `docs/release/MCP-X.Y.Z-RELEASE-PACKET.md` exists
-- `docs/release/VERSION-LEDGER.md` matches live npm, public GitHub `main`, and the local integrated tree
+- `docs/release/VERSION-LEDGER.md` matches live npm, public GitHub `main`, and the current repo package manifests
 
 ## Docs
 
@@ -32,10 +32,10 @@ Use this checklist before calling a Martin MCP release ready.
 
 ## Source Sync
 
-- sync `packages/mcp` only from the public release source into downstream workspace copies
-- resync built artifacts only after a clean local build so stale packaged version labels do not survive
-- sync MCP-facing docs from the public release source after release-doc tests pass
-- update non-public planning notes outside the public release docs with repo truth, verification, blockers, and next step
+- keep the release branch limited to the intended MCP package files and docs
+- rebuild artifacts only after a clean local build so stale packaged version labels do not survive
+- refresh MCP-facing docs after the release-doc tests pass
+- keep planning notes and non-package operational docs out of the public release branch
 
 ## Release Proof
 

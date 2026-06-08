@@ -9,7 +9,7 @@ import { createLoopRecord } from "@martin/contracts";
 import { persistLoopArtifacts } from "../src/persistence.js";
 
 describe("persistLoopArtifacts", () => {
-  it("writes contract, state, ledger, and attempt artifacts to <runsRoot>/<loopId>/", async () => {
+  it("writes contract, state, events, and attempt artifacts to <runsRoot>/<loopId>/ without shadowing the core ledger", async () => {
     const runsRoot = await mkdtemp(join(tmpdir(), "martin-runs-"));
     const loop = createLoopRecord({
       workspaceId: "ws_alpha",
@@ -52,12 +52,13 @@ describe("persistLoopArtifacts", () => {
     const attempt = JSON.parse(
       await readFile(join(base, "attempts", "001-att_1.json"), "utf8")
     );
-    const ledger = await readFile(join(base, "ledger.jsonl"), "utf8");
+    const events = await readFile(join(base, "events.jsonl"), "utf8");
 
     expect(contract.task.title).toBe("Repair runtime");
     expect(state.metrics.attemptCount).toBe(1);
     expect(attempt.failureClass).toBe("test_regression");
-    expect(ledger).toContain('"type":"run.started"');
+    expect(events).toContain('"type":"run.started"');
+    await expect(readFile(join(base, "ledger.jsonl"), "utf8")).rejects.toThrow();
   });
 
   it("uses flat <runId> path — NOT nested <workspaceId>/<loopId>", async () => {

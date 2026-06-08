@@ -2,6 +2,7 @@ import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+import { writeReceiptIntegrityMaterial } from "@martin/core";
 import type { LoopRecord } from "@martin/contracts";
 
 export type PersistedLoopState = {
@@ -65,7 +66,7 @@ export async function persistLoopArtifacts(
     writeJsonFile(join(loopRoot, "state.json"), state),
     writeJsonFile(join(loopRoot, "loop-record.json"), loop),
     writeJsonFile(join(loopRoot, "loop.json"), loop),
-    writeEvents(join(loopRoot, "ledger.jsonl"), loop.events),
+    writeEvents(join(loopRoot, "events.jsonl"), loop.events),
     ...loop.attempts.map((attempt) =>
       writeJsonFile(
         join(attemptsRoot, `${String(attempt.index).padStart(3, "0")}-${attempt.attemptId}.json`),
@@ -80,6 +81,21 @@ export async function persistLoopArtifacts(
     `${JSON.stringify({ loopId: loop.loopId, status: loop.status, cost: loop.cost, updatedAt: loop.updatedAt })}\n`,
     "utf8"
   );
+
+  await writeReceiptIntegrityMaterial({
+    runId: loop.loopId,
+    runsRoot,
+    loopRecord: loop,
+    ledgerEntries: loop.events,
+    scope:
+      loop.receiptScope ??
+      {
+        ...(loop.task.repoRoot ? { repoRoot: loop.task.repoRoot } : {}),
+        ...(loop.task.repoRoot ? { workingDirectory: loop.task.repoRoot } : {}),
+        runsRoot
+      },
+    signedAt: loop.updatedAt
+  });
 }
 
 function buildLoopState(loop: LoopRecord): PersistedLoopState {

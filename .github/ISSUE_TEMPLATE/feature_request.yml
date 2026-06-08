@@ -1,0 +1,45 @@
+name: Feature request
+description: Propose an improvement to MartinLoop.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: Describe the workflow or failure mode that is missing today.
+      placeholder: I need a safer CI integration point for governed agent runs.
+    validations:
+      required: true
+  - type: textarea
+    id: proposed
+    attributes:
+      label: What would you like MartinLoop to do?
+      description: Share the behavior, command, integration, or UX you want.
+      placeholder: Add a CI-friendly mode that only verifies and reports policy failures.
+    validations:
+      required: true
+  - type: textarea
+    id: workflow
+    attributes:
+      label: Example workflow
+      description: Show the command, API, MCP flow, or contributor workflow you want to exist.
+      placeholder: |
+        martin-loop preflight "..."
+        martin-loop run "..." --verify "pnpm test" --budget-usd 3
+  - type: textarea
+    id: context
+    attributes:
+      label: Extra context
+      description: Tell us which tools, hosts, or environments this matters for.
+      placeholder: Codex CLI, Claude Code, GitHub Actions, MCP host, local repo loop...
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and discussions.
+          required: true
+        - label: This request is about local MartinLoop behavior, docs, examples, or integrations.
+          required: true

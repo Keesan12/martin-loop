@@ -1,13 +1,13 @@
 # Martin MCP `0.2.5` Release Packet
 
-This packet is the local proof bundle for the current integrated `@martinloop/mcp` tip. It is the release artifact to review before any later branch cut, push, tag, or npm publish.
+This packet is the archived proof bundle for the `@martinloop/mcp@0.2.5` public package line. It remains in the repo as historical release evidence; use [MCP-0.2.7-RELEASE-PACKET.md](./MCP-0.2.7-RELEASE-PACKET.md) for the current standalone MCP package line.
 
 ## Version Truth
 
-- standalone package: `@martinloop/mcp`
-- live npm latest: `0.1.3`
-- public GitHub `main`: `0.1.3`
-- local integrated tip: `0.2.5`
+- standalone package line covered by this packet: `@martinloop/mcp@0.2.5`
+- live npm latest now: `0.2.7`
+- public GitHub `main` now tracks: `0.2.7`
+- current repo package manifest now: `0.2.7`
 - public scheduled release train:
   - `0.1.4` operator foundation
   - `0.2.0` cockpit expansion
@@ -15,17 +15,17 @@ This packet is the local proof bundle for the current integrated `@martinloop/mc
 
 See [VERSION-LEDGER.md](./VERSION-LEDGER.md) for the canonical version map.
 
-## Tier Boundary
+## Public Boundary
 
-This packet is a public Free / OSS MCP artifact only.
+This packet covers only the public MCP package surface documented in this repo.
 
-- Pro, Growth, Enterprise, and Internal remain private tier lanes.
-- private hosted and team-only capabilities remain outside this packet
-- Reviewing this packet does not approve promotion of private control-plane, autonomy, or router internals into the OSS package or docs.
+- non-public planning material stays out of this packet
+- experimental or non-public capabilities stay out of this packet
+- reviewing this packet does not expand the public package claim beyond the shipped OSS surface
 
 ## Commands Run
 
-Local OSS gates that passed after numbering normalization:
+Historical release gates recorded for this package line:
 
 ```powershell
 pnpm --filter @martin/contracts lint
@@ -48,12 +48,13 @@ pnpm oss:validate
 pnpm public:smoke
 ```
 
-Additional non-public integration receipts are intentionally tracked outside this public packet. They do not expand or alter the public `@martinloop/mcp` package contract.
+Additional experiments or unpublished work do not expand or alter the public `@martinloop/mcp` package contract.
 
 ## Versions Tested
 
-- root package local integrated tree: `martin-loop@0.2.7`
-- standalone MCP local integrated tree: `@martinloop/mcp@0.2.5`
+- root package current repo manifest: `martin-loop@0.2.11`
+- standalone MCP release line covered by this packet: `@martinloop/mcp@0.2.5`
+- current standalone MCP repo manifest: `@martinloop/mcp@0.2.7`
 
 ## Host Matrix Receipts
 
@@ -67,7 +68,7 @@ Local and documented proof currently includes:
 - Gemini config generation and live verification
 - Inspector local and remote proof
 
-The remaining honesty boundary is unchanged: the current unpushed local tree has not itself been executed on a live macOS runner. That proof requires a pushed candidate branch or another real macOS execution surface.
+The remaining honesty boundary is unchanged: the current checkout has not itself been executed on a live macOS runner. That proof requires the exact pushed release commit to pass on a real macOS execution surface.
 
 ## Source Parity Receipts
 
@@ -103,5 +104,5 @@ Do not call the train ready to push until all of these are true:
 - version truth is still consistent with [VERSION-LEDGER.md](./VERSION-LEDGER.md)
 - release docs, manifest, and `server.json` all align
 - source parity still holds
-- local OSS gates remain green
+- local release gates remain green
 - the exact release CI is green on Windows, Linux, and macOS

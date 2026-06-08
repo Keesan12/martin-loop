@@ -48,7 +48,7 @@ const SIGNALS: Array<{
 }> = [
   { id: "budgetConfigured", label: "Budget configured" },
   { id: "verifierConfigured", label: "Verifier configured" },
-  { id: "runReceiptsPresent", label: "Run receipts present" },
+  { id: "runReceiptsPresent", label: "Verified run receipts present" },
   { id: "rollbackEvidencePresent", label: "Rollback evidence present" },
   { id: "mcpDoctorPassing", label: "MCP doctor passing" }
 ];

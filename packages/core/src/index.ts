@@ -11,11 +11,13 @@ import {
   type LoopArtifact,
   type LoopAttempt,
   type LoopBudget,
+  type ProviderUsageSettlement,
   type MutationMode,
   type LoopRecord,
   type LoopTask,
   type PatchDecisionArtifact,
   type PatchScore,
+  type ReceiptScope,
   type RollbackOutcomeArtifact,
   type PolicyPhase
 } from "@martin/contracts";
@@ -153,7 +155,10 @@ export {
   readLatestLoopRecord,
   readLatestLoopRecordFromFile,
   readLoopRecordsFromFile,
-  resolveRunsRoot
+  resolveRunsRoot,
+  resolveReceiptIntegrityPath,
+  verifyReceiptIntegrityFromFiles,
+  writeReceiptIntegrityMaterial
 } from "./persistence/index.js";
 export type {
   AttemptArtifacts,
@@ -161,8 +166,10 @@ export type {
   LedgerEventKind,
   LoopAttemptRecord,
   LoopRunRecord,
+  ReceiptIntegrityChainEntry,
   RunContract,
-  RunStore
+  RunStore,
+  StoredReceiptIntegrityMaterial
 } from "./persistence/index.js";
 export { compileAndPersistContext } from "./persistence/index.js";
 export type { CompileResult } from "./persistence/index.js";
@@ -197,6 +204,22 @@ export interface MartinAdapterRequest {
   previousAttempts: LoopAttempt[];
 }
 
+export interface MartinVerificationStep {
+  command: string;
+  launched: boolean;
+  exitCode?: number;
+  timedOut: boolean;
+  fastFail?: boolean;
+  detail?: string;
+}
+
+export interface MartinVerificationOutcome {
+  passed: boolean;
+  summary: string;
+  steps?: MartinVerificationStep[];
+  warnings?: string[];
+}
+
 export interface MartinAdapterResult {
   status: "completed" | "failed";
   summary: string;
@@ -205,11 +228,16 @@ export interface MartinAdapterResult {
     estimatedUsd?: number;
     tokensIn: number;
     tokensOut: number;
+    cachedInputTokens?: number;
+    reasoningTokensOut?: number;
     provenance?: CostProvenance;
+    providerSettlement?: ProviderUsageSettlement;
   };
   verification: {
     passed: boolean;
     summary: string;
+    steps?: MartinVerificationStep[];
+    warnings?: string[];
   };
   execution?: {
     changedFiles?: string[];
@@ -247,6 +275,7 @@ export interface MartinAdapter {
       diffArtifacts?: boolean;
       structuredErrors?: boolean;
       cachingSignals?: boolean;
+      workspaceMutations?: boolean;
     };
     [key: string]: unknown;
   };
@@ -365,6 +394,7 @@ export interface RunMartinInput {
   maxRecentAttempts?: number;
   fallbackModels?: string[];
   fallbackAdapters?: MartinAdapter[];
+  receiptScope?: ReceiptScope;
   /** Optional persistence store. When provided, runMartin writes artifacts on each lifecycle event. */
   store?: RunStore;
 }
@@ -405,6 +435,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       projectId: input.projectId,
       task: input.task,
       budget: input.budget,
+      ...(input.receiptScope ? { receiptScope: input.receiptScope } : {}),
       ...(input.teamId ? { teamId: input.teamId } : {}),
       ...(input.metadata ? { metadata: input.metadata } : {})
     },
@@ -616,12 +647,27 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     currentPhase = "ADMIT";
 
     // T05: Context Integrity Pre-gate — blocks authority inversion / injection before reasoning
+    //
+    // Untrusted "tool output" re-entering the loop is verifier command output from prior
+    // attempts (e.g. test runners echoing attacker-controlled strings). Pull that text from
+    // already-persisted verification.completed events so the gate scans what actually
+    // re-enters subsequent prompts, matching the documented "tool output / test output" scope.
+    const priorVerifierOutput = loop.events
+      .filter((event): event is typeof event & { payload: { steps?: Array<{ detail?: string }> } } =>
+        event.type === "verification.completed"
+      )
+      .flatMap((event) => event.payload.steps ?? [])
+      .map((step) => step.detail)
+      .filter((detail): detail is string => Boolean(detail))
+      .join("\n---\n");
+
     const contextPrecheck = await runContextIntegrityPrecheck(
       loop.loopId,
       loop.attempts.length + 1,
-      runDir(resolveRunsRoot(), loop.loopId),
+      runDir(resolveActiveRunsRoot(input.store), loop.loopId),
       {
         userPrompt: distilled.focus,
+        toolOutput: priorVerifierOutput || undefined,
         history: loop.attempts.map(a => a.summary).join("\n")
       }
     );
@@ -787,13 +833,20 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       previousAttempts: loop.attempts
     };
 
-    const rollbackBoundary = await captureRollbackBoundary({
-      repoRoot: request.context.repoRoot,
-      capturedAt: attemptStartedAt
-    });
+    const tracksWorkspaceMutations =
+      request.context.repoRoot !== undefined &&
+      executingAdapter.metadata.capabilities?.workspaceMutations !== false;
+
+    const rollbackBoundary = tracksWorkspaceMutations
+      ? await captureRollbackBoundary({
+          repoRoot: request.context.repoRoot,
+          capturedAt: attemptStartedAt
+        })
+      : undefined;
     const result = await executingAdapter.execute(request);
     const attemptCompletedAt = now();
     const compiledContext = compilePromptPacket(request);
+    const verification = normalizeVerificationOutcome(result);
 
     // PATCH → VERIFY
     currentPhase = "VERIFY";
@@ -825,7 +878,18 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         actualUsd: roundUsd(loop.cost.actualUsd + getUsageUsd(result.usage)),
         avoidedUsd: loop.cost.avoidedUsd,
         tokensIn: loop.cost.tokensIn + result.usage.tokensIn,
-        tokensOut: loop.cost.tokensOut + result.usage.tokensOut
+        tokensOut: loop.cost.tokensOut + result.usage.tokensOut,
+        ...(result.usage.estimatedUsd !== undefined
+          ? {
+              estimatedUsd: roundUsd(
+                (loop.cost.estimatedUsd ?? loop.cost.actualUsd) + result.usage.estimatedUsd
+              )
+            }
+          : {}),
+        provenance: getUsageProvenance(result.usage),
+        ...(result.usage.providerSettlement
+          ? { providerSettlement: result.usage.providerSettlement }
+          : {})
       },
       updatedAt: attemptCompletedAt
     };
@@ -911,11 +975,14 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       loop,
       {
         type: "verification.completed",
-        lifecycleState: result.verification.passed ? "completed" : "verifying",
+        lifecycleState: verification.passed ? "completed" : "verifying",
         payload: {
           attemptId,
-          passed: result.verification.passed,
-          summary: result.verification.summary
+          attemptIndex: currentAttemptIndex,
+          passed: verification.passed,
+          summary: verification.summary,
+          ...(verification.steps?.length ? { steps: verification.steps } : {}),
+          ...(verification.warnings?.length ? { warnings: verification.warnings } : {})
         }
       },
       { now: attemptCompletedAt, idFactory }
@@ -935,7 +1002,8 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         payload: {
           actualUsd: loop.cost.actualUsd,
           remainingBudgetUsd: costState.remainingBudgetUsd,
-          pressure: costState.pressure
+          pressure: costState.pressure,
+          provenance: getUsageProvenance(result.usage)
         }
       },
       { now: now(), idFactory }
@@ -951,6 +1019,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       });
       await input.store.writeAttemptArtifacts(loop.loopId, currentAttemptIndex, {
         compiledContext,
+        verification,
         ...(rollbackBoundary ? { rollbackBoundary } : {})
       });
       await input.store.appendLedger(
@@ -968,7 +1037,13 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
           kind: "verification.completed",
           runId: loop.loopId,
           attemptIndex: currentAttemptIndex,
-          payload: { passed: result.verification.passed, summary: result.verification.summary }
+          payload: {
+            attemptId,
+            passed: verification.passed,
+            summary: verification.summary,
+            ...(verification.steps?.length ? { steps: verification.steps } : {}),
+            ...(verification.warnings?.length ? { warnings: verification.warnings } : {})
+          }
         })
       );
       await input.store.appendLedger(
@@ -982,10 +1057,13 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
             estimatedUsd: result.usage.estimatedUsd,
             tokensIn: result.usage.tokensIn,
             tokensOut: result.usage.tokensOut,
+            cachedInputTokens: result.usage.cachedInputTokens,
+            reasoningTokensOut: result.usage.reasoningTokensOut,
             provenance: getUsageProvenance(result.usage),
             transport: getAdapterTransport(executingAdapter),
             providerId: executingAdapter.metadata.providerId,
             model: executingAdapter.metadata.model,
+            providerSettlement: result.usage.providerSettlement,
             patchCost: settlement.patchCost,
             verificationCost: settlement.verificationCost,
             varianceUsd: settlement.varianceUsd,
@@ -995,18 +1073,23 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       );
     }
 
-    const changedFiles = resolveChangedFiles(result, request.context.repoRoot);
+    const changedFiles = tracksWorkspaceMutations
+      ? resolveChangedFiles(result, request.context.repoRoot)
+      : [];
     // Evidence is only reliable when the adapter explicitly reported files OR git actually
     // returned a non-empty list. A repoRoot alone is insufficient — git may fail (e.g. not
     // a git repo) and silently return [], which would falsely trigger no_code_change.
     const changedFileEvidenceAvailable =
       result.execution?.changedFiles !== undefined || changedFiles.length > 0;
+    const isVerifierOnlyAdapter = executingAdapter.adapterId === "direct:verifier:verify-only";
+    const patchTruthCountsEdits =
+      !isVerifyOnly && !isVerifierOnlyAdapter && changedFileEvidenceAvailable;
 
     if (isVerifyOnly && changedFiles.length > 0) {
       const patchDecision = evaluatePatchDecision({
-        verificationPassed: result.verification.passed,
+        verificationPassed: verification.passed,
         previousVerifierScore,
-        verifierScore: result.verification.passed ? 1 : 0,
+        verifierScore: verification.passed ? 1 : 0,
         scopeViolationCount: changedFiles.length,
         changedFileCount: changedFiles.length,
         diffNovelty: 1,
@@ -1317,14 +1400,12 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     let patchDecision: EvaluatedPatchDecision | undefined;
     if (result.status === "completed") {
       patchDecision = evaluatePatchDecision({
-        verificationPassed: result.verification.passed,
+        verificationPassed: verification.passed,
         previousVerifierScore,
-        verifierScore: result.verification.passed ? 1 : 0,
+        verifierScore: verification.passed ? 1 : 0,
         groundingViolationCount: groundingScanResult?.violations.length ?? 0,
-        changedFileCount:
-          !isVerifyOnly && changedFileEvidenceAvailable ? changedFiles.length : undefined,
-        diffNovelty:
-          !isVerifyOnly && changedFileEvidenceAvailable ? (changedFiles.length > 0 ? 1 : 0) : undefined,
+        changedFileCount: patchTruthCountsEdits ? changedFiles.length : undefined,
+        diffNovelty: patchTruthCountsEdits ? (changedFiles.length > 0 ? 1 : 0) : undefined,
         diffStats: result.execution?.diffStats,
         costUsd: getUsageUsd(result.usage),
         summary: result.summary
@@ -1380,10 +1461,10 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         await input.store.appendLedger(
           loop.loopId,
           makeLedgerEvent({
-            kind: result.verification.passed ? "attempt.kept" : "attempt.discarded",
+            kind: verification.passed ? "attempt.kept" : "attempt.discarded",
             runId: loop.loopId,
             attemptIndex: currentAttemptIndex,
-            payload: { reason: result.verification.summary }
+            payload: { reason: verification.summary }
           })
         );
       }
@@ -1703,6 +1784,9 @@ function createBudgetSettlement(input: {
       usd: 0,
       provenance: "unavailable" as CostProvenance
     },
+    ...(input.usage.providerSettlement
+      ? { providerSettlement: input.usage.providerSettlement }
+      : {}),
     totalActualUsd,
     preflightEstimateUsd: input.estimate.estimatedAttemptCostUsd,
     varianceUsd: roundUsd(totalActualUsd - input.estimate.estimatedAttemptCostUsd),
@@ -1761,6 +1845,60 @@ function getLastVerifierScore(loop: LoopRecord): number {
   }
 
   return 0;
+}
+
+function truncateVerificationDetail(text: string, maxLength: number): string {
+  return text.length <= maxLength ? text : `${text.slice(0, maxLength - 1)}…`;
+}
+
+function normalizeVerificationOutcome(result: MartinAdapterResult): MartinVerificationOutcome {
+  const warnings = [...(result.verification.warnings ?? [])];
+  const contradiction = detectVerificationContradiction(result);
+  if (contradiction && !warnings.includes(contradiction)) {
+    warnings.push(contradiction);
+  }
+
+  return {
+    passed: result.verification.passed,
+    summary: result.verification.summary,
+    ...(result.verification.steps?.length ? { steps: result.verification.steps } : {}),
+    ...(warnings.length ? { warnings } : {})
+  };
+}
+
+function detectVerificationContradiction(result: MartinAdapterResult): string | undefined {
+  if (!result.verification.passed) {
+    return undefined;
+  }
+
+  const sources = [result.summary, result.failure?.message]
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+
+  const contradictionPatterns = [
+    /createprocessasuserw failed:\s*\d+/iu,
+    /\bverifier not run\b/iu,
+    /\bfailed before verifier\b/iu,
+    /\bnever launched\b/iu,
+    /\bfailed to launch\b/iu,
+    /\bcould not launch\b/iu
+  ];
+
+  for (const source of sources) {
+    const match = contradictionPatterns.find((pattern) => pattern.test(source));
+    if (!match) {
+      continue;
+    }
+
+    const excerpt = truncateVerificationDetail(source.trim().replace(/\s+/gu, " "), 220);
+    return `Adapter output reported a tool-launch problem before MartinLoop ran its own verifier: ${excerpt}`;
+  }
+
+  return undefined;
+}
+
+function resolveActiveRunsRoot(store: RunStore | undefined): string {
+  const configuredRunsRoot = store?.runsRoot?.trim();
+  return configuredRunsRoot && configuredRunsRoot.length > 0 ? configuredRunsRoot : resolveRunsRoot();
 }
 
 function toPatchDecisionArtifact(decision: EvaluatedPatchDecision): PatchDecisionArtifact {

@@ -92,13 +92,13 @@ async function writeLiveInspectionRun(runsRoot: string, loopId: string): Promise
         {
           index: 1,
           attemptId: "att_live_routed_020",
-          adapterId: "direct:proof:verifier-only",
-          model: "verify-only",
+          adapterId: "direct:stub:stub",
+          model: "stub",
           failureClass: "verification_failure",
           intervention: "run_verifier",
           startedAt: "2026-05-12T00:00:05.000Z",
           completedAt: "2026-05-12T00:00:30.000Z",
-          summary: "Seeded proof-mode inspection attempt."
+          summary: "Seeded live-server inspection attempt."
         }
       ],
       budget: {
