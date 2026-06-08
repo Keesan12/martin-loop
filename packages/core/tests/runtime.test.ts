@@ -1,9 +1,9 @@
 import { spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createLoopRecord, type LoopAttempt } from "@martin/contracts";
 
@@ -20,8 +20,6 @@ import {
   type MartinAdapter,
   type MartinAdapterRequest
 } from "../src/index";
-
-const RUNTIME_REPO_FIXTURE_TIMEOUT_MS = 15_000;
 
 describe("distillContext", () => {
   it("keeps the latest attempts and exposes the remaining budget envelope", () => {
@@ -336,6 +334,41 @@ describe("inferExit", () => {
 });
 
 describe("runMartin", () => {
+  // Several specs below invoke `runMartin` without an explicit `store`, which
+  // makes the context-integrity precheck fall back to `resolveActiveRunsRoot`'s
+  // default (`~/.martin/runs`). Point that default at a scratch directory for
+  // the duration of this suite so `pnpm test` never touches the real home dir.
+  let scratchRoot: string | undefined;
+  let previousRunsDir: string | undefined;
+  let previousGroundingDir: string | undefined;
+
+  beforeEach(async () => {
+    scratchRoot = await mkdtemp(join(tmpdir(), "martin-runtime-home-"));
+    previousRunsDir = process.env.MARTIN_RUNS_DIR;
+    previousGroundingDir = process.env.MARTIN_GROUNDING_DIR;
+    process.env.MARTIN_RUNS_DIR = join(scratchRoot, "runs");
+    process.env.MARTIN_GROUNDING_DIR = join(scratchRoot, "grounding");
+  });
+
+  afterEach(async () => {
+    if (previousRunsDir === undefined) {
+      delete process.env.MARTIN_RUNS_DIR;
+    } else {
+      process.env.MARTIN_RUNS_DIR = previousRunsDir;
+    }
+
+    if (previousGroundingDir === undefined) {
+      delete process.env.MARTIN_GROUNDING_DIR;
+    } else {
+      process.env.MARTIN_GROUNDING_DIR = previousGroundingDir;
+    }
+
+    if (scratchRoot) {
+      await rm(scratchRoot, { force: true, recursive: true }).catch(() => {});
+      scratchRoot = undefined;
+    }
+  });
+
   it("records a completed run when the adapter returns a verified result", async () => {
     const timestamps = createTimestampSource([
       "2026-03-27T16:00:00.000Z",
@@ -411,6 +444,175 @@ describe("runMartin", () => {
     expect(result.decision.lifecycleState).toBe("completed");
   });
 
+  it("persists authoritative verification steps and contradiction warnings for successful runs", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-verification-evidence-"));
+    const store = createFileRunStore({ runsRoot });
+
+    const adapter: MartinAdapter = {
+      adapterId: "agent-cli:codex",
+      kind: "agent-cli",
+      label: "Codex CLI adapter",
+      metadata: {
+        providerId: "codex",
+        model: "codex",
+        transport: "cli"
+      },
+      async execute() {
+        return {
+          status: "completed",
+          summary: "CreateProcessAsUserW failed: 5 before verifier execution in the adapter transcript.",
+          usage: {
+            actualUsd: 0.02,
+            tokensIn: 12,
+            tokensOut: 6
+          },
+          verification: {
+            passed: true,
+            summary: "All 1 verification step(s) passed.",
+            steps: [
+              {
+                command: "npm test",
+                launched: true,
+                exitCode: 0,
+                timedOut: false,
+                fastFail: true,
+                detail: "tests passed"
+              }
+            ]
+          }
+        };
+      }
+    };
+
+    const result = await runMartin({
+      workspaceId: "ws_ops",
+      projectId: "proj_runtime",
+      task: {
+        title: "Repair the Windows Codex verifier path",
+        objective: "Persist contradiction warnings instead of silently claiming a clean verification pass.",
+        verificationPlan: ["npm test"]
+      },
+      budget: {
+        maxUsd: 10,
+        softLimitUsd: 6,
+        maxIterations: 1,
+        maxTokens: 2_000
+      },
+      adapter,
+      store,
+      now: createTimestampSource([
+        "2026-06-06T10:00:00.000Z",
+        "2026-06-06T10:00:01.000Z",
+        "2026-06-06T10:00:02.000Z",
+        "2026-06-06T10:00:03.000Z",
+        "2026-06-06T10:00:04.000Z",
+        "2026-06-06T10:00:05.000Z",
+        "2026-06-06T10:00:06.000Z"
+      ]),
+      idFactory: createIdFactory()
+    });
+
+    const verificationEvent = result.loop.events.find((event) => event.type === "verification.completed");
+    const verificationArtifact = JSON.parse(
+      await readFile(join(runsRoot, result.loop.loopId, "artifacts", "attempt-001", "verification.json"), "utf8")
+    );
+    const ledger = await readLedger(runsRoot, result.loop.loopId);
+    const verificationLedger = ledger.find((entry) => entry.kind === "verification.completed");
+
+    expect(verificationEvent?.payload["passed"]).toBe(true);
+    expect(verificationEvent?.payload["warnings"]).toContain(
+      "Adapter output reported a tool-launch problem before MartinLoop ran its own verifier: CreateProcessAsUserW failed: 5 before verifier execution in the adapter transcript."
+    );
+    expect(verificationEvent?.payload["steps"]).toEqual([
+      expect.objectContaining({
+        command: "npm test",
+        launched: true,
+        exitCode: 0
+      })
+    ]);
+    expect(verificationArtifact.warnings).toContain(
+      "Adapter output reported a tool-launch problem before MartinLoop ran its own verifier: CreateProcessAsUserW failed: 5 before verifier execution in the adapter transcript."
+    );
+    expect(verificationArtifact.steps[0].command).toBe("npm test");
+    expect(verificationLedger?.payload["warnings"]).toContain(
+      "Adapter output reported a tool-launch problem before MartinLoop ran its own verifier: CreateProcessAsUserW failed: 5 before verifier execution in the adapter transcript."
+    );
+    expect(verificationLedger?.payload["steps"]).toEqual([
+      expect.objectContaining({
+        command: "npm test",
+        launched: true,
+        exitCode: 0
+      })
+    ]);
+  });
+
+  it("writes context integrity precheck artifacts into the active runs root", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-context-precheck-"));
+    const store = createFileRunStore({ runsRoot });
+
+    const adapter: MartinAdapter = {
+      adapterId: "direct:proof",
+      kind: "direct-provider",
+      label: "Proof adapter",
+      metadata: {
+        providerId: "openai",
+        model: "gpt-5-mini"
+      },
+      async execute() {
+        return {
+          status: "completed",
+          summary: "Verified the workspace without code changes.",
+          usage: {
+            actualUsd: 0,
+            tokensIn: 0,
+            tokensOut: 0
+          },
+          verification: {
+            passed: true,
+            summary: "All 1 verification step(s) passed."
+          },
+          execution: {
+            changedFiles: []
+          }
+        };
+      }
+    };
+
+    const result = await runMartin({
+      workspaceId: "ws_ops",
+      projectId: "proj_runtime",
+      task: {
+        title: "Verify context integrity persistence",
+        objective: "Keep context integrity artifacts inside the active runs root.",
+        verificationPlan: ["pnpm test"]
+      },
+      budget: {
+        maxUsd: 10,
+        softLimitUsd: 6,
+        maxIterations: 1,
+        maxTokens: 2_000
+      },
+      adapter,
+      store,
+      now: createTimestampSource([
+        "2026-06-06T10:10:00.000Z",
+        "2026-06-06T10:10:01.000Z",
+        "2026-06-06T10:10:02.000Z",
+        "2026-06-06T10:10:03.000Z",
+        "2026-06-06T10:10:04.000Z"
+      ]),
+      idFactory: createIdFactory()
+    });
+
+    const artifact = JSON.parse(
+      await readFile(join(runsRoot, result.loop.loopId, "context-integrity-precheck.json"), "utf8")
+    );
+
+    expect(artifact.runId).toBe(result.loop.loopId);
+    expect(artifact.attemptIndex).toBe(1);
+    expect(artifact.verdict).toBe("clean");
+  });
+
   it("allows verifier-only runs to complete without code changes when verification passes", async () => {
     const adapter: MartinAdapter = {
       adapterId: "direct:verify-only",
@@ -471,6 +673,150 @@ describe("runMartin", () => {
     expect(result.loop.lifecycleState).toBe("completed");
     expect(result.loop.attempts).toHaveLength(1);
     expect(result.loop.attempts[0]?.failureClass).toBeUndefined();
+  });
+
+  it("allows proof adapters to complete without edits when verification passes", async () => {
+    const adapter: MartinAdapter = {
+      adapterId: "direct:verifier:verify-only",
+      kind: "direct-provider",
+      label: "Verifier-only proof adapter",
+      metadata: {
+        providerId: "openai",
+        model: "gpt-5-mini"
+      },
+      async execute() {
+        return {
+          status: "completed",
+          summary: "Verified the workspace without code changes.",
+          usage: {
+            actualUsd: 0,
+            tokensIn: 0,
+            tokensOut: 0
+          },
+          verification: {
+            passed: true,
+            summary: "Verification passed without changes."
+          },
+          execution: {
+            changedFiles: []
+          }
+        };
+      }
+    };
+
+    const result = await runMartin({
+      workspaceId: "ws_ops",
+      projectId: "proj_runtime",
+      task: {
+        title: "Prove the verifier path",
+        objective: "Run the proof adapter without making edits.",
+        verificationPlan: ["pnpm --filter @martin/contracts test"],
+        allowedPaths: ["packages/contracts/**"]
+      },
+      budget: {
+        maxUsd: 10,
+        softLimitUsd: 6,
+        maxIterations: 1,
+        maxTokens: 2_000
+      },
+      adapter,
+      now: createTimestampSource([
+        "2026-05-11T12:10:00.000Z",
+        "2026-05-11T12:10:01.000Z",
+        "2026-05-11T12:10:02.000Z",
+        "2026-05-11T12:10:03.000Z",
+        "2026-05-11T12:10:04.000Z"
+      ]),
+      idFactory: createIdFactory()
+    });
+
+    expect(result.decision.lifecycleState).toBe("completed");
+    expect(result.loop.lifecycleState).toBe("completed");
+    expect(result.loop.status).toBe("completed");
+    expect(result.loop.attempts).toHaveLength(1);
+    expect(result.loop.attempts[0]?.failureClass).toBeUndefined();
+  });
+
+  it("skips rollback snapshots for adapters that cannot mutate the workspace", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-proof-no-rollback-"));
+    const repoRoot = join(runsRoot, "repo");
+    await mkdir(join(repoRoot, "src"), { recursive: true });
+    await writeFile(join(repoRoot, "src", "real.ts"), "export const real = 1;\n", "utf8");
+    initializeGitRepo(repoRoot);
+    await writeFile(join(repoRoot, "src", "real.ts"), "export const real = 2;\n", "utf8");
+
+    const store = createFileRunStore({ runsRoot });
+    const adapter: MartinAdapter = {
+      adapterId: "direct:proof:no-mutation",
+      kind: "direct-provider",
+      label: "Proof adapter without workspace mutation",
+      metadata: {
+        providerId: "stub",
+        model: "stub",
+        capabilities: {
+          preflight: true,
+          usageSettlement: true,
+          diffArtifacts: false,
+          structuredErrors: true,
+          cachingSignals: false,
+          workspaceMutations: false
+        }
+      },
+      async execute() {
+        return {
+          status: "failed",
+          summary: "Proof adapter refused live inference, but it did not edit the workspace.",
+          usage: {
+            actualUsd: 0,
+            tokensIn: 0,
+            tokensOut: 0,
+            provenance: "unavailable"
+          },
+          verification: {
+            passed: false,
+            summary: "No live provider request was attempted."
+          },
+          failure: {
+            message: "Proof adapter is not configured for live inference."
+          }
+        };
+      }
+    };
+
+    const result = await runMartin({
+      workspaceId: "ws_ops",
+      projectId: "proj_runtime",
+      task: {
+        title: "Confirm proof-mode runs stay off the rollback path",
+        objective: "Keep non-mutating proof adapters from snapshotting the dirty repo.",
+        verificationPlan: ["pnpm --filter @martin/core test"],
+        repoRoot
+      },
+      budget: {
+        maxUsd: 10,
+        softLimitUsd: 6,
+        maxIterations: 1,
+        maxTokens: 2_000
+      },
+      adapter,
+      store,
+      now: createTimestampSource([
+        "2026-05-11T12:20:00.000Z",
+        "2026-05-11T12:20:01.000Z",
+        "2026-05-11T12:20:02.000Z",
+        "2026-05-11T12:20:03.000Z",
+        "2026-05-11T12:20:04.000Z"
+      ]),
+      idFactory: createIdFactory()
+    });
+
+    await expect(
+      readFile(
+        join(runsRoot, result.loop.loopId, "artifacts", "attempt-001", "rollback-boundary.json"),
+        "utf8"
+      )
+    ).rejects.toThrow();
+    expect(result.loop.attempts).toHaveLength(1);
   });
 
   it("exits on budget pressure after repeated failed attempts", async () => {
@@ -542,6 +888,11 @@ describe("runMartin", () => {
     expect(result.loop.status).toBe("exited");
     expect(result.loop.lifecycleState).toBe("budget_exit");
     expect(result.loop.events.map((event) => event.type)).toContain("budget.updated");
+    const budgetUpdatedEvents = result.loop.events.filter((event) => event.type === "budget.updated");
+    expect(budgetUpdatedEvents.length).toBeGreaterThan(0);
+    for (const event of budgetUpdatedEvents) {
+      expect((event.payload as Record<string, unknown>)["provenance"]).toBe("actual");
+    }
     expect(result.decision.shouldExit).toBe(true);
   });
 
@@ -762,10 +1113,7 @@ describe("runMartin", () => {
     });
   });
 
-  it(
-    "challenge 11: discards the attempt and exits with human escalation when a forbidden path write is detected",
-    { timeout: RUNTIME_REPO_FIXTURE_TIMEOUT_MS },
-    async () => {
+  it("challenge 11: discards the attempt and exits with human escalation when a forbidden path write is detected", async () => {
     const runsRoot = await mkdtemp(join(tmpdir(), "martin-safety-filesystem-"));
     const repoRoot = join(runsRoot, "repo");
     await mkdir(repoRoot, { recursive: true });
@@ -846,13 +1194,9 @@ describe("runMartin", () => {
       blocked: true,
       attemptIndex: 1
     });
-    }
-  );
+  });
 
-  it(
-    "challenge 13: blocks dependency-related changes without approval and persists leash.json",
-    { timeout: RUNTIME_REPO_FIXTURE_TIMEOUT_MS },
-    async () => {
+  it("challenge 13: blocks dependency-related changes without approval and persists leash.json", async () => {
     const runsRoot = await mkdtemp(join(tmpdir(), "martin-safety-dependency-"));
     const repoRoot = join(runsRoot, "repo");
     await mkdir(repoRoot, { recursive: true });
@@ -947,13 +1291,9 @@ describe("runMartin", () => {
         })
       ])
     );
-    }
-  );
+  });
 
-  it(
-    "blocks deployment config changes without approval and persists the config violation artifact",
-    { timeout: RUNTIME_REPO_FIXTURE_TIMEOUT_MS },
-    async () => {
+  it("blocks deployment config changes without approval and persists the config violation artifact", async () => {
     const runsRoot = await mkdtemp(join(tmpdir(), "martin-safety-config-"));
     const repoRoot = join(runsRoot, "repo");
     await mkdir(join(repoRoot, ".github", "workflows"), { recursive: true });
@@ -1047,8 +1387,7 @@ describe("runMartin", () => {
         })
       ])
     );
-    }
-  );
+  });
 
   it("rotates to the next adapter when switch_adapter is selected", async () => {
     let primaryExecutions = 0;

@@ -1,12 +1,11 @@
 # @martinloop/mcp v0.2.5
 
-`@martinloop/mcp@0.2.5` is the integrated local governed execution package aligned to the public MCP release train. It packages the full read-only MCP surface, run triage, and degraded-store hardening into the public MCP package line that follows the `0.1.4` operator foundation and `0.2.0` cockpit expansion releases.
+`@martinloop/mcp@0.2.5` is the public governed execution package aligned to the current MCP release train. It packages the full read-only MCP surface, run triage, and degraded-store hardening into the public MCP package line that follows the `0.1.4` operator foundation and `0.2.0` cockpit expansion releases.
 
-## Tier Boundary
+## Public Boundary
 
-`0.2.5` is the public Free / OSS MCP package line only.
-It does not promote the private Pro, Growth, Enterprise, or Internal tiers, and it does not pull private control-plane, autonomy, or router internals into the MCP package claim.
-Private hosted and team-only capabilities remain outside this release note.
+`0.2.5` covers the public MCP package line described in this repository.
+This release note is limited to the packaged tools, resources, prompts, docs, and verification surfaces shipped here.
 
 ## What Shipped
 

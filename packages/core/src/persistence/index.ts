@@ -1,6 +1,15 @@
 export { makeLedgerEvent } from "./ledger.js";
 export type { LedgerEvent, LedgerEventDraft, LedgerEventKind } from "./ledger.js";
 export {
+  resolveReceiptIntegrityPath,
+  verifyReceiptIntegrityFromFiles,
+  writeReceiptIntegrityMaterial
+} from "./integrity.js";
+export type {
+  ReceiptIntegrityChainEntry,
+  StoredReceiptIntegrityMaterial
+} from "./integrity.js";
+export {
   artifactDir,
   createFileRunStore,
   resolveRunsRoot,

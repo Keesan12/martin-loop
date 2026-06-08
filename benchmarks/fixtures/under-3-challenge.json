@@ -1,0 +1,29 @@
+{
+  "suiteId": "under-3-challenge",
+  "label": "Under-$3 Challenge",
+  "description": "Deterministic public comparison fixture for the MartinLoop under-$3 challenge claim.",
+  "task": {
+    "title": "Repair the failing MCP lane",
+    "objective": "Repair the failing MCP lane so the agent can reconnect and prove the verifier is green.",
+    "verificationPlan": [
+      "pnpm --filter @martinloop/mcp test",
+      "pnpm --filter @martinloop/mcp build"
+    ]
+  },
+  "martin": {
+    "spendUsd": 2.3,
+    "attempts": 1,
+    "status": "completed",
+    "lifecycleState": "verified",
+    "verifierStatus": "passed",
+    "summary": "Martin converged in one governed attempt and exited with verifier-passed proof."
+  },
+  "baseline": {
+    "spendUsd": 5.2,
+    "attempts": 4,
+    "status": "failed",
+    "lifecycleState": "unknown_failure",
+    "verifierStatus": "not_run",
+    "summary": "The uncontrolled retry loop spent four attempts without a comparable receipt, verifier record, or rollback boundary."
+  }
+}

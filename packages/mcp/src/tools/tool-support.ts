@@ -1,14 +1,15 @@
-import { spawnSync } from "node:child_process";
+import { accessSync, constants } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 
-import { probeCliCommand } from "@martin/adapters";
 import type {
   LoopArtifact,
   LoopBudget,
   LoopCost,
   LoopEvent,
-  LoopTask
+  LoopTask,
+  ReceiptIntegritySummary,
+  ReceiptScope
 } from "@martin/contracts";
 import {
   evaluateCostGovernor,
@@ -20,7 +21,7 @@ import {
 
 import { readAllLoopRecordsSafely } from "./run-store.js";
 
-export type MartinEngine = "claude" | "codex";
+export type MartinEngine = "claude" | "codex" | "gemini";
 
 export interface InspectableLoopAttempt extends LoopAttemptRecord {
   attemptId?: string;
@@ -33,6 +34,8 @@ export interface InspectableLoopRecord extends Omit<LoopRunRecord, "attempts" | 
   artifacts?: LoopArtifact[];
   events?: LoopEvent[];
   metadata?: Record<string, string>;
+  receiptIntegrity?: ReceiptIntegritySummary;
+  receiptScope?: ReceiptScope;
 }
 
 export interface LoopPreview {
@@ -123,10 +126,10 @@ export interface LoopCollectionSummary {
 export interface CliAvailability {
   command: string;
   available: boolean;
-  launchReady: boolean;
   locator: string;
   detail: string;
   resolvedPath?: string;
+  candidatePaths?: string[];
 }
 
 export interface ExecutionMode {
@@ -168,57 +171,32 @@ export function resolveExecutionMode(): ExecutionMode {
     mode: liveMode ? "live" : "proof",
     detail: liveMode
       ? "Live CLI execution is enabled."
-      : "No-spend proof mode is active because MARTIN_LIVE=false."
+      : "Proof mode is active because MARTIN_LIVE=false."
   };
 }
 
-export async function detectCliAvailability(
-  command: string,
-  workingDirectory = process.cwd()
-): Promise<CliAvailability> {
+export function detectCliAvailability(command: string): CliAvailability {
   const cacheKey = `${process.platform}:${command}`;
   const cached = cliAvailabilityCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
     return cached.value;
   }
 
-  const locator = process.platform === "win32" ? "where.exe" : "which";
-  const result = spawnSync(locator, [command], {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"]
-  });
-
-  const resolvedPath =
-    result.status === 0
-      ? (result.stdout ?? "")
-          .split(/\r?\n/u)
-          .map((line) => line.trim())
-          .find(Boolean)
-      : undefined;
+  const locator = process.platform === "win32" ? "path-scan(win32)" : "path-scan(posix)";
+  const resolvedPath = findCommandOnPath(command);
 
   const value: CliAvailability =
-    result.status === 0
-      ? await (async () => {
-          const probe = await probeCliCommand(command, ["--version"], {
-            cwd: workingDirectory,
-            timeoutMs: 10_000
-          });
-
-          return {
-            command,
-            available: true,
-            launchReady: probe.ready,
-            locator,
-            detail: probe.ready
-              ? `${command} is available on PATH and passed a launch check.`
-              : `${command} is available on PATH but failed a launch check. ${probe.detail}`,
-            ...(resolvedPath ? { resolvedPath } : {})
-          } satisfies CliAvailability;
-        })()
+    resolvedPath
+      ? {
+          command,
+          available: true,
+          locator,
+          detail: `${command} is available on PATH.`,
+          ...(resolvedPath ? { resolvedPath } : {})
+        }
       : {
           command,
           available: false,
-          launchReady: false,
           locator,
           detail: `${command} is not available on PATH.`
         };
@@ -231,40 +209,66 @@ export async function detectCliAvailability(
   return value;
 }
 
-export function detectCliAvailabilitySync(
-  command: string
-): Pick<CliAvailability, "available" | "detail" | "resolvedPath"> {
-  const locator = process.platform === "win32" ? "where.exe" : "which";
-  const result = spawnSync(locator, [command], {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"]
-  });
+function findCommandOnPath(command: string): string | undefined {
+  const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === "path");
+  const rawPath = pathKey ? process.env[pathKey] : undefined;
+  if (!rawPath) {
+    return undefined;
+  }
 
-  const resolvedPath =
-    result.status === 0
-      ? (result.stdout ?? "")
-          .split(/\r?\n/u)
-          .map((line) => line.trim())
-          .find(Boolean)
-      : undefined;
+  const pathEntries = rawPath
+    .split(process.platform === "win32" ? ";" : ":")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
 
-  return result.status === 0
-    ? {
-        available: true,
-        detail: `${command} is available on PATH.`,
-        ...(resolvedPath ? { resolvedPath } : {})
+  const hasExtension = /\.[A-Za-z0-9]+$/u.test(command);
+  const candidateNames =
+    process.platform === "win32" && !hasExtension
+      ? (process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD")
+          .split(";")
+          .map((extension) => extension.trim())
+          .filter(Boolean)
+          .map((extension) => `${command}${extension.toLowerCase()}`)
+      : [command];
+
+  for (const directory of pathEntries) {
+    for (const candidateName of candidateNames) {
+      const candidatePath = join(directory, candidateName);
+      if (isExecutablePath(candidatePath)) {
+        return candidatePath;
       }
-    : {
-        available: false,
-        detail: `${command} is not available on PATH.`
-      };
+    }
+  }
+
+  return undefined;
 }
 
-export async function getEngineAvailability(
-  engine: MartinEngine,
-  workingDirectory = process.cwd()
-): Promise<CliAvailability> {
-  return await detectCliAvailability(engine, workingDirectory);
+function isExecutablePath(candidatePath: string): boolean {
+  try {
+    accessSync(
+      candidatePath,
+      process.platform === "win32" ? constants.F_OK : constants.X_OK
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function getEngineAvailability(engine: MartinEngine): CliAvailability {
+  return detectCliAvailability(engine);
+}
+
+export function createSkippedCliAvailability(
+  command: string,
+  detail = "Proof mode skipped live CLI availability detection."
+): CliAvailability {
+  return {
+    command,
+    available: false,
+    locator: "skipped",
+    detail
+  };
 }
 
 export function formatUsd(value: number): string {
@@ -354,7 +358,13 @@ export function buildVerificationSummary(
   );
 
   const warnings: string[] = [];
+  const integrity = resolveReceiptIntegrity(loop);
   const ledgerWarnings = getLedgerWarnings(ledgerEvents);
+  if (integrity.state !== "verified") {
+    warnings.push(
+      `Receipt integrity is ${integrity.state}; persisted verifier evidence is not trustworthy yet.`
+    );
+  }
   warnings.push(...ledgerWarnings);
 
   if (verificationEvents.length === 0) {
@@ -397,6 +407,15 @@ export function buildVerificationSummary(
       : {}),
     warnings
   };
+}
+
+export function resolveReceiptIntegrity(loop: InspectableLoopRecord): ReceiptIntegritySummary {
+  return (
+    loop.receiptIntegrity ?? {
+      state: "unsigned",
+      reason: "Receipt integrity metadata was not available on the loop record."
+    }
+  );
 }
 
 export function buildEventSummaries(loop: InspectableLoopRecord, limit = 5): EventSummary[] {
@@ -544,19 +563,43 @@ export function buildSuggestedResourceUris(loopId: string): string[] {
     "martin://server/health",
     "martin://runs/recent",
     "martin://runs/triage",
+    "martin://runs/latest",
+    "martin://runs/latest/summary",
+    "martin://runs/latest/proof-card",
+    "martin://runs/latest/budget-status",
+    "martin://runs/latest/verifier-evidence",
+    "martin://runs/latest/rollback-evidence",
+    "martin://policies/current",
+    "martin://repo/risk-map",
+    "martin://verifiers/results",
+    "martin://agent/next-step",
     `martin://runs/${loopId}`,
+    `martin://runs/${loopId}/dossier`,
     `martin://runs/${loopId}/verification`,
     "martin://guides/mcp-usage",
+    "martin://guides/agent-start",
     "martin://guides/publish-readiness"
   ];
 }
 
 export function buildSuggestedPromptNames(): string[] {
   return [
+    "martin_start",
+    "martin_preflight",
+    "martin_triage",
+    "martin_resume",
+    "martin_prove",
+    "martin_release_check",
     "martin_governed_coding_kickoff",
     "martin_debug_failed_run",
     "martin_publish_readiness_review",
-    "martin_triage_run_store"
+    "martin_triage_run_store",
+    "safe_bug_fix",
+    "write_tests_first",
+    "small_refactor",
+    "security_review",
+    "pr_review",
+    "release_check"
   ];
 }
 

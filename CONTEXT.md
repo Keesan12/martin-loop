@@ -2,12 +2,15 @@
 
 ## Purpose
 
-This repository is the public OSS execution repo for Martin Loop:
+This repository is the public Martin Loop OSS surface.
 
-- Repo path: `./`
-- Git remote: `https://github.com/Keesan12/martin-loop.git`
+Use it for:
 
-Use this tree for OSS-safe package, docs, and verification work only.
+- the root `martin-loop` package
+- the standalone `@martinloop/mcp` package
+- public docs, examples, fixtures, and release proof
+
+Keep this tree focused on what can ship, be verified locally, and be understood from the public source alone.
 
 ## Public Tree
 
@@ -18,82 +21,66 @@ The canonical public surface in this repo is:
 - `packages/adapters`
 - `packages/cli`
 - `packages/mcp`
+- `benchmarks`
+- `demo/seeded-workspace`
 - `docs/oss`
 - `docs/release`
 - `docs/assets`
-- `benchmarks`
-- `demo/seeded-workspace`
 - `scripts`
 - root packaging and workspace config files
 
-If a folder is not needed to ship or verify the OSS runtime, it does not belong here by default.
+## Public Version Lines
 
-## Tier Boundary Map
+Treat the root package and the standalone MCP package as separate public version lines.
 
-Use the current product-lane names consistently in OSS-safe docs:
+- Root package: `martin-loop`
+- Standalone MCP package: `@martinloop/mcp`
 
-- Free / OSS: the only public tier in this tree; includes the root `martin-loop` facade and the standalone `@martinloop/mcp` package.
-- Pro: private paid tier for hosted team surfaces layered on OSS receipts; do not describe it as shipped from this repo.
-- Growth: private paid tier for broader team policy and collaboration controls; do not describe it as shipped from this repo.
-- Enterprise: private paid tier for governance, diagnostics, scorecards, and hosted operations; do not describe it as shipped from this repo.
-- Internal: private operator and shadow-promotion tier; never mirror its implementation details into this repo.
-
-The public MCP schedule inside the Free / OSS lane is:
+Current standalone MCP release train labels:
 
 - `0.1.4` operator foundation
 - `0.2.0` cockpit expansion
 - `0.2.5` public MCP package line
 
-Do not treat a public `@martinloop/mcp` release as a promotion of the private Pro, Growth, Enterprise, or Internal lanes.
-Keep private control-plane, autonomy, and router internals out of this repo even when naming the paid tiers.
+Check [`docs/release/VERSION-LEDGER.md`](./docs/release/VERSION-LEDGER.md) before making release or version claims.
 
-## Private Workspace Boundary
+## Public Validation Defaults
 
-Private archive, handoff, and internal coordination work belongs in the internal MartinLoop repo workspace that embeds this mirror under `oss-core/`.
-
-Use the private workspace for:
-
-- handoffs and execution notes
-- quarantine or archive material moved out of the OSS repo
-- private app, enterprise, audit, or release-pack work
-- internal-only plans or review packs
-
-Do not reintroduce private residue into this OSS repo.
-
-## MCP Work Lane
-
-The active public MCP package lives in:
-
-- `packages/mcp`
-
-Default verification lane:
+Repo-wide public validation:
 
 ```powershell
 pnpm install --frozen-lockfile
+pnpm lint
+pnpm test
+pnpm build
+pnpm oss:validate
+pnpm public:smoke
+pnpm release:matrix:local
+```
+
+Standalone MCP validation:
+
+```powershell
 pnpm --filter @martinloop/mcp lint
 pnpm --filter @martinloop/mcp test
 pnpm --filter @martinloop/mcp build
 pnpm --filter @martinloop/mcp smoke:pack
 pnpm --filter @martinloop/mcp smoke:published:pack
-```
-
-If packaging or publish-surface files change, also run:
-
-```powershell
 pnpm --filter @martinloop/mcp verify:release
 ```
 
-## Handoff Discipline
+## Public Surface Hygiene
 
-Durable handoff notes for this repo should be updated in the private workspace, not inside this OSS repo.
+Before publishing, tagging, or opening a public PR:
 
-Current private planning lane:
+- remove local machine paths
+- remove internal repo names or non-public coordination language
+- remove non-public planning or handoff language
+- keep examples and claims reproducible from this repo alone
+- prefer GitHub Actions as the publish authority
 
-- `MASTERPLAN.md`
-- `docs/internal/autonomy/MARTINLOOP-AUTONOMY-MASTER-PLAN.md`
+## Durable Notes
 
-## Cleanup Rules
+Public release memory belongs in `docs/release/`.
 
-- Quarantine first, delete later only with explicit confirmation.
-- Keep generated build, audit, and local experiment artifacts out of normal `git status`.
-- Before syncing across folders, classify contamination rather than bulk-removing by keyword.
+Do not add scratch notes, handoffs, or internal coordination docs to this repo.

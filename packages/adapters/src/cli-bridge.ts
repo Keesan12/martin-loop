@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
 import { delimiter, dirname, extname, isAbsolute, join, resolve } from "node:path";
+import { existsSync } from "node:fs";
 
 import { diffStatsFromNumstat } from "./runtime-support.js";
 
@@ -15,37 +15,87 @@ export interface SubprocessResult {
   stdout: string;
   stderr: string;
   timedOut: boolean;
+  /**
+   * True when the subprocess was terminated early because its combined
+   * stdout+stderr exceeded `maxOutputBytes` — a circuit breaker against
+   * runaway agent sessions that would otherwise burn far more cost/tokens
+   * than the loop budget allows before MartinLoop can observe the final
+   * (post-hoc) usage report. See `claude-cli.ts` execute() for how this
+   * cap is derived from the remaining loop budget.
+   */
+  outputCapped: boolean;
+  /**
+   * Set to the inspector's reason string when an `onStdoutChunk` callback
+   * requested early termination (e.g. a streaming usage/cost circuit breaker
+   * that detected the agent is on track to blow through its budget). Distinct
+   * from `outputCapped`, which fires on raw byte volume rather than parsed
+   * semantic content.
+   */
+  terminationReason?: string;
+  launched: boolean;
 }
 
 export interface VerificationOutcome {
   passed: boolean;
   summary: string;
+  steps: VerificationStepOutcome[];
+  warnings?: string[];
 }
 
-export interface CliCommandProbe extends SubprocessResult {
-  ready: boolean;
-  detail: string;
+export interface VerificationStepOutcome {
+  command: string;
+  launched: boolean;
+  exitCode?: number;
+  timedOut: boolean;
+  fastFail: boolean;
+  detail?: string;
 }
+
+const gitRepositoryRootCache = new Map<string, string | null>();
 
 export async function runSubprocess(
   command: string,
   args: string[],
-  options: { cwd: string; timeoutMs: number; spawnImpl?: SpawnLike; stdinData?: string }
+  options: {
+    cwd: string;
+    timeoutMs: number;
+    spawnImpl?: SpawnLike;
+    stdinData?: string;
+    /**
+     * Optional circuit breaker: terminate the subprocess once combined
+     * stdout+stderr bytes exceed this threshold, instead of waiting for
+     * natural completion. Used to bound runaway agent-CLI cost/token spend
+     * that can't otherwise be observed until the process exits.
+     */
+    maxOutputBytes?: number;
+    /**
+     * Optional semantic inspector invoked with each raw stdout chunk. Used to
+     * parse streaming structured output (e.g. Claude's `stream-json` usage
+     * events) and request early termination via the supplied `terminate`
+     * callback once a semantic threshold (such as cumulative cost) is
+     * crossed — well before the subprocess would exit naturally and report
+     * a runaway final usage figure.
+     */
+    onStdoutChunk?: (chunk: Buffer, terminate: (reason: string) => void) => void;
+  }
 ): Promise<SubprocessResult> {
   return new Promise((resolve) => {
     let timedOut = false;
+    let outputCapped = false;
+    let terminationReason: string | undefined;
     let settled = false;
+    let outputBytes = 0;
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
 
     const stdinMode = options.stdinData !== undefined ? "pipe" : "ignore";
 
-    const resolveOnce = (result: SubprocessResult) => {
+    const resolveOnce = (result: Omit<SubprocessResult, "timedOut" | "outputCapped" | "terminationReason">) => {
       if (settled) {
         return;
       }
       settled = true;
-      resolve(result);
+      resolve({ ...result, timedOut, outputCapped, ...(terminationReason ? { terminationReason } : {}) });
     };
 
     let proc: ChildProcess;
@@ -58,21 +108,39 @@ export async function runSubprocess(
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      resolveOnce({
-        exitCode: 1,
-        stdout: "",
-        stderr: message,
-        timedOut: false
-      });
+      resolveOnce({ exitCode: 1, stdout: "", stderr: message, launched: false });
       return;
     }
 
+    const trackOutput = (chunks: Buffer[], chunk: Buffer) => {
+      chunks.push(chunk);
+      outputBytes += chunk.byteLength;
+      if (
+        options.maxOutputBytes !== undefined &&
+        !outputCapped &&
+        !timedOut &&
+        outputBytes > options.maxOutputBytes
+      ) {
+        outputCapped = true;
+        proc.kill("SIGTERM");
+      }
+    };
+
+    const terminateEarly = (reason: string) => {
+      if (terminationReason || timedOut || outputCapped) {
+        return;
+      }
+      terminationReason = reason;
+      proc.kill("SIGTERM");
+    };
+
     proc.stdout?.on("data", (chunk: Buffer) => {
-      stdoutChunks.push(chunk);
+      trackOutput(stdoutChunks, chunk);
+      options.onStdoutChunk?.(chunk, terminateEarly);
     });
 
     proc.stderr?.on("data", (chunk: Buffer) => {
-      stderrChunks.push(chunk);
+      trackOutput(stderrChunks, chunk);
     });
 
     proc.stdin?.on("error", (error: NodeJS.ErrnoException) => {
@@ -91,12 +159,7 @@ export async function runSubprocess(
 
     proc.on("error", (error) => {
       clearTimeout(timer);
-      resolveOnce({
-        exitCode: 1,
-        stdout: "",
-        stderr: error.message,
-        timedOut: false
-      });
+      resolveOnce({ exitCode: 1, stdout: "", stderr: error.message, launched: false });
     });
 
     proc.on("close", (code) => {
@@ -105,7 +168,7 @@ export async function runSubprocess(
         exitCode: code ?? 1,
         stdout: Buffer.concat(stdoutChunks).toString("utf8"),
         stderr: Buffer.concat(stderrChunks).toString("utf8"),
-        timedOut
+        launched: true
       });
     });
 
@@ -120,7 +183,7 @@ export async function runSubprocess(
             exitCode: 1,
             stdout: Buffer.concat(stdoutChunks).toString("utf8"),
             stderr: stdinError.message,
-            timedOut: false
+            launched: false
           });
         }
       }
@@ -143,10 +206,12 @@ export async function runVerification(
     : commands.map((command) => ({ command, fastFail: true }));
 
   if (steps.length === 0) {
-    return { passed: true, summary: "No verification commands specified." };
+    return { passed: true, summary: "No verification commands specified.", steps: [] };
   }
 
   const failedSteps: string[] = [];
+  const stepOutcomes: VerificationStepOutcome[] = [];
+  const warnings: string[] = [];
 
   for (const step of steps) {
     const parts = splitCommand(step.command);
@@ -157,56 +222,52 @@ export async function runVerification(
     }
 
     const result = await runSubprocess(bin, args, { cwd, timeoutMs, spawnImpl });
+    const detail = truncate(result.stderr.trim() || result.stdout.trim(), 500);
+
+    stepOutcomes.push({
+      command: step.command,
+      launched: result.launched,
+      exitCode: result.exitCode,
+      timedOut: result.timedOut,
+      fastFail: step.fastFail,
+      ...(detail ? { detail } : {})
+    });
 
     if (result.timedOut) {
-      return { passed: false, summary: `Verification timed out: ${step.command}` };
+      return {
+        passed: false,
+        summary: `Verification timed out: ${step.command}`,
+        steps: stepOutcomes,
+        ...(warnings.length ? { warnings } : {})
+      };
     }
 
     if (result.exitCode !== 0) {
-      const detail = truncate(result.stderr.trim() || result.stdout.trim(), 500);
       const summary = `Verification failed: ${step.command}\n${detail}`;
+      if (!result.launched) {
+        warnings.push(`Verifier never launched: ${step.command}`);
+      }
       if (step.fastFail) {
-        return { passed: false, summary };
+        return { passed: false, summary, steps: stepOutcomes, ...(warnings.length ? { warnings } : {}) };
       }
       failedSteps.push(step.command);
     }
   }
 
   if (failedSteps.length > 0) {
-    return { passed: false, summary: `Failed steps: ${failedSteps.join(", ")}` };
-  }
-
-  return { passed: true, summary: `All ${String(steps.length)} verification step(s) passed.` };
-}
-
-export async function probeCliCommand(
-  command: string,
-  args: string[],
-  options: { cwd: string; timeoutMs: number }
-): Promise<CliCommandProbe> {
-  const result = await runSubprocess(command, args, options);
-
-  if (result.timedOut) {
     return {
-      ...result,
-      ready: false,
-      detail: `${command} launch check timed out after ${String(options.timeoutMs)}ms.`
-    };
-  }
-
-  if (result.exitCode !== 0) {
-    const detail = truncate(result.stderr.trim() || result.stdout.trim() || `Exit code ${String(result.exitCode)}`, 500);
-    return {
-      ...result,
-      ready: false,
-      detail: `${command} launch check failed: ${detail}`
+      passed: false,
+      summary: `Failed steps: ${failedSteps.join(", ")}`,
+      steps: stepOutcomes,
+      ...(warnings.length ? { warnings } : {})
     };
   }
 
   return {
-    ...result,
-    ready: true,
-    detail: `${command} launch check passed.`
+    passed: true,
+    summary: `All ${String(steps.length)} verification step(s) passed.`,
+    steps: stepOutcomes,
+    ...(warnings.length ? { warnings } : {})
   };
 }
 
@@ -218,6 +279,10 @@ export async function readGitExecutionArtifacts(
   changedFiles?: string[];
   diffStats?: ReturnType<typeof diffStatsFromNumstat>;
 }> {
+  if (!resolveGitRepositoryRoot(repoRoot)) {
+    return {};
+  }
+
   const changedFilesResult = await runSubprocess(
     "git",
     ["diff", "--name-only", "HEAD"],
@@ -245,12 +310,76 @@ export async function readGitExecutionArtifacts(
   };
 }
 
-interface SpawnPlan {
+export async function readGitChangedFiles(
+  repoRoot: string,
+  timeoutMs: number,
+  spawnImpl?: SpawnLike
+): Promise<string[]> {
+  if (!resolveGitRepositoryRoot(repoRoot)) {
+    return [];
+  }
+
+  const statusResult = await runSubprocess(
+    "git",
+    ["status", "-z", "--porcelain=v1", "--untracked-files=all", "--ignore-submodules=all", "--", "."],
+    { cwd: repoRoot, timeoutMs, spawnImpl }
+  );
+
+  if (statusResult.exitCode !== 0) {
+    return [];
+  }
+
+  return parsePorcelainEntries(statusResult.stdout).filter(
+    (entry): entry is string => typeof entry === "string" && entry.length > 0
+  );
+}
+
+export function resolveGitRepositoryRoot(workingDirectory: string): string | undefined {
+  const resolvedWorkingDirectory = resolve(workingDirectory);
+  const cached = gitRepositoryRootCache.get(resolvedWorkingDirectory);
+  if (cached !== undefined) {
+    return cached ?? undefined;
+  }
+
+  const visited: string[] = [];
+  let current = resolvedWorkingDirectory;
+
+  while (true) {
+    visited.push(current);
+
+    const currentCached = gitRepositoryRootCache.get(current);
+    if (currentCached !== undefined) {
+      for (const candidate of visited) {
+        gitRepositoryRootCache.set(candidate, currentCached);
+      }
+      return currentCached ?? undefined;
+    }
+
+    if (existsSync(resolve(current, ".git"))) {
+      for (const candidate of visited) {
+        gitRepositoryRootCache.set(candidate, current);
+      }
+      return current;
+    }
+
+    const parent = dirname(current);
+    if (parent === current) {
+      for (const candidate of visited) {
+        gitRepositoryRootCache.set(candidate, null);
+      }
+      return undefined;
+    }
+
+    current = parent;
+  }
+}
+
+export interface SpawnPlan {
   command: string;
   args: string[];
 }
 
-function createSpawnPlan(
+export function createSpawnPlan(
   command: string,
   args: string[],
   cwd: string,
@@ -260,35 +389,35 @@ function createSpawnPlan(
     return { command, args };
   }
 
-  const resolved = isAbsolute(command) ? command : resolveWindowsCommand(command, cwd);
-  if (!resolved) {
-    return { command, args };
-  }
+  // Try to resolve the command to an absolute path using the Windows PATH.
+  const resolvedOrUndefined = isAbsolute(command) ? command : resolveWindowsCommand(command, cwd);
 
-  const extension = extname(resolved).toLowerCase();
-  if (extension === ".cmd" || extension === ".bat") {
-    const nodeShim = resolveWindowsNodeShim(resolved);
-    if (nodeShim) {
-      return {
-        command: nodeShim.nodeCommand,
-        args: [nodeShim.scriptPath, ...args]
-      };
-    }
-
+  // If resolution failed (command not found in PATH), fall back to cmd.exe shell execution so
+  // Windows can resolve the command itself — this covers cases like `pnpm` where the npm global
+  // bin directory is present in the shell PATH but not yet visible to this Node.js process.
+  if (resolvedOrUndefined === undefined) {
     return {
-      command: resolveWindowsPowerShellHost(),
-      args: [
-        "-NoProfile",
-        "-NonInteractive",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-Command",
-        buildPowerShellBatchInvocation(resolved, args)
-      ]
+      command: process.env.ComSpec || "cmd.exe",
+      args: ["/d", "/c", command, ...args]
     };
   }
 
-  return { command: resolved, args };
+  const extension = extname(resolvedOrUndefined).toLowerCase();
+  if (extension === ".cmd" || extension === ".bat") {
+    return {
+      command: process.env.ComSpec || "cmd.exe",
+      args: ["/d", "/c", resolvedOrUndefined, ...args]
+    };
+  }
+
+  if (extension === ".ps1") {
+    return {
+      command: "powershell.exe",
+      args: ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", resolvedOrUndefined, ...args]
+    };
+  }
+
+  return { command: resolvedOrUndefined, args };
 }
 
 function resolveWindowsCommand(command: string, cwd: string): string | undefined {
@@ -319,11 +448,45 @@ function expandWindowsCommandCandidates(command: string): string[] {
   }
 
   const pathExt = process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD";
-  return pathExt
+  const fromPathExt = pathExt
     .split(";")
     .map((extension) => extension.trim())
     .filter(Boolean)
     .map((extension) => `${command}${extension.toLowerCase()}`);
+
+  const candidates = [...fromPathExt, `${command}.ps1`];
+  return Array.from(new Set(candidates));
+}
+
+function parsePorcelainEntries(stdout: string): string[] {
+  const entries = stdout.split("\u0000").filter((entry) => entry.length > 0);
+  const changedFiles: string[] = [];
+
+  for (let index = 0; index < entries.length; index += 1) {
+    const entry = entries[index];
+    if (entry === undefined || entry.length < 4) {
+      continue;
+    }
+
+    const status = entry.slice(0, 2);
+    const payload = entry.slice(3);
+    if (!payload) {
+      continue;
+    }
+
+    if (status.includes("R") || status.includes("C")) {
+      const renamedPath = entries[index + 1];
+      if (renamedPath && renamedPath.length > 0) {
+        changedFiles.push(renamedPath);
+        index += 1;
+        continue;
+      }
+    }
+
+    changedFiles.push(payload);
+  }
+
+  return changedFiles;
 }
 
 function windowsPathDirectories(): string[] {
@@ -332,55 +495,6 @@ function windowsPathDirectories(): string[] {
     .split(delimiter)
     .map((entry) => entry.trim().replace(/^"|"$/g, ""))
     .filter(Boolean);
-}
-
-function resolveWindowsNodeShim(
-  shimPath: string
-): { nodeCommand: string; scriptPath: string } | undefined {
-  try {
-    const contents = readFileSync(shimPath, "utf8");
-    const scriptMatch = contents.match(/"%_prog%"\s+"%dp0%\\([^"]+)"\s+%\*/iu);
-    const relativeScriptPath = scriptMatch?.[1];
-    if (!relativeScriptPath) {
-      return undefined;
-    }
-
-    const scriptPath = resolve(dirname(shimPath), relativeScriptPath.replace(/\\/gu, "/"));
-    if (!existsSync(scriptPath)) {
-      return undefined;
-    }
-
-    const bundledNode = join(dirname(shimPath), "node.exe");
-    return {
-      nodeCommand: existsSync(bundledNode) ? bundledNode : "node",
-      scriptPath
-    };
-  } catch {
-    return undefined;
-  }
-}
-
-function resolveWindowsPowerShellHost(): string {
-  const systemRoot = process.env.SystemRoot?.trim();
-  if (systemRoot) {
-    const bundled = join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
-    if (existsSync(bundled)) {
-      return bundled;
-    }
-  }
-
-  return "powershell.exe";
-}
-
-function buildPowerShellBatchInvocation(commandPath: string, args: string[]): string {
-  const quotedCommand = quotePowerShellArg(commandPath);
-  const quotedArgs = args.map(quotePowerShellArg).join(" ");
-  return quotedArgs.length > 0 ? `& ${quotedCommand} ${quotedArgs}` : `& ${quotedCommand}`;
-}
-
-function quotePowerShellArg(value: string): string {
-  const normalized = value.replace(/\r?\n/gu, " ");
-  return `'${normalized.replace(/'/gu, "''")}'`;
 }
 
 export function splitCommand(command: string): string[] {

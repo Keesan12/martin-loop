@@ -1,6 +1,7 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
+import { probeCodexLaunch, resolveCliCommandAvailability } from "@martin/adapters";
 import { resolveRunsRoot } from "@martin/core";
 
 const DEFAULT_BLOCKED_PATHS = [
@@ -31,10 +32,18 @@ const DEFAULT_BUDGET = {
 
 const DEFAULT_RUN_SCAN_LIMIT = 40;
 
+type ResolvedReceiptScope = {
+  invocationRoot: string;
+  workingDirectory: string;
+  repoRoot: string;
+  runsRoot: string;
+};
+
 export type NativePhaseSubcommand = "status" | "contract" | "session-start" | "preflight" | "run";
 
 export type NativePhaseCommandOptions = {
   rootDir?: string;
+  invocationRoot?: string;
   runsDir?: string;
   host?: string;
   runScanLimit?: number;
@@ -61,6 +70,7 @@ export type NativePhaseSnapshot = {
   ok: true;
   schemaVersion: "martin.phase-command-center.v1";
   generatedAt: string;
+  receiptScope: ResolvedReceiptScope;
   root: {
     hasPhaseWorkspace: boolean;
     hasSessionHook: boolean;
@@ -92,6 +102,39 @@ export type NativePhaseSnapshot = {
     host: string;
     recommendedNextAction: string;
     commands: string[];
+    receiptScope: ResolvedReceiptScope;
+    hostDiagnostics: {
+      mode: "live" | "proof";
+      engine: string;
+      codex?: {
+        available: boolean;
+        detail: string;
+        resolvedPath?: string;
+        candidatePaths?: string[];
+        selectedPath?: string;
+        hostPlatform?: string;
+        installKind?: string;
+        nativeInstallValid?: boolean;
+        invocationMode?: string;
+        sandboxMode?: string;
+        sandboxCompatible?: boolean;
+        launchReady?: boolean;
+        summary?: string;
+        remediation?: string;
+        candidateProbeResults?: Array<{
+          path: string;
+          installKind: string;
+          invocationMode: string;
+          nativeInstallValid: boolean;
+          sandboxCompatible: boolean;
+          launchReady: boolean;
+          summary: string;
+          remediation?: string;
+          nativeDependencyStatus?: string;
+          nativeDependencyPackage?: string;
+        }>;
+      };
+    };
   };
 };
 
@@ -141,17 +184,26 @@ export async function createNativePhaseCommandCenterSnapshot(
   options: NativePhaseCommandOptions = {}
 ): Promise<NativePhaseSnapshot> {
   const rootDir = resolve(options.rootDir ?? process.cwd());
+  const invocationRoot = resolve(options.invocationRoot ?? process.cwd());
   const runsRoot = resolveRunsRoot({ MARTIN_RUNS_DIR: options.runsDir ?? process.env.MARTIN_RUNS_DIR });
+  const receiptScope: ResolvedReceiptScope = {
+    invocationRoot,
+    workingDirectory: rootDir,
+    repoRoot: rootDir,
+    runsRoot
+  };
   const [phaseWorkspace, runStore] = await Promise.all([
     collectPhaseWorkspaceState(rootDir),
     collectRunStore(runsRoot, { scanLimit: options.runScanLimit ?? DEFAULT_RUN_SCAN_LIMIT })
   ]);
   const contract = await buildPhaseContract(rootDir, phaseWorkspace);
+  const hostDiagnostics = buildSessionStartHostDiagnostics(options.host ?? "claude", receiptScope);
 
   return {
     ok: true,
     schemaVersion: "martin.phase-command-center.v1",
     generatedAt: new Date().toISOString(),
+    receiptScope,
     root: {
       hasPhaseWorkspace: phaseWorkspace.available,
       hasSessionHook: phaseWorkspace.sessionHookAvailable
@@ -172,13 +224,18 @@ export async function createNativePhaseCommandCenterSnapshot(
     contract,
     sessionStart: {
       host: options.host ?? "claude",
-      recommendedNextAction: recommendedNextAction(phaseWorkspace, runStore, contract),
-      commands: DEFAULT_COMMANDS
+      recommendedNextAction: recommendedNextAction(phaseWorkspace, runStore, contract, hostDiagnostics),
+      commands: buildSessionStartCommands(options.host ?? "claude", receiptScope),
+      receiptScope,
+      hostDiagnostics
     }
   };
 }
 
-export function buildNativePhaseRunRequest(contract: NativePhaseContract, cwd?: string) {
+export function buildNativePhaseRunRequest(
+  contract: NativePhaseContract,
+  options: { cwd?: string; runsDir?: string } = {}
+) {
   return {
     workspaceId: "ws_default",
     projectId: "proj_default",
@@ -196,15 +253,26 @@ export function buildNativePhaseRunRequest(contract: NativePhaseContract, cwd?: 
       maxIterations: contract.budget.maxIterations,
       maxTokens: 20_000
     },
-    ...(cwd ? { cwd } : {}),
+    ...(options.cwd ? { cwd: options.cwd } : {}),
+    ...(options.runsDir ? { runsDir: options.runsDir } : {}),
     ...(contract.allowedPaths.length > 0 ? { allowedPaths: contract.allowedPaths } : {}),
     deniedPaths: contract.blockedPaths
   };
 }
 
-export function buildNativePhaseInvocation(command: "preflight" | "run", contract: NativePhaseContract): string[] {
+export function buildNativePhaseInvocation(
+  command: "preflight" | "run",
+  contract: NativePhaseContract,
+  options: { cwd?: string; runsDir?: string } = {}
+): string[] {
   const args = ["martin-loop", command, contract.objective];
 
+  if (options.cwd) {
+    args.push("--cwd", options.cwd);
+  }
+  if (options.runsDir) {
+    args.push("--runs-dir", options.runsDir);
+  }
   for (const verifier of contract.verifiers) {
     args.push("--verify", verifier);
   }
@@ -253,7 +321,10 @@ export function selectNativePhasePayload(
   }
 
   const martinCommand = subcommand === "run" ? "run" : "preflight";
-  const invocation = buildNativePhaseInvocation(martinCommand, snapshot.contract);
+  const invocation = buildNativePhaseInvocation(martinCommand, snapshot.contract, {
+    cwd: snapshot.receiptScope.workingDirectory,
+    runsDir: snapshot.receiptScope.runsRoot
+  });
 
   if (snapshot.contract.requiresApproval) {
     return {
@@ -285,11 +356,17 @@ export function selectNativePhasePayload(
 }
 
 export function renderNativePhaseHuman(snapshot: NativePhaseSnapshot): string[] {
+  const codexDiagnostics = snapshot.sessionStart.hostDiagnostics.codex;
   return [
     "MartinLoop phase command-center session start",
     `Phase workspace: ${snapshot.phaseWorkspace.available ? "detected" : "missing"}`,
     `Active phase: ${snapshot.phaseWorkspace.activePhase ?? "unavailable"}`,
     `Latest run: ${snapshot.runStore.latestRun?.loopId ?? "unavailable"}`,
+    `Receipt scope: repo=${snapshot.receiptScope.repoRoot} runs=${snapshot.receiptScope.runsRoot}`,
+    `Host: ${snapshot.sessionStart.host} (${snapshot.sessionStart.hostDiagnostics.mode})`,
+    ...(codexDiagnostics
+      ? [`Codex host diagnostics: ${codexDiagnostics.launchReady ? "ready" : codexDiagnostics.summary ?? codexDiagnostics.detail}`]
+      : []),
     `Recommended next action: ${snapshot.sessionStart.recommendedNextAction}`,
     "Commands:",
     ...snapshot.sessionStart.commands.map((command) => `- ${command}`)
@@ -381,14 +458,14 @@ async function collectRunStore(
     }
   }
 
-  loops.sort((left, right) => Date.parse(right.updatedAt ?? right.createdAt ?? "") - Date.parse(left.updatedAt ?? left.createdAt ?? ""));
+  loops.sort((left, right) => loopTimestamp(right) - loopTimestamp(left));
 
   return {
     available: true,
     inspectedRuns: loopDirs.length,
     scanLimit: options.scanLimit,
     scanLimited: loopEntries.length > loopDirs.length,
-    totalRuns: loops.length,
+    totalRuns: loopEntries.length,
     latestRun: summarizeLoop(loops[0]),
     runsNeedingTriage: loops
       .filter((loop) => loop.status !== "completed" || loop.lifecycleState !== "completed")
@@ -397,6 +474,15 @@ async function collectRunStore(
       .filter((loop): loop is NativePhaseRunSummary => loop !== null),
     warnings
   };
+}
+
+function loopTimestamp(loop: LocalLoopRecord): number {
+  const candidate = loop.updatedAt ?? loop.createdAt;
+  if (!candidate) {
+    return 0;
+  }
+  const parsed = Date.parse(candidate);
+  return Number.isNaN(parsed) ? 0 : parsed;
 }
 
 async function buildPhaseContract(rootDir: string, phaseWorkspace: PhaseWorkspaceState): Promise<NativePhaseContract> {
@@ -470,8 +556,14 @@ async function detectPackageManager(rootDir: string): Promise<"pnpm" | "npm" | "
 function recommendedNextAction(
   phaseWorkspace: PhaseWorkspaceState,
   runStore: NativePhaseSnapshot["runStore"],
-  contract: NativePhaseContract
+  contract: NativePhaseContract,
+  hostDiagnostics: NativePhaseSnapshot["sessionStart"]["hostDiagnostics"]
 ): string {
+  if (hostDiagnostics.engine === "codex" && hostDiagnostics.codex?.launchReady === false) {
+    return hostDiagnostics.codex.remediation ??
+      "Run martin-loop doctor --engine codex, fix the reported host issue, then retry preflight.";
+  }
+
   if (contract.requiresApproval) {
     return "Review the generated phase contract, add allowed paths/verifiers, then run martin-loop phase preflight.";
   }
@@ -485,6 +577,83 @@ function recommendedNextAction(
   }
 
   return "Run martin-loop phase preflight before spending work.";
+}
+
+function buildSessionStartCommands(host: string, receiptScope: ResolvedReceiptScope): string[] {
+  const scopedFlags = [
+    "--cwd",
+    quoteCliArgument(receiptScope.workingDirectory),
+    "--runs-dir",
+    quoteCliArgument(receiptScope.runsRoot)
+  ].join(" ");
+
+  const commands = host === "codex"
+    ? [
+        `martin-loop doctor --engine codex ${scopedFlags}`,
+        ...DEFAULT_COMMANDS.filter((command) => command !== "martin-loop doctor")
+      ]
+    : DEFAULT_COMMANDS;
+
+  return commands.map((command) => {
+    if (command.startsWith("martin-loop doctor")) {
+      return command;
+    }
+    return `${command} ${scopedFlags}`.trim();
+  });
+}
+
+function quoteCliArgument(value: string): string {
+  return /[\s"]/u.test(value) ? `"${value.replace(/"/g, '\\"')}"` : value;
+}
+
+function buildSessionStartHostDiagnostics(
+  host: string,
+  receiptScope: ResolvedReceiptScope
+): NativePhaseSnapshot["sessionStart"]["hostDiagnostics"] {
+  const mode = process.env.MARTIN_LIVE === "false" ? "proof" : "live";
+  if (host !== "codex") {
+    return {
+      mode,
+      engine: host
+    };
+  }
+
+  const availability = resolveCliCommandAvailability("codex");
+  const probe =
+    mode === "live"
+      ? probeCodexLaunch({
+          workingDirectory: receiptScope.workingDirectory,
+          availability
+        })
+      : undefined;
+
+  return {
+    mode,
+    engine: "codex",
+    codex: {
+      available: availability.available,
+      detail: availability.detail,
+      ...(availability.resolvedPath ? { resolvedPath: availability.resolvedPath } : {}),
+      ...(availability.candidatePaths?.length ? { candidatePaths: availability.candidatePaths } : {}),
+      ...(probe
+        ? {
+            selectedPath: probe.command,
+            hostPlatform: probe.diagnosis.hostPlatform,
+            installKind: probe.diagnosis.installKind,
+            nativeInstallValid: probe.diagnosis.nativeInstallValid,
+            invocationMode: probe.diagnosis.invocationMode,
+            sandboxMode: probe.diagnosis.sandboxMode,
+            sandboxCompatible: probe.diagnosis.sandboxCompatible,
+            launchReady: probe.ok,
+            summary: probe.summary,
+            ...(probe.diagnosis.remediation ? { remediation: probe.diagnosis.remediation } : {}),
+            ...(probe.candidateProbeResults?.length
+              ? { candidateProbeResults: probe.candidateProbeResults }
+              : {})
+          }
+        : {})
+    }
+  };
 }
 
 function summarizeLoop(loop: LocalLoopRecord | undefined): NativePhaseRunSummary | null {

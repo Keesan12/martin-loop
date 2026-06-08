@@ -4,6 +4,8 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { RepoGroundingIndex } from "../src/grounding";
+
 describe("loadOrBuildRepoGroundingIndex cache hardening", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -15,13 +17,17 @@ describe("loadOrBuildRepoGroundingIndex cache hardening", () => {
     await mkdir(join(root, "src"), { recursive: true });
     await writeFile(join(root, "src", "core.ts"), "export function run(): void {}", "utf8");
 
+    const groundingDir = await mkdtemp(join(tmpdir(), "martin-grounding-cache-dir-"));
+    const previousGroundingDir = process.env.MARTIN_GROUNDING_DIR;
+    process.env.MARTIN_GROUNDING_DIR = groundingDir;
+
     vi.resetModules();
     vi.doMock("node:fs/promises", async () => {
       const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
       return {
         ...actual,
         async writeFile(path: Parameters<typeof actual.writeFile>[0], data: Parameters<typeof actual.writeFile>[1], options?: Parameters<typeof actual.writeFile>[2]) {
-          if (String(path).includes(`${join(".martin", "grounding")}${pathSeparator()}`)) {
+          if (String(path).startsWith(groundingDir)) {
             const error = new Error("EPERM: blocked cache write");
             Object.assign(error, { code: "EPERM" });
             throw error;
@@ -31,18 +37,24 @@ describe("loadOrBuildRepoGroundingIndex cache hardening", () => {
         }
       };
     });
-const { loadOrBuildRepoGroundingIndex } = await import("../src/grounding");
-    const index = await loadOrBuildRepoGroundingIndex(root);
+
+    let index: RepoGroundingIndex;
+    try {
+      const { loadOrBuildRepoGroundingIndex } = await import("../src/grounding");
+      index = await loadOrBuildRepoGroundingIndex(root);
+    } finally {
+      vi.doUnmock("node:fs/promises");
+
+      if (previousGroundingDir === undefined) {
+        delete process.env.MARTIN_GROUNDING_DIR;
+      } else {
+        process.env.MARTIN_GROUNDING_DIR = previousGroundingDir;
+      }
+    }
 
     expect(index.schemaVersion).toBe("martin.grounding.v1");
     expect(index.repoRoot).toBe(root);
     expect(index.fileCount).toBeGreaterThanOrEqual(1);
     expect(index.files.some((file) => file.path === "src/core.ts")).toBe(true);
-
-    vi.doUnmock("node:fs/promises");
   });
 });
-
-function pathSeparator(): string {
-  return process.platform === "win32" ? "\\" : "/";
-}

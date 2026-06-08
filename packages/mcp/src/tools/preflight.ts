@@ -1,22 +1,43 @@
-import { DEFAULT_BUDGET } from "@martin/contracts";
+import {
+  probeCodexLaunch,
+  resolveCliCommandAvailability,
+  type CodexHostPlatform
+} from "@martin/adapters";
 import { resolveRunsRoot } from "@martin/core";
 
 import { resolveSafeRepoRoot } from "../server-validation.js";
 import {
+  createSkippedCliAvailability,
   formatUsd,
   getEngineAvailability,
   resolveExecutionMode,
   type MartinEngine
 } from "./tool-support.js";
+import {
+  buildPlanProposal,
+  normalizeLoopBudget,
+  buildRunContract,
+  buildPolicyPackDefinition,
+  inspectRepoSignals,
+  type MartinPlanProposal,
+  type MartinPolicyPack,
+  type MartinRiskAssessment,
+  type MartinRunContract
+} from "./workflow-governance.js";
 
 export interface MartinPreflightInput {
   objective: string;
   workingDirectory?: string;
   engine?: MartinEngine;
   model?: string;
+  context?: string;
+  policyPack?: MartinPolicyPack;
   maxUsd?: number;
   maxIterations?: number;
   maxTokens?: number;
+  maxMinutes?: number;
+  maxFilesChanged?: number;
+  maxCommands?: number;
   verificationPlan?: string[];
   allowedPaths?: string[];
   deniedPaths?: string[];
@@ -28,6 +49,18 @@ export interface MartinPreflightOutput {
   ok: boolean;
   summary: string;
   warnings: string[];
+  receiptScope: {
+    invocationRoot: string;
+    workingDirectory: string;
+    repoRoot: string;
+    runsRoot: string;
+  };
+  scope: {
+    invocationRoot: string;
+    workingDirectory: string;
+    repoRoot: string;
+    runsRoot: string;
+  };
   readiness: {
     mode: "live" | "proof";
     liveMode: boolean;
@@ -54,9 +87,35 @@ export interface MartinPreflightOutput {
     requestedEngine: MartinEngine;
     engineAvailability: {
       available: boolean;
-      launchReady: boolean;
       detail: string;
       resolvedPath?: string;
+      candidatePaths?: string[];
+    };
+    codexDiagnostics?: {
+      selectedPath?: string;
+      hostPlatform: CodexHostPlatform;
+      installKind: string;
+      nativeInstallValid: boolean;
+      invocationMode: string;
+      sandboxMode: string;
+      sandboxCompatible: boolean;
+      nativeDependencyStatus?: string;
+      nativeDependencyPackage?: string;
+      launchReady: boolean;
+      summary: string;
+      remediation?: string;
+      candidateProbeResults?: Array<{
+        path: string;
+        installKind: string;
+        invocationMode: string;
+        nativeInstallValid: boolean;
+        sandboxCompatible: boolean;
+        launchReady: boolean;
+        summary: string;
+        remediation?: string;
+        nativeDependencyStatus?: string;
+        nativeDependencyPackage?: string;
+      }>;
     };
     runsRoot: string;
     pathScope: {
@@ -65,36 +124,57 @@ export interface MartinPreflightOutput {
       deniedPathsCount: number;
       hasScopeConflicts: boolean;
     };
-    expectedRunLayout: {
-      runDirectoryPattern: string;
-      loopRecordPathPattern: string;
+      expectedRunLayout: {
+        runDirectoryPattern: string;
+        loopRecordPathPattern: string;
+      };
     };
-  };
+  policy: ReturnType<typeof buildPolicyPackDefinition>;
+  risk: MartinRiskAssessment;
+  runContract: MartinRunContract;
+  plan: MartinPlanProposal;
 }
 
 export async function martinPreflightTool(
   input: MartinPreflightInput
 ): Promise<MartinPreflightOutput> {
   const executionMode = resolveExecutionMode();
+  const workspaceRoot = resolveSafeRepoRoot();
   const workingDirectory = resolveSafeRepoRoot(input.workingDirectory);
+  const signals = inspectRepoSignals(workingDirectory, {
+    includeHostAvailability: executionMode.liveMode
+  });
   const engine = input.engine ?? "claude";
-  const engineAvailability = await getEngineAvailability(engine, workingDirectory);
+  const engineAvailability =
+    executionMode.liveMode
+      ? engine === "codex"
+        ? resolveCliCommandAvailability("codex")
+        : getEngineAvailability(engine)
+      : createSkippedCliAvailability(engine);
+  const codexProbe =
+    executionMode.liveMode && engine === "codex" && engineAvailability.available
+      ? probeCodexLaunch({
+          workingDirectory,
+          availability: engineAvailability
+        })
+      : undefined;
   const warnings: string[] = [];
   const allowedPaths = input.allowedPaths ?? [];
   const deniedPaths = input.deniedPaths ?? [];
   const overlappingScopes = allowedPaths.filter((candidate) => deniedPaths.includes(candidate));
 
-  const budget = {
-    ...DEFAULT_BUDGET,
-    ...(input.maxUsd !== undefined ? { maxUsd: input.maxUsd } : {}),
-    ...(input.maxIterations !== undefined ? { maxIterations: input.maxIterations } : {}),
-    ...(input.maxTokens !== undefined ? { maxTokens: input.maxTokens } : {})
-  };
+  const budget = normalizeLoopBudget({
+    maxUsd: input.maxUsd,
+    maxIterations: input.maxIterations,
+    maxTokens: input.maxTokens
+  });
 
   if (!executionMode.liveMode) {
     warnings.push("Proof mode is active; preflight only proves configuration shape, not live CLI readiness.");
-  } else if (!engineAvailability.launchReady) {
-    warnings.push(`Requested engine '${engine}' is not launch-ready. ${engineAvailability.detail}`);
+  } else if (!engineAvailability.available) {
+    warnings.push(`Requested engine '${engine}' is not available on PATH.`);
+  } else if (engine === "codex" && codexProbe && !codexProbe.ok) {
+    warnings.push(codexProbe.summary);
   }
 
   if ((input.verificationPlan?.length ?? 0) === 0) {
@@ -110,18 +190,39 @@ export async function martinPreflightTool(
     );
   }
 
-  const ok = !executionMode.liveMode || engineAvailability.launchReady;
+  const plan = buildPlanProposal(workingDirectory, input, { signals });
+  const runContract = buildRunContract(workingDirectory, input, { signals, plan });
+  const policy = buildPolicyPackDefinition(input.policyPack, signals);
+
+  const engineReady =
+    !executionMode.liveMode ||
+    (engineAvailability.available && (engine !== "codex" || codexProbe?.ok !== false));
+  const ok = engineReady;
+  const receiptScope = {
+    invocationRoot: workspaceRoot,
+    workingDirectory,
+    repoRoot: workingDirectory,
+    runsRoot: resolveRunsRoot(process.env)
+  };
 
   return {
     ok,
     summary: ok
-      ? `Preflight ready for ${engine} in ${workingDirectory} with a ${formatUsd(budget.maxUsd)} budget cap.`
-      : `Preflight blocked: ${engine} is not available for live execution.`,
+      ? `Preflight ready for ${engine} in ${workingDirectory} with a ${formatUsd(budget.maxUsd)} budget cap and ${runContract.risk.level} risk.`
+      : `Preflight blocked: ${
+          engine === "codex" && codexProbe && !codexProbe.ok
+            ? codexProbe.summary
+            : `${engine} is not available for live execution.`
+        }`,
     warnings,
+    receiptScope,
+    scope: {
+      ...receiptScope
+    },
     readiness: {
       mode: executionMode.mode,
       liveMode: executionMode.liveMode,
-      engineReady: !executionMode.liveMode || engineAvailability.launchReady
+      engineReady
     },
     normalized: {
       objective: input.objective,
@@ -139,12 +240,37 @@ export async function martinPreflightTool(
       requestedEngine: engine,
       engineAvailability: {
         available: engineAvailability.available,
-        launchReady: engineAvailability.launchReady,
         detail: engineAvailability.detail,
-        ...(engineAvailability.resolvedPath
-          ? { resolvedPath: engineAvailability.resolvedPath }
+        ...(engineAvailability.resolvedPath ? { resolvedPath: engineAvailability.resolvedPath } : {}),
+        ...(engineAvailability.candidatePaths?.length
+          ? { candidatePaths: engineAvailability.candidatePaths }
           : {})
       },
+      ...(codexProbe
+        ? {
+            codexDiagnostics: {
+              selectedPath: codexProbe.command,
+              hostPlatform: codexProbe.diagnosis.hostPlatform,
+              installKind: codexProbe.diagnosis.installKind,
+              nativeInstallValid: codexProbe.diagnosis.nativeInstallValid,
+              invocationMode: codexProbe.diagnosis.invocationMode,
+              sandboxMode: codexProbe.diagnosis.sandboxMode,
+              sandboxCompatible: codexProbe.diagnosis.sandboxCompatible,
+              ...(codexProbe.diagnosis.nativeDependencyStatus
+                ? { nativeDependencyStatus: codexProbe.diagnosis.nativeDependencyStatus }
+                : {}),
+              ...(codexProbe.diagnosis.nativeDependencyPackage
+                ? { nativeDependencyPackage: codexProbe.diagnosis.nativeDependencyPackage }
+                : {}),
+              launchReady: codexProbe.ok,
+              summary: codexProbe.summary,
+              ...(codexProbe.diagnosis.remediation ? { remediation: codexProbe.diagnosis.remediation } : {}),
+              ...(codexProbe.candidateProbeResults?.length
+                ? { candidateProbeResults: codexProbe.candidateProbeResults }
+                : {})
+            }
+          }
+        : {}),
       runsRoot: resolveRunsRoot(process.env),
       pathScope: {
         repoRoot: workingDirectory,
@@ -156,6 +282,10 @@ export async function martinPreflightTool(
         runDirectoryPattern: "<runsRoot>/<loopId>/",
         loopRecordPathPattern: "<runsRoot>/<loopId>/loop-record.json"
       }
-    }
+    },
+    policy,
+    risk: runContract.risk,
+    runContract,
+    plan
   };
 }

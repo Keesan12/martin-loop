@@ -41,22 +41,22 @@ Codex:
 
 ```sh
 codex mcp add martin-loop -- npx -y @martinloop/mcp
-martin mcp print-config --host codex --profile minimal
+npx -y martin-loop mcp print-config --host codex --profile minimal
 ```
 
 Claude Code:
 
 ```sh
 claude mcp add --transport stdio --scope user martin-loop -- npx -y @martinloop/mcp
-martin mcp print-config --host claude --profile minimal
+npx -y martin-loop mcp print-config --host claude --profile minimal
 ```
 
 Cursor, VS Code, and generic MCP wrappers:
 
 ```sh
-martin mcp print-config --host generic --profile minimal
-martin mcp print-config --host generic --profile diagnostic
-martin mcp print-config --host generic --profile full-local
+npx -y martin-loop mcp print-config --host generic --profile minimal
+npx -y martin-loop mcp print-config --host generic --profile diagnostic
+npx -y martin-loop mcp print-config --host generic --profile full-local
 ```
 
 ## Agent Rule To Paste

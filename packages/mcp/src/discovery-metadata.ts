@@ -96,6 +96,9 @@ export const MARTIN_RESOURCE_URIS = [
   "martin://agent/next-step",
   "martin://guides/mcp-usage",
   "martin://guides/agent-start",
+  "martin://guides/command-map",
+  "martin://guides/ide-onboarding",
+  "martin://guides/operating-rules",
   "martin://guides/publish-readiness"
 ] as const;
 

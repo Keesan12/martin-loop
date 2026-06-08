@@ -12,15 +12,21 @@
  *   Llama 3.x, Mistral 7B, Phi-4, Gemma 3, any GGUF model.
  *
  * Usage:
+ *   # Defaults to OpenAI's hosted endpoint when MARTIN_OPENAI_BASE_URL is unset.
+ *   MARTIN_OPENAI_API_KEY=sk-...
+ *   MARTIN_OPENAI_MODEL=gpt-4.1-mini
+ *   martin-loop run "fix the bug" --engine openai
+ *
+ *   # Or route to a third-party / self-hosted OpenAI-compatible endpoint:
  *   MARTIN_OPENAI_BASE_URL=https://openrouter.ai/api
  *   MARTIN_OPENAI_API_KEY=sk-or-...
  *   MARTIN_OPENAI_MODEL=deepseek/deepseek-chat
- *   martin run "fix the bug" --engine openai
+ *   martin-loop run "fix the bug" --engine openai
  *
  * Or for Ollama:
  *   MARTIN_OPENAI_BASE_URL=http://localhost:11434
  *   MARTIN_OPENAI_MODEL=llama3.3
- *   martin run "fix the bug" --engine openai
+ *   martin-loop run "fix the bug" --engine openai
  */
 
 import type {
@@ -30,7 +36,7 @@ import type {
   MartinAdapterResult
 } from "@martin/core";
 
-import { runVerification, readGitExecutionArtifacts } from "./cli-bridge.js";
+import { readGitChangedFiles, runVerification } from "./cli-bridge.js";
 import { createAdapterCapabilities, normalizeUsage } from "./runtime-support.js";
 
 // ---------------------------------------------------------------------------
@@ -113,11 +119,11 @@ interface OpenAiResponse {
 
 export interface OpenAiCompatibleAdapterOptions {
   /** Base URL of the OpenAI-compatible API. No trailing slash. */
-  baseUrl: string;
+  baseUrl?: string;
   /** API key. Empty string for local (Ollama/LM Studio) endpoints. */
   apiKey?: string;
   /** Model identifier passed as-is to the API (e.g. "deepseek/deepseek-chat"). */
-  model: string;
+  model?: string;
   /**
    * System prompt prepended before the MartinLoop task prompt.
    * Default instructs the model to act as a focused coding assistant.
@@ -144,6 +150,28 @@ Follow these rules exactly:
 - If the task asks you to write or modify code, output the complete file content with changes applied.
 - Be precise, minimal, and test-backed in all changes.
 - State what you changed and why at the end of your response.`;
+
+export const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com";
+export const DEFAULT_OPENAI_MODEL = "gpt-4.1-mini";
+
+export function resolveOpenAiCompatibleRuntimeConfig(
+  env: NodeJS.ProcessEnv = process.env
+): {
+  baseUrl: string;
+  model: string;
+  apiKey: string;
+  apiKeyConfigured: boolean;
+  authPosture: "api_key" | "anonymous_or_local";
+} {
+  const apiKey = env["MARTIN_OPENAI_API_KEY"] ?? "";
+  return {
+    baseUrl: env["MARTIN_OPENAI_BASE_URL"] ?? DEFAULT_OPENAI_BASE_URL,
+    model: env["MARTIN_OPENAI_MODEL"] ?? DEFAULT_OPENAI_MODEL,
+    apiKey,
+    apiKeyConfigured: apiKey.length > 0,
+    authPosture: apiKey.length > 0 ? "api_key" : "anonymous_or_local"
+  };
+}
 
 function buildPrompt(request: MartinAdapterRequest): string {
   const lines: string[] = [
@@ -196,14 +224,18 @@ export function createOpenAiCompatibleAdapter(
   const verifyTimeoutMs = options.verifyTimeoutMs ?? 60_000;
   const systemPrompt = options.systemPrompt ?? DEFAULT_SYSTEM_PROMPT;
   const fetchFn = options.fetchImpl ?? globalThis.fetch;
+  const runtimeConfig = resolveOpenAiCompatibleRuntimeConfig();
+  const baseUrl = (options.baseUrl ?? runtimeConfig.baseUrl).replace(/\/$/, "");
+  const model = options.model ?? runtimeConfig.model;
+  const apiKey = options.apiKey ?? runtimeConfig.apiKey;
 
   return {
-    adapterId: `openai-compatible:${options.model}`,
+    adapterId: `openai-compatible:${model}`,
     kind: "direct-provider",
-    label: `OpenAI-compatible: ${options.model}`,
+    label: `OpenAI-compatible: ${model}`,
     metadata: {
       providerId: "openai-compatible",
-      model: options.model,
+      model,
       transport: "http",
       capabilities: createAdapterCapabilities({
         preflight: true,
@@ -214,7 +246,13 @@ export function createOpenAiCompatibleAdapter(
 
     async execute(request: MartinAdapterRequest): Promise<MartinAdapterResult> {
       const prompt = buildPrompt(request);
-      const estimated = estimateCost(options.model, prompt.length, 2000);
+      const estimated = estimateCost(model, prompt.length, 2000);
+      const hasVerificationSteps =
+        request.context.verificationPlan.length > 0 ||
+        (request.context.verificationStack?.length ?? 0) > 0;
+      const baselineChangedFiles = hasVerificationSteps
+        ? new Set(await readGitChangedFiles(workingDirectory, 5_000))
+        : new Set<string>();
 
       // Preflight: bail if projected cost exceeds remaining budget
       if (
@@ -237,28 +275,27 @@ export function createOpenAiCompatibleAdapter(
       }
 
       // Call the OpenAI-compatible endpoint
-      const endpoint = `${options.baseUrl.replace(/\/$/, "")}/v1/chat/completions`;
+      const endpoint = `${baseUrl}/v1/chat/completions`;
       let responseText = "";
       let tokensIn = estimated.tokensIn;
       let tokensOut = 0;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-      try {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), timeoutMs);
-
-        const headers: Record<string, string> = { "Content-Type": "application/json" };
-        if (options.apiKey) headers["Authorization"] = `Bearer ${options.apiKey}`;
-        // OpenRouter requires a site URL header for attribution
-        if (options.baseUrl.includes("openrouter")) {
-          headers["HTTP-Referer"] = "https://martinloop.com";
-          headers["X-Title"] = "MartinLoop";
-        }
+        try {
+          const headers: Record<string, string> = { "Content-Type": "application/json" };
+          if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
+          // OpenRouter requires a site URL header for attribution
+          if (baseUrl.includes("openrouter")) {
+            headers["HTTP-Referer"] = "https://martinloop.com";
+            headers["X-Title"] = "MartinLoop";
+          }
 
         const res = await fetchFn(endpoint, {
           method: "POST",
           headers,
           body: JSON.stringify({
-            model: options.model,
+            model,
             messages: [
               { role: "system", content: systemPrompt },
               { role: "user", content: prompt }
@@ -269,14 +306,13 @@ export function createOpenAiCompatibleAdapter(
           signal: controller.signal
         });
 
-        clearTimeout(timer);
         const body = (await res.json()) as OpenAiResponse;
 
         if (!res.ok || body.error) {
           const errMsg = body.error?.message ?? `HTTP ${res.status}`;
           return {
             status: "failed",
-            summary: `${options.model} API error: ${errMsg}`,
+            summary: `${model} API error: ${errMsg}`,
             usage: normalizeUsage({ actualUsd: 0, tokensIn: 0, tokensOut: 0, provenance: "unavailable" }),
             verification: { passed: false, summary: "API call failed before verifier." },
             failure: { message: errMsg, classHint: "infrastructure_error" as FailureClass }
@@ -292,7 +328,7 @@ export function createOpenAiCompatibleAdapter(
         }
       } catch (error: unknown) {
         const isAbort = error instanceof Error && error.name === "AbortError";
-        const message = isAbort ? `${options.model} request timed out after ${timeoutMs}ms` : String(error);
+        const message = isAbort ? `${model} request timed out after ${timeoutMs}ms` : String(error);
         return {
           status: "failed",
           summary: message,
@@ -300,12 +336,14 @@ export function createOpenAiCompatibleAdapter(
           verification: { passed: false, summary: isAbort ? "Request timed out." : "Network error." },
           failure: { message, classHint: "infrastructure_error" as FailureClass }
         };
+      } finally {
+        clearTimeout(timer);
       }
 
       if (!responseText.trim()) {
         return {
           status: "failed",
-          summary: `${options.model} returned an empty response.`,
+          summary: `${model} returned an empty response.`,
           usage: normalizeUsage({ actualUsd: 0, tokensIn, tokensOut: 0, provenance: "actual" }),
           verification: { passed: false, summary: "Empty response — nothing to verify." },
           failure: { message: "empty_response" }
@@ -320,9 +358,15 @@ export function createOpenAiCompatibleAdapter(
         request.context.verificationStack
       );
 
-      const execution = await readGitExecutionArtifacts(workingDirectory, 5_000);
+      const execution = {
+        changedFiles: hasVerificationSteps
+          ? (await readGitChangedFiles(workingDirectory, 5_000)).filter(
+              (file) => !baselineChangedFiles.has(file)
+            )
+          : []
+      };
 
-      const pricing = KNOWN_MODEL_PRICING[options.model] ?? {
+      const pricing = KNOWN_MODEL_PRICING[model] ?? {
         inputPer1K: FALLBACK_INPUT_PER_1K,
         outputPer1K: FALLBACK_OUTPUT_PER_1K
       };
@@ -332,8 +376,8 @@ export function createOpenAiCompatibleAdapter(
       return {
         status: verification.passed ? "completed" : "failed",
         summary: verification.passed
-          ? `${options.model} completed the task. Verifier passed.`
-          : `${options.model} completed but verifier failed: ${verification.summary}`,
+          ? `${model} completed the task. Verifier passed.`
+          : `${model} completed but verifier failed: ${verification.summary}`,
         usage: normalizeUsage({
           actualUsd,
           tokensIn,

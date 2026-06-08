@@ -38,6 +38,9 @@ export const MARTIN_STATIC_RESOURCE_URIS = {
   agentNextStep: "martin://agent/next-step",
   mcpUsageGuide: "martin://guides/mcp-usage",
   agentStartGuide: "martin://guides/agent-start",
+  commandMapGuide: "martin://guides/command-map",
+  ideOnboardingGuide: "martin://guides/ide-onboarding",
+  operatingRulesGuide: "martin://guides/operating-rules",
   publishReadinessGuide: "martin://guides/publish-readiness"
 } as const;
 
@@ -175,6 +178,27 @@ export const MARTIN_STATIC_RESOURCES: Resource[] = [
     mimeType: "text/markdown"
   },
   {
+    uri: MARTIN_STATIC_RESOURCE_URIS.commandMapGuide,
+    name: "martin_command_map_guide",
+    title: "Martin Command Map Guide",
+    description: "Command-by-command guide for choosing the right Martin tool or surface.",
+    mimeType: "text/markdown"
+  },
+  {
+    uri: MARTIN_STATIC_RESOURCE_URIS.ideOnboardingGuide,
+    name: "martin_ide_onboarding_guide",
+    title: "Martin IDE Onboarding Guide",
+    description: "IDE-facing setup guide for making MartinLoop part of the default MCP workflow.",
+    mimeType: "text/markdown"
+  },
+  {
+    uri: MARTIN_STATIC_RESOURCE_URIS.operatingRulesGuide,
+    name: "martin_operating_rules_guide",
+    title: "Martin Operating Rules",
+    description: "Built-in operating rules that tell agents when Martin commands must be used before work proceeds.",
+    mimeType: "text/markdown"
+  },
+  {
     uri: MARTIN_STATIC_RESOURCE_URIS.publishReadinessGuide,
     name: "martin_publish_readiness_guide",
     title: "Martin Publish Readiness Guide",
@@ -187,7 +211,7 @@ export interface MartinReadResourceInput {
   uri: string;
   runsDir?: string;
   workingDirectory?: string;
-  engine?: "claude" | "codex";
+  engine?: "claude" | "codex" | "gemini";
 }
 
 export function listMartinResources(): { resources: Resource[] } {
@@ -270,6 +294,15 @@ export async function readMartinResource(
 
     case MARTIN_STATIC_RESOURCE_URIS.agentStartGuide:
       return textResource(input.uri, "text/markdown", buildAgentStartGuide(context.runsRoot));
+
+    case MARTIN_STATIC_RESOURCE_URIS.commandMapGuide:
+      return textResource(input.uri, "text/markdown", buildCommandMapGuide(context.runsRoot));
+
+    case MARTIN_STATIC_RESOURCE_URIS.ideOnboardingGuide:
+      return textResource(input.uri, "text/markdown", buildIdeOnboardingGuide(context.runsRoot));
+
+    case MARTIN_STATIC_RESOURCE_URIS.operatingRulesGuide:
+      return textResource(input.uri, "text/markdown", buildOperatingRulesGuide(context.runsRoot));
 
     case MARTIN_STATIC_RESOURCE_URIS.publishReadinessGuide:
       return textResource(input.uri, "text/markdown", buildPublishReadinessGuide(context.runsRoot));
@@ -391,7 +424,7 @@ async function loadLatestRunForCompactResource(runsRoot: string): Promise<{
         empty: true,
         warnings: [
           "No Martin run records were found yet.",
-          "Run `npx martin-loop demo`, then run a governed task or set MARTIN_LIVE=false for a no-spend local proof run."
+          "Run `npx martin-loop demo`, then run `npx martin-loop run ... --proof --verify <command>` for a no-spend local proof pass."
         ]
       };
     }
@@ -563,8 +596,17 @@ async function buildAgentNextStepResource(runsRoot: string): Promise<Record<stri
           ? "failed"
           : "unavailable"
     },
+    requiredWorkflow: [
+      "martin_doctor",
+      "martin_plan",
+      "martin_preflight",
+      "martin_run",
+      "martin_dossier",
+      "martin_eval"
+    ],
     preferredResource: MARTIN_STATIC_RESOURCE_URIS.latestSummary,
-    proofCard: MARTIN_STATIC_RESOURCE_URIS.latestProofCard
+    proofCard: MARTIN_STATIC_RESOURCE_URIS.latestProofCard,
+    operatingRules: MARTIN_STATIC_RESOURCE_URIS.operatingRulesGuide
   };
 }
 
@@ -627,7 +669,7 @@ function compactEmptyState(kind: string, runsRoot: string, warnings: string[]): 
     status: "empty",
     runsRoot,
     summary: "No Martin run records are available yet.",
-    nextStep: "Run `martin-loop doctor`, create the demo workspace with `npx martin-loop demo`, then run a no-spend proof task with MARTIN_LIVE=false.",
+    nextStep: "Run `npx martin-loop doctor`, create the demo workspace with `npx martin-loop demo`, then run `npx martin-loop run ... --proof --verify <command>`.",
     warnings
   };
 }
@@ -766,6 +808,90 @@ Use Martin Loop as the local governor before you spend agent tokens or retry a f
 ## Copy-Paste Agent Rule
 
 Before running or retrying an autonomous coding task, call Martin. Prefer compact resources first, then full dossiers only when the compact receipt says more evidence is needed. Never claim success unless Martin shows verifier-backed completion or a clear blocked reason.
+`;
+}
+
+function buildCommandMapGuide(runsRoot: string): string {
+  const metadata = buildMartinDiscoveryMetadata(MARTIN_MCP_PACKAGE_VERSION);
+  return `# Martin Command Map
+
+Discovery revision: \`${metadata.discoveryRevision}\`
+Server version: \`${metadata.serverVersion}\`
+Runs root: \`${runsRoot}\`
+
+Use this guide when an IDE or agent needs to know which Martin surface to call next.
+
+## Default Governed Sequence
+
+1. \`martin_doctor\` — confirm environment and visibility.
+2. \`martin_plan\` — propose the bounded approach without spending a run.
+3. \`martin_preflight\` — turn the plan into an explicit contract.
+4. \`martin_run\` — execute only after the contract is safe.
+5. \`martin_dossier\` — inspect what happened and what Martin prevented.
+6. \`martin_eval\` — convert the result into review posture when needed.
+
+## When To Use Which Surface
+
+- Need the smallest next action: \`${MARTIN_STATIC_RESOURCE_URIS.agentNextStep}\`
+- Need a quick receipt: \`${MARTIN_STATIC_RESOURCE_URIS.latestSummary}\`
+- Need a shareable proof object: \`${MARTIN_STATIC_RESOURCE_URIS.latestProofCard}\`
+- Need a full run review: \`martin_dossier\`
+- Need to decide whether to retry: \`martin_triage_runs\`
+- Need IDE setup guidance: \`${MARTIN_STATIC_RESOURCE_URIS.ideOnboardingGuide}\`
+`;
+}
+
+function buildIdeOnboardingGuide(runsRoot: string): string {
+  const metadata = buildMartinDiscoveryMetadata(MARTIN_MCP_PACKAGE_VERSION);
+  return `# Martin IDE Onboarding
+
+Discovery revision: \`${metadata.discoveryRevision}\`
+Server version: \`${metadata.serverVersion}\`
+Runs root: \`${runsRoot}\`
+
+Use this guide after the MCP server is installed so the host naturally uses MartinLoop during real work.
+
+## IDE Default Flow
+
+1. Read \`${MARTIN_STATIC_RESOURCE_URIS.agentStartGuide}\`
+2. Read \`${MARTIN_STATIC_RESOURCE_URIS.operatingRulesGuide}\`
+3. Use prompt \`martin_start\` or \`martin_governed_coding_kickoff\`
+4. Call \`martin_doctor\`
+5. Call \`martin_plan\`
+6. Call \`martin_preflight\`
+7. Only then call \`martin_run\`
+
+## Goal
+
+MartinLoop should become the normal path for coding work in the host, not a manual extra step the human has to remember.
+`;
+}
+
+function buildOperatingRulesGuide(runsRoot: string): string {
+  const metadata = buildMartinDiscoveryMetadata(MARTIN_MCP_PACKAGE_VERSION);
+  return `# Martin Operating Rules
+
+Discovery revision: \`${metadata.discoveryRevision}\`
+Server version: \`${metadata.serverVersion}\`
+Runs root: \`${runsRoot}\`
+
+Use these rules inside the IDE or MCP host as the default MartinLoop operating posture.
+
+## Required Sequence Before Real Work
+
+1. \`martin_doctor\`
+2. \`martin_plan\`
+3. \`martin_preflight\`
+4. \`martin_run\`
+5. \`martin_dossier\`
+
+## Enforcement Rule
+
+Do not execute real coding work through MartinLoop until doctor and preflight have both been used for the current task.
+
+## Completion Rule
+
+Do not claim success until MartinLoop shows verifier-backed completion or an explicit blocked reason backed by evidence.
 `;
 }
 

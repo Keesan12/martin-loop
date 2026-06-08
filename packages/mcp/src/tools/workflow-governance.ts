@@ -2,10 +2,11 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 
-import { DEFAULT_BUDGET } from "@martin/contracts";
+import { DEFAULT_BUDGET, type LoopBudget } from "@martin/contracts";
 
 import {
-  detectCliAvailabilitySync,
+  createSkippedCliAvailability,
+  detectCliAvailability,
   type MartinEngine,
   type RunStoreInspection
 } from "./tool-support.js";
@@ -41,6 +42,7 @@ export interface RepoSignals {
   packageScripts: Record<string, string>;
   git: RepoGitState;
   sensitivePaths: string[];
+  hostAvailabilityChecked: boolean;
   availableHosts: Record<
     "claude" | "codex" | "cursor" | "gemini",
     {
@@ -139,12 +141,33 @@ interface ContractOverrides {
   maxCommands?: number;
 }
 
+interface LoopBudgetOverrides {
+  maxUsd?: number;
+  softLimitUsd?: number;
+  maxIterations?: number;
+  maxTokens?: number;
+}
+
 const HOST_COMMANDS = {
   claude: "claude",
   codex: "codex",
   cursor: "cursor",
   gemini: "gemini"
 } as const;
+
+const REPO_SIGNALS_CACHE_TTL_MS = 5_000;
+const repoSignalsCache = new Map<
+  string,
+  {
+    expiresAt: number;
+    value: RepoSignals;
+  }
+>();
+const GIT_STATE_CACHE_TTL_MS = 60_000;
+const repoGitStateCache = new Map<
+  string,
+  { expiresAt: number; value: RepoGitState }
+>();
 
 const POLICY_PACKS: Record<MartinPolicyPack, Omit<MartinPolicyPackDefinition, "defaultVerifiers">> = {
   "solo-founder": {
@@ -248,14 +271,24 @@ const POLICY_PACKS: Record<MartinPolicyPack, Omit<MartinPolicyPackDefinition, "d
   }
 };
 
-export function inspectRepoSignals(workingDirectory: string): RepoSignals {
+export function inspectRepoSignals(
+  workingDirectory: string,
+  options: { includeHostAvailability?: boolean } = {}
+): RepoSignals {
+  const includeHostAvailability = options.includeHostAvailability ?? true;
+  const cacheKey = `${workingDirectory}::hosts=${includeHostAvailability ? "live" : "skipped"}`;
+  const cached = repoSignalsCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value;
+  }
+
   const packageScripts = readPackageScripts(workingDirectory);
   const packageManager = detectPackageManager(workingDirectory);
   const frameworks = detectFrameworks(workingDirectory, packageScripts);
   const languages = detectLanguages(workingDirectory, frameworks);
   const verifiers = detectVerifierCommands(packageScripts, packageManager);
 
-  return {
+  const signals: RepoSignals = {
     workingDirectory,
     packageManager,
     languages,
@@ -264,13 +297,29 @@ export function inspectRepoSignals(workingDirectory: string): RepoSignals {
     packageScripts,
     git: detectGitState(workingDirectory),
     sensitivePaths: detectSensitivePaths(workingDirectory),
+    hostAvailabilityChecked: includeHostAvailability,
     availableHosts: {
-      claude: detectCliAvailabilitySync(HOST_COMMANDS.claude),
-      codex: detectCliAvailabilitySync(HOST_COMMANDS.codex),
-      cursor: detectCliAvailabilitySync(HOST_COMMANDS.cursor),
-      gemini: detectCliAvailabilitySync(HOST_COMMANDS.gemini)
+      claude: includeHostAvailability
+        ? detectCliAvailability(HOST_COMMANDS.claude)
+        : createSkippedCliAvailability(HOST_COMMANDS.claude),
+      codex: includeHostAvailability
+        ? detectCliAvailability(HOST_COMMANDS.codex)
+        : createSkippedCliAvailability(HOST_COMMANDS.codex),
+      cursor: includeHostAvailability
+        ? detectCliAvailability(HOST_COMMANDS.cursor)
+        : createSkippedCliAvailability(HOST_COMMANDS.cursor),
+      gemini: includeHostAvailability
+        ? detectCliAvailability(HOST_COMMANDS.gemini)
+        : createSkippedCliAvailability(HOST_COMMANDS.gemini)
     }
   };
+
+  repoSignalsCache.set(cacheKey, {
+    expiresAt: Date.now() + REPO_SIGNALS_CACHE_TTL_MS,
+    value: signals
+  });
+
+  return signals;
 }
 
 export function buildReadinessReport(
@@ -300,7 +349,11 @@ export function buildReadinessReport(
   if (signals.frameworks.length === 0) {
     score -= 8;
   }
-  if (!signals.availableHosts.claude.available && !signals.availableHosts.codex.available) {
+  if (
+    signals.hostAvailabilityChecked &&
+    !signals.availableHosts.claude.available &&
+    !signals.availableHosts.codex.available
+  ) {
     score -= 18;
   }
   score = Math.max(0, Math.min(100, score));
@@ -344,9 +397,10 @@ export function buildPolicyPackDefinition(
 
 export function buildPlanProposal(
   workingDirectory: string,
-  overrides: ContractOverrides
+  overrides: ContractOverrides,
+  options: { signals?: RepoSignals } = {}
 ): MartinPlanProposal {
-  const signals = inspectRepoSignals(workingDirectory);
+  const signals = options.signals ?? inspectRepoSignals(workingDirectory);
   const policy = buildPolicyPackDefinition(overrides.policyPack, signals);
   const scope = inferScopeFromObjective(overrides.objective, policy, overrides);
   const estimatedBudget = buildBudget(overrides, signals);
@@ -385,9 +439,10 @@ export function buildPlanProposal(
 
 export function buildRunContract(
   workingDirectory: string,
-  overrides: ContractOverrides
+  overrides: ContractOverrides,
+  options: { signals?: RepoSignals; plan?: MartinPlanProposal } = {}
 ): MartinRunContract {
-  const plan = buildPlanProposal(workingDirectory, overrides);
+  const plan = options.plan ?? buildPlanProposal(workingDirectory, overrides, options);
   return {
     objective: overrides.objective,
     ...(overrides.context ? { context: overrides.context } : {}),
@@ -400,6 +455,21 @@ export function buildRunContract(
     requiresApproval:
       plan.approvalRecommendation === "required" ||
       shouldRequireApproval(plan.policyPack.requireApprovalAtOrAbove, plan.risk.level)
+  };
+}
+
+export function normalizeLoopBudget(overrides: LoopBudgetOverrides = {}): LoopBudget {
+  const maxUsd = overrides.maxUsd ?? DEFAULT_BUDGET.maxUsd;
+  const softLimitUsd = Math.min(
+    overrides.softLimitUsd ?? DEFAULT_BUDGET.softLimitUsd,
+    maxUsd
+  );
+
+  return {
+    maxUsd,
+    softLimitUsd,
+    maxIterations: overrides.maxIterations ?? DEFAULT_BUDGET.maxIterations,
+    maxTokens: overrides.maxTokens ?? DEFAULT_BUDGET.maxTokens
   };
 }
 
@@ -612,18 +682,10 @@ function detectVerifierCommands(
 }
 
 function detectGitState(workingDirectory: string): RepoGitState {
-  const availability = spawnSync("git", ["--version"], {
-    cwd: workingDirectory,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"]
-  });
-
-  if (availability.status !== 0) {
-    return {
-      available: false,
-      isRepo: false,
-      clean: false
-    };
+  const cacheKey = workingDirectory;
+  const cached = repoGitStateCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value;
   }
 
   const isRepo = spawnSync("git", ["rev-parse", "--is-inside-work-tree"], {
@@ -632,42 +694,87 @@ function detectGitState(workingDirectory: string): RepoGitState {
     stdio: ["ignore", "pipe", "pipe"]
   });
   if (isRepo.status !== 0 || !/true/u.test(isRepo.stdout ?? "")) {
-    return {
-      available: true,
-      isRepo: false,
-      clean: false
-    };
+    const availability = spawnSync("git", ["--version"], {
+      cwd: workingDirectory,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+
+    const value =
+      availability.status !== 0
+        ? {
+            available: false,
+            isRepo: false,
+            clean: false
+          }
+        : {
+            available: true,
+            isRepo: false,
+            clean: false
+          };
+
+    repoGitStateCache.set(cacheKey, {
+      expiresAt: Date.now() + GIT_STATE_CACHE_TTL_MS,
+      value
+    });
+
+    return value;
   }
 
-  const branch = spawnSync("git", ["branch", "--show-current"], {
-    cwd: workingDirectory,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"]
-  }).stdout.trim();
-  const status = spawnSync("git", ["status", "--porcelain", "--branch"], {
-    cwd: workingDirectory,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"]
-  });
+  const status = spawnSync(
+    "git",
+    ["status", "--porcelain=v2", "--branch", "--untracked-files=normal", "--ignored=no", "--", "."],
+    {
+      cwd: workingDirectory,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"]
+    }
+  );
   const statusLines = (status.stdout ?? "")
     .split(/\r?\n/u)
     .map((line) => line.trim())
     .filter(Boolean);
-  const dirty = statusLines.some((line) => !line.startsWith("##"));
-  const header = statusLines.find((line) => line.startsWith("##"));
-  const upstream = header?.match(/\.\.\.([^\s[]+)/u)?.[1];
-  const ahead = parseCount(header, /ahead (\d+)/u);
-  const behind = parseCount(header, /behind (\d+)/u);
+  const dirty = statusLines.some((line) => !line.startsWith("#"));
+  const branch = statusLines
+    .find((line) => line.startsWith("# branch.head "))
+    ?.replace("# branch.head ", "")
+    .trim();
+  const upstream = statusLines
+    .find((line) => line.startsWith("# branch.upstream "))
+    ?.replace("# branch.upstream ", "")
+    .trim();
+  const aheadBehind = statusLines
+    .find((line) => line.startsWith("# branch.ab "))
+    ?.replace("# branch.ab ", "")
+    .trim()
+    .split(/\s+/u);
+  const aheadToken = aheadBehind?.find((token) => token.startsWith("+"));
+  const behindToken = aheadBehind?.find((token) => token.startsWith("-"));
+  const ahead =
+    aheadToken && aheadToken.length > 1
+      ? Number.parseInt(aheadToken.slice(1), 10)
+      : undefined;
+  const behind =
+    behindToken && behindToken.length > 1
+      ? Number.parseInt(behindToken.slice(1), 10)
+      : undefined;
 
-  return {
+  const value: RepoGitState = {
     available: true,
     isRepo: true,
     clean: !dirty,
-    ...(branch ? { branch } : {}),
+    ...(branch && branch !== "(detached)" ? { branch } : {}),
     ...(upstream ? { upstream } : {}),
-    ...(ahead !== undefined ? { ahead } : {}),
-    ...(behind !== undefined ? { behind } : {})
+    ...(Number.isFinite(ahead) ? { ahead } : {}),
+    ...(Number.isFinite(behind) ? { behind } : {})
   };
+
+  repoGitStateCache.set(cacheKey, {
+    expiresAt: Date.now() + GIT_STATE_CACHE_TTL_MS,
+    value
+  });
+
+  return value;
 }
 
 function detectSensitivePaths(workingDirectory: string): string[] {
@@ -744,14 +851,9 @@ function inferScopeFromObjective(
 
 function buildBudget(overrides: ContractOverrides, signals: RepoSignals): MartinPlanBudget {
   const defaultCommands = signals.verifiers.defaultPlan.length > 0 ? 12 : 8;
+  const normalizedBudget = normalizeLoopBudget(overrides);
   return {
-    maxUsd: overrides.maxUsd ?? DEFAULT_BUDGET.maxUsd,
-    softLimitUsd: Math.min(
-      overrides.maxUsd ?? DEFAULT_BUDGET.maxUsd,
-      DEFAULT_BUDGET.softLimitUsd
-    ),
-    maxIterations: overrides.maxIterations ?? DEFAULT_BUDGET.maxIterations,
-    maxTokens: overrides.maxTokens ?? DEFAULT_BUDGET.maxTokens,
+    ...normalizedBudget,
     maxMinutes: overrides.maxMinutes ?? 20,
     maxFilesChanged: overrides.maxFilesChanged ?? 8,
     maxCommands: overrides.maxCommands ?? defaultCommands
@@ -809,13 +911,4 @@ function shouldRequireApproval(
 ): boolean {
   const ordering = ["low", "medium", "high"] as const;
   return ordering.indexOf(level) >= ordering.indexOf(threshold);
-}
-
-function parseCount(value: string | undefined, pattern: RegExp): number | undefined {
-  const match = value?.match(pattern)?.[1];
-  if (!match) {
-    return undefined;
-  }
-  const parsed = Number.parseInt(match, 10);
-  return Number.isFinite(parsed) ? parsed : undefined;
 }
