@@ -120,6 +120,10 @@ function buildTriageFinding(
     reasonCodes.push("verification_failed");
     severity = maxSeverity(severity, "critical");
   }
+  if (verification.status === "contradicted") {
+    reasonCodes.push("verification_contradicted");
+    severity = maxSeverity(severity, "critical");
+  }
 
   if (loop.pressure === "hard_limit" || loop.shouldStop) {
     reasonCodes.push("budget_hard_limit");
@@ -136,8 +140,8 @@ function buildTriageFinding(
     severity = maxSeverity(severity, "high");
   }
 
-  if (verification.status === "unavailable" && loop.attempts > 0) {
-    reasonCodes.push("verification_unavailable");
+  if (verification.status === "not_run" && loop.attempts > 0) {
+    reasonCodes.push("verification_not_run");
     severity = maxSeverity(severity, "medium");
   }
 
@@ -184,8 +188,12 @@ function summarizeFinding(
     return `Severity ${severity}: ${loop.loopId} is currently failed/${loop.lifecycleState}.`;
   }
 
-  if (reasonCodes.includes("verification_unavailable")) {
-    return `Severity ${severity}: ${loop.loopId} has ${loop.attempts} attempt(s) but verification is unavailable.`;
+  if (reasonCodes.includes("verification_contradicted")) {
+    return `Severity ${severity}: ${loop.loopId} has contradictory verification evidence and needs operator review.`;
+  }
+
+  if (reasonCodes.includes("verification_not_run")) {
+    return `Severity ${severity}: ${loop.loopId} has ${loop.attempts} attempt(s) but verification was not recorded.`;
   }
 
   if (reasonCodes.includes("budget_soft_limit")) {

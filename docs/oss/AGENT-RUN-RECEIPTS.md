@@ -17,7 +17,7 @@ The OSS receipt is intentionally local-first. It prioritizes deterministic inspe
 | `schemaVersion` | Receipt schema identifier (`martin.share-receipt.v1`). |
 | `generatedAt` | ISO timestamp when the share receipt was generated. |
 | `loop` | Top-level run facts: `loopId`, title/objective, status/lifecycleState, attempts, spend/budget, update time. |
-| `receiptIntegrity` | Integrity verdict from local persisted evidence (`verified`, `tamper_detected`, `unsigned`). |
+| `receiptIntegrity` | Integrity verdict from local persisted evidence (`verified`, `unsigned`, `tamper_detected`, `relocated`, `material_missing`, `selector_noncanonical`). |
 | `verification` | Verifier summary for the selected run. |
 | `receipt` | Governed-run summary with next safe action and risk posture fields. |
 | `artifacts` | Local artifact references included in the dossier view. |
@@ -63,8 +63,10 @@ npx martin-loop run "Summarize the workspace and prove tests still pass" --proof
 
 ```sh
 npx martin-loop dossier --latest
+npx martin-loop review
 npx martin-loop runs get --latest
 npx martin-loop runs verify --latest
+npx martin-loop receipts explain --latest
 ```
 
 3. Create the share bundle:

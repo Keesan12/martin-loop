@@ -287,7 +287,7 @@ function collectVerificationSnapshots(
 
   snapshots.sort((left, right) => new Date(left.timestamp).getTime() - new Date(right.timestamp).getTime());
   if (hasConflictingStatusesForLatestAttempt(snapshots)) {
-    warnings.push("Verification evidence conflicts for the latest attempt; reporting status as unavailable.");
+    warnings.push("Verification evidence conflicts for the latest attempt; marking verification as contradicted.");
   }
 
   return { snapshots, warnings };
@@ -334,7 +334,7 @@ function selectLatestVerificationSnapshot(
   snapshots: MartinVerificationSnapshot[],
   warnings: string[]
 ): MartinVerificationSnapshot | undefined {
-  if (warnings.includes("Verification evidence conflicts for the latest attempt; reporting status as unavailable.")) {
+  if (warnings.includes("Verification evidence conflicts for the latest attempt; marking verification as contradicted.")) {
     return undefined;
   }
   return snapshots.at(-1);
