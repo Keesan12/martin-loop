@@ -148,6 +148,7 @@ describe("executeCli", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("MartinLoop start");
     expect(result.stdout).toContain("Governed runs are the default path");
+    expect(result.stdout).toContain("auto-checks doctor, session-start, and preflight");
     expect(result.stdout).toContain("npx -y martin-loop@latest demo");
   });
 
@@ -470,7 +471,8 @@ describe("executeCli", () => {
       expect(result.stdout).toContain(targetDirectory);
       expect(result.stdout).toContain("npm install");
       expect(result.stdout).toContain("Safe first run (no provider spend, governed path)");
-      expect(result.stdout).toContain("npx -y martin-loop@latest doctor");
+      expect(result.stdout).toContain("npx -y martin-loop@latest start");
+      expect(result.stdout).toContain("Inspect the governed checks explicitly");
       expect(await readFile(join(targetDirectory, "README.md"), "utf8")).toContain("Demo Sandbox");
     } finally {
       process.chdir(previousCwd);

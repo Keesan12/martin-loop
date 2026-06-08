@@ -161,6 +161,12 @@ describe("native phase command center", () => {
       host: "claude",
       execute: false
     });
+    expect(parseCliArguments(["phase", "session-start", "--host", "claude"])).toEqual({
+      command: "native_phase",
+      subcommand: "session-start",
+      host: "claude",
+      execute: false
+    });
     expect(parseCliArguments(["phase", "run", "--execute", "--run-scan-limit", "5"])).toEqual({
       command: "native_phase",
       subcommand: "run",
@@ -237,6 +243,42 @@ describe("native phase command center", () => {
         expect(payload.sessionStart.hostDiagnostics.codex.launchReady).toBe(true);
         expect(payload.sessionStart.commands[0]).toContain(`--cwd ${rootDir}`);
         expect(payload.sessionStart.commands[0]).toContain(`--runs-dir ${runsDir}`);
+      });
+    } finally {
+      if (previousLive === undefined) {
+        delete process.env.MARTIN_LIVE;
+      } else {
+        process.env.MARTIN_LIVE = previousLive;
+      }
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("executes phase session-start as the documented compatibility alias", async () => {
+    const { rootDir, runsDir } = await createPhaseFixture();
+    const previousLive = process.env.MARTIN_LIVE;
+    process.env.MARTIN_LIVE = "true";
+
+    try {
+      await withFakeCodexCli(async () => {
+        await mkdir(join(rootDir, ".git"), { recursive: true });
+        const result = await executeCli([
+          "--json",
+          "phase",
+          "session-start",
+          "--host",
+          "codex",
+          "--cwd",
+          rootDir,
+          "--runs-dir",
+          runsDir
+        ]);
+        const payload = JSON.parse(result.stdout);
+
+        expect(result.exitCode).toBe(0);
+        expect(payload.command).toBe("session_start");
+        expect(payload.sessionStart.hostDiagnostics.engine).toBe("codex");
+        expect(payload.receiptScope.runsRoot).toBe(runsDir);
       });
     } finally {
       if (previousLive === undefined) {
