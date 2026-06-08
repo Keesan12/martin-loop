@@ -79,3 +79,43 @@
 
 - `pnpm --filter @martin/cli test -- cli.test.ts` passed (25/25).
 - `pnpm --filter @martin/cli lint` passed.
+
+## C.6 Windows Codex launch parity
+
+- Root cause from field audit: doctor/preflight probe resolved one Codex executable path while runtime adapter launch could still use a different default command path.
+- Fix implemented:
+  - `executeRunCommand` now captures `codexProbe.command` and passes it into runtime adapter selection.
+  - `selectAdapter` now accepts an optional `codexCommandOverride` and forwards it to `createCodexCliAdapter`.
+- Result:
+  - runtime launch path is now pinned to the exact command path proven by the launch probe in the same run.
+
+## C.10 staging rerun evidence (internal exact branch)
+
+- Full staging gate rerun on `codex/gsd-phase08-mainline` after C.6:
+  - `pnpm --filter @martin/cli test` passed (12/12 files, 109 tests)
+  - `pnpm --filter @martin/cli lint` passed
+  - `pnpm test` passed
+  - `pnpm build` passed
+  - `pnpm oss:validate` passed
+  - `pnpm public:smoke` passed
+  - `pnpm --filter @martinloop/mcp lint` passed
+  - `pnpm --filter @martinloop/mcp test` passed
+  - `pnpm --filter @martinloop/mcp build` passed
+  - `pnpm --filter @martinloop/mcp smoke:pack` passed
+  - `pnpm --filter @martinloop/mcp smoke:published:pack` passed
+  - `pnpm --filter @martinloop/mcp verify:release` passed
+  - `pnpm release:matrix:local` passed
+
+## Remaining C-slice status
+
+- C.1 path traversal reject: closed in code + tests.
+- C.2 `--cwd` config isolation: closed in code + tests.
+- C.3 selector parity canonicalization: covered by canonical selector test; keep open for external field replay confirmation.
+- C.4 weak-integrity share trust degradation: closed in code + tests.
+- C.5 stuck-run timeout + fail-closed finalization: closed in code + tests.
+- C.6 Windows Codex probe/run parity: closed in code.
+- C.7 integrity-state split: partially improved via trust degradation and explicit warnings; state vocabulary expansion still pending full public-surface contract update.
+- C.8 proof-mode gate alignment: closed in code + tests.
+- C.9 unknown-field warning on copied receipts: closed in code + tests.
+- C.10 full client rerun contract: internal gate rerun complete; external field rerun still pending.
+- C.11 staging/public promotion: pending.
