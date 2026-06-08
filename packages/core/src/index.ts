@@ -158,12 +158,10 @@ export {
   resolveRunsRoot,
   resolveReceiptIntegrityPath,
   verifyReceiptIntegrityFromFiles,
-  verifyLoopRecordIntegrity,
   writeReceiptIntegrityMaterial
 } from "./persistence/index.js";
 export type {
   AttemptArtifacts,
-  IntegrityStatus,
   LedgerEvent,
   LedgerEventKind,
   LoopAttemptRecord,
