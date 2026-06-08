@@ -1,0 +1,64 @@
+name: Bug report
+description: Report a reproducible problem in MartinLoop.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe the bug in one or two paragraphs.
+      placeholder: MartinLoop marked a run complete even though the verifier failed.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+      description: Tell us what should have happened instead.
+      placeholder: The run should have stopped with a verification_failed status and a clear next action.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: Share the smallest set of steps or commands that reproduce it. A tiny repo or gist is ideal.
+      placeholder: |
+        1. Run `npx martin-loop doctor`
+        2. Run `npx martin-loop run ...`
+        3. Observe ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: MartinLoop version
+      description: Run `npx martin-loop --version` if you are not sure.
+      placeholder: "0.2.7"
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include OS, Node version, client or host, and package version.
+      placeholder: Windows 11, Node 22, Codex CLI, martin-loop 0.2.7
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Logs or evidence
+      description: Paste the relevant error output, receipts, or screenshots.
+      render: shell
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and discussions.
+          required: true
+        - label: I removed secrets, tokens, and non-public workspace details from logs.
+          required: true

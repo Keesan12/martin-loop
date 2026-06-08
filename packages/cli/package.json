@@ -1,6 +1,7 @@
 {
   "name": "@martin/cli",
   "version": "0.1.0",
+  "private": true,
   "type": "module",
   "description": "Martin Loop CLI — budget-aware coding loops with failure classification and verified exits.",
   "bin": {
@@ -8,9 +9,6 @@
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "publishConfig": {
-    "access": "public"
-  },
   "scripts": {
     "prebuild": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "build": "pnpm --filter @martin/contracts build && pnpm --filter @martin/core build && pnpm --filter @martin/adapters build && tsc -p tsconfig.build.json",

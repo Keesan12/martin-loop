@@ -57,7 +57,7 @@ describe("Martin Reliability Score", () => {
         runReceiptsPresent: { present: true },
         rollbackEvidencePresent: {
           present: false,
-          detail: "Missing rollback proof at C:\\Users\\Torram\\private\\rollback.md"
+          detail: "Missing rollback proof at C:\\workspace\\private\\rollback.md"
         },
         mcpDoctorPassing: { present: false, detail: "doctor exited 1" }
       }
@@ -70,6 +70,27 @@ describe("Martin Reliability Score", () => {
       "Rollback evidence present: Missing rollback proof at [redacted-path]",
       "MCP doctor passing: doctor exited 1"
     ]);
+  });
+
+  it("treats unsigned receipts as missing verified evidence", () => {
+    const score = computeMartinReliabilityScore({
+      signals: {
+        budgetConfigured: { present: true },
+        verifierConfigured: { present: true },
+        runReceiptsPresent: {
+          present: false,
+          detail: "Receipt integrity is unsigned."
+        },
+        rollbackEvidencePresent: { present: true },
+        mcpDoctorPassing: { present: true }
+      }
+    });
+
+    expect(score.points).toBe(80);
+    expect(score.grade).toBe("strong");
+    expect(score.missingReasons).toContain(
+      "Verified run receipts present: Receipt integrity is unsigned."
+    );
   });
 
   it("does not claim autonomous operation in score or badge output", () => {
@@ -92,7 +113,7 @@ describe("Martin Reliability Score", () => {
   it("redacts absolute paths and escapes text in SVG details", () => {
     const score = computeMartinReliabilityScore({
       signals: {
-        budgetConfigured: { present: false, detail: "Missing C:\\Users\\Torram\\secret\\budget.yaml" },
+        budgetConfigured: { present: false, detail: "Missing C:\\workspace\\secret\\budget.yaml" },
         verifierConfigured: { present: false, detail: "Use <script>alert(1)</script> verifier" },
         runReceiptsPresent: { present: false, detail: "No receipts under /Users/keesan/private/runs" },
         rollbackEvidencePresent: { present: false, detail: "No rollback file" },
@@ -102,7 +123,7 @@ describe("Martin Reliability Score", () => {
 
     const svg = renderMartinReliabilityBadgeSvg(score);
 
-    expect(svg).not.toContain("C:\\Users\\Torram");
+    expect(svg).not.toContain("C:\\Users\\ExampleUser");
     expect(svg).not.toContain("/Users/keesan");
     expect(svg).toContain("[redacted-path]");
     expect(svg).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");

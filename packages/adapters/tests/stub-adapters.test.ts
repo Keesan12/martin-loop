@@ -20,6 +20,7 @@ describe("createStubDirectProviderAdapter", () => {
     expect(adapter.metadata.providerId).toBe("openai");
     expect(adapter.metadata.transport).toBe("http");
     expect(adapter.metadata.capabilities.usageSettlement).toBe(true);
+    expect(adapter.metadata.capabilities.workspaceMutations).toBe(false);
     expect(result.status).toBe("failed");
     expect(result.failure?.message).toContain("not configured");
     expect(result.usage.actualUsd).toBe(0);
@@ -30,7 +31,7 @@ describe("createStubDirectProviderAdapter", () => {
 describe("createStubAgentCliAdapter", () => {
   it("supports injected responders while keeping CLI metadata visible", async () => {
     const adapter = createStubAgentCliAdapter({
-      command: ["martin-loop", "run"],
+      command: ["martin", "run"],
       profile: "sandbox",
       responder: async (request) => ({
         status: "completed",
@@ -58,7 +59,7 @@ describe("createStubAgentCliAdapter", () => {
     const result = await adapter.execute(createRequest());
 
     expect(adapter.kind).toBe("agent-cli");
-    expect(adapter.metadata.command).toBe("martin-loop run");
+    expect(adapter.metadata.command).toBe("martin run");
     expect(adapter.metadata.profile).toBe("sandbox");
     expect(adapter.metadata.transport).toBe("cli");
     expect(result.status).toBe("completed");

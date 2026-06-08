@@ -8,6 +8,7 @@ export type ToolFailureCode =
   | "invalid_path"
   | "invalid_selector"
   | "no_loop_records"
+  | "policy_blocked"
   | "store_unreadable"
   | "tool_execution_failed"
   | "unknown_tool"

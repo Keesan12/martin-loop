@@ -1,46 +1,51 @@
 # Version Ledger
 
-This file is the canonical version map for release work. Do not push, tag, or publish from memory when the root `martin-loop` package and the standalone `@martinloop/mcp` package move on different lines.
+This file is the release source of truth for package/version mapping in this repo. Check it before you cut a branch, update docs, or talk about npm state.
 
 ## Root package: `martin-loop`
 
-- live npm dist-tag `latest`: `0.2.7`
-- live npm versions include: `0.1.0`, `0.1.1`, `0.1.2`, `0.1.3`, `0.1.4`, `0.1.5`, `0.1.6`, `0.2.0`, `0.2.1`, `0.2.2`, `0.2.3`, `0.2.4`, `0.2.5`, `0.2.6`, `0.2.7`, and a historical anomaly `1.3.0`
-- public GitHub `main`: `0.2.7`
-- local OSS integrated tree target after public sync: `0.2.7`
-- release candidate: `0.2.8` local command center
-- next root-package release candidate: `0.2.8` after explicit public approval
-- release rule: treat the root package as its own public semver line and do not infer standalone MCP versioning from it
+- live npm dist-tag `latest`: `0.2.11`
+- live public GitHub release: `v0.2.11`
+- live public baseline in this train: `0.2.11`
+- root public baseline: `0.2.11`
+- releases consumed since the original `0.2.8` launch:
+  - `0.2.9` fixed proof-run classification, Windows `.cmd` resolution, and public provider defaults
+  - `0.2.10` tightened verifier evidence, `--runs-dir` consistency, and public help output
+  - `0.2.11` fixed `runs verify --latest` selector parity in the public CLI
+- current in-repo root release line: `0.3.0` for shareable run receipts, benchmark reproducibility, and public trust proofs
+- next planned root follow-on: `0.3.1` for multi-model and multi-IDE compatibility
 
-## Standalone MCP package: `@martinloop/mcp`
+## Standalone package: `@martinloop/mcp`
 
-- live npm dist-tag `latest`: `0.2.5`
-- live npm versions include: `0.1.1`, `0.1.2`, `0.1.3`, `0.1.4`, `0.2.0`, `0.2.5`
-- public GitHub `main`: `0.2.5`
-- local OSS integrated tree: `0.2.5`
-- public scheduled release train:
-  - `0.1.4` for operator foundation
-  - `0.2.0` for cockpit expansion
-  - `0.2.5` for the public MCP package line
+- live npm dist-tag `latest`: `0.3.0`
+- live public GitHub release: `mcp-v0.3.0`
+- live public baseline in this train: `0.3.0`
+- standalone MCP public baseline: `0.3.0`
+- next planned standalone release: `0.3.1` for review and handoff controls
+- next planned follow-ons:
+  - `0.3.2` opt-in execution controls
 
-## Tier Boundary
+## Release rules
 
-- Free / OSS is the public package lane in this repo: root `martin-loop` on the `0.2.x` line plus the standalone `@martinloop/mcp` train.
-- Pro, Growth, Enterprise, and Internal are private paid-tier names. They do not inherit semver from either public OSS package.
-- The public MCP train labels are:
-  - `0.1.4` operator foundation
-  - `0.2.0` cockpit expansion
-  - `0.2.5` public MCP package line
+- The root package line and the standalone MCP line move independently.
+- Do not infer standalone MCP release state from the root package, or the other way around.
+- Public release notes must be written for customers and evaluators, not for internal operators.
+- Public-facing examples, screenshots, README copy, and changelog entries must stay free of internal repo names, absolute system paths, private branch names, or process noise.
+- Publish only through GitHub Actions trusted publishing / OIDC.
 
-## Rules
+## Validation baseline before any public prep branch
 
-- do not use `0.3.0` as an active standalone MCP release label in OSS or mirror surfaces
-- do not let the root package version line drive standalone MCP release numbering
-- do not use public MCP release docs to imply promotion of the private Pro, Growth, Enterprise, or Internal tiers
-- do not use public MCP release docs to imply promotion of private hosted or team-only capabilities
-- keep server-side services, organization policy, and advanced routing internals out of OSS release docs
-- before any push candidate, confirm this ledger against:
-  - `npm view martin-loop version versions --json`
-  - `npm view @martinloop/mcp version versions --json`
-  - public GitHub `main`
-  - local OSS source of truth
+- `pnpm install --frozen-lockfile`
+- `pnpm lint`
+- `pnpm test`
+- `pnpm build`
+- `pnpm public:git-surface`
+- `pnpm oss:validate`
+- `pnpm public:smoke`
+- `pnpm release:matrix:local`
+- `pnpm --filter @martinloop/mcp lint`
+- `pnpm --filter @martinloop/mcp test`
+- `pnpm --filter @martinloop/mcp build`
+- `pnpm --filter @martinloop/mcp smoke:pack`
+- `pnpm --filter @martinloop/mcp smoke:published:pack`
+- `pnpm --filter @martinloop/mcp verify:release`

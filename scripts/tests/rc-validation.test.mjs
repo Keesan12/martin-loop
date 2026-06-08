@@ -31,6 +31,7 @@ test("createRcValidationEnvironment points HOME-style state at an isolated direc
   const cleanHomeRoot = path.join(os.tmpdir(), "martin-rc-validation-test");
   const env = createRcValidationEnvironment(
     {
+      CI: "",
       PATH: process.env.PATH ?? "",
       HOME: "C:\\Users\\ExampleUser",
       USERPROFILE: "C:\\Users\\ExampleUser",
@@ -40,6 +41,7 @@ test("createRcValidationEnvironment points HOME-style state at an isolated direc
 
   assert.equal(env.HOME, cleanHomeRoot);
   assert.equal(env.USERPROFILE, cleanHomeRoot);
+  assert.equal(env.CI, "true");
   assert.equal(env.MARTIN_RUNS_DIR, path.join(cleanHomeRoot, ".martin", "runs"));
   assert.notEqual(env.HOME, "C:\\Users\\ExampleUser");
 });

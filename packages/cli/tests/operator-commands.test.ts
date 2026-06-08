@@ -1,13 +1,29 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createLoopRecord, type LoopEventDraft } from "@martin/contracts";
+import { writeReceiptIntegrityMaterial } from "@martin/core";
+import { createLoopRecord, type LoopEventDraft, type LoopRecord } from "@martin/contracts";
 import { describe, expect, it } from "vitest";
 
 import { executeCli } from "../src/index.js";
 
-function makeLoopRecord() {
+async function withEnv<T>(key: string, value: string, fn: () => Promise<T>): Promise<T> {
+  const original = process.env[key];
+  process.env[key] = value;
+
+  try {
+    return await fn();
+  } finally {
+    if (original === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = original;
+    }
+  }
+}
+
+function makeLoopRecord(): LoopRecord {
   const loop = createLoopRecord({
     workspaceId: "ws_ops",
     projectId: "proj_runtime",
@@ -31,7 +47,7 @@ function makeLoopRecord() {
   });
 
   const attemptId = "att_001";
-  const events: LoopEventDraft[] = [
+  const events: Array<LoopEventDraft & { lifecycleState: LoopRecord["lifecycleState"] }> = [
     {
       type: "run.started",
       lifecycleState: "running",
@@ -88,8 +104,14 @@ function makeLoopRecord() {
 
 async function withRunsRoot<T>(fn: (runsRoot: string) => Promise<T>): Promise<T> {
   const previousRunsRoot = process.env.MARTIN_RUNS_DIR;
-  const runsRoot = await mkdtemp(join(tmpdir(), "martin-cli-operator-"));
+  const previousGroundingDir = process.env.MARTIN_GROUNDING_DIR;
+  const root = await mkdtemp(join(tmpdir(), "martin-cli-operator-"));
+  const runsRoot = join(root, "runs");
+  const groundingDir = join(root, "grounding");
+  await mkdir(runsRoot, { recursive: true });
+  await mkdir(groundingDir, { recursive: true });
   process.env.MARTIN_RUNS_DIR = runsRoot;
+  process.env.MARTIN_GROUNDING_DIR = groundingDir;
 
   try {
     return await fn(runsRoot);
@@ -100,13 +122,19 @@ async function withRunsRoot<T>(fn: (runsRoot: string) => Promise<T>): Promise<T>
       process.env.MARTIN_RUNS_DIR = previousRunsRoot;
     }
 
-    await rm(runsRoot, { force: true, recursive: true }).catch(() => {});
+    if (previousGroundingDir === undefined) {
+      delete process.env.MARTIN_GROUNDING_DIR;
+    } else {
+      process.env.MARTIN_GROUNDING_DIR = previousGroundingDir;
+    }
+
+    await rm(root, { force: true, recursive: true }).catch(() => {});
   }
 }
 
 describe("operator commands", () => {
   it("doctor reports environment readiness and starter MCP tools", async () => {
-    const result = await executeCli(["--json", "doctor"]);
+    const result = await withEnv("MARTIN_LIVE", "false", () => executeCli(["--json", "doctor"]));
     const payload = JSON.parse(result.stdout);
 
     expect(result.exitCode).toBe(0);
@@ -115,6 +143,17 @@ describe("operator commands", () => {
     expect(payload.profiles.minimal).toContain("martin_list_runs");
     expect(payload.starterTools).toContain("martin_doctor");
     expect(payload.environment.runsRoot).toBeTypeOf("string");
+    expect(payload.receiptScope).toEqual(payload.scope);
+    expect(payload.scope.invocationRoot).toBeTypeOf("string");
+    expect(payload.scope.repoRoot).toBe(payload.environment.workingDirectory);
+    expect(payload.scope.runsRoot).toBe(payload.environment.runsRoot);
+    expect(payload.engines.openai).toMatchObject({
+      available: true,
+      baseUrl: "https://api.openai.com",
+      model: "gpt-4.1-mini",
+      apiKeyConfigured: false,
+      authPosture: "anonymous_or_local"
+    });
   });
 
   it("preflight reports blocked state when the working directory is missing", async () => {
@@ -133,6 +172,59 @@ describe("operator commands", () => {
     expect(payload.command).toBe("preflight");
     expect(payload.ready).toBe(false);
     expect(payload.blockingIssues).toContain("Working directory does not exist.");
+    expect(payload.receiptScope).toEqual(payload.scope);
+    expect(payload.scope.workingDirectory).toBe(missingDirectory);
+    expect(payload.scope.repoRoot).toBe(missingDirectory);
+    expect(payload.scope.runsRoot).toBeTypeOf("string");
+  });
+
+  it("preserves explicit --runs-dir overrides for preflight commands after the objective token", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const workingDirectory = await mkdtemp(join(tmpdir(), "martin-cli-preflight-workspace-"));
+      const narrowedRunsRoot = join(runsRoot, "team-a");
+
+      try {
+        const result = await executeCli([
+          "--json",
+          "preflight",
+          "Repair the failing MCP lane",
+          "--cwd",
+          workingDirectory,
+          "--runs-dir",
+          narrowedRunsRoot
+        ]);
+        const payload = JSON.parse(result.stdout);
+
+        expect(result.exitCode).toBe(0);
+        expect(payload.environment.workingDirectory).toBe(workingDirectory);
+        expect(payload.environment.runsRoot).toBe(narrowedRunsRoot);
+        expect(payload.receiptScope.runsRoot).toBe(narrowedRunsRoot);
+      } finally {
+        await rm(workingDirectory, { force: true, recursive: true }).catch(() => {});
+      }
+    });
+  });
+
+  it("blocks live run execution before spend when the governed receipt chain is missing", async () => {
+    await withRunsRoot(async () => {
+      const result = await executeCli([
+        "run",
+        "--objective",
+        "Repair the failing MCP lane",
+        "--engine",
+        "codex",
+        "--verify",
+        "pnpm --filter @martinloop/mcp test",
+        "--budget-usd",
+        "2",
+        "--max-iterations",
+        "1"
+      ]);
+
+      expect(result.exitCode).toBe(8);
+      expect(result.stderr).toContain("Governed run blocked until MartinLoop receipts exist");
+      expect(result.stderr).toContain("martin-loop doctor");
+    });
   });
 
   it("loads persisted runs through dossier, attempt, verify, and triage commands", async () => {
@@ -158,9 +250,16 @@ describe("operator commands", () => {
 
       expect(dossier.command).toBe("dossier");
       expect(dossier.loop.loopId).toBe(loop.loopId);
+      expect(dossier.loop.receiptIntegrity.state).toBe("unsigned");
       expect(dossier.verification.status).toBe("failed");
-      expect(dossier.receipt.whatMartinPrevented).toContain("false success claims after a failed verifier");
-      expect(dossier.receipt.tokenWasteReceipt.estimateLabel).toContain("directional local estimates");
+      expect(dossier.verification.warnings).toContain(
+        "Receipt integrity is unsigned; persisted verifier evidence is not trustworthy yet."
+      );
+      expect(dossier.receipt.trustworthy).toBe(false);
+      expect(dossier.receipt.whatMartinPrevented).toContain(
+        "trust claim unavailable until receipt integrity verifies"
+      );
+      expect(dossier.receipt.tokenWasteReceipt.estimateLabel).toContain("not trustworthy");
       expect(attempt.command).toBe("runs_attempt");
       expect(attempt.attempt.index).toBe(1);
       expect(verify.command).toBe("runs_verify");
@@ -169,6 +268,135 @@ describe("operator commands", () => {
       expect(triage.findings[0].loopId).toBe(loop.loopId);
       expect(triage.findings[0].reasons).toContain("verification_failed");
     });
+  });
+
+  it("fails closed on tampered canonical receipts and surfaces receipt scope on persisted-run commands", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const repoRoot = join(runsRoot, "workspace");
+      const workingDirectory = join(repoRoot, "packages", "cli");
+      const baseLoop = makeLoopRecord();
+      const loop = {
+        ...baseLoop,
+        task: {
+          ...baseLoop.task,
+          repoRoot
+        },
+        receiptScope: {
+          repoRoot,
+          workingDirectory,
+          invocationRoot: repoRoot,
+          runsRoot
+        }
+      };
+      const loopDir = join(runsRoot, loop.loopId);
+      const loopRecordPath = join(loopDir, "loop-record.json");
+      const ledgerPath = join(loopDir, "ledger.jsonl");
+      const ledgerEntries = loop.events;
+
+      await mkdir(loopDir, { recursive: true });
+      await writeFile(loopRecordPath, JSON.stringify(loop, null, 2), "utf8");
+      await writeFile(
+        ledgerPath,
+        ledgerEntries.map((entry) => JSON.stringify(entry)).join("\n").concat("\n"),
+        "utf8"
+      );
+      await writeReceiptIntegrityMaterial({
+        runId: loop.loopId,
+        runsRoot,
+        loopRecord: loop,
+        ledgerEntries,
+        scope: loop.receiptScope,
+        signedAt: loop.updatedAt
+      });
+
+      const tamperedLoop = {
+        ...loop,
+        status: "completed" as const,
+        updatedAt: "2026-05-16T12:05:00.000Z"
+      };
+      await writeFile(loopRecordPath, JSON.stringify(tamperedLoop, null, 2), "utf8");
+
+      const dossier = JSON.parse((await executeCli(["--json", "dossier", "--loop-id", loop.loopId])).stdout);
+      const getRun = JSON.parse((await executeCli(["--json", "runs", "get", "--loop-id", loop.loopId])).stdout);
+      const verify = JSON.parse(
+        (await executeCli(["--json", "runs", "verify", "--loop-id", loop.loopId])).stdout
+      );
+
+      for (const payload of [dossier, getRun, verify]) {
+        expect(payload.receiptIntegrity.state).toBe("tamper_detected");
+        expect(payload.receiptScope).toMatchObject({
+          repoRoot,
+          workingDirectory,
+          invocationRoot: repoRoot,
+          runsRoot
+        });
+      }
+
+      expect(dossier.receipt.receiptScope).toMatchObject({
+        repoRoot,
+        workingDirectory,
+        invocationRoot: repoRoot,
+        runsRoot
+      });
+      expect(dossier.receipt.trustworthy).toBe(false);
+      expect(dossier.verification.warnings).toContain(
+        "Receipt integrity is tamper_detected; persisted verifier evidence is not trustworthy yet."
+      );
+      expect(dossier.warnings).toContain(
+        "Receipt integrity is tamper_detected; persisted verifier evidence is not trustworthy yet."
+      );
+      expect(getRun.warnings).toContain(
+        "Receipt integrity is tamper_detected; persisted verifier evidence is not trustworthy yet."
+      );
+      expect(verify.warnings).toContain(
+        "Receipt integrity is tamper_detected; persisted verifier evidence is not trustworthy yet."
+      );
+    });
+  });
+
+  it("reports unsigned for ad-hoc --file loads outside the selected runs root without minting a new local key", async () => {
+    const externalRunsRoot = await mkdtemp(join(tmpdir(), "martin-cli-external-runs-"));
+
+    try {
+      const loop = makeLoopRecord();
+      const externalLoopDir = join(externalRunsRoot, loop.loopId);
+      const loopRecordPath = join(externalLoopDir, "loop-record.json");
+      const ledgerPath = join(externalLoopDir, "ledger.jsonl");
+      const ledgerEntries = loop.events;
+
+      await mkdir(externalLoopDir, { recursive: true });
+      await writeFile(loopRecordPath, JSON.stringify(loop, null, 2), "utf8");
+      await writeFile(
+        ledgerPath,
+        ledgerEntries.map((entry) => JSON.stringify(entry)).join("\n").concat("\n"),
+        "utf8"
+      );
+      await writeReceiptIntegrityMaterial({
+        runId: loop.loopId,
+        runsRoot: externalRunsRoot,
+        loopRecord: loop,
+        ledgerEntries,
+        signedAt: loop.updatedAt
+      });
+      await expect(
+        readFile(join(externalLoopDir, "receipt-integrity.json"), "utf8")
+      ).resolves.toContain("signatureHmacSha256");
+
+      await withRunsRoot(async (selectedRunsRoot) => {
+        const dossier = JSON.parse(
+          (await executeCli(["--json", "dossier", "--file", externalLoopDir])).stdout
+        );
+        const getRun = JSON.parse(
+          (await executeCli(["--json", "runs", "get", "--file", externalLoopDir])).stdout
+        );
+
+        expect(dossier.receiptIntegrity.state).toBe("unsigned");
+        expect(getRun.receiptIntegrity.state).toBe("unsigned");
+        await expect(readFile(join(selectedRunsRoot, ".integrity-key"), "utf8")).rejects.toThrow();
+      });
+    } finally {
+      await rm(externalRunsRoot, { force: true, recursive: true }).catch(() => {});
+    }
   });
 
   it("prints dry-run MCP host config for Codex, Claude, Gemini, and generic wrapper hosts", async () => {
@@ -313,13 +541,70 @@ describe("challenge command", () => {
       await writeFile(join(loopDir, "loop-record.json"), JSON.stringify(loop, null, 2), "utf8");
 
       const result = await executeCli(["--json", "challenge", "--loop-id", loop.loopId]);
-      const payload = JSON.parse(result.stdout) as { command: string; card: { loopId: string }; markdown: string };
+      const payload = JSON.parse(result.stdout) as {
+        command: string;
+        card: { loopId: string; completeEvidence: boolean };
+        markdown: string;
+      };
 
       expect(result.exitCode).toBe(0);
       expect(payload.command).toBe("challenge");
       expect(payload.card.loopId).toBe(loop.loopId);
+      expect(payload.card.completeEvidence).toBe(false);
       expect(payload.markdown).toContain("Repair the failing MCP lane");
+      expect(payload.markdown).toContain(
+        "Receipt integrity unavailable: Martin proof is not yet trustworthy."
+      );
+      expect(payload.markdown).not.toContain("Martin stopped Ralph here.");
       expect(payload.markdown).not.toContain(runsRoot);
+    });
+  });
+});
+
+describe("share command", () => {
+  it("writes a shareable receipt bundle for the latest persisted run", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const loop = makeLoopRecord();
+      const loopDir = join(runsRoot, loop.loopId);
+      await mkdir(loopDir, { recursive: true });
+      await writeFile(join(loopDir, "loop-record.json"), JSON.stringify(loop, null, 2), "utf8");
+      await writeFile(
+        join(runsRoot, `${loop.workspaceId}.jsonl`),
+        `${JSON.stringify({ loopId: loop.loopId, status: loop.status, updatedAt: loop.updatedAt })}\n`,
+        "utf8"
+      );
+
+      const result = await executeCli(["--json", "share", "--latest"]);
+      const payload = JSON.parse(result.stdout) as {
+        command: string;
+        loopId: string;
+        outputDir: string;
+        files: {
+          receiptJson: string;
+          receiptMarkdown: string;
+          proofCardSvg: string;
+        };
+      };
+
+      expect(result.exitCode).toBe(0);
+      expect(payload.command).toBe("share");
+      expect(payload.loopId).toBe(loop.loopId);
+      expect(payload.outputDir).toBe(join(loopDir, "share"));
+
+      const receiptJson = await readFile(payload.files.receiptJson, "utf8");
+      const receiptMarkdown = await readFile(payload.files.receiptMarkdown, "utf8");
+      const proofCardSvg = await readFile(payload.files.proofCardSvg, "utf8");
+
+      expect(receiptJson).toContain('"schemaVersion": "martin.share-receipt.v1"');
+      expect(receiptJson).toContain('"loopId": "loop_');
+      expect(receiptJson).not.toContain(runsRoot);
+      expect(receiptJson).not.toContain("file:///tmp/diff.patch");
+      expect(receiptJson).toContain("[redacted-path]/diff.patch");
+      expect(receiptMarkdown).toContain("# Martin Loop Share Receipt");
+      expect(receiptMarkdown).toContain("Receipt integrity unavailable: Martin proof is not yet trustworthy.");
+      expect(receiptMarkdown).not.toContain(runsRoot);
+      expect(proofCardSvg).toContain("Martin Loop Proof Card");
+      expect(proofCardSvg).not.toContain(runsRoot);
     });
   });
 });
@@ -334,5 +619,27 @@ describe("badge command", () => {
     expect(result.stdout).not.toContain("full autonomy");
     expect(result.stdout).not.toContain("self-learning");
     expect(result.stdout).not.toMatch(/[A-Z]:\\/);
+  });
+
+  it("marks the badge as missing verified receipts when the latest persisted run is unsigned", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const loop = makeLoopRecord();
+      const loopDir = join(runsRoot, loop.loopId);
+      await mkdir(loopDir, { recursive: true });
+      await writeFile(join(loopDir, "loop-record.json"), JSON.stringify(loop, null, 2), "utf8");
+
+      const result = await executeCli(["--json", "badge"]);
+      const payload = JSON.parse(result.stdout) as {
+        command: string;
+        score: { missingReasons: string[]; points: number; grade: string };
+      };
+
+      expect(result.exitCode).toBe(0);
+      expect(payload.command).toBe("badge");
+      expect(payload.score.points).toBeLessThan(100);
+      expect(payload.score.missingReasons).toContain(
+        "Verified run receipts present: Latest persisted run receipt integrity is unsigned."
+      );
+    });
   });
 });

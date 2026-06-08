@@ -3,13 +3,16 @@ import { readFile, readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 
-import { resolveRunsRoot } from "@martin/core";
+import { resolveRunsRoot, verifyReceiptIntegrityFromFiles } from "@martin/core";
 import type {
+  CostProvenance,
   LoopArtifact,
   LoopEvent,
   LoopRecord,
   MartinRunListFilters,
-  MartinRunSelector
+  MartinRunSelector,
+  ReceiptIntegritySummary,
+  ReceiptScope
 } from "@martin/contracts";
 
 import { CliCommandError } from "./ux.js";
@@ -38,6 +41,12 @@ interface CorpusRecord {
   outcome?: string;
   failureClass?: string | null;
 }
+
+type RunsDirEntry = {
+  name: string | { toString(): string };
+  isFile(): boolean;
+  isDirectory(): boolean;
+};
 
 function resolveLocalCorpusPath(): string {
   if (process.env["MARTIN_LEARNING_CORPUS_PATH"]) {
@@ -111,7 +120,7 @@ export interface CliEnvironment {
   invocationRoot: string;
   workingDirectory: string;
   runsRoot: string;
-  engine: "claude" | "codex";
+  engine: "claude" | "codex" | "gemini" | "openai";
   liveMode: "live" | "proof";
 }
 
@@ -122,7 +131,10 @@ export interface PersistedLoopDetail {
   warnings: string[];
   runDirectory?: string;
   loopRecordPath?: string;
+  integrity: ReceiptIntegritySummary;
 }
+
+export type IntegrityStatus = ReceiptIntegritySummary["state"];
 
 export interface VerificationSummary {
   status: "passed" | "failed" | "unavailable";
@@ -130,7 +142,17 @@ export interface VerificationSummary {
   eventCount: number;
   latestAttemptIndex?: number;
   completedAt?: string;
+  steps: VerificationStepSummary[];
   warnings: string[];
+}
+
+export interface VerificationStepSummary {
+  command: string;
+  launched: boolean;
+  exitCode?: number;
+  timedOut?: boolean;
+  fastFail?: boolean;
+  detail?: string;
 }
 
 export interface ArtifactSummary {
@@ -150,6 +172,21 @@ export interface TriageFinding {
   updatedAt: string;
 }
 
+export function readCostProvenance(loop: LoopRecord): CostProvenance {
+  return loop.cost.provenance ?? "unavailable";
+}
+
+export function describeCostProvenance(provenance: CostProvenance): string {
+  switch (provenance) {
+    case "actual":
+      return "provider-settled actual";
+    case "estimated":
+      return "estimated";
+    case "unavailable":
+      return "unavailable";
+  }
+}
+
 export function resolveInvocationRoot(env: NodeJS.ProcessEnv = process.env): string {
   const initCwd = env.INIT_CWD?.trim();
   return initCwd && initCwd.length > 0 ? initCwd : process.cwd();
@@ -159,20 +196,28 @@ export function resolveCliEnvironment(input: {
   cwd?: string;
   runsDir?: string;
   engine?: string;
+  liveMode?: CliEnvironment["liveMode"];
   env?: NodeJS.ProcessEnv;
 } = {}): CliEnvironment {
   const env = input.env ?? process.env;
   const invocationRoot = resolveInvocationRoot(env);
   const workingDirectory = path.resolve(invocationRoot, input.cwd ?? process.cwd());
   const runsRoot = path.resolve(resolveRunsRoot({ ...env, MARTIN_RUNS_DIR: input.runsDir ?? env.MARTIN_RUNS_DIR }));
-  const engine = input.engine === "codex" ? "codex" : "claude";
+  const engine =
+    input.engine === "codex"
+      ? "codex"
+      : input.engine === "gemini"
+        ? "gemini"
+        : input.engine === "openai"
+          ? "openai"
+          : "claude";
 
   return {
     invocationRoot,
     workingDirectory,
     runsRoot,
     engine,
-    liveMode: env.MARTIN_LIVE === "false" ? "proof" : "live"
+    liveMode: input.liveMode ?? (env.MARTIN_LIVE === "false" ? "proof" : "live")
   };
 }
 
@@ -245,11 +290,11 @@ export async function loadPersistedLoop(
 
   if (selector.loopId) {
     const detail = await loadLoopById(selector.loopId, runsRoot);
-    return {
+    return await attachReceiptIntegrity({
       ...detail,
       runsRoot,
       warnings: []
-    };
+    });
   }
 
   if (selector.file) {
@@ -262,14 +307,14 @@ export async function loadPersistedLoop(
     if (targetStats.isDirectory()) {
       const canonical = await findCanonicalLoopRecordPath(targetPath);
       if (canonical) {
-        return {
+        return await attachReceiptIntegrity({
           source: canonical,
           runsRoot,
           loop: await readLoopRecordFile(canonical),
           warnings: [],
           runDirectory: path.dirname(canonical),
           loopRecordPath: canonical
-        };
+        });
       }
 
       const inspected = await collectPersistedLoops(targetPath);
@@ -278,12 +323,12 @@ export async function loadPersistedLoop(
         throw new CliCommandError("not_found", "No persisted Martin loops were found in the selected directory.");
       }
 
-      return {
+      return await attachReceiptIntegrity({
         source: targetPath,
         runsRoot,
         loop,
         warnings: inspected.warnings
-      };
+      });
     }
 
     const loops = await readLoopsFromFile(targetPath, runsRoot);
@@ -292,12 +337,12 @@ export async function loadPersistedLoop(
       throw new CliCommandError("not_found", "No persisted Martin loops were found in the selected file.");
     }
 
-    return {
+    return await attachReceiptIntegrity({
       source: targetPath,
       runsRoot,
       loop,
       warnings: []
-    };
+    });
   }
 
   const inspected = await collectPersistedLoops(runsRoot);
@@ -306,12 +351,12 @@ export async function loadPersistedLoop(
     throw new CliCommandError("not_found", "No persisted Martin loops were found.");
   }
 
-  return {
+  return await attachReceiptIntegrity({
     source: runsRoot,
     runsRoot,
     loop,
     warnings: inspected.warnings
-  };
+  });
 }
 
 export async function loadPersistedAttempt(
@@ -341,37 +386,78 @@ export async function loadPersistedAttempt(
   };
 }
 
+async function attachReceiptIntegrity(detail: Omit<PersistedLoopDetail, "integrity">): Promise<PersistedLoopDetail> {
+  const integrity =
+    detail.loopRecordPath && detail.runDirectory && isWithinRunsRoot(detail.runsRoot, detail.runDirectory)
+      ? await verifyReceiptIntegrityFromFiles({
+          runId: detail.loop.loopId,
+          runsRoot: detail.runsRoot,
+          loopRecordPath: detail.loopRecordPath,
+          ledgerPath: await resolveReceiptEvidencePath(detail.runDirectory)
+        }).catch<ReceiptIntegritySummary>(() => ({
+          state: "unsigned",
+          reason: "Receipt integrity verification could not be completed."
+        }))
+      : ({
+          state: "unsigned",
+          reason: "Receipt integrity is only available for canonical run directories."
+        } satisfies ReceiptIntegritySummary);
+
+  return {
+    ...detail,
+    loop: {
+      ...detail.loop,
+      receiptIntegrity: integrity
+    },
+    integrity
+  };
+}
+
+function isWithinRunsRoot(runsRoot: string, runDirectory: string): boolean {
+  const relative = path.relative(runsRoot, runDirectory);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
 export function buildVerificationSummary(loop: LoopRecord): VerificationSummary {
   const verificationEvents = loop.events.filter((event) => event.type === "verification.completed");
   const latestEvent = verificationEvents.at(-1);
+  const integrityWarnings =
+    loop.receiptIntegrity && loop.receiptIntegrity.state !== "verified"
+      ? [`Receipt integrity is ${loop.receiptIntegrity.state}; persisted verifier evidence is not trustworthy yet.`]
+      : [];
 
   if (!latestEvent) {
     return {
       status: "unavailable",
       summary: "No persisted verification evidence was found for this loop.",
       eventCount: 0,
-      warnings: ["Verification evidence is unavailable for this persisted loop."]
+      steps: [],
+      warnings: [...integrityWarnings, "Verification evidence is unavailable for this persisted loop."]
     };
   }
 
-  const passed = latestEvent.payload["passed"] === true;
+  const payload = isRecord(latestEvent.payload) ? latestEvent.payload : undefined;
+  const passed = payload?.["passed"] === true;
   const latestAttemptIndex =
-    typeof latestEvent.payload["attemptIndex"] === "number"
-      ? (latestEvent.payload["attemptIndex"] as number)
+    typeof payload?.["attemptIndex"] === "number"
+      ? (payload["attemptIndex"] as number)
       : loop.attempts.at(-1)?.index;
+  const warnings = [...integrityWarnings, ...readVerificationWarnings(payload)];
+  const steps = readVerificationSteps(payload);
 
   return {
     status: passed ? "passed" : "failed",
     summary:
-      typeof latestEvent.payload["summary"] === "string"
-        ? (latestEvent.payload["summary"] as string)
+      typeof payload?.["summary"] === "string"
+        ? (payload["summary"] as string)
         : passed
           ? "Verification passed."
           : "Verification failed.",
     eventCount: verificationEvents.length,
     ...(latestAttemptIndex !== undefined ? { latestAttemptIndex } : {}),
     completedAt: latestEvent.timestamp,
-    warnings: []
+    steps,
+    warnings
   };
 }
 
@@ -388,8 +474,14 @@ export function buildArtifactSummary(loop: LoopRecord): ArtifactSummary {
   };
 }
 
-export function buildRunReceipt(loop: LoopRecord, verification = buildVerificationSummary(loop)): Record<string, unknown> {
+export function buildRunReceipt(
+  loop: LoopRecord,
+  verification = buildVerificationSummary(loop),
+  receiptScope = resolveReceiptScope(loop)
+): Record<string, unknown> {
   const latestAttempt = loop.attempts.at(-1);
+  const integrity = resolveReceiptIntegrity(loop);
+  const trustworthy = integrity.state === "verified";
   const rollbackArtifacts = loop.artifacts.filter((artifact) =>
     /rollback|restore|diff|patch/iu.test(`${artifact.kind} ${artifact.label} ${artifact.uri}`)
   );
@@ -398,9 +490,14 @@ export function buildRunReceipt(loop: LoopRecord, verification = buildVerificati
     loop.lifecycleState === "diminishing_returns" ||
     loop.lifecycleState === "stuck_exit" ||
     loop.lifecycleState === "human_escalation";
-  const prevented = buildPreventionSummary(loop, verification, stopConditionReached);
+  const prevented = trustworthy
+    ? buildPreventionSummary(loop, verification, stopConditionReached)
+    : ["trust claim unavailable until receipt integrity verifies"];
 
   return {
+    trustworthy,
+    receiptIntegrity: integrity,
+    ...(receiptScope ? { receiptScope } : {}),
     whatHappened: latestAttempt?.summary ?? verification.summary ?? loop.task.objective,
     whatMartinPrevented: prevented,
     tokenWasteReceipt: {
@@ -408,15 +505,21 @@ export function buildRunReceipt(loop: LoopRecord, verification = buildVerificati
       avoidedUsdEstimate: loop.cost.avoidedUsd,
       tokensIn: loop.cost.tokensIn,
       tokensOut: loop.cost.tokensOut,
+      costProvenance: readCostProvenance(loop),
+      trustworthy,
+      integrityState: integrity.state,
       avoidedIterationsEstimate: stopConditionReached ? 1 : 0,
       avoidedVerifierRetriesEstimate: verification.status === "failed" && stopConditionReached ? 1 : 0,
-      estimateLabel:
-        "Avoided spend, avoided iterations, and avoided verifier retries are directional local estimates unless backed by provider usage receipts."
+      estimateLabel: trustworthy
+        ? "Avoided spend, avoided iterations, and avoided verifier retries are directional local estimates unless backed by provider usage receipts."
+        : "This receipt is not trustworthy until receipt integrity verifies; cost and prevention values are informational only."
     },
     verifier: {
       status: verification.status,
       summary: verification.summary,
       eventCount: verification.eventCount,
+      steps: verification.steps,
+      trustworthy,
       warnings: verification.warnings
     },
     rollbackEvidence: {
@@ -424,14 +527,17 @@ export function buildRunReceipt(loop: LoopRecord, verification = buildVerificati
       count: rollbackArtifacts.length,
       artifacts: rollbackArtifacts.slice(0, 5)
     },
-    nextSafeAction: selectNextSafeAction(loop, verification, rollbackArtifacts.length)
+    nextSafeAction: trustworthy
+      ? selectNextSafeAction(loop, verification, rollbackArtifacts.length)
+      : `Verify canonical receipt integrity for loop ${loop.loopId} before sharing proof or cost claims.`
   };
 }
 
 export function buildRunDossier(detail: PersistedLoopDetail): Record<string, unknown> {
   const verification = buildVerificationSummary(detail.loop);
   const artifactSummary = buildArtifactSummary(detail.loop);
-  const receipt = buildRunReceipt(detail.loop, verification);
+  const receiptScope = resolveReceiptScope(detail.loop, detail.runsRoot);
+  const receipt = buildRunReceipt(detail.loop, verification, receiptScope);
 
   return {
     source: detail.source,
@@ -441,6 +547,8 @@ export function buildRunDossier(detail: PersistedLoopDetail): Record<string, unk
       ...(detail.loopRecordPath ? { loopRecordPath: detail.loopRecordPath } : {})
     },
     loop: detail.loop,
+    receiptIntegrity: detail.integrity,
+    ...(receiptScope ? { receiptScope } : {}),
     verification,
     receipt,
     artifacts: artifactSummary,
@@ -461,6 +569,77 @@ export async function triagePersistedLoops(
     runsRoot: listed.runsRoot,
     findings,
     warnings: listed.warnings
+  };
+}
+
+export async function findPersistedLoopEvidence(
+  runsDir: string | undefined,
+  options: { invocationRoot?: string } = {}
+): Promise<{ runsRoot: string; loop?: LoopRecord; warnings: string[] }> {
+  const runsRoot = resolveRunsRootPath(runsDir, options.invocationRoot);
+  const entries = await readdir(runsRoot, { withFileTypes: true }).catch((error: unknown) => {
+    if (isMissing(error)) {
+      return [] as Awaited<ReturnType<typeof readdir>>;
+    }
+
+    throw new CliCommandError("store_unreadable", "Unable to read the Martin runs directory.", {
+      suggestion: "Check MARTIN_RUNS_DIR or pass --runs-dir with a readable path."
+    });
+  });
+
+  entries.sort((left, right) => String(left.name).localeCompare(String(right.name)));
+  const warnings: string[] = [];
+  const indexedLoop = await loadLatestLoopFromWorkspaceIndexes(runsRoot, entries, warnings);
+  if (indexedLoop) {
+    return {
+      runsRoot,
+      loop: indexedLoop,
+      warnings
+    };
+  }
+
+  let latestLoop: LoopRecord | undefined;
+  for (const entry of entries) {
+    try {
+      const entryName = String(entry.name);
+      if (entry.isDirectory()) {
+        const canonical = await findCanonicalLoopRecordPath(path.join(runsRoot, entryName));
+        if (!canonical) {
+          continue;
+        }
+
+        const loop = await readLoopRecordFile(canonical);
+        const candidateTimestamp = loopTimestamp(loop);
+        const latestTimestamp = latestLoop ? loopTimestamp(latestLoop) : Number.NEGATIVE_INFINITY;
+        if (candidateTimestamp > latestTimestamp) {
+          latestLoop = loop;
+        }
+        continue;
+      }
+
+      if (!entry.isFile() || (!entryName.endsWith(".json") && !entryName.endsWith(".jsonl"))) {
+        continue;
+      }
+
+      const loop = (await readLoopsFromFile(path.join(runsRoot, entryName), runsRoot)).sort(
+        (left, right) => loopTimestamp(right) - loopTimestamp(left)
+      )[0];
+      const candidateTimestamp = loop ? loopTimestamp(loop) : Number.NEGATIVE_INFINITY;
+      const latestTimestamp = latestLoop ? loopTimestamp(latestLoop) : Number.NEGATIVE_INFINITY;
+      if (loop && candidateTimestamp > latestTimestamp) {
+        latestLoop = loop;
+      }
+    } catch (error) {
+      warnings.push(
+        `Skipped unreadable persisted loop entry '${String(entry.name)}': ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  return {
+    runsRoot,
+    ...(latestLoop ? { loop: latestLoop } : {}),
+    warnings
   };
 }
 
@@ -564,6 +743,90 @@ function resolveRunsRootPath(runsDir: string | undefined, invocationRoot = resol
 
 function resolveAbsolutePath(targetPath: string, base = resolveInvocationRoot()): string {
   return path.isAbsolute(targetPath) ? path.normalize(targetPath) : path.resolve(base, targetPath);
+}
+
+function resolveReceiptIntegrity(loop: LoopRecord): ReceiptIntegritySummary {
+  return (
+    loop.receiptIntegrity ?? {
+      state: "unsigned",
+      reason: "Receipt integrity metadata was not available on the loop record."
+    }
+  );
+}
+
+export function resolveReceiptScope(loop: LoopRecord, runsRoot?: string): ReceiptScope | undefined {
+  if (loop.receiptScope) {
+    return loop.receiptScope;
+  }
+
+  if (!loop.task?.repoRoot && !runsRoot) {
+    return undefined;
+  }
+
+  return {
+    ...(loop.task?.repoRoot ? { repoRoot: loop.task.repoRoot } : {}),
+    ...(loop.task?.repoRoot ? { workingDirectory: loop.task.repoRoot } : {}),
+    ...(runsRoot ? { runsRoot } : {})
+  };
+}
+
+async function resolveReceiptEvidencePath(runDirectory: string): Promise<string> {
+  for (const candidate of ["ledger.jsonl", "events.jsonl"]) {
+    const candidatePath = path.join(runDirectory, candidate);
+    const candidateStats = await stat(candidatePath).catch(() => null);
+    if (candidateStats?.isFile()) {
+      return candidatePath;
+    }
+  }
+
+  return path.join(runDirectory, "ledger.jsonl");
+}
+
+async function loadLatestLoopFromWorkspaceIndexes(
+  runsRoot: string,
+  entries: ReadonlyArray<RunsDirEntry>,
+  warnings: string[]
+): Promise<LoopRecord | undefined> {
+  let latestSummary: { loopId: string; updatedAt: string } | undefined;
+
+  for (const entry of entries) {
+    const entryName = String(entry.name);
+    if (!entry.isFile() || !entryName.endsWith(".jsonl")) {
+      continue;
+    }
+
+    try {
+      const candidate = await readLatestWorkspaceIndexSummary(path.join(runsRoot, entryName));
+      if (!candidate) {
+        continue;
+      }
+
+      const candidateTimestamp = parseTimestamp(candidate.updatedAt);
+      const latestTimestamp = latestSummary
+        ? parseTimestamp(latestSummary.updatedAt)
+        : Number.NEGATIVE_INFINITY;
+      if (candidateTimestamp > latestTimestamp) {
+        latestSummary = candidate;
+      }
+    } catch (error) {
+      warnings.push(
+        `Skipped unreadable workspace index '${entryName}': ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  if (!latestSummary) {
+    return undefined;
+  }
+
+  try {
+    return (await loadLoopById(latestSummary.loopId, runsRoot)).loop;
+  } catch (error) {
+    warnings.push(
+      `Workspace index pointed at unreadable loop '${latestSummary.loopId}': ${error instanceof Error ? error.message : String(error)}`
+    );
+    return undefined;
+  }
 }
 
 async function collectPersistedLoops(runsRoot: string): Promise<{ loops: LoopRecord[]; warnings: string[] }> {
@@ -677,6 +940,30 @@ async function readLoopRecordFile(file: string): Promise<LoopRecord> {
   return parsed;
 }
 
+async function readLatestWorkspaceIndexSummary(
+  file: string
+): Promise<{ loopId: string; updatedAt: string } | undefined> {
+  const contents = await readFile(file, "utf8");
+  const lines = contents
+    .split(/\r?\n/gu)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  const latestLine = lines.at(-1);
+  if (!latestLine) {
+    return undefined;
+  }
+
+  const parsed = JSON.parse(latestLine) as unknown;
+  if (!isWorkspaceIndexSummary(parsed)) {
+    return undefined;
+  }
+
+  return {
+    loopId: parsed.loopId,
+    updatedAt: parsed.updatedAt
+  };
+}
+
 function parseUnknownLoopValues(contents: string, file: string): unknown[] {
   if (file.endsWith(".jsonl")) {
     return contents
@@ -720,6 +1007,61 @@ function isLoopSummary(value: unknown): value is { loopId: string } {
   );
 }
 
+function isWorkspaceIndexSummary(
+  candidate: unknown
+): candidate is {
+  loopId: string;
+  updatedAt: string;
+} {
+  return (
+    typeof candidate === "object" &&
+    candidate !== null &&
+    typeof (candidate as { loopId?: unknown }).loopId === "string" &&
+    typeof (candidate as { updatedAt?: unknown }).updatedAt === "string"
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function readVerificationWarnings(payload: Record<string, unknown> | undefined): string[] {
+  if (!Array.isArray(payload?.["warnings"])) {
+    return [];
+  }
+
+  return payload["warnings"].filter((warning): warning is string => typeof warning === "string");
+}
+
+function readVerificationSteps(payload: Record<string, unknown> | undefined): VerificationStepSummary[] {
+  if (!Array.isArray(payload?.["steps"])) {
+    return [];
+  }
+
+  return payload["steps"]
+    .map((candidate) => normalizeVerificationStep(candidate))
+    .filter((candidate): candidate is VerificationStepSummary => candidate !== undefined);
+}
+
+function normalizeVerificationStep(candidate: unknown): VerificationStepSummary | undefined {
+  if (!isRecord(candidate)) {
+    return undefined;
+  }
+
+  if (typeof candidate["command"] !== "string" || typeof candidate["launched"] !== "boolean") {
+    return undefined;
+  }
+
+  return {
+    command: candidate["command"],
+    launched: candidate["launched"],
+    ...(typeof candidate["exitCode"] === "number" ? { exitCode: candidate["exitCode"] } : {}),
+    ...(typeof candidate["timedOut"] === "boolean" ? { timedOut: candidate["timedOut"] } : {}),
+    ...(typeof candidate["fastFail"] === "boolean" ? { fastFail: candidate["fastFail"] } : {}),
+    ...(typeof candidate["detail"] === "string" ? { detail: candidate["detail"] } : {})
+  };
+}
+
 function dedupeLoops(loops: LoopRecord[]): LoopRecord[] {
   const byId = new Map<string, LoopRecord>();
   for (const loop of loops) {
@@ -736,7 +1078,16 @@ function upsertLoop(target: Map<string, LoopRecord>, loop: LoopRecord): void {
 }
 
 function loopTimestamp(loop: LoopRecord): number {
-  return Date.parse(loop.updatedAt || loop.createdAt || "");
+  return parseTimestamp(loop.updatedAt || loop.createdAt || "");
+}
+
+function parseTimestamp(timestamp: string | undefined): number {
+  if (typeof timestamp !== "string") {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  const parsed = Date.parse(timestamp);
+  return Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY;
 }
 
 function isMissing(error: unknown): boolean {
