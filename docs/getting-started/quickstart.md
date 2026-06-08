@@ -12,6 +12,7 @@ Use this guide to get one governed MartinLoop run and one evidence review in a f
 ## Recommended First Run
 
 ```sh
+npx -y martin-loop@latest start
 npx -y martin-loop@latest demo
 cd martin-loop-demo
 npm install

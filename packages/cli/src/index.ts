@@ -82,7 +82,7 @@ import {
   type IntegrityStatus
 } from "./run-store.js";
 import { CliCommandError, renderCliError, renderCliSuccess } from "./ux.js";
-import { evaluateCliRunGate, recordCliWorkflowStep } from "./workflow-state.js";
+import { consumeFirstRunBanner, evaluateCliRunGate, recordCliWorkflowStep } from "./workflow-state.js";
 
 const require = createRequire(import.meta.url);
 const packageJson = require("../package.json") as { version: string };
@@ -191,6 +191,12 @@ type DoctorCommand = {
   runsDir?: string;
   engine?: "claude" | "codex" | "gemini" | "openai";
   configPath?: string;
+};
+
+type StartCommand = {
+  command: "start";
+  cwd?: string;
+  runsDir?: string;
 };
 
 type NativePhaseCommand = {
@@ -346,6 +352,7 @@ export type ParsedCliArguments =
     }
   | InspectCommand
   | ResumeCommand
+  | StartCommand
   | DoctorCommand
   | NativePhaseCommand
   | PreflightCommand
@@ -371,9 +378,12 @@ export async function executeCli(args: string[]): Promise<{
 
     switch (parsed.command) {
       case "help":
+        const firstRunBanner = await consumeFirstRunBanner(
+          resolveCliEnvironment().runsRoot
+        ).catch(() => undefined);
         return {
           exitCode: 0,
-          stdout: renderCliHelp(),
+          stdout: firstRunBanner ? `${firstRunBanner}\n\n${renderCliHelp()}` : renderCliHelp(),
           stderr: ""
         };
       case "version":
@@ -405,6 +415,8 @@ export async function executeCli(args: string[]): Promise<{
         return await executeInspectCommand(parsed, outputMode);
       case "resume":
         return await executeResumeCommand(parsed, outputMode);
+      case "start":
+        return await executeStartCommand(parsed, outputMode);
       case "doctor":
         return await executeDoctorCommand(parsed, outputMode);
       case "native_phase":
@@ -495,6 +507,14 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
         loopId,
         ...(readOption(rest, "--runs-dir") ? { runsDir: readOption(rest, "--runs-dir") } : {})
       }
+    };
+  }
+
+  if (command === "start" || command === "tour") {
+    return {
+      command: "start",
+      ...(readOption(rest, "--cwd") ? { cwd: readOption(rest, "--cwd") } : {}),
+      ...(readOption(rest, "--runs-dir") ? { runsDir: readOption(rest, "--runs-dir") } : {})
     };
   }
 
@@ -662,6 +682,8 @@ export function renderCliHelp(): string {
     "",
     "Usage:",
     "  martin run <objective> [options]",
+    "  martin start [options]",
+    "  martin tour [options]                (compatibility alias for start)",
     "  martin-loop run <objective> [options]    (published alias)",
     "  martin preflight <objective> [options]",
     "  martin doctor [options]",
@@ -687,6 +709,7 @@ export function renderCliHelp(): string {
     "  martin badge [--format svg|json]",
     "",
     "Operator commands:",
+    "  start        Guided first-run onboarding and governed command path.",
     "  doctor       Check CLI, engine, working directory, and run-store readiness.",
     "  session-start Show latest local run state, phase state, and command hints.",
     "  phase status    Read local phase state and run-store posture.",
@@ -1237,6 +1260,74 @@ async function executeDoctorCommand(
     ],
     quiet: environment.runsRoot,
     warnings
+  });
+}
+
+async function executeStartCommand(
+  command: StartCommand,
+  outputMode: MartinOutputMode
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  const environment = resolveCliEnvironment({
+    cwd: command.cwd,
+    runsDir: command.runsDir
+  });
+  const claudeAvailable = isCommandAvailable("claude");
+  const codexAvailable = resolveCliCommandAvailability("codex").available;
+  const geminiAvailable = resolveCliCommandAvailability("gemini").available;
+  const hasGitRepo = await stat(join(environment.workingDirectory, ".git"))
+    .then(() => true)
+    .catch(() => false);
+  const receiptScope = buildCliReceiptScope(environment);
+
+  await recordCliWorkflowStep({
+    runsRoot: environment.runsRoot,
+    step: "start",
+    workingDirectory: environment.workingDirectory,
+    receiptScope
+  }).catch(() => {});
+
+  return renderCliSuccess(outputMode, {
+    data: {
+      command: "start",
+      cliVersion: rootPackageVersion,
+      environment: {
+        ...environment,
+        hasGitRepo
+      },
+      engines: {
+        claude: { available: claudeAvailable },
+        codex: { available: codexAvailable },
+        gemini: { available: geminiAvailable }
+      },
+      governedByDefault: true,
+      nextCommands: [
+        "npx -y martin-loop@latest demo",
+        "npx -y martin-loop@latest doctor",
+        "npx -y martin-loop@latest session-start",
+        'npx -y martin-loop@latest preflight "Summarize the workspace and prove tests still pass" --verify "npm test"',
+        'npx -y martin-loop@latest run "Summarize the workspace and prove tests still pass" --proof --verify "npm test"',
+        "npx -y martin-loop@latest share --latest --json"
+      ]
+    },
+    human: [
+      `MartinLoop start (${rootPackageVersion})`,
+      "",
+      "Governed runs are the default path: MartinLoop blocks live run spend until doctor/session-start/preflight receipts exist.",
+      `Working directory: ${environment.workingDirectory}${hasGitRepo ? " (git detected)" : " (no git repo detected)"}`,
+      `Runs root: ${environment.runsRoot}`,
+      `Engines: claude=${claudeAvailable ? "ready" : "blocked"}, codex=${codexAvailable ? "ready" : "blocked"}, gemini=${geminiAvailable ? "ready" : "blocked"}`,
+      "",
+      "Recommended first-run commands:",
+      "  npx -y martin-loop@latest demo",
+      "  npx -y martin-loop@latest doctor",
+      "  npx -y martin-loop@latest session-start",
+      '  npx -y martin-loop@latest preflight "Summarize the workspace and prove tests still pass" --verify "npm test"',
+      '  npx -y martin-loop@latest run "Summarize the workspace and prove tests still pass" --proof --verify "npm test"',
+      "  npx -y martin-loop@latest share --latest --json",
+      "",
+      "One-off operator bypass exists, but is intentionally explicit: --unsafe-allow-unguarded-run"
+    ],
+    quiet: environment.runsRoot
   });
 }
 
@@ -2241,11 +2332,15 @@ function renderDemoInstructions(targetDirectory: string): string {
     "  npm install",
     "  npm test",
     "",
-    "Safe first run (no provider spend):",
-    '  MARTIN_LIVE=false npx martin run "Summarize the demo workspace and confirm the verifier is green" --verify "npm test"',
+    "Safe first run (no provider spend, governed path):",
+    "  npx -y martin-loop@latest doctor",
+    "  npx -y martin-loop@latest session-start",
+    '  npx -y martin-loop@latest preflight "Summarize the demo workspace and confirm the verifier is green" --verify "npm test"',
+    '  npx -y martin-loop@latest run "Summarize the demo workspace and confirm the verifier is green" --proof --verify "npm test"',
+    "  npx -y martin-loop@latest share --latest --json",
     "",
     "Optional live run:",
-    '  npx martin run "Add support for a discount percentage to summarizeInvoice and update the tests" --verify "npm test" --engine codex',
+    '  npx -y martin-loop@latest run "Add support for a discount percentage to summarizeInvoice and update the tests" --verify "npm test" --engine codex',
     "",
     `Task ideas live in ${join(targetDirectory, "TASKS.md")}`
   ].join("\n");
