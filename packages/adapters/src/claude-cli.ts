@@ -12,8 +12,6 @@
  * MCP tools and integration tests use the same factories.
  */
 
-import { spawnSync } from "node:child_process";
-
 import type {
   FailureClass,
   MartinAdapter,
@@ -23,10 +21,12 @@ import type {
 
 import {
   readGitExecutionArtifacts,
+  resolveGitRepositoryRoot,
   runSubprocess,
   runVerification,
   type SpawnLike
 } from "./cli-bridge.js";
+import { buildCodexExecArgs } from "./codex-launcher.js";
 import {
   createAdapterCapabilities,
   normalizeStructuredErrors,
@@ -72,6 +72,8 @@ interface ClaudeJsonOutput {
   subtype?: string;
   result?: string;
   error?: string;
+  /** Authoritative cumulative cost reported by Claude on the final `result` event (json/stream-json). */
+  total_cost_usd?: number;
   usage?: {
     // camelCase (older SDK versions)
     inputTokens?: number;
@@ -144,17 +146,22 @@ function extractUsage(
     (modelLabel ? MODEL_PRICING[modelLabel] : undefined) ??
     { inputPer1K: BLENDED_INPUT_COST_PER_1K, outputPer1K: BLENDED_OUTPUT_COST_PER_1K };
 
-  const actualUsd =
-    (promptTokens / 1000) * pricing.inputPer1K +
-    (cachedInputTokens / 1000) * (pricing.cachedInputPer1K ?? pricing.inputPer1K) +
-    (tokensOut / 1000) * pricing.outputPer1K;
+  // Prefer Claude's own authoritative total_cost_usd (present on the final
+  // `result` event in json/stream-json output) over our pricing-table estimate,
+  // which can drift from real billed cost (cache discounts, surcharges, etc).
+  const hasAuthoritativeCost = typeof parsed.total_cost_usd === "number";
+  const actualUsd: number = hasAuthoritativeCost
+    ? (parsed.total_cost_usd as number)
+    : (promptTokens / 1000) * pricing.inputPer1K +
+      (cachedInputTokens / 1000) * (pricing.cachedInputPer1K ?? pricing.inputPer1K) +
+      (tokensOut / 1000) * pricing.outputPer1K;
 
   return normalizeUsage({
     actualUsd: Number(actualUsd.toFixed(6)),
     tokensIn,
     tokensOut,
     cachedInputTokens,
-    provenance: "actual",
+    provenance: hasAuthoritativeCost ? "actual" : "estimated",
     providerSettlement: {
       providerId: "claude",
       model: modelLabel ?? "claude",
@@ -348,6 +355,126 @@ function extractGeminiJsonResult(
 }
 
 // ---------------------------------------------------------------------------
+// Streaming usage circuit breaker (stream-json)
+//
+// `claude --print --output-format json` only emits a single JSON blob at
+// process exit, so a runaway attempt's true cost/token consumption is
+// invisible until the whole subprocess has already finished — by which point
+// MartinLoop has no way to stop the spend (proven live: a $1 budget attempt
+// settled at $3.50 actual / ~93x the configured token cap). `stream-json`
+// emits one JSON object per turn, each carrying that turn's usage, so we can
+// track cumulative spend in real time and kill the subprocess the moment it
+// crosses the per-attempt cap — bounding the worst case to roughly one turn's
+// overshoot instead of the entire runaway session.
+// ---------------------------------------------------------------------------
+
+interface StreamingUsageSnapshot {
+  cumulativeUsd: number;
+  tokensIn: number;
+  tokensOut: number;
+  turns: number;
+  finalResult?: ClaudeJsonOutput;
+}
+
+function createStreamingUsageInspector(
+  capUsd: number,
+  modelLabel: string | undefined
+): {
+  onChunk: (chunk: Buffer, terminate: (reason: string) => void) => void;
+  snapshot: () => StreamingUsageSnapshot;
+} {
+  const pricing =
+    (modelLabel ? MODEL_PRICING[modelLabel] : undefined) ??
+    { inputPer1K: BLENDED_INPUT_COST_PER_1K, outputPer1K: BLENDED_OUTPUT_COST_PER_1K };
+
+  let buffer = "";
+  let cumulativeUsd = 0;
+  let tokensIn = 0;
+  let tokensOut = 0;
+  let turns = 0;
+  let finalResult: ClaudeJsonOutput | undefined;
+
+  const ingestLine = (line: string, terminate: (reason: string) => void) => {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      return;
+    }
+
+    let event: ClaudeJsonOutput & { message?: { usage?: Record<string, number> } };
+    try {
+      event = JSON.parse(trimmed) as typeof event;
+    } catch {
+      return;
+    }
+
+    if (event.type === "assistant" && event.message?.usage) {
+      const usage = event.message.usage;
+      const turnTokensIn =
+        (usage.input_tokens ?? usage.inputTokens ?? 0) +
+        (usage.cache_read_input_tokens ?? usage.cacheReadInputTokens ?? 0) +
+        (usage.cache_creation_input_tokens ?? usage.cacheCreationInputTokens ?? 0);
+      const turnTokensOut = usage.output_tokens ?? usage.outputTokens ?? 0;
+
+      tokensIn += turnTokensIn;
+      tokensOut += turnTokensOut;
+      turns += 1;
+      cumulativeUsd += (turnTokensIn / 1000) * pricing.inputPer1K + (turnTokensOut / 1000) * pricing.outputPer1K;
+
+      if (capUsd > 0 && cumulativeUsd > capUsd) {
+        terminate(
+          `Streaming usage cap exceeded after ${String(turns)} turn(s): cumulative cost ~$${cumulativeUsd.toFixed(4)} ` +
+            `surpassed the per-attempt cap $${capUsd.toFixed(4)} (derived from remaining loop budget). ` +
+            `Subprocess terminated to bound runaway overspend.`
+        );
+      }
+      return;
+    }
+
+    if (event.type === "result") {
+      finalResult = event;
+    }
+  };
+
+  return {
+    onChunk: (chunk, terminate) => {
+      buffer += chunk.toString("utf8");
+      let newlineIndex = buffer.indexOf("\n");
+      while (newlineIndex !== -1) {
+        const line = buffer.slice(0, newlineIndex);
+        buffer = buffer.slice(newlineIndex + 1);
+        ingestLine(line, terminate);
+        newlineIndex = buffer.indexOf("\n");
+      }
+    },
+    snapshot: () => ({ cumulativeUsd, tokensIn, tokensOut, turns, ...(finalResult ? { finalResult } : {}) })
+  };
+}
+
+/**
+ * Parses Claude's `stream-json` output (one JSON object per line) and returns
+ * the final `result` event, which carries the same `result`/`usage`/
+ * `total_cost_usd` fields as the single-blob `json` format.
+ */
+function parseStreamJsonResult(stdout: string): ClaudeJsonOutput | undefined {
+  let lastResult: ClaudeJsonOutput | undefined;
+  for (const rawLine of stdout.split(/\r?\n/u)) {
+    const line = rawLine.trim();
+    if (!line) {
+      continue;
+    }
+    try {
+      const event = JSON.parse(line) as ClaudeJsonOutput;
+      if (event.type === "result") {
+        lastResult = event;
+      }
+    } catch {
+      // Ignore non-JSON / partial lines.
+    }
+  }
+  return lastResult;
+}
+
+// ---------------------------------------------------------------------------
 // Structural failure hint detection
 //
 // Provides a classHint to failure-taxonomy based on structural evidence
@@ -418,6 +545,15 @@ export interface AgentCliAdapterOptions {
    * Defaults to true for Claude.
    */
   supportsJsonOutput?: boolean;
+  /**
+   * Set when `argsBuilder` requests `--output-format stream-json` (newline-
+   * delimited JSON events) rather than single-blob `json`. Enables (a)
+   * incremental result parsing that scans for the final `result` event, and
+   * (b) a live cumulative-cost circuit breaker that terminates the subprocess
+   * the moment projected spend crosses the remaining per-attempt budget,
+   * rather than only learning about an overspend after the process exits.
+   */
+  streamingUsageCap?: boolean;
   /** Test-only override for subprocess spawning. */
   spawnImpl?: SpawnLike;
 }
@@ -435,6 +571,8 @@ export interface ClaudeCliAdapterOptions {
 }
 
 export interface CodexCliAdapterOptions {
+  /** Override the executable or absolute command path used to launch Codex. */
+  command?: string;
   workingDirectory?: string;
   timeoutMs?: number;
   verifyTimeoutMs?: number;
@@ -484,25 +622,28 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
   const supportsJsonOutput = options.supportsJsonOutput === true;
   const supportsUsageSettlement =
     supportsJsonOutput || options.command === "codex" || options.command === "gemini";
+  const usageSettlement = supportsJsonOutput
+    ? "actual"
+    : supportsUsageSettlement
+      ? "estimated"
+      : "unavailable";
 
   const adapter: MartinAdapter = {
     adapterId,
     kind: "agent-cli",
     label: options.label ?? `${options.command} CLI adapter`,
-    metadata: {
-      providerId: options.command,
-      model: options.model ?? options.command,
-      transport: "cli",
-      capabilities: createAdapterCapabilities({
-        preflight: true,
-        usageSettlement: supportsJsonOutput ? "actual" : "estimated",
-        diffVisibility: "git",
-        structuredErrors: true,
-        cachingSignals: supportsJsonOutput,
-        sandboxExpectation:
-          options.command === "codex" ? "workspace_write" : "host_process"
-      })
-    },
+      metadata: {
+        providerId: options.command,
+        model: options.model ?? options.command,
+        transport: "cli",
+        capabilities: createAdapterCapabilities({
+          preflight: true,
+          usageSettlement,
+          diffVisibility: "git",
+          structuredErrors: true,
+          cachingSignals: supportsUsageSettlement
+        })
+      },
 
     async execute(request: MartinAdapterRequest): Promise<MartinAdapterResult> {
       const prompt = buildPrompt(request);
@@ -531,12 +672,48 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
       const args = options.argsBuilder(prompt);
       const stdinData = options.stdinBuilder?.(prompt);
 
+      // Live cumulative-cost circuit breaker: a single attempt should never be
+      // allowed to spend more than the loop has left. `--output-format json`
+      // only reports usage once the process exits, so for `stream-json` we
+      // watch per-turn usage events as they arrive and kill the subprocess the
+      // instant projected spend crosses what remains — bounding the worst case
+      // to roughly one turn's overshoot rather than the entire runaway session.
+      const streamingUsage =
+        options.streamingUsageCap && request.context.remainingBudgetUsd > 0
+          ? createStreamingUsageInspector(request.context.remainingBudgetUsd, options.model ?? options.command)
+          : undefined;
+
       const agentResult = await runSubprocess(options.command, args, {
         cwd: workingDirectory,
         timeoutMs,
         spawnImpl: options.spawnImpl,
-        ...(stdinData === undefined ? {} : { stdinData })
+        ...(stdinData === undefined ? {} : { stdinData }),
+        ...(streamingUsage ? { onStdoutChunk: streamingUsage.onChunk } : {})
       });
+
+      if (agentResult.terminationReason) {
+        const snapshot = streamingUsage?.snapshot();
+        const cumulativeUsd = snapshot?.cumulativeUsd ?? 0;
+        return {
+          status: "failed",
+          summary: `${options.command} subprocess terminated mid-run by the budget circuit breaker. ${agentResult.terminationReason}`,
+          usage: normalizeUsage({
+            actualUsd: Number(cumulativeUsd.toFixed(6)),
+            estimatedUsd: Number(cumulativeUsd.toFixed(6)),
+            tokensIn: snapshot?.tokensIn ?? 0,
+            tokensOut: snapshot?.tokensOut ?? 0,
+            provenance: "estimated"
+          }),
+          verification: {
+            passed: false,
+            summary: "Subprocess terminated by the streaming budget circuit breaker before verification could run."
+          },
+          failure: {
+            message: agentResult.terminationReason,
+            classHint: "budget_pressure" as FailureClass
+          }
+        };
+      }
 
       if (agentResult.timedOut) {
         return {
@@ -574,11 +751,15 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
         };
       }
 
-      // Parse JSON output if the CLI supports it (Claude with --output-format json)
+      // Parse JSON output if the CLI supports it. `stream-json` emits one JSON
+      // object per line — the final `result` event carries the same
+      // `result`/`usage`/`total_cost_usd` fields as single-blob `json` output.
       let parsed: ClaudeJsonOutput | undefined;
       if (supportsJsonOutput) {
         try {
-          parsed = JSON.parse(agentResult.stdout) as ClaudeJsonOutput;
+          parsed = options.streamingUsageCap
+            ? parseStreamJsonResult(agentResult.stdout)
+            : (JSON.parse(agentResult.stdout) as ClaudeJsonOutput);
         } catch {
           // Fall through to plain-text handling
         }
@@ -592,6 +773,32 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
         !supportsJsonOutput && options.command === "gemini"
           ? extractGeminiJsonResult(agentResult.stdout, options.model)
           : undefined;
+      const producedStructuredCompletion =
+        parsed?.result !== undefined ||
+        codexJsonlResult !== undefined ||
+        geminiJsonResult !== undefined;
+      if (agentResult.exitCode !== 0 && !producedStructuredCompletion) {
+        const failureMessage = formatPreVerifierSubprocessFailure(
+          options.command,
+          agentResult.stderr || agentResult.stdout,
+          agentResult.exitCode
+        );
+        return {
+          status: "failed",
+          summary: `${options.command} subprocess exited before verifier execution.`,
+          usage: normalizeUsage({
+            actualUsd: 0,
+            tokensIn: 0,
+            tokensOut: 0,
+            provenance: "unavailable"
+          }),
+          verification: { passed: false, summary: `Verifier not run: ${failureMessage}` },
+          failure: {
+            message: failureMessage
+          }
+        };
+      }
+
       const agentText =
         codexJsonlResult?.summary ??
         geminiJsonResult?.summary ??
@@ -634,35 +841,37 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
                 : undefined
           });
 
+      const verificationStack = request.context.verificationStack;
       const verification = await runVerification(
         request.context.verificationPlan,
         workingDirectory,
         verifyTimeoutMs,
-        request.context.verificationStack,
+        verificationStack,
         options.spawnImpl
       );
 
       // Check for zero-diff (agent ran but made no file changes)
       const repoRoot = (request.context as { repoRoot?: string }).repoRoot;
+      const gitRepoRoot = repoRoot ? resolveGitRepositoryRoot(repoRoot) : undefined;
       let noDiff = false;
-      if (repoRoot) {
-        noDiff = await checkNoDiff(repoRoot, options.spawnImpl);
+      if (gitRepoRoot) {
+        noDiff = await checkNoDiff(gitRepoRoot, options.spawnImpl);
       }
 
       // Extract structured errors from stderr/stdout for better failure context
       const structuredErrors = normalizeStructuredErrors(
         extractStructuredErrors(agentResult.stderr, agentResult.stdout)
       );
-      const executionArtifacts = repoRoot
-        ? await readGitExecutionArtifacts(repoRoot, 5000, options.spawnImpl)
+      const executionArtifacts = gitRepoRoot
+        ? await readGitExecutionArtifacts(gitRepoRoot, 5000, options.spawnImpl)
         : undefined;
 
       // Scope contract enforcement: check touched files against allowedPaths/deniedPaths
       let scopeViolations: string[] = [];
       const scopeCtx = request.context as { allowedPaths?: string[]; deniedPaths?: string[] };
-      if (repoRoot && (scopeCtx.allowedPaths?.length || scopeCtx.deniedPaths?.length)) {
+      if (gitRepoRoot && (scopeCtx.allowedPaths?.length || scopeCtx.deniedPaths?.length)) {
         const diffResult = await runSubprocess("git", ["diff", "--name-only", "HEAD"], {
-          cwd: repoRoot,
+          cwd: gitRepoRoot,
           timeoutMs: 5000,
           spawnImpl: options.spawnImpl
         });
@@ -698,7 +907,7 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
           status: "completed",
           summary,
           usage,
-          verification,
+          verification: { passed: true, summary: verification.summary },
           ...(executionArtifacts
             ? {
                 execution: {
@@ -746,7 +955,12 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
 
         // Reset tracked files to HEAD so next attempt starts from clean state
         try {
-          await runSubprocess("git", ["restore", "--staged", "--worktree", "."], { cwd: repoRoot, timeoutMs: 5000 });
+          if (gitRepoRoot) {
+            await runSubprocess("git", ["restore", "--staged", "--worktree", "."], {
+              cwd: gitRepoRoot,
+              timeoutMs: 5000
+            });
+          }
         } catch {
           // Non-fatal
         }
@@ -758,7 +972,7 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
           ? `${summary}${errorBlock}${scopeViolations.length > 0 ? `\nScope violations: ${scopeViolations.join(", ")}` : ""}`
           : summary,
         usage,
-        verification,
+        verification: { passed: false, summary: verification.summary },
         ...(executionArtifacts
           ? {
               execution: {
@@ -798,10 +1012,16 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
 // ---------------------------------------------------------------------------
 
 /**
- * Spawns `claude --output-format json --print "<prompt>" --dangerously-skip-permissions [extraArgs]`.
+ * Spawns `claude --output-format stream-json --verbose --print "<prompt>" [extraArgs]`.
  *
- * The --output-format json flag causes Claude CLI to return structured JSON
- * including real token usage counts, enabling accurate cost tracking.
+ * `stream-json` emits one JSON event per line — including per-turn usage on
+ * each `assistant` message and a final `result` event carrying the same
+ * `result`/`usage`/`total_cost_usd` fields as single-blob `json` output — so
+ * MartinLoop can both (a) recover real token usage/cost as before, and
+ * (b) watch cumulative spend live and self-terminate the subprocess the
+ * moment it crosses the remaining per-attempt budget (see
+ * `streamingUsageCap` / `createStreamingUsageInspector`), instead of only
+ * discovering an overspend after the whole process has already exited.
  *
  * Requires the Claude Code CLI to be installed and authenticated:
  *   https://docs.anthropic.com/claude-code
@@ -819,10 +1039,12 @@ export function createClaudeCliAdapter(options: ClaudeCliAdapterOptions = {}): M
     timeoutMs: options.timeoutMs,
     verifyTimeoutMs: options.verifyTimeoutMs,
     supportsJsonOutput: true,
+    streamingUsageCap: true,
     spawnImpl: options.spawnImpl,
     argsBuilder: (_prompt) => [
       "--output-format",
-      "json",
+      "stream-json",
+      "--verbose",
       "--print",
       "--dangerously-skip-permissions",
       ...modelArgs,
@@ -847,14 +1069,13 @@ export function createClaudeCliAdapter(options: ClaudeCliAdapterOptions = {}): M
  *   npm install -g @openai/codex
  */
 export function createCodexCliAdapter(options: CodexCliAdapterOptions = {}): MartinAdapter {
-  const modelArgs: string[] = options.model ? ["--model", options.model] : [];
   const extraArgs = options.extraArgs ?? [];
   const sandbox = options.sandbox ?? "workspace-write";
   const workingDirectory = options.workingDirectory ?? process.cwd();
-  const gitRepoCheckArgs = shouldSkipCodexGitRepoCheck(workingDirectory) ? ["--skip-git-repo-check"] : [];
+  const command = options.command ?? "codex";
 
   return createAgentCliAdapter({
-    command: "codex",
+    command,
     adapterIdSuffix: "codex",
     model: options.model ?? "codex",
     label: options.label ?? "Codex CLI adapter",
@@ -863,22 +1084,14 @@ export function createCodexCliAdapter(options: CodexCliAdapterOptions = {}): Mar
     verifyTimeoutMs: options.verifyTimeoutMs,
     supportsJsonOutput: false,
     spawnImpl: options.spawnImpl,
-    argsBuilder: () => [
-      "--ask-for-approval",
-      "never",
-      "exec",
-      "--cd",
-      workingDirectory,
-      ...gitRepoCheckArgs,
-      "--sandbox",
-      sandbox,
-      "--json",
-      "--color",
-      "never",
-      ...modelArgs,
-      ...extraArgs,
-      "-"
-    ],
+    argsBuilder: () =>
+      buildCodexExecArgs({
+        workingDirectory,
+        sandbox,
+        ...(options.model ? { model: options.model } : {}),
+        extraArgs,
+        mode: "prompt"
+      }),
     stdinBuilder: (prompt) => prompt
   });
 }
@@ -1060,21 +1273,6 @@ function truncate(text: string, maxLength: number): string {
   return `...${text.slice(-(maxLength - 3))}`;
 }
 
-function shouldSkipCodexGitRepoCheck(workingDirectory: string): boolean {
-  try {
-    const probe = spawnSync("git", ["rev-parse", "--is-inside-work-tree"], {
-      cwd: workingDirectory,
-      windowsHide: true,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"]
-    });
-
-    return probe.status !== 0 || probe.stdout.trim() !== "true";
-  } catch {
-    return true;
-  }
-}
-
 function formatPreVerifierSubprocessFailure(command: string, stderr: string, exitCode: number): string {
   const detail = stderr.trim() || `Exit code ${String(exitCode)}`;
   const lowerDetail = detail.toLowerCase();
@@ -1128,7 +1326,15 @@ function redactSecretsForPrompt(input: string): string {
   return input
     .replace(/\bOPENAI_API_KEY\s*=\s*[^\s"'`]+/giu, "OPENAI_API_KEY=[REDACTED_SECRET]")
     .replace(/\bsk-[A-Za-z0-9_-]{8,}\b/gu, "[REDACTED_SECRET]")
-    .replace(/\bghp_[A-Za-z0-9_]{8,}\b/gu, "[REDACTED_SECRET]")
+    .replace(/\bghp_[A-Za-z0-9_]{16,}\b/gu, "[REDACTED_SECRET]")
+    .replace(/\bgithub_pat_[A-Za-z0-9_]{20,}\b/gu, "[REDACTED_SECRET]")
+    .replace(/\b(?:gho|ghu|ghs|ghr)_[A-Za-z0-9_]{16,}\b/gu, "[REDACTED_SECRET]")
+    .replace(/\bAKIA[0-9A-Z]{16}\b/gu, "[REDACTED_SECRET]")
+    .replace(/\b(?:aws_secret_access_key|AWS_SECRET_ACCESS_KEY)\s*[:=]\s*[^\s"'`]+/giu, "AWS_SECRET_ACCESS_KEY=[REDACTED_SECRET]")
+    .replace(/\bxox[baprs]-[A-Za-z0-9-]{10,}\b/giu, "[REDACTED_SECRET]")
+    .replace(/\bAIza[0-9A-Za-z_-]{30,}\b/gu, "[REDACTED_SECRET]")
+    .replace(/-----BEGIN(?:\s+[A-Z0-9]+)*\s+PRIVATE KEY-----[\s\S]*?-----END(?:\s+[A-Z0-9]+)*\s+PRIVATE KEY-----/gu, "[REDACTED_SECRET]")
+    .replace(/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/gu, "[REDACTED_SECRET]")
     .replace(/\B\.env(?!\.example\b)(?:\.[A-Za-z0-9._-]+)?\b/giu, "[REDACTED_PATH]");
 }
 
