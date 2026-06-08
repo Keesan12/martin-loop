@@ -22,6 +22,7 @@ Try MartinLoop in a disposable demo workspace:
 
 ```sh
 npx martin-loop demo
+npx martin-loop --version
 cd martin-loop-demo
 npm install
 npx martin-loop doctor
@@ -36,7 +37,7 @@ npx martin-loop share --latest
 
 `share --latest` writes three files into the selected run directory under `share/`: `run-receipt.json`, `run-receipt.md`, and `proof-card.svg`.
 
-Release notes for the current root package: [MartinLoop 0.2.8](./docs/release/OSS-0.2.8-RELEASE-NOTES.md).
+Release notes for the current root package: [MartinLoop 0.3.1](./docs/release/OSS-0.3.1-RELEASE-NOTES.md).
 
 ## What It Does
 
