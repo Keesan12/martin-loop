@@ -6,6 +6,11 @@ The published binary is `martin-loop`. Public installs, docs, and examples shoul
 
 ```text
 martin-loop --version
+martin-loop start [options]
+martin-loop enable [options]
+martin-loop env [options]
+martin-loop review [--loop-id <id> | --file <path> | --latest] [options]
+martin-loop receipts explain [--loop-id <id> | --file <path> | --latest] [options]
 martin-loop doctor
 martin-loop demo
 martin-loop session-start [--host <claude|codex|gemini|generic>]
@@ -34,12 +39,17 @@ npx martin-loop --version
 npx martin-loop demo
 cd martin-loop-demo
 npm install
+npx martin-loop start
 npx martin-loop doctor
 npx martin-loop session-start
 npx martin-loop preflight "Summarize the workspace and prove tests still pass" --verify "npm test"
 npx martin-loop run "Summarize the workspace and prove tests still pass" --proof --verify "npm test"
+npx martin-loop review
+npx martin-loop receipts explain --latest
 npx martin-loop share --latest
 ```
+
+`start` and `enable` are repo-scoped onboarding helpers. They do not silently intercept global Codex/Claude/Gemini usage.
 
 ## Run Options
 
@@ -105,6 +115,13 @@ Use `dossier` when you want one run receipt:
 
 ```sh
 npx martin-loop dossier --latest
+```
+
+Use `review` for a compact latest-run summary and `receipts explain` for trust-state debugging:
+
+```sh
+npx martin-loop review
+npx martin-loop receipts explain --latest
 ```
 
 Compatibility views remain available:

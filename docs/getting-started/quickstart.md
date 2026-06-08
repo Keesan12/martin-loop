@@ -15,15 +15,20 @@ Use this guide to get one governed MartinLoop run and one evidence review in a f
 npx martin-loop demo
 cd martin-loop-demo
 npm install
+npx martin-loop start
 npx martin-loop doctor
 npx martin-loop session-start
 npx martin-loop preflight "Summarize the demo workspace and prove tests still pass" --verify "npm test"
 npx martin-loop run "Summarize the demo workspace and prove tests still pass" --proof --verify "npm test"
+npx martin-loop review
+npx martin-loop receipts explain --latest
 npx martin-loop dossier --latest
 npx martin-loop share --latest
 ```
 
-This path creates the local receipts MartinLoop expects before a real governed run, then proves the run/dossier loop without model spend.
+This path creates the local receipts MartinLoop expects before a real governed run, then proves the run/dossier/share loop without model spend.
+
+`martin start` gives a guided first-run summary and suggested next commands. `martin enable` writes repo-local defaults and keeps control explicit; MartinLoop does not silently intercept other agent tools globally.
 
 ## Install the CLI
 
@@ -43,10 +48,25 @@ npx martin-loop run "fix the auth regression" --budget 3.00 --verify "pnpm test"
 
 By default, MartinLoop expects recent `doctor`, `session-start`, and `preflight` receipts for the same repo and task before a real run will start. If you intentionally need to bypass that local gate for a one-off run, use `--unsafe-allow-unguarded-run` explicitly.
 
+You can set repo-local defaults once:
+
+```sh
+npx martin-loop enable --engine claude --verify "pnpm test" --budget-usd 2 --max-iterations 1
+```
+
+After enablement, objective shorthand routes through governed run behavior:
+
+```sh
+npx martin-loop "fix the failing auth test and keep pnpm test green"
+```
+
 ## Review Evidence
 
 ```sh
 npx martin-loop triage
+npx martin-loop review
+npx martin-loop env
+npx martin-loop receipts explain --latest
 npx martin-loop dossier --latest
 npx martin-loop share --latest
 ```
