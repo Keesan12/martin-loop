@@ -34,7 +34,7 @@ test("version ledger records live public truth and the next release train", asyn
   assert.match(ledger, /live public GitHub release: `v0\.3\.1`/);
   assert.match(
     ledger,
-    new RegExp(escapeRegex("standalone MCP public baseline: `0.3.0`"))
+    new RegExp(escapeRegex("standalone MCP public baseline: `0.3.1`"))
   );
   assert.match(
     ledger,
@@ -64,24 +64,24 @@ test("MCP slice map defines the 0.3.x train without private-hosted bleed", async
 });
 
 test("public MCP docs describe the current baseline and the next train in human-facing language", async () => {
-  const [packageReadme, aiGuide, releaseNotes030, releaseNotes031] = await Promise.all([
+  const [packageReadme, aiGuide, releaseNotes031, releaseNotes032] = await Promise.all([
     readRepoFile(path.join("packages", "mcp", "README.md")),
     readRepoFile(path.join("docs", "oss", "MCP-FOR-AI-AGENTS.md")),
-    readRepoFile(path.join("docs", "release", "MCP-0.3.0-RELEASE-NOTES.md")),
-    readRepoFile(path.join("docs", "release", "MCP-0.3.1-RELEASE-NOTES.md"))
+    readRepoFile(path.join("docs", "release", "MCP-0.3.1-RELEASE-NOTES.md")),
+    readRepoFile(path.join("docs", "release", "MCP-0.3.2-RELEASE-NOTES.md"))
   ]);
 
   for (const contents of [packageReadme, aiGuide]) {
-    assert.match(contents, /0\.3\.0/);
     assert.match(contents, /0\.3\.1/);
+    assert.match(contents, /0\.3\.2/);
     assert.match(contents, /local-first/i);
     assert.match(contents, /martin_doctor/);
     assert.match(contents, /martin_plan/);
     assert.match(contents, /martin_preflight/);
     assert.match(contents, /martin_run/);
   }
-  assert.match(releaseNotes030, /adoption release/i);
   assert.match(releaseNotes031, /review and handoff release/i);
+  assert.match(releaseNotes032, /opt-in execution-controls release/i);
 });
 
 test("release packet for 0.2.7 records the public verification gates", async () => {

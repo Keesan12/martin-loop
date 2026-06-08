@@ -430,6 +430,9 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
   }
 
   if (command === "run" || command === "preflight") {
+    if (rest[0] === "--help" || rest[0] === "-h") {
+      return { command: "help" };
+    }
     const request = parseRunRequest(rest);
     return command === "run"
       ? { command: "run", request }

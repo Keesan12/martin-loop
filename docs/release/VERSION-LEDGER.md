@@ -12,16 +12,16 @@ This file is the release source of truth for package/version mapping in this rep
   - `0.2.9` fixed proof-run classification, Windows `.cmd` resolution, and public provider defaults
   - `0.2.10` tightened verifier evidence, `--runs-dir` consistency, and public help output
   - `0.2.11` fixed `runs verify --latest` selector parity in the public CLI
-- current in-repo root release line: `0.3.1` for production claim parity hardening and CLI/public benchmark reliability
-- next planned root follow-on: `0.3.2` for npx invocation parity hardening
+- current in-repo root release line: `0.3.2` for npx invocation parity hardening and release-surface truth alignment
+- next planned root follow-on: `0.3.3` for additional cross-host reliability hardening
 
 ## Standalone package: `@martinloop/mcp`
 
-- live npm dist-tag `latest`: `0.3.0`
-- live public GitHub release: `mcp-v0.3.0`
-- live public baseline in this train: `0.3.0`
-- standalone MCP public baseline: `0.3.0`
-- current in-repo standalone release line: `0.3.1` for review and handoff controls
+- live npm dist-tag `latest`: `0.3.1`
+- live public GitHub release: `mcp-v0.3.1`
+- live public baseline in this train: `0.3.1`
+- standalone MCP public baseline: `0.3.1`
+- current in-repo standalone release line: `0.3.1` for review and handoff controls (published)
 - next planned standalone release: `0.3.2` for opt-in execution controls
 - next planned follow-ons:
   - `0.3.3` reserved for additional host-coverage follow-ups
