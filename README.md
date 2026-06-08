@@ -33,11 +33,36 @@ npx martin-loop dossier --latest
 npx martin-loop share --latest
 ```
 
-`doctor`, `session-start`, and `preflight` create the local receipts MartinLoop expects before a real governed run. If you intentionally need to bypass that local gate for a one-off run, use `--unsafe-allow-unguarded-run` explicitly.
+`doctor`, `session-start`, and `preflight` create the local receipts MartinLoop expects before a real governed run.
 
 `share --latest` writes three files into the selected run directory under `share/`: `run-receipt.json`, `run-receipt.md`, and `proof-card.svg`.
 
 Release notes for the current root package: [MartinLoop 0.3.2](./docs/release/OSS-0.3.2-RELEASE-NOTES.md).
+
+## Run This Audit Yourself
+
+Use this lane from a clean temp directory to verify the public CLI flow exactly as shipped:
+
+```sh
+npx -y martin-loop@0.3.2 --version
+npx -y martin-loop@0.3.2 demo
+cd martin-loop-demo
+npm install
+npx -y martin-loop@0.3.2 doctor --json
+npx -y martin-loop@0.3.2 session-start --json
+npx -y martin-loop@0.3.2 preflight "Summarize the demo workspace and prove tests still pass" --verify "npm test" --json
+npx -y martin-loop@0.3.2 run "Summarize the demo workspace and prove tests still pass" --proof --verify "npm test" --json
+npx -y martin-loop@0.3.2 dossier --latest --json
+npx -y martin-loop@0.3.2 share --latest --json
+```
+
+For deterministic installs, pin the package line (`martin-loop@0.3.2`) or use `martin-loop@latest`. Plain `npx martin-loop` can resolve a stale local cache on some machines.
+
+Expected share bundle outputs:
+
+- `share/run-receipt.json`
+- `share/run-receipt.md`
+- `share/proof-card.svg`
 
 ## What It Does
 
