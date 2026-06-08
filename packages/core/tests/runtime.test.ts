@@ -722,8 +722,7 @@ describe("runMartin", () => {
         model: "stub",
         capabilities: {
           preflight: true,
-          usageSettlement: true,
-          diffArtifacts: false,
+          usageSettlement: "actual",
           structuredErrors: true,
           cachingSignals: false,
           verifierCompatibility: "verify_only",
