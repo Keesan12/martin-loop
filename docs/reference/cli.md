@@ -5,6 +5,7 @@ The published binary is `martin-loop`. Public installs, docs, and examples shoul
 ## Commands
 
 ```text
+martin-loop --version
 martin-loop doctor
 martin-loop demo
 martin-loop session-start [--host <claude|codex|gemini|generic>]
@@ -29,6 +30,7 @@ martin-loop mcp install --host <codex|claude|gemini|generic>
 Use this sequence when you are new to the product or setting up a fresh repo:
 
 ```sh
+npx martin-loop --version
 npx martin-loop demo
 cd martin-loop-demo
 npm install
