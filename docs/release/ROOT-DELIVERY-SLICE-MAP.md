@@ -4,9 +4,9 @@ This map keeps the public root-package release train narrow and readable. The ro
 
 ## Baseline
 
-- live root baseline: `0.2.11`
-- next root release to cut: `0.3.0`
-- next follow-on after that: `0.3.1`
+- live root baseline: `0.3.1`
+- current root release to cut: `0.3.2`
+- next follow-on after that: `0.3.3`
 
 ## `0.3.0` — Shareable Run Receipts
 
@@ -43,6 +43,23 @@ Includes:
 - compatibility docs and examples for the adapters that are already shipped
 - clearer host coverage for local-first IDE and model setups
 - install guidance that matches the actual public package surfaces
+
+Does not include:
+
+- hosted transport
+- private control-plane features
+- billing, team, or tenant language
+
+## `0.3.2` — npx Parity And Trust-Surface Alignment
+
+Story: keep public claims aligned with real runtime behavior and release metadata.
+
+Includes:
+
+- deterministic `npx martin-loop` version identity in mixed workspace contexts
+- root release notes and ledger alignment for `0.3.2`
+- public standalone MCP baseline truth updates to `0.3.1`
+- a public receipt specification for governed run evidence (`docs/oss/AGENT-RUN-RECEIPTS.md`)
 
 Does not include:
 

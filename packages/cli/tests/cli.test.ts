@@ -102,6 +102,13 @@ describe("parseCliArguments", () => {
       }
     });
   });
+
+  it("treats run/preflight help flags as top-level help", () => {
+    expect(parseCliArguments(["run", "--help"])).toEqual({ command: "help" });
+    expect(parseCliArguments(["run", "-h"])).toEqual({ command: "help" });
+    expect(parseCliArguments(["preflight", "--help"])).toEqual({ command: "help" });
+    expect(parseCliArguments(["preflight", "-h"])).toEqual({ command: "help" });
+  });
 });
 
 describe("executeCli", () => {
