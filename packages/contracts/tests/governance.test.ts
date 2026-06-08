@@ -4,8 +4,14 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  cloneChangeObservationReconciliation,
+  cloneVerifierSnapshot,
+  createAdapterCapabilityDescriptor,
+  getBuiltInEngineCapabilityDescriptor,
   createGovernanceSnapshot,
-  type GovernanceSnapshot
+  type ChangeObservationReconciliation,
+  type GovernanceSnapshot,
+  type VerifierSnapshot
 } from "../src/index.js";
 
 describe("createGovernanceSnapshot", () => {
@@ -51,6 +57,99 @@ describe("createGovernanceSnapshot", () => {
     expect(fixture.allowedModels.length).toBeGreaterThan(0);
     expect(fixture.verifierRules.length).toBeGreaterThan(0);
     expect(fixture.provenance.length).toBeGreaterThan(0);
+  });
+});
+
+describe("shared runtime contracts", () => {
+  it("creates adapter capability descriptors with stable defaults and overrides", () => {
+    const descriptor = createAdapterCapabilityDescriptor({
+      usageSettlement: "actual",
+      diffVisibility: "git",
+      structuredErrors: true
+    });
+
+    expect(descriptor.preflight).toBe(true);
+    expect(descriptor.usageSettlement).toBe("actual");
+    expect(descriptor.diffVisibility).toBe("git");
+    expect(descriptor.verifierCompatibility).toBe("full");
+  });
+
+  it("returns built-in engine capability truth for claude and codex", () => {
+    expect(getBuiltInEngineCapabilityDescriptor("claude").usageSettlement).toBe("actual");
+    expect(getBuiltInEngineCapabilityDescriptor("codex").usageSettlement).toBe("estimated");
+  });
+
+  it("clones verifier snapshots without aliasing nested step data", () => {
+    const source: VerifierSnapshot = {
+      passed: true,
+      summary: "All checks passed.",
+      startedAt: "2026-06-07T00:00:00.000Z",
+      completedAt: "2026-06-07T00:00:02.000Z",
+      durationMs: 2000,
+      stepCount: 1,
+      failedStepCount: 0,
+      commands: ["pnpm test"],
+      steps: [
+        {
+          command: "pnpm test",
+          type: "test_full",
+          fastFail: true,
+          passed: true,
+          exitCode: 0,
+          exitReason: "passed",
+          startedAt: "2026-06-07T00:00:00.000Z",
+          completedAt: "2026-06-07T00:00:02.000Z",
+          durationMs: 2000,
+          stdout: "ok"
+        }
+      ]
+    };
+    const snapshot = cloneVerifierSnapshot(source);
+
+    snapshot.commands.push("pnpm lint");
+    snapshot.steps[0]!.command = "mutated";
+
+    expect(source.commands).toEqual(["pnpm test"]);
+    expect(source.steps[0]?.command).toBe("pnpm test");
+  });
+
+  it("clones change observation reconciliation without aliasing nested evidence", () => {
+    const source: ChangeObservationReconciliation = {
+      status: "mismatch",
+      summary: "Adapter-reported changes differed from repo observation.",
+      adapterReported: {
+        available: true,
+        changedFiles: ["src/a.ts"],
+        diffStats: {
+          filesChanged: 1,
+          addedLines: 4,
+          deletedLines: 1
+        }
+      },
+      repoObserved: {
+        available: true,
+        changedFiles: ["src/a.ts", "src/b.ts"],
+        diffStats: {
+          filesChanged: 2,
+          addedLines: 7,
+          deletedLines: 1
+        }
+      },
+      effectiveChangedFiles: ["src/a.ts", "src/b.ts"],
+      matchedFiles: ["src/a.ts"],
+      adapterOnlyFiles: [],
+      repoOnlyFiles: ["src/b.ts"]
+    };
+
+    const snapshot = cloneChangeObservationReconciliation(source);
+
+    snapshot.adapterReported.changedFiles.push("src/c.ts");
+    snapshot.repoObserved.diffStats!.filesChanged = 3;
+    snapshot.effectiveChangedFiles[0] = "src/mutated.ts";
+
+    expect(source.adapterReported.changedFiles).toEqual(["src/a.ts"]);
+    expect(source.repoObserved.diffStats?.filesChanged).toBe(2);
+    expect(source.effectiveChangedFiles).toEqual(["src/a.ts", "src/b.ts"]);
   });
 });
 

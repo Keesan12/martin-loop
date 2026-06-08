@@ -3,7 +3,13 @@ import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import type { LoopBudget, LoopRecord, LoopTask, MachineState } from "@martin/contracts";
+import type {
+  ExecutionPolicy,
+  LoopBudget,
+  LoopRecord,
+  LoopTask,
+  MachineState
+} from "@martin/contracts";
 
 import { type LedgerEvent } from "./ledger.js";
 import { writeReceiptIntegrityMaterial } from "./integrity.js";
@@ -25,6 +31,8 @@ export interface RunContract {
 export interface AttemptArtifacts {
   /** Compiled PromptPacket written as compiled-context.json */
   compiledContext: unknown;
+  /** Effective execution policy snapshot written as execution-policy.json */
+  executionPolicy?: ExecutionPolicy;
   /** Structured verification evidence captured from the authoritative MartinLoop verifier (optional) */
   verification?: unknown;
   /** Unified diff string from the patch (optional) */
@@ -33,6 +41,8 @@ export interface AttemptArtifacts {
   verifierOutput?: string;
   /** Grounding scan result (optional) */
   groundingScan?: unknown;
+  /** Adapter-vs-repo change observation reconciliation for this attempt (optional) */
+  observation?: unknown;
   /** Safety leash artifact captured for a blocked or escalated attempt (optional) */
   leash?: unknown;
   /** Patch score artifact captured for Phase 10 patch-truth decisions (optional) */
@@ -113,9 +123,11 @@ export function artifactDir(runsRoot: string, runId: string, attemptIndex: numbe
  *   <runsRoot>/<runId>/state.json
  *   <runsRoot>/<runId>/ledger.jsonl
  *   <runsRoot>/<runId>/artifacts/attempt-<n>/compiled-context.json
+ *   <runsRoot>/<runId>/artifacts/attempt-<n>/execution-policy.json (if provided)
  *   <runsRoot>/<runId>/artifacts/attempt-<n>/diff.patch (if diff provided)
  *   <runsRoot>/<runId>/artifacts/attempt-<n>/verifier-output.txt (if provided)
  *   <runsRoot>/<runId>/artifacts/attempt-<n>/grounding-scan.json (if provided)
+ *   <runsRoot>/<runId>/artifacts/attempt-<n>/observation-reconciliation.json (if provided)
  *   <runsRoot>/<runId>/artifacts/attempt-<n>/leash.json (if leash provided)
  *   <runsRoot>/<runId>/artifacts/attempt-<n>/patch-score.json (if patchScore provided)
  *   <runsRoot>/<runId>/artifacts/attempt-<n>/patch-decision.json (if patchDecision provided)
@@ -159,6 +171,9 @@ export function createFileRunStore(options: { runsRoot?: string } = {}): RunStor
       await mkdir(dir, { recursive: true });
 
       await writeJsonFile(join(dir, "compiled-context.json"), artifacts.compiledContext);
+      if (artifacts.executionPolicy !== undefined) {
+        await writeJsonFile(join(dir, "execution-policy.json"), artifacts.executionPolicy);
+      }
       if (artifacts.verification !== undefined) {
         await writeJsonFile(join(dir, "verification.json"), artifacts.verification);
       }
@@ -171,6 +186,9 @@ export function createFileRunStore(options: { runsRoot?: string } = {}): RunStor
       }
       if (artifacts.groundingScan !== undefined) {
         await writeJsonFile(join(dir, "grounding-scan.json"), artifacts.groundingScan);
+      }
+      if (artifacts.observation !== undefined) {
+        await writeJsonFile(join(dir, "observation-reconciliation.json"), artifacts.observation);
       }
       if (artifacts.leash !== undefined) {
         await writeJsonFile(join(dir, "leash.json"), artifacts.leash);
