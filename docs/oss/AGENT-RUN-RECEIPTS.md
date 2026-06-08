@@ -1,166 +1,126 @@
 # Agent Run Receipts
 
-An agent run receipt is a local-first proof pack for a governed Martin Loop run. It gives a human or host agent enough evidence to answer:
+An agent run receipt is a local proof pack for a governed MartinLoop run. It gives enough evidence to answer:
 
-- What was the agent asked to do?
-- What limits applied?
-- What verifier result decided the outcome?
-- Why did the run stop?
-- What local evidence can be replayed or inspected?
+- what task was attempted
+- what limits applied
+- what verifier result determined the outcome
+- why the run stopped
+- what artifacts can be inspected or replayed
 
-The OSS receipt is designed for public, free-tier usage. It favors concise local records, deterministic replay instructions, and clear evidence boundaries over hosted dashboards or paid telemetry.
+The OSS receipt is intentionally local-first. It prioritizes deterministic inspection and practical evidence over hosted dashboards.
 
-## Receipt Fields
-
-Recommended receipt fields:
+## Receipt fields
 
 | Field | Purpose |
 | --- | --- |
-| `receiptVersion` | Schema version for the public receipt shape. |
-| `loopId` | Stable local run identifier. |
+| `receiptVersion` | Schema version for the receipt shape. |
+| `loopId` | Stable run identifier. |
 | `createdAt` | ISO timestamp when the receipt was written. |
-| `objective` | User-facing run objective, redacted if needed. |
-| `engine` | Agent runtime used for the run, such as `codex` or `claude`. |
-| `budget` | Local execution limits, including `maxUsd`, `maxIterations`, timeout bounds, and allowed or denied paths. |
-| `costProvenance` | Source of the cost estimate, for example model metadata, local token accounting, host-reported usage, or `unknown`. |
-| `verificationPlan` | Commands or checks the run was expected to satisfy. |
-| `verifierResult` | Final verifier status, exit code, checked command list, and relevant output locations. |
-| `haltReason` | Why Martin Loop stopped, such as `verified`, `budget_exhausted`, `verifier_failed`, or `policy_blocked`. |
-| `runDossier` | Paths or summaries for attempts, diffs, logs, verifier outputs, and final state. |
-| `replaySteps` | Minimal local commands needed to inspect or reproduce the proof pack. |
-| `evidenceBoundaries` | What evidence is included, excluded, redacted, or unavailable. |
+| `objective` | User-facing run objective (redacted if needed). |
+| `engine` | Agent runtime used for the run (`codex`, `claude`, `gemini`, and so on). |
+| `budget` | Execution limits: spend, token, iteration, and scope boundaries. |
+| `costProvenance` | Whether usage came from authoritative provider settlement, estimate, or unavailable source. |
+| `verificationPlan` | Verifier commands the run was expected to satisfy. |
+| `verifierResult` | Final verifier status, exit code, and evidence location. |
+| `haltReason` | Terminal outcome (`verified`, `budget_exhausted`, `verifier_failed`, `policy_blocked`, etc.). |
+| `runDossier` | Paths or summaries for attempts, logs, diffs, and final run state. |
+| `replaySteps` | Minimal commands required to re-check the result locally. |
+| `evidenceBoundaries` | What is included, redacted, excluded, or unavailable. |
 
-Receipts should avoid storing secrets, raw environment files, private credentials, or unrelated workspace content. Prefer relative paths inside the run store when possible, with absolute paths only when useful for local debugging.
+## Expected CLI and MCP surfaces
 
-## Expected CLI And MCP Surfaces
+CLI inspection surfaces:
 
-Public OSS users should expect receipt data to be available through local inspection surfaces rather than a hosted service.
+- list runs
+- inspect a run by `loopId`
+- print a dossier
+- print verifier outcomes
+- export receipt views as JSON or Markdown
 
-CLI-oriented surfaces:
+MCP inspection surfaces:
 
-- list recent runs
-- inspect a single run by `loopId`
-- print the run dossier
-- print verifier results
-- export or view a receipt as Markdown or JSON
+- `martin_list_runs`
+- `martin_triage_runs`
+- `martin_get_run`
+- `martin_get_attempt`
+- `martin_get_verification_results`
+- `martin_run_dossier`
+- `martin://runs/{loopId}` resources
 
-MCP-oriented surfaces:
+Execution remains bounded to governed run entrypoints. Receipt inspection is read-only.
 
-- `martin_list_runs` for discovery
-- `martin_triage_runs` for prioritizing failed or suspicious runs
-- `martin_get_run` for top-level run metadata
-- `martin_get_attempt` for attempt-level evidence
-- `martin_get_verification_results` for verifier output
-- `martin_run_dossier` for the richest one-call inspection view
-- `martin://runs/{loopId}` and related resources for read-only host access
+## Public receipt walkthrough (end to end)
 
-Execution should still flow through the governed run entrypoint. Receipt inspection should be read-only.
+Use this sequence to create and review a public-safe receipt bundle from a governed run.
 
-## Failure Categories
+1. Create governance receipts and run evidence:
 
-Receipts should classify failures in practical terms so a maintainer can triage without rereading every log.
-
-Common categories:
-
-- `verifier_failed`: The configured verification command completed and failed.
-- `budget_exhausted`: The run stopped because a configured dollar, iteration, or time limit was reached.
-- `policy_blocked`: The run attempted a denied path, unsafe operation, or disallowed surface.
-- `agent_unavailable`: The requested engine was not installed, authenticated, or callable.
-- `workspace_dirty_conflict`: Existing local edits prevented a safe change.
-- `no_action_taken`: Preflight or planning completed, but no execution occurred.
-- `artifact_missing`: An expected log, attempt record, diff, or verifier output was not written.
-- `unknown_cost`: The run completed, but cost provenance could not be verified.
-- `operator_interrupted`: A human or host cancelled the run before natural completion.
-
-Failure labels are not substitutes for logs. They are the receipt index that points readers to the right evidence first.
-
-## Example Receipt
-
-```json
-{
-  "receiptVersion": "1",
-  "loopId": "loop-2026-05-16-001",
-  "createdAt": "2026-05-16T18:30:00Z",
-  "objective": "Fix the auth regression and prove it with tests",
-  "engine": "codex",
-  "budget": {
-    "maxUsd": 3,
-    "maxIterations": 3,
-    "allowedPaths": ["src/**", "tests/**"],
-    "deniedPaths": [".env*", "secrets/**"]
-  },
-  "costProvenance": {
-    "source": "host_reported_usage",
-    "confidence": "estimate"
-  },
-  "verificationPlan": ["pnpm test --filter auth"],
-  "verifierResult": {
-    "status": "failed",
-    "exitCode": 1,
-    "outputPath": ".martin/runs/loop-2026-05-16-001/verification.log"
-  },
-  "haltReason": "verifier_failed",
-  "runDossier": {
-    "summaryPath": ".martin/runs/loop-2026-05-16-001/dossier.md",
-    "attemptsPath": ".martin/runs/loop-2026-05-16-001/attempts.jsonl"
-  },
-  "replaySteps": [
-    "pnpm install --frozen-lockfile",
-    "pnpm test --filter auth",
-    "martin inspect loop-2026-05-16-001"
-  ],
-  "evidenceBoundaries": {
-    "included": ["objective", "budget", "verifier output", "attempt summaries"],
-    "excluded": ["secrets", "raw environment files", "private credentials"],
-    "redactions": ["access tokens", "user-specific absolute paths where possible"]
-  }
-}
+```sh
+npx martin-loop doctor
+npx martin-loop session-start
+npx martin-loop preflight "Summarize the workspace and prove tests still pass" --verify "npm test"
+npx martin-loop run "Summarize the workspace and prove tests still pass" --proof --verify "npm test"
 ```
 
-## Replay Guidance
+2. Inspect the persisted run:
 
-A good receipt should let a reader reproduce the decision path, not necessarily replay the exact agent session token by token.
+```sh
+npx martin-loop dossier --latest
+npx martin-loop runs get --latest
+npx martin-loop runs verify --latest
+```
 
-Recommended replay steps:
+3. Create the share bundle:
 
-1. Check out the same commit or local workspace snapshot when available.
-2. Install dependencies using the documented OSS package manager command.
-3. Run the verifier commands listed in `verificationPlan`.
-4. Inspect the dossier and attempt records for agent decisions.
-5. Compare the new verifier result with the recorded `verifierResult`.
+```sh
+npx martin-loop share --latest
+```
 
-If exact replay is impossible because the workspace changed, the receipt should say so plainly in `evidenceBoundaries`.
+Expected bundle output under the selected run directory in `share/`:
 
-## Evidence Boundaries
+- `run-receipt.json` (machine-readable summary)
+- `run-receipt.md` (human-readable recap)
+- `proof-card.svg` (portable visual card)
 
-Included in OSS receipts:
+4. Optional custom output directory:
 
-- local run metadata
-- configured budgets and path boundaries
-- verifier command names, statuses, exit codes, and output paths
-- run dossier links or summaries
-- halt reason and failure category
-- cost provenance as an estimate or unknown value
-- replay steps for local inspection
+```sh
+npx martin-loop share --latest --out-dir ./receipts
+```
 
-Intentionally not included in OSS receipts:
+Use this when you want receipt artifacts in a dedicated folder for issue attachments or release evidence.
 
-- hosted dashboards
-- paid analytics pipelines
-- team audit trails or organization-wide compliance reporting
-- secret scanning as a managed service
-- private model-provider billing reconciliation
-- remote artifact storage
-- identity, SSO, RBAC, or enterprise policy details
-- raw prompts or logs that may expose secrets unless explicitly opted in and redacted
+## Failure categories
 
-Paid conversion can add hosted retention, richer analytics, shared review workflows, and organization policy controls. The OSS proof pack should remain useful without those services.
+Receipts should classify failures in practical terms:
 
-## Public-Safe Defaults
+- `verifier_failed`
+- `budget_exhausted`
+- `policy_blocked`
+- `agent_unavailable`
+- `workspace_dirty_conflict`
+- `no_action_taken`
+- `artifact_missing`
+- `unknown_cost`
+- `operator_interrupted`
 
-- Store receipts locally by default.
-- Prefer redacted summaries over full raw transcripts.
-- Treat cost as provenance-bound, not absolute truth.
-- Make verifier failures explicit rather than reinterpreting them as success.
-- Keep receipt inspection read-only.
-- Preserve enough evidence for a maintainer to decide the next action quickly.
+Failure labels are a triage index; they do not replace raw verifier and attempt evidence.
+
+## Replay guidance
+
+1. Check out the same commit or workspace snapshot when available.
+2. Install dependencies with the documented package-manager command.
+3. Run the recorded `verificationPlan`.
+4. Inspect dossier and attempt evidence for decision context.
+5. Compare the new verifier outcome with the stored `verifierResult`.
+
+If exact replay is not possible because the workspace changed, the receipt should say that in `evidenceBoundaries`.
+
+## Public-safe defaults
+
+- receipts stay local by default
+- redacted summaries are preferred over full raw transcripts
+- usage is presented with provenance (`actual`, `estimated`, or `unavailable`)
+- verifier failures are explicit and not reinterpreted as success
+- inspection remains read-only

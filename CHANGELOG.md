@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.3.2]
+
+### Fixed
+- **`npx martin-loop` now reports the published CLI version deterministically** - doctor/version output no longer drifts when invoked from inside a monorepo workspace with local bins on path.
+- **Public MCP release docs now reflect live registry truth** - standalone MCP baseline references are aligned to `@martinloop/mcp@0.3.1`.
+- **Governed run gate parity is now consistent across CLI and MCP** - preflight receipts recorded without explicit path filters now satisfy run-gate validation correctly.
+
+### Added
+- **Public receipt specification for governed runs** - added a customer-facing receipt reference that documents receipt structure, trust boundaries, and replay expectations without internal-only language.
+
+### Changed
+- Root release docs now point to the `0.3.2` line with explicit claim-to-code language for governed workflow evidence.
+
 ## [0.3.1]
 
 ### Fixed
