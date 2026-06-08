@@ -500,6 +500,86 @@ describe("executeCli", () => {
     }
   });
 
+  it("suppresses sensitive share fields when receipt integrity is tampered", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-share-tampered-"));
+    const runsRoot = join(directory, "runs");
+    const previousLive = process.env.MARTIN_LIVE;
+
+    try {
+      process.env.MARTIN_LIVE = "false";
+      const runResult = await executeCli([
+        "--json",
+        "run",
+        "--objective",
+        "tamper share hardening",
+        "--verify",
+        `"${process.execPath}" -e "process.exit(0)"`,
+        "--cwd",
+        directory,
+        "--runs-dir",
+        runsRoot
+      ]);
+      expect(runResult.exitCode).toBe(0);
+      const runPayload = JSON.parse(runResult.stdout) as { loop: { loopId: string } };
+      const loopId = runPayload.loop.loopId;
+      const loopRecordPath = join(runsRoot, loopId, "loop-record.json");
+
+      const persisted = JSON.parse(await readFile(loopRecordPath, "utf8")) as {
+        status: string;
+        lifecycleState: string;
+        cost: { actualUsd: number };
+      };
+      persisted.status = "completed";
+      persisted.lifecycleState = "verified";
+      persisted.cost.actualUsd = 9.99;
+      await writeFile(loopRecordPath, `${JSON.stringify(persisted, null, 2)}\n`, "utf8");
+
+      const shareResult = await executeCli([
+        "--json",
+        "share",
+        "--file",
+        loopRecordPath,
+        "--runs-dir",
+        runsRoot,
+        "--out-dir",
+        join(directory, "share")
+      ]);
+      expect(shareResult.exitCode).toBe(0);
+      const sharePayload = JSON.parse(shareResult.stdout) as {
+        files: { receiptJson: string };
+      };
+      const receipt = JSON.parse(await readFile(sharePayload.files.receiptJson, "utf8")) as {
+        loop: {
+          status: string;
+          lifecycleState: string;
+          spendUsd: number | null;
+          budgetUsd: number | null;
+          trustNotice?: string;
+        };
+        receipt: { notice?: string };
+        verification: { status: string };
+        proofCard: { evidenceLine: string };
+      };
+
+      expect(receipt.loop.status).toBe("untrusted");
+      expect(receipt.loop.lifecycleState).toBe("untrusted");
+      expect(receipt.loop.spendUsd).toBeNull();
+      expect(receipt.loop.budgetUsd).toBeNull();
+      expect(receipt.loop.trustNotice).toContain("suppressed");
+      expect(receipt.receipt.notice).toContain("redacted");
+      expect(receipt.verification.status).toBe("untrusted");
+      const evidenceLine = receipt.proofCard.evidenceLine.toLowerCase();
+      expect(evidenceLine.includes("not trustworthy") || evidenceLine.includes("canonical verification")).toBe(true);
+    } finally {
+      if (previousLive === undefined) {
+        delete process.env.MARTIN_LIVE;
+      } else {
+        process.env.MARTIN_LIVE = previousLive;
+      }
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
   it("prints the public under-$3 benchmark summary from the shipped fixture", async () => {
     const result = await executeCli(["bench", "--suite", "ralphy-smoke"]);
 

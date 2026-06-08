@@ -407,6 +407,19 @@ export async function loadPersistedLoop(
       });
     }
 
+    const runDirectory = path.dirname(targetPath);
+    const canonicalFromParent = await findCanonicalLoopRecordPath(runDirectory);
+    if (canonicalFromParent && path.resolve(canonicalFromParent) === path.resolve(targetPath)) {
+      return await attachReceiptIntegrity({
+        source: targetPath,
+        runsRoot,
+        loop: await readLoopRecordFile(canonicalFromParent),
+        warnings: [],
+        runDirectory,
+        loopRecordPath: canonicalFromParent
+      });
+    }
+
     const loops = await readLoopsFromFile(targetPath, runsRoot);
     const loop = loops.sort((left, right) => loopTimestamp(right) - loopTimestamp(left))[0];
     if (!loop) {

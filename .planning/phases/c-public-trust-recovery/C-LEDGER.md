@@ -37,3 +37,16 @@
   - `pnpm --filter @martin/cli test -- cli.test.ts` passed (21/21),
   - `pnpm --filter @martin/cli lint` passed.
 - Result: parity issue is not reproduced by canonical local fixture in this branch; keep C.3 open for field-lane replay parity with copied/relocated evidence paths.
+
+## C.4 share trust hardening (in progress)
+
+- Hardened share bundle rendering so non-verified integrity suppresses sensitive loop fields (`status`, `lifecycle`, `spend`, `budget`) as untrusted/null.
+- Non-verified integrity now redacts receipt/verification sections into explicit untrusted notices in share JSON payload.
+- Proof-card input now degrades untrusted fields when integrity is weak.
+- Added regression test:
+  - tampered loop record loaded via `share --file` does not export manipulated status/spend as authoritative.
+
+## C.3 selector canonicalization follow-up
+
+- Improved `--file` selector handling:
+  - when file path points at canonical run `loop-record.json` under a run directory, integrity verification now uses canonical run-directory context instead of noncanonical fallback.

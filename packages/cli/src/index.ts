@@ -919,8 +919,10 @@ async function executeRunCommand(
   }
 
   if (engineRequired && cliEnvironment.engine === "codex") {
+    const codexAvailability = resolveCliCommandAvailability("codex");
     const codexProbe = probeCodexLaunch({
-      workingDirectory: cliEnvironment.workingDirectory
+      workingDirectory: cliEnvironment.workingDirectory,
+      availability: codexAvailability
     });
     if (!codexProbe.ok) {
       throw new CliCommandError("environment", codexProbe.summary, {
@@ -3272,25 +3274,32 @@ async function executeChallengeCommand(
   });
 }
 
-function proofCardInputFromLoop(loop: LoopRecord): MartinProofCardInput {
+function proofCardInputFromLoop(
+  loop: LoopRecord,
+  options: { trustworthy?: boolean; integrityState?: string } = {}
+): MartinProofCardInput {
   const verification = buildVerificationSummary(loop);
   const rollbackStatus = loop.artifacts.some((artifact) =>
     artifact.kind.toLowerCase().includes("rollback")
   )
     ? "captured"
     : "not-recorded";
+  const trustworthy = options.trustworthy ?? true;
+  const untrustedLabel = options.integrityState
+    ? `untrusted (${options.integrityState})`
+    : "untrusted";
 
   return {
     loopId: loop.loopId,
     objective: loop.task.objective,
-    status: loop.status,
-    lifecycle: loop.lifecycleState,
-    verifierStatus: verification.status,
-    costSpend: `$${loop.cost.actualUsd.toFixed(2)}`,
-    budget: `$${loop.budget.maxUsd.toFixed(2)}`,
+    status: trustworthy ? loop.status : untrustedLabel,
+    lifecycle: trustworthy ? loop.lifecycleState : untrustedLabel,
+    verifierStatus: trustworthy ? verification.status : "untrusted",
+    costSpend: trustworthy ? `$${loop.cost.actualUsd.toFixed(2)}` : "untrusted",
+    budget: trustworthy ? `$${loop.budget.maxUsd.toFixed(2)}` : "untrusted",
     attempts: loop.attempts.length,
     rollbackStatus,
-    haltReason: latestExitReason(loop),
+    haltReason: trustworthy ? latestExitReason(loop) : "untrusted",
     evidenceBoundaryNotes: [
       "Generated from a local Martin Loop run record.",
       "Hosted dashboards and private team telemetry are intentionally excluded from OSS proof cards."
@@ -3388,25 +3397,60 @@ function buildShareBundle(detail: Awaited<ReturnType<typeof loadPersistedLoop>>)
 } {
   const dossier = buildRunDossier(detail);
   const verification = buildVerificationSummary(detail.loop);
-  const card = buildMartinProofCard(proofCardInputFromLoop(detail.loop));
+  const trustworthy = detail.integrity.state === "verified";
+  const card = buildMartinProofCard(
+    proofCardInputFromLoop(detail.loop, {
+      trustworthy,
+      integrityState: detail.integrity.state
+    })
+  );
   const receiptWarnings = dedupeWarnings([...detail.warnings, ...verification.warnings]);
+  const receiptLoop = trustworthy
+    ? {
+        loopId: detail.loop.loopId,
+        title: detail.loop.task.title,
+        objective: detail.loop.task.objective,
+        status: detail.loop.status,
+        lifecycleState: detail.loop.lifecycleState,
+        updatedAt: detail.loop.updatedAt,
+        attempts: detail.loop.attempts.length,
+        spendUsd: detail.loop.cost.actualUsd,
+        budgetUsd: detail.loop.budget.maxUsd
+      }
+    : {
+        loopId: detail.loop.loopId,
+        title: detail.loop.task.title,
+        objective: detail.loop.task.objective,
+        status: "untrusted",
+        lifecycleState: "untrusted",
+        updatedAt: detail.loop.updatedAt,
+        attempts: detail.loop.attempts.length,
+        spendUsd: null,
+        budgetUsd: null,
+        trustNotice: `Sensitive fields are suppressed because receipt integrity is ${detail.integrity.state}.`
+      };
+  const shareReceipt = trustworthy
+    ? dossier["receipt"]
+    : {
+        trustworthy: false,
+        receiptIntegrity: detail.integrity,
+        nextSafeAction: `Verify canonical receipt integrity for loop ${detail.loop.loopId} before sharing proof or cost claims.`,
+        notice: `Receipt details are redacted because integrity is ${detail.integrity.state}.`
+      };
+  const shareVerification = trustworthy
+    ? dossier["verification"]
+    : {
+        status: "untrusted",
+        summary: `Verification details are untrusted because receipt integrity is ${detail.integrity.state}.`,
+        warnings: receiptWarnings
+      };
   const receipt = redactShareValue({
     schemaVersion: "martin.share-receipt.v1",
     generatedAt: new Date().toISOString(),
-    loop: {
-      loopId: detail.loop.loopId,
-      title: detail.loop.task.title,
-      objective: detail.loop.task.objective,
-      status: detail.loop.status,
-      lifecycleState: detail.loop.lifecycleState,
-      updatedAt: detail.loop.updatedAt,
-      attempts: detail.loop.attempts.length,
-      spendUsd: detail.loop.cost.actualUsd,
-      budgetUsd: detail.loop.budget.maxUsd
-    },
+    loop: receiptLoop,
     receiptIntegrity: detail.integrity,
-    verification: dossier["verification"],
-    receipt: dossier["receipt"],
+    verification: shareVerification,
+    receipt: shareReceipt,
     artifacts: dossier["artifacts"],
     proofCard: {
       title: card.title,
