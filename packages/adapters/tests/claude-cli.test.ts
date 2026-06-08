@@ -104,6 +104,82 @@ function createScriptedSpawn(
   };
 }
 
+/**
+ * Simulates a CLI emitting newline-delimited `stream-json` events one at a
+ * time (each `data` event arriving separately, as a real subprocess would),
+ * so the streaming usage inspector can observe them incrementally and request
+ * early termination via `child.kill()`.
+ */
+function createStreamingSpawn(calls: SpawnCall[], lines: string[]): SpawnLike {
+  return (command, args = [], options) => {
+    const child = new EventEmitter() as Partial<ChildProcess> & {
+      stdout: PassThrough;
+      stderr: PassThrough;
+      stdin: PassThrough;
+    };
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    child.stdin = new PassThrough();
+
+    let killed = false;
+    let closed = false;
+    const emitClose = (code: number) => {
+      if (closed) {
+        return;
+      }
+      closed = true;
+      child.emit("close", code);
+    };
+
+    child.kill = () => {
+      if (!killed) {
+        killed = true;
+        child.stdout.end();
+        child.stderr.end();
+        setImmediate(() => emitClose(143));
+      }
+      return true;
+    };
+
+    const call: SpawnCall = { command, args: [...args], options, stdin: "" };
+    calls.push(call);
+    child.stdin.on("data", (chunk: Buffer | string) => {
+      call.stdin += Buffer.isBuffer(chunk) ? chunk.toString("utf8") : chunk;
+    });
+
+    void (async () => {
+      for (const line of lines) {
+        if (killed) {
+          return;
+        }
+        child.stdout.write(`${line}\n`);
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+      if (!killed) {
+        child.stdout.end();
+        child.stderr.end();
+        emitClose(0);
+      }
+    })();
+
+    return child as ChildProcess;
+  };
+}
+
+async function withPathPrefix<T>(directory: string, fn: () => Promise<T>): Promise<T> {
+  const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === "path") ?? "PATH";
+  const original = process.env[pathKey] ?? "";
+  process.env[pathKey] =
+    original.length > 0
+      ? `${directory}${process.platform === "win32" ? ";" : ":"}${original}`
+      : directory;
+
+  try {
+    return await fn();
+  } finally {
+    process.env[pathKey] = original;
+  }
+}
 // ---------------------------------------------------------------------------
 // Generic adapter factory
 // ---------------------------------------------------------------------------
@@ -619,6 +695,129 @@ describe("createClaudeCliAdapter", () => {
     expect(result.status).toBe("completed");
     expect(calls).toHaveLength(1);
     expect(calls[0]?.command).toBe("claude");
+  });
+
+  it("requests stream-json output so usage can be observed incrementally", async () => {
+    const calls: SpawnCall[] = [];
+    const adapter = createClaudeCliAdapter({
+      spawnImpl: createScriptedSpawn(calls, [
+        {
+          stdout:
+            '{"type":"assistant","message":{"usage":{"input_tokens":10,"output_tokens":5}}}\n' +
+            '{"type":"result","subtype":"success","result":"done","total_cost_usd":0.0042,"usage":{"input_tokens":10,"output_tokens":5}}\n'
+        }
+      ])
+    });
+
+    const result = await adapter.execute(makeRequest());
+
+    expect(result.status).toBe("completed");
+    expect(calls[0]?.args).toEqual(
+      expect.arrayContaining(["--output-format", "stream-json", "--verbose"])
+    );
+    // Prefers Claude's own authoritative total_cost_usd over a pricing-table estimate.
+    expect(result.usage?.actualUsd).toBeCloseTo(0.0042, 6);
+    expect(result.usage?.provenance).toBe("actual");
+    expect(result.summary).toContain("done");
+  });
+
+  describe("streaming usage circuit breaker", () => {
+    function streamingTurn(inputTokens: number, outputTokens: number): string {
+      return JSON.stringify({
+        type: "assistant",
+        message: { usage: { input_tokens: inputTokens, output_tokens: outputTokens } }
+      });
+    }
+
+    it("kills a runaway subprocess once cumulative cost crosses the remaining budget", async () => {
+      const calls: SpawnCall[] = [];
+      // claude-sonnet-4-6 pricing: $0.003/1K in, $0.015/1K out.
+      // Each turn below costs (5000/1000)*0.003 + (1000/1000)*0.015 = $0.03.
+      // remainingBudgetUsd = 0.05 (well above the prompt-size preflight estimate,
+      // so we actually reach the subprocess) → cap crossed partway through turn 2.
+      const lines = [
+        streamingTurn(5000, 1000),
+        streamingTurn(5000, 1000),
+        streamingTurn(5000, 1000),
+        streamingTurn(5000, 1000),
+        JSON.stringify({
+          type: "result",
+          subtype: "success",
+          result: "finished after a very long runaway session",
+          total_cost_usd: 3.5,
+          usage: { input_tokens: 20_000, output_tokens: 4_000 }
+        })
+      ];
+
+      const adapter = createClaudeCliAdapter({
+        spawnImpl: createStreamingSpawn(calls, lines)
+      });
+
+      const result = await adapter.execute(
+        makeRequest({
+          context: {
+            taskTitle: "test",
+            objective: "make a tiny change",
+            verificationPlan: [],
+            focus: "stay small",
+            remainingBudgetUsd: 0.05,
+            remainingIterations: 1,
+            remainingTokens: 50_000
+          }
+        })
+      );
+
+      expect(result.status).toBe("failed");
+      expect(result.failure?.classHint).toBe("budget_pressure");
+      expect(result.summary).toContain("circuit breaker");
+      expect(result.failure?.message).toContain("Streaming usage cap exceeded");
+
+      // Bounded to ~2 turns' worth of spend, not the eventual $3.50 runaway total.
+      expect(result.usage?.actualUsd).toBeGreaterThan(0.05);
+      expect(result.usage?.actualUsd).toBeLessThan(0.5);
+      expect(result.usage?.tokensIn).toBeLessThanOrEqual(10_000);
+      expect(result.usage?.tokensOut).toBeLessThanOrEqual(2_000);
+      expect(result.usage?.provenance).toBe("estimated");
+
+      // The subprocess was actually terminated — not allowed to run to completion.
+      expect(result.summary).not.toContain("runaway session");
+    });
+
+    it("does not interfere with normal completion when usage stays under the cap", async () => {
+      const calls: SpawnCall[] = [];
+      const lines = [
+        streamingTurn(50, 20),
+        JSON.stringify({
+          type: "result",
+          subtype: "success",
+          result: "small change applied",
+          total_cost_usd: 0.0009,
+          usage: { input_tokens: 50, output_tokens: 20 }
+        })
+      ];
+
+      const adapter = createClaudeCliAdapter({
+        spawnImpl: createStreamingSpawn(calls, lines)
+      });
+
+      const result = await adapter.execute(
+        makeRequest({
+          context: {
+            taskTitle: "test",
+            objective: "make a tiny change",
+            verificationPlan: [],
+            focus: "stay small",
+            remainingBudgetUsd: 5,
+            remainingIterations: 1,
+            remainingTokens: 50_000
+          }
+        })
+      );
+
+      expect(result.status).toBe("completed");
+      expect(result.summary).toContain("small change applied");
+      expect(result.usage?.actualUsd).toBeCloseTo(0.0009, 6);
+    });
   });
 });
 
