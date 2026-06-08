@@ -21,6 +21,7 @@ Use it when AI coding work needs to stay bounded, inspectable, and safe to revie
 Try MartinLoop in a disposable demo workspace:
 
 ```sh
+npx -y martin-loop@latest start
 npx -y martin-loop@latest demo
 npx -y martin-loop@latest --version
 cd martin-loop-demo
@@ -33,7 +34,7 @@ npx -y martin-loop@latest dossier --latest
 npx -y martin-loop@latest share --latest
 ```
 
-`doctor`, `session-start`, and `preflight` create the local receipts MartinLoop expects before a real governed run.
+`start` prints the first-run guided path. `doctor`, `session-start`, and `preflight` create the local receipts MartinLoop expects before a real governed run.
 
 `share --latest` writes three files into the selected run directory under `share/`: `run-receipt.json`, `run-receipt.md`, and `proof-card.svg`.
 

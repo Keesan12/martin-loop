@@ -42,6 +42,11 @@ describe("parseCliArguments", () => {
     expect(parseCliArguments(["version"])).toEqual({ command: "version" });
   });
 
+  it("parses start and tour onboarding aliases", () => {
+    expect(parseCliArguments(["start"])).toEqual({ command: "start" });
+    expect(parseCliArguments(["tour"])).toEqual({ command: "start" });
+  });
+
   it("parses a run command into a typed request", () => {
     const parsed = parseCliArguments([
       "run",
@@ -121,6 +126,7 @@ describe("executeCli", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("martin runs verify (--loop-id <id> | --file <path> | --latest) [options]");
+    expect(result.stdout).toContain("martin start [options]");
   });
 
   it("prints the public root package version", async () => {
@@ -134,6 +140,15 @@ describe("executeCli", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe("");
     expect(result.stdout).toBe(rootPackageVersion);
+  });
+
+  it("renders start onboarding guidance with governed defaults", async () => {
+    const result = await executeCli(["start"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("MartinLoop start");
+    expect(result.stdout).toContain("Governed runs are the default path");
+    expect(result.stdout).toContain("npx -y martin-loop@latest demo");
   });
 
   it("resolves effectivePolicy from config and applies it to the run", async () => {
@@ -454,7 +469,8 @@ describe("executeCli", () => {
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain(targetDirectory);
       expect(result.stdout).toContain("npm install");
-      expect(result.stdout).toContain("MARTIN_LIVE=false");
+      expect(result.stdout).toContain("Safe first run (no provider spend, governed path)");
+      expect(result.stdout).toContain("npx -y martin-loop@latest doctor");
       expect(await readFile(join(targetDirectory, "README.md"), "utf8")).toContain("Demo Sandbox");
     } finally {
       process.chdir(previousCwd);

@@ -55,6 +55,7 @@
     "access": "public"
   },
   "scripts": {
+    "postinstall": "node -e \"if(process.env.CI==='true'||process.env.MARTIN_SUPPRESS_POSTINSTALL==='1'){process.exit(0)};const lines=['','MartinLoop installed. First-run guided flow:','  npx -y martin-loop@latest start','  npx -y martin-loop@latest demo','  npx -y martin-loop@latest run \\\"your objective\\\" --verify \\\"npm test\\\"','','Governed runs are default. MartinLoop enforces doctor/session-start/preflight before live run spend.'];console.log(lines.join('\\\\n'));\"",
     "build": "pnpm --filter @martin/contracts build && pnpm --filter @martin/core build && pnpm --filter @martin/adapters build && pnpm --filter @martin/benchmarks build && pnpm --filter @martin/cli build && pnpm --filter @martinloop/mcp build && node ./scripts/build-public-facade.mjs",
     "bench:build": "pnpm --filter @martin/benchmarks build",
     "bench:test": "pnpm --filter @martin/benchmarks test",

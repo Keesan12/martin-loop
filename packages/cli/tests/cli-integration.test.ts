@@ -254,7 +254,7 @@ describe("--engine flag", () => {
 
     expect(result.exitCode).toBe(8);
     expect(result.stderr).toContain("Governed run blocked until MartinLoop receipts exist");
-    expect(result.stderr).toMatch(/martin-loop (doctor|session-start)/);
+    expect(result.stderr).toMatch(/martin-loop (doctor|session-start|preflight)/);
   });
 
   it("accepts explicit unsafe gate bypass in live mode", { timeout: 15000 }, async () => {
