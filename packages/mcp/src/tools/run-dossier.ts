@@ -9,7 +9,6 @@ import {
   buildSuggestedResourceUris,
   buildVerificationSummary
 } from "./tool-support.js";
-import { resolveTrustedLoopRepoRoot } from "../server-validation.js";
 import {
   loadDetailedLoopRecord,
   readAttemptArtifactFiles,
@@ -19,6 +18,7 @@ import { readRunControlState } from "./run-controls.js";
 import { martinEvalTool } from "./eval.js";
 import { assessRunRisk, inspectRepoSignals } from "./workflow-governance.js";
 import type { ReceiptIntegritySummary, ReceiptScope } from "@martin/contracts";
+import { resolveTrustedLoopRepoRoot } from "../server-validation.js";
 
 export interface MartinRunDossierInput {
   file?: string;

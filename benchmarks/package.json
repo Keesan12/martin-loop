@@ -5,8 +5,7 @@
   "type": "module",
   "description": "Public deterministic benchmark harness for MartinLoop OSS claims.",
   "scripts": {
-    "prebuild": "pnpm --filter @martin/contracts build && pnpm --filter @martin/core build",
-    "build": "tsc -p tsconfig.build.json",
+    "build": "pnpm --filter @martin/contracts build && pnpm --filter @martin/core build && tsc -p tsconfig.build.json",
     "test": "vitest run",
     "lint": "tsc -p tsconfig.json --noEmit",
     "eval": "tsx src/eval.ts --suite under-3-challenge",

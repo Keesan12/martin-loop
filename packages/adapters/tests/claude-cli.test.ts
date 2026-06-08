@@ -199,7 +199,7 @@ describe("createAgentCliAdapter", () => {
     expect(adapter.metadata.providerId).toBe("mytool");
     expect(adapter.metadata.model).toBe("mytool-v1");
     expect(adapter.metadata.transport).toBe("cli");
-    expect(adapter.metadata.capabilities.usageSettlement).toBe(false);
+    expect(adapter.metadata.capabilities.usageSettlement).toBe("unavailable");
   });
 
   it("uses adapterIdSuffix when provided", () => {
@@ -435,10 +435,11 @@ describe("createSpawnPlan", () => {
 
     expect(plan.command.toLowerCase()).toContain("cmd.exe");
     expect(plan.args[0]).toBe("/d");
-    expect(plan.args[1]).toBe("/c");
-    expect(plan.args[2]).toBe("C:\\Tools\\Example Path\\npm\\pnpm.cmd");
-    expect(plan.args[3]).toBe("verify shared baseline");
-    expect(plan.args[5]).toBe("pkg with spaces");
+    expect(plan.args[1]).toBe("/s");
+    expect(plan.args[2]).toBe("/c");
+    expect(plan.args[3]).toContain("C:\\Tools\\Example Path\\npm\\pnpm.cmd");
+    expect(plan.args[3]).toContain("verify shared baseline");
+    expect(plan.args[3]).toContain("pkg with spaces");
   });
 
   it("wraps absolute Windows PowerShell scripts through powershell.exe", () => {
@@ -477,8 +478,8 @@ describe("createSpawnPlan", () => {
     expect(plan.args[0]).toBe("/d");
     expect(plan.args[1]).toBe("/c");
     expect(plan.args[2]).toContain("__martin_nonexistent_verifier_cmd__");
-    expect(plan.args[3]).toBe("run");
-    expect(plan.args[4]).toBe("test");
+    expect(plan.args[2]).toContain("run");
+    expect(plan.args[2]).toContain("test");
   });
 
   it("preserves raw command when preserveRawForInjectedSpawn is true regardless of platform", () => {
