@@ -82,6 +82,14 @@ test("benchmark workspace cold-builds from a fresh dependency state", async () =
   await access(path.join(ROOT_DIR, "benchmarks", "dist", "index.js"));
 });
 
+test("benchmark eval and report commands run through public workspace commands", async () => {
+  const evalResult = await run("pnpm", ["--filter", "@martin/benchmarks", "eval"]);
+  const reportResult = await run("pnpm", ["--filter", "@martin/benchmarks", "report:ralphy"]);
+
+  assert.match(evalResult.stdout, /Under-\$3 Challenge/u);
+  assert.match(reportResult.stdout, /Ralph Loop Stress Report/u);
+});
+
 test("public benchmark docs align to the shipped benchmark commands", async () => {
   const readme = await readFile(path.join(ROOT_DIR, "README.md"), "utf8");
   const cliReference = await readFile(path.join(ROOT_DIR, "docs", "reference", "cli.md"), "utf8");
