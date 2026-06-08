@@ -1,12 +1,14 @@
 # Quickstart
 
-This quickstart covers the public OSS runtime and the standalone `@martinloop/mcp@0.2.5` cockpit line.
+This quickstart covers the public OSS runtime and the standalone `@martinloop/mcp@0.3.0` adoption line.
 
 ## Public Release Train
 
 - 0.1.4 operator foundation.
 - 0.2.0 cockpit expansion. 0.2.0 adds resources, resource templates, prompts, and read-only cockpit inspection.
 - 0.2.5 public MCP package line. 0.2.5 adds triage and degraded run-store hardening, plus the command-center workflow surfaces.
+- 0.2.7 usability and review release. 0.2.7 clarifies the guided path and tightens public package presentation.
+- 0.3.0 adoption release. 0.3.0 makes MartinLoop feel more native inside common agent hosts.
 
 ## Prerequisites
 
@@ -52,13 +54,13 @@ claude mcp add --transport stdio --scope user martin-loop -- cmd /c npx -y @mart
 Before an agent spends work, you can ask the CLI for local readiness and phase state:
 
 ```bash
-martin doctor
-martin session-start
-martin phase contract --json
-martin phase preflight
+pnpm exec martin-loop doctor
+pnpm exec martin-loop session-start
+pnpm exec martin-loop phase contract --json
+pnpm exec martin-loop phase preflight
 ```
 
-`martin session-start` reads local run receipts and local phase state when available. `martin phase contract` converts that phase state into an explicit run contract with objective, allowed paths, blocked paths, verifiers, budget, risk, and approval posture. Existing `.gsd` workspaces are imported as a compatibility format when present. `martin phase preflight` and `martin phase run` are dry-run by default; add `--execute` only after the contract is safe.
+`pnpm exec martin-loop session-start` reads local run receipts and local phase state when available. `pnpm exec martin-loop phase contract` converts that phase state into an explicit run contract with objective, allowed paths, blocked paths, verifiers, budget, risk, and approval posture. Existing `.gsd` workspaces are imported as a compatibility format when present. `pnpm exec martin-loop phase preflight` and `pnpm exec martin-loop phase run` are dry-run by default; add `--execute` only after the contract is safe.
 
 ### 1. Doctor
 

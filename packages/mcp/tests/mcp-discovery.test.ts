@@ -16,6 +16,21 @@ import {
   readMartinResource
 } from "../src/resources.js";
 
+async function withEnv<T>(key: string, value: string, fn: () => Promise<T>): Promise<T> {
+  const original = process.env[key];
+  process.env[key] = value;
+
+  try {
+    return await fn();
+  } finally {
+    if (original === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = original;
+    }
+  }
+}
+
 function makeLoopRecord() {
   const base = createLoopRecord({
     workspaceId: "ws_test",
@@ -126,6 +141,9 @@ describe("Martin MCP discovery resources", () => {
       MARTIN_STATIC_RESOURCE_URIS.agentNextStep,
       MARTIN_STATIC_RESOURCE_URIS.mcpUsageGuide,
       MARTIN_STATIC_RESOURCE_URIS.agentStartGuide,
+      MARTIN_STATIC_RESOURCE_URIS.commandMapGuide,
+      MARTIN_STATIC_RESOURCE_URIS.ideOnboardingGuide,
+      MARTIN_STATIC_RESOURCE_URIS.operatingRulesGuide,
       MARTIN_STATIC_RESOURCE_URIS.publishReadinessGuide
     ]);
     expect(listedTemplates.resourceTemplates.map((template) => template.uriTemplate)).toEqual([
@@ -149,6 +167,9 @@ describe("Martin MCP discovery resources", () => {
 
       const guide = await readMartinResource({ uri: MARTIN_STATIC_RESOURCE_URIS.mcpUsageGuide, runsDir: runsRoot });
       const agentStart = await readMartinResource({ uri: MARTIN_STATIC_RESOURCE_URIS.agentStartGuide, runsDir: runsRoot });
+      const commandMap = await readMartinResource({ uri: MARTIN_STATIC_RESOURCE_URIS.commandMapGuide, runsDir: runsRoot });
+      const ideOnboarding = await readMartinResource({ uri: MARTIN_STATIC_RESOURCE_URIS.ideOnboardingGuide, runsDir: runsRoot });
+      const operatingRules = await readMartinResource({ uri: MARTIN_STATIC_RESOURCE_URIS.operatingRulesGuide, runsDir: runsRoot });
       const recentRuns = await readMartinResource({ uri: MARTIN_STATIC_RESOURCE_URIS.recentRuns, runsDir: runsRoot });
       const triage = await readMartinResource({ uri: MARTIN_STATIC_RESOURCE_URIS.triage, runsDir: runsRoot });
       const latestSummary = await readMartinResource({ uri: MARTIN_STATIC_RESOURCE_URIS.latestSummary, runsDir: runsRoot });
@@ -161,6 +182,9 @@ describe("Martin MCP discovery resources", () => {
       expect(guide.contents[0]?.text).toContain("martin_governed_coding_kickoff");
       expect(guide.contents[0]?.text).toContain("martin_start");
       expect(agentStart.contents[0]?.text).toContain("Install Profiles");
+      expect(commandMap.contents[0]?.text).toContain("Default Governed Sequence");
+      expect(ideOnboarding.contents[0]?.text).toContain("IDE Default Flow");
+      expect(operatingRules.contents[0]?.text).toContain("Do not execute real coding work");
       expect(recentRuns.contents[0]?.text).toContain(`"${loop.loopId}"`);
       expect(recentRuns.contents[0]?.text).toContain("\"recentRuns\"");
       expect(triage.contents[0]?.text).toContain("\"findingCount\"");
@@ -173,21 +197,24 @@ describe("Martin MCP discovery resources", () => {
       expect(verifierEvidence.contents[0]?.text).toContain("\"status\": \"failed\"");
       expect(rollbackEvidence.contents[0]?.text).toContain("\"kind\": \"rollback-evidence\"");
       expect(nextStep.contents[0]?.text).toContain("\"action\": \"debug_failed_run\"");
+      expect(nextStep.contents[0]?.text).toContain("\"requiredWorkflow\"");
     });
   });
 
-  it("degrades server health when an explicit runsDir is missing", async () => {
-    await withRunsRoot(async (runsRoot) => {
-      const missingRunsRoot = join(runsRoot, "missing");
-      const health = await readMartinResource({
-        uri: MARTIN_STATIC_RESOURCE_URIS.serverHealth,
-        runsDir: missingRunsRoot
-      });
+  it("degrades server health when an explicit runsDir is missing", { timeout: 20_000 }, async () => {
+    await withEnv("MARTIN_LIVE", "false", () =>
+      withRunsRoot(async (runsRoot) => {
+        const missingRunsRoot = join(runsRoot, "missing");
+        const health = await readMartinResource({
+          uri: MARTIN_STATIC_RESOURCE_URIS.serverHealth,
+          runsDir: missingRunsRoot
+        });
 
-      expect(health.contents[0]?.text).toContain("\"status\": \"degraded\"");
-      expect(health.contents[0]?.text).toContain("\"exists\": false");
-      expect(health.contents[0]?.text).toContain("Configured Martin runs root does not exist yet.");
-    });
+        expect(health.contents[0]?.text).toContain("\"status\": \"degraded\"");
+        expect(health.contents[0]?.text).toContain("\"exists\": false");
+        expect(health.contents[0]?.text).toContain("Configured Martin runs root does not exist yet.");
+      })
+    );
   });
 
   it("reads loop, attempt, and verification resources from persisted loop records", async () => {
@@ -403,9 +430,11 @@ describe("Martin MCP discovery prompts", () => {
     });
 
     expect(prompt.messages[1]?.content.type).toBe("resource");
-    expect(prompt.messages[2]?.content.type).toBe("resource_link");
-    expect(prompt.messages[3]?.content.type).toBe("text");
-    expect((prompt.messages[3]?.content as { type: "text"; text: string }).text).toContain("Ship the Martin MCP discovery lane");
+    expect(prompt.messages[2]?.content.type).toBe("resource");
+    expect(prompt.messages[3]?.content.type).toBe("resource");
+    expect(prompt.messages[4]?.content.type).toBe("resource_link");
+    expect(prompt.messages[5]?.content.type).toBe("text");
+    expect((prompt.messages[5]?.content as { type: "text"; text: string }).text).toContain("Ship the Martin MCP discovery lane");
   });
 
   it("builds compact resume and proof prompts from latest evidence", async () => {

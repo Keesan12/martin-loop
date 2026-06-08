@@ -1,11 +1,12 @@
 /// <reference types="node" />
-import { appendFile, mkdir, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
 import type { LoopBudget, LoopRecord, LoopTask, MachineState } from "@martin/contracts";
 
 import { type LedgerEvent } from "./ledger.js";
+import { writeReceiptIntegrityMaterial } from "./integrity.js";
 
 // ─── Run contract (immutable after initRun) ──────────────────────────────────
 
@@ -24,6 +25,8 @@ export interface RunContract {
 export interface AttemptArtifacts {
   /** Compiled PromptPacket written as compiled-context.json */
   compiledContext: unknown;
+  /** Structured verification evidence captured from the authoritative MartinLoop verifier (optional) */
+  verification?: unknown;
   /** Unified diff string from the patch (optional) */
   diff?: string;
   /** Raw verifier command output (optional) */
@@ -50,6 +53,12 @@ export interface AttemptArtifacts {
  * is durably written before the run proceeds to the next step.
  */
 export interface RunStore {
+  /**
+   * Optional runs root hint for filesystem-backed stores.
+   * Orchestration should prefer this over recomputing the default home store.
+   */
+  runsRoot?: string;
+
   /**
    * Write contract.json for a new run. Called once at run start.
    * The contract is immutable after this point.
@@ -117,6 +126,8 @@ export function createFileRunStore(options: { runsRoot?: string } = {}): RunStor
   const runsRoot = options.runsRoot ?? resolveRunsRoot();
 
   return {
+    runsRoot,
+
     async initRun(contract: RunContract): Promise<void> {
       const dir = runDir(runsRoot, contract.runId);
       await mkdir(dir, { recursive: true });
@@ -148,6 +159,9 @@ export function createFileRunStore(options: { runsRoot?: string } = {}): RunStor
       await mkdir(dir, { recursive: true });
 
       await writeJsonFile(join(dir, "compiled-context.json"), artifacts.compiledContext);
+      if (artifacts.verification !== undefined) {
+        await writeJsonFile(join(dir, "verification.json"), artifacts.verification);
+      }
 
       if (artifacts.diff !== undefined) {
         await writeFile(join(dir, "diff.patch"), artifacts.diff, "utf8");
@@ -179,6 +193,26 @@ export function createFileRunStore(options: { runsRoot?: string } = {}): RunStor
       const dir = runDir(runsRoot, runId);
       await mkdir(dir, { recursive: true });
       await writeJsonFile(join(dir, "loop-record.json"), loop);
+      const ledgerRaw = await readFile(join(dir, "ledger.jsonl"), "utf8").catch(() => "");
+      const ledgerEntries = ledgerRaw
+        .split(/\r?\n/u)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => JSON.parse(line) as unknown);
+      await writeReceiptIntegrityMaterial({
+        runId,
+        runsRoot,
+        loopRecord: loop,
+        ledgerEntries,
+        scope:
+          loop.receiptScope ??
+          {
+            ...(loop.task.repoRoot ? { repoRoot: loop.task.repoRoot } : {}),
+            ...(loop.task.repoRoot ? { workingDirectory: loop.task.repoRoot } : {}),
+            runsRoot
+          },
+        signedAt: loop.updatedAt
+      });
     }
   };
 }

@@ -1,38 +1,99 @@
 # @martin/cli
 
-CLI implementation for MartinLoop.
+Operator-first CLI for Martin Loop.
 
-The CLI groups execution, readiness checks, persisted-run inspection, and MCP host setup into one command set:
+Examples below assume either the installed `martin` alias, `npx martin-loop`, or `pnpm exec martin-loop`.
 
-- `martin-loop doctor`
-- `martin-loop demo`
-- `martin-loop preflight`
-- `martin-loop run`
-- `martin-loop triage`
-- `martin-loop dossier`
-- `martin-loop runs list|get|attempt|verify`
-- `martin-loop mcp print-config`
-- `martin-loop mcp install`
+The CLI now treats execution, diagnosis, persisted-run inspection, and MCP host setup as one product family:
 
-## Output Modes
+- `martin doctor`
+- `martin session-start`
+- `martin phase status|contract|preflight|run`
+- `martin preflight`
+- `martin run`
+- `martin bench`
+- `martin triage`
+- `martin dossier`
+- `martin challenge`
+- `martin share`
+- `martin runs list|get|attempt|verify`
+- `martin mcp print-config`
+- `martin mcp install`
 
-- default: human-readable summaries
-- `--json`: machine-readable payloads
-- `--quiet`: script-friendly primary identifier or path only
+`martin mcp install` is intentionally conservative: it only writes a generated config when the target file is absent, or when it already detects a Martin Loop block and can stay idempotent. For mixed host configs, use `martin mcp print-config` and merge the Martin block yourself.
 
-## Recommended Flow
+## Install
+
+Use the public root package when you want the CLI locally or in CI:
 
 ```sh
-martin-loop doctor
-martin-loop preflight "inspect the latest MCP run and confirm the verifier stays green" --verify "pnpm --filter @martinloop/mcp test"
-martin-loop run "inspect the latest MCP run and confirm the verifier stays green" --verify "pnpm --filter @martinloop/mcp test"
-martin-loop triage
-martin-loop dossier --latest
+npm install martin-loop
+npx martin-loop doctor
 ```
 
-## MCP Config
+## Output modes
 
-`martin-loop mcp print-config --host codex` emits a quoted TOML server key:
+- default: human-readable summaries
+- `--json`: stable machine-readable payloads
+- `--quiet`: script-friendly primary identifier or path only
+
+## MCP profiles
+
+- local `stdio` is the default and best path for fast local iteration
+- public OSS guidance covers:
+  - `--host codex|claude|gemini|generic`
+  - `--transport stdio`
+  - `--profile minimal|diagnostic|github-review|full-local|starter|full`
+  - `--platform windows|macos|linux`
+
+## Recommended flow
+
+```sh
+martin doctor
+martin session-start
+martin phase contract --json
+martin phase preflight
+martin preflight "repair the flaky MCP release lane" --verify "pnpm --filter @martinloop/mcp test"
+martin run "repair the flaky MCP release lane" --verify "pnpm --filter @martinloop/mcp test"
+martin triage
+martin dossier --latest
+martin share --latest
+martin mcp print-config --host codex --profile minimal
+```
+
+`martin session-start` and `martin phase` are local-first command-center helpers. They read local phase state and local MartinLoop run receipts, then produce an explicit run contract before any work is executed. Existing `.gsd` workspaces are imported as a compatibility format when present. `martin phase preflight` and `martin phase run` are dry-run by default; add `--execute` only after the generated contract has the right verifier, budget, allowed paths, and blocked paths.
+
+`martin share --latest` is the handoff step. It writes a redacted JSON receipt, a Markdown summary, and a proof-card SVG for the selected run.
+
+## Benchmarks
+
+Use the installed CLI for the shipped public summaries:
+
+```sh
+npx martin-loop bench --suite under-3-challenge
+npx martin-loop bench --suite ralphy-engineering-50
+```
+
+Use the repo workspace when you want deterministic repro from source:
+
+```sh
+pnpm install --frozen-lockfile
+pnpm --filter @martin/benchmarks build
+pnpm --filter @martin/benchmarks test
+pnpm --filter @martin/benchmarks eval
+pnpm --filter @martin/benchmarks report:ralphy
+```
+
+## Compatibility aliases
+
+- `martin inspect --file <path>` remains supported
+- `martin resume <loopId>` remains supported
+
+Prefer `martin dossier` and `martin runs get --loop-id` for the richer operator surface.
+
+## MCP minimal profile
+
+`martin mcp print-config --host codex` emits a quoted TOML server key:
 
 ```toml
 [mcp_servers."martin-loop"]
@@ -44,20 +105,20 @@ tool_timeout_sec = 180
 enabled_tools = [
   "martin_doctor",
   "martin_preflight",
-  "martin_run",
+  "martin_list_runs",
   "martin_triage_runs",
   "martin_run_dossier",
 ]
 env = { MARTIN_RUNS_DIR = "C:\\path\\to\\runs" }
 ```
 
-`martin-loop mcp install` is conservative: it writes only when the target file is absent or when it detects an existing MartinLoop block it can update safely. For mixed host configs, use `martin-loop mcp print-config` and merge the MartinLoop block yourself.
+The minimal allow-list stays aligned with the MCP discovery metadata: `martin_doctor`, `martin_preflight`, `martin_list_runs`, `martin_triage_runs`, and `martin_run_dossier`. Use `diagnostic` for deeper read-only archaeology and `full-local` when the host should execute `martin_run`.
 
-## Host Coverage
+## Host coverage
 
 - `codex`: local stdio profiles
 - `claude`: local, user, and project scopes
-- `gemini`: local `settings.json` snippets with `includeTools`
+- `gemini`: local `settings.json` snippets plus `includeTools`
 - `generic`: JSON config for wrapper hosts and MCP-aware agent shells
 
 Generated stdio launchers are platform-aware:
@@ -65,19 +126,26 @@ Generated stdio launchers are platform-aware:
 - Windows uses `cmd /c npx -y @martinloop/mcp`
 - macOS and Linux use `npx -y @martinloop/mcp`
 
-## Compatibility Aliases
+### Host-specific notes
 
-- `martin-loop inspect --file <path>` remains supported
-- `martin-loop resume <loopId>` remains supported
+- Codex user-scope installs respect `CODEX_HOME` when it is set. Otherwise they target the default `~/.codex/config.toml`.
+- Claude `--scope local` is CLI-managed. Martin Loop shells out to `claude mcp add ... --scope local ...` instead of writing a repo file for that scope.
+- Claude `user` and `project` scopes remain file-backed so `martin mcp print-config` can show you the exact block before you install it.
+- Gemini config uses `includeTools` and `trust` in `settings.json`, not the older `enabledTools` field.
+- Cross-platform proof should install dependencies on the native platform before you validate there. Reusing Windows `node_modules` from WSL or Linux will break native packages such as `esbuild`.
 
-Prefer `martin-loop dossier` and `martin-loop runs get --loop-id` for richer evidence review.
+## Live verification
 
-Inside the `@martin/cli` workspace package you may also see the local development alias `martin`, but the published npm binary is `martin-loop`.
-
-## Live Verification
-
-Use the host matrix verifier when you want proof that generated config works with local host CLIs:
+Use the host matrix verifier when you want optional local proof that the generated config works with installed and authenticated host CLIs:
 
 ```sh
 pnpm --filter @martin/cli verify:hosts:live
 ```
+
+The current live matrix proves:
+
+- generated cross-platform snippets
+- Codex remote config load
+- Claude project remote config load
+- Claude local remote install
+- Gemini remote config load

@@ -19,7 +19,7 @@ const completeInput = (): MartinProofCardInput => ({
   rollbackStatus: "rollback-ready",
   haltReason: "budget guard reached after verifier pass",
   evidenceBoundaryNotes: [
-    "Artifacts live at C:\\Users\\Torram\\secret workspace\\runs\\loop_viral_001\\ledger.jsonl",
+    "Artifacts live at C:\\workspace\\secret workspace\\runs\\loop_viral_001\\ledger.jsonl",
     "Verifier trace: /home/keesan/martin-loop/runs/loop_viral_001/verifier.txt"
   ],
   generatedAt: "2026-05-20T14:30:00.000Z"
@@ -46,11 +46,22 @@ describe("Martin proof cards", () => {
     expect(markdown).not.toContain("Martin stopped Ralph here.");
   });
 
+  it("fails closed when receipt integrity is unavailable", () => {
+    const card = buildMartinProofCard({
+      ...completeInput(),
+      receiptIntegrityState: "unsigned"
+    });
+
+    const markdown = renderMartinProofCardMarkdown(card);
+    expect(markdown).toContain("Receipt integrity unavailable: Martin proof is not yet trustworthy.");
+    expect(markdown).not.toContain("Martin stopped Ralph here.");
+  });
+
   it("does not leak absolute machine paths in Markdown or SVG", () => {
     const card = buildMartinProofCard(completeInput());
     const rendered = `${renderMartinProofCardMarkdown(card)}\n${renderMartinProofCardSvg(card)}`;
 
-    expect(rendered).not.toContain("C:\\Users\\Torram");
+    expect(rendered).not.toContain("C:\\Users\\ExampleUser");
     expect(rendered).not.toContain("/home/keesan");
     expect(rendered).not.toContain("secret workspace");
     expect(rendered).toContain("[redacted-path]/ledger.jsonl");

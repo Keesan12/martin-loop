@@ -7,7 +7,7 @@ It is intentionally small:
 
 - `npm test` is green out of the box
 - `martin.config.yaml` keeps the budget tiny
-- the first suggested MartinLoop run can stay in no-spend proof mode with `MARTIN_LIVE=false`
+- the first suggested MartinLoop run can stay in no-spend proof mode with `--proof`
 
 ## Files
 
@@ -26,7 +26,7 @@ npm test
 Safe first run:
 
 ```sh
-MARTIN_LIVE=false npx martin-loop run "Summarize the demo workspace and confirm the verifier is green" --verify "npm test"
+npx martin-loop run "Summarize the demo workspace and confirm the verifier is green" --proof --verify "npm test"
 ```
 
 Review the run evidence afterward:

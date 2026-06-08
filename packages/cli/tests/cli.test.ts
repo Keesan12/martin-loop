@@ -2,12 +2,38 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { createStubDirectProviderAdapter } from "@martin/adapters";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { createLoopRecord } from "../../contracts/src/index.js";
-import { executeCli, parseCliArguments } from "../src/index.js";
+import { __setRunAdapterOverrideForTests, executeCli, parseCliArguments } from "../src/index.js";
 
-const CLI_EXEC_TIMEOUT_MS = 15_000;
+function installFastRunAdapter(): void {
+  __setRunAdapterOverrideForTests(
+    createStubDirectProviderAdapter({
+      providerId: "test",
+      model: "fast",
+      responder: () => ({
+        status: "completed",
+        summary: "Fast test adapter completed.",
+        usage: {
+          actualUsd: 0,
+          tokensIn: 0,
+          tokensOut: 0,
+          provenance: "actual"
+        },
+        verification: {
+          passed: true,
+          summary: "Verification skipped in config-focused CLI tests."
+        }
+      })
+    })
+  );
+}
+
+afterEach(() => {
+  __setRunAdapterOverrideForTests(undefined);
+});
 
 describe("parseCliArguments", () => {
   it("parses a run command into a typed request", () => {
@@ -60,6 +86,12 @@ describe("parseCliArguments", () => {
           maxTokens: 60000,
           maxUsd: 18,
           softLimitUsd: 9.5
+        },
+        budgetOverrides: {
+          maxIterations: true,
+          maxTokens: true,
+          maxUsd: true,
+          softLimitUsd: true
         }
       }
     });
@@ -67,11 +99,12 @@ describe("parseCliArguments", () => {
 });
 
 describe("executeCli", () => {
-  it("resolves effectivePolicy from config and applies it to the run", { timeout: CLI_EXEC_TIMEOUT_MS }, async () => {
+  it("resolves effectivePolicy from config and applies it to the run", async () => {
     const directory = await mkdtemp(join(tmpdir(), "martin-cli-config-"));
     const configPath = join(directory, "martin.config.yaml");
 
     try {
+      installFastRunAdapter();
       await writeFile(
         configPath,
         [
@@ -135,66 +168,100 @@ describe("executeCli", () => {
         maxIterations: 6,
         maxTokens: 45000
       });
-      expect(payload.loop.task.verificationPlan).toEqual([]);
+      expect(payload.loop.task.verificationPlan).toEqual(["pnpm test", "pnpm lint"]);
     } finally {
       await rm(directory, { force: true, recursive: true });
     }
   });
 
-  it("surfaces effective governance policy metadata in run output", { timeout: CLI_EXEC_TIMEOUT_MS }, async () => {
-    const configPath = join(process.env.INIT_CWD ?? process.cwd(), "martin.config.yaml");
-    const prevLive = process.env.MARTIN_LIVE;
-    process.env.MARTIN_LIVE = "false";
-    const result = await executeCli([
-      "--json",
-      "run",
-      "--objective",
-      "Repair flaky CI gate",
-      "--budget-usd",
-      "8",
-      "--soft-limit-usd",
-      "5",
-      "--max-iterations",
-      "3",
-      "--max-tokens",
-      "20000",
-      "--policy",
-      "balanced",
-      "--telemetry",
-      "control-plane"
-    ]);
-    if (prevLive === undefined) {
-      delete process.env.MARTIN_LIVE;
-    } else {
-      process.env.MARTIN_LIVE = prevLive;
-    }
+  it("surfaces effective governance policy metadata in run output", { timeout: 45_000 }, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-policy-"));
+    const configPath = join(directory, "martin.config.yaml");
 
-    expect(result.exitCode).toBe(0);
+    try {
+      installFastRunAdapter();
+      await writeFile(
+        configPath,
+        [
+          "policyProfile: strict",
+          "budget:",
+          "  maxUsd: 12",
+          "  softLimitUsd: 7",
+          "  maxIterations: 5",
+          "  maxTokens: 30000",
+          "governance:",
+          "  destructiveActionPolicy: approval",
+          "  telemetryDestination: seeded-telemetry",
+          "  verifierRules:",
+          process.platform === "win32" ? "    - cmd /c exit 0" : "    - true",
+          process.platform === "win32" ? "    - cmd /c exit 0" : "    - true"
+        ].join("\n"),
+        "utf8"
+      );
 
-    const payload = JSON.parse(result.stdout);
+      const prevLive = process.env.MARTIN_LIVE;
+      process.env.MARTIN_LIVE = "false";
+      const result = await executeCli([
+        "--json",
+        "run",
+        "--objective",
+        "Repair flaky CI gate",
+        "--config",
+        configPath,
+        "--budget-usd",
+        "8",
+        "--soft-limit-usd",
+        "5",
+        "--max-iterations",
+        "3",
+        "--max-tokens",
+        "20000",
+        "--policy",
+        "balanced",
+        "--telemetry",
+        "control-plane"
+      ]);
+      if (prevLive === undefined) {
+        delete process.env.MARTIN_LIVE;
+      } else {
+        process.env.MARTIN_LIVE = prevLive;
+      }
 
-    expect(payload.command).toBe("run");
-    expect(payload.effectivePolicy).toEqual({
-      configPath,
-      destructiveActionPolicy: "approval",
-      policyProfile: "balanced",
-      budget: {
+      expect(result.exitCode).toBe(0);
+
+      const payload = JSON.parse(result.stdout);
+
+      expect(payload.command).toBe("run");
+      expect(payload.effectivePolicy).toEqual({
+        configPath,
+        destructiveActionPolicy: "approval",
+        policyProfile: "balanced",
+        budget: {
+          maxUsd: 8,
+          softLimitUsd: 5,
+          maxIterations: 3,
+          maxTokens: 20000
+        },
+        verifierRules: [
+          process.platform === "win32" ? "cmd /c exit 0" : "true",
+          process.platform === "win32" ? "cmd /c exit 0" : "true"
+        ],
         maxUsd: 8,
         softLimitUsd: 5,
         maxIterations: 3,
-        maxTokens: 20000
-      },
-      verifierRules: ["pnpm test"],
-      maxUsd: 8,
-      softLimitUsd: 5,
-      maxIterations: 3,
-      maxTokens: 20000,
-      telemetryDestination: "control-plane"
-    });
-    expect(payload.loop.task.verificationPlan).toEqual([]);
+        maxTokens: 20000,
+        telemetryDestination: "control-plane"
+      });
+      expect(payload.loop.task.verificationPlan).toEqual([
+        process.platform === "win32" ? "cmd /c exit 0" : "true",
+        process.platform === "win32" ? "cmd /c exit 0" : "true"
+      ]);
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
   });
 
-  it("supports verify-only runs without invoking a coding adapter", { timeout: CLI_EXEC_TIMEOUT_MS }, async () => {
+  it("supports verify-only runs without invoking a coding adapter", { timeout: 30_000 }, async () => {
     const directory = await mkdtemp(join(tmpdir(), "martin-cli-verify-only-"));
 
     try {
@@ -203,6 +270,8 @@ describe("executeCli", () => {
         "run",
         "--objective",
         "Verify the contracts package without edits",
+        "--engine",
+        "codex",
         "--verify-only",
         "--verify",
         `"${process.execPath}" -e "process.exit(0)"`,
@@ -225,7 +294,7 @@ describe("executeCli", () => {
     }
   });
 
-  it("resolves a relative --config path from INIT_CWD for filtered dev runs", { timeout: CLI_EXEC_TIMEOUT_MS }, async () => {
+  it("resolves a relative --config path from INIT_CWD for filtered dev runs", async () => {
     const directory = await mkdtemp(join(tmpdir(), "martin-cli-init-cwd-"));
     const packageDirectory = join(directory, "packages", "cli");
     const configPath = join(directory, "martin.config.example.yaml");
@@ -234,6 +303,7 @@ describe("executeCli", () => {
     const previousMarinLive = process.env.MARTIN_LIVE;
 
     try {
+      installFastRunAdapter();
       await mkdir(packageDirectory, { recursive: true });
       await writeFile(
         configPath,
@@ -273,7 +343,7 @@ describe("executeCli", () => {
 
       expect(payload.effectivePolicy.configPath).toBe(configPath);
       expect(payload.effectivePolicy.policyProfile).toBe("strict");
-      expect(payload.loop.task.verificationPlan).toEqual([]);
+      expect(payload.loop.task.verificationPlan).toEqual(["pnpm test", "pnpm lint"]);
     } finally {
       process.chdir(previousCwd);
 
@@ -293,13 +363,15 @@ describe("executeCli", () => {
     }
   });
 
-  it("surfaces bench as an RC-only workspace command instead of a publishable CLI feature", async () => {
+  it("prints the public under-$3 benchmark summary from the shipped fixture", async () => {
     const result = await executeCli(["bench", "--suite", "ralphy-smoke"]);
 
-    expect(result.exitCode).toBe(1);
-    expect(result.stdout).toBe("");
-    expect(result.stderr).toContain("workspace-only RC surface");
-    expect(result.stderr).toContain("@martin/benchmarks");
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toContain("Under-$3 Challenge");
+    expect(result.stdout).toContain("$2.30");
+    expect(result.stdout).toContain("$5.20");
+    expect(result.stdout).toContain("@martin/benchmarks");
   });
 
   it("copies the seeded demo workspace into the default target directory", async () => {

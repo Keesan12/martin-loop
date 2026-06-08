@@ -1,11 +1,21 @@
 import {
   createClaudeCliAdapter,
   createCodexCliAdapter,
-  createVerifierOnlyAdapter
+  createGeminiCliAdapter,
+  probeCodexLaunch,
+  resolveCliCommandAvailability,
+  createVerifierOnlyAdapter,
+  type SpawnLike
 } from "@martin/adapters";
 
-import { createFileRunStore, evaluateCostGovernor, resolveRunsRoot, runMartin } from "@martin/core";
-import { DEFAULT_BUDGET, type LoopBudget } from "@martin/contracts";
+import {
+  createFileRunStore,
+  evaluateCostGovernor,
+  resolveRunsRoot,
+  runMartin,
+  type RunStore
+} from "@martin/core";
+import type { LoopBudget, ReceiptScope } from "@martin/contracts";
 
 import { normalizeSafePathPatterns, resolveSafeRepoRoot } from "../server-validation.js";
 import { MartinToolError } from "./tool-errors.js";
@@ -18,11 +28,12 @@ import {
   resolveExecutionMode,
   type MartinEngine
 } from "./tool-support.js";
+import { normalizeLoopBudget } from "./workflow-governance.js";
 
 export interface RunLoopInput {
   objective: string;
   workingDirectory?: string;
-  engine?: "claude" | "codex";
+  engine?: "claude" | "codex" | "gemini";
   model?: string;
   maxUsd?: number;
   maxIterations?: number;
@@ -55,10 +66,22 @@ export interface RunLoopOutput {
     runDirectory: string;
     loopRecordPath: string;
     ledgerPath: string;
+    receiptScope: ReceiptScope;
     loop: ReturnType<typeof buildLoopPreview>;
     verification: ReturnType<typeof buildVerificationSummary>;
     artifacts: ReturnType<typeof buildArtifactSummary>;
   };
+}
+
+let proofModeVerifierSpawnImpl: SpawnLike | undefined;
+let runStoreOverrideForTests: RunStore | undefined;
+
+export function __setProofModeVerifierSpawnImplForTests(spawnImpl?: SpawnLike): void {
+  proofModeVerifierSpawnImpl = spawnImpl;
+}
+
+export function __setRunStoreOverrideForTests(store?: RunStore): void {
+  runStoreOverrideForTests = store;
 }
 
 export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
@@ -68,15 +91,47 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
   const allowedPaths = normalizeSafePathPatterns(input.allowedPaths, "allowedPaths");
   const deniedPaths = normalizeSafePathPatterns(input.deniedPaths, "deniedPaths");
   const executionMode = resolveExecutionMode();
+  const workspaceRoot = resolveSafeRepoRoot();
+  const runsRoot = resolveRunsRoot(process.env);
+  const receiptScope = {
+    invocationRoot: workspaceRoot,
+    workingDirectory,
+    repoRoot: workingDirectory,
+    runsRoot
+  };
+  let codexCommandOverride: string | undefined;
   if (executionMode.liveMode) {
-    const engineAvailability = await getEngineAvailability(engine, workingDirectory);
+    if (engine === "codex") {
+      const engineAvailability = resolveCliCommandAvailability("codex");
+      if (!engineAvailability.available) {
+        throw new MartinToolError("engine_unavailable", `Engine '${engine}' is not available on PATH.`, {
+          category: "environment",
+          suggestion: "Install the requested CLI or set MARTIN_LIVE=false for a no-spend proof run.",
+          retryable: false
+        });
+      }
 
-    if (!engineAvailability.launchReady) {
-      throw new MartinToolError("engine_unavailable", `Engine '${engine}' is not launch-ready.`, {
-        category: "environment",
-        suggestion: "Install the requested CLI or set MARTIN_LIVE=false for a no-spend proof run.",
-        retryable: false
+      const codexProbe = probeCodexLaunch({
+        workingDirectory,
+        availability: engineAvailability
       });
+      if (!codexProbe.ok) {
+        throw new MartinToolError("engine_unavailable", codexProbe.summary, {
+          category: "environment",
+          suggestion: "Run martin_doctor or martin_preflight with engine='codex' before retrying live governed work.",
+          retryable: false
+        });
+      }
+      codexCommandOverride = codexProbe.command;
+    } else {
+      const engineAvailability = getEngineAvailability(engine);
+      if (!engineAvailability.available) {
+        throw new MartinToolError("engine_unavailable", `Engine '${engine}' is not available on PATH.`, {
+          category: "environment",
+          suggestion: "Install the requested CLI or set MARTIN_LIVE=false for a no-spend proof run.",
+          retryable: false
+        });
+      }
     }
   }
 
@@ -84,17 +139,17 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
     !executionMode.liveMode
       ? createVerifierOnlyAdapter({
           workingDirectory,
-          adapterId: "direct:proof:verifier-only",
           label: "Proof mode adapter (MARTIN_LIVE=false)",
-          providerId: "proof",
-          model: "verify-only",
-          successSummary: "Proof mode completed without contacting a live provider.",
-          successWithChangesSummary:
-            "Proof mode completed without contacting a live provider, but the verifier changed files.",
-          failureSummary: "Proof mode failed during verifier execution."
+          ...(proofModeVerifierSpawnImpl ? { spawnImpl: proofModeVerifierSpawnImpl } : {})
         })
       : engine === "codex"
-        ? createCodexCliAdapter({ workingDirectory, ...(model ? { model } : {}) })
+        ? createCodexCliAdapter({
+            workingDirectory,
+            ...(model ? { model } : {}),
+            ...(codexCommandOverride ? { command: codexCommandOverride } : {})
+          })
+        : engine === "gemini"
+          ? createGeminiCliAdapter({ workingDirectory, ...(model ? { model } : {}) })
         : createClaudeCliAdapter({ workingDirectory, ...(model ? { model } : {}) });
 
   const partialBudget: Partial<LoopBudget> = {};
@@ -108,20 +163,17 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
     partialBudget.maxTokens = input.maxTokens;
   }
 
-  const budget: LoopBudget = {
-    ...DEFAULT_BUDGET,
-    ...partialBudget
-  };
+  const budget: LoopBudget = normalizeLoopBudget(partialBudget);
 
   const result = await runMartin({
     workspaceId: input.workspaceId ?? "ws_mcp",
     projectId: input.projectId ?? "proj_mcp",
-    store: createFileRunStore({ runsRoot: resolveRunsRoot(process.env) }),
+    store: runStoreOverrideForTests ?? createFileRunStore({ runsRoot }),
+    receiptScope,
     task: {
       title: input.objective.slice(0, 100),
       objective: input.objective,
       verificationPlan: input.verificationPlan ?? [],
-      ...(executionMode.liveMode ? {} : { mutationMode: "verify_only" as const }),
       repoRoot: workingDirectory,
       ...(allowedPaths ? { allowedPaths } : {}),
       ...(deniedPaths ? { deniedPaths } : {})
@@ -143,7 +195,6 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
     },
     attemptsUsed: result.loop.attempts.length
   });
-  const runsRoot = resolveRunsRoot(process.env);
   const recordPaths = buildRunRecordPaths(runsRoot, result.loop.loopId);
   const verification = buildVerificationSummary(result.loop);
   const artifacts = buildArtifactSummary(result.loop);
@@ -166,6 +217,7 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
     budget,
     inspection: {
       ...recordPaths,
+      receiptScope: result.loop.receiptScope ?? receiptScope,
       loop: buildLoopPreview(result.loop),
       verification,
       artifacts

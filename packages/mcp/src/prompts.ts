@@ -183,7 +183,7 @@ export interface MartinGetPromptInput {
   arguments?: Record<string, string>;
   runsDir?: string;
   workingDirectory?: string;
-  engine?: "claude" | "codex";
+  engine?: "claude" | "codex" | "gemini";
 }
 
 export function listMartinPrompts(): { prompts: Prompt[] } {
@@ -282,6 +282,16 @@ async function buildKickoffPrompt(input: {
     runsDir: input.runsDir,
     workingDirectory: input.workingDirectory
   });
+  const commandMapGuide = await readMartinResource({
+    uri: MARTIN_STATIC_RESOURCE_URIS.commandMapGuide,
+    runsDir: input.runsDir,
+    workingDirectory: input.workingDirectory
+  });
+  const operatingRulesGuide = await readMartinResource({
+    uri: MARTIN_STATIC_RESOURCE_URIS.operatingRulesGuide,
+    runsDir: input.runsDir,
+    workingDirectory: input.workingDirectory
+  });
   const healthResource = MARTIN_STATIC_RESOURCES.find(
     (resource) => resource.uri === MARTIN_STATIC_RESOURCE_URIS.serverHealth
   );
@@ -293,9 +303,11 @@ async function buildKickoffPrompt(input: {
     messages: [
       textMessage(
         "assistant",
-        "You are helping prepare a Martin Loop coding run. Keep the plan governed: validate the environment first, preflight non-trivial work, preserve scope discipline, and make verification requirements explicit."
+        "You are helping prepare a Martin Loop coding run. Keep the plan governed: validate the environment first, plan before spend, preflight non-trivial work, preserve scope discipline, and make verification requirements explicit. Do not skip Martin commands and do not treat Martin as optional."
       ),
       embeddedResourceMessage("assistant", firstResourceContent(usageGuide)),
+      embeddedResourceMessage("assistant", firstResourceContent(commandMapGuide)),
+      embeddedResourceMessage("assistant", firstResourceContent(operatingRulesGuide)),
       ...(healthResource ? [resourceLinkMessage("assistant", healthResource)] : []),
       textMessage(
         "user",
@@ -313,6 +325,7 @@ async function buildKickoffPrompt(input: {
           optionalLine("Workspace ID", input.args["workspaceId"]),
           optionalLine("Project ID", input.args["projectId"]),
           "Return:",
+          "- the required Martin command order before actual coding work begins,",
           "- a concise governed execution plan,",
           "- the exact `martin_preflight` arguments,",
           "- the main risks or blockers to resolve before `martin_run`."

@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -6,6 +6,64 @@ import { describe, expect, it } from "vitest";
 
 import { executeCli, parseCliArguments } from "../src/index.js";
 import { createNativePhaseCommandCenterSnapshot } from "../src/phase-command-center.js";
+import { resolveInvocationRoot } from "../src/run-store.js";
+
+async function withPathPrefix<T>(directory: string, fn: () => Promise<T>): Promise<T> {
+  const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === "path") ?? "PATH";
+  const original = process.env[pathKey];
+  process.env[pathKey] =
+    original && original.length > 0
+      ? `${directory}${process.platform === "win32" ? ";" : ":"}${original}`
+      : directory;
+
+  try {
+    return await fn();
+  } finally {
+    if (original === undefined) {
+      delete process.env[pathKey];
+    } else {
+      process.env[pathKey] = original;
+    }
+  }
+}
+
+async function withFakeCodexCli<T>(fn: () => Promise<T>): Promise<T> {
+  const directory = await mkdtemp(join(tmpdir(), "martin-phase-codex-"));
+  const originalLocalAppData = process.env.LOCALAPPDATA;
+  process.env.LOCALAPPDATA = directory;
+
+  try {
+    const commandPath = join(directory, process.platform === "win32" ? "codex.cmd" : "codex");
+    const contents =
+      process.platform === "win32"
+        ? [
+            "@echo off",
+            "echo {\"type\":\"item.completed\",\"item\":{\"type\":\"command_execution\",\"status\":\"completed\",\"exit_code\":0}}",
+            "echo {\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":10,\"output_tokens\":5}}",
+            "exit /b 0",
+            ""
+          ].join("\r\n")
+        : [
+            "#!/usr/bin/env sh",
+            "echo '{\"type\":\"item.completed\",\"item\":{\"type\":\"command_execution\",\"status\":\"completed\",\"exit_code\":0}}'",
+            "echo '{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":10,\"output_tokens\":5}}'",
+            ""
+          ].join("\n");
+    await writeFile(commandPath, contents, "utf8");
+    if (process.platform !== "win32") {
+      await chmod(commandPath, 0o755);
+    }
+
+    return await withPathPrefix(directory, fn);
+  } finally {
+    if (originalLocalAppData === undefined) {
+      delete process.env.LOCALAPPDATA;
+    } else {
+      process.env.LOCALAPPDATA = originalLocalAppData;
+    }
+    await rm(directory, { recursive: true, force: true }).catch(() => {});
+  }
+}
 
 async function createPhaseFixture() {
   const rootDir = await mkdtemp(join(tmpdir(), "martin-phase-cli-"));
@@ -76,6 +134,21 @@ async function createPhaseFixture() {
     }),
     "utf8"
   );
+  await mkdir(join(runsDir, "loop_invalid_dates"), { recursive: true });
+  await writeFile(
+    join(runsDir, "loop_invalid_dates", "loop-record.json"),
+    JSON.stringify({
+      loopId: "loop_invalid_dates",
+      status: "completed",
+      lifecycleState: "completed",
+      task: { title: "Invalid timestamp run" },
+      cost: { actualUsd: 0.05 },
+      events: [{ type: "verification.completed", payload: { passed: true } }],
+      createdAt: "not-a-date",
+      updatedAt: "still-not-a-date"
+    }),
+    "utf8"
+  );
 
   return { rootDir, runsDir };
 }
@@ -118,7 +191,59 @@ describe("native phase command center", () => {
       expect(snapshot.contract.allowedPaths).toEqual(["packages/cli/src/**", "packages/cli/tests/**"]);
       expect(snapshot.runStore.latestRun?.loopId).toBe("loop_needs_triage");
       expect(snapshot.runStore.runsNeedingTriage.map((run) => run.loopId)).toEqual(["loop_needs_triage"]);
+      expect(snapshot.runStore.totalRuns).toBe(3);
     } finally {
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("surfaces receipt scope and Codex host diagnostics in session-start", async () => {
+    const { rootDir, runsDir } = await createPhaseFixture();
+    const previousLive = process.env.MARTIN_LIVE;
+    process.env.MARTIN_LIVE = "true";
+
+    try {
+      await withFakeCodexCli(async () => {
+        await mkdir(join(rootDir, ".git"), { recursive: true });
+        const invocationRoot = resolveInvocationRoot();
+        const result = await executeCli([
+          "--json",
+          "session-start",
+          "--host",
+          "codex",
+          "--cwd",
+          rootDir,
+          "--runs-dir",
+          runsDir
+        ]);
+        const payload = JSON.parse(result.stdout);
+
+        expect(result.exitCode).toBe(0);
+        expect(payload.command).toBe("session_start");
+        expect(payload.receiptScope).toMatchObject({
+          invocationRoot,
+          repoRoot: rootDir,
+          workingDirectory: rootDir,
+          runsRoot: runsDir
+        });
+        expect(payload.sessionStart.receiptScope).toMatchObject({
+          invocationRoot,
+          repoRoot: rootDir,
+          workingDirectory: rootDir,
+          runsRoot: runsDir
+        });
+        expect(payload.sessionStart.hostDiagnostics.engine).toBe("codex");
+        expect(payload.sessionStart.hostDiagnostics.codex.available).toBe(true);
+        expect(payload.sessionStart.hostDiagnostics.codex.launchReady).toBe(true);
+        expect(payload.sessionStart.commands[0]).toContain(`--cwd ${rootDir}`);
+        expect(payload.sessionStart.commands[0]).toContain(`--runs-dir ${runsDir}`);
+      });
+    } finally {
+      if (previousLive === undefined) {
+        delete process.env.MARTIN_LIVE;
+      } else {
+        process.env.MARTIN_LIVE = previousLive;
+      }
       await rm(rootDir, { recursive: true, force: true });
     }
   });
@@ -146,11 +271,15 @@ describe("native phase command center", () => {
 
       expect(preflightPayload.ok).toBe(true);
       expect(preflightPayload.invocation.executed).toBe(false);
-      expect(preflightPayload.invocation.command.slice(0, 3)).toEqual([
+      expect(preflightPayload.invocation.command.slice(0, 5)).toEqual([
         "martin-loop",
         "preflight",
-        "Build the local command center"
+        "Build the local command center",
+        "--cwd",
+        rootDir
       ]);
+      expect(preflightPayload.invocation.command).toContain("--runs-dir");
+      expect(preflightPayload.invocation.command).toContain(runsDir);
       expect(runPayload.ok).toBe(true);
       expect(runPayload.invocation.command.slice(0, 2)).toEqual(["martin-loop", "run"]);
     } finally {

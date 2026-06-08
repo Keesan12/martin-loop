@@ -7,8 +7,9 @@ import { fileURLToPath } from "node:url";
 
 import { resolveRcCommandExecution } from "./rc-validation.mjs";
 
-const ROOT_VERSION_PATTERN = /^0\.2\.\d+$/;
+const ROOT_VERSION_PATTERN = /^0\.(?:2|3)\.\d+$/;
 const ALLOWED_FILES = [
+  "benchmarks/fixtures",
   "CODE_OF_CONDUCT.md",
   "README.md",
   "demo/seeded-workspace",
@@ -20,12 +21,17 @@ const REQUIRED_DIST_FILES = [
   "dist/bin/martin-loop.js",
 ];
 const ALLOWED_PACKED_PREFIXES = [
+  "benchmarks/fixtures/",
   "CODE_OF_CONDUCT.md",
   "LICENSE",
   "README.md",
   "demo/seeded-workspace/",
   "dist/",
   "package.json",
+];
+const FORBIDDEN_PACKED_PATH_PATTERNS = [
+  /^dist\/vendor\/cli\/bin\//u,
+  /^dist\/vendor\/adapters\/stub-agent-cli\.(?:js|d\.ts)$/u,
 ];
 
 export async function runRootReleaseGuard(options = {}) {
@@ -41,7 +47,7 @@ export async function runRootReleaseGuard(options = {}) {
   }
 
   assertExactSet("files", manifest.files ?? [], ALLOWED_FILES);
-  assertExactSet("workspaces", manifest.workspaces ?? [], ["packages/*"]);
+  assertExactSet("workspaces", manifest.workspaces ?? [], ["benchmarks", "packages/*"]);
 
   const result = {
     name: manifest.name,
@@ -55,6 +61,7 @@ export async function runRootReleaseGuard(options = {}) {
   }
 
   await assertDistArtifactsPresent(rootDir);
+  await assertVendoredCliManifest(rootDir);
   const packedFiles = await inspectPackedFiles({ rootDir });
   assertPackedSurface(packedFiles);
 
@@ -67,7 +74,7 @@ export async function runRootReleaseGuard(options = {}) {
 
 export function assertRootVersionPolicy(version) {
   if (!ROOT_VERSION_PATTERN.test(version)) {
-    throw new Error(`Root martin-loop version must stay on the 0.2.x line. Received ${version}.`);
+    throw new Error(`Root martin-loop version must stay on the 0.2.x or 0.3.x line. Received ${version}.`);
   }
 }
 
@@ -83,6 +90,10 @@ export function assertPackedSurface(packedFiles) {
   for (const packedFile of uniqueFiles) {
     if (!ALLOWED_PACKED_PREFIXES.some((prefix) => packedFile === prefix || packedFile.startsWith(prefix))) {
       throw new Error(`Packed tarball includes unexpected path ${packedFile}.`);
+    }
+
+    if (FORBIDDEN_PACKED_PATH_PATTERNS.some((pattern) => pattern.test(packedFile))) {
+      throw new Error(`Packed tarball includes forbidden vendored implementation path ${packedFile}.`);
     }
   }
 }
@@ -117,6 +128,28 @@ export function extractPackJsonPayload(stdout) {
   return JSON.parse(jsonPayload);
 }
 
+export async function assertVendoredCliManifest(rootDir) {
+  const manifestPath = path.join(rootDir, "dist", "vendor", "cli", "package.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+
+  if (manifest.main !== "./index.js") {
+    throw new Error(`Vendored CLI manifest must point main at ./index.js. Received ${String(manifest.main)}.`);
+  }
+
+  if (manifest.types !== "./index.d.ts") {
+    throw new Error(`Vendored CLI manifest must point types at ./index.d.ts. Received ${String(manifest.types)}.`);
+  }
+
+  if (manifest.bin !== undefined) {
+    throw new Error("Vendored CLI manifest must not publish its internal bin surface inside the root package facade.");
+  }
+
+  const manifestText = JSON.stringify(manifest);
+  if (/workspace:\*/u.test(manifestText)) {
+    throw new Error("Vendored CLI manifest must not leak workspace:* dependencies into the public root package.");
+  }
+}
+
 async function assertDistArtifactsPresent(rootDir) {
   await Promise.all(
     REQUIRED_DIST_FILES.map(async (relativePath) => {
@@ -147,11 +180,12 @@ function parseCliArgs(argv) {
 
 function runCommand(command, options) {
   const execution = resolveRcCommandExecution(command, process.platform);
+  const env = buildLifecycleSafeEnv();
 
   return new Promise((resolve, reject) => {
     const child = spawn(execution.command, execution.args, {
       cwd: options.cwd,
-      env: process.env,
+      env,
       shell: execution.shell,
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -182,6 +216,28 @@ function runCommand(command, options) {
       resolve({ stdout, stderr });
     });
   });
+}
+
+function buildLifecycleSafeEnv(sourceEnv = process.env) {
+  const env = { ...sourceEnv };
+
+  for (const key of Object.keys(env)) {
+    if (
+      key === "INIT_CWD" ||
+      key === "npm_command" ||
+      key === "npm_execpath" ||
+      key === "npm_node_execpath" ||
+      key.startsWith("npm_config_") ||
+      key.startsWith("npm_lifecycle_") ||
+      key.startsWith("npm_package_") ||
+      key.startsWith("PNPM_") ||
+      key.startsWith("pnpm_")
+    ) {
+      delete env[key];
+    }
+  }
+
+  return env;
 }
 
 async function main() {

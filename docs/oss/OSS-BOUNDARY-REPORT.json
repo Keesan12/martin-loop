@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-01T04:12:49.455Z",
+  "generatedAt": "2026-06-07T06:12:03.577Z",
   "verdict": "go",
   "publicSurface": {
     "packageName": "martin-loop",
@@ -57,7 +57,6 @@
     }
   ],
   "topLevelEntries": [
-    ".git",
     ".github",
     ".gitignore",
     "AGENTS.md",
@@ -68,13 +67,13 @@
     "LICENSE",
     "README.md",
     "SECURITY.md",
+    "benchmarks",
     "demo",
     "dist",
     "docs",
     "examples",
     "martin.config.example.yaml",
     "node_modules",
-    "old",
     "package.json",
     "packages",
     "pnpm-lock.yaml",

@@ -12,6 +12,36 @@ import { describe, expect, it } from "vitest";
 import { executeCli } from "../src/index.js";
 import { computeScopeFingerprint, readLocalCorpusRisk } from "../src/run-store.js";
 
+async function withRunsRoot<T>(fn: (runsRoot: string) => Promise<T>): Promise<T> {
+  const previousRunsRoot = process.env.MARTIN_RUNS_DIR;
+  const previousGroundingDir = process.env.MARTIN_GROUNDING_DIR;
+  const root = await mkdtemp(join(tmpdir(), "martin-cli-corpus-runs-"));
+  const runsRoot = join(root, "runs");
+  const groundingDir = join(root, "grounding");
+  await mkdir(runsRoot, { recursive: true });
+  await mkdir(groundingDir, { recursive: true });
+  process.env.MARTIN_RUNS_DIR = runsRoot;
+  process.env.MARTIN_GROUNDING_DIR = groundingDir;
+
+  try {
+    return await fn(runsRoot);
+  } finally {
+    if (previousRunsRoot === undefined) {
+      delete process.env.MARTIN_RUNS_DIR;
+    } else {
+      process.env.MARTIN_RUNS_DIR = previousRunsRoot;
+    }
+
+    if (previousGroundingDir === undefined) {
+      delete process.env.MARTIN_GROUNDING_DIR;
+    } else {
+      process.env.MARTIN_GROUNDING_DIR = previousGroundingDir;
+    }
+
+    await rm(root, { force: true, recursive: true }).catch(() => {});
+  }
+}
+
 // ---------------------------------------------------------------------------
 // computeScopeFingerprint
 // ---------------------------------------------------------------------------
@@ -146,11 +176,13 @@ describe("readLocalCorpusRisk", () => {
 describe("preflight corpus integration", () => {
   it("shows corpus line even when no corpus data exists", async () => {
     // Override corpus path to a nonexistent file so we get the empty-corpus message
-    const result = await executeCli([
-      "preflight",
-      "Fix the failing test",
-      "--verify", process.platform === "win32" ? "cmd /c exit 0" : "true"
-    ]);
+    const result = await withRunsRoot(() =>
+      executeCli([
+        "preflight",
+        "Fix the failing test",
+        "--verify", process.platform === "win32" ? "cmd /c exit 0" : "true"
+      ])
+    );
 
     expect(result.exitCode).toBe(0);
     // Should include the corpus status line regardless of whether data exists
@@ -177,11 +209,13 @@ describe("preflight corpus integration", () => {
       process.env["MARTIN_LEARNING_CORPUS_PATH"] = corpusPath;
 
       try {
-        const result = await executeCli([
-          "preflight",
-          "Fix the failing test",
-          "--verify", process.platform === "win32" ? "cmd /c exit 0" : "true"
-        ]);
+        const result = await withRunsRoot(() =>
+          executeCli([
+            "preflight",
+            "Fix the failing test",
+            "--verify", process.platform === "win32" ? "cmd /c exit 0" : "true"
+          ])
+        );
 
         expect(result.exitCode).toBe(0);
         expect(result.stdout).toMatch(/corpus/i);

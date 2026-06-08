@@ -138,7 +138,7 @@ export function renderOssBoundaryReportMarkdown(report) {
     "## Verdict",
     `**${report.verdict.toUpperCase()}**`,
     "",
-    "## Published Interface",
+    "## Public Surface",
     `- Root package: \`${report.publicSurface.packageName}@${report.publicSurface.packageVersion}\``,
     `- Install target: \`${report.publicSurface.installCommand}\``,
     `- CLI target: \`${report.publicSurface.npxCommand}\``,
@@ -156,7 +156,7 @@ export function renderOssBoundaryReportMarkdown(report) {
     "## Boundary Checks",
     `- Forbidden top-level entries: ${report.forbiddenTopLevelEntries.join(", ") || "none"}`,
     `- Unexpected top-level entries: ${report.unexpectedTopLevelEntries.join(", ") || "none"}`,
-    `- Forbidden non-OSS package directories: ${report.forbiddenPackageDirs.join(", ") || "none"}`,
+    `- Forbidden non-public package directories: ${report.forbiddenPackageDirs.join(", ") || "none"}`,
     `- Unexpected package directories: ${report.unexpectedPackageDirs.join(", ") || "none"}`,
     `- Workspace dependency leaks: ${report.dependencyLeaks.length === 0 ? "none" : report.dependencyLeaks.map((leak) => `${leak.fromPackage} -> ${leak.toPackage}`).join(", ")}`,
     "",
@@ -167,7 +167,7 @@ export function renderOssBoundaryReportMarkdown(report) {
 
 export async function writeOssBoundaryReport(options = {}) {
   const rootDir = options.rootDir ?? process.cwd();
-  const outputDir = options.outputDir ?? path.join(rootDir, "docs", "oss");
+  const outputDir = options.outputDir ?? path.join(rootDir, "docs", "reference");
   const report = await createOssBoundaryReport({ rootDir });
   const markdown = renderOssBoundaryReportMarkdown(report);
 
@@ -234,13 +234,18 @@ function findDependencyLeaks(ossCorePackages) {
 
 async function main() {
   const rootDir = process.cwd();
-  const report = await writeOssBoundaryReport({ rootDir });
+  const write = process.argv.includes("--write");
+  const report = write
+    ? await writeOssBoundaryReport({ rootDir })
+    : await createOssBoundaryReport({ rootDir });
   const markdown = renderOssBoundaryReportMarkdown(report);
 
   process.stdout.write(`${markdown}\n`);
-  process.stdout.write(
-    `\nArtifacts written to ${path.join(rootDir, "docs", "oss", "OSS-BOUNDARY-REPORT.json")} and ${path.join(rootDir, "docs", "oss", "OSS-BOUNDARY-REPORT.md")}\n`,
-  );
+  if (write) {
+    process.stdout.write(
+      `\nArtifacts written to ${path.join(rootDir, "docs", "reference", "OSS-BOUNDARY-REPORT.json")} and ${path.join(rootDir, "docs", "reference", "OSS-BOUNDARY-REPORT.md")}\n`,
+    );
+  }
 
   process.exitCode = report.verdict === "go" ? 0 : 1;
 }

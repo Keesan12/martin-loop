@@ -1,139 +1,60 @@
-# Martin MCP Delivery Slice Map
+# Martin MCP Release Map
 
-Use this map when cutting the scheduled public deliveries from the current integrated local `0.2.5` tip. The goal is to keep the public release train honest against live npm truth while avoiding accidental bleed from the private hosted lane or unrelated workspace residue.
+This map defines the next public standalone MCP releases after the live `0.3.0` baseline. The point is to keep each release narrow, legible, and easy to validate.
 
-## Public Version Train
+## Live baseline
 
-- live npm baseline: `0.1.3`
-- staged public deliveries:
-  - `0.1.4` operator foundation
-  - `0.2.0` cockpit expansion
-  - `0.2.5` public MCP package line
-- integrated local tip: `0.2.5`
+- public npm baseline: `0.3.0`
+- public GitHub release baseline: `mcp-v0.3.0`
+- next release to prepare: `0.3.1`
 
-See [VERSION-LEDGER.md](./VERSION-LEDGER.md) for the canonical version truth.
+## `0.3.1` — Review And Handoff Controls
 
-## Tier Boundary
-
-- Free / OSS is the only public tier in this repo. The standalone `@martinloop/mcp` train belongs to that lane.
-- Pro, Growth, Enterprise, and Internal remain private tier names and should never be implied by a public MCP release note, packet, or README.
-- Private hosted and team-only capabilities stay out of the public MCP npm train unless this slice map changes first.
-- Keep private control-plane, autonomy, and router internals out of the OSS MCP train even when they exist in the broader workspace.
-
-## Delivery `0.1.4`
-
-Scope: operator foundation for the Free / OSS operator lane.
+Story: make review, triage, and follow-through easier after a governed run finishes.
 
 Include:
+- stronger dossier and eval guidance
+- clearer failed-run and publish-readiness flows
+- compact review resources for what happened, what failed, and what to do next
+- compact expected outputs for humans and agents
 
-- `martin_doctor`
-- `martin_preflight`
-- install/config generation improvements
-- version-truth and release-proof docs
-- public verification hardening needed to support the operator foundation story
+Do not include:
+- hosted audit export
+- org policy
+- fleet controls
+- evidence-dashboard claims
 
-Primary surfaces:
-
-- `packages/mcp/src/tools/doctor.ts`
-- `packages/mcp/src/tools/preflight.ts`
-- `packages/mcp/src/server.ts`
-- `packages/cli/src/index.ts`
-- `packages/cli/src/mcp-config.ts`
+Primary public surfaces:
 - `packages/mcp/README.md`
 - `docs/oss/MCP-FOR-AI-AGENTS.md`
-- `docs/oss/QUICKSTART.md`
-- `docs/release/MCP-0.1.4-RELEASE-NOTES.md`
+- `docs/release/MCP-0.3.1-RELEASE-NOTES.md`
 
-Do not include:
+## `0.3.2` — Opt-In Execution Controls
 
-- resources
-- resource templates
-- prompts
-- dossier/triage-heavy discovery story
-- private remote beta
-
-## Delivery `0.2.0`
-
-Scope: cockpit expansion for the Free / OSS public cockpit lane.
+Story: widen control for power users without making execution feel implicit or invisible.
 
 Include:
-
-- additive read-only inspection expansion
-- resources
-- resource templates
-- prompts
-- dossier/discovery surfaces
-
-Primary surfaces:
-
-- `packages/mcp/src/resources.ts`
-- `packages/mcp/src/prompts.ts`
-- `packages/mcp/src/discovery-metadata.ts`
-- `packages/mcp/src/discovery-support.ts`
-- `packages/mcp/src/tools/list-runs.ts`
-- `packages/mcp/src/tools/get-run.ts`
-- `packages/mcp/src/tools/get-attempt.ts`
-- `packages/mcp/src/tools/get-verification-results.ts`
-- `packages/mcp/src/tools/run-dossier.ts`
-- `packages/mcp/tests/mcp-discovery.test.ts`
-- `packages/mcp/tests/server-live.test.ts`
-- `docs/release/MCP-0.2.0-RELEASE-NOTES.md`
-
-Keep public execution semantics unchanged:
-
-- `martin_run` remains the only write-capable entrypoint
+- explicit execution-capable profiles
+- clearer refusal and escalation messages
+- stronger docs for read-only versus execution-capable usage
+- install snippets that make the safe default obvious
 
 Do not include:
+- hidden auto-execution
+- hosted orchestration
+- tenant or billing features
+- non-OSS transport
 
-- private remote beta
-- hosted control-plane claims
-- autonomy/router claims
+Primary public surfaces:
+- `packages/mcp/README.md`
+- `docs/oss/MCP-FOR-AI-AGENTS.md`
+- `docs/release/MCP-0.3.2-RELEASE-NOTES.md`
 
-## Delivery `0.2.5`
+## Release cut rule
 
-Scope: the public MCP package line for the Free / OSS lane, including the polish and hardening needed to keep that line honest.
+Before a public-prep branch opens:
 
-Include:
-
-- triage
-- degraded run-store handling
-- release packet
-- compatibility and publishing docs
-- stronger release guards
-- final proof artifacts for the public cockpit line
-
-Primary surfaces:
-
-- `packages/mcp/src/tools/triage-runs.ts`
-- `packages/mcp/src/tools/run-store.ts`
-- `packages/mcp/src/tools/tool-errors.ts`
-- `packages/mcp/src/tools/tool-response.ts`
-- `packages/mcp/src/tools/tool-support.ts`
-- `packages/mcp/tests/mcp-tools.test.ts`
-- `scripts/tests/mcp-release-docs.test.mjs`
-- `docs/release/MCP-0.2.5-RELEASE-NOTES.md`
-- `docs/release/MCP-0.2.5-RELEASE-PACKET.md`
-- `docs/release/MCP-COMPATIBILITY.md`
-- `docs/release/MCP-PUBLISHING.md`
-- `docs/release/MCP-RELEASE-CHECKLIST.md`
-
-## Explicit Exclusions From The Public Train
-
-These stay out of the public MCP npm release train for this wave:
-
-- private Pro, Growth, Enterprise, and Internal tier surfaces
-- private hosted and team-only capabilities
-- product-internal application packages
-- product-internal trace and routing packages
-- hosted Streamable HTTP remote metadata
-- bearer tokens, audit, rate limits, and other private beta control-plane operations
-- hosted autonomy, self-improvement, and router claims
-
-## Release Cut Rule
-
-Before cutting any staged public branch:
-
-1. Confirm [VERSION-LEDGER.md](./VERSION-LEDGER.md) still matches live npm and public GitHub `main`.
-2. Confirm the target delivery includes only the intended public slice from above.
-3. Confirm the exact candidate branch is what goes to CI for Windows, Linux, and macOS proof.
-4. Keep the private hosted lane and `oss-core` mirror out of the public branch except where the OSS source-of-truth files already require synchronized docs or tests.
+1. Reconfirm `VERSION-LEDGER.md` against live npm and public GitHub.
+2. Keep the changed-path set limited to the release in progress.
+3. Run the full public release gates on the exact candidate commit.
+4. Audit packed tarball contents, README, and release notes before publish.

@@ -1,348 +1,158 @@
-<div align="center">
-
-<img src="./docs/assets/martinloop-logo.png" alt="MartinLoop" width="260">
-
-### The cross agent governance layer for autonomous AI coding agents.⭐
-
-[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-7c3aed?style=flat-square)](./LICENSE)
-[![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&logo=typescript&logoColor=white)](./tsconfig.base.json)
-[![Node](https://img.shields.io/badge/node-%3E%3D20-3c873a?style=flat-square&logo=nodedotjs&logoColor=white)](#quick-start)
-[![npm](https://img.shields.io/badge/npm-martin--loop-cc3534?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/martin-loop)
-
-MartinLoop has been accepted into the NVIDIA Inception program.
-
-<br>
-
-**Your overnight AI pipeline estimated $2.40.**  
-**You woke up to a $65 bill.** 
- <br> 47 retries. No hard stop. No rollback. No audit trail. Nothing merged.  
- MartinLoop exists so that never happens again.✅ <br> <br>
- If you think autonomous AI coding agents need budgets, brakes, and receipts, please star ⭐ the repo so more builders can find it.
-<br>
-
-> AI coding agents are useful. Unbounded retry loops are not.
->
-> MartinLoop wraps agent runs with budgets, policy checks, verifier gates, rollback evidence, and inspectable run records. Built for Enterprise Coding Agents, Agentic Teams, and Autonomous Companies. 
-<br>
-<img src="./docs/assets/cli-animated.svg" alt="MartinLoop CLI — governed agent run" width="720">
-
-</div>
-
----
-
-## The Problem
-
-A typical autonomous coding loop keeps attempting work until tests pass. Without a governance layer, that loop can keep spending, mutate files outside the intended scope, lose track of why it failed, and leave teams without a clean audit trail.
-
-Ralph-style loops are powerful but they attempt ➡️ check ➡️ retry ➡️ repeat, with no strong answer to:
-
-- What changed?
-- What did it cost?
-- Why was it allowed?
-- Why did it stop?
-- Can we inspect or resume it later?
-
-MartinLoop governs the failure mode.
-
----
-
-## The Solution
-
-✅ Martin Loop wraps AI coding loops with a governance layer.
-
-It does not try to replace the agent pattern. It makes that pattern safe to run.
-
-### What MartinLoop Does Today
-
-| Capability | Current behavior |
-|---|---|
-| Budget governance | Enforces `maxUsd`, `softLimitUsd`, `maxIterations`, and `maxTokens`; rejects attempts projected to exceed remaining budget and exits on budget or iteration exhaustion. Hard USD budget caps that stop work before the next attempt breaches policy. |
-| Verifier gate | A run only reaches `completed` when the adapter result and verifier state pass. Unsafe verifier commands are blocked before agent execution. |
-| Failure taxonomy | Classifies failures across 11 current classes, including hallucination, test regression, scope creep, repo grounding failure, environment mismatch, and budget pressure, that distinguishes real success from unsafe, invalid, or terminal behavior.|
-| Safety leash | Evaluates verifier commands, file scope, dependency or migration changes that require approval, and secret-like values in task text. **Policy-as-code**. |
-| Context integrity | Scans user prompts and tool output for injection patterns (authority inversion, instruction override, identity redefinition) before any attempt is admitted. Aborts with human escalation on detection. |
-| Rollback evidence | Captures rollback boundaries and restore outcomes for repo-backed attempts when a persistence store is configured. |
-| Context distillation | Carries a distilled summary of recent attempts and remaining constraints into subsequent attempts. |
-| Run records | The CLI appends JSONL loop records under `~/.martin/runs/<workspaceId>.jsonl`; lower-level stores can also persist contracts, ledgers, and attempt artifacts.
-
-
-⭐The result is a runtime that can complete good work, refuse unsafe work, stop uneconomical work, and leave evidence behind.✅
----
-
-## Ralph-Style Loops Need a Control Layer
-
-**"Everybody has gotten infatuated with what we call these Ralph Wiggum loops, just like send the thing off and it'll just go figure something out..A, It never figures anything out. And B, you just get this ginormous bill...**" - Chamath Palihapitiya, All-In Podcast #263, March 2026
-
-⛔ The **Ralph Loop** is the failure mode where an AI coding agent keeps trying without knowing when it should stop.
-
-The pattern is simple: attempt the task, run checks, retry on failure, repeat. The problem is not that the loop exists. The problem is that most implementations have no hard budget cap, no signed evidence layer, and no pre-execution control system. They know how to keep trying. They do **not** know when continuing is unsafe, uneconomical, or impossible.
-
-✅ Martin Loop solves the Ralph Loop problem by enforcing rules **before** damage happens:
-
-- it stops the next attempt before budget overspend
-- it classifies unsafe or invalid actions before execution
-- it appends a structured JSONL audit record for every attempt
-- it rolls back failed runs instead of leaving broken state behind
-- it reduces runaway token growth with context distillation
-
-If a Ralph-style loop has ever burned budget without producing a verified result, MartinLoop is designed to stop that failure mode before the next unsafe attempt runs. $165.70 on your dime, you're in the right place. Martin stopped him at $40.97 with a full audit trail.
+# MartinLoop
 
 <div align="center">
-  <img src="./docs/assets/martin-raplph.png.jpg" alt="Martin vs Ralph — governed vs ungoverned agent loop" width="240">
+  <img src="./docs/assets/martinloop-logo.png" alt="MartinLoop" width="260">
+
+  **The open-source control plane for AI coding agents.**
+
+  MartinLoop wraps Claude Code, Codex, Gemini, and MCP-aware agent workflows with budgets, verifier gates, policy checks, run receipts, and review-ready evidence.
 </div>
 
-### How It Works — Five Layers
+## Why MartinLoop
 
-| Layer | What it does |
-|---|---|
-| **1. Task Contract** | Objective, verifier plan, repo root, allowed/denied paths, acceptance criteria, workspace, project, and budget. |
-| **2. Policy & Budget** | Defaults from `martin.config.yaml`; CLI flags override. Budget preflight rejects attempts before execution. |
-| **3. Agent Adapters** | Claude CLI, Codex CLI, direct-provider, and stub adapters normalize execution results into the core runtime contract. |
-| **4. Safety & Verification** | Verifier commands, file scope, approval-boundary changes, secret-like values, and grounding determine whether work is kept. |
-| **5. Persistence** | CLI writes JSONL records under `~/.martin/runs/`. Repo-backed runs can also persist contracts, ledgers, diffs, and rollback artifacts. |
+AI coding agents are useful, but unbounded retry loops are expensive.
 
----
+A task that looked like a small fix can become dozens of attempts, a blown token budget, and a diff nobody trusts. MartinLoop gives every run an explicit contract: objective, verifier, budget, scope, receipts, and a clear stop condition.
 
-## See It In Action
-
-Same task, same starting state. MartinLoop completes in one verified attempt at `$2.30`. The uncontrolled loop retries four times, spends `$5.20`, and fails with no audit trail.
-
-Martin Loop matters because it turns AI coding from an opaque experiment into something that can be governed, replayed, verified, and trusted.
-
-<div align="center">
-  <img src="./docs/assets/side-by-side.svg" alt="Martin vs Ralph — governed vs ungoverned agent loop side-by-side benchmark comparison" width="720" height="1080">
-</div>
-
-
-Reproducible locally:
-
-```sh
-pnpm --filter @martin/benchmarks test
-pnpm --filter @martin/benchmarks eval
-pnpm --filter @martin/benchmarks eval:phase12
-```
-
-Challenge page: [Can your AI coding agent finish this task under $3?](./docs/distribution/UNDER-3-CHALLENGE.md)
-
----
+Use it when AI coding work needs to stay bounded, inspectable, and safe to review before it becomes expensive or destructive.
 
 ## Quick Start
 
-```sh
-npm install -g martin-loop
-```
-
-This installs both the `martin-loop` package and the `martin` command alias. Check [`docs/release/VERSION-LEDGER.md`](./docs/release/VERSION-LEDGER.md) before doing release work so the root and standalone MCP lines do not get conflated.
-
-Want a safe sandbox first? Run `npx martin-loop demo` and MartinLoop will copy a disposable local workspace into `./martin-loop-demo`.
-
-### Three-Minute First Value
+Try MartinLoop in a disposable demo workspace:
 
 ```sh
-npx martin-loop doctor
 npx martin-loop demo
 cd martin-loop-demo
-```
-
-Then run the no-spend proof path:
-
-```powershell
-$env:MARTIN_LIVE='false'
-npx martin-loop run "Summarize the demo workspace and prove tests still pass" --verify "npm test"
+npm install
+npx martin-loop doctor
+npx martin-loop session-start
+npx martin-loop preflight "Summarize the demo workspace and prove tests still pass" --verify "npm test"
+npx martin-loop run "Summarize the demo workspace and prove tests still pass" --proof --verify "npm test"
 npx martin-loop dossier --latest
-Remove-Item Env:MARTIN_LIVE
+npx martin-loop share --latest
 ```
 
-The dossier includes what happened, what Martin prevented, verifier evidence, rollback/artifact evidence, clearly labeled token/cost estimates, and the next safe action.
+`doctor`, `session-start`, and `preflight` create the local receipts MartinLoop expects before a real governed run. If you intentionally need to bypass that local gate for a one-off run, use `--unsafe-allow-unguarded-run` explicitly.
 
-### Public Package Surface
+`share --latest` writes three files into the selected run directory under `share/`: `run-receipt.json`, `run-receipt.md`, and `proof-card.svg`.
 
-The current public package surface is:
+Release notes for the current root package: [MartinLoop 0.3.0](./docs/release/OSS-0.3.0-RELEASE-NOTES.md).
 
-- Install target: `npm install martin-loop`
-- CLI target: `npx martin-loop`
-- SDK target: `import { MartinLoop } from "martin-loop"`
-- MCP target (registry-ready package): `npx -y @martinloop/mcp`
+## What It Does
 
-The `martin` command alias is installed for local operator convenience, but the public CLI surface is `npx martin-loop`.
-The standalone MCP server package is only ready for registry publication after the full MCP prepublish lane passes locally:
+- Budget caps stop the next attempt before a configured USD, token, or iteration limit is exceeded.
+- Verifier gates require a real check, such as `npm test`, before a run can count as complete.
+- Policy checks block unsafe verifier commands, risky path changes, and secret-like task inputs before execution.
+- Run receipts capture stop reason, verifier evidence, budget posture, integrity state, and the next safe action.
+- `martin share --latest` turns the latest governed run into a local share bundle with a redacted JSON receipt, Markdown recap, and proof-card SVG.
+- MCP integration gives hosts one write-capable execution entrypoint plus richer planning, inspection, and review helpers.
 
-- `pnpm --filter @martinloop/mcp lint`
-- `pnpm --filter @martinloop/mcp test`
-- `pnpm --filter @martinloop/mcp build`
-- `pnpm --filter @martinloop/mcp smoke:pack`
-- `pnpm --filter @martinloop/mcp smoke:published:pack`
-- `pnpm --filter @martinloop/mcp verify:release`
+## How It Works
 
-Registry/server identifier for the standalone MCP package: `io.github.Keesan12/martin-loop`
+| Layer | Purpose |
+| --- | --- |
+| Task contract | Objective, verifier plan, repo root, allowed paths, denied paths, acceptance criteria, workspace, project, and budget. |
+| Policy and budget | Defaults come from `martin.config.yaml`; CLI flags can override them. Budget preflight blocks attempts that would exceed policy. |
+| Agent adapters | Claude CLI, Codex CLI, Gemini CLI, direct-provider, and verifier-only adapters normalize execution results. |
+| Safety and verification | Scope checks, verifier command checks, prompt integrity, and grounding decide whether work can continue. |
+| Persistence | JSONL run records, evidence summaries, and repo-backed artifacts make every run inspectable later. Each loop record is locally signed (HMAC, per-runs-root key) and `dossier`/`runs get`/`runs verify`/`challenge`/`badge` report an `integrity` verdict (`verified` / `tamper_detected` / `unsigned`) so post-hoc edits to a record are detectable, not just inspectable. |
 
-### OSS And Paid Tier Map
+## CLI
 
-Martin Loop uses one public Free / OSS lane plus a separate paid-tier ladder. Only the Free / OSS lane and the standalone MCP package ship from this repo.
+```text
+martin-loop doctor
+martin-loop demo
+martin-loop session-start [--host <claude|codex|gemini|generic>]
+martin-loop phase status|contract|session-start|preflight|run [--execute]
+martin-loop preflight <objective> [options]
+martin-loop run <objective> [options]
+martin-loop bench --suite <suiteId>
+martin-loop triage
+martin-loop dossier (--latest | --loop-id <id> | --file <path>)
+martin-loop runs list|get|attempt|verify ...
+martin-loop mcp print-config --host <codex|claude|gemini|generic>
+martin-loop mcp install --host <codex|claude|gemini|generic>
+martin-loop challenge [--loop-id <id> | --file <path> | --latest]
+martin-loop share (--loop-id <id> | --file <path> | --latest) [--out-dir <path>]
+martin-loop badge [--format svg|json] [--runs-dir <path>]
+```
 
-| Lane | Status in `oss-core` | Public claim boundary |
-|---|---|---|
-| Free / OSS | Public and versioned here | Local runtime, CLI, SDK, root `martin-loop`, and the standalone `@martinloop/mcp` package |
-| Pro | Private only | Hosted team surfaces layered on OSS receipts; not shipped from `oss-core` |
-| Growth | Private only | Broader team policy and collaboration controls layered above Pro; not shipped from `oss-core` |
-| Enterprise | Private only | Enterprise governance, diagnostics, scorecards, and hosted operations; not shipped from `oss-core` |
-| Internal | Private only | Internal operator and shadow-promotion lanes; never part of the public OSS/MCP manifest |
+Examples below use `npx martin-loop` so they work without a global install. If you install `martin-loop` globally, the `martin` alias works too.
 
-The public MCP release train is separate from the paid-tier ladder:
+Use `martin-loop share --latest` after `dossier` when you want a redacted bundle you can hand to another person without sending raw run-store files.
 
-- `0.1.4` operator foundation
-- `0.2.0` cockpit expansion
-- `0.2.5` public MCP package line
+More detail: [CLI reference](./docs/reference/cli.md) and [configuration reference](./docs/reference/config.md).
 
-A public `@martinloop/mcp` release does not promote the private Pro, Growth, Enterprise, or Internal lanes.
+## Benchmarks
 
-### Claude Code MCP install
+MartinLoop ships a public deterministic benchmark workspace in `benchmarks/` plus the installed-package `bench` command.
 
-Use the published MCP package directly:
+From an installed package:
 
-- macOS/Linux: `claude mcp add --transport stdio --scope user martin-loop -- npx -y @martinloop/mcp`
-- Windows PowerShell/cmd: `claude mcp add --transport stdio --scope user martin-loop -- cmd /c npx -y @martinloop/mcp`
+```sh
+npx martin-loop bench --suite under-3-challenge
+npx martin-loop bench --suite ralphy-engineering-50
+```
 
-If you just want to launch the server manually, the one-line command is:
+From a clean public clone:
+
+```sh
+pnpm install --frozen-lockfile
+pnpm --filter @martin/benchmarks build
+pnpm --filter @martin/benchmarks test
+pnpm --filter @martin/benchmarks eval
+pnpm --filter @martin/benchmarks report:ralphy
+```
+
+The installed-package command reads the shipped public fixtures. The repo-clone workflow runs the public benchmark workspace directly.
+
+## MCP
+
+Run the standalone MCP package directly:
 
 ```sh
 npx -y @martinloop/mcp
 ```
 
-### Other MCP host installs
-
-- Codex: `codex mcp add martin-loop -- npx -y @martinloop/mcp`
-- Gemini CLI and generic wrapper hosts: generate exact local stdio profiles with `martin mcp print-config --host gemini|generic --transport stdio --profile minimal|diagnostic|full-local|github-review`
-- Claude, Codex, Gemini, and generic hosts all support generated minimal, diagnostic, full-local, github-review, and compatibility profiles through `martin mcp print-config` and `martin mcp install`
-
-Martin Loop keeps the public package local-first and stdio-first. Hosted and remote execution lanes remain private and are not part of the current public package claim.
-
-### Run a governed task
+Add it to common hosts:
 
 ```sh
-martin run "fix the auth regression" \
-  --budget 3.00 \
-  --verify "pnpm test"
+codex mcp add martin-loop -- npx -y @martinloop/mcp
+claude mcp add --transport stdio --scope user martin-loop -- npx -y @martinloop/mcp
+claude mcp add --transport stdio --scope user martin-loop -- cmd /c npx -y @martinloop/mcp
 ```
 
-You can also pass the objective explicitly:
+Generate host config from the root CLI:
 
 ```sh
-martin run --objective "fix the auth regression" --budget 3.00 --verify "pnpm test"
+npx martin-loop mcp print-config --host codex --transport stdio --profile minimal
+npx martin-loop mcp print-config --host claude --transport stdio --profile diagnostic
+npx martin-loop mcp print-config --host gemini --transport stdio --profile full-local
+npx martin-loop mcp print-config --host generic --transport stdio --profile github-review
 ```
 
-For a no-spend repo-local dry run, use the stub adapter:
+The root `martin-loop` package and the standalone `@martinloop/mcp` package move on separate version lines. The root package is `0.3.0`; the current standalone MCP package is `0.3.0`.
 
-```powershell
-$env:MARTIN_LIVE='false'
-pnpm run:cli -- run --objective "Summarize the current runtime state" --verify "pnpm --filter @martin/core test"
-Remove-Item Env:MARTIN_LIVE
-```
+The public MCP release train labels are:
 
-### Inspect, triage, or resume runs
+- `0.1.4` operator foundation
+- `0.2.0` cockpit expansion
+- `0.2.5` public MCP package line
+- `0.2.7` usability and review release
+- `0.3.0` host adoption and onboarding release
 
-```sh
-martin doctor
-martin session-start
-martin phase contract --json
-martin phase preflight
-martin triage
-martin dossier --latest
-martin runs get --loop-id <loopId>
-martin mcp print-config --host codex --profile minimal
-```
+The standalone MCP registry/server identifier is `io.github.Keesan12/martin-loop`.
 
-`doctor` checks environment readiness, `session-start` summarizes local run and phase state, `phase contract` compiles local phase state into a run contract, `phase preflight` previews the governed preflight command, `triage` ranks persisted runs that need attention, `dossier` gives you the richest single-run view, and `runs get` loads a persisted loop by selector. The legacy `inspect` and `resume` commands still work, but they are now compatibility aliases.
+More detail: [MCP setup](./docs/getting-started/mcp.md), [MCP tool reference](./docs/reference/mcp-tools.md), and [MCP compatibility](./docs/reference/mcp-compatibility.md).
 
----
-
-## CLI
-
-```text
-martin run <objective> [options]
-
-  --objective <text>      The task to accomplish, or pass it as the first positional arg
-  --budget <n>            Hard cost cap in USD
-  --budget-usd <n>        Alias for --budget
-  --soft-limit-usd <n>    Soft budget threshold in USD
-  --verify <cmd>          Verifier command after each attempt
-  --max-iterations <n>    Maximum number of attempts
-  --max-tokens <n>        Maximum total token budget
-  --engine <name>         Adapter to use: claude (default) or codex
-  --model <name>          Override the adapter model
-  --cwd <path>            Repo root for the run
-  --allow-path <glob>     Restrict agent writes to this path pattern; repeatable
-  --deny-path <glob>      Block this path pattern; repeatable
-  --accept <criterion>    Add an acceptance criterion; repeatable
-  --config <path>         Path to a martin.config.yaml file
-  --workspace <id>        Workspace ID for the run record
-  --project <id>          Project ID for the run record
-  --metadata <key=value>  Attach metadata to the run record; repeatable
-```
-
-The public CLI also includes `demo`, `inspect`, `resume`, and a `bench` redirect that points reviewers to the workspace benchmark harness.
-
-New operator-first workflows are available through:
-
-```text
-martin doctor
-martin session-start [--host claude|codex|generic]
-martin phase status|contract|preflight|run [--execute]
-martin preflight <objective> [options]
-martin triage [options]
-martin dossier (--loop-id <id> | --file <path> | --latest)
-martin runs list|get|attempt|verify ...
-martin mcp print-config --host codex|claude|gemini|generic --transport stdio --profile minimal|diagnostic|full-local|github-review
-martin mcp install --host codex|claude|gemini|generic --scope user|project [--dry-run]
-```
-
-Use `--json` for stable machine-readable output and `--quiet` for script-friendly minimal output.
-
-Native phase commands are local-only. They import `.gsd/PLAN.md`, `.gsd/state.json`, and `.gsd/martin-contract.json` when present as a compatibility workspace format, inspect recent local MartinLoop run records, and fail closed when allowed paths or verifiers are missing. `martin phase preflight` and `martin phase run` are dry-run by default; use `--execute` only after the contract is safe.
-
-The public OSS package remains local-first and stdio-first. Remote HTTP operation is not part of this local-first package.
-
-<div align="center">
-  <img src="./docs/assets/cli-static.svg" alt="MartinLoop CLI terminal output" width="720">
-</div>
-
----
-
-## Policy File
-
-Drop a `martin.config.yaml` in your repo root to set governance defaults:
-
-```yaml
-budget:
-  maxUsd: 5.00
-  softLimitUsd: 3.75
-  maxIterations: 5
-  maxTokens: 40000
-
-governance:
-  destructiveActionPolicy: approval
-  telemetryDestination: local-only
-  verifierRules:
-    - pnpm test
-```
-
-CLI flags override config values when provided.
-
----
-
-## TypeScript SDK
+## SDK
 
 ```sh
 npm install martin-loop
 ```
 
 ```typescript
-import {
-  MartinLoop,
-  createClaudeCliAdapter,
-  createCodexCliAdapter,
-  runMartin
-} from "martin-loop";
+import { MartinLoop, createClaudeCliAdapter } from "martin-loop";
 
 const loop = new MartinLoop({
   adapter: createClaudeCliAdapter({ workingDirectory: process.cwd() }),
@@ -350,12 +160,12 @@ const loop = new MartinLoop({
     workspaceId: "my-workspace",
     projectId: "my-project",
     budget: {
-      maxUsd: 3.00,
+      maxUsd: 3,
       softLimitUsd: 2.25,
       maxIterations: 3,
-      maxTokens: 20_000
-    }
-  }
+      maxTokens: 20_000,
+    },
+  },
 });
 
 const result = await loop.run({
@@ -363,91 +173,63 @@ const result = await loop.run({
     title: "Fix auth regression",
     objective: "Fix the failing auth regression tests",
     verificationPlan: ["pnpm test"],
-    repoRoot: process.cwd()
-  }
+    repoRoot: process.cwd(),
+  },
 });
 
 console.log(result.decision.status);
 ```
 
-Use Codex instead of Claude by swapping adapters:
+The root SDK also exports `createCodexCliAdapter`, `createGeminiCliAdapter`, `createDirectProviderAdapter`, `createOpenAiCompatibleAdapter`, and `createVerifierOnlyAdapter`.
 
-```typescript
-const loop = new MartinLoop({
-  adapter: createCodexCliAdapter({ workingDirectory: process.cwd() })
-});
-```
+More detail: [SDK reference](./docs/reference/sdk.md) and [package map](./docs/reference/packages.md).
 
-The lower-level `runMartin` function is also exported for callers that want to assemble the runtime input directly.
+## Examples
 
----
+- [Quickstart](./docs/getting-started/quickstart.md)
+- [Examples](./docs/getting-started/examples.md)
+- [Claude Code walkthrough](./docs/getting-started/claude-code.md)
+- [Codex setup](./docs/getting-started/codex.md)
+- [MCP setup](./docs/getting-started/mcp.md)
+- [MCP tool reference](./docs/reference/mcp-tools.md)
+- [GitHub Actions budget gate](./examples/github-actions-budget-gate/)
+- [OpenCode-style adapter](./examples/opencode-adapter/)
 
-## Workspace Map
-
-| Package or app | Role |
-|---|---|
-| `martin-loop` | Root public npm facade that vendors the runtime, CLI, adapters, and contracts into `dist/`. |
-| `@martin/contracts` | Shared types for loops, policy, governance, budget, telemetry, and rollback. |
-| `@martin/core` | Runtime controller, policy engine, safety leash, grounding, persistence, and rollback logic. |
-| `@martin/adapters` | Claude CLI, Codex CLI, direct-provider, and stub adapter surfaces. |
-| `@martin/cli` | Local CLI implementation for `run`, `inspect`, `resume`, and the benchmark redirect. |
-| `@martinloop/mcp` | Governed execution cockpit over MCP: doctor, preflight, run, inspection tools, resources, and prompts. |
-| `benchmarks/` | Workspace-only deterministic benchmark and RC validation harness. |
-
-The `@martin/core`, `@martin/adapters`, and `@martin/contracts` package manifests are still private workspace packages. The public runtime install target is the root `martin-loop` facade, while `@martinloop/mcp` is packaged as a standalone MCP server with vendored internal runtime dependencies for registry publication.
-
-Hosted dashboard, audit, and paid-tier implementation material live outside this OSS repo. See [`CONTEXT.md`](./CONTEXT.md) for the current public/private workspace map and MCP verification lane.
-
----
 ## Development
 
 Requirements:
 
-- Node 20+
+- Node.js 20+
 - pnpm 10.x
 
-```bash
+```sh
 git clone https://github.com/Keesan12/martin-loop.git
 cd martin-loop
-pnpm install
-
-pnpm test
+pnpm install --frozen-lockfile
 pnpm lint
+pnpm test
 pnpm build
-
-```
-
-Current RC gate commands:
-
-```sh
+pnpm public:copy-scan
+pnpm public:git-surface
 pnpm oss:validate
 pnpm public:smoke
-pnpm repo:smoke
-pnpm release:validate-local
-pnpm pilot:prep:validate
 pnpm release:matrix:local
 ```
 
-> **Caution:** This package is live on npm. Treat registry publication as a guarded release step — verify the RC gate commands, confirm semantic versioning, and document breaking changes before publishing.
+Standalone MCP validation:
 
-The published package surface in this repo is the OSS runtime, CLI, MCP server, and local proof materials. Hosted operations and broader benchmark expansion remain outside the current npm package API.
-
-Helpful docs:
-
-- [OSS quickstart](./docs/oss/QUICKSTART.md)
-- [Agent Start Here](./docs/oss/AGENT-START-HERE.md)
-- [OSS examples](./docs/oss/EXAMPLES.md)
-- [Under-$3 benchmark challenge](./docs/distribution/UNDER-3-CHALLENGE.md)
-- [Directory submission pack](./docs/distribution/DIRECTORY-SUBMISSIONS.md)
-- [Integration outreach pack](./docs/distribution/INTEGRATION-OUTREACH.md)
-- [Claude Code walkthrough](./docs/oss/CLAUDE-CODE-WALKTHROUGH.md)
-- [Ralph-style loop safety guide](./docs/oss/RALPH-LOOP-SAFETY.md)
-- [OSS boundary report](./docs/oss/OSS-BOUNDARY-REPORT.md)
-- [Release surface report](./docs/oss/RELEASE-SURFACE-REPORT.md)
-
----
+```sh
+pnpm --filter @martinloop/mcp lint
+pnpm --filter @martinloop/mcp test
+pnpm --filter @martinloop/mcp build
+pnpm --filter @martinloop/mcp smoke:pack
+pnpm --filter @martinloop/mcp smoke:published:pack
+pnpm --filter @martinloop/mcp verify:release
+```
 
 ## Contributing
+
+Issues, bug reports, workflow feedback, and focused pull requests are welcome. Public-facing docs should stay concise, user-centered, and accurate.
 
 ```sh
 git checkout -b feat/your-feature
@@ -457,25 +239,6 @@ git commit -m "feat: describe what you built"
 git push -u origin feat/your-feature
 ```
 
-Conventional commit prefixes: `feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, and `test:`.
+## License
 
----
-
-<div align="center">
-
-**⭐Give the repo a star⭐** if you think AI coding needs budgets, brakes, and receipts.
-
-**Apache-2.0 Licensed** · [martinloop.com](https://martinloop.com) · [keesan@martinloop.com](mailto:keesan@martinloop.com)
-
-*"AI coding accountability: completes good work, refuses unsafe work, stops uneconomical work."*
-
-</div>
-
-<div align="center">
-  <br>
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Keesan12/martin-loop/main/docs/assets/nvidia-inception-program.png">
-    <img src="https://raw.githubusercontent.com/Keesan12/martin-loop/main/docs/assets/nvidia-inception-program-light.png" alt="NVIDIA Inception Program logo" width="280">
-  </picture>
-  <br>
-</div>
+Apache-2.0. See [LICENSE](./LICENSE).
