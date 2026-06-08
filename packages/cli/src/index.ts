@@ -140,7 +140,9 @@ export type RunCommandRequest = {
   runsDir?: string;
   model?: string;
   engine?: string;
+  liveMode?: "live" | "proof";
   mutationMode?: MutationMode;
+  unsafeAllowUnguardedRun?: boolean;
   allowedPaths?: string[];
   deniedPaths?: string[];
   acceptanceCriteria?: string[];
@@ -670,7 +672,7 @@ export function renderCliHelp(): string {
     "  martin runs list [options]",
     "  martin runs get (--loop-id <id> | --file <path> | --latest) [options]",
     "  martin runs attempt (--loop-id <id> | --file <path>) [--attempt-index <n>] [options]",
-    "  martin runs verify (--loop-id <id> | --file <path>) [options]",
+    "  martin runs verify (--loop-id <id> | --file <path> | --latest) [options]",
     "  martin mcp print-config --host <codex|claude|gemini|generic> [--scope <user|project|local>] [options]",
     "  martin mcp install --host <codex|claude|gemini|generic> [--scope <user|project|local>] [--dry-run] [options]",
     "  martin demo [--dir <path>] [--force]",
@@ -747,7 +749,10 @@ export function renderCliHelp(): string {
     "  --max-iterations <n>     Set the maximum number of attempts.",
     "  --max-tokens <n>         Set the maximum total token budget.",
     "  --verify <cmd>           Shell command to run as the verifier after each attempt.",
+    "  --proof                  Run in no-spend proof mode (same as MARTIN_LIVE=false).",
     "  --verify-only            Skip the coding adapter and run the verifier only.",
+    "  --unsafe-allow-unguarded-run",
+    "                           Bypass doctor/preflight run-gate checks for this invocation only.",
     "  --allow-path <glob>      Restrict agent writes to this path pattern (repeatable).",
     "  --deny-path <glob>       Block agent from this path pattern (repeatable).",
     "  --accept <criterion>     Add an acceptance criterion to the prompt (repeatable).",
@@ -789,20 +794,24 @@ async function executeRunCommand(
   const cliEnvironment = resolveCliEnvironment({
     cwd: resolvedRequest.cwd,
     runsDir: resolvedRequest.runsDir,
-    engine: resolvedRequest.engine
+    engine: resolvedRequest.engine,
+    liveMode: resolvedRequest.liveMode
   });
+  const effectiveMutationMode =
+    resolvedRequest.mutationMode ?? (resolvedRequest.liveMode === "proof" ? "verify_only" : undefined);
   const receiptScope = buildCliReceiptScope(cliEnvironment);
   const engineRequired =
-    resolvedRequest.mutationMode !== "verify_only" && cliEnvironment.liveMode === "live";
+    effectiveMutationMode !== "verify_only" && cliEnvironment.liveMode === "live";
+  const preRunWarnings: string[] = [];
 
-  if (engineRequired) {
+  if (engineRequired && !resolvedRequest.unsafeAllowUnguardedRun) {
     const gate = await evaluateCliRunGate({
       runsRoot: cliEnvironment.runsRoot,
       workingDirectory: cliEnvironment.workingDirectory,
       objective: resolvedRequest.objective,
       engine: cliEnvironment.engine,
       verificationPlan: resolvedRequest.verificationPlan,
-      mutationMode: resolvedRequest.mutationMode,
+      mutationMode: effectiveMutationMode,
       receiptScope,
       allowedPaths: resolvedRequest.allowedPaths,
       deniedPaths: resolvedRequest.deniedPaths,
@@ -818,6 +827,10 @@ async function executeRunCommand(
         }
       });
     }
+  } else if (engineRequired && resolvedRequest.unsafeAllowUnguardedRun) {
+    preRunWarnings.push(
+      "Run-gate bypassed by --unsafe-allow-unguarded-run; doctor/preflight receipts were not enforced for this run."
+    );
   }
 
   let result: Awaited<ReturnType<typeof runMartin>>;
@@ -851,7 +864,7 @@ async function executeRunCommand(
     resolvedRequest.engine,
     cliEnvironment.workingDirectory,
     resolvedRequest.model,
-    resolvedRequest.mutationMode,
+    effectiveMutationMode,
     codexCommandOverride
   );
   try {
@@ -865,7 +878,7 @@ async function executeRunCommand(
         title: resolvedRequest.title,
         objective: resolvedRequest.objective,
         verificationPlan: resolvedRequest.verificationPlan,
-        ...(resolvedRequest.mutationMode ? { mutationMode: resolvedRequest.mutationMode } : {}),
+        ...(effectiveMutationMode ? { mutationMode: effectiveMutationMode } : {}),
         repoRoot: cliEnvironment.workingDirectory,
         ...(resolvedRequest.allowedPaths?.length ? { allowedPaths: resolvedRequest.allowedPaths } : {}),
         ...(resolvedRequest.deniedPaths?.length ? { deniedPaths: resolvedRequest.deniedPaths } : {}),
@@ -885,7 +898,7 @@ async function executeRunCommand(
         title: resolvedRequest.title,
         objective: resolvedRequest.objective,
         verificationPlan: resolvedRequest.verificationPlan,
-        ...(resolvedRequest.mutationMode ? { mutationMode: resolvedRequest.mutationMode } : {}),
+        ...(effectiveMutationMode ? { mutationMode: effectiveMutationMode } : {}),
         repoRoot: cliEnvironment.workingDirectory
       },
       budget: resolvedRequest.budget,
@@ -909,7 +922,7 @@ async function executeRunCommand(
     });
   }
 
-  const warnings: string[] = [];
+  const warnings: string[] = [...preRunWarnings];
   await persistLoopArtifacts(result.loop, { runsRoot: cliEnvironment.runsRoot }).catch((error: unknown) => {
     warnings.push(
       `Persisted run artifacts could not be written: ${error instanceof Error ? error.message : String(error)}`
@@ -1890,6 +1903,12 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
       case "--verify-only":
         request.mutationMode = "verify_only";
         break;
+      case "--proof":
+        request.liveMode = "proof";
+        break;
+      case "--unsafe-allow-unguarded-run":
+        request.unsafeAllowUnguardedRun = true;
+        break;
       case "--allow-path":
         if (next) {
           request.allowedPaths = [...(request.allowedPaths ?? []), next];
@@ -1935,7 +1954,9 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
     ...(request.runsDir ? { runsDir: request.runsDir } : {}),
     ...(request.model ? { model: request.model } : {}),
     ...(request.engine ? { engine: request.engine } : {}),
+    ...(request.liveMode ? { liveMode: request.liveMode } : {}),
     ...(request.mutationMode ? { mutationMode: request.mutationMode } : {}),
+    ...(request.unsafeAllowUnguardedRun ? { unsafeAllowUnguardedRun: true } : {}),
     ...(request.allowedPaths?.length ? { allowedPaths: request.allowedPaths } : {}),
     ...(request.deniedPaths?.length ? { deniedPaths: request.deniedPaths } : {}),
     ...(request.acceptanceCriteria?.length ? { acceptanceCriteria: request.acceptanceCriteria } : {})
