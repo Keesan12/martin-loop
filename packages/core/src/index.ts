@@ -1,10 +1,15 @@
 import { spawnSync } from "node:child_process";
 
 import {
+  type AdapterCapabilityDescriptor,
   type ApprovalPolicy,
   appendLoopEvent,
+  type ChangeObservationReconciliation,
+  type CircuitBreakDecision,
+  cloneExecutionPolicy,
   createLoopRecord,
   type CostProvenance,
+  type ExecutionPolicy,
   type ExecutionProfile,
   type FailureClass,
   type InterventionType,
@@ -18,7 +23,9 @@ import {
   type PatchDecisionArtifact,
   type PatchScore,
   type ReceiptScope,
+  type VerifierSnapshot,
   type RollbackOutcomeArtifact,
+  type TrajectoryAssessment,
   type PolicyPhase
 } from "@martin/contracts";
 import {
@@ -65,12 +72,22 @@ import {
 } from "./grounding.js";
 import { captureRollbackBoundary, restoreRollbackBoundary } from "./rollback.js";
 import { compilePromptPacket } from "./compiler.js";
-import { makeLedgerEvent, resolveRunsRoot, runDir, type RunStore } from "./persistence/index.js";
+import {
+  compileAndPersistContext,
+  makeLedgerEvent,
+  resolveRunsRoot,
+  runDir,
+  type RunStore
+} from "./persistence/index.js";
 import {
   runContextIntegrityPrecheck,
   type ContextIntegrityPrecheck,
   type ContextIntegrityVerdict
 } from "./context-integrity.js";
+import {
+  assessTrajectory,
+  decideCircuitBreak
+} from "./trajectory.js";
 
 // ─── Public API re-exports ───────────────────────────────────────────────────
 export type {
@@ -138,6 +155,7 @@ export type {
   RepoGroundingHit,
   RepoGroundingIndex
 } from "./grounding.js";
+export type { ContextGraphBuildOptions } from "@martin/contracts";
 
 // ─── Context Integrity Pre-gate ──────────────────────────────────────────────
 export { runContextIntegrityPrecheck } from "./context-integrity.js";
@@ -146,6 +164,24 @@ export type { ContextIntegrityPrecheck, ContextIntegrityVerdict } from "./contex
 // ─── Prompt packet compiler ──────────────────────────────────────────────────
 export { compilePromptPacket } from "./compiler.js";
 export type { PromptPacket, CompilerAdapterRequest } from "./compiler.js";
+export { compileExecutionPolicy } from "./policy-compiler.js";
+export type { ContextGraphHit, ContextGraphSnapshot, ContextQuery } from "@martin/contracts";
+export { assessTrajectory, decideCircuitBreak } from "./trajectory.js";
+export type { CircuitBreakDecision, TrajectoryAssessment } from "@martin/contracts";
+export {
+  createLocalIdentityAuthority,
+  hasIdentityScope,
+  issueIdentityToken,
+  verifyIdentityToken
+} from "./identity.js";
+export type { LocalIdentityAuthority } from "./identity.js";
+export type {
+  IdentityAlgorithm,
+  IdentityAttestation,
+  IdentityClaims,
+  IdentityRole,
+  IdentityToken
+} from "@martin/contracts";
 
 // ─── Persistence (RunStore, LedgerEvent, FileRunStore) ──────────────────────
 export {
@@ -173,6 +209,9 @@ export type {
 } from "./persistence/index.js";
 export { compileAndPersistContext } from "./persistence/index.js";
 export type { CompileResult } from "./persistence/index.js";
+
+// ─── Context Graph Foundation ────────────────────────────────────────────────
+export { buildContextGraphSnapshot, queryContextGraph } from "./context-graph.js";
 
 // ─── Adapter interfaces ──────────────────────────────────────────────────────
 
@@ -238,6 +277,7 @@ export interface MartinAdapterResult {
     summary: string;
     steps?: MartinVerificationStep[];
     warnings?: string[];
+    snapshot?: VerifierSnapshot;
   };
   execution?: {
     changedFiles?: string[];
@@ -269,14 +309,7 @@ export interface MartinAdapter {
     providerId: string;
     model: string;
     transport?: "cli" | "http" | "routed_http";
-    capabilities?: {
-      preflight?: boolean;
-      usageSettlement?: boolean;
-      diffArtifacts?: boolean;
-      structuredErrors?: boolean;
-      cachingSignals?: boolean;
-      workspaceMutations?: boolean;
-    };
+    capabilities?: AdapterCapabilityDescriptor;
     [key: string]: unknown;
   };
   execute(request: MartinAdapterRequest): Promise<MartinAdapterResult>;
@@ -299,6 +332,8 @@ export interface AttemptPolicyDecision {
   allowed: boolean;
   reason: string;
   recommendedIntervention?: InterventionType;
+  trajectoryAssessment?: TrajectoryAssessment;
+  circuitBreakDecision?: CircuitBreakDecision;
 }
 
 /**
@@ -330,52 +365,30 @@ export function evaluateAttemptPolicy(input: {
     };
   }
 
-  // Oscillation detection: A/B/A pattern in failure classes
-  const failures = request.previousAttempts
-    .map((a) => a.failureClass)
-    .filter((fc): fc is FailureClass => Boolean(fc));
+  const circuitBreakDecision = decideCircuitBreak({
+    objective: request.context.objective,
+    verificationPlan: request.context.verificationPlan,
+    attempts: request.previousAttempts,
+    remainingIterations: request.context.remainingIterations
+  });
 
-  if (failures.length >= 3) {
-    const last3 = failures.slice(-3);
-    const isOscillating = last3[0] !== last3[1] && last3[0] === last3[2];
-    if (isOscillating) {
-      return {
-        allowed: false,
-        reason: "Oscillating failure pattern detected. Escalating to human.",
-        recommendedIntervention: "escalate_human"
-      };
-    }
-  }
-
-  // Materially repetitive detection: same summary content pattern 3x
-  if (request.previousAttempts.length >= 3) {
-    const lastThree = request.previousAttempts.slice(-3);
-    const summaries = lastThree
-      .map((a) => a.summary?.toLowerCase() ?? "")
-      .filter((s) => s.length > 10);
-
-    if (summaries.length === 3) {
-      // Compute rough similarity: shared significant tokens
-      const tokenize = (s: string) =>
-        new Set(s.match(/[a-z]{4,}/g) ?? []);
-      const tokens0 = tokenize(summaries[0] ?? "");
-      const tokens2 = tokenize(summaries[2] ?? "");
-      const shared = [...tokens0].filter((t) => tokens2.has(t));
-      const similarity = shared.length / Math.max(tokens0.size, 1);
-
-      if (similarity > 0.5) {
-        return {
-          allowed: false,
-          reason: "Materially repetitive attempts detected. Escalating to human.",
-          recommendedIntervention: "escalate_human"
-        };
-      }
-    }
+  if (circuitBreakDecision.shouldStop) {
+    return {
+      allowed: false,
+      reason: circuitBreakDecision.reason,
+      ...(circuitBreakDecision.recommendedIntervention
+        ? { recommendedIntervention: circuitBreakDecision.recommendedIntervention }
+        : {}),
+      trajectoryAssessment: circuitBreakDecision.assessment,
+      circuitBreakDecision
+    };
   }
 
   return {
     allowed: true,
-    reason: "Attempt admitted."
+    reason: "Attempt admitted.",
+    trajectoryAssessment: circuitBreakDecision.assessment,
+    circuitBreakDecision
   };
 }
 
@@ -388,6 +401,7 @@ export interface RunMartinInput {
   task: LoopTask;
   budget: LoopBudget;
   metadata?: Record<string, string>;
+  executionPolicy?: ExecutionPolicy;
   adapter: MartinAdapter;
   now?: () => string;
   idFactory?: (prefix: string) => string;
@@ -425,9 +439,132 @@ export function distillContext(
   };
 }
 
+function resolveRuntimeExecutionPolicy(input: RunMartinInput): ExecutionPolicy {
+  if (input.executionPolicy) {
+    return cloneExecutionPolicy(input.executionPolicy);
+  }
+
+  const policyProfile = normalizeRuntimePolicyProfile(input.metadata?.policyProfile);
+  const telemetryDestination = normalizeRuntimeTelemetryDestination(
+    input.metadata?.telemetryDestination
+  );
+  const provenance: ExecutionPolicy["provenance"] = [
+    { field: "budget.maxUsd", source: "request", value: String(input.budget.maxUsd) },
+    { field: "budget.softLimitUsd", source: "request", value: String(input.budget.softLimitUsd) },
+    {
+      field: "budget.maxIterations",
+      source: "request",
+      value: String(input.budget.maxIterations)
+    },
+    { field: "budget.maxTokens", source: "request", value: String(input.budget.maxTokens) },
+    {
+      field: "governance.policyProfile",
+      source: input.metadata?.policyProfile ? "request" : "default",
+      value: policyProfile
+    },
+    {
+      field: "governance.telemetryDestination",
+      source: input.metadata?.telemetryDestination ? "request" : "default",
+      value: telemetryDestination
+    },
+    {
+      field: "governance.destructiveActionPolicy",
+      source: "default",
+      value: "approval"
+    },
+    {
+      field: "task.verificationPlan",
+      source: "request",
+      value: input.task.verificationPlan.join(", ")
+    }
+  ];
+
+  if (input.task.mutationMode) {
+    provenance.push({
+      field: "task.mutationMode",
+      source: "request",
+      value: input.task.mutationMode
+    });
+  }
+  if (input.task.repoRoot) {
+    provenance.push({
+      field: "task.repoRoot",
+      source: "request",
+      value: input.task.repoRoot
+    });
+  }
+  if (input.task.allowedPaths?.length) {
+    provenance.push({
+      field: "task.allowedPaths",
+      source: "request",
+      value: input.task.allowedPaths.join(", ")
+    });
+  }
+  if (input.task.deniedPaths?.length) {
+    provenance.push({
+      field: "task.deniedPaths",
+      source: "request",
+      value: input.task.deniedPaths.join(", ")
+    });
+  }
+  if (input.task.acceptanceCriteria?.length) {
+    provenance.push({
+      field: "task.acceptanceCriteria",
+      source: "request",
+      value: input.task.acceptanceCriteria.join(", ")
+    });
+  }
+  if (input.task.approvalPolicy) {
+    provenance.push({
+      field: "task.approvalPolicy",
+      source: "request",
+      value: JSON.stringify(input.task.approvalPolicy)
+    });
+  }
+
+  return {
+    configPath: "runtime://inline",
+    budget: {
+      ...input.budget
+    },
+    governance: {
+      policyProfile,
+      telemetryDestination,
+      destructiveActionPolicy: "approval"
+    },
+    task: {
+      verificationPlan: [...input.task.verificationPlan],
+      ...(input.task.mutationMode ? { mutationMode: input.task.mutationMode } : {}),
+      ...(input.task.repoRoot ? { repoRoot: input.task.repoRoot } : {}),
+      ...(input.task.allowedPaths ? { allowedPaths: [...input.task.allowedPaths] } : {}),
+      ...(input.task.deniedPaths ? { deniedPaths: [...input.task.deniedPaths] } : {}),
+      ...(input.task.acceptanceCriteria
+        ? { acceptanceCriteria: [...input.task.acceptanceCriteria] }
+        : {}),
+      ...(input.task.approvalPolicy ? { approvalPolicy: { ...input.task.approvalPolicy } } : {})
+    },
+    provenance
+  };
+}
+
+function normalizeRuntimePolicyProfile(
+  value: string | undefined
+): ExecutionPolicy["governance"]["policyProfile"] {
+  return value === "strict" || value === "overnight" || value === "debug" || value === "balanced"
+    ? value
+    : "balanced";
+}
+
+function normalizeRuntimeTelemetryDestination(
+  value: string | undefined
+): ExecutionPolicy["governance"]["telemetryDestination"] {
+  return value === "control-plane" || value === "local-only" ? value : "local-only";
+}
+
 export async function runMartin(input: RunMartinInput): Promise<RunMartinResult> {
   const now = input.now ?? (() => new Date().toISOString());
   const idFactory = input.idFactory;
+  const executionPolicy = resolveRuntimeExecutionPolicy(input);
 
   let loop = createLoopRecord(
     {
@@ -600,6 +737,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     useCompressedContext = false;
     const attemptStartedAt = now();
     const attemptId = makeId("att", idFactory);
+    const currentAttemptIndex = loop.attempts.length + 1;
     const executingAdapter = currentAdapter;
 
     const budgetPreflight = evaluateBudgetPreflight({
@@ -647,27 +785,12 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     currentPhase = "ADMIT";
 
     // T05: Context Integrity Pre-gate — blocks authority inversion / injection before reasoning
-    //
-    // Untrusted "tool output" re-entering the loop is verifier command output from prior
-    // attempts (e.g. test runners echoing attacker-controlled strings). Pull that text from
-    // already-persisted verification.completed events so the gate scans what actually
-    // re-enters subsequent prompts, matching the documented "tool output / test output" scope.
-    const priorVerifierOutput = loop.events
-      .filter((event): event is typeof event & { payload: { steps?: Array<{ detail?: string }> } } =>
-        event.type === "verification.completed"
-      )
-      .flatMap((event) => event.payload.steps ?? [])
-      .map((step) => step.detail)
-      .filter((detail): detail is string => Boolean(detail))
-      .join("\n---\n");
-
     const contextPrecheck = await runContextIntegrityPrecheck(
       loop.loopId,
       loop.attempts.length + 1,
       runDir(resolveActiveRunsRoot(input.store), loop.loopId),
       {
         userPrompt: distilled.focus,
-        toolOutput: priorVerifierOutput || undefined,
         history: loop.attempts.map(a => a.summary).join("\n")
       }
     );
@@ -733,6 +856,43 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       projectedUsd: budgetPreflight.estimate.estimatedAttemptCostUsd
     });
 
+    if (admissionDecision.trajectoryAssessment && admissionDecision.trajectoryAssessment.status !== "healthy") {
+      loop = appendLoopEvent(
+        loop,
+        {
+          type: "trajectory.assessed",
+          lifecycleState: "running",
+          payload: {
+            attemptId,
+            attemptIndex: currentAttemptIndex,
+            assessment: admissionDecision.trajectoryAssessment,
+            ...(admissionDecision.circuitBreakDecision
+              ? { circuitBreak: admissionDecision.circuitBreakDecision }
+              : {})
+          }
+        },
+        { now: now(), idFactory }
+      );
+
+      if (input.store) {
+        await input.store.appendLedger(
+          loop.loopId,
+          makeLedgerEvent({
+            kind: "trajectory.assessed",
+            runId: loop.loopId,
+            attemptIndex: currentAttemptIndex,
+            payload: {
+              attemptId,
+              assessment: admissionDecision.trajectoryAssessment,
+              ...(admissionDecision.circuitBreakDecision
+                ? { circuitBreak: admissionDecision.circuitBreakDecision }
+                : {})
+            }
+          })
+        );
+      }
+    }
+
     if (!admissionDecision.allowed) {
       const exitReason = admissionDecision.reason;
       const exitDecision: ExitDecision = {
@@ -751,7 +911,15 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
             kind: "attempt.rejected",
             runId: loop.loopId,
             attemptIndex: loop.attempts.length + 1,
-            payload: { reason: admissionDecision.reason }
+            payload: {
+              reason: admissionDecision.reason,
+              ...(admissionDecision.trajectoryAssessment
+                ? { trajectory: admissionDecision.trajectoryAssessment }
+                : {}),
+              ...(admissionDecision.circuitBreakDecision
+                ? { circuitBreak: admissionDecision.circuitBreakDecision }
+                : {})
+            }
           })
         );
         await input.store.appendLedger(
@@ -835,7 +1003,8 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
 
     const tracksWorkspaceMutations =
       request.context.repoRoot !== undefined &&
-      executingAdapter.metadata.capabilities?.workspaceMutations !== false;
+      executingAdapter.metadata.capabilities?.sandboxExpectation !== "provider_managed" &&
+      executingAdapter.metadata.capabilities?.sandboxExpectation !== "not_applicable";
 
     const rollbackBoundary = tracksWorkspaceMutations
       ? await captureRollbackBoundary({
@@ -843,9 +1012,18 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
           capturedAt: attemptStartedAt
         })
       : undefined;
+    const compiledContext = input.store
+      ? (
+          await compileAndPersistContext(request, {
+            attemptIndex: currentAttemptIndex,
+            store: input.store,
+            now: attemptStartedAt,
+            executionPolicy
+          })
+        ).packet
+      : compilePromptPacket(request);
     const result = await executingAdapter.execute(request);
     const attemptCompletedAt = now();
-    const compiledContext = compilePromptPacket(request);
     const verification = normalizeVerificationOutcome(result);
 
     // PATCH → VERIFY
@@ -856,7 +1034,6 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         ? classifyFailure({ attempts: loop.attempts, result })
         : undefined;
 
-    const currentAttemptIndex = loop.attempts.length + 1;
     const attempt: LoopAttempt = {
       attemptId,
       index: currentAttemptIndex,
@@ -905,6 +1082,28 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     );
 
     const previousVerifierScore = getLastVerifierScore(loop);
+    const changeEvidence = tracksWorkspaceMutations
+      ? collectChangeEvidence(result, request.context.repoRoot)
+      : createUnavailableChangeEvidence();
+    const changedFiles = changeEvidence.changedFiles;
+    const effectiveDiffStats = changeEvidence.diffStats;
+    const changedFileEvidenceAvailable = changeEvidence.evidenceAvailable;
+
+    if (changeEvidence.reconciliation.status !== "unavailable") {
+      loop = appendLoopEvent(
+        loop,
+        {
+          type: "observation.reconciled",
+          lifecycleState: "running",
+          payload: {
+            attemptId,
+            attemptIndex: currentAttemptIndex,
+            observation: changeEvidence.reconciliation
+          }
+        },
+        { now: attemptCompletedAt, idFactory }
+      );
+    }
 
     if (failure) {
       if (failure.recommendedIntervention === "compress_context") {
@@ -982,7 +1181,8 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
           passed: verification.passed,
           summary: verification.summary,
           ...(verification.steps?.length ? { steps: verification.steps } : {}),
-          ...(verification.warnings?.length ? { warnings: verification.warnings } : {})
+          ...(verification.warnings?.length ? { warnings: verification.warnings } : {}),
+          ...(result.verification.snapshot ? { snapshot: result.verification.snapshot } : {})
         }
       },
       { now: attemptCompletedAt, idFactory }
@@ -1002,8 +1202,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         payload: {
           actualUsd: loop.cost.actualUsd,
           remainingBudgetUsd: costState.remainingBudgetUsd,
-          pressure: costState.pressure,
-          provenance: getUsageProvenance(result.usage)
+          pressure: costState.pressure
         }
       },
       { now: now(), idFactory }
@@ -1019,7 +1218,14 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       });
       await input.store.writeAttemptArtifacts(loop.loopId, currentAttemptIndex, {
         compiledContext,
+        executionPolicy,
         verification,
+        ...(result.verification.snapshot?.combinedOutput
+          ? { verifierOutput: result.verification.snapshot.combinedOutput }
+          : {}),
+        ...(changeEvidence.reconciliation.status !== "unavailable"
+          ? { observation: changeEvidence.reconciliation }
+          : {}),
         ...(rollbackBoundary ? { rollbackBoundary } : {})
       });
       await input.store.appendLedger(
@@ -1031,6 +1237,19 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
           payload: { status: result.status, summary: result.summary }
         })
       );
+      if (changeEvidence.reconciliation.status !== "unavailable") {
+        await input.store.appendLedger(
+          loop.loopId,
+          makeLedgerEvent({
+            kind: "observation.reconciled",
+            runId: loop.loopId,
+            attemptIndex: currentAttemptIndex,
+            payload: {
+              observation: changeEvidence.reconciliation
+            }
+          })
+        );
+      }
       await input.store.appendLedger(
         loop.loopId,
         makeLedgerEvent({
@@ -1042,7 +1261,8 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
             passed: verification.passed,
             summary: verification.summary,
             ...(verification.steps?.length ? { steps: verification.steps } : {}),
-            ...(verification.warnings?.length ? { warnings: verification.warnings } : {})
+            ...(verification.warnings?.length ? { warnings: verification.warnings } : {}),
+            ...(result.verification.snapshot ? { snapshot: result.verification.snapshot } : {})
           }
         })
       );
@@ -1073,18 +1293,9 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       );
     }
 
-    const changedFiles = tracksWorkspaceMutations
-      ? resolveChangedFiles(result, request.context.repoRoot)
-      : [];
-    // Evidence is only reliable when the adapter explicitly reported files OR git actually
-    // returned a non-empty list. A repoRoot alone is insufficient — git may fail (e.g. not
-    // a git repo) and silently return [], which would falsely trigger no_code_change.
-    const changedFileEvidenceAvailable =
-      result.execution?.changedFiles !== undefined || changedFiles.length > 0;
     const isVerifierOnlyAdapter = executingAdapter.adapterId === "direct:verifier:verify-only";
     const patchTruthCountsEdits =
       !isVerifyOnly && !isVerifierOnlyAdapter && changedFileEvidenceAvailable;
-
     if (isVerifyOnly && changedFiles.length > 0) {
       const patchDecision = evaluatePatchDecision({
         verificationPassed: verification.passed,
@@ -1093,7 +1304,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         scopeViolationCount: changedFiles.length,
         changedFileCount: changedFiles.length,
         diffNovelty: 1,
-        diffStats: result.execution?.diffStats,
+        diffStats: effectiveDiffStats,
         costUsd: getUsageUsd(result.usage),
         summary: result.summary
       });
@@ -1121,6 +1332,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         };
         await input.store.writeAttemptArtifacts(loop.loopId, currentAttemptIndex, {
           compiledContext,
+          executionPolicy,
           leash: createLeashArtifact(
             {
               surface: "filesystem",
@@ -1201,7 +1413,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         scopeViolationCount: filesystemDecision.violations.length,
         changedFileCount: changedFiles.length,
         diffNovelty: changedFiles.length > 0 ? 1 : 0,
-        diffStats: result.execution?.diffStats,
+        diffStats: effectiveDiffStats,
         costUsd: getUsageUsd(result.usage),
         summary: result.summary
       });
@@ -1222,6 +1434,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       if (input.store) {
         await input.store.writeAttemptArtifacts(loop.loopId, currentAttemptIndex, {
           compiledContext,
+          executionPolicy,
           leash: createLeashArtifact(filesystemDecision, currentAttemptIndex),
           patchScore: patchDecision.score,
           patchDecision: toPatchDecisionArtifact(patchDecision),
@@ -1288,7 +1501,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         safetyViolationCount: changeApprovalDecision.violations.length,
         changedFileCount: changedFiles.length,
         diffNovelty: changedFiles.length > 0 ? 1 : 0,
-        diffStats: result.execution?.diffStats,
+        diffStats: effectiveDiffStats,
         costUsd: getUsageUsd(result.usage),
         humanApprovalRequired: true,
         summary: result.summary
@@ -1312,6 +1525,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       if (input.store) {
         await input.store.writeAttemptArtifacts(loop.loopId, currentAttemptIndex, {
           compiledContext,
+          executionPolicy,
           leash: createLeashArtifact(changeApprovalDecision, currentAttemptIndex),
           patchScore: patchDecision.score,
           patchDecision: toPatchDecisionArtifact(patchDecision),
@@ -1406,7 +1620,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         groundingViolationCount: groundingScanResult?.violations.length ?? 0,
         changedFileCount: patchTruthCountsEdits ? changedFiles.length : undefined,
         diffNovelty: patchTruthCountsEdits ? (changedFiles.length > 0 ? 1 : 0) : undefined,
-        diffStats: result.execution?.diffStats,
+        diffStats: effectiveDiffStats,
         costUsd: getUsageUsd(result.usage),
         summary: result.summary
       });
@@ -1432,6 +1646,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     if (input.store) {
       await input.store.writeAttemptArtifacts(loop.loopId, currentAttemptIndex, {
         compiledContext,
+        executionPolicy,
         ...(patchDiff ? { diff: patchDiff } : {}),
         ...(groundingScanResult ? { groundingScan: groundingScanResult } : {}),
         ...(patchDecision ? { patchScore: patchDecision.score } : {}),
@@ -1718,32 +1933,220 @@ function getUsageProvenance(usage: MartinAdapterResult["usage"]): CostProvenance
   return "actual";
 }
 
-function resolveChangedFiles(result: MartinAdapterResult, repoRoot?: string): string[] {
-  if (result.execution?.changedFiles !== undefined) {
-    return result.execution.changedFiles;
-  }
+function createUnavailableChangeEvidence(): {
+  changedFiles: string[];
+  diffStats?: NonNullable<NonNullable<MartinAdapterResult["execution"]>["diffStats"]>;
+  evidenceAvailable: boolean;
+  reconciliation: ChangeObservationReconciliation;
+} {
+  return {
+    changedFiles: [],
+    evidenceAvailable: false,
+    reconciliation: {
+      status: "unavailable",
+      summary: "Change observation is unavailable because the adapter does not mutate the workspace.",
+      adapterReported: {
+        available: false,
+        changedFiles: []
+      },
+      repoObserved: {
+        available: false,
+        changedFiles: []
+      },
+      effectiveChangedFiles: [],
+      matchedFiles: [],
+      adapterOnlyFiles: [],
+      repoOnlyFiles: []
+    }
+  };
+}
 
+function collectChangeEvidence(
+  result: MartinAdapterResult,
+  repoRoot?: string
+): {
+  changedFiles: string[];
+  diffStats?: NonNullable<NonNullable<MartinAdapterResult["execution"]>["diffStats"]>;
+  evidenceAvailable: boolean;
+  reconciliation: ChangeObservationReconciliation;
+} {
+  const adapterReported = {
+    available: result.execution?.changedFiles !== undefined,
+    changedFiles: normalizeChangedFileList(result.execution?.changedFiles),
+    ...(result.execution?.diffStats ? { diffStats: result.execution.diffStats } : {})
+  };
+  const repoObserved = observeRepoChanges(repoRoot);
+  const matchedFiles = intersectLists(adapterReported.changedFiles, repoObserved.changedFiles);
+  const adapterOnlyFiles = subtractLists(adapterReported.changedFiles, repoObserved.changedFiles);
+  const repoOnlyFiles = subtractLists(repoObserved.changedFiles, adapterReported.changedFiles);
+  const effectiveChangedFiles = unionLists(adapterReported.changedFiles, repoObserved.changedFiles);
+  const status = determineObservationStatus(adapterReported.available, repoObserved.available, adapterOnlyFiles, repoOnlyFiles);
+
+  return {
+    changedFiles: effectiveChangedFiles,
+    ...(repoObserved.diffStats
+      ? { diffStats: repoObserved.diffStats }
+      : adapterReported.diffStats
+        ? { diffStats: adapterReported.diffStats }
+        : {}),
+    evidenceAvailable: adapterReported.available || repoObserved.available,
+    reconciliation: {
+      status,
+      summary: summarizeObservationStatus(status),
+      adapterReported,
+      repoObserved,
+      effectiveChangedFiles,
+      matchedFiles,
+      adapterOnlyFiles,
+      repoOnlyFiles
+    }
+  };
+}
+
+function observeRepoChanges(repoRoot?: string): ChangeObservationReconciliation["repoObserved"] {
   if (!repoRoot) {
-    return [];
+    return {
+      available: false,
+      changedFiles: []
+    };
   }
 
   try {
-    const diff = spawnSync("git", ["diff", "--name-only", "HEAD", "--", "."], {
+    const changedFilesResult = spawnSync("git", ["diff", "--name-only", "HEAD", "--", "."], {
+      cwd: repoRoot,
+      encoding: "utf8"
+    });
+    const untrackedFilesResult = spawnSync("git", ["ls-files", "--others", "--exclude-standard"], {
+      cwd: repoRoot,
+      encoding: "utf8"
+    });
+    const diffStatsResult = spawnSync("git", ["diff", "--numstat", "HEAD", "--", "."], {
       cwd: repoRoot,
       encoding: "utf8"
     });
 
-    if (diff.status !== 0 || typeof diff.stdout !== "string") {
-      return [];
+    if (changedFilesResult.status !== 0) {
+      return {
+        available: false,
+        changedFiles: []
+      };
     }
 
-    return diff.stdout
-      .split(/\r?\n/u)
-      .map((entry) => entry.trim())
-      .filter(Boolean);
+    const changedFiles = unionLists(
+      normalizeChangedFileList(changedFilesResult.stdout),
+      untrackedFilesResult.status === 0 ? normalizeChangedFileList(untrackedFilesResult.stdout) : []
+    );
+
+    return {
+      available: true,
+      changedFiles,
+      ...(diffStatsResult.status === 0 && typeof diffStatsResult.stdout === "string"
+        ? { diffStats: parseDiffStatsFromNumstat(diffStatsResult.stdout) }
+        : {})
+    };
   } catch {
-    return [];
+    return {
+      available: false,
+      changedFiles: []
+    };
   }
+}
+
+function determineObservationStatus(
+  adapterAvailable: boolean,
+  repoAvailable: boolean,
+  adapterOnlyFiles: string[],
+  repoOnlyFiles: string[]
+): ChangeObservationReconciliation["status"] {
+  if (adapterAvailable && repoAvailable) {
+    return adapterOnlyFiles.length === 0 && repoOnlyFiles.length === 0 ? "verified" : "mismatch";
+  }
+
+  if (adapterAvailable) {
+    return "adapter_only";
+  }
+
+  if (repoAvailable) {
+    return "repo_only";
+  }
+
+  return "unavailable";
+}
+
+function summarizeObservationStatus(status: ChangeObservationReconciliation["status"]): string {
+  switch (status) {
+    case "verified":
+      return "Adapter-reported changes matched repo observation.";
+    case "mismatch":
+      return "Adapter-reported changes differed from repo observation.";
+    case "adapter_only":
+      return "Only adapter-reported change evidence was available.";
+    case "repo_only":
+      return "Only repo-observed change evidence was available.";
+    default:
+      return "No change-observation evidence was available.";
+  }
+}
+
+function normalizeChangedFileList(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return uniqueSortedStrings(value);
+  }
+
+  if (typeof value === "string") {
+    return uniqueSortedStrings(value.split(/\r?\n/u));
+  }
+
+  return [];
+}
+
+function unionLists(left: string[], right: string[]): string[] {
+  return uniqueSortedStrings([...left, ...right]);
+}
+
+function intersectLists(left: string[], right: string[]): string[] {
+  const rightSet = new Set(right);
+  return left.filter((entry) => rightSet.has(entry));
+}
+
+function subtractLists(left: string[], right: string[]): string[] {
+  const rightSet = new Set(right);
+  return left.filter((entry) => !rightSet.has(entry));
+}
+
+function uniqueSortedStrings(values: unknown[]): string[] {
+  return [...new Set(
+    values
+      .filter((value): value is string => typeof value === "string")
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+  )].sort((left, right) => left.localeCompare(right));
+}
+
+function parseDiffStatsFromNumstat(
+  stdout: string
+): NonNullable<NonNullable<MartinAdapterResult["execution"]>["diffStats"]> | undefined {
+  const lines = stdout
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (lines.length === 0) {
+    return undefined;
+  }
+
+  let filesChanged = 0;
+  let addedLines = 0;
+  let deletedLines = 0;
+
+  for (const line of lines) {
+    const [added, deleted] = line.split(/\s+/u);
+    filesChanged += 1;
+    addedLines += Number(added) || 0;
+    deletedLines += Number(deleted) || 0;
+  }
+
+  return { filesChanged, addedLines, deletedLines };
 }
 
 function buildPatchDiff(result: MartinAdapterResult, changedFiles: string[]): string | undefined {

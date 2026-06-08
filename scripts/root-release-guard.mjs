@@ -98,6 +98,28 @@ export function assertPackedSurface(packedFiles) {
   }
 }
 
+export async function assertVendoredCliManifest(rootDir) {
+  const manifestPath = path.join(rootDir, "dist", "vendor", "cli", "package.json");
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+
+  if (manifest.main !== "./index.js") {
+    throw new Error(`Vendored CLI manifest must point main at ./index.js. Received ${String(manifest.main)}.`);
+  }
+
+  if (manifest.types !== "./index.d.ts") {
+    throw new Error(`Vendored CLI manifest must point types at ./index.d.ts. Received ${String(manifest.types)}.`);
+  }
+
+  if (manifest.bin !== undefined) {
+    throw new Error("Vendored CLI manifest must not publish its internal bin surface inside the root package facade.");
+  }
+
+  const manifestText = JSON.stringify(manifest);
+  if (/workspace:\*/u.test(manifestText)) {
+    throw new Error("Vendored CLI manifest must not leak workspace:* dependencies into the public root package.");
+  }
+}
+
 export async function inspectPackedFiles(options = {}) {
   const rootDir = options.rootDir ?? process.cwd();
   const ignoreScripts = options.ignoreScripts ?? true;
@@ -126,28 +148,6 @@ export function extractPackJsonPayload(stdout) {
   const trailingJsonMatch = trimmed.match(/(\[\s*\{[\s\S]*\}\s*\])$/);
   const jsonPayload = trailingJsonMatch?.[1] ?? trimmed;
   return JSON.parse(jsonPayload);
-}
-
-export async function assertVendoredCliManifest(rootDir) {
-  const manifestPath = path.join(rootDir, "dist", "vendor", "cli", "package.json");
-  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
-
-  if (manifest.main !== "./index.js") {
-    throw new Error(`Vendored CLI manifest must point main at ./index.js. Received ${String(manifest.main)}.`);
-  }
-
-  if (manifest.types !== "./index.d.ts") {
-    throw new Error(`Vendored CLI manifest must point types at ./index.d.ts. Received ${String(manifest.types)}.`);
-  }
-
-  if (manifest.bin !== undefined) {
-    throw new Error("Vendored CLI manifest must not publish its internal bin surface inside the root package facade.");
-  }
-
-  const manifestText = JSON.stringify(manifest);
-  if (/workspace:\*/u.test(manifestText)) {
-    throw new Error("Vendored CLI manifest must not leak workspace:* dependencies into the public root package.");
-  }
 }
 
 async function assertDistArtifactsPresent(rootDir) {

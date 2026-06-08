@@ -15,10 +15,11 @@ import {
   runMartin,
   type RunStore
 } from "@martin/core";
-import type { LoopBudget, ReceiptScope } from "@martin/contracts";
+import type { ExecutionPolicy, LoopBudget, ReceiptScope } from "@martin/contracts";
 
 import { normalizeSafePathPatterns, resolveSafeRepoRoot } from "../server-validation.js";
 import { MartinToolError } from "./tool-errors.js";
+import { compileMcpExecutionPolicy } from "./execution-policy.js";
 import {
   buildArtifactSummary,
   buildVerificationSummary,
@@ -28,7 +29,6 @@ import {
   resolveExecutionMode,
   type MartinEngine
 } from "./tool-support.js";
-import { normalizeLoopBudget } from "./workflow-governance.js";
 
 export interface RunLoopInput {
   objective: string;
@@ -61,6 +61,7 @@ export interface RunLoopOutput {
   engine: MartinEngine;
   workingDirectory: string;
   budget: LoopBudget;
+  effectivePolicy: ExecutionPolicy;
   inspection: {
     runsRoot: string;
     runDirectory: string;
@@ -150,33 +151,29 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
           })
         : engine === "gemini"
           ? createGeminiCliAdapter({ workingDirectory, ...(model ? { model } : {}) })
-        : createClaudeCliAdapter({ workingDirectory, ...(model ? { model } : {}) });
+          : createClaudeCliAdapter({ workingDirectory, ...(model ? { model } : {}) });
 
-  const partialBudget: Partial<LoopBudget> = {};
-  if (input.maxUsd !== undefined) {
-    partialBudget.maxUsd = input.maxUsd;
-  }
-  if (input.maxIterations !== undefined) {
-    partialBudget.maxIterations = input.maxIterations;
-  }
-  if (input.maxTokens !== undefined) {
-    partialBudget.maxTokens = input.maxTokens;
-  }
-
-  const budget: LoopBudget = normalizeLoopBudget(partialBudget);
+  const effectivePolicy = compileMcpExecutionPolicy({
+    workingDirectory,
+    maxUsd: input.maxUsd,
+    maxIterations: input.maxIterations,
+    maxTokens: input.maxTokens,
+    verificationPlan: input.verificationPlan,
+    allowedPaths,
+    deniedPaths
+  });
+  const budget: LoopBudget = effectivePolicy.budget;
 
   const result = await runMartin({
     workspaceId: input.workspaceId ?? "ws_mcp",
     projectId: input.projectId ?? "proj_mcp",
     store: runStoreOverrideForTests ?? createFileRunStore({ runsRoot }),
     receiptScope,
+    executionPolicy: effectivePolicy,
     task: {
       title: input.objective.slice(0, 100),
       objective: input.objective,
-      verificationPlan: input.verificationPlan ?? [],
-      repoRoot: workingDirectory,
-      ...(allowedPaths ? { allowedPaths } : {}),
-      ...(deniedPaths ? { deniedPaths } : {})
+      ...effectivePolicy.task
     },
     budget,
     adapter
@@ -215,6 +212,7 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
     engine,
     workingDirectory,
     budget,
+    effectivePolicy,
     inspection: {
       ...recordPaths,
       receiptScope: result.loop.receiptScope ?? receiptScope,

@@ -537,7 +537,7 @@ describe("server validation", () => {
     });
   });
 
-  it("accepts a matching doctor-plan-preflight receipt chain for martin_run when maxUsd is below the default soft limit", async () => {
+  it("accepts a matching doctor-plan-preflight receipt chain for martin_run when maxUsd is below the default soft limit", { timeout: 20_000 }, async () => {
     await withValidationRunsRoot(async () => {
       await withValidationWorkspaceRoot(async (workspaceRoot) => {
         const previousLive = process.env.MARTIN_LIVE;

@@ -44,13 +44,9 @@ export async function writeReceiptIntegrityMaterial(input: {
   ledgerEntries: unknown[];
   scope?: ReceiptScope;
   signedAt?: string;
-}): Promise<StoredReceiptIntegrityMaterial | undefined> {
+}): Promise<StoredReceiptIntegrityMaterial> {
   const signedAt = input.signedAt ?? new Date().toISOString();
-  const keyMaterial = await ensureReceiptIntegrityKey(input.runsRoot, input.runId);
-  if (!keyMaterial) {
-    return undefined;
-  }
-  const [key, keyId] = keyMaterial;
+  const [key, keyId] = await ensureReceiptIntegrityKey(input.runsRoot, input.runId);
   const chain = buildReceiptIntegrityChain(input.ledgerEntries);
   const loopRecordRaw = serializeStoredJson(input.loopRecord);
   const ledgerRaw = serializeStoredJsonl(input.ledgerEntries);
@@ -275,7 +271,7 @@ function createReceiptIntegritySignature(
   return createHmac("sha256", key).update(JSON.stringify(material)).digest("hex");
 }
 
-async function ensureReceiptIntegrityKey(runsRoot: string, runId: string): Promise<[string, string] | undefined> {
+async function ensureReceiptIntegrityKey(runsRoot: string, runId: string): Promise<[string, string]> {
   const keyPath = resolveReceiptIntegrityKeyPath(runsRoot, runId);
   const existing = await readFile(keyPath, "utf8").catch(() => null);
   if (existing) {
@@ -284,15 +280,11 @@ async function ensureReceiptIntegrityKey(runsRoot: string, runId: string): Promi
   }
 
   const generated = randomBytes(32).toString("hex");
-  try {
-    await mkdir(dirname(keyPath), { recursive: true, mode: RECEIPT_INTEGRITY_KEY_DIR_MODE });
-    await writeFile(keyPath, `${generated}\n`, {
-      encoding: "utf8",
-      mode: RECEIPT_INTEGRITY_KEY_FILE_MODE
-    });
-  } catch {
-    return undefined;
-  }
+  await mkdir(dirname(keyPath), { recursive: true, mode: RECEIPT_INTEGRITY_KEY_DIR_MODE });
+  await writeFile(keyPath, `${generated}\n`, {
+    encoding: "utf8",
+    mode: RECEIPT_INTEGRITY_KEY_FILE_MODE
+  });
   return [generated, sha256(generated).slice(0, 16)];
 }
 

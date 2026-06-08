@@ -622,23 +622,28 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
   const supportsJsonOutput = options.supportsJsonOutput === true;
   const supportsUsageSettlement =
     supportsJsonOutput || options.command === "codex" || options.command === "gemini";
+  const usageSettlement = supportsJsonOutput
+    ? "actual"
+    : supportsUsageSettlement
+      ? "estimated"
+      : "unavailable";
 
   const adapter: MartinAdapter = {
     adapterId,
     kind: "agent-cli",
     label: options.label ?? `${options.command} CLI adapter`,
-    metadata: {
-      providerId: options.command,
-      model: options.model ?? options.command,
-      transport: "cli",
-      capabilities: createAdapterCapabilities({
-        preflight: true,
-        usageSettlement: supportsUsageSettlement,
-        diffArtifacts: true,
-        structuredErrors: true,
-        cachingSignals: supportsUsageSettlement
-      })
-    },
+      metadata: {
+        providerId: options.command,
+        model: options.model ?? options.command,
+        transport: "cli",
+        capabilities: createAdapterCapabilities({
+          preflight: true,
+          usageSettlement,
+          diffVisibility: "git",
+          structuredErrors: true,
+          cachingSignals: supportsUsageSettlement
+        })
+      },
 
     async execute(request: MartinAdapterRequest): Promise<MartinAdapterResult> {
       const prompt = buildPrompt(request);
@@ -836,7 +841,7 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
                 : undefined
           });
 
-      const verificationStack = (request.context as { verificationStack?: Array<{ command: string; type: string; fastFail?: boolean }> }).verificationStack;
+      const verificationStack = request.context.verificationStack;
       const verification = await runVerification(
         request.context.verificationPlan,
         workingDirectory,

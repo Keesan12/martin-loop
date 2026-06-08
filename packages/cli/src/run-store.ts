@@ -1,11 +1,10 @@
 import { createHash } from "node:crypto";
 import { readFile, readdir, stat } from "node:fs/promises";
-import { homedir } from "node:os";
 import path from "node:path";
 
-import { resolveRunsRoot, verifyReceiptIntegrityFromFiles } from "@martin/core";
+import { assessTrajectory, decideCircuitBreak, resolveRunsRoot, verifyReceiptIntegrityFromFiles } from "@martin/core";
 import type {
-  CostProvenance,
+  ChangeObservationReconciliation,
   LoopArtifact,
   LoopEvent,
   LoopRecord,
@@ -18,11 +17,11 @@ import type {
 import { CliCommandError } from "./ux.js";
 
 // ---------------------------------------------------------------------------
-// Local corpus hotspot reader (Layer 5 — proactive issue detection)
-// Reads the local learning corpus JSONL without importing from enterprise.
+// Local run-history hotspot reader (Layer 5 — proactive issue detection)
+// Uses persisted Martin run-store evidence only; no hidden machine corpus.
 // ---------------------------------------------------------------------------
 
-export interface LocalCorpusHotspot {
+export interface LocalRunHistoryHotspot {
   scopeFingerprint: string;
   failureRate: number;
   sampleSize: number;
@@ -30,16 +29,16 @@ export interface LocalCorpusHotspot {
   commonFailureClasses: string[];
 }
 
-export interface LocalCorpusRisk {
-  hotspots: LocalCorpusHotspot[];
-  corpusRecords: number;
-  corpusPath: string;
+export interface LocalRunHistoryRisk {
+  hotspots: LocalRunHistoryHotspot[];
+  runRecords: number;
+  runsRoot: string;
 }
 
-interface CorpusRecord {
-  scopeFingerprint?: string | null;
-  outcome?: string;
-  failureClass?: string | null;
+export interface LocalCorpusRisk {
+  hotspots: LocalRunHistoryHotspot[];
+  corpusRecords: number;
+  corpusPath: string;
 }
 
 type RunsDirEntry = {
@@ -48,17 +47,100 @@ type RunsDirEntry = {
   isDirectory(): boolean;
 };
 
-function resolveLocalCorpusPath(): string {
-  if (process.env["MARTIN_LEARNING_CORPUS_PATH"]) {
-    return process.env["MARTIN_LEARNING_CORPUS_PATH"];
+export async function readLocalRunHistoryRisk(
+  options: {
+    runsDir?: string;
+    invocationRoot?: string;
+    minSampleSize?: number;
+    minRiskScore?: number;
+    maxEntries?: number;
+  } = {}
+): Promise<LocalRunHistoryRisk> {
+  const runsRoot = resolveRunsRootPath(options.runsDir, options.invocationRoot);
+  const minSampleSize = options.minSampleSize ?? 3;
+  const minRiskScore = options.minRiskScore ?? 0.4;
+  const { loops } = await collectPersistedLoops(runsRoot, { maxEntries: options.maxEntries ?? 200 });
+
+  const byScope = new Map<string, LoopRecord[]>();
+  for (const loop of loops) {
+    if (!loop.task.repoRoot) {
+      continue;
+    }
+
+    const scopeFingerprint = computeScopeFingerprint(loop.task.repoRoot);
+    byScope.set(scopeFingerprint, [...(byScope.get(scopeFingerprint) ?? []), loop]);
   }
-  return path.join(homedir(), ".martin", "autonomy", "learning-corpus", "attempt-records.jsonl");
+
+  const hotspots = [...byScope.entries()]
+    .map(([scopeFingerprint, group]): LocalRunHistoryHotspot => {
+      const failures = group.filter((loop) => isHighRiskLoopOutcome(loop));
+      const failureRate = failures.length / group.length;
+      const riskScore = Math.min(1, failureRate + Math.min(0.25, group.length / 12));
+      return {
+        scopeFingerprint,
+        failureRate: Number(failureRate.toFixed(2)),
+        sampleSize: group.length,
+        riskScore: Number(riskScore.toFixed(2)),
+        commonFailureClasses: [...new Set(failures.flatMap(collectFailureClasses))].slice(0, 3)
+      };
+    })
+    .filter((hotspot) => hotspot.sampleSize >= minSampleSize && hotspot.riskScore >= minRiskScore)
+    .sort((left, right) => right.riskScore - left.riskScore);
+
+  return { hotspots, runRecords: loops.length, runsRoot };
 }
 
 export async function readLocalCorpusRisk(
-  options: { corpusPath?: string; minSampleSize?: number; minRiskScore?: number } = {}
+  options: {
+    corpusPath?: string;
+    runsDir?: string;
+    invocationRoot?: string;
+    minSampleSize?: number;
+    minRiskScore?: number;
+    maxEntries?: number;
+  } = {}
 ): Promise<LocalCorpusRisk> {
-  const corpusPath = options.corpusPath ?? resolveLocalCorpusPath();
+  const explicitCorpusPath = options.corpusPath ?? process.env["MARTIN_LEARNING_CORPUS_PATH"];
+  if (explicitCorpusPath) {
+    return readLegacyCorpusRisk(explicitCorpusPath, options);
+  }
+
+  const runHistory = await readLocalRunHistoryRisk(options);
+  return {
+    hotspots: runHistory.hotspots,
+    corpusRecords: runHistory.runRecords,
+    corpusPath: runHistory.runsRoot
+  };
+}
+
+export function computeScopeFingerprint(workingDirectory: string): string {
+  return createHash("sha256").update(workingDirectory.replace(/\\/g, "/").toLowerCase()).digest("hex").slice(0, 16);
+}
+
+function isHighRiskLoopOutcome(loop: LoopRecord): boolean {
+  const verification = buildVerificationSummary(loop);
+  return loop.status !== "completed" || verification.status !== "passed";
+}
+
+function collectFailureClasses(loop: LoopRecord): string[] {
+  const fromAttempt = loop.attempts.at(-1)?.failureClass;
+  if (typeof fromAttempt === "string") {
+    return [fromAttempt];
+  }
+
+  return loop.events
+    .filter((event) => event.type === "failure.classified")
+    .map((event) => {
+      const candidate = event.payload["failureClass"];
+      return typeof candidate === "string" ? candidate : undefined;
+    })
+    .filter((candidate): candidate is string => candidate !== undefined);
+}
+
+async function readLegacyCorpusRisk(
+  corpusPath: string,
+  options: { minSampleSize?: number; minRiskScore?: number }
+): Promise<LocalCorpusRisk> {
   const minSampleSize = options.minSampleSize ?? 3;
   const minRiskScore = options.minRiskScore ?? 0.4;
 
@@ -73,22 +155,36 @@ export async function readLocalCorpusRisk(
     .filter(Boolean)
     .map((line) => {
       try {
-        return JSON.parse(line) as CorpusRecord;
+        return JSON.parse(line) as {
+          scopeFingerprint?: string | null;
+          outcome?: string;
+          failureClass?: string | null;
+        };
       } catch {
         return null;
       }
     })
-    .filter((record): record is CorpusRecord => record !== null);
+    .filter(
+      (
+        record
+      ): record is {
+        scopeFingerprint?: string | null;
+        outcome?: string;
+        failureClass?: string | null;
+      } => record !== null
+    );
 
-  const byScope = new Map<string, CorpusRecord[]>();
+  const byScope = new Map<string, typeof records>();
   for (const record of records) {
-    if (!record.scopeFingerprint) continue;
-    const key = record.scopeFingerprint;
-    byScope.set(key, [...(byScope.get(key) ?? []), record]);
+    if (!record.scopeFingerprint) {
+      continue;
+    }
+
+    byScope.set(record.scopeFingerprint, [...(byScope.get(record.scopeFingerprint) ?? []), record]);
   }
 
   const hotspots = [...byScope.entries()]
-    .map(([scopeFingerprint, group]): LocalCorpusHotspot => {
+    .map(([scopeFingerprint, group]): LocalRunHistoryHotspot => {
       const failures = group.filter((record) => record.outcome !== "completed");
       const failureRate = failures.length / group.length;
       const riskScore = Math.min(1, failureRate + Math.min(0.25, group.length / 400));
@@ -101,7 +197,7 @@ export async function readLocalCorpusRisk(
           ...new Set(
             failures
               .map((record) => record.failureClass)
-              .filter((cls): cls is string => typeof cls === "string")
+              .filter((candidate): candidate is string => typeof candidate === "string")
           )
         ].slice(0, 3)
       };
@@ -110,10 +206,6 @@ export async function readLocalCorpusRisk(
     .sort((left, right) => right.riskScore - left.riskScore);
 
   return { hotspots, corpusRecords: records.length, corpusPath };
-}
-
-export function computeScopeFingerprint(workingDirectory: string): string {
-  return createHash("sha256").update(workingDirectory.replace(/\\/g, "/").toLowerCase()).digest("hex").slice(0, 16);
 }
 
 export interface CliEnvironment {
@@ -134,8 +226,6 @@ export interface PersistedLoopDetail {
   integrity: ReceiptIntegritySummary;
 }
 
-export type IntegrityStatus = ReceiptIntegritySummary["state"];
-
 export interface VerificationSummary {
   status: "passed" | "failed" | "unavailable";
   summary: string;
@@ -143,6 +233,7 @@ export interface VerificationSummary {
   latestAttemptIndex?: number;
   completedAt?: string;
   steps: VerificationStepSummary[];
+  observation?: ChangeObservationReconciliation;
   warnings: string[];
 }
 
@@ -170,21 +261,6 @@ export interface TriageFinding {
   summary: string;
   reasons: string[];
   updatedAt: string;
-}
-
-export function readCostProvenance(loop: LoopRecord): CostProvenance {
-  return loop.cost.provenance ?? "unavailable";
-}
-
-export function describeCostProvenance(provenance: CostProvenance): string {
-  switch (provenance) {
-    case "actual":
-      return "provider-settled actual";
-    case "estimated":
-      return "estimated";
-    case "unavailable":
-      return "unavailable";
-  }
 }
 
 export function resolveInvocationRoot(env: NodeJS.ProcessEnv = process.env): string {
@@ -388,7 +464,7 @@ export async function loadPersistedAttempt(
 
 async function attachReceiptIntegrity(detail: Omit<PersistedLoopDetail, "integrity">): Promise<PersistedLoopDetail> {
   const integrity =
-    detail.loopRecordPath && detail.runDirectory && isWithinRunsRoot(detail.runsRoot, detail.runDirectory)
+    detail.loopRecordPath && detail.runDirectory
       ? await verifyReceiptIntegrityFromFiles({
           runId: detail.loop.loopId,
           runsRoot: detail.runsRoot,
@@ -411,11 +487,6 @@ async function attachReceiptIntegrity(detail: Omit<PersistedLoopDetail, "integri
     },
     integrity
   };
-}
-
-function isWithinRunsRoot(runsRoot: string, runDirectory: string): boolean {
-  const relative = path.relative(runsRoot, runDirectory);
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
 export function buildVerificationSummary(loop: LoopRecord): VerificationSummary {
@@ -442,8 +513,15 @@ export function buildVerificationSummary(loop: LoopRecord): VerificationSummary 
     typeof payload?.["attemptIndex"] === "number"
       ? (payload["attemptIndex"] as number)
       : loop.attempts.at(-1)?.index;
-  const warnings = [...integrityWarnings, ...readVerificationWarnings(payload)];
   const steps = readVerificationSteps(payload);
+  const observation = latestAttemptIndex !== undefined
+    ? selectObservationForAttempt(loop, latestAttemptIndex)
+    : undefined;
+  const warnings = [
+    ...integrityWarnings,
+    ...readVerificationWarnings(payload),
+    ...buildObservationWarnings(observation)
+  ];
 
   return {
     status: passed ? "passed" : "failed",
@@ -457,6 +535,7 @@ export function buildVerificationSummary(loop: LoopRecord): VerificationSummary 
     ...(latestAttemptIndex !== undefined ? { latestAttemptIndex } : {}),
     completedAt: latestEvent.timestamp,
     steps,
+    ...(observation ? { observation } : {}),
     warnings
   };
 }
@@ -505,7 +584,6 @@ export function buildRunReceipt(
       avoidedUsdEstimate: loop.cost.avoidedUsd,
       tokensIn: loop.cost.tokensIn,
       tokensOut: loop.cost.tokensOut,
-      costProvenance: readCostProvenance(loop),
       trustworthy,
       integrityState: integrity.state,
       avoidedIterationsEstimate: stopConditionReached ? 1 : 0,
@@ -650,6 +728,12 @@ function buildPreventionSummary(
 ): string[] {
   const prevented: string[] = [];
   const latestAttempt = loop.attempts.at(-1);
+  const circuitBreak = decideCircuitBreak({
+    objective: loop.task.objective,
+    verificationPlan: loop.task.verificationPlan,
+    attempts: loop.attempts,
+    remainingIterations: Math.max(loop.budget.maxIterations - loop.attempts.length, 0)
+  });
 
   if (stopConditionReached) {
     prevented.push("another unsafe or uneconomical retry before operator review");
@@ -666,6 +750,12 @@ function buildPreventionSummary(
   if (loop.attempts.length >= loop.budget.maxIterations) {
     prevented.push("iteration cap overrun");
   }
+  if (circuitBreak.assessment.status === "stalled") {
+    prevented.push("trajectory-stalled retries before another verifier burn");
+  }
+  if (circuitBreak.assessment.status === "drifting") {
+    prevented.push("objective drift from the original governed task");
+  }
 
   return prevented.length > 0
     ? prevented
@@ -677,8 +767,22 @@ function selectNextSafeAction(
   verification: VerificationSummary,
   rollbackEvidenceCount: number
 ): string {
+  const circuitBreak = decideCircuitBreak({
+    objective: loop.task.objective,
+    verificationPlan: loop.task.verificationPlan,
+    attempts: loop.attempts,
+    remainingIterations: Math.max(loop.budget.maxIterations - loop.attempts.length, 0)
+  });
+
   if (verification.status === "failed") {
+    if (circuitBreak.shouldStop) {
+      return `Debug loop ${loop.loopId} with verifier evidence first, then resolve the trajectory issue before another attempt: ${circuitBreak.reason}`;
+    }
     return `Debug loop ${loop.loopId} before another attempt; start with verifier evidence and the latest failed attempt.`;
+  }
+
+  if (circuitBreak.shouldStop) {
+    return `Do not spend another attempt on loop ${loop.loopId} until the trajectory issue is resolved: ${circuitBreak.reason}`;
   }
 
   if (loop.lifecycleState === "budget_exit" || loop.lifecycleState === "diminishing_returns") {
@@ -696,6 +800,11 @@ function selectNextSafeAction(
 
 function scoreLoop(loop: LoopRecord): TriageFinding {
   const verification = buildVerificationSummary(loop);
+  const trajectory = assessTrajectory({
+    objective: loop.task.objective,
+    verificationPlan: loop.task.verificationPlan,
+    attempts: loop.attempts
+  });
   const reasons: string[] = [];
   let priority = 0;
 
@@ -719,10 +828,37 @@ function scoreLoop(loop: LoopRecord): TriageFinding {
     priority += 10;
     reasons.push("verification_unavailable");
   }
+  if (verification.observation?.status === "mismatch") {
+    priority += 30;
+    reasons.push("change_observation_mismatch");
+  }
+  if (verification.observation?.status === "repo_only") {
+    priority += 20;
+    reasons.push("change_observation_repo_only");
+  }
+  if (verification.observation?.status === "adapter_only") {
+    priority += 10;
+    reasons.push("change_observation_adapter_only");
+  }
   if (loop.attempts.length >= 3) {
     priority += 10;
     reasons.push("multi_attempt");
   }
+  if (trajectory.status === "stalled") {
+    priority += 35;
+    reasons.push("trajectory_stalled");
+  }
+  if (trajectory.status === "drifting") {
+    priority += 18;
+    reasons.push("trajectory_drift");
+  }
+
+  const summary =
+    verification.observation?.status === "mismatch"
+      ? `${verification.summary} Change observation mismatch detected.`
+      : trajectory.status === "stalled" || trajectory.status === "drifting"
+        ? `${verification.summary} ${trajectory.summary}`
+      : verification.summary;
 
   return {
     loopId: loop.loopId,
@@ -730,10 +866,84 @@ function scoreLoop(loop: LoopRecord): TriageFinding {
     status: loop.status,
     lifecycleState: loop.lifecycleState,
     title: loop.task.title,
-    summary: verification.summary,
+    summary,
     reasons,
     updatedAt: loop.updatedAt
   };
+}
+
+function selectObservationForAttempt(
+  loop: LoopRecord,
+  attemptIndex: number
+): ChangeObservationReconciliation | undefined {
+  const matching = loop.events
+    .filter((event) => event.type === "observation.reconciled")
+    .filter((event) => {
+      const payload = isRecord(event.payload) ? event.payload : undefined;
+      return payload?.["attemptIndex"] === attemptIndex;
+    })
+    .map((event) => {
+      const payload = isRecord(event.payload) ? event.payload : undefined;
+      const observation = payload?.["observation"];
+      return isChangeObservationReconciliation(observation) ? observation : undefined;
+    })
+    .filter((candidate): candidate is ChangeObservationReconciliation => candidate !== undefined);
+
+  return matching.at(-1);
+}
+
+function buildObservationWarnings(
+  observation: ChangeObservationReconciliation | undefined
+): string[] {
+  if (!observation) {
+    return [];
+  }
+
+  switch (observation.status) {
+    case "mismatch":
+      return ["Change observation mismatch: adapter-reported files differ from repo-observed files."];
+    case "adapter_only":
+      return ["Repo observation was unavailable; only adapter-reported change evidence is present."];
+    case "repo_only":
+      return ["Adapter did not report changed files; using repo-observed change evidence."];
+    default:
+      return [];
+  }
+}
+
+function isChangeObservationReconciliation(
+  value: unknown
+): value is ChangeObservationReconciliation {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return typeof value["status"] === "string" &&
+    typeof value["summary"] === "string" &&
+    isObservationEvidence(value["adapterReported"]) &&
+    isObservationEvidence(value["repoObserved"]) &&
+    isStringArray(value["effectiveChangedFiles"]) &&
+    isStringArray(value["matchedFiles"]) &&
+    isStringArray(value["adapterOnlyFiles"]) &&
+    isStringArray(value["repoOnlyFiles"]);
+}
+
+function isObservationEvidence(
+  value: unknown
+): value is ChangeObservationReconciliation["adapterReported"] {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return typeof value["available"] === "boolean" && isStringArray(value["changedFiles"]);
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === "string");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 function resolveRunsRootPath(runsDir: string | undefined, invocationRoot = resolveInvocationRoot()): string {
@@ -829,7 +1039,10 @@ async function loadLatestLoopFromWorkspaceIndexes(
   }
 }
 
-async function collectPersistedLoops(runsRoot: string): Promise<{ loops: LoopRecord[]; warnings: string[] }> {
+async function collectPersistedLoops(
+  runsRoot: string,
+  options: { maxEntries?: number } = {}
+): Promise<{ loops: LoopRecord[]; warnings: string[] }> {
   const entries = await readdir(runsRoot, { withFileTypes: true }).catch((error: unknown) => {
     if (isMissing(error)) {
       return [] as Awaited<ReturnType<typeof readdir>>;
@@ -843,7 +1056,10 @@ async function collectPersistedLoops(runsRoot: string): Promise<{ loops: LoopRec
   const warnings: string[] = [];
   const loopsById = new Map<string, LoopRecord>();
 
-  for (const entry of entries) {
+  const entriesToInspect =
+    options.maxEntries !== undefined ? entries.slice(0, options.maxEntries) : entries;
+
+  for (const entry of entriesToInspect) {
     try {
       const entryName = String(entry.name);
       if (entry.isDirectory()) {
@@ -1019,10 +1235,6 @@ function isWorkspaceIndexSummary(
     typeof (candidate as { loopId?: unknown }).loopId === "string" &&
     typeof (candidate as { updatedAt?: unknown }).updatedAt === "string"
   );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
 
 function readVerificationWarnings(payload: Record<string, unknown> | undefined): string[] {

@@ -3,14 +3,18 @@ import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 import type {
+  AdapterCapabilityDescriptor,
+  ChangeObservationReconciliation,
   LoopArtifact,
   LoopBudget,
   LoopCost,
   LoopEvent,
   LoopTask,
   ReceiptIntegritySummary,
-  ReceiptScope
+  ReceiptScope,
+  VerifierSnapshot
 } from "@martin/contracts";
+import { getBuiltInEngineCapabilityDescriptor } from "@martin/contracts";
 import {
   evaluateCostGovernor,
   resolveRunsRoot,
@@ -94,6 +98,8 @@ export interface VerificationSummary {
   latestAttemptIndex?: number;
   completedAt?: string;
   summary?: string;
+  snapshot?: VerifierSnapshot;
+  observation?: ChangeObservationReconciliation;
   warnings: string[];
 }
 
@@ -103,6 +109,8 @@ interface NormalizedVerificationEvidence {
   summary?: string;
   attemptId?: string;
   attemptIndex?: number;
+  snapshot?: VerifierSnapshot;
+  observation?: ChangeObservationReconciliation;
 }
 
 export interface RunWarningEnvelope {
@@ -129,7 +137,7 @@ export interface CliAvailability {
   locator: string;
   detail: string;
   resolvedPath?: string;
-  candidatePaths?: string[];
+  capabilities: AdapterCapabilityDescriptor;
 }
 
 export interface ExecutionMode {
@@ -192,13 +200,15 @@ export function detectCliAvailability(command: string): CliAvailability {
           available: true,
           locator,
           detail: `${command} is available on PATH.`,
+          capabilities: inferEngineCapabilities(command),
           ...(resolvedPath ? { resolvedPath } : {})
         }
       : {
           command,
           available: false,
           locator,
-          detail: `${command} is not available on PATH.`
+          detail: `${command} is not available on PATH.`,
+          capabilities: inferEngineCapabilities(command)
         };
 
   cliAvailabilityCache.set(cacheKey, {
@@ -207,6 +217,10 @@ export function detectCliAvailability(command: string): CliAvailability {
   });
 
   return value;
+}
+
+export function detectCliAvailabilitySync(command: string): CliAvailability {
+  return detectCliAvailability(command);
 }
 
 function findCommandOnPath(command: string): string | undefined {
@@ -267,7 +281,8 @@ export function createSkippedCliAvailability(
     command,
     available: false,
     locator: "skipped",
-    detail
+    detail,
+    capabilities: inferEngineCapabilities(command)
   };
 }
 
@@ -378,7 +393,12 @@ export function buildVerificationSummary(
     warnings.push("No verification.completed ledger events were found for this run.");
   }
 
-  const selectedEvidence = selectLatestVerificationEvidence(loop, verificationEvents, verificationLedgerEvents);
+  const selectedEvidence = selectLatestVerificationEvidence(
+    loop,
+    verificationEvents,
+    verificationLedgerEvents,
+    ledgerEvents
+  );
   warnings.push(...selectedEvidence.warnings);
 
   const latestEvidence = selectedEvidence.evidence;
@@ -405,6 +425,8 @@ export function buildVerificationSummary(
     ...(typeof latestEvidence.summary === "string" && latestEvidence.summary.trim().length > 0
       ? { summary: latestEvidence.summary.trim() }
       : {}),
+    ...(latestEvidence.snapshot ? { snapshot: latestEvidence.snapshot } : {}),
+    ...(latestEvidence.observation ? { observation: latestEvidence.observation } : {}),
     warnings
   };
 }
@@ -622,7 +644,8 @@ function toPreviewTimestamp(loop: LoopPreview): number {
 function selectLatestVerificationEvidence(
   loop: InspectableLoopRecord,
   verificationEvents: Array<Pick<LoopEvent, "timestamp" | "payload">>,
-  verificationLedgerEvents: LedgerEvent[]
+  verificationLedgerEvents: LedgerEvent[],
+  ledgerEvents: LedgerEvent[]
 ): {
   evidence?: NormalizedVerificationEvidence;
   warnings: string[];
@@ -672,8 +695,14 @@ function selectLatestVerificationEvidence(
     return { warnings };
   }
 
+  const observation = selectLatestObservationEvidence(loop, ledgerEvents, latest);
+  warnings.push(...observation.warnings);
+
   return {
-    evidence: latest,
+    evidence: {
+      ...latest,
+      ...(observation.evidence ? { observation: observation.evidence } : {})
+    },
     warnings
   };
 }
@@ -707,7 +736,8 @@ function normalizeLoopVerificationEvidence(
     ...(matchedAttempt.attemptId ? { attemptId: matchedAttempt.attemptId } : {}),
     attemptIndex: matchedAttempt.index,
     ...(typeof payload?.["passed"] === "boolean" ? { passed: payload["passed"] } : {}),
-    ...(typeof payload?.["summary"] === "string" ? { summary: payload["summary"] } : {})
+    ...(typeof payload?.["summary"] === "string" ? { summary: payload["summary"] } : {}),
+    ...(isVerifierSnapshot(payload?.["snapshot"]) ? { snapshot: payload["snapshot"] } : {})
   };
 }
 
@@ -735,7 +765,133 @@ function normalizeLedgerVerificationEvidence(
     ...(matchedAttempt?.attemptId ? { attemptId: matchedAttempt.attemptId } : {}),
     attemptIndex: event.attemptIndex,
     ...(typeof payload?.["passed"] === "boolean" ? { passed: payload["passed"] } : {}),
-    ...(typeof payload?.["summary"] === "string" ? { summary: payload["summary"] } : {})
+    ...(typeof payload?.["summary"] === "string" ? { summary: payload["summary"] } : {}),
+    ...(isVerifierSnapshot(payload?.["snapshot"]) ? { snapshot: payload["snapshot"] } : {})
+  };
+}
+
+function selectLatestObservationEvidence(
+  loop: InspectableLoopRecord,
+  ledgerEvents: LedgerEvent[],
+  verificationEvidence: Pick<NormalizedVerificationEvidence, "attemptId" | "attemptIndex">
+): {
+  evidence?: ChangeObservationReconciliation;
+  warnings: string[];
+} {
+  const warnings: string[] = [];
+  const evidence = [
+    ...(loop.events ?? []).map((event) =>
+      event.type === "observation.reconciled" ? normalizeLoopObservationEvidence(loop, event) : undefined
+    ),
+    ...ledgerEvents
+      .filter((event) => event.kind === "observation.reconciled")
+      .map((event) => normalizeLedgerObservationEvidence(loop, event))
+  ].filter((candidate): candidate is NormalizedObservationEvidence => candidate !== undefined);
+
+  if (evidence.length === 0) {
+    return { warnings };
+  }
+
+  const matching = evidence
+    .filter((candidate) =>
+      verificationEvidence.attemptId
+        ? candidate.attemptId === verificationEvidence.attemptId
+        : verificationEvidence.attemptIndex !== undefined
+          ? candidate.attemptIndex === verificationEvidence.attemptIndex
+          : false
+    )
+    .sort((left, right) => new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime());
+
+  const latest = matching[0];
+  if (!latest) {
+    return { warnings };
+  }
+
+  switch (latest.observation.status) {
+    case "mismatch":
+      warnings.push("Change observation mismatch: adapter-reported files differ from repo-observed files.");
+      break;
+    case "adapter_only":
+      warnings.push("Repo observation was unavailable; only adapter-reported change evidence is present.");
+      break;
+    case "repo_only":
+      warnings.push("Adapter did not report changed files; using repo-observed change evidence.");
+      break;
+    default:
+      break;
+  }
+
+  return {
+    evidence: latest.observation,
+    warnings
+  };
+}
+
+interface NormalizedObservationEvidence {
+  timestamp: string;
+  attemptId?: string;
+  attemptIndex?: number;
+  observation: ChangeObservationReconciliation;
+}
+
+function normalizeLoopObservationEvidence(
+  loop: InspectableLoopRecord,
+  event: Pick<LoopEvent, "timestamp" | "payload">
+): NormalizedObservationEvidence | undefined {
+  if (!isTrustedVerificationTimestamp(event.timestamp)) {
+    return undefined;
+  }
+
+  const payload = isRecord(event.payload) ? event.payload : undefined;
+  const attemptId = typeof payload?.["attemptId"] === "string" ? payload["attemptId"] : undefined;
+  const attemptIndex =
+    typeof payload?.["attemptIndex"] === "number" && Number.isInteger(payload["attemptIndex"])
+      ? payload["attemptIndex"]
+      : undefined;
+  const matchedAttempt = attemptId
+    ? loop.attempts.find((attempt) => attempt.attemptId === attemptId)
+    : attemptIndex !== undefined
+      ? loop.attempts.find((attempt) => attempt.index === attemptIndex)
+      : undefined;
+  const observation = payload?.["observation"];
+
+  if (!matchedAttempt || !isChangeObservationReconciliation(observation)) {
+    return undefined;
+  }
+
+  return {
+    timestamp: event.timestamp,
+    ...(matchedAttempt.attemptId ? { attemptId: matchedAttempt.attemptId } : {}),
+    attemptIndex: matchedAttempt.index,
+    observation
+  };
+}
+
+function normalizeLedgerObservationEvidence(
+  loop: InspectableLoopRecord,
+  event: LedgerEvent
+): NormalizedObservationEvidence | undefined {
+  if (!isTrustedVerificationTimestamp(event.timestamp)) {
+    return undefined;
+  }
+
+  if (event.attemptIndex === undefined || !Number.isInteger(event.attemptIndex)) {
+    return undefined;
+  }
+
+  const matchedAttempt = loop.attempts.find((attempt) => attempt.index === event.attemptIndex);
+  const payload = isRecord(event.payload) ? event.payload : undefined;
+  const observation = payload?.["observation"];
+
+  if (!matchedAttempt || !isChangeObservationReconciliation(observation)) {
+    return undefined;
+  }
+
+  return {
+    timestamp: event.timestamp,
+    ...(matchedAttempt.attemptId ? { attemptId: matchedAttempt.attemptId } : {}),
+    attemptIndex: matchedAttempt.index,
+    observation
   };
 }
 
@@ -746,6 +902,53 @@ function isTrustedVerificationTimestamp(value: string): boolean {
   }
 
   return timestamp <= Date.now() + 5 * 60_000;
+}
+
+function inferEngineCapabilities(command: string): AdapterCapabilityDescriptor {
+  if (command === "claude" || command === "codex") {
+    return getBuiltInEngineCapabilityDescriptor(command);
+  }
+
+  return getBuiltInEngineCapabilityDescriptor("codex");
+}
+
+function isChangeObservationReconciliation(
+  value: unknown
+): value is ChangeObservationReconciliation {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return typeof value["status"] === "string" &&
+    typeof value["summary"] === "string" &&
+    isObservationEvidence(value["adapterReported"]) &&
+    isObservationEvidence(value["repoObserved"]) &&
+    isStringArray(value["effectiveChangedFiles"]) &&
+    isStringArray(value["matchedFiles"]) &&
+    isStringArray(value["adapterOnlyFiles"]) &&
+    isStringArray(value["repoOnlyFiles"]);
+}
+
+function isObservationEvidence(
+  value: unknown
+): value is ChangeObservationReconciliation["adapterReported"] {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return typeof value["available"] === "boolean" && isStringArray(value["changedFiles"]);
+}
+
+function isVerifierSnapshot(value: unknown): value is VerifierSnapshot {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value["passed"] === "boolean" &&
+    typeof value["summary"] === "string" &&
+    Array.isArray(value["steps"])
+  );
 }
 
 function isFutureVerificationTimestamp(value: string): boolean {
@@ -762,6 +965,10 @@ function getLedgerWarnings(ledgerEvents: LedgerEvent[]): string[] {
   return Array.isArray(diagnostics.warnings)
     ? diagnostics.warnings.filter((warning): warning is string => typeof warning === "string")
     : [];
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === "string");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

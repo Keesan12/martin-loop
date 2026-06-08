@@ -11,6 +11,7 @@
     "lint": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@martin/contracts": "workspace:*",
     "@martin/core": "workspace:*"
   }
 }
