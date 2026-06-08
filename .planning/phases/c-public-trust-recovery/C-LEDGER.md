@@ -67,7 +67,15 @@
 - Regression test added:
   - injected `hiddenControlPlaneDirective` triggers an explicit warning instead of silent acceptance.
 
+## C.5 lifecycle reliability hardening
+
+- Added bounded run timeout guard around `runMartin` execution in CLI (`MARTIN_RUN_TIMEOUT_MS`, default 30 minutes).
+- On timeout or adapter hang, CLI now persists a fallback loop record and exits with structured environment failure instead of hanging indefinitely.
+- Added test-only adapter override hook to simulate hanging adapters in deterministic CLI regression tests.
+- Regression test added:
+  - hanging adapter beyond timeout exits non-zero and persists fallback run artifacts.
+
 ## Current verification state
 
-- `pnpm --filter @martin/cli test -- cli.test.ts` passed (24/24).
+- `pnpm --filter @martin/cli test -- cli.test.ts` passed (25/25).
 - `pnpm --filter @martin/cli lint` passed.
