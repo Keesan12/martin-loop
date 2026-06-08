@@ -5,6 +5,7 @@ import path from "node:path";
 
 import { resolveRunsRoot, verifyReceiptIntegrityFromFiles } from "@martin/core";
 import type {
+  CostProvenance,
   LoopArtifact,
   LoopEvent,
   LoopRecord,
@@ -133,6 +134,8 @@ export interface PersistedLoopDetail {
   integrity: ReceiptIntegritySummary;
 }
 
+export type IntegrityStatus = ReceiptIntegritySummary["state"];
+
 export interface VerificationSummary {
   status: "passed" | "failed" | "unavailable";
   summary: string;
@@ -167,6 +170,21 @@ export interface TriageFinding {
   summary: string;
   reasons: string[];
   updatedAt: string;
+}
+
+export function readCostProvenance(loop: LoopRecord): CostProvenance {
+  return loop.cost.provenance ?? "unavailable";
+}
+
+export function describeCostProvenance(provenance: CostProvenance): string {
+  switch (provenance) {
+    case "actual":
+      return "provider-settled actual";
+    case "estimated":
+      return "estimated";
+    case "unavailable":
+      return "unavailable";
+  }
 }
 
 export function resolveInvocationRoot(env: NodeJS.ProcessEnv = process.env): string {
@@ -370,7 +388,7 @@ export async function loadPersistedAttempt(
 
 async function attachReceiptIntegrity(detail: Omit<PersistedLoopDetail, "integrity">): Promise<PersistedLoopDetail> {
   const integrity =
-    detail.loopRecordPath && detail.runDirectory
+    detail.loopRecordPath && detail.runDirectory && isWithinRunsRoot(detail.runsRoot, detail.runDirectory)
       ? await verifyReceiptIntegrityFromFiles({
           runId: detail.loop.loopId,
           runsRoot: detail.runsRoot,
@@ -393,6 +411,11 @@ async function attachReceiptIntegrity(detail: Omit<PersistedLoopDetail, "integri
     },
     integrity
   };
+}
+
+function isWithinRunsRoot(runsRoot: string, runDirectory: string): boolean {
+  const relative = path.relative(runsRoot, runDirectory);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
 export function buildVerificationSummary(loop: LoopRecord): VerificationSummary {
@@ -482,6 +505,7 @@ export function buildRunReceipt(
       avoidedUsdEstimate: loop.cost.avoidedUsd,
       tokensIn: loop.cost.tokensIn,
       tokensOut: loop.cost.tokensOut,
+      costProvenance: readCostProvenance(loop),
       trustworthy,
       integrityState: integrity.state,
       avoidedIterationsEstimate: stopConditionReached ? 1 : 0,

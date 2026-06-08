@@ -104,8 +104,14 @@ function makeLoopRecord(): LoopRecord {
 
 async function withRunsRoot<T>(fn: (runsRoot: string) => Promise<T>): Promise<T> {
   const previousRunsRoot = process.env.MARTIN_RUNS_DIR;
-  const runsRoot = await mkdtemp(join(tmpdir(), "martin-cli-operator-"));
+  const previousGroundingDir = process.env.MARTIN_GROUNDING_DIR;
+  const root = await mkdtemp(join(tmpdir(), "martin-cli-operator-"));
+  const runsRoot = join(root, "runs");
+  const groundingDir = join(root, "grounding");
+  await mkdir(runsRoot, { recursive: true });
+  await mkdir(groundingDir, { recursive: true });
   process.env.MARTIN_RUNS_DIR = runsRoot;
+  process.env.MARTIN_GROUNDING_DIR = groundingDir;
 
   try {
     return await fn(runsRoot);
@@ -116,7 +122,13 @@ async function withRunsRoot<T>(fn: (runsRoot: string) => Promise<T>): Promise<T>
       process.env.MARTIN_RUNS_DIR = previousRunsRoot;
     }
 
-    await rm(runsRoot, { force: true, recursive: true }).catch(() => {});
+    if (previousGroundingDir === undefined) {
+      delete process.env.MARTIN_GROUNDING_DIR;
+    } else {
+      process.env.MARTIN_GROUNDING_DIR = previousGroundingDir;
+    }
+
+    await rm(root, { force: true, recursive: true }).catch(() => {});
   }
 }
 
@@ -340,6 +352,51 @@ describe("operator commands", () => {
         "Receipt integrity is tamper_detected; persisted verifier evidence is not trustworthy yet."
       );
     });
+  });
+
+  it("reports unsigned for ad-hoc --file loads outside the selected runs root without minting a new local key", async () => {
+    const externalRunsRoot = await mkdtemp(join(tmpdir(), "martin-cli-external-runs-"));
+
+    try {
+      const loop = makeLoopRecord();
+      const externalLoopDir = join(externalRunsRoot, loop.loopId);
+      const loopRecordPath = join(externalLoopDir, "loop-record.json");
+      const ledgerPath = join(externalLoopDir, "ledger.jsonl");
+      const ledgerEntries = loop.events;
+
+      await mkdir(externalLoopDir, { recursive: true });
+      await writeFile(loopRecordPath, JSON.stringify(loop, null, 2), "utf8");
+      await writeFile(
+        ledgerPath,
+        ledgerEntries.map((entry) => JSON.stringify(entry)).join("\n").concat("\n"),
+        "utf8"
+      );
+      await writeReceiptIntegrityMaterial({
+        runId: loop.loopId,
+        runsRoot: externalRunsRoot,
+        loopRecord: loop,
+        ledgerEntries,
+        signedAt: loop.updatedAt
+      });
+      await expect(
+        readFile(join(externalLoopDir, "receipt-integrity.json"), "utf8")
+      ).resolves.toContain("signatureHmacSha256");
+
+      await withRunsRoot(async (selectedRunsRoot) => {
+        const dossier = JSON.parse(
+          (await executeCli(["--json", "dossier", "--file", externalLoopDir])).stdout
+        );
+        const getRun = JSON.parse(
+          (await executeCli(["--json", "runs", "get", "--file", externalLoopDir])).stdout
+        );
+
+        expect(dossier.receiptIntegrity.state).toBe("unsigned");
+        expect(getRun.receiptIntegrity.state).toBe("unsigned");
+        await expect(readFile(join(selectedRunsRoot, ".integrity-key"), "utf8")).rejects.toThrow();
+      });
+    } finally {
+      await rm(externalRunsRoot, { force: true, recursive: true }).catch(() => {});
+    }
   });
 
   it("prints dry-run MCP host config for Codex, Claude, Gemini, and generic wrapper hosts", async () => {

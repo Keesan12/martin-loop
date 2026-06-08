@@ -58,6 +58,48 @@ describe("evaluateVerificationLeash", () => {
     expect(decision.allowed).toBe(false);
     expect(decision.riskLevel).toBe("blocked");
   });
+
+  describe("destructive command bypass forms", () => {
+    const bypassForms = [
+      "bash -c \"rm -rf /\"",
+      "sh -c 'rm -rf /tmp/x'",
+      "/bin/rm -rf /",
+      "/usr/bin/rm -rf ./build",
+      "RM -RF /tmp",
+      "rm -r -f /tmp/data",
+      "rm --recursive --force /tmp/data",
+      "rm -fr node_modules",
+      "find . -delete",
+      "find . -name '*.tmp' -exec rm -rf {} +",
+      "python3 -c \"import shutil; shutil.rmtree('/tmp/data')\"",
+      "node -e \"require('fs').rmSync('/tmp/data', {recursive: true})\"",
+      "rm -rf ${IFS}/",
+      "SUDO rm -rf /var",
+      "DD if=/dev/zero of=/dev/sda"
+    ];
+
+    for (const command of bypassForms) {
+      it(`blocks bypass form: ${command}`, () => {
+        const decision = evaluateVerificationLeash({
+          verificationPlan: [command],
+          verificationStack: undefined
+        });
+
+        expect(decision.allowed).toBe(false);
+        expect(decision.blockedCommands).toContain(command);
+      });
+    }
+
+    it("does not block benign rm of a single file", () => {
+      const decision = evaluateVerificationLeash({
+        verificationPlan: ["rm ./tmp/output.log"],
+        verificationStack: undefined
+      });
+
+      expect(decision.allowed).toBe(true);
+      expect(decision.blockedCommands).toEqual([]);
+    });
+  });
 });
 
 describe("classifyFailure repo grounding", () => {
@@ -284,5 +326,45 @@ describe("compilePromptPacket secret redaction", () => {
     expect(packet.contract.objective).not.toContain("sk-test-secret-value");
     expect(packet.contract.acceptanceCriteria?.[0]).not.toContain("ghp_test_secret_token");
     expect(packet.contract.objective).toContain("[REDACTED");
+  });
+
+  it("redacts a wider range of real-world credential formats from compiled prompts", () => {
+    // Built from concatenated fragments (rather than literal strings) so this
+    // synthetic fixture — shaped to match credential-format regexes on purpose —
+    // does not itself trip remote secret-scanning on the test source.
+    const slackToken = ["xoxb", "1234567890", "abcdefghijklmnop"].join("-");
+
+    const packet = compilePromptPacket({
+      loopId: "loop_redact_2",
+      attemptId: "att_redact_2",
+      context: {
+        taskTitle: "Audit credential exposure",
+        objective: [
+          "AWS key AKIAABCDEFGHIJKLMNOP must not leak,",
+          "nor AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY,",
+          `nor Slack token ${slackToken},`,
+          "nor Google key AIzaSyABCDEFGHIJKLMNOPQRSTUVWXYZ012345,",
+          "nor a GitHub fine-grained PAT github_pat_11ABCDEFGHIJKLMNOPQRSTUVWXYZ,",
+          "nor a JWT eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dGVzdC1zaWduYXR1cmU,",
+          "nor -----BEGIN RSA PRIVATE KEY-----\nMIIBVQIBADANBgkqhkiG\n-----END RSA PRIVATE KEY-----."
+        ].join(" "),
+        verificationPlan: ["pnpm test"],
+        focus: "Keep the patch narrow and do not expose secrets.",
+        remainingBudgetUsd: 5,
+        remainingIterations: 2,
+        remainingTokens: 1_000
+      },
+      previousAttempts: []
+    });
+
+    const objective = packet.contract.objective;
+    expect(objective).not.toContain("AKIAABCDEFGHIJKLMNOP");
+    expect(objective).not.toContain("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY");
+    expect(objective).not.toContain(slackToken);
+    expect(objective).not.toContain("AIzaSyABCDEFGHIJKLMNOPQRSTUVWXYZ012345");
+    expect(objective).not.toContain("github_pat_11ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+    expect(objective).not.toContain("eyJzdWIiOiIxMjM0NTY3ODkwIn0");
+    expect(objective).not.toContain("MIIBVQIBADANBgkqhkiG");
+    expect(objective).toContain("[REDACTED");
   });
 });
