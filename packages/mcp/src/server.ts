@@ -139,7 +139,7 @@ const verificationSchema = {
   type: "object",
   additionalProperties: true,
   properties: {
-    status: { type: "string", enum: ["passed", "failed", "unavailable"] },
+    status: { type: "string", enum: ["passed", "failed", "contradicted", "not_run"] },
     eventCount: { type: "integer" },
     ledgerEventCount: { type: "integer" },
     latestAttemptIndex: { type: "integer" },

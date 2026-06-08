@@ -53,7 +53,7 @@ export async function martinEvalTool(input: MartinEvalInput): Promise<MartinEval
     verifier:
       verification.status === "passed"
         ? "passed"
-        : verification.status === "failed"
+        : verification.status === "failed" || verification.status === "contradicted"
           ? "failed"
           : "warning",
     diffDiscipline:
@@ -74,7 +74,7 @@ export async function martinEvalTool(input: MartinEvalInput): Promise<MartinEval
   score = Math.max(0, score);
 
   const grade =
-    verification.status === "unavailable"
+    verification.status === "not_run"
       ? "insufficient_evidence"
       : score >= 90
         ? "mergeable"

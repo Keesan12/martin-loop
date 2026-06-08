@@ -114,13 +114,13 @@ export async function martinRunDossierTool(
     outcome:
       verification.status === "passed"
         ? "passed"
-        : verification.status === "failed"
+        : verification.status === "failed" || verification.status === "contradicted"
           ? "failed"
           : "needs_review",
     nextAction:
       verification.status === "passed"
         ? "Review the dossier and evaluation, then decide whether to merge or promote."
-        : verification.status === "failed"
+        : verification.status === "failed" || verification.status === "contradicted"
           ? "Investigate the latest verifier failure before retrying or promoting."
           : "Collect more evidence before claiming completion."
   } as const;

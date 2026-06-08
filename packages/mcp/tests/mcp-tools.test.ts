@@ -777,7 +777,7 @@ describe("martinTriageRunsTool", () => {
     });
   });
 
-  it("marks unsigned canonical receipts as untrusted verification evidence", async () => {
+  it("marks canonical receipts with missing integrity material as untrusted verification evidence", async () => {
     await withRunsRoot(async (runsRoot) => {
       const loop = {
         ...makeLoopRecord({ costUsd: 2 }),
@@ -814,13 +814,13 @@ describe("martinTriageRunsTool", () => {
       const verification = await martinGetVerificationResultsTool({ loopId: loop.loopId });
       const run = await martinGetRunTool({ loopId: loop.loopId });
 
-      expect(verification.receiptIntegrity.state).toBe("unsigned");
+      expect(verification.receiptIntegrity.state).toBe("material_missing");
       expect(verification.warnings).toContain(
-        "Receipt integrity is unsigned; persisted verifier evidence is not trustworthy yet."
+        "Receipt integrity is material_missing; persisted verifier evidence is not trustworthy yet."
       );
-      expect(run.receiptIntegrity.state).toBe("unsigned");
+      expect(run.receiptIntegrity.state).toBe("material_missing");
       expect(run.warnings).toContain(
-        "Receipt integrity is unsigned; persisted verifier evidence is not trustworthy yet."
+        "Receipt integrity is material_missing; persisted verifier evidence is not trustworthy yet."
       );
     });
   });
@@ -952,7 +952,7 @@ describe("martinTriageRunsTool", () => {
     });
   });
 
-  it("reports unavailable verification when the latest attempt has conflicting evidence", async () => {
+  it("fails closed to not_run when the latest attempt has conflicting verification evidence", async () => {
     await withRunsRoot(async (runsRoot) => {
       const loop = {
         ...makeLoopRecord({ costUsd: 2 }),
@@ -999,9 +999,9 @@ describe("martinTriageRunsTool", () => {
 
       const verification = await martinGetVerificationResultsTool({ loopId: loop.loopId });
 
-      expect(verification.verification.status).toBe("unavailable");
+      expect(verification.verification.status).toBe("not_run");
       expect(verification.warnings).toContain(
-        "Verification evidence conflicts for the latest attempt; reporting status as unavailable."
+        "Verification evidence conflicts for the latest attempt; marking verification as contradicted."
       );
     });
   });
@@ -1042,7 +1042,7 @@ describe("martinTriageRunsTool", () => {
 
       const verification = await martinGetVerificationResultsTool({ loopId: loop.loopId });
 
-      expect(verification.verification.status).toBe("unavailable");
+      expect(verification.verification.status).toBe("not_run");
       expect(verification.verification.eventCount).toBe(1);
       expect(verification.verification).not.toHaveProperty("latestAttemptIndex");
       expect(verification.warnings).toContain(

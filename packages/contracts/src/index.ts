@@ -140,7 +140,13 @@ export interface ReceiptScope {
   runsRoot?: string;
 }
 
-export type ReceiptIntegrityState = "verified" | "unsigned" | "tamper_detected";
+export type ReceiptIntegrityState =
+  | "verified"
+  | "unsigned"
+  | "tamper_detected"
+  | "relocated"
+  | "material_missing"
+  | "selector_noncanonical";
 
 export interface ReceiptIntegritySummary {
   state: ReceiptIntegrityState;
