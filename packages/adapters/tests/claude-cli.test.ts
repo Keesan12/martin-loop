@@ -656,6 +656,7 @@ describe("createClaudeCliAdapter", () => {
   });
 
   it("skips git probes when repoRoot is outside a repository", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), "martin-non-repo-"));
     const calls: SpawnCall[] = [];
     const adapter = createClaudeCliAdapter({
       spawnImpl: createScriptedSpawn(calls, [
@@ -676,25 +677,29 @@ describe("createClaudeCliAdapter", () => {
       ])
     });
 
-    const result = await adapter.execute(
-      makeRequest({
-        context: {
-          taskTitle: "test",
-          objective: "patch then check scope",
-          verificationPlan: [],
-          focus: "test",
-          remainingBudgetUsd: 8,
-          remainingIterations: 3,
-          remainingTokens: 10_000,
-          repoRoot: "C:\\repo with spaces",
-          allowedPaths: ["src/**"]
-        }
-      })
-    );
+    try {
+      const result = await adapter.execute(
+        makeRequest({
+          context: {
+            taskTitle: "test",
+            objective: "patch then check scope",
+            verificationPlan: [],
+            focus: "test",
+            remainingBudgetUsd: 8,
+            remainingIterations: 3,
+            remainingTokens: 10_000,
+            repoRoot,
+            allowedPaths: ["src/**"]
+          }
+        })
+      );
 
-    expect(result.status).toBe("completed");
-    expect(calls).toHaveLength(1);
-    expect(calls[0]?.command).toBe("claude");
+      expect(result.status).toBe("completed");
+      expect(calls).toHaveLength(1);
+      expect(calls[0]?.command).toBe("claude");
+    } finally {
+      await rm(repoRoot, { recursive: true, force: true });
+    }
   });
 
   it("requests stream-json output so usage can be observed incrementally", async () => {
