@@ -84,11 +84,9 @@ describe("parseCliArguments", () => {
 
   it("parses onboarding commands and objective shorthand", () => {
     expect(parseCliArguments(["start"])).toEqual({ command: "start" });
+    expect(parseCliArguments(["enable"])).toMatchObject({ command: "enable", force: false });
     expect(parseCliArguments(["env"])).toEqual({ command: "env" });
-    expect(parseCliArguments(["review"])).toEqual({
-      command: "review",
-      selector: { latest: true }
-    });
+    expect(parseCliArguments(["review"])).toEqual({ command: "review", selector: { latest: true } });
     expect(parseCliArguments(["receipts", "explain"])).toEqual({
       command: "receipts_explain",
       selector: { latest: true }
@@ -97,7 +95,6 @@ describe("parseCliArguments", () => {
       command: "run",
       request: expect.objectContaining({
         objective: "fix flaky tests",
-        liveMode: "proof",
         verificationPlan: ["npm test"]
       })
     });
@@ -105,14 +102,15 @@ describe("parseCliArguments", () => {
 });
 
 describe("executeCli", () => {
-  it("prints runs verify help with --latest selector support", async () => {
+  it("prints onboarding commands in CLI help", async () => {
     const result = await executeCli(["--help"]);
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("martin start [options]");
+    expect(result.stdout).toContain("martin enable [options]");
     expect(result.stdout).toContain("martin receipts explain");
-    expect(result.stdout).toContain("martin runs verify (--loop-id <id> | --file <path> | --latest) [options]");
   });
+
   it("prints the public root package version", async () => {
     const rootPackageVersion = (
       JSON.parse(await readFile(join(process.cwd(), "..", "..", "package.json"), "utf8")) as {

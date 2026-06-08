@@ -28,6 +28,7 @@ import {
   type MartinRunListFilters,
   type MartinRunSelector,
   type MutationMode,
+  type ReceiptIntegritySummary,
   type ReceiptScope
 } from "@martin/contracts";
 
@@ -336,6 +337,8 @@ type BenchmarkSuiteFixture = {
     };
   }>;
 };
+
+type IntegrityStatus = ReceiptIntegritySummary["state"];
 
 export type ParsedCliArguments =
   | {
@@ -1814,6 +1817,12 @@ function explainIntegrityState(state: IntegrityStatus): {
         shareSafe: false,
         nextAction: "Use canonical selectors: --latest or --loop-id <id>."
       };
+    default:
+      return {
+        meaning: `Unknown integrity state '${String(state)}'.`,
+        shareSafe: false,
+        nextAction: "Run martin receipts explain --latest after rebuilding the run receipt."
+      };
   }
 }
 
@@ -2222,6 +2231,28 @@ function describeIntegrity(integrity: IntegrityStatus): string {
       return "relocated — run was loaded from outside the canonical runs root";
     case "selector_noncanonical":
       return "selector non-canonical — choose --loop-id/--latest for canonical integrity checks";
+    default:
+      return `unknown integrity state: ${String(integrity)}`;
+  }
+}
+
+function readCostProvenance(loop: LoopRecord): "actual" | "estimated" | "unavailable" {
+  const provenance = (loop.cost as { provenance?: unknown }).provenance;
+  return provenance === "actual" || provenance === "estimated" || provenance === "unavailable"
+    ? provenance
+    : "unavailable";
+}
+
+function describeCostProvenance(provenance: "actual" | "estimated" | "unavailable"): string {
+  switch (provenance) {
+    case "actual":
+      return "actual provider settlement";
+    case "estimated":
+      return "estimated usage";
+    case "unavailable":
+      return "unavailable";
+    default:
+      return "unavailable";
   }
 }
 async function executeMcpPrintConfigCommand(
