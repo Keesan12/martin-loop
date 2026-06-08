@@ -73,6 +73,12 @@ npx martin-loop runs verify --latest
 npx martin-loop share --latest
 ```
 
+To print exact output locations:
+
+```sh
+npx martin-loop share --latest --json
+```
+
 Expected bundle output under the selected run directory in `share/`:
 
 - `run-receipt.json` (machine-readable summary)

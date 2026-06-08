@@ -34,6 +34,16 @@ npx martin-loop doctor
 
 `doctor` checks whether MartinLoop can find the local tools, agents, and run directories it needs.
 
+For deterministic package-line verification in fresh environments:
+
+```sh
+npx -y martin-loop@0.3.2 --version
+npm view martin-loop version
+npm view @martinloop/mcp version
+```
+
+If `npx martin-loop --version` differs from npm live, run `npx -y martin-loop@latest --version` or pin `@0.3.2` to avoid local cache drift.
+
 ## Run a Governed Task
 
 ```sh
@@ -41,7 +51,7 @@ npx martin-loop preflight "fix the auth regression" --verify "pnpm test"
 npx martin-loop run "fix the auth regression" --budget 3.00 --verify "pnpm test"
 ```
 
-By default, MartinLoop expects recent `doctor`, `session-start`, and `preflight` receipts for the same repo and task before a real run will start. If you intentionally need to bypass that local gate for a one-off run, use `--unsafe-allow-unguarded-run` explicitly.
+By default, MartinLoop expects recent `doctor`, `session-start`, and `preflight` receipts for the same repo and task before a real run will start.
 
 ## Review Evidence
 
@@ -54,6 +64,12 @@ npx martin-loop share --latest
 Use `triage` to rank saved runs by urgency. Use `dossier` when you want one run receipt: stop reason, verifier evidence, budget status, rollback or artifact evidence, and the next safe action. Use `share` when you want a redacted bundle you can attach to a ticket, send to a teammate, or keep with the run directory.
 
 The share bundle contains `run-receipt.json`, `run-receipt.md`, and `proof-card.svg`.
+
+To print exact artifact paths from your latest run:
+
+```sh
+npx martin-loop share --latest --json
+```
 
 ## Repository Development
 
