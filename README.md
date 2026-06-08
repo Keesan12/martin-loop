@@ -37,7 +37,7 @@ npx martin-loop share --latest
 
 `share --latest` writes three files into the selected run directory under `share/`: `run-receipt.json`, `run-receipt.md`, and `proof-card.svg`.
 
-Release notes for the current root package: [MartinLoop 0.3.1](./docs/release/OSS-0.3.1-RELEASE-NOTES.md).
+Release notes for the current root package: [MartinLoop 0.3.2](./docs/release/OSS-0.3.2-RELEASE-NOTES.md).
 
 ## What It Does
 
@@ -146,7 +146,7 @@ npx martin-loop mcp print-config --host gemini --transport stdio --profile full-
 npx martin-loop mcp print-config --host generic --transport stdio --profile github-review
 ```
 
-The root `martin-loop` package and the standalone `@martinloop/mcp` package move on separate version lines. The root package is `0.3.0`; the current standalone MCP package is `0.3.0`.
+The root `martin-loop` package and the standalone `@martinloop/mcp` package move on separate version lines. The root package line here is `0.3.2`; the current standalone MCP package is `0.3.1`.
 
 The public MCP release train labels are:
 
@@ -155,6 +155,7 @@ The public MCP release train labels are:
 - `0.2.5` public MCP package line
 - `0.2.7` usability and review release
 - `0.3.0` host adoption and onboarding release
+- `0.3.1` review and handoff release
 
 The standalone MCP registry/server identifier is `io.github.Keesan12/martin-loop`.
 
@@ -207,6 +208,7 @@ More detail: [SDK reference](./docs/reference/sdk.md) and [package map](./docs/r
 - [Codex setup](./docs/getting-started/codex.md)
 - [MCP setup](./docs/getting-started/mcp.md)
 - [MCP tool reference](./docs/reference/mcp-tools.md)
+- [Agent run receipts](./docs/oss/AGENT-RUN-RECEIPTS.md)
 - [GitHub Actions budget gate](./examples/github-actions-budget-gate/)
 - [OpenCode-style adapter](./examples/opencode-adapter/)
 

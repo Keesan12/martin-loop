@@ -4,9 +4,9 @@ This map defines the staged standalone MCP releases after the live `0.3.0` basel
 
 ## Live baseline
 
-- public npm baseline: `0.3.0`
-- public GitHub release baseline: `mcp-v0.3.0`
-- in-repo release candidate: `0.3.1`
+- public npm baseline: `0.3.1`
+- public GitHub release baseline: `mcp-v0.3.1`
+- in-repo release line: `0.3.1`
 - next release to prepare after this cut: `0.3.2`
 
 ## `0.3.1` — Review And Handoff Controls
