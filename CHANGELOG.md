@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.1]
+
+### Fixed
+- **Public benchmark repro is deterministic from source** - benchmark eval and report commands now execute built runtime output with pre-build hooks, removing fragile local toolchain assumptions.
+- **Public CLI now exposes a version command** - `martin-loop --version`/`version`/`-V` now return a clean version string for automation and operator checks.
+- **Doctor version reporting now matches the public release line** - `doctor --json` now reports the root package version in `cliVersion` for release clarity.
+
+### Changed
+- Root benchmark helper scripts now route through workspace benchmark commands (`bench:build`, `bench:test`, `bench:eval`, `bench:report:ralphy`) for consistent docs, CI checks, and local reproduction.
+- Public release notes and CLI docs now include explicit install/version verification before governed-run onboarding.
+
 ## [0.3.0]
 
 ### Added

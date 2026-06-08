@@ -28,6 +28,7 @@ Use the public root package when you want the CLI locally or in CI:
 
 ```sh
 npm install martin-loop
+npx martin-loop --version
 npx martin-loop doctor
 ```
 

@@ -1,7 +1,7 @@
 {
   "name": "martin-loop",
   "private": false,
-  "version": "0.2.8",
+  "version": "0.3.1",
   "type": "module",
   "description": "Open-source command center for governed AI coding agents: CLI, MCP, verifier gates, and run receipts.",
   "packageManager": "pnpm@10.33.0",
