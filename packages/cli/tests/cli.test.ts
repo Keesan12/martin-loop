@@ -70,7 +70,9 @@ describe("parseCliArguments", () => {
       "--policy",
       "balanced",
       "--telemetry",
-      "control-plane"
+      "control-plane",
+      "--proof",
+      "--unsafe-allow-unguarded-run"
     ]);
 
     expect(parsed).toEqual({
@@ -98,7 +100,9 @@ describe("parseCliArguments", () => {
           maxTokens: true,
           maxUsd: true,
           softLimitUsd: true
-        }
+        },
+        liveMode: "proof",
+        unsafeAllowUnguardedRun: true
       }
     });
   });
@@ -112,6 +116,13 @@ describe("parseCliArguments", () => {
 });
 
 describe("executeCli", () => {
+  it("prints runs verify help with --latest selector support", async () => {
+    const result = await executeCli(["--help"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("martin runs verify (--loop-id <id> | --file <path> | --latest) [options]");
+  });
+
   it("prints the public root package version", async () => {
     const rootPackageVersion = (
       JSON.parse(await readFile(join(process.cwd(), "..", "..", "package.json"), "utf8")) as {
@@ -315,6 +326,36 @@ describe("executeCli", () => {
       expect(payload.loop.lifecycleState).toBe("completed");
       expect(payload.loop.task.mutationMode).toBe("verify_only");
       expect(payload.loop.cost.actualUsd).toBe(0);
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("supports --proof runs as no-spend verifier-only executions", { timeout: 30_000 }, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-proof-mode-"));
+
+    try {
+      const result = await executeCli([
+        "--json",
+        "run",
+        "--objective",
+        "Proof mode smoke",
+        "--proof",
+        "--engine",
+        "codex",
+        "--verify",
+        `"${process.execPath}" -e "process.exit(0)"`,
+        "--cwd",
+        directory
+      ]);
+
+      expect(result.exitCode).toBe(0);
+
+      const payload = JSON.parse(result.stdout);
+      expect(payload.environment.liveMode).toBe("proof");
+      expect(payload.loop.lifecycleState).toBe("completed");
+      expect(payload.loop.cost.actualUsd).toBe(0);
+      expect(payload.loop.task.mutationMode).toBe("verify_only");
     } finally {
       await rm(directory, { force: true, recursive: true });
     }

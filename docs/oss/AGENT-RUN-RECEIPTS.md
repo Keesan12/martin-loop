@@ -10,23 +10,19 @@ An agent run receipt is a local proof pack for a governed MartinLoop run. It giv
 
 The OSS receipt is intentionally local-first. It prioritizes deterministic inspection and practical evidence over hosted dashboards.
 
-## Receipt fields
+## Receipt fields (`run-receipt.json`)
 
 | Field | Purpose |
 | --- | --- |
-| `receiptVersion` | Schema version for the receipt shape. |
-| `loopId` | Stable run identifier. |
-| `createdAt` | ISO timestamp when the receipt was written. |
-| `objective` | User-facing run objective (redacted if needed). |
-| `engine` | Agent runtime used for the run (`codex`, `claude`, `gemini`, and so on). |
-| `budget` | Execution limits: spend, token, iteration, and scope boundaries. |
-| `costProvenance` | Whether usage came from authoritative provider settlement, estimate, or unavailable source. |
-| `verificationPlan` | Verifier commands the run was expected to satisfy. |
-| `verifierResult` | Final verifier status, exit code, and evidence location. |
-| `haltReason` | Terminal outcome (`verified`, `budget_exhausted`, `verifier_failed`, `policy_blocked`, etc.). |
-| `runDossier` | Paths or summaries for attempts, logs, diffs, and final run state. |
-| `replaySteps` | Minimal commands required to re-check the result locally. |
-| `evidenceBoundaries` | What is included, redacted, excluded, or unavailable. |
+| `schemaVersion` | Receipt schema identifier (`martin.share-receipt.v1`). |
+| `generatedAt` | ISO timestamp when the share receipt was generated. |
+| `loop` | Top-level run facts: `loopId`, title/objective, status/lifecycleState, attempts, spend/budget, update time. |
+| `receiptIntegrity` | Integrity verdict from local persisted evidence (`verified`, `tamper_detected`, `unsigned`). |
+| `verification` | Verifier summary for the selected run. |
+| `receipt` | Governed-run summary with next safe action and risk posture fields. |
+| `artifacts` | Local artifact references included in the dossier view. |
+| `proofCard` | Portable proof-card content rendered into the Markdown and SVG outputs. |
+| `warnings` | Non-fatal warnings collected while building the receipt bundle. |
 
 ## Expected CLI and MCP surfaces
 
@@ -115,7 +111,7 @@ Failure labels are a triage index; they do not replace raw verifier and attempt 
 4. Inspect dossier and attempt evidence for decision context.
 5. Compare the new verifier outcome with the stored `verifierResult`.
 
-If exact replay is not possible because the workspace changed, the receipt should say that in `evidenceBoundaries`.
+If exact replay is not possible because the workspace changed, the `warnings` and `receipt` sections should reflect that limitation.
 
 ## Public-safe defaults
 
