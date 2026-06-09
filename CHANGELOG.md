@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.4]
+
+### Fixed
+- **Allow/deny path policy now fails closed on traversal and absolute patterns** - governed preflight/run rejects unsafe `--allow-path` and `--deny-path` values before execution.
+- **Run verification now emits explicit integrity verdict classes** - `runs verify` classifies receipt problems as `tampered_payload`, `missing_integrity_material`, or `schema_unknown_fields`.
+- **Non-canonical run selectors now fail fast** - `runs verify --file` rejects selectors outside the configured runs root and points operators to canonical selector forms.
+- **OpenAI hosted preflight now blocks missing auth with actionable guidance** - missing `MARTIN_OPENAI_API_KEY` on hosted endpoints is now a hard blocker with model/quota hints.
+- **MCP scope errors now guide operators to valid alternatives** - unsupported `--scope local` host errors now include direct `user/project` and Claude-local alternatives.
+
 ## [0.3.3]
 
 ### Added
