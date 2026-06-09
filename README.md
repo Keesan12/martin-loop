@@ -43,7 +43,7 @@ npx -y martin-loop@latest preflight "Summarize the demo workspace and prove test
 
 `share --latest` writes three files into the selected run directory under `share/`: `run-receipt.json`, `run-receipt.md`, and `proof-card.svg`.
 
-Release notes for the current root package: [MartinLoop 0.3.2](./docs/release/OSS-0.3.2-RELEASE-NOTES.md).
+Release notes for the current root package: [MartinLoop 0.3.3](./docs/release/OSS-0.3.3-RELEASE-NOTES.md).
 
 ## Run This Audit Yourself
 
