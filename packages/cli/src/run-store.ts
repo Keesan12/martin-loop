@@ -16,6 +16,26 @@ import type {
 
 import { CliCommandError } from "./ux.js";
 
+const LOOP_RECORD_TOP_LEVEL_KEYS = new Set([
+  "loopId",
+  "workspaceId",
+  "projectId",
+  "teamId",
+  "status",
+  "lifecycleState",
+  "task",
+  "budget",
+  "cost",
+  "artifacts",
+  "attempts",
+  "events",
+  "metadata",
+  "createdAt",
+  "updatedAt",
+  "receiptScope",
+  "receiptIntegrity"
+]);
+
 // ---------------------------------------------------------------------------
 // Local run-history hotspot reader (Layer 5 — proactive issue detection)
 // Uses persisted Martin run-store evidence only; no hidden machine corpus.
@@ -227,7 +247,7 @@ export interface PersistedLoopDetail {
 }
 
 export interface VerificationSummary {
-  status: "passed" | "failed" | "unavailable";
+  status: "passed" | "failed" | "contradicted" | "not_run";
   summary: string;
   eventCount: number;
   latestAttemptIndex?: number;
@@ -407,17 +427,35 @@ export async function loadPersistedLoop(
       });
     }
 
+    const runDirectory = path.dirname(targetPath);
+    const canonicalFromParent = await findCanonicalLoopRecordPath(runDirectory);
+    if (canonicalFromParent && path.resolve(canonicalFromParent) === path.resolve(targetPath)) {
+      const unknownFieldWarnings = await detectUnknownLoopTopLevelFieldWarnings(canonicalFromParent);
+      return await attachReceiptIntegrity({
+        source: targetPath,
+        runsRoot,
+        loop: await readLoopRecordFile(canonicalFromParent),
+        warnings: unknownFieldWarnings,
+        runDirectory,
+        loopRecordPath: canonicalFromParent
+      });
+    }
+
     const loops = await readLoopsFromFile(targetPath, runsRoot);
     const loop = loops.sort((left, right) => loopTimestamp(right) - loopTimestamp(left))[0];
     if (!loop) {
       throw new CliCommandError("not_found", "No persisted Martin loops were found in the selected file.");
     }
 
+    const unknownFieldWarnings =
+      targetPath.toLowerCase().endsWith(".json")
+        ? await detectUnknownLoopTopLevelFieldWarnings(targetPath)
+        : [];
     return await attachReceiptIntegrity({
       source: targetPath,
       runsRoot,
       loop,
-      warnings: []
+      warnings: unknownFieldWarnings
     });
   }
 
@@ -427,10 +465,10 @@ export async function loadPersistedLoop(
     throw new CliCommandError("not_found", "No persisted Martin loops were found.");
   }
 
+  const detail = await loadLoopById(loop.loopId, runsRoot);
   return await attachReceiptIntegrity({
-    source: runsRoot,
+    ...detail,
     runsRoot,
-    loop,
     warnings: inspected.warnings
   });
 }
@@ -465,18 +503,23 @@ export async function loadPersistedAttempt(
 async function attachReceiptIntegrity(detail: Omit<PersistedLoopDetail, "integrity">): Promise<PersistedLoopDetail> {
   const integrity =
     detail.loopRecordPath && detail.runDirectory
-      ? await verifyReceiptIntegrityFromFiles({
-          runId: detail.loop.loopId,
-          runsRoot: detail.runsRoot,
-          loopRecordPath: detail.loopRecordPath,
-          ledgerPath: await resolveReceiptEvidencePath(detail.runDirectory)
-        }).catch<ReceiptIntegritySummary>(() => ({
-          state: "unsigned",
-          reason: "Receipt integrity verification could not be completed."
-        }))
+      ? isWithinRunsRoot(detail.runsRoot, detail.runDirectory)
+        ? await verifyReceiptIntegrityFromFiles({
+            runId: detail.loop.loopId,
+            runsRoot: detail.runsRoot,
+            loopRecordPath: detail.loopRecordPath,
+            ledgerPath: await resolveReceiptEvidencePath(detail.runDirectory)
+          }).catch<ReceiptIntegritySummary>(() => ({
+            state: "material_missing",
+            reason: "Receipt integrity verification could not be completed."
+          }))
+        : ({
+            state: "relocated",
+            reason: "Run evidence was loaded from a relocated directory outside the canonical runs root."
+          } satisfies ReceiptIntegritySummary)
       : ({
-          state: "unsigned",
-          reason: "Receipt integrity is only available for canonical run directories."
+          state: "selector_noncanonical",
+          reason: "Receipt integrity is only available for canonical run selectors."
         } satisfies ReceiptIntegritySummary);
 
   return {
@@ -499,11 +542,11 @@ export function buildVerificationSummary(loop: LoopRecord): VerificationSummary 
 
   if (!latestEvent) {
     return {
-      status: "unavailable",
+      status: "not_run",
       summary: "No persisted verification evidence was found for this loop.",
       eventCount: 0,
       steps: [],
-      warnings: [...integrityWarnings, "Verification evidence is unavailable for this persisted loop."]
+      warnings: [...integrityWarnings, "Verification evidence was not recorded for this persisted loop."]
     };
   }
 
@@ -522,12 +565,15 @@ export function buildVerificationSummary(loop: LoopRecord): VerificationSummary 
     ...readVerificationWarnings(payload),
     ...buildObservationWarnings(observation)
   ];
+  const contradicted = passed && hasVerificationContradiction(warnings, steps);
 
   return {
-    status: passed ? "passed" : "failed",
+    status: contradicted ? "contradicted" : passed ? "passed" : "failed",
     summary:
       typeof payload?.["summary"] === "string"
         ? (payload["summary"] as string)
+        : contradicted
+          ? "Verifier evidence is contradicted by launch/runtime diagnostics."
         : passed
           ? "Verification passed."
           : "Verification failed.",
@@ -738,7 +784,7 @@ function buildPreventionSummary(
   if (stopConditionReached) {
     prevented.push("another unsafe or uneconomical retry before operator review");
   }
-  if (verification.status === "failed") {
+  if (verification.status === "failed" || verification.status === "contradicted") {
     prevented.push("false success claims after a failed verifier");
   }
   if (latestAttempt?.failureClass) {
@@ -774,7 +820,7 @@ function selectNextSafeAction(
     remainingIterations: Math.max(loop.budget.maxIterations - loop.attempts.length, 0)
   });
 
-  if (verification.status === "failed") {
+  if (verification.status === "failed" || verification.status === "contradicted") {
     if (circuitBreak.shouldStop) {
       return `Debug loop ${loop.loopId} with verifier evidence first, then resolve the trajectory issue before another attempt: ${circuitBreak.reason}`;
     }
@@ -824,9 +870,13 @@ function scoreLoop(loop: LoopRecord): TriageFinding {
     priority += 40;
     reasons.push("verification_failed");
   }
-  if (verification.status === "unavailable") {
+  if (verification.status === "contradicted") {
+    priority += 55;
+    reasons.push("verification_contradicted");
+  }
+  if (verification.status === "not_run") {
     priority += 10;
-    reasons.push("verification_unavailable");
+    reasons.push("verification_not_run");
   }
   if (verification.observation?.status === "mismatch") {
     priority += 30;
@@ -958,10 +1008,27 @@ function resolveAbsolutePath(targetPath: string, base = resolveInvocationRoot())
 function resolveReceiptIntegrity(loop: LoopRecord): ReceiptIntegritySummary {
   return (
     loop.receiptIntegrity ?? {
-      state: "unsigned",
+      state: "selector_noncanonical",
       reason: "Receipt integrity metadata was not available on the loop record."
     }
   );
+}
+
+function hasVerificationContradiction(
+  warnings: string[],
+  steps: VerificationStepSummary[]
+): boolean {
+  const normalizedWarnings = warnings.map((warning) => warning.toLowerCase());
+  if (
+    normalizedWarnings.some((warning) =>
+      warning.includes("tool-launch problem before martinloop ran its own verifier") ||
+      warning.includes("verification evidence conflicts")
+    )
+  ) {
+    return true;
+  }
+
+  return steps.some((step) => step.launched === false);
 }
 
 export function resolveReceiptScope(loop: LoopRecord, runsRoot?: string): ReceiptScope | undefined {
@@ -978,6 +1045,13 @@ export function resolveReceiptScope(loop: LoopRecord, runsRoot?: string): Receip
     ...(loop.task?.repoRoot ? { workingDirectory: loop.task.repoRoot } : {}),
     ...(runsRoot ? { runsRoot } : {})
   };
+}
+
+function isWithinRunsRoot(runsRoot: string, candidatePath: string): boolean {
+  const resolvedRoot = path.resolve(runsRoot);
+  const resolvedCandidate = path.resolve(candidatePath);
+  const relative = path.relative(resolvedRoot, resolvedCandidate);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
 async function resolveReceiptEvidencePath(runDirectory: string): Promise<string> {
@@ -1154,6 +1228,22 @@ async function readLoopRecordFile(file: string): Promise<LoopRecord> {
   }
 
   return parsed;
+}
+
+async function detectUnknownLoopTopLevelFieldWarnings(file: string): Promise<string[]> {
+  const parsed = JSON.parse(await readFile(file, "utf8")) as unknown;
+  if (!isRecord(parsed)) {
+    return [];
+  }
+
+  const unknownKeys = Object.keys(parsed).filter((key) => !LOOP_RECORD_TOP_LEVEL_KEYS.has(key));
+  if (unknownKeys.length === 0) {
+    return [];
+  }
+
+  return [
+    `Untrusted loop record includes unknown top-level fields: ${unknownKeys.sort().join(", ")}. Treat this receipt as untrusted copied evidence.`
+  ];
 }
 
 async function readLatestWorkspaceIndexSummary(

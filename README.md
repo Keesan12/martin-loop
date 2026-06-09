@@ -25,13 +25,18 @@ npx martin-loop demo
 npx martin-loop --version
 cd martin-loop-demo
 npm install
+npx martin-loop start
 npx martin-loop doctor
 npx martin-loop session-start
 npx martin-loop preflight "Summarize the demo workspace and prove tests still pass" --verify "npm test"
 npx martin-loop run "Summarize the demo workspace and prove tests still pass" --proof --verify "npm test"
+npx martin-loop review
 npx martin-loop dossier --latest
+npx martin-loop receipts explain --latest
 npx martin-loop share --latest
 ```
+
+`start` gives a guided first-run summary (repo, verifier, provider readiness, and recommended next commands). `enable` writes repo-local defaults into `martin.config.yaml` without globally intercepting other tools.
 
 `doctor`, `session-start`, and `preflight` create the local receipts MartinLoop expects before a real governed run. If you intentionally need to bypass that local gate for a one-off run, use `--unsafe-allow-unguarded-run` explicitly.
 
@@ -56,12 +61,17 @@ Release notes for the current root package: [MartinLoop 0.3.2](./docs/release/OS
 | Policy and budget | Defaults come from `martin.config.yaml`; CLI flags can override them. Budget preflight blocks attempts that would exceed policy. |
 | Agent adapters | Claude CLI, Codex CLI, Gemini CLI, direct-provider, and verifier-only adapters normalize execution results. |
 | Safety and verification | Scope checks, verifier command checks, prompt integrity, and grounding decide whether work can continue. |
-| Persistence | JSONL run records, evidence summaries, and repo-backed artifacts make every run inspectable later. Each loop record is locally signed (HMAC, per-runs-root key) and `dossier`/`runs get`/`runs verify`/`challenge`/`badge` report an `integrity` verdict (`verified` / `tamper_detected` / `unsigned`) so post-hoc edits to a record are detectable, not just inspectable. |
+| Persistence | JSONL run records, evidence summaries, and repo-backed artifacts make every run inspectable later. Each loop record is locally signed (HMAC, per-runs-root key) and `dossier`/`runs get`/`runs verify`/`challenge`/`badge` report an integrity verdict (`verified`, `unsigned`, `tamper_detected`, `relocated`, `material_missing`, `selector_noncanonical`) so post-hoc edits and non-canonical evidence reads are explicit. |
 
 ## CLI
 
 ```text
 martin-loop doctor
+martin-loop start [options]
+martin-loop enable [options]
+martin-loop env [options]
+martin-loop review [--loop-id <id> | --file <path> | --latest] [options]
+martin-loop receipts explain [--loop-id <id> | --file <path> | --latest] [options]
 martin-loop demo
 martin-loop session-start [--host <claude|codex|gemini|generic>]
 martin-loop phase status|contract|session-start|preflight|run [--execute]

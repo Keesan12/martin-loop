@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -337,6 +337,94 @@ describe("operator commands", () => {
     expect(invalidPlatform.stderr).toContain("Invalid --platform value");
     expect(missingHost.exitCode).toBe(2);
     expect(missingHost.stderr).toContain("require --host");
+  });
+
+  it("returns guided onboarding state for start/env and writes repo defaults with enable", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const workingDirectory = await mkdtemp(join(tmpdir(), "martin-cli-onboarding-"));
+
+      try {
+        await writeFile(
+          join(workingDirectory, "package.json"),
+          JSON.stringify(
+            {
+              name: "demo-app",
+              version: "1.0.0",
+              scripts: {
+                test: "node --version"
+              }
+            },
+            null,
+            2
+          ),
+          "utf8"
+        );
+
+        const start = JSON.parse(
+          (await executeCli(["--json", "start", "--cwd", workingDirectory, "--runs-dir", runsRoot])).stdout
+        );
+        const env = JSON.parse(
+          (await executeCli(["--json", "env", "--cwd", workingDirectory, "--runs-dir", runsRoot])).stdout
+        );
+        const enable = JSON.parse(
+          (
+            await executeCli([
+              "--json",
+              "enable",
+              "--cwd",
+              workingDirectory,
+              "--runs-dir",
+              runsRoot,
+              "--engine",
+              "claude",
+              "--verify",
+              "node --version",
+              "--budget-usd",
+              "2",
+              "--max-iterations",
+              "1"
+            ])
+          ).stdout
+        );
+
+        expect(start.command).toBe("start");
+        expect(start.recommended.budgetUsd).toBe(2);
+        expect(start.next.share).toBe("martin share --latest");
+        expect(env.command).toBe("env");
+        expect(env.verifier.command).toBe("npm test");
+        expect(enable.command).toBe("enable");
+        expect(enable.defaults).toMatchObject({
+          engine: "claude",
+          verifier: "node --version",
+          budgetUsd: 2,
+          maxIterations: 1
+        });
+        await expect(readFile(enable.configPath, "utf8")).resolves.toContain("policyProfile: strict_local");
+      } finally {
+        await rm(workingDirectory, { force: true, recursive: true }).catch(() => {});
+      }
+    });
+  });
+
+  it("supports review no-runs guidance and receipts explain on persisted runs", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const review = JSON.parse((await executeCli(["--json", "review", "--runs-dir", runsRoot])).stdout);
+      expect(review.command).toBe("review");
+      expect(review.status).toBe("no_runs");
+
+      const loop = makeLoopRecord();
+      const loopDir = join(runsRoot, loop.loopId);
+      await mkdir(loopDir, { recursive: true });
+      await writeFile(join(loopDir, "loop-record.json"), JSON.stringify(loop, null, 2), "utf8");
+
+      const explain = JSON.parse(
+        (await executeCli(["--json", "receipts", "explain", "--loop-id", loop.loopId])).stdout
+      );
+
+      expect(explain.command).toBe("receipts_explain");
+      expect(explain.loopId).toBe(loop.loopId);
+      expect(typeof explain.explanation.meaning).toBe("string");
+    });
   });
 });
 

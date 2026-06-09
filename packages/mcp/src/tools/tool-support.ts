@@ -92,7 +92,7 @@ export interface ArtifactSummary {
 }
 
 export interface VerificationSummary {
-  status: "passed" | "failed" | "unavailable";
+  status: "passed" | "failed" | "contradicted" | "not_run";
   eventCount: number;
   ledgerEventCount: number;
   latestAttemptIndex?: number;
@@ -404,20 +404,28 @@ export function buildVerificationSummary(
   const latestEvidence = selectedEvidence.evidence;
   if (!latestEvidence) {
     return {
-      status: "unavailable",
+      status: "not_run",
       eventCount: verificationEvents.length,
       ledgerEventCount: verificationLedgerEvents.length,
       warnings
     };
   }
 
+  const contradicted =
+    latestEvidence.passed === true &&
+    warnings.some((warning) =>
+      warning.toLowerCase().includes("conflicts for the latest attempt")
+    );
+
   return {
     status:
-      latestEvidence.passed === true
+      contradicted
+        ? "contradicted"
+      : latestEvidence.passed === true
         ? "passed"
         : latestEvidence.passed === false
           ? "failed"
-          : "unavailable",
+          : "not_run",
     eventCount: verificationEvents.length,
     ledgerEventCount: verificationLedgerEvents.length,
     ...(latestEvidence.attemptIndex !== undefined ? { latestAttemptIndex: latestEvidence.attemptIndex } : {}),
@@ -434,7 +442,7 @@ export function buildVerificationSummary(
 export function resolveReceiptIntegrity(loop: InspectableLoopRecord): ReceiptIntegritySummary {
   return (
     loop.receiptIntegrity ?? {
-      state: "unsigned",
+      state: "selector_noncanonical",
       reason: "Receipt integrity metadata was not available on the loop record."
     }
   );
@@ -691,7 +699,7 @@ function selectLatestVerificationEvidence(
   );
 
   if (distinctStatuses.size > 1) {
-    warnings.push("Verification evidence conflicts for the latest attempt; reporting status as unavailable.");
+    warnings.push("Verification evidence conflicts for the latest attempt; marking verification as contradicted.");
     return { warnings };
   }
 

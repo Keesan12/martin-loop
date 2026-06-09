@@ -4,10 +4,10 @@ This file is the release source of truth for package/version mapping in this rep
 
 ## Root package: `martin-loop`
 
-- live npm dist-tag `latest`: `0.3.1`
-- live public GitHub release: `v0.3.1`
-- live public baseline in this train: `0.3.1`
-- root public baseline: `0.3.1`
+- live npm dist-tag `latest`: `0.3.2`
+- live public GitHub release: `v0.3.2`
+- live public baseline in this train: `0.3.2`
+- root public baseline: `0.3.2`
 - releases consumed since the original `0.2.8` launch:
   - `0.2.9` fixed proof-run classification, Windows `.cmd` resolution, and public provider defaults
   - `0.2.10` tightened verifier evidence, `--runs-dir` consistency, and public help output
@@ -57,10 +57,3 @@ This file is the release source of truth for package/version mapping in this rep
   - `npm view @martinloop/mcp version versions --json`
   - public GitHub `main`
   - the exact repo and branch under validation
-
-## Current Internal Harvest Status
-
-- active private OSS integration branch: `codex/oss-m2-merge-ready-mainline`
-- repair lineage supersedes the earlier closed PR lanes for `oss-audit-recovery-sync` and `oss-m2-merge-ready`
-- release-memory note for this chain: [OSS-M2-HARVEST-HANDOFF.md](./OSS-M2-HARVEST-HANDOFF.md)
-- routing rule: use the repaired mainline branch as the current truth candidate for validation, trust classification, and later `0.3.1` extraction

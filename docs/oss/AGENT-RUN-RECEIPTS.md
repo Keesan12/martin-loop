@@ -14,19 +14,15 @@ The OSS receipt is intentionally local-first. It prioritizes deterministic inspe
 
 | Field | Purpose |
 | --- | --- |
-| `receiptVersion` | Schema version for the receipt shape. |
-| `loopId` | Stable run identifier. |
-| `createdAt` | ISO timestamp when the receipt was written. |
-| `objective` | User-facing run objective (redacted if needed). |
-| `engine` | Agent runtime used for the run (`codex`, `claude`, `gemini`, and so on). |
-| `budget` | Execution limits: spend, token, iteration, and scope boundaries. |
-| `costProvenance` | Whether usage came from authoritative provider settlement, estimate, or unavailable source. |
-| `verificationPlan` | Verifier commands the run was expected to satisfy. |
-| `verifierResult` | Final verifier status, exit code, and evidence location. |
-| `haltReason` | Terminal outcome (`verified`, `budget_exhausted`, `verifier_failed`, `policy_blocked`, etc.). |
-| `runDossier` | Paths or summaries for attempts, logs, diffs, and final run state. |
-| `replaySteps` | Minimal commands required to re-check the result locally. |
-| `evidenceBoundaries` | What is included, redacted, excluded, or unavailable. |
+| `schemaVersion` | Receipt schema identifier (`martin.share-receipt.v1`). |
+| `generatedAt` | ISO timestamp when the share receipt was generated. |
+| `loop` | Top-level run facts: `loopId`, title/objective, status/lifecycleState, attempts, spend/budget, update time. |
+| `receiptIntegrity` | Integrity verdict from local persisted evidence (`verified`, `unsigned`, `tamper_detected`, `relocated`, `material_missing`, `selector_noncanonical`). |
+| `verification` | Verifier summary for the selected run. |
+| `receipt` | Governed-run summary with next safe action and risk posture fields. |
+| `artifacts` | Local artifact references included in the dossier view. |
+| `proofCard` | Portable proof-card content rendered into the Markdown and SVG outputs. |
+| `warnings` | Non-fatal warnings collected while building the receipt bundle. |
 
 ## Expected CLI and MCP surfaces
 
@@ -67,8 +63,10 @@ npx martin-loop run "Summarize the workspace and prove tests still pass" --proof
 
 ```sh
 npx martin-loop dossier --latest
+npx martin-loop review
 npx martin-loop runs get --latest
 npx martin-loop runs verify --latest
+npx martin-loop receipts explain --latest
 ```
 
 3. Create the share bundle:

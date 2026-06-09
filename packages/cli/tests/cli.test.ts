@@ -1,11 +1,11 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
 import { createLoopRecord } from "../../contracts/src/index.js";
-import { executeCli, parseCliArguments } from "../src/index.js";
+import { executeCli, parseCliArguments, setRunAdapterOverrideForTests } from "../src/index.js";
 
 describe("parseCliArguments", () => {
   it("parses version flags and subcommand", () => {
@@ -81,9 +81,36 @@ describe("parseCliArguments", () => {
     expect(parseCliArguments(["preflight", "--help"])).toEqual({ command: "help" });
     expect(parseCliArguments(["preflight", "-h"])).toEqual({ command: "help" });
   });
+
+  it("parses onboarding commands and objective shorthand", () => {
+    expect(parseCliArguments(["start"])).toEqual({ command: "start" });
+    expect(parseCliArguments(["enable"])).toMatchObject({ command: "enable", force: false });
+    expect(parseCliArguments(["env"])).toEqual({ command: "env" });
+    expect(parseCliArguments(["review"])).toEqual({ command: "review", selector: { latest: true } });
+    expect(parseCliArguments(["receipts", "explain"])).toEqual({
+      command: "receipts_explain",
+      selector: { latest: true }
+    });
+    expect(parseCliArguments(["fix flaky tests", "--proof", "--verify", "npm test"])).toEqual({
+      command: "run",
+      request: expect.objectContaining({
+        objective: "fix flaky tests",
+        verificationPlan: ["npm test"]
+      })
+    });
+  });
 });
 
 describe("executeCli", () => {
+  it("prints onboarding commands in CLI help", async () => {
+    const result = await executeCli(["--help"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("martin start [options]");
+    expect(result.stdout).toContain("martin enable [options]");
+    expect(result.stdout).toContain("martin receipts explain");
+  });
+
   it("prints the public root package version", async () => {
     const rootPackageVersion = (
       JSON.parse(await readFile(join(process.cwd(), "..", "..", "package.json"), "utf8")) as {
@@ -357,6 +384,338 @@ describe("executeCli", () => {
         process.env.MARTIN_LIVE = previousMarinLive;
       }
 
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("respects --proof live-mode override without requiring MARTIN_LIVE=false", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-proof-override-"));
+    const previousLive = process.env.MARTIN_LIVE;
+
+    try {
+      delete process.env.MARTIN_LIVE;
+      const result = await executeCli([
+        "--json",
+        "run",
+        "--objective",
+        "proof gate alignment",
+        "--proof",
+        "--verify",
+        `"${process.execPath}" -e "process.exit(0)"`,
+        "--cwd",
+        directory
+      ]);
+
+      expect(result.exitCode).toBe(0);
+      const payload = JSON.parse(result.stdout) as {
+        environment: { liveMode: string };
+      };
+      expect(payload.environment.liveMode).toBe("proof");
+    } finally {
+      if (previousLive === undefined) {
+        delete process.env.MARTIN_LIVE;
+      } else {
+        process.env.MARTIN_LIVE = previousLive;
+      }
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("loads default doctor config from --cwd instead of invocation root", async () => {
+    const invocationRoot = await mkdtemp(join(tmpdir(), "martin-cli-doctor-invocation-"));
+    const targetRepo = await mkdtemp(join(tmpdir(), "martin-cli-doctor-target-"));
+    const previousCwd = process.cwd();
+
+    try {
+      await writeFile(join(invocationRoot, "martin.config.yaml"), "policyProfile: strict\n", "utf8");
+      process.chdir(invocationRoot);
+
+      const result = await executeCli(["--json", "doctor", "--cwd", targetRepo]);
+      expect(result.exitCode).toBe(0);
+
+      const payload = JSON.parse(result.stdout) as {
+        config: { path: string; exists: boolean };
+        environment: { workingDirectory: string };
+      };
+
+      expect(payload.environment.workingDirectory).toBe(targetRepo);
+      expect(payload.config.path).toBe(join(targetRepo, "martin.config.yaml"));
+      expect(payload.config.exists).toBe(false);
+    } finally {
+      process.chdir(previousCwd);
+      await rm(invocationRoot, { force: true, recursive: true });
+      await rm(targetRepo, { force: true, recursive: true });
+    }
+  });
+
+  it("rejects traversal patterns in --allow-path during preflight", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-preflight-traversal-"));
+
+    try {
+      const result = await executeCli([
+        "preflight",
+        "--objective",
+        "Validate path policy",
+        "--cwd",
+        directory,
+        "--allow-path",
+        "..\\*"
+      ]);
+
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr).toContain("--allow-path cannot escape the repository root");
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("keeps receipt integrity parity between --latest and --loop-id selectors", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-selector-parity-"));
+    const runsRoot = join(directory, "runs");
+    const previousLive = process.env.MARTIN_LIVE;
+
+    try {
+      process.env.MARTIN_LIVE = "false";
+      const runResult = await executeCli([
+        "--json",
+        "run",
+        "--objective",
+        "selector parity",
+        "--verify",
+        `"${process.execPath}" -e "process.exit(0)"`,
+        "--cwd",
+        directory,
+        "--runs-dir",
+        runsRoot
+      ]);
+
+      expect(runResult.exitCode).toBe(0);
+      const runPayload = JSON.parse(runResult.stdout) as { loop: { loopId: string } };
+      const loopId = runPayload.loop.loopId;
+
+      const latestResult = await executeCli([
+        "--json",
+        "runs",
+        "verify",
+        "--latest",
+        "--runs-dir",
+        runsRoot
+      ]);
+      const loopIdResult = await executeCli([
+        "--json",
+        "runs",
+        "verify",
+        "--loop-id",
+        loopId,
+        "--runs-dir",
+        runsRoot
+      ]);
+
+      expect(latestResult.exitCode).toBe(0);
+      expect(loopIdResult.exitCode).toBe(0);
+
+      const latestPayload = JSON.parse(latestResult.stdout) as {
+        receiptIntegrity: { state: string };
+      };
+      const loopIdPayload = JSON.parse(loopIdResult.stdout) as {
+        receiptIntegrity: { state: string };
+      };
+
+      expect(latestPayload.receiptIntegrity.state).toBe(loopIdPayload.receiptIntegrity.state);
+      expect(loopIdPayload.receiptIntegrity.state).toBe("verified");
+    } finally {
+      if (previousLive === undefined) {
+        delete process.env.MARTIN_LIVE;
+      } else {
+        process.env.MARTIN_LIVE = previousLive;
+      }
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("suppresses sensitive share fields when receipt integrity is tampered", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-share-tampered-"));
+    const runsRoot = join(directory, "runs");
+    const previousLive = process.env.MARTIN_LIVE;
+
+    try {
+      process.env.MARTIN_LIVE = "false";
+      const runResult = await executeCli([
+        "--json",
+        "run",
+        "--objective",
+        "tamper share hardening",
+        "--verify",
+        `"${process.execPath}" -e "process.exit(0)"`,
+        "--cwd",
+        directory,
+        "--runs-dir",
+        runsRoot
+      ]);
+      expect(runResult.exitCode).toBe(0);
+      const runPayload = JSON.parse(runResult.stdout) as { loop: { loopId: string } };
+      const loopId = runPayload.loop.loopId;
+      const loopRecordPath = join(runsRoot, loopId, "loop-record.json");
+
+      const persisted = JSON.parse(await readFile(loopRecordPath, "utf8")) as {
+        status: string;
+        lifecycleState: string;
+        cost: { actualUsd: number };
+      };
+      persisted.status = "completed";
+      persisted.lifecycleState = "verified";
+      persisted.cost.actualUsd = 9.99;
+      await writeFile(loopRecordPath, `${JSON.stringify(persisted, null, 2)}\n`, "utf8");
+
+      const shareResult = await executeCli([
+        "--json",
+        "share",
+        "--file",
+        loopRecordPath,
+        "--runs-dir",
+        runsRoot,
+        "--out-dir",
+        join(directory, "share")
+      ]);
+      expect(shareResult.exitCode).toBe(0);
+      const sharePayload = JSON.parse(shareResult.stdout) as {
+        files: { receiptJson: string };
+      };
+      const receipt = JSON.parse(await readFile(sharePayload.files.receiptJson, "utf8")) as {
+        loop: {
+          status: string;
+          lifecycleState: string;
+          spendUsd: number | null;
+          budgetUsd: number | null;
+          trustNotice?: string;
+        };
+        receipt: { notice?: string };
+        verification: { status: string };
+        proofCard: { evidenceLine: string };
+      };
+
+      expect(receipt.loop.status).toBe("untrusted");
+      expect(receipt.loop.lifecycleState).toBe("untrusted");
+      expect(receipt.loop.spendUsd).toBeNull();
+      expect(receipt.loop.budgetUsd).toBeNull();
+      expect(receipt.loop.trustNotice).toContain("suppressed");
+      expect(receipt.receipt.notice).toContain("redacted");
+      expect(receipt.verification.status).toBe("untrusted");
+      const evidenceLine = receipt.proofCard.evidenceLine.toLowerCase();
+      expect(evidenceLine.includes("not trustworthy") || evidenceLine.includes("canonical verification")).toBe(true);
+    } finally {
+      if (previousLive === undefined) {
+        delete process.env.MARTIN_LIVE;
+      } else {
+        process.env.MARTIN_LIVE = previousLive;
+      }
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("surfaces unknown top-level fields as untrusted warnings for file-selected receipts", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-hidden-field-"));
+    const runsRoot = join(directory, "runs");
+    const previousLive = process.env.MARTIN_LIVE;
+
+    try {
+      process.env.MARTIN_LIVE = "false";
+      const runResult = await executeCli([
+        "--json",
+        "run",
+        "--objective",
+        "hidden field warning",
+        "--verify",
+        `"${process.execPath}" -e "process.exit(0)"`,
+        "--cwd",
+        directory,
+        "--runs-dir",
+        runsRoot
+      ]);
+      expect(runResult.exitCode).toBe(0);
+      const runPayload = JSON.parse(runResult.stdout) as { loop: { loopId: string } };
+      const loopId = runPayload.loop.loopId;
+      const loopRecordPath = join(runsRoot, loopId, "loop-record.json");
+
+      const persisted = JSON.parse(await readFile(loopRecordPath, "utf8")) as Record<string, unknown>;
+      persisted["hiddenControlPlaneDirective"] = "never-accept-me";
+      await writeFile(loopRecordPath, `${JSON.stringify(persisted, null, 2)}\n`, "utf8");
+
+      const getResult = await executeCli([
+        "--json",
+        "runs",
+        "get",
+        "--file",
+        loopRecordPath,
+        "--runs-dir",
+        runsRoot
+      ]);
+
+      expect(getResult.exitCode).toBe(0);
+      const getPayload = JSON.parse(getResult.stdout) as { warnings?: string[] };
+      expect(getPayload.warnings?.some((warning) => warning.includes("unknown top-level fields"))).toBe(true);
+    } finally {
+      if (previousLive === undefined) {
+        delete process.env.MARTIN_LIVE;
+      } else {
+        process.env.MARTIN_LIVE = previousLive;
+      }
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("fails closed with persisted fallback loop when adapter hangs beyond timeout", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-timeout-"));
+    const runsRoot = join(directory, "runs");
+    const previousLive = process.env.MARTIN_LIVE;
+    const previousTimeout = process.env.MARTIN_RUN_TIMEOUT_MS;
+
+    try {
+      process.env.MARTIN_LIVE = "true";
+      process.env.MARTIN_RUN_TIMEOUT_MS = "50";
+      setRunAdapterOverrideForTests({
+        adapterId: "hanging-adapter",
+        kind: "agent-cli",
+        label: "Hanging Adapter",
+        metadata: {
+          providerId: "test",
+          model: "test"
+        },
+        execute: async () =>
+          await new Promise(() => {
+            // intentional never-resolve for timeout regression coverage
+          })
+      });
+
+      const result = await executeCli([
+        "--json",
+        "run",
+        "--objective",
+        "timeout hardening",
+        "--proof",
+        "--verify",
+        `"${process.execPath}" -e "process.exit(0)"`,
+        "--cwd",
+        directory,
+        "--runs-dir",
+        runsRoot
+      ]);
+
+      expect(result.exitCode).toBe(3);
+      const dirs = await readdir(runsRoot, { withFileTypes: true });
+      expect(dirs.some((entry) => entry.isDirectory())).toBe(true);
+    } finally {
+      setRunAdapterOverrideForTests(undefined);
+      if (previousLive === undefined) {
+        delete process.env.MARTIN_LIVE;
+      } else {
+        process.env.MARTIN_LIVE = previousLive;
+      }
+      if (previousTimeout === undefined) {
+        delete process.env.MARTIN_RUN_TIMEOUT_MS;
+      } else {
+        process.env.MARTIN_RUN_TIMEOUT_MS = previousTimeout;
+      }
       await rm(directory, { force: true, recursive: true });
     }
   });

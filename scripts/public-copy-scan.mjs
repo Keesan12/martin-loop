@@ -67,7 +67,7 @@ const ROOT_FILES = [
 ];
 const DIRECTORY_RULES = [
   { relativePath: "docs", include: (name) => name.endsWith(".md") },
-  { relativePath: ".github", include: (name) => name.endsWith(".md") || name.endsWith(".yml") || name.endsWith(".yaml") },
+  { relativePath: ".github", include: (name) => name.endsWith(".md") },
   { relativePath: "packages", include: (name, fullPath) => name === "README.md" && fullPath.includes(`${path.sep}packages${path.sep}`) },
 ];
 
