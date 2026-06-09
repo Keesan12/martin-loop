@@ -135,6 +135,16 @@ export interface PersistedLoopDetail {
 }
 
 export type IntegrityStatus = ReceiptIntegritySummary["state"];
+export type VerificationIntegrityClassification =
+  | "tampered_payload"
+  | "missing_integrity_material"
+  | "schema_unknown_fields";
+
+export interface VerificationIntegrityStatus {
+  status: "passed" | "failed" | "unavailable";
+  summary: string;
+  classification?: VerificationIntegrityClassification;
+}
 
 export interface VerificationSummary {
   status: "passed" | "failed" | "unavailable";
@@ -144,6 +154,7 @@ export interface VerificationSummary {
   completedAt?: string;
   steps: VerificationStepSummary[];
   warnings: string[];
+  integrity?: VerificationIntegrityStatus;
 }
 
 export interface VerificationStepSummary {
@@ -273,7 +284,7 @@ export async function listPersistedLoops(
 
 export async function loadPersistedLoop(
   selector: MartinRunSelector,
-  options: { invocationRoot?: string } = {}
+  options: { invocationRoot?: string; requireCanonicalRunSelector?: boolean } = {}
 ): Promise<PersistedLoopDetail> {
   const runsRoot = resolveRunsRootPath(selector.runsDir, options.invocationRoot);
   const selectors = [
@@ -307,6 +318,9 @@ export async function loadPersistedLoop(
     if (targetStats.isDirectory()) {
       const canonical = await findCanonicalLoopRecordPath(targetPath);
       if (canonical) {
+        if (options.requireCanonicalRunSelector) {
+          assertCanonicalRunSelectorPath(canonical, runsRoot);
+        }
         return await attachReceiptIntegrity({
           source: canonical,
           runsRoot,
@@ -315,6 +329,17 @@ export async function loadPersistedLoop(
           runDirectory: path.dirname(canonical),
           loopRecordPath: canonical
         });
+      }
+
+      if (options.requireCanonicalRunSelector) {
+        throw new CliCommandError(
+          "invalid_input",
+          "File selector must resolve to a canonical run selector under the configured runs root.",
+          {
+            suggestion:
+              "Use --loop-id or --latest, or point --file at <runsRoot>/<loopId>/loop-record.json."
+          }
+        );
       }
 
       const inspected = await collectPersistedLoops(targetPath);
@@ -329,6 +354,10 @@ export async function loadPersistedLoop(
         loop,
         warnings: inspected.warnings
       });
+    }
+
+    if (options.requireCanonicalRunSelector) {
+      assertCanonicalRunSelectorPath(targetPath, runsRoot);
     }
 
     const loops = await readLoopsFromFile(targetPath, runsRoot);
@@ -351,6 +380,27 @@ export async function loadPersistedLoop(
     throw new CliCommandError("not_found", "No persisted Martin loops were found.");
   }
 
+  const canonicalDetail =
+    typeof loop.loopId === "string" ? await loadLoopById(loop.loopId, runsRoot).catch(() => undefined) : undefined;
+  if (canonicalDetail) {
+    return await attachReceiptIntegrity({
+      ...canonicalDetail,
+      runsRoot,
+      warnings: inspected.warnings
+    });
+  }
+
+  if (options.requireCanonicalRunSelector) {
+    throw new CliCommandError(
+      "invalid_input",
+      "File selector must resolve to a canonical run selector under the configured runs root.",
+      {
+        suggestion:
+          "Use --loop-id or --latest, or point --file at <runsRoot>/<loopId>/loop-record.json."
+      }
+    );
+  }
+
   return await attachReceiptIntegrity({
     source: runsRoot,
     runsRoot,
@@ -361,7 +411,7 @@ export async function loadPersistedLoop(
 
 export async function loadPersistedAttempt(
   selector: MartinRunSelector,
-  options: { invocationRoot?: string } = {}
+  options: { invocationRoot?: string; requireCanonicalRunSelector?: boolean } = {}
 ): Promise<{
   detail: PersistedLoopDetail;
   attempt: LoopRecord["attempts"][number];
@@ -382,7 +432,7 @@ export async function loadPersistedAttempt(
   return {
     detail,
     attempt,
-    verification: buildVerificationSummary(detail.loop)
+    verification: await buildVerificationSummaryWithIntegrity(detail)
   };
 }
 
@@ -458,6 +508,29 @@ export function buildVerificationSummary(loop: LoopRecord): VerificationSummary 
     completedAt: latestEvent.timestamp,
     steps,
     warnings
+  };
+}
+
+export async function buildVerificationSummaryWithIntegrity(
+  detail: PersistedLoopDetail
+): Promise<VerificationSummary> {
+  const verification = buildVerificationSummary(detail.loop);
+  const integrity = await assessReceiptIntegrity(detail);
+  const warnings = [...verification.warnings];
+  let summary = verification.summary;
+
+  if (integrity.status === "failed") {
+    warnings.push(`Integrity check failed (${integrity.classification ?? "unknown"}).`);
+    summary = `${verification.summary} Integrity: ${integrity.summary}`;
+  } else if (integrity.status === "unavailable") {
+    warnings.push("Integrity verification is unavailable for this selector.");
+  }
+
+  return {
+    ...verification,
+    summary,
+    warnings,
+    integrity
   };
 }
 
@@ -745,6 +818,168 @@ function resolveAbsolutePath(targetPath: string, base = resolveInvocationRoot())
   return path.isAbsolute(targetPath) ? path.normalize(targetPath) : path.resolve(base, targetPath);
 }
 
+function assertCanonicalRunSelectorPath(candidatePath: string, runsRoot: string): void {
+  const canonicalCandidate = path.resolve(candidatePath);
+  const canonicalRoot = path.resolve(runsRoot);
+  const relativePath = path.relative(canonicalRoot, canonicalCandidate);
+
+  if (relativePath === "" || relativePath === ".") {
+    return;
+  }
+
+  if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
+    throw new CliCommandError(
+      "invalid_input",
+      "File selector must resolve to a canonical run selector under the configured runs root.",
+      {
+        suggestion:
+          "Use --loop-id or --latest, or point --file at <runsRoot>/<loopId>/loop-record.json."
+      }
+    );
+  }
+}
+
+async function assessReceiptIntegrity(
+  detail: PersistedLoopDetail
+): Promise<VerificationIntegrityStatus> {
+  if (!detail.runDirectory || !detail.loopRecordPath) {
+    return {
+      status: "failed",
+      classification: "missing_integrity_material",
+      summary: "Missing canonical run directory context for receipt-integrity verification."
+    };
+  }
+
+  const runDirectory = detail.runDirectory;
+  const loopRecordPath = detail.loopRecordPath;
+  const integrityPath = path.join(runDirectory, "receipt-integrity.json");
+  const integrityRaw = await readFile(integrityPath, "utf8").catch(() => undefined);
+  if (!integrityRaw) {
+    return {
+      status: "failed",
+      classification: "missing_integrity_material",
+      summary: "receipt-integrity.json is missing."
+    };
+  }
+
+  const parsed = parseJsonRecord(integrityRaw);
+  if (!parsed) {
+    return {
+      status: "failed",
+      classification: "missing_integrity_material",
+      summary: "receipt-integrity.json is unreadable JSON."
+    };
+  }
+
+  const unknownFields = Object.keys(parsed).filter((key) => !RECEIPT_INTEGRITY_ALLOWED_TOP_KEYS.has(key));
+  if (unknownFields.length > 0) {
+    return {
+      status: "failed",
+      classification: "schema_unknown_fields",
+      summary: `receipt-integrity.json contains unsupported fields: ${unknownFields.join(", ")}.`
+    };
+  }
+
+  const schemaVersion = asNonEmptyString(parsed["schemaVersion"]);
+  const runId = asNonEmptyString(parsed["runId"]);
+  const loopRecordSha256 = asNonEmptyString(parsed["loopRecordSha256"]);
+  const ledgerSha256 = asNonEmptyString(parsed["ledgerSha256"]);
+  const ledgerHeadHash = asNonEmptyString(parsed["ledgerHeadHash"]);
+  const signatureHmacSha256 = asNonEmptyString(parsed["signatureHmacSha256"]);
+  if (
+    schemaVersion !== "martin.receipt-integrity.v1" ||
+    !runId ||
+    !loopRecordSha256 ||
+    !ledgerSha256 ||
+    !ledgerHeadHash ||
+    !signatureHmacSha256
+  ) {
+    return {
+      status: "failed",
+      classification: "missing_integrity_material",
+      summary: "receipt-integrity.json is missing required integrity fields."
+    };
+  }
+
+  if (runId !== detail.loop.loopId) {
+    return {
+      status: "failed",
+      classification: "tampered_payload",
+      summary: `receipt-integrity runId (${runId}) does not match loopId (${detail.loop.loopId}).`
+    };
+  }
+
+  const loopRecordRaw = await readFile(loopRecordPath, "utf8").catch(() => undefined);
+  if (!loopRecordRaw) {
+    return {
+      status: "failed",
+      classification: "missing_integrity_material",
+      summary: "Canonical loop-record.json is missing."
+    };
+  }
+  if (sha256(loopRecordRaw) !== loopRecordSha256) {
+    return {
+      status: "failed",
+      classification: "tampered_payload",
+      summary: "loop-record.json hash does not match receipt-integrity metadata."
+    };
+  }
+
+  const ledgerPath =
+    (await stat(path.join(runDirectory, "events.jsonl")).then(() => path.join(runDirectory, "events.jsonl")).catch(() => undefined)) ??
+    (await stat(path.join(runDirectory, "ledger.jsonl")).then(() => path.join(runDirectory, "ledger.jsonl")).catch(() => undefined));
+  if (!ledgerPath) {
+    return {
+      status: "failed",
+      classification: "missing_integrity_material",
+      summary: "No events.jsonl or ledger.jsonl was found for integrity verification."
+    };
+  }
+
+  const ledgerRaw = await readFile(ledgerPath, "utf8").catch(() => undefined);
+  if (!ledgerRaw) {
+    return {
+      status: "failed",
+      classification: "missing_integrity_material",
+      summary: "Ledger material is unreadable for integrity verification."
+    };
+  }
+
+  if (sha256(ledgerRaw) !== ledgerSha256) {
+    return {
+      status: "failed",
+      classification: "tampered_payload",
+      summary: "Ledger hash does not match receipt-integrity metadata."
+    };
+  }
+
+  if (Array.isArray(parsed["chain"])) {
+    const chain = parsed["chain"] as Array<Record<string, unknown>>;
+    const declaredEntryCount = typeof parsed["entryCount"] === "number" ? parsed["entryCount"] : undefined;
+    if (declaredEntryCount !== undefined && chain.length > 0 && declaredEntryCount !== chain.length) {
+      return {
+        status: "failed",
+        classification: "tampered_payload",
+        summary: "receipt-integrity chain length does not match entryCount."
+      };
+    }
+
+    const tailHash = asNonEmptyString(chain.at(-1)?.["entryHash"]);
+    if (tailHash && tailHash !== ledgerHeadHash) {
+      return {
+        status: "failed",
+        classification: "tampered_payload",
+        summary: "receipt-integrity ledgerHeadHash does not match chain tail hash."
+      };
+    }
+  }
+
+  return {
+    status: "passed",
+    summary: "Receipt integrity checks passed for loop-record and ledger material."
+  };
+}
+
 function resolveReceiptIntegrity(loop: LoopRecord): ReceiptIntegritySummary {
   return (
     loop.receiptIntegrity ?? {
@@ -1023,6 +1258,40 @@ function isWorkspaceIndexSummary(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+const RECEIPT_INTEGRITY_ALLOWED_TOP_KEYS = new Set([
+  "schemaVersion",
+  "runId",
+  "keyId",
+  "signedAt",
+  "scope",
+  "loopRecordSha256",
+  "ledgerSha256",
+  "ledgerHeadHash",
+  "entryCount",
+  "chain",
+  "signatureHmacSha256"
+]);
+
+function parseJsonRecord(value: string): Record<string, unknown> | undefined {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return undefined;
+    }
+    return parsed as Record<string, unknown>;
+  } catch {
+    return undefined;
+  }
+}
+
+function asNonEmptyString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function sha256(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
 }
 
 function readVerificationWarnings(payload: Record<string, unknown> | undefined): string[] {
