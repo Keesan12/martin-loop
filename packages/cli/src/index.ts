@@ -1,7 +1,7 @@
 import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
@@ -28,6 +28,7 @@ import {
   type MartinRunListFilters,
   type MartinRunSelector,
   type MutationMode,
+  type ReceiptIntegritySummary,
   type ReceiptScope
 } from "@martin/contracts";
 
@@ -124,6 +125,22 @@ function resolveRootPackageVersion(): string {
 const rootPackageVersion = resolveRootPackageVersion();
 let runAdapterOverrideForTests: MartinAdapter | undefined;
 
+const DEFAULT_RUN_TIMEOUT_MS = 30 * 60 * 1000;
+
+class RunTimeoutError extends Error {
+  readonly timeoutMs: number;
+
+  constructor(timeoutMs: number) {
+    super(`Martin run timed out after ${timeoutMs}ms`);
+    this.timeoutMs = timeoutMs;
+    this.name = "RunTimeoutError";
+  }
+}
+
+export function setRunAdapterOverrideForTests(adapter: MartinAdapter | undefined): void {
+  runAdapterOverrideForTests = adapter;
+}
+
 export type RunCommandRequest = {
   workspaceId: string;
   projectId: string;
@@ -138,6 +155,7 @@ export type RunCommandRequest = {
   runsDir?: string;
   model?: string;
   engine?: string;
+  liveMode?: "live" | "proof";
   mutationMode?: MutationMode;
   allowedPaths?: string[];
   deniedPaths?: string[];
@@ -171,6 +189,40 @@ type DoctorCommand = {
   runsDir?: string;
   engine?: "claude" | "codex" | "gemini" | "openai";
   configPath?: string;
+};
+
+type StartCommand = {
+  command: "start";
+  cwd?: string;
+  runsDir?: string;
+};
+
+type EnableCommand = {
+  command: "enable";
+  cwd?: string;
+  runsDir?: string;
+  configPath?: string;
+  engine?: "claude" | "codex" | "gemini" | "openai";
+  verifier?: string;
+  budgetUsd?: number;
+  maxIterations?: number;
+  force: boolean;
+};
+
+type EnvCommand = {
+  command: "env";
+  cwd?: string;
+  runsDir?: string;
+};
+
+type ReviewCommand = {
+  command: "review";
+  selector: MartinRunSelector;
+};
+
+type ReceiptsExplainCommand = {
+  command: "receipts_explain";
+  selector: MartinRunSelector;
 };
 
 type NativePhaseCommand = {
@@ -303,6 +355,8 @@ type BenchmarkSuiteFixture = {
   }>;
 };
 
+type IntegrityStatus = ReceiptIntegritySummary["state"];
+
 export type ParsedCliArguments =
   | {
       command: "help";
@@ -326,6 +380,11 @@ export type ParsedCliArguments =
   | InspectCommand
   | ResumeCommand
   | DoctorCommand
+  | StartCommand
+  | EnableCommand
+  | EnvCommand
+  | ReviewCommand
+  | ReceiptsExplainCommand
   | NativePhaseCommand
   | PreflightCommand
   | TriageCommand
@@ -386,6 +445,16 @@ export async function executeCli(args: string[]): Promise<{
         return await executeResumeCommand(parsed, outputMode);
       case "doctor":
         return await executeDoctorCommand(parsed, outputMode);
+      case "start":
+        return await executeStartCommand(parsed, outputMode);
+      case "enable":
+        return await executeEnableCommand(parsed, outputMode);
+      case "env":
+        return await executeEnvCommand(parsed, outputMode);
+      case "review":
+        return await executeReviewCommand(parsed, outputMode);
+      case "receipts_explain":
+        return await executeReceiptsExplainCommand(parsed.selector, outputMode);
       case "native_phase":
         return await executeNativePhaseCommand(parsed, outputMode);
       case "preflight":
@@ -484,6 +553,63 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
       ...(readOption(rest, "--engine") === "gemini" ? { engine: "gemini" as const } : {}),
       ...(readOption(rest, "--engine") === "openai" ? { engine: "openai" as const } : {})
     };
+  }
+
+  if (command === "start") {
+    return {
+      command: "start",
+      ...(readOption(rest, "--cwd") ? { cwd: readOption(rest, "--cwd") } : {}),
+      ...(readOption(rest, "--runs-dir") ? { runsDir: readOption(rest, "--runs-dir") } : {})
+    };
+  }
+
+  if (command === "enable") {
+    return {
+      command: "enable",
+      ...(readOption(rest, "--cwd") ? { cwd: readOption(rest, "--cwd") } : {}),
+      ...(readOption(rest, "--runs-dir") ? { runsDir: readOption(rest, "--runs-dir") } : {}),
+      ...(readOption(rest, "--config") ? { configPath: readOption(rest, "--config") } : {}),
+      ...(readOption(rest, "--engine") === "codex" ? { engine: "codex" as const } : {}),
+      ...(readOption(rest, "--engine") === "claude" ? { engine: "claude" as const } : {}),
+      ...(readOption(rest, "--engine") === "gemini" ? { engine: "gemini" as const } : {}),
+      ...(readOption(rest, "--engine") === "openai" ? { engine: "openai" as const } : {}),
+      ...(readOption(rest, "--verify") ? { verifier: readOption(rest, "--verify") } : {}),
+      ...(readOption(rest, "--budget-usd") ? { budgetUsd: Number(readOption(rest, "--budget-usd")) } : {}),
+      ...(readOption(rest, "--max-iterations")
+        ? { maxIterations: Number(readOption(rest, "--max-iterations")) }
+        : {}),
+      force: hasFlag(rest, "--force")
+    };
+  }
+
+  if (command === "env") {
+    return {
+      command: "env",
+      ...(readOption(rest, "--cwd") ? { cwd: readOption(rest, "--cwd") } : {}),
+      ...(readOption(rest, "--runs-dir") ? { runsDir: readOption(rest, "--runs-dir") } : {})
+    };
+  }
+
+  if (command === "review") {
+    const selector = parseOptionalRunSelector(rest);
+    const runsDir = readOption(rest, "--runs-dir");
+    return {
+      command: "review",
+      selector: selector ?? { latest: true, ...(runsDir ? { runsDir } : {}) }
+    };
+  }
+
+  if (command === "receipts") {
+    const [subcommand, ...subcommandArgs] = rest;
+    if (subcommand === "explain") {
+      const selector = parseOptionalRunSelector(subcommandArgs);
+      const runsDir = readOption(subcommandArgs, "--runs-dir");
+      return {
+        command: "receipts_explain",
+        selector: selector ?? { latest: true, ...(runsDir ? { runsDir } : {}) }
+      };
+    }
+    return { command: "help" };
   }
 
   if (command === "session-start") {
@@ -627,6 +753,13 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
     };
   }
 
+  if (!command.startsWith("-")) {
+    return {
+      command: "run",
+      request: parseRunRequest([command, ...rest])
+    };
+  }
+
   return { command: "help" };
 }
 
@@ -638,6 +771,11 @@ export function renderCliHelp(): string {
     "  martin run <objective> [options]",
     "  martin-loop run <objective> [options]    (published alias)",
     "  martin preflight <objective> [options]",
+    "  martin start [options]",
+    "  martin enable [options]",
+    "  martin env [options]",
+    "  martin review [--loop-id <id> | --file <path> | --latest] [options]",
+    "  martin receipts explain [--loop-id <id> | --file <path> | --latest] [options]",
     "  martin doctor [options]",
     "  martin session-start [--host <claude|codex|generic>] [options]",
     "  martin phase status|contract|preflight|run [--execute] [options]",
@@ -661,6 +799,11 @@ export function renderCliHelp(): string {
     "  martin badge [--format svg|json]",
     "",
     "Operator commands:",
+    "  start        Guided first-run summary: repo detection, verifier suggestion, provider readiness, and safe next steps.",
+    "  enable       Write repo-local Martin defaults to martin.config.yaml (engine, verifier, budget).",
+    "  env          Print compact environment truth for provider/auth/verifier/readiness.",
+    "  review       Print a human-friendly summary for the latest governed run.",
+    "  receipts explain  Explain receipt trust state and what to do next.",
     "  doctor       Check CLI, engine, working directory, and run-store readiness.",
     "  session-start Show latest local run state, phase state, and command hints.",
     "  phase status    Read local phase state and run-store posture.",
@@ -702,6 +845,7 @@ export function renderCliHelp(): string {
     "  --host <name>            Host name for session-start guidance.",
     "  --run-scan-limit <n>     Max recent run directories to inspect (default: 40).",
     "  --execute                Execute generated preflight/run command after contract validation.",
+    "  --force                  Allow martin enable to overwrite an existing config file.",
     "",
     "MCP config options:",
     "  --host <name>            codex, claude, gemini, or generic.",
@@ -750,21 +894,16 @@ async function executeRunCommand(
   const cliEnvironment = resolveCliEnvironment({
     cwd: request.cwd,
     runsDir: request.runsDir,
-    engine: request.engine
+    engine: request.engine,
+    liveMode: request.liveMode
   });
   const resolvedGuardrails = await resolveGuardrails(request, cliEnvironment.workingDirectory);
   const resolvedRequest = applyExecutionPolicyToRequest(request, resolvedGuardrails);
   const receiptScope = buildCliReceiptScope(cliEnvironment);
-  const adapter = selectAdapter(
-    resolvedRequest.engine,
-    cliEnvironment.workingDirectory,
-    resolvedRequest.model,
-    resolvedRequest.mutationMode
-  );
-
   let result: Awaited<ReturnType<typeof runMartin>>;
   const engineRequired =
     resolvedRequest.mutationMode !== "verify_only" && cliEnvironment.liveMode === "live";
+  let codexCommandOverride: string | undefined;
 
   if (engineRequired) {
     const gate = await evaluateCliRunGate({
@@ -792,8 +931,10 @@ async function executeRunCommand(
   }
 
   if (engineRequired && cliEnvironment.engine === "codex") {
+    const codexAvailability = resolveCliCommandAvailability("codex");
     const codexProbe = probeCodexLaunch({
-      workingDirectory: cliEnvironment.workingDirectory
+      workingDirectory: cliEnvironment.workingDirectory,
+      availability: codexAvailability
     });
     if (!codexProbe.ok) {
       throw new CliCommandError("environment", codexProbe.summary, {
@@ -806,24 +947,37 @@ async function executeRunCommand(
         }
       });
     }
+    codexCommandOverride = codexProbe.command;
   }
+  const runtimeAdapter = selectAdapter(
+    resolvedRequest.engine,
+    cliEnvironment.workingDirectory,
+    cliEnvironment.liveMode,
+    resolvedRequest.model,
+    resolvedRequest.mutationMode,
+    codexCommandOverride
+  );
   try {
-    result = await runMartin({
-      workspaceId: resolvedRequest.workspaceId,
-      projectId: resolvedRequest.projectId,
-      receiptScope: {
-        ...receiptScope
-      },
-      task: {
-        title: resolvedRequest.title,
-        objective: resolvedRequest.objective,
-        ...resolvedGuardrails.task
-      },
-      budget: resolvedRequest.budget,
-      metadata: resolvedRequest.metadata,
-      adapter,
-      executionPolicy: resolvedGuardrails
-    });
+    const runTimeoutMs = resolveRunTimeoutMs(process.env.MARTIN_RUN_TIMEOUT_MS);
+    result = await runWithTimeout(
+      runMartin({
+        workspaceId: resolvedRequest.workspaceId,
+        projectId: resolvedRequest.projectId,
+        receiptScope: {
+          ...receiptScope
+        },
+        task: {
+          title: resolvedRequest.title,
+          objective: resolvedRequest.objective,
+          ...resolvedGuardrails.task
+        },
+        budget: resolvedRequest.budget,
+        metadata: resolvedRequest.metadata,
+        adapter: runtimeAdapter,
+        executionPolicy: resolvedGuardrails
+      }),
+      runTimeoutMs
+    );
   } catch (error) {
     const fallbackLoop = createLoopRecord({
       workspaceId: resolvedRequest.workspaceId,
@@ -849,7 +1003,12 @@ async function executeRunCommand(
         "Run `martin doctor` to verify engine availability, or set MARTIN_LIVE=false to use the stub adapter locally.",
       details: {
         loopId: fallbackLoop.loopId,
-        reason: error instanceof Error ? error.message : String(error)
+        reason:
+          error instanceof RunTimeoutError
+            ? `Timed out after ${error.timeoutMs}ms before adapter completion.`
+            : error instanceof Error
+              ? error.message
+              : String(error)
       }
     });
   }
@@ -1058,7 +1217,7 @@ async function executeDoctorCommand(
   });
   const configPath = command.configPath
     ? resolveConfigPath(command.configPath)
-    : join(environment.invocationRoot, "martin.config.yaml");
+    : join(environment.workingDirectory, "martin.config.yaml");
   const configExists = await stat(configPath).then(() => true).catch(() => false);
   const workingDirectoryReady = await stat(environment.workingDirectory).then(() => true).catch(() => false);
   const runsRootReady = await stat(environment.runsRoot).then(() => true).catch(() => false);
@@ -1186,6 +1345,519 @@ async function executeDoctorCommand(
   });
 }
 
+type StartEnvironmentSnapshot = {
+  workingDirectoryReady: boolean;
+  runsRootReady: boolean;
+  claudeAvailable: boolean;
+  codexAvailability: ReturnType<typeof resolveCliCommandAvailability>;
+  geminiAvailability: ReturnType<typeof resolveCliCommandAvailability>;
+  verifier: {
+    command: string;
+    detected: boolean;
+  };
+  recommendedEngine: "claude" | "codex" | "gemini" | "openai";
+  git: {
+    detected: boolean;
+    clean?: boolean;
+  };
+};
+
+async function executeEnvCommand(
+  command: EnvCommand,
+  outputMode: MartinOutputMode
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  const environment = resolveCliEnvironment({
+    cwd: command.cwd,
+    runsDir: command.runsDir
+  });
+  const snapshot = await collectStartEnvironmentSnapshot(environment.workingDirectory, environment.runsRoot);
+  const openai = resolveOpenAiCompatibleRuntimeConfig();
+  const receiptScope = buildCliReceiptScope(environment);
+  const warnings: string[] = [];
+
+  if (!snapshot.workingDirectoryReady) {
+    warnings.push("Working directory is missing.");
+  }
+  if (!snapshot.runsRootReady) {
+    warnings.push("Runs root does not exist yet; MartinLoop will create it on first persisted run.");
+  }
+
+  return renderCliSuccess(outputMode, {
+    data: {
+      command: "env",
+      environment,
+      git: snapshot.git,
+      verifier: snapshot.verifier,
+      providers: {
+        claude: { ready: snapshot.claudeAvailable },
+        codex: {
+          ready: snapshot.codexAvailability.available,
+          ...(snapshot.codexAvailability.resolvedPath ? { resolvedPath: snapshot.codexAvailability.resolvedPath } : {})
+        },
+        gemini: {
+          ready: snapshot.geminiAvailability.available,
+          ...(snapshot.geminiAvailability.resolvedPath ? { resolvedPath: snapshot.geminiAvailability.resolvedPath } : {})
+        },
+        openai: {
+          ready: true,
+          baseUrl: openai.baseUrl,
+          model: openai.model,
+          apiKeyConfigured: openai.apiKeyConfigured
+        }
+      },
+      receiptSigning: {
+        ready: snapshot.runsRootReady,
+        note: snapshot.runsRootReady
+          ? "Runs root exists; receipt integrity material can be persisted."
+          : "Runs root will be created on first persisted run."
+      },
+      recommendedEngine: snapshot.recommendedEngine,
+      receiptScope
+    },
+    human: [
+      "Martin environment",
+      `Repo: ${environment.workingDirectory} (${snapshot.git.detected ? "git detected" : "no git metadata"})`,
+      `Verifier: ${snapshot.verifier.command}${snapshot.verifier.detected ? " (detected)" : " (default)"}`,
+      `Claude: ${snapshot.claudeAvailable ? "ready" : "blocked (cli missing)"}`,
+      `Codex: ${snapshot.codexAvailability.available ? "ready" : "blocked (cli missing)"}`,
+      `Gemini: ${snapshot.geminiAvailability.available ? "ready" : "blocked (cli missing)"}`,
+      `OpenAI-compatible: ready (${openai.baseUrl}, ${openai.model})`,
+      `Receipt signing: ${snapshot.runsRootReady ? "ready" : "not initialized yet"}`,
+      `Recommended engine: ${snapshot.recommendedEngine}`
+    ],
+    quiet: snapshot.recommendedEngine,
+    warnings
+  });
+}
+
+async function executeStartCommand(
+  command: StartCommand,
+  outputMode: MartinOutputMode
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  const environment = resolveCliEnvironment({
+    cwd: command.cwd,
+    runsDir: command.runsDir
+  });
+  const snapshot = await collectStartEnvironmentSnapshot(environment.workingDirectory, environment.runsRoot);
+  const receiptScope = buildCliReceiptScope(environment);
+  const objective = "Summarize this repository and confirm the verifier is green.";
+  const preflightCommand = `martin preflight "${objective}" --verify "${snapshot.verifier.command}"`;
+  const proofCommand = `martin run "${objective}" --proof --verify "${snapshot.verifier.command}"`;
+
+  await recordCliWorkflowStep({
+    runsRoot: environment.runsRoot,
+    step: "start",
+    workingDirectory: environment.workingDirectory,
+    engine: snapshot.recommendedEngine,
+    receiptScope
+  }).catch(() => {});
+
+  return renderCliSuccess(outputMode, {
+    data: {
+      command: "start",
+      environment,
+      receiptScope,
+      repo: {
+        path: environment.workingDirectory,
+        gitDetected: snapshot.git.detected,
+        workingTree: snapshot.git.clean === undefined ? "unknown" : snapshot.git.clean ? "clean" : "dirty"
+      },
+      verifier: snapshot.verifier,
+      recommended: {
+        engine: snapshot.recommendedEngine,
+        verifier: snapshot.verifier.command,
+        budgetUsd: 2,
+        maxIterations: 1
+      },
+      next: {
+        doctor: "martin doctor",
+        sessionStart: "martin session-start",
+        preflight: preflightCommand,
+        proofRun: proofCommand,
+        enable: `martin enable --engine ${snapshot.recommendedEngine} --verify "${snapshot.verifier.command}" --budget-usd 2 --max-iterations 1`,
+        review: "martin review",
+        share: "martin share --latest"
+      }
+    },
+    human: [
+      "MartinLoop is ready to set up governed runs in this repo.",
+      "",
+      "Environment",
+      `- Verifier: ${snapshot.verifier.command}${snapshot.verifier.detected ? "" : " (default)"}`,
+      `- Codex: ${snapshot.codexAvailability.available ? "ready" : "blocked"}`,
+      `- Claude: ${snapshot.claudeAvailable ? "ready" : "blocked"}`,
+      `- Gemini: ${snapshot.geminiAvailability.available ? "ready" : "blocked"}`,
+      `- Recommended engine: ${snapshot.recommendedEngine}`,
+      "",
+      "Next steps",
+      `1. martin doctor`,
+      `2. martin session-start`,
+      `3. ${preflightCommand}`,
+      `4. ${proofCommand}`,
+      `5. martin share --latest`,
+      "",
+      "Optional repo defaults",
+      `- martin enable --engine ${snapshot.recommendedEngine} --verify "${snapshot.verifier.command}" --budget-usd 2 --max-iterations 1`
+    ],
+    quiet: "martin start"
+  });
+}
+
+async function executeEnableCommand(
+  command: EnableCommand,
+  outputMode: MartinOutputMode
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  const environment = resolveCliEnvironment({
+    cwd: command.cwd,
+    runsDir: command.runsDir,
+    engine: command.engine
+  });
+  const snapshot = await collectStartEnvironmentSnapshot(environment.workingDirectory, environment.runsRoot);
+  const configPath = command.configPath
+    ? resolveConfigPath(command.configPath)
+    : join(environment.workingDirectory, "martin.config.yaml");
+  const configExists = await stat(configPath).then(() => true).catch(() => false);
+  if (configExists && !command.force) {
+    throw new CliCommandError("invalid_input", `Config already exists at ${configPath}.`, {
+      suggestion: "Re-run with --force to overwrite, or pass --config <path>."
+    });
+  }
+
+  const engine = command.engine ?? snapshot.recommendedEngine;
+  const verifier = command.verifier?.trim() || snapshot.verifier.command;
+  const budgetUsd = Number.isFinite(command.budgetUsd) && (command.budgetUsd ?? 0) > 0 ? Number(command.budgetUsd) : 2;
+  const maxIterations = Number.isFinite(command.maxIterations) && (command.maxIterations ?? 0) > 0
+    ? Number(command.maxIterations)
+    : 1;
+  const softLimit = Number(Math.max(0.1, budgetUsd * 0.8).toFixed(2));
+  const maxTokens = 20_000;
+  const configContents = renderMartinConfigYaml({
+    policyProfile: "strict_local",
+    verifier,
+    budgetUsd,
+    softLimitUsd: softLimit,
+    maxIterations,
+    maxTokens,
+    telemetryDestination: "local"
+  });
+
+  await writeFile(configPath, configContents, "utf8");
+
+  return renderCliSuccess(outputMode, {
+    data: {
+      command: "enable",
+      configPath,
+      defaults: {
+        engine,
+        verifier,
+        budgetUsd,
+        maxIterations,
+        maxTokens
+      },
+      next: {
+        doctor: "martin doctor",
+        sessionStart: "martin session-start",
+        preflight: `martin preflight "Summarize this repository and confirm the verifier is green." --verify "${verifier}"`,
+        run: `martin "fix the next failing test and keep ${verifier} green"`
+      }
+    },
+    human: [
+      "MartinLoop is now enabled for this repo.",
+      `Config: ${configPath}`,
+      "",
+      "Defaults",
+      `- Engine: ${engine}`,
+      `- Verifier: ${verifier}`,
+      `- Budget cap: $${budgetUsd.toFixed(2)}`,
+      `- Max iterations: ${maxIterations}`,
+      "",
+      "Next",
+      "- martin doctor",
+      "- martin session-start",
+      `- martin preflight "Summarize this repository and confirm the verifier is green." --verify "${verifier}"`,
+      `- martin "fix the next failing test and keep ${verifier} green"`
+    ],
+    quiet: configPath
+  });
+}
+
+async function executeReviewCommand(
+  command: ReviewCommand,
+  outputMode: MartinOutputMode
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  let detail: Awaited<ReturnType<typeof loadPersistedLoop>>;
+  try {
+    detail = await loadPersistedLoop(command.selector);
+  } catch (error) {
+    if (error instanceof CliCommandError && error.category === "not_found") {
+      return renderCliSuccess(outputMode, {
+        data: {
+          command: "review",
+          status: "no_runs",
+          next: [
+            "martin doctor",
+            "martin session-start",
+            "martin preflight \"Summarize this repository and confirm the verifier is green.\" --verify \"npm test\""
+          ]
+        },
+        human: [
+          "No governed runs were found yet.",
+          "Start here:",
+          "- martin doctor",
+          "- martin session-start",
+          "- martin preflight \"Summarize this repository and confirm the verifier is green.\" --verify \"npm test\"",
+          "- martin run \"Summarize this repository and confirm the verifier is green.\" --proof --verify \"npm test\""
+        ],
+        quiet: "no_runs"
+      });
+    }
+    throw error;
+  }
+
+  const dossier = buildRunDossier(detail);
+  const verification = buildVerificationSummary(detail.loop);
+  const costProvenance = readCostProvenance(detail.loop);
+  const trustworthy = detail.integrity.state === "verified";
+
+  return renderCliSuccess(outputMode, {
+    data: {
+      command: "review",
+      loopId: detail.loop.loopId,
+      status: detail.loop.status,
+      lifecycleState: detail.loop.lifecycleState,
+      verification,
+      receiptIntegrity: detail.integrity,
+      trusted: trustworthy,
+      cost: {
+        usd: detail.loop.cost.actualUsd,
+        provenance: describeCostProvenance(costProvenance)
+      },
+      changedFiles: detail.loop.artifacts.filter((artifact) => artifact.kind === "diff").map((artifact) => artifact.label),
+      receipt: dossier["receipt"]
+    },
+    human: [
+      "Latest run",
+      `- Loop: ${detail.loop.loopId}`,
+      `- Status: ${detail.loop.status} / ${detail.loop.lifecycleState}`,
+      `- Verification: ${verification.status}`,
+      `- Receipt integrity: ${detail.integrity.state}`,
+      `- Cost: $${detail.loop.cost.actualUsd.toFixed(2)} (${describeCostProvenance(costProvenance)})`,
+      `- Trust: ${trustworthy ? "verified receipt" : "needs investigation before sharing"}`,
+      "",
+      "Next",
+      "- martin share --latest",
+      "- martin runs verify --latest",
+      "- martin \"next objective\""
+    ],
+    quiet: detail.loop.loopId,
+    warnings: [...detail.warnings, ...verification.warnings]
+  });
+}
+
+async function executeReceiptsExplainCommand(
+  selector: MartinRunSelector,
+  outputMode: MartinOutputMode
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  const detail = await loadPersistedLoop(selector);
+  const integrity = detail.integrity.state;
+  const explanation = explainIntegrityState(integrity);
+  const verification = buildVerificationSummary(detail.loop);
+
+  return renderCliSuccess(outputMode, {
+    data: {
+      command: "receipts_explain",
+      loopId: detail.loop.loopId,
+      receiptIntegrity: detail.integrity,
+      verification,
+      explanation
+    },
+    human: [
+      `Receipt trust for ${detail.loop.loopId}`,
+      `- Integrity state: ${integrity}`,
+      `- Meaning: ${explanation.meaning}`,
+      `- Safe to share as verified evidence: ${explanation.shareSafe ? "yes" : "no"}`,
+      `- Next action: ${explanation.nextAction}`
+    ],
+    quiet: integrity,
+    warnings: [...detail.warnings, ...verification.warnings]
+  });
+}
+
+async function collectStartEnvironmentSnapshot(
+  workingDirectory: string,
+  runsRoot: string
+): Promise<StartEnvironmentSnapshot> {
+  const workingDirectoryReady = await stat(workingDirectory).then(() => true).catch(() => false);
+  const runsRootReady = await stat(runsRoot).then(() => true).catch(() => false);
+  const claudeAvailable = isCommandAvailable("claude");
+  const codexAvailability = resolveCliCommandAvailability("codex");
+  const geminiAvailability = resolveCliCommandAvailability("gemini");
+  const verifier = await detectVerifierCommand(workingDirectory);
+  const recommendedEngine = selectRecommendedEngine({
+    claudeAvailable,
+    codexAvailable: codexAvailability.available,
+    geminiAvailable: geminiAvailability.available
+  });
+  const git = inspectGitRepository(workingDirectory);
+
+  return {
+    workingDirectoryReady,
+    runsRootReady,
+    claudeAvailable,
+    codexAvailability,
+    geminiAvailability,
+    verifier,
+    recommendedEngine,
+    git
+  };
+}
+
+async function detectVerifierCommand(workingDirectory: string): Promise<{ command: string; detected: boolean }> {
+  const packageJsonPath = join(workingDirectory, "package.json");
+  try {
+    const raw = await readFile(packageJsonPath, "utf8");
+    const parsed = JSON.parse(raw) as { scripts?: Record<string, string> };
+    if (parsed.scripts?.test?.trim()) {
+      if (await pathExists(join(workingDirectory, "pnpm-lock.yaml"))) {
+        return { command: "pnpm test", detected: true };
+      }
+      if (await pathExists(join(workingDirectory, "yarn.lock"))) {
+        return { command: "yarn test", detected: true };
+      }
+      if (await pathExists(join(workingDirectory, "bun.lockb"))) {
+        return { command: "bun test", detected: true };
+      }
+      return { command: "npm test", detected: true };
+    }
+  } catch {
+    // Ignore invalid/missing package.json and continue with other heuristics.
+  }
+
+  if (await pathExists(join(workingDirectory, "pyproject.toml")) || await pathExists(join(workingDirectory, "pytest.ini"))) {
+    return { command: "pytest", detected: true };
+  }
+
+  return { command: "npm test", detected: false };
+}
+
+async function pathExists(path: string): Promise<boolean> {
+  return stat(path).then(() => true).catch(() => false);
+}
+
+function inspectGitRepository(workingDirectory: string): { detected: boolean; clean?: boolean } {
+  const inside = spawnSync("git", ["rev-parse", "--is-inside-work-tree"], {
+    cwd: workingDirectory,
+    encoding: "utf8"
+  });
+  if (inside.status !== 0 || !inside.stdout.includes("true")) {
+    return { detected: false };
+  }
+
+  const status = spawnSync("git", ["status", "--porcelain"], {
+    cwd: workingDirectory,
+    encoding: "utf8"
+  });
+  if (status.status !== 0) {
+    return { detected: true };
+  }
+
+  return { detected: true, clean: status.stdout.trim().length === 0 };
+}
+
+function selectRecommendedEngine(input: {
+  claudeAvailable: boolean;
+  codexAvailable: boolean;
+  geminiAvailable: boolean;
+}): "claude" | "codex" | "gemini" | "openai" {
+  if (input.claudeAvailable) {
+    return "claude";
+  }
+  if (input.codexAvailable) {
+    return "codex";
+  }
+  if (input.geminiAvailable) {
+    return "gemini";
+  }
+  return "openai";
+}
+
+function renderMartinConfigYaml(input: {
+  policyProfile: string;
+  verifier: string;
+  budgetUsd: number;
+  softLimitUsd: number;
+  maxIterations: number;
+  maxTokens: number;
+  telemetryDestination: string;
+}): string {
+  const escapedVerifier = input.verifier.replaceAll('"', '\\"');
+  return [
+    `policyProfile: ${input.policyProfile}`,
+    "budget:",
+    `  maxUsd: ${input.budgetUsd}`,
+    `  softLimitUsd: ${input.softLimitUsd}`,
+    `  maxIterations: ${input.maxIterations}`,
+    `  maxTokens: ${input.maxTokens}`,
+    "governance:",
+    "  destructiveActionPolicy: approval",
+    `  telemetryDestination: ${input.telemetryDestination}`,
+    "  verifierRules:",
+    `    - "${escapedVerifier}"`,
+    ""
+  ].join("\n");
+}
+
+function explainIntegrityState(state: IntegrityStatus): {
+  meaning: string;
+  shareSafe: boolean;
+  nextAction: string;
+} {
+  switch (state) {
+    case "verified":
+      return {
+        meaning: "Receipt material matches the signed canonical run record.",
+        shareSafe: true,
+        nextAction: "Use martin share --latest to publish a redacted bundle."
+      };
+    case "unsigned":
+      return {
+        meaning: "No sidecar signature was found for this run record.",
+        shareSafe: false,
+        nextAction: "Re-run through governed flow and preserve canonical run artifacts."
+      };
+    case "tamper_detected":
+      return {
+        meaning: "Signed material exists, but stored content no longer matches the signed snapshot.",
+        shareSafe: false,
+        nextAction: "Treat evidence as compromised and reproduce the run from canonical inputs."
+      };
+    case "relocated":
+      return {
+        meaning: "Run was loaded outside the canonical runs root.",
+        shareSafe: false,
+        nextAction: "Load with --loop-id or --latest from the configured runs root."
+      };
+    case "material_missing":
+      return {
+        meaning: "Required integrity material (ledger/sidecar/key data) is incomplete.",
+        shareSafe: false,
+        nextAction: "Repair run persistence inputs and rerun governed flow."
+      };
+    case "selector_noncanonical":
+      return {
+        meaning: "Selector shape bypassed canonical run identity checks.",
+        shareSafe: false,
+        nextAction: "Use canonical selectors: --latest or --loop-id <id>."
+      };
+    default:
+      return {
+        meaning: `Unknown integrity state '${String(state)}'.`,
+        shareSafe: false,
+        nextAction: "Run martin receipts explain --latest after rebuilding the run receipt."
+      };
+  }
+}
+
 async function executeNativePhaseCommand(
   command: NativePhaseCommand,
   outputMode: MartinOutputMode
@@ -1262,7 +1934,8 @@ async function executePreflightCommand(
   const environment = resolveCliEnvironment({
     cwd: request.cwd,
     runsDir: request.runsDir,
-    engine: request.engine
+    engine: request.engine,
+    liveMode: request.liveMode
   });
   const resolvedGuardrails = await resolveGuardrails(request, environment.workingDirectory);
   const resolvedRequest = applyExecutionPolicyToRequest(request, resolvedGuardrails);
@@ -1577,6 +2250,44 @@ async function executeRunsVerifyCommand(
   });
 }
 
+function describeIntegrity(integrity: IntegrityStatus): string {
+  switch (integrity) {
+    case "verified":
+      return "verified — record matches its signed snapshot";
+    case "tamper_detected":
+      return "TAMPER DETECTED — record does not match its signed snapshot";
+    case "unsigned":
+      return "unsigned — no integrity sidecar found (pre-upgrade or hand-authored record)";
+    case "material_missing":
+      return "material missing — integrity sidecar/key/ledger is incomplete";
+    case "relocated":
+      return "relocated — run was loaded from outside the canonical runs root";
+    case "selector_noncanonical":
+      return "selector non-canonical — choose --loop-id/--latest for canonical integrity checks";
+    default:
+      return `unknown integrity state: ${String(integrity)}`;
+  }
+}
+
+function readCostProvenance(loop: LoopRecord): "actual" | "estimated" | "unavailable" {
+  const provenance = (loop.cost as { provenance?: unknown }).provenance;
+  return provenance === "actual" || provenance === "estimated" || provenance === "unavailable"
+    ? provenance
+    : "unavailable";
+}
+
+function describeCostProvenance(provenance: "actual" | "estimated" | "unavailable"): string {
+  switch (provenance) {
+    case "actual":
+      return "actual provider settlement";
+    case "estimated":
+      return "estimated usage";
+    case "unavailable":
+      return "unavailable";
+    default:
+      return "unavailable";
+  }
+}
 async function executeMcpPrintConfigCommand(
   command: Extract<ParsedCliArguments, { command: "mcp_print_config" }>,
   outputMode: MartinOutputMode
@@ -1819,6 +2530,9 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
       case "--verify-only":
         request.mutationMode = "verify_only";
         break;
+      case "--proof":
+        request.liveMode = "proof";
+        break;
       case "--allow-path":
         if (next) {
           request.allowedPaths = [...(request.allowedPaths ?? []), next];
@@ -1864,6 +2578,7 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
     ...(request.runsDir ? { runsDir: request.runsDir } : {}),
     ...(request.model ? { model: request.model } : {}),
     ...(request.engine ? { engine: request.engine } : {}),
+    ...(request.liveMode ? { liveMode: request.liveMode } : {}),
     ...(request.mutationMode ? { mutationMode: request.mutationMode } : {}),
     ...(request.allowedPaths?.length ? { allowedPaths: request.allowedPaths } : {}),
     ...(request.deniedPaths?.length ? { deniedPaths: request.deniedPaths } : {}),
@@ -2163,7 +2878,14 @@ async function resolveGuardrails(
   request: RunCommandRequest,
   repoRoot: string
 ): Promise<ResolvedGuardrails> {
-  const { config, configPath } = await loadGuardrailsConfig(request.configPath);
+  const normalizedScope = normalizePathPolicyScope({
+    repoRoot,
+    allowedPaths: request.allowedPaths,
+    deniedPaths: request.deniedPaths
+  });
+  const { config, configPath } = await loadGuardrailsConfig(request.configPath, {
+    repoRoot
+  });
   return compileExecutionPolicy({
     configPath,
     defaults: {
@@ -2182,8 +2904,8 @@ async function resolveGuardrails(
       verificationPlan: request.verificationPlan,
       mutationMode: request.mutationMode,
       repoRoot,
-      allowedPaths: request.allowedPaths,
-      deniedPaths: request.deniedPaths,
+      allowedPaths: normalizedScope.allowedPaths,
+      deniedPaths: normalizedScope.deniedPaths,
       acceptanceCriteria: request.acceptanceCriteria
     }
   });
@@ -2214,11 +2936,15 @@ function applyExecutionPolicyToRequest(
 }
 
 async function loadGuardrailsConfig(
-  configPath?: string
+  configPath: string | undefined,
+  options: {
+    repoRoot: string;
+    invocationRoot?: string;
+  }
 ): Promise<{ config: GuardrailsConfig | undefined; configPath: string }> {
   const resolvedPath = configPath
-    ? resolveConfigPath(configPath)
-    : join(resolveInvocationRoot(), "martin.config.yaml");
+    ? resolveConfigPath(configPath, options.invocationRoot ?? resolveInvocationRoot())
+    : join(options.repoRoot, "martin.config.yaml");
   const configIsExplicit = typeof configPath === "string" && configPath.trim().length > 0;
 
   try {
@@ -2243,7 +2969,7 @@ async function loadGuardrailsConfig(
   }
 }
 
-function resolveConfigPath(configPath: string): string {
+function resolveConfigPath(configPath: string, baseDir = resolveInvocationRoot()): string {
   const normalizedConfigPath =
     process.platform === "win32" ? configPath : configPath.replace(/\\/g, "/");
 
@@ -2251,7 +2977,68 @@ function resolveConfigPath(configPath: string): string {
     return normalizedConfigPath;
   }
 
-  return resolve(resolveInvocationRoot(), normalizedConfigPath);
+  return resolve(baseDir, normalizedConfigPath);
+}
+
+function normalizePathPolicyScope(input: {
+  repoRoot: string;
+  allowedPaths?: string[];
+  deniedPaths?: string[];
+}): { allowedPaths?: string[]; deniedPaths?: string[] } {
+  return {
+    ...(input.allowedPaths ? { allowedPaths: normalizePathPolicyList(input.allowedPaths, "allow-path", input.repoRoot) } : {}),
+    ...(input.deniedPaths ? { deniedPaths: normalizePathPolicyList(input.deniedPaths, "deny-path", input.repoRoot) } : {})
+  };
+}
+
+function normalizePathPolicyList(
+  values: string[],
+  flagName: "allow-path" | "deny-path",
+  repoRoot: string
+): string[] {
+  return values.map((value) => normalizePathPolicyValue(value, flagName, repoRoot));
+}
+
+function normalizePathPolicyValue(
+  value: string,
+  flagName: "allow-path" | "deny-path",
+  repoRoot: string
+): string {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    throw new CliCommandError("invalid_input", `--${flagName} cannot be empty.`, {
+      suggestion: `Provide a repo-relative glob for --${flagName}.`
+    });
+  }
+
+  const normalizedSlashes = trimmed.replace(/\\/g, "/");
+  if (isPathTraversalPattern(normalizedSlashes, repoRoot)) {
+    throw new CliCommandError("invalid_input", `--${flagName} cannot escape the repository root: ${value}`, {
+      suggestion: `Use repo-relative paths only (for example src/** or docs/**).`
+    });
+  }
+
+  return trimmed;
+}
+
+function isPathTraversalPattern(pattern: string, repoRoot: string): boolean {
+  if (isAbsolute(pattern)) {
+    return true;
+  }
+
+  const segments = pattern
+    .replace(/\\/g, "/")
+    .split("/")
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0);
+  if (segments.some((segment) => segment === "..")) {
+    return true;
+  }
+
+  const normalizedRoot = resolve(repoRoot);
+  const resolvedPattern = resolve(normalizedRoot, pattern);
+  const relativeToRoot = relative(normalizedRoot, resolvedPattern);
+  return relativeToRoot === ".." || relativeToRoot.startsWith(`..${sep}`) || isAbsolute(relativeToRoot);
 }
 
 function parseGuardrailsYaml(contents: string): GuardrailsConfig {
@@ -2383,11 +3170,25 @@ function isNodeErrorWithCode(error: unknown, code: string): boolean {
 function selectAdapter(
   engine: string | undefined,
   workingDirectory: string,
+  liveMode: "live" | "proof",
   modelOverride?: string,
-  mutationMode?: MutationMode
+  mutationMode?: MutationMode,
+  codexCommandOverride?: string
 ): MartinAdapter {
+  if (runAdapterOverrideForTests) {
+    return runAdapterOverrideForTests;
+  }
+
   if (mutationMode === "verify_only") {
     return createVerifierOnlyAdapter({ workingDirectory });
+  }
+
+  if (liveMode === "proof") {
+    return createStubDirectProviderAdapter({
+      label: "Stub adapter (proof mode)",
+      providerId: "stub",
+      model: "stub"
+    });
   }
 
   if (process.env.MARTIN_LIVE === "false") {
@@ -2399,7 +3200,11 @@ function selectAdapter(
   }
 
   if (engine === "codex") {
-    return createCodexCliAdapter({ workingDirectory, ...(modelOverride ? { model: modelOverride } : {}) });
+    return createCodexCliAdapter({
+      workingDirectory,
+      ...(modelOverride ? { model: modelOverride } : {}),
+      ...(codexCommandOverride ? { command: codexCommandOverride } : {})
+    });
   }
 
   if (engine === "gemini") {
@@ -2415,6 +3220,33 @@ function selectAdapter(
   }
 
   return createClaudeCliAdapter({ workingDirectory, ...(modelOverride ? { model: modelOverride } : {}) });
+}
+
+function resolveRunTimeoutMs(raw: string | undefined): number {
+  if (!raw) {
+    return DEFAULT_RUN_TIMEOUT_MS;
+  }
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return DEFAULT_RUN_TIMEOUT_MS;
+  }
+  return parsed;
+}
+
+async function runWithTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  let timeoutHandle: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeoutHandle = setTimeout(() => reject(new RunTimeoutError(timeoutMs)), timeoutMs);
+      })
+    ]);
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+  }
 }
 
 function buildDoctorRecommendations(input: {
@@ -2522,25 +3354,32 @@ async function executeChallengeCommand(
   });
 }
 
-function proofCardInputFromLoop(loop: LoopRecord): MartinProofCardInput {
+function proofCardInputFromLoop(
+  loop: LoopRecord,
+  options: { trustworthy?: boolean; integrityState?: string } = {}
+): MartinProofCardInput {
   const verification = buildVerificationSummary(loop);
   const rollbackStatus = loop.artifacts.some((artifact) =>
     artifact.kind.toLowerCase().includes("rollback")
   )
     ? "captured"
     : "not-recorded";
+  const trustworthy = options.trustworthy ?? true;
+  const untrustedLabel = options.integrityState
+    ? `untrusted (${options.integrityState})`
+    : "untrusted";
 
   return {
     loopId: loop.loopId,
     objective: loop.task.objective,
-    status: loop.status,
-    lifecycle: loop.lifecycleState,
-    verifierStatus: verification.status,
-    costSpend: `$${loop.cost.actualUsd.toFixed(2)}`,
-    budget: `$${loop.budget.maxUsd.toFixed(2)}`,
+    status: trustworthy ? loop.status : untrustedLabel,
+    lifecycle: trustworthy ? loop.lifecycleState : untrustedLabel,
+    verifierStatus: trustworthy ? verification.status : "untrusted",
+    costSpend: trustworthy ? `$${loop.cost.actualUsd.toFixed(2)}` : "untrusted",
+    budget: trustworthy ? `$${loop.budget.maxUsd.toFixed(2)}` : "untrusted",
     attempts: loop.attempts.length,
     rollbackStatus,
-    haltReason: latestExitReason(loop),
+    haltReason: trustworthy ? latestExitReason(loop) : "untrusted",
     evidenceBoundaryNotes: [
       "Generated from a local Martin Loop run record.",
       "Hosted dashboards and private team telemetry are intentionally excluded from OSS proof cards."
@@ -2638,25 +3477,60 @@ function buildShareBundle(detail: Awaited<ReturnType<typeof loadPersistedLoop>>)
 } {
   const dossier = buildRunDossier(detail);
   const verification = buildVerificationSummary(detail.loop);
-  const card = buildMartinProofCard(proofCardInputFromLoop(detail.loop));
+  const trustworthy = detail.integrity.state === "verified";
+  const card = buildMartinProofCard(
+    proofCardInputFromLoop(detail.loop, {
+      trustworthy,
+      integrityState: detail.integrity.state
+    })
+  );
   const receiptWarnings = dedupeWarnings([...detail.warnings, ...verification.warnings]);
+  const receiptLoop = trustworthy
+    ? {
+        loopId: detail.loop.loopId,
+        title: detail.loop.task.title,
+        objective: detail.loop.task.objective,
+        status: detail.loop.status,
+        lifecycleState: detail.loop.lifecycleState,
+        updatedAt: detail.loop.updatedAt,
+        attempts: detail.loop.attempts.length,
+        spendUsd: detail.loop.cost.actualUsd,
+        budgetUsd: detail.loop.budget.maxUsd
+      }
+    : {
+        loopId: detail.loop.loopId,
+        title: detail.loop.task.title,
+        objective: detail.loop.task.objective,
+        status: "untrusted",
+        lifecycleState: "untrusted",
+        updatedAt: detail.loop.updatedAt,
+        attempts: detail.loop.attempts.length,
+        spendUsd: null,
+        budgetUsd: null,
+        trustNotice: `Sensitive fields are suppressed because receipt integrity is ${detail.integrity.state}.`
+      };
+  const shareReceipt = trustworthy
+    ? dossier["receipt"]
+    : {
+        trustworthy: false,
+        receiptIntegrity: detail.integrity,
+        nextSafeAction: `Verify canonical receipt integrity for loop ${detail.loop.loopId} before sharing proof or cost claims.`,
+        notice: `Receipt details are redacted because integrity is ${detail.integrity.state}.`
+      };
+  const shareVerification = trustworthy
+    ? dossier["verification"]
+    : {
+        status: "untrusted",
+        summary: `Verification details are untrusted because receipt integrity is ${detail.integrity.state}.`,
+        warnings: receiptWarnings
+      };
   const receipt = redactShareValue({
     schemaVersion: "martin.share-receipt.v1",
     generatedAt: new Date().toISOString(),
-    loop: {
-      loopId: detail.loop.loopId,
-      title: detail.loop.task.title,
-      objective: detail.loop.task.objective,
-      status: detail.loop.status,
-      lifecycleState: detail.loop.lifecycleState,
-      updatedAt: detail.loop.updatedAt,
-      attempts: detail.loop.attempts.length,
-      spendUsd: detail.loop.cost.actualUsd,
-      budgetUsd: detail.loop.budget.maxUsd
-    },
+    loop: receiptLoop,
     receiptIntegrity: detail.integrity,
-    verification: dossier["verification"],
-    receipt: dossier["receipt"],
+    verification: shareVerification,
+    receipt: shareReceipt,
     artifacts: dossier["artifacts"],
     proofCard: {
       title: card.title,

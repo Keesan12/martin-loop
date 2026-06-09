@@ -34,6 +34,9 @@ const INCOMPLETE_EVIDENCE_LINE =
   "Incomplete Martin proof: missing budget, rollback, or verifier evidence.";
 const UNSIGNED_EVIDENCE_LINE = "Receipt integrity unavailable: Martin proof is not yet trustworthy.";
 const TAMPERED_EVIDENCE_LINE = "Receipt integrity failed: Martin proof is not trustworthy.";
+const RELOCATED_EVIDENCE_LINE = "Receipt relocated: Martin proof requires canonical verification.";
+const NONCANONICAL_EVIDENCE_LINE = "Receipt loaded via non-canonical selector: trust is downgraded.";
+const MATERIAL_MISSING_EVIDENCE_LINE = "Receipt integrity material missing: Martin proof is not trustworthy.";
 
 const FIELD_LABELS = {
   loopId: "Loop ID",
@@ -94,6 +97,12 @@ export function buildMartinProofCard(input: MartinProofCardInput): MartinProofCa
   const evidenceLine =
     input.receiptIntegrityState === "tamper_detected"
       ? TAMPERED_EVIDENCE_LINE
+      : input.receiptIntegrityState === "material_missing"
+        ? MATERIAL_MISSING_EVIDENCE_LINE
+        : input.receiptIntegrityState === "relocated"
+          ? RELOCATED_EVIDENCE_LINE
+          : input.receiptIntegrityState === "selector_noncanonical"
+            ? NONCANONICAL_EVIDENCE_LINE
       : input.receiptIntegrityState === "unsigned"
         ? UNSIGNED_EVIDENCE_LINE
         : completeEvidence

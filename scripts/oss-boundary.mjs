@@ -52,6 +52,7 @@ const IGNORED_TOP_LEVEL_ENTRIES = [
   "tests and feedback",
   "tmp",
   "vitest-results.json",
+  "worktrees",
 ];
 const IGNORED_TOP_LEVEL_PATTERNS = [/\.zip$/u, /\.tgz$/u, /\.tar\.gz$/u];
 const FORBIDDEN_PACKAGE_DIRS = [

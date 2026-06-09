@@ -94,9 +94,9 @@ export async function verifyReceiptIntegrityFromFiles(input: {
 
   if (!rawMaterial || !rawLoopRecord || rawLedger === null || !key) {
     return {
-      state: "unsigned",
+      state: "material_missing",
       reason: "Receipt integrity material is missing for this run.",
-      warnings: ["Receipts are local-only and unsigned; trust claims are unavailable."]
+      warnings: ["Receipt integrity material is incomplete; trust claims are unavailable."]
     };
   }
 
