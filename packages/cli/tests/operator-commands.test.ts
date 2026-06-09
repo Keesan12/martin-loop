@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -148,6 +149,10 @@ async function withRunsRoot<T>(fn: (runsRoot: string) => Promise<T>): Promise<T>
   }
 }
 
+function sha256(input: string): string {
+  return createHash("sha256").update(input).digest("hex");
+}
+
 describe("operator commands", () => {
   it("doctor reports environment readiness and starter MCP tools", async () => {
     const result = await withEnv("MARTIN_LIVE", "false", () => executeCli(["--json", "doctor"]));
@@ -192,6 +197,71 @@ describe("operator commands", () => {
     expect(payload.scope.workingDirectory).toBe(missingDirectory);
     expect(payload.scope.repoRoot).toBe(missingDirectory);
     expect(payload.scope.runsRoot).toBeTypeOf("string");
+  });
+
+  it("adds actionable OpenAI preflight blockers when auth is missing on hosted endpoints", async () => {
+    const previousApiKey = process.env.MARTIN_OPENAI_API_KEY;
+    const previousBaseUrl = process.env.MARTIN_OPENAI_BASE_URL;
+    const previousModel = process.env.MARTIN_OPENAI_MODEL;
+    delete process.env.MARTIN_OPENAI_API_KEY;
+    delete process.env.MARTIN_OPENAI_BASE_URL;
+    delete process.env.MARTIN_OPENAI_MODEL;
+
+    try {
+      const result = await executeCli([
+        "--json",
+        "preflight",
+        "--objective",
+        "Repair the failing MCP lane",
+        "--engine",
+        "openai"
+      ]);
+      const payload = JSON.parse(result.stdout);
+
+      expect(result.exitCode).toBe(0);
+      expect(payload.command).toBe("preflight");
+      expect(payload.ready).toBe(false);
+      expect(payload.blockingIssues.join(" ")).toContain("MARTIN_OPENAI_API_KEY");
+      expect(payload.warnings.join(" ")).toContain("MARTIN_OPENAI_MODEL");
+    } finally {
+      if (previousApiKey === undefined) {
+        delete process.env.MARTIN_OPENAI_API_KEY;
+      } else {
+        process.env.MARTIN_OPENAI_API_KEY = previousApiKey;
+      }
+      if (previousBaseUrl === undefined) {
+        delete process.env.MARTIN_OPENAI_BASE_URL;
+      } else {
+        process.env.MARTIN_OPENAI_BASE_URL = previousBaseUrl;
+      }
+      if (previousModel === undefined) {
+        delete process.env.MARTIN_OPENAI_MODEL;
+      } else {
+        process.env.MARTIN_OPENAI_MODEL = previousModel;
+      }
+    }
+  });
+
+  it("rejects path-traversing allow/deny patterns during preflight", async () => {
+    const traversalAllow = await executeCli([
+      "preflight",
+      "--objective",
+      "Repair the failing MCP lane",
+      "--allow-path",
+      "..\\..\\*"
+    ]);
+    const traversalDeny = await executeCli([
+      "preflight",
+      "--objective",
+      "Repair the failing MCP lane",
+      "--deny-path",
+      "..\\..\\*"
+    ]);
+
+    expect(traversalAllow.exitCode).toBe(2);
+    expect(traversalAllow.stderr).toContain("Invalid allowedPaths.");
+    expect(traversalDeny.exitCode).toBe(2);
+    expect(traversalDeny.stderr).toContain("Invalid deniedPaths.");
   });
 
   it("preserves explicit --runs-dir overrides for preflight commands after the objective token", async () => {
@@ -372,6 +442,139 @@ describe("operator commands", () => {
     });
   });
 
+  it("classifies missing run integrity material explicitly in runs verify", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const loop = makeLoopRecord();
+      const loopDir = join(runsRoot, loop.loopId);
+      await mkdir(loopDir, { recursive: true });
+      await writeFile(join(loopDir, "loop-record.json"), JSON.stringify(loop, null, 2), "utf8");
+
+      const verify = JSON.parse(
+        (await executeCli(["--json", "runs", "verify", "--loop-id", loop.loopId])).stdout
+      );
+
+      expect(verify.command).toBe("runs_verify");
+      expect(verify.verification.integrity.status).toBe("failed");
+      expect(verify.verification.integrity.classification).toBe("missing_integrity_material");
+    });
+  });
+
+  it("classifies tampered payloads explicitly in runs verify", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const loop = makeLoopRecord();
+      const loopDir = join(runsRoot, loop.loopId);
+      const loopRecordContents = JSON.stringify(loop, null, 2);
+      const eventsContents = `${JSON.stringify(loop.events[0])}\n${JSON.stringify(loop.events[1])}\n`;
+      await mkdir(loopDir, { recursive: true });
+      await writeFile(join(loopDir, "loop-record.json"), loopRecordContents, "utf8");
+      await writeFile(join(loopDir, "events.jsonl"), eventsContents, "utf8");
+      await writeFile(
+        join(loopDir, "receipt-integrity.json"),
+        JSON.stringify(
+          {
+            schemaVersion: "martin.receipt-integrity.v1",
+            runId: loop.loopId,
+            keyId: "test-key",
+            signedAt: loop.updatedAt,
+            scope: {
+              invocationRoot: runsRoot,
+              workingDirectory: runsRoot,
+              repoRoot: runsRoot,
+              runsRoot
+            },
+            loopRecordSha256: "0000000000000000000000000000000000000000000000000000000000000000",
+            ledgerSha256: sha256(eventsContents),
+            ledgerHeadHash: "head-hash",
+            entryCount: loop.events.length,
+            chain: [],
+            signatureHmacSha256: "signature"
+          },
+          null,
+          2
+        ),
+        "utf8"
+      );
+
+      const verify = JSON.parse(
+        (await executeCli(["--json", "runs", "verify", "--loop-id", loop.loopId])).stdout
+      );
+
+      expect(verify.command).toBe("runs_verify");
+      expect(verify.verification.integrity.status).toBe("failed");
+      expect(verify.verification.integrity.classification).toBe("tampered_payload");
+    });
+  });
+
+  it("classifies unknown receipt-integrity fields explicitly in runs verify", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const loop = makeLoopRecord();
+      const loopDir = join(runsRoot, loop.loopId);
+      const loopRecordContents = JSON.stringify(loop, null, 2);
+      const eventsContents = `${JSON.stringify(loop.events[0])}\n${JSON.stringify(loop.events[1])}\n`;
+      await mkdir(loopDir, { recursive: true });
+      await writeFile(join(loopDir, "loop-record.json"), loopRecordContents, "utf8");
+      await writeFile(join(loopDir, "events.jsonl"), eventsContents, "utf8");
+      await writeFile(
+        join(loopDir, "receipt-integrity.json"),
+        JSON.stringify(
+          {
+            schemaVersion: "martin.receipt-integrity.v1",
+            runId: loop.loopId,
+            keyId: "test-key",
+            signedAt: loop.updatedAt,
+            scope: {
+              invocationRoot: runsRoot,
+              workingDirectory: runsRoot,
+              repoRoot: runsRoot,
+              runsRoot
+            },
+            loopRecordSha256: sha256(loopRecordContents),
+            ledgerSha256: sha256(eventsContents),
+            ledgerHeadHash: "head-hash",
+            entryCount: loop.events.length,
+            chain: [],
+            signatureHmacSha256: "signature",
+            hiddenProbeField: "should-be-rejected"
+          },
+          null,
+          2
+        ),
+        "utf8"
+      );
+
+      const verify = JSON.parse(
+        (await executeCli(["--json", "runs", "verify", "--loop-id", loop.loopId])).stdout
+      );
+
+      expect(verify.command).toBe("runs_verify");
+      expect(verify.verification.integrity.status).toBe("failed");
+      expect(verify.verification.integrity.classification).toBe("schema_unknown_fields");
+    });
+  });
+
+  it("rejects non-canonical selector file paths for run verification", async () => {
+    await withRunsRoot(async () => {
+      const externalRunsRoot = await mkdtemp(join(tmpdir(), "martin-cli-external-run-"));
+      const loop = makeLoopRecord();
+      const loopDir = join(externalRunsRoot, loop.loopId);
+      await mkdir(loopDir, { recursive: true });
+      await writeFile(join(loopDir, "loop-record.json"), JSON.stringify(loop, null, 2), "utf8");
+
+      try {
+        const verify = await executeCli([
+          "runs",
+          "verify",
+          "--file",
+          join(loopDir, "loop-record.json")
+        ]);
+        expect(verify.exitCode).toBe(2);
+        expect(verify.stderr).toContain("canonical run selector");
+      } finally {
+        await rm(externalRunsRoot, { recursive: true, force: true });
+      }
+    });
+  });
+
   it("reports unsigned for ad-hoc --file loads outside the selected runs root without minting a new local key", async () => {
     const externalRunsRoot = await mkdtemp(join(tmpdir(), "martin-cli-external-runs-"));
 
@@ -527,6 +730,8 @@ describe("operator commands", () => {
     expect(invalidScope.stderr).toContain("Invalid --scope value");
     expect(invalidLocalScope.exitCode).toBe(2);
     expect(invalidLocalScope.stderr).toContain("does not support --scope local");
+    expect(invalidLocalScope.stderr).toContain("--scope user");
+    expect(invalidLocalScope.stderr).toContain("--scope project");
     expect(invalidTransport.exitCode).toBe(2);
     expect(invalidTransport.stderr).toContain("Invalid --transport value");
     expect(invalidProfile.exitCode).toBe(2);
