@@ -67,6 +67,7 @@ import {
   buildArtifactSummary,
   buildRunDossier,
   buildVerificationSummary,
+  buildVerificationSummaryWithIntegrity,
   computeScopeFingerprint,
   describeCostProvenance,
   findPersistedLoopEvidence,
@@ -815,6 +816,9 @@ async function executeRunCommand(
       telemetryDestination: resolvedGuardrails.telemetryDestination
     }
   };
+  const allowedPaths = normalizePathPolicyPatterns(resolvedRequest.allowedPaths, "allowedPaths");
+  const deniedPaths = normalizePathPolicyPatterns(resolvedRequest.deniedPaths, "deniedPaths");
+
   const cliEnvironment = resolveCliEnvironment({
     cwd: resolvedRequest.cwd,
     runsDir: resolvedRequest.runsDir,
@@ -858,8 +862,8 @@ async function executeRunCommand(
       verificationPlan: resolvedRequest.verificationPlan,
       mutationMode: effectiveMutationMode,
       receiptScope,
-      allowedPaths: resolvedRequest.allowedPaths,
-      deniedPaths: resolvedRequest.deniedPaths,
+      allowedPaths,
+      deniedPaths,
       budget: resolvedRequest.budget
     });
 
@@ -925,8 +929,8 @@ async function executeRunCommand(
         verificationPlan: resolvedRequest.verificationPlan,
         ...(effectiveMutationMode ? { mutationMode: effectiveMutationMode } : {}),
         repoRoot: cliEnvironment.workingDirectory,
-        ...(resolvedRequest.allowedPaths?.length ? { allowedPaths: resolvedRequest.allowedPaths } : {}),
-        ...(resolvedRequest.deniedPaths?.length ? { deniedPaths: resolvedRequest.deniedPaths } : {}),
+        ...(allowedPaths?.length ? { allowedPaths } : {}),
+        ...(deniedPaths?.length ? { deniedPaths } : {}),
         ...(resolvedRequest.acceptanceCriteria?.length
           ? { acceptanceCriteria: resolvedRequest.acceptanceCriteria }
           : {})
@@ -1569,6 +1573,8 @@ async function executePreflightCommand(
   });
   const warnings: string[] = [];
   const blockingIssues: string[] = [];
+  const allowedPaths = normalizePathPolicyPatterns(request.allowedPaths, "allowedPaths");
+  const deniedPaths = normalizePathPolicyPatterns(request.deniedPaths, "deniedPaths");
   const verificationPlan =
     request.verificationPlan.length > 0
       ? request.verificationPlan
@@ -1599,6 +1605,13 @@ async function executePreflightCommand(
   if (engineRequired && environment.engine === "gemini" && !geminiAvailability.available) {
     blockingIssues.push("Gemini CLI is not available on PATH.");
   }
+  if (engineRequired && environment.engine === "openai") {
+    const openAiPreflight = evaluateOpenAiPreflight();
+    if (openAiPreflight.blockingIssue) {
+      blockingIssues.push(openAiPreflight.blockingIssue);
+    }
+    warnings.push(...openAiPreflight.warnings);
+  }
   if (engineRequired && environment.engine === "codex" && codexProbe && !codexProbe.ok) {
     blockingIssues.push(codexProbe.summary);
   }
@@ -1606,8 +1619,8 @@ async function executePreflightCommand(
     warnings.push("No verification plan is configured for this run.");
   }
 
-  const overlappingPaths = (request.allowedPaths ?? []).filter((allowedPath) =>
-    (request.deniedPaths ?? []).includes(allowedPath)
+  const overlappingPaths = (allowedPaths ?? []).filter((allowedPath) =>
+    (deniedPaths ?? []).includes(allowedPath)
   );
   if (overlappingPaths.length > 0) {
     warnings.push(`The same path appears in both allow and deny lists: ${overlappingPaths.join(", ")}`);
@@ -1657,6 +1670,8 @@ async function executePreflightCommand(
     },
     request: {
       ...request,
+      ...(allowedPaths?.length ? { allowedPaths } : {}),
+      ...(deniedPaths?.length ? { deniedPaths } : {}),
       verificationPlan,
       budget: resolvedGuardrails.budget
     },
@@ -1677,8 +1692,8 @@ async function executePreflightCommand(
       engine: environment.engine,
       verificationPlan,
       receiptScope,
-      allowedPaths: request.allowedPaths,
-      deniedPaths: request.deniedPaths,
+      allowedPaths,
+      deniedPaths,
       budget: resolvedGuardrails.budget
     }).catch(() => {});
   }
@@ -1858,8 +1873,8 @@ async function executeRunsVerifyCommand(
   selector: MartinRunSelector,
   outputMode: MartinOutputMode
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  const detail = await loadPersistedLoop(selector);
-  const verification = buildVerificationSummary(detail.loop);
+  const detail = await loadPersistedLoop(selector, { requireCanonicalRunSelector: true });
+  const verification = await buildVerificationSummaryWithIntegrity(detail);
   const receiptScope = resolveReceiptScope(detail.loop, detail.runsRoot);
 
   return renderCliSuccess(outputMode, {
@@ -2262,7 +2277,7 @@ function parseMcpScope(host: MartinMcpHost, tokens: string[]): MartinMcpScope {
   if (scope === "local") {
     if (host !== "claude") {
       throw new CliCommandError("invalid_input", `Host ${host} does not support --scope local.`, {
-        suggestion: "Use --scope user or --scope project, or switch to --host claude."
+        suggestion: "Use --scope user or --scope project for this host, or switch to --host claude for --scope local."
       });
     }
 
@@ -2804,6 +2819,82 @@ function buildDoctorRecommendations(input: {
   }
 
   return recommendations;
+}
+
+function normalizePathPolicyPatterns(
+  values: string[] | undefined,
+  label: "allowedPaths" | "deniedPaths"
+): string[] | undefined {
+  if (!values || values.length === 0) {
+    return undefined;
+  }
+
+  const normalized = values.map((value) => value.trim()).filter((value) => value.length > 0);
+  if (normalized.length === 0) {
+    return undefined;
+  }
+
+  for (const value of normalized) {
+    const unixStyle = value.replace(/\\/gu, "/");
+    const segments = unixStyle.split("/").filter((segment) => segment.length > 0);
+    const hasTraversal = segments.includes("..");
+    const isAbsolutePath =
+      isAbsolute(value) || unixStyle.startsWith("/") || unixStyle.startsWith("//") || /^[A-Za-z]:\//u.test(unixStyle);
+
+    if (hasTraversal || isAbsolutePath) {
+      throw new CliCommandError(
+        "invalid_input",
+        `Invalid ${label}. Path patterns must be relative and stay within the repository.`,
+        {
+          suggestion:
+            "Use relative globs like `src/**` or `packages/cli/**` and avoid absolute paths or `..` traversal segments."
+        }
+      );
+    }
+  }
+
+  return [...new Set(normalized)];
+}
+
+function evaluateOpenAiPreflight(): { blockingIssue?: string; warnings: string[] } {
+  const baseUrl = (process.env["MARTIN_OPENAI_BASE_URL"] ?? "https://api.openai.com").trim();
+  const model = process.env["MARTIN_OPENAI_MODEL"]?.trim();
+  const apiKey = process.env["MARTIN_OPENAI_API_KEY"]?.trim();
+  const warnings: string[] = [];
+
+  if (!model) {
+    warnings.push(
+      "OpenAI engine preflight: MARTIN_OPENAI_MODEL is not set. Configure the exact model before running spend-bearing attempts."
+    );
+  }
+
+  if (isHostedOpenAiEndpoint(baseUrl) && !apiKey) {
+    return {
+      blockingIssue:
+        "OpenAI engine preflight blocked: MARTIN_OPENAI_API_KEY is required for hosted endpoints. Configure auth or switch MARTIN_OPENAI_BASE_URL to a trusted local endpoint.",
+      warnings
+    };
+  }
+
+  if (apiKey && isHostedOpenAiEndpoint(baseUrl)) {
+    warnings.push(
+      "OpenAI engine preflight: auth appears configured. If runs still fail, verify quota and billing separately from auth."
+    );
+  }
+
+  return { warnings };
+}
+
+function isHostedOpenAiEndpoint(baseUrl: string): boolean {
+  const normalized = baseUrl.toLowerCase();
+  return !(
+    normalized.startsWith("http://localhost") ||
+    normalized.startsWith("https://localhost") ||
+    normalized.startsWith("http://127.0.0.1") ||
+    normalized.startsWith("https://127.0.0.1") ||
+    normalized.startsWith("http://[::1]") ||
+    normalized.startsWith("https://[::1]")
+  );
 }
 
 function buildCliReceiptScope(environment: {
