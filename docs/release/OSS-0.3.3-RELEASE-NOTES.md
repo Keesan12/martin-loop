@@ -1,6 +1,6 @@
-# MartinLoop 0.3.3 Release Notes
+# MartinLoop 0.3.3 Reliability Hardening Release
 
-`0.3.3` hardens first-run onboarding and closes packaged-surface trust gaps discovered after `0.3.2`.
+`0.3.3` is a reliability hardening release focused on making governed runs more dependable and easier to start from a clean install.
 
 ## What Changed
 
