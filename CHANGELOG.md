@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.3]
+
+### Added
+- **Guided first-run entrypoint** - `martin-loop start` is now the default onboarding command, with `martin-loop tour` as a compatibility alias.
+
+### Changed
+- **Execution-first governed run startup** - `run` now auto-checks doctor/session-start/preflight prerequisites before enforcing the local gate, so healthy environments proceed without extra manual setup steps.
+- **Install prompt and docs clarity** - postinstall guidance, help output, and quickstart language now point to deterministic `npx -y martin-loop@latest ...` command paths.
+- **Release docs naming and readability** - public release notes now frame this line as reliability hardening with user-facing language.
+
+### Fixed
+- **Packaged smoke reliability coverage** - release validation now catches regressions where `--unsafe-allow-unguarded-run` could incorrectly fail through receipt-gate policy behavior in packaged installs.
+- **Command-center compatibility** - `phase session-start` now resolves to the documented session-start compatibility path.
+
 ## [0.3.2]
 
 ### Fixed

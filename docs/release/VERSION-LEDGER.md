@@ -12,8 +12,8 @@ This file is the release source of truth for package/version mapping in this rep
   - `0.2.9` fixed proof-run classification, Windows `.cmd` resolution, and public provider defaults
   - `0.2.10` tightened verifier evidence, `--runs-dir` consistency, and public help output
   - `0.2.11` fixed `runs verify --latest` selector parity in the public CLI
-- current in-repo root release line: `0.3.2` for npx invocation parity hardening and release-surface truth alignment
-- next planned root follow-on: `0.3.3` for additional cross-host reliability hardening
+- current in-repo root release line: `0.3.3` for reliability hardening across governed execution, trust surfaces, and first-run guidance
+- next planned root follow-on: `0.3.4` for additional cross-host reliability follow-ups
 
 ## Standalone package: `@martinloop/mcp`
 
