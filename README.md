@@ -7,6 +7,15 @@
 
   MartinLoop wraps Claude Code, Codex, Gemini, and MCP-aware agent workflows with budgets, verifier gates, policy checks, run receipts, and review-ready evidence.
 
+  **Star this repo:** [GitHub stars](https://github.com/Keesan12/martin-loop)  
+  **Try it now:** `npx -y martin-loop@latest start`
+
+  [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square&logo=apache)](./LICENSE)
+  [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&logo=typescript&logoColor=white)](./tsconfig.base.json)
+  [![Node](https://img.shields.io/badge/node-%3E%3D20-3c873a?style=flat-square&logo=nodedotjs&logoColor=white)](#quick-start)
+  [![npm version](https://img.shields.io/npm/v/martin-loop?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/martin-loop)
+  [![npm downloads](https://img.shields.io/npm/dm/martin-loop?style=flat-square&label=downloads)](https://www.npmjs.com/package/martin-loop)
+
   MartinLoop has been accepted into the NVIDIA Inception program.
 </div>
 
@@ -32,6 +41,8 @@ npx -y martin-loop@latest run "Summarize the demo workspace and prove tests stil
 npx -y martin-loop@latest dossier --latest
 npx -y martin-loop@latest share --latest
 ```
+
+If this flow saved you time, please star the repo to help other builders find it.
 
 `start` prints the first-run guided path. `run` auto-checks `doctor`, `session-start`, and `preflight`, then executes when the environment is ready. You can still run those commands directly when you want to inspect the governed checks first.
 
@@ -288,6 +299,11 @@ git push -u origin feat/your-feature
 ```
 
 <div align="center">
+  **Star the repo** if you think AI coding needs budgets, brakes, and receipts.
+
+  [martinloop.com](https://martinloop.com) · [support@martinloop.com](mailto:support@martinloop.com)
+
+  <br>
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="./docs/assets/nvidia-inception-program.png">
     <img src="./docs/assets/nvidia-inception-program-light.png" alt="NVIDIA Inception Program logo" width="280">
