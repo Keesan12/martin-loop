@@ -6,6 +6,8 @@
   **The open-source control plane for AI coding agents.**
 
   MartinLoop wraps Claude Code, Codex, Gemini, and MCP-aware agent workflows with budgets, verifier gates, policy checks, run receipts, and review-ready evidence.
+
+  MartinLoop has been accepted into the NVIDIA Inception program.
 </div>
 
 ## Why MartinLoop
@@ -284,6 +286,13 @@ pnpm test
 git commit -m "feat: describe what you built"
 git push -u origin feat/your-feature
 ```
+
+<div align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./docs/assets/nvidia-inception-program.png">
+    <img src="./docs/assets/nvidia-inception-program-light.png" alt="NVIDIA Inception Program logo" width="280">
+  </picture>
+</div>
 
 ## License
 
