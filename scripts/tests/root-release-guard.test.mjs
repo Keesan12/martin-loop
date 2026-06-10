@@ -70,13 +70,18 @@ test("assertPackedSurface rejects forbidden vendored implementation paths", () =
 
 test("assertVendoredCliManifest accepts the sanitized vendored CLI package manifest", async () => {
   await withTempRoot(async (tempRoot) => {
+    await writeFile(
+      path.join(tempRoot, "package.json"),
+      `${JSON.stringify({ name: "martin-loop", version: "0.3.6" }, null, 2)}\n`,
+      "utf8",
+    );
     const manifestDir = path.join(tempRoot, "dist", "vendor", "cli");
     await mkdir(manifestDir, { recursive: true });
     await writeFile(
       path.join(manifestDir, "package.json"),
       `${JSON.stringify({
         name: "@martin/cli",
-        version: "0.1.0",
+        version: "0.3.6",
         type: "module",
         description: "@martin/cli vendored for the martin-loop root package.",
         main: "./index.js",
