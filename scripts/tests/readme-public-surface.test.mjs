@@ -121,7 +121,17 @@ test("root README is a public product entry point", async () => {
     previousIndex = index;
   }
 
-  assert.match(readme, /The open-source control plane for AI coding agents/i);
+  assert.match(readme, /MartinLoop gives AI coding agents budgets, stop conditions, rollback rules, and receipts\./i);
+  assert.match(readme, /Built from thousands of agent runs where the problem was not intelligence -- it was uncontrolled execution\./i);
+  assert.match(readme, /## Why Star This\?/);
+  assert.match(readme, /## 2-Minute Install Path/);
+  assert.match(readme, /!\[MartinLoop governed run demo]\(\.\/docs\/assets\/martinloop-demo\.gif\)/);
+  assert.match(readme, /\*\*Star this repo:\*\* \[GitHub stars]\(https:\/\/github\.com\/Keesan12\/martin-loop\)/);
+  assert.match(readme, /\*\*Try it now:\*\* `npx -y martin-loop@latest start`/);
+  assert.match(readme, /\[!\[npm version]\(https:\/\/img\.shields\.io\/npm\/v\/martin-loop/);
+  assert.match(readme, /If this flow saved you time, please star the repo to help other builders find it\./);
+  assert.match(readme, /\*\*Star the repo\*\* if you think AI coding needs budgets, brakes, and receipts\./);
+  assert.match(readme, /\[support@martinloop\.com]\(mailto:support@martinloop\.com\)/);
   assert.match(readme, /npx(?: -y)? martin-loop(?:@latest)? demo/);
   assert.match(readme, /npx(?: -y)? martin-loop(?:@latest)? run .* --proof --verify "npm test"/);
   assert.match(readme, /npx(?: -y)? martin-loop(?:@latest)? dossier --latest/);
