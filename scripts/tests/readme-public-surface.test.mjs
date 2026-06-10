@@ -123,7 +123,7 @@ test("root README is a public product entry point", async () => {
 
   assert.match(readme, /MartinLoop gives AI coding agents budgets, stop conditions, rollback rules, and receipts\./i);
   assert.match(readme, /Built from thousands of agent runs where the problem was not intelligence -- it was uncontrolled execution\./i);
-  assert.match(readme, /## Why Star This\?/);
+  assert.match(readme, /## Why Teams Adopt MartinLoop/);
   assert.match(readme, /## 2-Minute Install Path/);
   assert.match(readme, /## Visual Proof/);
   assert.match(readme, /MartinLoop turns an AI coding run into an inspectable execution record/i);
@@ -132,11 +132,11 @@ test("root README is a public product entry point", async () => {
   assert.match(readme, /<img src="\.\/docs\/assets\/side-by-side\.svg" alt="MartinLoop governed run compared with an unbounded retry loop"/);
   assert.match(readme, /<img src="\.\/docs\/assets\/cli-static\.svg" alt="MartinLoop CLI terminal output"/);
   assert.doesNotMatch(readme, /martinloop-demo\.gif/);
-  assert.match(readme, /\*\*Star this repo:\*\* \[GitHub stars]\(https:\/\/github\.com\/Keesan12\/martin-loop\)/);
-  assert.match(readme, /\*\*Try it now:\*\* `npx -y martin-loop@latest start`/);
+  assert.match(readme, /\*\*Get started:\*\* `npx -y martin-loop@latest start`/);
+  assert.match(readme, /\*\*Try the demo:\*\* `npx -y martin-loop@latest demo`/);
   assert.match(readme, /\[!\[npm version]\(https:\/\/img\.shields\.io\/npm\/v\/martin-loop/);
-  assert.match(readme, /If this flow saved you time, please star the repo to help other builders find it\./);
-  assert.match(readme, /\*\*Star the repo\*\* if you think AI coding needs budgets, brakes, and receipts\./);
+  assert.match(readme, /If this flow is useful, open an issue with feedback so we can keep improving the public experience\./);
+  assert.doesNotMatch(readme, /\*\*Star the repo\*\*/);
   assert.match(readme, /\[support@martinloop\.com]\(mailto:support@martinloop\.com\)/);
   assert.match(readme, /npx(?: -y)? martin-loop(?:@latest)? demo/);
   assert.match(readme, /npx(?: -y)? martin-loop(?:@latest)? run .* --proof --verify "npm test"/);

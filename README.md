@@ -6,8 +6,8 @@
 
   Built from thousands of agent runs where the problem was not intelligence -- it was uncontrolled execution.
 
-  **Star this repo:** [GitHub stars](https://github.com/Keesan12/martin-loop)  
-  **Try it now:** `npx -y martin-loop@latest start`
+  **Get started:** `npx -y martin-loop@latest start`  
+  **Try the demo:** `npx -y martin-loop@latest demo`
 
   [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square&logo=apache)](./LICENSE)
   [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&logo=typescript&logoColor=white)](./tsconfig.base.json)
@@ -15,15 +15,12 @@
   [![npm version](https://img.shields.io/npm/v/martin-loop?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/martin-loop)
   [![npm downloads](https://img.shields.io/npm/dm/martin-loop?style=flat-square&label=downloads)](https://www.npmjs.com/package/martin-loop)
 
-  MartinLoop has been accepted into the NVIDIA Inception program.
-<div align="center">
-
+  MartinLoop is part of the NVIDIA Inception program.
   <br>
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="./docs/assets/nvidia-inception-program.png">
     <img src="./docs/assets/nvidia-inception-program-light.png" alt="NVIDIA Inception Program logo" width="280">
   </picture>
-</div>
 </div>
 
 ## Why MartinLoop
@@ -34,14 +31,14 @@ A task that looked like a small fix can become dozens of attempts, a blown token
 
 Use it when AI coding work needs to stay bounded, inspectable, and safe to review before it becomes expensive or destructive.
 
-## Why Star This?
+## Why Teams Adopt MartinLoop
 
 - It turns agent behavior into inspectable run receipts you can actually review.
 - It enforces hard stop conditions before runaway retries spend more money.
 - It adds rollback-aware rules so failed attempts do not silently leave unsafe changes behind.
 - It helps teams compare outcomes across agents under one governed flow.
 
-If this repo helps you ship safer agent workflows, star it so more builders can find it.
+Teams use MartinLoop when they need governed agent execution that can be reviewed and trusted.
 
 ## 2-Minute Install Path
 
@@ -68,7 +65,7 @@ npx -y martin-loop@latest dossier --latest
 npx -y martin-loop@latest share --latest
 ```
 
-If this flow saved you time, please star the repo to help other builders find it.
+If this flow is useful, open an issue with feedback so we can keep improving the public experience.
 
 `start` prints the first-run guided path. `run` auto-checks `doctor`, `session-start`, and `preflight`, then executes when the environment is ready. You can still run those commands directly when you want to inspect the governed checks first.
 
@@ -345,8 +342,6 @@ git push -u origin feat/your-feature
 ```
 
 <div align="center">
-  **Star the repo** if you think AI coding needs budgets, brakes, and receipts.
-
   [martinloop.com](https://martinloop.com) · [support@martinloop.com](mailto:support@martinloop.com)
 
   <br>
