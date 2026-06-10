@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "martin.failure-taxonomy.runtime.v1",
+  "source": "packages/contracts/src/index.ts#FAILURE_CLASSES",
+  "canonicalClassCount": 12,
+  "failureClasses": [
+    "logic_error",
+    "hallucination",
+    "syntax_error",
+    "type_error",
+    "test_regression",
+    "scope_creep",
+    "no_progress",
+    "repo_grounding_failure",
+    "verification_failure",
+    "environment_mismatch",
+    "budget_pressure",
+    "safety_leash_blocked"
+  ]
+}

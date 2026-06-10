@@ -166,18 +166,18 @@ MartinLoop keeps the useful part of the loop, then adds brakes:
 - preserve rollback and verifier evidence for review
 - reduce runaway context growth with compact run summaries
 
-## Failure Taxonomy (14 Known Modes)
+## Failure Taxonomy (12 Runtime Classes)
 
-Public governed runs use a canonical 14-class failure taxonomy for policy input failures, integrity failures, selector failures, auth failures, and host/scope failures.
+Public governed runs use one canonical taxonomy: the 12 runtime `FailureClass` values from `@martin/contracts`.
 
-See the full table: [Failure Taxonomy (14 Known Modes)](./docs/oss/FAILURE-TAXONOMY-14.md).
+See the canonical table: [Failure Taxonomy (12 Runtime Classes)](./docs/oss/FAILURE-TAXONOMY-12.md).
 
 ## What It Does
 
 - Budget caps stop the next attempt before a configured USD, token, or iteration limit is exceeded.
 - Verifier gates require a real check, such as `npm test`, before a run can count as complete.
 - Policy checks block unsafe verifier commands, risky path changes, and secret-like task inputs before execution.
-- Failure classification separates policy, integrity, selector, auth, and adapter failures into explicit classes for triage and reporting. See [Failure Taxonomy (14 Known Modes)](./docs/oss/FAILURE-TAXONOMY-14.md).
+- Failure classification uses canonical runtime classes for triage and reporting. See [Failure Taxonomy (12 Runtime Classes)](./docs/oss/FAILURE-TAXONOMY-12.md).
 - Run receipts capture stop reason, verifier evidence, budget posture, integrity state, and the next safe action.
 - `martin share --latest` turns the latest governed run into a local share bundle with a redacted JSON receipt, Markdown recap, and proof-card SVG.
 - MCP integration gives hosts one write-capable execution entrypoint plus richer planning, inspection, and review helpers.
@@ -360,7 +360,7 @@ More detail: [SDK reference](./docs/reference/sdk.md) and [package map](./docs/r
 - [Quickstart](./docs/getting-started/quickstart.md)
 - [Examples](./docs/getting-started/examples.md)
 - [Agent Failure Atlas](./docs/agent-failure-atlas.md)
-- [Failure Taxonomy (14 Known Modes)](./docs/oss/FAILURE-TAXONOMY-14.md)
+- [Failure Taxonomy (12 Runtime Classes)](./docs/oss/FAILURE-TAXONOMY-12.md)
 - [PRE-028-PUBLIC-SURFACE-DIFF.md](./docs/oss/PRE-028-PUBLIC-SURFACE-DIFF.md)
 - [Claude Code walkthrough](./docs/getting-started/claude-code.md)
 - [Codex setup](./docs/getting-started/codex.md)

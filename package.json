@@ -62,7 +62,7 @@
     "bench:eval": "pnpm --filter @martin/benchmarks eval",
     "bench:report:ralphy": "pnpm --filter @martin/benchmarks report:ralphy",
     "prepack": "pnpm build && node ./scripts/root-release-guard.mjs --pack",
-    "test": "pnpm -r --workspace-concurrency=1 test && node --test scripts/tests/*.mjs",
+    "test": "node ./scripts/failure-taxonomy.mjs --check && pnpm -r --workspace-concurrency=1 test && node --test scripts/tests/*.mjs",
     "lint": "pnpm -r lint",
     "public:copy-scan": "node ./scripts/public-copy-scan.mjs",
     "public:git-surface": "node ./scripts/public-git-surface-guard.mjs",
@@ -77,7 +77,9 @@
     "release:root:guard": "node ./scripts/root-release-guard.mjs --pack",
     "release:validate:platforms": "node ./scripts/release-matrix.mjs",
     "release:matrix:local": "node ./scripts/release-matrix.mjs",
-    "run:cli": "pnpm --filter @martin/cli dev"
+    "run:cli": "pnpm --filter @martin/cli dev",
+    "taxonomy:sync": "node ./scripts/failure-taxonomy.mjs --write",
+    "taxonomy:check": "node ./scripts/failure-taxonomy.mjs --check"
   },
   "devDependencies": {
     "@types/node": "^22.13.10",
