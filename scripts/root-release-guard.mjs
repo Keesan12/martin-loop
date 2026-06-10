@@ -21,10 +21,12 @@ const REQUIRED_DIST_FILES = [
   "dist/bin/martin-loop.js",
 ];
 const ALLOWED_PACKED_PREFIXES = [
+  "benchmarks/README.md",
   "benchmarks/fixtures/",
   "CODE_OF_CONDUCT.md",
   "LICENSE",
   "README.md",
+  "demo/README.md",
   "demo/seeded-workspace/",
   "dist/",
   "package.json",
