@@ -125,7 +125,13 @@ test("root README is a public product entry point", async () => {
   assert.match(readme, /Built from thousands of agent runs where the problem was not intelligence -- it was uncontrolled execution\./i);
   assert.match(readme, /## Why Star This\?/);
   assert.match(readme, /## 2-Minute Install Path/);
-  assert.match(readme, /!\[MartinLoop governed run demo]\(\.\/docs\/assets\/martinloop-demo\.gif\)/);
+  assert.match(readme, /## Visual Proof/);
+  assert.match(readme, /MartinLoop turns an AI coding run into an inspectable execution record/i);
+  assert.match(readme, /Ungoverned agents can retry until cost and scope drift/i);
+  assert.match(readme, /<img src="\.\/docs\/assets\/cli-animated\.svg" alt="MartinLoop CLI showing a governed agent run"/);
+  assert.match(readme, /<img src="\.\/docs\/assets\/side-by-side\.svg" alt="MartinLoop governed run compared with an unbounded retry loop"/);
+  assert.match(readme, /<img src="\.\/docs\/assets\/cli-static\.svg" alt="MartinLoop CLI terminal output"/);
+  assert.doesNotMatch(readme, /martinloop-demo\.gif/);
   assert.match(readme, /\*\*Star this repo:\*\* \[GitHub stars]\(https:\/\/github\.com\/Keesan12\/martin-loop\)/);
   assert.match(readme, /\*\*Try it now:\*\* `npx -y martin-loop@latest start`/);
   assert.match(readme, /\[!\[npm version]\(https:\/\/img\.shields\.io\/npm\/v\/martin-loop/);

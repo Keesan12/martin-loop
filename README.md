@@ -6,8 +6,7 @@
 
   Built from thousands of agent runs where the problem was not intelligence -- it was uncontrolled execution.
 
-  ⭐**Star this repo:**⭐ If You Believe AI Safety and Governance Matter <br> 
-  <br>
+  **Star this repo:** [GitHub stars](https://github.com/Keesan12/martin-loop)  
   **Try it now:** `npx -y martin-loop@latest start`
 
   [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square&logo=apache)](./LICENSE)
@@ -54,10 +53,6 @@ npm install
 npx -y martin-loop@latest run "Summarize the demo workspace and prove tests still pass" --proof --verify "npm test"
 ```
 
-## Demo GIF
-
-![MartinLoop governed run demo](./docs/assets/martinloop-demo.gif)
-
 ## Quick Start
 
 Try MartinLoop in a disposable demo workspace:
@@ -88,6 +83,20 @@ npx -y martin-loop@latest preflight "Summarize the demo workspace and prove test
 `share --latest` writes three files into the selected run directory under `share/`: `run-receipt.json`, `run-receipt.md`, and `proof-card.svg`.
 
 Release notes for the current root package: [MartinLoop 0.3.4](./docs/release/OSS-0.3.4-RELEASE-NOTES.md).
+
+## Visual Proof
+
+MartinLoop turns an AI coding run into an inspectable execution record: budget used, verifier result, changed files, rollback evidence, and final receipt.
+
+<div align="center">
+  <img src="./docs/assets/cli-animated.svg" alt="MartinLoop CLI showing a governed agent run" width="720">
+</div>
+
+Ungoverned agents can retry until cost and scope drift. MartinLoop adds budget caps, verifier gates, and audit evidence so the run has a clear stop condition.
+
+<div align="center">
+  <img src="./docs/assets/side-by-side.svg" alt="MartinLoop governed run compared with an unbounded retry loop" width="720" height="1080">
+</div>
 
 ## Run This Audit Yourself
 
@@ -162,6 +171,10 @@ Examples below use `npx martin-loop` so they work without a global install. If y
 Use `martin-loop share --latest` after `dossier` when you want a redacted bundle you can hand to another person without sending raw run-store files.
 
 More detail: [CLI reference](./docs/reference/cli.md) and [configuration reference](./docs/reference/config.md).
+
+<div align="center">
+  <img src="./docs/assets/cli-static.svg" alt="MartinLoop CLI terminal output" width="720">
+</div>
 
 ## Benchmarks
 
