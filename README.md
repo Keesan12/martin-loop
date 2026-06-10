@@ -1,5 +1,4 @@
 # MartinLoop
-
 <div align="center">
   <img src="./docs/assets/martinloop-logo.png" alt="MartinLoop" width="260">
 
@@ -7,7 +6,8 @@
 
   Built from thousands of agent runs where the problem was not intelligence -- it was uncontrolled execution.
 
-  **Star this repo:** [GitHub stars](https://github.com/Keesan12/martin-loop)  
+  ⭐**Star this repo:**⭐ If You Believe AI Safety and Governance Matter <br> 
+  <br>
   **Try it now:** `npx -y martin-loop@latest start`
 
   [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square&logo=apache)](./LICENSE)
@@ -17,6 +17,14 @@
   [![npm downloads](https://img.shields.io/npm/dm/martin-loop?style=flat-square&label=downloads)](https://www.npmjs.com/package/martin-loop)
 
   MartinLoop has been accepted into the NVIDIA Inception program.
+<div align="center">
+
+  <br>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./docs/assets/nvidia-inception-program.png">
+    <img src="./docs/assets/nvidia-inception-program-light.png" alt="NVIDIA Inception Program logo" width="280">
+  </picture>
+</div>
 </div>
 
 ## Why MartinLoop
