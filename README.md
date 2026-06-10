@@ -3,9 +3,9 @@
 <div align="center">
   <img src="./docs/assets/martinloop-logo.png" alt="MartinLoop" width="260">
 
-  **The open-source control plane for AI coding agents.**
+  **MartinLoop gives AI coding agents budgets, stop conditions, rollback rules, and receipts.**
 
-  MartinLoop wraps Claude Code, Codex, Gemini, and MCP-aware agent workflows with budgets, verifier gates, policy checks, run receipts, and review-ready evidence.
+  Built from thousands of agent runs where the problem was not intelligence -- it was uncontrolled execution.
 
   **Star this repo:** [GitHub stars](https://github.com/Keesan12/martin-loop)  
   **Try it now:** `npx -y martin-loop@latest start`
@@ -26,6 +26,29 @@ AI coding agents are useful, but unbounded retry loops are expensive.
 A task that looked like a small fix can become dozens of attempts, a blown token budget, and a diff nobody trusts. MartinLoop gives every run an explicit contract: objective, verifier, budget, scope, receipts, and a clear stop condition.
 
 Use it when AI coding work needs to stay bounded, inspectable, and safe to review before it becomes expensive or destructive.
+
+## Why Star This?
+
+- It turns agent behavior into inspectable run receipts you can actually review.
+- It enforces hard stop conditions before runaway retries spend more money.
+- It adds rollback-aware rules so failed attempts do not silently leave unsafe changes behind.
+- It helps teams compare outcomes across agents under one governed flow.
+
+If this repo helps you ship safer agent workflows, star it so more builders can find it.
+
+## 2-Minute Install Path
+
+```sh
+npx -y martin-loop@latest start
+npx -y martin-loop@latest demo
+cd martin-loop-demo
+npm install
+npx -y martin-loop@latest run "Summarize the demo workspace and prove tests still pass" --proof --verify "npm test"
+```
+
+## Demo GIF
+
+![MartinLoop governed run demo](./docs/assets/martinloop-demo.gif)
 
 ## Quick Start
 
@@ -246,11 +269,13 @@ More detail: [SDK reference](./docs/reference/sdk.md) and [package map](./docs/r
 
 - [Quickstart](./docs/getting-started/quickstart.md)
 - [Examples](./docs/getting-started/examples.md)
+- [Agent Failure Atlas](./docs/agent-failure-atlas.md)
 - [Claude Code walkthrough](./docs/getting-started/claude-code.md)
 - [Codex setup](./docs/getting-started/codex.md)
 - [MCP setup](./docs/getting-started/mcp.md)
 - [MCP tool reference](./docs/reference/mcp-tools.md)
 - [Agent run receipts](./docs/oss/AGENT-RUN-RECEIPTS.md)
+- [Benchmark + receipt page](./docs/oss/BENCHMARK-RECEIPT-PAGE.md)
 - [GitHub Actions budget gate](./examples/github-actions-budget-gate/)
 - [OpenCode-style adapter](./examples/opencode-adapter/)
 

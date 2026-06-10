@@ -121,7 +121,11 @@ test("root README is a public product entry point", async () => {
     previousIndex = index;
   }
 
-  assert.match(readme, /The open-source control plane for AI coding agents/i);
+  assert.match(readme, /MartinLoop gives AI coding agents budgets, stop conditions, rollback rules, and receipts\./i);
+  assert.match(readme, /Built from thousands of agent runs where the problem was not intelligence -- it was uncontrolled execution\./i);
+  assert.match(readme, /## Why Star This\?/);
+  assert.match(readme, /## 2-Minute Install Path/);
+  assert.match(readme, /!\[MartinLoop governed run demo]\(\.\/docs\/assets\/martinloop-demo\.gif\)/);
   assert.match(readme, /\*\*Star this repo:\*\* \[GitHub stars]\(https:\/\/github\.com\/Keesan12\/martin-loop\)/);
   assert.match(readme, /\*\*Try it now:\*\* `npx -y martin-loop@latest start`/);
   assert.match(readme, /\[!\[npm version]\(https:\/\/img\.shields\.io\/npm\/v\/martin-loop/);
