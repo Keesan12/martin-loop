@@ -65,6 +65,13 @@ npx -y martin-loop@latest dossier --latest
 npx -y martin-loop@latest share --latest
 ```
 
+Optional global install:
+
+```sh
+npm install -g martin-loop
+martin-loop --version
+```
+
 If this flow is useful, open an issue with feedback so we can keep improving the public experience.
 
 `start` prints the first-run guided path. `run` auto-checks `doctor`, `session-start`, and `preflight`, then executes when the environment is ready. You can still run those commands directly when you want to inspect the governed checks first.
@@ -118,11 +125,39 @@ Expected share bundle outputs:
 - `share/run-receipt.md`
 - `share/proof-card.svg`
 
+## See It In Action
+
+The point is not that every governed run is always cheaper. The point is that every run becomes inspectable and enforceable: budget policy, verifier result, stop reason, and evidence are explicit.
+
+For a deterministic public repro lane, use the benchmark workspace and compare governed execution to unbounded retry behavior:
+
+- `npx martin-loop bench --suite under-3-challenge`
+- `npx martin-loop bench --suite ralphy-engineering-50`
+
+## Ralph-Style Loops
+
+A Ralph-style loop is the failure mode where an AI coding agent keeps trying without knowing when continuing is unsafe, uneconomical, or unlikely to succeed.
+
+MartinLoop keeps the useful part of the loop, then adds brakes:
+
+- stop before budget overspend
+- classify unsafe or invalid actions before execution
+- write an audit record for every attempt
+- preserve rollback and verifier evidence for review
+- reduce runaway context growth with compact run summaries
+
+## Failure Taxonomy (14 Known Modes)
+
+Public governed runs use a canonical 14-class failure taxonomy for policy input failures, integrity failures, selector failures, auth failures, and host/scope failures.
+
+See the full table: [Failure Taxonomy (14 Known Modes)](./docs/oss/FAILURE-TAXONOMY-14.md).
+
 ## What It Does
 
 - Budget caps stop the next attempt before a configured USD, token, or iteration limit is exceeded.
 - Verifier gates require a real check, such as `npm test`, before a run can count as complete.
 - Policy checks block unsafe verifier commands, risky path changes, and secret-like task inputs before execution.
+- Failure classification separates policy, integrity, selector, auth, and adapter failures into explicit classes for triage and reporting. See [Failure Taxonomy (14 Known Modes)](./docs/oss/FAILURE-TAXONOMY-14.md).
 - Run receipts capture stop reason, verifier evidence, budget posture, integrity state, and the next safe action.
 - `martin share --latest` turns the latest governed run into a local share bundle with a redacted JSON receipt, Markdown recap, and proof-card SVG.
 - MCP integration gives hosts one write-capable execution entrypoint plus richer planning, inspection, and review helpers.
@@ -161,6 +196,23 @@ martin-loop mcp install --host <codex|claude|gemini|generic>
 martin-loop challenge [--loop-id <id> | --file <path> | --latest]
 martin-loop share (--loop-id <id> | --file <path> | --latest) [--out-dir <path>]
 martin-loop badge [--format svg|json] [--runs-dir <path>]
+```
+
+Common options:
+
+```text
+--budget <n>            Hard cost cap in USD
+--budget-usd <n>        Alias for --budget
+--soft-limit-usd <n>    Soft budget threshold in USD
+--verify <cmd>          Verifier command after each attempt
+--proof                 Use the no-spend proof adapter
+--max-iterations <n>    Maximum number of attempts
+--max-tokens <n>        Maximum token budget
+--engine <name>         Adapter to use: claude, codex, gemini, or openai
+--cwd <path>            Repo root for the run
+--allow-path <glob>     Restrict writes to this path pattern; repeatable
+--deny-path <glob>      Block this path pattern; repeatable
+--runs-dir <path>       Override the local Martin runs root
 ```
 
 Examples below use `npx martin-loop` so they work without a global install. If you install `martin-loop` globally, the `martin` alias works too.
@@ -288,6 +340,8 @@ More detail: [SDK reference](./docs/reference/sdk.md) and [package map](./docs/r
 - [Quickstart](./docs/getting-started/quickstart.md)
 - [Examples](./docs/getting-started/examples.md)
 - [Agent Failure Atlas](./docs/agent-failure-atlas.md)
+- [Failure Taxonomy (14 Known Modes)](./docs/oss/FAILURE-TAXONOMY-14.md)
+- [PRE-028-PUBLIC-SURFACE-DIFF.md](./docs/oss/PRE-028-PUBLIC-SURFACE-DIFF.md)
 - [Claude Code walkthrough](./docs/getting-started/claude-code.md)
 - [Codex setup](./docs/getting-started/codex.md)
 - [MCP setup](./docs/getting-started/mcp.md)
@@ -341,6 +395,9 @@ git commit -m "feat: describe what you built"
 git push -u origin feat/your-feature
 ```
 
+<p align="center">
+  <strong>Star this repo</strong> if you think AI coding needs budgets, brakes, and receipts.
+</p>
 <p align="center">
   <a href="https://martinloop.com">martinloop.com</a> · <a href="mailto:support@martinloop.com">support@martinloop.com</a>
 </p>

@@ -33,6 +33,7 @@ test("README CTA guard reports missing anchors", () => {
   assert.ok(result.missingChecks.length > 0);
   assert.ok(result.missingChecks.length < REQUIRED_CTA_CHECKS.length);
   assert.ok(result.missingChecks.some((missing) => missing.id === "top_demo_cta"));
+  assert.ok(result.missingChecks.some((missing) => missing.id === "footer_star_cta"));
   assert.ok(result.missingChecks.some((missing) => missing.id === "nvidia_marker"));
 });
 

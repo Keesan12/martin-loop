@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- Restored pre-`0.2.8` public narrative sections in README (updated to current `0.3.4` behavior), including `See It In Action`, `Ralph-Style Loops`, CLI common options, and footer trust CTA.
+- Added canonical public failure taxonomy reference: [docs/oss/FAILURE-TAXONOMY-14.md](./docs/oss/FAILURE-TAXONOMY-14.md).
+- Added public historical diff note for `v0.2.7 -> v0.2.8`: [docs/oss/PRE-028-PUBLIC-SURFACE-DIFF.md](./docs/oss/PRE-028-PUBLIC-SURFACE-DIFF.md).
+
 ## [0.3.4]
 
 ### Fixed
