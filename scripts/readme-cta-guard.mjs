@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -18,12 +18,12 @@ export const REQUIRED_CTA_CHECKS = [
   {
     id: "site_link",
     description: "martinloop.com link",
-    needle: "[martinloop.com](https://martinloop.com)",
+    needle: 'href="https://martinloop.com"',
   },
   {
     id: "support_link",
     description: "support@martinloop.com mailto link",
-    needle: "[support@martinloop.com](mailto:support@martinloop.com)",
+    needle: 'href="mailto:support@martinloop.com"',
   },
   {
     id: "nvidia_marker",
@@ -46,18 +46,47 @@ export async function readRootReadme(rootDir = process.cwd()) {
   return readFile(readmePath, "utf8");
 }
 
-async function main() {
-  const readmeContents = await readRootReadme(process.cwd());
-  const result = evaluateReadmeCtaGuards(readmeContents);
+export async function checkReadmePrecedenceHazards(rootDir = process.cwd()) {
+  const githubReadmePath = path.join(rootDir, ".github", "README.md");
 
-  if (result.ok) {
+  try {
+    await access(githubReadmePath);
+    return [
+      {
+        id: "github_readme_shadow",
+        description: "remove .github/README.md because it shadows the repo homepage README",
+      },
+    ];
+  } catch {
+    return [];
+  }
+}
+
+async function main() {
+  const rootDir = process.cwd();
+  const readmeContents = await readRootReadme(rootDir);
+  const result = evaluateReadmeCtaGuards(readmeContents);
+  const precedenceHazards = await checkReadmePrecedenceHazards(rootDir);
+
+  if (result.ok && precedenceHazards.length === 0) {
     process.stdout.write("README CTA guard passed.\n");
     return;
   }
 
-  process.stderr.write("README CTA guard failed. Missing required anchors:\n");
-  for (const missing of result.missingChecks) {
-    process.stderr.write(`- ${missing.id}: ${missing.description}\n`);
+  process.stderr.write("README CTA guard failed.\n");
+
+  if (result.missingChecks.length > 0) {
+    process.stderr.write("Missing required anchors:\n");
+    for (const missing of result.missingChecks) {
+      process.stderr.write(`- ${missing.id}: ${missing.description}\n`);
+    }
+  }
+
+  if (precedenceHazards.length > 0) {
+    process.stderr.write("README precedence hazards:\n");
+    for (const hazard of precedenceHazards) {
+      process.stderr.write(`- ${hazard.id}: ${hazard.description}\n`);
+    }
   }
 
   process.exitCode = 1;

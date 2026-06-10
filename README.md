@@ -341,15 +341,18 @@ git commit -m "feat: describe what you built"
 git push -u origin feat/your-feature
 ```
 
-<div align="center">
-  [martinloop.com](https://martinloop.com) · [support@martinloop.com](mailto:support@martinloop.com)
-
-  <br>
+<p align="center">
+  <a href="https://martinloop.com">martinloop.com</a> · <a href="mailto:support@martinloop.com">support@martinloop.com</a>
+</p>
+<p align="center">
+  MartinLoop is part of the NVIDIA Inception program.
+</p>
+<p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="./docs/assets/nvidia-inception-program.png">
     <img src="./docs/assets/nvidia-inception-program-light.png" alt="NVIDIA Inception Program logo" width="280">
   </picture>
-</div>
+</p>
 
 ## License
 
