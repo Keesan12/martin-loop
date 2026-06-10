@@ -54,5 +54,6 @@ This atlas is a practical failure-mode catalog for governed AI coding runs. Each
 | FL-048 | `rollback_restore_failed` | Restore action fails after unsafe change | Escalate with evidence | rollback artifacts |
 | FL-049 | `replay_context_mismatch` | Verification replay uses mismatched workspace snapshot | Mark replay as non-comparable | replay notes/warnings |
 | FL-050 | `evidence_link_missing` | Receipt references missing artifact path | Degrade trust and flag dossier | dossier warnings |
+| FL-051 | `repo_readme_shadowed_by_dotgithub` | `.github/README.md` overrides root README on GitHub landing view | Block release until shadow file is removed | `public:readme-cta-guard` + repo contents |
 
 Use this atlas with `runs verify`, `dossier`, and `share` outputs to keep failure intelligence consistent across contributors.
