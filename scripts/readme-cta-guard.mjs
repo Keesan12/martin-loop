@@ -6,19 +6,14 @@ import { fileURLToPath } from "node:url";
 
 export const REQUIRED_CTA_CHECKS = [
   {
-    id: "top_star_cta",
-    description: "top star CTA line",
-    needle: "**Star this repo:** [GitHub stars](https://github.com/Keesan12/martin-loop)",
+    id: "top_get_started_cta",
+    description: "top get-started CTA line",
+    needle: "**Get started:** `npx -y martin-loop@latest start`",
   },
   {
-    id: "top_try_now_cta",
-    description: "top try-now command CTA line",
-    needle: "**Try it now:** `npx -y martin-loop@latest start`",
-  },
-  {
-    id: "footer_star_cta",
-    description: "footer star CTA line",
-    needle: "**Star the repo** if you think AI coding needs budgets, brakes, and receipts.",
+    id: "top_demo_cta",
+    description: "top demo CTA line",
+    needle: "**Try the demo:** `npx -y martin-loop@latest demo`",
   },
   {
     id: "site_link",
