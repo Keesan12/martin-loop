@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Run CodeRabbit review
-        uses: coderabbitai/ai-pr-reviewer@v2
+        uses: coderabbitai/ai-pr-reviewer@latest
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CODERABBIT_AI_TOKEN: ${{ secrets.CODERABBIT_AI_TOKEN }}
