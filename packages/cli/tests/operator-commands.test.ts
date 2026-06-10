@@ -848,7 +848,7 @@ describe("share command", () => {
       expect(receiptMarkdown).toContain("# Martin Loop Share Receipt");
       expect(receiptMarkdown).toContain("Receipt integrity unavailable: Martin proof is not yet trustworthy.");
       expect(receiptMarkdown).not.toContain(runsRoot);
-      expect(proofCardSvg).toContain("Martin Loop Proof Card");
+      expect(proofCardSvg).toContain("MARTIN LOOP :: PROOF RECEIPT");
       expect(proofCardSvg).not.toContain(runsRoot);
     });
   });

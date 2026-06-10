@@ -3004,6 +3004,22 @@ function proofCardInputFromLoop(loop: LoopRecord): MartinProofCardInput {
   )
     ? "captured"
     : "not-recorded";
+  const remainingBudget = Math.max(0, loop.budget.maxUsd - loop.cost.actualUsd);
+  const overspendRatio =
+    loop.budget.maxUsd > 0 ? `${(loop.cost.actualUsd / loop.budget.maxUsd).toFixed(2)}x` : "unknown";
+  const verificationStepCount = loop.events.filter((event) => event.type === "verification.completed").length;
+  const latestAttempt = loop.attempts.at(-1);
+  const runtime = latestAttempt
+    ? `${latestAttempt.adapterId} / ${latestAttempt.model}`
+    : loop.events
+        .map((event) => event.payload)
+        .find((payload) => typeof payload["adapterId"] === "string" || typeof payload["model"] === "string");
+  const runtimeLabel =
+    typeof runtime === "string"
+      ? runtime
+      : runtime
+        ? `${String(runtime["adapterId"] ?? "unknown")} / ${String(runtime["model"] ?? "unknown")}`
+        : "not recorded";
 
   return {
     loopId: loop.loopId,
@@ -3013,8 +3029,14 @@ function proofCardInputFromLoop(loop: LoopRecord): MartinProofCardInput {
     verifierStatus: verification.status,
     costSpend: `$${loop.cost.actualUsd.toFixed(2)}`,
     budget: `$${loop.budget.maxUsd.toFixed(2)}`,
+    remainingBudget: `$${remainingBudget.toFixed(2)}`,
+    overspendRatio,
     attempts: loop.attempts.length,
     rollbackStatus,
+    verificationStepCount,
+    runMode: loop.task.mutationMode ?? "not recorded",
+    runtime: runtimeLabel,
+    timelineEvents: loop.events.map((event) => event.type),
     haltReason: latestExitReason(loop),
     evidenceBoundaryNotes: [
       "Generated from a local Martin Loop run record.",
@@ -3034,8 +3056,14 @@ function defaultChallengeProofCardInput(): MartinProofCardInput {
     verifierStatus: "passed",
     costSpend: "$2.30",
     budget: "$3.00",
+    remainingBudget: "$0.70",
+    overspendRatio: "0.77x",
     attempts: 2,
     rollbackStatus: "captured",
+    verificationStepCount: 1,
+    runMode: "mutating",
+    runtime: "demo / local-fixture",
+    timelineEvents: ["run.started", "attempt.started", "verification.completed", "budget.updated", "run.completed"],
     haltReason: "verifier_passed",
     evidenceBoundaryNotes: [
       "Generated from a local Martin Loop run record.",

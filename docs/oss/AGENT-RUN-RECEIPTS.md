@@ -85,6 +85,8 @@ Expected bundle output under the selected run directory in `share/`:
 - `run-receipt.md` (human-readable recap)
 - `proof-card.svg` (portable visual card)
 
+The proof card is intentionally a terminal-style receipt, not a marketing card. It uses a dark CLI layout, line rules, monospaced evidence rows, green only for verified/pass states, and red only for failed, missing, or boundary states. Do not restyle it into rounded boxes, blue palettes, gradients, certificate layouts, or dashboard cards without an explicit visual review.
+
 4. Optional custom output directory:
 
 ```sh
@@ -126,3 +128,13 @@ If exact replay is not possible because the workspace changed, the `warnings` an
 - usage is presented with provenance (`actual`, `estimated`, or `unavailable`)
 - verifier failures are explicit and not reinterpreted as success
 - inspection remains read-only
+
+## Public proof receipt example
+
+This repository includes a public-safe proof receipt generated from a real governed run:
+
+- [visual proof card](../assets/proof-receipt-live-governed.png)
+- [Markdown receipt](../examples/proof-receipts/live-governed-run-receipt.md)
+- [JSON receipt](../examples/proof-receipts/live-governed-run-receipt.json)
+
+The example shows a verifier-passed run with signed receipt integrity and an explicit evidence boundary. The boundary is kept visible because rollback evidence was not recorded.

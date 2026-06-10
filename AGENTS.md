@@ -44,3 +44,18 @@ pnpm lint
 Write for developers discovering MartinLoop for the first time.
 Explain what the tool does, how to install it, how to run it,
 and how to verify results.
+
+## Proof Receipt Design Lock
+
+MartinLoop proof-card SVGs must stay in the CLI receipt style:
+
+- dark terminal canvas
+- line-based layout
+- monospaced evidence rows
+- semantic green for verified/pass states
+- semantic red for failed, missing, or boundary states
+
+Do not change proof receipts into rounded cards, blue palettes, gradients,
+certificate layouts, dashboard cards, or decorative marketing graphics unless
+the maintainer explicitly asks for that change and receives side-by-side
+visual renders before approval.
