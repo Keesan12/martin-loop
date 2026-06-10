@@ -264,6 +264,28 @@ describe("operator commands", () => {
     expect(traversalDeny.stderr).toContain("Invalid deniedPaths.");
   });
 
+  it("rejects absolute allow/deny patterns during preflight", async () => {
+    const absoluteWindowsAllow = await executeCli([
+      "preflight",
+      "--objective",
+      "Repair the failing MCP lane",
+      "--allow-path",
+      "C:\\\\temp\\\\*"
+    ]);
+    const absolutePosixDeny = await executeCli([
+      "preflight",
+      "--objective",
+      "Repair the failing MCP lane",
+      "--deny-path",
+      "/tmp/*"
+    ]);
+
+    expect(absoluteWindowsAllow.exitCode).toBe(2);
+    expect(absoluteWindowsAllow.stderr).toContain("Invalid allowedPaths.");
+    expect(absolutePosixDeny.exitCode).toBe(2);
+    expect(absolutePosixDeny.stderr).toContain("Invalid deniedPaths.");
+  });
+
   it("preserves explicit --runs-dir overrides for preflight commands after the objective token", async () => {
     await withRunsRoot(async (runsRoot) => {
       const workingDirectory = await mkdtemp(join(tmpdir(), "martin-cli-preflight-workspace-"));
