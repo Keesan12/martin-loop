@@ -38,6 +38,11 @@ const REWRITABLE_PACKAGES = {
 export async function buildPublicFacade(options = {}) {
   const rootDir = options.rootDir ?? process.cwd();
   const distDir = path.join(rootDir, "dist");
+  const rootManifest = JSON.parse(await readFile(path.join(rootDir, "package.json"), "utf8"));
+  const rootPackageVersion =
+    typeof rootManifest.version === "string" && rootManifest.version.length > 0
+      ? rootManifest.version
+      : null;
 
   await rm(distDir, { force: true, recursive: true });
   await mkdir(path.join(distDir, "bin"), { recursive: true });
@@ -49,6 +54,7 @@ export async function buildPublicFacade(options = {}) {
       targetDir: path.join(rootDir, ...facade.targetDir),
       distDir,
       packageJsonSource: facade.packageJson ? path.join(rootDir, ...facade.packageJson) : null,
+      rootPackageVersion,
     });
   }
 
@@ -76,7 +82,11 @@ async function copyFacadeDirectory(input) {
 
   if (input.packageJsonSource) {
     const rawManifest = JSON.parse(await readFile(input.packageJsonSource, "utf8"));
-    const sanitizedManifest = sanitizeVendoredPackageJson(rawManifest, input.packageName);
+    const sanitizedManifest = sanitizeVendoredPackageJson(
+      rawManifest,
+      input.packageName,
+      input.rootPackageVersion,
+    );
     await writeFile(
       path.join(input.targetDir, "package.json"),
       `${JSON.stringify(sanitizedManifest, null, 2)}\n`,
@@ -197,10 +207,14 @@ function sanitizeVendoredAdaptersIndex(contents) {
   );
 }
 
-function sanitizeVendoredPackageJson(manifest, packageName) {
+function sanitizeVendoredPackageJson(manifest, packageName, rootPackageVersion) {
+  const version =
+    packageName === "@martin/cli" && rootPackageVersion
+      ? rootPackageVersion
+      : manifest.version ?? "0.0.0";
   const sanitized = {
     name: manifest.name ?? packageName,
-    version: manifest.version ?? "0.0.0",
+    version,
     type: manifest.type ?? "module",
     description: manifest.description ?? `${packageName} vendored for the martin-loop root package.`,
     main: "./index.js",

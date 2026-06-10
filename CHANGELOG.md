@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.3.6]
+
+### Fixed
+- **Root CLI version reporting now matches the installed package** - the packaged CLI manifest now uses the `martin-loop` package version, so `npx -y martin-loop@0.3.6 --version` reports `0.3.6`.
+- **Release guard now checks root/version parity** - root release validation fails if the vendored CLI manifest version drifts from the root package version again.
+
 ## [0.3.5]
 
 ### Added
