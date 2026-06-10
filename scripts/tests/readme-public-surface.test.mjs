@@ -16,6 +16,7 @@ const PUBLIC_LINK_SURFACES = [
   "docs/concepts",
   "docs/reference",
   "docs/security",
+  "docs/oss",
   "docs/release",
   "packages/cli/README.md",
   "packages/mcp/README.md",
@@ -32,6 +33,12 @@ const FORBIDDEN_PUBLIC_COPY_PATTERNS = [
   /\bKeesan explicitly\b/i,
   /\bpending directory\b/i,
   /\bprivate beta\b/i,
+  /\bML_Main_Repo_Internal\b/i,
+  /\bML_Core_OSS_Internal\b/i,
+  /[A-Za-z]:\\Users\\/i,
+  /\/Users\//i,
+  /\bOneDrive\b/i,
+  /\.codex[\\/]+attachments\b/i,
 ];
 
 async function readRepoFile(relativePath) {
@@ -101,6 +108,10 @@ test("root README is a public product entry point", async () => {
   const expectedOrder = [
     "## Why MartinLoop",
     "## Quick Start",
+    "## Visual Proof",
+    "## See It In Action",
+    "## Ralph-Style Loops",
+    "## Failure Taxonomy (14 Known Modes)",
     "## What It Does",
     "## How It Works",
     "## CLI",
@@ -126,6 +137,9 @@ test("root README is a public product entry point", async () => {
   assert.match(readme, /## Why Teams Adopt MartinLoop/);
   assert.match(readme, /## 2-Minute Install Path/);
   assert.match(readme, /## Visual Proof/);
+  assert.match(readme, /## See It In Action/);
+  assert.match(readme, /## Ralph-Style Loops/);
+  assert.match(readme, /## Failure Taxonomy \(14 Known Modes\)/);
   assert.match(readme, /MartinLoop turns an AI coding run into an inspectable execution record/i);
   assert.match(readme, /Ungoverned agents can retry until cost and scope drift/i);
   assert.match(readme, /<img src="\.\/docs\/assets\/cli-animated\.svg" alt="MartinLoop CLI showing a governed agent run"/);
@@ -135,10 +149,14 @@ test("root README is a public product entry point", async () => {
   assert.match(readme, /\*\*Get started:\*\* `npx -y martin-loop@latest start`/);
   assert.match(readme, /\*\*Try the demo:\*\* `npx -y martin-loop@latest demo`/);
   assert.match(readme, /\[!\[npm version]\(https:\/\/img\.shields\.io\/npm\/v\/martin-loop/);
+  assert.match(readme, /npm install -g martin-loop/);
   assert.match(readme, /If this flow is useful, open an issue with feedback so we can keep improving the public experience\./);
-  assert.doesNotMatch(readme, /\*\*Star the repo\*\*/);
+  assert.match(readme, /Star this repo/i);
   assert.match(readme, /href="https:\/\/martinloop\.com"/);
   assert.match(readme, /href="mailto:support@martinloop\.com"/);
+  assert.match(readme, /\[Failure Taxonomy \(14 Known Modes\)]\(.*docs\/oss\/FAILURE-TAXONOMY-14\.md\)/);
+  assert.match(readme, /--budget <n>/);
+  assert.match(readme, /--allow-path <glob>/);
   assert.match(readme, /npx(?: -y)? martin-loop(?:@latest)? demo/);
   assert.match(readme, /npx(?: -y)? martin-loop(?:@latest)? run .* --proof --verify "npm test"/);
   assert.match(readme, /npx(?: -y)? martin-loop(?:@latest)? dossier --latest/);
@@ -147,8 +165,31 @@ test("root README is a public product entry point", async () => {
   assert.match(readme, /pnpm --filter @martin\/benchmarks eval/);
   assert.match(readme, /npx -y @martinloop\/mcp/);
   assert.match(readme, /import \{ MartinLoop, createClaudeCliAdapter \} from "martin-loop"/);
+  assert.match(readme, /\[PRE-028-PUBLIC-SURFACE-DIFF\.md]\(\.\/docs\/oss\/PRE-028-PUBLIC-SURFACE-DIFF\.md\)/);
   assert.match(readme, new RegExp(`docs/release/OSS-${manifest.version.replace(/\./g, "\\.")}-RELEASE-NOTES\\.md`));
   assert.doesNotMatch(readme, /What's New In/i);
+});
+
+test("canonical public failure taxonomy contains exactly 14 labels", async () => {
+  const taxonomy = await readRepoFile("docs/oss/FAILURE-TAXONOMY-14.md");
+  const labels = [...taxonomy.matchAll(/^\| `([a-z0-9_]+)` \|/gm)].map((match) => match[1]);
+
+  assert.deepEqual(labels, [
+    "policy_input_invalid",
+    "allow_path_traversal_rejected",
+    "allow_path_absolute_rejected",
+    "verifier_launch_failure",
+    "integrity_missing_material",
+    "integrity_tampered_payload",
+    "integrity_schema_unknown_fields",
+    "selector_noncanonical",
+    "selector_ambiguous",
+    "selector_invalid_attempt_index",
+    "auth_blocked_openai_hosted",
+    "auth_quota_exceeded",
+    "mcp_scope_unsupported_with_alternative",
+    "codex_spawn_setup_dead_end",
+  ]);
 });
 
 test("public markdown copy avoids non-public process language", async () => {

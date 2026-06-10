@@ -16,6 +16,11 @@ export const REQUIRED_CTA_CHECKS = [
     needle: "**Try the demo:** `npx -y martin-loop@latest demo`",
   },
   {
+    id: "footer_star_cta",
+    description: "footer star CTA line",
+    needle: "Star this repo",
+  },
+  {
     id: "site_link",
     description: "martinloop.com link",
     needle: 'href="https://martinloop.com"',
