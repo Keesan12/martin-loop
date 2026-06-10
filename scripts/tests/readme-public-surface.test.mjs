@@ -137,7 +137,8 @@ test("root README is a public product entry point", async () => {
   assert.match(readme, /\[!\[npm version]\(https:\/\/img\.shields\.io\/npm\/v\/martin-loop/);
   assert.match(readme, /If this flow is useful, open an issue with feedback so we can keep improving the public experience\./);
   assert.doesNotMatch(readme, /\*\*Star the repo\*\*/);
-  assert.match(readme, /\[support@martinloop\.com]\(mailto:support@martinloop\.com\)/);
+  assert.match(readme, /href="https:\/\/martinloop\.com"/);
+  assert.match(readme, /href="mailto:support@martinloop\.com"/);
   assert.match(readme, /npx(?: -y)? martin-loop(?:@latest)? demo/);
   assert.match(readme, /npx(?: -y)? martin-loop(?:@latest)? run .* --proof --verify "npm test"/);
   assert.match(readme, /npx(?: -y)? martin-loop(?:@latest)? dossier --latest/);
@@ -178,6 +179,7 @@ test("public markdown links resolve inside the repo", async () => {
 test("obsolete public distribution folder is absent", async () => {
   const removedPaths = [
     path.join(ROOT_DIR, "docs", "distribution"),
+    path.join(ROOT_DIR, ".github", "README.md"),
   ];
 
   for (const removedPath of removedPaths) {
