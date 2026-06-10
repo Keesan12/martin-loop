@@ -2,6 +2,8 @@
 
 This atlas is a practical failure-mode catalog for governed AI coding runs. Each row is a reusable triage pattern: trigger, guardrail response, and where to confirm it in receipts.
 
+The public canonical subset is the 14-class taxonomy documented in [./oss/FAILURE-TAXONOMY-14.md](./oss/FAILURE-TAXONOMY-14.md). Use that document for external reporting; use this atlas for the extended catalog.
+
 | ID | Failure mode | Typical trigger | Guardrail response | Evidence anchor |
 | --- | --- | --- | --- | --- |
 | FL-001 | `budget_preflight_block` | Requested budget exceeds policy | Fail closed before attempt starts | `preflight.blockingIssues` |
