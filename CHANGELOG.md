@@ -2,10 +2,18 @@
 
 ## [Unreleased]
 
+## [0.3.5]
+
 ### Added
+- **CLI-style proof receipts** - `share --latest` proof cards now render as dark terminal receipts with spend, budget, verifier, integrity, timeline, and evidence-boundary lines.
+- **Public proof receipt example** - README and receipt docs now include a real governed run receipt showing `$0.51` spend against a `$3.00` budget with signed integrity and an explicit evidence boundary.
+- **Proof receipt design guardrails** - Public agent docs and tests now block rounded-card, blue-palette, gradient, and inflated-proof regressions in proof-card output.
 - Restored pre-`0.2.8` public narrative sections in README (updated to current `0.3.4` behavior), including `See It In Action`, `Ralph-Style Loops`, CLI common options, and footer trust CTA.
 - Added canonical public failure taxonomy reference: [docs/oss/FAILURE-TAXONOMY-14.md](./docs/oss/FAILURE-TAXONOMY-14.md).
 - Added public historical diff note for `v0.2.7 -> v0.2.8`: [docs/oss/PRE-028-PUBLIC-SURFACE-DIFF.md](./docs/oss/PRE-028-PUBLIC-SURFACE-DIFF.md).
+
+### Changed
+- Root release docs now point to the `0.3.5` proof receipt line and keep the root package separate from the standalone `@martinloop/mcp` release line.
 
 ## [0.3.4]
 
