@@ -28,6 +28,17 @@ npx martin-loop dossier --latest
 
 Expected value: the dossier tells you what happened, what Martin prevented, verifier status, rollback/artifact evidence, clearly labeled token/cost estimates, and the next safe action.
 
+## Proof Receipts
+
+After a governed run, create a share bundle:
+
+```sh
+npx martin-loop runs verify --latest
+npx martin-loop share --latest
+```
+
+The bundle includes `run-receipt.json`, `run-receipt.md`, and `proof-card.svg`. The proof card should look like a terminal receipt: dark canvas, rows, divider lines, monospaced evidence, green pass states, and red boundary states. Keep uncertainty visible. If rollback, integrity, cost, or verifier evidence is missing, render it as missing instead of turning the run into a success claim.
+
 ## MCP Profile Defaults
 
 - `minimal` is the default: `martin_doctor`, `martin_preflight`, `martin_list_runs`, `martin_triage_runs`, and `martin_run_dossier`.

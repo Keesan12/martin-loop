@@ -86,7 +86,7 @@ npx -y martin-loop@latest preflight "Summarize the demo workspace and prove test
 
 `share --latest` writes three files into the selected run directory under `share/`: `run-receipt.json`, `run-receipt.md`, and `proof-card.svg`.
 
-Release notes for the current root package: [MartinLoop 0.3.4](./docs/release/OSS-0.3.4-RELEASE-NOTES.md).
+Release notes for the current root package: [MartinLoop 0.3.5](./docs/release/OSS-0.3.5-RELEASE-NOTES.md).
 
 ## Visual Proof
 
@@ -102,22 +102,42 @@ Ungoverned agents can retry until cost and scope drift. MartinLoop adds budget c
   <img src="./docs/assets/side-by-side.svg" alt="MartinLoop governed run compared with an unbounded retry loop" width="720" height="1080">
 </div>
 
+## Proof Receipts
+
+Proof receipts are local share bundles for governed AI coding runs. They show the task, spend, budget, verifier result, receipt integrity, and any evidence boundary that should not be rounded into confidence.
+
+This real governed run spent `$0.51` against a `$3.00` budget. The verifier passed and the receipt integrity was signed, but the proof stayed at `EVIDENCE_BOUNDARY` because rollback evidence was not recorded.
+
+<div align="center">
+  <img src="./docs/assets/proof-receipt-live-governed.png" alt="MartinLoop CLI proof receipt for a governed run with spend, budget, verifier, integrity, and evidence boundary" width="720">
+</div>
+
+Generate your own receipt after a governed run:
+
+```sh
+npx -y martin-loop@latest run "Summarize the demo workspace and prove tests still pass" --proof --verify "npm test"
+npx -y martin-loop@latest runs verify --latest
+npx -y martin-loop@latest share --latest
+```
+
+Example receipt files: [Markdown](./docs/examples/proof-receipts/live-governed-run-receipt.md) and [JSON](./docs/examples/proof-receipts/live-governed-run-receipt.json).
+
 ## Run This Audit Yourself
 
 Use this lane from a clean temp directory to verify the public CLI flow exactly as shipped:
 
 ```sh
-npx -y martin-loop@0.3.4 --version
-npx -y martin-loop@0.3.4 start
-npx -y martin-loop@0.3.4 demo
+npx -y martin-loop@0.3.5 --version
+npx -y martin-loop@0.3.5 start
+npx -y martin-loop@0.3.5 demo
 cd martin-loop-demo
 npm install
-npx -y martin-loop@0.3.4 run "Summarize the demo workspace and prove tests still pass" --proof --verify "npm test" --json
-npx -y martin-loop@0.3.4 dossier --latest --json
-npx -y martin-loop@0.3.4 share --latest --json
+npx -y martin-loop@0.3.5 run "Summarize the demo workspace and prove tests still pass" --proof --verify "npm test" --json
+npx -y martin-loop@0.3.5 dossier --latest --json
+npx -y martin-loop@0.3.5 share --latest --json
 ```
 
-For deterministic installs, pin the package line (`martin-loop@0.3.4`) or use `martin-loop@latest`. Plain `npx martin-loop` can resolve a stale local cache on some machines.
+For deterministic installs, pin the package line (`martin-loop@0.3.5`) or use `martin-loop@latest`. Plain `npx martin-loop` can resolve a stale local cache on some machines.
 
 Expected share bundle outputs:
 
@@ -281,7 +301,7 @@ npx martin-loop mcp print-config --host gemini --transport stdio --profile full-
 npx martin-loop mcp print-config --host generic --transport stdio --profile github-review
 ```
 
-The root `martin-loop` package and the standalone `@martinloop/mcp` package move on separate version lines. The root package line here is `0.3.4`; the current standalone MCP package is `0.3.1`.
+The root `martin-loop` package and the standalone `@martinloop/mcp` package move on separate version lines. The root package line here is `0.3.5`; the current standalone MCP package is `0.3.1`.
 
 The public MCP release train labels are:
 
