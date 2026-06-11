@@ -656,7 +656,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       .filter((event): event is typeof event & { payload: { steps?: Array<{ detail?: string }> } } =>
         event.type === "verification.completed"
       )
-      .flatMap((event) => event.payload.steps ?? [])
+      .flatMap((event) => event.payload?.steps ?? [])
       .map((step) => step.detail)
       .filter((detail): detail is string => Boolean(detail))
       .join("\n---\n");
