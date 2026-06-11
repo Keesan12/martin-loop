@@ -246,6 +246,11 @@ export function resolveGitRepositoryRoot(workingDirectory: string): string | und
     return cached ?? undefined;
   }
 
+  if (!existsSync(resolvedWorkingDirectory)) {
+    gitRepositoryRootCache.set(resolvedWorkingDirectory, null);
+    return undefined;
+  }
+
   const visited: string[] = [];
   let current = resolvedWorkingDirectory;
 
