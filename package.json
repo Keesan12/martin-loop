@@ -45,7 +45,7 @@
   "scripts": {
     "build": "pnpm -r --workspace-concurrency=1 build && node ./scripts/build-public-facade.mjs",
     "prepack": "pnpm build && node ./scripts/root-release-guard.mjs --pack",
-    "test": "pnpm -r --workspace-concurrency=1 test && node --test --test-concurrency=1 scripts/tests/*.mjs",
+    "test": "node ./scripts/failure-taxonomy.mjs --check && pnpm -r --workspace-concurrency=1 test && node --test --test-concurrency=1 scripts/tests/*.mjs",
     "lint": "pnpm -r lint",
     "oss:validate": "node ./scripts/oss-boundary.mjs",
     "public:smoke": "node ./scripts/public-facade-smoke.mjs",
@@ -56,7 +56,9 @@
     "release:validate-local:install": "node ./scripts/rc-validation.mjs --install",
     "release:matrix:local": "node ./scripts/release-matrix.mjs",
     "release:root:guard": "node ./scripts/root-release-guard.mjs --pack",
-    "run:cli": "pnpm --filter @martin/cli dev"
+    "run:cli": "pnpm --filter @martin/cli dev",
+    "taxonomy:sync": "node ./scripts/failure-taxonomy.mjs --write",
+    "taxonomy:check": "node ./scripts/failure-taxonomy.mjs --check"
   },
   "devDependencies": {
     "@types/node": "^22.13.10",

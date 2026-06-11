@@ -16,19 +16,22 @@ export type LoopLifecycleState =
   | "stuck_exit"
   | "human_escalation";
 
-export type FailureClass =
-  | "logic_error"
-  | "hallucination"
-  | "syntax_error"
-  | "type_error"
-  | "test_regression"
-  | "scope_creep"
-  | "no_progress"
-  | "repo_grounding_failure"
-  | "verification_failure"
-  | "environment_mismatch"
-  | "budget_pressure"
-  | "safety_leash_blocked";
+export const FAILURE_CLASSES = [
+  "logic_error",
+  "hallucination",
+  "syntax_error",
+  "type_error",
+  "test_regression",
+  "scope_creep",
+  "no_progress",
+  "repo_grounding_failure",
+  "verification_failure",
+  "environment_mismatch",
+  "budget_pressure",
+  "safety_leash_blocked",
+] as const;
+
+export type FailureClass = (typeof FAILURE_CLASSES)[number];
 
 export type InterventionType =
   | "compress_context"
