@@ -77,7 +77,8 @@ async function ensureMatchesOrWrite(targetPath, expectedContents, write) {
     return;
   }
   const existing = await readFile(targetPath, "utf8").catch(() => "");
-  if (existing !== expectedContents) {
+  const normalize = (value) => value.replace(/\r\n/g, "\n");
+  if (normalize(existing) !== normalize(expectedContents)) {
     throw new Error(`Taxonomy artifact drift detected: ${path.relative(ROOT_DIR, targetPath)}`);
   }
 }
