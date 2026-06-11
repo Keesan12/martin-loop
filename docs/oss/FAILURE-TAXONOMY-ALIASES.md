@@ -1,10 +1,10 @@
-# Legacy Failure Labels (Historical 14-Label Set)
+# Failure Taxonomy Aliases (Historical Replay Only)
 
-This page is retained for historical replay compatibility only.
+This mapping is compatibility-only for historical artifacts that used legacy operational labels.
 
-- Canonical taxonomy is now runtime-derived and fixed to 12 classes in [FAILURE-TAXONOMY-12.md](./FAILURE-TAXONOMY-12.md).
-- New receipts, APIs, and summaries must emit canonical runtime class IDs only.
-- Legacy labels remain accepted only for old artifact ingestion/replay.
+- Canonical taxonomy remains the 12 runtime classes in [FAILURE-TAXONOMY-12.md](./FAILURE-TAXONOMY-12.md).
+- New receipts, APIs, and summaries should emit canonical runtime classes only.
+- Legacy labels may be accepted on ingestion/replay and mapped to canonical runtime classes.
 
 | Legacy label | Canonical runtime class |
 | --- | --- |

@@ -2,7 +2,7 @@
 
 This atlas is a practical failure-mode catalog for governed AI coding runs. Each row is a reusable triage pattern: trigger, guardrail response, and where to confirm it in receipts.
 
-The public canonical subset is the 14-class taxonomy documented in [./oss/FAILURE-TAXONOMY-14.md](./oss/FAILURE-TAXONOMY-14.md). Use that document for external reporting; use this atlas for the extended catalog.
+The public canonical subset is the runtime 12-class taxonomy documented in [./oss/FAILURE-TAXONOMY-12.md](./oss/FAILURE-TAXONOMY-12.md). Legacy operational labels are replay-only aliases in [./oss/FAILURE-TAXONOMY-ALIASES.md](./oss/FAILURE-TAXONOMY-ALIASES.md). Use this atlas for the extended catalog.
 
 | ID | Failure mode | Typical trigger | Guardrail response | Evidence anchor |
 | --- | --- | --- | --- | --- |
