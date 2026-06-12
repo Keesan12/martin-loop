@@ -6,8 +6,8 @@ This map defines the staged standalone MCP releases after the live `0.3.0` basel
 
 - public npm baseline: `0.3.1`
 - public GitHub release baseline: `mcp-v0.3.1`
-- in-repo release line: `0.3.1`
-- next release to prepare after this cut: `0.3.2`
+- in-repo release line: `0.3.2`
+- next release to prepare after this cut: `0.3.3`
 
 ## `0.3.1` — Review And Handoff Controls
 
@@ -30,7 +30,23 @@ Primary public surfaces:
 - `docs/oss/MCP-FOR-AI-AGENTS.md`
 - `docs/release/MCP-0.3.1-RELEASE-NOTES.md`
 
-## `0.3.2` — Opt-In Execution Controls
+## `0.3.2` — Engine Validation Hotfix
+
+Story: fix a tool-input validation gap that rejected valid spend-limit requests for Gemini-backed runs.
+
+Include:
+- add `gemini` to the `engine` allow-list for `martin_run`, `martin_preflight`, and `martin_doctor`
+- regression coverage for budget fields paired with `engine: "gemini"`
+
+Do not include:
+- new tools or schema fields
+- opt-in execution controls
+- changes to budget enforcement behavior
+
+Primary public surfaces:
+- `docs/release/MCP-0.3.2-RELEASE-NOTES.md`
+
+## `0.3.3` — Opt-In Execution Controls
 
 Story: widen control for power users without making execution feel implicit or invisible.
 
@@ -49,7 +65,7 @@ Do not include:
 Primary public surfaces:
 - `packages/mcp/README.md`
 - `docs/oss/MCP-FOR-AI-AGENTS.md`
-- `docs/release/MCP-0.3.2-RELEASE-NOTES.md`
+- `docs/release/MCP-0.3.3-RELEASE-NOTES.md`
 
 ## Release cut rule
 
