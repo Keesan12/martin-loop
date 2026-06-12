@@ -412,6 +412,38 @@ describe("server validation", () => {
     });
 
     expect(
+      validateToolInput("martin_doctor", {
+        engine: "gemini"
+      })
+    ).toEqual({
+      engine: "gemini"
+    });
+
+    expect(
+      validateToolInput("martin_preflight", {
+        objective: "Fix the bug",
+        engine: "gemini",
+        maxUsd: 5
+      })
+    ).toEqual({
+      objective: "Fix the bug",
+      engine: "gemini",
+      maxUsd: 5
+    });
+
+    expect(
+      validateToolInput("martin_run", {
+        objective: "Fix the bug",
+        engine: "gemini",
+        maxUsd: 5
+      })
+    ).toEqual({
+      objective: "Fix the bug",
+      engine: "gemini",
+      maxUsd: 5
+    });
+
+    expect(
       validateToolInput("martin_triage_runs", {
         includeHealthy: true,
         limit: 5
