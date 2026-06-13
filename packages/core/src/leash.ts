@@ -86,7 +86,7 @@ const BLOCKED_PATTERNS: RegExp[] = [
 function commandContainsDestructiveRemoval(command: string): boolean {
   const normalized = command.replace(/\$\{?IFS\}?/giu, " ").toLowerCase();
 
-  const rmInvocation = /(?:^|[\s;&|`(])(?:\/(?:usr\/(?:local\/)?)?s?bin\/)?rm\s+([^\n;|`]+)/giu;
+  const rmInvocation = /(?:^|[\s;&|`(])(?:[^\s;&|`(]+\/)?rm\s+([^\n;|`]+)/giu;
   let match: RegExpExecArray | null;
   while ((match = rmInvocation.exec(normalized)) !== null) {
     const args = match[1] ?? "";
