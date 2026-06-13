@@ -43,7 +43,7 @@ const POISON_PATTERNS = [
  */
 const IDENTITY_REDEFINITION_PATTERNS = [
   /\byou(?:'re|\s+are)\s+now\s+(?:a|an|the)\b(?!\s+(?:martin\s+loop|ai\s+coding\s+agent))/i,
-  /\byou(?:'re|\s+are)\s+no\s+longer\s+(?!(?:martin\s+loop|an?\s+ai)\b)/i,
+  /\byou(?:'re|\s+are)\s+no\s+longer\s+(?!.*\b(?:martin\s+loop|an?\s+ai)\b)/i,
   /\bforget\s+(?:that\s+)?you(?:'re|\s+are)\s+martin\s+loop\b/i,
   /\b(?:pretend|imagine)\s+(?:that\s+)?you(?:'re|\s+are)\b/i,
   /\bact\s+as\s+(?:if\s+you(?:'re|\s+are)\s+)?(?:a|an)\s+(?:different|new|unrestricted|jailbroken)\b/i,

@@ -1,19 +1,32 @@
 # MartinLoop 0.3.1
 
-`0.3.1` is reserved for the next root-package slice after share receipts.
+`0.3.1` is a trust-hardening follow-up release focused on claim-to-code parity.
 
-## Planned scope
+## Highlights
 
-- multi-model compatibility polish
-- broader local IDE setup guidance
-- compatibility docs that match the adapters already shipped in the public package
+- Benchmark reproduction is now deterministic from a clean repo workflow.
+- Public benchmark command paths are now tested end-to-end in CI.
+- The public CLI now supports `--version` / `version` / `-V` directly.
+- CLI doctor output now reports the public root package version for release clarity.
+- Public trust-boundary language is explicit about usage provenance and receipt integrity.
 
-## Out of scope
+## Fixed
 
-- hosted transport
-- control-plane features
-- billing, team, or tenant workflows
+- **Benchmark command reliability:** `@martin/benchmarks` eval/report commands now run from built runtime output (`dist/eval.js`) with pre-build hooks, eliminating fragile local `tsx` resolution assumptions.
+- **Public command reproducibility:** root scripts (`bench:build`, `bench:test`, `bench:eval`, `bench:report:ralphy`) now route through the benchmark workspace commands used in docs and test coverage.
+- **CLI version ergonomics:** `martin-loop --version` now returns a machine- and human-friendly version result instead of falling through to help text.
+- **Release identity clarity:** `doctor --json` now reports the root public package version in `cliVersion`.
 
-## Release gate
+## Verification
 
-The shipped adapter and IDE guidance must match the public package exactly, with no hosted or private-product bleed.
+- `pnpm bench:eval`
+- `pnpm bench:report:ralphy`
+- `node --test scripts/tests/benchmarks-workspace.test.mjs`
+- `pnpm --filter @martin/cli test`
+- `node --test scripts/tests/readme-public-surface.test.mjs`
+- `node --test scripts/tests/public-copy-scan.test.mjs`
+
+## Compatibility
+
+- No hosted transport or private-control-plane features are introduced in this release.
+- Root and standalone MCP release lines remain independent (`martin-loop` vs `@martinloop/mcp`).

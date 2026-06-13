@@ -38,7 +38,7 @@ const MAX_FILE_BYTES = 64_000;
 const MAX_FILES = 500;
 
 export function resolveGroundingRoot(env: NodeJS.ProcessEnv = process.env): string {
-  return (env["MARTIN_GROUNDING_DIR"] as string | undefined)?.trim() ||
+  return (env["MARTIN_GROUNDING_DIR"] as string | undefined)?.trim() ??
     join(homedir(), ".martin", "grounding");
 }
 

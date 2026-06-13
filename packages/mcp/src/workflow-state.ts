@@ -72,9 +72,7 @@ export async function recordMcpWorkflowStep(input: RecordMcpWorkflowStepInput): 
     ...(input.engine ? { engine: input.engine } : {}),
     ...(input.verificationPlan ? { verificationPlanKey: hashVerificationPlan(input.verificationPlan) } : {}),
     ...(input.receiptScope ? { scopeKey: hashReceiptScope(input.receiptScope) } : {}),
-    ...(input.allowedPaths || input.deniedPaths
-      ? { pathScopeKey: hashPathScope(input.allowedPaths ?? [], input.deniedPaths ?? []) }
-      : {}),
+    pathScopeKey: hashPathScope(input.allowedPaths ?? [], input.deniedPaths ?? []),
     ...(input.budget ? { budgetKey: hashBudget(input.budget) } : {})
   };
   await writeWorkflowState(input.runsRoot, state);

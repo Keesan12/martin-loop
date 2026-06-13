@@ -1,4 +1,5 @@
 import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -66,22 +67,64 @@ import {
   buildArtifactSummary,
   buildRunDossier,
   buildVerificationSummary,
+  buildVerificationSummaryWithIntegrity,
   computeScopeFingerprint,
   describeCostProvenance,
+  findPersistedLoopEvidence,
   listPersistedLoops,
   loadPersistedAttempt,
   loadPersistedLoop,
+  readCostProvenance,
   readLocalCorpusRisk,
   resolveCliEnvironment,
   resolveInvocationRoot,
   resolveReceiptScope,
-  triagePersistedLoops
+  triagePersistedLoops,
+  type IntegrityStatus
 } from "./run-store.js";
 import { CliCommandError, renderCliError, renderCliSuccess } from "./ux.js";
-import { evaluateCliRunGate, recordCliWorkflowStep } from "./workflow-state.js";
+import { consumeFirstRunBanner, evaluateCliRunGate, recordCliWorkflowStep } from "./workflow-state.js";
 
 const require = createRequire(import.meta.url);
 const packageJson = require("../package.json") as { version: string };
+type PackageManifest = {
+  name?: string;
+  version?: string;
+};
+
+function readPackageManifest(path: string): PackageManifest | undefined {
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf8")) as PackageManifest;
+    return parsed;
+  } catch {
+    return undefined;
+  }
+}
+
+function resolveRootPackageVersion(): string {
+  let cursor = dirname(fileURLToPath(import.meta.url));
+  for (let depth = 0; depth < 10; depth += 1) {
+    const manifest = readPackageManifest(join(cursor, "package.json"));
+    if (manifest?.name === "martin-loop" && typeof manifest.version === "string" && manifest.version.length > 0) {
+      return manifest.version;
+    }
+
+    const parent = dirname(cursor);
+    if (parent === cursor) {
+      break;
+    }
+    cursor = parent;
+  }
+
+  const envVersion = process.env["npm_package_name"] === "martin-loop" ? process.env["npm_package_version"] : undefined;
+  if (typeof envVersion === "string" && envVersion.length > 0) {
+    return envVersion;
+  }
+
+  return packageJson.version;
+}
+
+const rootPackageVersion = resolveRootPackageVersion();
 let runAdapterOverrideForTests: MartinAdapter | undefined;
 
 export type RunCommandRequest = {
@@ -98,7 +141,9 @@ export type RunCommandRequest = {
   runsDir?: string;
   model?: string;
   engine?: string;
+  liveMode?: "live" | "proof";
   mutationMode?: MutationMode;
+  unsafeAllowUnguardedRun?: boolean;
   allowedPaths?: string[];
   deniedPaths?: string[];
   acceptanceCriteria?: string[];
@@ -147,6 +192,12 @@ type DoctorCommand = {
   runsDir?: string;
   engine?: "claude" | "codex" | "gemini" | "openai";
   configPath?: string;
+};
+
+type StartCommand = {
+  command: "start";
+  cwd?: string;
+  runsDir?: string;
 };
 
 type NativePhaseCommand = {
@@ -234,6 +285,7 @@ type ShareCommand = {
 type BadgeCommand = {
   command: "badge";
   format: "svg" | "json";
+  runsDir?: string;
 };
 
 type Under3BenchFixture = {
@@ -284,6 +336,9 @@ export type ParsedCliArguments =
       command: "help";
     }
   | {
+      command: "version";
+    }
+  | {
       command: "run";
       request: RunCommandRequest;
     }
@@ -298,6 +353,7 @@ export type ParsedCliArguments =
     }
   | InspectCommand
   | ResumeCommand
+  | StartCommand
   | DoctorCommand
   | NativePhaseCommand
   | PreflightCommand
@@ -323,9 +379,18 @@ export async function executeCli(args: string[]): Promise<{
 
     switch (parsed.command) {
       case "help":
+        const firstRunBanner = await consumeFirstRunBanner(
+          resolveCliEnvironment().runsRoot
+        ).catch(() => undefined);
         return {
           exitCode: 0,
-          stdout: renderCliHelp(),
+          stdout: firstRunBanner ? `${firstRunBanner}\n\n${renderCliHelp()}` : renderCliHelp(),
+          stderr: ""
+        };
+      case "version":
+        return {
+          exitCode: 0,
+          stdout: rootPackageVersion,
           stderr: ""
         };
       case "bench":
@@ -351,6 +416,8 @@ export async function executeCli(args: string[]): Promise<{
         return await executeInspectCommand(parsed, outputMode);
       case "resume":
         return await executeResumeCommand(parsed, outputMode);
+      case "start":
+        return await executeStartCommand(parsed, outputMode);
       case "doctor":
         return await executeDoctorCommand(parsed, outputMode);
       case "native_phase":
@@ -392,11 +459,18 @@ export function __setRunAdapterOverrideForTests(adapter?: MartinAdapter): void {
 export function parseCliArguments(args: string[]): ParsedCliArguments {
   const [command, ...rest] = args;
 
+  if (command === "--version" || command === "-V" || command === "version") {
+    return { command: "version" };
+  }
+
   if (!command || command === "help" || command === "--help" || command === "-h") {
     return { command: "help" };
   }
 
   if (command === "run" || command === "preflight") {
+    if (rest[0] === "--help" || rest[0] === "-h") {
+      return { command: "help" };
+    }
     const request = parseRunRequest(rest);
     return command === "run"
       ? { command: "run", request }
@@ -437,6 +511,14 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
     };
   }
 
+  if (command === "start" || command === "tour") {
+    return {
+      command: "start",
+      ...(readOption(rest, "--cwd") ? { cwd: readOption(rest, "--cwd") } : {}),
+      ...(readOption(rest, "--runs-dir") ? { runsDir: readOption(rest, "--runs-dir") } : {})
+    };
+  }
+
   if (command === "doctor") {
     return {
       command: "doctor",
@@ -459,6 +541,7 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
     if (
       subcommand === "status" ||
       subcommand === "contract" ||
+      subcommand === "session-start" ||
       subcommand === "preflight" ||
       subcommand === "run"
     ) {
@@ -587,7 +670,8 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
   if (command === "badge") {
     return {
       command: "badge",
-      format: parseBadgeFormat(rest)
+      format: parseBadgeFormat(rest),
+      ...(readOption(rest, "--runs-dir") ? { runsDir: readOption(rest, "--runs-dir") } : {})
     };
   }
 
@@ -600,6 +684,8 @@ export function renderCliHelp(): string {
     "",
     "Usage:",
     "  martin run <objective> [options]",
+    "  martin start [options]",
+    "  martin tour [options]                (compatibility alias for start)",
     "  martin-loop run <objective> [options]    (published alias)",
     "  martin preflight <objective> [options]",
     "  martin doctor [options]",
@@ -610,7 +696,7 @@ export function renderCliHelp(): string {
     "  martin runs list [options]",
     "  martin runs get (--loop-id <id> | --file <path> | --latest) [options]",
     "  martin runs attempt (--loop-id <id> | --file <path>) [--attempt-index <n>] [options]",
-    "  martin runs verify (--loop-id <id> | --file <path>) [options]",
+    "  martin runs verify (--loop-id <id> | --file <path> | --latest) [options]",
     "  martin mcp print-config --host <codex|claude|gemini|generic> [--scope <user|project|local>] [options]",
     "  martin mcp install --host <codex|claude|gemini|generic> [--scope <user|project|local>] [--dry-run] [options]",
     "  martin demo [--dir <path>] [--force]",
@@ -625,6 +711,7 @@ export function renderCliHelp(): string {
     "  martin badge [--format svg|json]",
     "",
     "Operator commands:",
+    "  start        Guided first-run onboarding and governed command path.",
     "  doctor       Check CLI, engine, working directory, and run-store readiness.",
     "  session-start Show latest local run state, phase state, and command hints.",
     "  phase status    Read local phase state and run-store posture.",
@@ -687,7 +774,10 @@ export function renderCliHelp(): string {
     "  --max-iterations <n>     Set the maximum number of attempts.",
     "  --max-tokens <n>         Set the maximum total token budget.",
     "  --verify <cmd>           Shell command to run as the verifier after each attempt.",
+    "  --proof                  Run in no-spend proof mode (same as MARTIN_LIVE=false).",
     "  --verify-only            Skip the coding adapter and run the verifier only.",
+    "  --unsafe-allow-unguarded-run",
+    "                           Bypass doctor/preflight run-gate checks for this invocation only.",
     "  --allow-path <glob>      Restrict agent writes to this path pattern (repeatable).",
     "  --deny-path <glob>       Block agent from this path pattern (repeatable).",
     "  --accept <criterion>     Add an acceptance criterion to the prompt (repeatable).",
@@ -726,26 +816,54 @@ async function executeRunCommand(
       telemetryDestination: resolvedGuardrails.telemetryDestination
     }
   };
+  const allowedPaths = normalizePathPolicyPatterns(resolvedRequest.allowedPaths, "allowedPaths");
+  const deniedPaths = normalizePathPolicyPatterns(resolvedRequest.deniedPaths, "deniedPaths");
+
   const cliEnvironment = resolveCliEnvironment({
     cwd: resolvedRequest.cwd,
     runsDir: resolvedRequest.runsDir,
-    engine: resolvedRequest.engine
+    engine: resolvedRequest.engine,
+    liveMode: resolvedRequest.liveMode
   });
+  const effectiveMutationMode =
+    resolvedRequest.mutationMode ?? (resolvedRequest.liveMode === "proof" ? "verify_only" : undefined);
   const receiptScope = buildCliReceiptScope(cliEnvironment);
   const engineRequired =
-    resolvedRequest.mutationMode !== "verify_only" && cliEnvironment.liveMode === "live";
+    effectiveMutationMode !== "verify_only" && cliEnvironment.liveMode === "live";
+  const preRunWarnings: string[] = [];
 
-  if (engineRequired) {
+  if (engineRequired && !resolvedRequest.unsafeAllowUnguardedRun) {
+    const bootstrap = await autoBootstrapGovernedRun({
+      request: resolvedRequest,
+      environment: cliEnvironment,
+      receiptScope
+    });
+    if (bootstrap.warnings.length > 0) {
+      preRunWarnings.push(...bootstrap.warnings);
+    }
+    if (!bootstrap.ready) {
+      throw new CliCommandError(
+        "policy_blocked",
+        "Governed run preflight blocked execution. Resolve the blocking issues and retry.",
+        {
+          suggestion: buildPreflightSuggestion(resolvedRequest.objective, resolvedRequest.verificationPlan),
+          details: {
+            blockingIssues: bootstrap.blockingIssues
+          }
+        }
+      );
+    }
+
     const gate = await evaluateCliRunGate({
       runsRoot: cliEnvironment.runsRoot,
       workingDirectory: cliEnvironment.workingDirectory,
       objective: resolvedRequest.objective,
       engine: cliEnvironment.engine,
       verificationPlan: resolvedRequest.verificationPlan,
-      mutationMode: resolvedRequest.mutationMode,
+      mutationMode: effectiveMutationMode,
       receiptScope,
-      allowedPaths: resolvedRequest.allowedPaths,
-      deniedPaths: resolvedRequest.deniedPaths,
+      allowedPaths,
+      deniedPaths,
       budget: resolvedRequest.budget
     });
 
@@ -758,6 +876,10 @@ async function executeRunCommand(
         }
       });
     }
+  } else if (engineRequired && resolvedRequest.unsafeAllowUnguardedRun) {
+    preRunWarnings.push(
+      "Run-gate bypassed by --unsafe-allow-unguarded-run; doctor/preflight receipts were not enforced for this run."
+    );
   }
 
   let result: Awaited<ReturnType<typeof runMartin>>;
@@ -791,7 +913,7 @@ async function executeRunCommand(
     resolvedRequest.engine,
     cliEnvironment.workingDirectory,
     resolvedRequest.model,
-    resolvedRequest.mutationMode,
+    effectiveMutationMode,
     codexCommandOverride
   );
   try {
@@ -805,10 +927,10 @@ async function executeRunCommand(
         title: resolvedRequest.title,
         objective: resolvedRequest.objective,
         verificationPlan: resolvedRequest.verificationPlan,
-        ...(resolvedRequest.mutationMode ? { mutationMode: resolvedRequest.mutationMode } : {}),
+        ...(effectiveMutationMode ? { mutationMode: effectiveMutationMode } : {}),
         repoRoot: cliEnvironment.workingDirectory,
-        ...(resolvedRequest.allowedPaths?.length ? { allowedPaths: resolvedRequest.allowedPaths } : {}),
-        ...(resolvedRequest.deniedPaths?.length ? { deniedPaths: resolvedRequest.deniedPaths } : {}),
+        ...(allowedPaths?.length ? { allowedPaths } : {}),
+        ...(deniedPaths?.length ? { deniedPaths } : {}),
         ...(resolvedRequest.acceptanceCriteria?.length
           ? { acceptanceCriteria: resolvedRequest.acceptanceCriteria }
           : {})
@@ -825,7 +947,7 @@ async function executeRunCommand(
         title: resolvedRequest.title,
         objective: resolvedRequest.objective,
         verificationPlan: resolvedRequest.verificationPlan,
-        ...(resolvedRequest.mutationMode ? { mutationMode: resolvedRequest.mutationMode } : {}),
+        ...(effectiveMutationMode ? { mutationMode: effectiveMutationMode } : {}),
         repoRoot: cliEnvironment.workingDirectory
       },
       budget: resolvedRequest.budget,
@@ -849,18 +971,21 @@ async function executeRunCommand(
     });
   }
 
-  const warnings: string[] = [];
+  const warnings: string[] = [...preRunWarnings];
   await persistLoopArtifacts(result.loop, { runsRoot: cliEnvironment.runsRoot }).catch((error: unknown) => {
     warnings.push(
       `Persisted run artifacts could not be written: ${error instanceof Error ? error.message : String(error)}`
     );
   });
 
+  const costProvenance = readCostProvenance(result.loop);
+
   return renderCliSuccess(outputMode, {
     data: {
       command: "run",
       decision: result.decision,
       loop: result.loop,
+      costProvenance,
       effectivePolicy: {
         configPath: resolvedGuardrails.configPath,
         policyProfile: resolvedGuardrails.policyProfile,
@@ -888,11 +1013,131 @@ async function executeRunCommand(
       `Runs root: ${cliEnvironment.runsRoot}`,
       `Verification plan: ${resolvedRequest.verificationPlan.join(", ") || "none"}`,
       `Attempts: ${result.loop.attempts.length}`,
-      `Actual cost (USD): ${result.loop.cost.actualUsd.toFixed(2)} — provenance: ${describeCostProvenance(result.loop)}`
+      `Actual cost (USD): ${result.loop.cost.actualUsd.toFixed(2)} — provenance: ${describeCostProvenance(costProvenance)}`
     ],
     quiet: result.loop.loopId,
     warnings
   });
+}
+
+function buildPreflightSuggestion(objective: string, verificationPlan: string[]): string {
+  const verify = verificationPlan[0] ? ` --verify "${verificationPlan[0]}"` : "";
+  return `martin-loop preflight "${objective}"${verify}`;
+}
+
+function describeWorkflowPersistenceIssue(step: "doctor" | "session-start" | "preflight"): string {
+  if (step === "doctor") {
+    return "MartinLoop could not persist the doctor receipt needed for governed execution.";
+  }
+  if (step === "session-start") {
+    return "MartinLoop could not persist the session-start receipt needed for governed execution.";
+  }
+  return "MartinLoop could not persist the preflight receipt needed for governed execution.";
+}
+
+async function autoBootstrapGovernedRun(input: {
+  request: RunCommandRequest;
+  environment: ReturnType<typeof resolveCliEnvironment>;
+  receiptScope: ReturnType<typeof buildCliReceiptScope>;
+}): Promise<{
+  ready: boolean;
+  blockingIssues: string[];
+  warnings: string[];
+}> {
+  const preflightResult = await executePreflightCommand(input.request, "json");
+  let payload: {
+    ready?: boolean;
+    blockingIssues?: unknown;
+    warnings?: unknown;
+  } = {};
+  try {
+    payload = JSON.parse(preflightResult.stdout) as {
+      ready?: boolean;
+      blockingIssues?: unknown;
+      warnings?: unknown;
+    };
+  } catch {
+    return {
+      ready: false,
+      blockingIssues: ["Unable to parse preflight output."],
+      warnings: []
+    };
+  }
+
+  const blockingIssues = Array.isArray(payload.blockingIssues)
+    ? payload.blockingIssues.filter((item): item is string => typeof item === "string")
+    : [];
+  const warnings = Array.isArray(payload.warnings)
+    ? payload.warnings.filter((item): item is string => typeof item === "string")
+    : [];
+  if (payload.ready !== true) {
+    return {
+      ready: false,
+      blockingIssues,
+      warnings
+    };
+  }
+
+  const persistenceWarnings: string[] = [];
+  await recordCliWorkflowStep({
+    runsRoot: input.environment.runsRoot,
+    step: "doctor",
+    workingDirectory: input.environment.workingDirectory,
+    engine: input.environment.engine,
+    receiptScope: input.receiptScope
+  }).catch((error: unknown) => {
+    persistenceWarnings.push(
+      `${describeWorkflowPersistenceIssue("doctor")} ${error instanceof Error ? error.message : String(error)}`
+    );
+  });
+
+  await recordCliWorkflowStep({
+    runsRoot: input.environment.runsRoot,
+    step: "session-start",
+    workingDirectory: input.environment.workingDirectory,
+    engine: input.environment.engine,
+    receiptScope: input.receiptScope
+  }).catch((error: unknown) => {
+    persistenceWarnings.push(
+      `${describeWorkflowPersistenceIssue("session-start")} ${error instanceof Error ? error.message : String(error)}`
+    );
+  });
+
+  const gate = await evaluateCliRunGate({
+    runsRoot: input.environment.runsRoot,
+    workingDirectory: input.environment.workingDirectory,
+    objective: input.request.objective,
+    engine: input.environment.engine,
+    verificationPlan: input.request.verificationPlan,
+    mutationMode: input.request.mutationMode,
+    receiptScope: input.receiptScope,
+    allowedPaths: input.request.allowedPaths,
+    deniedPaths: input.request.deniedPaths,
+    budget: input.request.budget
+  });
+
+  if (!gate.allowed) {
+    const gateIssues =
+      gate.missingSteps.length > 0
+        ? gate.missingSteps
+            .filter(
+              (step): step is "doctor" | "session-start" | "preflight" =>
+                step === "doctor" || step === "session-start" || step === "preflight"
+            )
+            .map((step) => describeWorkflowPersistenceIssue(step))
+        : [gate.message];
+    return {
+      ready: false,
+      blockingIssues: persistenceWarnings.length > 0 ? persistenceWarnings : gateIssues,
+      warnings
+    };
+  }
+
+  return {
+    ready: true,
+    blockingIssues: [],
+    warnings: [...warnings, ...persistenceWarnings]
+  };
 }
 
 async function executeInspectCommand(
@@ -1092,7 +1337,7 @@ async function executeDoctorCommand(
 
   const data = {
     command: "doctor",
-    cliVersion: packageJson.version,
+    cliVersion: rootPackageVersion,
     environment,
     receiptScope,
     scope: {
@@ -1147,7 +1392,7 @@ async function executeDoctorCommand(
   return renderCliSuccess(outputMode, {
     data,
     human: [
-      `Martin CLI doctor (${packageJson.version})`,
+      `Martin CLI doctor (${rootPackageVersion})`,
       `Working directory: ${environment.workingDirectory} (${workingDirectoryReady ? "ready" : "missing"})`,
       `Runs root: ${environment.runsRoot} (${runsRootReady ? "ready" : "not created yet"})`,
       `Live mode: ${environment.liveMode}`,
@@ -1161,6 +1406,74 @@ async function executeDoctorCommand(
     ],
     quiet: environment.runsRoot,
     warnings
+  });
+}
+
+async function executeStartCommand(
+  command: StartCommand,
+  outputMode: MartinOutputMode
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  const environment = resolveCliEnvironment({
+    cwd: command.cwd,
+    runsDir: command.runsDir
+  });
+  const claudeAvailable = isCommandAvailable("claude");
+  const codexAvailable = resolveCliCommandAvailability("codex").available;
+  const geminiAvailable = resolveCliCommandAvailability("gemini").available;
+  const hasGitRepo = await stat(join(environment.workingDirectory, ".git"))
+    .then(() => true)
+    .catch(() => false);
+  const receiptScope = buildCliReceiptScope(environment);
+
+  await recordCliWorkflowStep({
+    runsRoot: environment.runsRoot,
+    step: "start",
+    workingDirectory: environment.workingDirectory,
+    receiptScope
+  }).catch(() => {});
+
+  return renderCliSuccess(outputMode, {
+    data: {
+      command: "start",
+      cliVersion: rootPackageVersion,
+      environment: {
+        ...environment,
+        hasGitRepo
+      },
+      engines: {
+        claude: { available: claudeAvailable },
+        codex: { available: codexAvailable },
+        gemini: { available: geminiAvailable }
+      },
+      governedByDefault: true,
+      nextCommands: [
+        "npx -y martin-loop@latest demo",
+        "npx -y martin-loop@latest doctor",
+        "npx -y martin-loop@latest session-start",
+        'npx -y martin-loop@latest preflight "Summarize the workspace and prove tests still pass" --verify "npm test"',
+        'npx -y martin-loop@latest run "Summarize the workspace and prove tests still pass" --proof --verify "npm test"',
+        "npx -y martin-loop@latest share --latest --json"
+      ]
+    },
+    human: [
+      `MartinLoop start (${rootPackageVersion})`,
+      "",
+      "Governed runs are the default path: `run` auto-checks doctor, session-start, and preflight, then executes when the environment is ready.",
+      `Working directory: ${environment.workingDirectory}${hasGitRepo ? " (git detected)" : " (no git repo detected)"}`,
+      `Runs root: ${environment.runsRoot}`,
+      `Engines: claude=${claudeAvailable ? "ready" : "blocked"}, codex=${codexAvailable ? "ready" : "blocked"}, gemini=${geminiAvailable ? "ready" : "blocked"}`,
+      "",
+      "Recommended first-run commands:",
+      "  npx -y martin-loop@latest demo",
+      "  npx -y martin-loop@latest doctor",
+      "  npx -y martin-loop@latest session-start",
+      '  npx -y martin-loop@latest preflight "Summarize the workspace and prove tests still pass" --verify "npm test"',
+      '  npx -y martin-loop@latest run "Summarize the workspace and prove tests still pass" --proof --verify "npm test"',
+      "  npx -y martin-loop@latest share --latest --json",
+      "",
+      "One-off operator bypass exists, but is intentionally explicit: --unsafe-allow-unguarded-run"
+    ],
+    quiet: environment.runsRoot
   });
 }
 
@@ -1207,6 +1520,25 @@ async function executeNativePhaseCommand(
       receiptScope: snapshot.receiptScope
     }).catch(() => {});
   }
+  if (command.subcommand === "preflight" && !snapshot.contract.requiresApproval) {
+    const environment = resolveCliEnvironment({
+      cwd: command.cwd,
+      runsDir: command.runsDir
+    });
+    const request = buildNativePhaseRunRequest(snapshot.contract, {
+      cwd: command.cwd,
+      runsDir: command.runsDir
+    });
+    await recordCliWorkflowStep({
+      runsRoot: environment.runsRoot,
+      step: "preflight",
+      workingDirectory: environment.workingDirectory,
+      objective: request.objective,
+      engine: "claude",
+      verificationPlan: request.verificationPlan,
+      receiptScope: buildCliReceiptScope(environment)
+    }).catch(() => {});
+  }
   const human =
     command.subcommand === "session-start"
       ? renderNativePhaseHuman(snapshot)
@@ -1241,6 +1573,8 @@ async function executePreflightCommand(
   });
   const warnings: string[] = [];
   const blockingIssues: string[] = [];
+  const allowedPaths = normalizePathPolicyPatterns(request.allowedPaths, "allowedPaths");
+  const deniedPaths = normalizePathPolicyPatterns(request.deniedPaths, "deniedPaths");
   const verificationPlan =
     request.verificationPlan.length > 0
       ? request.verificationPlan
@@ -1271,6 +1605,13 @@ async function executePreflightCommand(
   if (engineRequired && environment.engine === "gemini" && !geminiAvailability.available) {
     blockingIssues.push("Gemini CLI is not available on PATH.");
   }
+  if (engineRequired && environment.engine === "openai") {
+    const openAiPreflight = evaluateOpenAiPreflight();
+    if (openAiPreflight.blockingIssue) {
+      blockingIssues.push(openAiPreflight.blockingIssue);
+    }
+    warnings.push(...openAiPreflight.warnings);
+  }
   if (engineRequired && environment.engine === "codex" && codexProbe && !codexProbe.ok) {
     blockingIssues.push(codexProbe.summary);
   }
@@ -1278,8 +1619,8 @@ async function executePreflightCommand(
     warnings.push("No verification plan is configured for this run.");
   }
 
-  const overlappingPaths = (request.allowedPaths ?? []).filter((allowedPath) =>
-    (request.deniedPaths ?? []).includes(allowedPath)
+  const overlappingPaths = (allowedPaths ?? []).filter((allowedPath) =>
+    (deniedPaths ?? []).includes(allowedPath)
   );
   if (overlappingPaths.length > 0) {
     warnings.push(`The same path appears in both allow and deny lists: ${overlappingPaths.join(", ")}`);
@@ -1329,6 +1670,8 @@ async function executePreflightCommand(
     },
     request: {
       ...request,
+      ...(allowedPaths?.length ? { allowedPaths } : {}),
+      ...(deniedPaths?.length ? { deniedPaths } : {}),
       verificationPlan,
       budget: resolvedGuardrails.budget
     },
@@ -1349,8 +1692,8 @@ async function executePreflightCommand(
       engine: environment.engine,
       verificationPlan,
       receiptScope,
-      allowedPaths: request.allowedPaths,
-      deniedPaths: request.deniedPaths,
+      allowedPaths,
+      deniedPaths,
       budget: resolvedGuardrails.budget
     }).catch(() => {});
   }
@@ -1407,6 +1750,7 @@ async function executeDossierCommand(
   const detail = await loadPersistedLoop(selector);
   const dossier = buildRunDossier(detail);
   const verification = buildVerificationSummary(detail.loop);
+  const costProvenance = readCostProvenance(detail.loop);
   const receipt = dossier["receipt"] as {
     whatHappened?: string;
     whatMartinPrevented?: string[];
@@ -1416,15 +1760,17 @@ async function executeDossierCommand(
   return renderCliSuccess(outputMode, {
     data: {
       command: "dossier",
-      ...dossier
+      ...dossier,
+      integrity: detail.integrity
     },
     human: [
       `Run dossier for ${detail.loop.loopId}`,
       `Status: ${detail.loop.status} / ${detail.loop.lifecycleState}`,
       `Verification: ${verification.status}`,
+      `Integrity: ${describeIntegrity(detail.integrity.state)}`,
+      `Cost (USD): ${detail.loop.cost.actualUsd.toFixed(2)} — provenance: ${describeCostProvenance(costProvenance)}`,
       `Artifacts: ${detail.loop.artifacts.length}`,
       `Attempts: ${detail.loop.attempts.length}`,
-      `Cost (USD): ${detail.loop.cost.actualUsd.toFixed(2)} — provenance: ${describeCostProvenance(detail.loop)}`,
       `What happened: ${receipt.whatHappened ?? "No attempt summary was recorded."}`,
       `What Martin prevented: ${(receipt.whatMartinPrevented ?? []).join("; ") || "No prevention claim is available."}`,
       `Next safe action: ${receipt.nextSafeAction ?? "Run preflight before the next attempt."}`,
@@ -1467,6 +1813,7 @@ async function executeRunsGetCommand(
   const verification = buildVerificationSummary(detail.loop);
   const artifacts = buildArtifactSummary(detail.loop);
   const receiptScope = resolveReceiptScope(detail.loop, detail.runsRoot);
+  const costProvenance = readCostProvenance(detail.loop);
 
   return renderCliSuccess(outputMode, {
     data: {
@@ -1474,18 +1821,20 @@ async function executeRunsGetCommand(
       source: detail.source,
       loop: detail.loop,
       receiptIntegrity: detail.integrity,
-      costProvenance: detail.loop.cost.provenance ?? "unavailable",
       ...(receiptScope ? { receiptScope } : {}),
       verification,
-      artifacts
+      artifacts,
+      integrity: detail.integrity,
+      costProvenance
     },
     human: [
       `Loaded persisted loop ${detail.loop.loopId}`,
       `Status: ${detail.loop.status} / ${detail.loop.lifecycleState}`,
       `Verification: ${verification.status}`,
       `Artifacts: ${artifacts.totalCount}`,
-      `Source: ${detail.source}`,
-      `Cost (USD): ${detail.loop.cost.actualUsd.toFixed(2)} — provenance: ${describeCostProvenance(detail.loop)}`
+      `Integrity: ${describeIntegrity(detail.integrity.state)}`,
+      `Cost (USD): ${detail.loop.cost.actualUsd.toFixed(2)} — provenance: ${describeCostProvenance(costProvenance)}`,
+      `Source: ${detail.source}`
     ],
     quiet: detail.loop.loopId,
     warnings: [...detail.warnings, ...verification.warnings]
@@ -1504,13 +1853,15 @@ async function executeRunsAttemptCommand(
       source: loaded.detail.source,
       loopId: loaded.detail.loop.loopId,
       attempt: loaded.attempt,
-      verification: loaded.verification
+      verification: loaded.verification,
+      integrity: loaded.detail.integrity
     },
     human: [
       `Attempt ${loaded.attempt.index} for ${loaded.detail.loop.loopId}`,
       `Adapter: ${loaded.attempt.adapterId}`,
       `Model: ${loaded.attempt.model}`,
       `Verification: ${loaded.verification.status}`,
+      `Integrity: ${describeIntegrity(loaded.detail.integrity.state)}`,
       loaded.attempt.summary ?? "No attempt summary was recorded."
     ],
     quiet: `${loaded.detail.loop.loopId}:${loaded.attempt.index}`,
@@ -1522,8 +1873,8 @@ async function executeRunsVerifyCommand(
   selector: MartinRunSelector,
   outputMode: MartinOutputMode
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  const detail = await loadPersistedLoop(selector);
-  const verification = buildVerificationSummary(detail.loop);
+  const detail = await loadPersistedLoop(selector, { requireCanonicalRunSelector: true });
+  const verification = await buildVerificationSummaryWithIntegrity(detail);
   const receiptScope = resolveReceiptScope(detail.loop, detail.runsRoot);
 
   return renderCliSuccess(outputMode, {
@@ -1533,16 +1884,29 @@ async function executeRunsVerifyCommand(
       source: detail.source,
       receiptIntegrity: detail.integrity,
       ...(receiptScope ? { receiptScope } : {}),
-      verification
+      verification,
+      integrity: detail.integrity
     },
     human: [
       `Verification for ${detail.loop.loopId}`,
       `Status: ${verification.status}`,
+      `Integrity: ${describeIntegrity(detail.integrity.state)}`,
       verification.summary
     ],
     quiet: verification.status,
     warnings: [...detail.warnings, ...verification.warnings]
   });
+}
+
+function describeIntegrity(integrity: IntegrityStatus): string {
+  switch (integrity) {
+    case "verified":
+      return "verified — record matches its signed snapshot";
+    case "tamper_detected":
+      return "TAMPER DETECTED — record does not match its signed snapshot";
+    case "unsigned":
+      return "unsigned — no integrity sidecar found (pre-upgrade or hand-authored record)";
+  }
 }
 
 async function executeMcpPrintConfigCommand(
@@ -1787,6 +2151,12 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
       case "--verify-only":
         request.mutationMode = "verify_only";
         break;
+      case "--proof":
+        request.liveMode = "proof";
+        break;
+      case "--unsafe-allow-unguarded-run":
+        request.unsafeAllowUnguardedRun = true;
+        break;
       case "--allow-path":
         if (next) {
           request.allowedPaths = [...(request.allowedPaths ?? []), next];
@@ -1832,7 +2202,9 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
     ...(request.runsDir ? { runsDir: request.runsDir } : {}),
     ...(request.model ? { model: request.model } : {}),
     ...(request.engine ? { engine: request.engine } : {}),
+    ...(request.liveMode ? { liveMode: request.liveMode } : {}),
     ...(request.mutationMode ? { mutationMode: request.mutationMode } : {}),
+    ...(request.unsafeAllowUnguardedRun ? { unsafeAllowUnguardedRun: true } : {}),
     ...(request.allowedPaths?.length ? { allowedPaths: request.allowedPaths } : {}),
     ...(request.deniedPaths?.length ? { deniedPaths: request.deniedPaths } : {}),
     ...(request.acceptanceCriteria?.length ? { acceptanceCriteria: request.acceptanceCriteria } : {})
@@ -1905,7 +2277,7 @@ function parseMcpScope(host: MartinMcpHost, tokens: string[]): MartinMcpScope {
   if (scope === "local") {
     if (host !== "claude") {
       throw new CliCommandError("invalid_input", `Host ${host} does not support --scope local.`, {
-        suggestion: "Use --scope user or --scope project, or switch to --host claude."
+        suggestion: "Use --scope user or --scope project for this host, or switch to --host claude for --scope local."
       });
     }
 
@@ -2117,11 +2489,18 @@ function renderDemoInstructions(targetDirectory: string): string {
     "  npm install",
     "  npm test",
     "",
-    "Safe first run (no provider spend):",
-    '  MARTIN_LIVE=false npx martin run "Summarize the demo workspace and confirm the verifier is green" --verify "npm test"',
+    "Safe first run (no provider spend, governed path):",
+    "  npx -y martin-loop@latest start",
+    '  npx -y martin-loop@latest run "Summarize the demo workspace and confirm the verifier is green" --proof --verify "npm test"',
+    "  npx -y martin-loop@latest share --latest --json",
+    "",
+    "Inspect the governed checks explicitly:",
+    "  npx -y martin-loop@latest doctor",
+    "  npx -y martin-loop@latest session-start",
+    '  npx -y martin-loop@latest preflight "Summarize the demo workspace and confirm the verifier is green" --verify "npm test"',
     "",
     "Optional live run:",
-    '  npx martin run "Add support for a discount percentage to summarizeInvoice and update the tests" --verify "npm test" --engine codex',
+    '  npx -y martin-loop@latest run "Add support for a discount percentage to summarizeInvoice and update the tests" --verify "npm test" --engine codex',
     "",
     `Task ideas live in ${join(targetDirectory, "TASKS.md")}`
   ].join("\n");
@@ -2442,6 +2821,82 @@ function buildDoctorRecommendations(input: {
   return recommendations;
 }
 
+function normalizePathPolicyPatterns(
+  values: string[] | undefined,
+  label: "allowedPaths" | "deniedPaths"
+): string[] | undefined {
+  if (!values || values.length === 0) {
+    return undefined;
+  }
+
+  const normalized = values.map((value) => value.trim()).filter((value) => value.length > 0);
+  if (normalized.length === 0) {
+    return undefined;
+  }
+
+  for (const value of normalized) {
+    const unixStyle = value.replace(/\\/gu, "/");
+    const segments = unixStyle.split("/").filter((segment) => segment.length > 0);
+    const hasTraversal = segments.includes("..");
+    const isAbsolutePath =
+      isAbsolute(value) || unixStyle.startsWith("/") || unixStyle.startsWith("//") || /^[A-Za-z]:\//u.test(unixStyle);
+
+    if (hasTraversal || isAbsolutePath) {
+      throw new CliCommandError(
+        "invalid_input",
+        `Invalid ${label}. Path patterns must be relative and stay within the repository.`,
+        {
+          suggestion:
+            "Use relative globs like `src/**` or `packages/cli/**` and avoid absolute paths or `..` traversal segments."
+        }
+      );
+    }
+  }
+
+  return [...new Set(normalized)];
+}
+
+function evaluateOpenAiPreflight(): { blockingIssue?: string; warnings: string[] } {
+  const baseUrl = (process.env["MARTIN_OPENAI_BASE_URL"] ?? "https://api.openai.com").trim();
+  const model = process.env["MARTIN_OPENAI_MODEL"]?.trim();
+  const apiKey = process.env["MARTIN_OPENAI_API_KEY"]?.trim();
+  const warnings: string[] = [];
+
+  if (!model) {
+    warnings.push(
+      "OpenAI engine preflight: MARTIN_OPENAI_MODEL is not set. Configure the exact model before running spend-bearing attempts."
+    );
+  }
+
+  if (isHostedOpenAiEndpoint(baseUrl) && !apiKey) {
+    return {
+      blockingIssue:
+        "OpenAI engine preflight blocked: MARTIN_OPENAI_API_KEY is required for hosted endpoints. Configure auth or switch MARTIN_OPENAI_BASE_URL to a trusted local endpoint.",
+      warnings
+    };
+  }
+
+  if (apiKey && isHostedOpenAiEndpoint(baseUrl)) {
+    warnings.push(
+      "OpenAI engine preflight: auth appears configured. If runs still fail, verify quota and billing separately from auth."
+    );
+  }
+
+  return { warnings };
+}
+
+function isHostedOpenAiEndpoint(baseUrl: string): boolean {
+  const normalized = baseUrl.toLowerCase();
+  return !(
+    normalized.startsWith("http://localhost") ||
+    normalized.startsWith("https://localhost") ||
+    normalized.startsWith("http://127.0.0.1") ||
+    normalized.startsWith("https://127.0.0.1") ||
+    normalized.startsWith("http://[::1]") ||
+    normalized.startsWith("https://[::1]")
+  );
+}
+
 function buildCliReceiptScope(environment: {
   invocationRoot: string;
   workingDirectory: string;
@@ -2504,9 +2959,11 @@ async function executeChallengeCommand(
   command: ChallengeCommand,
   outputMode: MartinOutputMode
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  const input = command.selector
-    ? proofCardInputFromLoop((await loadPersistedLoop(command.selector)).loop)
+  const loadedDetail = command.selector ? await loadPersistedLoop(command.selector) : undefined;
+  const input = loadedDetail
+    ? proofCardInputFromLoop(loadedDetail.loop)
     : defaultChallengeProofCardInput();
+  const integrity: IntegrityStatus | undefined = loadedDetail?.integrity.state;
   const card = buildMartinProofCard(input);
   const markdown = renderMartinProofCardMarkdown(card);
   const svg = renderMartinProofCardSvg(card);
@@ -2520,7 +2977,8 @@ async function executeChallengeCommand(
       command: "challenge",
       card: { loopId: input.loopId, ...card },
       markdown,
-      svg
+      svg,
+      ...(integrity ? { integrity } : {})
     },
     human: [
       `Martin Loop Under-$3 Challenge`,
@@ -2531,6 +2989,7 @@ async function executeChallengeCommand(
       `Verifier: ${input.verifierStatus}`,
       `Rollback: ${input.rollbackStatus}`,
       `Halt reason: ${input.haltReason}`,
+      ...(integrity ? [`Integrity: ${describeIntegrity(integrity)}`] : []),
       ``,
       card.evidenceLine
     ],
@@ -2545,6 +3004,22 @@ function proofCardInputFromLoop(loop: LoopRecord): MartinProofCardInput {
   )
     ? "captured"
     : "not-recorded";
+  const remainingBudget = Math.max(0, loop.budget.maxUsd - loop.cost.actualUsd);
+  const overspendRatio =
+    loop.budget.maxUsd > 0 ? `${(loop.cost.actualUsd / loop.budget.maxUsd).toFixed(2)}x` : "unknown";
+  const verificationStepCount = loop.events.filter((event) => event.type === "verification.completed").length;
+  const latestAttempt = loop.attempts.at(-1);
+  const runtime = latestAttempt
+    ? `${latestAttempt.adapterId} / ${latestAttempt.model}`
+    : loop.events
+        .map((event) => event.payload)
+        .find((payload) => typeof payload["adapterId"] === "string" || typeof payload["model"] === "string");
+  const runtimeLabel =
+    typeof runtime === "string"
+      ? runtime
+      : runtime
+        ? `${String(runtime["adapterId"] ?? "unknown")} / ${String(runtime["model"] ?? "unknown")}`
+        : "not recorded";
 
   return {
     loopId: loop.loopId,
@@ -2554,8 +3029,14 @@ function proofCardInputFromLoop(loop: LoopRecord): MartinProofCardInput {
     verifierStatus: verification.status,
     costSpend: `$${loop.cost.actualUsd.toFixed(2)}`,
     budget: `$${loop.budget.maxUsd.toFixed(2)}`,
+    remainingBudget: `$${remainingBudget.toFixed(2)}`,
+    overspendRatio,
     attempts: loop.attempts.length,
     rollbackStatus,
+    verificationStepCount,
+    runMode: loop.task.mutationMode ?? "not recorded",
+    runtime: runtimeLabel,
+    timelineEvents: loop.events.map((event) => event.type),
     haltReason: latestExitReason(loop),
     evidenceBoundaryNotes: [
       "Generated from a local Martin Loop run record.",
@@ -2575,8 +3056,14 @@ function defaultChallengeProofCardInput(): MartinProofCardInput {
     verifierStatus: "passed",
     costSpend: "$2.30",
     budget: "$3.00",
+    remainingBudget: "$0.70",
+    overspendRatio: "0.77x",
     attempts: 2,
     rollbackStatus: "captured",
+    verificationStepCount: 1,
+    runMode: "mutating",
+    runtime: "demo / local-fixture",
+    timelineEvents: ["run.started", "attempt.started", "verification.completed", "budget.updated", "run.completed"],
     haltReason: "verifier_passed",
     evidenceBoundaryNotes: [
       "Generated from a local Martin Loop run record.",
@@ -2807,10 +3294,11 @@ async function executeBadgeCommand(
   command: BadgeCommand,
   outputMode: MartinOutputMode
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  const input = await buildLocalReliabilityScoreInput();
+  const input = await buildLocalReliabilityScoreInput(command.runsDir);
   const score = computeMartinReliabilityScore(input);
   const svg = renderMartinReliabilityBadgeSvg(score);
   const json = renderMartinReliabilityBadgeJson(score);
+  const integrity = await loadLatestLoopIntegrity(command.runsDir);
 
   if (command.format === "svg" && outputMode === "human") {
     return { exitCode: 0, stdout: svg, stderr: "" };
@@ -2821,18 +3309,36 @@ async function executeBadgeCommand(
   }
 
   return renderCliSuccess(outputMode, {
-    data: { command: "badge", score, svg, json },
+    data: { command: "badge", score, svg, json, ...(integrity ? { integrity } : {}) },
     human: [
       `Martin Loop agent reliability readiness: ${score.points}/${score.maxPoints} (${score.grade})`,
       score.summary,
+      ...(integrity ? [`Latest run integrity: ${describeIntegrity(integrity)}`] : []),
       ...(score.missingReasons.length > 0 ? ["", "Missing:", ...score.missingReasons.map((r) => `  • ${r}`)] : [])
     ],
     quiet: score.grade
   });
 }
 
-async function buildLocalReliabilityScoreInput(): Promise<MartinReliabilityScoreInput> {
-  const environment = resolveCliEnvironment();
+async function loadLatestLoopIntegrity(runsDir?: string): Promise<IntegrityStatus | undefined> {
+  const evidence = await findPersistedLoopEvidence(runsDir).catch(() => ({
+    loop: undefined as LoopRecord | undefined
+  }));
+
+  if (evidence.loop === undefined) {
+    return undefined;
+  }
+
+  try {
+    const loaded = await loadPersistedLoop({ loopId: evidence.loop.loopId, ...(runsDir ? { runsDir } : {}) });
+    return loaded.integrity.state;
+  } catch {
+    return "unsigned";
+  }
+}
+
+async function buildLocalReliabilityScoreInput(runsDir?: string): Promise<MartinReliabilityScoreInput> {
+  const environment = resolveCliEnvironment({ ...(runsDir ? { runsDir } : {}) });
   const shouldInspectRunStore = process.env["MARTIN_RUNS_DIR"] !== undefined;
   const loops = shouldInspectRunStore
     ? await listPersistedLoops({ limit: 20 }).catch(() => ({ loops: [] as LoopRecord[] }))

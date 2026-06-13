@@ -109,6 +109,18 @@ describe("runContextIntegrityPrecheck", () => {
     expect(result.detectedSignals.length).toBeGreaterThan(0);
   });
 
+  it("reports correct analyzed channels based on inputs provided", async () => {
+    const result = await runContextIntegrityPrecheck("run-8", 1, artifactsDir, {
+      userPrompt: "fix the tests",
+      history: "prior attempt failed"
+    });
+
+    expect(result.analyzedChannels.system).toBe(true);
+    expect(result.analyzedChannels.user).toBe(true);
+    expect(result.analyzedChannels.history).toBe(true);
+    expect(result.analyzedChannels.tools).toBe(false);
+  });
+
   it("scans tool output for poisoning signals (not just the user prompt)", async () => {
     const result = await runContextIntegrityPrecheck("run-8b", 1, artifactsDir, {
       userPrompt: "Summarize the failing test output",
@@ -128,18 +140,6 @@ describe("runContextIntegrityPrecheck", () => {
     expect(result.analyzedChannels.history).toBe(true);
     expect(result.verdict).toBe("context_poisoning_block");
     expect(result.detectedSignals.length).toBeGreaterThan(0);
-  });
-
-  it("reports correct analyzed channels based on inputs provided", async () => {
-    const result = await runContextIntegrityPrecheck("run-8", 1, artifactsDir, {
-      userPrompt: "fix the tests",
-      history: "prior attempt failed"
-    });
-
-    expect(result.analyzedChannels.system).toBe(true);
-    expect(result.analyzedChannels.user).toBe(true);
-    expect(result.analyzedChannels.history).toBe(true);
-    expect(result.analyzedChannels.tools).toBe(false);
   });
 
   it("includes runId, attemptIndex, and timestamp in result", async () => {

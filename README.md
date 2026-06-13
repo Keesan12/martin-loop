@@ -1,11 +1,26 @@
 # MartinLoop
-
 <div align="center">
   <img src="./docs/assets/martinloop-logo.png" alt="MartinLoop" width="260">
 
-  **The open-source control plane for AI coding agents.**
+  **MartinLoop gives AI coding agents budgets, stop conditions, rollback rules, and receipts.**
 
-  MartinLoop wraps Claude Code, Codex, Gemini, and MCP-aware agent workflows with budgets, verifier gates, policy checks, run receipts, and review-ready evidence.
+  Built from thousands of agent runs where the problem was not intelligence -- it was uncontrolled execution.
+
+  **Get started:** `npx -y martin-loop@latest start`  
+  **Try the demo:** `npx -y martin-loop@latest demo`
+
+  [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square&logo=apache)](./LICENSE)
+  [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&logo=typescript&logoColor=white)](./tsconfig.base.json)
+  [![Node](https://img.shields.io/badge/node-%3E%3D20-3c873a?style=flat-square&logo=nodedotjs&logoColor=white)](#quick-start)
+  [![npm version](https://img.shields.io/npm/v/martin-loop?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/martin-loop)
+  [![npm downloads](https://img.shields.io/npm/dm/martin-loop?style=flat-square&label=downloads)](https://www.npmjs.com/package/martin-loop)
+
+  MartinLoop is part of the NVIDIA Inception program.
+  <br>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./docs/assets/nvidia-inception-program.png">
+    <img src="./docs/assets/nvidia-inception-program-light.png" alt="NVIDIA Inception Program logo" width="280">
+  </picture>
 </div>
 
 ## Why MartinLoop
@@ -16,33 +31,153 @@ A task that looked like a small fix can become dozens of attempts, a blown token
 
 Use it when AI coding work needs to stay bounded, inspectable, and safe to review before it becomes expensive or destructive.
 
+## Why Teams Adopt MartinLoop
+
+- It turns agent behavior into inspectable run receipts you can actually review.
+- It enforces hard stop conditions before runaway retries spend more money.
+- It adds rollback-aware rules so failed attempts do not silently leave unsafe changes behind.
+- It helps teams compare outcomes across agents under one governed flow.
+
+Teams use MartinLoop when they need governed agent execution that can be reviewed and trusted.
+
+## 2-Minute Install Path
+
+```sh
+npx -y martin-loop@latest start
+npx -y martin-loop@latest demo
+cd martin-loop-demo
+npm install
+npx -y martin-loop@latest run "Summarize the demo workspace and prove tests still pass" --proof --verify "npm test"
+```
+
 ## Quick Start
 
 Try MartinLoop in a disposable demo workspace:
 
 ```sh
-npx martin-loop demo
+npx -y martin-loop@latest start
+npx -y martin-loop@latest demo
+npx -y martin-loop@latest --version
 cd martin-loop-demo
 npm install
-npx martin-loop doctor
-npx martin-loop session-start
-npx martin-loop preflight "Summarize the demo workspace and prove tests still pass" --verify "npm test"
-npx martin-loop run "Summarize the demo workspace and prove tests still pass" --proof --verify "npm test"
-npx martin-loop dossier --latest
-npx martin-loop share --latest
+npx -y martin-loop@latest run "Summarize the demo workspace and prove tests still pass" --proof --verify "npm test"
+npx -y martin-loop@latest dossier --latest
+npx -y martin-loop@latest share --latest
 ```
 
-`doctor`, `session-start`, and `preflight` create the local receipts MartinLoop expects before a real governed run. If you intentionally need to bypass that local gate for a one-off run, use `--unsafe-allow-unguarded-run` explicitly.
+Optional global install:
+
+```sh
+npm install -g martin-loop
+martin-loop --version
+```
+
+If this flow is useful, open an issue with feedback so we can keep improving the public experience.
+
+`start` prints the first-run guided path. `run` auto-checks `doctor`, `session-start`, and `preflight`, then executes when the environment is ready. You can still run those commands directly when you want to inspect the governed checks first.
+
+Inspect-first flow:
+
+```sh
+npx -y martin-loop@latest doctor
+npx -y martin-loop@latest session-start
+npx -y martin-loop@latest preflight "Summarize the demo workspace and prove tests still pass" --verify "npm test"
+```
 
 `share --latest` writes three files into the selected run directory under `share/`: `run-receipt.json`, `run-receipt.md`, and `proof-card.svg`.
 
-Release notes for the current root package: [MartinLoop 0.3.0](./docs/release/OSS-0.3.0-RELEASE-NOTES.md).
+Release notes for the current root package: [MartinLoop 0.3.6](./docs/release/OSS-0.3.6-RELEASE-NOTES.md).
+
+## Visual Proof
+
+MartinLoop turns an AI coding run into an inspectable execution record: budget used, verifier result, changed files, rollback evidence, and final receipt.
+
+<div align="center">
+  <img src="./docs/assets/cli-animated.svg" alt="MartinLoop CLI showing a governed agent run" width="720">
+</div>
+
+Ungoverned agents can retry until cost and scope drift. MartinLoop adds budget caps, verifier gates, and audit evidence so the run has a clear stop condition.
+
+<div align="center">
+  <img src="./docs/assets/side-by-side.svg" alt="MartinLoop governed run compared with an unbounded retry loop" width="720" height="1080">
+</div>
+
+## Proof Receipts
+
+Proof receipts are local share bundles for governed AI coding runs. They show the task, spend, budget, verifier result, receipt integrity, and any evidence boundary that should not be rounded into confidence.
+
+This real governed run spent `$0.51` against a `$3.00` budget. The verifier passed and the receipt integrity was signed, but the proof stayed at `EVIDENCE_BOUNDARY` because rollback evidence was not recorded.
+
+<div align="center">
+  <img src="./docs/assets/proof-receipt-live-governed.png" alt="MartinLoop CLI proof receipt for a governed run with spend, budget, verifier, integrity, and evidence boundary" width="720">
+</div>
+
+Generate your own receipt after a governed run:
+
+```sh
+npx -y martin-loop@latest run "Summarize the demo workspace and prove tests still pass" --proof --verify "npm test"
+npx -y martin-loop@latest runs verify --latest
+npx -y martin-loop@latest share --latest
+```
+
+Example receipt files: [Markdown](./docs/examples/proof-receipts/live-governed-run-receipt.md) and [JSON](./docs/examples/proof-receipts/live-governed-run-receipt.json).
+
+## Run This Audit Yourself
+
+Use this lane from a clean temp directory to verify the public CLI flow exactly as shipped:
+
+```sh
+npx -y martin-loop@0.3.6 --version
+npx -y martin-loop@0.3.6 start
+npx -y martin-loop@0.3.6 demo
+cd martin-loop-demo
+npm install
+npx -y martin-loop@0.3.6 run "Summarize the demo workspace and prove tests still pass" --proof --verify "npm test" --json
+npx -y martin-loop@0.3.6 dossier --latest --json
+npx -y martin-loop@0.3.6 share --latest --json
+```
+
+For deterministic installs, pin the package line (`martin-loop@0.3.6`) or use `martin-loop@latest`. Plain `npx martin-loop` can resolve a stale local cache on some machines.
+
+Expected share bundle outputs:
+
+- `share/run-receipt.json`
+- `share/run-receipt.md`
+- `share/proof-card.svg`
+
+## See It In Action
+
+The point is not that every governed run is always cheaper. The point is that every run becomes inspectable and enforceable: budget policy, verifier result, stop reason, and evidence are explicit.
+
+For a deterministic public repro lane, use the benchmark workspace and compare governed execution to unbounded retry behavior:
+
+- `npx martin-loop bench --suite under-3-challenge`
+- `npx martin-loop bench --suite ralphy-engineering-50`
+
+## Ralph-Style Loops
+
+A Ralph-style loop is the failure mode where an AI coding agent keeps trying without knowing when continuing is unsafe, uneconomical, or unlikely to succeed.
+
+MartinLoop keeps the useful part of the loop, then adds brakes:
+
+- stop before budget overspend
+- classify unsafe or invalid actions before execution
+- write an audit record for every attempt
+- preserve rollback and verifier evidence for review
+- reduce runaway context growth with compact run summaries
+
+## Failure Taxonomy (12 Runtime Classes)
+
+Public governed runs use one canonical taxonomy: the 12 runtime `FailureClass` values from `@martin/contracts`.
+
+See the canonical table: [Failure Taxonomy (12 Runtime Classes)](./docs/oss/FAILURE-TAXONOMY-12.md).
 
 ## What It Does
 
 - Budget caps stop the next attempt before a configured USD, token, or iteration limit is exceeded.
 - Verifier gates require a real check, such as `npm test`, before a run can count as complete.
 - Policy checks block unsafe verifier commands, risky path changes, and secret-like task inputs before execution.
+- Failure classification uses canonical runtime classes for triage and reporting. See [Failure Taxonomy (12 Runtime Classes)](./docs/oss/FAILURE-TAXONOMY-12.md).
 - Run receipts capture stop reason, verifier evidence, budget posture, integrity state, and the next safe action.
 - `martin share --latest` turns the latest governed run into a local share bundle with a redacted JSON receipt, Markdown recap, and proof-card SVG.
 - MCP integration gives hosts one write-capable execution entrypoint plus richer planning, inspection, and review helpers.
@@ -55,7 +190,13 @@ Release notes for the current root package: [MartinLoop 0.3.0](./docs/release/OS
 | Policy and budget | Defaults come from `martin.config.yaml`; CLI flags can override them. Budget preflight blocks attempts that would exceed policy. |
 | Agent adapters | Claude CLI, Codex CLI, Gemini CLI, direct-provider, and verifier-only adapters normalize execution results. |
 | Safety and verification | Scope checks, verifier command checks, prompt integrity, and grounding decide whether work can continue. |
-| Persistence | JSONL run records, evidence summaries, and repo-backed artifacts make every run inspectable later. |
+| Persistence | JSONL run records, evidence summaries, and repo-backed artifacts make every run inspectable later. Each loop record is locally signed (HMAC, per-runs-root key) and `dossier`/`runs get`/`runs verify`/`challenge`/`badge` report an `integrity` verdict (`verified` / `tamper_detected` / `unsigned`) so post-hoc edits to a record are detectable, not just inspectable. |
+
+## Trust Boundaries
+
+- Cost and token outputs always include provenance (`actual`, `estimated`, or `unavailable`).
+- For Codex specifically, MartinLoop reports authoritative usage only when the host exposes it; otherwise MartinLoop labels usage as estimated and avoids presenting it as settled accounting.
+- Receipt integrity must be `verified` before a run is treated as trustworthy evidence for external review.
 
 ## CLI
 
@@ -77,11 +218,32 @@ martin-loop share (--loop-id <id> | --file <path> | --latest) [--out-dir <path>]
 martin-loop badge [--format svg|json] [--runs-dir <path>]
 ```
 
+Common options:
+
+```text
+--budget <n>            Hard cost cap in USD
+--budget-usd <n>        Alias for --budget
+--soft-limit-usd <n>    Soft budget threshold in USD
+--verify <cmd>          Verifier command after each attempt
+--proof                 Use the no-spend proof adapter
+--max-iterations <n>    Maximum number of attempts
+--max-tokens <n>        Maximum token budget
+--engine <name>         Adapter to use: claude, codex, gemini, or openai
+--cwd <path>            Repo root for the run
+--allow-path <glob>     Restrict writes to this path pattern; repeatable
+--deny-path <glob>      Block this path pattern; repeatable
+--runs-dir <path>       Override the local Martin runs root
+```
+
 Examples below use `npx martin-loop` so they work without a global install. If you install `martin-loop` globally, the `martin` alias works too.
 
 Use `martin-loop share --latest` after `dossier` when you want a redacted bundle you can hand to another person without sending raw run-store files.
 
 More detail: [CLI reference](./docs/reference/cli.md) and [configuration reference](./docs/reference/config.md).
+
+<div align="center">
+  <img src="./docs/assets/cli-static.svg" alt="MartinLoop CLI terminal output" width="720">
+</div>
 
 ## Benchmarks
 
@@ -98,6 +260,14 @@ From a clean public clone:
 
 ```sh
 pnpm install --frozen-lockfile
+pnpm bench:build
+pnpm bench:eval
+pnpm bench:report:ralphy
+```
+
+Equivalent workspace-filter commands:
+
+```sh
 pnpm --filter @martin/benchmarks build
 pnpm --filter @martin/benchmarks test
 pnpm --filter @martin/benchmarks eval
@@ -131,7 +301,7 @@ npx martin-loop mcp print-config --host gemini --transport stdio --profile full-
 npx martin-loop mcp print-config --host generic --transport stdio --profile github-review
 ```
 
-The root `martin-loop` package and the standalone `@martinloop/mcp` package move on separate version lines. The root package is `0.3.0`; the current standalone MCP package is `0.3.0`.
+The root `martin-loop` package and the standalone `@martinloop/mcp` package move on separate version lines. The root package line here is `0.3.6`; the current standalone MCP package is `0.3.1`.
 
 The public MCP release train labels are:
 
@@ -140,6 +310,7 @@ The public MCP release train labels are:
 - `0.2.5` public MCP package line
 - `0.2.7` usability and review release
 - `0.3.0` host adoption and onboarding release
+- `0.3.1` review and handoff release
 
 The standalone MCP registry/server identifier is `io.github.Keesan12/martin-loop`.
 
@@ -188,10 +359,15 @@ More detail: [SDK reference](./docs/reference/sdk.md) and [package map](./docs/r
 
 - [Quickstart](./docs/getting-started/quickstart.md)
 - [Examples](./docs/getting-started/examples.md)
+- [Agent Failure Atlas](./docs/agent-failure-atlas.md)
+- [Failure Taxonomy (12 Runtime Classes)](./docs/oss/FAILURE-TAXONOMY-12.md)
+- [PRE-028-PUBLIC-SURFACE-DIFF.md](./docs/oss/PRE-028-PUBLIC-SURFACE-DIFF.md)
 - [Claude Code walkthrough](./docs/getting-started/claude-code.md)
 - [Codex setup](./docs/getting-started/codex.md)
 - [MCP setup](./docs/getting-started/mcp.md)
 - [MCP tool reference](./docs/reference/mcp-tools.md)
+- [Agent run receipts](./docs/oss/AGENT-RUN-RECEIPTS.md)
+- [Benchmark + receipt page](./docs/oss/BENCHMARK-RECEIPT-PAGE.md)
 - [GitHub Actions budget gate](./examples/github-actions-budget-gate/)
 - [OpenCode-style adapter](./examples/opencode-adapter/)
 
@@ -238,6 +414,22 @@ pnpm test
 git commit -m "feat: describe what you built"
 git push -u origin feat/your-feature
 ```
+
+<p align="center">
+  <strong>Star this repo</strong> if you think AI coding needs budgets, brakes, and receipts.
+</p>
+<p align="center">
+  <a href="https://martinloop.com">martinloop.com</a> · <a href="mailto:support@martinloop.com">support@martinloop.com</a>
+</p>
+<p align="center">
+  MartinLoop is part of the NVIDIA Inception program.
+</p>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./docs/assets/nvidia-inception-program.png">
+    <img src="./docs/assets/nvidia-inception-program-light.png" alt="NVIDIA Inception Program logo" width="280">
+  </picture>
+</p>
 
 ## License
 

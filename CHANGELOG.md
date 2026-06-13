@@ -1,5 +1,73 @@
 # Changelog
 
+## [Unreleased]
+
+## [0.3.6]
+
+### Fixed
+- **Root CLI version reporting now matches the installed package** - the packaged CLI manifest now uses the `martin-loop` package version, so `npx -y martin-loop@0.3.6 --version` reports `0.3.6`.
+- **Release guard now checks root/version parity** - root release validation fails if the vendored CLI manifest version drifts from the root package version again.
+
+## [0.3.5]
+
+### Added
+- **CLI-style proof receipts** - `share --latest` proof cards now render as dark terminal receipts with spend, budget, verifier, integrity, timeline, and evidence-boundary lines.
+- **Public proof receipt example** - README and receipt docs now include a real governed run receipt showing `$0.51` spend against a `$3.00` budget with signed integrity and an explicit evidence boundary.
+- **Proof receipt design guardrails** - Public agent docs and tests now block rounded-card, blue-palette, gradient, and inflated-proof regressions in proof-card output.
+- Restored pre-`0.2.8` public narrative sections in README (updated to current `0.3.4` behavior), including `See It In Action`, `Ralph-Style Loops`, CLI common options, and footer trust CTA.
+- Added canonical public failure taxonomy reference: [docs/oss/FAILURE-TAXONOMY-14.md](./docs/oss/FAILURE-TAXONOMY-14.md).
+- Added public historical diff note for `v0.2.7 -> v0.2.8`: [docs/oss/PRE-028-PUBLIC-SURFACE-DIFF.md](./docs/oss/PRE-028-PUBLIC-SURFACE-DIFF.md).
+
+### Changed
+- Root release docs now point to the `0.3.5` proof receipt line and keep the root package separate from the standalone `@martinloop/mcp` release line.
+
+## [0.3.4]
+
+### Fixed
+- **Allow/deny path policy now fails closed on traversal and absolute patterns** - governed preflight/run rejects unsafe `--allow-path` and `--deny-path` values before execution.
+- **Run verification now emits explicit integrity verdict classes** - `runs verify` classifies receipt problems as `tampered_payload`, `missing_integrity_material`, or `schema_unknown_fields`.
+- **Non-canonical run selectors now fail fast** - `runs verify --file` rejects selectors outside the configured runs root and points operators to canonical selector forms.
+- **OpenAI hosted preflight now blocks missing auth with actionable guidance** - missing `MARTIN_OPENAI_API_KEY` on hosted endpoints is now a hard blocker with model/quota hints.
+- **MCP scope errors now guide operators to valid alternatives** - unsupported `--scope local` host errors now include direct `user/project` and Claude-local alternatives.
+
+## [0.3.3]
+
+### Added
+- **Guided first-run entrypoint** - `martin-loop start` is now the default onboarding command, with `martin-loop tour` as a compatibility alias.
+
+### Changed
+- **Execution-first governed run startup** - `run` now auto-checks doctor/session-start/preflight prerequisites before enforcing the local gate, so healthy environments proceed without extra manual setup steps.
+- **Install prompt and docs clarity** - postinstall guidance, help output, and quickstart language now point to deterministic `npx -y martin-loop@latest ...` command paths.
+- **Release docs naming and readability** - public release notes now frame this line as reliability hardening with user-facing language.
+
+### Fixed
+- **Packaged smoke reliability coverage** - release validation now catches regressions where `--unsafe-allow-unguarded-run` could incorrectly fail through receipt-gate policy behavior in packaged installs.
+- **Command-center compatibility** - `phase session-start` now resolves to the documented session-start compatibility path.
+
+## [0.3.2]
+
+### Fixed
+- **`npx martin-loop` now reports the published CLI version deterministically** - doctor/version output no longer drifts when invoked from inside a monorepo workspace with local bins on path.
+- **Public MCP release docs now reflect live registry truth** - standalone MCP baseline references are aligned to `@martinloop/mcp@0.3.1`.
+- **Governed run gate parity is now consistent across CLI and MCP** - preflight receipts recorded without explicit path filters now satisfy run-gate validation correctly.
+
+### Added
+- **Public receipt specification for governed runs** - added a customer-facing receipt reference that documents receipt structure, trust boundaries, and replay expectations without internal-only language.
+
+### Changed
+- Root release docs now point to the `0.3.2` line with explicit claim-to-code language for governed workflow evidence.
+
+## [0.3.1]
+
+### Fixed
+- **Public benchmark repro is deterministic from source** - benchmark eval and report commands now execute built runtime output with pre-build hooks, removing fragile local toolchain assumptions.
+- **Public CLI now exposes a version command** - `martin-loop --version`/`version`/`-V` now return a clean version string for automation and operator checks.
+- **Doctor version reporting now matches the public release line** - `doctor --json` now reports the root package version in `cliVersion` for release clarity.
+
+### Changed
+- Root benchmark helper scripts now route through workspace benchmark commands (`bench:build`, `bench:test`, `bench:eval`, `bench:report:ralphy`) for consistent docs, CI checks, and local reproduction.
+- Public release notes and CLI docs now include explicit install/version verification before governed-run onboarding.
+
 ## [0.3.0]
 
 ### Added

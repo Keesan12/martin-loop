@@ -21,10 +21,12 @@ const REQUIRED_DIST_FILES = [
   "dist/bin/martin-loop.js",
 ];
 const ALLOWED_PACKED_PREFIXES = [
+  "benchmarks/README.md",
   "benchmarks/fixtures/",
   "CODE_OF_CONDUCT.md",
   "LICENSE",
   "README.md",
+  "demo/README.md",
   "demo/seeded-workspace/",
   "dist/",
   "package.json",
@@ -130,7 +132,14 @@ export function extractPackJsonPayload(stdout) {
 
 export async function assertVendoredCliManifest(rootDir) {
   const manifestPath = path.join(rootDir, "dist", "vendor", "cli", "package.json");
+  const rootManifest = JSON.parse(await readFile(path.join(rootDir, "package.json"), "utf8"));
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+
+  if (manifest.version !== rootManifest.version) {
+    throw new Error(
+      `Vendored CLI manifest version must match root package version ${rootManifest.version}. Received ${String(manifest.version)}.`,
+    );
+  }
 
   if (manifest.main !== "./index.js") {
     throw new Error(`Vendored CLI manifest must point main at ./index.js. Received ${String(manifest.main)}.`);

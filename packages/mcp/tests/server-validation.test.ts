@@ -412,6 +412,38 @@ describe("server validation", () => {
     });
 
     expect(
+      validateToolInput("martin_doctor", {
+        engine: "gemini"
+      })
+    ).toEqual({
+      engine: "gemini"
+    });
+
+    expect(
+      validateToolInput("martin_preflight", {
+        objective: "Fix the bug",
+        engine: "gemini",
+        maxUsd: 5
+      })
+    ).toEqual({
+      objective: "Fix the bug",
+      engine: "gemini",
+      maxUsd: 5
+    });
+
+    expect(
+      validateToolInput("martin_run", {
+        objective: "Fix the bug",
+        engine: "gemini",
+        maxUsd: 5
+      })
+    ).toEqual({
+      objective: "Fix the bug",
+      engine: "gemini",
+      maxUsd: 5
+    });
+
+    expect(
       validateToolInput("martin_triage_runs", {
         includeHealthy: true,
         limit: 5
@@ -636,6 +668,100 @@ describe("server validation", () => {
                 maxIterations: 1
               }
             });
+            expect(verifierCalls).toHaveLength(1);
+            expect(verifierCalls[0]?.command).toBe("node");
+            expect(verifierCalls[0]?.args).toEqual(["--version"]);
+          });
+        } finally {
+          if (previousLive === undefined) {
+            delete process.env.MARTIN_LIVE;
+          } else {
+            process.env.MARTIN_LIVE = previousLive;
+          }
+        }
+      });
+    });
+  });
+
+  it("accepts a matching doctor-plan-preflight receipt chain when no path allow/deny filters are provided", async () => {
+    await withValidationRunsRoot(async () => {
+      await withValidationWorkspaceRoot(async (workspaceRoot) => {
+        const previousLive = process.env.MARTIN_LIVE;
+        process.env.MARTIN_LIVE = "false";
+        const verifierCalls: Array<{ command: string; args: readonly string[]; options?: SpawnOptions }> = [];
+        __setProofModeVerifierSpawnImplForTests(createImmediateSpawn(verifierCalls));
+
+        try {
+          await withMemoryRunStore(async (memoryRunsRoot) => {
+            __setRunStoreOverrideForTests(createMemoryRunStore(memoryRunsRoot));
+
+            const server = createMartinMcpServer() as unknown as ServerWithRequestHandlers;
+            const callTool = server._requestHandlers.get("tools/call");
+            if (!callTool) {
+              throw new Error("Expected tools/call request handler.");
+            }
+
+            const objective = "Summarize the current runtime state";
+            const verificationPlan = ["node --version"];
+
+            await callTool(
+              {
+                method: "tools/call",
+                params: {
+                  name: "martin_doctor",
+                  arguments: { workingDirectory: workspaceRoot, engine: "claude" }
+                }
+              },
+              {}
+            );
+            await callTool(
+              {
+                method: "tools/call",
+                params: {
+                  name: "martin_plan",
+                  arguments: { objective, workingDirectory: workspaceRoot }
+                }
+              },
+              {}
+            );
+            const preflightResult = await callTool(
+              {
+                method: "tools/call",
+                params: {
+                  name: "martin_preflight",
+                  arguments: {
+                    objective,
+                    workingDirectory: workspaceRoot,
+                    engine: "claude",
+                    verificationPlan,
+                    maxUsd: 1,
+                    maxIterations: 1
+                  }
+                }
+              },
+              {}
+            );
+            expect((preflightResult as { isError?: boolean }).isError).not.toBe(true);
+
+            const runResult = await callTool(
+              {
+                method: "tools/call",
+                params: {
+                  name: "martin_run",
+                  arguments: {
+                    objective,
+                    workingDirectory: workspaceRoot,
+                    engine: "claude",
+                    verificationPlan,
+                    maxUsd: 1,
+                    maxIterations: 1
+                  }
+                }
+              },
+              {}
+            );
+
+            expect((runResult as { isError?: boolean }).isError).not.toBe(true);
             expect(verifierCalls).toHaveLength(1);
             expect(verifierCalls[0]?.command).toBe("node");
             expect(verifierCalls[0]?.args).toEqual(["--version"]);

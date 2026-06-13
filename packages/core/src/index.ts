@@ -1002,7 +1002,8 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         payload: {
           actualUsd: loop.cost.actualUsd,
           remainingBudgetUsd: costState.remainingBudgetUsd,
-          pressure: costState.pressure
+          pressure: costState.pressure,
+          provenance: getUsageProvenance(result.usage)
         }
       },
       { now: now(), idFactory }

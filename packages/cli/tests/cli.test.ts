@@ -65,6 +65,17 @@ async function withIsolatedRunsEnv<T>(directory: string, fn: () => Promise<T>): 
 }
 
 describe("parseCliArguments", () => {
+  it("parses version flags and subcommand", () => {
+    expect(parseCliArguments(["--version"])).toEqual({ command: "version" });
+    expect(parseCliArguments(["-V"])).toEqual({ command: "version" });
+    expect(parseCliArguments(["version"])).toEqual({ command: "version" });
+  });
+
+  it("parses start and tour onboarding aliases", () => {
+    expect(parseCliArguments(["start"])).toEqual({ command: "start" });
+    expect(parseCliArguments(["tour"])).toEqual({ command: "start" });
+  });
+
   it("parses a run command into a typed request", () => {
     const parsed = parseCliArguments([
       "run",
@@ -93,7 +104,9 @@ describe("parseCliArguments", () => {
       "--policy",
       "balanced",
       "--telemetry",
-      "control-plane"
+      "control-plane",
+      "--proof",
+      "--unsafe-allow-unguarded-run"
     ]);
 
     expect(parsed).toEqual({
@@ -121,13 +134,53 @@ describe("parseCliArguments", () => {
           maxTokens: true,
           maxUsd: true,
           softLimitUsd: true
-        }
+        },
+        liveMode: "proof",
+        unsafeAllowUnguardedRun: true
       }
     });
+  });
+
+  it("treats run/preflight help flags as top-level help", () => {
+    expect(parseCliArguments(["run", "--help"])).toEqual({ command: "help" });
+    expect(parseCliArguments(["run", "-h"])).toEqual({ command: "help" });
+    expect(parseCliArguments(["preflight", "--help"])).toEqual({ command: "help" });
+    expect(parseCliArguments(["preflight", "-h"])).toEqual({ command: "help" });
   });
 });
 
 describe("executeCli", () => {
+  it("prints runs verify help with --latest selector support", async () => {
+    const result = await executeCli(["--help"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("martin runs verify (--loop-id <id> | --file <path> | --latest) [options]");
+    expect(result.stdout).toContain("martin start [options]");
+  });
+
+  it("prints the public root package version", async () => {
+    const rootPackageVersion = (
+      JSON.parse(await readFile(join(process.cwd(), "..", "..", "package.json"), "utf8")) as {
+        version: string;
+      }
+    ).version;
+    const result = await executeCli(["--version"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).toBe(rootPackageVersion);
+  });
+
+  it("renders start onboarding guidance with governed defaults", async () => {
+    const result = await executeCli(["start"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("MartinLoop start");
+    expect(result.stdout).toContain("Governed runs are the default path");
+    expect(result.stdout).toContain("auto-checks doctor, session-start, and preflight");
+    expect(result.stdout).toContain("npx -y martin-loop@latest demo");
+  });
+
   it("resolves effectivePolicy from config and applies it to the run", async () => {
     const directory = await mkdtemp(join(tmpdir(), "martin-cli-config-"));
     const configPath = join(directory, "martin.config.yaml");
@@ -329,6 +382,36 @@ describe("executeCli", () => {
     }
   });
 
+  it("supports --proof runs as no-spend verifier-only executions", { timeout: 30_000 }, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-proof-mode-"));
+
+    try {
+      const result = await executeCli([
+        "--json",
+        "run",
+        "--objective",
+        "Proof mode smoke",
+        "--proof",
+        "--engine",
+        "codex",
+        "--verify",
+        `"${process.execPath}" -e "process.exit(0)"`,
+        "--cwd",
+        directory
+      ]);
+
+      expect(result.exitCode).toBe(0);
+
+      const payload = JSON.parse(result.stdout);
+      expect(payload.environment.liveMode).toBe("proof");
+      expect(payload.loop.lifecycleState).toBe("completed");
+      expect(payload.loop.cost.actualUsd).toBe(0);
+      expect(payload.loop.task.mutationMode).toBe("verify_only");
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
   it("resolves a relative --config path from INIT_CWD for filtered dev runs", async () => {
     const directory = await mkdtemp(join(tmpdir(), "martin-cli-init-cwd-"));
     const packageDirectory = join(directory, "packages", "cli");
@@ -424,7 +507,9 @@ describe("executeCli", () => {
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain(targetDirectory);
       expect(result.stdout).toContain("npm install");
-      expect(result.stdout).toContain("MARTIN_LIVE=false");
+      expect(result.stdout).toContain("Safe first run (no provider spend, governed path)");
+      expect(result.stdout).toContain("npx -y martin-loop@latest start");
+      expect(result.stdout).toContain("Inspect the governed checks explicitly");
       expect(await readFile(join(targetDirectory, "README.md"), "utf8")).toContain("Demo Sandbox");
     } finally {
       process.chdir(previousCwd);

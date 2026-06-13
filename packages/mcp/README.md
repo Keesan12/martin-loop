@@ -2,16 +2,17 @@
 
 Governed MCP server for AI coding agents over local stdio.
 
-`@martinloop/mcp@0.3.0` is the current public baseline. It gives hosts one bounded execution entrypoint, strong read-only inspection, clear next-step guidance, and a safer default MartinLoop workflow.
+`@martinloop/mcp@0.3.2` is the live public baseline today. `0.3.3` is the next planned public cut.
 
 This package stays local-first and stdio-first in the public OSS lane.
 
 ## Public release train
 
 - `0.2.7` made the guided MCP workflow easier to adopt and harder to misuse.
-- `0.3.0` is the adoption release that makes host setup and onboarding clearer.
-- `0.3.1` is planned for review and handoff controls.
-- `0.3.2` is planned for opt-in execution controls.
+- `0.3.0` is the live adoption baseline that made host setup and onboarding clearer.
+- `0.3.1` is the live review and handoff release.
+- `0.3.2` is the live engine-validation hotfix that fixes spend-limit requests for Gemini-backed runs.
+- `0.3.3` is the planned follow-on for opt-in execution controls.
 
 ## What ships today
 

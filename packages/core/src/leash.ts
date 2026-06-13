@@ -69,7 +69,12 @@ const BLOCKED_PATTERNS: RegExp[] = [
   /\bshutil\.rmtree\s*\(/iu,
   /\bos\.(?:remove|rmdir|removedirs|unlink)\s*\(/iu,
   /\.(?:rm|rmdir|unlink)(?:Sync)?\s*\(/iu,
-  /\brimraf\s*\(/iu
+  /\brimraf\s*\(/iu,
+  // Windows destructive deletion / formatting patterns
+  /\b(?:cmd(?:\.exe)?\s+\/c\s+)?del(?:\.exe)?\s+\/[^\n]*(?:\bs\b|\bq\b|\bf\b)/iu,
+  /\b(?:cmd(?:\.exe)?\s+\/c\s+)?rmdir(?:\.exe)?\s+\/[^\n]*\bs\b/iu,
+  /\bremove-item\b[^\n]*(?:-recurse|-r)\b[^\n]*(?:-force|-fo)\b/iu,
+  /\b(?:format-volume|diskpart)\b/iu
 ];
 
 /**
@@ -81,7 +86,7 @@ const BLOCKED_PATTERNS: RegExp[] = [
 function commandContainsDestructiveRemoval(command: string): boolean {
   const normalized = command.replace(/\$\{?IFS\}?/giu, " ").toLowerCase();
 
-  const rmInvocation = /(?:^|[\s;&|`(])(?:[^\s;&|`(]+\/)?rm\s+([^\n;|`]+)/giu;
+  const rmInvocation = /(?:^|[\s;&|`(])(?:\/(?:usr\/(?:local\/)?)?s?bin\/)?rm\s+([^\n;|`]+)/giu;
   let match: RegExpExecArray | null;
   while ((match = rmInvocation.exec(normalized)) !== null) {
     const args = match[1] ?? "";

@@ -22,6 +22,25 @@ test("findPublicCopyViolations detects forbidden public-process language", () =>
   assert.match(String(violations[0]?.pattern), /release candidate/i);
 });
 
+test("findPublicCopyViolations detects internal repo names and local path leakage", () => {
+  const internalRepoLeak = findPublicCopyViolations(
+    "Source: martin-Loop/ML_Main_Repo_Internal",
+    "README.md",
+  );
+  const windowsPathLeak = findPublicCopyViolations(
+    "Path: C:\\Users\\Example\\OneDrive\\Documents\\notes.md",
+    "README.md",
+  );
+  const codexAttachmentLeak = findPublicCopyViolations(
+    "Attachment: .codex/attachments/abc123/pasted-text.txt",
+    "README.md",
+  );
+
+  assert.ok(internalRepoLeak.length > 0);
+  assert.ok(windowsPathLeak.length > 0);
+  assert.ok(codexAttachmentLeak.length > 0);
+});
+
 test("findPublicCopyViolations ignores fenced command blocks and package scripts", () => {
   const readmeViolations = findPublicCopyViolations(
     "```sh\npnpm release:matrix:local\n```",

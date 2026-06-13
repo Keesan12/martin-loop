@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -334,36 +334,47 @@ describe("inferExit", () => {
 });
 
 describe("runMartin", () => {
+  // Several specs below invoke `runMartin` without an explicit `store`, which
+  // makes the context-integrity precheck fall back to `resolveActiveRunsRoot`'s
+  // default (`~/.martin/runs`). Point that default at a scratch directory for
+  // the duration of this suite so `pnpm test` never touches the real home dir.
   let scratchRoot: string | undefined;
   let previousRunsDir: string | undefined;
   let previousGroundingDir: string | undefined;
   let previousIntegrityKeyDir: string | undefined;
 
   beforeEach(async () => {
-    scratchRoot = await mkdtemp(join(tmpdir(), "martin-runtime-isolation-"));
-    previousRunsDir = process.env["MARTIN_RUNS_DIR"];
-    previousGroundingDir = process.env["MARTIN_GROUNDING_DIR"];
-    previousIntegrityKeyDir = process.env["MARTIN_INTEGRITY_KEY_DIR"];
-    process.env["MARTIN_RUNS_DIR"] = join(scratchRoot, "runs");
-    process.env["MARTIN_GROUNDING_DIR"] = join(scratchRoot, "grounding");
-    process.env["MARTIN_INTEGRITY_KEY_DIR"] = join(scratchRoot, "receipt-integrity");
+    scratchRoot = await mkdtemp(join(tmpdir(), "martin-runtime-home-"));
+    previousRunsDir = process.env.MARTIN_RUNS_DIR;
+    previousGroundingDir = process.env.MARTIN_GROUNDING_DIR;
+    previousIntegrityKeyDir = process.env.MARTIN_INTEGRITY_KEY_DIR;
+    process.env.MARTIN_RUNS_DIR = join(scratchRoot, "runs");
+    process.env.MARTIN_GROUNDING_DIR = join(scratchRoot, "grounding");
+    process.env.MARTIN_INTEGRITY_KEY_DIR = join(scratchRoot, "receipt-integrity");
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     if (previousRunsDir === undefined) {
-      delete process.env["MARTIN_RUNS_DIR"];
+      delete process.env.MARTIN_RUNS_DIR;
     } else {
-      process.env["MARTIN_RUNS_DIR"] = previousRunsDir;
+      process.env.MARTIN_RUNS_DIR = previousRunsDir;
     }
+
     if (previousGroundingDir === undefined) {
-      delete process.env["MARTIN_GROUNDING_DIR"];
+      delete process.env.MARTIN_GROUNDING_DIR;
     } else {
-      process.env["MARTIN_GROUNDING_DIR"] = previousGroundingDir;
+      process.env.MARTIN_GROUNDING_DIR = previousGroundingDir;
     }
+
     if (previousIntegrityKeyDir === undefined) {
-      delete process.env["MARTIN_INTEGRITY_KEY_DIR"];
+      delete process.env.MARTIN_INTEGRITY_KEY_DIR;
     } else {
-      process.env["MARTIN_INTEGRITY_KEY_DIR"] = previousIntegrityKeyDir;
+      process.env.MARTIN_INTEGRITY_KEY_DIR = previousIntegrityKeyDir;
+    }
+
+    if (scratchRoot) {
+      await rm(scratchRoot, { force: true, recursive: true }).catch(() => {});
+      scratchRoot = undefined;
     }
   });
 
@@ -886,6 +897,11 @@ describe("runMartin", () => {
     expect(result.loop.status).toBe("exited");
     expect(result.loop.lifecycleState).toBe("budget_exit");
     expect(result.loop.events.map((event) => event.type)).toContain("budget.updated");
+    const budgetUpdatedEvents = result.loop.events.filter((event) => event.type === "budget.updated");
+    expect(budgetUpdatedEvents.length).toBeGreaterThan(0);
+    for (const event of budgetUpdatedEvents) {
+      expect((event.payload as Record<string, unknown>)["provenance"]).toBe("actual");
+    }
     expect(result.decision.shouldExit).toBe(true);
     expect(result.loop.cost.provenance).toBe("actual");
   });
