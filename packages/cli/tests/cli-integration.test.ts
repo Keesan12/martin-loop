@@ -42,6 +42,24 @@ async function withEnv<T>(key: string, value: string, fn: () => Promise<T>): Pro
   }
 }
 
+async function withScratchEnv<T>(vars: Record<string, string>, fn: () => Promise<T>): Promise<T> {
+  const originals = new Map(Object.keys(vars).map((key) => [key, process.env[key]]));
+  for (const [key, value] of Object.entries(vars)) {
+    process.env[key] = value;
+  }
+  try {
+    return await fn();
+  } finally {
+    for (const [key, original] of originals) {
+      if (original === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = original;
+      }
+    }
+  }
+}
+
 async function withRunsRoot<T>(fn: (runsRoot: string) => Promise<T>): Promise<T> {
   const previousRunsRoot = process.env.MARTIN_RUNS_DIR;
   const previousGroundingRoot = process.env.MARTIN_GROUNDING_DIR;
@@ -329,89 +347,102 @@ describe("--engine flag", () => {
   it("auto-bootstraps governed prerequisites and executes a live Codex run when host is ready", { timeout: 45000 }, async () => {
     await withTempDir((workspace) =>
       withFakeCodexCli(() =>
-        withEnv("MARTIN_INTEGRITY_KEY_DIR", join(workspace, ".martin-receipt-integrity"), async () => {
-          initializeGitRepo(workspace);
-          const runsDir = join(workspace, ".martin-runs");
-          const result = await withEnv("MARTIN_LIVE", "true", () =>
-            executeCli([
+        withScratchEnv(
+          {
+            MARTIN_INTEGRITY_KEY_DIR: join(workspace, ".martin-receipt-integrity"),
+            MARTIN_GROUNDING_DIR: join(workspace, ".martin-grounding")
+          },
+          async () => {
+            initializeGitRepo(workspace);
+            const runsDir = join(workspace, ".martin-runs");
+            const result = await withEnv("MARTIN_LIVE", "true", () =>
+              executeCli([
+                "--json",
+                "run",
+                "--engine",
+                "codex",
+                "--cwd",
+                workspace,
+                "--runs-dir",
+                runsDir,
+                "--objective",
+                "Fix the bug",
+                "--verify",
+                NOOP_VERIFIER,
+                "--max-iterations",
+                "1",
+                "--budget-usd",
+                "2",
+              ])
+            );
+
+            expect(result.exitCode).toBe(0);
+            const payload = JSON.parse(result.stdout);
+            expect(payload.command).toBe("run");
+            expect(payload.environment.engine).toBe("codex");
+            expect(payload.environment.liveMode).toBe("live");
+            expect(payload.loop.loopId).toMatch(/^loop_/u);
+            expect(payload.loop.attempts).toHaveLength(1);
+            expect(payload.loop.attempts[0].adapterId).toBe("agent-cli:codex");
+            expect(payload.loop.attempts[0].summary).toContain("fake codex completed");
+            const verificationEvent = payload.loop.events.find((event: { type: string }) => event.type === "verification.completed");
+            expect(verificationEvent?.payload?.passed).toBe(true);
+            expect(verificationEvent?.payload?.summary).toContain("passed");
+
+            const workflowState = await readWorkflowState(runsDir);
+            const cliState = (workflowState?.cli ?? {}) as Record<string, { workingDirectory?: string }>;
+            const normalizedWorkingDirectory = normalizeWorkingDirectoryForExpectation(payload.environment.workingDirectory);
+            expect(cliState.doctor?.workingDirectory).toBe(normalizedWorkingDirectory);
+            expect(cliState["session-start"]?.workingDirectory).toBe(normalizedWorkingDirectory);
+            expect(cliState.preflight?.workingDirectory).toBe(normalizedWorkingDirectory);
+
+            const verifyResult = await executeCli([
               "--json",
-              "run",
-              "--engine",
-              "codex",
-              "--cwd",
-              workspace,
+              "runs",
+              "verify",
+              "--latest",
               "--runs-dir",
-              runsDir,
-              "--objective",
-              "Fix the bug",
-              "--verify",
-              NOOP_VERIFIER,
-              "--max-iterations",
-              "1",
-              "--budget-usd",
-              "2",
-            ])
-          );
-
-          expect(result.exitCode).toBe(0);
-          const payload = JSON.parse(result.stdout);
-          expect(payload.command).toBe("run");
-          expect(payload.environment.engine).toBe("codex");
-          expect(payload.environment.liveMode).toBe("live");
-          expect(payload.loop.loopId).toMatch(/^loop_/u);
-          expect(payload.loop.attempts).toHaveLength(1);
-          expect(payload.loop.attempts[0].adapterId).toBe("agent-cli:codex");
-          expect(payload.loop.attempts[0].summary).toContain("fake codex completed");
-          const verificationEvent = payload.loop.events.find((event: { type: string }) => event.type === "verification.completed");
-          expect(verificationEvent?.payload?.passed).toBe(true);
-          expect(verificationEvent?.payload?.summary).toContain("passed");
-
-          const workflowState = await readWorkflowState(runsDir);
-          const cliState = (workflowState?.cli ?? {}) as Record<string, { workingDirectory?: string }>;
-          const normalizedWorkingDirectory = normalizeWorkingDirectoryForExpectation(payload.environment.workingDirectory);
-          expect(cliState.doctor?.workingDirectory).toBe(normalizedWorkingDirectory);
-          expect(cliState["session-start"]?.workingDirectory).toBe(normalizedWorkingDirectory);
-          expect(cliState.preflight?.workingDirectory).toBe(normalizedWorkingDirectory);
-
-          const verifyResult = await executeCli([
-            "--json",
-            "runs",
-            "verify",
-            "--latest",
-            "--runs-dir",
-            runsDir
-          ]);
-          expect(verifyResult.exitCode).toBe(0);
-          const verificationPayload = JSON.parse(verifyResult.stdout);
-          expect(verificationPayload.verification.status).toBe("passed");
-        })
+              runsDir
+            ]);
+            expect(verifyResult.exitCode).toBe(0);
+            const verificationPayload = JSON.parse(verifyResult.stdout);
+            expect(verificationPayload.verification.status).toBe("passed");
+          }
+        )
       )
     );
   });
 
   it("accepts explicit unsafe gate bypass in live mode", { timeout: 15000 }, async () => {
     await withTempDir((workspace) =>
-      withEnv("MARTIN_INTEGRITY_KEY_DIR", join(workspace, ".martin-receipt-integrity"), async () => {
-        const result = await withoutAgentCliOnPath(() =>
-          withEnv("MARTIN_LIVE", "true", () =>
-            executeCli([
-              "run",
-              "--objective",
-              "Fix the bug",
-              "--verify",
-              NOOP_VERIFIER,
-              "--max-iterations",
-              "1",
-              "--budget-usd",
-              "2",
-              "--unsafe-allow-unguarded-run"
-            ])
-          )
-        );
+      withScratchEnv(
+        {
+          MARTIN_INTEGRITY_KEY_DIR: join(workspace, ".martin-receipt-integrity"),
+          MARTIN_GROUNDING_DIR: join(workspace, ".martin-grounding"),
+          MARTIN_RUNS_DIR: join(workspace, ".martin-runs")
+        },
+        async () => {
+          const result = await withoutAgentCliOnPath(() =>
+            withEnv("MARTIN_LIVE", "true", () =>
+              executeCli([
+                "run",
+                "--objective",
+                "Fix the bug",
+                "--verify",
+                NOOP_VERIFIER,
+                "--max-iterations",
+                "1",
+                "--budget-usd",
+                "2",
+                "--unsafe-allow-unguarded-run"
+              ])
+            )
+          );
 
-        expect(result.exitCode).not.toBe(8);
-        expect(result.stderr).not.toContain("Governed run preflight blocked execution");
-      })
+          expect(result.exitCode).not.toBe(8);
+          expect(result.stderr).not.toContain("Governed run preflight blocked execution");
+        }
+      )
     );
   });
 });

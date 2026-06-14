@@ -113,14 +113,12 @@ export async function runSubprocess(
     }
 
     const trackOutput = (chunks: Buffer[], chunk: Buffer) => {
+      if (outputCapped || timedOut) {
+        return;
+      }
       chunks.push(chunk);
       outputBytes += chunk.byteLength;
-      if (
-        options.maxOutputBytes !== undefined &&
-        !outputCapped &&
-        !timedOut &&
-        outputBytes > options.maxOutputBytes
-      ) {
+      if (options.maxOutputBytes !== undefined && outputBytes > options.maxOutputBytes) {
         outputCapped = true;
         proc.kill("SIGTERM");
       }
@@ -136,7 +134,15 @@ export async function runSubprocess(
 
     proc.stdout?.on("data", (chunk: Buffer) => {
       trackOutput(stdoutChunks, chunk);
-      options.onStdoutChunk?.(chunk, terminateEarly);
+      if (options.onStdoutChunk) {
+        try {
+          options.onStdoutChunk(chunk, terminateEarly);
+        } catch (error) {
+          terminateEarly(
+            `stdout inspector error: ${error instanceof Error ? error.message : String(error)}`
+          );
+        }
+      }
     });
 
     proc.stderr?.on("data", (chunk: Buffer) => {
