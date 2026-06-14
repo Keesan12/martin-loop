@@ -2056,6 +2056,10 @@ const store: import("../src/index").RunStore = {
     expect(settled[1]?.payload).toMatchObject({
       provenance: "actual"
     });
+    // The cumulative loop provenance reflects the weakest attempt: the first
+    // attempt's cost was only "estimated", so the aggregate must not be
+    // upgraded to "actual" by the second attempt's authoritative settlement.
+    expect(result.loop.cost.provenance).toBe("estimated");
   });
 });
 

@@ -113,7 +113,7 @@ export async function runSubprocess(
     }
 
     const trackOutput = (chunks: Buffer[], chunk: Buffer) => {
-      if (outputCapped || timedOut) {
+      if (outputCapped || timedOut || terminationReason) {
         return;
       }
       chunks.push(chunk);
@@ -133,6 +133,9 @@ export async function runSubprocess(
     };
 
     proc.stdout?.on("data", (chunk: Buffer) => {
+      if (outputCapped || timedOut || terminationReason) {
+        return;
+      }
       trackOutput(stdoutChunks, chunk);
       if (options.onStdoutChunk) {
         try {
@@ -146,6 +149,9 @@ export async function runSubprocess(
     });
 
     proc.stderr?.on("data", (chunk: Buffer) => {
+      if (outputCapped || timedOut || terminationReason) {
+        return;
+      }
       trackOutput(stderrChunks, chunk);
     });
 
