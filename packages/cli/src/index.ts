@@ -825,8 +825,7 @@ async function executeRunCommand(
     engine: resolvedRequest.engine,
     liveMode: resolvedRequest.liveMode
   });
-  const effectiveMutationMode =
-    resolvedRequest.mutationMode ?? (resolvedRequest.liveMode === "proof" ? "verify_only" : undefined);
+  const effectiveMutationMode = resolvedRequest.mutationMode;
   const receiptScope = buildCliReceiptScope(cliEnvironment);
   const engineRequired =
     effectiveMutationMode !== "verify_only" && cliEnvironment.liveMode === "live";
@@ -3034,7 +3033,7 @@ function proofCardInputFromLoop(loop: LoopRecord): MartinProofCardInput {
     attempts: loop.attempts.length,
     rollbackStatus,
     verificationStepCount,
-    runMode: loop.task.mutationMode ?? "not recorded",
+    runMode: deriveLoopRunMode(loop),
     runtime: runtimeLabel,
     timelineEvents: loop.events.map((event) => event.type),
     haltReason: latestExitReason(loop),
@@ -3071,6 +3070,19 @@ function defaultChallengeProofCardInput(): MartinProofCardInput {
     ],
     generatedAt: new Date().toISOString()
   };
+}
+
+function deriveLoopRunMode(loop: LoopRecord): string {
+  if (loop.task.mutationMode) {
+    return loop.task.mutationMode;
+  }
+  if (loop.attempts.some((attempt) => attempt.adapterId === "direct:proof:no-mutation")) {
+    return "proof";
+  }
+  if (loop.attempts.some((attempt) => attempt.adapterId === "direct:verifier:verify-only")) {
+    return "verify_only";
+  }
+  return "not recorded";
 }
 
 function latestExitReason(loop: LoopRecord): string {

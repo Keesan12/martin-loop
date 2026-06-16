@@ -41,6 +41,8 @@ export interface MartinProofCard {
 const COMPLETE_EVIDENCE_LINE = "Martin stopped Ralph here.";
 const INCOMPLETE_EVIDENCE_LINE =
   "Incomplete Martin proof: missing budget, rollback, or verifier evidence.";
+const NON_MUTATING_EVIDENCE_LINE =
+  "Proof or verifier-only runs are evidence boundaries, not real Martin mutation receipts.";
 const UNSIGNED_EVIDENCE_LINE = "Receipt integrity unavailable: Martin proof is not yet trustworthy.";
 const TAMPERED_EVIDENCE_LINE = "Receipt integrity failed: Martin proof is not trustworthy.";
 
@@ -108,8 +110,10 @@ export function buildMartinProofCard(input: MartinProofCardInput): MartinProofCa
 
   const trustworthyReceipt =
     input.receiptIntegrityState === undefined || input.receiptIntegrityState === "verified";
+  const proofLikeRun = /^(proof|verify_only)$/iu.test(String(input.runMode ?? "").trim());
   const completeEvidence =
     trustworthyReceipt &&
+    !proofLikeRun &&
     hasEvidence(input.budget) &&
     hasEvidence(input.rollbackStatus) &&
     hasEvidence(input.verifierStatus);
@@ -118,6 +122,8 @@ export function buildMartinProofCard(input: MartinProofCardInput): MartinProofCa
       ? TAMPERED_EVIDENCE_LINE
       : input.receiptIntegrityState === "unsigned"
         ? UNSIGNED_EVIDENCE_LINE
+        : proofLikeRun
+          ? NON_MUTATING_EVIDENCE_LINE
         : completeEvidence
           ? COMPLETE_EVIDENCE_LINE
           : INCOMPLETE_EVIDENCE_LINE;
