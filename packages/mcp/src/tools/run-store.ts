@@ -57,18 +57,13 @@ async function attachReceiptIntegrity(detail: DetailedLoopSource): Promise<Detai
           loopRecordPath: detail.canonicalLoopRecordPath,
           ledgerPath
         }).catch(() => ({
-          state: "material_missing" as const,
+          state: "unsigned" as const,
           reason: "Receipt integrity verification could not be completed."
         }))
-      : detail.canonicalLoopRecordPath && detail.canonicalRunDirectory
-        ? ({
-            state: "material_missing" as const,
-            reason: "Receipt integrity material is incomplete for this canonical run."
-          })
-        : ({
-            state: "selector_noncanonical" as const,
-            reason: "Receipt integrity is only available for canonical run selectors."
-          });
+      : ({
+          state: "unsigned" as const,
+          reason: "Receipt integrity is only available for canonical run directories."
+        });
   const receiptScope = resolveReceiptScope(detail.loop, detail.runsRoot);
 
   return {

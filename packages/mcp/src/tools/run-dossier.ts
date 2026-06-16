@@ -9,6 +9,7 @@ import {
   buildSuggestedResourceUris,
   buildVerificationSummary
 } from "./tool-support.js";
+import { resolveTrustedLoopRepoRoot } from "../server-validation.js";
 import {
   loadDetailedLoopRecord,
   readAttemptArtifactFiles,
@@ -18,7 +19,6 @@ import { readRunControlState } from "./run-controls.js";
 import { martinEvalTool } from "./eval.js";
 import { assessRunRisk, inspectRepoSignals } from "./workflow-governance.js";
 import type { ReceiptIntegritySummary, ReceiptScope } from "@martin/contracts";
-import { resolveTrustedLoopRepoRoot } from "../server-validation.js";
 
 export interface MartinRunDossierInput {
   file?: string;
@@ -114,13 +114,13 @@ export async function martinRunDossierTool(
     outcome:
       verification.status === "passed"
         ? "passed"
-        : verification.status === "failed" || verification.status === "contradicted"
+        : verification.status === "failed"
           ? "failed"
           : "needs_review",
     nextAction:
       verification.status === "passed"
         ? "Review the dossier and evaluation, then decide whether to merge or promote."
-        : verification.status === "failed" || verification.status === "contradicted"
+        : verification.status === "failed"
           ? "Investigate the latest verifier failure before retrying or promoting."
           : "Collect more evidence before claiming completion."
   } as const;

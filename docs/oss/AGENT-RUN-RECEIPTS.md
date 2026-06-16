@@ -10,14 +10,14 @@ An agent run receipt is a local proof pack for a governed MartinLoop run. It giv
 
 The OSS receipt is intentionally local-first. It prioritizes deterministic inspection and practical evidence over hosted dashboards.
 
-## Receipt fields
+## Receipt fields (`run-receipt.json`)
 
 | Field | Purpose |
 | --- | --- |
 | `schemaVersion` | Receipt schema identifier (`martin.share-receipt.v1`). |
 | `generatedAt` | ISO timestamp when the share receipt was generated. |
 | `loop` | Top-level run facts: `loopId`, title/objective, status/lifecycleState, attempts, spend/budget, update time. |
-| `receiptIntegrity` | Integrity verdict from local persisted evidence (`verified`, `unsigned`, `tamper_detected`, `relocated`, `material_missing`, `selector_noncanonical`). |
+| `receiptIntegrity` | Integrity verdict from local persisted evidence (`verified`, `tamper_detected`, `unsigned`). |
 | `verification` | Verifier summary for the selected run. |
 | `receipt` | Governed-run summary with next safe action and risk posture fields. |
 | `artifacts` | Local artifact references included in the dossier view. |
@@ -63,10 +63,8 @@ npx martin-loop run "Summarize the workspace and prove tests still pass" --proof
 
 ```sh
 npx martin-loop dossier --latest
-npx martin-loop review
 npx martin-loop runs get --latest
 npx martin-loop runs verify --latest
-npx martin-loop receipts explain --latest
 ```
 
 3. Create the share bundle:
@@ -75,11 +73,19 @@ npx martin-loop receipts explain --latest
 npx martin-loop share --latest
 ```
 
+To print exact output locations:
+
+```sh
+npx martin-loop share --latest --json
+```
+
 Expected bundle output under the selected run directory in `share/`:
 
 - `run-receipt.json` (machine-readable summary)
 - `run-receipt.md` (human-readable recap)
 - `proof-card.svg` (portable visual card)
+
+The proof card is intentionally a terminal-style receipt, not a marketing card. It uses a dark CLI layout, line rules, monospaced evidence rows, green only for verified/pass states, and red only for failed, missing, or boundary states. Do not restyle it into rounded boxes, blue palettes, gradients, certificate layouts, or dashboard cards without an explicit visual review.
 
 4. Optional custom output directory:
 
@@ -113,7 +119,7 @@ Failure labels are a triage index; they do not replace raw verifier and attempt 
 4. Inspect dossier and attempt evidence for decision context.
 5. Compare the new verifier outcome with the stored `verifierResult`.
 
-If exact replay is not possible because the workspace changed, the receipt should say that in `evidenceBoundaries`.
+If exact replay is not possible because the workspace changed, the `warnings` and `receipt` sections should reflect that limitation.
 
 ## Public-safe defaults
 
@@ -122,3 +128,13 @@ If exact replay is not possible because the workspace changed, the receipt shoul
 - usage is presented with provenance (`actual`, `estimated`, or `unavailable`)
 - verifier failures are explicit and not reinterpreted as success
 - inspection remains read-only
+
+## Public proof receipt example
+
+This repository includes a public-safe proof receipt generated from a real governed run:
+
+- [visual proof card](../assets/proof-receipt-live-governed.png)
+- [Markdown receipt](../examples/proof-receipts/live-governed-run-receipt.md)
+- [JSON receipt](../examples/proof-receipts/live-governed-run-receipt.json)
+
+The example shows a verifier-passed run with signed receipt integrity and an explicit evidence boundary. The boundary is kept visible because rollback evidence was not recorded.

@@ -1,14 +1,32 @@
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createLoopRecord } from "@martin/contracts";
 
 import { persistLoopArtifacts } from "../src/persistence.js";
 
 describe("persistLoopArtifacts", () => {
+  let keyRoot: string;
+  let previousIntegrityKeyDir: string | undefined;
+
+  beforeEach(async () => {
+    keyRoot = await mkdtemp(join(tmpdir(), "martin-persistence-keys-"));
+    previousIntegrityKeyDir = process.env["MARTIN_INTEGRITY_KEY_DIR"];
+    process.env["MARTIN_INTEGRITY_KEY_DIR"] = keyRoot;
+  });
+
+  afterEach(async () => {
+    if (previousIntegrityKeyDir === undefined) {
+      delete process.env["MARTIN_INTEGRITY_KEY_DIR"];
+    } else {
+      process.env["MARTIN_INTEGRITY_KEY_DIR"] = previousIntegrityKeyDir;
+    }
+    await rm(keyRoot, { recursive: true, force: true }).catch(() => {});
+  });
+
   it("writes contract, state, events, and attempt artifacts to <runsRoot>/<loopId>/ without shadowing the core ledger", async () => {
     const runsRoot = await mkdtemp(join(tmpdir(), "martin-runs-"));
     const loop = createLoopRecord({

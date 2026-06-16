@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -398,9 +398,12 @@ describe("compileAndPersistContext", () => {
 describe("receipt integrity persistence", () => {
   it("writes receipt-integrity keys with restricted permissions where the platform supports POSIX modes", async () => {
     const runsRoot = await mkdtemp(join(tmpdir(), "martin-integrity-"));
+    const keyRoot = await mkdtemp(join(tmpdir(), "martin-integrity-keys-"));
+    const previousIntegrityKeyDir = process.env["MARTIN_INTEGRITY_KEY_DIR"];
+    process.env["MARTIN_INTEGRITY_KEY_DIR"] = keyRoot;
     const runId = `run_integrity_${Date.now()}`;
     const rootHash = createHash("sha256").update(runsRoot).digest("hex").slice(0, 16);
-    const keyDir = join(homedir(), ".martin", "receipt-integrity", rootHash);
+    const keyDir = join(keyRoot, rootHash);
     const keyPath = join(keyDir, `${runId}.key`);
 
     try {
@@ -446,13 +449,21 @@ describe("receipt integrity persistence", () => {
         expect(keyStats.mode & 0o777).toBe(0o600);
       }
     } finally {
+      if (previousIntegrityKeyDir === undefined) {
+        delete process.env["MARTIN_INTEGRITY_KEY_DIR"];
+      } else {
+        process.env["MARTIN_INTEGRITY_KEY_DIR"] = previousIntegrityKeyDir;
+      }
       await rm(runsRoot, { recursive: true, force: true });
-      await rm(keyDir, { recursive: true, force: true }).catch(() => {});
+      await rm(keyRoot, { recursive: true, force: true }).catch(() => {});
     }
   });
 
   it("fails closed when the persisted ledger contains malformed JSON", async () => {
     const runsRoot = await mkdtemp(join(tmpdir(), "martin-integrity-parse-"));
+    const keyRoot = await mkdtemp(join(tmpdir(), "martin-integrity-parse-keys-"));
+    const previousIntegrityKeyDir = process.env["MARTIN_INTEGRITY_KEY_DIR"];
+    process.env["MARTIN_INTEGRITY_KEY_DIR"] = keyRoot;
     const runId = "run_integrity_parse";
     const runDir = join(runsRoot, runId);
     const loopRecordPath = join(runDir, "loop-record.json");
@@ -535,7 +546,13 @@ describe("receipt integrity persistence", () => {
         reason: "ledger_entry_parse_error"
       });
     } finally {
+      if (previousIntegrityKeyDir === undefined) {
+        delete process.env["MARTIN_INTEGRITY_KEY_DIR"];
+      } else {
+        process.env["MARTIN_INTEGRITY_KEY_DIR"] = previousIntegrityKeyDir;
+      }
       await rm(runsRoot, { recursive: true, force: true });
+      await rm(keyRoot, { recursive: true, force: true }).catch(() => {});
     }
   });
 });

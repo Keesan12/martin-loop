@@ -34,6 +34,14 @@ export const FORBIDDEN_PUBLIC_COPY_PATTERNS = [
   /\bfrozen public\b/i,
   /\bclean public repo\b/i,
   /\bpublic(?:-| )surface cleanup\b/i,
+  /\bML_Main_Repo_Internal\b/i,
+  /\bML_Core_OSS_Internal\b/i,
+  /\bmartin-Loop\/ML_Main_Repo_Internal\b/i,
+  /\bmartin-Loop\/ML_Core_OSS_Internal\b/i,
+  /[A-Za-z]:\\Users\\/i,
+  /\/Users\//i,
+  /\bOneDrive\b/i,
+  /\.codex[\\/]+attachments\b/i,
 ];
 
 const PATH_SPECIFIC_ALLOWLIST = [
@@ -67,7 +75,7 @@ const ROOT_FILES = [
 ];
 const DIRECTORY_RULES = [
   { relativePath: "docs", include: (name) => name.endsWith(".md") },
-  { relativePath: ".github", include: (name) => name.endsWith(".md") },
+  { relativePath: ".github", include: (name) => name.endsWith(".md") || name.endsWith(".yml") || name.endsWith(".yaml") },
   { relativePath: "packages", include: (name, fullPath) => name === "README.md" && fullPath.includes(`${path.sep}packages${path.sep}`) },
 ];
 
