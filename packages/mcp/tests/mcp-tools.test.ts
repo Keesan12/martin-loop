@@ -57,8 +57,14 @@ function makeLoopRecord(overrides: { costUsd?: number; avoidedUsd?: number } = {
 
 async function withRunsRoot<T>(fn: (runsRoot: string) => Promise<T>): Promise<T> {
   const previousRunsRoot = process.env.MARTIN_RUNS_DIR;
-  const runsRoot = await mkdtemp(join(tmpdir(), "martin-mcp-runs-"));
+  const previousGroundingRoot = process.env.MARTIN_GROUNDING_DIR;
+  const previousIntegrityKeyDir = process.env.MARTIN_INTEGRITY_KEY_DIR;
+  const scratchRoot = await mkdtemp(join(tmpdir(), "martin-mcp-runs-"));
+  const runsRoot = join(scratchRoot, "runs");
+  await mkdir(runsRoot, { recursive: true });
   process.env.MARTIN_RUNS_DIR = runsRoot;
+  process.env.MARTIN_GROUNDING_DIR = join(scratchRoot, "grounding");
+  process.env.MARTIN_INTEGRITY_KEY_DIR = join(scratchRoot, "receipt-integrity");
   try {
     return await fn(runsRoot);
   } finally {
@@ -67,8 +73,18 @@ async function withRunsRoot<T>(fn: (runsRoot: string) => Promise<T>): Promise<T>
     } else {
       process.env.MARTIN_RUNS_DIR = previousRunsRoot;
     }
+    if (previousGroundingRoot === undefined) {
+      delete process.env.MARTIN_GROUNDING_DIR;
+    } else {
+      process.env.MARTIN_GROUNDING_DIR = previousGroundingRoot;
+    }
+    if (previousIntegrityKeyDir === undefined) {
+      delete process.env.MARTIN_INTEGRITY_KEY_DIR;
+    } else {
+      process.env.MARTIN_INTEGRITY_KEY_DIR = previousIntegrityKeyDir;
+    }
 
-    await rm(runsRoot, { recursive: true, force: true }).catch(() => {});
+    await rm(scratchRoot, { recursive: true, force: true }).catch(() => {});
   }
 }
 
@@ -1244,14 +1260,15 @@ describe("runLoopTool", () => {
     process.env.MARTIN_LIVE = "false";
 
     try {
-      const result = await runLoopTool({
-        objective: "Add a console.log to index.ts",
-        allowedPaths: ["src/**"],
-        deniedPaths: ["docs/security/**"],
-        verificationPlan: [],
-        maxIterations: 1,
-        maxUsd: 5
-      });
+      await withRunsRoot(async () => {
+        const result = await runLoopTool({
+          objective: "Add a console.log to index.ts",
+          allowedPaths: ["src/**"],
+          deniedPaths: ["docs/security/**"],
+          verificationPlan: [],
+          maxIterations: 1,
+          maxUsd: 5
+        });
 
         // Stub adapter returns failed, so loop exits with budget_exit or diminishing_returns
         expect(result.loopId).toMatch(/^loop_/u);
@@ -1259,7 +1276,8 @@ describe("runLoopTool", () => {
         expect(typeof result.costUsd).toBe("number");
         expect(result.budget.softLimitUsd).toBe(5);
         expect(["completed", "exited", "failed"]).toContain(result.status);
-      } finally {
+      });
+    } finally {
       if (originalEnv === undefined) {
         delete process.env.MARTIN_LIVE;
       } else {
@@ -1274,18 +1292,20 @@ describe("runLoopTool", () => {
     process.env.MARTIN_LIVE = "false";
 
     try {
-      await withMemoryRunStore(async (store) => {
-        __setRunStoreOverrideForTests(store);
+      await withRunsRoot(async () =>
+        withMemoryRunStore(async (store) => {
+          __setRunStoreOverrideForTests(store);
 
-        const result = await runLoopTool({
-          objective: "Fix the bug",
-          workspaceId: "ws_custom",
-          projectId: "proj_custom",
-          maxIterations: 1
-        });
+          const result = await runLoopTool({
+            objective: "Fix the bug",
+            workspaceId: "ws_custom",
+            projectId: "proj_custom",
+            maxIterations: 1
+          });
 
-        expect(result.loopId).toBeTruthy();
-      });
+          expect(result.loopId).toBeTruthy();
+        })
+      );
     } finally {
       if (originalEnv === undefined) {
         delete process.env.MARTIN_LIVE;
@@ -1304,15 +1324,17 @@ describe("runLoopTool", () => {
     try {
       await installFakeCliProbe(fakeCliDir, "claude", markerPath);
 
-      await withPathPrefix(fakeCliDir, async () => {
-        const result = await runLoopTool({
-          objective: "Proof mode should not probe the requested engine",
-          maxIterations: 1
-        });
+      await withRunsRoot(async () =>
+        withPathPrefix(fakeCliDir, async () => {
+          const result = await runLoopTool({
+            objective: "Proof mode should not probe the requested engine",
+            maxIterations: 1
+          });
 
-        expect(result.loopId).toBeTruthy();
-        expect(result.attempts).toBeGreaterThan(0);
-      });
+          expect(result.loopId).toBeTruthy();
+          expect(result.attempts).toBeGreaterThan(0);
+        })
+      );
 
       await expect(stat(markerPath)).rejects.toThrow();
     } finally {
@@ -1333,13 +1355,15 @@ describe("runLoopTool", () => {
     process.env.MARTIN_LIVE = "false";
 
     try {
-      const result = await runLoopTool({
-        objective: "Fix the bug",
-        engine: "codex",
-        maxIterations: 1
-      });
+      await withRunsRoot(async () => {
+        const result = await runLoopTool({
+          objective: "Fix the bug",
+          engine: "codex",
+          maxIterations: 1
+        });
 
-      expect(result.loopId).toBeTruthy();
+        expect(result.loopId).toBeTruthy();
+      });
     } finally {
       if (originalEnv === undefined) {
         delete process.env.MARTIN_LIVE;

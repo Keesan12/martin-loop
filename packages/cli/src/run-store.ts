@@ -579,6 +579,7 @@ export function buildRunReceipt(
       tokensIn: loop.cost.tokensIn,
       tokensOut: loop.cost.tokensOut,
       costProvenance: readCostProvenance(loop),
+      costProvenanceLabel: describeCostProvenance(readCostProvenance(loop)),
       trustworthy,
       integrityState: integrity.state,
       avoidedIterationsEstimate: stopConditionReached ? 1 : 0,

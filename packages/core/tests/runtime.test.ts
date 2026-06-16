@@ -341,13 +341,16 @@ describe("runMartin", () => {
   let scratchRoot: string | undefined;
   let previousRunsDir: string | undefined;
   let previousGroundingDir: string | undefined;
+  let previousIntegrityKeyDir: string | undefined;
 
   beforeEach(async () => {
     scratchRoot = await mkdtemp(join(tmpdir(), "martin-runtime-home-"));
     previousRunsDir = process.env.MARTIN_RUNS_DIR;
     previousGroundingDir = process.env.MARTIN_GROUNDING_DIR;
+    previousIntegrityKeyDir = process.env.MARTIN_INTEGRITY_KEY_DIR;
     process.env.MARTIN_RUNS_DIR = join(scratchRoot, "runs");
     process.env.MARTIN_GROUNDING_DIR = join(scratchRoot, "grounding");
+    process.env.MARTIN_INTEGRITY_KEY_DIR = join(scratchRoot, "receipt-integrity");
   });
 
   afterEach(async () => {
@@ -361,6 +364,12 @@ describe("runMartin", () => {
       delete process.env.MARTIN_GROUNDING_DIR;
     } else {
       process.env.MARTIN_GROUNDING_DIR = previousGroundingDir;
+    }
+
+    if (previousIntegrityKeyDir === undefined) {
+      delete process.env.MARTIN_INTEGRITY_KEY_DIR;
+    } else {
+      process.env.MARTIN_INTEGRITY_KEY_DIR = previousIntegrityKeyDir;
     }
 
     if (scratchRoot) {
@@ -894,6 +903,7 @@ describe("runMartin", () => {
       expect((event.payload as Record<string, unknown>)["provenance"]).toBe("actual");
     }
     expect(result.decision.shouldExit).toBe(true);
+    expect(result.loop.cost.provenance).toBe("actual");
   });
 
   it("rejects an attempt during budget preflight before the adapter runs and records the ledger source", async () => {
@@ -2046,6 +2056,10 @@ const store: import("../src/index").RunStore = {
     expect(settled[1]?.payload).toMatchObject({
       provenance: "actual"
     });
+    // The cumulative loop provenance reflects the weakest attempt: the first
+    // attempt's cost was only "estimated", so the aggregate must not be
+    // upgraded to "actual" by the second attempt's authoritative settlement.
+    expect(result.loop.cost.provenance).toBe("estimated");
   });
 });
 

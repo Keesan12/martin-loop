@@ -42,6 +42,56 @@ async function withEnv<T>(key: string, value: string, fn: () => Promise<T>): Pro
   }
 }
 
+async function withScratchEnv<T>(vars: Record<string, string>, fn: () => Promise<T>): Promise<T> {
+  const originals = new Map(Object.keys(vars).map((key) => [key, process.env[key]]));
+  for (const [key, value] of Object.entries(vars)) {
+    process.env[key] = value;
+  }
+  try {
+    return await fn();
+  } finally {
+    for (const [key, original] of originals) {
+      if (original === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = original;
+      }
+    }
+  }
+}
+
+async function withRunsRoot<T>(fn: (runsRoot: string) => Promise<T>): Promise<T> {
+  const previousRunsRoot = process.env.MARTIN_RUNS_DIR;
+  const previousGroundingRoot = process.env.MARTIN_GROUNDING_DIR;
+  const previousIntegrityKeyDir = process.env.MARTIN_INTEGRITY_KEY_DIR;
+  const root = await mkdtemp(join(tmpdir(), "martin-cli-int-runs-"));
+  process.env.MARTIN_RUNS_DIR = join(root, "runs");
+  process.env.MARTIN_GROUNDING_DIR = join(root, "grounding");
+  process.env.MARTIN_INTEGRITY_KEY_DIR = join(root, "receipt-integrity");
+
+  try {
+    return await fn(process.env.MARTIN_RUNS_DIR);
+  } finally {
+    if (previousRunsRoot === undefined) {
+      delete process.env.MARTIN_RUNS_DIR;
+    } else {
+      process.env.MARTIN_RUNS_DIR = previousRunsRoot;
+    }
+    if (previousGroundingRoot === undefined) {
+      delete process.env.MARTIN_GROUNDING_DIR;
+    } else {
+      process.env.MARTIN_GROUNDING_DIR = previousGroundingRoot;
+    }
+    if (previousIntegrityKeyDir === undefined) {
+      delete process.env.MARTIN_INTEGRITY_KEY_DIR;
+    } else {
+      process.env.MARTIN_INTEGRITY_KEY_DIR = previousIntegrityKeyDir;
+    }
+
+    await rm(root, { force: true, recursive: true }).catch(() => {});
+  }
+}
+
 async function withoutAgentCliOnPath<T>(fn: () => Promise<T>): Promise<T> {
   const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === "path") ?? "PATH";
   const original = process.env[pathKey];
@@ -151,17 +201,19 @@ async function readWorkflowState(
 
 describe("MARTIN_LIVE=false — stub adapter", () => {
   it("run command completes without spawning a real subprocess", async () => {
-    const result = await withEnv("MARTIN_LIVE", "false", () =>
-      executeCli([
-        "--json",
-        "run",
-        "--objective",
-        "Add a greeting function",
-        "--max-iterations",
-        "1",
-        "--budget-usd",
-        "5"
-      ])
+    const result = await withRunsRoot(() =>
+      withEnv("MARTIN_LIVE", "false", () =>
+        executeCli([
+          "--json",
+          "run",
+          "--objective",
+          "Add a greeting function",
+          "--max-iterations",
+          "1",
+          "--budget-usd",
+          "5"
+        ])
+      )
     );
 
     expect(result.exitCode).toBe(0);
@@ -172,19 +224,21 @@ describe("MARTIN_LIVE=false — stub adapter", () => {
   });
 
   it("returns a valid loop record structure in stub mode", async () => {
-    const result = await withEnv("MARTIN_LIVE", "false", () =>
-      executeCli([
-        "--json",
-        "run",
-        "--workspace",
-        "ws_stub",
-        "--project",
-        "proj_stub",
-        "--objective",
-        "Write a hello world function",
-        "--max-iterations",
-        "1"
-      ])
+    const result = await withRunsRoot(() =>
+      withEnv("MARTIN_LIVE", "false", () =>
+        executeCli([
+          "--json",
+          "run",
+          "--workspace",
+          "ws_stub",
+          "--project",
+          "proj_stub",
+          "--objective",
+          "Write a hello world function",
+          "--max-iterations",
+          "1"
+        ])
+      )
     );
 
     const payload = JSON.parse(result.stdout);
@@ -202,17 +256,19 @@ describe("--engine flag", () => {
   it("defaults to claude when no --engine flag is given", { timeout: 45_000 }, async () => {
     // Use stub mode — we verify no engine flag selects the claude adapter path,
     // not that claude itself runs successfully
-    const result = await withEnv("MARTIN_LIVE", "false", () =>
-      executeCli([
-        "--json",
-        "run",
-        "--objective",
-        "Fix the bug",
-        "--max-iterations",
-        "1",
-        "--budget-usd",
-        "2"
-      ])
+    const result = await withRunsRoot(() =>
+      withEnv("MARTIN_LIVE", "false", () =>
+        executeCli([
+          "--json",
+          "run",
+          "--objective",
+          "Fix the bug",
+          "--max-iterations",
+          "1",
+          "--budget-usd",
+          "2"
+        ])
+      )
     );
 
     expect(result.exitCode).toBe(0);
@@ -225,19 +281,21 @@ describe("--engine flag", () => {
     const result = await withTempDir((workspace) =>
       withFakeCodexCli(async () => {
         initializeGitRepo(workspace);
-        return withEnv("MARTIN_LIVE", "true", () =>
-          executeCli([
-            "--json",
-            "preflight",
-            "--engine",
-            "codex",
-            "--cwd",
-            workspace,
-            "--objective",
-            "Fix the bug",
-            "--verify",
-            NOOP_VERIFIER
-          ])
+        return withRunsRoot(() =>
+          withEnv("MARTIN_LIVE", "true", () =>
+            executeCli([
+              "--json",
+              "preflight",
+              "--engine",
+              "codex",
+              "--cwd",
+              workspace,
+              "--objective",
+              "Fix the bug",
+              "--verify",
+              NOOP_VERIFIER
+            ])
+          )
         );
       })
     );
@@ -288,85 +346,104 @@ describe("--engine flag", () => {
 
   it("auto-bootstraps governed prerequisites and executes a live Codex run when host is ready", { timeout: 45000 }, async () => {
     await withTempDir((workspace) =>
-      withFakeCodexCli(async () => {
-        initializeGitRepo(workspace);
-        const runsDir = join(workspace, ".martin-runs");
-        const result = await withEnv("MARTIN_LIVE", "true", () =>
-          executeCli([
-            "--json",
-            "run",
-            "--engine",
-            "codex",
-            "--cwd",
-            workspace,
-            "--runs-dir",
-            runsDir,
-            "--objective",
-            "Fix the bug",
-            "--verify",
-            NOOP_VERIFIER,
-            "--max-iterations",
-            "1",
-            "--budget-usd",
-            "2",
-          ])
-        );
+      withFakeCodexCli(() =>
+        withScratchEnv(
+          {
+            MARTIN_INTEGRITY_KEY_DIR: join(workspace, ".martin-receipt-integrity"),
+            MARTIN_GROUNDING_DIR: join(workspace, ".martin-grounding")
+          },
+          async () => {
+            initializeGitRepo(workspace);
+            const runsDir = join(workspace, ".martin-runs");
+            const result = await withEnv("MARTIN_LIVE", "true", () =>
+              executeCli([
+                "--json",
+                "run",
+                "--engine",
+                "codex",
+                "--cwd",
+                workspace,
+                "--runs-dir",
+                runsDir,
+                "--objective",
+                "Fix the bug",
+                "--verify",
+                NOOP_VERIFIER,
+                "--max-iterations",
+                "1",
+                "--budget-usd",
+                "2",
+              ])
+            );
 
-        expect(result.exitCode).toBe(0);
-        const payload = JSON.parse(result.stdout);
-        expect(payload.command).toBe("run");
-        expect(payload.environment.engine).toBe("codex");
-        expect(payload.environment.liveMode).toBe("live");
-        expect(payload.loop.loopId).toMatch(/^loop_/u);
-        expect(payload.loop.attempts).toHaveLength(1);
-        expect(payload.loop.attempts[0].adapterId).toBe("agent-cli:codex");
-        expect(payload.loop.attempts[0].summary).toContain("fake codex completed");
-        const verificationEvent = payload.loop.events.find((event: { type: string }) => event.type === "verification.completed");
-        expect(verificationEvent?.payload?.passed).toBe(true);
-        expect(verificationEvent?.payload?.summary).toContain("passed");
+            expect(result.exitCode).toBe(0);
+            const payload = JSON.parse(result.stdout);
+            expect(payload.command).toBe("run");
+            expect(payload.environment.engine).toBe("codex");
+            expect(payload.environment.liveMode).toBe("live");
+            expect(payload.loop.loopId).toMatch(/^loop_/u);
+            expect(payload.loop.attempts).toHaveLength(1);
+            expect(payload.loop.attempts[0].adapterId).toBe("agent-cli:codex");
+            expect(payload.loop.attempts[0].summary).toContain("fake codex completed");
+            const verificationEvent = payload.loop.events.find((event: { type: string }) => event.type === "verification.completed");
+            expect(verificationEvent?.payload?.passed).toBe(true);
+            expect(verificationEvent?.payload?.summary).toContain("passed");
 
-        const workflowState = await readWorkflowState(runsDir);
-        const cliState = (workflowState?.cli ?? {}) as Record<string, { workingDirectory?: string }>;
-        const normalizedWorkingDirectory = normalizeWorkingDirectoryForExpectation(payload.environment.workingDirectory);
-        expect(cliState.doctor?.workingDirectory).toBe(normalizedWorkingDirectory);
-        expect(cliState["session-start"]?.workingDirectory).toBe(normalizedWorkingDirectory);
-        expect(cliState.preflight?.workingDirectory).toBe(normalizedWorkingDirectory);
+            const workflowState = await readWorkflowState(runsDir);
+            const cliState = (workflowState?.cli ?? {}) as Record<string, { workingDirectory?: string }>;
+            const normalizedWorkingDirectory = normalizeWorkingDirectoryForExpectation(payload.environment.workingDirectory);
+            expect(cliState.doctor?.workingDirectory).toBe(normalizedWorkingDirectory);
+            expect(cliState["session-start"]?.workingDirectory).toBe(normalizedWorkingDirectory);
+            expect(cliState.preflight?.workingDirectory).toBe(normalizedWorkingDirectory);
 
-        const verifyResult = await executeCli([
-          "--json",
-          "runs",
-          "verify",
-          "--latest",
-          "--runs-dir",
-          runsDir
-        ]);
-        expect(verifyResult.exitCode).toBe(0);
-        const verificationPayload = JSON.parse(verifyResult.stdout);
-        expect(verificationPayload.verification.status).toBe("passed");
-      })
+            const verifyResult = await executeCli([
+              "--json",
+              "runs",
+              "verify",
+              "--latest",
+              "--runs-dir",
+              runsDir
+            ]);
+            expect(verifyResult.exitCode).toBe(0);
+            const verificationPayload = JSON.parse(verifyResult.stdout);
+            expect(verificationPayload.verification.status).toBe("passed");
+          }
+        )
+      )
     );
   });
 
   it("accepts explicit unsafe gate bypass in live mode", { timeout: 15000 }, async () => {
-    const result = await withoutAgentCliOnPath(() =>
-      withEnv("MARTIN_LIVE", "true", () =>
-        executeCli([
-          "run",
-          "--objective",
-          "Fix the bug",
-          "--verify",
-          NOOP_VERIFIER,
-          "--max-iterations",
-          "1",
-          "--budget-usd",
-          "2",
-          "--unsafe-allow-unguarded-run"
-        ])
+    await withTempDir((workspace) =>
+      withScratchEnv(
+        {
+          MARTIN_INTEGRITY_KEY_DIR: join(workspace, ".martin-receipt-integrity"),
+          MARTIN_GROUNDING_DIR: join(workspace, ".martin-grounding"),
+          MARTIN_RUNS_DIR: join(workspace, ".martin-runs")
+        },
+        async () => {
+          const result = await withoutAgentCliOnPath(() =>
+            withEnv("MARTIN_LIVE", "true", () =>
+              executeCli([
+                "run",
+                "--objective",
+                "Fix the bug",
+                "--verify",
+                NOOP_VERIFIER,
+                "--max-iterations",
+                "1",
+                "--budget-usd",
+                "2",
+                "--unsafe-allow-unguarded-run"
+              ])
+            )
+          );
+
+          expect(result.exitCode).not.toBe(8);
+          expect(result.stderr).not.toContain("Governed run preflight blocked execution");
+        }
       )
     );
-
-    expect(result.exitCode).not.toBe(8);
-    expect(result.stderr).not.toContain("Governed run preflight blocked execution");
   });
 });
 
@@ -377,16 +454,18 @@ describe("--engine flag", () => {
 describe("--cwd flag", () => {
   it("passes working directory to the adapter", async () => {
     await withTempDir(async (dir) => {
-      const result = await withEnv("MARTIN_LIVE", "false", () =>
-        executeCli([
-          "run",
-          "--objective",
-          "Fix the bug",
-          "--cwd",
-          dir,
-          "--max-iterations",
-          "1"
-        ])
+      const result = await withRunsRoot(() =>
+        withEnv("MARTIN_LIVE", "false", () =>
+          executeCli([
+            "run",
+            "--objective",
+            "Fix the bug",
+            "--cwd",
+            dir,
+            "--max-iterations",
+            "1"
+          ])
+        )
       );
 
       expect(result.exitCode).toBe(0);

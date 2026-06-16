@@ -3,7 +3,7 @@
  * Covers readLocalCorpusRisk, computeScopeFingerprint, and preflight corpus output.
  */
 
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -14,28 +14,30 @@ import { computeScopeFingerprint, readLocalCorpusRisk } from "../src/run-store.j
 
 async function withRunsRoot<T>(fn: (runsRoot: string) => Promise<T>): Promise<T> {
   const previousRunsRoot = process.env.MARTIN_RUNS_DIR;
-  const previousGroundingDir = process.env.MARTIN_GROUNDING_DIR;
-  const root = await mkdtemp(join(tmpdir(), "martin-cli-corpus-runs-"));
-  const runsRoot = join(root, "runs");
-  const groundingDir = join(root, "grounding");
-  await mkdir(runsRoot, { recursive: true });
-  await mkdir(groundingDir, { recursive: true });
-  process.env.MARTIN_RUNS_DIR = runsRoot;
-  process.env.MARTIN_GROUNDING_DIR = groundingDir;
+  const previousGroundingRoot = process.env.MARTIN_GROUNDING_DIR;
+  const previousIntegrityKeyDir = process.env.MARTIN_INTEGRITY_KEY_DIR;
+  const root = await mkdtemp(join(tmpdir(), "martin-corpus-runs-"));
+  process.env.MARTIN_RUNS_DIR = join(root, "runs");
+  process.env.MARTIN_GROUNDING_DIR = join(root, "grounding");
+  process.env.MARTIN_INTEGRITY_KEY_DIR = join(root, "receipt-integrity");
 
   try {
-    return await fn(runsRoot);
+    return await fn(process.env.MARTIN_RUNS_DIR);
   } finally {
     if (previousRunsRoot === undefined) {
       delete process.env.MARTIN_RUNS_DIR;
     } else {
       process.env.MARTIN_RUNS_DIR = previousRunsRoot;
     }
-
-    if (previousGroundingDir === undefined) {
+    if (previousGroundingRoot === undefined) {
       delete process.env.MARTIN_GROUNDING_DIR;
     } else {
-      process.env.MARTIN_GROUNDING_DIR = previousGroundingDir;
+      process.env.MARTIN_GROUNDING_DIR = previousGroundingRoot;
+    }
+    if (previousIntegrityKeyDir === undefined) {
+      delete process.env.MARTIN_INTEGRITY_KEY_DIR;
+    } else {
+      process.env.MARTIN_INTEGRITY_KEY_DIR = previousIntegrityKeyDir;
     }
 
     await rm(root, { force: true, recursive: true }).catch(() => {});

@@ -37,6 +37,11 @@ const RECEIPT_INTEGRITY_SCHEMA_VERSION = "martin.receipt-integrity.v1";
 const RECEIPT_INTEGRITY_KEY_DIR_MODE = 0o700;
 const RECEIPT_INTEGRITY_KEY_FILE_MODE = 0o600;
 
+export function resolveReceiptIntegrityRoot(env: NodeJS.ProcessEnv = process.env): string {
+  return (env["MARTIN_INTEGRITY_KEY_DIR"] as string | undefined)?.trim() ??
+    join(homedir(), ".martin", "receipt-integrity");
+}
+
 export async function writeReceiptIntegrityMaterial(input: {
   runId: string;
   runsRoot: string;
@@ -303,7 +308,7 @@ async function readReceiptIntegrityKey(runsRoot: string, runId: string): Promise
 
 function resolveReceiptIntegrityKeyPath(runsRoot: string, runId: string): string {
   const rootHash = sha256(runsRoot).slice(0, 16);
-  return join(homedir(), ".martin", "receipt-integrity", rootHash, `${runId}.key`);
+  return join(resolveReceiptIntegrityRoot(), rootHash, `${runId}.key`);
 }
 
 function serializeStoredJson(value: unknown): string {
