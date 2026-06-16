@@ -405,7 +405,7 @@ describe("executeCli", () => {
     }
   });
 
-  it("supports --proof runs as no-spend verifier-only executions", { timeout: 30_000 }, async () => {
+  it("supports --proof runs as no-spend proof executions without rewriting mutation mode", { timeout: 30_000 }, async () => {
     const directory = await mkdtemp(join(tmpdir(), "martin-cli-proof-mode-"));
 
     try {
@@ -427,9 +427,10 @@ describe("executeCli", () => {
 
       const payload = JSON.parse(result.stdout);
       expect(payload.environment.liveMode).toBe("proof");
-      expect(payload.loop.lifecycleState).toBe("completed");
       expect(payload.loop.cost.actualUsd).toBe(0);
-      expect(payload.loop.task.mutationMode).toBe("verify_only");
+      expect(payload.loop.task.mutationMode).toBeUndefined();
+      expect(payload.loop.attempts[0]?.adapterId).not.toBe("direct:verifier:verify-only");
+      expect(["completed", "diminishing_returns"]).toContain(payload.loop.lifecycleState);
     } finally {
       await rm(directory, { force: true, recursive: true });
     }
