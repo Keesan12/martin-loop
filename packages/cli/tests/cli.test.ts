@@ -71,9 +71,15 @@ describe("parseCliArguments", () => {
     expect(parseCliArguments(["version"])).toEqual({ command: "version" });
   });
 
-  it("parses start and tour onboarding aliases", () => {
+  it("parses start onboarding and tour shorthand", () => {
     expect(parseCliArguments(["start"])).toEqual({ command: "start" });
-    expect(parseCliArguments(["tour"])).toEqual({ command: "start" });
+    expect(parseCliArguments(["tour"])).toEqual({
+      command: "run",
+      request: expect.objectContaining({
+        objective: "tour",
+        title: "tour"
+      })
+    });
   });
 
   it("parses a run command into a typed request", () => {
@@ -183,7 +189,7 @@ describe("executeCli", () => {
 
   it("prints the public root package version", async () => {
     const rootPackageVersion = (
-      JSON.parse(await readFile(join(process.cwd(), "..", "..", "package.json"), "utf8")) as {
+      JSON.parse(await readFile(new URL("../../../package.json", import.meta.url), "utf8")) as {
         version: string;
       }
     ).version;
@@ -198,10 +204,11 @@ describe("executeCli", () => {
     const result = await executeCli(["start"]);
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("MartinLoop start");
-    expect(result.stdout).toContain("Governed runs are the default path");
-    expect(result.stdout).toContain("auto-checks doctor, session-start, and preflight");
-    expect(result.stdout).toContain("npx -y martin-loop@latest demo");
+    expect(result.stdout).toContain("MartinLoop is ready to set up governed runs in this repo.");
+    expect(result.stdout).toContain("martin doctor");
+    expect(result.stdout).toContain("martin session-start");
+    expect(result.stdout).toContain('martin run "Summarize this repository and confirm the verifier is green." --proof --verify "pnpm test"');
+    expect(result.stdout).toContain('martin enable --engine claude --verify "pnpm test" --budget-usd 2 --max-iterations 1');
   });
 
   it("resolves effectivePolicy from config and applies it to the run", async () => {
@@ -531,9 +538,10 @@ describe("executeCli", () => {
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain(targetDirectory);
       expect(result.stdout).toContain("npm install");
-      expect(result.stdout).toContain("Safe first run (no provider spend, governed path)");
-      expect(result.stdout).toContain("npx -y martin-loop@latest start");
-      expect(result.stdout).toContain("Inspect the governed checks explicitly");
+      expect(result.stdout).toContain("Safe first run (no provider spend):");
+      expect(result.stdout).toContain("MARTIN_LIVE=false npx martin run");
+      expect(result.stdout).toContain("Optional live run:");
+      expect(result.stdout).toContain("Task ideas live in");
       expect(await readFile(join(targetDirectory, "README.md"), "utf8")).toContain("Demo Sandbox");
     } finally {
       process.chdir(previousCwd);

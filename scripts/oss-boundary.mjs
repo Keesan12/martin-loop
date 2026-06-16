@@ -35,6 +35,7 @@ const ALLOWED_TOP_LEVEL_ENTRIES = [
   "README.md",
   "SECURITY.md",
   "tsconfig.base.json",
+  "vitest.config.ts",
   "vitest.workspace.ts",
 ];
 
