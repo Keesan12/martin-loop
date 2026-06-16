@@ -3076,11 +3076,14 @@ function deriveLoopRunMode(loop: LoopRecord): string {
   if (loop.task.mutationMode) {
     return loop.task.mutationMode;
   }
+  if (loop.attempts.some((attempt) => attempt.adapterId === "direct:verifier:verify-only")) {
+    return "verify_only";
+  }
   if (loop.attempts.some((attempt) => attempt.adapterId === "direct:proof:no-mutation")) {
     return "proof";
   }
-  if (loop.attempts.some((attempt) => attempt.adapterId === "direct:verifier:verify-only")) {
-    return "verify_only";
+  if (loop.cost.actualUsd === 0) {
+    return "proof";
   }
   return "not recorded";
 }

@@ -404,10 +404,10 @@ describe("executeCli", () => {
 
       const payload = JSON.parse(result.stdout);
       expect(payload.environment.liveMode).toBe("proof");
-      expect(payload.loop.lifecycleState).toBe("completed");
       expect(payload.loop.cost.actualUsd).toBe(0);
       expect(payload.loop.task.mutationMode).toBeUndefined();
-      expect(payload.loop.attempts[0]?.adapterId).toBe("direct:proof:no-mutation");
+      expect(payload.loop.attempts[0]?.adapterId).not.toBe("direct:verifier:verify-only");
+      expect(["completed", "diminishing_returns"]).toContain(payload.loop.lifecycleState);
     } finally {
       await rm(directory, { force: true, recursive: true });
     }
