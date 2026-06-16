@@ -656,7 +656,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       .filter((event): event is typeof event & { payload: { steps?: Array<{ detail?: string }> } } =>
         event.type === "verification.completed"
       )
-      .flatMap((event) => event.payload.steps ?? [])
+      .flatMap((event) => event.payload?.steps ?? [])
       .map((step) => step.detail)
       .filter((detail): detail is string => Boolean(detail))
       .join("\n---\n");
@@ -886,7 +886,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
               )
             }
           : {}),
-        provenance: getUsageProvenance(result.usage),
+        provenance: mergeCostProvenance(loop.cost.provenance, getUsageProvenance(result.usage)),
         ...(result.usage.providerSettlement
           ? { providerSettlement: result.usage.providerSettlement }
           : {})
@@ -1003,7 +1003,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
           actualUsd: loop.cost.actualUsd,
           remainingBudgetUsd: costState.remainingBudgetUsd,
           pressure: costState.pressure,
-          provenance: getUsageProvenance(result.usage)
+          provenance: loop.cost.provenance
         }
       },
       { now: now(), idFactory }
@@ -1716,6 +1716,29 @@ function getUsageProvenance(usage: MartinAdapterResult["usage"]): CostProvenance
   }
 
   return "actual";
+}
+
+const COST_PROVENANCE_RANK: Record<CostProvenance, number> = {
+  unavailable: 0,
+  estimated: 1,
+  actual: 2
+};
+
+/**
+ * Aggregates cost provenance across attempts. The cumulative loop provenance
+ * can only be as trustworthy as its weakest attempt: if any attempt's cost was
+ * estimated or unavailable, the cumulative total must reflect that, even if a
+ * later attempt reports an authoritative actual cost.
+ */
+function mergeCostProvenance(
+  previous: CostProvenance | undefined,
+  current: CostProvenance
+): CostProvenance {
+  if (previous === undefined) {
+    return current;
+  }
+
+  return COST_PROVENANCE_RANK[current] < COST_PROVENANCE_RANK[previous] ? current : previous;
 }
 
 function resolveChangedFiles(result: MartinAdapterResult, repoRoot?: string): string[] {

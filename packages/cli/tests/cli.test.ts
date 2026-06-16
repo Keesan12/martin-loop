@@ -35,6 +35,35 @@ afterEach(() => {
   __setRunAdapterOverrideForTests(undefined);
 });
 
+async function withIsolatedRunsEnv<T>(directory: string, fn: () => Promise<T>): Promise<T> {
+  const previousRunsDir = process.env.MARTIN_RUNS_DIR;
+  const previousGroundingDir = process.env.MARTIN_GROUNDING_DIR;
+  const previousIntegrityKeyDir = process.env.MARTIN_INTEGRITY_KEY_DIR;
+  process.env.MARTIN_RUNS_DIR = join(directory, ".martin-runs");
+  process.env.MARTIN_GROUNDING_DIR = join(directory, ".martin-grounding");
+  process.env.MARTIN_INTEGRITY_KEY_DIR = join(directory, ".martin-receipt-integrity");
+
+  try {
+    return await fn();
+  } finally {
+    if (previousRunsDir === undefined) {
+      delete process.env.MARTIN_RUNS_DIR;
+    } else {
+      process.env.MARTIN_RUNS_DIR = previousRunsDir;
+    }
+    if (previousGroundingDir === undefined) {
+      delete process.env.MARTIN_GROUNDING_DIR;
+    } else {
+      process.env.MARTIN_GROUNDING_DIR = previousGroundingDir;
+    }
+    if (previousIntegrityKeyDir === undefined) {
+      delete process.env.MARTIN_INTEGRITY_KEY_DIR;
+    } else {
+      process.env.MARTIN_INTEGRITY_KEY_DIR = previousIntegrityKeyDir;
+    }
+  }
+}
+
 describe("parseCliArguments", () => {
   it("parses version flags and subcommand", () => {
     expect(parseCliArguments(["--version"])).toEqual({ command: "version" });
@@ -179,14 +208,16 @@ describe("executeCli", () => {
 
       const prevLive = process.env.MARTIN_LIVE;
       process.env.MARTIN_LIVE = "false";
-      const result = await executeCli([
-        "--json",
-        "run",
-        "--objective",
-        "Repair flaky CI gate",
-        "--config",
-        configPath
-      ]);
+      const result = await withIsolatedRunsEnv(directory, () =>
+        executeCli([
+          "--json",
+          "run",
+          "--objective",
+          "Repair flaky CI gate",
+          "--config",
+          configPath
+        ])
+      );
       if (prevLive === undefined) {
         delete process.env.MARTIN_LIVE;
       } else {
@@ -254,26 +285,28 @@ describe("executeCli", () => {
 
       const prevLive = process.env.MARTIN_LIVE;
       process.env.MARTIN_LIVE = "false";
-      const result = await executeCli([
-        "--json",
-        "run",
-        "--objective",
-        "Repair flaky CI gate",
-        "--config",
-        configPath,
-        "--budget-usd",
-        "8",
-        "--soft-limit-usd",
-        "5",
-        "--max-iterations",
-        "3",
-        "--max-tokens",
-        "20000",
-        "--policy",
-        "balanced",
-        "--telemetry",
-        "control-plane"
-      ]);
+      const result = await withIsolatedRunsEnv(directory, () =>
+        executeCli([
+          "--json",
+          "run",
+          "--objective",
+          "Repair flaky CI gate",
+          "--config",
+          configPath,
+          "--budget-usd",
+          "8",
+          "--soft-limit-usd",
+          "5",
+          "--max-iterations",
+          "3",
+          "--max-tokens",
+          "20000",
+          "--policy",
+          "balanced",
+          "--telemetry",
+          "control-plane"
+        ])
+      );
       if (prevLive === undefined) {
         delete process.env.MARTIN_LIVE;
       } else {
@@ -318,21 +351,23 @@ describe("executeCli", () => {
     const directory = await mkdtemp(join(tmpdir(), "martin-cli-verify-only-"));
 
     try {
-      const result = await executeCli([
-        "--json",
-        "run",
-        "--objective",
-        "Verify the contracts package without edits",
-        "--engine",
-        "codex",
-        "--verify-only",
-        "--verify",
-        `"${process.execPath}" -e "process.exit(0)"`,
-        "--cwd",
-        directory,
-        "--allow-path",
-        "packages/contracts/**"
-      ]);
+      const result = await withIsolatedRunsEnv(directory, () =>
+        executeCli([
+          "--json",
+          "run",
+          "--objective",
+          "Verify the contracts package without edits",
+          "--engine",
+          "codex",
+          "--verify-only",
+          "--verify",
+          `"${process.execPath}" -e "process.exit(0)"`,
+          "--cwd",
+          directory,
+          "--allow-path",
+          "packages/contracts/**"
+        ])
+      );
 
       expect(result.exitCode).toBe(0);
 
@@ -411,14 +446,16 @@ describe("executeCli", () => {
       process.env.INIT_CWD = directory;
 
       process.env.MARTIN_LIVE = "false";
-      const result = await executeCli([
-        "--json",
-        "run",
-        "--objective",
-        "Repair flaky CI gate",
-        "--config",
-        ".\\martin.config.example.yaml"
-      ]);
+      const result = await withIsolatedRunsEnv(directory, () =>
+        executeCli([
+          "--json",
+          "run",
+          "--objective",
+          "Repair flaky CI gate",
+          "--config",
+          ".\\martin.config.example.yaml"
+        ])
+      );
 
       expect(result.exitCode).toBe(0);
 

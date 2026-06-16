@@ -121,14 +121,13 @@ function makeLoopRecord(): LoopRecord {
 
 async function withRunsRoot<T>(fn: (runsRoot: string) => Promise<T>): Promise<T> {
   const previousRunsRoot = process.env.MARTIN_RUNS_DIR;
-  const previousGroundingDir = process.env.MARTIN_GROUNDING_DIR;
-  const root = await mkdtemp(join(tmpdir(), "martin-cli-operator-"));
-  const runsRoot = join(root, "runs");
-  const groundingDir = join(root, "grounding");
-  await mkdir(runsRoot, { recursive: true });
-  await mkdir(groundingDir, { recursive: true });
+  const previousGroundingRoot = process.env.MARTIN_GROUNDING_DIR;
+  const previousIntegrityKeyDir = process.env.MARTIN_INTEGRITY_KEY_DIR;
+  const scratchRoot = await mkdtemp(join(tmpdir(), "martin-cli-operator-"));
+  const runsRoot = join(scratchRoot, "runs");
   process.env.MARTIN_RUNS_DIR = runsRoot;
-  process.env.MARTIN_GROUNDING_DIR = groundingDir;
+  process.env.MARTIN_GROUNDING_DIR = join(scratchRoot, "grounding");
+  process.env.MARTIN_INTEGRITY_KEY_DIR = join(scratchRoot, "receipt-integrity");
 
   try {
     return await fn(runsRoot);
@@ -138,14 +137,18 @@ async function withRunsRoot<T>(fn: (runsRoot: string) => Promise<T>): Promise<T>
     } else {
       process.env.MARTIN_RUNS_DIR = previousRunsRoot;
     }
-
-    if (previousGroundingDir === undefined) {
+    if (previousGroundingRoot === undefined) {
       delete process.env.MARTIN_GROUNDING_DIR;
     } else {
-      process.env.MARTIN_GROUNDING_DIR = previousGroundingDir;
+      process.env.MARTIN_GROUNDING_DIR = previousGroundingRoot;
+    }
+    if (previousIntegrityKeyDir === undefined) {
+      delete process.env.MARTIN_INTEGRITY_KEY_DIR;
+    } else {
+      process.env.MARTIN_INTEGRITY_KEY_DIR = previousIntegrityKeyDir;
     }
 
-    await rm(root, { force: true, recursive: true }).catch(() => {});
+    await rm(scratchRoot, { force: true, recursive: true }).catch(() => {});
   }
 }
 
@@ -155,7 +158,9 @@ function sha256(input: string): string {
 
 describe("operator commands", () => {
   it("doctor reports environment readiness and starter MCP tools", async () => {
-    const result = await withEnv("MARTIN_LIVE", "false", () => executeCli(["--json", "doctor"]));
+    const result = await withRunsRoot(() =>
+      withEnv("MARTIN_LIVE", "false", () => executeCli(["--json", "doctor"]))
+    );
     const payload = JSON.parse(result.stdout);
 
     expect(result.exitCode).toBe(0);
@@ -179,14 +184,16 @@ describe("operator commands", () => {
 
   it("preflight reports blocked state when the working directory is missing", async () => {
     const missingDirectory = join(tmpdir(), "martin-cli-missing", "repo");
-    const result = await executeCli([
-      "--json",
-      "preflight",
-      "--objective",
-      "Repair the failing MCP lane",
-      "--cwd",
-      missingDirectory
-    ]);
+    const result = await withRunsRoot(() =>
+      executeCli([
+        "--json",
+        "preflight",
+        "--objective",
+        "Repair the failing MCP lane",
+        "--cwd",
+        missingDirectory
+      ])
+    );
     const payload = JSON.parse(result.stdout);
 
     expect(result.exitCode).toBe(0);
@@ -377,6 +384,58 @@ describe("operator commands", () => {
       expect(triage.command).toBe("triage");
       expect(triage.findings[0].loopId).toBe(loop.loopId);
       expect(triage.findings[0].reasons).toContain("verification_failed");
+    });
+  });
+
+  it("surfaces cost provenance through dossier and runs get for actual-usage receipts", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const baseLoop = makeLoopRecord();
+      const loop: LoopRecord = {
+        ...baseLoop,
+        cost: {
+          ...baseLoop.cost,
+          provenance: "actual"
+        }
+      };
+      const loopDir = join(runsRoot, loop.loopId);
+      await mkdir(loopDir, { recursive: true });
+      await writeFile(join(loopDir, "loop-record.json"), JSON.stringify(loop, null, 2), "utf8");
+      await writeFile(
+        join(runsRoot, `${loop.workspaceId}.jsonl`),
+        `${JSON.stringify({ loopId: loop.loopId, status: loop.status, updatedAt: loop.updatedAt })}\n`,
+        "utf8"
+      );
+
+      const dossier = JSON.parse((await executeCli(["--json", "dossier", "--loop-id", loop.loopId])).stdout);
+      const getRun = JSON.parse((await executeCli(["--json", "runs", "get", "--loop-id", loop.loopId])).stdout);
+      const dossierHuman = await executeCli(["dossier", "--loop-id", loop.loopId]);
+      const getRunHuman = await executeCli(["runs", "get", "--loop-id", loop.loopId]);
+
+      expect(dossier.receipt.tokenWasteReceipt.costProvenance).toBe("actual");
+      expect(dossier.receipt.tokenWasteReceipt.costProvenanceLabel).toContain("actual");
+      expect(getRun.costProvenance).toBe("actual");
+      expect(dossierHuman.stdout).toContain("provenance: provider-settled actual");
+      expect(getRunHuman.stdout).toContain("provenance: provider-settled actual");
+    });
+  });
+
+  it("labels cost provenance as unavailable for pre-feature records lacking the field", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const loop = makeLoopRecord();
+      const loopDir = join(runsRoot, loop.loopId);
+      await mkdir(loopDir, { recursive: true });
+      await writeFile(join(loopDir, "loop-record.json"), JSON.stringify(loop, null, 2), "utf8");
+      await writeFile(
+        join(runsRoot, `${loop.workspaceId}.jsonl`),
+        `${JSON.stringify({ loopId: loop.loopId, status: loop.status, updatedAt: loop.updatedAt })}\n`,
+        "utf8"
+      );
+
+      const getRun = JSON.parse((await executeCli(["--json", "runs", "get", "--loop-id", loop.loopId])).stdout);
+      const getRunHuman = await executeCli(["runs", "get", "--loop-id", loop.loopId]);
+
+      expect(getRun.costProvenance).toBe("unavailable");
+      expect(getRunHuman.stdout).toContain("provenance: unavailable");
     });
   });
 
@@ -614,12 +673,14 @@ describe("operator commands", () => {
         ledgerEntries.map((entry) => JSON.stringify(entry)).join("\n").concat("\n"),
         "utf8"
       );
-      await writeReceiptIntegrityMaterial({
-        runId: loop.loopId,
-        runsRoot: externalRunsRoot,
-        loopRecord: loop,
-        ledgerEntries,
-        signedAt: loop.updatedAt
+      await withEnv("MARTIN_INTEGRITY_KEY_DIR", join(externalRunsRoot, ".receipt-integrity-keys"), async () => {
+        await writeReceiptIntegrityMaterial({
+          runId: loop.loopId,
+          runsRoot: externalRunsRoot,
+          loopRecord: loop,
+          ledgerEntries,
+          signedAt: loop.updatedAt
+        });
       });
       await expect(
         readFile(join(externalLoopDir, "receipt-integrity.json"), "utf8")

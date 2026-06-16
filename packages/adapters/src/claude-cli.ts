@@ -1330,6 +1330,7 @@ function redactSecretsForPrompt(input: string): string {
     .replace(/\bAIza[0-9A-Za-z_-]{30,}\b/gu, "[REDACTED_SECRET]")
     .replace(/-----BEGIN(?:\s+[A-Z0-9]+)*\s+PRIVATE KEY-----[\s\S]*?-----END(?:\s+[A-Z0-9]+)*\s+PRIVATE KEY-----/gu, "[REDACTED_SECRET]")
     .replace(/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/gu, "[REDACTED_SECRET]")
+    .replace(/\b(?:api[_-]?key|secret|password|token)\s*[:=]\s*["']?[A-Za-z0-9_\-/+=]{8,}["']?/giu, "[REDACTED_SECRET]")
     .replace(/\B\.env(?!\.example\b)(?:\.[A-Za-z0-9._-]+)?\b/giu, "[REDACTED_PATH]");
 }
 
