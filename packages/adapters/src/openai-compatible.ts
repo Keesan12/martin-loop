@@ -46,8 +46,6 @@ import { createAdapterCapabilities, normalizeUsage } from "./runtime-support.js"
 // ---------------------------------------------------------------------------
 
 const KNOWN_MODEL_PRICING: Record<string, { inputPer1K: number; outputPer1K: number }> = {
-  // OpenAI
-  "gpt-4.1-mini":                   { inputPer1K: 0.0004, outputPer1K: 0.0016 },
   // DeepSeek
   "deepseek/deepseek-chat":          { inputPer1K: 0.00027, outputPer1K: 0.0011 },
   "deepseek/deepseek-r1":            { inputPer1K: 0.0008,  outputPer1K: 0.0032 },
@@ -156,78 +154,22 @@ Follow these rules exactly:
 export const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com";
 export const DEFAULT_OPENAI_MODEL = "gpt-4.1-mini";
 
-export type OpenAiCompatibleEndpointKind =
-  | "hosted_openai"
-  | "remote_compatible"
-  | "local_compatible";
-
-export type OpenAiCompatibleAuthPosture =
-  | "api_key"
-  | "api_key_required"
-  | "anonymous_or_local";
-
-interface OpenAiCompatibleRuntimeOverrides {
-  baseUrl?: string;
-  model?: string;
-  apiKey?: string;
-}
-
-function classifyOpenAiCompatibleEndpoint(baseUrl: string): OpenAiCompatibleEndpointKind {
-  let parsed: URL;
-  try {
-    parsed = new URL(baseUrl);
-  } catch {
-    return "remote_compatible";
-  }
-
-  const hostname = parsed.hostname.toLowerCase();
-  if (
-    hostname === "localhost" ||
-    hostname === "127.0.0.1" ||
-    hostname === "::1"
-  ) {
-    return "local_compatible";
-  }
-
-  if (hostname === "api.openai.com") {
-    return "hosted_openai";
-  }
-
-  return "remote_compatible";
-}
-
 export function resolveOpenAiCompatibleRuntimeConfig(
-  env: NodeJS.ProcessEnv = process.env,
-  overrides: OpenAiCompatibleRuntimeOverrides = {}
+  env: NodeJS.ProcessEnv = process.env
 ): {
   baseUrl: string;
   model: string;
   apiKey: string;
   apiKeyConfigured: boolean;
-  endpointKind: OpenAiCompatibleEndpointKind;
-  authPosture: OpenAiCompatibleAuthPosture;
-  authReady: boolean;
+  authPosture: "api_key" | "anonymous_or_local";
 } {
-  const baseUrl =
-    (overrides.baseUrl ?? env["MARTIN_OPENAI_BASE_URL"] ?? DEFAULT_OPENAI_BASE_URL).replace(/\/$/, "");
-  const apiKey = overrides.apiKey ?? env["MARTIN_OPENAI_API_KEY"] ?? "";
-  const endpointKind = classifyOpenAiCompatibleEndpoint(baseUrl);
-  const apiKeyConfigured = apiKey.length > 0;
-  const authPosture: OpenAiCompatibleAuthPosture =
-    apiKeyConfigured
-      ? "api_key"
-      : endpointKind === "local_compatible"
-        ? "anonymous_or_local"
-        : "api_key_required";
-
+  const apiKey = env["MARTIN_OPENAI_API_KEY"] ?? "";
   return {
-    baseUrl,
-    model: overrides.model ?? env["MARTIN_OPENAI_MODEL"] ?? DEFAULT_OPENAI_MODEL,
+    baseUrl: env["MARTIN_OPENAI_BASE_URL"] ?? DEFAULT_OPENAI_BASE_URL,
+    model: env["MARTIN_OPENAI_MODEL"] ?? DEFAULT_OPENAI_MODEL,
     apiKey,
-    apiKeyConfigured,
-    endpointKind,
-    authPosture,
-    authReady: authPosture !== "api_key_required"
+    apiKeyConfigured: apiKey.length > 0,
+    authPosture: apiKey.length > 0 ? "api_key" : "anonymous_or_local"
   };
 }
 
@@ -282,14 +224,10 @@ export function createOpenAiCompatibleAdapter(
   const verifyTimeoutMs = options.verifyTimeoutMs ?? 60_000;
   const systemPrompt = options.systemPrompt ?? DEFAULT_SYSTEM_PROMPT;
   const fetchFn = options.fetchImpl ?? globalThis.fetch;
-  const runtimeConfig = resolveOpenAiCompatibleRuntimeConfig(process.env, {
-    baseUrl: options.baseUrl,
-    model: options.model,
-    apiKey: options.apiKey
-  });
-  const baseUrl = runtimeConfig.baseUrl;
-  const model = runtimeConfig.model;
-  const apiKey = runtimeConfig.apiKey;
+  const runtimeConfig = resolveOpenAiCompatibleRuntimeConfig();
+  const baseUrl = (options.baseUrl ?? runtimeConfig.baseUrl).replace(/\/$/, "");
+  const model = options.model ?? runtimeConfig.model;
+  const apiKey = options.apiKey ?? runtimeConfig.apiKey;
 
   return {
     adapterId: `openai-compatible:${model}`,
@@ -301,38 +239,20 @@ export function createOpenAiCompatibleAdapter(
       transport: "http",
       capabilities: createAdapterCapabilities({
         preflight: true,
-        usageSettlement: "actual",
-        diffVisibility: "git",
-        sandboxExpectation: "provider_managed",
-        launchReadiness: "configured_endpoint"
+        usageSettlement: true,
+        diffArtifacts: true
       })
     },
 
     async execute(request: MartinAdapterRequest): Promise<MartinAdapterResult> {
-      if (!runtimeConfig.authReady && apiKey.length === 0) {
-        return {
-          status: "failed",
-          summary: `${model} requires MARTIN_OPENAI_API_KEY for ${runtimeConfig.baseUrl}.`,
-          usage: normalizeUsage({
-            actualUsd: 0,
-            tokensIn: 0,
-            tokensOut: 0,
-            provenance: "unavailable"
-          }),
-          verification: {
-            passed: false,
-            summary: "Hosted OpenAI-compatible execution requires API-key authentication before launch."
-          },
-          failure: {
-            message: "missing_openai_api_key",
-            classHint: "infrastructure_error" as FailureClass
-          }
-        };
-      }
-
       const prompt = buildPrompt(request);
       const estimated = estimateCost(model, prompt.length, 2000);
-      const baselineChangedFiles = new Set(await readGitChangedFiles(workingDirectory, 5_000));
+      const hasVerificationSteps =
+        request.context.verificationPlan.length > 0 ||
+        (request.context.verificationStack?.length ?? 0) > 0;
+      const baselineChangedFiles = hasVerificationSteps
+        ? new Set(await readGitChangedFiles(workingDirectory, 5_000))
+        : new Set<string>();
 
       // Preflight: bail if projected cost exceeds remaining budget
       if (
@@ -359,18 +279,17 @@ export function createOpenAiCompatibleAdapter(
       let responseText = "";
       let tokensIn = estimated.tokensIn;
       let tokensOut = 0;
-
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-      try {
-        const headers: Record<string, string> = { "Content-Type": "application/json" };
-        if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
-        // OpenRouter requires a site URL header for attribution
-        if (baseUrl.includes("openrouter")) {
-          headers["HTTP-Referer"] = "https://martinloop.com";
-          headers["X-Title"] = "MartinLoop";
-        }
+        try {
+          const headers: Record<string, string> = { "Content-Type": "application/json" };
+          if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
+          // OpenRouter requires a site URL header for attribution
+          if (baseUrl.includes("openrouter")) {
+            headers["HTTP-Referer"] = "https://martinloop.com";
+            headers["X-Title"] = "MartinLoop";
+          }
 
         const res = await fetchFn(endpoint, {
           method: "POST",
@@ -440,9 +359,11 @@ export function createOpenAiCompatibleAdapter(
       );
 
       const execution = {
-        changedFiles: (await readGitChangedFiles(workingDirectory, 5_000)).filter(
-          (file) => !baselineChangedFiles.has(file)
-        )
+        changedFiles: hasVerificationSteps
+          ? (await readGitChangedFiles(workingDirectory, 5_000)).filter(
+              (file) => !baselineChangedFiles.has(file)
+            )
+          : []
       };
 
       const pricing = KNOWN_MODEL_PRICING[model] ?? {

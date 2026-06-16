@@ -244,7 +244,7 @@ function validateRunInput(args: unknown): RunLoopInput {
     "projectId"
   ]);
 
-  const engine = optionalEnum(record.engine, "engine", ["claude", "codex"] as const);
+  const engine = optionalEnum(record.engine, "engine", ["claude", "codex", "gemini"] as const);
   return {
     objective: requireString(record.objective, "objective"),
     ...(record.workingDirectory !== undefined
@@ -354,7 +354,7 @@ function validateDoctorInput(args: unknown): MartinDoctorInput {
     ...(record.runsDir !== undefined
       ? { runsDir: resolveSafeRunsRootPath(requireString(record.runsDir, "runsDir")) }
       : {}),
-    ...optionalEnumAsObject(record.engine, "engine", ["claude", "codex"] as const)
+    ...optionalEnumAsObject(record.engine, "engine", ["claude", "codex", "gemini"] as const)
   };
 }
 

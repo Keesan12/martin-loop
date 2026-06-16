@@ -9,7 +9,7 @@ The `@martinloop/mcp` package exposes one primary coding execution entrypoint pl
 | `martin_doctor` | Check local MartinLoop and agent readiness. |
 | `martin_plan` | Outline scope, verification, and budget posture before spending a run. |
 | `martin_preflight` | Validate a proposed run contract before execution. |
-| `martin_run` | Execute a governed coding run after matching doctor, plan, and preflight receipts exist. |
+| `martin_run` | Execute a governed coding run. MartinLoop auto-runs the matching readiness checks and only stops when preflight finds a real blocker. |
 
 ## Status and Run Control
 

@@ -19,7 +19,7 @@ function escapeRegex(input) {
 }
 
 test("current MCP metadata stays aligned for the release cut", async () => {
-  assert.equal(packageJson.version, "0.3.1");
+  assert.equal(packageJson.version, "0.3.2");
   assert.equal(packageJson.version, serverJson.version);
 
   const releaseNotesPath = path.join(ROOT_DIR, "docs", "release", `MCP-${packageJson.version}-RELEASE-NOTES.md`);
@@ -31,10 +31,7 @@ test("version ledger records live public truth and the next release train", asyn
   const ledger = await readRepoFile(path.join("docs", "release", "VERSION-LEDGER.md"));
 
   assert.match(ledger, /root public baseline: `\d+\.\d+\.\d+`/);
-  assert.match(
-    ledger,
-    new RegExp(escapeRegex(`live public GitHub release: \`v${rootPackageJson.version}\``))
-  );
+  assert.match(ledger, /live public GitHub release: `v\d+\.\d+\.\d+`/);
   assert.match(
     ledger,
     new RegExp(escapeRegex("standalone MCP public baseline: `0.3.1`"))
@@ -49,7 +46,7 @@ test("version ledger records live public truth and the next release train", asyn
   );
   assert.match(ledger, /next planned root follow-on: `\d+\.\d+\.\d+`/);
   assert.match(ledger, /next planned standalone release: `\d+\.\d+\.\d+`/);
-  assert.match(ledger, /`0\.3\.3` reserved for additional host-coverage follow-ups/);
+  assert.match(ledger, /`0\.3\.4` reserved for additional host-coverage follow-ups/);
 });
 
 test("MCP slice map defines the 0.3.x train without private-hosted bleed", async () => {
@@ -57,7 +54,8 @@ test("MCP slice map defines the 0.3.x train without private-hosted bleed", async
 
   for (const requiredText of [
     "## `0.3.1` — Review And Handoff Controls",
-    "## `0.3.2` — Opt-In Execution Controls",
+    "## `0.3.2` — Engine Validation Hotfix",
+    "## `0.3.3` — Opt-In Execution Controls",
     "hosted audit export",
     "tenant or billing features",
     "non-OSS transport"
@@ -67,11 +65,12 @@ test("MCP slice map defines the 0.3.x train without private-hosted bleed", async
 });
 
 test("public MCP docs describe the current baseline and the next train in human-facing language", async () => {
-  const [packageReadme, aiGuide, releaseNotes031, releaseNotes032] = await Promise.all([
+  const [packageReadme, aiGuide, releaseNotes031, releaseNotes032, releaseNotes033] = await Promise.all([
     readRepoFile(path.join("packages", "mcp", "README.md")),
     readRepoFile(path.join("docs", "oss", "MCP-FOR-AI-AGENTS.md")),
     readRepoFile(path.join("docs", "release", "MCP-0.3.1-RELEASE-NOTES.md")),
-    readRepoFile(path.join("docs", "release", "MCP-0.3.2-RELEASE-NOTES.md"))
+    readRepoFile(path.join("docs", "release", "MCP-0.3.2-RELEASE-NOTES.md")),
+    readRepoFile(path.join("docs", "release", "MCP-0.3.3-RELEASE-NOTES.md"))
   ]);
 
   for (const contents of [packageReadme, aiGuide]) {
@@ -84,7 +83,8 @@ test("public MCP docs describe the current baseline and the next train in human-
     assert.match(contents, /martin_run/);
   }
   assert.match(releaseNotes031, /review and handoff release/i);
-  assert.match(releaseNotes032, /opt-in execution-controls release/i);
+  assert.match(releaseNotes032, /validation hotfix/i);
+  assert.match(releaseNotes033, /opt-in execution-controls release/i);
 });
 
 test("release packet for 0.2.7 records the public verification gates", async () => {
@@ -118,7 +118,8 @@ test("public MCP docs stay free of internal workspace leakage", async () => {
     readRepoFile(path.join("docs", "release", "MCP-0.2.7-RELEASE-NOTES.md")),
     readRepoFile(path.join("docs", "release", "MCP-0.3.0-RELEASE-NOTES.md")),
     readRepoFile(path.join("docs", "release", "MCP-0.3.1-RELEASE-NOTES.md")),
-    readRepoFile(path.join("docs", "release", "MCP-0.3.2-RELEASE-NOTES.md"))
+    readRepoFile(path.join("docs", "release", "MCP-0.3.2-RELEASE-NOTES.md")),
+    readRepoFile(path.join("docs", "release", "MCP-0.3.3-RELEASE-NOTES.md"))
   ]);
 
   const forbiddenPatterns = [

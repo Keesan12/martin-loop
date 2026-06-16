@@ -69,6 +69,25 @@ export interface CliRunGateResult {
   missingSteps: CliWorkflowStepName[];
 }
 
+export async function consumeFirstRunBanner(runsRoot: string): Promise<string | undefined> {
+  const state = await readWorkflowState(runsRoot);
+  if (state.firstRunBannerShown) {
+    return undefined;
+  }
+
+  state.firstRunBannerShown = true;
+  await writeWorkflowState(runsRoot, state);
+
+  return [
+    "MartinLoop quick start",
+    "  martin-loop tour",
+    "  martin-loop start",
+    "  martin-loop doctor",
+    "",
+    "MartinLoop will block real governed runs until doctor and preflight receipts exist for this repo."
+  ].join("\n");
+}
+
 export async function recordCliWorkflowStep(input: CliWorkflowStepInput): Promise<void> {
   const state = await readWorkflowState(input.runsRoot);
   const receipt: CliWorkflowReceipt = {
@@ -172,27 +191,6 @@ export async function evaluateCliRunGate(input: CliRunGateInput): Promise<CliRun
   };
 }
 
-async function readWorkflowState(runsRoot: string): Promise<WorkflowState> {
-  const statePath = resolveWorkflowStatePath(runsRoot);
-  try {
-    const raw = await readFile(statePath, "utf8");
-    const parsed = JSON.parse(raw) as WorkflowState;
-    return parsed.version === 1 ? parsed : { version: 1 };
-  } catch {
-    return { version: 1 };
-  }
-}
-
-async function writeWorkflowState(runsRoot: string, state: WorkflowState): Promise<void> {
-  const statePath = resolveWorkflowStatePath(runsRoot);
-  await mkdir(join(resolve(runsRoot), WORKFLOW_STATE_DIRECTORY), { recursive: true });
-  await writeFile(statePath, JSON.stringify(state, null, 2), "utf8");
-}
-
-function resolveWorkflowStatePath(runsRoot: string): string {
-  return join(resolve(runsRoot), WORKFLOW_STATE_DIRECTORY, WORKFLOW_STATE_FILENAME);
-}
-
 function selectNextCommand(
   missingSteps: CliWorkflowStepName[],
   objective: string,
@@ -215,6 +213,27 @@ function buildBlockedMessage(missingSteps: CliWorkflowStepName[], nextCommand: s
     step === "session-start" ? "session start" : step
   );
   return `Governed run blocked until MartinLoop receipts exist for ${labels.join(", ")}. Next command: ${nextCommand}`;
+}
+
+async function readWorkflowState(runsRoot: string): Promise<WorkflowState> {
+  const statePath = resolveWorkflowStatePath(runsRoot);
+  try {
+    const raw = await readFile(statePath, "utf8");
+    const parsed = JSON.parse(raw) as WorkflowState;
+    return parsed.version === 1 ? parsed : { version: 1 };
+  } catch {
+    return { version: 1 };
+  }
+}
+
+async function writeWorkflowState(runsRoot: string, state: WorkflowState): Promise<void> {
+  const statePath = resolveWorkflowStatePath(runsRoot);
+  await mkdir(join(resolve(runsRoot), WORKFLOW_STATE_DIRECTORY), { recursive: true });
+  await writeFile(statePath, JSON.stringify(state, null, 2), "utf8");
+}
+
+function resolveWorkflowStatePath(runsRoot: string): string {
+  return join(resolve(runsRoot), WORKFLOW_STATE_DIRECTORY, WORKFLOW_STATE_FILENAME);
 }
 
 function isFresh(

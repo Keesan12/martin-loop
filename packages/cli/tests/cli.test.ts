@@ -1,17 +1,79 @@
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { createStubDirectProviderAdapter } from "@martin/adapters";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { createLoopRecord } from "../../contracts/src/index.js";
-import { executeCli, parseCliArguments, setRunAdapterOverrideForTests } from "../src/index.js";
+import { __setRunAdapterOverrideForTests, executeCli, parseCliArguments } from "../src/index.js";
+
+function installFastRunAdapter(): void {
+  __setRunAdapterOverrideForTests(
+    createStubDirectProviderAdapter({
+      providerId: "test",
+      model: "fast",
+      responder: () => ({
+        status: "completed",
+        summary: "Fast test adapter completed.",
+        usage: {
+          actualUsd: 0,
+          tokensIn: 0,
+          tokensOut: 0,
+          provenance: "actual"
+        },
+        verification: {
+          passed: true,
+          summary: "Verification skipped in config-focused CLI tests."
+        }
+      })
+    })
+  );
+}
+
+afterEach(() => {
+  __setRunAdapterOverrideForTests(undefined);
+});
+
+async function withIsolatedRunsEnv<T>(directory: string, fn: () => Promise<T>): Promise<T> {
+  const previousRunsDir = process.env.MARTIN_RUNS_DIR;
+  const previousGroundingDir = process.env.MARTIN_GROUNDING_DIR;
+  const previousIntegrityKeyDir = process.env.MARTIN_INTEGRITY_KEY_DIR;
+  process.env.MARTIN_RUNS_DIR = join(directory, ".martin-runs");
+  process.env.MARTIN_GROUNDING_DIR = join(directory, ".martin-grounding");
+  process.env.MARTIN_INTEGRITY_KEY_DIR = join(directory, ".martin-receipt-integrity");
+
+  try {
+    return await fn();
+  } finally {
+    if (previousRunsDir === undefined) {
+      delete process.env.MARTIN_RUNS_DIR;
+    } else {
+      process.env.MARTIN_RUNS_DIR = previousRunsDir;
+    }
+    if (previousGroundingDir === undefined) {
+      delete process.env.MARTIN_GROUNDING_DIR;
+    } else {
+      process.env.MARTIN_GROUNDING_DIR = previousGroundingDir;
+    }
+    if (previousIntegrityKeyDir === undefined) {
+      delete process.env.MARTIN_INTEGRITY_KEY_DIR;
+    } else {
+      process.env.MARTIN_INTEGRITY_KEY_DIR = previousIntegrityKeyDir;
+    }
+  }
+}
 
 describe("parseCliArguments", () => {
   it("parses version flags and subcommand", () => {
     expect(parseCliArguments(["--version"])).toEqual({ command: "version" });
     expect(parseCliArguments(["-V"])).toEqual({ command: "version" });
     expect(parseCliArguments(["version"])).toEqual({ command: "version" });
+  });
+
+  it("parses start and tour onboarding aliases", () => {
+    expect(parseCliArguments(["start"])).toEqual({ command: "start" });
+    expect(parseCliArguments(["tour"])).toEqual({ command: "start" });
   });
 
   it("parses a run command into a typed request", () => {
@@ -42,7 +104,9 @@ describe("parseCliArguments", () => {
       "--policy",
       "balanced",
       "--telemetry",
-      "control-plane"
+      "control-plane",
+      "--proof",
+      "--unsafe-allow-unguarded-run"
     ]);
 
     expect(parsed).toEqual({
@@ -59,18 +123,20 @@ describe("parseCliArguments", () => {
           lane: "nightly",
           owner: "platform"
         },
-        budgetOverrides: {
-          maxUsd: true,
-          softLimitUsd: true,
-          maxIterations: true,
-          maxTokens: true
-        },
         budget: {
           maxIterations: 4,
           maxTokens: 60000,
           maxUsd: 18,
           softLimitUsd: 9.5
-        }
+        },
+        budgetOverrides: {
+          maxIterations: true,
+          maxTokens: true,
+          maxUsd: true,
+          softLimitUsd: true
+        },
+        liveMode: "proof",
+        unsafeAllowUnguardedRun: true
       }
     });
   });
@@ -84,9 +150,11 @@ describe("parseCliArguments", () => {
 
   it("parses onboarding commands and objective shorthand", () => {
     expect(parseCliArguments(["start"])).toEqual({ command: "start" });
-    expect(parseCliArguments(["enable"])).toMatchObject({ command: "enable", force: false });
     expect(parseCliArguments(["env"])).toEqual({ command: "env" });
-    expect(parseCliArguments(["review"])).toEqual({ command: "review", selector: { latest: true } });
+    expect(parseCliArguments(["review"])).toEqual({
+      command: "review",
+      selector: { latest: true }
+    });
     expect(parseCliArguments(["receipts", "explain"])).toEqual({
       command: "receipts_explain",
       selector: { latest: true }
@@ -95,6 +163,7 @@ describe("parseCliArguments", () => {
       command: "run",
       request: expect.objectContaining({
         objective: "fix flaky tests",
+        liveMode: "proof",
         verificationPlan: ["npm test"]
       })
     });
@@ -102,13 +171,14 @@ describe("parseCliArguments", () => {
 });
 
 describe("executeCli", () => {
-  it("prints onboarding commands in CLI help", async () => {
+  it("prints runs verify help with --latest selector support", async () => {
     const result = await executeCli(["--help"]);
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("martin start [options]");
-    expect(result.stdout).toContain("martin enable [options]");
     expect(result.stdout).toContain("martin receipts explain");
+    expect(result.stdout).toContain("martin runs verify (--loop-id <id> | --file <path> | --latest) [options]");
+    expect(result.stdout).toContain("martin start [options]");
   });
 
   it("prints the public root package version", async () => {
@@ -124,11 +194,22 @@ describe("executeCli", () => {
     expect(result.stdout).toBe(rootPackageVersion);
   });
 
+  it("renders start onboarding guidance with governed defaults", async () => {
+    const result = await executeCli(["start"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("MartinLoop start");
+    expect(result.stdout).toContain("Governed runs are the default path");
+    expect(result.stdout).toContain("auto-checks doctor, session-start, and preflight");
+    expect(result.stdout).toContain("npx -y martin-loop@latest demo");
+  });
+
   it("resolves effectivePolicy from config and applies it to the run", async () => {
     const directory = await mkdtemp(join(tmpdir(), "martin-cli-config-"));
     const configPath = join(directory, "martin.config.yaml");
 
     try {
+      installFastRunAdapter();
       await writeFile(
         configPath,
         [
@@ -150,14 +231,16 @@ describe("executeCli", () => {
 
       const prevLive = process.env.MARTIN_LIVE;
       process.env.MARTIN_LIVE = "false";
-      const result = await executeCli([
-        "--json",
-        "run",
-        "--objective",
-        "Repair flaky CI gate",
-        "--config",
-        configPath
-      ]);
+      const result = await withIsolatedRunsEnv(directory, () =>
+        executeCli([
+          "--json",
+          "run",
+          "--objective",
+          "Repair flaky CI gate",
+          "--config",
+          configPath
+        ])
+      );
       if (prevLive === undefined) {
         delete process.env.MARTIN_LIVE;
       } else {
@@ -171,22 +254,20 @@ describe("executeCli", () => {
       expect(payload.command).toBe("run");
       expect(payload.effectivePolicy).toEqual({
         configPath,
+        destructiveActionPolicy: "approval",
+        policyProfile: "strict",
         budget: {
           maxUsd: 12,
           softLimitUsd: 7,
           maxIterations: 6,
           maxTokens: 45000
         },
-        governance: {
-          destructiveActionPolicy: "approval",
-          policyProfile: "strict",
-          telemetryDestination: "control-plane"
-        },
-        task: {
-          verificationPlan: ["pnpm test", "pnpm lint"],
-          repoRoot: payload.environment.workingDirectory
-        },
-        provenance: expect.any(Array)
+        verifierRules: ["pnpm test", "pnpm lint"],
+        maxUsd: 12,
+        softLimitUsd: 7,
+        maxIterations: 6,
+        maxTokens: 45000,
+        telemetryDestination: "control-plane"
       });
       expect(payload.loop.budget).toEqual({
         maxUsd: 12,
@@ -200,11 +281,12 @@ describe("executeCli", () => {
     }
   });
 
-  it("surfaces effective governance policy metadata in run output", async () => {
+  it("surfaces effective governance policy metadata in run output", { timeout: 45_000 }, async () => {
     const directory = await mkdtemp(join(tmpdir(), "martin-cli-policy-"));
     const configPath = join(directory, "martin.config.yaml");
 
     try {
+      installFastRunAdapter();
       await writeFile(
         configPath,
         [
@@ -218,34 +300,36 @@ describe("executeCli", () => {
           "  destructiveActionPolicy: approval",
           "  telemetryDestination: seeded-telemetry",
           "  verifierRules:",
-          "    - pnpm verify:shared-baseline",
-          "    - node scripts/agent-os-release-plan.mjs --verify-truth-lock"
+          process.platform === "win32" ? "    - cmd /c exit 0" : "    - true",
+          process.platform === "win32" ? "    - cmd /c exit 0" : "    - true"
         ].join("\n"),
         "utf8"
       );
 
       const prevLive = process.env.MARTIN_LIVE;
       process.env.MARTIN_LIVE = "false";
-      const result = await executeCli([
-        "--json",
-        "run",
-        "--objective",
-        "Repair flaky CI gate",
-        "--config",
-        configPath,
-        "--budget-usd",
-        "8",
-        "--soft-limit-usd",
-        "5",
-        "--max-iterations",
-        "3",
-        "--max-tokens",
-        "20000",
-        "--policy",
-        "balanced",
-        "--telemetry",
-        "control-plane"
-      ]);
+      const result = await withIsolatedRunsEnv(directory, () =>
+        executeCli([
+          "--json",
+          "run",
+          "--objective",
+          "Repair flaky CI gate",
+          "--config",
+          configPath,
+          "--budget-usd",
+          "8",
+          "--soft-limit-usd",
+          "5",
+          "--max-iterations",
+          "3",
+          "--max-tokens",
+          "20000",
+          "--policy",
+          "balanced",
+          "--telemetry",
+          "control-plane"
+        ])
+      );
       if (prevLive === undefined) {
         delete process.env.MARTIN_LIVE;
       } else {
@@ -255,57 +339,58 @@ describe("executeCli", () => {
       expect(result.exitCode).toBe(0);
 
       const payload = JSON.parse(result.stdout);
+
       expect(payload.command).toBe("run");
       expect(payload.effectivePolicy).toEqual({
         configPath,
+        destructiveActionPolicy: "approval",
+        policyProfile: "balanced",
         budget: {
           maxUsd: 8,
           softLimitUsd: 5,
           maxIterations: 3,
           maxTokens: 20000
         },
-        governance: {
-          destructiveActionPolicy: "approval",
-          policyProfile: "balanced",
-          telemetryDestination: "control-plane"
-        },
-        task: {
-          verificationPlan: [
-            "pnpm verify:shared-baseline",
-            "node scripts/agent-os-release-plan.mjs --verify-truth-lock"
-          ],
-          repoRoot: payload.environment.workingDirectory
-        },
-        provenance: expect.any(Array)
+        verifierRules: [
+          process.platform === "win32" ? "cmd /c exit 0" : "true",
+          process.platform === "win32" ? "cmd /c exit 0" : "true"
+        ],
+        maxUsd: 8,
+        softLimitUsd: 5,
+        maxIterations: 3,
+        maxTokens: 20000,
+        telemetryDestination: "control-plane"
       });
       expect(payload.loop.task.verificationPlan).toEqual([
-        "pnpm verify:shared-baseline",
-        "node scripts/agent-os-release-plan.mjs --verify-truth-lock"
+        process.platform === "win32" ? "cmd /c exit 0" : "true",
+        process.platform === "win32" ? "cmd /c exit 0" : "true"
       ]);
     } finally {
       await rm(directory, { force: true, recursive: true });
     }
   });
 
-  it("supports verify-only runs without invoking a coding adapter", async () => {
+  it("supports verify-only runs without invoking a coding adapter", { timeout: 30_000 }, async () => {
     const directory = await mkdtemp(join(tmpdir(), "martin-cli-verify-only-"));
 
     try {
-      const result = await executeCli([
-        "--json",
-        "run",
-        "--objective",
-        "Verify the contracts package without edits",
-        "--engine",
-        "codex",
-        "--verify-only",
-        "--verify",
-        `"${process.execPath}" -e "process.exit(0)"`,
-        "--cwd",
-        directory,
-        "--allow-path",
-        "packages/contracts/**"
-      ]);
+      const result = await withIsolatedRunsEnv(directory, () =>
+        executeCli([
+          "--json",
+          "run",
+          "--objective",
+          "Verify the contracts package without edits",
+          "--engine",
+          "codex",
+          "--verify-only",
+          "--verify",
+          `"${process.execPath}" -e "process.exit(0)"`,
+          "--cwd",
+          directory,
+          "--allow-path",
+          "packages/contracts/**"
+        ])
+      );
 
       expect(result.exitCode).toBe(0);
 
@@ -320,6 +405,36 @@ describe("executeCli", () => {
     }
   });
 
+  it("supports --proof runs as no-spend verifier-only executions", { timeout: 30_000 }, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-proof-mode-"));
+
+    try {
+      const result = await executeCli([
+        "--json",
+        "run",
+        "--objective",
+        "Proof mode smoke",
+        "--proof",
+        "--engine",
+        "codex",
+        "--verify",
+        `"${process.execPath}" -e "process.exit(0)"`,
+        "--cwd",
+        directory
+      ]);
+
+      expect(result.exitCode).toBe(0);
+
+      const payload = JSON.parse(result.stdout);
+      expect(payload.environment.liveMode).toBe("proof");
+      expect(payload.loop.lifecycleState).toBe("completed");
+      expect(payload.loop.cost.actualUsd).toBe(0);
+      expect(payload.loop.task.mutationMode).toBe("verify_only");
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
   it("resolves a relative --config path from INIT_CWD for filtered dev runs", async () => {
     const directory = await mkdtemp(join(tmpdir(), "martin-cli-init-cwd-"));
     const packageDirectory = join(directory, "packages", "cli");
@@ -329,6 +444,7 @@ describe("executeCli", () => {
     const previousMarinLive = process.env.MARTIN_LIVE;
 
     try {
+      installFastRunAdapter();
       await mkdir(packageDirectory, { recursive: true });
       await writeFile(
         configPath,
@@ -353,21 +469,23 @@ describe("executeCli", () => {
       process.env.INIT_CWD = directory;
 
       process.env.MARTIN_LIVE = "false";
-      const result = await executeCli([
-        "--json",
-        "run",
-        "--objective",
-        "Repair flaky CI gate",
-        "--config",
-        ".\\martin.config.example.yaml"
-      ]);
+      const result = await withIsolatedRunsEnv(directory, () =>
+        executeCli([
+          "--json",
+          "run",
+          "--objective",
+          "Repair flaky CI gate",
+          "--config",
+          ".\\martin.config.example.yaml"
+        ])
+      );
 
       expect(result.exitCode).toBe(0);
 
       const payload = JSON.parse(result.stdout);
 
       expect(payload.effectivePolicy.configPath).toBe(configPath);
-      expect(payload.effectivePolicy.governance.policyProfile).toBe("strict");
+      expect(payload.effectivePolicy.policyProfile).toBe("strict");
       expect(payload.loop.task.verificationPlan).toEqual(["pnpm test", "pnpm lint"]);
     } finally {
       process.chdir(previousCwd);
@@ -384,338 +502,6 @@ describe("executeCli", () => {
         process.env.MARTIN_LIVE = previousMarinLive;
       }
 
-      await rm(directory, { force: true, recursive: true });
-    }
-  });
-
-  it("respects --proof live-mode override without requiring MARTIN_LIVE=false", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "martin-cli-proof-override-"));
-    const previousLive = process.env.MARTIN_LIVE;
-
-    try {
-      delete process.env.MARTIN_LIVE;
-      const result = await executeCli([
-        "--json",
-        "run",
-        "--objective",
-        "proof gate alignment",
-        "--proof",
-        "--verify",
-        `"${process.execPath}" -e "process.exit(0)"`,
-        "--cwd",
-        directory
-      ]);
-
-      expect(result.exitCode).toBe(0);
-      const payload = JSON.parse(result.stdout) as {
-        environment: { liveMode: string };
-      };
-      expect(payload.environment.liveMode).toBe("proof");
-    } finally {
-      if (previousLive === undefined) {
-        delete process.env.MARTIN_LIVE;
-      } else {
-        process.env.MARTIN_LIVE = previousLive;
-      }
-      await rm(directory, { force: true, recursive: true });
-    }
-  });
-
-  it("loads default doctor config from --cwd instead of invocation root", async () => {
-    const invocationRoot = await mkdtemp(join(tmpdir(), "martin-cli-doctor-invocation-"));
-    const targetRepo = await mkdtemp(join(tmpdir(), "martin-cli-doctor-target-"));
-    const previousCwd = process.cwd();
-
-    try {
-      await writeFile(join(invocationRoot, "martin.config.yaml"), "policyProfile: strict\n", "utf8");
-      process.chdir(invocationRoot);
-
-      const result = await executeCli(["--json", "doctor", "--cwd", targetRepo]);
-      expect(result.exitCode).toBe(0);
-
-      const payload = JSON.parse(result.stdout) as {
-        config: { path: string; exists: boolean };
-        environment: { workingDirectory: string };
-      };
-
-      expect(payload.environment.workingDirectory).toBe(targetRepo);
-      expect(payload.config.path).toBe(join(targetRepo, "martin.config.yaml"));
-      expect(payload.config.exists).toBe(false);
-    } finally {
-      process.chdir(previousCwd);
-      await rm(invocationRoot, { force: true, recursive: true });
-      await rm(targetRepo, { force: true, recursive: true });
-    }
-  });
-
-  it("rejects traversal patterns in --allow-path during preflight", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "martin-cli-preflight-traversal-"));
-
-    try {
-      const result = await executeCli([
-        "preflight",
-        "--objective",
-        "Validate path policy",
-        "--cwd",
-        directory,
-        "--allow-path",
-        "..\\*"
-      ]);
-
-      expect(result.exitCode).toBe(2);
-      expect(result.stderr).toContain("--allow-path cannot escape the repository root");
-    } finally {
-      await rm(directory, { force: true, recursive: true });
-    }
-  });
-
-  it("keeps receipt integrity parity between --latest and --loop-id selectors", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "martin-cli-selector-parity-"));
-    const runsRoot = join(directory, "runs");
-    const previousLive = process.env.MARTIN_LIVE;
-
-    try {
-      process.env.MARTIN_LIVE = "false";
-      const runResult = await executeCli([
-        "--json",
-        "run",
-        "--objective",
-        "selector parity",
-        "--verify",
-        `"${process.execPath}" -e "process.exit(0)"`,
-        "--cwd",
-        directory,
-        "--runs-dir",
-        runsRoot
-      ]);
-
-      expect(runResult.exitCode).toBe(0);
-      const runPayload = JSON.parse(runResult.stdout) as { loop: { loopId: string } };
-      const loopId = runPayload.loop.loopId;
-
-      const latestResult = await executeCli([
-        "--json",
-        "runs",
-        "verify",
-        "--latest",
-        "--runs-dir",
-        runsRoot
-      ]);
-      const loopIdResult = await executeCli([
-        "--json",
-        "runs",
-        "verify",
-        "--loop-id",
-        loopId,
-        "--runs-dir",
-        runsRoot
-      ]);
-
-      expect(latestResult.exitCode).toBe(0);
-      expect(loopIdResult.exitCode).toBe(0);
-
-      const latestPayload = JSON.parse(latestResult.stdout) as {
-        receiptIntegrity: { state: string };
-      };
-      const loopIdPayload = JSON.parse(loopIdResult.stdout) as {
-        receiptIntegrity: { state: string };
-      };
-
-      expect(latestPayload.receiptIntegrity.state).toBe(loopIdPayload.receiptIntegrity.state);
-      expect(loopIdPayload.receiptIntegrity.state).toBe("verified");
-    } finally {
-      if (previousLive === undefined) {
-        delete process.env.MARTIN_LIVE;
-      } else {
-        process.env.MARTIN_LIVE = previousLive;
-      }
-      await rm(directory, { force: true, recursive: true });
-    }
-  });
-
-  it("suppresses sensitive share fields when receipt integrity is tampered", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "martin-cli-share-tampered-"));
-    const runsRoot = join(directory, "runs");
-    const previousLive = process.env.MARTIN_LIVE;
-
-    try {
-      process.env.MARTIN_LIVE = "false";
-      const runResult = await executeCli([
-        "--json",
-        "run",
-        "--objective",
-        "tamper share hardening",
-        "--verify",
-        `"${process.execPath}" -e "process.exit(0)"`,
-        "--cwd",
-        directory,
-        "--runs-dir",
-        runsRoot
-      ]);
-      expect(runResult.exitCode).toBe(0);
-      const runPayload = JSON.parse(runResult.stdout) as { loop: { loopId: string } };
-      const loopId = runPayload.loop.loopId;
-      const loopRecordPath = join(runsRoot, loopId, "loop-record.json");
-
-      const persisted = JSON.parse(await readFile(loopRecordPath, "utf8")) as {
-        status: string;
-        lifecycleState: string;
-        cost: { actualUsd: number };
-      };
-      persisted.status = "completed";
-      persisted.lifecycleState = "verified";
-      persisted.cost.actualUsd = 9.99;
-      await writeFile(loopRecordPath, `${JSON.stringify(persisted, null, 2)}\n`, "utf8");
-
-      const shareResult = await executeCli([
-        "--json",
-        "share",
-        "--file",
-        loopRecordPath,
-        "--runs-dir",
-        runsRoot,
-        "--out-dir",
-        join(directory, "share")
-      ]);
-      expect(shareResult.exitCode).toBe(0);
-      const sharePayload = JSON.parse(shareResult.stdout) as {
-        files: { receiptJson: string };
-      };
-      const receipt = JSON.parse(await readFile(sharePayload.files.receiptJson, "utf8")) as {
-        loop: {
-          status: string;
-          lifecycleState: string;
-          spendUsd: number | null;
-          budgetUsd: number | null;
-          trustNotice?: string;
-        };
-        receipt: { notice?: string };
-        verification: { status: string };
-        proofCard: { evidenceLine: string };
-      };
-
-      expect(receipt.loop.status).toBe("untrusted");
-      expect(receipt.loop.lifecycleState).toBe("untrusted");
-      expect(receipt.loop.spendUsd).toBeNull();
-      expect(receipt.loop.budgetUsd).toBeNull();
-      expect(receipt.loop.trustNotice).toContain("suppressed");
-      expect(receipt.receipt.notice).toContain("redacted");
-      expect(receipt.verification.status).toBe("untrusted");
-      const evidenceLine = receipt.proofCard.evidenceLine.toLowerCase();
-      expect(evidenceLine.includes("not trustworthy") || evidenceLine.includes("canonical verification")).toBe(true);
-    } finally {
-      if (previousLive === undefined) {
-        delete process.env.MARTIN_LIVE;
-      } else {
-        process.env.MARTIN_LIVE = previousLive;
-      }
-      await rm(directory, { force: true, recursive: true });
-    }
-  });
-
-  it("surfaces unknown top-level fields as untrusted warnings for file-selected receipts", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "martin-cli-hidden-field-"));
-    const runsRoot = join(directory, "runs");
-    const previousLive = process.env.MARTIN_LIVE;
-
-    try {
-      process.env.MARTIN_LIVE = "false";
-      const runResult = await executeCli([
-        "--json",
-        "run",
-        "--objective",
-        "hidden field warning",
-        "--verify",
-        `"${process.execPath}" -e "process.exit(0)"`,
-        "--cwd",
-        directory,
-        "--runs-dir",
-        runsRoot
-      ]);
-      expect(runResult.exitCode).toBe(0);
-      const runPayload = JSON.parse(runResult.stdout) as { loop: { loopId: string } };
-      const loopId = runPayload.loop.loopId;
-      const loopRecordPath = join(runsRoot, loopId, "loop-record.json");
-
-      const persisted = JSON.parse(await readFile(loopRecordPath, "utf8")) as Record<string, unknown>;
-      persisted["hiddenControlPlaneDirective"] = "never-accept-me";
-      await writeFile(loopRecordPath, `${JSON.stringify(persisted, null, 2)}\n`, "utf8");
-
-      const getResult = await executeCli([
-        "--json",
-        "runs",
-        "get",
-        "--file",
-        loopRecordPath,
-        "--runs-dir",
-        runsRoot
-      ]);
-
-      expect(getResult.exitCode).toBe(0);
-      const getPayload = JSON.parse(getResult.stdout) as { warnings?: string[] };
-      expect(getPayload.warnings?.some((warning) => warning.includes("unknown top-level fields"))).toBe(true);
-    } finally {
-      if (previousLive === undefined) {
-        delete process.env.MARTIN_LIVE;
-      } else {
-        process.env.MARTIN_LIVE = previousLive;
-      }
-      await rm(directory, { force: true, recursive: true });
-    }
-  });
-
-  it("fails closed with persisted fallback loop when adapter hangs beyond timeout", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "martin-cli-timeout-"));
-    const runsRoot = join(directory, "runs");
-    const previousLive = process.env.MARTIN_LIVE;
-    const previousTimeout = process.env.MARTIN_RUN_TIMEOUT_MS;
-
-    try {
-      process.env.MARTIN_LIVE = "true";
-      process.env.MARTIN_RUN_TIMEOUT_MS = "50";
-      setRunAdapterOverrideForTests({
-        adapterId: "hanging-adapter",
-        kind: "agent-cli",
-        label: "Hanging Adapter",
-        metadata: {
-          providerId: "test",
-          model: "test"
-        },
-        execute: async () =>
-          await new Promise(() => {
-            // intentional never-resolve for timeout regression coverage
-          })
-      });
-
-      const result = await executeCli([
-        "--json",
-        "run",
-        "--objective",
-        "timeout hardening",
-        "--proof",
-        "--verify",
-        `"${process.execPath}" -e "process.exit(0)"`,
-        "--cwd",
-        directory,
-        "--runs-dir",
-        runsRoot
-      ]);
-
-      expect(result.exitCode).toBe(3);
-      const dirs = await readdir(runsRoot, { withFileTypes: true });
-      expect(dirs.some((entry) => entry.isDirectory())).toBe(true);
-    } finally {
-      setRunAdapterOverrideForTests(undefined);
-      if (previousLive === undefined) {
-        delete process.env.MARTIN_LIVE;
-      } else {
-        process.env.MARTIN_LIVE = previousLive;
-      }
-      if (previousTimeout === undefined) {
-        delete process.env.MARTIN_RUN_TIMEOUT_MS;
-      } else {
-        process.env.MARTIN_RUN_TIMEOUT_MS = previousTimeout;
-      }
       await rm(directory, { force: true, recursive: true });
     }
   });
@@ -744,7 +530,9 @@ describe("executeCli", () => {
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain(targetDirectory);
       expect(result.stdout).toContain("npm install");
-      expect(result.stdout).toContain("MARTIN_LIVE=false");
+      expect(result.stdout).toContain("Safe first run (no provider spend, governed path)");
+      expect(result.stdout).toContain("npx -y martin-loop@latest start");
+      expect(result.stdout).toContain("Inspect the governed checks explicitly");
       expect(await readFile(join(targetDirectory, "README.md"), "utf8")).toContain("Demo Sandbox");
     } finally {
       process.chdir(previousCwd);

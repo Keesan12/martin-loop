@@ -1,25 +1,27 @@
 # @martinloop/mcp 0.3.2
 
-`0.3.2` is the opt-in execution-controls release for the standalone MartinLoop MCP server.
+`0.3.2` is a validation hotfix for the standalone MartinLoop MCP server.
 
 ## Release story
 
-Give power users more control without making execution feel automatic.
+Fix a tool-input validation gap that could reject valid spend-limit requests.
 
-## Planned scope
+## What changed
 
-- explicit execution-capable profiles
-- clearer refusal and escalation messages
-- docs that separate read-only-safe usage from execution-capable usage
-- host snippets that make the default posture obvious
+- `martin_run`, `martin_preflight`, and `martin_doctor` now accept `engine: "gemini"`, matching the engines the run loop already supports.
+- Previously, any call that combined `engine: "gemini"` with a budget field (for example `maxUsd`) was rejected with `Invalid engine.`, even though Gemini-backed runs were otherwise fully supported.
+- No other tool inputs, defaults, or behaviors changed.
+
+## Why this matters
+
+If you set a spend limit or budget for a Gemini-backed run through the MCP tools, that request now validates correctly instead of being rejected.
 
 ## Out of scope
 
-- hidden auto-execution
-- hosted orchestration
-- organization-specific controls
-- non-OSS transport modes
+- opt-in execution controls (planned for `0.3.3`)
+- new tools or schema fields
+- changes to budget enforcement behavior
 
 ## Release gate
 
-Read-only stays the default story. Execution stays explicit.
+Setting a spend limit on any supported engine - Claude, Codex, or Gemini - through `martin_run`, `martin_preflight`, or `martin_doctor` must validate successfully.

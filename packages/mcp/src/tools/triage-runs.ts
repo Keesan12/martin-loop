@@ -1,12 +1,9 @@
 import path from "node:path";
 
-import { assessTrajectory } from "@martin/core";
-
 import {
   buildLoopPreview,
   buildSuggestedPromptNames,
   buildSuggestedResourceUris,
-  type InspectableLoopRecord,
   buildVerificationSummary,
   type LoopPreview,
   type VerificationSummary
@@ -76,7 +73,7 @@ export async function martinTriageRunsTool(
           canonicalLoopRecordPath
         });
         const verification = buildVerificationSummary(loop, ledgerEvents);
-        return buildTriageFinding(loop as InspectableLoopRecord, preview, verification);
+        return buildTriageFinding(preview, verification);
       } catch {
         warnings.push(`Skipped triage for '${loop.loopId}' because its run record or verification evidence is unreadable.`);
         return null;
@@ -113,21 +110,11 @@ export async function martinTriageRunsTool(
 }
 
 function buildTriageFinding(
-  loopRecord: InspectableLoopRecord,
   loop: LoopPreview,
   verification: VerificationSummary
 ): MartinRunTriageFinding {
   const reasonCodes: string[] = [];
   let severity: MartinRunTriageFinding["severity"] = "low";
-  const trajectory = assessTrajectory({
-    objective: loop.objective,
-    verificationPlan: loopRecord.task?.verificationPlan,
-    attempts: loopRecord.attempts.map((attempt) => ({
-      index: attempt.index,
-      summary: attempt.summary,
-      failureClass: attempt.failureClass
-    }))
-  });
 
   if (verification.status === "failed") {
     reasonCodes.push("verification_failed");
@@ -158,11 +145,6 @@ function buildTriageFinding(
     severity = maxSeverity(severity, "medium");
   }
 
-  if (verification.observation?.status === "mismatch") {
-    reasonCodes.push("change_observation_mismatch");
-    severity = maxSeverity(severity, "high");
-  }
-
   if (loop.pressure === "soft_limit") {
     reasonCodes.push("budget_soft_limit");
     severity = maxSeverity(severity, "medium");
@@ -172,14 +154,6 @@ function buildTriageFinding(
     reasonCodes.push("status_exited");
     severity = maxSeverity(severity, "medium");
   }
-  if (trajectory.status === "stalled") {
-    reasonCodes.push("trajectory_stalled");
-    severity = maxSeverity(severity, "high");
-  }
-  if (trajectory.status === "drifting") {
-    reasonCodes.push("trajectory_drift");
-    severity = maxSeverity(severity, "medium");
-  }
 
   if (reasonCodes.length === 0) {
     reasonCodes.push("healthy");
@@ -187,7 +161,7 @@ function buildTriageFinding(
 
   return {
     severity,
-    summary: summarizeFinding(loop, verification, severity, reasonCodes, trajectory.summary),
+    summary: summarizeFinding(loop, verification, severity, reasonCodes),
     reasonCodes,
     loop,
     verification,
@@ -200,13 +174,8 @@ function summarizeFinding(
   loop: LoopPreview,
   verification: VerificationSummary,
   severity: MartinRunTriageFinding["severity"],
-  reasonCodes: string[],
-  trajectorySummary: string
+  reasonCodes: string[]
 ): string {
-  if (reasonCodes.includes("verification_failed") && reasonCodes.includes("trajectory_stalled")) {
-    return `Severity ${severity}: ${loop.loopId} failed verification and should not spend another attempt yet. ${trajectorySummary}`;
-  }
-
   if (reasonCodes.includes("verification_failed")) {
     return `Severity ${severity}: ${loop.loopId} failed verification after ${loop.attempts} attempt(s).`;
   }
@@ -216,9 +185,6 @@ function summarizeFinding(
   }
 
   if (reasonCodes.includes("status_failed")) {
-    if (reasonCodes.includes("trajectory_stalled")) {
-      return `Severity ${severity}: ${loop.loopId} is failed/${loop.lifecycleState} and should not spend another attempt yet. ${trajectorySummary}`;
-    }
     return `Severity ${severity}: ${loop.loopId} is currently failed/${loop.lifecycleState}.`;
   }
 
@@ -230,22 +196,12 @@ function summarizeFinding(
     return `Severity ${severity}: ${loop.loopId} has ${loop.attempts} attempt(s) but verification was not recorded.`;
   }
 
-  if (reasonCodes.includes("change_observation_mismatch")) {
-    return `Severity ${severity}: ${loop.loopId} has verifier evidence, but adapter-reported changes do not match repo observation.`;
-  }
-
   if (reasonCodes.includes("budget_soft_limit")) {
     return `Severity ${severity}: ${loop.loopId} is at soft-limit pressure with ${loop.remainingBudgetUsd.toFixed(2)} USD remaining.`;
   }
 
   if (reasonCodes.includes("status_exited")) {
     return `Severity ${severity}: ${loop.loopId} exited without a clean verification result.`;
-  }
-  if (reasonCodes.includes("trajectory_stalled")) {
-    return `Severity ${severity}: ${loop.loopId} should not spend another attempt yet. ${trajectorySummary}`;
-  }
-  if (reasonCodes.includes("trajectory_drift")) {
-    return `Severity ${severity}: ${loop.loopId} is drifting away from the governed objective. ${trajectorySummary}`;
   }
 
   return `Severity ${severity}: ${loop.loopId} is healthy with verification status ${verification.status}.`;

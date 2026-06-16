@@ -63,6 +63,12 @@ Release notes for the current root package: [MartinLoop 0.3.2](./docs/release/OS
 | Safety and verification | Scope checks, verifier command checks, prompt integrity, and grounding decide whether work can continue. |
 | Persistence | JSONL run records, evidence summaries, and repo-backed artifacts make every run inspectable later. Each loop record is locally signed (HMAC, per-runs-root key) and `dossier`/`runs get`/`runs verify`/`challenge`/`badge` report an integrity verdict (`verified`, `unsigned`, `tamper_detected`, `relocated`, `material_missing`, `selector_noncanonical`) so post-hoc edits and non-canonical evidence reads are explicit. |
 
+## Trust Boundaries
+
+- Cost and token outputs always include provenance (`actual`, `estimated`, or `unavailable`).
+- For Codex specifically, MartinLoop reports authoritative usage only when the host exposes it; otherwise MartinLoop labels usage as estimated and avoids presenting it as settled accounting.
+- Receipt integrity must be `verified` before a run is treated as trustworthy evidence for external review.
+
 ## CLI
 
 ```text
@@ -109,6 +115,14 @@ From a clean public clone:
 
 ```sh
 pnpm install --frozen-lockfile
+pnpm bench:build
+pnpm bench:eval
+pnpm bench:report:ralphy
+```
+
+Equivalent workspace-filter commands:
+
+```sh
 pnpm --filter @martin/benchmarks build
 pnpm --filter @martin/benchmarks test
 pnpm --filter @martin/benchmarks eval
