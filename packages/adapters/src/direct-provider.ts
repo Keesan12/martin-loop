@@ -1,4 +1,3 @@
-import type { AdapterCapabilityDescriptor } from "@martin/contracts";
 import type { MartinAdapter, MartinAdapterRequest, MartinAdapterResult } from "@martin/core";
 
 import { createAdapterCapabilities } from "./runtime-support.js";
@@ -8,7 +7,7 @@ export interface DirectProviderAdapterOptions {
   model: string;
   label?: string;
   transport?: "http" | "routed_http";
-  capabilities?: Partial<AdapterCapabilityDescriptor>;
+  capabilities?: Partial<NonNullable<MartinAdapter["metadata"]["capabilities"]>>;
   responder?: (request: MartinAdapterRequest) => Promise<MartinAdapterResult> | MartinAdapterResult;
 }
 
@@ -24,11 +23,8 @@ export function createDirectProviderAdapter(
       model: options.model,
       transport: options.transport ?? "http",
       capabilities: createAdapterCapabilities({
-        usageSettlement: "actual",
-        diffVisibility: "adapter_reported",
+        usageSettlement: true,
         structuredErrors: true,
-        sandboxExpectation: "provider_managed",
-        launchReadiness: "configured_endpoint",
         ...options.capabilities
       })
     },

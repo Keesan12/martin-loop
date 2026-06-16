@@ -37,6 +37,11 @@ const RECEIPT_INTEGRITY_SCHEMA_VERSION = "martin.receipt-integrity.v1";
 const RECEIPT_INTEGRITY_KEY_DIR_MODE = 0o700;
 const RECEIPT_INTEGRITY_KEY_FILE_MODE = 0o600;
 
+export function resolveReceiptIntegrityRoot(env: NodeJS.ProcessEnv = process.env): string {
+  return (env["MARTIN_INTEGRITY_KEY_DIR"] as string | undefined)?.trim() ??
+    join(homedir(), ".martin", "receipt-integrity");
+}
+
 export async function writeReceiptIntegrityMaterial(input: {
   runId: string;
   runsRoot: string;
@@ -44,9 +49,13 @@ export async function writeReceiptIntegrityMaterial(input: {
   ledgerEntries: unknown[];
   scope?: ReceiptScope;
   signedAt?: string;
-}): Promise<StoredReceiptIntegrityMaterial> {
+}): Promise<StoredReceiptIntegrityMaterial | undefined> {
   const signedAt = input.signedAt ?? new Date().toISOString();
-  const [key, keyId] = await ensureReceiptIntegrityKey(input.runsRoot, input.runId);
+  const keyMaterial = await ensureReceiptIntegrityKey(input.runsRoot, input.runId);
+  if (!keyMaterial) {
+    return undefined;
+  }
+  const [key, keyId] = keyMaterial;
   const chain = buildReceiptIntegrityChain(input.ledgerEntries);
   const loopRecordRaw = serializeStoredJson(input.loopRecord);
   const ledgerRaw = serializeStoredJsonl(input.ledgerEntries);
@@ -94,9 +103,9 @@ export async function verifyReceiptIntegrityFromFiles(input: {
 
   if (!rawMaterial || !rawLoopRecord || rawLedger === null || !key) {
     return {
-      state: "material_missing",
+      state: "unsigned",
       reason: "Receipt integrity material is missing for this run.",
-      warnings: ["Receipt integrity material is incomplete; trust claims are unavailable."]
+      warnings: ["Receipts are local-only and unsigned; trust claims are unavailable."]
     };
   }
 
@@ -271,7 +280,7 @@ function createReceiptIntegritySignature(
   return createHmac("sha256", key).update(JSON.stringify(material)).digest("hex");
 }
 
-async function ensureReceiptIntegrityKey(runsRoot: string, runId: string): Promise<[string, string]> {
+async function ensureReceiptIntegrityKey(runsRoot: string, runId: string): Promise<[string, string] | undefined> {
   const keyPath = resolveReceiptIntegrityKeyPath(runsRoot, runId);
   const existing = await readFile(keyPath, "utf8").catch(() => null);
   if (existing) {
@@ -280,11 +289,15 @@ async function ensureReceiptIntegrityKey(runsRoot: string, runId: string): Promi
   }
 
   const generated = randomBytes(32).toString("hex");
-  await mkdir(dirname(keyPath), { recursive: true, mode: RECEIPT_INTEGRITY_KEY_DIR_MODE });
-  await writeFile(keyPath, `${generated}\n`, {
-    encoding: "utf8",
-    mode: RECEIPT_INTEGRITY_KEY_FILE_MODE
-  });
+  try {
+    await mkdir(dirname(keyPath), { recursive: true, mode: RECEIPT_INTEGRITY_KEY_DIR_MODE });
+    await writeFile(keyPath, `${generated}\n`, {
+      encoding: "utf8",
+      mode: RECEIPT_INTEGRITY_KEY_FILE_MODE
+    });
+  } catch {
+    return undefined;
+  }
   return [generated, sha256(generated).slice(0, 16)];
 }
 
@@ -295,7 +308,7 @@ async function readReceiptIntegrityKey(runsRoot: string, runId: string): Promise
 
 function resolveReceiptIntegrityKeyPath(runsRoot: string, runId: string): string {
   const rootHash = sha256(runsRoot).slice(0, 16);
-  return join(homedir(), ".martin", "receipt-integrity", rootHash, `${runId}.key`);
+  return join(resolveReceiptIntegrityRoot(), rootHash, `${runId}.key`);
 }
 
 function serializeStoredJson(value: unknown): string {

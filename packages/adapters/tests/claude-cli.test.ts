@@ -199,7 +199,7 @@ describe("createAgentCliAdapter", () => {
     expect(adapter.metadata.providerId).toBe("mytool");
     expect(adapter.metadata.model).toBe("mytool-v1");
     expect(adapter.metadata.transport).toBe("cli");
-    expect(adapter.metadata.capabilities.usageSettlement).toBe("unavailable");
+    expect(adapter.metadata.capabilities.usageSettlement).toBe(false);
   });
 
   it("uses adapterIdSuffix when provided", () => {
@@ -435,11 +435,10 @@ describe("createSpawnPlan", () => {
 
     expect(plan.command.toLowerCase()).toContain("cmd.exe");
     expect(plan.args[0]).toBe("/d");
-    expect(plan.args[1]).toBe("/s");
-    expect(plan.args[2]).toBe("/c");
-    expect(plan.args[3]).toContain("C:\\Tools\\Example Path\\npm\\pnpm.cmd");
-    expect(plan.args[3]).toContain("verify shared baseline");
-    expect(plan.args[3]).toContain("pkg with spaces");
+    expect(plan.args[1]).toBe("/c");
+    expect(plan.args[2]).toBe("C:\\Tools\\Example Path\\npm\\pnpm.cmd");
+    expect(plan.args[3]).toBe("verify shared baseline");
+    expect(plan.args[5]).toBe("pkg with spaces");
   });
 
   it("wraps absolute Windows PowerShell scripts through powershell.exe", () => {
@@ -478,8 +477,8 @@ describe("createSpawnPlan", () => {
     expect(plan.args[0]).toBe("/d");
     expect(plan.args[1]).toBe("/c");
     expect(plan.args[2]).toContain("__martin_nonexistent_verifier_cmd__");
-    expect(plan.args[2]).toContain("run");
-    expect(plan.args[2]).toContain("test");
+    expect(plan.args[3]).toBe("run");
+    expect(plan.args[4]).toBe("test");
   });
 
   it("preserves raw command when preserveRawForInjectedSpawn is true regardless of platform", () => {
@@ -657,25 +656,28 @@ describe("createClaudeCliAdapter", () => {
   });
 
   it("skips git probes when repoRoot is outside a repository", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), "martin-non-repo-"));
     const calls: SpawnCall[] = [];
-    const externalRepoRoot = await mkdtemp(join(tmpdir(), "martin-nonrepo-root-"));
+    const adapter = createClaudeCliAdapter({
+      spawnImpl: createScriptedSpawn(calls, [
+        {
+          stdout: JSON.stringify({
+            type: "result",
+            result: "Patched the target file.",
+            usage: {
+              input_tokens: 12,
+              output_tokens: 8
+            }
+          })
+        },
+        { stdout: "" },
+        { stdout: "src/index.ts\n" },
+        { stdout: "1\t0\tsrc/index.ts\n" },
+        { stdout: "src/index.ts\n" }
+      ])
+    });
 
     try {
-      const adapter = createClaudeCliAdapter({
-        spawnImpl: createScriptedSpawn(calls, [
-          {
-            stdout: JSON.stringify({
-              type: "result",
-              result: "Patched the target file.",
-              usage: {
-                input_tokens: 12,
-                output_tokens: 8
-              }
-            })
-          }
-        ])
-      });
-
       const result = await adapter.execute(
         makeRequest({
           context: {
@@ -686,7 +688,7 @@ describe("createClaudeCliAdapter", () => {
             remainingBudgetUsd: 8,
             remainingIterations: 3,
             remainingTokens: 10_000,
-            repoRoot: externalRepoRoot,
+            repoRoot,
             allowedPaths: ["src/**"]
           }
         })
@@ -696,7 +698,7 @@ describe("createClaudeCliAdapter", () => {
       expect(calls).toHaveLength(1);
       expect(calls[0]?.command).toBe("claude");
     } finally {
-      await rm(externalRepoRoot, { force: true, recursive: true }).catch(() => {});
+      await rm(repoRoot, { recursive: true, force: true });
     }
   });
 

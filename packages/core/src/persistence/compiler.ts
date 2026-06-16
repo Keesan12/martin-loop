@@ -1,5 +1,3 @@
-import type { ExecutionPolicy } from "@martin/contracts";
-
 import { compilePromptPacket, type CompilerAdapterRequest, type PromptPacket } from "../compiler.js";
 import { makeLedgerEvent } from "./ledger.js";
 import type { RunStore } from "./store.js";
@@ -22,7 +20,6 @@ export async function compileAndPersistContext(
     attemptIndex: number;
     store?: RunStore;
     now?: string;
-    executionPolicy?: ExecutionPolicy;
   }
 ): Promise<CompileResult> {
   const packet = compilePromptPacket(request);
@@ -31,8 +28,7 @@ export async function compileAndPersistContext(
   if (options.store) {
     // Write compiled-context.json to attempt artifact directory
     await options.store.writeAttemptArtifacts(request.loopId, options.attemptIndex, {
-      compiledContext: packet,
-      ...(options.executionPolicy ? { executionPolicy: options.executionPolicy } : {})
+      compiledContext: packet
     });
 
     // Append prompt.compiled ledger event
@@ -46,16 +42,7 @@ export async function compileAndPersistContext(
           attemptId: request.attemptId,
           attemptNumber: packet.attemptNumber,
           priorFailurePatterns: packet.priorFailurePatterns,
-          budgetEnvelope: packet.budgetEnvelope,
-          ...(options.executionPolicy
-            ? {
-                executionPolicy: {
-                  governance: options.executionPolicy.governance,
-                  task: options.executionPolicy.task,
-                  provenance: options.executionPolicy.provenance
-                }
-              }
-            : {})
+          budgetEnvelope: packet.budgetEnvelope
         },
         timestamp: ts
       })

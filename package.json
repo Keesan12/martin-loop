@@ -1,28 +1,40 @@
 {
   "name": "martin-loop",
   "private": false,
-  "version": "0.3.2",
+  "version": "0.3.6",
   "type": "module",
-  "description": "Open-source command center for governed AI coding agents: CLI, MCP, verifier gates, and run receipts.",
+  "description": "Open-source command center for governed AI coding agents with built-in onboarding, hard gates, MCP, and shareable run receipts.",
   "packageManager": "pnpm@10.33.0",
   "keywords": [
-    "ai",
-    "agent",
-    "coding-loop",
-    "llm",
-    "automation",
+    "mcp",
+    "model-context-protocol",
+    "ai-coding-agents",
+    "agent-runtime",
+    "agent-governance",
+    "budget-enforcement",
+    "verifier-gates",
+    "audit-trail",
+    "run-receipts",
+    "agent-receipts",
+    "claude-code",
+    "codex",
+    "llmops",
     "cli"
   ],
-  "author": "Vakeesan Mahalingam and Gobi Shanthan",
+  "author": "MartinLoop contributors",
   "license": "Apache-2.0",
   "homepage": "https://martinloop.com/",
   "repository": {
     "type": "git",
     "url": "https://github.com/Keesan12/martin-loop.git"
   },
+  "bugs": {
+    "url": "https://github.com/Keesan12/martin-loop/issues"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
+    "martin": "./dist/bin/martin-loop.js",
     "martin-loop": "./dist/bin/martin-loop.js"
   },
   "exports": {
@@ -43,19 +55,28 @@
     "access": "public"
   },
   "scripts": {
-    "build": "pnpm -r --workspace-concurrency=1 build && node ./scripts/build-public-facade.mjs",
+    "postinstall": "node -e \"if(process.env.CI==='true'||process.env.MARTIN_SUPPRESS_POSTINSTALL==='1'){process.exit(0)};const lines=['','MartinLoop installed. First-run guided flow:','  npx -y martin-loop@latest start','  npx -y martin-loop@latest demo','  npx -y martin-loop@latest run \\\"your objective\\\" --verify \\\"npm test\\\"','','Governed runs are default. MartinLoop auto-checks doctor, session-start, and preflight, then executes when the environment is ready.'];console.log(lines.join('\\\\n'));\"",
+    "build": "pnpm --filter @martin/contracts build && pnpm --filter @martin/core build && pnpm --filter @martin/adapters build && pnpm --filter @martin/benchmarks build && pnpm --filter @martin/cli build && pnpm --filter @martinloop/mcp build && node ./scripts/build-public-facade.mjs",
+    "bench:build": "pnpm --filter @martin/benchmarks build",
+    "bench:test": "pnpm --filter @martin/benchmarks test",
+    "bench:eval": "pnpm --filter @martin/benchmarks eval",
+    "bench:report:ralphy": "pnpm --filter @martin/benchmarks report:ralphy",
     "prepack": "pnpm build && node ./scripts/root-release-guard.mjs --pack",
-    "test": "node ./scripts/failure-taxonomy.mjs --check && pnpm -r --workspace-concurrency=1 test && node --test --test-concurrency=1 scripts/tests/*.mjs",
+    "test": "node ./scripts/failure-taxonomy.mjs --check && pnpm -r --workspace-concurrency=1 test && node --test scripts/tests/*.mjs",
     "lint": "pnpm -r lint",
-    "oss:validate": "node ./scripts/oss-boundary.mjs",
+    "public:copy-scan": "node ./scripts/public-copy-scan.mjs",
+    "public:git-surface": "node ./scripts/public-git-surface-guard.mjs",
+    "public:readme-cta-guard": "node ./scripts/readme-cta-guard.mjs",
+    "oss:validate": "node ./scripts/oss-boundary.mjs && pnpm public:readme-cta-guard",
     "public:smoke": "node ./scripts/public-facade-smoke.mjs",
     "mcp:pack:smoke": "pnpm --filter @martinloop/mcp smoke:pack",
     "mcp:published:smoke": "pnpm --filter @martinloop/mcp smoke:published",
     "mcp:published:smoke:pack": "pnpm --filter @martinloop/mcp smoke:published:pack",
     "release:validate-local": "node ./scripts/rc-validation.mjs",
     "release:validate-local:install": "node ./scripts/rc-validation.mjs --install",
-    "release:matrix:local": "node ./scripts/release-matrix.mjs",
     "release:root:guard": "node ./scripts/root-release-guard.mjs --pack",
+    "release:validate:platforms": "node ./scripts/release-matrix.mjs",
+    "release:matrix:local": "node ./scripts/release-matrix.mjs",
     "run:cli": "pnpm --filter @martin/cli dev",
     "taxonomy:sync": "node ./scripts/failure-taxonomy.mjs --write",
     "taxonomy:check": "node ./scripts/failure-taxonomy.mjs --check"
@@ -76,20 +97,22 @@
     "@opentelemetry/semantic-conventions": "^1.38.0",
     "ts-morph": "^21.0.0"
   },
-  "workspaces": [
-    "packages/*",
-    "benchmarks"
-  ],
   "pnpm": {
     "overrides": {
       "@hono/node-server": "^1.19.13",
       "ajv": "^8.20.0",
       "fast-uri": "^3.1.2",
-      "hono": "^4.12.21",
+      "hono": "4.12.25",
       "ip-address": "^10.1.1",
       "postcss": "^8.5.15",
       "qs": "^6.15.2",
-      "vite": "^7.3.2"
+      "vite": "^7.3.2",
+      "zod": "4.4.0",
+      "undici": "7.26.0"
     }
-  }
+  },
+  "workspaces": [
+    "packages/*",
+    "benchmarks"
+  ]
 }

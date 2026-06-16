@@ -1,16 +1,20 @@
-import {
-  createAdapterCapabilityDescriptor,
-  type AdapterCapabilityDescriptor
-} from "@martin/contracts";
-import type { MartinAdapterResult } from "@martin/core";
+import type { MartinAdapter, MartinAdapterResult } from "@martin/core";
 
 type StructuredError = NonNullable<NonNullable<MartinAdapterResult["execution"]>["structuredErrors"]>[number];
 type DiffStats = NonNullable<NonNullable<MartinAdapterResult["execution"]>["diffStats"]>;
 
 export function createAdapterCapabilities(
-  overrides: Partial<AdapterCapabilityDescriptor> = {}
-): AdapterCapabilityDescriptor {
-  return createAdapterCapabilityDescriptor(overrides);
+  overrides: Partial<NonNullable<MartinAdapter["metadata"]["capabilities"]>> = {}
+): NonNullable<MartinAdapter["metadata"]["capabilities"]> {
+  return {
+    preflight: true,
+    usageSettlement: false,
+    diffArtifacts: false,
+    structuredErrors: false,
+    cachingSignals: false,
+    workspaceMutations: true,
+    ...overrides
+  };
 }
 
 export function normalizeUsage(input: {

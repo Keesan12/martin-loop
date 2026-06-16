@@ -5,12 +5,12 @@
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
-import { describe, it, expect, afterEach } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { createLoopRecord } from "@martin/contracts";
-import {
-  createOpenAiCompatibleAdapter,
-  resolveOpenAiCompatibleRuntimeConfig
-} from "../src/openai-compatible.js";
+import { createOpenAiCompatibleAdapter } from "../src/openai-compatible.js";
 
 // ---------------------------------------------------------------------------
 // Mock server helpers
@@ -124,11 +124,33 @@ describe("createOpenAiCompatibleAdapter", () => {
     }));
     mockClose = close;
 
-    const adapter = createOpenAiCompatibleAdapter({ baseUrl: url, model: "test-model", apiKey: "sk-test" });
+    const adapter = createOpenAiCompatibleAdapter({ baseUrl: url, model: "test-model" });
     const result = await adapter.execute(makeRequest() as any);
 
     expect(result.status).toBe("failed");
     expect(result.failure?.message).toContain("Rate limit exceeded");
+  });
+
+  it("clears the timeout when the request fails before parsing a response", async () => {
+    const clearTimeoutSpy = vi.spyOn(globalThis, "clearTimeout");
+
+    try {
+      const adapter = createOpenAiCompatibleAdapter({
+        baseUrl: "http://127.0.0.1:1",
+        model: "test-model",
+        fetchImpl: async () => {
+          throw new Error("network exploded");
+        }
+      });
+
+      const result = await adapter.execute(makeRequest() as any);
+
+      expect(result.status).toBe("failed");
+      expect(result.failure?.message).toContain("network exploded");
+      expect(clearTimeoutSpy).toHaveBeenCalled();
+    } finally {
+      clearTimeoutSpy.mockRestore();
+    }
   });
 
   it("returns failed when the model returns an empty response", async () => {
@@ -140,11 +162,37 @@ describe("createOpenAiCompatibleAdapter", () => {
     }));
     mockClose = close;
 
-    const adapter = createOpenAiCompatibleAdapter({ baseUrl: url, model: "test-model", apiKey: "sk-test" });
+    const adapter = createOpenAiCompatibleAdapter({ baseUrl: url, model: "test-model" });
     const result = await adapter.execute(makeRequest() as any);
 
     expect(result.status).toBe("failed");
     expect(result.failure?.message).toBe("empty_response");
+  });
+
+  it("skips git diff scans when no verification steps are configured", async () => {
+    const { url, close } = await startMockServer(() => ({
+      body: {
+        choices: [{ message: { role: "assistant", content: "No repo required." }, finish_reason: "stop" }],
+        usage: { prompt_tokens: 50, completion_tokens: 10 }
+      }
+    }));
+    mockClose = close;
+    const workingDirectory = await mkdtemp(join(tmpdir(), "martin-openai-no-git-"));
+
+    try {
+      const adapter = createOpenAiCompatibleAdapter({
+        baseUrl: url,
+        model: "test-model",
+        workingDirectory
+      });
+
+      const result = await adapter.execute(makeRequest() as any);
+
+      expect(result.status).toBe("completed");
+      expect(result.execution?.changedFiles).toEqual([]);
+    } finally {
+      await rm(workingDirectory, { recursive: true, force: true });
+    }
   });
 
   it("blocks on budget preflight when projected cost exceeds remaining budget", async () => {
@@ -155,7 +203,7 @@ describe("createOpenAiCompatibleAdapter", () => {
       baseUrl: url,
       model: "test-model",
       // Set a very expensive model to force preflight failure
-      apiKey: "sk-test"
+      apiKey: ""
     });
 
     // Override known pricing to make it expensive
@@ -183,27 +231,16 @@ describe("createOpenAiCompatibleAdapter", () => {
     });
     mockClose = close;
 
-    // Patch the URL to look like OpenRouter for header injection
     const adapter = createOpenAiCompatibleAdapter({
-      baseUrl: url,
+      baseUrl: `${url}/openrouter`,
       model: "deepseek/deepseek-chat",
-      apiKey: "sk-or-test",
-      fetchImpl: (input, init) => {
-        // Inject openrouter into URL string for header logic without redirecting
-        const modifiedInit = {
-          ...init,
-          headers: {
-            ...(init?.headers as Record<string, string>),
-            "HTTP-Referer": "https://martinloop.com",
-            "X-Title": "MartinLoop"
-          }
-        };
-        return fetch(input, modifiedInit);
-      }
+      apiKey: "sk-or-test"
     });
 
     const result = await adapter.execute(makeRequest() as any);
     expect(result.status).toBe("completed");
+    expect(capturedHeaders["http-referer"]).toBe("https://martinloop.com");
+    expect(capturedHeaders["x-title"]).toBe("MartinLoop");
   });
 
   it("uses known model pricing for deepseek/deepseek-chat", async () => {
@@ -217,8 +254,7 @@ describe("createOpenAiCompatibleAdapter", () => {
 
     const adapter = createOpenAiCompatibleAdapter({
       baseUrl: url,
-      model: "deepseek/deepseek-chat",
-      apiKey: "sk-or-test"
+      model: "deepseek/deepseek-chat"
     });
 
     const result = await adapter.execute(makeRequest() as any);
@@ -227,71 +263,6 @@ describe("createOpenAiCompatibleAdapter", () => {
     // 1000 input tokens = $0.00027, 500 output tokens = $0.00055 → $0.00082
     expect(result.status).toBe("completed");
     expect(result.usage.actualUsd).toBeCloseTo(0.00027 + 0.00055, 5);
-  });
-
-  it("uses published pricing for the default gpt-4.1-mini lane", async () => {
-    const { url, close } = await startMockServer(() => ({
-      body: {
-        choices: [{ message: { role: "assistant", content: "Fixed." }, finish_reason: "stop" }],
-        usage: { prompt_tokens: 1000, completion_tokens: 500 }
-      }
-    }));
-    mockClose = close;
-
-    const adapter = createOpenAiCompatibleAdapter({
-      baseUrl: url,
-      model: "gpt-4.1-mini",
-      apiKey: "sk-test"
-    });
-
-    const result = await adapter.execute(makeRequest() as any);
-
-    expect(result.status).toBe("completed");
-    expect(result.usage.actualUsd).toBeCloseTo(0.0004 + 0.0008, 5);
-  });
-
-  it("fails before launch when the hosted OpenAI default is missing MARTIN_OPENAI_API_KEY", async () => {
-    let fetchCalled = false;
-    const adapter = createOpenAiCompatibleAdapter({
-      baseUrl: "https://api.openai.com",
-      model: "gpt-4.1-mini",
-      fetchImpl: async () => {
-        fetchCalled = true;
-        throw new Error("fetch should not be called");
-      }
-    });
-
-    const result = await adapter.execute(makeRequest() as any);
-
-    expect(result.status).toBe("failed");
-    expect(result.failure?.message).toBe("missing_openai_api_key");
-    expect(result.summary).toContain("MARTIN_OPENAI_API_KEY");
-    expect(fetchCalled).toBe(false);
-  });
-
-  it("allows explicit local loopback overrides without MARTIN_OPENAI_API_KEY", async () => {
-    let requestObserved = false;
-    const { url, close } = await startMockServer(() => {
-      requestObserved = true;
-      return {
-        body: {
-          choices: [{ message: { role: "assistant", content: "Local fix applied." }, finish_reason: "stop" }],
-          usage: { prompt_tokens: 24, completion_tokens: 12 }
-        }
-      };
-    });
-    mockClose = close;
-
-    const adapter = createOpenAiCompatibleAdapter({
-      baseUrl: url,
-      model: "llama3.3"
-    });
-
-    const result = await adapter.execute(makeRequest() as any);
-
-    expect(requestObserved).toBe(true);
-    expect(result.status).toBe("completed");
-    expect(result.failure).toBeUndefined();
   });
 
   it("exposes correct adapterId and metadata", () => {
@@ -305,46 +276,58 @@ describe("createOpenAiCompatibleAdapter", () => {
     expect(adapter.metadata.transport).toBe("http");
     expect(adapter.kind).toBe("direct-provider");
   });
-});
 
-describe("resolveOpenAiCompatibleRuntimeConfig", () => {
-  it("marks the default hosted OpenAI lane as auth-required without an API key", () => {
-    const config = resolveOpenAiCompatibleRuntimeConfig({
-      MARTIN_OPENAI_MODEL: "gpt-4.1-mini"
-    });
-
-    expect(config.endpointKind).toBe("hosted_openai");
-    expect(config.authPosture).toBe("api_key_required");
-    expect(config.authReady).toBe(false);
-  });
-
-  it("keeps local loopback endpoints available without an API key", () => {
-    const config = resolveOpenAiCompatibleRuntimeConfig({
-      MARTIN_OPENAI_BASE_URL: "http://127.0.0.1:11434",
-      MARTIN_OPENAI_MODEL: "llama3.3"
-    });
-
-    expect(config.endpointKind).toBe("local_compatible");
-    expect(config.authPosture).toBe("anonymous_or_local");
-    expect(config.authReady).toBe(true);
-  });
-
-  it("applies explicit overrides before computing auth posture", () => {
-    const config = resolveOpenAiCompatibleRuntimeConfig(
-      {
-        MARTIN_OPENAI_BASE_URL: "https://api.openai.com",
-        MARTIN_OPENAI_MODEL: "gpt-4.1-mini"
-      },
-      {
-        baseUrl: "http://127.0.0.1:11434",
-        model: "llama3.3"
+  it("defaults to the hosted OpenAI endpoint and model when config is omitted", async () => {
+    let capturedUrl = "";
+    const adapter = createOpenAiCompatibleAdapter({
+      fetchImpl: async (input) => {
+        capturedUrl = String(input);
+        return new Response(JSON.stringify({
+          choices: [{ message: { role: "assistant", content: "Fixed." }, finish_reason: "stop" }],
+          usage: { prompt_tokens: 10, completion_tokens: 5 }
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        });
       }
-    );
+    });
 
-    expect(config.baseUrl).toBe("http://127.0.0.1:11434");
-    expect(config.model).toBe("llama3.3");
-    expect(config.endpointKind).toBe("local_compatible");
-    expect(config.authPosture).toBe("anonymous_or_local");
-    expect(config.authReady).toBe(true);
+    const result = await adapter.execute(makeRequest() as any);
+
+    expect(result.status).toBe("completed");
+    expect(adapter.adapterId).toBe("openai-compatible:gpt-4.1-mini");
+    expect(adapter.metadata.model).toBe("gpt-4.1-mini");
+    expect(capturedUrl).toBe("https://api.openai.com/v1/chat/completions");
+  });
+
+  it("uses the runtime API key when options.apiKey is unset", async () => {
+    let capturedHeaders: Record<string, string | string[] | undefined> = {};
+    const previousApiKey = process.env.MARTIN_OPENAI_API_KEY;
+
+    try {
+      process.env.MARTIN_OPENAI_API_KEY = "sk-env-fallback";
+      const { url, close } = await startMockServer((req) => {
+        capturedHeaders = req.headers as Record<string, string | string[] | undefined>;
+        return {
+          body: {
+            choices: [{ message: { role: "assistant", content: "Fixed." }, finish_reason: "stop" }],
+            usage: { prompt_tokens: 10, completion_tokens: 5 }
+          }
+        };
+      });
+      mockClose = close;
+
+      const adapter = createOpenAiCompatibleAdapter({ baseUrl: url, model: "test-model" });
+      const result = await adapter.execute(makeRequest() as any);
+
+      expect(result.status).toBe("completed");
+      expect(capturedHeaders["authorization"]).toBe("Bearer sk-env-fallback");
+    } finally {
+      if (previousApiKey === undefined) {
+        delete process.env.MARTIN_OPENAI_API_KEY;
+      } else {
+        process.env.MARTIN_OPENAI_API_KEY = previousApiKey;
+      }
+    }
   });
 });

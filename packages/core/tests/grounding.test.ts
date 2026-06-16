@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -278,49 +278,52 @@ describe("scanPatchForGroundingViolations", () => {
 });
 
 describe("loadOrBuildRepoGroundingIndex anatomy artifact", () => {
-  it("writes a schema-valid anatomy artifact to MARTIN_GROUNDING_DIR on first call", async () => {
+  it("writes a schema-valid anatomy artifact to the grounding cache on first call", async () => {
     const root = await mkdtemp(join(tmpdir(), "martin-anatomy-"));
-    await mkdir(join(root, "src"), { recursive: true });
-    await writeFile(
-      join(root, "src", "core.ts"),
-      "export function run(): void {}",
-      "utf8"
-    );
-
-    const groundingDir = await mkdtemp(join(tmpdir(), "martin-grounding-dir-"));
+    const cacheRoot = await mkdtemp(join(tmpdir(), "martin-anatomy-cache-"));
     const previousGroundingDir = process.env.MARTIN_GROUNDING_DIR;
-    process.env.MARTIN_GROUNDING_DIR = groundingDir;
+    process.env.MARTIN_GROUNDING_DIR = cacheRoot;
 
-    let index: Awaited<ReturnType<typeof loadOrBuildRepoGroundingIndex>>;
     try {
-      index = await loadOrBuildRepoGroundingIndex(root);
+      await mkdir(join(root, "src"), { recursive: true });
+      await writeFile(
+        join(root, "src", "core.ts"),
+        "export function run(): void {}",
+        "utf8"
+      );
+
+      const index = await loadOrBuildRepoGroundingIndex(root);
+
+      // Verify index in memory is valid
+      expect(index.schemaVersion).toBe("martin.grounding.v1");
+      expect(index.repoRoot).toBe(root);
+      expect(typeof index.createdAt).toBe("string");
+      expect(index.fileCount).toBeGreaterThanOrEqual(1);
+      expect(Array.isArray(index.files)).toBe(true);
+
+      // Verify artifact was written to the isolated cache directory
+      // (mirrors the real ~/.martin/grounding/ layout via MARTIN_GROUNDING_DIR override)
+      const cacheFile = join(
+        cacheRoot,
+        `${Buffer.from(root).toString("base64url")}.json`
+      );
+      expect(existsSync(cacheFile)).toBe(true);
+
+      // Verify disk artifact is valid JSON with correct schema
+      const rawContent = await readFile(cacheFile, "utf8");
+      const parsed = JSON.parse(rawContent) as typeof index;
+      expect(parsed.schemaVersion).toBe("martin.grounding.v1");
+      expect(parsed.repoRoot).toBe(root);
+      expect(Array.isArray(parsed.files)).toBe(true);
     } finally {
       if (previousGroundingDir === undefined) {
         delete process.env.MARTIN_GROUNDING_DIR;
       } else {
         process.env.MARTIN_GROUNDING_DIR = previousGroundingDir;
       }
+
+      await rm(cacheRoot, { recursive: true, force: true }).catch(() => {});
+      await rm(root, { recursive: true, force: true }).catch(() => {});
     }
-
-    // Verify index in memory is valid
-    expect(index.schemaVersion).toBe("martin.grounding.v1");
-    expect(index.repoRoot).toBe(root);
-    expect(typeof index.createdAt).toBe("string");
-    expect(index.fileCount).toBeGreaterThanOrEqual(1);
-    expect(Array.isArray(index.files)).toBe(true);
-
-    // Verify artifact was written to the isolated grounding directory, not ~/.martin/grounding
-    const cacheFile = join(
-      groundingDir,
-      `${Buffer.from(root).toString("base64url")}.json`
-    );
-    expect(existsSync(cacheFile)).toBe(true);
-
-    // Verify disk artifact is valid JSON with correct schema
-    const rawContent = await readFile(cacheFile, "utf8");
-    const parsed = JSON.parse(rawContent) as typeof index;
-    expect(parsed.schemaVersion).toBe("martin.grounding.v1");
-    expect(parsed.repoRoot).toBe(root);
-    expect(Array.isArray(parsed.files)).toBe(true);
   });
 });

@@ -139,7 +139,7 @@ const verificationSchema = {
   type: "object",
   additionalProperties: true,
   properties: {
-    status: { type: "string", enum: ["passed", "failed", "contradicted", "not_run"] },
+    status: { type: "string", enum: ["passed", "failed", "unavailable"] },
     eventCount: { type: "integer" },
     ledgerEventCount: { type: "integer" },
     latestAttemptIndex: { type: "integer" },
@@ -795,7 +795,7 @@ export function createMartinMcpServer(serverInfo?: {
           },
           engine: {
             type: "string",
-            enum: ["claude", "codex"],
+            enum: ["claude", "codex", "gemini"],
             description: "Which agent CLI to use. Defaults to claude."
           },
           model: {
@@ -933,7 +933,7 @@ export function createMartinMcpServer(serverInfo?: {
           },
           engine: {
             type: "string",
-            enum: ["claude", "codex"],
+            enum: ["claude", "codex", "gemini"],
             description: "Optional engine to highlight in diagnostics."
           }
         }
@@ -998,7 +998,7 @@ export function createMartinMcpServer(serverInfo?: {
           },
           engine: {
             type: "string",
-            enum: ["claude", "codex"],
+            enum: ["claude", "codex", "gemini"],
             description: "Which agent CLI would be used. Defaults to claude."
           },
           model: {
