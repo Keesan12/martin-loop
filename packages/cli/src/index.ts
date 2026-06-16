@@ -921,8 +921,7 @@ async function executeRunCommand(
     engine: resolvedRequest.engine,
     liveMode: resolvedRequest.liveMode
   });
-  const effectiveMutationMode =
-    resolvedRequest.mutationMode ?? (resolvedRequest.liveMode === "proof" ? "verify_only" : undefined);
+  const effectiveMutationMode = resolvedRequest.mutationMode;
   const receiptScope = buildCliReceiptScope(cliEnvironment);
   const engineRequired =
     effectiveMutationMode !== "verify_only" && cliEnvironment.liveMode === "live";
@@ -3320,6 +3319,7 @@ function proofCardInputFromLoop(loop: LoopRecord): MartinProofCardInput {
     costSpend: `$${loop.cost.actualUsd.toFixed(2)}`,
     budget: `$${loop.budget.maxUsd.toFixed(2)}`,
     attempts: loop.attempts.length,
+    runMode: deriveLoopRunMode(loop),
     rollbackStatus,
     haltReason: latestExitReason(loop),
     evidenceBoundaryNotes: [
@@ -3349,6 +3349,22 @@ function defaultChallengeProofCardInput(): MartinProofCardInput {
     ],
     generatedAt: new Date().toISOString()
   };
+}
+
+function deriveLoopRunMode(loop: LoopRecord): string {
+  if (loop.task.mutationMode) {
+    return loop.task.mutationMode;
+  }
+  if (loop.attempts.some((attempt) => attempt.adapterId === "direct:verifier:verify-only")) {
+    return "verify_only";
+  }
+  if (loop.attempts.some((attempt) => attempt.adapterId === "direct:proof:no-mutation")) {
+    return "proof";
+  }
+  if (loop.cost.actualUsd === 0) {
+    return "proof";
+  }
+  return "not recorded";
 }
 
 function latestExitReason(loop: LoopRecord): string {
