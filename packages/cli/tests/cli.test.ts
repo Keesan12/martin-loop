@@ -160,7 +160,7 @@ describe("executeCli", () => {
 
   it("prints the public root package version", async () => {
     const rootPackageVersion = (
-      JSON.parse(await readFile(join(process.cwd(), "..", "..", "package.json"), "utf8")) as {
+      JSON.parse(await readFile(new URL("../../../package.json", import.meta.url), "utf8")) as {
         version: string;
       }
     ).version;
