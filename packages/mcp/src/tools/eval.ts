@@ -1,7 +1,7 @@
 import { loadDetailedLoopRecord, readLedgerEvents } from "./run-store.js";
+import { resolveTrustedLoopRepoRoot } from "../server-validation.js";
 import { buildVerificationSummary } from "./tool-support.js";
 import { assessRunRisk, inspectRepoSignals } from "./workflow-governance.js";
-import { resolveTrustedLoopRepoRoot } from "../server-validation.js";
 
 export interface MartinEvalInput {
   file?: string;
@@ -46,10 +46,6 @@ export async function martinEvalTool(input: MartinEvalInput): Promise<MartinEval
     verifiers: detail.loop.task?.verificationPlan ?? [],
     signals
   });
-  const observationStatus = verification.observation?.status;
-  const observationMismatch = observationStatus === "mismatch";
-  const partialObservation =
-    observationStatus === "adapter_only" || observationStatus === "repo_only";
 
   const checks = {
     taskCompletion:
@@ -61,17 +57,8 @@ export async function martinEvalTool(input: MartinEvalInput): Promise<MartinEval
           ? "failed"
           : "warning",
     diffDiscipline:
-      observationMismatch
-        ? "failed"
-        : partialObservation || (detail.loop.task?.allowedPaths?.length ?? 0) === 0
-          ? "warning"
-          : "passed",
-    regressionRisk:
-      verification.status === "passed" && !observationMismatch
-        ? partialObservation
-          ? "warning"
-          : "passed"
-        : "warning",
+      (detail.loop.task?.allowedPaths?.length ?? 0) > 0 ? "passed" : "warning",
+    regressionRisk: verification.status === "passed" ? "passed" : "warning",
     securityRisk: risk.level === "high" ? "failed" : risk.level === "medium" ? "warning" : "passed",
     reviewability:
       detail.loop.attempts.length > 0 && (detail.loop.events?.length ?? 0) > 0 ? "passed" : "warning"
@@ -87,7 +74,7 @@ export async function martinEvalTool(input: MartinEvalInput): Promise<MartinEval
   score = Math.max(0, score);
 
   const grade =
-    verification.status === "not_run" || observationMismatch
+    verification.status === "not_run"
       ? "insufficient_evidence"
       : score >= 90
         ? "mergeable"
@@ -115,7 +102,7 @@ export async function martinEvalTool(input: MartinEvalInput): Promise<MartinEval
           : grade === "needs_review"
             ? `Run ${detail.loop.loopId} needs review before promotion.`
             : grade === "insufficient_evidence"
-              ? `Run ${detail.loop.loopId} does not have enough trustworthy evidence for a safe promotion decision.`
+              ? `Run ${detail.loop.loopId} does not have enough evidence for a safe promotion decision.`
               : `Run ${detail.loop.loopId} is blocked from promotion by verification or risk gaps.`
   };
 }

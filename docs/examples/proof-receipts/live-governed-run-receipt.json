@@ -1,0 +1,17 @@
+{
+  "title": "Martin Loop Proof Receipt",
+  "loopId": "loop_82emkgkf",
+  "proofVerdict": "EVIDENCE_BOUNDARY",
+  "evidenceLine": "Incomplete Martin proof: missing budget, rollback, or verifier evidence.",
+  "verifier": "passed",
+  "costSpend": "$0.51",
+  "budget": "$3.00",
+  "remainingBudget": "$2.49",
+  "overspendRatio": "0.17x",
+  "attempts": "1",
+  "rollback": "not-recorded",
+  "receiptIntegrity": "signed",
+  "verificationSteps": "1",
+  "runtime": "claude / claude-sonnet-4-6 / agent-cli:claude",
+  "generatedAt": "2026-06-10T20:01:03.635Z"
+}

@@ -412,6 +412,38 @@ describe("server validation", () => {
     });
 
     expect(
+      validateToolInput("martin_doctor", {
+        engine: "gemini"
+      })
+    ).toEqual({
+      engine: "gemini"
+    });
+
+    expect(
+      validateToolInput("martin_preflight", {
+        objective: "Fix the bug",
+        engine: "gemini",
+        maxUsd: 5
+      })
+    ).toEqual({
+      objective: "Fix the bug",
+      engine: "gemini",
+      maxUsd: 5
+    });
+
+    expect(
+      validateToolInput("martin_run", {
+        objective: "Fix the bug",
+        engine: "gemini",
+        maxUsd: 5
+      })
+    ).toEqual({
+      objective: "Fix the bug",
+      engine: "gemini",
+      maxUsd: 5
+    });
+
+    expect(
       validateToolInput("martin_triage_runs", {
         includeHealthy: true,
         limit: 5
@@ -537,7 +569,7 @@ describe("server validation", () => {
     });
   });
 
-  it("accepts a matching doctor-plan-preflight receipt chain for martin_run when maxUsd is below the default soft limit", { timeout: 20_000 }, async () => {
+  it("accepts a matching doctor-plan-preflight receipt chain for martin_run when maxUsd is below the default soft limit", async () => {
     await withValidationRunsRoot(async () => {
       await withValidationWorkspaceRoot(async (workspaceRoot) => {
         const previousLive = process.env.MARTIN_LIVE;

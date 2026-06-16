@@ -1,9 +1,9 @@
 import { spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createLoopRecord, type LoopAttempt } from "@martin/contracts";
 
@@ -20,8 +20,6 @@ import {
   type MartinAdapter,
   type MartinAdapterRequest
 } from "../src/index";
-
-const RUNTIME_REPO_FIXTURE_TIMEOUT_MS = 30_000;
 
 describe("distillContext", () => {
   it("keeps the latest attempts and exposes the remaining budget envelope", () => {
@@ -336,6 +334,50 @@ describe("inferExit", () => {
 });
 
 describe("runMartin", () => {
+  // Several specs below invoke `runMartin` without an explicit `store`, which
+  // makes the context-integrity precheck fall back to `resolveActiveRunsRoot`'s
+  // default (`~/.martin/runs`). Point that default at a scratch directory for
+  // the duration of this suite so `pnpm test` never touches the real home dir.
+  let scratchRoot: string | undefined;
+  let previousRunsDir: string | undefined;
+  let previousGroundingDir: string | undefined;
+  let previousIntegrityKeyDir: string | undefined;
+
+  beforeEach(async () => {
+    scratchRoot = await mkdtemp(join(tmpdir(), "martin-runtime-home-"));
+    previousRunsDir = process.env.MARTIN_RUNS_DIR;
+    previousGroundingDir = process.env.MARTIN_GROUNDING_DIR;
+    previousIntegrityKeyDir = process.env.MARTIN_INTEGRITY_KEY_DIR;
+    process.env.MARTIN_RUNS_DIR = join(scratchRoot, "runs");
+    process.env.MARTIN_GROUNDING_DIR = join(scratchRoot, "grounding");
+    process.env.MARTIN_INTEGRITY_KEY_DIR = join(scratchRoot, "receipt-integrity");
+  });
+
+  afterEach(async () => {
+    if (previousRunsDir === undefined) {
+      delete process.env.MARTIN_RUNS_DIR;
+    } else {
+      process.env.MARTIN_RUNS_DIR = previousRunsDir;
+    }
+
+    if (previousGroundingDir === undefined) {
+      delete process.env.MARTIN_GROUNDING_DIR;
+    } else {
+      process.env.MARTIN_GROUNDING_DIR = previousGroundingDir;
+    }
+
+    if (previousIntegrityKeyDir === undefined) {
+      delete process.env.MARTIN_INTEGRITY_KEY_DIR;
+    } else {
+      process.env.MARTIN_INTEGRITY_KEY_DIR = previousIntegrityKeyDir;
+    }
+
+    if (scratchRoot) {
+      await rm(scratchRoot, { force: true, recursive: true }).catch(() => {});
+      scratchRoot = undefined;
+    }
+  });
+
   it("records a completed run when the adapter returns a verified result", async () => {
     const timestamps = createTimestampSource([
       "2026-03-27T16:00:00.000Z",
@@ -722,13 +764,11 @@ describe("runMartin", () => {
         model: "stub",
         capabilities: {
           preflight: true,
-          usageSettlement: "actual",
+          usageSettlement: true,
+          diffArtifacts: false,
           structuredErrors: true,
           cachingSignals: false,
-          verifierCompatibility: "verify_only",
-          sandboxExpectation: "not_applicable",
-          launchReadiness: "path_lookup",
-          diffVisibility: "none"
+          workspaceMutations: false
         }
       },
       async execute() {
@@ -787,107 +827,6 @@ describe("runMartin", () => {
     ).rejects.toThrow();
     expect(result.loop.attempts).toHaveLength(1);
   });
-
-  it(
-    "reconciles repo-observed changes against adapter reports and blocks verify-only drift",
-    { timeout: RUNTIME_REPO_FIXTURE_TIMEOUT_MS },
-    async () => {
-      const runsRoot = await mkdtemp(join(tmpdir(), "martin-observation-"));
-      const repoRoot = join(runsRoot, "repo");
-      await mkdir(join(repoRoot, "src"), { recursive: true });
-      await writeFile(join(repoRoot, "src", "real.ts"), "export const real = 1;\n", "utf8");
-      initializeGitRepo(repoRoot);
-
-      const store = createFileRunStore({ runsRoot });
-      const adapter: MartinAdapter = {
-        adapterId: "direct:observation",
-        kind: "direct-provider",
-        label: "Observation test adapter",
-        metadata: {
-          providerId: "openai",
-          model: "gpt-5-mini"
-        },
-        async execute() {
-          await writeFile(join(repoRoot, "src", "real.ts"), "export const real = 2;\n", "utf8");
-
-          return {
-            status: "completed",
-            summary: "Changed a tracked file while claiming no diff.",
-            usage: {
-              actualUsd: 0.2,
-              tokensIn: 10,
-              tokensOut: 6
-            },
-            verification: {
-              passed: true,
-              summary: "Verification passed."
-            },
-            execution: {
-              changedFiles: []
-            }
-          };
-        }
-      };
-
-      const result = await runMartin({
-        workspaceId: "ws_ops",
-        projectId: "proj_runtime",
-        task: {
-          title: "Verify without edits",
-          objective: "Run verification without mutating tracked files.",
-          verificationPlan: ["pnpm --filter @martin/core test"],
-          mutationMode: "verify_only",
-          repoRoot,
-          allowedPaths: ["src/**"]
-        },
-        budget: {
-          maxUsd: 10,
-          softLimitUsd: 6,
-          maxIterations: 1,
-          maxTokens: 2_000
-        },
-        adapter,
-        store,
-        now: createTimestampSource([
-          "2026-06-07T12:30:00.000Z",
-          "2026-06-07T12:30:01.000Z",
-          "2026-06-07T12:30:02.000Z",
-          "2026-06-07T12:30:03.000Z",
-          "2026-06-07T12:30:04.000Z",
-          "2026-06-07T12:30:05.000Z"
-        ]),
-        idFactory: createIdFactory()
-      });
-
-      expect(result.decision.lifecycleState).toBe("human_escalation");
-
-      const ledger = await readLedger(runsRoot, result.loop.loopId);
-      const observationEvent = ledger.find((entry) => entry.kind === "observation.reconciled");
-      expect(observationEvent?.payload).toMatchObject({
-        observation: {
-          status: "mismatch",
-          effectiveChangedFiles: ["src/real.ts"],
-          repoOnlyFiles: ["src/real.ts"]
-        }
-      });
-
-      const observationArtifact = JSON.parse(
-        await readFile(
-          join(
-            runsRoot,
-            result.loop.loopId,
-            "artifacts",
-            "attempt-001",
-            "observation-reconciliation.json"
-          ),
-          "utf8"
-        )
-      ) as { status: string; effectiveChangedFiles: string[] };
-
-      expect(observationArtifact.status).toBe("mismatch");
-      expect(observationArtifact.effectiveChangedFiles).toEqual(["src/real.ts"]);
-    }
-  );
 
   it("exits on budget pressure after repeated failed attempts", async () => {
     const timestamps = createTimestampSource([
@@ -958,7 +897,13 @@ describe("runMartin", () => {
     expect(result.loop.status).toBe("exited");
     expect(result.loop.lifecycleState).toBe("budget_exit");
     expect(result.loop.events.map((event) => event.type)).toContain("budget.updated");
+    const budgetUpdatedEvents = result.loop.events.filter((event) => event.type === "budget.updated");
+    expect(budgetUpdatedEvents.length).toBeGreaterThan(0);
+    for (const event of budgetUpdatedEvents) {
+      expect((event.payload as Record<string, unknown>)["provenance"]).toBe("actual");
+    }
     expect(result.decision.shouldExit).toBe(true);
+    expect(result.loop.cost.provenance).toBe("actual");
   });
 
   it("rejects an attempt during budget preflight before the adapter runs and records the ledger source", async () => {
@@ -1178,10 +1123,7 @@ describe("runMartin", () => {
     });
   });
 
-  it(
-    "challenge 11: discards the attempt and exits with human escalation when a forbidden path write is detected",
-    { timeout: RUNTIME_REPO_FIXTURE_TIMEOUT_MS },
-    async () => {
+  it("challenge 11: discards the attempt and exits with human escalation when a forbidden path write is detected", async () => {
     const runsRoot = await mkdtemp(join(tmpdir(), "martin-safety-filesystem-"));
     const repoRoot = join(runsRoot, "repo");
     await mkdir(repoRoot, { recursive: true });
@@ -1262,13 +1204,9 @@ describe("runMartin", () => {
       blocked: true,
       attemptIndex: 1
     });
-    }
-  );
+  });
 
-  it(
-    "challenge 13: blocks dependency-related changes without approval and persists leash.json",
-    { timeout: RUNTIME_REPO_FIXTURE_TIMEOUT_MS },
-    async () => {
+  it("challenge 13: blocks dependency-related changes without approval and persists leash.json", async () => {
     const runsRoot = await mkdtemp(join(tmpdir(), "martin-safety-dependency-"));
     const repoRoot = join(runsRoot, "repo");
     await mkdir(repoRoot, { recursive: true });
@@ -1363,13 +1301,9 @@ describe("runMartin", () => {
         })
       ])
     );
-    }
-  );
+  });
 
-  it(
-    "blocks deployment config changes without approval and persists the config violation artifact",
-    { timeout: RUNTIME_REPO_FIXTURE_TIMEOUT_MS },
-    async () => {
+  it("blocks deployment config changes without approval and persists the config violation artifact", async () => {
     const runsRoot = await mkdtemp(join(tmpdir(), "martin-safety-config-"));
     const repoRoot = join(runsRoot, "repo");
     await mkdir(join(repoRoot, ".github", "workflows"), { recursive: true });
@@ -1463,8 +1397,7 @@ describe("runMartin", () => {
         })
       ])
     );
-    }
-  );
+  });
 
   it("rotates to the next adapter when switch_adapter is selected", async () => {
     let primaryExecutions = 0;
@@ -1802,107 +1735,103 @@ const store: import("../src/index").RunStore = {
     expect(patchDecision.reasonCodes).toContain("grounding_failure");
   });
 
-  it(
-    "restores the pre-attempt repo boundary for discarded verifier regressions and preserves pre-existing dirty files",
-    { timeout: 20_000 },
-    async () => {
-      const runsRoot = await mkdtemp(join(tmpdir(), "martin-patch-rollback-"));
-      const repoRoot = join(runsRoot, "repo");
-      await mkdir(join(repoRoot, "src"), { recursive: true });
-      await writeFile(join(repoRoot, "src", "real.ts"), "export const real = 1;\n", "utf8");
-      initializeGitRepo(repoRoot);
-      await writeFile(join(repoRoot, "src", "real.ts"), "export const real = 2;\n", "utf8");
-      const store = createFileRunStore({ runsRoot });
+  it("restores the pre-attempt repo boundary for discarded verifier regressions and preserves pre-existing dirty files", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-patch-rollback-"));
+    const repoRoot = join(runsRoot, "repo");
+    await mkdir(join(repoRoot, "src"), { recursive: true });
+    await writeFile(join(repoRoot, "src", "real.ts"), "export const real = 1;\n", "utf8");
+    initializeGitRepo(repoRoot);
+    await writeFile(join(repoRoot, "src", "real.ts"), "export const real = 2;\n", "utf8");
+    const store = createFileRunStore({ runsRoot });
 
-      const adapter: MartinAdapter = {
-        adapterId: "direct:patch-rollback",
-        kind: "direct-provider",
-        label: "Patch rollback adapter",
-        metadata: {
-          providerId: "openai",
-          model: "gpt-5-mini"
-        },
-        async execute() {
-          await writeFile(join(repoRoot, "src", "ghost-new-file.ts"), "export const ghost = 1;\n", "utf8");
+    const adapter: MartinAdapter = {
+      adapterId: "direct:patch-rollback",
+      kind: "direct-provider",
+      label: "Patch rollback adapter",
+      metadata: {
+        providerId: "openai",
+        model: "gpt-5-mini"
+      },
+      async execute() {
+        await writeFile(join(repoRoot, "src", "ghost-new-file.ts"), "export const ghost = 1;\n", "utf8");
 
-          return {
-            status: "completed",
-            summary: "Changed a file, but the verifier still failed.",
-            usage: {
-              actualUsd: 0.21,
-              tokensIn: 64,
-              tokensOut: 31
-            },
-            verification: {
-              passed: false,
-              summary: "pnpm --filter @martin/core test still failing"
-            },
-            execution: {
-              changedFiles: ["src/ghost-new-file.ts"],
-              diffStats: {
-                filesChanged: 1,
-                addedLines: 6,
-                deletedLines: 0
-              }
+        return {
+          status: "completed",
+          summary: "Changed a file, but the verifier still failed.",
+          usage: {
+            actualUsd: 0.21,
+            tokensIn: 64,
+            tokensOut: 31
+          },
+          verification: {
+            passed: false,
+            summary: "pnpm --filter @martin/core test still failing"
+          },
+          execution: {
+            changedFiles: ["src/ghost-new-file.ts"],
+            diffStats: {
+              filesChanged: 1,
+              addedLines: 6,
+              deletedLines: 0
             }
-          };
-        }
-      };
+          }
+        };
+      }
+    };
 
-      const result = await runMartin({
-        workspaceId: "ws_patch",
-        projectId: "proj_patch",
-        task: {
-          title: "Discard and restore a no-progress patch",
-          objective: "Restore the repo boundary when a discarded patch adds files without verifier improvement.",
-          verificationPlan: ["pnpm --filter @martin/core test"],
-          repoRoot,
-          allowedPaths: ["src/**"]
-        },
-        budget: {
-          maxUsd: 10,
-          softLimitUsd: 8,
-          maxIterations: 1,
-          maxTokens: 2_000
-        },
-        adapter,
-        store,
-        now: createTimestampSource([
-          "2026-04-03T12:00:00.000Z",
-          "2026-04-03T12:00:01.000Z",
-          "2026-04-03T12:00:02.000Z",
-          "2026-04-03T12:00:03.000Z",
-          "2026-04-03T12:00:04.000Z",
-          "2026-04-03T12:00:05.000Z",
-          "2026-04-03T12:00:06.000Z"
-        ]),
-        idFactory: createIdFactory()
-      });
+    const result = await runMartin({
+      workspaceId: "ws_patch",
+      projectId: "proj_patch",
+      task: {
+        title: "Discard and restore a no-progress patch",
+        objective: "Restore the repo boundary when a discarded patch adds files without verifier improvement.",
+        verificationPlan: ["pnpm --filter @martin/core test"],
+        repoRoot,
+        allowedPaths: ["src/**"]
+      },
+      budget: {
+        maxUsd: 10,
+        softLimitUsd: 8,
+        maxIterations: 1,
+        maxTokens: 2_000
+      },
+      adapter,
+      store,
+      now: createTimestampSource([
+        "2026-04-03T12:00:00.000Z",
+        "2026-04-03T12:00:01.000Z",
+        "2026-04-03T12:00:02.000Z",
+        "2026-04-03T12:00:03.000Z",
+        "2026-04-03T12:00:04.000Z",
+        "2026-04-03T12:00:05.000Z",
+        "2026-04-03T12:00:06.000Z"
+      ]),
+      idFactory: createIdFactory()
+    });
 
-      const rollbackBoundary = JSON.parse(
-        await readFile(
-          join(runsRoot, result.loop.loopId, "artifacts", "attempt-001", "rollback-boundary.json"),
-          "utf8"
-        )
-      );
-      const rollbackOutcome = JSON.parse(
-        await readFile(
-          join(runsRoot, result.loop.loopId, "artifacts", "attempt-001", "rollback-outcome.json"),
-          "utf8"
-        )
-      );
+    const rollbackBoundary = JSON.parse(
+      await readFile(
+        join(runsRoot, result.loop.loopId, "artifacts", "attempt-001", "rollback-boundary.json"),
+        "utf8"
+      )
+    );
+    const rollbackOutcome = JSON.parse(
+      await readFile(
+        join(runsRoot, result.loop.loopId, "artifacts", "attempt-001", "rollback-outcome.json"),
+        "utf8"
+      )
+    );
 
-      await expect(readFile(join(repoRoot, "src", "ghost-new-file.ts"), "utf8")).rejects.toThrow();
-      await expect(readFile(join(repoRoot, "src", "real.ts"), "utf8")).resolves.toBe(
-        "export const real = 2;\n"
-      );
-      expect(result.decision.lifecycleState).toBe("budget_exit");
-      expect(rollbackBoundary.trackedDirtyFiles).toContain("src/real.ts");
-      expect(rollbackOutcome.status).toBe("restored");
-      expect(rollbackOutcome.deletedFiles).toContain("src/ghost-new-file.ts");
-      expect(rollbackOutcome.after.trackedDirtyFiles).toEqual(["src/real.ts"]);
-    }
-  );
+    await expect(readFile(join(repoRoot, "src", "ghost-new-file.ts"), "utf8")).rejects.toThrow();
+    await expect(readFile(join(repoRoot, "src", "real.ts"), "utf8")).resolves.toBe(
+      "export const real = 2;\n"
+    );
+    expect(result.decision.lifecycleState).toBe("budget_exit");
+    expect(rollbackBoundary.trackedDirtyFiles).toContain("src/real.ts");
+    expect(rollbackOutcome.status).toBe("restored");
+    expect(rollbackOutcome.deletedFiles).toContain("src/ghost-new-file.ts");
+    expect(rollbackOutcome.after.trackedDirtyFiles).toEqual(["src/real.ts"]);
+  });
 
   it("restores forbidden file changes on the filesystem safety-block path and persists rollback artifacts", async () => {
     const runsRoot = await mkdtemp(join(tmpdir(), "martin-patch-scope-rollback-"));
@@ -2012,13 +1941,10 @@ const store: import("../src/index").RunStore = {
         transport: "cli",
         capabilities: {
           preflight: true,
-          usageSettlement: "estimated",
-          diffVisibility: "git",
+          usageSettlement: false,
+          diffArtifacts: true,
           structuredErrors: true,
-          cachingSignals: false,
-          verifierCompatibility: "full",
-          sandboxExpectation: "workspace_write",
-          launchReadiness: "path_lookup"
+          cachingSignals: false
         }
       },
       async execute() {
@@ -2053,13 +1979,10 @@ const store: import("../src/index").RunStore = {
         transport: "http",
         capabilities: {
           preflight: true,
-          usageSettlement: "actual",
-          diffVisibility: "none",
+          usageSettlement: true,
+          diffArtifacts: false,
           structuredErrors: true,
-          cachingSignals: false,
-          verifierCompatibility: "full",
-          sandboxExpectation: "provider_managed",
-          launchReadiness: "configured_endpoint"
+          cachingSignals: false
         }
       },
       async execute() {
@@ -2133,6 +2056,10 @@ const store: import("../src/index").RunStore = {
     expect(settled[1]?.payload).toMatchObject({
       provenance: "actual"
     });
+    // The cumulative loop provenance reflects the weakest attempt: the first
+    // attempt's cost was only "estimated", so the aggregate must not be
+    // upgraded to "actual" by the second attempt's authoritative settlement.
+    expect(result.loop.cost.provenance).toBe("estimated");
   });
 });
 

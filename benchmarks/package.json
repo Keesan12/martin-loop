@@ -5,12 +5,15 @@
   "type": "module",
   "description": "Public deterministic benchmark harness for MartinLoop OSS claims.",
   "scripts": {
-    "build": "pnpm --filter @martin/contracts build && pnpm --filter @martin/core build && tsc -p tsconfig.build.json",
+    "prebuild": "pnpm --filter @martin/contracts build && pnpm --filter @martin/core build",
+    "build": "tsc -p tsconfig.build.json",
     "test": "vitest run",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "eval": "tsx src/eval.ts --suite under-3-challenge",
-    "eval:phase12": "tsx src/eval.ts --suite under-3-challenge",
-    "report:ralphy": "tsx src/eval.ts --suite ralphy-engineering-50"
+    "preeval": "pnpm build",
+    "eval": "node dist/eval.js --suite under-3-challenge",
+    "eval:phase12": "node dist/eval.js --suite under-3-challenge",
+    "prereport:ralphy": "pnpm build",
+    "report:ralphy": "node dist/eval.js --suite ralphy-engineering-50"
   },
   "dependencies": {
     "@martin/contracts": "workspace:*",

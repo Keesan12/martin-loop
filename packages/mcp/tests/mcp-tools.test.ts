@@ -1,10 +1,14 @@
+import { EventEmitter } from "node:events";
+import type { ChildProcess, SpawnOptions } from "node:child_process";
+import { PassThrough } from "node:stream";
 import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { writeReceiptIntegrityMaterial } from "@martin/core";
+import { writeReceiptIntegrityMaterial, type RunStore } from "@martin/core";
 import { createLoopRecord } from "@martin/contracts";
-import { describe, expect, it, vi } from "vitest";
+import type { SpawnLike } from "@martin/adapters";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { getStatusTool } from "../src/tools/get-status.js";
 import { martinGetRunTool } from "../src/tools/get-run.js";
@@ -14,7 +18,11 @@ import { martinGetVerificationResultsTool } from "../src/tools/get-verification-
 import { martinListRunsTool } from "../src/tools/list-runs.js";
 import { martinPreflightTool } from "../src/tools/preflight.js";
 import { martinRunDossierTool } from "../src/tools/run-dossier.js";
-import { runLoopTool } from "../src/tools/run-loop.js";
+import {
+  __setProofModeVerifierSpawnImplForTests,
+  __setRunStoreOverrideForTests,
+  runLoopTool
+} from "../src/tools/run-loop.js";
 import { martinTriageRunsTool } from "../src/tools/triage-runs.js";
 
 // ---------------------------------------------------------------------------
@@ -49,8 +57,14 @@ function makeLoopRecord(overrides: { costUsd?: number; avoidedUsd?: number } = {
 
 async function withRunsRoot<T>(fn: (runsRoot: string) => Promise<T>): Promise<T> {
   const previousRunsRoot = process.env.MARTIN_RUNS_DIR;
-  const runsRoot = await mkdtemp(join(tmpdir(), "martin-mcp-runs-"));
+  const previousGroundingRoot = process.env.MARTIN_GROUNDING_DIR;
+  const previousIntegrityKeyDir = process.env.MARTIN_INTEGRITY_KEY_DIR;
+  const scratchRoot = await mkdtemp(join(tmpdir(), "martin-mcp-runs-"));
+  const runsRoot = join(scratchRoot, "runs");
+  await mkdir(runsRoot, { recursive: true });
   process.env.MARTIN_RUNS_DIR = runsRoot;
+  process.env.MARTIN_GROUNDING_DIR = join(scratchRoot, "grounding");
+  process.env.MARTIN_INTEGRITY_KEY_DIR = join(scratchRoot, "receipt-integrity");
   try {
     return await fn(runsRoot);
   } finally {
@@ -59,7 +73,27 @@ async function withRunsRoot<T>(fn: (runsRoot: string) => Promise<T>): Promise<T>
     } else {
       process.env.MARTIN_RUNS_DIR = previousRunsRoot;
     }
+    if (previousGroundingRoot === undefined) {
+      delete process.env.MARTIN_GROUNDING_DIR;
+    } else {
+      process.env.MARTIN_GROUNDING_DIR = previousGroundingRoot;
+    }
+    if (previousIntegrityKeyDir === undefined) {
+      delete process.env.MARTIN_INTEGRITY_KEY_DIR;
+    } else {
+      process.env.MARTIN_INTEGRITY_KEY_DIR = previousIntegrityKeyDir;
+    }
 
+    await rm(scratchRoot, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+async function withMemoryRunStore<T>(fn: (store: RunStore) => Promise<T>): Promise<T> {
+  const runsRoot = await mkdtemp(join(tmpdir(), "martin-mcp-memory-runs-"));
+
+  try {
+    return await fn(createMemoryRunStore(runsRoot));
+  } finally {
     await rm(runsRoot, { recursive: true, force: true }).catch(() => {});
   }
 }
@@ -97,6 +131,39 @@ async function installFakeCliProbe(directory: string, command: string, markerPat
     "utf8"
   );
   await chmod(commandPath, 0o755);
+}
+
+function createImmediateSpawn(calls: Array<{ command: string; args: readonly string[]; options?: SpawnOptions }>): SpawnLike {
+  return (command, args = [], options) => {
+    calls.push({ command, args, options });
+    const child = new EventEmitter() as Partial<ChildProcess> & {
+      stdout: PassThrough;
+      stderr: PassThrough;
+      stdin: PassThrough;
+    };
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    child.stdin = new PassThrough();
+    child.kill = () => true;
+    process.nextTick(() => child.emit("close", 0));
+    return child as ChildProcess;
+  };
+}
+
+afterEach(() => {
+  __setProofModeVerifierSpawnImplForTests(undefined);
+  __setRunStoreOverrideForTests(undefined);
+});
+
+function createMemoryRunStore(runsRoot: string): RunStore {
+  return {
+    runsRoot,
+    async initRun() {},
+    async updateState() {},
+    async appendLedger() {},
+    async writeAttemptArtifacts() {},
+    async writeLoopRecord() {}
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -385,9 +452,9 @@ describe("martinDoctorTool", () => {
         expect(result.runStore.loopCount).toBe(1);
         expect(result.runStore.latestRun?.loopId).toBe(loop.loopId);
         expect(result.requestedEngine).toBe("codex");
+        expect(result.receiptScope).toEqual(result.scope);
         expect(result.scope.repoRoot).toBe(result.environment.workingDirectory);
         expect(result.scope.runsRoot).toBe(runsRoot);
-        expect(result.engines.codex.capabilities.usageSettlement).toBe("estimated");
       } finally {
         if (originalEnv === undefined) {
           delete process.env.MARTIN_LIVE;
@@ -472,24 +539,12 @@ describe("martinPreflightTool", () => {
       expect(result.readiness.mode).toBe("proof");
       expect(result.normalized.engine).toBe("codex");
       expect(result.normalized.budget.maxUsd).toBe(3);
+      expect(result.normalized.budget.softLimitUsd).toBe(3);
       expect(result.normalized.budget.maxIterations).toBe(2);
       expect(result.normalized.allowedPaths).toEqual(["src/**", "tests/**"]);
-      expect(result.effectivePolicy.configPath).toBe("mcp://inline");
-      expect(result.effectivePolicy.task.verificationPlan).toEqual(["pnpm test --filter auth"]);
-      expect(result.effectivePolicy.task.allowedPaths).toEqual(["src/**", "tests/**"]);
-      expect(result.effectivePolicy.provenance).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ field: "budget.maxUsd", source: "request", value: "3" }),
-          expect.objectContaining({
-            field: "task.verificationPlan",
-            source: "request",
-            value: "pnpm test --filter auth"
-          })
-        ])
-      );
+      expect(result.receiptScope).toEqual(result.scope);
       expect(result.scope.repoRoot).toBe(result.normalized.workingDirectory);
       expect(result.scope.runsRoot).toBe(result.execution.runsRoot);
-      expect(result.execution.engineAvailability.capabilities.diffVisibility).toBe("git");
       expect(result.execution.expectedRunLayout.loopRecordPathPattern).toBe(
         "<runsRoot>/<loopId>/loop-record.json"
       );
@@ -677,76 +732,6 @@ describe("martinTriageRunsTool", () => {
     });
   });
 
-  it("surfaces change-observation mismatches in verification results", async () => {
-    await withRunsRoot(async (runsRoot) => {
-      const loop = {
-        ...makeLoopRecord(),
-        loopId: "loop_observation_mismatch",
-        attempts: [
-          {
-            attemptId: "att_observation",
-            index: 1,
-            adapterId: "direct:test",
-            model: "gpt-5-mini",
-            startedAt: "2026-06-07T10:00:00.000Z",
-            completedAt: "2026-06-07T10:01:00.000Z"
-          }
-        ],
-        events: [
-          {
-            eventId: "evt_observation",
-            type: "observation.reconciled",
-            timestamp: "2026-06-07T10:01:00.000Z",
-            lifecycleState: "running",
-            payload: {
-              attemptId: "att_observation",
-              attemptIndex: 1,
-              observation: {
-                status: "mismatch",
-                summary: "Adapter-reported changes differed from repo observation.",
-                adapterReported: { available: true, changedFiles: [] },
-                repoObserved: { available: true, changedFiles: ["src/real.ts"] },
-                effectiveChangedFiles: ["src/real.ts"],
-                matchedFiles: [],
-                adapterOnlyFiles: [],
-                repoOnlyFiles: ["src/real.ts"]
-              }
-            }
-          },
-          {
-            eventId: "evt_verification",
-            type: "verification.completed",
-            timestamp: "2026-06-07T10:01:01.000Z",
-            lifecycleState: "completed",
-            payload: {
-              attemptId: "att_observation",
-              attemptIndex: 1,
-              passed: true,
-              summary: "Verification passed."
-            }
-          }
-        ]
-      };
-
-      await mkdir(join(runsRoot, loop.loopId), { recursive: true });
-      await writeFile(join(runsRoot, loop.loopId, "loop-record.json"), JSON.stringify(loop), "utf8");
-
-      const verification = await martinGetVerificationResultsTool({ loopId: loop.loopId });
-
-      expect(verification.verification.status).toBe("passed");
-      expect(verification.verification.observation?.status).toBe("mismatch");
-      expect(verification.verification.observation?.repoOnlyFiles).toEqual(["src/real.ts"]);
-      expect(verification.warnings).toContain(
-        "Change observation mismatch: adapter-reported files differ from repo-observed files."
-      );
-
-      const triage = await martinTriageRunsTool({ includeHealthy: true });
-
-      expect(triage.findings[0]?.reasonCodes).toContain("change_observation_mismatch");
-      expect(triage.findings[0]?.severity).toBe("high");
-    });
-  });
-
   it("distinguishes unreadable ledger evidence from absent ledger verification evidence", async () => {
     await withRunsRoot(async (runsRoot) => {
       const loop = {
@@ -842,7 +827,6 @@ describe("martinTriageRunsTool", () => {
 
   it(
     "detects tampering in canonical persisted runs and surfaces receipt scope",
-    { timeout: 30_000 },
     async () => {
       await withRunsRoot(async (runsRoot) => {
         const originalEnv = process.env.MARTIN_LIVE;
@@ -1237,69 +1221,29 @@ describe("martinTriageRunsTool", () => {
 // ---------------------------------------------------------------------------
 
 describe("runLoopTool", () => {
-  it("returns a loop outcome in stub mode (MARTIN_LIVE=false)", { timeout: 15_000 }, async () => {
-    // Set stub mode so the adapter doesn't try to spawn claude
-    const originalEnv = process.env.MARTIN_LIVE;
-    process.env.MARTIN_LIVE = "false";
-
-    try {
-      const result = await runLoopTool({
-        objective: "Add a console.log to index.ts",
-        allowedPaths: ["src/**"],
-        deniedPaths: ["docs/security/**"],
-        verificationPlan: [],
-        maxIterations: 1,
-        maxUsd: 5
-      });
-
-      // Stub adapter returns failed, so loop exits with budget_exit or diminishing_returns
-      expect(result.loopId).toMatch(/^loop_/u);
-      expect(typeof result.attempts).toBe("number");
-      expect(typeof result.costUsd).toBe("number");
-      expect(["completed", "exited", "failed"]).toContain(result.status);
-    } finally {
-      if (originalEnv === undefined) {
-        delete process.env.MARTIN_LIVE;
-      } else {
-        process.env.MARTIN_LIVE = originalEnv;
-      }
-    }
-  });
-
-  it("persists the same compiled effectivePolicy that preflight reports for equivalent inputs", { timeout: 15_000 }, async () => {
-    await withRunsRoot(async (runsRoot) => {
+  it("uses the injected proof-mode verifier spawn for verification-only contract tests", async () => {
+    await withRunsRoot(async () => {
       const originalEnv = process.env.MARTIN_LIVE;
       process.env.MARTIN_LIVE = "false";
+      const calls: Array<{ command: string; args: readonly string[]; options?: SpawnOptions }> = [];
+      __setProofModeVerifierSpawnImplForTests(createImmediateSpawn(calls));
 
       try {
-        const verifyCommand = `"${process.execPath}" -e "process.exit(0)"`;
-        const sharedInput = {
-          objective: "Scope-limited change",
-          workingDirectory: ".",
-          allowedPaths: ["src/**"],
-          deniedPaths: ["docs/**"],
-          verificationPlan: [verifyCommand],
-          maxIterations: 1,
-          maxUsd: 1
-        } as const;
+        await withMemoryRunStore(async (store) => {
+          __setRunStoreOverrideForTests(store);
 
-        const preflight = await martinPreflightTool(sharedInput);
-        const result = await runLoopTool(sharedInput);
-        const persistedPolicy = JSON.parse(
-          await readFile(
-            join(
-              runsRoot,
-              result.loopId,
-              "artifacts",
-              "attempt-001",
-              "execution-policy.json"
-            ),
-            "utf8"
-          )
-        );
+          const result = await runLoopTool({
+            objective: "Validate proof-mode verifier seams",
+            verificationPlan: ["node --version"],
+            maxIterations: 1,
+            maxUsd: 1
+          });
 
-        expect(result.effectivePolicy).toEqual(preflight.effectivePolicy);
-        expect(persistedPolicy).toEqual(preflight.effectivePolicy);
+          expect(result.loopId).toMatch(/^loop_/u);
+          expect(calls).toHaveLength(1);
+          expect(calls[0]?.command).toBe("node");
+          expect(calls[0]?.args).toEqual(["--version"]);
+        });
       } finally {
         if (originalEnv === undefined) {
           delete process.env.MARTIN_LIVE;
@@ -1310,20 +1254,29 @@ describe("runLoopTool", () => {
     });
   });
 
-  it("uses workspaceId and projectId when provided", { timeout: 15_000 }, async () => {
-    // Mock runMartin to avoid real execution
+  it("returns a loop outcome in stub mode (MARTIN_LIVE=false)", async () => {
+    // Set stub mode so the adapter doesn't try to spawn claude
     const originalEnv = process.env.MARTIN_LIVE;
     process.env.MARTIN_LIVE = "false";
 
     try {
-      const result = await runLoopTool({
-        objective: "Fix the bug",
-        workspaceId: "ws_custom",
-        projectId: "proj_custom",
-        maxIterations: 1
-      });
+      await withRunsRoot(async () => {
+        const result = await runLoopTool({
+          objective: "Add a console.log to index.ts",
+          allowedPaths: ["src/**"],
+          deniedPaths: ["docs/security/**"],
+          verificationPlan: [],
+          maxIterations: 1,
+          maxUsd: 5
+        });
 
-      expect(result.loopId).toBeTruthy();
+        // Stub adapter returns failed, so loop exits with budget_exit or diminishing_returns
+        expect(result.loopId).toMatch(/^loop_/u);
+        expect(typeof result.attempts).toBe("number");
+        expect(typeof result.costUsd).toBe("number");
+        expect(result.budget.softLimitUsd).toBe(5);
+        expect(["completed", "exited", "failed"]).toContain(result.status);
+      });
     } finally {
       if (originalEnv === undefined) {
         delete process.env.MARTIN_LIVE;
@@ -1333,7 +1286,36 @@ describe("runLoopTool", () => {
     }
   });
 
-  it("skips engine launch probing in proof mode", { timeout: 15_000 }, async () => {
+  it("uses workspaceId and projectId when provided", async () => {
+    // Mock runMartin to avoid real execution
+    const originalEnv = process.env.MARTIN_LIVE;
+    process.env.MARTIN_LIVE = "false";
+
+    try {
+      await withRunsRoot(async () =>
+        withMemoryRunStore(async (store) => {
+          __setRunStoreOverrideForTests(store);
+
+          const result = await runLoopTool({
+            objective: "Fix the bug",
+            workspaceId: "ws_custom",
+            projectId: "proj_custom",
+            maxIterations: 1
+          });
+
+          expect(result.loopId).toBeTruthy();
+        })
+      );
+    } finally {
+      if (originalEnv === undefined) {
+        delete process.env.MARTIN_LIVE;
+      } else {
+        process.env.MARTIN_LIVE = originalEnv;
+      }
+    }
+  });
+
+  it("skips engine launch probing in proof mode", async () => {
     const originalEnv = process.env.MARTIN_LIVE;
     process.env.MARTIN_LIVE = "false";
     const fakeCliDir = await mkdtemp(join(tmpdir(), "martin-mcp-cli-"));
@@ -1342,15 +1324,17 @@ describe("runLoopTool", () => {
     try {
       await installFakeCliProbe(fakeCliDir, "claude", markerPath);
 
-      await withPathPrefix(fakeCliDir, async () => {
-        const result = await runLoopTool({
-          objective: "Proof mode should not probe the requested engine",
-          maxIterations: 1
-        });
+      await withRunsRoot(async () =>
+        withPathPrefix(fakeCliDir, async () => {
+          const result = await runLoopTool({
+            objective: "Proof mode should not probe the requested engine",
+            maxIterations: 1
+          });
 
-        expect(result.loopId).toBeTruthy();
-        expect(result.attempts).toBeGreaterThan(0);
-      });
+          expect(result.loopId).toBeTruthy();
+          expect(result.attempts).toBeGreaterThan(0);
+        })
+      );
 
       await expect(stat(markerPath)).rejects.toThrow();
     } finally {
@@ -1364,20 +1348,22 @@ describe("runLoopTool", () => {
     }
   });
 
-  it("respects engine selection — codex adapter has different adapterId", { timeout: 15_000 }, async () => {
+  it("respects engine selection — codex adapter has different adapterId", async () => {
     // We can't run codex in CI, but we can verify the adapter wires correctly
     // by checking that the stub path still returns a result
     const originalEnv = process.env.MARTIN_LIVE;
     process.env.MARTIN_LIVE = "false";
 
     try {
-      const result = await runLoopTool({
-        objective: "Fix the bug",
-        engine: "codex",
-        maxIterations: 1
-      });
+      await withRunsRoot(async () => {
+        const result = await runLoopTool({
+          objective: "Fix the bug",
+          engine: "codex",
+          maxIterations: 1
+        });
 
-      expect(result.loopId).toBeTruthy();
+        expect(result.loopId).toBeTruthy();
+      });
     } finally {
       if (originalEnv === undefined) {
         delete process.env.MARTIN_LIVE;
@@ -1387,7 +1373,7 @@ describe("runLoopTool", () => {
     }
   });
 
-  it("persists repoRoot and path constraints into the loop record", { timeout: 15_000 }, async () => {
+  it("persists repoRoot and path constraints into the loop record", async () => {
     await withRunsRoot(async (runsRoot) => {
       const originalEnv = process.env.MARTIN_LIVE;
       process.env.MARTIN_LIVE = "false";

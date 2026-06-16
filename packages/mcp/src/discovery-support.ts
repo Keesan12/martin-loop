@@ -1,11 +1,5 @@
 import { resolveRunsRoot, type LedgerEvent, type LoopAttemptRecord, type LoopRunRecord } from "@martin/core";
-import type {
-  ChangeObservationReconciliation,
-  LoopArtifact,
-  LoopAttempt,
-  LoopEvent,
-  LoopTask
-} from "@martin/contracts";
+import type { LoopArtifact, LoopAttempt, LoopEvent, LoopTask } from "@martin/contracts";
 
 import {
   resolveSafeRepoRoot,
@@ -63,7 +57,6 @@ export interface MartinVerificationSnapshot {
   lifecycleState: string;
   passed?: boolean;
   summary?: string;
-  observation?: ChangeObservationReconciliation;
 }
 
 export interface MartinAttemptSnapshot {
@@ -216,8 +209,7 @@ function getVerificationEvents(loop: PersistedLoopRecord): LoopEvent[] {
 
 function toVerificationSnapshot(
   loop: PersistedLoopRecord,
-  event: LoopEvent,
-  ledgerEvents: LedgerEvent[] = []
+  event: LoopEvent
 ): MartinVerificationSnapshot | undefined {
   if (!isTrustedVerificationTimestamp(event.timestamp)) {
     return undefined;
@@ -239,21 +231,13 @@ function toVerificationSnapshot(
     return undefined;
   }
 
-  const observation = selectLatestObservationForAttempt(
-    loop,
-    ledgerEvents,
-    matchedAttempt.index,
-    matchedAttempt.attemptId
-  );
-
   return {
     ...(matchedAttempt.attemptId ? { attemptId: matchedAttempt.attemptId } : {}),
     attemptIndex: matchedAttempt.index,
     timestamp: event.timestamp,
     lifecycleState: event.lifecycleState,
     ...(typeof payload?.["passed"] === "boolean" ? { passed: payload["passed"] } : {}),
-    ...(typeof payload?.["summary"] === "string" ? { summary: payload["summary"] } : {}),
-    ...(observation ? { observation } : {})
+    ...(typeof payload?.["summary"] === "string" ? { summary: payload["summary"] } : {})
   };
 }
 
@@ -276,7 +260,7 @@ function collectVerificationSnapshots(
   }
 
   for (const event of getVerificationEvents(loop)) {
-    const snapshot = toVerificationSnapshot(loop, event, ledgerEvents);
+    const snapshot = toVerificationSnapshot(loop, event);
     if (!snapshot) {
       continue;
     }
@@ -287,7 +271,7 @@ function collectVerificationSnapshots(
   }
 
   for (const event of ledgerEvents.filter((candidate) => candidate.kind === "verification.completed")) {
-    const snapshot = ledgerEventToVerificationSnapshot(loop, event, ledgerEvents);
+    const snapshot = ledgerEventToVerificationSnapshot(loop, event);
     if (!snapshot) {
       continue;
     }
@@ -311,8 +295,7 @@ function collectVerificationSnapshots(
 
 function ledgerEventToVerificationSnapshot(
   loop: PersistedLoopRecord,
-  event: LedgerEvent,
-  ledgerEvents: LedgerEvent[] = []
+  event: LedgerEvent
 ): MartinVerificationSnapshot | undefined {
   if (!isTrustedVerificationTimestamp(event.timestamp)) {
     return undefined;
@@ -328,112 +311,13 @@ function ledgerEventToVerificationSnapshot(
     return undefined;
   }
 
-  const observation = selectLatestObservationForAttempt(
-    loop,
-    ledgerEvents,
-    matchedAttempt.index,
-    matchedAttempt.attemptId
-  );
-
   return {
     ...(matchedAttempt?.attemptId ? { attemptId: matchedAttempt.attemptId } : {}),
     ...(event.attemptIndex !== undefined ? { attemptIndex: event.attemptIndex } : {}),
     timestamp: event.timestamp,
     lifecycleState: loop.lifecycleState,
     ...(typeof payload?.["passed"] === "boolean" ? { passed: payload["passed"] } : {}),
-    ...(typeof payload?.["summary"] === "string" ? { summary: payload["summary"] } : {}),
-    ...(observation ? { observation } : {})
-  };
-}
-
-function selectLatestObservationForAttempt(
-  loop: PersistedLoopRecord,
-  ledgerEvents: LedgerEvent[],
-  attemptIndex: number,
-  attemptId?: string
-): ChangeObservationReconciliation | undefined {
-  const observationEvents = [
-    ...(loop.events ?? [])
-      .filter((event) => event.type === "observation.reconciled")
-      .map((event) => normalizeLoopObservation(loop, event)),
-    ...ledgerEvents
-      .filter((event) => event.kind === "observation.reconciled")
-      .map((event) => normalizeLedgerObservation(loop, event))
-  ]
-    .filter((candidate): candidate is ObservationSnapshot => candidate !== undefined)
-    .filter((candidate) =>
-      attemptId ? candidate.attemptId === attemptId : candidate.attemptIndex === attemptIndex
-    )
-    .sort((left, right) => new Date(left.timestamp).getTime() - new Date(right.timestamp).getTime());
-
-  return observationEvents.at(-1)?.observation;
-}
-
-interface ObservationSnapshot {
-  timestamp: string;
-  attemptId?: string;
-  attemptIndex: number;
-  observation: ChangeObservationReconciliation;
-}
-
-function normalizeLoopObservation(
-  loop: PersistedLoopRecord,
-  event: LoopEvent
-): ObservationSnapshot | undefined {
-  if (!isTrustedVerificationTimestamp(event.timestamp)) {
-    return undefined;
-  }
-
-  const payload = isRecord(event.payload) ? event.payload : undefined;
-  const attemptId = typeof payload?.["attemptId"] === "string" ? payload["attemptId"] : undefined;
-  const attemptIndex =
-    typeof payload?.["attemptIndex"] === "number" && Number.isInteger(payload["attemptIndex"])
-      ? payload["attemptIndex"]
-      : undefined;
-  const matchedAttempt = attemptId
-    ? loop.attempts.find((attempt) => attempt.attemptId === attemptId)
-    : attemptIndex !== undefined
-      ? loop.attempts.find((attempt) => attempt.index === attemptIndex)
-      : undefined;
-  const observation = payload?.["observation"];
-
-  if (!matchedAttempt || !isChangeObservationReconciliation(observation)) {
-    return undefined;
-  }
-
-  return {
-    timestamp: event.timestamp,
-    ...(matchedAttempt.attemptId ? { attemptId: matchedAttempt.attemptId } : {}),
-    attemptIndex: matchedAttempt.index,
-    observation
-  };
-}
-
-function normalizeLedgerObservation(
-  loop: PersistedLoopRecord,
-  event: LedgerEvent
-): ObservationSnapshot | undefined {
-  if (!isTrustedVerificationTimestamp(event.timestamp)) {
-    return undefined;
-  }
-
-  if (event.attemptIndex === undefined || !Number.isInteger(event.attemptIndex)) {
-    return undefined;
-  }
-
-  const matchedAttempt = loop.attempts.find((attempt) => attempt.index === event.attemptIndex);
-  const payload = isRecord(event.payload) ? event.payload : undefined;
-  const observation = payload?.["observation"];
-
-  if (!matchedAttempt || !isChangeObservationReconciliation(observation)) {
-    return undefined;
-  }
-
-  return {
-    timestamp: event.timestamp,
-    ...(matchedAttempt.attemptId ? { attemptId: matchedAttempt.attemptId } : {}),
-    attemptIndex: matchedAttempt.index,
-    observation
+    ...(typeof payload?.["summary"] === "string" ? { summary: payload["summary"] } : {})
   };
 }
 
@@ -505,37 +389,6 @@ function getLedgerWarnings(ledgerEvents: LedgerEvent[]): string[] {
   return Array.isArray(diagnostics.warnings)
     ? diagnostics.warnings.filter((warning): warning is string => typeof warning === "string")
     : [];
-}
-
-function isChangeObservationReconciliation(
-  value: unknown
-): value is ChangeObservationReconciliation {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  return typeof value["status"] === "string" &&
-    typeof value["summary"] === "string" &&
-    isObservationEvidence(value["adapterReported"]) &&
-    isObservationEvidence(value["repoObserved"]) &&
-    isStringArray(value["effectiveChangedFiles"]) &&
-    isStringArray(value["matchedFiles"]) &&
-    isStringArray(value["adapterOnlyFiles"]) &&
-    isStringArray(value["repoOnlyFiles"]);
-}
-
-function isObservationEvidence(
-  value: unknown
-): value is ChangeObservationReconciliation["adapterReported"] {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  return typeof value["available"] === "boolean" && isStringArray(value["changedFiles"]);
-}
-
-function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((entry) => typeof entry === "string");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

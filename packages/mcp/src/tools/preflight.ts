@@ -1,21 +1,21 @@
 import {
   probeCodexLaunch,
+  resolveCliCommandAvailability,
   type CodexHostPlatform
 } from "@martin/adapters";
-import { DEFAULT_BUDGET, type ExecutionPolicy } from "@martin/contracts";
-import type { AdapterCapabilityDescriptor } from "@martin/contracts";
 import { resolveRunsRoot } from "@martin/core";
 
-import { normalizeSafePathPatterns, resolveSafeRepoRoot } from "../server-validation.js";
+import { resolveSafeRepoRoot } from "../server-validation.js";
 import {
+  createSkippedCliAvailability,
   formatUsd,
   getEngineAvailability,
   resolveExecutionMode,
   type MartinEngine
 } from "./tool-support.js";
-import { compileMcpExecutionPolicy } from "./execution-policy.js";
 import {
   buildPlanProposal,
+  normalizeLoopBudget,
   buildRunContract,
   buildPolicyPackDefinition,
   inspectRepoSignals,
@@ -88,14 +88,34 @@ export interface MartinPreflightOutput {
     engineAvailability: {
       available: boolean;
       detail: string;
-      capabilities: AdapterCapabilityDescriptor;
       resolvedPath?: string;
+      candidatePaths?: string[];
     };
     codexDiagnostics?: {
+      selectedPath?: string;
       hostPlatform: CodexHostPlatform;
+      installKind: string;
       nativeInstallValid: boolean;
+      invocationMode: string;
+      sandboxMode: string;
+      sandboxCompatible: boolean;
+      nativeDependencyStatus?: string;
+      nativeDependencyPackage?: string;
       launchReady: boolean;
       summary: string;
+      remediation?: string;
+      candidateProbeResults?: Array<{
+        path: string;
+        installKind: string;
+        invocationMode: string;
+        nativeInstallValid: boolean;
+        sandboxCompatible: boolean;
+        launchReady: boolean;
+        summary: string;
+        remediation?: string;
+        nativeDependencyStatus?: string;
+        nativeDependencyPackage?: string;
+      }>;
     };
     runsRoot: string;
     pathScope: {
@@ -113,7 +133,6 @@ export interface MartinPreflightOutput {
   risk: MartinRiskAssessment;
   runContract: MartinRunContract;
   plan: MartinPlanProposal;
-  effectivePolicy: ExecutionPolicy;
 }
 
 export async function martinPreflightTool(
@@ -122,9 +141,16 @@ export async function martinPreflightTool(
   const executionMode = resolveExecutionMode();
   const workspaceRoot = resolveSafeRepoRoot();
   const workingDirectory = resolveSafeRepoRoot(input.workingDirectory);
-  const signals = inspectRepoSignals(workingDirectory);
+  const signals = inspectRepoSignals(workingDirectory, {
+    includeHostAvailability: executionMode.liveMode
+  });
   const engine = input.engine ?? "claude";
-  const engineAvailability = getEngineAvailability(engine);
+  const engineAvailability =
+    executionMode.liveMode
+      ? engine === "codex"
+        ? resolveCliCommandAvailability("codex")
+        : getEngineAvailability(engine)
+      : createSkippedCliAvailability(engine);
   const codexProbe =
     executionMode.liveMode && engine === "codex" && engineAvailability.available
       ? probeCodexLaunch({
@@ -133,19 +159,15 @@ export async function martinPreflightTool(
         })
       : undefined;
   const warnings: string[] = [];
-  const allowedPaths = normalizeSafePathPatterns(input.allowedPaths, "allowedPaths") ?? [];
-  const deniedPaths = normalizeSafePathPatterns(input.deniedPaths, "deniedPaths") ?? [];
+  const allowedPaths = input.allowedPaths ?? [];
+  const deniedPaths = input.deniedPaths ?? [];
   const overlappingScopes = allowedPaths.filter((candidate) => deniedPaths.includes(candidate));
-  const effectivePolicy = compileMcpExecutionPolicy({
-    workingDirectory,
+
+  const budget = normalizeLoopBudget({
     maxUsd: input.maxUsd,
     maxIterations: input.maxIterations,
-    maxTokens: input.maxTokens,
-    verificationPlan: input.verificationPlan,
-    allowedPaths,
-    deniedPaths
+    maxTokens: input.maxTokens
   });
-  const budget = effectivePolicy.budget;
 
   if (!executionMode.liveMode) {
     warnings.push("Proof mode is active; preflight only proves configuration shape, not live CLI readiness.");
@@ -155,11 +177,11 @@ export async function martinPreflightTool(
     warnings.push(codexProbe.summary);
   }
 
-  if (effectivePolicy.task.verificationPlan.length === 0) {
+  if ((input.verificationPlan?.length ?? 0) === 0) {
     warnings.push("No verificationPlan was provided; Martin can run, but completion confidence will be lower.");
   }
 
-  if ((effectivePolicy.task.allowedPaths?.length ?? 0) === 0) {
+  if ((input.allowedPaths?.length ?? 0) === 0) {
     warnings.push("No allowedPaths were provided; Martin will rely on the broader repo root scope.");
   }
   if (overlappingScopes.length > 0) {
@@ -168,17 +190,8 @@ export async function martinPreflightTool(
     );
   }
 
-  const normalizedInput = {
-    ...input,
-    maxUsd: budget.maxUsd,
-    maxIterations: budget.maxIterations,
-    maxTokens: budget.maxTokens,
-    verificationPlan: effectivePolicy.task.verificationPlan,
-    allowedPaths: effectivePolicy.task.allowedPaths,
-    deniedPaths: effectivePolicy.task.deniedPaths
-  };
-  const plan = buildPlanProposal(workingDirectory, normalizedInput);
-  const runContract = buildRunContract(workingDirectory, normalizedInput);
+  const plan = buildPlanProposal(workingDirectory, input, { signals });
+  const runContract = buildRunContract(workingDirectory, input, { signals, plan });
   const policy = buildPolicyPackDefinition(input.policyPack, signals);
 
   const engineReady =
@@ -217,9 +230,9 @@ export async function martinPreflightTool(
       engine,
       ...(input.model ? { model: input.model } : {}),
       budget,
-      verificationPlan: effectivePolicy.task.verificationPlan,
-      ...(effectivePolicy.task.allowedPaths ? { allowedPaths: effectivePolicy.task.allowedPaths } : {}),
-      ...(effectivePolicy.task.deniedPaths ? { deniedPaths: effectivePolicy.task.deniedPaths } : {}),
+      verificationPlan: input.verificationPlan ?? [],
+      ...(input.allowedPaths ? { allowedPaths: input.allowedPaths } : {}),
+      ...(input.deniedPaths ? { deniedPaths: input.deniedPaths } : {}),
       workspaceId: input.workspaceId ?? "ws_mcp",
       projectId: input.projectId ?? "proj_mcp"
     },
@@ -228,26 +241,41 @@ export async function martinPreflightTool(
       engineAvailability: {
         available: engineAvailability.available,
         detail: engineAvailability.detail,
-        capabilities: engineAvailability.capabilities,
-        ...(engineAvailability.resolvedPath
-          ? { resolvedPath: engineAvailability.resolvedPath }
+        ...(engineAvailability.resolvedPath ? { resolvedPath: engineAvailability.resolvedPath } : {}),
+        ...(engineAvailability.candidatePaths?.length
+          ? { candidatePaths: engineAvailability.candidatePaths }
           : {})
       },
       ...(codexProbe
         ? {
             codexDiagnostics: {
+              selectedPath: codexProbe.command,
               hostPlatform: codexProbe.diagnosis.hostPlatform,
+              installKind: codexProbe.diagnosis.installKind,
               nativeInstallValid: codexProbe.diagnosis.nativeInstallValid,
+              invocationMode: codexProbe.diagnosis.invocationMode,
+              sandboxMode: codexProbe.diagnosis.sandboxMode,
+              sandboxCompatible: codexProbe.diagnosis.sandboxCompatible,
+              ...(codexProbe.diagnosis.nativeDependencyStatus
+                ? { nativeDependencyStatus: codexProbe.diagnosis.nativeDependencyStatus }
+                : {}),
+              ...(codexProbe.diagnosis.nativeDependencyPackage
+                ? { nativeDependencyPackage: codexProbe.diagnosis.nativeDependencyPackage }
+                : {}),
               launchReady: codexProbe.ok,
-              summary: codexProbe.summary
+              summary: codexProbe.summary,
+              ...(codexProbe.diagnosis.remediation ? { remediation: codexProbe.diagnosis.remediation } : {}),
+              ...(codexProbe.candidateProbeResults?.length
+                ? { candidateProbeResults: codexProbe.candidateProbeResults }
+                : {})
             }
           }
         : {}),
       runsRoot: resolveRunsRoot(process.env),
       pathScope: {
         repoRoot: workingDirectory,
-        allowedPathsCount: effectivePolicy.task.allowedPaths?.length ?? 0,
-        deniedPathsCount: effectivePolicy.task.deniedPaths?.length ?? 0,
+        allowedPathsCount: allowedPaths.length,
+        deniedPathsCount: deniedPaths.length,
         hasScopeConflicts: overlappingScopes.length > 0
       },
       expectedRunLayout: {
@@ -258,7 +286,6 @@ export async function martinPreflightTool(
     policy,
     risk: runContract.risk,
     runContract,
-    plan,
-    effectivePolicy
+    plan
   };
 }

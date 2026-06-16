@@ -24,3 +24,4 @@
 - [ ] I kept the change focused and easy to review.
 - [ ] I updated docs or examples if behavior changed.
 - [ ] I did not include secrets, tokens, local paths, or non-public workspace details.
+- [ ] CodeRabbit review workflow ran for this PR, or I documented the blocker.

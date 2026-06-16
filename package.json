@@ -3,26 +3,38 @@
   "private": false,
   "version": "0.3.2",
   "type": "module",
-  "description": "Open-source command center for governed AI coding agents: CLI, MCP, verifier gates, and run receipts.",
+  "description": "Open-source command center for governed AI coding agents with built-in onboarding, hard gates, MCP, and shareable run receipts.",
   "packageManager": "pnpm@10.33.0",
   "keywords": [
-    "ai",
-    "agent",
-    "coding-loop",
-    "llm",
-    "automation",
+    "mcp",
+    "model-context-protocol",
+    "ai-coding-agents",
+    "agent-runtime",
+    "agent-governance",
+    "budget-enforcement",
+    "verifier-gates",
+    "audit-trail",
+    "run-receipts",
+    "agent-receipts",
+    "claude-code",
+    "codex",
+    "llmops",
     "cli"
   ],
-  "author": "Vakeesan Mahalingam and Gobi Shanthan",
+  "author": "MartinLoop contributors",
   "license": "Apache-2.0",
   "homepage": "https://martinloop.com/",
   "repository": {
     "type": "git",
     "url": "https://github.com/Keesan12/martin-loop.git"
   },
+  "bugs": {
+    "url": "https://github.com/Keesan12/martin-loop/issues"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
+    "martin": "./dist/bin/martin-loop.js",
     "martin-loop": "./dist/bin/martin-loop.js"
   },
   "exports": {
@@ -43,10 +55,16 @@
     "access": "public"
   },
   "scripts": {
-    "build": "pnpm -r --workspace-concurrency=1 build && node ./scripts/build-public-facade.mjs",
+    "build": "pnpm --filter @martin/contracts build && pnpm --filter @martin/core build && pnpm --filter @martin/adapters build && pnpm --filter @martin/benchmarks build && pnpm --filter @martin/cli build && pnpm --filter @martinloop/mcp build && node ./scripts/build-public-facade.mjs",
+    "bench:build": "pnpm --filter @martin/benchmarks build",
+    "bench:test": "pnpm --filter @martin/benchmarks test",
+    "bench:eval": "pnpm --filter @martin/benchmarks eval",
+    "bench:report:ralphy": "pnpm --filter @martin/benchmarks report:ralphy",
     "prepack": "pnpm build && node ./scripts/root-release-guard.mjs --pack",
-    "test": "node ./scripts/failure-taxonomy.mjs --check && pnpm -r --workspace-concurrency=1 test && node --test --test-concurrency=1 scripts/tests/*.mjs",
+    "test": "pnpm -r --workspace-concurrency=1 test && node --test --test-concurrency=1 scripts/tests/*.mjs",
     "lint": "pnpm -r lint",
+    "public:copy-scan": "node ./scripts/public-copy-scan.mjs",
+    "public:git-surface": "node ./scripts/public-git-surface-guard.mjs",
     "oss:validate": "node ./scripts/oss-boundary.mjs",
     "public:smoke": "node ./scripts/public-facade-smoke.mjs",
     "mcp:pack:smoke": "pnpm --filter @martinloop/mcp smoke:pack",
@@ -54,11 +72,10 @@
     "mcp:published:smoke:pack": "pnpm --filter @martinloop/mcp smoke:published:pack",
     "release:validate-local": "node ./scripts/rc-validation.mjs",
     "release:validate-local:install": "node ./scripts/rc-validation.mjs --install",
-    "release:matrix:local": "node ./scripts/release-matrix.mjs",
     "release:root:guard": "node ./scripts/root-release-guard.mjs --pack",
-    "run:cli": "pnpm --filter @martin/cli dev",
-    "taxonomy:sync": "node ./scripts/failure-taxonomy.mjs --write",
-    "taxonomy:check": "node ./scripts/failure-taxonomy.mjs --check"
+    "release:validate:platforms": "node ./scripts/release-matrix.mjs",
+    "release:matrix:local": "node ./scripts/release-matrix.mjs",
+    "run:cli": "pnpm --filter @martin/cli dev"
   },
   "devDependencies": {
     "@types/node": "^22.13.10",
