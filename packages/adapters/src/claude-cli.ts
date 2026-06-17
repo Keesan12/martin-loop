@@ -533,7 +533,7 @@ export interface AgentCliAdapterOptions {
   workingDirectory?: string;
   /** Timeout for the agent subprocess in ms. Defaults to 300_000 (5 min). */
   timeoutMs?: number;
-  /** Timeout per verification command in ms. Defaults to 60_000 (1 min). */
+  /** Timeout per verification command in ms. Defaults to 120_000 (2 min). */
   verifyTimeoutMs?: number;
   /** Human-readable label shown in loop records. */
   label?: string;
@@ -617,7 +617,7 @@ export interface GeminiCliAdapterOptions {
 export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAdapter {
   const workingDirectory = options.workingDirectory ?? process.cwd();
   const timeoutMs = options.timeoutMs ?? 300_000;
-  const verifyTimeoutMs = options.verifyTimeoutMs ?? 60_000;
+  const verifyTimeoutMs = options.verifyTimeoutMs ?? 120_000;
   const adapterId = `agent-cli:${options.adapterIdSuffix ?? options.command}`;
   const supportsJsonOutput = options.supportsJsonOutput === true;
   const supportsUsageSettlement =
