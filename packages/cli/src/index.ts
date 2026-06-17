@@ -928,6 +928,27 @@ async function executeRunCommand(
   const preRunWarnings: string[] = [];
 
   if (engineRequired && !resolvedRequest.unsafeAllowUnguardedRun) {
+    const bootstrap = await autoBootstrapGovernedRun({
+      request: resolvedRequest,
+      environment: cliEnvironment,
+      receiptScope
+    });
+    if (bootstrap.warnings.length > 0) {
+      preRunWarnings.push(...bootstrap.warnings);
+    }
+    if (!bootstrap.ready) {
+      throw new CliCommandError(
+        "policy_blocked",
+        "Governed run preflight blocked execution. Resolve the blocking issues and retry.",
+        {
+          suggestion: buildPreflightSuggestion(resolvedRequest.objective, resolvedRequest.verificationPlan),
+          details: {
+            blockingIssues: bootstrap.blockingIssues
+          }
+        }
+      );
+    }
+
     const gate = await evaluateCliRunGate({
       runsRoot: cliEnvironment.runsRoot,
       workingDirectory: cliEnvironment.workingDirectory,
@@ -1092,6 +1113,126 @@ async function executeRunCommand(
     quiet: result.loop.loopId,
     warnings
   });
+}
+
+function buildPreflightSuggestion(objective: string, verificationPlan: string[]): string {
+  const verify = verificationPlan[0] ? ` --verify "${verificationPlan[0]}"` : "";
+  return `martin-loop preflight "${objective}"${verify}`;
+}
+
+function describeWorkflowPersistenceIssue(step: "doctor" | "session-start" | "preflight"): string {
+  if (step === "doctor") {
+    return "MartinLoop could not persist the doctor receipt needed for governed execution.";
+  }
+  if (step === "session-start") {
+    return "MartinLoop could not persist the session-start receipt needed for governed execution.";
+  }
+  return "MartinLoop could not persist the preflight receipt needed for governed execution.";
+}
+
+async function autoBootstrapGovernedRun(input: {
+  request: RunCommandRequest;
+  environment: ReturnType<typeof resolveCliEnvironment>;
+  receiptScope: ReturnType<typeof buildCliReceiptScope>;
+}): Promise<{
+  ready: boolean;
+  blockingIssues: string[];
+  warnings: string[];
+}> {
+  const preflightResult = await executePreflightCommand(input.request, "json");
+  let payload: {
+    ready?: boolean;
+    blockingIssues?: unknown;
+    warnings?: unknown;
+  } = {};
+  try {
+    payload = JSON.parse(preflightResult.stdout) as {
+      ready?: boolean;
+      blockingIssues?: unknown;
+      warnings?: unknown;
+    };
+  } catch {
+    return {
+      ready: false,
+      blockingIssues: ["Unable to parse preflight output."],
+      warnings: []
+    };
+  }
+
+  const blockingIssues = Array.isArray(payload.blockingIssues)
+    ? payload.blockingIssues.filter((item): item is string => typeof item === "string")
+    : [];
+  const warnings = Array.isArray(payload.warnings)
+    ? payload.warnings.filter((item): item is string => typeof item === "string")
+    : [];
+  if (payload.ready !== true) {
+    return {
+      ready: false,
+      blockingIssues,
+      warnings
+    };
+  }
+
+  const persistenceWarnings: string[] = [];
+  await recordCliWorkflowStep({
+    runsRoot: input.environment.runsRoot,
+    step: "doctor",
+    workingDirectory: input.environment.workingDirectory,
+    engine: input.environment.engine,
+    receiptScope: input.receiptScope
+  }).catch((error: unknown) => {
+    persistenceWarnings.push(
+      `${describeWorkflowPersistenceIssue("doctor")} ${error instanceof Error ? error.message : String(error)}`
+    );
+  });
+
+  await recordCliWorkflowStep({
+    runsRoot: input.environment.runsRoot,
+    step: "session-start",
+    workingDirectory: input.environment.workingDirectory,
+    engine: input.environment.engine,
+    receiptScope: input.receiptScope
+  }).catch((error: unknown) => {
+    persistenceWarnings.push(
+      `${describeWorkflowPersistenceIssue("session-start")} ${error instanceof Error ? error.message : String(error)}`
+    );
+  });
+
+  const gate = await evaluateCliRunGate({
+    runsRoot: input.environment.runsRoot,
+    workingDirectory: input.environment.workingDirectory,
+    objective: input.request.objective,
+    engine: input.environment.engine,
+    verificationPlan: input.request.verificationPlan,
+    mutationMode: input.request.mutationMode,
+    receiptScope: input.receiptScope,
+    allowedPaths: input.request.allowedPaths,
+    deniedPaths: input.request.deniedPaths,
+    budget: input.request.budget
+  });
+
+  if (!gate.allowed) {
+    const gateIssues =
+      gate.missingSteps.length > 0
+        ? gate.missingSteps
+            .filter(
+              (step): step is "doctor" | "session-start" | "preflight" =>
+                step === "doctor" || step === "session-start" || step === "preflight"
+            )
+            .map((step) => describeWorkflowPersistenceIssue(step))
+        : [gate.message];
+    return {
+      ready: false,
+      blockingIssues: persistenceWarnings.length > 0 ? persistenceWarnings : gateIssues,
+      warnings
+    };
+  }
+
+  return {
+    ready: true,
+    blockingIssues: [],
+    warnings: [...warnings, ...persistenceWarnings]
+  };
 }
 
 async function executeInspectCommand(
