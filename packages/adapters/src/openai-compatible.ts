@@ -131,7 +131,7 @@ export interface OpenAiCompatibleAdapterOptions {
   systemPrompt?: string;
   /** Request timeout in milliseconds. Default: 300_000 (5 min). */
   timeoutMs?: number;
-  /** Verifier timeout in milliseconds. Default: 60_000. */
+  /** Verifier timeout in milliseconds. Default: 120_000. */
   verifyTimeoutMs?: number;
   /** Working directory for git artifact collection and verification. */
   workingDirectory?: string;
@@ -221,7 +221,7 @@ export function createOpenAiCompatibleAdapter(
 ): MartinAdapter {
   const workingDirectory = options.workingDirectory ?? process.cwd();
   const timeoutMs = options.timeoutMs ?? 300_000;
-  const verifyTimeoutMs = options.verifyTimeoutMs ?? 60_000;
+  const verifyTimeoutMs = options.verifyTimeoutMs ?? 120_000;
   const systemPrompt = options.systemPrompt ?? DEFAULT_SYSTEM_PROMPT;
   const fetchFn = options.fetchImpl ?? globalThis.fetch;
   const runtimeConfig = resolveOpenAiCompatibleRuntimeConfig();
