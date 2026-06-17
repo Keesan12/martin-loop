@@ -14,7 +14,7 @@ export function createVerifierOnlyAdapter(
   options: VerifierOnlyAdapterOptions = {}
 ): MartinAdapter {
   const workingDirectory = options.workingDirectory ?? process.cwd();
-  const verifyTimeoutMs = options.verifyTimeoutMs ?? 60_000;
+  const verifyTimeoutMs = options.verifyTimeoutMs ?? 120_000;
 
   return {
     adapterId: "direct:verifier:verify-only",
