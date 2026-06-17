@@ -60,6 +60,24 @@ async function withScratchEnv<T>(vars: Record<string, string>, fn: () => Promise
   }
 }
 
+async function withEnvVars<T>(vars: Record<string, string>, fn: () => Promise<T>): Promise<T> {
+  const originals = new Map(Object.keys(vars).map((key) => [key, process.env[key]]));
+  for (const [key, value] of Object.entries(vars)) {
+    process.env[key] = value;
+  }
+  try {
+    return await fn();
+  } finally {
+    for (const [key, original] of originals) {
+      if (original === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = original;
+      }
+    }
+  }
+}
+
 async function withRunsRoot<T>(fn: (runsRoot: string) => Promise<T>): Promise<T> {
   const previousRunsRoot = process.env.MARTIN_RUNS_DIR;
   const previousGroundingRoot = process.env.MARTIN_GROUNDING_DIR;
@@ -407,6 +425,222 @@ describe("--engine flag", () => {
             expect(verifyResult.exitCode).toBe(0);
             const verificationPayload = JSON.parse(verifyResult.stdout);
             expect(verificationPayload.verification.status).toBe("passed");
+          }
+        )
+      )
+    );
+  });
+
+  it("accepts an explicit session-start -> preflight -> run governed receipt chain", { timeout: 45000 }, async () => {
+    await withTempDir((workspace) =>
+      withFakeCodexCli(() =>
+        withScratchEnv(
+          {
+            MARTIN_INTEGRITY_KEY_DIR: join(workspace, ".martin-receipt-integrity"),
+            MARTIN_GROUNDING_DIR: join(workspace, ".martin-grounding")
+          },
+          async () => {
+            initializeGitRepo(workspace);
+            const runsDir = join(workspace, ".martin-runs");
+
+            const sessionStartResult = await withEnv("MARTIN_LIVE", "true", () =>
+              executeCli([
+                "--json",
+                "session-start",
+                "--cwd",
+                workspace,
+                "--runs-dir",
+                runsDir
+              ])
+            );
+            expect(sessionStartResult.exitCode).toBe(0);
+
+            const preflightResult = await withEnv("MARTIN_LIVE", "true", () =>
+              executeCli([
+                "--json",
+                "preflight",
+                "--engine",
+                "codex",
+                "--cwd",
+                workspace,
+                "--runs-dir",
+                runsDir,
+                "--objective",
+                "Fix the bug",
+                "--verify",
+                NOOP_VERIFIER,
+                "--max-iterations",
+                "1",
+                "--budget-usd",
+                "2"
+              ])
+            );
+            expect(preflightResult.exitCode).toBe(0);
+
+            const workflowStateAfterPreflight = await readWorkflowState(runsDir);
+            const cliStateAfterPreflight = (workflowStateAfterPreflight?.cli ?? {}) as Record<string, { workingDirectory?: string }>;
+            const normalizedWorkingDirectory = normalizeWorkingDirectoryForExpectation(workspace);
+            expect(cliStateAfterPreflight["session-start"]?.workingDirectory).toBe(normalizedWorkingDirectory);
+            expect(cliStateAfterPreflight.preflight?.workingDirectory).toBe(normalizedWorkingDirectory);
+
+            const runResult = await withEnv("MARTIN_LIVE", "true", () =>
+              executeCli([
+                "--json",
+                "run",
+                "--engine",
+                "codex",
+                "--cwd",
+                workspace,
+                "--runs-dir",
+                runsDir,
+                "--objective",
+                "Fix the bug",
+                "--verify",
+                NOOP_VERIFIER,
+                "--max-iterations",
+                "1",
+                "--budget-usd",
+                "2"
+              ])
+            );
+
+            expect(runResult.exitCode).toBe(0);
+            const payload = JSON.parse(runResult.stdout);
+            expect(payload.command).toBe("run");
+            expect(payload.environment.engine).toBe("codex");
+            expect(payload.environment.liveMode).toBe("live");
+          }
+        )
+      )
+    );
+  });
+
+  it("keeps governed receipts valid when guardrails normalize configured budgets", { timeout: 45000 }, async () => {
+    await withTempDir((workspace) =>
+      withFakeCodexCli(() =>
+        withScratchEnv(
+          {
+            MARTIN_INTEGRITY_KEY_DIR: join(workspace, ".martin-receipt-integrity"),
+            MARTIN_GROUNDING_DIR: join(workspace, ".martin-grounding")
+          },
+          async () => {
+            initializeGitRepo(workspace);
+            await writeFile(
+              join(workspace, "martin.config.yaml"),
+              [
+                "budget:",
+                "  maxUsd: 2",
+                "  softLimitUsd: 2",
+                "  maxIterations: 1",
+                "  maxTokens: 1000",
+                ""
+              ].join("\n"),
+              "utf8"
+            );
+            const runsDir = join(workspace, ".martin-runs");
+
+            const preflightResult = await withEnv("MARTIN_LIVE", "true", () =>
+              executeCli([
+                "--json",
+                "preflight",
+                "--engine",
+                "codex",
+                "--cwd",
+                workspace,
+                "--runs-dir",
+                runsDir,
+                "--objective",
+                "Verify the outreach runtime",
+                "--verify",
+                NOOP_VERIFIER
+              ])
+            );
+            expect(preflightResult.exitCode).toBe(0);
+
+            const runResult = await withEnv("MARTIN_LIVE", "true", () =>
+              executeCli([
+                "--json",
+                "run",
+                "--engine",
+                "codex",
+                "--cwd",
+                workspace,
+                "--runs-dir",
+                runsDir,
+                "--objective",
+                "Verify the outreach runtime",
+                "--verify",
+                NOOP_VERIFIER
+              ])
+            );
+
+            expect(runResult.exitCode).toBe(0);
+          }
+        )
+      )
+    );
+  });
+
+  it("keeps governed receipts valid when INIT_CWD changes between preflight and run", { timeout: 45000 }, async () => {
+    await withTempDir((workspace) =>
+      withFakeCodexCli(() =>
+        withScratchEnv(
+          {
+            MARTIN_INTEGRITY_KEY_DIR: join(workspace, ".martin-receipt-integrity"),
+            MARTIN_GROUNDING_DIR: join(workspace, ".martin-grounding")
+          },
+          async () => {
+            initializeGitRepo(workspace);
+            const runsDir = join(workspace, ".martin-runs");
+            const alternateInvocationRoot = join(workspace, "tools");
+            await writeFile(join(workspace, ".gitkeep"), "", "utf8");
+
+            const preflightResult = await withEnvVars(
+              {
+                MARTIN_LIVE: "true",
+                INIT_CWD: workspace
+              },
+              () =>
+                executeCli([
+                  "--json",
+                  "preflight",
+                  "--engine",
+                  "codex",
+                  "--cwd",
+                  workspace,
+                  "--runs-dir",
+                  runsDir,
+                  "--objective",
+                  "Verify the outreach runtime",
+                  "--verify",
+                  NOOP_VERIFIER
+                ])
+            );
+            expect(preflightResult.exitCode).toBe(0);
+
+            const runResult = await withEnvVars(
+              {
+                MARTIN_LIVE: "true",
+                INIT_CWD: alternateInvocationRoot
+              },
+              () =>
+                executeCli([
+                  "--json",
+                  "run",
+                  "--engine",
+                  "codex",
+                  "--cwd",
+                  workspace,
+                  "--runs-dir",
+                  runsDir,
+                  "--objective",
+                  "Verify the outreach runtime",
+                  "--verify",
+                  NOOP_VERIFIER
+                ])
+            );
+
+            expect(runResult.exitCode).toBe(0);
           }
         )
       )
