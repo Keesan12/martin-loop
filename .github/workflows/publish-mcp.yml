@@ -59,7 +59,9 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Guard public git surface
-        run: pnpm public:git-surface
+        run: |
+          pnpm public:git-surface
+          pnpm public:portability-guard
 
       - name: Verify MCP package
         run: |

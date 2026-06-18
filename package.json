@@ -66,6 +66,7 @@
     "lint": "pnpm -r lint",
     "public:copy-scan": "node ./scripts/public-copy-scan.mjs",
     "public:git-surface": "node ./scripts/public-git-surface-guard.mjs",
+    "public:portability-guard": "node ./scripts/public-portability-guard.mjs",
     "public:readme-cta-guard": "node ./scripts/readme-cta-guard.mjs",
     "oss:validate": "node ./scripts/oss-boundary.mjs && pnpm public:readme-cta-guard",
     "public:smoke": "node ./scripts/public-facade-smoke.mjs",
