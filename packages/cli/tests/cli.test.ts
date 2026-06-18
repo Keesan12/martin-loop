@@ -147,6 +147,50 @@ describe("parseCliArguments", () => {
     expect(parseCliArguments(["preflight", "--help"])).toEqual({ command: "help" });
     expect(parseCliArguments(["preflight", "-h"])).toEqual({ command: "help" });
   });
+  it("parses onboarding commands and objective shorthand", () => {
+    expect(parseCliArguments(["start"])).toEqual({ command: "start" });
+    expect(parseCliArguments(["env"])).toEqual({ command: "env" });
+    expect(parseCliArguments(["review"])).toEqual({
+      command: "review",
+      selector: { latest: true }
+    });
+    expect(parseCliArguments(["receipts", "explain"])).toEqual({
+      command: "receipts_explain",
+      selector: { latest: true }
+    });
+    expect(parseCliArguments(["fix flaky tests", "--proof", "--verify", "npm test"])).toEqual({
+      command: "run",
+      request: expect.objectContaining({
+        objective: "fix flaky tests",
+        liveMode: "proof",
+        verificationPlan: ["npm test"]
+      })
+    });
+  });
+
+  it("parses MCP install with paid-remote profile and experimental host flag", () => {
+    expect(
+      parseCliArguments([
+        "mcp",
+        "install",
+        "--host",
+        "cursor",
+        "--transport",
+        "remote",
+        "--profile",
+        "paid-remote",
+        "--experimental-remote-hosts"
+      ])
+    ).toEqual({
+      command: "mcp_install",
+      host: "cursor",
+      scope: "user",
+      transport: "remote",
+      profile: "paid-remote",
+      experimentalRemoteHosts: true,
+      dryRun: false
+    });
+  });
 });
 
 describe("executeCli", () => {
@@ -156,6 +200,22 @@ describe("executeCli", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("martin runs verify (--loop-id <id> | --file <path> | --latest) [options]");
     expect(result.stdout).toContain("martin start [options]");
+    expect(result.stdout).toContain("--experimental-remote-hosts");
+  });
+
+  it("blocks remote MCP config for cursor without explicit experimental opt-in", async () => {
+    const result = await executeCli([
+      "mcp",
+      "print-config",
+      "--host",
+      "cursor",
+      "--transport",
+      "remote"
+    ]);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("experimental");
+    expect(result.stderr).toContain("--experimental-remote-hosts");
   });
 
   it("prints the public root package version", async () => {

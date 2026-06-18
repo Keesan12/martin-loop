@@ -100,6 +100,7 @@ export interface MartinMcpConfigInput {
   profile?: MartinMcpProfile;
   remoteUrl?: string;
   remoteTokenEnv?: string;
+  experimentalRemoteHosts?: boolean;
   platform?: MartinMcpPlatform;
 }
 
@@ -114,6 +115,7 @@ export interface MartinMcpInstallPlan extends Required<Omit<MartinMcpConfigInput
 
 const DEFAULT_REMOTE_URL = "https://remote.martinloop.local/mcp";
 const DEFAULT_REMOTE_TOKEN_ENV = "MARTIN_REMOTE_TOKEN";
+const REMOTE_EXPERIMENTAL_HOSTS = new Set<MartinMcpHost>(["cursor", "copilot", "continue"]);
 
 export function buildMcpInstallPlan(input: MartinMcpConfigInput): MartinMcpInstallPlan {
   const normalized = normalizeInput(input);
@@ -149,6 +151,12 @@ export async function installMcpConfig(
       return plan;
     }
 
+    const merged = mergeHostConfig(plan.host, plan.serverId, existing, plan.content);
+    if (merged) {
+      await writeFile(plan.targetPath, merged, "utf8");
+      return plan;
+    }
+
     throw new CliCommandError(
       "environment",
       `Refusing to overwrite existing MCP config: ${plan.targetPath}`,
@@ -176,6 +184,7 @@ function normalizeInput(input: MartinMcpConfigInput): Required<Omit<MartinMcpCon
     profile: input.profile ?? "minimal",
     remoteUrl: input.remoteUrl ?? DEFAULT_REMOTE_URL,
     remoteTokenEnv: input.remoteTokenEnv ?? DEFAULT_REMOTE_TOKEN_ENV,
+    experimentalRemoteHosts: input.experimentalRemoteHosts ?? false,
     platform: input.platform ?? detectPlatform()
   };
 }
@@ -468,17 +477,26 @@ function buildCursorConfigSnippet(
   input: Required<Omit<MartinMcpConfigInput, "remoteUrl">> & { remoteUrl?: string }
 ): string {
   const launcher = buildStdioLauncher(input.platform);
-  const serverId = "martin-loop";
+  const serverId = input.transport === "remote" ? "martin-loop-remote" : "martin-loop";
   return (
     JSON.stringify(
       {
         mcpServers: {
           [serverId]: {
-            command: launcher.command,
-            args: launcher.args,
-            env: {
-              MARTIN_RUNS_DIR: input.runsRoot
-            }
+            ...(input.transport === "remote"
+              ? {
+                  url: input.remoteUrl ?? DEFAULT_REMOTE_URL,
+                  headers: {
+                    Authorization: `Bearer $${input.remoteTokenEnv}`
+                  }
+                }
+              : {
+                  command: launcher.command,
+                  args: launcher.args,
+                  env: {
+                    MARTIN_RUNS_DIR: input.runsRoot
+                  }
+                })
           }
         }
       },
@@ -498,17 +516,27 @@ function buildCopilotConfigSnippet(
   input: Required<Omit<MartinMcpConfigInput, "remoteUrl">> & { remoteUrl?: string }
 ): string {
   const launcher = buildStdioLauncher(input.platform);
-  const serverId = "martin-loop";
+  const serverId = input.transport === "remote" ? "martin-loop-remote" : "martin-loop";
   return (
     JSON.stringify(
       {
         "github.copilot.chat.mcpServers": {
           [serverId]: {
-            command: launcher.command,
-            args: launcher.args,
-            env: {
-              MARTIN_RUNS_DIR: input.runsRoot
-            }
+            ...(input.transport === "remote"
+              ? {
+                  type: "http",
+                  url: input.remoteUrl ?? DEFAULT_REMOTE_URL,
+                  headers: {
+                    Authorization: `Bearer $${input.remoteTokenEnv}`
+                  }
+                }
+              : {
+                  command: launcher.command,
+                  args: launcher.args,
+                  env: {
+                    MARTIN_RUNS_DIR: input.runsRoot
+                  }
+                })
           }
         }
       },
@@ -529,17 +557,28 @@ function buildContinueConfigSnippet(
 ): string {
   const launcher = buildStdioLauncher(input.platform);
   const tools = selectTools(input.profile);
+  const serverId = input.transport === "remote" ? "martin-loop-remote" : "martin-loop";
   return (
     JSON.stringify(
       {
         mcpServers: [
           {
-            name: "martin-loop",
-            command: launcher.command,
-            args: launcher.args,
-            env: {
-              MARTIN_RUNS_DIR: input.runsRoot
-            },
+            name: serverId,
+            ...(input.transport === "remote"
+              ? {
+                  type: "http",
+                  url: input.remoteUrl ?? DEFAULT_REMOTE_URL,
+                  headers: {
+                    Authorization: `Bearer $${input.remoteTokenEnv}`
+                  }
+                }
+              : {
+                  command: launcher.command,
+                  args: launcher.args,
+                  env: {
+                    MARTIN_RUNS_DIR: input.runsRoot
+                  }
+                }),
             includeTools: tools
           }
         ]
@@ -608,14 +647,141 @@ function existingConfigAlreadyContainsMartin(
   }
 
   try {
-    const parsed = JSON.parse(existing) as {
-      mcpServers?: Record<string, unknown>;
-    };
-
-    return typeof parsed.mcpServers === "object" && parsed.mcpServers !== null && serverId in parsed.mcpServers;
+    const parsed = JSON.parse(existing) as Record<string, unknown>;
+    return hasMartinServerInParsedConfig(host, serverId, parsed);
   } catch {
     return false;
   }
+}
+
+function hasMartinServerInParsedConfig(
+  host: MartinMcpHost,
+  serverId: string,
+  parsed: Record<string, unknown>
+): boolean {
+  if (host === "copilot") {
+    const servers = parsed["github.copilot.chat.mcpServers"];
+    return isRecord(servers) && serverId in servers;
+  }
+
+  if (host === "continue") {
+    const servers = parsed.mcpServers;
+    if (Array.isArray(servers)) {
+      return servers.some((entry) => isRecord(entry) && entry.name === serverId);
+    }
+    return isRecord(servers) && serverId in servers;
+  }
+
+  const servers = parsed.mcpServers;
+  return isRecord(servers) && serverId in servers;
+}
+
+function mergeHostConfig(
+  host: MartinMcpHost,
+  serverId: string,
+  existing: string,
+  generated: string
+): string | undefined {
+  if (host === "codex" || host === "claude" && generated.startsWith("claude mcp add")) {
+    return undefined;
+  }
+
+  try {
+    const existingParsed = JSON.parse(existing) as Record<string, unknown>;
+    const generatedParsed = JSON.parse(generated) as Record<string, unknown>;
+    const merged = mergeHostParsedConfig(host, serverId, existingParsed, generatedParsed);
+    if (!merged) {
+      return undefined;
+    }
+    return `${JSON.stringify(merged, null, 2)}\n`;
+  } catch {
+    return undefined;
+  }
+}
+
+function mergeHostParsedConfig(
+  host: MartinMcpHost,
+  serverId: string,
+  existing: Record<string, unknown>,
+  generated: Record<string, unknown>
+): Record<string, unknown> | undefined {
+  if (host === "copilot") {
+    const existingServers = isRecord(existing["github.copilot.chat.mcpServers"])
+      ? { ...existing["github.copilot.chat.mcpServers"] }
+      : {};
+    const generatedServers = isRecord(generated["github.copilot.chat.mcpServers"])
+      ? generated["github.copilot.chat.mcpServers"]
+      : undefined;
+    if (!generatedServers) {
+      return undefined;
+    }
+    return {
+      ...existing,
+      "github.copilot.chat.mcpServers": {
+        ...existingServers,
+        ...generatedServers
+      }
+    };
+  }
+
+  if (host === "continue") {
+    const generatedServers = generated.mcpServers;
+    if (!Array.isArray(generatedServers)) {
+      return undefined;
+    }
+    const generatedServer = generatedServers.find((entry) => isRecord(entry) && entry.name === serverId);
+    if (!generatedServer) {
+      return undefined;
+    }
+
+    const existingServers = existing.mcpServers;
+    if (Array.isArray(existingServers)) {
+      const withoutMartin = existingServers.filter(
+        (entry) => !(isRecord(entry) && entry.name === serverId)
+      );
+      return {
+        ...existing,
+        mcpServers: [...withoutMartin, generatedServer]
+      };
+    }
+
+    if (isRecord(existingServers)) {
+      return {
+        ...existing,
+        mcpServers: {
+          ...existingServers,
+          [serverId]: generatedServer
+        }
+      };
+    }
+
+    return {
+      ...existing,
+      mcpServers: [generatedServer]
+    };
+  }
+
+  const generatedServers = generated.mcpServers;
+  if (!isRecord(generatedServers)) {
+    return undefined;
+  }
+
+  const existingServers = isRecord(existing.mcpServers) ? existing.mcpServers : {};
+  return {
+    ...existing,
+    mcpServers: {
+      ...existingServers,
+      ...generatedServers
+    }
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function hostRequiresExperimentalRemoteOptIn(host: MartinMcpHost): boolean {
+  return REMOTE_EXPERIMENTAL_HOSTS.has(host);
 }
 
 function renderClaudeLocalInstallCommand(

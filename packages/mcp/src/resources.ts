@@ -21,6 +21,7 @@ import {
 } from "./discovery-support.js";
 import { loadDetailedLoopRecord, readLedgerEvents } from "./tools/run-store.js";
 import { invalidArgumentsError, MartinToolError } from "./tools/tool-errors.js";
+import type { MartinEngine } from "./tools/tool-support.js";
 
 export const MARTIN_STATIC_RESOURCE_URIS = {
   serverHealth: "martin://server/health",
@@ -211,7 +212,7 @@ export interface MartinReadResourceInput {
   uri: string;
   runsDir?: string;
   workingDirectory?: string;
-  engine?: "claude" | "codex" | "gemini";
+  engine?: MartinEngine;
 }
 
 export function listMartinResources(): { resources: Resource[] } {
