@@ -47,7 +47,7 @@ npx -y martin-loop@latest start
 npx -y martin-loop@latest demo
 cd martin-loop-demo
 npm install
-npx -y martin-loop@latest run "Summarize the demo workspace and prove tests still pass" --proof --verify "npm test"
+npx -y martin-loop@latest run "Summarize the demo workspace and prove tests still pass" --verify "npm test" --budget-usd 2 --max-iterations 1
 ```
 
 ## Quick Start
@@ -60,7 +60,7 @@ npx -y martin-loop@latest demo
 npx -y martin-loop@latest --version
 cd martin-loop-demo
 npm install
-npx -y martin-loop@latest run "Summarize the demo workspace and prove tests still pass" --proof --verify "npm test"
+npx -y martin-loop@latest run "Summarize the demo workspace and prove tests still pass" --verify "npm test" --budget-usd 2 --max-iterations 1
 npx -y martin-loop@latest dossier --latest
 npx -y martin-loop@latest share --latest
 ```
@@ -74,7 +74,7 @@ martin-loop --version
 
 If this flow is useful, open an issue with feedback so we can keep improving the public experience.
 
-`start` prints the first-run guided path. `run` auto-checks `doctor`, `session-start`, and `preflight`, then executes when the environment is ready. You can still run those commands directly when you want to inspect the governed checks first.
+`start` prints the first-run guided path. `run` auto-checks `doctor`, `session-start`, and `preflight`, then executes when the environment is ready. Use `--proof` only when you intentionally want an explicit no-spend lane.
 
 Inspect-first flow:
 
@@ -132,7 +132,7 @@ npx -y martin-loop@0.3.6 start
 npx -y martin-loop@0.3.6 demo
 cd martin-loop-demo
 npm install
-npx -y martin-loop@0.3.6 run "Summarize the demo workspace and prove tests still pass" --proof --verify "npm test" --json
+npx -y martin-loop@0.3.6 run "Summarize the demo workspace and prove tests still pass" --verify "npm test" --budget-usd 2 --max-iterations 1 --json
 npx -y martin-loop@0.3.6 dossier --latest --json
 npx -y martin-loop@0.3.6 share --latest --json
 ```
@@ -225,7 +225,7 @@ Common options:
 --budget-usd <n>        Alias for --budget
 --soft-limit-usd <n>    Soft budget threshold in USD
 --verify <cmd>          Verifier command after each attempt
---proof                 Use the no-spend proof adapter
+--proof                 Explicitly opt into a no-spend proof adapter lane
 --max-iterations <n>    Maximum number of attempts
 --max-tokens <n>        Maximum token budget
 --engine <name>         Adapter to use: claude, codex, gemini, or openai

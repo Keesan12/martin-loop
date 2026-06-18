@@ -774,7 +774,7 @@ export function renderCliHelp(): string {
     "  --max-iterations <n>     Set the maximum number of attempts.",
     "  --max-tokens <n>         Set the maximum total token budget.",
     "  --verify <cmd>           Shell command to run as the verifier after each attempt.",
-    "  --proof                  Run in no-spend proof mode (same as MARTIN_LIVE=false).",
+    "  --proof                  Run in no-spend proof mode (explicit opt-in).",
     "  --verify-only            Skip the coding adapter and run the verifier only.",
     "  --unsafe-allow-unguarded-run",
     "                           Bypass doctor/preflight run-gate checks for this invocation only.",
@@ -913,6 +913,7 @@ async function executeRunCommand(
     cliEnvironment.workingDirectory,
     resolvedRequest.model,
     effectiveMutationMode,
+    cliEnvironment.liveMode,
     codexCommandOverride
   );
   try {
@@ -962,7 +963,7 @@ async function executeRunCommand(
 
     throw new CliCommandError("environment", "Martin could not start the requested execution adapter.", {
       suggestion:
-        "Run `martin doctor` to verify engine availability, or set MARTIN_LIVE=false to use the stub adapter locally.",
+        "Run `martin doctor` to verify engine availability, or rerun with `--proof` for an explicit no-spend lane.",
       details: {
         loopId: fallbackLoop.loopId,
         reason: error instanceof Error ? error.message : String(error)
@@ -1450,7 +1451,7 @@ async function executeStartCommand(
         "npx -y martin-loop@latest doctor",
         "npx -y martin-loop@latest session-start",
         'npx -y martin-loop@latest preflight "Summarize the workspace and prove tests still pass" --verify "npm test"',
-        'npx -y martin-loop@latest run "Summarize the workspace and prove tests still pass" --proof --verify "npm test"',
+        'npx -y martin-loop@latest run "Summarize the workspace and prove tests still pass" --verify "npm test" --budget-usd 2 --max-iterations 1',
         "npx -y martin-loop@latest share --latest --json"
       ]
     },
@@ -1467,8 +1468,11 @@ async function executeStartCommand(
       "  npx -y martin-loop@latest doctor",
       "  npx -y martin-loop@latest session-start",
       '  npx -y martin-loop@latest preflight "Summarize the workspace and prove tests still pass" --verify "npm test"',
-      '  npx -y martin-loop@latest run "Summarize the workspace and prove tests still pass" --proof --verify "npm test"',
+      '  npx -y martin-loop@latest run "Summarize the workspace and prove tests still pass" --verify "npm test" --budget-usd 2 --max-iterations 1',
       "  npx -y martin-loop@latest share --latest --json",
+      "",
+      "Optional explicit no-spend lane:",
+      '  npx -y martin-loop@latest run "Summarize the workspace and prove tests still pass" --proof --verify "npm test" --budget-usd 2 --max-iterations 1',
       "",
       "One-off operator bypass exists, but is intentionally explicit: --unsafe-allow-unguarded-run"
     ],
@@ -2488,9 +2492,9 @@ function renderDemoInstructions(targetDirectory: string): string {
     "  npm install",
     "  npm test",
     "",
-    "Safe first run (no provider spend, governed path):",
+    "Default first run (live spend-governed):",
     "  npx -y martin-loop@latest start",
-    '  npx -y martin-loop@latest run "Summarize the demo workspace and confirm the verifier is green" --proof --verify "npm test"',
+    '  npx -y martin-loop@latest run "Summarize the demo workspace and confirm the verifier is green" --verify "npm test" --budget-usd 2 --max-iterations 1',
     "  npx -y martin-loop@latest share --latest --json",
     "",
     "Inspect the governed checks explicitly:",
@@ -2498,7 +2502,10 @@ function renderDemoInstructions(targetDirectory: string): string {
     "  npx -y martin-loop@latest session-start",
     '  npx -y martin-loop@latest preflight "Summarize the demo workspace and confirm the verifier is green" --verify "npm test"',
     "",
-    "Optional live run:",
+    "Optional explicit no-spend proof run:",
+    '  npx -y martin-loop@latest run "Summarize the demo workspace and confirm the verifier is green" --proof --verify "npm test" --budget-usd 2 --max-iterations 1',
+    "",
+    "Optional live implementation run:",
     '  npx -y martin-loop@latest run "Add support for a discount percentage to summarizeInvoice and update the tests" --verify "npm test" --engine codex',
     "",
     `Task ideas live in ${join(targetDirectory, "TASKS.md")}`
@@ -2735,6 +2742,7 @@ function selectAdapter(
   workingDirectory: string,
   modelOverride?: string,
   mutationMode?: MutationMode,
+  liveMode: "live" | "proof" = "live",
   codexCommandOverride?: string
 ): MartinAdapter {
   if (runAdapterOverrideForTests) {
@@ -2745,9 +2753,9 @@ function selectAdapter(
     return createVerifierOnlyAdapter({ workingDirectory });
   }
 
-  if (process.env.MARTIN_LIVE === "false") {
+  if (liveMode === "proof") {
     return createStubDirectProviderAdapter({
-      label: "Stub adapter (MARTIN_LIVE=false)",
+      label: "Stub adapter (--proof)",
       providerId: "stub",
       model: "stub"
     });
@@ -2807,14 +2815,14 @@ function buildDoctorRecommendations(input: {
   }
 
   if (input.liveMode === "live" && input.engine === "codex" && !input.codexAvailable) {
-    recommendations.push("Install or expose the Codex CLI on PATH, or set MARTIN_LIVE=false while iterating locally.");
+    recommendations.push("Install or expose the Codex CLI on PATH, or rerun with `--proof` for explicit no-spend validation.");
   }
   if (input.liveMode === "live" && input.engine === "codex" && input.codexAvailable && input.codexLaunchReady === false) {
     recommendations.push(input.codexRemediation ?? "Run `martin preflight --engine codex` and fix the reported Codex host issue before governed work.");
   }
 
   if (input.liveMode === "live" && input.engine === "gemini" && !input.geminiAvailable) {
-    recommendations.push("Install or expose the Gemini CLI on PATH, or set MARTIN_LIVE=false while iterating locally.");
+    recommendations.push("Install or expose the Gemini CLI on PATH, or rerun with `--proof` for explicit no-spend validation.");
   }
 
   return recommendations;
