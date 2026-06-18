@@ -19,14 +19,14 @@ npx martin-loop start
 npx martin-loop doctor
 npx martin-loop session-start
 npx martin-loop preflight "Summarize the demo workspace and prove tests still pass" --verify "npm test"
-npx martin-loop run "Summarize the demo workspace and prove tests still pass" --proof --verify "npm test"
+npx martin-loop run "Summarize the demo workspace and prove tests still pass" --verify "npm test" --budget-usd 2 --max-iterations 1
 npx martin-loop review
 npx martin-loop receipts explain --latest
 npx martin-loop dossier --latest
 npx martin-loop share --latest
 ```
 
-This path creates the local receipts MartinLoop expects before a real governed run, then proves the run/dossier/share loop without model spend.
+This path creates the local receipts MartinLoop expects before a real governed run, then proves the run/dossier/share loop with a real spend-governed execution.
 
 `martin start` gives a guided first-run summary and suggested next commands. `martin enable` writes repo-local defaults and keeps control explicit; MartinLoop does not silently intercept other agent tools globally.
 
@@ -47,6 +47,12 @@ npx martin-loop run "fix the auth regression" --budget 3.00 --verify "pnpm test"
 ```
 
 By default, MartinLoop expects recent `doctor`, `session-start`, and `preflight` receipts for the same repo and task before a real run will start. If you intentionally need to bypass that local gate for a one-off run, use `--unsafe-allow-unguarded-run` explicitly.
+
+For explicit no-spend validation, pass `--proof` intentionally:
+
+```sh
+npx martin-loop run "fix the auth regression" --proof --budget 1.00 --verify "pnpm test"
+```
 
 You can set repo-local defaults once:
 

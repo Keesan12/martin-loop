@@ -217,7 +217,7 @@ export function resolveCliEnvironment(input: {
     workingDirectory,
     runsRoot,
     engine,
-    liveMode: input.liveMode ?? (env.MARTIN_LIVE === "false" ? "proof" : "live")
+    liveMode: input.liveMode ?? "live"
   };
 }
 
