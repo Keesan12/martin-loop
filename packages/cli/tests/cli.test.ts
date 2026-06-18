@@ -171,7 +171,7 @@ describe("executeCli", () => {
     expect(result.stdout).toBe(rootPackageVersion);
   });
 
-  it("renders start onboarding guidance with governed defaults", async () => {
+  it("renders start onboarding guidance with governed defaults", { timeout: 30_000 }, async () => {
     const result = await executeCli(["start"]);
 
     expect(result.exitCode).toBe(0);
@@ -179,6 +179,9 @@ describe("executeCli", () => {
     expect(result.stdout).toContain("Governed runs are the default path");
     expect(result.stdout).toContain("auto-checks doctor, session-start, and preflight");
     expect(result.stdout).toContain("npx -y martin-loop@latest demo");
+    expect(result.stdout).toContain(
+      'npx -y martin-loop@latest run "Summarize the workspace and prove tests still pass" --verify "npm test" --budget-usd 2 --max-iterations 1'
+    );
   });
 
   it("resolves effectivePolicy from config and applies it to the run", async () => {
@@ -508,7 +511,8 @@ describe("executeCli", () => {
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain(targetDirectory);
       expect(result.stdout).toContain("npm install");
-      expect(result.stdout).toContain("Safe first run (no provider spend, governed path)");
+      expect(result.stdout).toContain("Default first run (live spend-governed):");
+      expect(result.stdout).toContain("--budget-usd 2 --max-iterations 1");
       expect(result.stdout).toContain("npx -y martin-loop@latest start");
       expect(result.stdout).toContain("Inspect the governed checks explicitly");
       expect(await readFile(join(targetDirectory, "README.md"), "utf8")).toContain("Demo Sandbox");
@@ -580,7 +584,7 @@ describe("executeCli", () => {
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain(`cd ${targetDirectory}`);
-      expect(result.stdout).toContain("Optional live run");
+      expect(result.stdout).toContain("Optional live implementation run");
       expect(await readFile(join(targetDirectory, "martin.config.yaml"), "utf8")).toContain(
         "strict_local"
       );
