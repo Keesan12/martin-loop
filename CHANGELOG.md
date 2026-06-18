@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- **Verifier defaults are less prone to false stop exits on longer suites** - default verifier timeout is now `120_000ms` (up from `60_000ms`) across CLI adapter paths, reducing timeout-driven `verification_failure` exits on healthy runs that take longer than one minute.
+
 ## [0.3.6]
 
 ### Fixed
