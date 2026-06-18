@@ -10,19 +10,17 @@ npx martin-loop demo
 cd martin-loop-demo
 ```
 
-Windows PowerShell no-spend proof run:
+Windows PowerShell no-spend proof run (explicit opt-in):
 
 ```powershell
-$env:MARTIN_LIVE='false'
-npx martin-loop run "Summarize the demo workspace and prove tests still pass" --verify "npm test"
+npx martin-loop run "Summarize the demo workspace and prove tests still pass" --proof --verify "npm test"
 npx martin-loop dossier --latest
-Remove-Item Env:MARTIN_LIVE
 ```
 
-macOS/Linux no-spend proof run:
+macOS/Linux no-spend proof run (explicit opt-in):
 
 ```sh
-MARTIN_LIVE=false npx martin-loop run "Summarize the demo workspace and prove tests still pass" --verify "npm test"
+npx martin-loop run "Summarize the demo workspace and prove tests still pass" --proof --verify "npm test"
 npx martin-loop dossier --latest
 ```
 

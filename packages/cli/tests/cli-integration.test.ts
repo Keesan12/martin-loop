@@ -1,6 +1,6 @@
 /**
  * CLI integration tests covering adapter selection, engine flags,
- * and the MARTIN_LIVE guard introduced with the real adapter.
+ * and explicit no-spend proof mode guardrails.
  */
 
 import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -214,24 +214,23 @@ async function readWorkflowState(
 }
 
 // ---------------------------------------------------------------------------
-// MARTIN_LIVE guard
+// explicit --proof guard
 // ---------------------------------------------------------------------------
 
-describe("MARTIN_LIVE=false — stub adapter", () => {
+describe("--proof — stub adapter", () => {
   it("run command completes without spawning a real subprocess", async () => {
     const result = await withRunsRoot(() =>
-      withEnv("MARTIN_LIVE", "false", () =>
-        executeCli([
-          "--json",
-          "run",
-          "--objective",
-          "Add a greeting function",
-          "--max-iterations",
-          "1",
-          "--budget-usd",
-          "5"
-        ])
-      )
+      executeCli([
+        "--json",
+        "run",
+        "--objective",
+        "Add a greeting function",
+        "--proof",
+        "--max-iterations",
+        "1",
+        "--budget-usd",
+        "5"
+      ])
     );
 
     expect(result.exitCode).toBe(0);
@@ -243,20 +242,19 @@ describe("MARTIN_LIVE=false — stub adapter", () => {
 
   it("returns a valid loop record structure in stub mode", async () => {
     const result = await withRunsRoot(() =>
-      withEnv("MARTIN_LIVE", "false", () =>
-        executeCli([
-          "--json",
-          "run",
-          "--workspace",
-          "ws_stub",
-          "--project",
-          "proj_stub",
-          "--objective",
-          "Write a hello world function",
-          "--max-iterations",
-          "1"
-        ])
-      )
+      executeCli([
+        "--json",
+        "run",
+        "--workspace",
+        "ws_stub",
+        "--project",
+        "proj_stub",
+        "--objective",
+        "Write a hello world function",
+        "--proof",
+        "--max-iterations",
+        "1"
+      ])
     );
 
     const payload = JSON.parse(result.stdout);
@@ -272,21 +270,20 @@ describe("MARTIN_LIVE=false — stub adapter", () => {
 
 describe("--engine flag", () => {
   it("defaults to claude when no --engine flag is given", { timeout: 45_000 }, async () => {
-    // Use stub mode — we verify no engine flag selects the claude adapter path,
+    // Use explicit no-spend proof mode — we verify no engine flag selects the claude adapter path,
     // not that claude itself runs successfully
     const result = await withRunsRoot(() =>
-      withEnv("MARTIN_LIVE", "false", () =>
-        executeCli([
-          "--json",
-          "run",
-          "--objective",
-          "Fix the bug",
-          "--max-iterations",
-          "1",
-          "--budget-usd",
-          "2"
-        ])
-      )
+      executeCli([
+        "--json",
+        "run",
+        "--objective",
+        "Fix the bug",
+        "--proof",
+        "--max-iterations",
+        "1",
+        "--budget-usd",
+        "2"
+      ])
     );
 
     expect(result.exitCode).toBe(0);
@@ -295,25 +292,23 @@ describe("--engine flag", () => {
     expect(payload.loop.loopId).toMatch(/^loop_/u);
   });
 
-  it("passes codex launch preflight when a compatible Codex CLI is present", async () => {
+  it("passes codex launch preflight when a compatible Codex CLI is present", { timeout: 45_000 }, async () => {
     const result = await withTempDir((workspace) =>
       withFakeCodexCli(async () => {
         initializeGitRepo(workspace);
         return withRunsRoot(() =>
-          withEnv("MARTIN_LIVE", "true", () =>
-            executeCli([
-              "--json",
-              "preflight",
-              "--engine",
-              "codex",
-              "--cwd",
-              workspace,
-              "--objective",
-              "Fix the bug",
-              "--verify",
-              NOOP_VERIFIER
-            ])
-          )
+          executeCli([
+            "--json",
+            "preflight",
+            "--engine",
+            "codex",
+            "--cwd",
+            workspace,
+            "--objective",
+            "Fix the bug",
+            "--verify",
+            NOOP_VERIFIER
+          ])
         );
       })
     );
@@ -331,23 +326,21 @@ describe("--engine flag", () => {
     await withTempDir(async (workspace) => {
       const runsDir = join(workspace, ".martin-runs");
       const result = await withoutAgentCliOnPath(() =>
-        withEnv("MARTIN_LIVE", "true", () =>
-          executeCli([
-            "run",
-            "--cwd",
-            workspace,
-            "--runs-dir",
-            runsDir,
-            "--objective",
-            "Fix the bug",
-            "--verify",
-            NOOP_VERIFIER,
-            "--max-iterations",
-            "1",
-            "--budget-usd",
-            "2"
-          ])
-        )
+        executeCli([
+          "run",
+          "--cwd",
+          workspace,
+          "--runs-dir",
+          runsDir,
+          "--objective",
+          "Fix the bug",
+          "--verify",
+          NOOP_VERIFIER,
+          "--max-iterations",
+          "1",
+          "--budget-usd",
+          "2"
+        ])
       );
 
       expect(result.exitCode).toBe(8);
@@ -362,7 +355,7 @@ describe("--engine flag", () => {
     });
   });
 
-  it("auto-bootstraps governed prerequisites and executes a live Codex run when host is ready", { timeout: 45000 }, async () => {
+  it("auto-bootstraps governed prerequisites and executes a live Codex run when host is ready", { timeout: 90_000 }, async () => {
     await withTempDir((workspace) =>
       withFakeCodexCli(() =>
         withScratchEnv(
@@ -373,26 +366,24 @@ describe("--engine flag", () => {
           async () => {
             initializeGitRepo(workspace);
             const runsDir = join(workspace, ".martin-runs");
-            const result = await withEnv("MARTIN_LIVE", "true", () =>
-              executeCli([
-                "--json",
-                "run",
-                "--engine",
-                "codex",
-                "--cwd",
-                workspace,
-                "--runs-dir",
-                runsDir,
-                "--objective",
-                "Fix the bug",
-                "--verify",
-                NOOP_VERIFIER,
-                "--max-iterations",
-                "1",
-                "--budget-usd",
-                "2",
-              ])
-            );
+            const result = await executeCli([
+              "--json",
+              "run",
+              "--engine",
+              "codex",
+              "--cwd",
+              workspace,
+              "--runs-dir",
+              runsDir,
+              "--objective",
+              "Fix the bug",
+              "--verify",
+              NOOP_VERIFIER,
+              "--max-iterations",
+              "1",
+              "--budget-usd",
+              "2",
+            ]);
 
             expect(result.exitCode).toBe(0);
             const payload = JSON.parse(result.stdout);
@@ -657,20 +648,18 @@ describe("--engine flag", () => {
         },
         async () => {
           const result = await withoutAgentCliOnPath(() =>
-            withEnv("MARTIN_LIVE", "true", () =>
-              executeCli([
-                "run",
-                "--objective",
-                "Fix the bug",
-                "--verify",
-                NOOP_VERIFIER,
-                "--max-iterations",
-                "1",
-                "--budget-usd",
-                "2",
-                "--unsafe-allow-unguarded-run"
-              ])
-            )
+            executeCli([
+              "run",
+              "--objective",
+              "Fix the bug",
+              "--verify",
+              NOOP_VERIFIER,
+              "--max-iterations",
+              "1",
+              "--budget-usd",
+              "2",
+              "--unsafe-allow-unguarded-run"
+            ])
           );
 
           expect(result.exitCode).not.toBe(8);
@@ -689,17 +678,16 @@ describe("--cwd flag", () => {
   it("passes working directory to the adapter", async () => {
     await withTempDir(async (dir) => {
       const result = await withRunsRoot(() =>
-        withEnv("MARTIN_LIVE", "false", () =>
-          executeCli([
-            "run",
-            "--objective",
-            "Fix the bug",
-            "--cwd",
-            dir,
-            "--max-iterations",
-            "1"
-          ])
-        )
+        executeCli([
+          "run",
+          "--objective",
+          "Fix the bug",
+          "--cwd",
+          dir,
+          "--proof",
+          "--max-iterations",
+          "1"
+        ])
       );
 
       expect(result.exitCode).toBe(0);

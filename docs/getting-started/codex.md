@@ -28,6 +28,8 @@ npx martin-loop run "Summarize the demo workspace and confirm the verifier is gr
 npx martin-loop dossier --latest
 ```
 
+`--proof` is explicit opt-in. Default `martin-loop run` commands execute live governed runs with real spend controls.
+
 ## Install MCP For Codex
 
 ```sh
