@@ -610,7 +610,7 @@ function buildSessionStartHostDiagnostics(
   host: string,
   receiptScope: ResolvedReceiptScope
 ): NativePhaseSnapshot["sessionStart"]["hostDiagnostics"] {
-  const mode = process.env.MARTIN_LIVE === "false" ? "proof" : "live";
+  const mode: "live" | "proof" = "live";
   if (host !== "codex") {
     return {
       mode,

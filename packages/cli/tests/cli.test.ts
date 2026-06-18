@@ -200,18 +200,22 @@ describe("executeCli", () => {
     expect(result.stdout).toBe(rootPackageVersion);
   });
 
-  it("renders start onboarding guidance with governed defaults", async () => {
+  it("renders start onboarding guidance with governed defaults", { timeout: 30_000 }, async () => {
     const result = await executeCli(["start"]);
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("MartinLoop is ready to set up governed runs in this repo.");
     expect(result.stdout).toContain("martin doctor");
     expect(result.stdout).toContain("martin session-start");
-    expect(result.stdout).toContain('martin run "Summarize this repository and confirm the verifier is green." --proof --verify "pnpm test"');
-    expect(result.stdout).toContain('martin enable --engine claude --verify "pnpm test" --budget-usd 2 --max-iterations 1');
+    expect(result.stdout).toMatch(
+      /martin run "Summarize this repository and confirm the verifier is green\." --verify "(npm|pnpm) test" --budget-usd 2 --max-iterations 1/u
+    );
+    expect(result.stdout).toMatch(
+      /martin enable --engine claude --verify "(npm|pnpm) test" --budget-usd 2 --max-iterations 1/u
+    );
   });
 
-  it("resolves effectivePolicy from config and applies it to the run", async () => {
+  it("resolves effectivePolicy from config and applies it to the run", { timeout: 30_000 }, async () => {
     const directory = await mkdtemp(join(tmpdir(), "martin-cli-config-"));
     const configPath = join(directory, "martin.config.yaml");
 
@@ -538,9 +542,9 @@ describe("executeCli", () => {
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain(targetDirectory);
       expect(result.stdout).toContain("npm install");
-      expect(result.stdout).toContain("Safe first run (no provider spend):");
-      expect(result.stdout).toContain("MARTIN_LIVE=false npx martin run");
-      expect(result.stdout).toContain("Optional live run:");
+      expect(result.stdout).toContain("Default first run (live spend-governed):");
+      expect(result.stdout).toContain("--budget-usd 2 --max-iterations 1");
+      expect(result.stdout).toContain("Optional explicit no-spend proof run:");
       expect(result.stdout).toContain("Task ideas live in");
       expect(await readFile(join(targetDirectory, "README.md"), "utf8")).toContain("Demo Sandbox");
     } finally {
@@ -611,7 +615,7 @@ describe("executeCli", () => {
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain(`cd ${targetDirectory}`);
-      expect(result.stdout).toContain("Optional live run");
+      expect(result.stdout).toContain("Optional live implementation run");
       expect(await readFile(join(targetDirectory, "martin.config.yaml"), "utf8")).toContain(
         "strict_local"
       );

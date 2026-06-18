@@ -873,7 +873,7 @@ export function renderCliHelp(): string {
     "  --max-iterations <n>     Set the maximum number of attempts.",
     "  --max-tokens <n>         Set the maximum total token budget.",
     "  --verify <cmd>           Shell command to run as the verifier after each attempt.",
-    "  --proof                  Run in no-spend proof mode (same as MARTIN_LIVE=false).",
+    "  --proof                  Run in no-spend proof mode (explicit opt-in).",
     "  --verify-only            Skip the coding adapter and run the verifier only.",
     "  --unsafe-allow-unguarded-run",
     "                           Bypass doctor/preflight run-gate checks for this invocation only.",
@@ -1009,6 +1009,7 @@ async function executeRunCommand(
     cliEnvironment.workingDirectory,
     resolvedRequest.model,
     effectiveMutationMode,
+    cliEnvironment.liveMode,
     codexCommandOverride
   );
   try {
@@ -1058,7 +1059,7 @@ async function executeRunCommand(
 
     throw new CliCommandError("environment", "Martin could not start the requested execution adapter.", {
       suggestion:
-        "Run `martin doctor` to verify engine availability, or set MARTIN_LIVE=false to use the stub adapter locally.",
+        "Run `martin doctor` to verify engine availability, or rerun with `--proof` for an explicit no-spend lane.",
       details: {
         loopId: fallbackLoop.loopId,
         reason: error instanceof Error ? error.message : String(error)
@@ -1601,7 +1602,8 @@ async function executeStartCommand(
   const receiptScope = buildCliReceiptScope(environment);
   const objective = "Summarize this repository and confirm the verifier is green.";
   const preflightCommand = `martin preflight "${objective}" --verify "${snapshot.verifier.command}"`;
-  const proofCommand = `martin run "${objective}" --proof --verify "${snapshot.verifier.command}"`;
+  const governedRunCommand = `martin run "${objective}" --verify "${snapshot.verifier.command}" --budget-usd 2 --max-iterations 1`;
+  const proofCommand = `martin run "${objective}" --proof --verify "${snapshot.verifier.command}" --budget-usd 2 --max-iterations 1`;
 
   await recordCliWorkflowStep({
     runsRoot: environment.runsRoot,
@@ -1632,6 +1634,7 @@ async function executeStartCommand(
         doctor: "martin doctor",
         sessionStart: "martin session-start",
         preflight: preflightCommand,
+        run: governedRunCommand,
         proofRun: proofCommand,
         enable: `martin enable --engine ${snapshot.recommendedEngine} --verify "${snapshot.verifier.command}" --budget-usd 2 --max-iterations 1`,
         review: "martin review",
@@ -1652,8 +1655,11 @@ async function executeStartCommand(
       `1. martin doctor`,
       `2. martin session-start`,
       `3. ${preflightCommand}`,
-      `4. ${proofCommand}`,
+      `4. ${governedRunCommand}`,
       `5. martin share --latest`,
+      "",
+      "Optional explicit no-spend lane",
+      `- ${proofCommand}`,
       "",
       "Optional repo defaults",
       `- martin enable --engine ${snapshot.recommendedEngine} --verify "${snapshot.verifier.command}" --budget-usd 2 --max-iterations 1`
@@ -1765,7 +1771,7 @@ async function executeReviewCommand(
           "- martin doctor",
           "- martin session-start",
           "- martin preflight \"Summarize this repository and confirm the verifier is green.\" --verify \"npm test\"",
-          "- martin run \"Summarize this repository and confirm the verifier is green.\" --proof --verify \"npm test\""
+          "- martin run \"Summarize this repository and confirm the verifier is green.\" --verify \"npm test\" --budget-usd 2 --max-iterations 1"
         ],
         quiet: "no_runs"
       });
@@ -3018,10 +3024,13 @@ function renderDemoInstructions(targetDirectory: string): string {
     "  npm install",
     "  npm test",
     "",
-    "Safe first run (no provider spend):",
-    '  MARTIN_LIVE=false npx martin run "Summarize the demo workspace and confirm the verifier is green" --verify "npm test"',
+    "Default first run (live spend-governed):",
+    '  npx martin run "Summarize the demo workspace and confirm the verifier is green" --verify "npm test" --budget-usd 2 --max-iterations 1',
     "",
-    "Optional live run:",
+    "Optional explicit no-spend proof run:",
+    '  npx martin run "Summarize the demo workspace and confirm the verifier is green" --proof --verify "npm test" --budget-usd 2 --max-iterations 1',
+    "",
+    "Optional live implementation run:",
     '  npx martin run "Add support for a discount percentage to summarizeInvoice and update the tests" --verify "npm test" --engine codex',
     "",
     `Task ideas live in ${join(targetDirectory, "TASKS.md")}`
@@ -3258,6 +3267,7 @@ function selectAdapter(
   workingDirectory: string,
   modelOverride?: string,
   mutationMode?: MutationMode,
+  liveMode: "live" | "proof" = "live",
   codexCommandOverride?: string
 ): MartinAdapter {
   if (runAdapterOverrideForTests) {
@@ -3268,9 +3278,9 @@ function selectAdapter(
     return createVerifierOnlyAdapter({ workingDirectory });
   }
 
-  if (process.env.MARTIN_LIVE === "false") {
+  if (liveMode === "proof") {
     return createStubDirectProviderAdapter({
-      label: "Stub adapter (MARTIN_LIVE=false)",
+      label: "Stub adapter (--proof)",
       providerId: "stub",
       model: "stub"
     });
@@ -3330,14 +3340,14 @@ function buildDoctorRecommendations(input: {
   }
 
   if (input.liveMode === "live" && input.engine === "codex" && !input.codexAvailable) {
-    recommendations.push("Install or expose the Codex CLI on PATH, or set MARTIN_LIVE=false while iterating locally.");
+    recommendations.push("Install or expose the Codex CLI on PATH, or rerun with `--proof` for explicit no-spend validation.");
   }
   if (input.liveMode === "live" && input.engine === "codex" && input.codexAvailable && input.codexLaunchReady === false) {
     recommendations.push(input.codexRemediation ?? "Run `martin preflight --engine codex` and fix the reported Codex host issue before governed work.");
   }
 
   if (input.liveMode === "live" && input.engine === "gemini" && !input.geminiAvailable) {
-    recommendations.push("Install or expose the Gemini CLI on PATH, or set MARTIN_LIVE=false while iterating locally.");
+    recommendations.push("Install or expose the Gemini CLI on PATH, or rerun with `--proof` for explicit no-spend validation.");
   }
 
   return recommendations;

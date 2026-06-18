@@ -29,7 +29,7 @@ npx martin-loop start
 npx martin-loop doctor
 npx martin-loop session-start
 npx martin-loop preflight "Summarize the demo workspace and prove tests still pass" --verify "npm test"
-npx martin-loop run "Summarize the demo workspace and prove tests still pass" --proof --verify "npm test"
+npx martin-loop run "Summarize the demo workspace and prove tests still pass" --verify "npm test" --budget-usd 2 --max-iterations 1
 npx martin-loop review
 npx martin-loop dossier --latest
 npx martin-loop receipts explain --latest
@@ -38,7 +38,7 @@ npx martin-loop share --latest
 
 `start` gives a guided first-run summary (repo, verifier, provider readiness, and recommended next commands). `enable` writes repo-local defaults into `martin.config.yaml` without globally intercepting other tools.
 
-`doctor`, `session-start`, and `preflight` create the local receipts MartinLoop expects before a real governed run. If you intentionally need to bypass that local gate for a one-off run, use `--unsafe-allow-unguarded-run` explicitly.
+`doctor`, `session-start`, and `preflight` create the local receipts MartinLoop expects before a real governed run. If you intentionally need a no-spend validation lane, use `--proof` explicitly. If you intentionally need to bypass the local gate for a one-off run, use `--unsafe-allow-unguarded-run` explicitly.
 
 `share --latest` writes three files into the selected run directory under `share/`: `run-receipt.json`, `run-receipt.md`, and `proof-card.svg`.
 
