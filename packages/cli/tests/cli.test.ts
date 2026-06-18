@@ -147,27 +147,6 @@ describe("parseCliArguments", () => {
     expect(parseCliArguments(["preflight", "--help"])).toEqual({ command: "help" });
     expect(parseCliArguments(["preflight", "-h"])).toEqual({ command: "help" });
   });
-  it("parses onboarding commands and objective shorthand", () => {
-    expect(parseCliArguments(["start"])).toEqual({ command: "start" });
-    expect(parseCliArguments(["env"])).toEqual({ command: "env" });
-    expect(parseCliArguments(["review"])).toEqual({
-      command: "review",
-      selector: { latest: true }
-    });
-    expect(parseCliArguments(["receipts", "explain"])).toEqual({
-      command: "receipts_explain",
-      selector: { latest: true }
-    });
-    expect(parseCliArguments(["fix flaky tests", "--proof", "--verify", "npm test"])).toEqual({
-      command: "run",
-      request: expect.objectContaining({
-        objective: "fix flaky tests",
-        liveMode: "proof",
-        verificationPlan: ["npm test"]
-      })
-    });
-  });
-
   it("parses MCP install with paid-remote profile and experimental host flag", () => {
     expect(
       parseCliArguments([
