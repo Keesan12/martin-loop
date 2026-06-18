@@ -43,7 +43,7 @@ npx martin-loop start
 npx martin-loop doctor
 npx martin-loop session-start
 npx martin-loop preflight "Summarize the workspace and prove tests still pass" --verify "npm test"
-npx martin-loop run "Summarize the workspace and prove tests still pass" --proof --verify "npm test"
+npx martin-loop run "Summarize the workspace and prove tests still pass" --verify "npm test" --budget-usd 2 --max-iterations 1
 npx martin-loop review
 npx martin-loop receipts explain --latest
 npx martin-loop share --latest
@@ -59,8 +59,8 @@ npx martin-loop share --latest
 --budget-usd <n>        Alias for --budget
 --soft-limit-usd <n>    Soft budget threshold in USD
 --verify <cmd>          Verifier command after each attempt
---proof                 Use the no-spend proof adapter instead of a live coding CLI
---verify-only           Skip the coding adapter and run the verifier only
+--proof                 Explicitly opt into a no-spend proof adapter lane
+--verify-only           Explicitly skip the coding adapter and run verifier-only
 --unsafe-allow-unguarded-run
                         Bypass the local governance gate for this one run
 --max-iterations <n>    Maximum number of attempts
