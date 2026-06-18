@@ -84,6 +84,7 @@ export async function runSubprocess(
     let outputCapped = false;
     let terminationReason: string | undefined;
     let settled = false;
+    let exited = false;
     let outputBytes = 0;
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
@@ -165,9 +166,16 @@ export async function runSubprocess(
     });
 
     const timer = setTimeout(() => {
+      if (settled || exited || proc.exitCode !== null) {
+        return;
+      }
       timedOut = true;
       proc.kill("SIGTERM");
     }, options.timeoutMs);
+
+    proc.on("exit", () => {
+      exited = true;
+    });
 
     proc.on("error", (error) => {
       clearTimeout(timer);

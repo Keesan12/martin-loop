@@ -489,6 +489,46 @@ describe("createSpawnPlan", () => {
 });
 
 describe("runSubprocess", () => {
+  it("does not mark timeout when the process has exited but close arrives later", async () => {
+    const spawnImpl: SpawnLike = () => {
+      const child = new EventEmitter() as Partial<ChildProcess> & {
+        stdout: PassThrough;
+        stderr: PassThrough;
+        stdin: Writable;
+        exitCode: number | null;
+      };
+      child.stdout = new PassThrough();
+      child.stderr = new PassThrough();
+      child.stdin = new Writable({
+        write(_chunk, _encoding, callback) {
+          callback();
+        }
+      });
+      child.exitCode = null;
+      child.kill = () => true;
+
+      setTimeout(() => {
+        child.exitCode = 0;
+        child.emit("exit", 0, null);
+      }, 0);
+
+      setTimeout(() => {
+        child.emit("close", 0, null);
+      }, 30);
+
+      return child as ChildProcess;
+    };
+
+    const result = await runSubprocess("codex", ["exec", "-"], {
+      cwd: process.cwd(),
+      timeoutMs: 10,
+      spawnImpl
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.timedOut).toBe(false);
+  });
+
   it("handles closed stdin pipes without surfacing an unhandled EPIPE", async () => {
     const spawnImpl: SpawnLike = () => {
       const child = new EventEmitter() as Partial<ChildProcess> & {
