@@ -55,6 +55,7 @@
     "smoke:published": "node ./scripts/smoke-published-package.mjs",
     "smoke:published:pack": "node ./scripts/smoke-published-package.mjs --package-spec=pack",
     "verify:release": "node --test ../../scripts/tests/publish-mcp-workflow.test.mjs ../../scripts/tests/mcp-publish-reliability.test.mjs ../../scripts/tests/mcp-release-docs.test.mjs",
+    "test:baseline": "node ./scripts/run-test-lane.mjs baseline",
     "test": "vitest run --maxWorkers=1",
     "lint": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/server.js",

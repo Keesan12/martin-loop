@@ -1,9 +1,9 @@
 import { spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createLoopRecord, type LoopAttempt } from "@martin/contracts";
 
@@ -749,9 +749,7 @@ describe("runMartin", () => {
   it("skips rollback snapshots for adapters that cannot mutate the workspace", async () => {
     const runsRoot = await mkdtemp(join(tmpdir(), "martin-proof-no-rollback-"));
     const repoRoot = join(runsRoot, "repo");
-    await mkdir(join(repoRoot, "src"), { recursive: true });
-    await writeFile(join(repoRoot, "src", "real.ts"), "export const real = 1;\n", "utf8");
-    initializeGitRepo(repoRoot);
+    await materializeCommittedRepo(repoRoot);
     await writeFile(join(repoRoot, "src", "real.ts"), "export const real = 2;\n", "utf8");
 
     const store = createFileRunStore({ runsRoot });
@@ -1738,9 +1736,7 @@ const store: import("../src/index").RunStore = {
   it("restores the pre-attempt repo boundary for discarded verifier regressions and preserves pre-existing dirty files", async () => {
     const runsRoot = await mkdtemp(join(tmpdir(), "martin-patch-rollback-"));
     const repoRoot = join(runsRoot, "repo");
-    await mkdir(join(repoRoot, "src"), { recursive: true });
-    await writeFile(join(repoRoot, "src", "real.ts"), "export const real = 1;\n", "utf8");
-    initializeGitRepo(repoRoot);
+    await materializeCommittedRepo(repoRoot);
     await writeFile(join(repoRoot, "src", "real.ts"), "export const real = 2;\n", "utf8");
     const store = createFileRunStore({ runsRoot });
 
@@ -1836,10 +1832,7 @@ const store: import("../src/index").RunStore = {
   it("restores forbidden file changes on the filesystem safety-block path and persists rollback artifacts", async () => {
     const runsRoot = await mkdtemp(join(tmpdir(), "martin-patch-scope-rollback-"));
     const repoRoot = join(runsRoot, "repo");
-    await mkdir(join(repoRoot, "src"), { recursive: true });
-    await mkdir(join(repoRoot, "apps"), { recursive: true });
-    await writeFile(join(repoRoot, "src", "real.ts"), "export const real = 1;\n", "utf8");
-    initializeGitRepo(repoRoot);
+    await materializeCommittedRepo(repoRoot, { includeAppsDirectory: true });
     const store = createFileRunStore({ runsRoot });
 
     const adapter: MartinAdapter = {
@@ -2063,6 +2056,17 @@ const store: import("../src/index").RunStore = {
   });
 });
 
+const repoFixtureTemplates = new Map<string, string>();
+
+afterAll(async () => {
+  await Promise.all(
+    [...repoFixtureTemplates.values()].map((templatePath) =>
+      rm(templatePath, { recursive: true, force: true }).catch(() => {})
+    )
+  );
+  repoFixtureTemplates.clear();
+});
+
 function attempt(overrides: Partial<LoopAttempt> & Pick<LoopAttempt, "attemptId" | "index">): LoopAttempt {
   const nextAttempt: LoopAttempt = {
     attemptId: overrides.attemptId,
@@ -2139,6 +2143,37 @@ function initializeGitRepo(repoRoot: string): void {
   expect(runGit(repoRoot, ["config", "user.name", "Martin Loop"])).toBe(0);
   expect(runGit(repoRoot, ["add", "."])).toBe(0);
   expect(runGit(repoRoot, ["commit", "-m", "init"])).toBe(0);
+}
+
+async function materializeCommittedRepo(
+  repoRoot: string,
+  options: { includeAppsDirectory?: boolean } = {}
+): Promise<void> {
+  const templateRoot = await resolveCommittedRepoTemplate(options);
+  expect(runGit(dirname(repoRoot), ["clone", "--quiet", templateRoot, repoRoot])).toBe(0);
+  if (options.includeAppsDirectory) {
+    await mkdir(join(repoRoot, "apps"), { recursive: true });
+  }
+}
+
+async function resolveCommittedRepoTemplate(
+  options: { includeAppsDirectory?: boolean } = {}
+): Promise<string> {
+  const key = options.includeAppsDirectory ? "with-apps" : "src-only";
+  const existingTemplate = repoFixtureTemplates.get(key);
+  if (existingTemplate) {
+    return existingTemplate;
+  }
+
+  const templateRoot = await mkdtemp(join(tmpdir(), `martin-runtime-template-${key}-`));
+  await mkdir(join(templateRoot, "src"), { recursive: true });
+  await writeFile(join(templateRoot, "src", "real.ts"), "export const real = 1;\n", "utf8");
+  if (options.includeAppsDirectory) {
+    await mkdir(join(templateRoot, "apps"), { recursive: true });
+  }
+  initializeGitRepo(templateRoot);
+  repoFixtureTemplates.set(key, templateRoot);
+  return templateRoot;
 }
 
 function runGit(repoRoot: string, args: string[]): number {
