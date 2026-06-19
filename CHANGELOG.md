@@ -5,6 +5,12 @@
 ### Fixed
 - **Verifier defaults are less prone to false stop exits on longer suites** - default verifier timeout is now `120_000ms` (up from `60_000ms`) across CLI adapter paths, reducing timeout-driven `verification_failure` exits on healthy runs that take longer than one minute.
 
+## [0.3.7]
+
+### Fixed
+- **Run history reads stay fast at scale** - `latest`/`list` read paths now use a bounded append-only run index before falling back to full directory scans, preventing timeout-style behavior in large local run stores.
+- **CLI/MCP run-store parity for index-backed reads** - root CLI and MCP run inspection paths now share the same index-first behavior, reducing host-specific drift across Cursor/Copilot/Continue and terminal workflows.
+
 ## [0.3.6]
 
 ### Fixed
