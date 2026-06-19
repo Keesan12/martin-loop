@@ -31,6 +31,7 @@ artifacts/
 output/
 /cm*.md
 /cmp*.md
+worktrees/
 
 # OS files
 .DS_Store
