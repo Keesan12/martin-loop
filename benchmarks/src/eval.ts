@@ -11,8 +11,12 @@ import {
   renderUnder3ChallengeMarkdown
 } from "./challenge.js";
 
-const outputDir = fileURLToPath(new URL("../output/", import.meta.url));
 const entryFilePath = fileURLToPath(import.meta.url);
+
+function resolveOutputDir(): string {
+  const configured = process.env.MARTIN_BENCHMARK_OUTPUT_DIR?.trim();
+  return configured && configured.length > 0 ? resolve(configured) : fileURLToPath(new URL("../output/", import.meta.url));
+}
 
 export function readSuiteId(argv: string[]): string {
   for (let index = 0; index < argv.length; index += 1) {
@@ -40,6 +44,7 @@ export function readSuiteId(argv: string[]): string {
 }
 
 async function writeArtifacts(filePrefix: string, payload: unknown, markdown: string): Promise<void> {
+  const outputDir = resolveOutputDir();
   await mkdir(outputDir, { recursive: true });
   await writeFile(join(outputDir, `${filePrefix}.json`), JSON.stringify(payload, null, 2), "utf8");
   await writeFile(join(outputDir, `${filePrefix}.md`), markdown, "utf8");
