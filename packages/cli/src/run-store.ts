@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFile, readdir, stat } from "node:fs/promises";
+import { open, readFile, readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 
@@ -47,6 +47,16 @@ type RunsDirEntry = {
   isFile(): boolean;
   isDirectory(): boolean;
 };
+
+const RUN_INDEX_FILENAME = "run-index.ndjson";
+const RUN_INDEX_READ_MAX_BYTES = 2 * 1024 * 1024;
+
+interface RunIndexEntry {
+  loopId: string;
+  updatedAt: string;
+  status?: LoopRecord["status"];
+  lifecycleState?: LoopRecord["lifecycleState"];
+}
 
 function resolveLocalCorpusPath(): string {
   if (process.env["MARTIN_LEARNING_CORPUS_PATH"]) {
@@ -226,6 +236,15 @@ export async function listPersistedLoops(
   options: { invocationRoot?: string } = {}
 ): Promise<{ runsRoot: string; loops: LoopRecord[]; warnings: string[] }> {
   const runsRoot = resolveRunsRootPath(filters.runsDir, options.invocationRoot);
+  const indexed = await listLoopsFromRunIndex(runsRoot, filters);
+  if (indexed.loops.length > 0) {
+    return {
+      runsRoot,
+      loops: indexed.loops,
+      warnings: indexed.warnings
+    };
+  }
+
   const inspected = await collectPersistedLoops(runsRoot);
   const updatedAfterTimestamp =
     filters.updatedAfter !== undefined ? Date.parse(filters.updatedAfter) : undefined;
@@ -267,7 +286,7 @@ export async function listPersistedLoops(
   return {
     runsRoot,
     loops,
-    warnings: inspected.warnings
+    warnings: [...indexed.warnings, ...inspected.warnings]
   };
 }
 
@@ -597,6 +616,15 @@ export async function findPersistedLoopEvidence(
 
   entries.sort((left, right) => String(left.name).localeCompare(String(right.name)));
   const warnings: string[] = [];
+  const latestIndexed = await loadLatestLoopFromRunIndex(runsRoot, warnings);
+  if (latestIndexed) {
+    return {
+      runsRoot,
+      loop: latestIndexed,
+      warnings
+    };
+  }
+
   const indexedLoop = await loadLatestLoopFromWorkspaceIndexes(runsRoot, entries, warnings);
   if (indexedLoop) {
     return {
@@ -858,6 +886,153 @@ async function loadLatestLoopFromWorkspaceIndexes(
   }
 }
 
+async function listLoopsFromRunIndex(
+  runsRoot: string,
+  filters: MartinRunListFilters
+): Promise<{ loops: LoopRecord[]; warnings: string[] }> {
+  const warnings: string[] = [];
+  const indexed = await readRunIndexEntries(runsRoot);
+  if (indexed.entries.length === 0) {
+    return { loops: [], warnings };
+  }
+
+  const updatedAfterTimestamp =
+    filters.updatedAfter !== undefined ? Date.parse(filters.updatedAfter) : undefined;
+
+  if (
+    filters.updatedAfter !== undefined &&
+    (!Number.isFinite(updatedAfterTimestamp) || Number.isNaN(updatedAfterTimestamp))
+  ) {
+    throw new CliCommandError("invalid_input", "Invalid updatedAfter timestamp.", {
+      suggestion: "Provide updatedAfter as an ISO-8601 timestamp."
+    });
+  }
+
+  const deduped = dedupeRunIndexEntries(indexed.entries);
+  const loops: LoopRecord[] = [];
+  const limit = filters.limit ?? 20;
+  const maxLookups = Math.max(limit * 5, 100);
+
+  for (const entry of deduped) {
+    if (loops.length >= limit || loops.length >= maxLookups) {
+      break;
+    }
+
+    if (filters.status && entry.status !== filters.status) {
+      continue;
+    }
+    if (filters.lifecycleState && entry.lifecycleState !== filters.lifecycleState) {
+      continue;
+    }
+    if (updatedAfterTimestamp !== undefined) {
+      const timestamp = parseTimestamp(entry.updatedAt);
+      if (!Number.isFinite(timestamp) || timestamp <= updatedAfterTimestamp) {
+        continue;
+      }
+    }
+
+    const resolved = await loadLoopById(entry.loopId, runsRoot).catch(() => null);
+    if (!resolved?.loop) {
+      continue;
+    }
+
+    if (filters.adapterId && !resolved.loop.attempts.some((attempt) => attempt.adapterId === filters.adapterId)) {
+      continue;
+    }
+    if (filters.model && !resolved.loop.attempts.some((attempt) => attempt.model === filters.model)) {
+      continue;
+    }
+
+    loops.push(resolved.loop);
+  }
+
+  return {
+    loops: loops
+      .sort((left, right) => loopTimestamp(right) - loopTimestamp(left))
+      .slice(0, limit),
+    warnings
+  };
+}
+
+async function loadLatestLoopFromRunIndex(runsRoot: string, warnings: string[]): Promise<LoopRecord | undefined> {
+  const indexed = await readRunIndexEntries(runsRoot);
+  if (indexed.entries.length === 0) {
+    return undefined;
+  }
+
+  const deduped = dedupeRunIndexEntries(indexed.entries);
+  for (const entry of deduped) {
+    try {
+      return (await loadLoopById(entry.loopId, runsRoot)).loop;
+    } catch (error) {
+      warnings.push(
+        `Run index pointed at unreadable loop '${entry.loopId}': ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  return undefined;
+}
+
+async function readRunIndexEntries(
+  runsRoot: string
+): Promise<{ entries: RunIndexEntry[]; truncated: boolean }> {
+  const indexPath = path.join(runsRoot, RUN_INDEX_FILENAME);
+  const stats = await stat(indexPath).catch(() => null);
+  if (!stats?.isFile()) {
+    return { entries: [], truncated: false };
+  }
+
+  const readBytes = Math.min(Number(stats.size), RUN_INDEX_READ_MAX_BYTES);
+  const start = Math.max(0, Number(stats.size) - readBytes);
+  const handle = await open(indexPath, "r");
+
+  try {
+    const buffer = Buffer.alloc(readBytes);
+    if (readBytes > 0) {
+      await handle.read(buffer, 0, readBytes, start);
+    }
+
+    const raw = buffer.toString("utf8");
+    const lines = raw
+      .split(/\r?\n/u)
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    const entries: RunIndexEntry[] = [];
+    for (const line of lines) {
+      try {
+        const parsed = JSON.parse(line) as unknown;
+        if (isRunIndexEntry(parsed)) {
+          entries.push(parsed);
+        }
+      } catch {
+        // Skip partial tail lines.
+      }
+    }
+
+    entries.sort((left, right) => parseTimestamp(right.updatedAt) - parseTimestamp(left.updatedAt));
+
+    return {
+      entries,
+      truncated: Number(stats.size) > RUN_INDEX_READ_MAX_BYTES
+    };
+  } finally {
+    await handle.close();
+  }
+}
+
+function dedupeRunIndexEntries(entries: RunIndexEntry[]): RunIndexEntry[] {
+  const byLoop = new Map<string, RunIndexEntry>();
+  for (const entry of entries) {
+    const existing = byLoop.get(entry.loopId);
+    if (!existing || parseTimestamp(entry.updatedAt) >= parseTimestamp(existing.updatedAt)) {
+      byLoop.set(entry.loopId, entry);
+    }
+  }
+  return [...byLoop.values()].sort((left, right) => parseTimestamp(right.updatedAt) - parseTimestamp(left.updatedAt));
+}
+
 async function collectPersistedLoops(runsRoot: string): Promise<{ loops: LoopRecord[]; warnings: string[] }> {
   const entries = await readdir(runsRoot, { withFileTypes: true }).catch((error: unknown) => {
     if (isMissing(error)) {
@@ -1047,6 +1222,19 @@ function isWorkspaceIndexSummary(
     candidate !== null &&
     typeof (candidate as { loopId?: unknown }).loopId === "string" &&
     typeof (candidate as { updatedAt?: unknown }).updatedAt === "string"
+  );
+}
+
+function isRunIndexEntry(value: unknown): value is RunIndexEntry {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value["loopId"] === "string" &&
+    value["loopId"].trim().length > 0 &&
+    typeof value["updatedAt"] === "string" &&
+    value["updatedAt"].trim().length > 0
   );
 }
 
