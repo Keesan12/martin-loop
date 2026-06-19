@@ -12,6 +12,12 @@
 
 When local run stores grow large, naive full-directory scans can slow down operator flows and IDE integrations. This release keeps the common inspection paths responsive while preserving compatibility fallback behavior.
 
+## Compatibility
+
+- Breaking changes: none.
+- Runtime policy changes: none.
+- Migration requirement: none.
+
 ## Quick check
 
 ```sh
