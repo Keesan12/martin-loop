@@ -11,6 +11,7 @@ const lane = process.argv[2] ?? "baseline";
 
 const heavyMcpToolsPattern = [
   "reports run-store visibility in proof mode without requiring live CLIs",
+  "surfaces degraded run-store warnings instead of failing on broken loop records",
   "detects tampering in canonical persisted runs and surfaces receipt scope",
   "uses the injected proof-mode verifier spawn for verification-only contract tests",
   "returns a loop outcome in stub mode",
