@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { access, mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -11,8 +11,12 @@ import {
   renderUnder3ChallengeMarkdown
 } from "./challenge.js";
 
-const outputDir = fileURLToPath(new URL("../output/", import.meta.url));
 const entryFilePath = fileURLToPath(import.meta.url);
+
+function resolveOutputDir(): string {
+  const configured = process.env.MARTIN_BENCHMARK_OUTPUT_DIR?.trim();
+  return configured && configured.length > 0 ? resolve(configured) : fileURLToPath(new URL("../output/", import.meta.url));
+}
 
 export function readSuiteId(argv: string[]): string {
   for (let index = 0; index < argv.length; index += 1) {
@@ -40,9 +44,43 @@ export function readSuiteId(argv: string[]): string {
 }
 
 async function writeArtifacts(filePrefix: string, payload: unknown, markdown: string): Promise<void> {
+  const outputDir = resolveOutputDir();
   await mkdir(outputDir, { recursive: true });
-  await writeFile(join(outputDir, `${filePrefix}.json`), JSON.stringify(payload, null, 2), "utf8");
-  await writeFile(join(outputDir, `${filePrefix}.md`), markdown, "utf8");
+  const { jsonPath, markdownPath } = await reserveArtifactPaths(outputDir, filePrefix);
+  await writeFile(jsonPath, JSON.stringify(payload, null, 2), "utf8");
+  await writeFile(markdownPath, markdown, "utf8");
+}
+
+async function reserveArtifactPaths(
+  outputDir: string,
+  filePrefix: string
+): Promise<{ jsonPath: string; markdownPath: string }> {
+  const baseJsonPath = join(outputDir, `${filePrefix}.json`);
+  const baseMarkdownPath = join(outputDir, `${filePrefix}.md`);
+
+  if (!(await pathExists(baseJsonPath)) && !(await pathExists(baseMarkdownPath))) {
+    return { jsonPath: baseJsonPath, markdownPath: baseMarkdownPath };
+  }
+
+  for (let revision = 1; revision <= 9999; revision += 1) {
+    const suffix = `.rev-${revision.toString().padStart(4, "0")}`;
+    const jsonPath = join(outputDir, `${filePrefix}${suffix}.json`);
+    const markdownPath = join(outputDir, `${filePrefix}${suffix}.md`);
+    if (!(await pathExists(jsonPath)) && !(await pathExists(markdownPath))) {
+      return { jsonPath, markdownPath };
+    }
+  }
+
+  throw new Error(`Unable to reserve artifact path for ${filePrefix}.`);
+}
+
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function main(): Promise<void> {
