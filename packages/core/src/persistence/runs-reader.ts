@@ -220,3 +220,4 @@ function resolveRecordTimestamp(record: LoopRunRecord): number {
 function sourcePrecedence(source: LoopRecordSource): number {
   return source === "canonical_tree" ? 2 : 1;
 }
+

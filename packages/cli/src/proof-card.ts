@@ -205,6 +205,7 @@ export function renderMartinProofCardSvg(card: MartinProofCard): string {
     "<defs>",
     `<style>${svgStyle()}</style>`,
     "</defs>",
+    "<desc>Martin Loop Proof Card</desc>",
     '<rect width="1200" height="675" fill="#101010"/>',
     `<line x1="${margin}" y1="42" x2="${width - margin}" y2="42" stroke="#3f3f3f"/>`,
     `<text class="title" x="${margin}" y="87">MARTIN LOOP :: PROOF RECEIPT</text>`,
