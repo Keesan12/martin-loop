@@ -1,25 +1,22 @@
 # @martinloop/mcp 0.3.3
 
-`0.3.3` is the opt-in execution-controls release for the standalone MartinLoop MCP server.
+`0.3.3` hardens run-history reliability for MCP clients that operate against large local run stores.
 
-## Release story
+## What changed
 
-Give power users more control without making execution feel automatic.
+- MCP run discovery paths now prefer a bounded append-only run index before falling back to full directory scans.
+- `latest` and list-style inspection flows stay responsive even when the runs directory contains large historical volume.
+- Compatibility behavior is preserved: if index entries are missing or stale, MCP falls back to canonical run-directory reads.
+- No runtime execution policy changes were introduced in this release.
 
-## Planned scope
+## Why this matters
 
-- explicit execution-capable profiles
-- clearer refusal and escalation messages
-- docs that separate read-only-safe usage from execution-capable usage
-- host snippets that make the default posture obvious
+MCP hosts such as Cursor, Copilot, and other IDE integrations frequently call latest/list inspection paths. This release reduces timeout-style failures caused by scanning very large run histories.
 
-## Out of scope
+## Quick check
 
-- hidden auto-execution
-- hosted orchestration
-- organization-specific controls
-- non-OSS transport modes
+```sh
+npx -y @martinloop/mcp@0.3.3
+```
 
-## Release gate
-
-Read-only stays the default story. Execution stays explicit.
+Then call the MCP list/latest run tools against your normal runs root and confirm responses remain fast and stable.
