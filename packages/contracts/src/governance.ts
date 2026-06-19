@@ -1,16 +1,20 @@
+export type PolicyProfile = "strict" | "balanced" | "overnight" | "debug";
+export type DestructiveActionPolicy = "never" | "approval" | "allowed";
+export type TelemetryDestination = "local-only" | "control-plane";
+
 export type GovernanceSnapshot = {
-  policyProfile: "strict" | "balanced" | "overnight" | "debug";
+  policyProfile: PolicyProfile;
   maxUsd: number;
   softLimitUsd: number;
   maxTokens: number;
   maxIterations: number;
   allowedAdapters: string[];
   allowedModels: string[];
-  destructiveActionPolicy: "never" | "approval" | "allowed";
+  destructiveActionPolicy: DestructiveActionPolicy;
   approvalRequired: boolean;
   verifierRules: string[];
   escalationRoute: string;
-  telemetryDestination: "local-only" | "control-plane";
+  telemetryDestination: TelemetryDestination;
   retentionPolicy: string;
   provenance: Array<{ field: string; value: string; source: string }>;
 };
