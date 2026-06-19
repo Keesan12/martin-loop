@@ -11,7 +11,7 @@ const markerFlag = process.argv.find((arg) => arg.startsWith("--allow-divergence
 const allowedMarker = markerFlag ? markerFlag.slice("--allow-divergence-marker=".length) : undefined;
 const mirrorRoot = process.env.MARTIN_MAIN_REPO_PATH
   ? resolve(process.env.MARTIN_MAIN_REPO_PATH, "oss-core")
-  : resolve(repoRoot, "..", "martin-loop_MAIN_FULL_REPO", "oss-core");
+  : null;
 
 const CRITICAL_FILES = [
   "packages/mcp/src/tools/tool-support.ts",
@@ -136,6 +136,9 @@ function safeReadLocal(relativePath) {
 }
 
 function safeReadMirror(relativePath) {
+  if (!mirrorRoot) {
+    return { ok: false, text: "" };
+  }
   const filePath = join(mirrorRoot, relativePath);
   if (!existsSync(filePath)) {
     return { ok: false, text: "" };
