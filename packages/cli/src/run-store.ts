@@ -203,6 +203,19 @@ export function resolveInvocationRoot(env: NodeJS.ProcessEnv = process.env): str
   return initCwd && initCwd.length > 0 ? initCwd : process.cwd();
 }
 
+function readEnvironmentValue(env: NodeJS.ProcessEnv, key: string): string | undefined {
+  const direct = env[key];
+  if (typeof direct === "string") return direct;
+
+  const matchedKey = Object.keys(env).find((candidate) => candidate.toLowerCase() === key.toLowerCase());
+  const value = matchedKey ? env[matchedKey] : undefined;
+  return typeof value === "string" ? value : undefined;
+}
+
+function resolveLiveModeFromEnvironment(env: NodeJS.ProcessEnv): CliEnvironment["liveMode"] {
+  return readEnvironmentValue(env, "MARTIN_LIVE")?.trim().toLowerCase() === "false" ? "proof" : "live";
+}
+
 export function resolveCliEnvironment(input: {
   cwd?: string;
   runsDir?: string;
@@ -228,7 +241,7 @@ export function resolveCliEnvironment(input: {
     workingDirectory,
     runsRoot,
     engine,
-    liveMode: input.liveMode ?? "live"
+    liveMode: input.liveMode ?? resolveLiveModeFromEnvironment(env)
   };
 }
 

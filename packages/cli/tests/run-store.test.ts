@@ -51,8 +51,17 @@ describe("resolveCliEnvironment", () => {
     expect(environment.engine).toBe("openai");
   });
 
-  it("defaults to live mode even when MARTIN_LIVE is false", () => {
+  it("uses proof mode when MARTIN_LIVE is false", () => {
     const environment = resolveCliEnvironment({ env: { ...process.env, MARTIN_LIVE: "false" } });
+
+    expect(environment.liveMode).toBe("proof");
+  });
+
+  it("lets explicit live mode override MARTIN_LIVE proof mode", () => {
+    const environment = resolveCliEnvironment({
+      env: { ...process.env, MARTIN_LIVE: "false" },
+      liveMode: "live",
+    });
 
     expect(environment.liveMode).toBe("live");
   });

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile, rm, access } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
@@ -64,30 +65,30 @@ function quoteForCmd(value) {
   return `"${value.replace(/"/g, '""')}"`;
 }
 
-test("benchmark workspace cold-builds from a fresh dependency state", async () => {
-  const pathsToReset = [
-    path.join(ROOT_DIR, "packages", "contracts", "dist"),
-    path.join(ROOT_DIR, "packages", "core", "dist"),
-    path.join(ROOT_DIR, "benchmarks", "dist"),
-  ];
+test("benchmark commands do not rebuild shared workspace artifacts implicitly", async () => {
+  const manifest = JSON.parse(await readFile(path.join(ROOT_DIR, "benchmarks", "package.json"), "utf8"));
+  const scripts = manifest.scripts ?? {};
 
-  for (const target of pathsToReset) {
-    await rm(target, { recursive: true, force: true });
-  }
-
-  await run("pnpm", ["--filter", "@martin/benchmarks", "build"]);
-
-  await access(path.join(ROOT_DIR, "packages", "contracts", "dist", "index.d.ts"));
-  await access(path.join(ROOT_DIR, "packages", "core", "dist", "index.d.ts"));
-  await access(path.join(ROOT_DIR, "benchmarks", "dist", "index.js"));
+  assert.equal(typeof scripts.build, "string");
+  assert.equal(scripts.preeval, undefined);
+  assert.equal(scripts["prereport:ralphy"], undefined);
+  assert.match(scripts.eval, /^tsx src\/eval\.ts --suite under-3-challenge$/u);
+  assert.match(scripts["report:ralphy"], /^tsx src\/eval\.ts --suite ralphy-engineering-50$/u);
 });
 
 test("benchmark eval and report commands run through public workspace commands", async () => {
-  const evalResult = await run("pnpm", ["--filter", "@martin/benchmarks", "eval"]);
-  const reportResult = await run("pnpm", ["--filter", "@martin/benchmarks", "report:ralphy"]);
+  const outputDir = await mkdtemp(path.join(tmpdir(), "martin-benchmark-output-"));
 
-  assert.match(evalResult.stdout, /Under-\$3 Challenge/u);
-  assert.match(reportResult.stdout, /Ralph Loop Stress Report/u);
+  try {
+    const env = { MARTIN_BENCHMARK_OUTPUT_DIR: outputDir };
+    const evalResult = await run("pnpm", ["--filter", "@martin/benchmarks", "eval"], { env });
+    const reportResult = await run("pnpm", ["--filter", "@martin/benchmarks", "report:ralphy"], { env });
+
+    assert.match(evalResult.stdout, /Under-\$3 Challenge/u);
+    assert.match(reportResult.stdout, /Ralph Loop Stress Report/u);
+  } finally {
+    await rm(outputDir, { recursive: true, force: true });
+  }
 });
 
 test("public benchmark docs align to the shipped benchmark commands", async () => {
