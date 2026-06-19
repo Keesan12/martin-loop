@@ -19,6 +19,7 @@ import {
   resolveMartinDiscoveryContext
 } from "./discovery-support.js";
 import { invalidArgumentsError } from "./tools/tool-errors.js";
+import type { MartinEngine } from "./tools/tool-support.js";
 
 export const MARTIN_PROMPTS: Prompt[] = [
   {
@@ -183,7 +184,7 @@ export interface MartinGetPromptInput {
   arguments?: Record<string, string>;
   runsDir?: string;
   workingDirectory?: string;
-  engine?: "claude" | "codex" | "gemini";
+  engine?: MartinEngine;
 }
 
 export function listMartinPrompts(): { prompts: Prompt[] } {

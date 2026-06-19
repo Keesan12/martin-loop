@@ -38,6 +38,7 @@ import {
 } from "./phase-command-center.js";
 import {
   buildMcpInstallPlan,
+  hostRequiresExperimentalRemoteOptIn,
   installMcpConfig,
   type MartinMcpHost,
   type MartinMcpPlatform,
@@ -281,6 +282,7 @@ type McpCommand =
       profile: MartinMcpProfile;
       remoteUrl?: string;
       remoteTokenEnv?: string;
+      experimentalRemoteHosts: boolean;
       platform?: MartinMcpPlatform;
     }
   | {
@@ -293,6 +295,7 @@ type McpCommand =
       profile: MartinMcpProfile;
       remoteUrl?: string;
       remoteTokenEnv?: string;
+      experimentalRemoteHosts: boolean;
       platform?: MartinMcpPlatform;
       dryRun: boolean;
     };
@@ -690,6 +693,7 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
       const remoteUrl = readOption(subcommandArgs, "--remote-url");
       const remoteTokenEnv = readOption(subcommandArgs, "--remote-token-env");
       const platform = parseMcpPlatform(subcommandArgs);
+      const experimentalRemoteHosts = hasFlag(subcommandArgs, "--experimental-remote-hosts");
 
       return {
         command: "mcp_print_config",
@@ -701,6 +705,7 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
         ...(runsDir ? { runsDir } : {}),
         ...(remoteUrl ? { remoteUrl } : {}),
         ...(remoteTokenEnv ? { remoteTokenEnv } : {}),
+        experimentalRemoteHosts,
         ...(platform ? { platform } : {})
       };
     }
@@ -715,6 +720,7 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
       const remoteUrl = readOption(subcommandArgs, "--remote-url");
       const remoteTokenEnv = readOption(subcommandArgs, "--remote-token-env");
       const platform = parseMcpPlatform(subcommandArgs);
+      const experimentalRemoteHosts = hasFlag(subcommandArgs, "--experimental-remote-hosts");
 
       return {
         command: "mcp_install",
@@ -726,6 +732,7 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
         ...(runsDir ? { runsDir } : {}),
         ...(remoteUrl ? { remoteUrl } : {}),
         ...(remoteTokenEnv ? { remoteTokenEnv } : {}),
+        experimentalRemoteHosts,
         ...(platform ? { platform } : {}),
         dryRun: hasFlag(subcommandArgs, "--dry-run")
       };
@@ -791,8 +798,8 @@ export function renderCliHelp(): string {
     "  martin runs get (--loop-id <id> | --file <path> | --latest) [options]",
     "  martin runs attempt (--loop-id <id> | --file <path>) [--attempt-index <n>] [options]",
     "  martin runs verify (--loop-id <id> | --file <path> | --latest) [options]",
-    "  martin mcp print-config --host <codex|claude|gemini|generic> [--scope <user|project|local>] [options]",
-    "  martin mcp install --host <codex|claude|gemini|generic> [--scope <user|project|local>] [--dry-run] [options]",
+    "  martin mcp print-config --host <codex|claude|gemini|cursor|copilot|continue|generic> [--scope <user|project|local>] [options]",
+    "  martin mcp install --host <codex|claude|gemini|cursor|copilot|continue|generic> [--scope <user|project|local>] [--dry-run] [options]",
     "  martin demo [--dir <path>] [--force]",
     "  martin-loop demo [--dir <path>] [--force] (published alias)",
     "  martin inspect --file <path>",
@@ -854,10 +861,11 @@ export function renderCliHelp(): string {
     "  --force                  Allow martin enable to overwrite an existing config file.",
     "",
     "MCP config options:",
-    "  --host <name>            codex, claude, gemini, or generic.",
+    "  --host <name>            codex, claude, gemini, cursor, copilot, continue, or generic.",
     "  --scope <name>           user or project for all hosts; Claude also supports local.",
-    "  --transport <name>       stdio (default).",
-    "  --profile <name>         minimal (default), diagnostic, github-review, full-local, starter, or full.",
+    "  --transport <name>       stdio (default) or remote.",
+    "  --experimental-remote-hosts  Required to enable remote transport for cursor/copilot/continue.",
+    "  --profile <name>         minimal (default), diagnostic, github-review, full-local, paid-remote, starter, or full.",
     "  --platform <name>        windows, macos, or linux recipe shaping.",
     "",
     "Run options:",
@@ -2448,6 +2456,7 @@ async function executeMcpPrintConfigCommand(
   command: Extract<ParsedCliArguments, { command: "mcp_print_config" }>,
   outputMode: MartinOutputMode
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  const remotePolicyWarnings = assertMcpRemoteTransportPolicy(command);
   const environment = resolveCliEnvironment({
     cwd: command.cwd,
     runsDir: command.runsDir
@@ -2471,6 +2480,7 @@ async function executeMcpPrintConfigCommand(
       scope: command.scope,
       transport: command.transport,
       profile: command.profile,
+      experimentalRemoteHosts: command.experimentalRemoteHosts,
       targetPath: plan.targetPath,
       content: plan.content,
       serverId: plan.serverId,
@@ -2481,14 +2491,15 @@ async function executeMcpPrintConfigCommand(
         diagnostic: [...MARTIN_DIAGNOSTIC_TOOLS],
         "github-review": [...MARTIN_GITHUB_REVIEW_TOOLS],
         "full-local": [...MARTIN_FULL_TOOLS],
-        starter: [...MARTIN_STARTER_TOOLS],
-        full: [...MARTIN_FULL_TOOLS]
-      },
-      starterTools: [...MARTIN_STARTER_TOOLS],
-      fullTools: [...MARTIN_FULL_TOOLS]
+      starter: [...MARTIN_STARTER_TOOLS],
+      full: [...MARTIN_FULL_TOOLS]
     },
+    starterTools: [...MARTIN_STARTER_TOOLS],
+    fullTools: [...MARTIN_FULL_TOOLS]
+  },
     human: plan.content,
-    quiet: plan.targetPath
+    quiet: plan.targetPath,
+    warnings: remotePolicyWarnings
   });
 }
 
@@ -2496,6 +2507,7 @@ async function executeMcpInstallCommand(
   command: Extract<ParsedCliArguments, { command: "mcp_install" }>,
   outputMode: MartinOutputMode
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  const remotePolicyWarnings = assertMcpRemoteTransportPolicy(command);
   const environment = resolveCliEnvironment({
     cwd: command.cwd,
     runsDir: command.runsDir
@@ -2507,6 +2519,7 @@ async function executeMcpInstallCommand(
     runsRoot: environment.runsRoot,
     transport: command.transport,
     profile: command.profile,
+    experimentalRemoteHosts: command.experimentalRemoteHosts,
     ...(command.remoteUrl ? { remoteUrl: command.remoteUrl } : {}),
     ...(command.remoteTokenEnv ? { remoteTokenEnv: command.remoteTokenEnv } : {}),
     ...(command.platform ? { platform: command.platform } : {})
@@ -2533,7 +2546,8 @@ async function executeMcpInstallCommand(
       "",
       plan.content
     ],
-    quiet: plan.targetPath
+    quiet: plan.targetPath,
+    warnings: remotePolicyWarnings
   });
 }
 
@@ -2840,7 +2854,7 @@ function parseMcpTransport(tokens: string[]): MartinMcpTransport {
   }
 
   throw new CliCommandError("invalid_input", `Invalid --transport value: ${transport}.`, {
-    suggestion: "Use --transport stdio."
+    suggestion: "Use --transport stdio or --transport remote."
   });
 }
 
@@ -2856,6 +2870,7 @@ function parseMcpProfile(tokens: string[]): MartinMcpProfile {
     profile === "diagnostic" ||
     profile === "github-review" ||
     profile === "full-local" ||
+    profile === "paid-remote" ||
     profile === "starter" ||
     profile === "full"
   ) {
@@ -2863,8 +2878,31 @@ function parseMcpProfile(tokens: string[]): MartinMcpProfile {
   }
 
   throw new CliCommandError("invalid_input", `Invalid --profile value: ${profile}.`, {
-    suggestion: "Use --profile minimal, diagnostic, github-review, full-local, starter, or full."
+    suggestion: "Use --profile minimal, diagnostic, github-review, full-local, paid-remote, starter, or full."
   });
+}
+
+function assertMcpRemoteTransportPolicy(
+  command: Extract<ParsedCliArguments, { command: "mcp_print_config" | "mcp_install" }>
+): string[] {
+  if (command.transport !== "remote" || !hostRequiresExperimentalRemoteOptIn(command.host)) {
+    return [];
+  }
+
+  if (!command.experimentalRemoteHosts) {
+    throw new CliCommandError(
+      "invalid_input",
+      `Remote transport for ${command.host} is experimental and requires explicit opt-in.`,
+      {
+        suggestion:
+          `Re-run with --experimental-remote-hosts, or use --transport stdio for stable host behavior.`
+      }
+    );
+  }
+
+  return [
+    `Remote transport for ${command.host} is experimental. Validate host behavior and keep stdio as the default fallback lane.`
+  ];
 }
 
 function parseMcpPlatform(tokens: string[]): MartinMcpPlatform | undefined {

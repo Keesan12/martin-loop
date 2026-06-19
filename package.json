@@ -75,6 +75,7 @@
     "release:root:guard": "node ./scripts/root-release-guard.mjs --pack",
     "release:validate:platforms": "node ./scripts/release-matrix.mjs",
     "release:matrix:local": "node ./scripts/release-matrix.mjs",
+    "release:truth-check": "node ./scripts/release-truth-check.mjs --allow-divergence-marker=[sync-parity]",
     "run:cli": "pnpm --filter @martin/cli dev"
   },
   "devDependencies": {
