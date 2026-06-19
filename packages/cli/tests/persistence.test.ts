@@ -99,4 +99,50 @@ describe("persistLoopArtifacts", () => {
     const contract = JSON.parse(await readFile(contractPath, "utf8"));
     expect(contract.loopId).toBe(loop.loopId);
   });
+
+  it("aggregates events across repeated persists without dropping prior history", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-persist-aggregate-"));
+    const loop = createLoopRecord({
+      workspaceId: "ws_aggregate",
+      projectId: "proj_aggregate",
+      task: {
+        title: "Aggregate event history",
+        objective: "Keep prior receipt intelligence while persisting updates.",
+        verificationPlan: ["pnpm test"]
+      },
+      events: [
+        {
+          eventId: "evt_1",
+          type: "run.started",
+          timestamp: "2026-04-01T00:00:00.000Z",
+          lifecycleState: "running",
+          payload: {}
+        }
+      ]
+    });
+
+    await persistLoopArtifacts(loop, { runsRoot });
+
+    const updated = {
+      ...loop,
+      updatedAt: "2026-04-01T00:05:00.000Z",
+      events: [
+        {
+          eventId: "evt_2",
+          type: "run.completed",
+          timestamp: "2026-04-01T00:04:00.000Z",
+          lifecycleState: "completed",
+          payload: {}
+        }
+      ]
+    };
+
+    await persistLoopArtifacts(updated, { runsRoot });
+
+    const events = await readFile(join(runsRoot, loop.loopId, "events.jsonl"), "utf8");
+    const lines = events.trim().split("\n");
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toContain('"eventId":"evt_1"');
+    expect(lines[1]).toContain('"eventId":"evt_2"');
+  });
 });
