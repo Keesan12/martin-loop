@@ -33,7 +33,7 @@ import { normalizeLoopBudget } from "./workflow-governance.js";
 export interface RunLoopInput {
   objective: string;
   workingDirectory?: string;
-  engine?: "claude" | "codex" | "gemini";
+  engine?: MartinEngine;
   model?: string;
   maxUsd?: number;
   maxIterations?: number;

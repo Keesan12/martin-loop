@@ -239,4 +239,158 @@ describe("mcp config helpers", () => {
       await rm(cwd, { recursive: true, force: true });
     }
   });
+
+  it("merges into existing Copilot settings without destructive overwrite", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "martin-cli-copilot-config-"));
+
+    try {
+      const configDir = join(cwd, ".vscode");
+      await mkdir(configDir, { recursive: true });
+      const configPath = join(configDir, "settings.json");
+      const existing = JSON.stringify(
+        {
+          "editor.formatOnSave": true,
+          "github.copilot.chat.mcpServers": {
+            "existing-server": {
+              command: "node",
+              args: ["./server.js"]
+            }
+          }
+        },
+        null,
+        2
+      );
+      await writeFile(configPath, `${existing}\n`, "utf8");
+
+      await installMcpConfig({
+        host: "copilot",
+        scope: "project",
+        cwd,
+        runsRoot: join(cwd, ".runs")
+      });
+
+      const merged = JSON.parse(await readFile(configPath, "utf8")) as {
+        "editor.formatOnSave": boolean;
+        "github.copilot.chat.mcpServers": Record<string, unknown>;
+      };
+      expect(merged["editor.formatOnSave"]).toBe(true);
+      expect(Object.keys(merged["github.copilot.chat.mcpServers"])).toEqual(
+        expect.arrayContaining(["existing-server", "martin-loop"])
+      );
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it("treats existing Copilot configs with martin-loop as idempotent", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "martin-cli-copilot-idempotent-"));
+
+    try {
+      const configDir = join(cwd, ".vscode");
+      await mkdir(configDir, { recursive: true });
+      const configPath = join(configDir, "settings.json");
+      const existing = JSON.stringify(
+        {
+          "github.copilot.chat.mcpServers": {
+            "martin-loop": {
+              command: "npx",
+              args: ["-y", "@martinloop/mcp"]
+            }
+          }
+        },
+        null,
+        2
+      );
+      await writeFile(configPath, `${existing}\n`, "utf8");
+
+      await installMcpConfig({
+        host: "copilot",
+        scope: "project",
+        cwd,
+        runsRoot: join(cwd, ".runs")
+      });
+
+      expect(await readFile(configPath, "utf8")).toBe(`${existing}\n`);
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it("treats existing Continue array configs with martin-loop as idempotent", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "martin-cli-continue-idempotent-"));
+
+    try {
+      const configDir = join(cwd, ".continue");
+      await mkdir(configDir, { recursive: true });
+      const configPath = join(configDir, "config.json");
+      const existing = JSON.stringify(
+        {
+          mcpServers: [
+            {
+              name: "martin-loop",
+              command: "npx",
+              args: ["-y", "@martinloop/mcp"]
+            }
+          ]
+        },
+        null,
+        2
+      );
+      await writeFile(configPath, `${existing}\n`, "utf8");
+
+      await installMcpConfig({
+        host: "continue",
+        scope: "project",
+        cwd,
+        runsRoot: join(cwd, ".runs")
+      });
+
+      expect(await readFile(configPath, "utf8")).toBe(`${existing}\n`);
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it("merges Continue array configs while preserving non-Martin entries", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "martin-cli-continue-merge-array-"));
+
+    try {
+      const configDir = join(cwd, ".continue");
+      await mkdir(configDir, { recursive: true });
+      const configPath = join(configDir, "config.json");
+      const existing = JSON.stringify(
+        {
+          telemetryEnabled: false,
+          mcpServers: [
+            {
+              name: "existing-server",
+              command: "node",
+              args: ["./existing.js"]
+            }
+          ]
+        },
+        null,
+        2
+      );
+      await writeFile(configPath, `${existing}\n`, "utf8");
+
+      await installMcpConfig({
+        host: "continue",
+        scope: "project",
+        cwd,
+        runsRoot: join(cwd, ".runs")
+      });
+
+      const merged = JSON.parse(await readFile(configPath, "utf8")) as {
+        telemetryEnabled: boolean;
+        mcpServers: Array<{ name?: string }>;
+      };
+      expect(merged.telemetryEnabled).toBe(false);
+      expect(merged.mcpServers.map((entry) => entry.name)).toEqual(
+        expect.arrayContaining(["existing-server", "martin-loop"])
+      );
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
 });
