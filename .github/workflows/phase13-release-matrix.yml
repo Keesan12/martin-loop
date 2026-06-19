@@ -42,8 +42,8 @@ jobs:
         env:
           MARTIN_RELEASE_MATRIX_OUTDIR: .artifacts/release-matrix/${{ matrix.os }}
         run: |
-          pnpm release:truth-check
-          pnpm release:matrix:local
+          node ./scripts/release-truth-check.mjs --allow-divergence-marker=[sync-parity]
+          node ./scripts/release-matrix.mjs
 
       - name: Upload release matrix artifacts
         if: always()
