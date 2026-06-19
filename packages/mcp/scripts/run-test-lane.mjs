@@ -24,6 +24,14 @@ const heavyServerValidationPattern = [
   "accepts a matching doctor-plan-preflight receipt chain when no path allow/deny filters are provided"
 ].join("|");
 
+const heavyMcpDiscoveryPattern = [
+  "degrades server health when an explicit runsDir is missing"
+].join("|");
+
+const heavyRunDossierPattern = [
+  "uses the trusted workspace root when a run record omits repoRoot"
+].join("|");
+
 const commands =
   lane === "baseline"
     ? [
@@ -35,7 +43,13 @@ const commands =
           "--exclude",
           "tests/server-validation.test.ts",
           "--exclude",
-          "tests/eval.test.ts"
+          "tests/eval.test.ts",
+          "--exclude",
+          "tests/mcp-discovery.test.ts",
+          "--exclude",
+          "tests/run-dossier.test.ts",
+          "--exclude",
+          "tests/server-live.test.ts"
         ],
         [
           "run",
@@ -50,6 +64,35 @@ const commands =
           "tests/server-validation.test.ts",
           "--testNamePattern",
           `^(?!.*(${heavyServerValidationPattern})).*$`
+        ],
+        [
+          "run",
+          "--maxWorkers=1",
+          "tests/mcp-discovery.test.ts",
+          "--testNamePattern",
+          `^(?!.*(${heavyMcpDiscoveryPattern})).*$`
+        ],
+        [
+          "run",
+          "--maxWorkers=1",
+          "tests/run-dossier.test.ts",
+          "--testNamePattern",
+          `^(?!.*(${heavyRunDossierPattern})).*$`
+        ],
+        ["run", "--maxWorkers=1", "tests/server-live.test.ts"],
+        [
+          "run",
+          "--maxWorkers=1",
+          "tests/mcp-discovery.test.ts",
+          "--testNamePattern",
+          heavyMcpDiscoveryPattern
+        ],
+        [
+          "run",
+          "--maxWorkers=1",
+          "tests/run-dossier.test.ts",
+          "--testNamePattern",
+          heavyRunDossierPattern
         ]
       ]
     : (() => {

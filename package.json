@@ -61,7 +61,7 @@
     "bench:eval": "pnpm --filter @martin/benchmarks eval",
     "bench:report:ralphy": "pnpm --filter @martin/benchmarks report:ralphy",
     "prepack": "pnpm build && node ./scripts/root-release-guard.mjs --pack",
-    "test": "pnpm --filter @martin/contracts test && pnpm --filter @martin/core test:baseline && pnpm --filter @martin/adapters test && pnpm --filter @martin/benchmarks test && pnpm --filter @martin/cli test && pnpm --filter @martinloop/mcp test:baseline && node --test --test-concurrency=1 scripts/tests/*.mjs",
+    "test": "pnpm --filter @martin/contracts test && pnpm --filter @martin/core test:baseline && pnpm --filter @martin/adapters test:baseline && pnpm --filter @martin/benchmarks test && pnpm --filter @martin/cli test && pnpm --filter @martinloop/mcp test:baseline && node --test --test-concurrency=1 scripts/tests/*.mjs",
     "test:full": "pnpm -r --workspace-concurrency=1 test && node --test --test-concurrency=1 scripts/tests/*.mjs",
     "lint": "pnpm -r lint",
     "public:copy-scan": "node ./scripts/public-copy-scan.mjs",
