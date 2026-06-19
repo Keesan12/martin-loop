@@ -1580,7 +1580,8 @@ async function executePreflightCommand(
   const environment = resolveCliEnvironment({
     cwd: request.cwd,
     runsDir: request.runsDir,
-    engine: request.engine
+    engine: request.engine,
+    liveMode: request.liveMode
   });
   const warnings: string[] = [];
   const blockingIssues: string[] = [];
