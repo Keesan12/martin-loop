@@ -13,6 +13,12 @@
 
 MCP hosts such as Cursor, Copilot, and other IDE integrations frequently call latest/list inspection paths. This release reduces timeout-style failures caused by scanning very large run histories.
 
+## Compatibility
+
+- Breaking changes: none.
+- Tooling compatibility: this release remains compatible with existing MCP host integrations that use the same tool surface.
+- Migration requirement: none.
+
 ## Quick check
 
 ```sh
