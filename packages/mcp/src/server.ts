@@ -59,6 +59,7 @@ import { martinRunDossierTool } from "./tools/run-dossier.js";
 import { createRunControlReceipt } from "./tools/run-controls.js";
 import { martinTriageRunsTool } from "./tools/triage-runs.js";
 import { runLoopTool } from "./tools/run-loop.js";
+import { MARTIN_ENGINE_VALUES } from "./tools/tool-support.js";
 import { createToolErrorResult, createToolSuccessResult } from "./tools/tool-response.js";
 import { MartinToolError, toToolFailure } from "./tools/tool-errors.js";
 import { normalizeLoopBudget } from "./tools/workflow-governance.js";
@@ -795,7 +796,7 @@ export function createMartinMcpServer(serverInfo?: {
           },
           engine: {
             type: "string",
-            enum: ["claude", "codex", "gemini"],
+            enum: [...MARTIN_ENGINE_VALUES],
             description: "Which agent CLI to use. Defaults to claude."
           },
           model: {
@@ -933,7 +934,7 @@ export function createMartinMcpServer(serverInfo?: {
           },
           engine: {
             type: "string",
-            enum: ["claude", "codex", "gemini"],
+            enum: [...MARTIN_ENGINE_VALUES],
             description: "Optional engine to highlight in diagnostics."
           }
         }
@@ -998,7 +999,7 @@ export function createMartinMcpServer(serverInfo?: {
           },
           engine: {
             type: "string",
-            enum: ["claude", "codex", "gemini"],
+            enum: [...MARTIN_ENGINE_VALUES],
             description: "Which agent CLI would be used. Defaults to claude."
           },
           model: {

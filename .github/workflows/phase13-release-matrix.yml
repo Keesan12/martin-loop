@@ -41,7 +41,9 @@ jobs:
       - name: Run OSS release matrix lane
         env:
           MARTIN_RELEASE_MATRIX_OUTDIR: .artifacts/release-matrix/${{ matrix.os }}
-        run: pnpm release:matrix:local
+        run: |
+          pnpm release:truth-check
+          pnpm release:matrix:local
 
       - name: Upload release matrix artifacts
         if: always()
