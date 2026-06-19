@@ -91,12 +91,6 @@ export async function buildStandaloneMcpPackage(options = {}) {
 
 async function ensureWorkspaceArtifacts(rootDir) {
   for (const facade of PACKAGE_FACADES.filter((candidate) => ROOT_FACADE_PACKAGES.includes(candidate.packageName))) {
-    await rm(path.join(rootDir, ...facade.sourceDir), {
-      force: true,
-      recursive: true,
-      maxRetries: 10,
-      retryDelay: 100,
-    });
     await runCommand(
       pnpmCommand(),
       workspaceBuildCommandArgs(facade.packageName),
