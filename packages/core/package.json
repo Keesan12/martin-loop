@@ -8,6 +8,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "test": "vitest run",
+    "test:baseline": "node ./scripts/run-runtime-test-lane.mjs baseline",
+    "test:rollback-integration": "node ./scripts/run-runtime-test-lane.mjs rollback",
     "lint": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

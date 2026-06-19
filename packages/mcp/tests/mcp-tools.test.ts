@@ -831,12 +831,14 @@ describe("martinTriageRunsTool", () => {
       await withRunsRoot(async (runsRoot) => {
         const originalEnv = process.env.MARTIN_LIVE;
         process.env.MARTIN_LIVE = "false";
+        const verifierCalls: Array<{ command: string; args: readonly string[]; options?: SpawnOptions }> = [];
+        __setProofModeVerifierSpawnImplForTests(createImmediateSpawn(verifierCalls));
 
         try {
           const result = await runLoopTool({
             objective: "Create a canonical run, then tamper with the persisted loop record.",
             workingDirectory: ".",
-            verificationPlan: ["pnpm --filter @martinloop/mcp test -- --runInBand"],
+            verificationPlan: ["node --version"],
             maxIterations: 1,
             maxUsd: 1
           });
@@ -852,6 +854,9 @@ describe("martinTriageRunsTool", () => {
           const baselineRun = await martinGetRunTool({ loopId: result.loopId });
           expect(baselineRun.receiptIntegrity.state).toBe("verified");
           expect(baselineRun.receiptScope).toMatchObject(expectedReceiptScope);
+          expect(verifierCalls).toHaveLength(1);
+          expect(verifierCalls[0]?.command).toBe("node");
+          expect(verifierCalls[0]?.args).toEqual(["--version"]);
 
           const persisted = JSON.parse(await readFile(loopRecordPath, "utf8"));
           persisted.task.title = "Tampered after receipt material was created.";
@@ -880,8 +885,7 @@ describe("martinTriageRunsTool", () => {
           }
         }
       });
-    },
-    20_000
+    }
   );
 
   it("verifies canonical events.jsonl receipts and backfills missing receipt scope", async () => {
