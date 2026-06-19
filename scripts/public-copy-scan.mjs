@@ -119,6 +119,10 @@ function normalizePublicCopyContents(contents, relativePath) {
     return normalizePackageMetadata(contents);
   }
 
+  if (relativePath.startsWith(".github/workflows/") && /\.(ya?ml)$/iu.test(relativePath)) {
+    return normalizeWorkflowMetadata(contents);
+  }
+
   if (/\.(md|markdown|ya?ml)$/iu.test(relativePath)) {
     return contents
       .replace(/```[\s\S]*?```/gu, "\n")
@@ -150,6 +154,13 @@ function normalizePackageMetadata(contents) {
   } catch {
     return contents;
   }
+}
+
+function normalizeWorkflowMetadata(contents) {
+  return contents
+    .replace(/(^|\n)(\s*)run:\s*\|[\s\S]*?(?=\n[^\s]|\n\s*-\s+name:|\n\s*[A-Za-z0-9_-]+:|$)/gu, "\n")
+    .replace(/(^|\n)(\s*)run:\s*[^\r\n]+/gu, "\n")
+    .replace(/`[^`\r\n]+`/gu, " ");
 }
 
 function isAllowedPublicCopyPattern(pattern, relativePath) {
