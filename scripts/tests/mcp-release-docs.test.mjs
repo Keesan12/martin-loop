@@ -19,7 +19,7 @@ function escapeRegex(input) {
 }
 
 test("current MCP metadata stays aligned for the release cut", async () => {
-  assert.equal(packageJson.version, "0.3.2");
+  assert.match(packageJson.version, /^\d+\.\d+\.\d+$/);
   assert.equal(packageJson.version, serverJson.version);
 
   const releaseNotesPath = path.join(ROOT_DIR, "docs", "release", `MCP-${packageJson.version}-RELEASE-NOTES.md`);

@@ -1,6 +1,6 @@
 # @martinloop/mcp 0.3.3
 
-`0.3.3` hardens run-history reliability for MCP clients that operate against large local run stores.
+`0.3.3` is the opt-in execution-controls release, including run-history reliability hardening for MCP clients that operate against large local run stores.
 
 ## What changed
 
