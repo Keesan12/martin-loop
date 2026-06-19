@@ -64,6 +64,30 @@ test("findPublicCopyViolations ignores fenced command blocks and package scripts
   assert.equal(manifestViolations.length, 0);
 });
 
+test("findPublicCopyViolations ignores workflow run commands but still scans public workflow labels", () => {
+  const workflowViolations = findPublicCopyViolations(
+    [
+      "name: platform-release-validation",
+      "jobs:",
+      "  validate:",
+      "    steps:",
+      "      - name: Run release validation",
+      "        run: |",
+      "          pnpm release:truth-check",
+      "          pnpm release:matrix:local",
+    ].join("\n"),
+    ".github/workflows/platform-release-validation.yml",
+  );
+  const labelViolations = findPublicCopyViolations(
+    "name: private beta release validation\n",
+    ".github/workflows/platform-release-validation.yml",
+  );
+
+  assert.equal(workflowViolations.length, 0);
+  assert.equal(labelViolations.length, 1);
+  assert.match(String(labelViolations[0]?.pattern), /private beta/i);
+});
+
 test("findPublicCopyViolations allows release packet wording inside release docs", () => {
   const violations = findPublicCopyViolations(
     "# Martin MCP 0.2.7 Release Packet\n",

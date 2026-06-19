@@ -1,4 +1,4 @@
-name: phase13-release-matrix
+name: platform-release-validation
 
 on:
   workflow_dispatch:
@@ -14,7 +14,7 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  release-matrix:
+  platform-release-validation:
     strategy:
       fail-fast: false
       matrix:
@@ -38,16 +38,16 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      - name: Run OSS release matrix lane
+      - name: Run multi-platform release validation
         env:
           MARTIN_RELEASE_MATRIX_OUTDIR: .artifacts/release-matrix/${{ matrix.os }}
         run: |
           node ./scripts/release-truth-check.mjs --allow-divergence-marker=[sync-parity]
           node ./scripts/release-matrix.mjs
 
-      - name: Upload release matrix artifacts
+      - name: Upload platform validation artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: phase13-release-matrix-${{ matrix.os }}
+          name: platform-release-validation-${{ matrix.os }}
           path: .artifacts/release-matrix/${{ matrix.os }}
