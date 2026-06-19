@@ -71,6 +71,7 @@ import {
   type ContextIntegrityPrecheck,
   type ContextIntegrityVerdict
 } from "./context-integrity.js";
+import { decideCircuitBreak } from "./trajectory.js";
 
 // ─── Public API re-exports ───────────────────────────────────────────────────
 export type {
@@ -138,6 +139,16 @@ export type {
   RepoGroundingHit,
   RepoGroundingIndex
 } from "./grounding.js";
+export { buildContextGraphSnapshot, queryContextGraph } from "./context-graph.js";
+export {
+  createLocalIdentityAuthority,
+  hasIdentityScope,
+  issueIdentityToken,
+  verifyIdentityToken
+} from "./identity.js";
+export type { LocalIdentityAuthority } from "./identity.js";
+export { compileExecutionPolicy } from "./policy-compiler.js";
+export { assessTrajectory, decideCircuitBreak } from "./trajectory.js";
 
 // ─── Context Integrity Pre-gate ──────────────────────────────────────────────
 export { runContextIntegrityPrecheck } from "./context-integrity.js";
@@ -299,6 +310,8 @@ export interface AttemptPolicyDecision {
   allowed: boolean;
   reason: string;
   recommendedIntervention?: InterventionType;
+  trajectoryAssessment?: import("@martin/contracts").TrajectoryAssessment;
+  circuitBreakDecision?: import("@martin/contracts").CircuitBreakDecision;
 }
 
 /**
@@ -311,13 +324,37 @@ export function evaluateAttemptPolicy(input: {
   projectedUsd: number;
 }): AttemptPolicyDecision {
   const { request, projectedUsd } = input;
+  const trajectoryAttempts = request.previousAttempts.map((attempt) => ({
+    index: attempt.index,
+    summary: attempt.summary,
+    failureClass: attempt.failureClass
+  }));
+  const circuitBreakDecision = decideCircuitBreak({
+    objective: request.context.objective,
+    verificationPlan: request.context.verificationPlan,
+    attempts: trajectoryAttempts,
+    remainingIterations: request.context.remainingIterations
+  });
+  const trajectoryAssessment = circuitBreakDecision.assessment;
+
+  if (circuitBreakDecision.shouldStop) {
+    return {
+      allowed: false,
+      reason: circuitBreakDecision.reason,
+      recommendedIntervention: circuitBreakDecision.recommendedIntervention,
+      trajectoryAssessment,
+      circuitBreakDecision
+    };
+  }
 
   // Budget gate: reject if projected cost exceeds remaining
   if (projectedUsd > request.context.remainingBudgetUsd) {
     return {
       allowed: false,
       reason: `Projected cost $${projectedUsd} exceeds remaining budget $${request.context.remainingBudgetUsd}.`,
-      recommendedIntervention: "stop_loop"
+      recommendedIntervention: "stop_loop",
+      trajectoryAssessment,
+      circuitBreakDecision
     };
   }
 
@@ -326,7 +363,9 @@ export function evaluateAttemptPolicy(input: {
     return {
       allowed: false,
       reason: "No remaining iterations in the budget.",
-      recommendedIntervention: "stop_loop"
+      recommendedIntervention: "stop_loop",
+      trajectoryAssessment,
+      circuitBreakDecision
     };
   }
 
@@ -342,7 +381,9 @@ export function evaluateAttemptPolicy(input: {
       return {
         allowed: false,
         reason: "Oscillating failure pattern detected. Escalating to human.",
-        recommendedIntervention: "escalate_human"
+        recommendedIntervention: "escalate_human",
+        trajectoryAssessment,
+        circuitBreakDecision
       };
     }
   }
@@ -367,7 +408,9 @@ export function evaluateAttemptPolicy(input: {
         return {
           allowed: false,
           reason: "Materially repetitive attempts detected. Escalating to human.",
-          recommendedIntervention: "escalate_human"
+          recommendedIntervention: "escalate_human",
+          trajectoryAssessment,
+          circuitBreakDecision
         };
       }
     }
@@ -375,7 +418,9 @@ export function evaluateAttemptPolicy(input: {
 
   return {
     allowed: true,
-    reason: "Attempt admitted."
+    reason: "Attempt admitted.",
+    trajectoryAssessment,
+    circuitBreakDecision
   };
 }
 

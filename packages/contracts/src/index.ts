@@ -760,4 +760,47 @@ export interface RollbackOutcomeArtifact {
 }
 
 export { createGovernanceSnapshot } from "./governance.js";
-export type { GovernanceSnapshot } from "./governance.js";
+export type {
+  DestructiveActionPolicy,
+  GovernanceSnapshot,
+  PolicyProfile,
+  TelemetryDestination
+} from "./governance.js";
+export { cloneExecutionPolicy } from "./execution-policy.js";
+export type {
+  ExecutionPolicy,
+  ExecutionPolicyCompileInput,
+  ExecutionPolicyConfigInput,
+  ExecutionPolicyDefaults,
+  ExecutionPolicyProvenanceEntry,
+  ExecutionPolicyRequestInput
+} from "./execution-policy.js";
+export { cloneContextGraphSnapshot } from "./context-graph.js";
+export type {
+  ContextGraphBuildOptions,
+  ContextGraphEdge,
+  ContextGraphHit,
+  ContextGraphNode,
+  ContextGraphNodeKind,
+  ContextGraphSnapshot,
+  ContextQuery
+} from "./context-graph.js";
+export {
+  cloneIdentityAttestation,
+  cloneIdentityClaims,
+  cloneIdentityToken
+} from "./identity.js";
+export type {
+  IdentityAttestation,
+  IdentityClaims,
+  IdentityToken
+} from "./identity.js";
+export {
+  cloneCircuitBreakDecision,
+  cloneTrajectoryAssessment
+} from "./trajectory.js";
+export type {
+  CircuitBreakDecision,
+  TrajectoryAssessment,
+  TrajectorySignal
+} from "./trajectory.js";

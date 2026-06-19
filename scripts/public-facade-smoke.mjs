@@ -27,8 +27,17 @@ export function createPublicFacadeSmokePlan(options = {}) {
     cliSmoke: {
       description: "npx martin-loop --help resolves through the root public package facade.",
     },
+    startSmoke: {
+      description: "npx martin-loop start proves the first-run governed workflow from a clean temp install.",
+    },
     demoSmoke: {
       description: "npx martin-loop demo copies the packaged sandbox from a clean temp install.",
+    },
+    governedRunSmoke: {
+      description: "A governed Codex run auto-bootstraps governed prerequisites from a clean temp install.",
+    },
+    unsafeBypassSmoke: {
+      description: "unsafe-allow-unguarded-run remains available as an explicit operator bypass.",
     },
   };
 }
@@ -95,6 +104,11 @@ export async function runPublicFacadeSmoke(options = {}) {
       throw new Error(`Expected CLI help output to include "martin-loop run" or "Martin Loop CLI".\n${cliRun.stdout}${cliRun.stderr}`);
     }
 
+    const startRun = await runCommand(["npx", "martin-loop", "start"], { cwd: appDir });
+    if (!/martin-loop proofRun|martin run/iu.test(`${startRun.stdout}\n${startRun.stderr}`)) {
+      throw new Error(`Expected start command to describe the first-run governed workflow.\n${startRun.stdout}${startRun.stderr}`);
+    }
+
     const demoTarget = path.join(appDir, "martin-loop-demo");
     const demoRun = await runCommand(["npx", "martin-loop", "demo", "--dir", demoTarget], {
       cwd: appDir,
@@ -102,6 +116,79 @@ export async function runPublicFacadeSmoke(options = {}) {
     const demoReadme = await readFile(path.join(demoTarget, "README.md"), "utf8");
     if (!/Martin\s*Loop demo sandbox created at/u.test(demoRun.stdout) || !demoReadme.includes("Demo Sandbox")) {
       throw new Error(`Expected demo command to copy the packaged sandbox.\n${demoRun.stdout}${demoRun.stderr}`);
+    }
+
+    const governedWorkspace = path.join(appDir, "governed-workspace");
+    const governedRunsDir = path.join(appDir, ".martin-runs");
+    const governedGroundingDir = path.join(appDir, ".martin-grounding");
+    const governedIntegrityDir = path.join(appDir, ".martin-receipt-integrity");
+    await mkdir(governedWorkspace, { recursive: true });
+    initializeGitRepo(governedWorkspace);
+
+    const fakeCodex = await createFakeCodexCli(tempRoot);
+    const governedEnv = {
+      LOCALAPPDATA: fakeCodex.localAppData,
+      MARTIN_RUNS_DIR: governedRunsDir,
+      MARTIN_GROUNDING_DIR: governedGroundingDir,
+      MARTIN_INTEGRITY_KEY_DIR: governedIntegrityDir,
+      PATH: withPrependedPath(process.env.PATH ?? "", fakeCodex.binDir),
+    };
+
+    const noopVerifier = process.platform === "win32" ? "cmd /c exit 0" : "true";
+    const governedRun = await runCommand(
+      [
+        "npx",
+        "martin-loop",
+        "--json",
+        "run",
+        "--engine",
+        "codex",
+        "--cwd",
+        governedWorkspace,
+        "--runs-dir",
+        governedRunsDir,
+        "--objective",
+        "Fix the bug",
+        "--verify",
+        noopVerifier,
+        "--max-iterations",
+        "1",
+        "--budget-usd",
+        "2",
+      ],
+      { cwd: appDir, env: governedEnv },
+    );
+    const governedPayload = JSON.parse(governedRun.stdout);
+    const governedAdapterId = governedPayload?.loop?.attempts?.[0]?.adapterId;
+    if (governedAdapterId !== "agent-cli:codex") {
+      throw new Error(`Expected governed public smoke to execute through the Codex adapter.\n${governedRun.stdout}${governedRun.stderr}`);
+    }
+
+    const unsafeBypassRun = await runCommand(
+      [
+        "npx",
+        "martin-loop",
+        "run",
+        "--engine",
+        "codex",
+        "--cwd",
+        governedWorkspace,
+        "--runs-dir",
+        path.join(appDir, ".martin-runs-bypass"),
+        "--objective",
+        "Fix the bug",
+        "--verify",
+        noopVerifier,
+        "--max-iterations",
+        "1",
+        "--budget-usd",
+        "2",
+        "--unsafe-allow-unguarded-run",
+      ],
+      { cwd: appDir, env: governedEnv, allowFailure: true },
+    );
+    if (unsafeBypassRun.exitCode === 8) {
+      throw new Error(`Expected unsafe bypass smoke to avoid the governed receipt-chain block.\n${unsafeBypassRun.stdout}${unsafeBypassRun.stderr}`);
     }
 
     return {
@@ -117,9 +204,22 @@ export async function runPublicFacadeSmoke(options = {}) {
         ok: true,
         command: "npx martin-loop --help",
       },
+      startSmoke: {
+        ok: true,
+        command: "npx martin-loop start",
+      },
       demoSmoke: {
         ok: true,
         command: "npx martin-loop demo --dir ./martin-loop-demo",
+      },
+      governedRunSmoke: {
+        ok: true,
+        adapterId: governedAdapterId,
+      },
+      unsafeBypassSmoke: {
+        ok: unsafeBypassRun.exitCode !== 8,
+        command: "npx martin-loop run --engine codex --unsafe-allow-unguarded-run",
+        exitCode: unsafeBypassRun.exitCode,
       },
     };
   } finally {
@@ -131,7 +231,7 @@ export async function runPublicFacadeSmoke(options = {}) {
 
 async function runCommand(command, options) {
   const execution = resolveRcCommandExecution(command, process.platform);
-  const env = buildLifecycleSafeEnv();
+  const env = buildLifecycleSafeEnv(options.env ?? process.env);
 
   return new Promise((resolve, reject) => {
     const child = spawn(execution.command, execution.args, {
@@ -157,7 +257,7 @@ async function runCommand(command, options) {
     });
 
     child.on("close", (code) => {
-      if (code !== 0) {
+      if (code !== 0 && options.allowFailure !== true) {
         reject(
           new Error(
             `Command failed (${code ?? "unknown"}): ${command.join(" ")}\n${stdout}${stderr}`,
@@ -167,6 +267,7 @@ async function runCommand(command, options) {
       }
 
       resolve({
+        exitCode: code ?? 0,
         stdout,
         stderr,
       });
@@ -213,6 +314,77 @@ function buildLifecycleSafeEnv(sourceEnv = process.env) {
   }
 
   return env;
+}
+
+async function createFakeCodexCli(tempRoot) {
+  const binDir = path.join(tempRoot, "fake-codex-bin");
+  const localAppData = path.join(tempRoot, "localappdata");
+  await mkdir(binDir, { recursive: true });
+  await mkdir(localAppData, { recursive: true });
+
+  const file = path.join(binDir, process.platform === "win32" ? "codex.cmd" : "codex");
+  const script = process.platform === "win32"
+    ? [
+        "@echo off",
+        "echo %* | findstr /C:\"--help\" >nul",
+        "if %errorlevel%==0 (",
+        "  echo usage: codex exec ...",
+        "  exit /b 0",
+        ")",
+        "echo {\"type\":\"item.completed\",\"item\":{\"type\":\"command_execution\",\"status\":\"completed\",\"exit_code\":0}}",
+        "echo {\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"fake codex completed\"}}",
+        "echo {\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":10,\"output_tokens\":5}}",
+        "exit /b 0",
+        "",
+      ].join("\r\n")
+    : [
+        "#!/usr/bin/env sh",
+        "case \"$*\" in",
+        "  *--help*)",
+        "    echo 'usage: codex exec ...'",
+        "    ;;",
+        "  *)",
+        "    echo '{\"type\":\"item.completed\",\"item\":{\"type\":\"command_execution\",\"status\":\"completed\",\"exit_code\":0}}'",
+        "    echo '{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"fake codex completed\"}}'",
+        "    echo '{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":10,\"output_tokens\":5}}'",
+        "    ;;",
+        "esac",
+        "",
+      ].join("\n");
+  await writeFile(file, script, "utf8");
+  if (process.platform !== "win32") {
+    await access(file);
+  }
+
+  return {
+    binDir,
+    localAppData,
+  };
+}
+
+function initializeGitRepo(directory) {
+  const result = spawn(process.platform === "win32" ? "git.exe" : "git", ["init"], {
+    cwd: directory,
+    stdio: "ignore",
+    shell: false,
+  });
+
+  return new Promise((resolve, reject) => {
+    result.on("error", reject);
+    result.on("close", (code) => {
+      if (code !== 0) {
+        reject(new Error(`Failed to initialize git repository. exit=${String(code)}`));
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
+function withPrependedPath(originalPath, directory) {
+  return originalPath.length > 0
+    ? `${directory}${process.platform === "win32" ? ";" : ":"}${originalPath}`
+    : directory;
 }
 
 async function main() {
