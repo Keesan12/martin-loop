@@ -24,6 +24,7 @@ import type { MartinRunDossierInput } from "./tools/run-dossier.js";
 import type { MartinRunControlRequestInput } from "./tools/run-controls.js";
 import type { RunLoopInput } from "./tools/run-loop.js";
 import type { MartinTriageRunsInput } from "./tools/triage-runs.js";
+import { MARTIN_ENGINE_VALUES } from "./tools/tool-support.js";
 
 type ToolName =
   | "martin_run"
@@ -244,7 +245,7 @@ function validateRunInput(args: unknown): RunLoopInput {
     "projectId"
   ]);
 
-  const engine = optionalEnum(record.engine, "engine", ["claude", "codex", "gemini"] as const);
+  const engine = optionalEnum(record.engine, "engine", MARTIN_ENGINE_VALUES);
   return {
     objective: requireString(record.objective, "objective"),
     ...(record.workingDirectory !== undefined
@@ -354,7 +355,7 @@ function validateDoctorInput(args: unknown): MartinDoctorInput {
     ...(record.runsDir !== undefined
       ? { runsDir: resolveSafeRunsRootPath(requireString(record.runsDir, "runsDir")) }
       : {}),
-    ...optionalEnumAsObject(record.engine, "engine", ["claude", "codex", "gemini"] as const)
+    ...optionalEnumAsObject(record.engine, "engine", MARTIN_ENGINE_VALUES)
   };
 }
 
