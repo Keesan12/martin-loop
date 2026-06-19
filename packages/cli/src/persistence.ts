@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { writeReceiptIntegrityMaterial } from "@martin/core";
 import type { LoopRecord } from "@martin/contracts";
 
+const RUN_INDEX_FILENAME = "run-index.ndjson";
+
 export type PersistedLoopState = {
   loopId: string;
   workspaceId: string;
@@ -79,6 +81,19 @@ export async function persistLoopArtifacts(
   await appendFile(
     join(runsRoot, `${loop.workspaceId}.jsonl`),
     `${JSON.stringify({ loopId: loop.loopId, status: loop.status, cost: loop.cost, updatedAt: loop.updatedAt })}\n`,
+    "utf8"
+  );
+
+  await appendFile(
+    join(runsRoot, RUN_INDEX_FILENAME),
+    `${JSON.stringify({
+      loopId: loop.loopId,
+      workspaceId: loop.workspaceId,
+      projectId: loop.projectId,
+      status: loop.status,
+      lifecycleState: loop.lifecycleState,
+      updatedAt: loop.updatedAt
+    })}\n`,
     "utf8"
   );
 

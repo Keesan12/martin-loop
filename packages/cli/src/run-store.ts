@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFile, readdir, stat } from "node:fs/promises";
+import { open, readFile, readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 
@@ -47,6 +47,16 @@ type RunsDirEntry = {
   isFile(): boolean;
   isDirectory(): boolean;
 };
+
+const RUN_INDEX_FILENAME = "run-index.ndjson";
+const RUN_INDEX_READ_MAX_BYTES = 2 * 1024 * 1024;
+
+interface RunIndexEntry {
+  loopId: string;
+  updatedAt: string;
+  status?: LoopRecord["status"];
+  lifecycleState?: LoopRecord["lifecycleState"];
+}
 
 function resolveLocalCorpusPath(): string {
   if (process.env["MARTIN_LEARNING_CORPUS_PATH"]) {
@@ -135,26 +145,15 @@ export interface PersistedLoopDetail {
 }
 
 export type IntegrityStatus = ReceiptIntegritySummary["state"];
-export type VerificationIntegrityClassification =
-  | "tampered_payload"
-  | "missing_integrity_material"
-  | "schema_unknown_fields";
-
-export interface VerificationIntegrityStatus {
-  status: "passed" | "failed" | "unavailable";
-  summary: string;
-  classification?: VerificationIntegrityClassification;
-}
 
 export interface VerificationSummary {
-  status: "passed" | "failed" | "unavailable";
+  status: "passed" | "failed" | "contradicted" | "not_run";
   summary: string;
   eventCount: number;
   latestAttemptIndex?: number;
   completedAt?: string;
   steps: VerificationStepSummary[];
   warnings: string[];
-  integrity?: VerificationIntegrityStatus;
 }
 
 export interface VerificationStepSummary {
@@ -237,6 +236,15 @@ export async function listPersistedLoops(
   options: { invocationRoot?: string } = {}
 ): Promise<{ runsRoot: string; loops: LoopRecord[]; warnings: string[] }> {
   const runsRoot = resolveRunsRootPath(filters.runsDir, options.invocationRoot);
+  const indexed = await listLoopsFromRunIndex(runsRoot, filters);
+  if (indexed.loops.length > 0) {
+    return {
+      runsRoot,
+      loops: indexed.loops,
+      warnings: indexed.warnings
+    };
+  }
+
   const inspected = await collectPersistedLoops(runsRoot);
   const updatedAfterTimestamp =
     filters.updatedAfter !== undefined ? Date.parse(filters.updatedAfter) : undefined;
@@ -278,13 +286,13 @@ export async function listPersistedLoops(
   return {
     runsRoot,
     loops,
-    warnings: inspected.warnings
+    warnings: [...indexed.warnings, ...inspected.warnings]
   };
 }
 
 export async function loadPersistedLoop(
   selector: MartinRunSelector,
-  options: { invocationRoot?: string; requireCanonicalRunSelector?: boolean } = {}
+  options: { invocationRoot?: string } = {}
 ): Promise<PersistedLoopDetail> {
   const runsRoot = resolveRunsRootPath(selector.runsDir, options.invocationRoot);
   const selectors = [
@@ -318,9 +326,6 @@ export async function loadPersistedLoop(
     if (targetStats.isDirectory()) {
       const canonical = await findCanonicalLoopRecordPath(targetPath);
       if (canonical) {
-        if (options.requireCanonicalRunSelector) {
-          assertCanonicalRunSelectorPath(canonical, runsRoot);
-        }
         return await attachReceiptIntegrity({
           source: canonical,
           runsRoot,
@@ -329,17 +334,6 @@ export async function loadPersistedLoop(
           runDirectory: path.dirname(canonical),
           loopRecordPath: canonical
         });
-      }
-
-      if (options.requireCanonicalRunSelector) {
-        throw new CliCommandError(
-          "invalid_input",
-          "File selector must resolve to a canonical run selector under the configured runs root.",
-          {
-            suggestion:
-              "Use --loop-id or --latest, or point --file at <runsRoot>/<loopId>/loop-record.json."
-          }
-        );
       }
 
       const inspected = await collectPersistedLoops(targetPath);
@@ -354,10 +348,6 @@ export async function loadPersistedLoop(
         loop,
         warnings: inspected.warnings
       });
-    }
-
-    if (options.requireCanonicalRunSelector) {
-      assertCanonicalRunSelectorPath(targetPath, runsRoot);
     }
 
     const loops = await readLoopsFromFile(targetPath, runsRoot);
@@ -380,38 +370,17 @@ export async function loadPersistedLoop(
     throw new CliCommandError("not_found", "No persisted Martin loops were found.");
   }
 
-  const canonicalDetail =
-    typeof loop.loopId === "string" ? await loadLoopById(loop.loopId, runsRoot).catch(() => undefined) : undefined;
-  if (canonicalDetail) {
-    return await attachReceiptIntegrity({
-      ...canonicalDetail,
-      runsRoot,
-      warnings: inspected.warnings
-    });
-  }
-
-  if (options.requireCanonicalRunSelector) {
-    throw new CliCommandError(
-      "invalid_input",
-      "File selector must resolve to a canonical run selector under the configured runs root.",
-      {
-        suggestion:
-          "Use --loop-id or --latest, or point --file at <runsRoot>/<loopId>/loop-record.json."
-      }
-    );
-  }
-
+  const detail = await loadLoopById(loop.loopId, runsRoot);
   return await attachReceiptIntegrity({
-    source: runsRoot,
+    ...detail,
     runsRoot,
-    loop,
     warnings: inspected.warnings
   });
 }
 
 export async function loadPersistedAttempt(
   selector: MartinRunSelector,
-  options: { invocationRoot?: string; requireCanonicalRunSelector?: boolean } = {}
+  options: { invocationRoot?: string } = {}
 ): Promise<{
   detail: PersistedLoopDetail;
   attempt: LoopRecord["attempts"][number];
@@ -432,25 +401,30 @@ export async function loadPersistedAttempt(
   return {
     detail,
     attempt,
-    verification: await buildVerificationSummaryWithIntegrity(detail)
+    verification: buildVerificationSummary(detail.loop)
   };
 }
 
 async function attachReceiptIntegrity(detail: Omit<PersistedLoopDetail, "integrity">): Promise<PersistedLoopDetail> {
   const integrity =
-    detail.loopRecordPath && detail.runDirectory && isWithinRunsRoot(detail.runsRoot, detail.runDirectory)
-      ? await verifyReceiptIntegrityFromFiles({
-          runId: detail.loop.loopId,
-          runsRoot: detail.runsRoot,
-          loopRecordPath: detail.loopRecordPath,
-          ledgerPath: await resolveReceiptEvidencePath(detail.runDirectory)
-        }).catch<ReceiptIntegritySummary>(() => ({
-          state: "unsigned",
-          reason: "Receipt integrity verification could not be completed."
-        }))
+    detail.loopRecordPath && detail.runDirectory
+      ? isWithinRunsRoot(detail.runsRoot, detail.runDirectory)
+        ? await verifyReceiptIntegrityFromFiles({
+            runId: detail.loop.loopId,
+            runsRoot: detail.runsRoot,
+            loopRecordPath: detail.loopRecordPath,
+            ledgerPath: await resolveReceiptEvidencePath(detail.runDirectory)
+          }).catch<ReceiptIntegritySummary>(() => ({
+            state: "material_missing",
+            reason: "Receipt integrity verification could not be completed."
+          }))
+        : ({
+            state: "relocated",
+            reason: "Run evidence was loaded from a relocated directory outside the canonical runs root."
+          } satisfies ReceiptIntegritySummary)
       : ({
-          state: "unsigned",
-          reason: "Receipt integrity is only available for canonical run directories."
+          state: "selector_noncanonical",
+          reason: "Receipt integrity is only available for canonical run selectors."
         } satisfies ReceiptIntegritySummary);
 
   return {
@@ -478,11 +452,11 @@ export function buildVerificationSummary(loop: LoopRecord): VerificationSummary 
 
   if (!latestEvent) {
     return {
-      status: "unavailable",
+      status: "not_run",
       summary: "No persisted verification evidence was found for this loop.",
       eventCount: 0,
       steps: [],
-      warnings: [...integrityWarnings, "Verification evidence is unavailable for this persisted loop."]
+      warnings: [...integrityWarnings, "Verification evidence was not recorded for this persisted loop."]
     };
   }
 
@@ -494,12 +468,15 @@ export function buildVerificationSummary(loop: LoopRecord): VerificationSummary 
       : loop.attempts.at(-1)?.index;
   const warnings = [...integrityWarnings, ...readVerificationWarnings(payload)];
   const steps = readVerificationSteps(payload);
+  const contradicted = passed && hasVerificationContradiction(warnings, steps);
 
   return {
-    status: passed ? "passed" : "failed",
+    status: contradicted ? "contradicted" : passed ? "passed" : "failed",
     summary:
       typeof payload?.["summary"] === "string"
         ? (payload["summary"] as string)
+        : contradicted
+          ? "Verifier evidence is contradicted by launch/runtime diagnostics."
         : passed
           ? "Verification passed."
           : "Verification failed.",
@@ -508,29 +485,6 @@ export function buildVerificationSummary(loop: LoopRecord): VerificationSummary 
     completedAt: latestEvent.timestamp,
     steps,
     warnings
-  };
-}
-
-export async function buildVerificationSummaryWithIntegrity(
-  detail: PersistedLoopDetail
-): Promise<VerificationSummary> {
-  const verification = buildVerificationSummary(detail.loop);
-  const integrity = await assessReceiptIntegrity(detail);
-  const warnings = [...verification.warnings];
-  let summary = verification.summary;
-
-  if (integrity.status === "failed") {
-    warnings.push(`Integrity check failed (${integrity.classification ?? "unknown"}).`);
-    summary = `${verification.summary} Integrity: ${integrity.summary}`;
-  } else if (integrity.status === "unavailable") {
-    warnings.push("Integrity verification is unavailable for this selector.");
-  }
-
-  return {
-    ...verification,
-    summary,
-    warnings,
-    integrity
   };
 }
 
@@ -579,7 +533,6 @@ export function buildRunReceipt(
       tokensIn: loop.cost.tokensIn,
       tokensOut: loop.cost.tokensOut,
       costProvenance: readCostProvenance(loop),
-      costProvenanceLabel: describeCostProvenance(readCostProvenance(loop)),
       trustworthy,
       integrityState: integrity.state,
       avoidedIterationsEstimate: stopConditionReached ? 1 : 0,
@@ -663,6 +616,15 @@ export async function findPersistedLoopEvidence(
 
   entries.sort((left, right) => String(left.name).localeCompare(String(right.name)));
   const warnings: string[] = [];
+  const latestIndexed = await loadLatestLoopFromRunIndex(runsRoot, warnings);
+  if (latestIndexed) {
+    return {
+      runsRoot,
+      loop: latestIndexed,
+      warnings
+    };
+  }
+
   const indexedLoop = await loadLatestLoopFromWorkspaceIndexes(runsRoot, entries, warnings);
   if (indexedLoop) {
     return {
@@ -728,7 +690,7 @@ function buildPreventionSummary(
   if (stopConditionReached) {
     prevented.push("another unsafe or uneconomical retry before operator review");
   }
-  if (verification.status === "failed") {
+  if (verification.status === "failed" || verification.status === "contradicted") {
     prevented.push("false success claims after a failed verifier");
   }
   if (latestAttempt?.failureClass) {
@@ -751,7 +713,7 @@ function selectNextSafeAction(
   verification: VerificationSummary,
   rollbackEvidenceCount: number
 ): string {
-  if (verification.status === "failed") {
+  if (verification.status === "failed" || verification.status === "contradicted") {
     return `Debug loop ${loop.loopId} before another attempt; start with verifier evidence and the latest failed attempt.`;
   }
 
@@ -789,9 +751,13 @@ function scoreLoop(loop: LoopRecord): TriageFinding {
     priority += 40;
     reasons.push("verification_failed");
   }
-  if (verification.status === "unavailable") {
+  if (verification.status === "contradicted") {
+    priority += 55;
+    reasons.push("verification_contradicted");
+  }
+  if (verification.status === "not_run") {
     priority += 10;
-    reasons.push("verification_unavailable");
+    reasons.push("verification_not_run");
   }
   if (loop.attempts.length >= 3) {
     priority += 10;
@@ -819,175 +785,30 @@ function resolveAbsolutePath(targetPath: string, base = resolveInvocationRoot())
   return path.isAbsolute(targetPath) ? path.normalize(targetPath) : path.resolve(base, targetPath);
 }
 
-function assertCanonicalRunSelectorPath(candidatePath: string, runsRoot: string): void {
-  const canonicalCandidate = path.resolve(candidatePath);
-  const canonicalRoot = path.resolve(runsRoot);
-  const relativePath = path.relative(canonicalRoot, canonicalCandidate);
-
-  if (relativePath === "" || relativePath === ".") {
-    return;
-  }
-
-  if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
-    throw new CliCommandError(
-      "invalid_input",
-      "File selector must resolve to a canonical run selector under the configured runs root.",
-      {
-        suggestion:
-          "Use --loop-id or --latest, or point --file at <runsRoot>/<loopId>/loop-record.json."
-      }
-    );
-  }
-}
-
-async function assessReceiptIntegrity(
-  detail: PersistedLoopDetail
-): Promise<VerificationIntegrityStatus> {
-  if (!detail.runDirectory || !detail.loopRecordPath) {
-    return {
-      status: "failed",
-      classification: "missing_integrity_material",
-      summary: "Missing canonical run directory context for receipt-integrity verification."
-    };
-  }
-
-  const runDirectory = detail.runDirectory;
-  const loopRecordPath = detail.loopRecordPath;
-  const integrityPath = path.join(runDirectory, "receipt-integrity.json");
-  const integrityRaw = await readFile(integrityPath, "utf8").catch(() => undefined);
-  if (!integrityRaw) {
-    return {
-      status: "failed",
-      classification: "missing_integrity_material",
-      summary: "receipt-integrity.json is missing."
-    };
-  }
-
-  const parsed = parseJsonRecord(integrityRaw);
-  if (!parsed) {
-    return {
-      status: "failed",
-      classification: "missing_integrity_material",
-      summary: "receipt-integrity.json is unreadable JSON."
-    };
-  }
-
-  const unknownFields = Object.keys(parsed).filter((key) => !RECEIPT_INTEGRITY_ALLOWED_TOP_KEYS.has(key));
-  if (unknownFields.length > 0) {
-    return {
-      status: "failed",
-      classification: "schema_unknown_fields",
-      summary: `receipt-integrity.json contains unsupported fields: ${unknownFields.join(", ")}.`
-    };
-  }
-
-  const schemaVersion = asNonEmptyString(parsed["schemaVersion"]);
-  const runId = asNonEmptyString(parsed["runId"]);
-  const loopRecordSha256 = asNonEmptyString(parsed["loopRecordSha256"]);
-  const ledgerSha256 = asNonEmptyString(parsed["ledgerSha256"]);
-  const ledgerHeadHash = asNonEmptyString(parsed["ledgerHeadHash"]);
-  const signatureHmacSha256 = asNonEmptyString(parsed["signatureHmacSha256"]);
-  if (
-    schemaVersion !== "martin.receipt-integrity.v1" ||
-    !runId ||
-    !loopRecordSha256 ||
-    !ledgerSha256 ||
-    !ledgerHeadHash ||
-    !signatureHmacSha256
-  ) {
-    return {
-      status: "failed",
-      classification: "missing_integrity_material",
-      summary: "receipt-integrity.json is missing required integrity fields."
-    };
-  }
-
-  if (runId !== detail.loop.loopId) {
-    return {
-      status: "failed",
-      classification: "tampered_payload",
-      summary: `receipt-integrity runId (${runId}) does not match loopId (${detail.loop.loopId}).`
-    };
-  }
-
-  const loopRecordRaw = await readFile(loopRecordPath, "utf8").catch(() => undefined);
-  if (!loopRecordRaw) {
-    return {
-      status: "failed",
-      classification: "missing_integrity_material",
-      summary: "Canonical loop-record.json is missing."
-    };
-  }
-  if (sha256(loopRecordRaw) !== loopRecordSha256) {
-    return {
-      status: "failed",
-      classification: "tampered_payload",
-      summary: "loop-record.json hash does not match receipt-integrity metadata."
-    };
-  }
-
-  const ledgerPath =
-    (await stat(path.join(runDirectory, "events.jsonl")).then(() => path.join(runDirectory, "events.jsonl")).catch(() => undefined)) ??
-    (await stat(path.join(runDirectory, "ledger.jsonl")).then(() => path.join(runDirectory, "ledger.jsonl")).catch(() => undefined));
-  if (!ledgerPath) {
-    return {
-      status: "failed",
-      classification: "missing_integrity_material",
-      summary: "No events.jsonl or ledger.jsonl was found for integrity verification."
-    };
-  }
-
-  const ledgerRaw = await readFile(ledgerPath, "utf8").catch(() => undefined);
-  if (!ledgerRaw) {
-    return {
-      status: "failed",
-      classification: "missing_integrity_material",
-      summary: "Ledger material is unreadable for integrity verification."
-    };
-  }
-
-  if (sha256(ledgerRaw) !== ledgerSha256) {
-    return {
-      status: "failed",
-      classification: "tampered_payload",
-      summary: "Ledger hash does not match receipt-integrity metadata."
-    };
-  }
-
-  if (Array.isArray(parsed["chain"])) {
-    const chain = parsed["chain"] as Array<Record<string, unknown>>;
-    const declaredEntryCount = typeof parsed["entryCount"] === "number" ? parsed["entryCount"] : undefined;
-    if (declaredEntryCount !== undefined && chain.length > 0 && declaredEntryCount !== chain.length) {
-      return {
-        status: "failed",
-        classification: "tampered_payload",
-        summary: "receipt-integrity chain length does not match entryCount."
-      };
-    }
-
-    const tailHash = asNonEmptyString(chain.at(-1)?.["entryHash"]);
-    if (tailHash && tailHash !== ledgerHeadHash) {
-      return {
-        status: "failed",
-        classification: "tampered_payload",
-        summary: "receipt-integrity ledgerHeadHash does not match chain tail hash."
-      };
-    }
-  }
-
-  return {
-    status: "passed",
-    summary: "Receipt integrity checks passed for loop-record and ledger material."
-  };
-}
-
 function resolveReceiptIntegrity(loop: LoopRecord): ReceiptIntegritySummary {
   return (
     loop.receiptIntegrity ?? {
-      state: "unsigned",
+      state: "selector_noncanonical",
       reason: "Receipt integrity metadata was not available on the loop record."
     }
   );
+}
+
+function hasVerificationContradiction(
+  warnings: string[],
+  steps: VerificationStepSummary[]
+): boolean {
+  const normalizedWarnings = warnings.map((warning) => warning.toLowerCase());
+  if (
+    normalizedWarnings.some((warning) =>
+      warning.includes("tool-launch problem before martinloop ran its own verifier") ||
+      warning.includes("verification evidence conflicts")
+    )
+  ) {
+    return true;
+  }
+
+  return steps.some((step) => step.launched === false);
 }
 
 export function resolveReceiptScope(loop: LoopRecord, runsRoot?: string): ReceiptScope | undefined {
@@ -1063,6 +884,153 @@ async function loadLatestLoopFromWorkspaceIndexes(
     );
     return undefined;
   }
+}
+
+async function listLoopsFromRunIndex(
+  runsRoot: string,
+  filters: MartinRunListFilters
+): Promise<{ loops: LoopRecord[]; warnings: string[] }> {
+  const warnings: string[] = [];
+  const indexed = await readRunIndexEntries(runsRoot);
+  if (indexed.entries.length === 0) {
+    return { loops: [], warnings };
+  }
+
+  const updatedAfterTimestamp =
+    filters.updatedAfter !== undefined ? Date.parse(filters.updatedAfter) : undefined;
+
+  if (
+    filters.updatedAfter !== undefined &&
+    (!Number.isFinite(updatedAfterTimestamp) || Number.isNaN(updatedAfterTimestamp))
+  ) {
+    throw new CliCommandError("invalid_input", "Invalid updatedAfter timestamp.", {
+      suggestion: "Provide updatedAfter as an ISO-8601 timestamp."
+    });
+  }
+
+  const deduped = dedupeRunIndexEntries(indexed.entries);
+  const loops: LoopRecord[] = [];
+  const limit = filters.limit ?? 20;
+  const maxLookups = Math.max(limit * 5, 100);
+
+  for (const entry of deduped) {
+    if (loops.length >= limit || loops.length >= maxLookups) {
+      break;
+    }
+
+    if (filters.status && entry.status !== filters.status) {
+      continue;
+    }
+    if (filters.lifecycleState && entry.lifecycleState !== filters.lifecycleState) {
+      continue;
+    }
+    if (updatedAfterTimestamp !== undefined) {
+      const timestamp = parseTimestamp(entry.updatedAt);
+      if (!Number.isFinite(timestamp) || timestamp <= updatedAfterTimestamp) {
+        continue;
+      }
+    }
+
+    const resolved = await loadLoopById(entry.loopId, runsRoot).catch(() => null);
+    if (!resolved?.loop) {
+      continue;
+    }
+
+    if (filters.adapterId && !resolved.loop.attempts.some((attempt) => attempt.adapterId === filters.adapterId)) {
+      continue;
+    }
+    if (filters.model && !resolved.loop.attempts.some((attempt) => attempt.model === filters.model)) {
+      continue;
+    }
+
+    loops.push(resolved.loop);
+  }
+
+  return {
+    loops: loops
+      .sort((left, right) => loopTimestamp(right) - loopTimestamp(left))
+      .slice(0, limit),
+    warnings
+  };
+}
+
+async function loadLatestLoopFromRunIndex(runsRoot: string, warnings: string[]): Promise<LoopRecord | undefined> {
+  const indexed = await readRunIndexEntries(runsRoot);
+  if (indexed.entries.length === 0) {
+    return undefined;
+  }
+
+  const deduped = dedupeRunIndexEntries(indexed.entries);
+  for (const entry of deduped) {
+    try {
+      return (await loadLoopById(entry.loopId, runsRoot)).loop;
+    } catch (error) {
+      warnings.push(
+        `Run index pointed at unreadable loop '${entry.loopId}': ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  return undefined;
+}
+
+async function readRunIndexEntries(
+  runsRoot: string
+): Promise<{ entries: RunIndexEntry[]; truncated: boolean }> {
+  const indexPath = path.join(runsRoot, RUN_INDEX_FILENAME);
+  const stats = await stat(indexPath).catch(() => null);
+  if (!stats?.isFile()) {
+    return { entries: [], truncated: false };
+  }
+
+  const readBytes = Math.min(Number(stats.size), RUN_INDEX_READ_MAX_BYTES);
+  const start = Math.max(0, Number(stats.size) - readBytes);
+  const handle = await open(indexPath, "r");
+
+  try {
+    const buffer = Buffer.alloc(readBytes);
+    if (readBytes > 0) {
+      await handle.read(buffer, 0, readBytes, start);
+    }
+
+    const raw = buffer.toString("utf8");
+    const lines = raw
+      .split(/\r?\n/u)
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    const entries: RunIndexEntry[] = [];
+    for (const line of lines) {
+      try {
+        const parsed = JSON.parse(line) as unknown;
+        if (isRunIndexEntry(parsed)) {
+          entries.push(parsed);
+        }
+      } catch {
+        // Skip partial tail lines.
+      }
+    }
+
+    entries.sort((left, right) => parseTimestamp(right.updatedAt) - parseTimestamp(left.updatedAt));
+
+    return {
+      entries,
+      truncated: Number(stats.size) > RUN_INDEX_READ_MAX_BYTES
+    };
+  } finally {
+    await handle.close();
+  }
+}
+
+function dedupeRunIndexEntries(entries: RunIndexEntry[]): RunIndexEntry[] {
+  const byLoop = new Map<string, RunIndexEntry>();
+  for (const entry of entries) {
+    const existing = byLoop.get(entry.loopId);
+    if (!existing || parseTimestamp(entry.updatedAt) >= parseTimestamp(existing.updatedAt)) {
+      byLoop.set(entry.loopId, entry);
+    }
+  }
+  return [...byLoop.values()].sort((left, right) => parseTimestamp(right.updatedAt) - parseTimestamp(left.updatedAt));
 }
 
 async function collectPersistedLoops(runsRoot: string): Promise<{ loops: LoopRecord[]; warnings: string[] }> {
@@ -1257,42 +1225,21 @@ function isWorkspaceIndexSummary(
   );
 }
 
+function isRunIndexEntry(value: unknown): value is RunIndexEntry {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value["loopId"] === "string" &&
+    value["loopId"].trim().length > 0 &&
+    typeof value["updatedAt"] === "string" &&
+    value["updatedAt"].trim().length > 0
+  );
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
-}
-
-const RECEIPT_INTEGRITY_ALLOWED_TOP_KEYS = new Set([
-  "schemaVersion",
-  "runId",
-  "keyId",
-  "signedAt",
-  "scope",
-  "loopRecordSha256",
-  "ledgerSha256",
-  "ledgerHeadHash",
-  "entryCount",
-  "chain",
-  "signatureHmacSha256"
-]);
-
-function parseJsonRecord(value: string): Record<string, unknown> | undefined {
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return undefined;
-    }
-    return parsed as Record<string, unknown>;
-  } catch {
-    return undefined;
-  }
-}
-
-function asNonEmptyString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
-}
-
-function sha256(value: string): string {
-  return createHash("sha256").update(value).digest("hex");
 }
 
 function readVerificationWarnings(payload: Record<string, unknown> | undefined): string[] {
