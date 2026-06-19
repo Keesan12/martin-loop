@@ -44,6 +44,25 @@ export interface LoopRunRecord {
   task: { title: string; objective: string };
 }
 
+type LoopRecordSource = "legacy_jsonl" | "canonical_tree";
+
+export interface LoopRecordsRollup {
+  generatedAt: string;
+  totalRuns: number;
+  statusBreakdown: Record<string, number>;
+  lifecycleBreakdown: Record<string, number>;
+  latestByLoopId: Record<
+    string,
+    {
+      status: string;
+      lifecycleState: string;
+      updatedAt: string;
+      costUsd: number;
+      attempts: number;
+    }
+  >;
+}
+
 export async function readLoopRecordsFromFile(file: string): Promise<LoopRunRecord[]> {
   const text = await readFile(file, "utf8");
   const extension = extname(file).toLowerCase();
@@ -89,7 +108,7 @@ export async function readAllLoopRecords(
     return [];
   }
 
-  const records: LoopRunRecord[] = [];
+  const recordsByLoopId = new Map<string, { record: LoopRunRecord; source: LoopRecordSource }>();
 
   const jsonlFiles = entries
     .filter((entry) => entry.isFile() && entry.name.endsWith(".jsonl"))
@@ -97,7 +116,10 @@ export async function readAllLoopRecords(
 
   for (const file of jsonlFiles) {
     try {
-      records.push(...(await readLoopRecordsFromFile(join(dir, file))));
+      const fromFile = await readLoopRecordsFromFile(join(dir, file));
+      for (const record of fromFile) {
+        ingestRecord(recordsByLoopId, record, "legacy_jsonl");
+      }
     } catch {
       // skip malformed files or lines
     }
@@ -106,13 +128,16 @@ export async function readAllLoopRecords(
   const runDirectories = entries.filter((entry) => entry.isDirectory());
   for (const entry of runDirectories) {
     try {
-      records.push(...(await readLoopRecordsFromFile(join(dir, entry.name, "loop-record.json"))));
+      const canonical = await readLoopRecordsFromFile(join(dir, entry.name, "loop-record.json"));
+      for (const record of canonical) {
+        ingestRecord(recordsByLoopId, record, "canonical_tree");
+      }
     } catch {
       // skip missing or malformed canonical records
     }
   }
 
-  return records;
+  return [...recordsByLoopId.values()].map((entry) => entry.record);
 }
 
 /**
@@ -129,4 +154,69 @@ export async function readLatestLoopRecord(
     const b = new Date(latest.updatedAt ?? latest.createdAt).getTime();
     return a > b ? r : latest;
   }, records[0]!);
+}
+
+export function buildLoopRecordsRollup(records: LoopRunRecord[]): LoopRecordsRollup {
+  const statusBreakdown: Record<string, number> = {};
+  const lifecycleBreakdown: Record<string, number> = {};
+  const latestByLoopId: LoopRecordsRollup["latestByLoopId"] = {};
+
+  for (const record of records) {
+    statusBreakdown[record.status] = (statusBreakdown[record.status] ?? 0) + 1;
+    lifecycleBreakdown[record.lifecycleState] = (lifecycleBreakdown[record.lifecycleState] ?? 0) + 1;
+    latestByLoopId[record.loopId] = {
+      status: record.status,
+      lifecycleState: record.lifecycleState,
+      updatedAt: record.updatedAt,
+      costUsd: record.cost.actualUsd,
+      attempts: record.attempts.length
+    };
+  }
+
+  return {
+    generatedAt: new Date().toISOString(),
+    totalRuns: records.length,
+    statusBreakdown,
+    lifecycleBreakdown,
+    latestByLoopId
+  };
+}
+
+function ingestRecord(
+  recordsByLoopId: Map<string, { record: LoopRunRecord; source: LoopRecordSource }>,
+  record: LoopRunRecord,
+  source: LoopRecordSource
+): void {
+  const existing = recordsByLoopId.get(record.loopId);
+  if (!existing) {
+    recordsByLoopId.set(record.loopId, { record, source });
+    return;
+  }
+
+  const candidateTimestamp = resolveRecordTimestamp(record);
+  const existingTimestamp = resolveRecordTimestamp(existing.record);
+  if (candidateTimestamp > existingTimestamp) {
+    recordsByLoopId.set(record.loopId, { record, source });
+    return;
+  }
+
+  if (
+    candidateTimestamp === existingTimestamp &&
+    sourcePrecedence(source) > sourcePrecedence(existing.source)
+  ) {
+    recordsByLoopId.set(record.loopId, { record, source });
+  }
+}
+
+function resolveRecordTimestamp(record: LoopRunRecord): number {
+  const updated = Date.parse(record.updatedAt ?? "");
+  if (Number.isFinite(updated)) {
+    return updated;
+  }
+  const created = Date.parse(record.createdAt ?? "");
+  return Number.isFinite(created) ? created : 0;
+}
+
+function sourcePrecedence(source: LoopRecordSource): number {
+  return source === "canonical_tree" ? 2 : 1;
 }

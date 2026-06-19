@@ -1,4 +1,4 @@
-import { appendFile, mkdir, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -127,6 +127,72 @@ async function writeJsonFile(path: string, value: unknown): Promise<void> {
 }
 
 async function writeEvents(path: string, events: LoopRecord["events"]): Promise<void> {
-  const body = events.map((e) => JSON.stringify(e)).join("\n");
+  const existing = await loadExistingEvents(path);
+  if (existing.malformed) {
+    if (events.length === 0) {
+      return;
+    }
+    const appended = events.map((event) => `${JSON.stringify(event)}\n`).join("");
+    await appendFile(path, appended, "utf8");
+    return;
+  }
+
+  const merged = mergeEvents(existing.events, events);
+  const body = merged.map((event) => JSON.stringify(event)).join("\n");
   await writeFile(path, body.length > 0 ? `${body}\n` : "", "utf8");
+}
+
+async function loadExistingEvents(path: string): Promise<{
+  events: LoopRecord["events"];
+  malformed: boolean;
+}> {
+  try {
+    const raw = await readFile(path, "utf8");
+    const trimmedLines = raw
+      .split(/\r?\n/u)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+
+    const parsed: LoopRecord["events"] = [];
+    for (const line of trimmedLines) {
+      try {
+        parsed.push(JSON.parse(line) as LoopRecord["events"][number]);
+      } catch {
+        return { events: [], malformed: true };
+      }
+    }
+
+    return { events: parsed, malformed: false };
+  } catch {
+    return { events: [], malformed: false };
+  }
+}
+
+function mergeEvents(
+  existing: LoopRecord["events"],
+  incoming: LoopRecord["events"]
+): LoopRecord["events"] {
+  const seen = new Set<string>();
+  const merged: LoopRecord["events"] = [];
+
+  for (const event of [...existing, ...incoming]) {
+    const key = event.eventId && event.eventId.trim().length > 0
+      ? `eventId:${event.eventId}`
+      : `event:${event.type}:${event.timestamp}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    merged.push(event);
+  }
+
+  merged.sort(
+    (left, right) => safeTimestamp(left.timestamp) - safeTimestamp(right.timestamp)
+  );
+  return merged;
+}
+
+function safeTimestamp(value: string): number {
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
