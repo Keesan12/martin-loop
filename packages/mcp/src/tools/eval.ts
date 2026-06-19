@@ -46,6 +46,7 @@ export async function martinEvalTool(input: MartinEvalInput): Promise<MartinEval
     verifiers: detail.loop.task?.verificationPlan ?? [],
     signals
   });
+  const observationMismatch = hasObservationMismatch(detail.loop.events ?? []);
 
   const checks = {
     taskCompletion:
@@ -57,8 +58,12 @@ export async function martinEvalTool(input: MartinEvalInput): Promise<MartinEval
           ? "failed"
           : "warning",
     diffDiscipline:
-      (detail.loop.task?.allowedPaths?.length ?? 0) > 0 ? "passed" : "warning",
-    regressionRisk: verification.status === "passed" ? "passed" : "warning",
+      observationMismatch
+        ? "failed"
+        : (detail.loop.task?.allowedPaths?.length ?? 0) > 0
+          ? "passed"
+          : "warning",
+    regressionRisk: verification.status === "passed" && !observationMismatch ? "passed" : "warning",
     securityRisk: risk.level === "high" ? "failed" : risk.level === "medium" ? "warning" : "passed",
     reviewability:
       detail.loop.attempts.length > 0 && (detail.loop.events?.length ?? 0) > 0 ? "passed" : "warning"
@@ -74,7 +79,7 @@ export async function martinEvalTool(input: MartinEvalInput): Promise<MartinEval
   score = Math.max(0, score);
 
   const grade =
-    verification.status === "not_run"
+    verification.status === "not_run" || observationMismatch
       ? "insufficient_evidence"
       : score >= 90
         ? "mergeable"
@@ -84,7 +89,14 @@ export async function martinEvalTool(input: MartinEvalInput): Promise<MartinEval
             ? "needs_review"
             : "blocked";
 
-  const warnings = [...detail.warnings, ...verification.warnings, ...risk.reasons];
+  const warnings = [
+    ...detail.warnings,
+    ...verification.warnings,
+    ...risk.reasons,
+    ...(observationMismatch
+      ? ["Change observation mismatch: adapter-reported files differ from repo-observed files."]
+      : [])
+  ];
 
   return {
     source: detail.source,
@@ -105,4 +117,19 @@ export async function martinEvalTool(input: MartinEvalInput): Promise<MartinEval
               ? `Run ${detail.loop.loopId} does not have enough evidence for a safe promotion decision.`
               : `Run ${detail.loop.loopId} is blocked from promotion by verification or risk gaps.`
   };
+}
+
+function hasObservationMismatch(events: Array<{ type?: string; payload?: Record<string, unknown> }>): boolean {
+  return events.some((event) => {
+    if (event.type !== "observation.reconciled") {
+      return false;
+    }
+
+    const observation = isRecord(event.payload?.["observation"]) ? event.payload?.["observation"] : undefined;
+    return observation?.["status"] === "mismatch";
+  });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }

@@ -129,9 +129,9 @@ describe("persistLoopArtifacts", () => {
       events: [
         {
           eventId: "evt_2",
-          type: "run.completed",
+          type: "run.completed" as const,
           timestamp: "2026-04-01T00:04:00.000Z",
-          lifecycleState: "completed",
+          lifecycleState: "completed" as const,
           payload: {}
         }
       ]

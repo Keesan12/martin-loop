@@ -1,4 +1,5 @@
 import path from "node:path";
+import { decideCircuitBreak } from "@martin/core";
 
 import {
   buildLoopPreview,
@@ -60,6 +61,16 @@ export async function martinTriageRunsTool(
     listed.loops.map(async (loop) => {
       try {
         const preview = buildLoopPreview(loop);
+        const trajectory = decideCircuitBreak({
+          objective: loop.task?.objective ?? loop.loopId,
+          verificationPlan: loop.task?.verificationPlan,
+          attempts: loop.attempts.map((attempt) => ({
+            index: attempt.index,
+            summary: attempt.summary,
+            failureClass: attempt.failureClass
+          })),
+          remainingIterations: preview.remainingIterations
+        });
         let ledgerEvents: import("@martin/core").LedgerEvent[] = [];
 
         const canonicalLoopRecordPath = resolveSafeLoopRecordPath(loop.loopId, listed.runsRoot);
@@ -73,7 +84,7 @@ export async function martinTriageRunsTool(
           canonicalLoopRecordPath
         });
         const verification = buildVerificationSummary(loop, ledgerEvents);
-        return buildTriageFinding(preview, verification);
+        return buildTriageFinding(preview, verification, trajectory);
       } catch {
         warnings.push(`Skipped triage for '${loop.loopId}' because its run record or verification evidence is unreadable.`);
         return null;
@@ -111,7 +122,8 @@ export async function martinTriageRunsTool(
 
 function buildTriageFinding(
   loop: LoopPreview,
-  verification: VerificationSummary
+  verification: VerificationSummary,
+  trajectory: ReturnType<typeof decideCircuitBreak>
 ): MartinRunTriageFinding {
   const reasonCodes: string[] = [];
   let severity: MartinRunTriageFinding["severity"] = "low";
@@ -138,6 +150,11 @@ function buildTriageFinding(
   if (loop.lifecycleState === "diminishing_returns") {
     reasonCodes.push("diminishing_returns");
     severity = maxSeverity(severity, "high");
+  }
+
+  if (trajectory.shouldStop || trajectory.assessment.status === "stalled") {
+    reasonCodes.push("trajectory_stalled");
+    severity = maxSeverity(severity, "critical");
   }
 
   if (verification.status === "not_run" && loop.attempts > 0) {
@@ -176,6 +193,10 @@ function summarizeFinding(
   severity: MartinRunTriageFinding["severity"],
   reasonCodes: string[]
 ): string {
+  if (reasonCodes.includes("trajectory_stalled")) {
+    return `Severity ${severity}: ${loop.loopId} should not spend another attempt before operator review.`;
+  }
+
   if (reasonCodes.includes("verification_failed")) {
     return `Severity ${severity}: ${loop.loopId} failed verification after ${loop.attempts} attempt(s).`;
   }

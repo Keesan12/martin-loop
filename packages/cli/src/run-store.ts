@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
-import { open, readFile, readdir, stat } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 
-import { resolveRunsRoot, verifyReceiptIntegrityFromFiles } from "@martin/core";
+import { decideCircuitBreak, resolveRunsRoot, verifyReceiptIntegrityFromFiles } from "@martin/core";
 import type {
   CostProvenance,
   LoopArtifact,
@@ -36,6 +36,20 @@ export interface LocalCorpusRisk {
   corpusPath: string;
 }
 
+export interface LocalRunHistoryHotspot {
+  scopeFingerprint: string;
+  failureRate: number;
+  sampleSize: number;
+  riskScore: number;
+  commonFailureClasses: string[];
+}
+
+export interface LocalRunHistoryRisk {
+  hotspots: LocalRunHistoryHotspot[];
+  runRecords: number;
+  runsRoot: string;
+}
+
 interface CorpusRecord {
   scopeFingerprint?: string | null;
   outcome?: string;
@@ -47,16 +61,6 @@ type RunsDirEntry = {
   isFile(): boolean;
   isDirectory(): boolean;
 };
-
-const RUN_INDEX_FILENAME = "run-index.ndjson";
-const RUN_INDEX_READ_MAX_BYTES = 2 * 1024 * 1024;
-
-interface RunIndexEntry {
-  loopId: string;
-  updatedAt: string;
-  status?: LoopRecord["status"];
-  lifecycleState?: LoopRecord["lifecycleState"];
-}
 
 function resolveLocalCorpusPath(): string {
   if (process.env["MARTIN_LEARNING_CORPUS_PATH"]) {
@@ -120,6 +124,61 @@ export async function readLocalCorpusRisk(
     .sort((left, right) => right.riskScore - left.riskScore);
 
   return { hotspots, corpusRecords: records.length, corpusPath };
+}
+
+export async function readLocalRunHistoryRisk(
+  options: { runsDir?: string; minSampleSize?: number; minRiskScore?: number } = {}
+): Promise<LocalRunHistoryRisk> {
+  const runsRoot = options.runsDir?.trim() || resolveRunsRoot(process.env);
+  const minSampleSize = options.minSampleSize ?? 3;
+  const minRiskScore = options.minRiskScore ?? 0.4;
+  const collected = await collectPersistedLoops(runsRoot);
+  const byScope = new Map<string, LoopRecord[]>();
+
+  for (const loop of collected.loops) {
+    const repoRoot = loop.task?.repoRoot?.trim();
+    if (!repoRoot) {
+      continue;
+    }
+
+    const scopeFingerprint = computeScopeFingerprint(repoRoot);
+    byScope.set(scopeFingerprint, [...(byScope.get(scopeFingerprint) ?? []), loop]);
+  }
+
+  const hotspots = [...byScope.entries()]
+    .map(([scopeFingerprint, group]): LocalRunHistoryHotspot => {
+      const failures = group.filter((loop) => isRiskyLoopRecord(loop));
+      const failureRate = group.length === 0 ? 0 : failures.length / group.length;
+      const riskScore = Math.min(1, failureRate + Math.min(0.25, group.length / 400));
+      const commonFailureClasses = [
+        ...new Set(
+          failures
+            .flatMap((loop) => loop.attempts.map((attempt) => attempt.failureClass))
+            .filter(
+              (
+                failureClass
+              ): failureClass is Exclude<LoopRecord["attempts"][number]["failureClass"], undefined> =>
+                typeof failureClass === "string"
+            )
+        )
+      ].slice(0, 3);
+
+      return {
+        scopeFingerprint,
+        failureRate: Number(failureRate.toFixed(2)),
+        sampleSize: group.length,
+        riskScore: Number(riskScore.toFixed(2)),
+        commonFailureClasses
+      };
+    })
+    .filter((hotspot) => hotspot.sampleSize >= minSampleSize && hotspot.riskScore >= minRiskScore)
+    .sort((left, right) => right.riskScore - left.riskScore);
+
+  return {
+    hotspots,
+    runRecords: collected.loops.length,
+    runsRoot
+  };
 }
 
 export function computeScopeFingerprint(workingDirectory: string): string {
@@ -236,15 +295,6 @@ export async function listPersistedLoops(
   options: { invocationRoot?: string } = {}
 ): Promise<{ runsRoot: string; loops: LoopRecord[]; warnings: string[] }> {
   const runsRoot = resolveRunsRootPath(filters.runsDir, options.invocationRoot);
-  const indexed = await listLoopsFromRunIndex(runsRoot, filters);
-  if (indexed.loops.length > 0) {
-    return {
-      runsRoot,
-      loops: indexed.loops,
-      warnings: indexed.warnings
-    };
-  }
-
   const inspected = await collectPersistedLoops(runsRoot);
   const updatedAfterTimestamp =
     filters.updatedAfter !== undefined ? Date.parse(filters.updatedAfter) : undefined;
@@ -286,7 +336,7 @@ export async function listPersistedLoops(
   return {
     runsRoot,
     loops,
-    warnings: [...indexed.warnings, ...inspected.warnings]
+    warnings: inspected.warnings
   };
 }
 
@@ -616,15 +666,6 @@ export async function findPersistedLoopEvidence(
 
   entries.sort((left, right) => String(left.name).localeCompare(String(right.name)));
   const warnings: string[] = [];
-  const latestIndexed = await loadLatestLoopFromRunIndex(runsRoot, warnings);
-  if (latestIndexed) {
-    return {
-      runsRoot,
-      loop: latestIndexed,
-      warnings
-    };
-  }
-
   const indexedLoop = await loadLatestLoopFromWorkspaceIndexes(runsRoot, entries, warnings);
   if (indexedLoop) {
     return {
@@ -734,6 +775,17 @@ function scoreLoop(loop: LoopRecord): TriageFinding {
   const verification = buildVerificationSummary(loop);
   const reasons: string[] = [];
   let priority = 0;
+  const remainingIterations = Math.max(0, loop.budget.maxIterations - loop.attempts.length);
+  const trajectory = decideCircuitBreak({
+    objective: loop.task.objective,
+    verificationPlan: loop.task.verificationPlan,
+    attempts: loop.attempts.map((attempt) => ({
+      index: attempt.index,
+      summary: attempt.summary,
+      failureClass: attempt.failureClass
+    })),
+    remainingIterations
+  });
 
   if (loop.status === "failed") {
     priority += 60;
@@ -763,6 +815,10 @@ function scoreLoop(loop: LoopRecord): TriageFinding {
     priority += 10;
     reasons.push("multi_attempt");
   }
+  if (trajectory.shouldStop || trajectory.assessment.status === "stalled") {
+    priority += 70;
+    reasons.push("trajectory_stalled");
+  }
 
   return {
     loopId: loop.loopId,
@@ -770,7 +826,7 @@ function scoreLoop(loop: LoopRecord): TriageFinding {
     status: loop.status,
     lifecycleState: loop.lifecycleState,
     title: loop.task.title,
-    summary: verification.summary,
+    summary: reasons.includes("trajectory_stalled") ? trajectory.assessment.summary : verification.summary,
     reasons,
     updatedAt: loop.updatedAt
   };
@@ -884,153 +940,6 @@ async function loadLatestLoopFromWorkspaceIndexes(
     );
     return undefined;
   }
-}
-
-async function listLoopsFromRunIndex(
-  runsRoot: string,
-  filters: MartinRunListFilters
-): Promise<{ loops: LoopRecord[]; warnings: string[] }> {
-  const warnings: string[] = [];
-  const indexed = await readRunIndexEntries(runsRoot);
-  if (indexed.entries.length === 0) {
-    return { loops: [], warnings };
-  }
-
-  const updatedAfterTimestamp =
-    filters.updatedAfter !== undefined ? Date.parse(filters.updatedAfter) : undefined;
-
-  if (
-    filters.updatedAfter !== undefined &&
-    (!Number.isFinite(updatedAfterTimestamp) || Number.isNaN(updatedAfterTimestamp))
-  ) {
-    throw new CliCommandError("invalid_input", "Invalid updatedAfter timestamp.", {
-      suggestion: "Provide updatedAfter as an ISO-8601 timestamp."
-    });
-  }
-
-  const deduped = dedupeRunIndexEntries(indexed.entries);
-  const loops: LoopRecord[] = [];
-  const limit = filters.limit ?? 20;
-  const maxLookups = Math.max(limit * 5, 100);
-
-  for (const entry of deduped) {
-    if (loops.length >= limit || loops.length >= maxLookups) {
-      break;
-    }
-
-    if (filters.status && entry.status !== filters.status) {
-      continue;
-    }
-    if (filters.lifecycleState && entry.lifecycleState !== filters.lifecycleState) {
-      continue;
-    }
-    if (updatedAfterTimestamp !== undefined) {
-      const timestamp = parseTimestamp(entry.updatedAt);
-      if (!Number.isFinite(timestamp) || timestamp <= updatedAfterTimestamp) {
-        continue;
-      }
-    }
-
-    const resolved = await loadLoopById(entry.loopId, runsRoot).catch(() => null);
-    if (!resolved?.loop) {
-      continue;
-    }
-
-    if (filters.adapterId && !resolved.loop.attempts.some((attempt) => attempt.adapterId === filters.adapterId)) {
-      continue;
-    }
-    if (filters.model && !resolved.loop.attempts.some((attempt) => attempt.model === filters.model)) {
-      continue;
-    }
-
-    loops.push(resolved.loop);
-  }
-
-  return {
-    loops: loops
-      .sort((left, right) => loopTimestamp(right) - loopTimestamp(left))
-      .slice(0, limit),
-    warnings
-  };
-}
-
-async function loadLatestLoopFromRunIndex(runsRoot: string, warnings: string[]): Promise<LoopRecord | undefined> {
-  const indexed = await readRunIndexEntries(runsRoot);
-  if (indexed.entries.length === 0) {
-    return undefined;
-  }
-
-  const deduped = dedupeRunIndexEntries(indexed.entries);
-  for (const entry of deduped) {
-    try {
-      return (await loadLoopById(entry.loopId, runsRoot)).loop;
-    } catch (error) {
-      warnings.push(
-        `Run index pointed at unreadable loop '${entry.loopId}': ${error instanceof Error ? error.message : String(error)}`
-      );
-    }
-  }
-
-  return undefined;
-}
-
-async function readRunIndexEntries(
-  runsRoot: string
-): Promise<{ entries: RunIndexEntry[]; truncated: boolean }> {
-  const indexPath = path.join(runsRoot, RUN_INDEX_FILENAME);
-  const stats = await stat(indexPath).catch(() => null);
-  if (!stats?.isFile()) {
-    return { entries: [], truncated: false };
-  }
-
-  const readBytes = Math.min(Number(stats.size), RUN_INDEX_READ_MAX_BYTES);
-  const start = Math.max(0, Number(stats.size) - readBytes);
-  const handle = await open(indexPath, "r");
-
-  try {
-    const buffer = Buffer.alloc(readBytes);
-    if (readBytes > 0) {
-      await handle.read(buffer, 0, readBytes, start);
-    }
-
-    const raw = buffer.toString("utf8");
-    const lines = raw
-      .split(/\r?\n/u)
-      .map((line) => line.trim())
-      .filter(Boolean);
-
-    const entries: RunIndexEntry[] = [];
-    for (const line of lines) {
-      try {
-        const parsed = JSON.parse(line) as unknown;
-        if (isRunIndexEntry(parsed)) {
-          entries.push(parsed);
-        }
-      } catch {
-        // Skip partial tail lines.
-      }
-    }
-
-    entries.sort((left, right) => parseTimestamp(right.updatedAt) - parseTimestamp(left.updatedAt));
-
-    return {
-      entries,
-      truncated: Number(stats.size) > RUN_INDEX_READ_MAX_BYTES
-    };
-  } finally {
-    await handle.close();
-  }
-}
-
-function dedupeRunIndexEntries(entries: RunIndexEntry[]): RunIndexEntry[] {
-  const byLoop = new Map<string, RunIndexEntry>();
-  for (const entry of entries) {
-    const existing = byLoop.get(entry.loopId);
-    if (!existing || parseTimestamp(entry.updatedAt) >= parseTimestamp(existing.updatedAt)) {
-      byLoop.set(entry.loopId, entry);
-    }
-  }
-  return [...byLoop.values()].sort((left, right) => parseTimestamp(right.updatedAt) - parseTimestamp(left.updatedAt));
 }
 
 async function collectPersistedLoops(runsRoot: string): Promise<{ loops: LoopRecord[]; warnings: string[] }> {
@@ -1225,21 +1134,23 @@ function isWorkspaceIndexSummary(
   );
 }
 
-function isRunIndexEntry(value: unknown): value is RunIndexEntry {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  return (
-    typeof value["loopId"] === "string" &&
-    value["loopId"].trim().length > 0 &&
-    typeof value["updatedAt"] === "string" &&
-    value["updatedAt"].trim().length > 0
-  );
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function isRiskyLoopRecord(loop: LoopRecord): boolean {
+  if (loop.status !== "completed") {
+    return true;
+  }
+
+  return loop.events.some((event) => {
+    if (event.type !== "verification.completed") {
+      return false;
+    }
+
+    const payload = isRecord(event.payload) ? event.payload : undefined;
+    return payload?.["passed"] !== true;
+  });
 }
 
 function readVerificationWarnings(payload: Record<string, unknown> | undefined): string[] {

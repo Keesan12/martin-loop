@@ -76,6 +76,7 @@ import {
   loadPersistedLoop,
   readCostProvenance,
   readLocalCorpusRisk,
+  readLocalRunHistoryRisk,
   resolveCliEnvironment,
   resolveInvocationRoot,
   resolveReceiptScope,
@@ -627,6 +628,7 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
   if (command === "phase" || command === "gsd") {
     const [subcommand, ...subcommandArgs] = rest;
     if (
+      subcommand === "session-start" ||
       subcommand === "status" ||
       subcommand === "contract" ||
       subcommand === "preflight" ||
@@ -936,25 +938,55 @@ async function executeRunCommand(
   const preRunWarnings: string[] = [];
 
   if (engineRequired && !resolvedRequest.unsafeAllowUnguardedRun) {
-    const bootstrap = await autoBootstrapGovernedRun({
-      request: resolvedRequest,
-      environment: cliEnvironment,
-      receiptScope
-    });
-    if (bootstrap.warnings.length > 0) {
-      preRunWarnings.push(...bootstrap.warnings);
-    }
-    if (!bootstrap.ready) {
-      throw new CliCommandError(
-        "policy_blocked",
-        "Governed run preflight blocked execution. Resolve the blocking issues and retry.",
-        {
-          suggestion: buildPreflightSuggestion(resolvedRequest.objective, resolvedRequest.verificationPlan),
-          details: {
-            blockingIssues: bootstrap.blockingIssues
+    if (outputMode === "json") {
+      const bootstrap = await autoBootstrapGovernedRun({
+        request: resolvedRequest,
+        environment: cliEnvironment,
+        receiptScope
+      });
+      if (bootstrap.warnings.length > 0) {
+        preRunWarnings.push(...bootstrap.warnings);
+      }
+      if (!bootstrap.ready) {
+        throw new CliCommandError(
+          "policy_blocked",
+          "Governed run preflight blocked execution. Resolve the blocking issues and retry.",
+          {
+            suggestion: buildPreflightSuggestion(resolvedRequest.objective, resolvedRequest.verificationPlan),
+            details: {
+              blockingIssues: bootstrap.blockingIssues
+            }
           }
-        }
-      );
+        );
+      }
+    } else {
+      const blockingIssues: string[] = [];
+      const workingDirectoryExists = await stat(cliEnvironment.workingDirectory).then(() => true).catch(() => false);
+      if (!workingDirectoryExists) {
+        blockingIssues.push("Working directory does not exist.");
+      }
+      if (cliEnvironment.engine === "claude" && !isCommandAvailable("claude")) {
+        blockingIssues.push("Claude CLI is not available on PATH.");
+      }
+      if (cliEnvironment.engine === "codex" && !resolveCliCommandAvailability("codex").available) {
+        blockingIssues.push("Codex CLI is not available on PATH.");
+      }
+      if (cliEnvironment.engine === "gemini" && !resolveCliCommandAvailability("gemini").available) {
+        blockingIssues.push("Gemini CLI is not available on PATH.");
+      }
+
+      if (blockingIssues.length > 0) {
+        throw new CliCommandError(
+          "policy_blocked",
+          "Governed run preflight blocked execution. Resolve the blocking issues and retry.",
+          {
+            suggestion: buildPreflightSuggestion(resolvedRequest.objective, resolvedRequest.verificationPlan),
+            details: {
+              blockingIssues
+            }
+          }
+        );
+      }
     }
 
     const gate = await evaluateCliRunGate({
@@ -2168,10 +2200,35 @@ async function executePreflightCommand(
   // Corpus intelligence: surface failure hotspots for this working directory.
   // Degrades gracefully when corpus is empty or not yet populated.
   const scopeFingerprint = computeScopeFingerprint(environment.workingDirectory);
+  const shouldInspectRunHistory = Boolean(request.runsDir ?? process.env["MARTIN_RUNS_DIR"]);
+  const runHistoryRisk = shouldInspectRunHistory
+    ? await readLocalRunHistoryRisk({ runsDir: environment.runsRoot }).catch(() => ({
+        hotspots: [],
+        runRecords: 0,
+        runsRoot: environment.runsRoot
+      }))
+    : {
+        hotspots: [],
+        runRecords: 0,
+        runsRoot: environment.runsRoot
+      };
+  const runHistoryHotspots = runHistoryRisk.hotspots.filter(
+    (hotspot) => hotspot.scopeFingerprint === scopeFingerprint
+  ).slice(0, 3);
   const corpusRisk = await readLocalCorpusRisk().catch(() => ({ hotspots: [], corpusRecords: 0, corpusPath: "" }));
   const scopeHotspots = corpusRisk.hotspots.filter(
     (hotspot) => hotspot.scopeFingerprint === scopeFingerprint
   ).slice(0, 3);
+
+  for (const hotspot of runHistoryHotspots) {
+    const pct = Math.round(hotspot.failureRate * 100);
+    const classes = hotspot.commonFailureClasses.length > 0
+      ? ` (${hotspot.commonFailureClasses.join(", ")})`
+      : "";
+    warnings.push(
+      `Run history risk: this scope has a ${pct}% failure rate across ${hotspot.sampleSize} local governed runs${classes}. Risk score: ${hotspot.riskScore}.`
+    );
+  }
 
   for (const hotspot of scopeHotspots) {
     const pct = Math.round(hotspot.failureRate * 100);
@@ -2179,7 +2236,7 @@ async function executePreflightCommand(
       ? ` (${hotspot.commonFailureClasses.join(", ")})`
       : "";
     warnings.push(
-      `Corpus risk: this scope has a ${pct}% failure rate across ${hotspot.sampleSize} recorded runs${classes}. Risk score: ${hotspot.riskScore}.`
+      `Run history risk: this scope has a ${pct}% failure rate across ${hotspot.sampleSize} recorded runs${classes}. Risk score: ${hotspot.riskScore}.`
     );
   }
 
@@ -2238,6 +2295,10 @@ async function executePreflightCommand(
   const corpusLine = corpusRisk.corpusRecords > 0
     ? `Corpus: ${corpusRisk.corpusRecords} records${scopeHotspots.length > 0 ? `, ${scopeHotspots.length} scope hotspot(s)` : ", no scope hotspots"}`
     : `Corpus: no data yet — run Martin to start building prediction intelligence`;
+  const runHistoryLine = runHistoryRisk.runRecords > 0
+    ? `Run history: ${runHistoryRisk.runRecords} local run record(s)${runHistoryHotspots.length > 0 ? `, ${runHistoryHotspots.length} scope hotspot(s)` : ", no scope hotspots"}`
+    : `Run history: no local persisted governed runs yet`;
+  const riskWarnings = warnings.filter((warning) => warning.startsWith("Run history risk:"));
 
   return renderCliSuccess(outputMode, {
     data,
@@ -2247,7 +2308,9 @@ async function executePreflightCommand(
       `Engine: ${environment.engine} (${environment.liveMode})`,
       `Verification plan: ${verificationPlan.join(", ") || "none"}`,
       `Receipt scope: repo=${receiptScope.repoRoot} runs=${receiptScope.runsRoot}`,
+      runHistoryLine,
       corpusLine,
+      ...riskWarnings,
       ...(blockingIssues.length > 0 ? ["Blocking issues:", ...blockingIssues.map((issue) => `- ${issue}`)] : [])
     ],
     quiet: ready ? "ready" : "blocked",
@@ -2491,12 +2554,13 @@ async function executeMcpPrintConfigCommand(
         diagnostic: [...MARTIN_DIAGNOSTIC_TOOLS],
         "github-review": [...MARTIN_GITHUB_REVIEW_TOOLS],
         "full-local": [...MARTIN_FULL_TOOLS],
-      starter: [...MARTIN_STARTER_TOOLS],
-      full: [...MARTIN_FULL_TOOLS]
+        "paid-remote": [...MARTIN_FULL_TOOLS],
+        starter: [...MARTIN_STARTER_TOOLS],
+        full: [...MARTIN_FULL_TOOLS]
+      },
+      starterTools: [...MARTIN_STARTER_TOOLS],
+      fullTools: [...MARTIN_FULL_TOOLS]
     },
-    starterTools: [...MARTIN_STARTER_TOOLS],
-    fullTools: [...MARTIN_FULL_TOOLS]
-  },
     human: plan.content,
     quiet: plan.targetPath,
     warnings: remotePolicyWarnings

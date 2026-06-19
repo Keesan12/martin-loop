@@ -94,8 +94,6 @@ export interface RunStore {
 
 // ─── FileRunStore implementation ─────────────────────────────────────────────
 
-const RUN_INDEX_FILENAME = "run-index.ndjson";
-
 export function resolveRunsRoot(env: NodeJS.ProcessEnv = process.env): string {
   return (env["MARTIN_RUNS_DIR"] as string | undefined)?.trim() ??
     join(homedir(), ".martin", "runs");
@@ -195,7 +193,6 @@ export function createFileRunStore(options: { runsRoot?: string } = {}): RunStor
       const dir = runDir(runsRoot, runId);
       await mkdir(dir, { recursive: true });
       await writeJsonFile(join(dir, "loop-record.json"), loop);
-      await appendRunIndexRecord(runsRoot, loop);
       const ledgerRaw = await readFile(join(dir, "ledger.jsonl"), "utf8").catch(() => "");
       const ledgerEntries = ledgerRaw
         .split(/\r?\n/u)
@@ -224,17 +221,4 @@ export function createFileRunStore(options: { runsRoot?: string } = {}): RunStor
 
 async function writeJsonFile(path: string, value: unknown): Promise<void> {
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
-}
-
-async function appendRunIndexRecord(runsRoot: string, loop: LoopRecord): Promise<void> {
-  const line = JSON.stringify({
-    loopId: loop.loopId,
-    workspaceId: loop.workspaceId,
-    projectId: loop.projectId,
-    status: loop.status,
-    lifecycleState: loop.lifecycleState,
-    updatedAt: loop.updatedAt
-  });
-
-  await appendFile(join(runsRoot, RUN_INDEX_FILENAME), `${line}\n`, "utf8");
 }
