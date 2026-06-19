@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -86,6 +86,31 @@ test("benchmark eval and report commands run through public workspace commands",
 
     assert.match(evalResult.stdout, /Under-\$3 Challenge/u);
     assert.match(reportResult.stdout, /Ralph Loop Stress Report/u);
+  } finally {
+    await rm(outputDir, { recursive: true, force: true });
+  }
+});
+
+test("benchmark artifacts are append-only when rerunning the same suite", async () => {
+  const outputDir = await mkdtemp(path.join(tmpdir(), "martin-benchmark-output-"));
+
+  try {
+    const env = { MARTIN_BENCHMARK_OUTPUT_DIR: outputDir };
+    await run("pnpm", ["--filter", "@martin/benchmarks", "eval"], { env });
+    await run("pnpm", ["--filter", "@martin/benchmarks", "eval"], { env });
+
+    const files = await readdir(outputDir);
+    const jsonFiles = files.filter((entry) => entry.endsWith(".json")).sort();
+    const markdownFiles = files.filter((entry) => entry.endsWith(".md")).sort();
+
+    assert.deepEqual(jsonFiles, [
+      "under-3-challenge-report.json",
+      "under-3-challenge-report.rev-0001.json",
+    ]);
+    assert.deepEqual(markdownFiles, [
+      "under-3-challenge-report.md",
+      "under-3-challenge-report.rev-0001.md",
+    ]);
   } finally {
     await rm(outputDir, { recursive: true, force: true });
   }
