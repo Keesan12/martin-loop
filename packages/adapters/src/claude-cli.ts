@@ -1288,7 +1288,8 @@ function buildPrompt(request: MartinAdapterRequest): string {
     for (const attempt of request.previousAttempts) {
       const failurePart = attempt.failureClass ? ` [${attempt.failureClass}]` : "";
       const interventionPart = attempt.intervention ? ` -> intervention: ${attempt.intervention}` : "";
-      lines.push(`  Attempt ${String(attempt.index)}${failurePart}: ${sanitizeForPrompt(attempt.summary ?? "")}${interventionPart}`);
+      const diagPart = attempt.diagnosticHint ? `\n    DIAGNOSIS: ${sanitizeForPrompt(attempt.diagnosticHint)}` : "";
+      lines.push(`  Attempt ${String(attempt.index)}${failurePart}: ${sanitizeForPrompt(attempt.summary ?? "")}${interventionPart}${diagPart}`);
     }
     lines.push("");
   }
