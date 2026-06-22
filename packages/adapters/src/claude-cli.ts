@@ -387,12 +387,84 @@ function createStreamingUsageInspector(
     (modelLabel ? MODEL_PRICING[modelLabel] : undefined) ??
     { inputPer1K: BLENDED_INPUT_COST_PER_1K, outputPer1K: BLENDED_OUTPUT_COST_PER_1K };
 
+  // Safety margin: terminate at 80% of cap to bound one-turn overshoot.
+  // Without this, a single expensive turn can blow past the cap before the
+  // next check fires (proven live: $1.50 cap → $28.42 actual).
+  const effectiveCapUsd = capUsd * 0.8;
+
+  // Token-count ceiling fallback: if no usage events are ever parsed (e.g.
+  // Claude changes its stream-json event format), use raw byte volume as a
+  // last-resort circuit breaker. Derived from budget / blended cost per char.
+  const blendedCostPerChar =
+    (pricing.inputPer1K / 1000 / 4) + (pricing.outputPer1K / 1000 / 4);
+  const bytesCeiling = blendedCostPerChar > 0
+    ? Math.ceil((capUsd / blendedCostPerChar) * 2)
+    : 100_000_000;
+
   let buffer = "";
   let cumulativeUsd = 0;
   let tokensIn = 0;
   let tokensOut = 0;
   let turns = 0;
+  let totalBytes = 0;
+  let usageEventSeen = false;
   let finalResult: ClaudeJsonOutput | undefined;
+
+  const checkBudgetExceeded = (terminate: (reason: string) => void) => {
+    if (capUsd > 0 && cumulativeUsd > effectiveCapUsd) {
+      terminate(
+        `Streaming usage cap exceeded after ${String(turns)} turn(s): cumulative cost ~$${cumulativeUsd.toFixed(4)} ` +
+          `surpassed the per-attempt cap $${capUsd.toFixed(4)} (80% threshold: $${effectiveCapUsd.toFixed(4)}). ` +
+          `Subprocess terminated to bound runaway overspend.`
+      );
+    }
+  };
+
+  const extractUsageFromEvent = (
+    event: Record<string, unknown>,
+    terminate: (reason: string) => void
+  ) => {
+    // Check for authoritative total_cost_usd on ANY event — if Claude reports
+    // cost exceeding cap, terminate immediately regardless of event type.
+    if (typeof event.total_cost_usd === "number" && event.total_cost_usd > 0) {
+      cumulativeUsd = event.total_cost_usd;
+      checkBudgetExceeded(terminate);
+      return;
+    }
+
+    // Extract usage from any event shape that carries it:
+    //   - { type: "assistant", message: { usage: { ... } } }  (original format)
+    //   - { usage: { input_tokens, output_tokens, ... } }      (top-level usage)
+    //   - { message: { usage: { ... } } }                      (nested without type check)
+    const usage =
+      (event.message && typeof event.message === "object" && "usage" in event.message
+        ? (event.message as Record<string, unknown>).usage
+        : undefined) ??
+      (event.usage && typeof event.usage === "object" ? event.usage : undefined);
+
+    if (!usage || typeof usage !== "object") {
+      return;
+    }
+
+    const usageRecord = usage as Record<string, number>;
+    const turnTokensIn =
+      (usageRecord.input_tokens ?? usageRecord.inputTokens ?? 0) +
+      (usageRecord.cache_read_input_tokens ?? usageRecord.cacheReadInputTokens ?? 0) +
+      (usageRecord.cache_creation_input_tokens ?? usageRecord.cacheCreationInputTokens ?? 0);
+    const turnTokensOut = usageRecord.output_tokens ?? usageRecord.outputTokens ?? 0;
+
+    if (turnTokensIn === 0 && turnTokensOut === 0) {
+      return;
+    }
+
+    tokensIn += turnTokensIn;
+    tokensOut += turnTokensOut;
+    turns += 1;
+    usageEventSeen = true;
+    cumulativeUsd += (turnTokensIn / 1000) * pricing.inputPer1K + (turnTokensOut / 1000) * pricing.outputPer1K;
+
+    checkBudgetExceeded(terminate);
+  };
 
   const ingestLine = (line: string, terminate: (reason: string) => void) => {
     const trimmed = line.trim();
@@ -400,44 +472,38 @@ function createStreamingUsageInspector(
       return;
     }
 
-    let event: ClaudeJsonOutput & { message?: { usage?: Record<string, number> } };
+    let event: Record<string, unknown>;
     try {
-      event = JSON.parse(trimmed) as typeof event;
+      event = JSON.parse(trimmed) as Record<string, unknown>;
     } catch {
       return;
     }
 
-    if (event.type === "assistant" && event.message?.usage) {
-      const usage = event.message.usage;
-      const turnTokensIn =
-        (usage.input_tokens ?? usage.inputTokens ?? 0) +
-        (usage.cache_read_input_tokens ?? usage.cacheReadInputTokens ?? 0) +
-        (usage.cache_creation_input_tokens ?? usage.cacheCreationInputTokens ?? 0);
-      const turnTokensOut = usage.output_tokens ?? usage.outputTokens ?? 0;
-
-      tokensIn += turnTokensIn;
-      tokensOut += turnTokensOut;
-      turns += 1;
-      cumulativeUsd += (turnTokensIn / 1000) * pricing.inputPer1K + (turnTokensOut / 1000) * pricing.outputPer1K;
-
-      if (capUsd > 0 && cumulativeUsd > capUsd) {
-        terminate(
-          `Streaming usage cap exceeded after ${String(turns)} turn(s): cumulative cost ~$${cumulativeUsd.toFixed(4)} ` +
-            `surpassed the per-attempt cap $${capUsd.toFixed(4)} (derived from remaining loop budget). ` +
-            `Subprocess terminated to bound runaway overspend.`
-        );
-      }
-      return;
-    }
+    extractUsageFromEvent(event, terminate);
 
     if (event.type === "result") {
-      finalResult = event;
+      finalResult = event as unknown as ClaudeJsonOutput;
     }
   };
 
   return {
     onChunk: (chunk, terminate) => {
-      buffer += chunk.toString("utf8");
+      const chunkStr = chunk.toString("utf8");
+      totalBytes += chunk.byteLength;
+      buffer += chunkStr;
+
+      // Token-count ceiling fallback: if we've ingested a lot of bytes but
+      // never seen a single usage event, the event format may have changed
+      // and the inspector is silently blind. Terminate as a last resort.
+      if (!usageEventSeen && capUsd > 0 && totalBytes > bytesCeiling) {
+        terminate(
+          `Streaming byte ceiling exceeded (${String(totalBytes)} bytes > ${String(bytesCeiling)} ceiling) ` +
+            `without any usage events parsed. The Claude stream-json event format may have changed. ` +
+            `Subprocess terminated as a fallback budget guard for cap $${capUsd.toFixed(4)}.`
+        );
+        return;
+      }
+
       let newlineIndex = buffer.indexOf("\n");
       while (newlineIndex !== -1) {
         const line = buffer.slice(0, newlineIndex);
