@@ -19,7 +19,7 @@ import {
   createVerifierOnlyAdapter,
   type SpawnLike
 } from "../src/index.js";
-import { readGitChangedFiles, readGitExecutionArtifacts, runSubprocess, splitCommand } from "../src/cli-bridge.js";
+import { containsShellOperator, readGitChangedFiles, readGitExecutionArtifacts, runSubprocess, splitCommand } from "../src/cli-bridge.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -415,6 +415,38 @@ describe("splitCommand", () => {
       "-e",
       "process.exit(0)",
     ]);
+  });
+});
+
+describe("containsShellOperator", () => {
+  it("detects && operator", () => {
+    expect(containsShellOperator("bun run lint && bun run test")).toBe(true);
+  });
+
+  it("detects || operator", () => {
+    expect(containsShellOperator("cmd1 || cmd2")).toBe(true);
+  });
+
+  it("detects ; operator", () => {
+    expect(containsShellOperator("cmd1; cmd2")).toBe(true);
+  });
+
+  it("detects | pipe operator", () => {
+    expect(containsShellOperator("cat file | grep foo")).toBe(true);
+  });
+
+  it("does not match && inside double quotes", () => {
+    expect(containsShellOperator('echo "a && b"')).toBe(false);
+  });
+
+  it("does not match && inside single quotes", () => {
+    expect(containsShellOperator("echo 'a && b'")).toBe(false);
+  });
+
+  it("returns false for simple commands", () => {
+    expect(containsShellOperator("bun run lint")).toBe(false);
+    expect(containsShellOperator("pnpm test -- counter")).toBe(false);
+    expect(containsShellOperator("npm run build")).toBe(false);
   });
 });
 
@@ -862,6 +894,121 @@ describe("createClaudeCliAdapter", () => {
       expect(result.status).toBe("completed");
       expect(result.summary).toContain("small change applied");
       expect(result.usage?.actualUsd).toBeCloseTo(0.0009, 6);
+    });
+
+    it("terminates when total_cost_usd on any event exceeds the cap", async () => {
+      const calls: SpawnCall[] = [];
+      // Simulate an event that carries total_cost_usd (authoritative) but no
+      // per-turn usage — the inspector should still detect the overspend.
+      const lines = [
+        JSON.stringify({ type: "content_block_start", total_cost_usd: 0.02 }),
+        JSON.stringify({ type: "content_block_delta", total_cost_usd: 0.06 }),
+        JSON.stringify({
+          type: "result",
+          subtype: "success",
+          result: "should not reach here",
+          total_cost_usd: 3.5,
+          usage: { input_tokens: 50_000, output_tokens: 10_000 }
+        })
+      ];
+
+      const adapter = createClaudeCliAdapter({
+        spawnImpl: createStreamingSpawn(calls, lines)
+      });
+
+      const result = await adapter.execute(
+        makeRequest({
+          context: {
+            taskTitle: "test",
+            objective: "make a change",
+            verificationPlan: [],
+            focus: "stay small",
+            remainingBudgetUsd: 0.05,
+            remainingIterations: 1,
+            remainingTokens: 50_000
+          }
+        })
+      );
+
+      expect(result.status).toBe("failed");
+      expect(result.failure?.classHint).toBe("budget_pressure");
+      // Should NOT contain the final result text (subprocess was killed before it arrived)
+      expect(result.summary).not.toContain("should not reach here");
+    });
+
+    it("terminates when usage is on top-level event (not nested in message)", async () => {
+      const calls: SpawnCall[] = [];
+      // Usage at top-level: { type: "...", usage: { input_tokens, output_tokens } }
+      const lines = [
+        JSON.stringify({ type: "turn_complete", usage: { input_tokens: 10_000, output_tokens: 2_000 } }),
+        JSON.stringify({ type: "turn_complete", usage: { input_tokens: 10_000, output_tokens: 2_000 } }),
+        JSON.stringify({ type: "turn_complete", usage: { input_tokens: 10_000, output_tokens: 2_000 } }),
+        JSON.stringify({
+          type: "result",
+          result: "runaway",
+          total_cost_usd: 5.0,
+          usage: { input_tokens: 30_000, output_tokens: 6_000 }
+        })
+      ];
+
+      const adapter = createClaudeCliAdapter({
+        spawnImpl: createStreamingSpawn(calls, lines)
+      });
+
+      const result = await adapter.execute(
+        makeRequest({
+          context: {
+            taskTitle: "test",
+            objective: "tiny fix",
+            verificationPlan: [],
+            focus: "minimal",
+            remainingBudgetUsd: 0.05,
+            remainingIterations: 1,
+            remainingTokens: 50_000
+          }
+        })
+      );
+
+      expect(result.status).toBe("failed");
+      expect(result.failure?.classHint).toBe("budget_pressure");
+      expect(result.summary).toContain("circuit breaker");
+    });
+
+    it("applies 80% safety margin so termination fires before 100% of cap", async () => {
+      const calls: SpawnCall[] = [];
+      // sonnet pricing: $0.003/1K in, $0.015/1K out
+      // Single turn: (2000/1000)*0.003 + (500/1000)*0.015 = $0.006 + $0.0075 = $0.0135
+      // With cap $0.05, effective cap at 80% = $0.04
+      // After 3 turns: cumulative = $0.0405 → exceeds $0.04
+      const lines = [
+        JSON.stringify({ type: "assistant", message: { usage: { input_tokens: 2000, output_tokens: 500 } } }),
+        JSON.stringify({ type: "assistant", message: { usage: { input_tokens: 2000, output_tokens: 500 } } }),
+        JSON.stringify({ type: "assistant", message: { usage: { input_tokens: 2000, output_tokens: 500 } } }),
+        JSON.stringify({ type: "result", result: "completed too much", total_cost_usd: 0.1, usage: { input_tokens: 6000, output_tokens: 1500 } })
+      ];
+
+      const adapter = createClaudeCliAdapter({
+        spawnImpl: createStreamingSpawn(calls, lines)
+      });
+
+      const result = await adapter.execute(
+        makeRequest({
+          context: {
+            taskTitle: "test",
+            objective: "small task",
+            verificationPlan: [],
+            focus: "tight",
+            remainingBudgetUsd: 0.05,
+            remainingIterations: 1,
+            remainingTokens: 50_000
+          }
+        })
+      );
+
+      expect(result.status).toBe("failed");
+      expect(result.failure?.classHint).toBe("budget_pressure");
+      // Terminated at 80% threshold, not 100%
+      expect(result.failure?.message).toContain("80% threshold");
     });
   });
 });

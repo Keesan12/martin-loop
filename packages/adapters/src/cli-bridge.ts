@@ -234,8 +234,29 @@ export async function runVerification(
   const warnings: string[] = [];
 
   for (const step of steps) {
-    const parts = splitCommand(step.command);
-    const [bin, ...args] = parts;
+    let bin: string;
+    let args: string[];
+
+    if (containsShellOperator(step.command)) {
+      // Shell operators (&&, ||, ;, |) cannot be passed as literal arguments
+      // to spawn(). Route through the platform shell so the operator is
+      // interpreted correctly.
+      if (process.platform === "win32") {
+        bin = process.env.ComSpec || "cmd.exe";
+        args = ["/d", "/c", step.command];
+      } else {
+        bin = "sh";
+        args = ["-c", step.command];
+      }
+    } else {
+      const parts = splitCommand(step.command);
+      const first = parts[0];
+      if (!first) {
+        continue;
+      }
+      bin = first;
+      args = parts.slice(1);
+    }
 
     if (!bin) {
       continue;
@@ -520,6 +541,29 @@ function windowsPathDirectories(): string[] {
     .split(delimiter)
     .map((entry) => entry.trim().replace(/^"|"$/g, ""))
     .filter(Boolean);
+}
+
+/**
+ * Returns true if the command string contains shell operators that cannot be
+ * passed as literal arguments to spawn(). These must be routed through a
+ * platform shell (cmd.exe /c or sh -c) so the operator is interpreted.
+ */
+export function containsShellOperator(command: string): boolean {
+  // Match &&, ||, ;, or | that are NOT inside quotes.
+  // Simple heuristic: scan outside of single/double quoted regions.
+  let inSingle = false;
+  let inDouble = false;
+  for (let i = 0; i < command.length; i += 1) {
+    const ch = command[i];
+    if (ch === "'" && !inDouble) { inSingle = !inSingle; continue; }
+    if (ch === '"' && !inSingle) { inDouble = !inDouble; continue; }
+    if (inSingle || inDouble) { continue; }
+    if (ch === "&" && command[i + 1] === "&") { return true; }
+    if (ch === "|" && command[i + 1] === "|") { return true; }
+    if (ch === ";") { return true; }
+    if (ch === "|" && command[i + 1] !== "|") { return true; }
+  }
+  return false;
 }
 
 export function splitCommand(command: string): string[] {
