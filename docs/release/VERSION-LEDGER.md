@@ -4,16 +4,21 @@ This file is the release source of truth for package/version mapping in this rep
 
 ## Root package: `martin-loop`
 
-- live npm dist-tag `latest`: `0.3.2`
-- live public GitHub release: `v0.3.2`
-- live public baseline in this train: `0.3.2`
-- root public baseline: `0.3.2`
+- live npm dist-tag `latest`: `0.3.8`
+- live public GitHub release: `v0.3.8`
+- live public baseline in this train: `0.3.8`
+- root public baseline: `0.3.8`
 - releases consumed since the original `0.2.8` launch:
   - `0.2.9` fixed proof-run classification, Windows `.cmd` resolution, and public provider defaults
   - `0.2.10` tightened verifier evidence, `--runs-dir` consistency, and public help output
   - `0.2.11` fixed `runs verify --latest` selector parity in the public CLI
-- current in-repo root release line: `0.3.2` for the current public root package line
-- next planned root follow-on: `0.3.3` for additional cross-host reliability follow-ups
+  - `0.3.3` guided first-run entrypoint, execution-first governed run startup
+  - `0.3.4` allow/deny path policy, run verification integrity verdicts, OpenAI auth preflight
+  - `0.3.5` CLI-style proof receipts, public failure taxonomy
+  - `0.3.6` CLI version reporting parity, release guard version check
+  - `0.3.8` budget circuit breaker fix, engine auto-discovery, verification diagnostics, resilience defaults
+- current in-repo root release line: `0.3.8` for the current public root package line
+- next planned root follow-on: `0.3.9` for additional resilience and cross-host improvements
 
 ## Standalone package: `@martinloop/mcp`
 

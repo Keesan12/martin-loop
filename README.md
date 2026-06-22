@@ -48,7 +48,7 @@ You can also install it globally:
 npm install -g martin-loop
 ```
 
-Release notes for the current root package: [MartinLoop 0.3.2](./docs/release/OSS-0.3.2-RELEASE-NOTES.md)
+Release notes for the current root package: [MartinLoop 0.3.8](./docs/release/OSS-0.3.8-RELEASE-NOTES.md)
 
 ## Visual Proof
 
@@ -124,7 +124,7 @@ npx -y @martinloop/mcp
 npx martin-loop mcp print-config --host codex --transport stdio --profile minimal
 ```
 
-The root `martin-loop` package and the standalone `@martinloop/mcp` package move on separate version lines. The root package line here is `0.3.2`; the current standalone MCP package is `0.3.1`.
+The root `martin-loop` package and the standalone `@martinloop/mcp` package move on separate version lines. The root package line here is `0.3.8`; the current standalone MCP package is `0.3.2`.
 
 ## SDK
 
