@@ -5,16 +5,16 @@
 ## [0.3.8]
 
 ### Fixed
-- **Streaming budget circuit breaker now actually fires** — broadened event matching to extract usage from any stream-json event shape (not just `type=assistant`), added 80% safety margin to catch overshoot before 100% of cap, and added a byte-ceiling fallback that terminates the subprocess when no usage events are parsed at all. Proven by real-spend testing where a $1.50 budget previously produced $28.42 actual spend.
-- **Verify commands with shell operators now work** — commands containing `&&`, `||`, `;`, or `|` are routed through the platform shell (`cmd.exe /c` or `sh -c`) instead of being split into literal spawn arguments.
+- **Budget circuit breaker** — the streaming usage inspector previously only matched `type=assistant` events from Claude's `stream-json` output. If the event shape changed, the inspector silently did nothing and the subprocess ran unguarded. Now matches usage on any event, checks `total_cost_usd` mid-stream, applies an 80% safety margin, and falls back to a byte-ceiling kill switch when no usage events arrive at all.
+- **Shell operators in verify commands** — `bun run lint && bun run test` was tokenized literally (`["bun", "run", "lint", "&&", ...]`), which always failed. Commands with `&&`, `||`, `;`, or `|` now route through the platform shell.
 
 ### Added
-- **Engine auto-discovery** — when a CLI (claude, codex, gemini) is not on PATH, MartinLoop now searches common install locations (npm global, AppData, homebrew, `.local/bin`, nvm) before giving up. Provides platform-specific install one-liners when truly missing.
-- **Verification diagnostic hints** — failed attempts now carry actionable `diagnosticHint` in the prompt context (missing tool install commands, unresolved module names, assertion failure counts) so the next attempt knows exactly what broke.
-- **Subprocess retry for git operations** — git commands retry once after 500ms for lock-file contention. `git restore` falls back to `git checkout` when it fails.
+- **Engine auto-discovery** — if `claude`, `codex`, or `gemini` isn't on PATH, the CLI searches common install directories (npm global, AppData, homebrew, `.local/bin`, nvm, scoop) before reporting unavailable. When truly missing, prints a copy-pasteable install command for the current platform.
+- **Diagnostic hints on failed attempts** — `LoopAttempt.diagnosticHint` carries specific context into the next attempt's prompt: which tool is missing, which module failed to resolve, how many assertions broke. Replaces the generic "verification failed" message.
+- **Git retry and fallback** — git operations retry once after 500ms (handles `.git/index.lock` contention). `git restore` falls back to `git checkout` on failure.
 
 ### Changed
-- **Invalid CLI args warn and default instead of crashing** — unknown `--profile` values fall back to `minimal` with a warning. Invalid `--run-scan-limit` uses default 50.
+- **Invalid CLI args default instead of crashing** — unknown `--profile` falls back to `minimal` with a warning. Invalid `--run-scan-limit` clamps to 50.
 
 ## [0.3.6]
 
