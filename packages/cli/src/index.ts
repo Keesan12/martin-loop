@@ -134,6 +134,7 @@ export type RunCommandRequest = {
   title: string;
   objective: string;
   verificationPlan: string[];
+  verifyTimeoutMs?: number;
   metadata: Record<string, string>;
   budget: LoopBudget;
   budgetOverrides?: Partial<Record<keyof LoopBudget, true>>;
@@ -883,6 +884,7 @@ export function renderCliHelp(): string {
     "  --max-iterations <n>     Set the maximum number of attempts.",
     "  --max-tokens <n>         Set the maximum total token budget.",
     "  --verify <cmd>           Shell command to run as the verifier after each attempt.",
+    "  --verify-timeout-ms <n>  Verifier timeout in milliseconds.",
     "  --proof                  Run in no-spend proof mode (explicit opt-in).",
     "  --verify-only            Skip the coding adapter and run the verifier only.",
     "  --unsafe-allow-unguarded-run",
@@ -1050,7 +1052,8 @@ async function executeRunCommand(
     resolvedRequest.model,
     effectiveMutationMode,
     cliEnvironment.liveMode,
-    codexCommandOverride
+    codexCommandOverride,
+    resolvedRequest.verifyTimeoutMs
   );
   try {
     result = await runMartin({
@@ -1063,6 +1066,9 @@ async function executeRunCommand(
         title: resolvedRequest.title,
         objective: resolvedRequest.objective,
         verificationPlan: resolvedRequest.verificationPlan,
+        ...(resolvedRequest.verifyTimeoutMs !== undefined
+          ? { verificationTimeoutMs: resolvedRequest.verifyTimeoutMs }
+          : {}),
         ...(effectiveMutationMode ? { mutationMode: effectiveMutationMode } : {}),
         repoRoot: cliEnvironment.workingDirectory,
         ...(resolvedRequest.allowedPaths?.length ? { allowedPaths: resolvedRequest.allowedPaths } : {}),
@@ -1083,6 +1089,9 @@ async function executeRunCommand(
         title: resolvedRequest.title,
         objective: resolvedRequest.objective,
         verificationPlan: resolvedRequest.verificationPlan,
+        ...(resolvedRequest.verifyTimeoutMs !== undefined
+          ? { verificationTimeoutMs: resolvedRequest.verifyTimeoutMs }
+          : {}),
         ...(effectiveMutationMode ? { mutationMode: effectiveMutationMode } : {}),
         repoRoot: cliEnvironment.workingDirectory
       },
@@ -2695,6 +2704,10 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
         }
         index += 1;
         break;
+      case "--verify-timeout-ms":
+        request.verifyTimeoutMs = toFiniteNumber(next ?? "");
+        index += 1;
+        break;
       case "--metadata":
         if (next) {
           const [key, value] = next.split("=");
@@ -2807,6 +2820,7 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
     title: request.title ?? request.objective ?? "Martin Loop Task",
     objective: request.objective ?? request.title ?? "Martin Loop Task",
     verificationPlan,
+    ...(request.verifyTimeoutMs !== undefined ? { verifyTimeoutMs: request.verifyTimeoutMs } : {}),
     metadata,
     budget: request.budget as LoopBudget,
     ...(Object.keys(budgetOverrides).length > 0 ? { budgetOverrides } : {}),
@@ -3371,14 +3385,18 @@ function selectAdapter(
   modelOverride?: string,
   mutationMode?: MutationMode,
   liveMode: "live" | "proof" = "live",
-  codexCommandOverride?: string
+  codexCommandOverride?: string,
+  verifyTimeoutMs?: number
 ): MartinAdapter {
   if (runAdapterOverrideForTests) {
     return runAdapterOverrideForTests;
   }
 
   if (mutationMode === "verify_only") {
-    return createVerifierOnlyAdapter({ workingDirectory });
+    return createVerifierOnlyAdapter({
+      workingDirectory,
+      ...(verifyTimeoutMs !== undefined ? { verifyTimeoutMs } : {})
+    });
   }
 
   if (liveMode === "proof") {
@@ -3392,13 +3410,18 @@ function selectAdapter(
   if (engine === "codex") {
     return createCodexCliAdapter({
       workingDirectory,
+      ...(verifyTimeoutMs !== undefined ? { verifyTimeoutMs } : {}),
       ...(modelOverride ? { model: modelOverride } : {}),
       ...(codexCommandOverride ? { command: codexCommandOverride } : {})
     });
   }
 
   if (engine === "gemini") {
-    return createGeminiCliAdapter({ workingDirectory, ...(modelOverride ? { model: modelOverride } : {}) });
+    return createGeminiCliAdapter({
+      workingDirectory,
+      ...(verifyTimeoutMs !== undefined ? { verifyTimeoutMs } : {}),
+      ...(modelOverride ? { model: modelOverride } : {})
+    });
   }
 
   if (engine === "openai") {
@@ -3406,10 +3429,20 @@ function selectAdapter(
     const baseUrl = openAiConfig.baseUrl;
     const apiKey = openAiConfig.apiKey;
     const model = modelOverride ?? openAiConfig.model;
-    return createOpenAiCompatibleAdapter({ baseUrl, apiKey, model, workingDirectory });
+    return createOpenAiCompatibleAdapter({
+      baseUrl,
+      apiKey,
+      model,
+      workingDirectory,
+      ...(verifyTimeoutMs !== undefined ? { verifyTimeoutMs } : {})
+    });
   }
 
-  return createClaudeCliAdapter({ workingDirectory, ...(modelOverride ? { model: modelOverride } : {}) });
+  return createClaudeCliAdapter({
+    workingDirectory,
+    ...(verifyTimeoutMs !== undefined ? { verifyTimeoutMs } : {}),
+    ...(modelOverride ? { model: modelOverride } : {})
+  });
 }
 
 function buildDoctorRecommendations(input: {

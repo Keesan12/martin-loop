@@ -1258,6 +1258,37 @@ describe("runLoopTool", () => {
     });
   });
 
+  it("persists verifier timeout in the loop task contract", async () => {
+    await withRunsRoot(async () => {
+      const originalEnv = process.env.MARTIN_LIVE;
+      process.env.MARTIN_LIVE = "false";
+
+      try {
+        const result = await runLoopTool({
+          objective: "Persist verifier timeout",
+          verificationPlan: ["node --version"],
+          verifyTimeoutMs: 240000,
+          maxIterations: 1,
+          maxUsd: 1
+        });
+
+        const loopRecord = JSON.parse(
+          await readFile(result.inspection.loopRecordPath, "utf8")
+        ) as {
+          task?: { verificationTimeoutMs?: number };
+        };
+
+        expect(loopRecord.task?.verificationTimeoutMs).toBe(240000);
+      } finally {
+        if (originalEnv === undefined) {
+          delete process.env.MARTIN_LIVE;
+        } else {
+          process.env.MARTIN_LIVE = originalEnv;
+        }
+      }
+    });
+  });
+
   it("returns a loop outcome in stub mode (MARTIN_LIVE=false)", async () => {
     // Set stub mode so the adapter doesn't try to spawn claude
     const originalEnv = process.env.MARTIN_LIVE;

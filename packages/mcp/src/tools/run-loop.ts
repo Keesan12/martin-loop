@@ -38,6 +38,7 @@ export interface RunLoopInput {
   maxUsd?: number;
   maxIterations?: number;
   maxTokens?: number;
+  verifyTimeoutMs?: number;
   verificationPlan?: string[];
   allowedPaths?: string[];
   deniedPaths?: string[];
@@ -140,17 +141,27 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
       ? createVerifierOnlyAdapter({
           workingDirectory,
           label: "Proof mode adapter (MARTIN_LIVE=false)",
+          ...(input.verifyTimeoutMs !== undefined ? { verifyTimeoutMs: input.verifyTimeoutMs } : {}),
           ...(proofModeVerifierSpawnImpl ? { spawnImpl: proofModeVerifierSpawnImpl } : {})
         })
       : engine === "codex"
         ? createCodexCliAdapter({
             workingDirectory,
+            ...(input.verifyTimeoutMs !== undefined ? { verifyTimeoutMs: input.verifyTimeoutMs } : {}),
             ...(model ? { model } : {}),
             ...(codexCommandOverride ? { command: codexCommandOverride } : {})
           })
         : engine === "gemini"
-          ? createGeminiCliAdapter({ workingDirectory, ...(model ? { model } : {}) })
-        : createClaudeCliAdapter({ workingDirectory, ...(model ? { model } : {}) });
+          ? createGeminiCliAdapter({
+              workingDirectory,
+              ...(input.verifyTimeoutMs !== undefined ? { verifyTimeoutMs: input.verifyTimeoutMs } : {}),
+              ...(model ? { model } : {})
+            })
+        : createClaudeCliAdapter({
+            workingDirectory,
+            ...(input.verifyTimeoutMs !== undefined ? { verifyTimeoutMs: input.verifyTimeoutMs } : {}),
+            ...(model ? { model } : {})
+          });
 
   const partialBudget: Partial<LoopBudget> = {};
   if (input.maxUsd !== undefined) {
@@ -174,6 +185,9 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
       title: input.objective.slice(0, 100),
       objective: input.objective,
       verificationPlan: input.verificationPlan ?? [],
+      ...(input.verifyTimeoutMs !== undefined
+        ? { verificationTimeoutMs: input.verifyTimeoutMs }
+        : {}),
       repoRoot: workingDirectory,
       ...(allowedPaths ? { allowedPaths } : {}),
       ...(deniedPaths ? { deniedPaths } : {})
