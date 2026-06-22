@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [0.3.8]
+
+### Fixed
+- **Streaming budget circuit breaker now actually fires** — broadened event matching to extract usage from any stream-json event shape (not just `type=assistant`), added 80% safety margin to catch overshoot before 100% of cap, and added a byte-ceiling fallback that terminates the subprocess when no usage events are parsed at all. Proven by real-spend testing where a $1.50 budget previously produced $28.42 actual spend.
+- **Verify commands with shell operators now work** — commands containing `&&`, `||`, `;`, or `|` are routed through the platform shell (`cmd.exe /c` or `sh -c`) instead of being split into literal spawn arguments.
+
+### Added
+- **Engine auto-discovery** — when a CLI (claude, codex, gemini) is not on PATH, MartinLoop now searches common install locations (npm global, AppData, homebrew, `.local/bin`, nvm) before giving up. Provides platform-specific install one-liners when truly missing.
+- **Verification diagnostic hints** — failed attempts now carry actionable `diagnosticHint` in the prompt context (missing tool install commands, unresolved module names, assertion failure counts) so the next attempt knows exactly what broke.
+- **Subprocess retry for git operations** — git commands retry once after 500ms for lock-file contention. `git restore` falls back to `git checkout` when it fails.
+
+### Changed
+- **Invalid CLI args warn and default instead of crashing** — unknown `--profile` values fall back to `minimal` with a warning. Invalid `--run-scan-limit` uses default 50.
+
 ## [0.3.6]
 
 ### Fixed
