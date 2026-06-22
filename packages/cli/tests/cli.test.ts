@@ -107,6 +107,8 @@ describe("parseCliArguments", () => {
       "4",
       "--max-tokens",
       "60000",
+      "--verify-timeout-ms",
+      "240000",
       "--policy",
       "balanced",
       "--telemetry",
@@ -123,6 +125,7 @@ describe("parseCliArguments", () => {
         title: "Repair the flaky CI gate",
         objective: "Repair the flaky CI gate",
         verificationPlan: ["pnpm test", "pnpm build"],
+        verifyTimeoutMs: 240000,
         metadata: {
           policyProfile: "balanced",
           telemetryDestination: "control-plane",
@@ -451,6 +454,37 @@ describe("executeCli", () => {
       expect(payload.loop.lifecycleState).toBe("completed");
       expect(payload.loop.task.mutationMode).toBe("verify_only");
       expect(payload.loop.cost.actualUsd).toBe(0);
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("persists verifier timeout on governed runs", { timeout: 30_000 }, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-verify-timeout-"));
+
+    try {
+      const result = await withIsolatedRunsEnv(directory, () =>
+        executeCli([
+          "--json",
+          "run",
+          "--objective",
+          "Verify timeout persistence",
+          "--engine",
+          "codex",
+          "--verify-only",
+          "--verify",
+          `"${process.execPath}" -e "process.exit(0)"`,
+          "--verify-timeout-ms",
+          "240000",
+          "--cwd",
+          directory
+        ])
+      );
+
+      expect(result.exitCode).toBe(0);
+
+      const payload = JSON.parse(result.stdout);
+      expect(payload.loop.task.verificationTimeoutMs).toBe(240000);
     } finally {
       await rm(directory, { force: true, recursive: true });
     }

@@ -57,6 +57,7 @@ export interface LoopTask {
   objective: string;
   repoRoot?: string;
   verificationPlan: string[];
+  verificationTimeoutMs?: number;
   verificationStack?: VerificationStep[];
   mutationMode?: MutationMode;
   executionProfile?: ExecutionProfile;
