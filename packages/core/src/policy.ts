@@ -21,6 +21,8 @@ export interface FailureAssessment {
   rationale: string;
   retryable: boolean;
   recommendedIntervention: InterventionType;
+  /** Actionable diagnosis injected into the next attempt's prompt context. */
+  diagnosticHint?: string;
 }
 
 export interface CostGovernorState {
@@ -171,7 +173,8 @@ export function classifyFailure(input: {
       failureClass: "environment_mismatch",
       rationale: "The adapter could not access the required local runtime or CLI tooling.",
       retryable: false,
-      recommendedIntervention: "switch_adapter"
+      recommendedIntervention: "switch_adapter",
+      diagnosticHint: diagnoseEnvironmentIssue(message)
     };
   }
 
@@ -180,7 +183,8 @@ export function classifyFailure(input: {
       failureClass: "syntax_error",
       rationale: "The attempt failed on a parser or compiler-style issue.",
       retryable: true,
-      recommendedIntervention: "compress_context"
+      recommendedIntervention: "compress_context",
+      diagnosticHint: "Check for malformed edits — the verifier found a syntax or parse error in the changed files."
     };
   }
 
@@ -203,7 +207,8 @@ export function classifyFailure(input: {
         "The attempt referenced modules, symbols, or files that are not grounded in the repo or approved docs.",
       retryable: true,
       recommendedIntervention:
-        repeatedFailure === "repo_grounding_failure" ? "tighten_task" : "run_verifier"
+        repeatedFailure === "repo_grounding_failure" ? "tighten_task" : "run_verifier",
+      diagnosticHint: diagnoseGroundingIssue(message)
     };
   }
 
@@ -221,7 +226,8 @@ export function classifyFailure(input: {
       rationale: "The proposed fix did not satisfy the verification gate.",
       retryable: true,
       recommendedIntervention:
-        repeatedFailure === "verification_failure" ? "tighten_task" : "run_verifier"
+        repeatedFailure === "verification_failure" ? "tighten_task" : "run_verifier",
+      diagnosticHint: diagnoseVerificationIssue(message)
     };
   }
 
@@ -913,4 +919,81 @@ function computeDiffRiskScore(input?: {
 
 function roundScore(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+// ---------------------------------------------------------------------------
+// Diagnostic hint generators
+//
+// These extract actionable context from failure messages so the next attempt
+// gets a concrete diagnosis, not just "verification failed."
+// ---------------------------------------------------------------------------
+
+const KNOWN_TOOLS: Record<string, string> = {
+  bun: "npm install -g bun",
+  pnpm: "npm install -g pnpm",
+  yarn: "npm install -g yarn",
+  eslint: "npm install eslint",
+  vitest: "npm install vitest",
+  jest: "npm install jest",
+  tsc: "npm install typescript",
+  prettier: "npm install prettier",
+  biome: "npm install @biomejs/biome"
+};
+
+function diagnoseEnvironmentIssue(message: string): string {
+  // Try to extract the missing command name
+  const cmdMatch = message.match(/(?:command not found|enoent)[:\s]*['"]?(\w[\w.-]*)/i)
+    ?? message.match(/['"](\w[\w.-]*)['"].*(?:not found|enoent)/i);
+  const missingCmd = cmdMatch?.[1];
+
+  if (missingCmd && KNOWN_TOOLS[missingCmd.toLowerCase()]) {
+    return `The verifier needs "${missingCmd}" which is not installed. Fix: ${KNOWN_TOOLS[missingCmd.toLowerCase()]}`;
+  }
+
+  if (missingCmd) {
+    return `The verifier could not find "${missingCmd}". Ensure it is installed in the workspace before retrying.`;
+  }
+
+  return "A required tool or command was not found in the environment. Check that all dependencies referenced by the verify command are installed.";
+}
+
+function diagnoseGroundingIssue(message: string): string {
+  // Extract the missing module/symbol name
+  const moduleMatch = message.match(/cannot find module ['"]([^'"]+)['"]/i)
+    ?? message.match(/module not found[:\s]*['"]?([^\s'"]+)/i);
+  const nameMatch = message.match(/cannot find name ['"]?(\w+)/i);
+
+  if (moduleMatch?.[1]) {
+    const mod = moduleMatch[1];
+    const isRelative = mod.startsWith(".") || mod.startsWith("/");
+    if (isRelative) {
+      return `Import "${mod}" points to a file that does not exist. Check the path and filename.`;
+    }
+    return `Module "${mod}" is not installed. Run npm install or check package.json dependencies.`;
+  }
+
+  if (nameMatch?.[1]) {
+    return `Symbol "${nameMatch[1]}" is not defined. Check that the import exists and the name is spelled correctly.`;
+  }
+
+  return "The code references modules or symbols that do not exist in the repository. Verify imports and file paths.";
+}
+
+function diagnoseVerificationIssue(message: string): string {
+  // Count assertion failures for severity signal
+  const assertionCount = (message.match(/assertionerror/gi) ?? []).length;
+  if (assertionCount > 3) {
+    return `${String(assertionCount)} assertion failures detected — the change may have introduced a regression. Focus on the specific test expectations that broke.`;
+  }
+
+  // Check for common patterns
+  if (/timeout/i.test(message) && !/budget/i.test(message)) {
+    return "Tests timed out. The change may have introduced an infinite loop or unresolved async operation.";
+  }
+
+  if (/exit code (?!0)\d+/i.test(message) || /exited with code/i.test(message)) {
+    return "The verifier command exited non-zero. Read the output above to identify which specific check failed and why.";
+  }
+
+  return "Verification did not pass. Review the verifier output for the specific failing assertion or check.";
 }

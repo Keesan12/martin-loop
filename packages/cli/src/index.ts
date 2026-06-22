@@ -2941,9 +2941,9 @@ function parseMcpProfile(tokens: string[]): MartinMcpProfile {
     return profile;
   }
 
-  throw new CliCommandError("invalid_input", `Invalid --profile value: ${profile}.`, {
-    suggestion: "Use --profile minimal, diagnostic, github-review, full-local, paid-remote, starter, or full."
-  });
+  // Fall back to "minimal" instead of crashing the run.
+  console.error(`Warning: unknown --profile "${profile}", falling back to "minimal". Valid: minimal, diagnostic, github-review, full-local, paid-remote, starter, full.`);
+  return "minimal";
 }
 
 function assertMcpRemoteTransportPolicy(
@@ -2996,9 +2996,10 @@ function hasFlag(tokens: string[], flag: string): boolean {
 
 function parseNativePhaseCommand(subcommand: NativePhaseSubcommand, tokens: string[]): NativePhaseCommand {
   const runScanLimit = readOption(tokens, "--run-scan-limit");
-  const parsedRunScanLimit = runScanLimit ? Number(runScanLimit) : undefined;
+  let parsedRunScanLimit = runScanLimit ? Number(runScanLimit) : undefined;
   if (parsedRunScanLimit !== undefined && (!Number.isFinite(parsedRunScanLimit) || parsedRunScanLimit < 1)) {
-    throw new CliCommandError("invalid_input", "--run-scan-limit must be a positive number.");
+    console.error(`Warning: invalid --run-scan-limit "${runScanLimit}", using default (50).`);
+    parsedRunScanLimit = 50;
   }
 
   return {

@@ -424,25 +424,94 @@ export function resolveCliCommandAvailability(
   } = {}
 ): CliCommandAvailability {
   const platform = options.platform ?? process.platform;
+  const env = options.env ?? process.env;
   const spawnSyncImpl = options.spawnSyncImpl ?? spawnSync;
   const discovery = readLocatorCandidates(command, platform, spawnSyncImpl);
-  const resolvedPath = discovery.candidates[0];
 
-  return discovery.candidates.length > 0
-    ? {
-        command,
-        available: true,
-        locator: discovery.locator,
-        detail: `${command} is available on PATH.`,
-        ...(resolvedPath ? { resolvedPath } : {}),
-        candidatePaths: discovery.candidates
+  if (discovery.candidates.length > 0) {
+    const resolvedPath = discovery.candidates[0];
+    return {
+      command,
+      available: true,
+      locator: discovery.locator,
+      detail: `${command} is available on PATH.`,
+      ...(resolvedPath ? { resolvedPath } : {}),
+      candidatePaths: discovery.candidates
+    };
+  }
+
+  // PATH didn't find it — search common install locations before giving up.
+  const offPathCandidate = discoverCommandOffPath(command, platform, env);
+  if (offPathCandidate) {
+    return {
+      command,
+      available: true,
+      locator: "off-path-discovery",
+      detail: `${command} found at ${offPathCandidate} (not on PATH, auto-discovered).`,
+      resolvedPath: offPathCandidate,
+      candidatePaths: [offPathCandidate]
+    };
+  }
+
+  return {
+    command,
+    available: false,
+    locator: discovery.locator,
+    detail: `${command} is not installed. ${suggestInstall(command)}`
+  };
+}
+
+function discoverCommandOffPath(
+  command: string,
+  platform: NodeJS.Platform,
+  env: NodeJS.ProcessEnv
+): string | undefined {
+  const home = env.HOME ?? env.USERPROFILE ?? "";
+  const dirs: string[] = [];
+
+  if (platform === "win32") {
+    const appData = env.APPDATA;
+    if (appData) dirs.push(join(appData, "npm"));
+    const localAppData = env.LOCALAPPDATA;
+    if (localAppData) dirs.push(join(localAppData, "OpenAI", "Codex", "bin"));
+    if (home) dirs.push(join(home, "scoop", "shims"));
+  } else {
+    dirs.push("/usr/local/bin", "/opt/homebrew/bin");
+    if (home) {
+      dirs.push(
+        join(home, ".local", "bin"),
+        join(home, ".npm-global", "bin"),
+        join(home, ".bun", "bin"),
+        join(home, ".cargo", "bin")
+      );
+    }
+    const nvmDir = env.NVM_DIR;
+    if (nvmDir) dirs.push(join(nvmDir, "current", "bin"));
+  }
+
+  const extensions = platform === "win32"
+    ? (env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";").map((e) => e.trim().toLowerCase()).filter(Boolean)
+    : [""];
+
+  for (const dir of dirs) {
+    for (const ext of extensions) {
+      const candidate = ext ? join(dir, `${command}${ext}`) : join(dir, command);
+      if (existsSync(candidate)) {
+        return candidate;
       }
-    : {
-        command,
-        available: false,
-        locator: discovery.locator,
-        detail: `${command} is not available on PATH.`
-      };
+    }
+  }
+
+  return undefined;
+}
+
+function suggestInstall(command: string): string {
+  const installs: Record<string, string> = {
+    claude: "Install with: npm install -g @anthropic-ai/claude-code",
+    codex: "Install with: npm install -g @openai/codex",
+    gemini: "Install with: npm install -g @google/gemini-cli"
+  };
+  return installs[command] ?? `Install ${command} and ensure it is available.`;
 }
 
 export function detectCodexHostPlatform(

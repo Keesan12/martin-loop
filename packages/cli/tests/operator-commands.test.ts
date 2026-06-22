@@ -511,8 +511,8 @@ describe("operator commands", () => {
     expect(invalidLocalScope.stderr).toContain("does not support --scope local");
     expect(invalidTransport.exitCode).toBe(2);
     expect(invalidTransport.stderr).toContain("Invalid --transport value");
-    expect(invalidProfile.exitCode).toBe(2);
-    expect(invalidProfile.stderr).toContain("Invalid --profile value");
+    // Invalid profile now warns and falls back to "minimal" instead of crashing.
+    expect(invalidProfile.exitCode).toBe(0);
     expect(invalidPlatform.exitCode).toBe(2);
     expect(invalidPlatform.stderr).toContain("Invalid --platform value");
     expect(missingHost.exitCode).toBe(2);

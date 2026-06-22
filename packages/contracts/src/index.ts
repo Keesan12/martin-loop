@@ -177,6 +177,8 @@ export interface LoopAttempt {
   summary?: string;
   failureClass?: FailureClass;
   intervention?: InterventionType;
+  /** Actionable diagnosis from failure classification, injected into the next attempt's prompt. */
+  diagnosticHint?: string;
 }
 
 export interface LoopEvent {

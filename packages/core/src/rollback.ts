@@ -154,21 +154,29 @@ function readRepoState(repoRoot: string): RepoStateSnapshot {
 }
 
 function readGitLines(repoRoot: string, args: string[]): string[] {
-  const result = spawnSync("git", args, {
-    cwd: repoRoot,
-    encoding: "utf8"
-  });
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const result = spawnSync("git", args, {
+      cwd: repoRoot,
+      encoding: "utf8"
+    });
 
-  if (result.status !== 0 || typeof result.stdout !== "string") {
-    return [];
+    if (result.status === 0 && typeof result.stdout === "string") {
+      return uniqueSorted(
+        result.stdout
+          .split(/\r?\n/u)
+          .map((line) => normalizeRepoPath(line))
+          .filter(Boolean)
+      );
+    }
+
+    // Retry once after a short delay — handles git lock-file contention
+    // that occurs when another process holds .git/index.lock.
+    if (attempt === 0 && result.status !== 0) {
+      spawnSync("sleep", ["0.5"], { encoding: "utf8" });
+    }
   }
 
-  return uniqueSorted(
-    result.stdout
-      .split(/\r?\n/u)
-      .map((line) => normalizeRepoPath(line))
-      .filter(Boolean)
-  );
+  return [];
 }
 
 function readGitScalar(repoRoot: string, args: string[]): string | undefined {
@@ -233,9 +241,37 @@ function restoreTrackedFileFromHead(repoRoot: string, filePath: string): void {
     }
   );
 
-  if (result.status !== 0) {
-    throw new Error(result.stderr?.trim() || `git restore failed for ${filePath}`);
+  if (result.status === 0) {
+    return;
   }
+
+  // Retry once after a short delay (git lock-file contention)
+  spawnSync("sleep", ["0.5"], { encoding: "utf8" });
+  const retry = spawnSync(
+    "git",
+    ["restore", "--staged", "--worktree", "--source=HEAD", "--", filePath],
+    { cwd: repoRoot, encoding: "utf8" }
+  );
+
+  if (retry.status === 0) {
+    return;
+  }
+
+  // Fallback: try git checkout which works on older git versions
+  const fallback = spawnSync(
+    "git",
+    ["checkout", "HEAD", "--", filePath],
+    { cwd: repoRoot, encoding: "utf8" }
+  );
+
+  if (fallback.status === 0) {
+    return;
+  }
+
+  throw new Error(
+    result.stderr?.trim() ||
+    `git restore failed for ${filePath} (retry and checkout fallback also failed)`
+  );
 }
 
 async function removeRepoPath(repoRoot: string, filePath: string): Promise<void> {

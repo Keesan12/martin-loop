@@ -913,7 +913,8 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       ...(failure?.failureClass ? { failureClass: failure.failureClass } : {}),
       ...(failure?.recommendedIntervention
         ? { intervention: failure.recommendedIntervention }
-        : {})
+        : {}),
+      ...(failure?.diagnosticHint ? { diagnosticHint: failure.diagnosticHint } : {})
     };
 
     loop = {

@@ -192,14 +192,16 @@ export function detectCliAvailability(command: string): CliAvailability {
           command,
           available: true,
           locator,
-          detail: `${command} is available on PATH.`,
+          detail: isOnPathDirectly(command, resolvedPath)
+            ? `${command} is available on PATH.`
+            : `${command} found at ${resolvedPath} (not on PATH, auto-discovered).`,
           ...(resolvedPath ? { resolvedPath } : {})
         }
       : {
           command,
           available: false,
           locator,
-          detail: `${command} is not available on PATH.`
+          detail: `${command} is not installed. ${suggestInstallCommand(command)}`
         };
 
   cliAvailabilityCache.set(cacheKey, {
@@ -213,14 +215,6 @@ export function detectCliAvailability(command: string): CliAvailability {
 function findCommandOnPath(command: string): string | undefined {
   const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === "path");
   const rawPath = pathKey ? process.env[pathKey] : undefined;
-  if (!rawPath) {
-    return undefined;
-  }
-
-  const pathEntries = rawPath
-    .split(process.platform === "win32" ? ";" : ":")
-    .map((entry) => entry.trim())
-    .filter(Boolean);
 
   const hasExtension = /\.[A-Za-z0-9]+$/u.test(command);
   const candidateNames =
@@ -232,7 +226,27 @@ function findCommandOnPath(command: string): string | undefined {
           .map((extension) => `${command}${extension.toLowerCase()}`)
       : [command];
 
-  for (const directory of pathEntries) {
+  // 1. Search PATH entries
+  if (rawPath) {
+    const pathEntries = rawPath
+      .split(process.platform === "win32" ? ";" : ":")
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+
+    for (const directory of pathEntries) {
+      for (const candidateName of candidateNames) {
+        const candidatePath = join(directory, candidateName);
+        if (isExecutablePath(candidatePath)) {
+          return candidatePath;
+        }
+      }
+    }
+  }
+
+  // 2. Search common install locations when PATH didn't find it.
+  //    This catches CLIs installed via npm/brew/pip that aren't on the
+  //    current shell's PATH (common in IDEs, CI, and agent environments).
+  for (const directory of discoverCommonInstallDirectories(command)) {
     for (const candidateName of candidateNames) {
       const candidatePath = join(directory, candidateName);
       if (isExecutablePath(candidatePath)) {
@@ -242,6 +256,52 @@ function findCommandOnPath(command: string): string | undefined {
   }
 
   return undefined;
+}
+
+/**
+ * Returns directories where CLI tools are commonly installed but may not
+ * be on PATH. Checked only as a fallback after PATH search fails.
+ */
+function discoverCommonInstallDirectories(command: string): string[] {
+  const dirs: string[] = [];
+  const home = process.env.HOME ?? process.env.USERPROFILE ?? "";
+
+  if (process.platform === "win32") {
+    // npm global bin (Roaming)
+    const appData = process.env.APPDATA;
+    if (appData) {
+      dirs.push(join(appData, "npm"));
+    }
+    // Codex desktop install
+    const localAppData = process.env.LOCALAPPDATA;
+    if (localAppData) {
+      dirs.push(join(localAppData, "OpenAI", "Codex", "bin"));
+    }
+    // Scoop
+    if (home) {
+      dirs.push(join(home, "scoop", "shims"));
+    }
+  } else {
+    // Common Unix install paths
+    dirs.push("/usr/local/bin", "/opt/homebrew/bin");
+    if (home) {
+      dirs.push(
+        join(home, ".local", "bin"),            // pip, pipx
+        join(home, ".npm-global", "bin"),        // npm prefix
+        join(home, ".bun", "bin"),               // bun
+        join(home, ".cargo", "bin"),             // cargo
+        join(home, "go", "bin")                  // go install
+      );
+    }
+    // nvm managed node
+    const nvmDir = process.env.NVM_DIR;
+    if (nvmDir) {
+      const nvmBin = join(nvmDir, "current", "bin");
+      dirs.push(nvmBin);
+    }
+  }
+
+  return dirs.filter(Boolean);
 }
 
 function isExecutablePath(candidatePath: string): boolean {
@@ -254,6 +314,47 @@ function isExecutablePath(candidatePath: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Returns true if the resolved path is inside a directory that's already
+ * on PATH (i.e., it was found via normal PATH lookup, not auto-discovery).
+ */
+function isOnPathDirectly(command: string, resolvedPath: string): boolean {
+  const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === "path");
+  const rawPath = pathKey ? process.env[pathKey] : undefined;
+  if (!rawPath) return false;
+
+  const pathEntries = rawPath
+    .split(process.platform === "win32" ? ";" : ":")
+    .map((entry) => entry.trim().replace(/[\\/]+$/u, ""))
+    .filter(Boolean);
+
+  const resolvedDir = resolvedPath
+    .replace(/[\\/][^\\/]+$/u, "")
+    .replace(/[\\/]+$/u, "");
+
+  return pathEntries.some(
+    (entry) => entry.toLowerCase() === resolvedDir.toLowerCase()
+  );
+}
+
+/**
+ * Returns a platform-specific one-liner install command for a known CLI.
+ */
+function suggestInstallCommand(command: string): string {
+  const npmInstalls: Record<string, string> = {
+    claude: "npm install -g @anthropic-ai/claude-code",
+    codex: "npm install -g @openai/codex",
+    gemini: "npm install -g @google/gemini-cli"
+  };
+
+  const install = npmInstalls[command];
+  if (install) {
+    return `Install with: ${install}`;
+  }
+
+  return `Install ${command} and ensure it is on PATH.`;
 }
 
 export function getEngineAvailability(engine: MartinEngine): CliAvailability {
