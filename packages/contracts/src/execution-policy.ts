@@ -70,6 +70,37 @@ export interface ExecutionPolicyCompileInput {
   request: ExecutionPolicyRequestInput;
 }
 
+// ---------------------------------------------------------------------------
+// Routing policy — controls pre-work coordination cost
+// ---------------------------------------------------------------------------
+
+export type RoutingMode = "direct" | "manager" | "adaptive" | "consensus";
+
+export interface RoutingPolicy {
+  enabled: boolean;
+  mode: RoutingMode;
+  /** Max percentage of total budget that can be spent before first code change. */
+  maxPreworkBudgetPct: number;
+  /** Hard dollar cap on pre-work spend. */
+  maxPreworkCostUsd: number;
+  /** Max model calls allowed for manager/router/planner before worker starts. */
+  maxManagerCalls: number;
+  /** Skip orchestration entirely if task confidence is above this threshold (0-1). */
+  skipOrchestrationIfConfidenceAbove: number;
+  /** Force direct execution for tasks classified as simple. */
+  requireDirectForSimpleTasks: boolean;
+}
+
+export const DEFAULT_ROUTING_POLICY: RoutingPolicy = {
+  enabled: true,
+  mode: "adaptive",
+  maxPreworkBudgetPct: 25,
+  maxPreworkCostUsd: 2.0,
+  maxManagerCalls: 2,
+  skipOrchestrationIfConfidenceAbove: 0.85,
+  requireDirectForSimpleTasks: true
+};
+
 export function cloneExecutionPolicy(policy: ExecutionPolicy): ExecutionPolicy {
   return {
     configPath: policy.configPath,

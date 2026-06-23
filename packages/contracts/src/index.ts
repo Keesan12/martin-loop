@@ -825,8 +825,11 @@ export type {
   ExecutionPolicyConfigInput,
   ExecutionPolicyDefaults,
   ExecutionPolicyProvenanceEntry,
-  ExecutionPolicyRequestInput
+  ExecutionPolicyRequestInput,
+  RoutingPolicy,
+  RoutingMode
 } from "./execution-policy.js";
+export { DEFAULT_ROUTING_POLICY } from "./execution-policy.js";
 export { cloneContextGraphSnapshot } from "./context-graph.js";
 export type {
   ContextGraphBuildOptions,
