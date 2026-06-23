@@ -37,6 +37,7 @@ export interface InspectableLoopRecord extends Omit<LoopRunRecord, "attempts" | 
   metadata?: Record<string, string>;
   receiptIntegrity?: ReceiptIntegritySummary;
   receiptScope?: ReceiptScope;
+  routingEconomics?: import("@martin/contracts").RoutingEconomics;
 }
 
 export interface LoopPreview {
@@ -56,6 +57,7 @@ export interface LoopPreview {
   remainingIterations: number;
   remainingTokens: number;
   lastAttempt?: AttemptSummary;
+  routingEconomics?: Record<string, unknown>;
 }
 
 export interface AttemptArtifactFiles {
@@ -407,7 +409,23 @@ export function buildLoopPreview(loop: InspectableLoopRecord): LoopPreview {
     remainingBudgetUsd: costState.remainingBudgetUsd,
     remainingIterations: costState.remainingIterations,
     remainingTokens: costState.remainingTokens,
-    ...(lastAttempt ? { lastAttempt: buildAttemptSummary(lastAttempt) } : {})
+    ...(lastAttempt ? { lastAttempt: buildAttemptSummary(lastAttempt) } : {}),
+    ...(loop.routingEconomics ? { routingEconomics: buildRoutingEconomicsSummary(loop.routingEconomics) } : {})
+  };
+}
+
+function buildRoutingEconomicsSummary(economics: import("@martin/contracts").RoutingEconomics): Record<string, unknown> {
+  return {
+    preworkBurnPct: economics.preworkBurnPct,
+    preworkCostUsd: economics.preworkCostUsd,
+    executionCostUsd: economics.executionCostUsd,
+    totalCostUsd: economics.totalCostUsd,
+    ...(economics.timeToFirstDeltaMs !== undefined ? { timeToFirstDeltaMs: economics.timeToFirstDeltaMs } : {}),
+    ...(economics.costPerAcceptedChange !== undefined ? { costPerAcceptedChange: economics.costPerAcceptedChange } : {}),
+    ...(economics.routeRecommendation ? {
+      routeRecommendation: economics.routeRecommendation,
+      routeRecommendationReason: economics.routeRecommendationReason
+    } : {})
   };
 }
 
