@@ -168,6 +168,52 @@ export interface LoopArtifact {
   uri: string;
 }
 
+// ---------------------------------------------------------------------------
+// Call-stage classification for routing economics
+// ---------------------------------------------------------------------------
+
+export type CallStage =
+  | "routing"
+  | "planning"
+  | "execution"
+  | "verification"
+  | "retry"
+  | "rollback"
+  | "receipt";
+
+export type AgentRole =
+  | "manager"
+  | "router"
+  | "planner"
+  | "worker"
+  | "verifier"
+  | "reviewer"
+  | "fixer"
+  | "system";
+
+export interface FirstDelta {
+  detected: boolean;
+  timestampMs?: number;
+  filePath?: string;
+  changeType?: "create" | "modify" | "delete" | "patch_proposed";
+  /** Elapsed ms from run start to first meaningful workspace change. */
+  timeToFirstDeltaMs?: number;
+}
+
+export interface RoutingEconomics {
+  preworkCostUsd: number;
+  executionCostUsd: number;
+  verificationCostUsd: number;
+  retryCostUsd: number;
+  totalCostUsd: number;
+  preworkBurnPct: number;
+  timeToFirstDeltaMs?: number;
+  firstDelta?: FirstDelta;
+  costPerAcceptedChange?: number;
+  routeRecommendation?: "same_route" | "direct_worker" | "manager_required" | "consensus_required";
+  routeRecommendationReason?: string;
+}
+
 export interface LoopAttempt {
   attemptId: string;
   index: number;
@@ -180,6 +226,8 @@ export interface LoopAttempt {
   intervention?: InterventionType;
   /** Actionable diagnosis from failure classification, injected into the next attempt's prompt. */
   diagnosticHint?: string;
+  /** Which stage of the run lifecycle this attempt represents. */
+  callStage?: CallStage;
 }
 
 export interface LoopEvent {
@@ -208,6 +256,7 @@ export interface LoopRecord {
   updatedAt: string;
   receiptScope?: ReceiptScope;
   receiptIntegrity?: ReceiptIntegritySummary;
+  routingEconomics?: RoutingEconomics;
 }
 
 export interface LoopRecordDraft {

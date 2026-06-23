@@ -22,14 +22,14 @@ This file is the release source of truth for package/version mapping in this rep
 
 ## Standalone package: `@martinloop/mcp`
 
-- live npm dist-tag `latest`: `0.3.1`
-- live public GitHub release: `mcp-v0.3.1`
-- live public baseline in this train: `0.3.1`
-- standalone MCP public baseline: `0.3.1`
-- current in-repo standalone release line: `0.3.2` for an engine validation hotfix (fixes `engine: "gemini"` being rejected on spend-limit requests)
-- next planned standalone release: `0.3.3` for opt-in execution controls
+- live npm dist-tag `latest`: `0.3.4`
+- live public GitHub release: `mcp-v0.3.4`
+- live public baseline in this train: `0.3.4`
+- standalone MCP public baseline: `0.3.4`
+- current in-repo standalone release line: `0.3.4` for README rewrite and version alignment
+- next planned standalone release: `0.3.5` for routing economics surface
 - next planned follow-ons:
-  - `0.3.4` reserved for additional host-coverage follow-ups
+  - `0.3.6` reserved for additional host-coverage follow-ups
 
 ## Release rules
 
