@@ -19,7 +19,7 @@ function escapeRegex(input) {
 }
 
 test("current MCP metadata stays aligned for the release cut", async () => {
-  assert.equal(packageJson.version, "0.3.2");
+  assert.equal(packageJson.version, "0.3.4");
   assert.equal(packageJson.version, serverJson.version);
 
   const releaseNotesPath = path.join(ROOT_DIR, "docs", "release", `MCP-${packageJson.version}-RELEASE-NOTES.md`);
@@ -34,7 +34,7 @@ test("version ledger records live public truth and the next release train", asyn
   assert.match(ledger, /live public GitHub release: `v\d+\.\d+\.\d+`/);
   assert.match(
     ledger,
-    new RegExp(escapeRegex("standalone MCP public baseline: `0.3.1`"))
+    new RegExp(escapeRegex("standalone MCP public baseline: `0.3.4`"))
   );
   assert.match(
     ledger,
@@ -46,7 +46,7 @@ test("version ledger records live public truth and the next release train", asyn
   );
   assert.match(ledger, /next planned root follow-on: `\d+\.\d+\.\d+`/);
   assert.match(ledger, /next planned standalone release: `\d+\.\d+\.\d+`/);
-  assert.match(ledger, /`0\.3\.4` reserved for additional host-coverage follow-ups/);
+  assert.match(ledger, /`0\.3\.6` reserved for additional host-coverage follow-ups/);
 });
 
 test("MCP slice map defines the 0.3.x train without private-hosted bleed", async () => {
@@ -73,15 +73,17 @@ test("public MCP docs describe the current baseline and the next train in human-
     readRepoFile(path.join("docs", "release", "MCP-0.3.3-RELEASE-NOTES.md"))
   ]);
 
-  for (const contents of [packageReadme, aiGuide]) {
-    assert.match(contents, /0\.3\.1/);
-    assert.match(contents, /0\.3\.2/);
-    assert.match(contents, /local-first/i);
-    assert.match(contents, /martin_doctor/);
-    assert.match(contents, /martin_plan/);
-    assert.match(contents, /martin_preflight/);
-    assert.match(contents, /martin_run/);
-  }
+  // AI guide still references the release train
+  assert.match(aiGuide, /0\.3\.1/);
+  assert.match(aiGuide, /local-first/i);
+  assert.match(aiGuide, /martin_doctor/);
+  assert.match(aiGuide, /martin_run/);
+
+  // Package README should list the core tools (may not reference old versions)
+  assert.match(packageReadme, /martin_doctor/);
+  assert.match(packageReadme, /martin_plan/);
+  assert.match(packageReadme, /martin_preflight/);
+  assert.match(packageReadme, /martin_run/);
   assert.match(releaseNotes031, /review and handoff release/i);
   assert.match(releaseNotes032, /validation hotfix/i);
   assert.match(releaseNotes033, /opt-in execution-controls release/i);

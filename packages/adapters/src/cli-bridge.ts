@@ -375,6 +375,48 @@ export async function readGitChangedFiles(
   );
 }
 
+// Ignore paths that are not meaningful code changes for first-delta detection
+const FIRST_DELTA_IGNORE = [
+  /^\.martin\//u,
+  /^PROGRESS\.md$/u,
+  /\.lock$/u,
+  /^node_modules\//u,
+  /^\.git\//u,
+  /^\.cache\//u,
+];
+
+/**
+ * Detects whether a meaningful workspace delta has occurred by checking
+ * git status for changed files that aren't MartinLoop metadata, lockfiles,
+ * or cache artifacts. Returns the first meaningful changed file if found.
+ */
+export async function detectFirstDelta(
+  repoRoot: string,
+  timeoutMs: number,
+  spawnImpl?: SpawnLike
+): Promise<{ detected: boolean; filePath?: string; changeType?: "create" | "modify" | "delete" }> {
+  const changedFiles = await readGitChangedFiles(repoRoot, timeoutMs, spawnImpl);
+
+  for (const file of changedFiles) {
+    if (FIRST_DELTA_IGNORE.some((pattern) => pattern.test(file))) {
+      continue;
+    }
+    // Classify: new file = create, deleted = delete, else modify
+    const diffResult = await runSubprocess(
+      "git", ["status", "--porcelain", "--", file],
+      { cwd: repoRoot, timeoutMs: 3000, spawnImpl }
+    );
+    const status = diffResult.stdout.trim().slice(0, 2);
+    const changeType = status.includes("?") ? "create" as const
+      : status.includes("D") ? "delete" as const
+      : "modify" as const;
+
+    return { detected: true, filePath: file, changeType };
+  }
+
+  return { detected: false };
+}
+
 export function resolveGitRepositoryRoot(workingDirectory: string): string | undefined {
   const resolvedWorkingDirectory = resolve(workingDirectory);
   const cached = gitRepositoryRootCache.get(resolvedWorkingDirectory);

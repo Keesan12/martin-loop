@@ -93,7 +93,11 @@ export type {
   RollbackFileSnapshot,
   RollbackOutcomeArtifact,
   RollbackOutcomeStatus,
-  PolicyPhase
+  PolicyPhase,
+  CallStage,
+  AgentRole,
+  FirstDelta,
+  RoutingEconomics
 } from "@martin/contracts";
 export {
   classifyFailure,
@@ -638,6 +642,14 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
   let currentPhase: PolicyPhase = "GATHER";
   let phaseRetryCount = 0;
 
+  // Routing economics: track first meaningful workspace delta
+  const runStartMs = Date.now();
+  let firstDeltaDetected = false;
+  let firstDeltaTimestampMs: number | undefined;
+  let firstDeltaFilePath: string | undefined;
+  let firstDeltaChangeType: "create" | "modify" | "delete" | "patch_proposed" | undefined;
+  let preDeltaCostUsd = 0;
+
   while (loop.attempts.length < loop.budget.maxIterations) {
     const distilled = distillContext(loop, {
       maxRecentAttempts: useCompressedContext ? 1 : (input.maxRecentAttempts ?? 3)
@@ -1122,6 +1134,24 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     const changedFiles = tracksWorkspaceMutations
       ? resolveChangedFiles(result, request.context.repoRoot)
       : [];
+
+    // Routing economics: detect first meaningful workspace delta
+    if (!firstDeltaDetected && changedFiles.length > 0) {
+      const meaningfulFile = changedFiles.find(
+        (f) => !isMartinLoopMetadata(f)
+      );
+      if (meaningfulFile) {
+        firstDeltaDetected = true;
+        firstDeltaTimestampMs = Date.now();
+        firstDeltaFilePath = meaningfulFile;
+        firstDeltaChangeType = "modify";
+        preDeltaCostUsd = roundUsd(loop.cost.actualUsd - getUsageUsd(result.usage));
+      }
+    }
+    if (!firstDeltaDetected) {
+      preDeltaCostUsd = loop.cost.actualUsd;
+    }
+
     // Evidence is only reliable when the adapter explicitly reported files OR git actually
     // returned a non-empty list. A repoRoot alone is insufficient — git may fail (e.g. not
     // a git repo) and silently return [], which would falsely trigger no_code_change.
@@ -1625,7 +1655,8 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
           })
         );
       }
-      const finalizedLoop = finalizeLoop(loop, decision, now(), idFactory);
+      const routingInput = { runStartMs, firstDeltaDetected, firstDeltaTimestampMs, firstDeltaFilePath, firstDeltaChangeType, preDeltaCostUsd };
+      const finalizedLoop = finalizeLoop(loop, decision, now(), idFactory, routingInput);
       await persistLoopRecordIfSupported(input.store, finalizedLoop);
       return {
         loop: finalizedLoop,
@@ -1652,7 +1683,8 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     );
   }
 
-  const finalizedLoop = finalizeLoop(loop, decision, now(), idFactory);
+  const routingInput = { runStartMs, firstDeltaDetected, firstDeltaTimestampMs, firstDeltaFilePath, firstDeltaChangeType, preDeltaCostUsd };
+  const finalizedLoop = finalizeLoop(loop, decision, now(), idFactory, routingInput);
   await persistLoopRecordIfSupported(input.store, finalizedLoop);
   return {
     loop: finalizedLoop,
@@ -1717,7 +1749,15 @@ function finalizeLoop(
   loop: LoopRecord,
   decision: ExitDecision,
   timestamp: string,
-  idFactory?: (prefix: string) => string
+  idFactory?: (prefix: string) => string,
+  routingEconomicsInput?: {
+    runStartMs: number;
+    firstDeltaDetected: boolean;
+    firstDeltaTimestampMs?: number;
+    firstDeltaFilePath?: string;
+    firstDeltaChangeType?: "create" | "modify" | "delete" | "patch_proposed";
+    preDeltaCostUsd: number;
+  }
 ): LoopRecord {
   const finalized = appendLoopEvent(
     loop,
@@ -1729,12 +1769,86 @@ function finalizeLoop(
     { now: timestamp, idFactory }
   );
 
+  const routingEconomics = routingEconomicsInput
+    ? buildRoutingEconomics(finalized, routingEconomicsInput, decision)
+    : undefined;
+
   return {
     ...finalized,
     status: decision.status,
     lifecycleState: decision.lifecycleState,
-    updatedAt: timestamp
+    updatedAt: timestamp,
+    ...(routingEconomics ? { routingEconomics } : {})
   };
+}
+
+function buildRoutingEconomics(
+  loop: LoopRecord,
+  input: {
+    runStartMs: number;
+    firstDeltaDetected: boolean;
+    firstDeltaTimestampMs?: number;
+    firstDeltaFilePath?: string;
+    firstDeltaChangeType?: "create" | "modify" | "delete" | "patch_proposed";
+    preDeltaCostUsd: number;
+  },
+  decision: ExitDecision
+): import("@martin/contracts").RoutingEconomics {
+  const totalCost = loop.cost.actualUsd;
+  const preworkCost = roundUsd(Math.max(input.preDeltaCostUsd, 0));
+  const executionCost = roundUsd(Math.max(totalCost - preworkCost, 0));
+  const preworkBurnPct = totalCost > 0 ? Math.round((preworkCost / totalCost) * 100) : 0;
+  const timeToFirstDeltaMs = input.firstDeltaTimestampMs
+    ? input.firstDeltaTimestampMs - input.runStartMs
+    : undefined;
+  const accepted = decision.lifecycleState === "completed";
+
+  // Route recommendation based on prework burn
+  let routeRecommendation: import("@martin/contracts").RoutingEconomics["routeRecommendation"];
+  let routeRecommendationReason: string | undefined;
+  if (preworkBurnPct > 50) {
+    routeRecommendation = "direct_worker";
+    routeRecommendationReason = `${String(preworkBurnPct)}% of spend was pre-work coordination. Use direct execution for similar tasks.`;
+  } else if (preworkBurnPct > 30) {
+    routeRecommendation = "direct_worker";
+    routeRecommendationReason = `${String(preworkBurnPct)}% pre-work burn is high. Consider direct execution.`;
+  } else {
+    routeRecommendation = "same_route";
+    routeRecommendationReason = `Pre-work burn at ${String(preworkBurnPct)}% is within acceptable range.`;
+  }
+
+  return {
+    preworkCostUsd: preworkCost,
+    executionCostUsd: executionCost,
+    verificationCostUsd: 0,
+    retryCostUsd: 0,
+    totalCostUsd: totalCost,
+    preworkBurnPct,
+    timeToFirstDeltaMs,
+    firstDelta: {
+      detected: input.firstDeltaDetected,
+      ...(input.firstDeltaTimestampMs ? { timestampMs: input.firstDeltaTimestampMs } : {}),
+      ...(input.firstDeltaFilePath ? { filePath: input.firstDeltaFilePath } : {}),
+      ...(input.firstDeltaChangeType ? { changeType: input.firstDeltaChangeType } : {}),
+      ...(timeToFirstDeltaMs !== undefined ? { timeToFirstDeltaMs } : {})
+    },
+    ...(accepted ? { costPerAcceptedChange: totalCost } : {}),
+    routeRecommendation,
+    routeRecommendationReason
+  };
+}
+
+const MARTINLOOP_METADATA_PATTERNS = [
+  /^PROGRESS\.md$/u,
+  /^\.martin\//u,
+  /\.lock$/u,
+  /^node_modules\//u,
+  /^\.git\//u,
+  /^\.cache\//u,
+];
+
+function isMartinLoopMetadata(filePath: string): boolean {
+  return MARTINLOOP_METADATA_PATTERNS.some((p) => p.test(filePath));
 }
 
 async function persistLoopRecordIfSupported(
