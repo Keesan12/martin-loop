@@ -323,6 +323,38 @@ export function evaluateCostGovernor(input: {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Cost-per-outcome metrics
+// ---------------------------------------------------------------------------
+
+export interface CostPerOutcome {
+  costPerAcceptedChange: number | undefined;
+  costPerAttempt: number;
+  acceptanceRate: number;
+  wastedCoordinationUsd: number;
+}
+
+export function calculateCostPerOutcome(input: {
+  totalCostUsd: number;
+  preworkCostUsd: number;
+  attemptCount: number;
+  accepted: boolean;
+  verificationPassed: boolean;
+}): CostPerOutcome {
+  const costPerAttempt = input.attemptCount > 0
+    ? roundUsd(input.totalCostUsd / input.attemptCount)
+    : 0;
+
+  return {
+    costPerAcceptedChange: input.accepted ? input.totalCostUsd : undefined,
+    costPerAttempt,
+    acceptanceRate: input.accepted ? 1 : 0,
+    wastedCoordinationUsd: input.accepted
+      ? roundUsd(input.preworkCostUsd)
+      : roundUsd(input.totalCostUsd)
+  };
+}
+
 export function inferExit(input: {
   loop: { budget: LoopBudget; cost: LoopCost; attempts: LoopAttempt[] };
   lastResult: MartinAdapterResultLike;
