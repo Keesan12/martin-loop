@@ -154,6 +154,10 @@ export type { LocalIdentityAuthority } from "./identity.js";
 export { compileExecutionPolicy } from "./policy-compiler.js";
 export { assessTrajectory, decideCircuitBreak } from "./trajectory.js";
 
+// ─── Routing economics ─────────────────────────────────────────────────────
+export { classifyRoute, evaluatePreworkBurnPolicy } from "./routing.js";
+export type { RouteDecision, RouteClassificationInput } from "./routing.js";
+
 // ─── Context Integrity Pre-gate ──────────────────────────────────────────────
 export { runContextIntegrityPrecheck } from "./context-integrity.js";
 export type { ContextIntegrityPrecheck, ContextIntegrityVerdict } from "./context-integrity.js";
