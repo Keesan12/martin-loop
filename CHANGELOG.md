@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [0.3.9]
+
+### Added
+- **Pre Work Burn** — every run receipt now shows how much was spent before the first meaningful code change. Exposes the hidden coordination cost in multi-agent workflows.
+- **First delta detection** — tracks when the agent actually changes a file vs when it's still thinking, planning, or routing. Filters out MartinLoop metadata, lockfiles, and cache writes.
+- **Routing economics on receipts** — `RoutingEconomics` on every `LoopRecord` with prework cost, execution cost, burn percentage, time-to-first-delta, cost-per-accepted-change, and a route recommendation.
+- **Routing policy types** — `RoutingPolicy` with configurable caps: `maxPreworkBudgetPct`, `maxPreworkCostUsd`, `maxManagerCalls`, `skipOrchestrationIfConfidenceAbove`.
+- **Cost-per-outcome metrics** — `calculateCostPerOutcome()` returns cost-per-accepted-change, cost-per-attempt, acceptance rate, and wasted coordination spend.
+- **Route classification** — `classifyRoute()` scores task complexity and recommends direct execution vs manager orchestration based on objective length, file scope, security/migration keywords, and historical success rates.
+- **Prework burn policy check** — `evaluatePreworkBurnPolicy()` checks live run state against routing policy caps.
+- **18 routing tests** — covers route classification edge cases, policy enforcement, cost calculations, and zero-division guards.
+
 ## [0.3.8]
 
 ### Fixed
