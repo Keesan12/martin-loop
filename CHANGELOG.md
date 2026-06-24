@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.3.12]
+
+### Fixed (Critical)
+- **Hard governance enforcement** — `martin estimate` now writes a receipt to workflow-state.json. `martin gate` requires this receipt before passing. `martin_run` MCP tool blocks until estimate receipt exists. No more silent bypassing.
+- **`martin mcp install --host claude` auto-installs PreToolUse hooks** — writes `martin gate` hook directly into `~/.claude/settings.json`. Bash/Edit/Write are blocked until doctor+estimate are run.
+- **Gate reads both CLI and MCP namespaces** — doctor run via CLI and estimate run via CLI both count toward gate. No more split-state confusion.
+- **MartinLoop memory store** — append-only `_martin/memory.jsonl` for user preferences, consent signals, and behavioral patterns. Never overwrites.
+- **`martin://agent/memory-summary` MCP resource** — agents read user preferences at session start.
+- **Trace store wired into estimate** — `historicalDirectSuccessRate` fed from real past runs into route classifier.
+
 ## [0.3.11]
 
 ### Added
