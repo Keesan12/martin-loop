@@ -164,6 +164,19 @@ export { assessTrajectory, decideCircuitBreak } from "./trajectory.js";
 export { classifyRoute, evaluatePreworkBurnPolicy } from "./routing.js";
 export type { RouteDecision, RouteClassificationInput } from "./routing.js";
 
+// ─── Test Integrity Validation ──────────────────────────────────────────────
+export {
+  validateTestIntegrity,
+  snapshotTestFiles,
+  identifyNewTests,
+  findTestFiles,
+  isTestFile,
+  extractImports,
+  hasTrivialAssertionsOnly,
+  importsPreExistingCode
+} from "./test-integrity.js";
+export type { TestIntegrityReport, TestIntegrityFinding } from "./test-integrity.js";
+
 // ─── Context Integrity Pre-gate ──────────────────────────────────────────────
 export { runContextIntegrityPrecheck } from "./context-integrity.js";
 export type { ContextIntegrityPrecheck, ContextIntegrityVerdict } from "./context-integrity.js";
@@ -198,6 +211,15 @@ export type {
 } from "./persistence/index.js";
 export { compileAndPersistContext } from "./persistence/index.js";
 export type { CompileResult } from "./persistence/index.js";
+
+// ─── Trace Intelligence Store ───────────────────────────────────────────────
+export {
+  appendTraceEntry,
+  readTraceEntries,
+  aggregateTraces,
+  getHistoricalDirectSuccessRate
+} from "./persistence/trace-store.js";
+export type { TraceEntry, TraceAggregation } from "./persistence/trace-store.js";
 
 // ─── Adapter interfaces ──────────────────────────────────────────────────────
 
