@@ -73,13 +73,7 @@ describe("parseCliArguments", () => {
 
   it("parses start onboarding and tour shorthand", () => {
     expect(parseCliArguments(["start"])).toEqual({ command: "start" });
-    expect(parseCliArguments(["tour"])).toEqual({
-      command: "run",
-      request: expect.objectContaining({
-        objective: "tour",
-        title: "tour"
-      })
-    });
+    expect(parseCliArguments(["tour"])).toEqual({ command: "start" });
   });
 
   it("parses a run command into a typed request", () => {

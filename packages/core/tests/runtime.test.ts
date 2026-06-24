@@ -555,6 +555,96 @@ describe("runMartin", () => {
     ]);
   });
 
+  it("does not attribute pre-existing dirty repo files to a tool-launch-blocked attempt", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-env-dirty-boundary-"));
+    const repoRoot = join(runsRoot, "repo");
+    await mkdir(join(repoRoot, "src"), { recursive: true });
+    await mkdir(join(repoRoot, "docs"), { recursive: true });
+    await writeFile(join(repoRoot, "src", "real.ts"), "export const real = 1;\n", "utf8");
+    await writeFile(join(repoRoot, "docs", "notes.md"), "clean baseline\n", "utf8");
+    initializeGitRepo(repoRoot);
+    await writeFile(join(repoRoot, "docs", "notes.md"), "pre-existing dirty notes\n", "utf8");
+    const store = createFileRunStore({ runsRoot });
+
+    const adapter: MartinAdapter = {
+      adapterId: "agent-cli:codex",
+      kind: "agent-cli",
+      label: "Codex CLI adapter",
+      metadata: {
+        providerId: "codex",
+        model: "codex",
+        transport: "cli"
+      },
+      async execute() {
+        return {
+          status: "completed",
+          summary: "CreateProcessAsUserW failed: 5 before verifier execution in the adapter transcript.",
+          usage: {
+            actualUsd: 0.02,
+            tokensIn: 12,
+            tokensOut: 6
+          },
+          verification: {
+            passed: true,
+            summary: "All 1 verification step(s) passed.",
+            steps: [
+              {
+                command: "npm test",
+                launched: true,
+                exitCode: 0,
+                timedOut: false,
+                fastFail: true,
+                detail: "tests passed"
+              }
+            ]
+          }
+        };
+      }
+    };
+
+    const result = await runMartin({
+      workspaceId: "ws_ops",
+      projectId: "proj_runtime",
+      task: {
+        title: "Avoid false repo-grounding failures after sandbox launch errors",
+        objective: "Keep pre-existing dirty files out of attempt attribution when the adapter could not execute.",
+        verificationPlan: ["npm test"],
+        repoRoot,
+        allowedPaths: ["src/**"]
+      },
+      budget: {
+        maxUsd: 10,
+        softLimitUsd: 6,
+        maxIterations: 1,
+        maxTokens: 2_000
+      },
+      adapter,
+      store,
+      now: createTimestampSource([
+        "2026-06-18T10:00:00.000Z",
+        "2026-06-18T10:00:01.000Z",
+        "2026-06-18T10:00:02.000Z",
+        "2026-06-18T10:00:03.000Z",
+        "2026-06-18T10:00:04.000Z",
+        "2026-06-18T10:00:05.000Z",
+        "2026-06-18T10:00:06.000Z"
+      ]),
+      idFactory: createIdFactory()
+    });
+
+    const verificationEvent = result.loop.events.find((event) => event.type === "verification.completed");
+    const failureEvent = result.loop.events.find((event) => event.type === "failure.classified");
+
+    expect(result.decision.lifecycleState).toBe("completed");
+    expect(failureEvent).toBeUndefined();
+    expect(verificationEvent?.payload["warnings"]).toContain(
+      "Adapter output reported a tool-launch problem before MartinLoop ran its own verifier: CreateProcessAsUserW failed: 5 before verifier execution in the adapter transcript."
+    );
+    await expect(readFile(join(repoRoot, "docs", "notes.md"), "utf8")).resolves.toBe(
+      "pre-existing dirty notes\n"
+    );
+  });
+
   it("writes context integrity precheck artifacts into the active runs root", async () => {
     const runsRoot = await mkdtemp(join(tmpdir(), "martin-context-precheck-"));
     const store = createFileRunStore({ runsRoot });

@@ -133,6 +133,8 @@ export function buildMartinProofCard(input: MartinProofCardInput): MartinProofCa
         ? NON_MUTATING_EVIDENCE_LINE
       : input.receiptIntegrityState === "unsigned"
         ? UNSIGNED_EVIDENCE_LINE
+        : proofLikeRun
+          ? NON_MUTATING_EVIDENCE_LINE
         : completeEvidence
           ? COMPLETE_EVIDENCE_LINE
           : INCOMPLETE_EVIDENCE_LINE;

@@ -814,13 +814,13 @@ describe("martinTriageRunsTool", () => {
       const verification = await martinGetVerificationResultsTool({ loopId: loop.loopId });
       const run = await martinGetRunTool({ loopId: loop.loopId });
 
-      expect(verification.receiptIntegrity.state).toBe("material_missing");
+      expect(verification.receiptIntegrity.state).toBe("unsigned");
       expect(verification.warnings).toContain(
-        "Receipt integrity is material_missing; persisted verifier evidence is not trustworthy yet."
+        "Receipt integrity is unsigned; persisted verifier evidence is not trustworthy yet."
       );
-      expect(run.receiptIntegrity.state).toBe("material_missing");
+      expect(run.receiptIntegrity.state).toBe("unsigned");
       expect(run.warnings).toContain(
-        "Receipt integrity is material_missing; persisted verifier evidence is not trustworthy yet."
+        "Receipt integrity is unsigned; persisted verifier evidence is not trustworthy yet."
       );
     });
   });

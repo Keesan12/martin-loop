@@ -14,6 +14,28 @@ interface RepoStateSnapshot {
   untrackedFiles: string[];
 }
 
+export function listAttemptChangedFilesSinceBoundary(input: {
+  repoRoot?: string;
+  boundary?: RollbackBoundaryArtifact;
+}): string[] {
+  if (!input.repoRoot) {
+    return [];
+  }
+
+  const repoState = readRepoState(input.repoRoot);
+  if (!input.boundary) {
+    return uniqueSorted([...repoState.trackedDirtyFiles, ...repoState.untrackedFiles]);
+  }
+
+  const baselineTracked = new Set(input.boundary.trackedDirtyFiles);
+  const baselineUntracked = new Set(input.boundary.untrackedFiles);
+
+  return uniqueSorted([
+    ...repoState.trackedDirtyFiles.filter((filePath) => !baselineTracked.has(filePath)),
+    ...repoState.untrackedFiles.filter((filePath) => !baselineUntracked.has(filePath))
+  ]);
+}
+
 export async function captureRollbackBoundary(input: {
   repoRoot?: string;
   capturedAt: string;
