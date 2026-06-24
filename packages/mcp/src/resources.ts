@@ -12,6 +12,7 @@ import { martinTriageRunsTool } from "./tools/triage-runs.js";
 import { martinRunDossierTool } from "./tools/run-dossier.js";
 import { inspectRepoSignals, buildPolicyPackDefinition, buildRepoRiskMap } from "./tools/workflow-governance.js";
 import { readWorkflowState } from "./workflow-state.js";
+import { readMemoryEntries, buildMemorySummary } from "@martin/core";
 import {
   buildAttemptSnapshot,
   buildPersistedLoopPreview,
@@ -44,7 +45,8 @@ export const MARTIN_STATIC_RESOURCE_URIS = {
   ideOnboardingGuide: "martin://guides/ide-onboarding",
   operatingRulesGuide: "martin://guides/operating-rules",
   publishReadinessGuide: "martin://guides/publish-readiness",
-  governanceStatus: "martin://agent/governance-status"
+  governanceStatus: "martin://agent/governance-status",
+  memorySummary: "martin://agent/memory-summary"
 } as const;
 
 export const MARTIN_RESOURCE_TEMPLATES: ResourceTemplate[] = [
@@ -214,6 +216,13 @@ export const MARTIN_STATIC_RESOURCES: Resource[] = [
     title: "Martin Governance Status",
     description: "Proactive governance status: whether work is governed, budget remaining, unreceipted runs, and recommended next action. Read this before starting agent work.",
     mimeType: "application/json"
+  },
+  {
+    uri: MARTIN_STATIC_RESOURCE_URIS.memorySummary,
+    name: "martin_memory_summary",
+    title: "Martin Memory Summary",
+    description: "MartinLoop persistent memory: user preferences, consent signals, budget patterns, and behavioral observations aggregated over time. Read at session start to personalize recommendations.",
+    mimeType: "application/json"
   }
 ];
 
@@ -295,6 +304,12 @@ export async function readMartinResource(
 
     case MARTIN_STATIC_RESOURCE_URIS.verifierResults:
       return jsonResource(input.uri, withDiscoveryMetadata(await buildLatestVerifierEvidenceResource(context.runsRoot), context.runsRoot));
+
+    case MARTIN_STATIC_RESOURCE_URIS.memorySummary: {
+      const entries = await readMemoryEntries(context.runsRoot);
+      const summary = buildMemorySummary(entries);
+      return jsonResource(input.uri, withDiscoveryMetadata(summary, context.runsRoot));
+    }
 
     case MARTIN_STATIC_RESOURCE_URIS.governanceStatus:
       return jsonResource(input.uri, withDiscoveryMetadata(await buildGovernanceStatusResource(context.runsRoot, context.workingDirectory), context.runsRoot));

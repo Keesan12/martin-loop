@@ -15,6 +15,7 @@ type CliWorkflowStepName =
   | "tour"
   | "guide"
   | "doctor"
+  | "estimate"
   | "session-start"
   | "preflight";
 

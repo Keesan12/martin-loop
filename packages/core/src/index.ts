@@ -216,6 +216,17 @@ export type {
 export { compileAndPersistContext } from "./persistence/index.js";
 export type { CompileResult } from "./persistence/index.js";
 
+// ─── MartinLoop Memory Store ────────────────────────────────────────────────
+export {
+  appendMemory,
+  readMemoryEntries,
+  getPreference,
+  buildMemorySummary,
+  recordPreference,
+  recordConsent
+} from "./persistence/memory-store.js";
+export type { MemoryEntry, MemoryKind, MemorySummary } from "./persistence/memory-store.js";
+
 // ─── Trace Intelligence Store ───────────────────────────────────────────────
 export {
   appendTraceEntry,

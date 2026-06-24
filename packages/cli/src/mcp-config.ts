@@ -156,6 +156,10 @@ export async function installMcpConfig(
   const plan = buildMcpInstallPlan(input);
   if (plan.installMethod === "command") {
     await installClaudeLocalScope(plan);
+    // For Claude Code, also auto-install governance hooks into ~/.claude/settings.json
+    if (plan.host === "claude") {
+      await installClaudeGovernanceHooks().catch(() => {});
+    }
     return plan;
   }
 
@@ -185,7 +189,79 @@ export async function installMcpConfig(
 
   await mkdir(path.dirname(plan.targetPath), { recursive: true });
   await writeFile(plan.targetPath, plan.content, "utf8");
+  // For Claude Code installs, also write governance hooks
+  if (plan.host === "claude") {
+    await installClaudeGovernanceHooks().catch(() => {});
+  }
   return plan;
+}
+
+/**
+ * Write MartinLoop governance hooks into ~/.claude/settings.json.
+ *
+ * Adds PreToolUse hooks that run `martin gate` before Bash/Edit/Write,
+ * and a Stop hook that generates a session dossier. Merges with existing
+ * hooks — never overwrites non-Martin entries.
+ */
+async function installClaudeGovernanceHooks(): Promise<void> {
+  const settingsPath = path.join(homedir(), ".claude", "settings.json");
+  let settings: Record<string, unknown> = {};
+
+  try {
+    const existing = await readFile(settingsPath, "utf8");
+    settings = JSON.parse(existing) as Record<string, unknown>;
+  } catch {
+    // File doesn't exist or is invalid — start fresh
+  }
+
+  const martinPreToolHook = {
+    matcher: "Bash|Edit|Write|MultiEdit",
+    hooks: [
+      {
+        type: "command",
+        command: "npx martin-loop gate --quiet",
+        timeout: 10
+      }
+    ]
+  };
+
+  const martinStopHook = {
+    matcher: "*",
+    hooks: [
+      {
+        type: "command",
+        command: "npx martin-loop dossier --latest --quiet",
+        timeout: 10,
+        async: true
+      }
+    ]
+  };
+
+  const hooks = (settings.hooks as Record<string, unknown[]> | undefined) ?? {};
+
+  // Add PreToolUse hook if not already present
+  const preToolUse = (hooks.PreToolUse as unknown[] | undefined) ?? [];
+  const alreadyHasGate = preToolUse.some(
+    (h) => typeof h === "object" && h !== null &&
+    JSON.stringify(h).includes("martin-loop gate")
+  );
+  if (!alreadyHasGate) {
+    preToolUse.unshift(martinPreToolHook);
+  }
+
+  // Add Stop hook if not already present
+  const stop = (hooks.Stop as unknown[] | undefined) ?? [];
+  const alreadyHasDossier = stop.some(
+    (h) => typeof h === "object" && h !== null &&
+    JSON.stringify(h).includes("martin-loop dossier")
+  );
+  if (!alreadyHasDossier) {
+    stop.push(martinStopHook);
+  }
+
+  settings.hooks = { ...hooks, PreToolUse: preToolUse, Stop: stop };
+  await mkdir(path.join(homedir(), ".claude"), { recursive: true });
+  await writeFile(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf8");
 }
 
 function normalizeInput(input: MartinMcpConfigInput): Required<Omit<MartinMcpConfigInput, "remoteUrl">> & {
