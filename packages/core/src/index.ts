@@ -177,6 +177,10 @@ export {
 } from "./test-integrity.js";
 export type { TestIntegrityReport, TestIntegrityFinding } from "./test-integrity.js";
 
+// ─── Repo Style Analyzer ────────────────────────────────────────────────────
+export { analyzeRepoStyle, buildPromptDirectives } from "./repo-analyzer.js";
+export type { RepoStyleProfile } from "./repo-analyzer.js";
+
 // ─── Context Integrity Pre-gate ──────────────────────────────────────────────
 export { runContextIntegrityPrecheck } from "./context-integrity.js";
 export type { ContextIntegrityPrecheck, ContextIntegrityVerdict } from "./context-integrity.js";
