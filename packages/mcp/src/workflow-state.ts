@@ -7,10 +7,11 @@ import type { LoopBudget, ReceiptScope } from "@martin/contracts";
 const WORKFLOW_STATE_DIRECTORY = "_martin";
 const WORKFLOW_STATE_FILENAME = "workflow-state.json";
 const DOCTOR_TTL_MS = 24 * 60 * 60 * 1000;
+const ESTIMATE_TTL_MS = 6 * 60 * 60 * 1000; // Estimate expires after 6h — re-estimate if objective changes
 const PLAN_TTL_MS = 24 * 60 * 60 * 1000;
 const PREFLIGHT_TTL_MS = 6 * 60 * 60 * 1000;
 
-type McpWorkflowStepName = "doctor" | "plan" | "preflight";
+type McpWorkflowStepName = "doctor" | "plan" | "preflight" | "estimate" | "start";
 
 interface McpWorkflowReceipt {
   step: McpWorkflowStepName;
@@ -104,6 +105,14 @@ export async function evaluateMcpRunGate(input: EvaluateMcpRunGateInput): Promis
     missingSteps.push("doctor");
   }
 
+  // Estimate is required before any run — it proves the agent assessed cost first.
+  // The estimate TTL is 6h; it doesn't need to match the exact objective key.
+  if (!isFresh(mcpState["estimate"], ESTIMATE_TTL_MS, (receipt) =>
+    receipt.workingDirectory === workingDirectory
+  )) {
+    missingSteps.push("estimate");
+  }
+
   if (!isFresh(mcpState["plan"], PLAN_TTL_MS, (receipt) =>
     receipt.workingDirectory === workingDirectory &&
     receipt.scopeKey === scopeKey &&
@@ -135,10 +144,12 @@ export async function evaluateMcpRunGate(input: EvaluateMcpRunGateInput): Promis
 
   const nextAction =
     missingSteps[0] === "doctor"
-      ? "Call martin_doctor for this workingDirectory before any real run."
-      : missingSteps[0] === "plan"
-        ? "Call martin_plan with the exact objective before martin_run."
-        : "Call martin_preflight with the exact objective, verifier plan, and engine before martin_run.";
+      ? "Call martin_doctor to confirm environment before any work."
+      : missingSteps[0] === "estimate"
+        ? "Call martin_estimate with the objective to get cost and route before spending."
+        : missingSteps[0] === "plan"
+          ? "Call martin_plan with the exact objective before martin_run."
+          : "Call martin_preflight with the exact objective, verifier plan, and engine before martin_run.";
 
   return {
     allowed: false,

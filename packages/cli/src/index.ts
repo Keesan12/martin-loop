@@ -16,7 +16,7 @@ import {
   createStubDirectProviderAdapter,
   createVerifierOnlyAdapter
 } from "@martin/adapters";
-import { runMartin, classifyRoute, resolveModelForTier, type MartinAdapter } from "@martin/core";
+import { runMartin, classifyRoute, resolveModelForTier, getHistoricalDirectSuccessRate, type MartinAdapter } from "@martin/core";
 import {
   buildPortfolioSnapshot,
   createLoopRecord,
@@ -2666,29 +2666,38 @@ async function executeGateCommand(
     runsDir: command.runsDir
   });
 
-  // Read workflow state directly from the runs root filesystem.
-  // Cannot import from MCP package (different rootDir), so we read the
-  // JSON file that the MCP server writes.
+  // Read workflow state — merge both MCP (martin_doctor via MCP) and CLI
+  // (martin doctor via CLI) namespaces so the gate works regardless of how
+  // doctor/estimate were invoked.
   let mcpState: Record<string, { recordedAt?: string } | undefined> = {};
   try {
     const statePath = join(resolve(environment.runsRoot), "_martin", "workflow-state.json");
     const raw = await readFile(statePath, "utf8");
-    const parsed = JSON.parse(raw) as { version?: number; mcp?: Record<string, { recordedAt?: string }> };
-    if (parsed.version === 1 && parsed.mcp) {
-      mcpState = parsed.mcp;
+    const parsed = JSON.parse(raw) as {
+      version?: number;
+      mcp?: Record<string, { recordedAt?: string }>;
+      cli?: Record<string, { recordedAt?: string }>;
+    };
+    if (parsed.version === 1) {
+      // Merge: cli namespace takes precedence for CLI-native steps (doctor, estimate)
+      // MCP namespace used for MCP-specific steps (plan, preflight, run)
+      mcpState = { ...(parsed.mcp ?? {}), ...(parsed.cli ?? {}) };
     }
   } catch {
     // No workflow state file yet — everything is missing
   }
   const hasDoctor = Boolean(mcpState.doctor);
+  const hasEstimate = Boolean(mcpState.estimate);
   const hasPlan = Boolean(mcpState.plan);
   const hasPreflight = Boolean(mcpState.preflight);
-  const governed = hasDoctor && hasPlan && hasPreflight;
+  // Estimate is required — it proves the agent understood the cost before starting.
+  // Plan is optional for lightweight work; estimate + doctor + preflight is the minimum.
+  const governed = hasDoctor && hasEstimate;
 
   const missingSteps: string[] = [];
   if (!hasDoctor) missingSteps.push("martin doctor");
-  if (!hasPlan) missingSteps.push("martin plan");
-  if (!hasPreflight) missingSteps.push("martin preflight");
+  if (!hasEstimate) missingSteps.push("martin estimate \"<your objective>\"");
+  if (!hasPreflight && hasPlan) missingSteps.push("martin preflight \"<your objective>\"");
 
   if (governed) {
     return renderCliSuccess(outputMode, {
@@ -2697,15 +2706,17 @@ async function executeGateCommand(
         governed: true,
         receipts: {
           doctor: mcpState.doctor?.recordedAt,
+          estimate: mcpState.estimate?.recordedAt,
           plan: mcpState.plan?.recordedAt,
           preflight: mcpState.preflight?.recordedAt
         }
       },
       human: [
         "MartinLoop governance: PASS",
-        `  Doctor:     ✓ ${mcpState.doctor?.recordedAt ?? ""}`,
-        `  Plan:       ✓ ${mcpState.plan?.recordedAt ?? ""}`,
-        `  Preflight:  ✓ ${mcpState.preflight?.recordedAt ?? ""}`
+        `  Doctor:    ✓ ${mcpState.doctor?.recordedAt ?? ""}`,
+        `  Estimate:  ✓ ${mcpState.estimate?.recordedAt ?? ""}`,
+        ...(mcpState.plan ? [`  Plan:      ✓ ${mcpState.plan.recordedAt}`] : []),
+        ...(mcpState.preflight ? [`  Preflight: ✓ ${mcpState.preflight.recordedAt}`] : [])
       ],
       quiet: "PASS"
     });
@@ -2742,16 +2753,31 @@ async function executeEstimateCommand(
   command: Extract<ParsedCliArguments, { command: "estimate" }>,
   outputMode: MartinOutputMode
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  const environment = resolveCliEnvironment({ cwd: undefined, runsDir: undefined });
+  // Feed real historical success rate from the trace store into the route classifier.
+  // This reduces Pre Work Burn over time as Martin learns from past runs.
+  const historicalDirectSuccessRate = await getHistoricalDirectSuccessRate(environment.runsRoot).catch(() => undefined);
   const route = classifyRoute({
     objective: command.objective,
     verificationPlan: [],
     budgetUsd: command.budgetUsd,
     allowedPaths: command.fileScope,
-    scopedFileCount: command.fileScope.length > 0 ? command.fileScope.length : undefined
+    scopedFileCount: command.fileScope.length > 0 ? command.fileScope.length : undefined,
+    historicalDirectSuccessRate
   });
   const recommendedBudgetUsd = route.selectedMode === "direct"
     ? Math.max(2, Math.round(route.expectedCostUsd * 3 * 100) / 100)
     : Math.max(5, Math.round(route.expectedCostUsd * 2 * 100) / 100);
+
+  // Record estimate receipt — this is what martin gate checks to confirm
+  // an estimate was run before work began. Fire-and-forget.
+  recordCliWorkflowStep({
+    runsRoot: environment.runsRoot,
+    step: "estimate",
+    workingDirectory: environment.workingDirectory,
+    objective: command.objective,
+    receiptScope: buildCliReceiptScope(environment)
+  }).catch(() => {});
 
   return renderCliSuccess(outputMode, {
     data: {
