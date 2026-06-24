@@ -1026,7 +1026,8 @@ async function executeRunCommand(
     const codexAvailability = resolveCliCommandAvailability("codex");
     const codexProbe = probeCodexLaunch({
       workingDirectory: cliEnvironment.workingDirectory,
-      availability: codexAvailability
+      availability: codexAvailability,
+      model: resolvedRequest.model
     });
     if (!codexProbe.ok) {
       throw new CliCommandError("environment", codexProbe.summary, {
@@ -2176,7 +2177,8 @@ async function executePreflightCommand(
     engineRequired && environment.engine === "codex" && workingDirectoryExists
       ? probeCodexLaunch({
           workingDirectory: environment.workingDirectory,
-          availability: codexAvailability
+          availability: codexAvailability,
+          model: request.model
         })
       : undefined;
   if (!workingDirectoryExists) {

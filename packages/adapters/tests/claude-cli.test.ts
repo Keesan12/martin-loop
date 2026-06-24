@@ -19,6 +19,7 @@ import {
   createVerifierOnlyAdapter,
   type SpawnLike
 } from "../src/index.js";
+import { DEFAULT_CODEX_CHATGPT_MODEL } from "../src/codex-launcher.js";
 import { containsShellOperator, readGitChangedFiles, readGitExecutionArtifacts, runSubprocess, splitCommand } from "../src/cli-bridge.js";
 
 // ---------------------------------------------------------------------------
@@ -1059,6 +1060,7 @@ describe("createCodexCliAdapter", () => {
     expect(calls[0]?.command).toBe("codex");
     expect(calls[0]?.args).toEqual([
       "exec",
+      "--ignore-user-config",
       "--cd",
       workingDirectory,
       "--sandbox",
@@ -1066,6 +1068,8 @@ describe("createCodexCliAdapter", () => {
       "--json",
       "--color",
       "never",
+      "--model",
+      DEFAULT_CODEX_CHATGPT_MODEL,
       "-"
     ]);
     expect(calls[0]?.args).not.toContain("--full-auto");
@@ -1100,6 +1104,7 @@ describe("createCodexCliAdapter", () => {
     expect(result.status).toBe("completed");
     expect(calls[0]?.args).toEqual([
       "exec",
+      "--ignore-user-config",
       "--cd",
       expect.any(String),
       "--sandbox",

@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.3.10]
+
+### Fixed
+- **Codex governed launches no longer inherit operator MCP/plugin config** — spawned Codex subprocesses now pass `--ignore-user-config` to avoid auth-sensitive MCP servers and plugin surfaces poisoning governed runs. Default model changed from `codex` to `gpt-5.4` to avoid unsupported model errors under ChatGPT-account auth.
+- **CLI version now reports correctly** — the vendored CLI manifest version is aligned with the root package version so `--version` reports the installed version, not a stale build artifact.
+- **All CLI commands present** — `start`, `tour`, `env`, `review`, `receipts explain`, `enable` commands restored after the public repo merge. Previous 0.3.9 npm build was missing these.
+- **Stale `--ask-for-approval` reference removed** — Codex remediation hints now reference `--ignore-user-config --sandbox workspace-write` instead of the non-existent `--ask-for-approval never` flag.
+
 ## [0.3.9]
 
 ### Added
