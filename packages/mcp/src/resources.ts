@@ -11,6 +11,7 @@ import { martinDoctorTool } from "./tools/doctor.js";
 import { martinTriageRunsTool } from "./tools/triage-runs.js";
 import { martinRunDossierTool } from "./tools/run-dossier.js";
 import { inspectRepoSignals, buildPolicyPackDefinition, buildRepoRiskMap } from "./tools/workflow-governance.js";
+import { readWorkflowState } from "./workflow-state.js";
 import {
   buildAttemptSnapshot,
   buildPersistedLoopPreview,
@@ -42,7 +43,8 @@ export const MARTIN_STATIC_RESOURCE_URIS = {
   commandMapGuide: "martin://guides/command-map",
   ideOnboardingGuide: "martin://guides/ide-onboarding",
   operatingRulesGuide: "martin://guides/operating-rules",
-  publishReadinessGuide: "martin://guides/publish-readiness"
+  publishReadinessGuide: "martin://guides/publish-readiness",
+  governanceStatus: "martin://agent/governance-status"
 } as const;
 
 export const MARTIN_RESOURCE_TEMPLATES: ResourceTemplate[] = [
@@ -205,6 +207,13 @@ export const MARTIN_STATIC_RESOURCES: Resource[] = [
     title: "Martin Publish Readiness Guide",
     description: "Checklist-oriented guide for MCP publish readiness reviews.",
     mimeType: "text/markdown"
+  },
+  {
+    uri: MARTIN_STATIC_RESOURCE_URIS.governanceStatus,
+    name: "martin_governance_status",
+    title: "Martin Governance Status",
+    description: "Proactive governance status: whether work is governed, budget remaining, unreceipted runs, and recommended next action. Read this before starting agent work.",
+    mimeType: "application/json"
   }
 ];
 
@@ -286,6 +295,9 @@ export async function readMartinResource(
 
     case MARTIN_STATIC_RESOURCE_URIS.verifierResults:
       return jsonResource(input.uri, withDiscoveryMetadata(await buildLatestVerifierEvidenceResource(context.runsRoot), context.runsRoot));
+
+    case MARTIN_STATIC_RESOURCE_URIS.governanceStatus:
+      return jsonResource(input.uri, withDiscoveryMetadata(await buildGovernanceStatusResource(context.runsRoot, context.workingDirectory), context.runsRoot));
 
     case MARTIN_STATIC_RESOURCE_URIS.agentNextStep:
       return jsonResource(input.uri, withDiscoveryMetadata(await buildAgentNextStepResource(context.runsRoot), context.runsRoot));
@@ -672,6 +684,59 @@ function compactEmptyState(kind: string, runsRoot: string, warnings: string[]): 
     summary: "No Martin run records are available yet.",
     nextStep: "Run `npx martin-loop doctor`, create the demo workspace with `npx martin-loop demo`, then run `npx martin-loop run ... --proof --verify <command>`.",
     warnings
+  };
+}
+
+async function buildGovernanceStatusResource(runsRoot: string, workingDirectory: string): Promise<Record<string, unknown>> {
+  const state = await readWorkflowState(runsRoot);
+  const mcpState = state.mcp ?? {};
+  const hasDoctor = Boolean(mcpState.doctor);
+  const hasPlan = Boolean(mcpState.plan);
+  const hasPreflight = Boolean(mcpState.preflight);
+  const governed = hasDoctor && hasPlan && hasPreflight;
+
+  const latest = await loadLatestRunForCompactResource(runsRoot);
+  const budgetRemaining = (!latest.empty && latest.detail)
+    ? buildPersistedLoopPreview(latest.detail.loop as Parameters<typeof buildPersistedLoopPreview>[0]).remainingBudgetUsd
+    : null;
+
+  let unreceiptedRuns = 0;
+  try {
+    const inspection = await inspectLoopTool({ runsDir: runsRoot });
+    const total = inspection.loopCount ?? 0;
+    const completed = (inspection.statusBreakdown?.completed ?? 0) + (inspection.statusBreakdown?.failed ?? 0);
+    unreceiptedRuns = Math.max(0, total - completed);
+  } catch {
+    // No runs yet
+  }
+
+  const missingSteps: string[] = [];
+  if (!hasDoctor) missingSteps.push("martin_doctor");
+  if (!hasPlan) missingSteps.push("martin_plan");
+  if (!hasPreflight) missingSteps.push("martin_preflight");
+
+  const recommendedAction = !hasDoctor
+    ? "Run martin_doctor to confirm environment before any work."
+    : !hasPlan
+      ? "Run martin_plan with your objective to scope the task."
+      : !hasPreflight
+        ? "Run martin_preflight to validate the run contract before execution."
+        : "Governance complete. You may proceed with martin_run.";
+
+  return {
+    kind: "governance-status",
+    governed,
+    workflowReceipts: {
+      doctor: hasDoctor ? { recordedAt: mcpState.doctor!.recordedAt } : null,
+      plan: hasPlan ? { recordedAt: mcpState.plan!.recordedAt } : null,
+      preflight: hasPreflight ? { recordedAt: mcpState.preflight!.recordedAt } : null
+    },
+    missingSteps,
+    budgetRemaining,
+    unreceiptedRuns,
+    recommendedAction,
+    requiredSequence: ["martin_doctor", "martin_plan", "martin_preflight", "martin_run", "martin_dossier"],
+    warning: governed ? undefined : "This session is NOT governed. Complete the required sequence before making changes."
   };
 }
 

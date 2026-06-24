@@ -59,7 +59,8 @@ import { martinRunDossierTool } from "./tools/run-dossier.js";
 import { createRunControlReceipt } from "./tools/run-controls.js";
 import { martinTriageRunsTool } from "./tools/triage-runs.js";
 import { runLoopTool } from "./tools/run-loop.js";
-import { MARTIN_ENGINE_VALUES } from "./tools/tool-support.js";
+import { MARTIN_ENGINE_VALUES, type MartinEngine } from "./tools/tool-support.js";
+import { classifyRoute } from "@martin/core";
 import { createToolErrorResult, createToolSuccessResult } from "./tools/tool-response.js";
 import { MartinToolError, toToolFailure } from "./tools/tool-errors.js";
 import { normalizeLoopBudget } from "./tools/workflow-governance.js";
@@ -1449,6 +1450,60 @@ export function createMartinMcpServer(serverInfo?: {
         oneOf: [{ required: ["file"] }, { required: ["loopId"] }, { required: ["latest"] }]
       },
       outputSchema: prReviewOutputSchema
+    },
+    {
+      name: "martin_estimate",
+      description:
+        "Estimate the cost, recommended route, and Pre Work Burn for an objective without spending anything. Use before martin_run to understand what a task will cost.",
+      annotations: {
+        readOnlyHint: true,
+        idempotentHint: true
+      },
+      inputSchema: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          objective: {
+            type: "string",
+            description: "The coding task to estimate."
+          },
+          engine: {
+            type: "string",
+            enum: [...MARTIN_ENGINE_VALUES],
+            description: "Which agent CLI would be used. Defaults to claude."
+          },
+          budgetUsd: {
+            type: "number",
+            exclusiveMinimum: 0,
+            description: "Budget ceiling for estimation. Defaults to 5."
+          },
+          fileScope: {
+            type: "array",
+            items: { type: "string" },
+            description: "Optional file paths to scope the estimate."
+          }
+        },
+        required: ["objective"]
+      },
+      outputSchema: {
+        type: "object",
+        additionalProperties: true,
+        properties: {
+          objective: { type: "string" },
+          engine: { type: "string" },
+          budgetUsd: { type: "number" },
+          selectedMode: { type: "string" },
+          confidence: { type: "number" },
+          expectedCostUsd: { type: "number" },
+          expectedPreworkBurnPct: { type: "number" },
+          reason: { type: "array", items: { type: "string" } },
+          blockedSteps: { type: "array", items: { type: "string" } },
+          compressed: { type: "boolean" },
+          compressionSummary: { type: "string" },
+          recommendedBudgetUsd: { type: "number" }
+        },
+        required: ["objective", "engine", "budgetUsd", "selectedMode", "confidence", "expectedCostUsd", "expectedPreworkBurnPct", "reason"]
+      }
     }
   ]
   }));
@@ -1730,6 +1785,42 @@ export function createMartinMcpServer(serverInfo?: {
       return createToolSuccessResult(
         output,
         `PR review verdict for ${output.loopId}: ${output.verdict}.`
+      );
+    }
+
+    if (name === "martin_estimate") {
+      const input = args as { objective: string; engine?: string; budgetUsd?: number; fileScope?: string[] };
+      const objective = input.objective;
+      const engine = input.engine ?? "claude";
+      const budgetUsd = input.budgetUsd ?? 5;
+      const fileScope = input.fileScope ?? [];
+      const route = classifyRoute({
+        objective,
+        verificationPlan: [],
+        budgetUsd,
+        allowedPaths: fileScope,
+        scopedFileCount: fileScope.length > 0 ? fileScope.length : undefined
+      });
+      const recommendedBudgetUsd = route.selectedMode === "direct"
+        ? Math.max(2, Math.round(route.expectedCostUsd * 3 * 100) / 100)
+        : Math.max(5, Math.round(route.expectedCostUsd * 2 * 100) / 100);
+      const output = {
+        objective,
+        engine,
+        budgetUsd,
+        selectedMode: route.selectedMode,
+        confidence: route.confidence,
+        expectedCostUsd: route.expectedCostUsd,
+        expectedPreworkBurnPct: route.expectedPreworkBurnPct,
+        reason: route.reason,
+        blockedSteps: route.blockedSteps,
+        compressed: route.compressed,
+        ...(route.compressionSummary ? { compressionSummary: route.compressionSummary } : {}),
+        recommendedBudgetUsd
+      };
+      return createToolSuccessResult(
+        output,
+        `Estimate: ${route.selectedMode} route, ~$${route.expectedCostUsd.toFixed(2)} expected cost, ${route.expectedPreworkBurnPct}% pre-work burn. Recommended budget: $${recommendedBudgetUsd.toFixed(2)}.`
       );
     }
 

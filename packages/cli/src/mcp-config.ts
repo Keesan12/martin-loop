@@ -9,6 +9,7 @@ export const MARTIN_STARTER_TOOLS = [
   "martin_doctor",
   "martin_plan",
   "martin_preflight",
+  "martin_estimate",
   "martin_run",
   "martin_triage_runs",
   "martin_dossier"
@@ -18,6 +19,7 @@ export const MARTIN_MINIMAL_TOOLS = [
   "martin_doctor",
   "martin_plan",
   "martin_preflight",
+  "martin_estimate",
   "martin_list_runs",
   "martin_triage_runs",
   "martin_dossier"
@@ -27,6 +29,7 @@ export const MARTIN_DIAGNOSTIC_TOOLS = [
   "martin_doctor",
   "martin_plan",
   "martin_preflight",
+  "martin_estimate",
   "martin_logs",
   "martin_list_runs",
   "martin_triage_runs",
@@ -55,6 +58,7 @@ export const MARTIN_FULL_TOOLS = [
   "martin_doctor",
   "martin_plan",
   "martin_preflight",
+  "martin_estimate",
   "martin_logs",
   "martin_pause",
   "martin_cancel",
@@ -76,6 +80,7 @@ export const MARTIN_PAID_REMOTE_TOOLS = [
   "martin_doctor",
   "martin_plan",
   "martin_preflight",
+  "martin_estimate",
   "martin_run",
   "martin_list_runs",
   "martin_triage_runs",
@@ -111,6 +116,16 @@ export interface MartinMcpInstallPlan extends Required<Omit<MartinMcpConfigInput
   serverId: string;
   enabledTools: string[];
   installMethod: "file" | "command";
+  governanceHooks: GovernanceHooksOutput;
+}
+
+export interface GovernanceHooksOutput {
+  host: MartinMcpHost;
+  supported: boolean;
+  mechanism: string;
+  targetPath: string | null;
+  content: string;
+  instructions: string;
 }
 
 const DEFAULT_REMOTE_URL = "https://remote.martinloop.local/mcp";
@@ -130,7 +145,8 @@ export function buildMcpInstallPlan(input: MartinMcpConfigInput): MartinMcpInsta
     content,
     serverId,
     enabledTools: [...selectTools(normalized.profile)],
-    installMethod: normalized.host === "claude" && normalized.scope === "local" ? "command" : "file"
+    installMethod: normalized.host === "claude" && normalized.scope === "local" ? "command" : "file",
+    governanceHooks: buildGovernanceHooks(normalized.host, normalized.scope)
   };
 }
 
@@ -778,6 +794,171 @@ function mergeHostParsedConfig(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function buildGovernanceHooks(host: MartinMcpHost, scope: MartinMcpScope): GovernanceHooksOutput {
+  switch (host) {
+    case "claude":
+      return {
+        host,
+        supported: true,
+        mechanism: "Claude Code hooks in ~/.claude/settings.json",
+        targetPath: path.join(homedir(), ".claude", "settings.json"),
+        content: JSON.stringify({
+          hooks: {
+            PreToolUse: [{
+              matcher: "Bash|Edit|Write",
+              command: "npx martin-loop doctor --json --quiet",
+              description: "MartinLoop governance check before work"
+            }],
+            Stop: [{
+              command: "npx martin-loop dossier --latest --quiet",
+              description: "MartinLoop session receipt on exit"
+            }]
+          }
+        }, null, 2),
+        instructions: "Merge the hooks block into your existing ~/.claude/settings.json to enable automatic governance checks."
+      };
+
+    case "codex":
+      return {
+        host,
+        supported: true,
+        mechanism: "Codex AGENTS.md governance instructions",
+        targetPath: scope === "user" ? null : "AGENTS.md",
+        content: [
+          "## MartinLoop Governance",
+          "",
+          "Before executing any coding task:",
+          "1. Call `martin_doctor` to confirm environment readiness",
+          "2. Call `martin_estimate` to preview cost and route",
+          "3. Call `martin_plan` to scope the bounded approach",
+          "4. Call `martin_preflight` to validate the run contract",
+          "5. Only then call `martin_run`",
+          "6. After completion, call `martin_dossier` to generate the receipt",
+          "",
+          "Never claim success without verifier-backed completion evidence from MartinLoop.",
+          ""
+        ].join("\n"),
+        instructions: "Add the governance section to your project's AGENTS.md or ~/.codex/instructions.md."
+      };
+
+    case "gemini":
+      return {
+        host,
+        supported: true,
+        mechanism: "Gemini CLI GEMINI.md governance rules",
+        targetPath: scope === "project" ? "GEMINI.md" : path.join(homedir(), ".gemini", "GEMINI.md"),
+        content: [
+          "## MartinLoop Governance",
+          "",
+          "Before any coding work, follow the MartinLoop governed sequence:",
+          "1. `martin_doctor` — confirm environment",
+          "2. `martin_estimate` — preview cost and recommended route",
+          "3. `martin_plan` — scope the approach",
+          "4. `martin_preflight` — validate the run contract",
+          "5. `martin_run` — execute only after contract is safe",
+          "6. `martin_dossier` — inspect what happened",
+          "",
+          "Do not execute real coding work until doctor and preflight are complete.",
+          "Do not claim success without MartinLoop verifier-backed completion.",
+          ""
+        ].join("\n"),
+        instructions: "Add to your GEMINI.md (project) or ~/.gemini/GEMINI.md (user) for automatic governance."
+      };
+
+    case "cursor":
+      return {
+        host,
+        supported: true,
+        mechanism: "Cursor rules file for governance",
+        targetPath: scope === "project" ? ".cursor/rules/martin-governance.mdc" : null,
+        content: [
+          "---",
+          "description: MartinLoop governance rules for Cursor AI",
+          "globs: \"**/*\"",
+          "---",
+          "",
+          "## MartinLoop Governance",
+          "",
+          "Before any coding task, follow the governed sequence:",
+          "1. Call `martin_doctor` to confirm environment",
+          "2. Call `martin_estimate` to preview cost",
+          "3. Call `martin_plan` to scope the approach",
+          "4. Call `martin_preflight` to validate the contract",
+          "5. Call `martin_run` to execute",
+          "6. Call `martin_dossier` for the receipt",
+          "",
+          "Never skip preflight. Never claim success without verifier evidence.",
+          ""
+        ].join("\n"),
+        instructions: "Save to .cursor/rules/martin-governance.mdc in your project."
+      };
+
+    case "copilot":
+      return {
+        host,
+        supported: true,
+        mechanism: "GitHub Copilot instructions file",
+        targetPath: scope === "project" ? ".github/copilot-instructions.md" : null,
+        content: [
+          "## MartinLoop Governance",
+          "",
+          "When MartinLoop MCP server is available, follow the governed coding sequence:",
+          "1. `martin_doctor` — confirm environment readiness",
+          "2. `martin_estimate` — preview cost and recommended route",
+          "3. `martin_plan` — scope the bounded approach",
+          "4. `martin_preflight` — validate the run contract before spend",
+          "5. `martin_run` — execute only after the contract is validated",
+          "6. `martin_dossier` — generate completion receipt",
+          "",
+          "Do not skip any step. Do not claim success without verifier-backed evidence.",
+          ""
+        ].join("\n"),
+        instructions: "Save to .github/copilot-instructions.md in your repository."
+      };
+
+    case "continue":
+      return {
+        host,
+        supported: true,
+        mechanism: "Continue.dev rules for governance",
+        targetPath: scope === "project" ? ".continue/rules/martin-governance.md" : path.join(homedir(), ".continue", "rules", "martin-governance.md"),
+        content: [
+          "## MartinLoop Governance",
+          "",
+          "Before making code changes, follow the MartinLoop governed workflow:",
+          "1. Call `martin_doctor` to confirm environment",
+          "2. Call `martin_estimate` to preview cost and route",
+          "3. Call `martin_plan` to scope the approach",
+          "4. Call `martin_preflight` to validate the contract",
+          "5. Call `martin_run` to execute governed work",
+          "6. Call `martin_dossier` to produce the receipt",
+          "",
+          "Never bypass governance. Never claim success without verifier evidence.",
+          ""
+        ].join("\n"),
+        instructions: "Save to .continue/rules/martin-governance.md for automatic governance."
+      };
+
+    case "generic":
+      return {
+        host,
+        supported: false,
+        mechanism: "Manual governance — no native hook support",
+        targetPath: null,
+        content: [
+          "## MartinLoop Governance (Manual)",
+          "",
+          "Follow this sequence before any agent coding work:",
+          "1. martin_doctor → martin_estimate → martin_plan → martin_preflight → martin_run → martin_dossier",
+          "",
+          "Add this instruction to your agent's system prompt or rules file.",
+          ""
+        ].join("\n"),
+        instructions: "Copy the governance sequence into your agent's system prompt or configuration."
+      };
+  }
 }
 
 export function hostRequiresExperimentalRemoteOptIn(host: MartinMcpHost): boolean {
