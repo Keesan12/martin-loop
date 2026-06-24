@@ -401,6 +401,11 @@ function createStreamingUsageInspector(
     ? Math.ceil((capUsd / blendedCostPerChar) * 2)
     : 100_000_000;
 
+  // Time-based fallback: if we receive data but no usage events for this long,
+  // estimate spend from byte volume and enforce the cap. Prevents the inspector
+  // from going blind when Claude changes its stream-json event format.
+  const USAGE_BLIND_TIMEOUT_MS = 30_000;
+
   let buffer = "";
   let cumulativeUsd = 0;
   let tokensIn = 0;
@@ -408,6 +413,7 @@ function createStreamingUsageInspector(
   let turns = 0;
   let totalBytes = 0;
   let usageEventSeen = false;
+  let firstChunkAt: number | undefined;
   let finalResult: ClaudeJsonOutput | undefined;
 
   const checkBudgetExceeded = (terminate: (reason: string) => void) => {
@@ -491,6 +497,7 @@ function createStreamingUsageInspector(
       const chunkStr = chunk.toString("utf8");
       totalBytes += chunk.byteLength;
       buffer += chunkStr;
+      firstChunkAt ??= Date.now();
 
       // Token-count ceiling fallback: if we've ingested a lot of bytes but
       // never seen a single usage event, the event format may have changed
@@ -502,6 +509,28 @@ function createStreamingUsageInspector(
             `Subprocess terminated as a fallback budget guard for cap $${capUsd.toFixed(4)}.`
         );
         return;
+      }
+
+      // Time-based fallback: if we've been receiving data for 30+ seconds
+      // without a single usage event, estimate spend from byte volume and
+      // enforce the cap. This catches cases where Claude's event format
+      // changed but bytes are still flowing.
+      if (
+        !usageEventSeen &&
+        capUsd > 0 &&
+        firstChunkAt !== undefined &&
+        Date.now() - firstChunkAt > USAGE_BLIND_TIMEOUT_MS &&
+        totalBytes > 10_000
+      ) {
+        const estimatedUsd = totalBytes * blendedCostPerChar;
+        if (estimatedUsd > effectiveCapUsd) {
+          terminate(
+            `No usage events received after ${String(Math.round((Date.now() - firstChunkAt) / 1000))}s ` +
+              `(${String(totalBytes)} bytes). Estimated cost ~$${estimatedUsd.toFixed(4)} exceeds cap ` +
+              `$${capUsd.toFixed(4)}. Subprocess terminated to prevent unmetered spend.`
+          );
+          return;
+        }
       }
 
       let newlineIndex = buffer.indexOf("\n");
@@ -1108,6 +1137,11 @@ export function createClaudeCliAdapter(options: ClaudeCliAdapterOptions = {}): M
       "--verbose",
       "--print",
       "--dangerously-skip-permissions",
+      // Prevent the child Claude process from loading the parent's MCP servers.
+      // Without this, a MartinLoop MCP server in the user's config gets spawned
+      // inside the governed subprocess, causing conflicts and "MCP server being
+      // overwritten" errors.
+      "--strict-mcp-config",
       ...modelArgs,
       ...extraArgs
     ],
