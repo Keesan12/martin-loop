@@ -241,9 +241,9 @@ describe("executeCli", () => {
     const result = await executeCli(["start"]);
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("MartinLoop is ready to set up governed runs in this repo.");
+    expect(result.stdout).toContain("MartinLoop — Governed AI Coding");
     expect(result.stdout).toContain("martin doctor");
-    expect(result.stdout).toContain("martin session-start");
+    expect(result.stdout).toContain("martin estimate");
     expect(result.stdout).toMatch(
       /martin run "Summarize this repository and confirm the verifier is green\." --verify "(npm|pnpm) test" --budget-usd 2 --max-iterations 1/u
     );

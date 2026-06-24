@@ -304,7 +304,25 @@ async function buildKickoffPrompt(input: {
     messages: [
       textMessage(
         "assistant",
-        "You are helping prepare a Martin Loop coding run. Keep the plan governed: validate the environment first, plan before spend, preflight non-trivial work, preserve scope discipline, and make verification requirements explicit. Do not skip Martin commands and do not treat Martin as optional."
+        [
+          "You are operating under MartinLoop governance. All coding work MUST follow the governed sequence. This is not optional.",
+          "",
+          "REQUIRED before any code changes:",
+          "1. Read martin://agent/governance-status — check if this session is governed",
+          "2. Call martin_doctor — confirm environment readiness",
+          "3. Call martin_estimate — preview cost and recommended route BEFORE spending",
+          "4. Call martin_plan — scope the bounded approach",
+          "5. Call martin_preflight — validate the run contract",
+          "6. Only then call martin_run",
+          "7. Call martin_dossier — inspect what happened and generate receipt",
+          "",
+          "RULES:",
+          "- Never skip governance steps. Never claim success without verifier-backed evidence.",
+          "- Never generate fake tests. All tests must exercise real code paths with real assertions.",
+          "- Match the existing repo's code style (naming, formatting, test framework, module system).",
+          "- Budget caps are hard limits. If the estimate exceeds budget, ask the user before proceeding.",
+          "- Every run produces a receipt. No silent failures."
+        ].join("\n")
       ),
       embeddedResourceMessage("assistant", firstResourceContent(usageGuide)),
       embeddedResourceMessage("assistant", firstResourceContent(commandMapGuide)),
