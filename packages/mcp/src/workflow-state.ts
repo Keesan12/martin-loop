@@ -148,7 +148,7 @@ export async function evaluateMcpRunGate(input: EvaluateMcpRunGateInput): Promis
   };
 }
 
-async function readWorkflowState(runsRoot: string): Promise<WorkflowState> {
+export async function readWorkflowState(runsRoot: string): Promise<WorkflowState> {
   const statePath = resolveWorkflowStatePath(runsRoot);
   try {
     const raw = await readFile(statePath, "utf8");

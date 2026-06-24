@@ -18,7 +18,8 @@ This file is the release source of truth for package/version mapping in this rep
   - `0.3.6` CLI version reporting parity, release guard version check
   - `0.3.8` budget circuit breaker fix, engine auto-discovery, verification diagnostics, resilience defaults
   - `0.3.9` Pre Work Burn tracking, routing economics, route classification, cost-per-outcome
-- current in-repo root release line: `0.3.9` for the current public root package line
+  - `0.3.10` auto-governance (estimate tool, governance-status resource, host-specific hooks), Codex config fix, subpath exports
+- current in-repo root release line: `0.3.10` for auto-governance and host-specific hooks
 - next planned root follow-on: `0.4.0` for route compression and MCP economics surface
 
 ## Standalone package: `@martinloop/mcp`

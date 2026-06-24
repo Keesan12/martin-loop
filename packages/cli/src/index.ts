@@ -16,7 +16,7 @@ import {
   createStubDirectProviderAdapter,
   createVerifierOnlyAdapter
 } from "@martin/adapters";
-import { runMartin, type MartinAdapter } from "@martin/core";
+import { runMartin, classifyRoute, type MartinAdapter } from "@martin/core";
 import {
   buildPortfolioSnapshot,
   createLoopRecord,
@@ -302,6 +302,14 @@ type McpCommand =
       dryRun: boolean;
     };
 
+type EstimateCommand = {
+  command: "estimate";
+  objective: string;
+  engine: string;
+  budgetUsd: number;
+  fileScope: string[];
+};
+
 type ChallengeCommand = {
   command: "challenge";
   selector?: MartinRunSelector;
@@ -397,6 +405,7 @@ export type ParsedCliArguments =
   | DossierCommand
   | RunsCommand
   | McpCommand
+  | EstimateCommand
   | ChallengeCommand
   | ShareCommand
   | BadgeCommand;
@@ -477,6 +486,8 @@ export async function executeCli(args: string[]): Promise<{
         return await executeRunsAttemptCommand(parsed.selector, outputMode);
       case "runs_verify":
         return await executeRunsVerifyCommand(parsed.selector, outputMode);
+      case "estimate":
+        return await executeEstimateCommand(parsed, outputMode);
       case "mcp_print_config":
         return await executeMcpPrintConfigCommand(parsed, outputMode);
       case "mcp_install":
@@ -562,6 +573,28 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
       ...(readOption(rest, "--engine") === "claude" ? { engine: "claude" as const } : {}),
       ...(readOption(rest, "--engine") === "gemini" ? { engine: "gemini" as const } : {}),
       ...(readOption(rest, "--engine") === "openai" ? { engine: "openai" as const } : {})
+    };
+  }
+
+  if (command === "estimate") {
+    const objective = rest[0] && !rest[0].startsWith("--") ? rest[0] : readOption(rest, "--objective") ?? "";
+    if (!objective) {
+      return { command: "help" };
+    }
+    const fileScope: string[] = [];
+    for (let i = 0; i < rest.length; i++) {
+      const nextArg = rest[i + 1];
+      if (rest[i] === "--files" && nextArg) {
+        fileScope.push(nextArg);
+        i += 1;
+      }
+    }
+    return {
+      command: "estimate",
+      objective,
+      engine: readOption(rest, "--engine") ?? "claude",
+      budgetUsd: toFiniteNumber(readOption(rest, "--budget-usd") ?? readOption(rest, "--budget") ?? "5") || 5,
+      fileScope
     };
   }
 
@@ -833,6 +866,7 @@ export function renderCliHelp(): string {
     "  runs get     Load a persisted loop by selector.",
     "  runs attempt Load a persisted attempt and linked verification summary.",
     "  runs verify  Read persisted verification evidence for one loop.",
+    "  estimate     Estimate cost, route, and Pre Work Burn for an objective without spending.",
     "  mcp print-config  Print a known-good MCP config snippet for Codex, Claude, Gemini, or generic hosts.",
     "  mcp install       Write a starter MCP config, or call Claude Code directly for local scope.",
     "  challenge    Print a shareable local proof card for the Under-$3 challenge.",
@@ -2526,6 +2560,60 @@ function describeIntegrity(integrity: IntegrityStatus): string {
   }
 }
 
+async function executeEstimateCommand(
+  command: Extract<ParsedCliArguments, { command: "estimate" }>,
+  outputMode: MartinOutputMode
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  const route = classifyRoute({
+    objective: command.objective,
+    verificationPlan: [],
+    budgetUsd: command.budgetUsd,
+    allowedPaths: command.fileScope,
+    scopedFileCount: command.fileScope.length > 0 ? command.fileScope.length : undefined
+  });
+  const recommendedBudgetUsd = route.selectedMode === "direct"
+    ? Math.max(2, Math.round(route.expectedCostUsd * 3 * 100) / 100)
+    : Math.max(5, Math.round(route.expectedCostUsd * 2 * 100) / 100);
+
+  return renderCliSuccess(outputMode, {
+    data: {
+      command: "estimate",
+      objective: command.objective,
+      engine: command.engine,
+      budgetUsd: command.budgetUsd,
+      selectedMode: route.selectedMode,
+      confidence: route.confidence,
+      expectedCostUsd: route.expectedCostUsd,
+      expectedPreworkBurnPct: route.expectedPreworkBurnPct,
+      reason: route.reason,
+      blockedSteps: route.blockedSteps,
+      compressed: route.compressed,
+      ...(route.compressionSummary ? { compressionSummary: route.compressionSummary } : {}),
+      recommendedBudgetUsd
+    },
+    human: [
+      "Martin Loop Cost Estimate",
+      "─────────────────────────",
+      "",
+      `Objective:      ${command.objective}`,
+      `Engine:         ${command.engine}`,
+      `Budget:         $${command.budgetUsd.toFixed(2)}`,
+      "",
+      `Route:          ${route.selectedMode}${route.compressed ? " (compressed)" : ""}`,
+      `Confidence:     ${(route.confidence * 100).toFixed(0)}%`,
+      `Expected cost:  $${route.expectedCostUsd.toFixed(2)}`,
+      `Pre Work Burn:  ${route.expectedPreworkBurnPct}%`,
+      `Recommended:    $${recommendedBudgetUsd.toFixed(2)}`,
+      "",
+      "Reasoning:",
+      ...route.reason.map((r) => `  • ${r}`),
+      ...(route.compressionSummary ? ["", route.compressionSummary] : []),
+      ...(route.blockedSteps.length > 0 ? ["", `Blocked steps: ${route.blockedSteps.join(", ")}`] : [])
+    ],
+    quiet: `${route.selectedMode}:$${route.expectedCostUsd.toFixed(2)}:${route.expectedPreworkBurnPct}%`
+  });
+}
+
 async function executeMcpPrintConfigCommand(
   command: Extract<ParsedCliArguments, { command: "mcp_print_config" }>,
   outputMode: MartinOutputMode
@@ -2560,6 +2648,7 @@ async function executeMcpPrintConfigCommand(
       serverId: plan.serverId,
       enabledTools: plan.enabledTools,
       installMethod: plan.installMethod,
+      governanceHooks: plan.governanceHooks,
       profiles: {
         minimal: [...MARTIN_MINIMAL_TOOLS],
         diagnostic: [...MARTIN_DIAGNOSTIC_TOOLS],
@@ -2572,7 +2661,17 @@ async function executeMcpPrintConfigCommand(
       starterTools: [...MARTIN_STARTER_TOOLS],
       fullTools: [...MARTIN_FULL_TOOLS]
     },
-    human: plan.content,
+    human: [
+      plan.content,
+      "",
+      "── Governance Hooks ──",
+      `Mechanism: ${plan.governanceHooks.mechanism}`,
+      ...(plan.governanceHooks.targetPath ? [`Target: ${plan.governanceHooks.targetPath}`] : []),
+      "",
+      plan.governanceHooks.content,
+      "",
+      plan.governanceHooks.instructions
+    ],
     quiet: plan.targetPath,
     warnings: remotePolicyWarnings
   });
@@ -2613,13 +2712,20 @@ async function executeMcpInstallCommand(
       content: plan.content,
       serverId: plan.serverId,
       enabledTools: plan.enabledTools,
-      installMethod: plan.installMethod
+      installMethod: plan.installMethod,
+      governanceHooks: plan.governanceHooks
     },
     human: [
       `${command.dryRun ? "Dry-run" : "Installed"} Martin Loop MCP config for ${command.host}`,
       `Target: ${plan.targetPath}`,
       "",
-      plan.content
+      plan.content,
+      "",
+      "── Governance Hooks ──",
+      `Mechanism: ${plan.governanceHooks.mechanism}`,
+      ...(plan.governanceHooks.targetPath ? [`Target: ${plan.governanceHooks.targetPath}`] : []),
+      "",
+      plan.governanceHooks.instructions
     ],
     quiet: plan.targetPath,
     warnings: remotePolicyWarnings

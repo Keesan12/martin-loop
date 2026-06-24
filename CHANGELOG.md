@@ -4,11 +4,17 @@
 
 ## [0.3.10]
 
+### Added
+- **`martin estimate` command** — estimate cost, route, and Pre Work Burn for any objective without spending. Uses route classification to predict direct vs manager orchestration and recommend a budget. Available via CLI and MCP (`martin_estimate` tool).
+- **`martin://agent/governance-status` resource** — proactive MCP resource that tells agents whether the current session is governed, shows workflow receipt state, budget remaining, unreceipted runs, and the recommended next action.
+- **Host-specific governance hooks** — `martin mcp install` and `martin mcp print-config` now output governance configuration for every supported host: Claude Code (hooks), Codex (AGENTS.md), Gemini (GEMINI.md), Cursor (rules), Copilot (instructions), Continue (rules).
+- **Subpath exports** — `martin-loop/core`, `martin-loop/contracts`, and `martin-loop/adapters` are now importable subpaths for extracted engine repos.
+
 ### Fixed
 - **Codex governed launches no longer inherit operator MCP/plugin config** — spawned Codex subprocesses now pass `--ignore-user-config` to avoid auth-sensitive MCP servers and plugin surfaces poisoning governed runs. Default model changed from `codex` to `gpt-5.4` to avoid unsupported model errors under ChatGPT-account auth.
 - **CLI version now reports correctly** — the vendored CLI manifest version is aligned with the root package version so `--version` reports the installed version, not a stale build artifact.
 - **All CLI commands present** — `start`, `tour`, `env`, `review`, `receipts explain`, `enable` commands restored after the public repo merge. Previous 0.3.9 npm build was missing these.
-- **Stale `--ask-for-approval` reference removed** — Codex remediation hints now reference `--ignore-user-config --sandbox workspace-write` instead of the non-existent `--ask-for-approval never` flag.
+- **Stale `--ask-for-approval` reference removed** — Codex error guidance now references `--ignore-user-config --sandbox workspace-write` instead of the non-existent `--ask-for-approval never` flag.
 
 ## [0.3.9]
 
