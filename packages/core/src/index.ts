@@ -161,8 +161,8 @@ export { compileExecutionPolicy } from "./policy-compiler.js";
 export { assessTrajectory, decideCircuitBreak } from "./trajectory.js";
 
 // ─── Routing economics ─────────────────────────────────────────────────────
-export { classifyRoute, evaluatePreworkBurnPolicy } from "./routing.js";
-export type { RouteDecision, RouteClassificationInput } from "./routing.js";
+export { classifyRoute, evaluatePreworkBurnPolicy, resolveModelForTier, selectBestEngine } from "./routing.js";
+export type { RouteDecision, RouteClassificationInput, AvailableEngine } from "./routing.js";
 
 // ─── Test Integrity Validation ──────────────────────────────────────────────
 export {

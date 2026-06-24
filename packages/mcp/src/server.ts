@@ -1816,11 +1816,13 @@ export function createMartinMcpServer(serverInfo?: {
         blockedSteps: route.blockedSteps,
         compressed: route.compressed,
         ...(route.compressionSummary ? { compressionSummary: route.compressionSummary } : {}),
-        recommendedBudgetUsd
+        recommendedBudgetUsd,
+        recommendedModelTier: route.recommendedModelTier,
+        estimatedSavingVsSonnetUsd: route.estimatedSavingVsSonnetUsd
       };
       return createToolSuccessResult(
         output,
-        `Estimate: ${route.selectedMode} route, ~$${route.expectedCostUsd.toFixed(2)} expected cost, ${route.expectedPreworkBurnPct}% pre-work burn. Recommended budget: $${recommendedBudgetUsd.toFixed(2)}.`
+        `Estimate: ${route.selectedMode} route (${route.recommendedModelTier}), ~$${route.expectedCostUsd.toFixed(2)} expected cost, ${route.expectedPreworkBurnPct}% pre-work burn. Recommended budget: $${recommendedBudgetUsd.toFixed(2)}.`
       );
     }
 

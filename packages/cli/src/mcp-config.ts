@@ -808,8 +808,8 @@ function buildGovernanceHooks(host: MartinMcpHost, scope: MartinMcpScope): Gover
           hooks: {
             PreToolUse: [{
               matcher: "Bash|Edit|Write",
-              command: "npx martin-loop doctor --json --quiet",
-              description: "MartinLoop governance check before work"
+              command: "npx martin-loop gate --quiet",
+              description: "MartinLoop governance gate — blocks unverified work"
             }],
             Stop: [{
               command: "npx martin-loop dossier --latest --quiet",

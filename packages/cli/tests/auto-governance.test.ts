@@ -143,8 +143,8 @@ describe("governance hooks in mcp install plans", () => {
       expect(plan.governanceHooks.content).toBeTruthy();
       expect(plan.governanceHooks.instructions).toBeTruthy();
 
-      // Every host's governance content must mention the required workflow steps
-      expect(plan.governanceHooks.content).toMatch(/martin[_\- ]doctor|martin[_\- ]loop doctor/i);
+      // Every host's governance content must mention governance workflow
+      expect(plan.governanceHooks.content).toMatch(/martin[_\- ]doctor|martin[_\- ]loop (doctor|gate)/i);
     });
   }
 
@@ -166,7 +166,7 @@ describe("governance hooks in mcp install plans", () => {
 
     expect(hooks.hooks.PreToolUse).toHaveLength(1);
     expect(hooks.hooks.PreToolUse[0].matcher).toBe("Bash|Edit|Write");
-    expect(hooks.hooks.PreToolUse[0].command).toContain("martin-loop doctor");
+    expect(hooks.hooks.PreToolUse[0].command).toContain("martin-loop gate");
     expect(hooks.hooks.Stop).toHaveLength(1);
     expect(hooks.hooks.Stop[0].command).toContain("martin-loop dossier");
   });
