@@ -1,0 +1,15 @@
+{
+  "name": "@martin/cli",
+  "version": "0.3.11",
+  "type": "module",
+  "description": "Martin Loop CLI — budget-aware coding loops with failure classification and verified exits.",
+  "main": "./index.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./package.json": "./package.json"
+  }
+}
