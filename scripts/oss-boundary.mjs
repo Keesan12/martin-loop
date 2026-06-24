@@ -44,6 +44,7 @@ const IGNORED_TOP_LEVEL_ENTRIES = [
   ".artifacts",
   ".cache",
   ".git",
+  ".worktrees",
   ".npm-cache",
   ".planning",
   "dist",

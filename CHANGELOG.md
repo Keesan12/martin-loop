@@ -12,7 +12,6 @@
 - **Cost-per-outcome metrics** — `calculateCostPerOutcome()` returns cost-per-accepted-change, cost-per-attempt, acceptance rate, and wasted coordination spend.
 - **Route classification** — `classifyRoute()` scores task complexity and recommends direct execution vs manager orchestration based on objective length, file scope, security/migration keywords, and historical success rates.
 - **Prework burn policy check** — `evaluatePreworkBurnPolicy()` checks live run state against routing policy caps.
-- **18 routing tests** — covers route classification edge cases, policy enforcement, cost calculations, and zero-division guards.
 
 ## [0.3.8]
 
@@ -22,11 +21,20 @@
 
 ### Added
 - **Engine auto-discovery** — if `claude`, `codex`, or `gemini` isn't on PATH, the CLI searches common install directories (npm global, AppData, homebrew, `.local/bin`, nvm, scoop) before reporting unavailable. When truly missing, prints a copy-pasteable install command for the current platform.
-- **Diagnostic hints on failed attempts** — `LoopAttempt.diagnosticHint` carries specific context into the next attempt's prompt: which tool is missing, which module failed to resolve, how many assertions broke. Replaces the generic "verification failed" message.
+- **Diagnostic hints on failed attempts** — failed attempts now carry specific context into the next attempt's prompt: which tool is missing, which module failed to resolve, how many assertions broke.
 - **Git retry and fallback** — git operations retry once after 500ms (handles `.git/index.lock` contention). `git restore` falls back to `git checkout` on failure.
 
 ### Changed
 - **Invalid CLI args default instead of crashing** — unknown `--profile` falls back to `minimal` with a warning. Invalid `--run-scan-limit` clamps to 50.
+
+### Fixed
+- **Verifier defaults are less prone to false stop exits on longer suites** - default verifier timeout is now `120_000ms` (up from `60_000ms`) across CLI adapter paths, reducing timeout-driven `verification_failure` exits on healthy runs that take longer than one minute.
+
+## [0.3.7]
+
+### Fixed
+- **Run history reads stay fast at scale** - `latest`/`list` read paths now use a bounded append-only run index before falling back to full directory scans, preventing timeout-style behavior in large local run stores.
+- **CLI/MCP run-store parity for index-backed reads** - root CLI and MCP run inspection paths now share the same index-first behavior, reducing host-specific drift across Cursor/Copilot/Continue and terminal workflows.
 
 ## [0.3.6]
 

@@ -565,7 +565,7 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
     };
   }
 
-  if (command === "start") {
+  if (command === "start" || command === "tour") {
     return {
       command: "start",
       ...(readOption(rest, "--cwd") ? { cwd: readOption(rest, "--cwd") } : {}),

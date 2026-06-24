@@ -18,6 +18,7 @@ import {
   type PatchDecisionArtifact,
   type PatchScore,
   type ReceiptScope,
+  type RollbackBoundaryArtifact,
   type RollbackOutcomeArtifact,
   type PolicyPhase
 } from "@martin/contracts";
@@ -63,7 +64,11 @@ import {
   type RepoGroundingHit,
   type RepoGroundingIndex
 } from "./grounding.js";
-import { captureRollbackBoundary, restoreRollbackBoundary } from "./rollback.js";
+import {
+  captureRollbackBoundary,
+  listAttemptChangedFilesSinceBoundary,
+  restoreRollbackBoundary
+} from "./rollback.js";
 import { compilePromptPacket } from "./compiler.js";
 import { makeLedgerEvent, resolveRunsRoot, runDir, type RunStore } from "./persistence/index.js";
 import {
@@ -121,6 +126,7 @@ export {
   queryRepoGroundingIndex,
   scanPatchForGroundingViolations,
   captureRollbackBoundary,
+  listAttemptChangedFilesSinceBoundary,
   restoreRollbackBoundary
 };
 export type {
@@ -1136,7 +1142,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     }
 
     const changedFiles = tracksWorkspaceMutations
-      ? resolveChangedFiles(result, request.context.repoRoot)
+      ? resolveChangedFiles(result, request.context.repoRoot, rollbackBoundary)
       : [];
 
     // Routing economics: detect first meaningful workspace delta
@@ -1905,32 +1911,16 @@ function mergeCostProvenance(
   return COST_PROVENANCE_RANK[current] < COST_PROVENANCE_RANK[previous] ? current : previous;
 }
 
-function resolveChangedFiles(result: MartinAdapterResult, repoRoot?: string): string[] {
+function resolveChangedFiles(
+  result: MartinAdapterResult,
+  repoRoot?: string,
+  rollbackBoundary?: RollbackBoundaryArtifact
+): string[] {
   if (result.execution?.changedFiles !== undefined) {
     return result.execution.changedFiles;
   }
 
-  if (!repoRoot) {
-    return [];
-  }
-
-  try {
-    const diff = spawnSync("git", ["diff", "--name-only", "HEAD", "--", "."], {
-      cwd: repoRoot,
-      encoding: "utf8"
-    });
-
-    if (diff.status !== 0 || typeof diff.stdout !== "string") {
-      return [];
-    }
-
-    return diff.stdout
-      .split(/\r?\n/u)
-      .map((entry) => entry.trim())
-      .filter(Boolean);
-  } catch {
-    return [];
-  }
+  return listAttemptChangedFilesSinceBoundary({ repoRoot, boundary: rollbackBoundary });
 }
 
 function buildPatchDiff(result: MartinAdapterResult, changedFiles: string[]): string | undefined {

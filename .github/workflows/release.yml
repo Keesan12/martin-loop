@@ -37,6 +37,7 @@ jobs:
         run: |
           pnpm lint
           pnpm public:copy-scan
+          pnpm public:portability-guard
           pnpm public:git-surface
           pnpm test
           pnpm build

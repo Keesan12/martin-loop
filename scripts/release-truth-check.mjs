@@ -9,9 +9,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const markerFlag = process.argv.find((arg) => arg.startsWith("--allow-divergence-marker="));
 const allowedMarker = markerFlag ? markerFlag.slice("--allow-divergence-marker=".length) : undefined;
-const mirrorRoot = process.env.MARTIN_MAIN_REPO_PATH
-  ? resolve(process.env.MARTIN_MAIN_REPO_PATH, "oss-core")
-  : null;
+const mirrorRoot = resolveMirrorRoot();
 
 const CRITICAL_FILES = [
   "packages/mcp/src/tools/tool-support.ts",
@@ -25,7 +23,7 @@ const divergences = [];
 for (const relativePath of CRITICAL_FILES) {
   const local = safeReadLocal(relativePath);
   if (!local.ok) {
-    fail(`Missing critical file in internal OSS source: ${relativePath}`);
+    fail(`Missing critical file in local source: ${relativePath}`);
   }
 
   const publicFile = safeReadGitRef("public/main", relativePath);
@@ -161,6 +159,18 @@ function safeReadGitRef(ref, relativePath) {
 
 function sha(text) {
   return createHash("sha256").update(text).digest("hex");
+}
+
+function resolveMirrorRoot() {
+  if (process.env.MARTIN_OSS_MIRROR_PATH) {
+    return resolve(process.env.MARTIN_OSS_MIRROR_PATH);
+  }
+
+  if (process.env.MARTIN_MAIN_REPO_PATH) {
+    return resolve(process.env.MARTIN_MAIN_REPO_PATH, "oss-core");
+  }
+
+  return null;
 }
 
 function fail(message) {
