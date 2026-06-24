@@ -16,7 +16,7 @@ import {
   createStubDirectProviderAdapter,
   createVerifierOnlyAdapter
 } from "@martin/adapters";
-import { runMartin, classifyRoute, type MartinAdapter } from "@martin/core";
+import { runMartin, classifyRoute, resolveModelForTier, type MartinAdapter } from "@martin/core";
 import {
   buildPortfolioSnapshot,
   createLoopRecord,
@@ -310,6 +310,12 @@ type EstimateCommand = {
   fileScope: string[];
 };
 
+type GateCommand = {
+  command: "gate";
+  cwd?: string;
+  runsDir?: string;
+};
+
 type ChallengeCommand = {
   command: "challenge";
   selector?: MartinRunSelector;
@@ -406,6 +412,7 @@ export type ParsedCliArguments =
   | RunsCommand
   | McpCommand
   | EstimateCommand
+  | GateCommand
   | ChallengeCommand
   | ShareCommand
   | BadgeCommand;
@@ -488,6 +495,8 @@ export async function executeCli(args: string[]): Promise<{
         return await executeRunsVerifyCommand(parsed.selector, outputMode);
       case "estimate":
         return await executeEstimateCommand(parsed, outputMode);
+      case "gate":
+        return await executeGateCommand(parsed, outputMode);
       case "mcp_print_config":
         return await executeMcpPrintConfigCommand(parsed, outputMode);
       case "mcp_install":
@@ -573,6 +582,14 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
       ...(readOption(rest, "--engine") === "claude" ? { engine: "claude" as const } : {}),
       ...(readOption(rest, "--engine") === "gemini" ? { engine: "gemini" as const } : {}),
       ...(readOption(rest, "--engine") === "openai" ? { engine: "openai" as const } : {})
+    };
+  }
+
+  if (command === "gate") {
+    return {
+      command: "gate",
+      ...(readOption(rest, "--cwd") ? { cwd: readOption(rest, "--cwd") } : {}),
+      ...(readOption(rest, "--runs-dir") ? { runsDir: readOption(rest, "--runs-dir") } : {})
     };
   }
 
@@ -867,6 +884,7 @@ export function renderCliHelp(): string {
     "  runs attempt Load a persisted attempt and linked verification summary.",
     "  runs verify  Read persisted verification evidence for one loop.",
     "  estimate     Estimate cost, route, and Pre Work Burn for an objective without spending.",
+    "  gate         Hard governance check — exits non-zero if doctor/plan/preflight are missing. Use in hooks.",
     "  mcp print-config  Print a known-good MCP config snippet for Codex, Claude, Gemini, or generic hosts.",
     "  mcp install       Write a starter MCP config, or call Claude Code directly for local scope.",
     "  challenge    Print a shareable local proof card for the Under-$3 challenge.",
@@ -2639,6 +2657,87 @@ function describeIntegrity(integrity: IntegrityStatus): string {
   }
 }
 
+async function executeGateCommand(
+  command: Extract<ParsedCliArguments, { command: "gate" }>,
+  outputMode: MartinOutputMode
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  const environment = resolveCliEnvironment({
+    cwd: command.cwd,
+    runsDir: command.runsDir
+  });
+
+  // Read workflow state directly from the runs root filesystem.
+  // Cannot import from MCP package (different rootDir), so we read the
+  // JSON file that the MCP server writes.
+  let mcpState: Record<string, { recordedAt?: string } | undefined> = {};
+  try {
+    const statePath = join(resolve(environment.runsRoot), "_martin", "workflow-state.json");
+    const raw = await readFile(statePath, "utf8");
+    const parsed = JSON.parse(raw) as { version?: number; mcp?: Record<string, { recordedAt?: string }> };
+    if (parsed.version === 1 && parsed.mcp) {
+      mcpState = parsed.mcp;
+    }
+  } catch {
+    // No workflow state file yet — everything is missing
+  }
+  const hasDoctor = Boolean(mcpState.doctor);
+  const hasPlan = Boolean(mcpState.plan);
+  const hasPreflight = Boolean(mcpState.preflight);
+  const governed = hasDoctor && hasPlan && hasPreflight;
+
+  const missingSteps: string[] = [];
+  if (!hasDoctor) missingSteps.push("martin doctor");
+  if (!hasPlan) missingSteps.push("martin plan");
+  if (!hasPreflight) missingSteps.push("martin preflight");
+
+  if (governed) {
+    return renderCliSuccess(outputMode, {
+      data: {
+        command: "gate",
+        governed: true,
+        receipts: {
+          doctor: mcpState.doctor?.recordedAt,
+          plan: mcpState.plan?.recordedAt,
+          preflight: mcpState.preflight?.recordedAt
+        }
+      },
+      human: [
+        "MartinLoop governance: PASS",
+        `  Doctor:     ✓ ${mcpState.doctor?.recordedAt ?? ""}`,
+        `  Plan:       ✓ ${mcpState.plan?.recordedAt ?? ""}`,
+        `  Preflight:  ✓ ${mcpState.preflight?.recordedAt ?? ""}`
+      ],
+      quiet: "PASS"
+    });
+  }
+
+  // HARD BLOCK: return exit code 1
+  const blockMessage = [
+    "MartinLoop governance: BLOCKED",
+    "",
+    "This work is not governed. Complete the required steps first:",
+    ...missingSteps.map((step) => `  ✗ ${step}`),
+    "",
+    "MartinLoop requires doctor → plan → preflight before any code changes.",
+    "Run the missing commands above, then retry."
+  ];
+
+  return {
+    exitCode: 1,
+    stdout: outputMode === "json"
+      ? JSON.stringify({
+          command: "gate",
+          governed: false,
+          missingSteps,
+          message: "Governance gate BLOCKED. Complete the required workflow steps."
+        }, null, 2)
+      : outputMode === "quiet"
+        ? "BLOCKED"
+        : blockMessage.join("\n"),
+    stderr: ""
+  };
+}
+
 async function executeEstimateCommand(
   command: Extract<ParsedCliArguments, { command: "estimate" }>,
   outputMode: MartinOutputMode
@@ -2668,7 +2767,9 @@ async function executeEstimateCommand(
       blockedSteps: route.blockedSteps,
       compressed: route.compressed,
       ...(route.compressionSummary ? { compressionSummary: route.compressionSummary } : {}),
-      recommendedBudgetUsd
+      recommendedBudgetUsd,
+      recommendedModelTier: route.recommendedModelTier,
+      estimatedSavingVsSonnetUsd: route.estimatedSavingVsSonnetUsd
     },
     human: [
       "Martin Loop Cost Estimate",
@@ -2680,6 +2781,7 @@ async function executeEstimateCommand(
       "",
       `Route:          ${route.selectedMode}${route.compressed ? " (compressed)" : ""}`,
       `Confidence:     ${(route.confidence * 100).toFixed(0)}%`,
+      `Model tier:     ${route.recommendedModelTier} → ${resolveModelForTier(route.recommendedModelTier, command.engine)}${route.estimatedSavingVsSonnetUsd > 0 ? ` (saves ~$${route.estimatedSavingVsSonnetUsd.toFixed(2)} vs sonnet)` : ""}`,
       `Expected cost:  $${route.expectedCostUsd.toFixed(2)}`,
       `Pre Work Burn:  ${route.expectedPreworkBurnPct}%`,
       `Recommended:    $${recommendedBudgetUsd.toFixed(2)}`,
