@@ -26,7 +26,7 @@ import {
   runVerification,
   type SpawnLike
 } from "./cli-bridge.js";
-import { buildCodexExecArgs } from "./codex-launcher.js";
+import { buildCodexExecArgs, DEFAULT_CODEX_CHATGPT_MODEL } from "./codex-launcher.js";
 import {
   createAdapterCapabilities,
   normalizeStructuredErrors,
@@ -1134,6 +1134,7 @@ export function createCodexCliAdapter(options: CodexCliAdapterOptions = {}): Mar
   const sandbox = options.sandbox ?? "workspace-write";
   const workingDirectory = options.workingDirectory ?? process.cwd();
   const command = options.command ?? "codex";
+  const launchModel = options.model ?? DEFAULT_CODEX_CHATGPT_MODEL;
 
   return createAgentCliAdapter({
     command,
@@ -1149,7 +1150,7 @@ export function createCodexCliAdapter(options: CodexCliAdapterOptions = {}): Mar
       buildCodexExecArgs({
         workingDirectory,
         sandbox,
-        ...(options.model ? { model: options.model } : {}),
+        model: launchModel,
         extraArgs,
         mode: "prompt"
       }),

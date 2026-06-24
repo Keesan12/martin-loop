@@ -58,6 +58,7 @@ export interface CodexExecArgsOptions {
 
 type SpawnSyncLike = typeof spawnSync;
 const codexLaunchProbeCache = new Map<string, CodexLaunchProbeResult>();
+export const DEFAULT_CODEX_CHATGPT_MODEL = "gpt-5.4";
 
 export interface CodexProbeCandidateResult {
   path: string;
@@ -102,11 +103,13 @@ function buildProbeCacheKey(input: {
   workingDirectory: string;
   platform: NodeJS.Platform;
   candidatePaths: string[];
+  model?: string;
 }): string {
   return JSON.stringify({
     workingDirectory: resolve(input.workingDirectory),
     platform: input.platform,
-    candidatePaths: input.candidatePaths
+    candidatePaths: input.candidatePaths,
+    model: input.model ?? DEFAULT_CODEX_CHATGPT_MODEL
   });
 }
 
@@ -318,6 +321,51 @@ function classifyProbeFailure(
   const combined = `${stderr}\n${stdout}`;
 
   if (
+    /MARTIN_REMOTE_TOKEN/iu.test(combined) ||
+    /AuthRequired\(AuthRequiredError/iu.test(combined) ||
+    /www_authenticate_header/iu.test(combined)
+  ) {
+    const warnings = [...diagnosis.warnings];
+    const configCollisionWarning =
+      "Codex inherited auth-sensitive MCP or plugin state from the operator's default user config.";
+    if (!warnings.includes(configCollisionWarning)) {
+      warnings.push(configCollisionWarning);
+    }
+    return {
+      summary:
+        "Codex inherited auth-sensitive MCP or plugin state from the operator's default user config. Governed Codex runs should launch with `exec --ignore-user-config` so missing remote tokens or third-party auth do not abort MartinLoop work.",
+      diagnosis: {
+        ...diagnosis,
+        warnings,
+        remediation:
+          "Retry the governed Codex launch with `exec --ignore-user-config`, or remove auth-sensitive MCP/plugin dependencies from the default Codex user config before running MartinLoop."
+      }
+    };
+  }
+
+  if (
+    /not supported when using Codex with a ChatGPT account/iu.test(combined) ||
+    /gpt-5\.3-codex/iu.test(combined)
+  ) {
+    const warnings = [...diagnosis.warnings];
+    const unsupportedModelWarning =
+      "Codex tried to use a model that is not supported for ChatGPT-account authentication.";
+    if (!warnings.includes(unsupportedModelWarning)) {
+      warnings.push(unsupportedModelWarning);
+    }
+    return {
+      summary:
+        `Codex launched with a model that is not supported for ChatGPT-account authentication. Use an explicit supported model such as \`${DEFAULT_CODEX_CHATGPT_MODEL}\` for governed Codex work.`,
+      diagnosis: {
+        ...diagnosis,
+        warnings,
+        remediation:
+          `Override the Codex launch model to a ChatGPT-account-supported option such as \`${DEFAULT_CODEX_CHATGPT_MODEL}\` before running governed Codex work.`
+      }
+    };
+  }
+
+  if (
     /@openai\/codex-linux-x64/iu.test(combined) ||
     /cannot find module ['"]@openai\/codex-linux-x64['"]/iu.test(combined)
   ) {
@@ -367,6 +415,30 @@ function classifyProbeFailure(
     };
   }
 
+  if (
+    /writing is blocked by read-only sandbox/iu.test(combined) ||
+    /read-only filesystem sandbox/iu.test(combined) ||
+    /approval is disabled/iu.test(combined)
+  ) {
+    const warnings = [...diagnosis.warnings];
+    const readOnlySandboxWarning =
+      "Codex stayed in a read-only or approval-disabled sandbox even though MartinLoop requested workspace-write.";
+    if (!warnings.includes(readOnlySandboxWarning)) {
+      warnings.push(readOnlySandboxWarning);
+    }
+    return {
+      summary:
+        "Codex stayed in a read-only or approval-disabled sandbox even though MartinLoop requested workspace-write.",
+      diagnosis: {
+        ...diagnosis,
+        sandboxCompatible: false,
+        warnings,
+        remediation:
+          "Launch governed Codex runs with `codex exec --ignore-user-config --sandbox workspace-write`. If the session still reports a read-only sandbox, treat it as a host/runtime mismatch and repair or relocate the affected Codex workspace before resuming governed work."
+      }
+    };
+  }
+
   return {};
 }
 
@@ -377,6 +449,8 @@ export function buildCodexExecArgs(options: CodexExecArgsOptions): string[] {
 
   return [
     "exec",
+    // Governed MartinLoop runs should not inherit auth-sensitive default MCP/plugin state.
+    "--ignore-user-config",
     "--cd",
     options.workingDirectory,
     "--sandbox",
@@ -606,6 +680,7 @@ export function probeCodexLaunch(
     env?: NodeJS.ProcessEnv;
     platform?: NodeJS.Platform;
     spawnSyncImpl?: SpawnSyncLike;
+    model?: string;
   }
 ): CodexLaunchProbeResult {
   const availability =
@@ -620,6 +695,7 @@ export function probeCodexLaunch(
   });
   const args = buildCodexExecArgs({
     workingDirectory: input.workingDirectory,
+    model: input.model ?? DEFAULT_CODEX_CHATGPT_MODEL,
     mode: "probe"
   });
 
@@ -659,7 +735,8 @@ export function probeCodexLaunch(
   const cacheKey = buildProbeCacheKey({
     workingDirectory: input.workingDirectory,
     platform,
-    candidatePaths
+    candidatePaths,
+    model: input.model
   });
   if (input.spawnSyncImpl === undefined) {
     const cached = codexLaunchProbeCache.get(cacheKey);

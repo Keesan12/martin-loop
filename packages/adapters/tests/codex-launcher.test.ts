@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  DEFAULT_CODEX_CHATGPT_MODEL,
   buildCodexExecArgs,
   diagnoseCodexHost,
   probeCodexLaunch,
@@ -113,6 +114,7 @@ describe("buildCodexExecArgs", () => {
       })
     ).toEqual([
       "exec",
+      "--ignore-user-config",
       "--cd",
       "/repo/worktree",
       "--sandbox",
@@ -174,6 +176,7 @@ describe("probeCodexLaunch", () => {
     expect(result.ok).toBe(true);
     expect(result.args).toEqual([
       "exec",
+      "--ignore-user-config",
       "--cd",
       process.cwd(),
       "--sandbox",
@@ -181,6 +184,8 @@ describe("probeCodexLaunch", () => {
       "--json",
       "--color",
       "never",
+      "--model",
+      DEFAULT_CODEX_CHATGPT_MODEL,
       "-"
     ]);
     expect(spawnSyncImpl).toHaveBeenNthCalledWith(
@@ -339,6 +344,62 @@ describe("probeCodexLaunch", () => {
     expect(result.ok).toBe(false);
     expect(result.summary).toContain("unexpected argument '--json'");
     expect(result.exitCode).toBe(2);
+  });
+
+  it("classifies unsupported ChatGPT-account Codex models before governed work starts", () => {
+    const spawnSyncImpl = vi
+      .fn()
+      .mockReturnValueOnce({
+        status: 0,
+        stdout: "/usr/local/bin/codex\n",
+        stderr: ""
+      })
+      .mockReturnValueOnce({
+        status: 1,
+        stdout: "",
+        stderr:
+          "The 'gpt-5.3-codex' model is not supported when using Codex with a ChatGPT account.\n"
+      });
+
+    const result = probeCodexLaunch({
+      workingDirectory: process.cwd(),
+      platform: "linux",
+      env: {},
+      model: "gpt-5.3-codex",
+      spawnSyncImpl: spawnSyncImpl as never
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.summary).toContain("ChatGPT-account");
+    expect(result.summary).toContain(DEFAULT_CODEX_CHATGPT_MODEL);
+    expect(result.diagnosis.remediation).toContain(DEFAULT_CODEX_CHATGPT_MODEL);
+  });
+
+  it("classifies read-only Codex sandbox mismatches before governed work continues", () => {
+    const spawnSyncImpl = vi
+      .fn()
+      .mockReturnValueOnce({
+        status: 0,
+        stdout: "/usr/local/bin/codex\n",
+        stderr: ""
+      })
+      .mockReturnValueOnce({
+        status: 1,
+        stdout: "",
+        stderr:
+          "patch rejected: writing is blocked by read-only sandbox; rejected by user approval settings\n"
+      });
+
+    const result = probeCodexLaunch({
+      workingDirectory: process.cwd(),
+      platform: "linux",
+      env: {},
+      spawnSyncImpl: spawnSyncImpl as never
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.summary).toContain("read-only");
+    expect(result.diagnosis.remediation).toContain("--ignore-user-config --sandbox workspace-write");
   });
 
   it("wraps Windows cmd launch probes through cmd.exe", () => {
