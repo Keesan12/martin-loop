@@ -21,7 +21,7 @@ import {
 
 import { readAllLoopRecordsSafely } from "./run-store.js";
 
-export const MARTIN_ENGINE_VALUES = ["claude", "codex", "gemini"] as const;
+export const MARTIN_ENGINE_VALUES = ["claude", "codex", "gemini", "openai"] as const;
 export type MartinEngine = (typeof MARTIN_ENGINE_VALUES)[number];
 
 export interface InspectableLoopAttempt extends LoopAttemptRecord {
