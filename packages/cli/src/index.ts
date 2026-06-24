@@ -1684,10 +1684,12 @@ async function executeStartCommand(
   });
   const snapshot = await collectStartEnvironmentSnapshot(environment.workingDirectory, environment.runsRoot);
   const receiptScope = buildCliReceiptScope(environment);
+  const detectedIDE = detectHostIDE();
   const objective = "Summarize this repository and confirm the verifier is green.";
   const preflightCommand = `martin preflight "${objective}" --verify "${snapshot.verifier.command}"`;
   const governedRunCommand = `martin run "${objective}" --verify "${snapshot.verifier.command}" --budget-usd 2 --max-iterations 1`;
   const proofCommand = `martin run "${objective}" --proof --verify "${snapshot.verifier.command}" --budget-usd 2 --max-iterations 1`;
+  const estimateCommand = `martin estimate "${objective}" --engine ${snapshot.recommendedEngine} --budget-usd 2`;
 
   await recordCliWorkflowStep({
     runsRoot: environment.runsRoot,
@@ -1702,6 +1704,7 @@ async function executeStartCommand(
       command: "start",
       environment,
       receiptScope,
+      detectedHost: detectedIDE.host,
       repo: {
         path: environment.workingDirectory,
         gitDetected: snapshot.git.detected,
@@ -1715,38 +1718,53 @@ async function executeStartCommand(
         maxIterations: 1
       },
       next: {
+        mcpInstall: detectedIDE.mcpInstallCommand,
         doctor: "martin doctor",
+        estimate: estimateCommand,
         sessionStart: "martin session-start",
         preflight: preflightCommand,
         run: governedRunCommand,
         proofRun: proofCommand,
         enable: `martin enable --engine ${snapshot.recommendedEngine} --verify "${snapshot.verifier.command}" --budget-usd 2 --max-iterations 1`,
         review: "martin review",
+        dossier: "martin dossier --latest",
         share: "martin share --latest"
       }
     },
     human: [
-      "MartinLoop is ready to set up governed runs in this repo.",
+      "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+      " MartinLoop — Governed AI Coding",
+      "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
       "",
       "Environment",
-      `- Verifier: ${snapshot.verifier.command}${snapshot.verifier.detected ? "" : " (default)"}`,
-      `- Codex: ${snapshot.codexAvailability.available ? "ready" : "blocked"}`,
-      `- Claude: ${snapshot.claudeAvailable ? "ready" : "blocked"}`,
-      `- Gemini: ${snapshot.geminiAvailability.available ? "ready" : "blocked"}`,
-      `- Recommended engine: ${snapshot.recommendedEngine}`,
+      `  Host:       ${detectedIDE.host}`,
+      `  Verifier:   ${snapshot.verifier.command}${snapshot.verifier.detected ? "" : " (default)"}`,
+      `  Claude:     ${snapshot.claudeAvailable ? "ready" : "not found"}`,
+      `  Codex:      ${snapshot.codexAvailability.available ? "ready" : "not found"}`,
+      `  Gemini:     ${snapshot.geminiAvailability.available ? "ready" : "not found"}`,
+      `  Engine:     ${snapshot.recommendedEngine}`,
       "",
-      "Next steps",
-      `1. martin doctor`,
-      `2. martin session-start`,
-      `3. ${preflightCommand}`,
-      `4. ${governedRunCommand}`,
-      `5. martin share --latest`,
+      "── Step 1: Install MCP Governance ──",
+      `  ${detectedIDE.governanceHint}`,
+      `  $ ${detectedIDE.mcpInstallCommand}`,
       "",
-      "Optional explicit no-spend lane",
-      `- ${proofCommand}`,
+      "── Step 2: Estimate Before You Spend ──",
+      `  $ ${estimateCommand}`,
       "",
-      "Optional repo defaults",
-      `- martin enable --engine ${snapshot.recommendedEngine} --verify "${snapshot.verifier.command}" --budget-usd 2 --max-iterations 1`
+      "── Step 3: Governed Run ──",
+      `  $ martin doctor`,
+      `  $ ${preflightCommand}`,
+      `  $ ${governedRunCommand}`,
+      "",
+      "── Step 4: Inspect Results ──",
+      `  $ martin dossier --latest`,
+      `  $ martin share --latest`,
+      "",
+      "No-spend proof lane",
+      `  $ ${proofCommand}`,
+      "",
+      "Set repo defaults",
+      `  $ martin enable --engine ${snapshot.recommendedEngine} --verify "${snapshot.verifier.command}" --budget-usd 2 --max-iterations 1`
     ],
     quiet: "martin start"
   });
@@ -1991,6 +2009,67 @@ async function detectVerifierCommand(workingDirectory: string): Promise<{ comman
 
 async function pathExists(path: string): Promise<boolean> {
   return stat(path).then(() => true).catch(() => false);
+}
+
+interface DetectedHostIDE {
+  host: string;
+  mcpInstallCommand: string;
+  governanceHint: string;
+}
+
+function detectHostIDE(): DetectedHostIDE {
+  const env = process.env;
+
+  // Claude Code sets CLAUDE_CODE=1 or has claude in the parent process
+  if (env.CLAUDE_CODE === "1" || env.CLAUDE_CODE_SIMPLE === "1" || env.TERM_PROGRAM === "claude") {
+    return {
+      host: "claude",
+      mcpInstallCommand: "martin mcp install --host claude --scope user",
+      governanceHint: "Claude Code detected. MartinLoop can install governance hooks (PreToolUse + Stop) automatically."
+    };
+  }
+
+  // Codex sets CODEX_HOME or runs from codex exec
+  if (env.CODEX_HOME || env.CODEX_SANDBOX_MODE) {
+    return {
+      host: "codex",
+      mcpInstallCommand: "martin mcp install --host codex --scope user",
+      governanceHint: "Codex detected. MartinLoop can add governance instructions to your AGENTS.md."
+    };
+  }
+
+  // Cursor sets CURSOR_TRACE_ID or similar
+  if (env.CURSOR_TRACE_ID || env.CURSOR_SESSION_ID) {
+    return {
+      host: "cursor",
+      mcpInstallCommand: "martin mcp install --host cursor --scope project",
+      governanceHint: "Cursor detected. MartinLoop can install governance rules in .cursor/rules/."
+    };
+  }
+
+  // VS Code / Copilot sets VSCODE_PID or TERM_PROGRAM=vscode
+  if (env.VSCODE_PID || env.TERM_PROGRAM === "vscode") {
+    return {
+      host: "copilot",
+      mcpInstallCommand: "martin mcp install --host copilot --scope project",
+      governanceHint: "VS Code detected. MartinLoop can add governance instructions to .github/copilot-instructions.md."
+    };
+  }
+
+  // Gemini CLI sets GEMINI_API_KEY typically
+  if (env.GEMINI_API_KEY) {
+    return {
+      host: "gemini",
+      mcpInstallCommand: "martin mcp install --host gemini --scope user",
+      governanceHint: "Gemini detected. MartinLoop can install governance rules in GEMINI.md."
+    };
+  }
+
+  return {
+    host: "generic",
+    mcpInstallCommand: "martin mcp install --host claude --scope user",
+    governanceHint: "Install MartinLoop MCP for your IDE to enable proactive governance."
+  };
 }
 
 function inspectGitRepository(workingDirectory: string): { detected: boolean; clean?: boolean } {
