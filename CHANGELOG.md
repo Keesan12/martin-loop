@@ -11,6 +11,8 @@
 - **Subpath exports** — `martin-loop/core`, `martin-loop/contracts`, and `martin-loop/adapters` are now importable subpaths for extracted engine repos.
 
 ### Fixed
+- **MCP server conflict in governed Claude runs** — spawned Claude subprocesses now pass `--strict-mcp-config` to prevent the child process from loading the parent's MCP servers, which caused "MCP server being overwritten" errors.
+- **Budget cap enforcement hardened** — streaming usage inspector now terminates subprocesses that receive data for 30+ seconds without emitting usage events, preventing unmetered spend when Claude's event format changes. Byte-ceiling fallback retained as a second layer.
 - **Codex governed launches no longer inherit operator MCP/plugin config** — spawned Codex subprocesses now pass `--ignore-user-config` to avoid auth-sensitive MCP servers and plugin surfaces poisoning governed runs. Default model changed from `codex` to `gpt-5.4` to avoid unsupported model errors under ChatGPT-account auth.
 - **CLI version now reports correctly** — the vendored CLI manifest version is aligned with the root package version so `--version` reports the installed version, not a stale build artifact.
 - **All CLI commands present** — `start`, `tour`, `env`, `review`, `receipts explain`, `enable` commands restored after the public repo merge. Previous 0.3.9 npm build was missing these.

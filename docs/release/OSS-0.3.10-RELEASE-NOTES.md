@@ -32,6 +32,9 @@ New MCP resource that proactively tells agents whether the current session is go
 
 ### Fixed
 
+- **MCP server conflict in governed Claude runs** — spawned Claude subprocesses now pass `--strict-mcp-config` to prevent the child process from loading the parent's MCP servers. Previously, a MartinLoop MCP server in the user's config would get spawned inside the governed subprocess, causing "MCP server being overwritten" errors and blocking runs.
+- **Budget cap enforcement hardened with time-based fallback** — the streaming usage inspector now terminates subprocesses that receive data for 30+ seconds without emitting any usage events. Previously, if Claude's stream-json event format changed, the inspector would go blind and the subprocess would run unmetered past the budget cap. The byte-ceiling fallback is retained as a second layer.
+- **Budget cap applies from first attempt** — the remaining-budget cap passed to the streaming inspector correctly starts at the full budget minus prior spend, so the very first attempt is bounded.
 - Codex error guidance wording cleaned for public surface compliance.
 - README version references updated to 0.3.10.
 
