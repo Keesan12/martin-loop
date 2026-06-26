@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [0.3.13]
+
+### Added
+- **Autonomous model selection** — `martin run` now auto-selects the right model tier (haiku/sonnet/opus) based on task complexity. Simple typo fix → claude-haiku; security migration → claude-opus. No `--model` flag needed.
+- **`martin start` reads budget preference from memory** — returns your stored default budget, not a hardcoded $2.
+- **Memory store tests** — 12 real tests for append-only memory store.
+- **Model auto-selection tests** — 16 real tests for resolveModelForTier, selectBestEngine, classifyRoute tiers.
+
+### Fixed
+- **All new code portable** — no hardcoded paths, no Windows-only code. Uses `homedir()`, `path.join()`, `npx` — works on macOS, Linux, Windows.
+- **governance hooks use npx** — works on any machine without global install.
+
 ## [0.3.12]
 
 ### Fixed (Critical)

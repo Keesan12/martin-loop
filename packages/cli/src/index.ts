@@ -16,7 +16,7 @@ import {
   createStubDirectProviderAdapter,
   createVerifierOnlyAdapter
 } from "@martin/adapters";
-import { runMartin, classifyRoute, resolveModelForTier, getHistoricalDirectSuccessRate, type MartinAdapter } from "@martin/core";
+import { runMartin, classifyRoute, resolveModelForTier, getHistoricalDirectSuccessRate, getPreference, recordPreference, type MartinAdapter } from "@martin/core";
 import {
   buildPortfolioSnapshot,
   createLoopRecord,
@@ -1099,6 +1099,22 @@ async function executeRunCommand(
     codexCommandOverride = codexProbe.command;
   }
 
+  // Auto-select model based on task complexity when --model was not explicitly set.
+  // classifyRoute scores the objective and recommends haiku/sonnet/opus.
+  // resolveModelForTier maps that tier to a concrete model ID for the engine.
+  let autoSelectedModel: string | undefined;
+  if (!resolvedRequest.model) {
+    const route = classifyRoute({
+      objective: resolvedRequest.objective ?? resolvedRequest.title ?? "",
+      verificationPlan: resolvedRequest.verificationPlan,
+      budgetUsd: resolvedRequest.budget.maxUsd
+    });
+    autoSelectedModel = resolveModelForTier(
+      route.recommendedModelTier,
+      resolvedRequest.engine ?? "claude"
+    );
+  }
+
   const adapter = selectAdapter(
     resolvedRequest.engine,
     cliEnvironment.workingDirectory,
@@ -1106,7 +1122,8 @@ async function executeRunCommand(
     effectiveMutationMode,
     cliEnvironment.liveMode,
     codexCommandOverride,
-    resolvedRequest.verifyTimeoutMs
+    resolvedRequest.verifyTimeoutMs,
+    autoSelectedModel
   );
   try {
     result = await runMartin({
@@ -1703,11 +1720,21 @@ async function executeStartCommand(
   const snapshot = await collectStartEnvironmentSnapshot(environment.workingDirectory, environment.runsRoot);
   const receiptScope = buildCliReceiptScope(environment);
   const detectedIDE = detectHostIDE();
+
+  // Load stored budget preference from MartinLoop memory.
+  // On first run there's no preference — we surface a suggestion.
+  // On subsequent runs we use what the user set before.
+  const storedBudgetPref = await getPreference(environment.runsRoot, "budget.default").catch(() => undefined);
+  const defaultBudgetUsd: number = typeof storedBudgetPref?.value === "number" ? storedBudgetPref.value : 2;
+
+  // Record that start was invoked — tracks onboarding cadence in memory.
+  await recordPreference(environment.runsRoot, "onboarding.start.lastRun", new Date().toISOString(), "inferred").catch(() => {});
+
   const objective = "Summarize this repository and confirm the verifier is green.";
   const preflightCommand = `martin preflight "${objective}" --verify "${snapshot.verifier.command}"`;
-  const governedRunCommand = `martin run "${objective}" --verify "${snapshot.verifier.command}" --budget-usd 2 --max-iterations 1`;
-  const proofCommand = `martin run "${objective}" --proof --verify "${snapshot.verifier.command}" --budget-usd 2 --max-iterations 1`;
-  const estimateCommand = `martin estimate "${objective}" --engine ${snapshot.recommendedEngine} --budget-usd 2`;
+  const governedRunCommand = `martin run "${objective}" --verify "${snapshot.verifier.command}" --budget-usd ${defaultBudgetUsd} --max-iterations 1`;
+  const proofCommand = `martin run "${objective}" --proof --verify "${snapshot.verifier.command}" --budget-usd ${defaultBudgetUsd} --max-iterations 1`;
+  const estimateCommand = `martin estimate "${objective}" --engine ${snapshot.recommendedEngine} --budget-usd ${defaultBudgetUsd}`;
 
   await recordCliWorkflowStep({
     runsRoot: environment.runsRoot,
@@ -3701,11 +3728,15 @@ function selectAdapter(
   mutationMode?: MutationMode,
   liveMode: "live" | "proof" = "live",
   codexCommandOverride?: string,
-  verifyTimeoutMs?: number
+  verifyTimeoutMs?: number,
+  autoSelectModel?: string
 ): MartinAdapter {
   if (runAdapterOverrideForTests) {
     return runAdapterOverrideForTests;
   }
+  // Use auto-selected model when no explicit --model flag was given.
+  // autoSelectModel comes from resolveModelForTier(route.recommendedModelTier, engine).
+  const effectiveModel = modelOverride ?? autoSelectModel;
 
   if (mutationMode === "verify_only") {
     return createVerifierOnlyAdapter({
@@ -3726,7 +3757,7 @@ function selectAdapter(
     return createCodexCliAdapter({
       workingDirectory,
       ...(verifyTimeoutMs !== undefined ? { verifyTimeoutMs } : {}),
-      ...(modelOverride ? { model: modelOverride } : {}),
+      ...(effectiveModel ? { model: effectiveModel } : {}),
       ...(codexCommandOverride ? { command: codexCommandOverride } : {})
     });
   }
@@ -3735,7 +3766,7 @@ function selectAdapter(
     return createGeminiCliAdapter({
       workingDirectory,
       ...(verifyTimeoutMs !== undefined ? { verifyTimeoutMs } : {}),
-      ...(modelOverride ? { model: modelOverride } : {})
+      ...(effectiveModel ? { model: effectiveModel } : {})
     });
   }
 
@@ -3743,7 +3774,7 @@ function selectAdapter(
     const openAiConfig = resolveOpenAiCompatibleRuntimeConfig();
     const baseUrl = openAiConfig.baseUrl;
     const apiKey = openAiConfig.apiKey;
-    const model = modelOverride ?? openAiConfig.model;
+    const model = effectiveModel ?? openAiConfig.model;
     return createOpenAiCompatibleAdapter({
       baseUrl,
       apiKey,
@@ -3756,7 +3787,7 @@ function selectAdapter(
   return createClaudeCliAdapter({
     workingDirectory,
     ...(verifyTimeoutMs !== undefined ? { verifyTimeoutMs } : {}),
-    ...(modelOverride ? { model: modelOverride } : {})
+    ...(effectiveModel ? { model: effectiveModel } : {})
   });
 }
 
