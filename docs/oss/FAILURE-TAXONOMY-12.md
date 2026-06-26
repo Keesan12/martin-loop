@@ -18,3 +18,4 @@ This is the canonical MartinLoop taxonomy. The class list is generated from `FAI
 | `environment_mismatch` | Execution failed due to host/runtime/tooling mismatch. |
 | `budget_pressure` | Run hit or approached budget/iteration/token constraints. |
 | `safety_leash_blocked` | Policy/safety enforcement blocked unsafe or disallowed actions. |
+| `sandbox_write_blocked` | Runtime failure classification. |
