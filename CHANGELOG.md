@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.3.14]
+
+### Fixed
+- **Governance hooks now install on re-install** — `martin mcp install` was returning early when `~/.claude.json` already contained a martin-loop entry, silently skipping the PreToolUse gate hook write. Every install path now calls `installClaudeGovernanceHooks`, which is idempotent. Affects any machine that ran an older version before upgrading.
+- **Estimate receipt write failures now surface** — `autoBootstrapGovernedRun` was swallowing estimate-receipt failures silently. Write errors now appear in the run's `persistenceWarnings`, consistent with every other bootstrap step.
+- **CI test suite hardened** — governance-gate-reorder fix (0.3.13) required updating test assertions in two files that expected the engine-availability error message before the governance message.
+
 ## [0.3.13]
 
 ### Added
