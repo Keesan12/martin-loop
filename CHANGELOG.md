@@ -11,6 +11,7 @@
 - **Model auto-selection tests** — 16 real tests for resolveModelForTier, selectBestEngine, classifyRoute tiers.
 
 ### Fixed
+- **Nested writes unblocked on Windows** — `martin run` inside VS Code terminals and agent panels now writes files correctly. The npm-shim extra process hop in `createSpawnPlan` is bypassed by resolving the `.cmd`/`.ps1` shim to its real `node` invocation target. Adds `sandbox_write_blocked` failure class for clear diagnostics. Non-Windows and non-shim paths are untouched.
 - **All new code portable** — no hardcoded paths, no Windows-only code. Uses `homedir()`, `path.join()`, `npx` — works on macOS, Linux, Windows.
 - **governance hooks use npx** — works on any machine without global install.
 
