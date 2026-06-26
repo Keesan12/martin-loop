@@ -44,8 +44,8 @@ describe("appendMemory", () => {
     await appendMemory(tempDir, entry);
     const entries = await readMemoryEntries(tempDir);
     expect(entries).toHaveLength(1);
-    expect(entries[0].key).toBe("budget.default");
-    expect(entries[0].value).toBe(5);
+    expect(entries[0]!.key).toBe("budget.default");
+    expect(entries[0]!.value).toBe(5);
   });
 
   it("appends multiple entries without overwriting — order preserved", async () => {
@@ -79,9 +79,9 @@ describe("appendMemory", () => {
     const entries = await readMemoryEntries(tempDir);
     expect(entries).toHaveLength(3);
     // Order preserved — first appended is first
-    expect(entries[0].value).toBe("haiku");
-    expect(entries[1].value).toBe("sonnet");
-    expect(entries[2].kind).toBe("consent");
+    expect(entries[0]!.value).toBe("haiku");
+    expect(entries[1]!.value).toBe("sonnet");
+    expect(entries[2]!.kind).toBe("consent");
   });
 });
 
@@ -157,8 +157,8 @@ describe("buildMemorySummary", () => {
     const summary = buildMemorySummary(entries);
     expect(summary.byKind.preference?.length).toBe(20); // capped at 20
     // Most recent 20 (indices 10-29) are kept
-    expect(summary.byKind.preference?.[0].value).toBe(10);
-    expect(summary.byKind.preference?.[19].value).toBe(29);
+    expect(summary.byKind.preference?.[0]?.value).toBe(10);
+    expect(summary.byKind.preference?.[19]?.value).toBe(29);
   });
 });
 
@@ -191,10 +191,10 @@ describe("recordConsent", () => {
 
     const entries = await readMemoryEntries(tempDir);
     expect(entries).toHaveLength(1);
-    expect(entries[0].kind).toBe("consent");
-    expect(entries[0].key).toBe("consent.auto.model.select");
-    expect(entries[0].confidence).toBe(1.0);
-    const val = entries[0].value as { approved: boolean; context: { engine: string } };
+    expect(entries[0]!.kind).toBe("consent");
+    expect(entries[0]!.key).toBe("consent.auto.model.select");
+    expect(entries[0]!.confidence).toBe(1.0);
+    const val = entries[0]!.value as { approved: boolean; context: { engine: string } };
     expect(val.approved).toBe(true);
     expect(val.context.engine).toBe("claude");
   });
