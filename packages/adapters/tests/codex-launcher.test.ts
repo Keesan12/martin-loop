@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -199,6 +199,55 @@ describe("probeCodexLaunch", () => {
       })
     );
     expect(result.summary).toContain("prompt-and-shell probe passed");
+  });
+
+  it("invokes the resolved npm shim's wrapped script directly instead of through cmd.exe", () => {
+    const shimDir = mkdtempSync(join(tmpdir(), "martin-codex-shim-probe-"));
+    const scriptPath = join(shimDir, "cli.js");
+    writeFileSync(scriptPath, "// stub codex cli entrypoint\n");
+    const shimPath = join(shimDir, "codex.cmd");
+    writeFileSync(shimPath, '@ECHO off\n"%~dp0\\node.exe"  "%~dp0\\cli.js" %*\n');
+
+    try {
+      const spawnSyncImpl = vi.fn(() => ({
+        status: 0,
+        stdout: JSON.stringify({
+          type: "item.completed",
+          item: {
+            id: "item_1",
+            type: "command_execution",
+            command: "git status --short -- .",
+            aggregated_output: "",
+            exit_code: 0,
+            status: "completed"
+          }
+        }),
+        stderr: ""
+      }));
+
+      const result = probeCodexLaunch({
+        workingDirectory: process.cwd(),
+        platform: "win32",
+        availability: {
+          command: "codex",
+          available: true,
+          locator: "where.exe",
+          detail: "codex is available on PATH.",
+          resolvedPath: shimPath,
+          candidatePaths: [shimPath]
+        },
+        spawnSyncImpl: spawnSyncImpl as never
+      });
+
+      expect(result.ok).toBe(true);
+      expect(spawnSyncImpl).toHaveBeenCalledWith(
+        process.execPath,
+        [scriptPath, ...result.args],
+        expect.objectContaining({ cwd: process.cwd() })
+      );
+    } finally {
+      rmSync(shimDir, { recursive: true, force: true });
+    }
   });
 
   it("fails closed when Codex resolves to a Windows shim in WSL", () => {
