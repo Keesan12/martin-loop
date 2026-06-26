@@ -1,7 +1,7 @@
 # C.0-C.11 Public Trust Recovery (Internal-First)
 
 Date: 2026-06-08  
-Repo: ML_Core_OSS_Internal  
+Repo: martin-loop  
 Execution mode: internal hardening first, then staged promotion, then public.
 
 ## Hard ship gates
