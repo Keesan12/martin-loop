@@ -1,6 +1,5 @@
 # MartinLoop 0.3.13
 
-## Autonomous Model Selection + Portable Governance
 ## Nested Write Fix (Windows) + Autonomous Model Selection + Portable Governance
 
 ### Nested writes now work inside VS Code on Windows

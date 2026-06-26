@@ -49,7 +49,7 @@ for (const relativePath of CRITICAL_FILES) {
 
 assertInvariant(
   "engine union",
-  /MARTIN_ENGINE_VALUES\s*=\s*\["claude",\s*"codex",\s*"gemini"\]/u,
+  /MARTIN_ENGINE_VALUES\s*=\s*\["claude",\s*"codex",\s*"gemini",\s*"openai"\]/u,
   "packages/mcp/src/tools/tool-support.ts"
 );
 assertInvariant(
