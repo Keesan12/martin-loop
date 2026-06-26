@@ -1,7 +1,7 @@
 {
   "schemaVersion": "martin.failure-taxonomy.runtime.v1",
   "source": "packages/contracts/src/index.ts#FAILURE_CLASSES",
-  "canonicalClassCount": 12,
+  "canonicalClassCount": 13,
   "failureClasses": [
     "logic_error",
     "hallucination",
@@ -14,6 +14,7 @@
     "verification_failure",
     "environment_mismatch",
     "budget_pressure",
-    "safety_leash_blocked"
+    "safety_leash_blocked",
+    "sandbox_write_blocked"
   ]
 }

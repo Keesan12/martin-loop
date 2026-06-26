@@ -144,6 +144,16 @@ export async function evaluateCliRunGate(input: CliRunGateInput): Promise<CliRun
     missingSteps.push("doctor");
   }
 
+  // Estimate is required before any governed run — it proves the agent
+  // saw the cost estimate and budget recommendation before spending.
+  // This is the root enforcement: no estimate receipt = no run.
+  const estimateReady = isFresh(cliState["estimate"], PREFLIGHT_TTL_MS, (receipt) =>
+    receipt.workingDirectory === workingDirectory
+  );
+  if (!estimateReady) {
+    missingSteps.push("estimate");
+  }
+
   const sessionReady =
     isFresh(cliState["session-start"], SESSION_TTL_MS, (receipt) =>
       receipt.workingDirectory === workingDirectory &&
@@ -199,6 +209,10 @@ function selectNextCommand(
 ): string {
   if (missingSteps.includes("doctor")) {
     return "martin-loop doctor";
+  }
+
+  if (missingSteps.includes("estimate")) {
+    return `martin-loop estimate "${objective}" --budget-usd 5`;
   }
 
   if (missingSteps.includes("session-start")) {
