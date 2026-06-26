@@ -165,10 +165,10 @@ describe("governance hooks in mcp install plans", () => {
     };
 
     expect(hooks.hooks.PreToolUse).toHaveLength(1);
-    expect(hooks.hooks.PreToolUse[0].matcher).toBe("Bash|Edit|Write");
-    expect(hooks.hooks.PreToolUse[0].command).toContain("martin-loop gate");
+    expect(hooks.hooks.PreToolUse[0]!.matcher).toBe("Bash|Edit|Write");
+    expect(hooks.hooks.PreToolUse[0]!.command).toContain("martin-loop gate");
     expect(hooks.hooks.Stop).toHaveLength(1);
-    expect(hooks.hooks.Stop[0].command).toContain("martin-loop dossier");
+    expect(hooks.hooks.Stop[0]!.command).toContain("martin-loop dossier");
   });
 
   it("Codex hooks reference AGENTS.md governance", () => {
