@@ -330,4 +330,71 @@ describe("createOpenAiCompatibleAdapter", () => {
       }
     }
   });
+
+  it("retries on 429 rate-limit and succeeds on the subsequent attempt", async () => {
+    // Regression: before the fix, a 429 immediately failed the run. Now it retries
+    // with exponential backoff and succeeds if the server recovers.
+    let callCount = 0;
+    const { url, close } = await startMockServer((_req, _body) => {
+      callCount++;
+      if (callCount === 1) {
+        // First call: rate-limited
+        return { status: 429, body: { error: { message: "rate limit exceeded", type: "rate_limit_error" } } };
+      }
+      // Second call: success
+      return {
+        status: 200,
+        body: {
+          choices: [{ message: { role: "assistant", content: "// Fixed\nconst x = 1;" } }],
+          usage: { prompt_tokens: 100, completion_tokens: 50 }
+        }
+      };
+    });
+    mockClose = close;
+
+    const adapter = createOpenAiCompatibleAdapter({
+      baseUrl: url,
+      model: "test-model",
+      workingDirectory: process.cwd()
+    });
+    const result = await adapter.execute(makeRequest() as any);
+
+    expect(callCount).toBe(2);
+    // After a successful retry, result is not failed — the rate-limit error was transient.
+    expect(result.status).not.toBe("failed");
+  }, 15_000);
+
+  it("fails immediately on 401 auth error without retrying", async () => {
+    // Auth errors are permanent — retrying would waste time and potentially expose the key.
+    let callCount = 0;
+    const { url, close } = await startMockServer(() => {
+      callCount++;
+      return { status: 401, body: { error: { message: "invalid api key", type: "authentication_error" } } };
+    });
+    mockClose = close;
+
+    const adapter = createOpenAiCompatibleAdapter({ baseUrl: url, model: "test-model" });
+    const result = await adapter.execute(makeRequest() as any);
+
+    expect(callCount).toBe(1);
+    expect(result.status).toBe("failed");
+  });
+
+  it("retries on 503 server error up to max retries then fails", async () => {
+    let callCount = 0;
+    const { url, close } = await startMockServer(() => {
+      callCount++;
+      return { status: 503, body: { error: { message: "service unavailable" } } };
+    });
+    mockClose = close;
+
+    const adapter = createOpenAiCompatibleAdapter({ baseUrl: url, model: "test-model" });
+    const result = await adapter.execute(makeRequest() as any);
+
+    // Should have tried MAX_RETRIES=3 times before giving up
+    expect(callCount).toBe(3);
+    expect(result.status).toBe("failed");
+    // Summary includes the error message body from the final attempt
+    expect(result.summary).toContain("service unavailable");
+  }, 20_000);
 });
