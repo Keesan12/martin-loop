@@ -1,6 +1,14 @@
 # MartinLoop 0.3.13
 
-## Autonomous Model Selection + Portable Governance
+## Nested Write Fix (Windows) + Autonomous Model Selection + Portable Governance
+
+### Nested writes now work inside VS Code on Windows
+
+MartinLoop's file-write path was blocked when running inside VS Code's terminal or agent panel on Windows (plain PowerShell worked fine). Root cause: npm-installed CLIs resolve to a `.cmd`/`.ps1` shim on Windows, and the shared spawn chokepoint was wrapping it through an extra `cmd.exe`/`powershell.exe` hop — deep enough nesting that the OS-level write permission stopped propagating.
+
+`createSpawnPlan` now resolves the shim to its real `node <script>.js` target and invokes it directly, removing the extra process hop for both the Claude and Codex adapters at once. Falls back to the prior behavior unchanged when the shim format can't be resolved. Non-Windows platforms are untouched.
+
+A new `sandbox_write_blocked` failure class surfaces this condition distinctly — instead of silently classifying as `no_progress`, a run that produces a valid patch but writes zero files now gives a clear diagnostic.
 
 ### `martin run` now selects the right model automatically
 
