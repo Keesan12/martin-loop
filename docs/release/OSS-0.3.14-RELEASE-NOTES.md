@@ -18,10 +18,19 @@ When `autoBootstrapGovernedRun` writes the estimate receipt during a governed ru
 
 Write failures now appear in the run's `persistenceWarnings`, consistent with every other bootstrap step (doctor, session-start, preflight).
 
-### 2 new regression tests
+### OpenAI-compatible adapter retries on rate limits and server errors
+
+When using `--engine openai` (DeepSeek, Qwen, OpenRouter, Ollama, etc.), a transient HTTP 429 rate-limit or 5xx server error immediately failed the entire governed run with no recovery. Any work done before the API call was lost.
+
+The adapter now retries up to 3 times with 1s / 2s / 4s exponential backoff on status codes 429, 500, 502, 503, and 504. Auth errors (401/403) and bad-request errors (400) are not retried — those indicate permanent configuration problems.
+
+### 5 new regression tests
 
 - Verifies all `installMcpConfig` code paths call `installClaudeGovernanceHooks` (catches re-introduction of the early-return bug)
 - Verifies the governance hook command uses `npx` and no hardcoded absolute path (portability invariant)
+- 429 retry: succeeds on second attempt after rate-limit
+- 401 no-retry: fails immediately without wasting retries on auth errors
+- 503 exhausted: retries exactly 3 times then surfaces the error clearly
 
 ## Install
 
