@@ -219,6 +219,9 @@ async function installClaudeGovernanceHooks(): Promise<void> {
     hooks: [
       {
         type: "command",
+        // Use npx so this works on any machine regardless of global install.
+        // npx resolves the locally installed martin-loop first, then falls
+        // back to downloading from npm. Works on macOS, Linux, and Windows.
         command: "npx martin-loop gate --quiet",
         timeout: 10
       }
