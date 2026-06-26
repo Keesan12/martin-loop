@@ -1,6 +1,7 @@
 import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -316,6 +317,22 @@ type GateCommand = {
   runsDir?: string;
 };
 
+type ModeCommand = {
+  command: "mode";
+  /** undefined = show current mode */
+  mode?: "auto" | "plan" | "edits";
+  scope: "global" | "project";
+  cwd?: string;
+};
+
+type CleanCommand = {
+  command: "clean";
+  cwd?: string;
+  runsDir?: string;
+  cleanRuns: boolean;
+  cleanAll: boolean;
+};
+
 type ChallengeCommand = {
   command: "challenge";
   selector?: MartinRunSelector;
@@ -413,6 +430,8 @@ export type ParsedCliArguments =
   | McpCommand
   | EstimateCommand
   | GateCommand
+  | ModeCommand
+  | CleanCommand
   | ChallengeCommand
   | ShareCommand
   | BadgeCommand;
@@ -497,6 +516,10 @@ export async function executeCli(args: string[]): Promise<{
         return await executeEstimateCommand(parsed, outputMode);
       case "gate":
         return await executeGateCommand(parsed, outputMode);
+      case "mode":
+        return await executeModeCommand(parsed, outputMode);
+      case "clean":
+        return await executeCleanCommand(parsed, outputMode);
       case "mcp_print_config":
         return await executeMcpPrintConfigCommand(parsed, outputMode);
       case "mcp_install":
@@ -590,6 +613,28 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
       command: "gate",
       ...(readOption(rest, "--cwd") ? { cwd: readOption(rest, "--cwd") } : {}),
       ...(readOption(rest, "--runs-dir") ? { runsDir: readOption(rest, "--runs-dir") } : {})
+    };
+  }
+
+  if (command === "mode") {
+    const subcommand = rest[0] && !rest[0].startsWith("--") ? rest[0] : undefined;
+    const validModes = ["auto", "plan", "edits"] as const;
+    const mode = validModes.find((m) => m === subcommand);
+    return {
+      command: "mode",
+      ...(mode ? { mode } : {}),
+      scope: hasFlag(rest, "--project") ? "project" : "global",
+      ...(readOption(rest, "--cwd") ? { cwd: readOption(rest, "--cwd") } : {})
+    };
+  }
+
+  if (command === "clean") {
+    return {
+      command: "clean",
+      ...(readOption(rest, "--cwd") ? { cwd: readOption(rest, "--cwd") } : {}),
+      ...(readOption(rest, "--runs-dir") ? { runsDir: readOption(rest, "--runs-dir") } : {}),
+      cleanRuns: hasFlag(rest, "--runs"),
+      cleanAll: hasFlag(rest, "--all")
     };
   }
 
@@ -884,7 +929,9 @@ export function renderCliHelp(): string {
     "  runs attempt Load a persisted attempt and linked verification summary.",
     "  runs verify  Read persisted verification evidence for one loop.",
     "  estimate     Estimate cost, route, and Pre Work Burn for an objective without spending.",
-    "  gate         Hard governance check — exits non-zero if doctor/plan/preflight are missing. Use in hooks.",
+    "  gate         Hard governance check — exits non-zero if doctor/estimate are missing. Use in hooks.",
+    "  mode         Show or set working mode: auto (default), plan, edits.",
+    "  clean        Remove MartinLoop artifacts (_martin/, old run records).",
     "  mcp print-config  Print a known-good MCP config snippet for Codex, Claude, Gemini, or generic hosts.",
     "  mcp install       Write a starter MCP config, or call Claude Code directly for local scope.",
     "  challenge    Print a shareable local proof card for the Under-$3 challenge.",
@@ -1736,6 +1783,19 @@ async function executeStartCommand(
   const receiptScope = buildCliReceiptScope(environment);
   const detectedIDE = detectHostIDE();
 
+  // Load working mode preference from ~/.martin/config.json
+  let currentMode = "auto";
+  let modeConfigured = false;
+  try {
+    const modeConfig = JSON.parse(
+      await readFile(join(homedir(), ".martin", "config.json"), "utf8")
+    ) as { defaultMode?: string };
+    if (modeConfig.defaultMode) {
+      currentMode = modeConfig.defaultMode;
+      modeConfigured = true;
+    }
+  } catch { /* fresh install */ }
+
   // Load stored budget preference from MartinLoop memory.
   // On first run there's no preference — we surface a suggestion.
   // On subsequent runs we use what the user set before.
@@ -1795,6 +1855,10 @@ async function executeStartCommand(
       "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
       " MartinLoop — Governed AI Coding",
       "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+      "",
+      modeConfigured
+        ? `Mode: ${currentMode} (change with martin mode auto|plan|edits)`
+        : "Mode: automode recommended — martin mode auto (governs autonomously, best for most work)",
       "",
       "Environment",
       `  Host:       ${detectedIDE.host}`,
@@ -2789,6 +2853,109 @@ async function executeGateCommand(
         : blockMessage.join("\n"),
     stderr: ""
   };
+}
+
+async function executeModeCommand(
+  command: Extract<ParsedCliArguments, { command: "mode" }>,
+  outputMode: MartinOutputMode
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  const configPath = join(homedir(), ".martin", "config.json");
+  let config: Record<string, unknown> = {};
+  try {
+    config = JSON.parse(await readFile(configPath, "utf8")) as Record<string, unknown>;
+  } catch { /* fresh config */ }
+
+  if (!command.mode) {
+    const current = (config.defaultMode as string | undefined) ?? "auto";
+    return renderCliSuccess(outputMode, {
+      data: { command: "mode", currentMode: current, config },
+      human: [
+        `Current mode: ${current}`,
+        "",
+        "Available modes:",
+        "  auto   — MartinLoop governs autonomously (recommended)",
+        "  plan   — Show plan before executing, you approve",
+        "  edits  — Show each file change before writing",
+        "",
+        `Switch: martin mode auto | plan | edits`
+      ],
+      quiet: current
+    });
+  }
+
+  const configDir = join(homedir(), ".martin");
+  await mkdir(configDir, { recursive: true });
+
+  if (command.scope === "project") {
+    const cwd = command.cwd ?? process.cwd();
+    let projectConfig: Record<string, unknown> = {};
+    try {
+      projectConfig = JSON.parse(await readFile(join(cwd, "martin.config.yaml"), "utf8")) as Record<string, unknown>;
+    } catch { /* fresh */ }
+    config.projectOverrides = {
+      ...(config.projectOverrides as Record<string, unknown> ?? {}),
+      [cwd]: command.mode
+    };
+  } else {
+    config.defaultMode = command.mode;
+  }
+
+  await writeFile(configPath, JSON.stringify(config, null, 2) + "\n", "utf8");
+
+  return renderCliSuccess(outputMode, {
+    data: { command: "mode", mode: command.mode, scope: command.scope },
+    human: [
+      `Mode set to: ${command.mode} (${command.scope})`,
+      "",
+      command.mode === "auto"
+        ? "MartinLoop will govern autonomously. Estimate → run → receipt."
+        : command.mode === "plan"
+          ? "MartinLoop will show the plan before executing. You approve each step."
+          : "MartinLoop will show each file change before writing. Maximum control."
+    ],
+    quiet: command.mode
+  });
+}
+
+async function executeCleanCommand(
+  command: Extract<ParsedCliArguments, { command: "clean" }>,
+  outputMode: MartinOutputMode
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  const environment = resolveCliEnvironment({ cwd: command.cwd, runsDir: command.runsDir });
+  const removed: string[] = [];
+
+  const martinDir = join(environment.workingDirectory, "_martin");
+  const martinDirExists = await stat(martinDir).then(() => true).catch(() => false);
+  if (martinDirExists && !command.cleanAll && !command.cleanRuns) {
+    await rm(martinDir, { recursive: true, force: true });
+    removed.push(`_martin/ (workflow state)`);
+  }
+
+  if (command.cleanRuns || command.cleanAll) {
+    const runsRoot = environment.runsRoot;
+    const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    try {
+      const entries = await readdir(runsRoot, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.name.startsWith("loop_") && entry.isDirectory()) {
+          const runPath = join(runsRoot, entry.name);
+          const info = await stat(runPath).catch(() => null);
+          if (info && info.mtimeMs < thirtyDaysAgo) {
+            await rm(runPath, { recursive: true, force: true });
+            removed.push(`runs/${entry.name}`);
+          }
+        }
+      }
+    } catch { /* skip */ }
+  }
+
+  return renderCliSuccess(outputMode, {
+    data: { command: "clean", removed },
+    human: removed.length > 0
+      ? [`Removed ${removed.length} item(s):`, ...removed.map((r) => `  • ${r}`)]
+      : ["Nothing to clean. Working directory is already tidy."],
+    quiet: removed.length > 0 ? `removed:${removed.length}` : "clean"
+  });
 }
 
 async function executeEstimateCommand(

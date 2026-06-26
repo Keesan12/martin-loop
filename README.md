@@ -127,17 +127,17 @@ Example receipt files: [Markdown](./docs/examples/proof-receipts/live-governed-r
 Use this lane from a clean temp directory to verify the public CLI flow exactly as shipped:
 
 ```sh
-npx -y martin-loop@0.3.14 --version
-npx -y martin-loop@0.3.14 start
-npx -y martin-loop@0.3.14 demo
+npx -y martin-loop@0.3.15 --version
+npx -y martin-loop@0.3.15 start
+npx -y martin-loop@0.3.15 demo
 cd martin-loop-demo
 npm install
-npx -y martin-loop@0.3.14 run "Summarize the demo workspace and prove tests still pass" --verify "npm test" --budget-usd 2 --max-iterations 1 --json
-npx -y martin-loop@0.3.14 dossier --latest --json
-npx -y martin-loop@0.3.14 share --latest --json
+npx -y martin-loop@0.3.15 run "Summarize the demo workspace and prove tests still pass" --verify "npm test" --budget-usd 2 --max-iterations 1 --json
+npx -y martin-loop@0.3.15 dossier --latest --json
+npx -y martin-loop@0.3.15 share --latest --json
 ```
 
-For deterministic installs, pin the package line (`martin-loop@0.3.14`) or use `martin-loop@latest`. Plain `npx martin-loop` can resolve a stale local cache on some machines.
+For deterministic installs, pin the package line (`martin-loop@0.3.15`) or use `martin-loop@latest`. Plain `npx martin-loop` can resolve a stale local cache on some machines.
 
 Expected share bundle outputs:
 
