@@ -2,6 +2,8 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { dirname, extname, join, resolve } from "node:path";
 
+import { resolveNpmShimScript } from "./cli-bridge.js";
+
 export interface CliCommandAvailability {
   command: string;
   available: boolean;
@@ -255,17 +257,27 @@ function buildProbeCommand(
   switch (extension) {
     case ".cmd":
     case ".bat":
+    case ".ps1": {
+      // Bypass the npm shim's cmd.exe/powershell.exe wrapper hop when we can statically resolve
+      // the real `node <script>` target it wraps — keeps the live probe's process-nesting depth
+      // consistent with the real run's invocation (see createSpawnPlan in cli-bridge.ts).
+      const directScript = resolveNpmShimScript(command);
+      if (directScript !== undefined) {
+        return { command: process.execPath, args: [directScript, ...args], invocationMode: "direct" };
+      }
+      if (extension === ".ps1") {
+        return {
+          command: "powershell.exe",
+          args: ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", command, ...args],
+          invocationMode: "powershell"
+        };
+      }
       return {
         command: process.env.ComSpec || "cmd.exe",
         args: ["/d", "/c", command, ...args],
         invocationMode: "cmd_shell"
       };
-    case ".ps1":
-      return {
-        command: "powershell.exe",
-        args: ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", command, ...args],
-        invocationMode: "powershell"
-      };
+    }
     default:
       return { command, args, invocationMode: "direct" };
   }
@@ -410,7 +422,7 @@ function classifyProbeFailure(
         sandboxCompatible: false,
         warnings,
         remediation:
-          "Update or reinstall Codex on this Windows host until `codex exec --sandbox workspace-write` can launch a simple shell command before running governed Codex work."
+          "MartinLoop already invokes Codex's underlying binary directly when it can resolve the npm shim (bypassing the cmd.exe/PowerShell wrapper hop), so this failure persisted even at the shallowest invocation depth available. Update or reinstall Codex on this Windows host until `codex exec --sandbox workspace-write` can launch a simple shell command before running governed Codex work."
       }
     };
   }
