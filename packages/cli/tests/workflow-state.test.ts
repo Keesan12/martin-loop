@@ -38,6 +38,14 @@ describe("workflow state gate", () => {
         workingDirectory,
         receiptScope
       });
+      // Estimate is now required before any governed run — proves cost was seen first.
+      await recordCliWorkflowStep({
+        runsRoot,
+        step: "estimate",
+        workingDirectory,
+        objective,
+        receiptScope
+      });
       await recordCliWorkflowStep({
         runsRoot,
         step: "preflight",

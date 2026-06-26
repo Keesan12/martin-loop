@@ -474,6 +474,11 @@ describe("--engine flag", () => {
             expect(cliStateAfterPreflight["session-start"]?.workingDirectory).toBe(normalizedWorkingDirectory);
             expect(cliStateAfterPreflight.preflight?.workingDirectory).toBe(normalizedWorkingDirectory);
 
+            // Estimate required before governed run — proves cost was reviewed
+            await withEnv("MARTIN_LIVE", "true", () =>
+              executeCli(["estimate", "Fix the bug", "--engine", "codex", "--runs-dir", runsDir, "--budget-usd", "2"])
+            );
+
             const runResult = await withEnv("MARTIN_LIVE", "true", () =>
               executeCli([
                 "--json",
