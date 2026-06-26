@@ -1823,6 +1823,88 @@ const store: import("../src/index").RunStore = {
     expect(patchDecision.reasonCodes).toContain("grounding_failure");
   });
 
+  it("classifies a no-code-change attempt as sandbox_write_blocked when the adapter reports a Windows sandbox write failure", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-patch-sandbox-blocked-"));
+    const repoRoot = join(runsRoot, "repo");
+    await mkdir(join(repoRoot, "src"), { recursive: true });
+    await writeFile(join(repoRoot, "src", "real.ts"), "export const real = 1;\n", "utf8");
+    const store = createFileRunStore({ runsRoot });
+
+    const adapter: MartinAdapter = {
+      adapterId: "direct:patch-sandbox-blocked",
+      kind: "direct-provider",
+      label: "Sandbox-blocked patch adapter",
+      metadata: {
+        providerId: "openai",
+        model: "gpt-5-mini"
+      },
+      async execute() {
+        return {
+          status: "completed",
+          summary:
+            "Reasoned through the fix and attempted the write, but the host reported: windows sandbox: runner error: CreateProcessAsUserW failed: 5.",
+          usage: {
+            actualUsd: 0.18,
+            tokensIn: 64,
+            tokensOut: 30
+          },
+          verification: {
+            passed: true,
+            summary: "pnpm --filter @martin/core test passed"
+          },
+          execution: {
+            changedFiles: []
+          }
+        };
+      }
+    };
+
+    const result = await runMartin({
+      workspaceId: "ws_patch",
+      projectId: "proj_patch",
+      task: {
+        title: "Sandbox-blocked write",
+        objective: "Classify a write blocked by a nested Windows sandbox as a distinct failure class.",
+        verificationPlan: ["pnpm --filter @martin/core test"],
+        repoRoot,
+        allowedPaths: ["src/**"]
+      },
+      budget: {
+        maxUsd: 10,
+        softLimitUsd: 8,
+        maxIterations: 1,
+        maxTokens: 2_000
+      },
+      adapter,
+      store,
+      now: createTimestampSource([
+        "2026-04-03T11:20:00.000Z",
+        "2026-04-03T11:20:01.000Z",
+        "2026-04-03T11:20:02.000Z",
+        "2026-04-03T11:20:03.000Z",
+        "2026-04-03T11:20:04.000Z",
+        "2026-04-03T11:20:05.000Z",
+        "2026-04-03T11:20:06.000Z"
+      ]),
+      idFactory: createIdFactory()
+    });
+
+    const patchDecision = JSON.parse(
+      await readFile(
+        join(runsRoot, result.loop.loopId, "artifacts", "attempt-001", "patch-decision.json"),
+        "utf8"
+      )
+    );
+    const classifiedEvent = result.loop.events.find((event) => event.type === "failure.classified");
+
+    expect(patchDecision.decision).toBe("DISCARD");
+    expect(patchDecision.reasonCodes).toContain("no_code_change");
+    expect(classifiedEvent?.payload).toMatchObject({
+      failureClass: "sandbox_write_blocked"
+    });
+    expect(result.loop.attempts[0]?.failureClass).toBe("sandbox_write_blocked");
+  });
+
   it("restores the pre-attempt repo boundary for discarded verifier regressions and preserves pre-existing dirty files", async () => {
     const runsRoot = await mkdtemp(join(tmpdir(), "martin-patch-rollback-"));
     const repoRoot = join(runsRoot, "repo");

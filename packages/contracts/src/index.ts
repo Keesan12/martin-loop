@@ -29,6 +29,7 @@ export const FAILURE_CLASSES = [
   "environment_mismatch",
   "budget_pressure",
   "safety_leash_blocked",
+  "sandbox_write_blocked",
 ] as const;
 
 export type FailureClass = (typeof FAILURE_CLASSES)[number];
