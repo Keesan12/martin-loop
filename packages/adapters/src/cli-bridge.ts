@@ -501,7 +501,12 @@ export function createSpawnPlan(
     // for every Windows launch, nested or not, with no behavior change when resolution fails.
     const directScript = resolveNpmShimScript(resolvedOrUndefined);
     if (directScript !== undefined) {
-      return { command: process.execPath, args: [directScript, ...args] };
+      // Use the system node rather than process.execPath. When MartinLoop runs
+      // inside Claude Code desktop or VS Code, process.execPath is Electron's
+      // bundled Node — which has different module resolution and may fail to
+      // load native CLI scripts. Prefer an explicit `node` from PATH instead.
+      const systemNode = resolveSystemNode();
+      return { command: systemNode, args: [directScript, ...args] };
     }
 
     if (extension === ".ps1") {
@@ -551,6 +556,52 @@ export function resolveNpmShimScript(shimPath: string): string | undefined {
   }
 
   return undefined;
+}
+
+/**
+ * Resolve a reliable `node` executable for spawning CLI scripts on Windows.
+ *
+ * When MartinLoop runs inside Claude Code desktop, VS Code, or the Codex IDE,
+ * `process.execPath` points to the host application's bundled Electron Node —
+ * not the system Node. Electron's Node has different module resolution paths
+ * and may fail to load native npm CLI scripts that expect the system Node.
+ *
+ * Strategy:
+ * 1. Use MARTIN_NODE_PATH env var if explicitly set (escape hatch for CI)
+ * 2. Look for `node` / `node.exe` on PATH — the system install
+ * 3. Fall back to process.execPath (Electron Node) if nothing else found
+ */
+function resolveSystemNode(): string {
+  // Explicit override — useful in CI or restricted environments
+  const envOverride = process.env.MARTIN_NODE_PATH?.trim();
+  if (envOverride && envOverride.length > 0 && existsSync(envOverride)) {
+    return envOverride;
+  }
+
+  // Search PATH for a real `node` executable, skipping Electron binaries.
+  // Electron's node path typically contains "electron" or "Claude" in it.
+  for (const dir of windowsPathDirectories()) {
+    for (const candidate of ["node.exe", "node.cmd", "node"]) {
+      const fullPath = join(dir, candidate);
+      if (existsSync(fullPath) && !isElectronNode(fullPath)) {
+        return fullPath;
+      }
+    }
+  }
+
+  // Last resort: use process.execPath even if it's Electron's node
+  return process.execPath;
+}
+
+function isElectronNode(nodePath: string): boolean {
+  const lower = nodePath.toLowerCase();
+  return (
+    lower.includes("electron") ||
+    lower.includes("claude") ||
+    lower.includes("vscode") ||
+    lower.includes("code.exe") ||
+    lower.includes("cursor")
+  );
 }
 
 function resolveWindowsCommand(command: string, cwd: string): string | undefined {
