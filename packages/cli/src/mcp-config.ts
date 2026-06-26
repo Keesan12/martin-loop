@@ -168,12 +168,21 @@ export async function installMcpConfig(
   if (targetExists) {
     const existing = await readFile(plan.targetPath, "utf8");
     if (existingConfigAlreadyContainsMartin(plan.host, plan.serverId, existing)) {
+      // Config already present — still ensure governance hooks are installed.
+      // On first installs of older versions the hooks were never written; re-running
+      // install must be idempotent and always leave hooks in place.
+      if (plan.host === "claude") {
+        await installClaudeGovernanceHooks().catch(() => {});
+      }
       return plan;
     }
 
     const merged = mergeHostConfig(plan.host, plan.serverId, existing, plan.content);
     if (merged) {
       await writeFile(plan.targetPath, merged, "utf8");
+      if (plan.host === "claude") {
+        await installClaudeGovernanceHooks().catch(() => {});
+      }
       return plan;
     }
 
@@ -189,7 +198,6 @@ export async function installMcpConfig(
 
   await mkdir(path.dirname(plan.targetPath), { recursive: true });
   await writeFile(plan.targetPath, plan.content, "utf8");
-  // For Claude Code installs, also write governance hooks
   if (plan.host === "claude") {
     await installClaudeGovernanceHooks().catch(() => {});
   }
