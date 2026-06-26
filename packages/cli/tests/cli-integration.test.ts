@@ -553,6 +553,11 @@ describe("--engine flag", () => {
             );
             expect(preflightResult.exitCode).toBe(0);
 
+            // Estimate required before governed run
+            await withEnv("MARTIN_LIVE", "true", () =>
+              executeCli(["estimate", "Verify the outreach runtime", "--engine", "codex", "--runs-dir", runsDir, "--budget-usd", "2"])
+            );
+
             const runResult = await withEnv("MARTIN_LIVE", "true", () =>
               executeCli([
                 "--json",
@@ -613,6 +618,11 @@ describe("--engine flag", () => {
                 ])
             );
             expect(preflightResult.exitCode).toBe(0);
+
+            // Estimate required before governed run
+            await withEnv("MARTIN_LIVE", "true", () =>
+              executeCli(["estimate", "Verify the outreach runtime", "--engine", "codex", "--runs-dir", runsDir, "--budget-usd", "2"])
+            );
 
             const runResult = await withEnvVars(
               {
