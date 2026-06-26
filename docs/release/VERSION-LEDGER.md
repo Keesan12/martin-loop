@@ -4,10 +4,10 @@ This file is the release source of truth for package/version mapping in this rep
 
 ## Root package: `martin-loop`
 
-- live npm dist-tag `latest`: `0.3.9`
-- live public GitHub release: `v0.3.9`
-- live public baseline in this train: `0.3.9`
-- root public baseline: `0.3.9`
+- live npm dist-tag `latest`: `0.3.15` (0.3.16 pending merge of fix/0.3.16-governance-fixes)
+- live public GitHub release: `v0.3.15`
+- live public baseline in this train: `0.3.16`
+- root public baseline: `0.3.16`
 - releases consumed since the original `0.2.8` launch:
   - `0.2.9` fixed proof-run classification, Windows `.cmd` resolution, and public provider defaults
   - `0.2.10` tightened verifier evidence, `--runs-dir` consistency, and public help output
@@ -22,7 +22,10 @@ This file is the release source of truth for package/version mapping in this rep
   - `0.3.11` auto-governance (estimate tool, governance-status resource, host-specific hooks), MCP isolation fix, budget cap hardening, 68 audit-ready tests
   - `0.3.12` hard governance enforcement, memory store, trace wiring
   - `0.3.13` autonomous model selection, portable governance hooks, 28 new tests
-- current in-repo root release line: `0.3.13`
+  - `0.3.14` Electron/IDE Node conflict fix — resolveSystemNode() finds system node.exe, not Electron's bundled Node
+  - `0.3.15` martin mode, martin clean, preflight gate objective-hash removed, session-start optional when estimate present
+  - `0.3.16` governance hooks on re-install, gate fires before engine check, estimate persistence, OpenAI 429/5xx retry
+- current in-repo root release line: `0.3.16`
 - next planned root follow-on: `0.4.0` for route compression and MCP economics surface
 
 ## Standalone package: `@martinloop/mcp`

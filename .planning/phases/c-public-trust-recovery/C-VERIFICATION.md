@@ -1,7 +1,7 @@
 # C.0-C.11 Verification Snapshot
 
 Date: 2026-06-08  
-Repo: `ML_Core_OSS_Internal`  
+Repo: `martin-loop`  
 Branch: `codex/gsd-phase08-mainline`
 
 ## Exact branch commits in scope

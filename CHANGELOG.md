@@ -2,6 +2,31 @@
 
 ## [Unreleased]
 
+## [0.3.16]
+
+### Fixed
+- **`martin mcp install` hooks on re-install** — `installMcpConfig` returned early when `~/.claude.json` already contained a `martin-loop` entry, leaving the PreToolUse gate hook unwritten on every upgrade. All three code paths now call `installClaudeGovernanceHooks` (idempotent). After upgrading from any version prior to 0.3.12, run `martin mcp install --host claude --scope user`.
+- **Governance gate fires before engine-availability check** — `evaluateCliRunGate` now runs before the engine CLI presence check in the non-JSON code path. "Run estimate first" surfaces ahead of "install the engine CLI", and gate behavior is deterministic in environments where the engine binary is absent (CI, headless runners).
+- **Estimate receipt write failures surfaced** — `autoBootstrapGovernedRun` was catching estimate-receipt write failures with `.catch(() => {})`. Failures now go to `persistenceWarnings`, matching every other bootstrap step.
+- **OpenAI-compatible adapter: retry on 429/5xx** — transient rate-limit and server errors (429, 500, 502, 503, 504) now retry with 1s/2s/4s exponential backoff (max 3 attempts). Auth errors (401/403) are not retried.
+- **5 new regression tests** — governance hook install paths (×2), retry behavior (×3).
+
+## [0.3.15]
+
+### Added
+- **`martin mode`** — show or set working mode (`auto`/`plan`/`edits`). Stored in `~/.martin/config.json`.
+- **`martin clean`** — remove `_martin/` workflow state. `--runs` removes run records older than 30 days.
+- **`martin start`** shows current mode on first output line; recommends `automode` on first run.
+
+### Fixed
+- **Preflight gate objective-hash matching removed** — receipt match key is now `workingDirectory + engine` only. Previously an objective wording difference triggered a gate block on re-run.
+- **Session-start optional when estimate is present** — `evaluateCliRunGate` no longer requires a session-start receipt when a valid estimate receipt exists for the working directory.
+
+## [0.3.14]
+
+### Fixed
+- **Electron Node conflict in VS Code / Claude Code / Codex IDE** — when MartinLoop runs inside these hosts, `process.execPath` points to the host's bundled Electron Node, not the system Node. npm CLI shims executed with Electron's Node fail due to different module resolution. `resolveSystemNode()` in `cli-bridge.ts` now searches PATH for `node`/`node.exe`, skipping paths containing `electron`, `claude`, `vscode`, or `cursor`. Falls back to `process.execPath` if no system Node is found. Set `MARTIN_NODE_PATH` to override (CI/restricted environments). This is the fix for `martin run` completing but writing no files when invoked from VS Code's integrated terminal or agent panel.
+
 ## [0.3.13]
 
 ### Added
