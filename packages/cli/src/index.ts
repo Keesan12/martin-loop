@@ -1378,7 +1378,11 @@ async function autoBootstrapGovernedRun(input: {
     workingDirectory: input.environment.workingDirectory,
     objective: input.request.objective,
     receiptScope: input.receiptScope
-  }).catch(() => {});
+  }).catch((error: unknown) => {
+    persistenceWarnings.push(
+      `${describeWorkflowPersistenceIssue("estimate")} ${error instanceof Error ? error.message : String(error)}`
+    );
+  });
 
   const gate = await evaluateCliRunGate({
     runsRoot: input.environment.runsRoot,
