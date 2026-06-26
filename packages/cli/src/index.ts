@@ -1014,6 +1014,33 @@ async function executeRunCommand(
         );
       }
     } else {
+      // Governance gate fires first — receipts must exist before we check whether
+      // the engine CLI is installed. This ensures "run estimate first" surfaces
+      // ahead of "install the engine CLI", which is the correct UX priority and
+      // makes governance enforcement consistent across all environments.
+      const gate = await evaluateCliRunGate({
+        runsRoot: cliEnvironment.runsRoot,
+        workingDirectory: cliEnvironment.workingDirectory,
+        objective: resolvedRequest.objective,
+        engine: cliEnvironment.engine,
+        verificationPlan: resolvedRequest.verificationPlan,
+        mutationMode: effectiveMutationMode,
+        receiptScope,
+        allowedPaths: resolvedRequest.allowedPaths,
+        deniedPaths: resolvedRequest.deniedPaths,
+        budget: resolvedRequest.budget
+      });
+
+      if (!gate.allowed) {
+        throw new CliCommandError("policy_blocked", gate.message, {
+          suggestion: gate.nextCommand,
+          details: {
+            missingSteps: gate.missingSteps,
+            receiptScope
+          }
+        });
+      }
+
       const blockingIssues: string[] = [];
       const workingDirectoryExists = await stat(cliEnvironment.workingDirectory).then(() => true).catch(() => false);
       if (!workingDirectoryExists) {
@@ -1041,29 +1068,6 @@ async function executeRunCommand(
           }
         );
       }
-    }
-
-    const gate = await evaluateCliRunGate({
-      runsRoot: cliEnvironment.runsRoot,
-      workingDirectory: cliEnvironment.workingDirectory,
-      objective: resolvedRequest.objective,
-      engine: cliEnvironment.engine,
-      verificationPlan: resolvedRequest.verificationPlan,
-      mutationMode: effectiveMutationMode,
-      receiptScope,
-      allowedPaths: resolvedRequest.allowedPaths,
-      deniedPaths: resolvedRequest.deniedPaths,
-      budget: resolvedRequest.budget
-    });
-
-    if (!gate.allowed) {
-      throw new CliCommandError("policy_blocked", gate.message, {
-        suggestion: gate.nextCommand,
-        details: {
-          missingSteps: gate.missingSteps,
-          receiptScope
-        }
-      });
     }
   } else if (engineRequired && resolvedRequest.unsafeAllowUnguardedRun) {
     preRunWarnings.push(
