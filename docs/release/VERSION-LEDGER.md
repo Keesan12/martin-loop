@@ -31,6 +31,7 @@ This file is the release source of truth for package/version mapping in this rep
 - live public GitHub release: `mcp-v0.3.4`
 - live public baseline in this train: `0.3.4`
 - standalone MCP public baseline: `0.3.4`
+- live npm dist-tag `latest` for MCP: `0.3.5`
 - current in-repo standalone release line: `0.3.5` for auto-governance tools and governance-status resource
 - next planned standalone release: `0.3.6` for routing economics surface
 - next planned follow-ons:

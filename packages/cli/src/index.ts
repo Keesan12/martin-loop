@@ -1240,9 +1240,12 @@ function buildPreflightSuggestion(objective: string, verificationPlan: string[])
   return `martin-loop preflight "${objective}"${verify}`;
 }
 
-function describeWorkflowPersistenceIssue(step: "doctor" | "session-start" | "preflight"): string {
+function describeWorkflowPersistenceIssue(step: "doctor" | "estimate" | "session-start" | "preflight"): string {
   if (step === "doctor") {
     return "MartinLoop could not persist the doctor receipt needed for governed execution.";
+  }
+  if (step === "estimate") {
+    return "Run `martin estimate \"<objective>\"` to preview cost before this run.";
   }
   if (step === "session-start") {
     return "MartinLoop could not persist the session-start receipt needed for governed execution.";
