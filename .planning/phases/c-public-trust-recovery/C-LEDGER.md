@@ -2,7 +2,7 @@
 
 ## C.0 Baseline
 
-- Confirmed internal target repo: `martin-Loop/ML_Core_OSS_Internal`.
+- Confirmed target repo: `Keesan12/martin-loop`.
 - Confirmed active branch: `codex/gsd-phase08-mainline`.
 - Confirmed clean starting worktree before C-slice edits.
 - Loaded new CounterSwarm audit findings and mapped to C.1-C.11.

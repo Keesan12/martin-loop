@@ -274,70 +274,105 @@ export function createOpenAiCompatibleAdapter(
         };
       }
 
-      // Call the OpenAI-compatible endpoint
+      // Call the OpenAI-compatible endpoint with exponential-backoff retry on
+      // transient failures (429 rate-limit, 503/5xx server errors, network errors).
+      // Auth errors (401/403) and bad-request errors (400) are not retried — they
+      // indicate a permanent configuration problem.
+      const MAX_RETRIES = 3;
+      const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
       const endpoint = `${baseUrl}/v1/chat/completions`;
       let responseText = "";
       let tokensIn = estimated.tokensIn;
       let tokensOut = 0;
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), timeoutMs);
 
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
+      if (baseUrl.includes("openrouter")) {
+        headers["HTTP-Referer"] = "https://martinloop.com";
+        headers["X-Title"] = "MartinLoop";
+      }
+      const requestBody = JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: prompt }
+        ],
+        temperature: 0.2,
+        max_tokens: 8192
+      });
+
+      let lastError = "";
+      let succeeded = false;
+
+      for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
         try {
-          const headers: Record<string, string> = { "Content-Type": "application/json" };
-          if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
-          // OpenRouter requires a site URL header for attribution
-          if (baseUrl.includes("openrouter")) {
-            headers["HTTP-Referer"] = "https://martinloop.com";
-            headers["X-Title"] = "MartinLoop";
+          const res = await fetchFn(endpoint, {
+            method: "POST",
+            headers,
+            body: requestBody,
+            signal: controller.signal
+          });
+
+          const body = (await res.json()) as OpenAiResponse;
+
+          if (!res.ok || body.error) {
+            const errMsg = body.error?.message ?? `HTTP ${res.status}`;
+            if (RETRYABLE_STATUS.has(res.status) && attempt < MAX_RETRIES - 1) {
+              lastError = errMsg;
+              // Exponential backoff: 1s, 2s, 4s
+              await new Promise((resolve) => setTimeout(resolve, 1000 * Math.pow(2, attempt)));
+              continue;
+            }
+            return {
+              status: "failed",
+              summary: `${model} API error: ${errMsg}`,
+              usage: normalizeUsage({ actualUsd: 0, tokensIn: 0, tokensOut: 0, provenance: "unavailable" }),
+              verification: { passed: false, summary: "API call failed before verifier." },
+              failure: { message: errMsg, classHint: "infrastructure_error" as FailureClass }
+            };
           }
 
-        const res = await fetchFn(endpoint, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            model,
-            messages: [
-              { role: "system", content: systemPrompt },
-              { role: "user", content: prompt }
-            ],
-            temperature: 0.2,
-            max_tokens: 8192
-          }),
-          signal: controller.signal
-        });
-
-        const body = (await res.json()) as OpenAiResponse;
-
-        if (!res.ok || body.error) {
-          const errMsg = body.error?.message ?? `HTTP ${res.status}`;
-          return {
-            status: "failed",
-            summary: `${model} API error: ${errMsg}`,
-            usage: normalizeUsage({ actualUsd: 0, tokensIn: 0, tokensOut: 0, provenance: "unavailable" }),
-            verification: { passed: false, summary: "API call failed before verifier." },
-            failure: { message: errMsg, classHint: "infrastructure_error" as FailureClass }
-          };
+          responseText = body.choices?.[0]?.message?.content ?? "";
+          if (body.usage) {
+            tokensIn = body.usage.prompt_tokens ?? tokensIn;
+            tokensOut = body.usage.completion_tokens ?? 0;
+          } else {
+            tokensOut = Math.ceil(responseText.length / CHARS_PER_TOKEN);
+          }
+          succeeded = true;
+          break;
+        } catch (error: unknown) {
+          const isAbort = error instanceof Error && error.name === "AbortError";
+          if (isAbort || attempt === MAX_RETRIES - 1) {
+            const message = isAbort
+              ? `${model} request timed out after ${timeoutMs}ms`
+              : String(error);
+            return {
+              status: "failed",
+              summary: message,
+              usage: normalizeUsage({ actualUsd: 0, tokensIn: 0, tokensOut: 0, provenance: "unavailable" }),
+              verification: { passed: false, summary: isAbort ? "Request timed out." : "Network error." },
+              failure: { message, classHint: "infrastructure_error" as FailureClass }
+            };
+          }
+          // Transient network error — retry with backoff
+          lastError = String(error);
+          await new Promise((resolve) => setTimeout(resolve, 1000 * Math.pow(2, attempt)));
+        } finally {
+          clearTimeout(timer);
         }
+      }
 
-        responseText = body.choices?.[0]?.message?.content ?? "";
-        if (body.usage) {
-          tokensIn = body.usage.prompt_tokens ?? tokensIn;
-          tokensOut = body.usage.completion_tokens ?? 0;
-        } else {
-          tokensOut = Math.ceil(responseText.length / CHARS_PER_TOKEN);
-        }
-      } catch (error: unknown) {
-        const isAbort = error instanceof Error && error.name === "AbortError";
-        const message = isAbort ? `${model} request timed out after ${timeoutMs}ms` : String(error);
+      if (!succeeded) {
         return {
           status: "failed",
-          summary: message,
+          summary: `${model} API error after ${MAX_RETRIES} attempts: ${lastError}`,
           usage: normalizeUsage({ actualUsd: 0, tokensIn: 0, tokensOut: 0, provenance: "unavailable" }),
-          verification: { passed: false, summary: isAbort ? "Request timed out." : "Network error." },
-          failure: { message, classHint: "infrastructure_error" as FailureClass }
+          verification: { passed: false, summary: "API call failed after retries." },
+          failure: { message: lastError, classHint: "infrastructure_error" as FailureClass }
         };
-      } finally {
-        clearTimeout(timer);
       }
 
       if (!responseText.trim()) {

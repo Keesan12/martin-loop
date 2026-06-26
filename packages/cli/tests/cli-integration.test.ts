@@ -344,8 +344,10 @@ describe("--engine flag", () => {
       );
 
       expect(result.exitCode).toBe(8);
-      expect(result.stderr).toContain("Governed run preflight blocked execution");
-      expect(result.stderr).toContain("martin-loop preflight");
+      // Governance gate fires before engine-availability check — message reflects
+      // missing receipt chain, not missing engine CLI.
+      expect(result.stderr).toContain("Governed run blocked until MartinLoop receipts exist");
+      expect(result.stderr).toContain("martin-loop doctor");
 
       const workflowState = await readWorkflowState(runsDir);
       const cliState = (workflowState?.cli ?? {}) as Record<string, unknown>;
