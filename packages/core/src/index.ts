@@ -1594,7 +1594,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     }
 
     if (patchDecision && patchDecision.decision !== "KEEP" && !failure) {
-      failure = classifyPatchDecisionFailure(patchDecision);
+      failure = classifyPatchDecisionFailure(patchDecision, result);
       loop = applyPatchFailureToLoop(loop, {
         attemptId,
         summary: patchDecision.summary,
@@ -2123,7 +2123,24 @@ function toPatchDecisionArtifact(decision: EvaluatedPatchDecision): PatchDecisio
   };
 }
 
-function classifyPatchDecisionFailure(decision: EvaluatedPatchDecision): FailureAssessment {
+const SANDBOX_WRITE_BLOCKED_PATTERNS = [
+  /createprocessasuserw failed:\s*\d+/iu,
+  /windows sandbox: runner error/iu,
+  /writing is blocked by read-only sandbox/iu,
+  /read-only filesystem sandbox/iu,
+  /approval is disabled/iu
+];
+
+function detectSandboxWriteBlocked(result: MartinAdapterResult): boolean {
+  const sources = [result.summary, result.failure?.message]
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+  return sources.some((source) => SANDBOX_WRITE_BLOCKED_PATTERNS.some((pattern) => pattern.test(source)));
+}
+
+function classifyPatchDecisionFailure(
+  decision: EvaluatedPatchDecision,
+  result?: MartinAdapterResult
+): FailureAssessment {
   if (decision.reasonCodes.includes("grounding_failure")) {
     return {
       failureClass: "repo_grounding_failure",
@@ -2169,6 +2186,16 @@ function classifyPatchDecisionFailure(decision: EvaluatedPatchDecision): Failure
       rationale: "Patch truth escalated the attempt because safety evidence blocked it.",
       retryable: false,
       recommendedIntervention: "escalate_human"
+    };
+  }
+
+  if (result && detectSandboxWriteBlocked(result)) {
+    return {
+      failureClass: "sandbox_write_blocked",
+      rationale:
+        "The adapter reported a completed patch but the workspace-write sandbox blocked the underlying file write, so no trustworthy code change landed on disk.",
+      retryable: true,
+      recommendedIntervention: "switch_adapter"
     };
   }
 

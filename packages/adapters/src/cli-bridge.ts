@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
 import { delimiter, dirname, extname, isAbsolute, join, resolve } from "node:path";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 import { diffStatsFromNumstat } from "./runtime-support.js";
 
@@ -491,21 +491,66 @@ export function createSpawnPlan(
   }
 
   const extension = extname(resolvedOrUndefined).toLowerCase();
-  if (extension === ".cmd" || extension === ".bat") {
+  if (extension === ".cmd" || extension === ".bat" || extension === ".ps1") {
+    // npm-installed CLIs resolve to a generated shim on Windows. Wrapping that shim through an
+    // extra cmd.exe/powershell.exe hop adds a process layer that can lose the OS-level
+    // workspace-write sandbox permission when the whole tree is already nested inside another
+    // restricted parent process (e.g. VS Code's extension host), even though the same shim works
+    // fine from a top-level PowerShell window. When we can statically resolve the shim's real
+    // wrapped `node <script>` target, invoke that directly instead — this removes the extra hop
+    // for every Windows launch, nested or not, with no behavior change when resolution fails.
+    const directScript = resolveNpmShimScript(resolvedOrUndefined);
+    if (directScript !== undefined) {
+      return { command: process.execPath, args: [directScript, ...args] };
+    }
+
+    if (extension === ".ps1") {
+      return {
+        command: "powershell.exe",
+        args: ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", resolvedOrUndefined, ...args]
+      };
+    }
+
     return {
       command: process.env.ComSpec || "cmd.exe",
       args: ["/d", "/c", resolvedOrUndefined, ...args]
     };
   }
 
-  if (extension === ".ps1") {
-    return {
-      command: "powershell.exe",
-      args: ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", resolvedOrUndefined, ...args]
-    };
+  return { command: resolvedOrUndefined, args };
+}
+
+/**
+ * npm generates Windows shims (.cmd/.ps1, occasionally .bat) that ultimately just exec
+ * `node <real-cli-script>.js <args>` relative to the shim's own directory. Parse the shim text to
+ * find that real script path and return it if it resolves to a file that actually exists on disk;
+ * otherwise return undefined so callers fall back to the existing wrapper-shell behavior unchanged.
+ */
+export function resolveNpmShimScript(shimPath: string): string | undefined {
+  let contents: string;
+  try {
+    contents = readFileSync(shimPath, "utf8");
+  } catch {
+    return undefined;
   }
 
-  return { command: resolvedOrUndefined, args };
+  const shimDir = dirname(shimPath);
+  const scriptPathPattern = /["']?(?:%~?dp0%?|\$basedir)[\\/]([^"'\s]+\.[cm]?js)["']?/gi;
+  const matches = contents.matchAll(scriptPathPattern);
+
+  for (const match of matches) {
+    const relativeScript = match[1];
+    if (!relativeScript) {
+      continue;
+    }
+    const segments = relativeScript.split(/[\\/]+/u).filter(Boolean);
+    const resolvedScript = resolve(shimDir, ...segments);
+    if (existsSync(resolvedScript)) {
+      return resolvedScript;
+    }
+  }
+
+  return undefined;
 }
 
 function resolveWindowsCommand(command: string, cwd: string): string | undefined {
