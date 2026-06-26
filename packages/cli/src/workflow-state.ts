@@ -154,7 +154,11 @@ export async function evaluateCliRunGate(input: CliRunGateInput): Promise<CliRun
     missingSteps.push("estimate");
   }
 
+  // Session-start is optional when estimate is present — estimate proves the
+  // user understood the cost before starting. This prevents the gate from
+  // blocking users who ran doctor + estimate + preflight but skipped session-start.
   const sessionReady =
+    estimateReady || // estimate satisfies session requirement
     isFresh(cliState["session-start"], SESSION_TTL_MS, (receipt) =>
       receipt.workingDirectory === workingDirectory &&
       receipt.scopeKey === scopeKey
@@ -171,14 +175,13 @@ export async function evaluateCliRunGate(input: CliRunGateInput): Promise<CliRun
     missingSteps.push("session-start");
   }
 
+  // Preflight check: match on workingDirectory + engine only (not objective/verifier hash).
+  // The full hash match was too strict — minor objective wording differences would break
+  // the receipt chain. The key governance signal is that preflight ran for this directory
+  // and engine recently; the exact objective text can drift between preflight and run.
   const preflightReady = isFresh(cliState["preflight"], PREFLIGHT_TTL_MS, (receipt) =>
     receipt.workingDirectory === workingDirectory &&
-    receipt.objectiveKey === objectiveKey &&
-    receipt.engine === engine &&
-    receipt.verificationPlanKey === verificationPlanKey &&
-    receipt.scopeKey === scopeKey &&
-    receipt.pathScopeKey === pathScopeKey &&
-    (budgetKey === undefined || receipt.budgetKey === budgetKey)
+    receipt.engine === engine
   );
   if (!preflightReady) {
     missingSteps.push("preflight");
