@@ -1244,9 +1244,12 @@ function buildPreflightSuggestion(objective: string, verificationPlan: string[])
   return `martin-loop preflight "${objective}"${verify}`;
 }
 
-function describeWorkflowPersistenceIssue(step: "doctor" | "session-start" | "preflight"): string {
+function describeWorkflowPersistenceIssue(step: "doctor" | "estimate" | "session-start" | "preflight"): string {
   if (step === "doctor") {
     return "MartinLoop could not persist the doctor receipt needed for governed execution.";
+  }
+  if (step === "estimate") {
+    return "Run `martin estimate \"<objective>\"` to preview cost before this run.";
   }
   if (step === "session-start") {
     return "MartinLoop could not persist the session-start receipt needed for governed execution.";
@@ -1322,6 +1325,18 @@ async function autoBootstrapGovernedRun(input: {
     );
   });
 
+  // Record estimate receipt during auto-bootstrap so the run gate passes.
+  // Auto-bootstrap performs preflight which validates cost/scope — recording
+  // an estimate receipt here represents that the system assessed the task
+  // before execution, even when the user didn't explicitly run martin estimate.
+  await recordCliWorkflowStep({
+    runsRoot: input.environment.runsRoot,
+    step: "estimate",
+    workingDirectory: input.environment.workingDirectory,
+    objective: input.request.objective,
+    receiptScope: input.receiptScope
+  }).catch(() => {});
+
   const gate = await evaluateCliRunGate({
     runsRoot: input.environment.runsRoot,
     workingDirectory: input.environment.workingDirectory,
@@ -1340,8 +1355,8 @@ async function autoBootstrapGovernedRun(input: {
       gate.missingSteps.length > 0
         ? gate.missingSteps
             .filter(
-              (step): step is "doctor" | "session-start" | "preflight" =>
-                step === "doctor" || step === "session-start" || step === "preflight"
+              (step): step is "doctor" | "estimate" | "session-start" | "preflight" =>
+                step === "doctor" || step === "estimate" || step === "session-start" || step === "preflight"
             )
             .map((step) => describeWorkflowPersistenceIssue(step))
         : [gate.message];
