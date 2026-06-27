@@ -55,12 +55,12 @@ describe("subpath exports", () => {
     };
 
     for (const subpath of ["./core", "./contracts", "./adapters"]) {
-      const entry = pkg.exports[subpath];
+      const entry = pkg.exports[subpath]!;
       expect(entry).toBeDefined();
-      expect(typeof (entry as { types?: string })?.types).toBe("string");
-      expect(typeof (entry as { default?: string })?.default).toBe("string");
-      expect((entry as { types?: string })?.types).toMatch(/\.d\.ts$/);
-      expect((entry as { default?: string })?.default).toMatch(/\.js$/);
+      expect(typeof entry.types).toBe("string");
+      expect(typeof entry.default).toBe("string");
+      expect(entry.types).toMatch(/\.d\.ts$/);
+      expect(entry.default).toMatch(/\.js$/);
     }
   });
 });

@@ -378,7 +378,8 @@ interface StreamingUsageSnapshot {
 
 function createStreamingUsageInspector(
   capUsd: number,
-  modelLabel: string | undefined
+  modelLabel: string | undefined,
+  promptTokenEstimate: number
 ): {
   onChunk: (chunk: Buffer, terminate: (reason: string) => void) => void;
   snapshot: () => StreamingUsageSnapshot;
@@ -390,7 +391,9 @@ function createStreamingUsageInspector(
   // Safety margin: terminate at 80% of cap to bound one-turn overshoot.
   // Without this, a single expensive turn can blow past the cap before the
   // next check fires (proven live: $1.50 cap → $28.42 actual).
-  const effectiveCapUsd = capUsd * 0.8;
+  const largeContext = promptTokenEstimate > 10_000;
+  const effectiveCapRatio = largeContext ? 0.7 : 0.8;
+  const effectiveCapUsd = capUsd * effectiveCapRatio;
 
   // Token-count ceiling fallback: if no usage events are ever parsed (e.g.
   // Claude changes its stream-json event format), use raw byte volume as a
@@ -420,7 +423,7 @@ function createStreamingUsageInspector(
     if (capUsd > 0 && cumulativeUsd > effectiveCapUsd) {
       terminate(
         `Streaming usage cap exceeded after ${String(turns)} turn(s): cumulative cost ~$${cumulativeUsd.toFixed(4)} ` +
-          `surpassed the per-attempt cap $${capUsd.toFixed(4)} (80% threshold: $${effectiveCapUsd.toFixed(4)}). ` +
+          `surpassed the per-attempt cap $${capUsd.toFixed(4)} (${String(Math.round(effectiveCapRatio * 100))}% threshold: $${effectiveCapUsd.toFixed(4)}). ` +
           `Subprocess terminated to bound runaway overspend.`
       );
     }
@@ -463,11 +466,27 @@ function createStreamingUsageInspector(
       return;
     }
 
+    const turnUsd = (turnTokensIn / 1000) * pricing.inputPer1K + (turnTokensOut / 1000) * pricing.outputPer1K;
+    const remainingBudgetBeforeTurn = Math.max(capUsd - cumulativeUsd, 0);
+
+    if (capUsd > 0 && remainingBudgetBeforeTurn > 0 && turnUsd > remainingBudgetBeforeTurn * 0.5) {
+      cumulativeUsd += turnUsd;
+      tokensIn += turnTokensIn;
+      tokensOut += turnTokensOut;
+      turns += 1;
+      usageEventSeen = true;
+      terminate(
+        `Single turn spend ~$${turnUsd.toFixed(4)} consumed more than 50% of the remaining per-attempt budget ` +
+          `($${remainingBudgetBeforeTurn.toFixed(4)} before the turn). Subprocess terminated to prevent a one-turn overshoot.`
+      );
+      return;
+    }
+
     tokensIn += turnTokensIn;
     tokensOut += turnTokensOut;
     turns += 1;
     usageEventSeen = true;
-    cumulativeUsd += (turnTokensIn / 1000) * pricing.inputPer1K + (turnTokensOut / 1000) * pricing.outputPer1K;
+    cumulativeUsd += turnUsd;
 
     checkBudgetExceeded(terminate);
   };
@@ -612,7 +631,7 @@ function inferStructuralClassHint(
  * Example for Claude:  () => ["--output-format", "json", "--print"]
  * Example for Codex:   () => ["exec", "--sandbox", "workspace-write", "-"]
  */
-export type CliArgsBuilder = (prompt: string) => string[];
+export type CliArgsBuilder = (prompt: string, request: MartinAdapterRequest) => string[];
 export type CliStdinBuilder = (prompt: string) => string | undefined;
 
 export interface AgentCliAdapterOptions {
@@ -759,7 +778,7 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
         }
       }
 
-      const args = options.argsBuilder(prompt);
+      const args = options.argsBuilder(prompt, request);
       const stdinData = options.stdinBuilder?.(prompt);
 
       // Live cumulative-cost circuit breaker: a single attempt should never be
@@ -770,7 +789,11 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
       // to roughly one turn's overshoot rather than the entire runaway session.
       const streamingUsage =
         options.streamingUsageCap && request.context.remainingBudgetUsd > 0
-          ? createStreamingUsageInspector(request.context.remainingBudgetUsd, options.model ?? options.command)
+          ? createStreamingUsageInspector(
+            request.context.remainingBudgetUsd,
+            options.model ?? options.command,
+            estimatedUsage.tokensIn
+          )
           : undefined;
 
       const agentResult = await runSubprocess(options.command, args, {
@@ -1131,7 +1154,7 @@ export function createClaudeCliAdapter(options: ClaudeCliAdapterOptions = {}): M
     supportsJsonOutput: true,
     streamingUsageCap: true,
     spawnImpl: options.spawnImpl,
-    argsBuilder: (_prompt) => [
+    argsBuilder: (_prompt, request) => [
       "--output-format",
       "stream-json",
       "--verbose",
@@ -1142,6 +1165,7 @@ export function createClaudeCliAdapter(options: ClaudeCliAdapterOptions = {}): M
       // inside the governed subprocess, causing conflicts and "MCP server being
       // overwritten" errors.
       "--strict-mcp-config",
+      ...(request.context.remainingTokens > 0 ? ["--max-tokens", String(request.context.remainingTokens)] : []),
       ...modelArgs,
       ...extraArgs
     ],

@@ -31,6 +31,16 @@ test("MCP package metadata stays aligned with server metadata", () => {
   assert.ok(packageJson.keywords.includes("martin_triage_runs"));
 });
 
+test("embedded MCP runtime version stays aligned with the published package version", async () => {
+  const packageVersionSourcePath = path.join(ROOT_DIR, "packages", "mcp", "src", "package-version.ts");
+  const packageVersionSource = await readFile(packageVersionSourcePath, "utf8");
+
+  assert.match(
+    packageVersionSource,
+    new RegExp(`MARTIN_MCP_PACKAGE_VERSION = "${packageJson.version.replace(/\./g, "\\.")}"`)
+  );
+});
+
 test("publish-mcp workflow keeps bounded npm view and smoke retries with backoff", async () => {
   const workflowPath = path.join(ROOT_DIR, ".github", "workflows", "publish-mcp.yml");
   const workflow = await readFile(workflowPath, "utf8");

@@ -19,6 +19,7 @@ import {
 
 const REQUIRED_TOOLS = [
   "martin_doctor",
+  "martin_estimate",
   "martin_plan",
   "martin_preflight",
   "martin_run",
@@ -257,6 +258,16 @@ export async function runPublishedMcpSmoke(options = {}) {
         engine: "claude",
       },
     });
+    const estimateResult = await client.callTool({
+      name: "martin_estimate",
+      arguments: {
+        objective: "Summarize the current runtime state",
+        workingDirectory: workspaceRoot,
+        engine: "claude",
+        budgetUsd: 1,
+        fileScope: ["src/smoke-entry.ts"],
+      },
+    });
     const planResult = await client.callTool({
       name: "martin_plan",
       arguments: {
@@ -374,6 +385,7 @@ export async function runPublishedMcpSmoke(options = {}) {
     });
 
     const publishedUserJourney = {
+      estimateResult: JSON.parse(readTextContent(estimateResult)),
       planResult: JSON.parse(readTextContent(planResult)),
       preflightResult: JSON.parse(readTextContent(preflightResult)),
       listRuns: JSON.parse(readTextContent(listRuns)),
@@ -624,6 +636,7 @@ function readResourceText(result) {
 
 function assertPublishedUserJourneyEvidence(journey, expected) {
   const requiredKeys = [
+    "estimateResult",
     "preflightResult",
     "listRuns",
     "getRun",
@@ -639,12 +652,17 @@ function assertPublishedUserJourneyEvidence(journey, expected) {
   const missingKeys = requiredKeys.filter((key) => journey[key] === undefined);
   if (missingKeys.length > 0) {
     throw new Error(
-      `Published smoke did not exercise installed-package 0.2.0 journey: missing ${missingKeys.join(", ")}.`,
+      `Published smoke did not exercise the installed-package governed journey: missing ${missingKeys.join(", ")}.`,
     );
   }
 
   if (journey.preflightResult.normalized?.objective !== "Summarize the current runtime state") {
     throw new Error("Published martin_preflight did not preserve the packaged smoke objective.");
+  }
+
+  if (journey.estimateResult.objective !== "Summarize the current runtime state" ||
+    typeof journey.estimateResult.expectedCostUsd !== "number") {
+    throw new Error("Published martin_estimate did not return estimate evidence for the packaged smoke objective.");
   }
 
   if (!journey.listRuns.recentRuns?.some((run) => run.loopId === expected.loopId)) {

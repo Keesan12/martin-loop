@@ -60,6 +60,14 @@ gemini mcp add martin-loop -- npx -y @martinloop/mcp
 npx -y @martinloop/mcp
 ```
 
+### Optional HTTP Endpoint
+
+If you need a local HTTP endpoint for a bridge or proxy, start the server in HTTP mode:
+
+```sh
+npx -y @martinloop/mcp --http --port 3033
+```
+
 ## How a Governed Run Works
 
 ```
@@ -87,11 +95,11 @@ Every attempt runs your verifier. Every dollar is tracked. If the agent drifts o
 **Ship the work:**
 `martin_pr_summary` `martin_create_pr` `martin_review_pr`
 
-### 11 Read-Only Resources
+### Key Read-Only Resources
 
 Your agent can pull context without side effects:
 
-`martin://runs/latest` · `martin://runs/latest/proof-card` · `martin://runs/latest/budget-status` · `martin://runs/latest/verifier-evidence` · `martin://runs/recent` · `martin://server/health` · `martin://policies/current` · `martin://agent/next-step` · `martin://guides/mcp-usage` · `martin://guides/agent-start` · `martin://repo/risk-map`
+`martin://runs/latest` · `martin://runs/latest/proof-card` · `martin://runs/latest/budget-status` · `martin://runs/latest/verifier-evidence` · `martin://runs/recent` · `martin://server/health` · `martin://policies/current` · `martin://agent/next-step` · `martin://agent/governance-status` · `martin://agent/mode-status` · `martin://agent/memory-summary` · `martin://guides/mcp-usage` · `martin://guides/agent-start` · `martin://repo/risk-map`
 
 ### Configuration Profiles
 

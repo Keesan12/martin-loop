@@ -4,7 +4,7 @@ This file is the release source of truth for package/version mapping in this rep
 
 ## Root package: `martin-loop`
 
-- live npm dist-tag `latest`: `0.3.15` (0.3.16 pending merge of fix/0.3.16-governance-fixes)
+- live npm dist-tag `latest`: `0.3.15`
 - live public GitHub release: `v0.3.15`
 - live public baseline in this train: `0.3.16`
 - root public baseline: `0.3.16`
@@ -25,20 +25,20 @@ This file is the release source of truth for package/version mapping in this rep
   - `0.3.14` Electron/IDE Node conflict fix — resolveSystemNode() finds system node.exe, not Electron's bundled Node
   - `0.3.15` martin mode, martin clean, preflight gate objective-hash removed, session-start optional when estimate present
   - `0.3.16` governance hooks on re-install, gate fires before engine check, estimate persistence, OpenAI 429/5xx retry
-- current in-repo root release line: `0.3.16`
+- `0.3.17` Codex session-start fast path, stronger Claude budget enforcement, MCP HTTP transport, mode-status resource, pnpm 10 frozen-lockfile fix
+- current in-repo root release line: `0.3.17`
 - next planned root follow-on: `0.4.0` for route compression and MCP economics surface
 
 ## Standalone package: `@martinloop/mcp`
 
-- live npm dist-tag `latest`: `0.3.4`
-- live public GitHub release: `mcp-v0.3.4`
-- live public baseline in this train: `0.3.4`
-- standalone MCP public baseline: `0.3.4`
-- live npm dist-tag `latest` for MCP: `0.3.5`
-- current in-repo standalone release line: `0.3.5` for auto-governance tools and governance-status resource
-- next planned standalone release: `0.3.6` for routing economics surface
+- live npm dist-tag `latest`: `0.3.5`
+- live public GitHub release: `mcp-v0.3.5`
+- live public baseline in this train: `0.3.5`
+- standalone MCP public baseline: `0.3.5`
+- current in-repo standalone release line: `0.3.6` for HTTP transport and mode-status resource
+- next planned standalone release: `0.3.7` for additional host-coverage follow-ups
 - next planned follow-ons:
-  - `0.3.6` reserved for additional host-coverage follow-ups
+  - `0.3.7` reserved for additional host-coverage follow-ups
 
 ## Release rules
 

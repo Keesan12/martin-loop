@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [0.3.17]
+
+### Added
+- **MCP HTTP transport** — the standalone MCP server now supports `--http`, `--host`, `--port`, and `--path` for local bridge and proxy setups, while keeping stdio as the default host transport.
+- **`martin://agent/mode-status` MCP resource** — agents can now read the current MartinLoop mode (`auto`, `plan`, `edits`), whether it came from a project override or global default, and the exact commands to switch it.
+
+### Fixed
+- **Codex session-start stays fast** — `session-start` and `phase session-start` no longer perform a live Codex launch probe during diagnostics. They now report static host readiness immediately and point operators to `martin preflight` for the live launch check.
+- **Claude budget caps harden against large-context overshoot** — governed Claude launches now pass the remaining token budget through to the subprocess, tighten the streaming guardrail for very large prompts, and terminate single turns that consume more than half of the remaining per-attempt budget.
+- **Codex governed coverage now reflects real host behavior** — Codex integration tests no longer rely on fake subprocess shims. Live Codex tests probe real CLI availability and skip cleanly when Codex is not installed.
+- **Frozen pnpm installs are valid again on pnpm 10** — workspace overrides now live in `pnpm-workspace.yaml`, which keeps `pnpm install --frozen-lockfile` aligned locally and in GitHub Actions.
+- **Release installs no longer stall on interactive build approvals** — `pnpm-workspace.yaml` now explicitly approves the required `esbuild` and `protobufjs` build scripts, so CI and local frozen installs share the same non-interactive dependency policy.
+
 ## [0.3.16]
 
 ### Fixed

@@ -1,3 +1,7 @@
+import { readFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join } from "node:path";
+
 import type {
   ReadResourceResult,
   Resource,
@@ -46,6 +50,7 @@ export const MARTIN_STATIC_RESOURCE_URIS = {
   operatingRulesGuide: "martin://guides/operating-rules",
   publishReadinessGuide: "martin://guides/publish-readiness",
   governanceStatus: "martin://agent/governance-status",
+  modeStatus: "martin://agent/mode-status",
   memorySummary: "martin://agent/memory-summary"
 } as const;
 
@@ -218,6 +223,13 @@ export const MARTIN_STATIC_RESOURCES: Resource[] = [
     mimeType: "application/json"
   },
   {
+    uri: MARTIN_STATIC_RESOURCE_URIS.modeStatus,
+    name: "martin_mode_status",
+    title: "Martin Mode Status",
+    description: "Current MartinLoop working mode, whether it is inherited or explicitly configured, and how to switch it.",
+    mimeType: "application/json"
+  },
+  {
     uri: MARTIN_STATIC_RESOURCE_URIS.memorySummary,
     name: "martin_memory_summary",
     title: "Martin Memory Summary",
@@ -313,6 +325,9 @@ export async function readMartinResource(
 
     case MARTIN_STATIC_RESOURCE_URIS.governanceStatus:
       return jsonResource(input.uri, withDiscoveryMetadata(await buildGovernanceStatusResource(context.runsRoot, context.workingDirectory), context.runsRoot));
+
+    case MARTIN_STATIC_RESOURCE_URIS.modeStatus:
+      return jsonResource(input.uri, withDiscoveryMetadata(await buildModeStatusResource(context.workingDirectory), context.runsRoot));
 
     case MARTIN_STATIC_RESOURCE_URIS.agentNextStep:
       return jsonResource(input.uri, withDiscoveryMetadata(await buildAgentNextStepResource(context.runsRoot), context.runsRoot));
@@ -755,6 +770,36 @@ async function buildGovernanceStatusResource(runsRoot: string, workingDirectory:
   };
 }
 
+async function buildModeStatusResource(workingDirectory: string): Promise<Record<string, unknown>> {
+  const configPath = join(homedir(), ".martin", "config.json");
+  let config: { defaultMode?: string; projectOverrides?: Record<string, string> } = {};
+
+  try {
+    config = JSON.parse(await readFile(configPath, "utf8")) as typeof config;
+  } catch {
+    // Fresh config means the implicit auto default is in effect.
+  }
+
+  const projectMode = config.projectOverrides?.[workingDirectory];
+  const defaultMode = config.defaultMode ?? "auto";
+  const effectiveMode = projectMode ?? defaultMode;
+
+  return {
+    kind: "mode-status",
+    effectiveMode,
+    defaultMode,
+    scope: projectMode ? "project" : config.defaultMode ? "global" : "implicit_default",
+    configured: Boolean(projectMode || config.defaultMode),
+    projectOverride: projectMode ?? null,
+    workingDirectory,
+    switchCommands: {
+      auto: "martin mode auto",
+      plan: "martin mode plan",
+      edits: "martin mode edits"
+    }
+  };
+}
+
 function buildCurrentPoliciesResource(workingDirectory: string): Record<string, unknown> {
   const signals = inspectRepoSignals(workingDirectory);
   const recommended = buildPolicyPackDefinition(undefined, signals);
@@ -848,7 +893,7 @@ Martin Loop exposes governed coding workflows over MCP. Use the server health an
 ## Current Martin MCP Surface
 
 - Tools: \`martin_run\`, \`martin_inspect\`, \`martin_status\`, \`martin_doctor\`, \`martin_preflight\`, \`martin_list_runs\`, \`martin_triage_runs\`, \`martin_get_run\`, \`martin_get_attempt\`, \`martin_get_verification_results\`, \`martin_run_dossier\`
-- Static resources: \`${MARTIN_STATIC_RESOURCE_URIS.serverHealth}\`, \`${MARTIN_STATIC_RESOURCE_URIS.recentRuns}\`, \`${MARTIN_STATIC_RESOURCE_URIS.triage}\`, \`${MARTIN_STATIC_RESOURCE_URIS.latestSummary}\`, \`${MARTIN_STATIC_RESOURCE_URIS.latestProofCard}\`, \`${MARTIN_STATIC_RESOURCE_URIS.latestBudgetStatus}\`, \`${MARTIN_STATIC_RESOURCE_URIS.latestVerifierEvidence}\`, \`${MARTIN_STATIC_RESOURCE_URIS.latestRollbackEvidence}\`, \`${MARTIN_STATIC_RESOURCE_URIS.agentNextStep}\`, \`${MARTIN_STATIC_RESOURCE_URIS.mcpUsageGuide}\`, \`${MARTIN_STATIC_RESOURCE_URIS.agentStartGuide}\`, \`${MARTIN_STATIC_RESOURCE_URIS.publishReadinessGuide}\`
+- Static resources: \`${MARTIN_STATIC_RESOURCE_URIS.serverHealth}\`, \`${MARTIN_STATIC_RESOURCE_URIS.recentRuns}\`, \`${MARTIN_STATIC_RESOURCE_URIS.triage}\`, \`${MARTIN_STATIC_RESOURCE_URIS.latestSummary}\`, \`${MARTIN_STATIC_RESOURCE_URIS.latestProofCard}\`, \`${MARTIN_STATIC_RESOURCE_URIS.latestBudgetStatus}\`, \`${MARTIN_STATIC_RESOURCE_URIS.latestVerifierEvidence}\`, \`${MARTIN_STATIC_RESOURCE_URIS.latestRollbackEvidence}\`, \`${MARTIN_STATIC_RESOURCE_URIS.agentNextStep}\`, \`${MARTIN_STATIC_RESOURCE_URIS.governanceStatus}\`, \`${MARTIN_STATIC_RESOURCE_URIS.modeStatus}\`, \`${MARTIN_STATIC_RESOURCE_URIS.memorySummary}\`, \`${MARTIN_STATIC_RESOURCE_URIS.mcpUsageGuide}\`, \`${MARTIN_STATIC_RESOURCE_URIS.agentStartGuide}\`, \`${MARTIN_STATIC_RESOURCE_URIS.publishReadinessGuide}\`
 - Resource templates: \`martin://runs/{loopId}\`, \`martin://runs/{loopId}/attempts/{attemptIndex}\`, \`martin://runs/{loopId}/verification\`
 - Prompts: \`martin_start\`, \`martin_preflight\`, \`martin_triage\`, \`martin_resume\`, \`martin_prove\`, \`martin_release_check\`, \`martin_governed_coding_kickoff\`, \`martin_debug_failed_run\`, \`martin_publish_readiness_review\`, \`martin_triage_run_store\`
 

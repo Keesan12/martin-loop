@@ -2,6 +2,8 @@
 
 The `@martinloop/mcp` package exposes one primary coding execution entrypoint plus planning, inspection, run-control, and review helpers.
 
+The server runs over stdio by default and also supports a local HTTP endpoint with `--http`, `--host`, `--port`, and `--path`.
+
 ## Planning and Execution
 
 | Tool | Purpose |
@@ -58,6 +60,9 @@ The `@martinloop/mcp` package exposes one primary coding execution entrypoint pl
 - `martin://repo/risk-map`
 - `martin://verifiers/results`
 - `martin://agent/next-step`
+- `martin://agent/governance-status`
+- `martin://agent/mode-status`
+- `martin://agent/memory-summary`
 - `martin://guides/mcp-usage`
 - `martin://guides/agent-start`
 - `martin://guides/command-map`

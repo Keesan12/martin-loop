@@ -49,6 +49,10 @@ async function readRootManifest() {
   return JSON.parse(await readRepoFile("package.json"));
 }
 
+async function readFailureTaxonomyRuntime() {
+  return JSON.parse(await readRepoFile(path.join("docs", "oss", "failure-taxonomy.runtime.json")));
+}
+
 async function collectMarkdownFiles(relativePath) {
   const fullPath = path.join(ROOT_DIR, relativePath);
   const entries = await readdir(fullPath, { withFileTypes: true });
@@ -104,6 +108,8 @@ function extractLocalMarkdownLinks(contents) {
 test("root README is a public product entry point", async () => {
   const readme = await readRepoFile("README.md");
   const manifest = await readRootManifest();
+  const taxonomy = await readFailureTaxonomyRuntime();
+  const taxonomyHeading = `## Failure Taxonomy (${taxonomy.canonicalClassCount} Runtime Classes)`;
 
   const expectedOrder = [
     "## Why MartinLoop",
@@ -111,7 +117,7 @@ test("root README is a public product entry point", async () => {
     "## Visual Proof",
     "## See It In Action",
     "## Ralph-Style Loops",
-    "## Failure Taxonomy (12 Runtime Classes)",
+    taxonomyHeading,
     "## What It Does",
     "## How It Works",
     "## CLI",
@@ -139,7 +145,7 @@ test("root README is a public product entry point", async () => {
   assert.match(readme, /## Visual Proof/);
   assert.match(readme, /## See It In Action/);
   assert.match(readme, /## Ralph-Style Loops/);
-  assert.match(readme, /## Failure Taxonomy \(12 Runtime Classes\)/);
+  assert.match(readme, new RegExp(`## Failure Taxonomy \\(${taxonomy.canonicalClassCount} Runtime Classes\\)`));
   assert.match(readme, /MartinLoop turns an AI coding run into an inspectable execution record/i);
   assert.match(readme, /Ungoverned agents can retry until cost and scope drift/i);
   assert.match(readme, /<img src="\.\/docs\/assets\/cli-animated\.svg" alt="MartinLoop CLI showing a governed agent run"/);
@@ -154,7 +160,7 @@ test("root README is a public product entry point", async () => {
   assert.match(readme, /Star this repo/i);
   assert.match(readme, /href="https:\/\/martinloop\.com"/);
   assert.match(readme, /href="mailto:support@martinloop\.com"/);
-  assert.match(readme, /\[Failure Taxonomy \(12 Runtime Classes\)]\(.*docs\/oss\/FAILURE-TAXONOMY-12\.md\)/);
+  assert.match(readme, new RegExp(`\\[Failure Taxonomy \\(${taxonomy.canonicalClassCount} Runtime Classes\\)\\]\\(.*docs\\/oss\\/FAILURE-TAXONOMY\\.md\\)`));
   assert.match(readme, /--budget <n>/);
   assert.match(readme, /--allow-path <glob>/);
   assert.match(readme, /npx(?: -y)? martin-loop(?:@latest)? demo/);
@@ -170,24 +176,12 @@ test("root README is a public product entry point", async () => {
   assert.doesNotMatch(readme, /What's New In/i);
 });
 
-test("canonical public failure taxonomy contains exactly 12 runtime class labels", async () => {
-  const taxonomy = await readRepoFile("docs/oss/FAILURE-TAXONOMY-12.md");
-  const labels = [...taxonomy.matchAll(/^\| `([a-z0-9_]+)` \|/gm)].map((match) => match[1]);
+test("canonical public failure taxonomy matches the runtime contract", async () => {
+  const taxonomyDoc = await readRepoFile("docs/oss/FAILURE-TAXONOMY.md");
+  const taxonomyRuntime = await readFailureTaxonomyRuntime();
+  const labels = [...taxonomyDoc.matchAll(/^\| `([a-z0-9_]+)` \|/gm)].map((match) => match[1]);
 
-  assert.deepEqual(labels, [
-    "logic_error",
-    "hallucination",
-    "syntax_error",
-    "type_error",
-    "test_regression",
-    "scope_creep",
-    "no_progress",
-    "repo_grounding_failure",
-    "verification_failure",
-    "environment_mismatch",
-    "budget_pressure",
-    "safety_leash_blocked",
-  ]);
+  assert.deepEqual(labels, taxonomyRuntime.failureClasses);
 });
 
 test("public markdown copy avoids non-public process language", async () => {

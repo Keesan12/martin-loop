@@ -1,8 +1,8 @@
 # MCP Setup
 
-The `@martinloop/mcp` package exposes MartinLoop through stdio for MCP-capable hosts.
+The `@martinloop/mcp` package exposes MartinLoop through stdio by default and can also run as a local HTTP MCP endpoint when a bridge or proxy needs one.
 
-`0.3.0` is the current public MCP package line. It adds a stronger guided flow for hosts and a stricter run gate so `martin_run` only starts after the matching readiness, planning, and preflight steps have happened.
+`0.3.6` is the current public MCP package line. It adds an HTTP transport option for local bridges and a `mode-status` resource so hosts can read the current MartinLoop working mode before they start a run.
 
 ## Install
 
@@ -30,6 +30,12 @@ Windows:
 
 ```sh
 claude mcp add --transport stdio --scope user martin-loop -- cmd /c npx -y @martinloop/mcp
+```
+
+Optional local HTTP endpoint:
+
+```sh
+npx -y @martinloop/mcp --http --port 3033
 ```
 
 ## Generate Host Config

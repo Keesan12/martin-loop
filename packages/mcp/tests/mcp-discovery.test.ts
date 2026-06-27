@@ -146,6 +146,7 @@ describe("Martin MCP discovery resources", () => {
       MARTIN_STATIC_RESOURCE_URIS.operatingRulesGuide,
       MARTIN_STATIC_RESOURCE_URIS.publishReadinessGuide,
       MARTIN_STATIC_RESOURCE_URIS.governanceStatus,
+      MARTIN_STATIC_RESOURCE_URIS.modeStatus,
       MARTIN_STATIC_RESOURCE_URIS.memorySummary
     ]);
     expect(listedTemplates.resourceTemplates.map((template) => template.uriTemplate)).toEqual([
@@ -180,6 +181,7 @@ describe("Martin MCP discovery resources", () => {
       const verifierEvidence = await readMartinResource({ uri: MARTIN_STATIC_RESOURCE_URIS.latestVerifierEvidence, runsDir: runsRoot });
       const rollbackEvidence = await readMartinResource({ uri: MARTIN_STATIC_RESOURCE_URIS.latestRollbackEvidence, runsDir: runsRoot });
       const nextStep = await readMartinResource({ uri: MARTIN_STATIC_RESOURCE_URIS.agentNextStep, runsDir: runsRoot });
+      const modeStatus = await readMartinResource({ uri: MARTIN_STATIC_RESOURCE_URIS.modeStatus, runsDir: runsRoot });
 
       expect(guide.contents[0]?.text).toContain("martin_governed_coding_kickoff");
       expect(guide.contents[0]?.text).toContain("martin_start");
@@ -200,6 +202,8 @@ describe("Martin MCP discovery resources", () => {
       expect(rollbackEvidence.contents[0]?.text).toContain("\"kind\": \"rollback-evidence\"");
       expect(nextStep.contents[0]?.text).toContain("\"action\": \"debug_failed_run\"");
       expect(nextStep.contents[0]?.text).toContain("\"requiredWorkflow\"");
+      expect(modeStatus.contents[0]?.text).toContain("\"kind\": \"mode-status\"");
+      expect(modeStatus.contents[0]?.text).toContain("\"effectiveMode\": \"auto\"");
     });
   });
 

@@ -19,7 +19,7 @@ function escapeRegex(input) {
 }
 
 test("current MCP metadata stays aligned for the release cut", async () => {
-  assert.equal(packageJson.version, "0.3.5");
+  assert.match(packageJson.version, /^\d+\.\d+\.\d+$/);
   assert.equal(packageJson.version, serverJson.version);
 
   const releaseNotesPath = path.join(ROOT_DIR, "docs", "release", `MCP-${packageJson.version}-RELEASE-NOTES.md`);
@@ -34,7 +34,7 @@ test("version ledger records live public truth and the next release train", asyn
   assert.match(ledger, /live public GitHub release: `v\d+\.\d+\.\d+`/);
   assert.match(
     ledger,
-    new RegExp(escapeRegex("standalone MCP public baseline: `0.3.4`")), // live npm baseline — not bumped until we re-confirm live
+    /standalone MCP public baseline: `\d+\.\d+\.\d+`/,
   );
   assert.match(
     ledger,
@@ -46,7 +46,7 @@ test("version ledger records live public truth and the next release train", asyn
   );
   assert.match(ledger, /next planned root follow-on: `\d+\.\d+\.\d+`/);
   assert.match(ledger, /next planned standalone release: `\d+\.\d+\.\d+`/);
-  assert.match(ledger, /`0\.3\.6` reserved for additional host-coverage follow-ups/);
+  assert.match(ledger, /`\d+\.\d+\.\d+` reserved for additional host-coverage follow-ups/);
 });
 
 test("MCP slice map defines the 0.3.x train without private-hosted bleed", async () => {

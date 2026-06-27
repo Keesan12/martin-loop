@@ -2,7 +2,7 @@
 
 This mapping is compatibility-only for historical artifacts that used legacy operational labels.
 
-- Canonical taxonomy remains the 12 runtime classes in [FAILURE-TAXONOMY-12.md](./FAILURE-TAXONOMY-12.md).
+- Canonical taxonomy remains the runtime classes in [FAILURE-TAXONOMY.md](./FAILURE-TAXONOMY.md).
 - New receipts, APIs, and summaries should emit canonical runtime classes only.
 - Legacy labels may be accepted on ingestion/replay and mapped to canonical runtime classes.
 

@@ -1,7 +1,7 @@
 {
   "name": "martin-loop",
   "private": false,
-  "version": "0.3.16",
+  "version": "0.3.17",
   "type": "module",
   "description": "Open-source command center for governed AI coding agents with built-in onboarding, hard gates, MCP, and shareable run receipts.",
   "packageManager": "pnpm@10.33.0",
@@ -112,17 +112,5 @@
   "workspaces": [
     "packages/*",
     "benchmarks"
-  ],
-  "pnpm": {
-    "overrides": {
-      "@hono/node-server": "^1.19.13",
-      "ajv": "^8.20.0",
-      "fast-uri": "^3.1.2",
-      "hono": "^4.12.21",
-      "ip-address": "^10.1.1",
-      "postcss": "^8.5.15",
-      "qs": "^6.15.2",
-      "vite": "^7.3.2"
-    }
-  }
+  ]
 }

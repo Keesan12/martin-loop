@@ -25,7 +25,11 @@ import {
   __setProofModeVerifierSpawnImplForTests,
   __setRunStoreOverrideForTests
 } from "../src/tools/run-loop.js";
-import { createMartinMcpServer } from "../src/server.js";
+import {
+  connectMartinMcpHttpServer,
+  createMartinMcpServer,
+  parseMartinMcpServerArgs
+} from "../src/server.js";
 
 type ServerRequestHandler = (request: unknown, extra: unknown) => Promise<unknown>;
 type ServerWithRequestHandlers = {
@@ -485,8 +489,72 @@ describe("server validation", () => {
     }
 
     expect(MARTIN_RESOURCE_URIS).toContain("martin://runs/triage");
+    expect(MARTIN_RESOURCE_URIS).toContain("martin://agent/mode-status");
     expect(MARTIN_RESOURCE_TEMPLATE_URIS).toContain("martin://runs/{loopId}/verification");
     expect(MARTIN_PROMPT_NAMES).toContain("martin_triage_run_store");
+  });
+
+  it("parses MCP HTTP startup flags with safe defaults", () => {
+    expect(parseMartinMcpServerArgs([])).toEqual({ transport: "stdio" });
+    expect(parseMartinMcpServerArgs(["--http"])).toEqual({
+      transport: "http",
+      host: "127.0.0.1",
+      port: 3033,
+      path: "/mcp"
+    });
+    expect(parseMartinMcpServerArgs(["--http", "--host", "0.0.0.0", "--port", "4040", "--path", "/bridge"])).toEqual({
+      transport: "http",
+      host: "0.0.0.0",
+      port: 4040,
+      path: "/bridge"
+    });
+    expect(() => parseMartinMcpServerArgs(["--http", "--port", "NaN"])).toThrow("Invalid --port value");
+  });
+
+  it("serves the MCP endpoint over streamable HTTP", async () => {
+    const handle = await connectMartinMcpHttpServer({ host: "127.0.0.1", port: 0, path: "/mcp" });
+
+    try {
+      const notFound = await fetch(`http://127.0.0.1:${handle.port}/wrong`, { method: "GET" });
+      expect(notFound.status).toBe(404);
+
+      const invalidJson = await fetch(handle.endpoint, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json"
+        },
+        body: "{not-json"
+      });
+      expect(invalidJson.status).toBe(400);
+
+      const initialize = await fetch(handle.endpoint, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          accept: "application/json, text/event-stream"
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "initialize",
+          params: {
+            protocolVersion: "2025-06-18",
+            capabilities: {},
+            clientInfo: {
+              name: "martin-http-test",
+              version: "1.0.0"
+            }
+          }
+        })
+      });
+
+      expect(initialize.status).toBe(200);
+      const responseText = await initialize.text();
+      expect(responseText).toContain("serverInfo");
+      expect(responseText).toContain("\"name\":\"martin-loop\"");
+    } finally {
+      await handle.close();
+    }
   });
 
   it("preserves typed resource and prompt errors through server handlers", async () => {
@@ -569,7 +637,7 @@ describe("server validation", () => {
     });
   });
 
-  it("accepts a matching doctor-plan-preflight receipt chain for martin_run when maxUsd is below the default soft limit", async () => {
+  it("accepts a matching doctor-estimate-plan-preflight receipt chain for martin_run when maxUsd is below the default soft limit", async () => {
     await withValidationRunsRoot(async () => {
       await withValidationWorkspaceRoot(async (workspaceRoot) => {
         const previousLive = process.env.MARTIN_LIVE;
@@ -601,6 +669,29 @@ describe("server validation", () => {
               {}
             );
             expect((doctorResult as { isError?: boolean }).isError).not.toBe(true);
+
+            const estimateResult = await callTool(
+              {
+                method: "tools/call",
+                params: {
+                  name: "martin_estimate",
+                  arguments: {
+                    objective: "Summarize the current runtime state",
+                    workingDirectory: workspaceRoot,
+                    engine: "claude",
+                    budgetUsd: 1,
+                    fileScope: ["src/smoke-entry.ts"]
+                  }
+                }
+              },
+              {}
+            );
+            expect((estimateResult as { isError?: boolean }).isError).not.toBe(true);
+            expect(JSON.parse(readToolText(estimateResult))).toMatchObject({
+              objective: "Summarize the current runtime state",
+              engine: "claude",
+              budgetUsd: 1
+            });
 
             const planResult = await callTool(
               {
@@ -683,7 +774,7 @@ describe("server validation", () => {
     });
   });
 
-  it("accepts a matching doctor-plan-preflight receipt chain when no path allow/deny filters are provided", async () => {
+  it("accepts a matching doctor-estimate-plan-preflight receipt chain when no path allow/deny filters are provided", async () => {
     await withValidationRunsRoot(async () => {
       await withValidationWorkspaceRoot(async (workspaceRoot) => {
         const previousLive = process.env.MARTIN_LIVE;
@@ -714,6 +805,22 @@ describe("server validation", () => {
               },
               {}
             );
+            const estimateResult = await callTool(
+              {
+                method: "tools/call",
+                params: {
+                  name: "martin_estimate",
+                  arguments: {
+                    objective,
+                    workingDirectory: workspaceRoot,
+                    engine: "claude",
+                    budgetUsd: 1
+                  }
+                }
+              },
+              {}
+            );
+            expect((estimateResult as { isError?: boolean }).isError).not.toBe(true);
             await callTool(
               {
                 method: "tools/call",

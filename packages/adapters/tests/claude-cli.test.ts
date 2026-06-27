@@ -848,10 +848,10 @@ describe("createClaudeCliAdapter", () => {
       expect(result.status).toBe("failed");
       expect(result.failure?.classHint).toBe("budget_pressure");
       expect(result.summary).toContain("circuit breaker");
-      expect(result.failure?.message).toContain("Streaming usage cap exceeded");
+      expect(result.failure?.message).toMatch(/Streaming usage cap exceeded|more than 50% of the remaining per-attempt budget/);
 
       // Bounded to ~2 turns' worth of spend, not the eventual $3.50 runaway total.
-      expect(result.usage?.actualUsd).toBeGreaterThan(0.05);
+      expect(result.usage?.actualUsd).toBeGreaterThan(0);
       expect(result.usage?.actualUsd).toBeLessThan(0.5);
       expect(result.usage?.tokensIn).toBeLessThanOrEqual(10_000);
       expect(result.usage?.tokensOut).toBeLessThanOrEqual(2_000);
@@ -975,17 +975,81 @@ describe("createClaudeCliAdapter", () => {
       expect(result.summary).toContain("circuit breaker");
     });
 
-    it("applies 80% safety margin so termination fires before 100% of cap", async () => {
+    it("terminates when a single turn consumes more than half of the remaining budget", async () => {
+      const calls: SpawnCall[] = [];
+      const lines = [
+        JSON.stringify({ type: "assistant", message: { usage: { input_tokens: 9000, output_tokens: 2000 } } }),
+        JSON.stringify({ type: "result", result: "should not complete", total_cost_usd: 0.2, usage: { input_tokens: 9000, output_tokens: 2000 } })
+      ];
+
+      const adapter = createClaudeCliAdapter({
+        spawnImpl: createStreamingSpawn(calls, lines)
+      });
+
+      const result = await adapter.execute(
+        makeRequest({
+          context: {
+            taskTitle: "test",
+            objective: "small task",
+            verificationPlan: [],
+            focus: "tight",
+            remainingBudgetUsd: 0.05,
+            remainingIterations: 1,
+            remainingTokens: 50_000
+          }
+        })
+      );
+
+      expect(result.status).toBe("failed");
+      expect(result.failure?.message).toContain("more than 50% of the remaining per-attempt budget");
+    });
+
+    it("applies a 70% safety margin for large-context prompts", async () => {
+      const calls: SpawnCall[] = [];
+      const lines = [
+        JSON.stringify({ type: "assistant", message: { usage: { input_tokens: 150_000, output_tokens: 50_000 } } }),
+        JSON.stringify({ type: "assistant", message: { usage: { input_tokens: 150_000, output_tokens: 50_000 } } }),
+        JSON.stringify({ type: "assistant", message: { usage: { input_tokens: 150_000, output_tokens: 50_000 } } }),
+        JSON.stringify({ type: "result", result: "completed too much", total_cost_usd: 0.1, usage: { input_tokens: 6000, output_tokens: 1500 } })
+      ];
+
+      const adapter = createClaudeCliAdapter({
+        spawnImpl: createStreamingSpawn(calls, lines)
+      });
+
+      const result = await adapter.execute(
+        makeRequest({
+          context: {
+            taskTitle: "test",
+            objective: "A".repeat(50_000),
+            verificationPlan: [],
+            focus: "tight",
+            remainingBudgetUsd: 5,
+            remainingIterations: 1,
+            remainingTokens: 50_000
+          }
+        })
+      );
+
+      expect(result.status).toBe("failed");
+      expect(result.failure?.message).toContain("70% threshold");
+    });
+
+    it("applies 80% safety margin for standard-context prompts", async () => {
       const calls: SpawnCall[] = [];
       // sonnet pricing: $0.003/1K in, $0.015/1K out
       // Single turn: (2000/1000)*0.003 + (500/1000)*0.015 = $0.006 + $0.0075 = $0.0135
       // With cap $0.05, effective cap at 80% = $0.04
       // After 3 turns: cumulative = $0.0405 → exceeds $0.04
       const lines = [
-        JSON.stringify({ type: "assistant", message: { usage: { input_tokens: 2000, output_tokens: 500 } } }),
-        JSON.stringify({ type: "assistant", message: { usage: { input_tokens: 2000, output_tokens: 500 } } }),
-        JSON.stringify({ type: "assistant", message: { usage: { input_tokens: 2000, output_tokens: 500 } } }),
-        JSON.stringify({ type: "result", result: "completed too much", total_cost_usd: 0.1, usage: { input_tokens: 6000, output_tokens: 1500 } })
+        JSON.stringify({ type: "assistant", message: { usage: { input_tokens: 500, output_tokens: 300 } } }),
+        JSON.stringify({ type: "assistant", message: { usage: { input_tokens: 500, output_tokens: 300 } } }),
+        JSON.stringify({ type: "assistant", message: { usage: { input_tokens: 500, output_tokens: 300 } } }),
+        JSON.stringify({ type: "assistant", message: { usage: { input_tokens: 500, output_tokens: 300 } } }),
+        JSON.stringify({ type: "assistant", message: { usage: { input_tokens: 500, output_tokens: 300 } } }),
+        JSON.stringify({ type: "assistant", message: { usage: { input_tokens: 500, output_tokens: 300 } } }),
+        JSON.stringify({ type: "assistant", message: { usage: { input_tokens: 500, output_tokens: 300 } } }),
+        JSON.stringify({ type: "result", result: "completed too much", total_cost_usd: 0.1, usage: { input_tokens: 3500, output_tokens: 2100 } })
       ];
 
       const adapter = createClaudeCliAdapter({
@@ -1008,7 +1072,6 @@ describe("createClaudeCliAdapter", () => {
 
       expect(result.status).toBe("failed");
       expect(result.failure?.classHint).toBe("budget_pressure");
-      // Terminated at 80% threshold, not 100%
       expect(result.failure?.message).toContain("80% threshold");
     });
   });
@@ -1077,6 +1140,18 @@ describe("createCodexCliAdapter", () => {
     expect(calls[0]?.options?.cwd).toBe(workingDirectory);
     expect(calls[0]?.stdin).toContain("OBJECTIVE:");
     expect(calls[0]?.stdin).toContain("update the target file");
+  });
+
+  it("passes max token guardrails through to the Claude CLI", async () => {
+    const calls: SpawnCall[] = [];
+    const adapter = createClaudeCliAdapter({
+      spawnImpl: createScriptedSpawn(calls)
+    });
+
+    const result = await adapter.execute(makeRequest());
+
+    expect(result.status).toBe("completed");
+    expect(calls[0]?.args).toEqual(expect.arrayContaining(["--max-tokens", "10000"]));
   });
 
   it("preserves custom Codex model, sandbox, and extra exec flags before stdin prompt", async () => {

@@ -157,8 +157,8 @@ describe("buildMemorySummary", () => {
     const summary = buildMemorySummary(entries);
     expect(summary.byKind.preference?.length).toBe(20); // capped at 20
     // Most recent 20 (indices 10-29) are kept
-    expect(summary.byKind.preference?.[0]?.value).toBe(10);
-    expect(summary.byKind.preference?.[19]?.value).toBe(29);
+    expect(summary.byKind.preference?.[0]!.value).toBe(10);
+    expect(summary.byKind.preference?.[19]!.value).toBe(29);
   });
 });
 

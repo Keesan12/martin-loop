@@ -2,7 +2,7 @@
 
 This page is retained for historical replay compatibility only.
 
-- Canonical taxonomy is now runtime-derived and fixed to 12 classes in [FAILURE-TAXONOMY-12.md](./FAILURE-TAXONOMY-12.md).
+- Canonical taxonomy is now runtime-derived from the current runtime contract in [FAILURE-TAXONOMY.md](./FAILURE-TAXONOMY.md).
 - New receipts, APIs, and summaries must emit canonical runtime class IDs only.
 - Legacy labels remain accepted only for old artifact ingestion/replay.
 

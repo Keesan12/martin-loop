@@ -18,6 +18,7 @@
  *   node dist/server.js
  */
 
+import { createServer as createHttpServer, type IncomingMessage, type Server as NodeHttpServer, type ServerResponse } from "node:http";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { realpathSync } from "node:fs";
 import path from "node:path";
@@ -26,6 +27,7 @@ import { resolveRunsRoot } from "@martin/core";
 import type { LoopBudget, ReceiptScope } from "@martin/contracts";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
   CallToolRequestSchema,
   GetPromptRequestSchema,
@@ -776,7 +778,7 @@ export function createMartinMcpServer(serverInfo?: {
     {
       name: "martin_run",
       description:
-        "Execute a governed Martin Loop run on a coding task and return the run summary, spend, artifact rollup, and verification state. This hard-blocks until martin_doctor, martin_plan, and martin_preflight receipts exist for the same task.",
+        "Execute a governed Martin Loop run on a coding task and return the run summary, spend, artifact rollup, and verification state. This hard-blocks until martin_doctor, martin_estimate, martin_plan, and martin_preflight receipts exist for the same task.",
       annotations: {
         destructiveHint: true,
         idempotentHint: false,
@@ -1481,6 +1483,10 @@ export function createMartinMcpServer(serverInfo?: {
             type: "array",
             items: { type: "string" },
             description: "Optional file paths to scope the estimate."
+          },
+          workingDirectory: {
+            type: "string",
+            description: "Optional workspace path for recording the estimate receipt against the same task root you plan to run."
           }
         },
         required: ["objective"]
@@ -1789,11 +1795,19 @@ export function createMartinMcpServer(serverInfo?: {
     }
 
     if (name === "martin_estimate") {
-      const input = args as { objective: string; engine?: string; budgetUsd?: number; fileScope?: string[] };
+      const input = validateToolInput("martin_estimate", args) as {
+        objective: string;
+        engine?: string;
+        budgetUsd?: number;
+        fileScope?: string[];
+        workingDirectory?: string;
+      };
       const objective = input.objective;
       const engine = input.engine ?? "claude";
       const budgetUsd = input.budgetUsd ?? 5;
       const fileScope = input.fileScope ?? [];
+      const runsRoot = resolveRunsRoot(process.env);
+      const workingDirectory = input.workingDirectory ?? resolveSafeRepoRoot();
       const route = classifyRoute({
         objective,
         verificationPlan: [],
@@ -1820,6 +1834,19 @@ export function createMartinMcpServer(serverInfo?: {
         recommendedModelTier: route.recommendedModelTier,
         estimatedSavingVsSonnetUsd: route.estimatedSavingVsSonnetUsd
       };
+      await recordMcpWorkflowStep({
+        runsRoot,
+        step: "estimate",
+        workingDirectory,
+        objective,
+        engine,
+        receiptScope: {
+          invocationRoot: resolveSafeRepoRoot(),
+          workingDirectory,
+          repoRoot: workingDirectory,
+          runsRoot
+        }
+      }).catch(() => {});
       return createToolSuccessResult(
         output,
         `Estimate: ${route.selectedMode} route (${route.recommendedModelTier}), ~$${route.expectedCostUsd.toFixed(2)} expected cost, ${route.expectedPreworkBurnPct}% pre-work burn. Recommended budget: $${recommendedBudgetUsd.toFixed(2)}.`
@@ -1850,6 +1877,147 @@ export async function connectMartinMcpStdioServer() {
   return server;
 }
 
+export interface MartinMcpHttpServerOptions {
+  host?: string;
+  port?: number;
+  path?: string;
+}
+
+export interface MartinMcpHttpServerHandle {
+  server: NodeHttpServer;
+  host: string;
+  port: number;
+  path: string;
+  endpoint: string;
+  close: () => Promise<void>;
+}
+
+export function parseMartinMcpServerArgs(argv: string[]): { transport: "stdio" } | {
+  transport: "http";
+  host: string;
+  port: number;
+  path: string;
+} {
+  let transport: "stdio" | "http" = "stdio";
+  let host = "127.0.0.1";
+  let port = 3033;
+  let path = "/mcp";
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+    if (token === "--http") {
+      transport = "http";
+      continue;
+    }
+    if (token === "--port") {
+      const next = argv[index + 1];
+      const parsed = Number(next);
+      if (!Number.isInteger(parsed) || parsed < 0 || parsed > 65535) {
+        throw new Error(`Invalid --port value '${next ?? ""}'.`);
+      }
+      port = parsed;
+      index += 1;
+      continue;
+    }
+    if (token === "--host") {
+      const next = argv[index + 1];
+      if (!next) {
+        throw new Error("Missing value for --host.");
+      }
+      host = next;
+      index += 1;
+      continue;
+    }
+    if (token === "--path") {
+      const next = argv[index + 1];
+      if (!next || !next.startsWith("/")) {
+        throw new Error("MCP HTTP path must start with '/'.");
+      }
+      path = next;
+      index += 1;
+    }
+  }
+
+  return transport === "http"
+    ? { transport, host, port, path }
+    : { transport };
+}
+
+export async function connectMartinMcpHttpServer(
+  options: MartinMcpHttpServerOptions = {}
+): Promise<MartinMcpHttpServerHandle> {
+  const host = options.host ?? "127.0.0.1";
+  const port = options.port ?? 3033;
+  const path = options.path ?? "/mcp";
+
+  const mcpServer = createMartinMcpServer();
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: undefined
+  });
+  await mcpServer.connect(transport);
+
+  const httpServer = createHttpServer(async (req, res) => {
+    try {
+      const requestUrl = new URL(req.url ?? "/", `http://${req.headers.host ?? `${host}:${port}`}`);
+      if (requestUrl.pathname !== path) {
+        res.statusCode = 404;
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify({ error: "not_found", path: requestUrl.pathname }));
+        return;
+      }
+
+      if (req.method === "POST") {
+        const parsedBody = await readJsonBody(req, res);
+        if (res.writableEnded) {
+          return;
+        }
+        await transport.handleRequest(req, res, parsedBody);
+        return;
+      }
+
+      if (req.method === "GET" || req.method === "DELETE") {
+        await transport.handleRequest(req, res);
+        return;
+      }
+
+      res.statusCode = 405;
+      res.setHeader("allow", "GET, POST, DELETE");
+      res.end();
+    } catch (error) {
+      if (!res.headersSent) {
+        res.statusCode = 500;
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify({ error: "internal_error", message: (error as Error).message }));
+      }
+    }
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    httpServer.once("error", reject);
+    httpServer.listen(port, host, () => {
+      httpServer.off("error", reject);
+      resolve();
+    });
+  });
+
+  const address = httpServer.address();
+  const resolvedPort = typeof address === "object" && address ? address.port : port;
+
+  return {
+    server: httpServer,
+    host,
+    port: resolvedPort,
+    path,
+    endpoint: `http://${host}:${resolvedPort}${path}`,
+    close: async () => {
+      await transport.close();
+      await new Promise<void>((resolve) => {
+        httpServer.close(() => resolve());
+      });
+    }
+  };
+}
+
 export function isDirectExecutionEntry(
   entryPath: string | undefined,
   moduleUrl: string = import.meta.url
@@ -1876,5 +2044,32 @@ function realPathOrResolved(filePath: string): string {
 }
 
 if (isDirectExecution()) {
-  await connectMartinMcpStdioServer();
+  const startup = parseMartinMcpServerArgs(process.argv.slice(2));
+  if (startup.transport === "http") {
+    await connectMartinMcpHttpServer(startup);
+  } else {
+    await connectMartinMcpStdioServer();
+  }
+}
+
+async function readJsonBody(
+  req: IncomingMessage,
+  res: ServerResponse
+): Promise<unknown> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  const raw = Buffer.concat(chunks).toString("utf8").trim();
+  if (!raw) {
+    return undefined;
+  }
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    res.statusCode = 400;
+    res.setHeader("content-type", "application/json");
+    res.end(JSON.stringify({ error: "invalid_json" }));
+    return undefined;
+  }
 }
