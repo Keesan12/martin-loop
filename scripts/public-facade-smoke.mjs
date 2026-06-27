@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawn } from "node:child_process";
-import { access, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, chmod, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -316,7 +316,7 @@ function buildLifecycleSafeEnv(sourceEnv = process.env) {
   return env;
 }
 
-async function createFakeCodexCli(tempRoot) {
+export async function createFakeCodexCli(tempRoot) {
   const binDir = path.join(tempRoot, "fake-codex-bin");
   const localAppData = path.join(tempRoot, "localappdata");
   await mkdir(binDir, { recursive: true });
@@ -353,6 +353,7 @@ async function createFakeCodexCli(tempRoot) {
       ].join("\n");
   await writeFile(file, script, "utf8");
   if (process.platform !== "win32") {
+    await chmod(file, 0o755);
     await access(file);
   }
 

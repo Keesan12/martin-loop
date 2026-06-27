@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 
-## [0.3.17]
+## [0.3.18]
 
 ### Added
 - **MCP HTTP transport** — the standalone MCP server now supports `--http`, `--host`, `--port`, and `--path` for local bridge and proxy setups, while keeping stdio as the default host transport.
@@ -14,6 +14,7 @@
 - **Codex governed coverage now reflects real host behavior** — Codex integration tests no longer rely on fake subprocess shims. Live Codex tests probe real CLI availability and skip cleanly when Codex is not installed.
 - **Frozen pnpm installs are valid again on pnpm 10** — workspace overrides now live in `pnpm-workspace.yaml`, which keeps `pnpm install --frozen-lockfile` aligned locally and in GitHub Actions.
 - **Release installs no longer stall on interactive build approvals** — `pnpm-workspace.yaml` now explicitly approves the required `esbuild` and `protobufjs` build scripts, so CI and local frozen installs share the same non-interactive dependency policy.
+- **POSIX public release smoke runs now execute the fake Codex shim correctly** — the release harness marks its temporary `codex` binary executable on Linux and macOS, so the root package publish gate validates the same governed smoke path across local packs and GitHub Actions.
 
 ## [0.3.16]
 

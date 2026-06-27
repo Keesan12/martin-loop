@@ -1,9 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, rm, stat } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  createFakeCodexCli,
   createPublicFacadeSmokePlan,
   runPublicFacadeSmoke,
 } from "../public-facade-smoke.mjs";
@@ -43,4 +46,21 @@ test("runPublicFacadeSmoke proves the root SDK import, CLI help, start flow, dem
   assert.equal(result.unsafeBypassSmoke.ok, true);
   assert.match(result.unsafeBypassSmoke.command, /unsafe-allow-unguarded-run/);
   assert.notEqual(result.unsafeBypassSmoke.exitCode, 8);
+});
+
+test("createFakeCodexCli writes an executable POSIX shim for release smoke runs", async () => {
+  if (process.platform === "win32") {
+    return;
+  }
+
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "martin-public-facade-fake-codex-"));
+
+  try {
+    const fakeCodex = await createFakeCodexCli(tempRoot);
+    const shimPath = path.join(fakeCodex.binDir, "codex");
+    const shimStats = await stat(shimPath);
+    assert.notEqual(shimStats.mode & 0o111, 0);
+  } finally {
+    await rm(tempRoot, { force: true, recursive: true });
+  }
 });

@@ -1,4 +1,4 @@
-# MartinLoop 0.3.17 — Faster Codex startup, tighter budget controls, HTTP MCP
+# MartinLoop 0.3.18 — Faster Codex startup, tighter budget controls, HTTP MCP
 
 ## What changed
 
@@ -50,6 +50,15 @@ The workspace config also records the required non-interactive build approvals
 for `esbuild` and `protobufjs`, so release installs no longer depend on a local
 approval prompt.
 
+### Root public release smoke now behaves the same on POSIX runners
+
+The packaged root release smoke harness now marks its temporary fake `codex`
+binary executable on Linux and macOS before it validates the governed run path.
+
+That closes the last portability gap between local Windows validation and the
+GitHub Actions release lane, so the root publish gate exercises the exact same
+governed smoke contract everywhere it runs.
+
 ## Why it matters
 
 - Codex operators get immediate session-start feedback instead of waiting on a
@@ -58,11 +67,13 @@ approval prompt.
 - MCP hosts have a cleaner path for HTTP bridge scenarios.
 - Agents can reason about MartinLoop mode before they start a governed run.
 - Release validation stays reproducible under the current pnpm toolchain.
+- Root release gating now validates the governed Codex smoke path consistently
+  across Windows, Linux, and macOS.
 
 ## Upgrade
 
 ```sh
-npm install -g martin-loop@0.3.17
+npm install -g martin-loop@0.3.18
 ```
 
 ## Verification
@@ -73,3 +84,5 @@ npm install -g martin-loop@0.3.17
   resource and HTTP transport.
 - Adapter tests cover remaining-token passthrough and the tighter spending
   guardrails.
+- Public release smoke regression coverage now verifies that the temporary
+  POSIX `codex` shim is executable before the governed package smoke run.
