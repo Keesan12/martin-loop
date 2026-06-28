@@ -309,6 +309,8 @@ type EstimateCommand = {
   engine: string;
   budgetUsd: number;
   fileScope: string[];
+  cwd?: string;
+  runsDir?: string;
 };
 
 type GateCommand = {
@@ -656,7 +658,9 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
       objective,
       engine: readOption(rest, "--engine") ?? "claude",
       budgetUsd: toFiniteNumber(readOption(rest, "--budget-usd") ?? readOption(rest, "--budget") ?? "5") || 5,
-      fileScope
+      fileScope,
+      ...(readOption(rest, "--cwd") ? { cwd: readOption(rest, "--cwd") } : {}),
+      ...(readOption(rest, "--runs-dir") ? { runsDir: readOption(rest, "--runs-dir") } : {})
     };
   }
 
@@ -1581,8 +1585,8 @@ async function executeDoctorCommand(
     engine: command.engine
   });
   const configPath = command.configPath
-    ? resolveConfigPath(command.configPath)
-    : join(environment.invocationRoot, "martin.config.yaml");
+    ? resolveConfigPath(command.configPath, environment.workingDirectory)
+    : join(environment.workingDirectory, "martin.config.yaml");
   const configExists = await stat(configPath).then(() => true).catch(() => false);
   const workingDirectoryReady = await stat(environment.workingDirectory).then(() => true).catch(() => false);
   const runsRootReady = await stat(environment.runsRoot).then(() => true).catch(() => false);
@@ -1913,7 +1917,7 @@ async function executeEnableCommand(
   });
   const snapshot = await collectStartEnvironmentSnapshot(environment.workingDirectory, environment.runsRoot);
   const configPath = command.configPath
-    ? resolveConfigPath(command.configPath)
+    ? resolveConfigPath(command.configPath, environment.workingDirectory)
     : join(environment.workingDirectory, "martin.config.yaml");
   const configExists = await stat(configPath).then(() => true).catch(() => false);
   if (configExists && !command.force) {
@@ -2970,7 +2974,7 @@ async function executeEstimateCommand(
   command: Extract<ParsedCliArguments, { command: "estimate" }>,
   outputMode: MartinOutputMode
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  const environment = resolveCliEnvironment({ cwd: undefined, runsDir: undefined });
+  const environment = resolveCliEnvironment({ cwd: command.cwd, runsDir: command.runsDir });
   // Feed real historical success rate from the trace store into the route classifier.
   // This reduces Pre Work Burn over time as Martin learns from past runs.
   const historicalDirectSuccessRate = await getHistoricalDirectSuccessRate(environment.runsRoot).catch(() => undefined);
@@ -2986,9 +2990,9 @@ async function executeEstimateCommand(
     ? Math.max(2, Math.round(route.expectedCostUsd * 3 * 100) / 100)
     : Math.max(5, Math.round(route.expectedCostUsd * 2 * 100) / 100);
 
-  // Record estimate receipt — this is what martin gate checks to confirm
-  // an estimate was run before work began. Fire-and-forget.
-  recordCliWorkflowStep({
+  // Persist the estimate receipt before returning so follow-up `martin gate`
+  // invocations in separate CLI processes see the same runs-dir/cwd state.
+  await recordCliWorkflowStep({
     runsRoot: environment.runsRoot,
     step: "estimate",
     workingDirectory: environment.workingDirectory,
@@ -3689,7 +3693,8 @@ function renderDemoInstructions(targetDirectory: string): string {
 async function resolveGuardrails(
   request: RunCommandRequest
 ): Promise<ResolvedGuardrails> {
-  const { config, configPath } = await loadGuardrailsConfig(request.configPath);
+  const configLookupRoot = request.cwd ? resolve(request.cwd) : resolveInvocationRoot();
+  const { config, configPath } = await loadGuardrailsConfig(request.configPath, configLookupRoot);
 
   const budget: LoopBudget = {
     maxUsd: config?.budget?.maxUsd ?? request.budget.maxUsd,
@@ -3745,11 +3750,12 @@ async function resolveGuardrails(
 }
 
 async function loadGuardrailsConfig(
-  configPath?: string
+  configPath?: string,
+  baseDirectory = resolveInvocationRoot()
 ): Promise<{ config: GuardrailsConfig | undefined; configPath: string }> {
   const resolvedPath = configPath
-    ? resolveConfigPath(configPath)
-    : join(resolveInvocationRoot(), "martin.config.yaml");
+    ? resolveConfigPath(configPath, baseDirectory)
+    : join(baseDirectory, "martin.config.yaml");
   const configIsExplicit = typeof configPath === "string" && configPath.trim().length > 0;
 
   try {
@@ -3774,7 +3780,7 @@ async function loadGuardrailsConfig(
   }
 }
 
-function resolveConfigPath(configPath: string): string {
+function resolveConfigPath(configPath: string, baseDirectory = resolveInvocationRoot()): string {
   const normalizedConfigPath =
     process.platform === "win32" ? configPath : configPath.replace(/\\/g, "/");
 
@@ -3782,7 +3788,7 @@ function resolveConfigPath(configPath: string): string {
     return normalizedConfigPath;
   }
 
-  return resolve(resolveInvocationRoot(), normalizedConfigPath);
+  return resolve(baseDirectory, normalizedConfigPath);
 }
 
 function parseGuardrailsYaml(contents: string): GuardrailsConfig {
@@ -4464,7 +4470,7 @@ async function buildLocalReliabilityScoreInput(runsDir?: string): Promise<Martin
     ? await loadPersistedLoop({ latest: true }).catch(() => null)
     : null;
   const latestLoop = latestPersisted?.loop ?? loops.loops[0];
-  const configPath = join(environment.invocationRoot, "martin.config.yaml");
+  const configPath = join(environment.workingDirectory, "martin.config.yaml");
   const configExists = await stat(configPath).then((entry) => entry.isFile()).catch(() => false);
   const budgetConfigured =
     configExists ||

@@ -1,3 +1,7 @@
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 /**
  * Auto-governance feature tests.
  *
@@ -73,6 +77,26 @@ describe("martin estimate command", () => {
     });
   });
 
+  it("parses explicit cwd and runs-dir overrides", () => {
+    const parsed = parseCliArguments([
+      "estimate",
+      "Fix typo",
+      "--cwd",
+      "/repo",
+      "--runs-dir",
+      "/runs"
+    ]);
+    expect(parsed).toEqual({
+      command: "estimate",
+      objective: "Fix typo",
+      engine: "claude",
+      budgetUsd: 5,
+      fileScope: [],
+      cwd: "/repo",
+      runsDir: "/runs"
+    });
+  });
+
   it("returns a direct route for simple focused tasks", async () => {
     const result = await executeCli(["estimate", "Fix a typo in README", "--json"]);
     expect(result.exitCode).toBe(0);
@@ -117,6 +141,97 @@ describe("martin estimate command", () => {
     const result = await executeCli(["estimate", "Fix a typo", "--quiet"]);
     expect(result.exitCode).toBe(0);
     expect(result.stdout.trim()).toMatch(/^(direct|manager|consensus):\$[\d.]+:\d+%$/);
+  });
+
+  it("records the estimate receipt in an explicit runs-dir override", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-estimate-runs-"));
+    const workspaceRoot = await mkdtemp(join(tmpdir(), "martin-estimate-workspace-"));
+
+    try {
+      const result = await executeCli([
+        "estimate",
+        "Summarize the current runtime state",
+        "--cwd",
+        workspaceRoot,
+        "--runs-dir",
+        runsRoot,
+        "--json"
+      ]);
+      expect(result.exitCode).toBe(0);
+
+      const statePath = join(runsRoot, "_martin", "workflow-state.json");
+      const rawState = await readFile(statePath, "utf8");
+      const state = JSON.parse(rawState) as {
+        cli?: {
+          estimate?: {
+            workingDirectory?: string;
+          };
+        };
+      };
+
+      expect(state.cli?.estimate?.workingDirectory).toBe(workspaceRoot.toLowerCase());
+    } finally {
+      await rm(runsRoot, { recursive: true, force: true });
+      await rm(workspaceRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("loads the default martin.config.yaml from --cwd instead of the invocation root", async () => {
+    const workspaceRoot = await mkdtemp(join(tmpdir(), "martin-config-cwd-"));
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-config-runs-"));
+
+    try {
+      await rm(join(workspaceRoot, "martin.config.yaml"), { force: true }).catch(() => {});
+      await writeFile(
+        join(workspaceRoot, "martin.config.yaml"),
+        [
+          "budget:",
+          "  maxUsd: 2",
+          "  softLimitUsd: 2",
+          "  maxIterations: 1",
+          "  maxTokens: 1000",
+          ""
+        ].join("\n"),
+        "utf8"
+      );
+
+      const result = await executeCli([
+        "--json",
+        "run",
+        "--proof",
+        "--cwd",
+        workspaceRoot,
+        "--runs-dir",
+        runsRoot,
+        "--objective",
+        "Summarize the current runtime state",
+        "--verify",
+        process.platform === "win32" ? "cmd /c exit 0" : "true"
+      ]);
+
+      expect(result.exitCode).toBe(0);
+      const payload = JSON.parse(result.stdout) as {
+        effectivePolicy: { configPath: string; budget: { maxUsd: number; softLimitUsd: number; maxIterations: number; maxTokens: number } };
+        loop: { budget: { maxUsd: number; softLimitUsd: number; maxIterations: number; maxTokens: number } };
+      };
+
+      expect(payload.effectivePolicy.configPath).toBe(join(workspaceRoot, "martin.config.yaml"));
+      expect(payload.effectivePolicy.budget).toEqual({
+        maxUsd: 2,
+        softLimitUsd: 1.5,
+        maxIterations: 1,
+        maxTokens: 1000
+      });
+      expect(payload.loop.budget).toEqual({
+        maxUsd: 2,
+        softLimitUsd: 1.5,
+        maxIterations: 1,
+        maxTokens: 1000
+      });
+    } finally {
+      await rm(runsRoot, { recursive: true, force: true });
+      await rm(workspaceRoot, { recursive: true, force: true });
+    }
   });
 });
 
