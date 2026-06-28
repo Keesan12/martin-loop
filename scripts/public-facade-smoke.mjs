@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { access, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -34,7 +34,8 @@ export function createPublicFacadeSmokePlan(options = {}) {
       description: "npx martin-loop demo copies the packaged sandbox from a clean temp install.",
     },
     governedRunSmoke: {
-      description: "A governed Codex run auto-bootstraps governed prerequisites from a clean temp install.",
+      description:
+        "A governed Codex run uses the real Codex CLI when available and reports truthful availability blocks when it is not.",
     },
     unsafeBypassSmoke: {
       description: "unsafe-allow-unguarded-run remains available as an explicit operator bypass.",
@@ -125,13 +126,11 @@ export async function runPublicFacadeSmoke(options = {}) {
     await mkdir(governedWorkspace, { recursive: true });
     initializeGitRepo(governedWorkspace);
 
-    const fakeCodex = await createFakeCodexCli(tempRoot);
+    const codexAvailable = isCliCommandAvailable("codex");
     const governedEnv = {
-      LOCALAPPDATA: fakeCodex.localAppData,
       MARTIN_RUNS_DIR: governedRunsDir,
       MARTIN_GROUNDING_DIR: governedGroundingDir,
       MARTIN_INTEGRITY_KEY_DIR: governedIntegrityDir,
-      PATH: withPrependedPath(process.env.PATH ?? "", fakeCodex.binDir),
     };
 
     const noopVerifier = process.platform === "win32" ? "cmd /c exit 0" : "true";
@@ -156,12 +155,28 @@ export async function runPublicFacadeSmoke(options = {}) {
         "--budget-usd",
         "2",
       ],
-      { cwd: appDir, env: governedEnv },
+      { cwd: appDir, env: governedEnv, allowFailure: !codexAvailable },
     );
-    const governedPayload = JSON.parse(governedRun.stdout);
+    const governedPayload = tryParseJson(governedRun.stdout);
     const governedAdapterId = governedPayload?.loop?.attempts?.[0]?.adapterId;
-    if (governedAdapterId !== "agent-cli:codex") {
-      throw new Error(`Expected governed public smoke to execute through the Codex adapter.\n${governedRun.stdout}${governedRun.stderr}`);
+    if (codexAvailable) {
+      if (governedAdapterId !== "agent-cli:codex") {
+        throw new Error(`Expected governed public smoke to execute through the Codex adapter.\n${governedRun.stdout}${governedRun.stderr}`);
+      }
+    } else {
+      const blockingIssues = Array.isArray(governedPayload?.details?.blockingIssues)
+        ? governedPayload.details.blockingIssues.join("\n")
+        : `${governedRun.stdout}\n${governedRun.stderr}`;
+      if (governedRun.exitCode !== 8 || governedPayload?.category !== "policy_blocked") {
+        throw new Error(
+          `Expected governed public smoke to report a truthful Codex availability block when Codex is missing.\n${governedRun.stdout}${governedRun.stderr}`,
+        );
+      }
+      if (!/Codex CLI is not available on PATH|codex is not installed|Codex launch probe failed/iu.test(blockingIssues)) {
+        throw new Error(
+          `Expected governed public smoke to explain the missing Codex CLI.\n${governedRun.stdout}${governedRun.stderr}`,
+        );
+      }
     }
 
     const unsafeBypassRun = await runCommand(
@@ -214,7 +229,8 @@ export async function runPublicFacadeSmoke(options = {}) {
       },
       governedRunSmoke: {
         ok: true,
-        adapterId: governedAdapterId,
+        status: codexAvailable ? "executed" : "availability-blocked",
+        adapterId: codexAvailable ? governedAdapterId : null,
       },
       unsafeBypassSmoke: {
         ok: unsafeBypassRun.exitCode !== 8,
@@ -276,10 +292,6 @@ async function runCommand(command, options) {
 }
 
 async function ensureBuiltPublicFacade(rootDir) {
-  // Always rebuild package dist + facade for smoke checks so stale local
-  // artifacts cannot bypass release-surface guards.
-  await runCommand(["pnpm", "build"], { cwd: rootDir });
-
   const requiredFiles = [
     path.join(rootDir, "dist", "index.js"),
     path.join(rootDir, "dist", "index.d.ts"),
@@ -290,7 +302,7 @@ async function ensureBuiltPublicFacade(rootDir) {
   );
 
   if (!allPresent.every(Boolean)) {
-    throw new Error("Public facade build is incomplete; required dist artifacts are missing.");
+    throw new Error("Public facade build is incomplete; run `pnpm build` before `pnpm public:smoke`.");
   }
 }
 
@@ -316,52 +328,6 @@ function buildLifecycleSafeEnv(sourceEnv = process.env) {
   return env;
 }
 
-async function createFakeCodexCli(tempRoot) {
-  const binDir = path.join(tempRoot, "fake-codex-bin");
-  const localAppData = path.join(tempRoot, "localappdata");
-  await mkdir(binDir, { recursive: true });
-  await mkdir(localAppData, { recursive: true });
-
-  const file = path.join(binDir, process.platform === "win32" ? "codex.cmd" : "codex");
-  const script = process.platform === "win32"
-    ? [
-        "@echo off",
-        "echo %* | findstr /C:\"--help\" >nul",
-        "if %errorlevel%==0 (",
-        "  echo usage: codex exec ...",
-        "  exit /b 0",
-        ")",
-        "echo {\"type\":\"item.completed\",\"item\":{\"type\":\"command_execution\",\"status\":\"completed\",\"exit_code\":0}}",
-        "echo {\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"fake codex completed\"}}",
-        "echo {\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":10,\"output_tokens\":5}}",
-        "exit /b 0",
-        "",
-      ].join("\r\n")
-    : [
-        "#!/usr/bin/env sh",
-        "case \"$*\" in",
-        "  *--help*)",
-        "    echo 'usage: codex exec ...'",
-        "    ;;",
-        "  *)",
-        "    echo '{\"type\":\"item.completed\",\"item\":{\"type\":\"command_execution\",\"status\":\"completed\",\"exit_code\":0}}'",
-        "    echo '{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"fake codex completed\"}}'",
-        "    echo '{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":10,\"output_tokens\":5}}'",
-        "    ;;",
-        "esac",
-        "",
-      ].join("\n");
-  await writeFile(file, script, "utf8");
-  if (process.platform !== "win32") {
-    await access(file);
-  }
-
-  return {
-    binDir,
-    localAppData,
-  };
-}
-
 function initializeGitRepo(directory) {
   const result = spawn(process.platform === "win32" ? "git.exe" : "git", ["init"], {
     cwd: directory,
@@ -381,10 +347,22 @@ function initializeGitRepo(directory) {
   });
 }
 
-function withPrependedPath(originalPath, directory) {
-  return originalPath.length > 0
-    ? `${directory}${process.platform === "win32" ? ";" : ":"}${originalPath}`
-    : directory;
+function isCliCommandAvailable(command) {
+  const probe = spawnSync(command, ["--help"], {
+    encoding: "utf8",
+    shell: false,
+    timeout: 10_000,
+    stdio: "ignore",
+  });
+  return probe.status === 0;
+}
+
+function tryParseJson(value) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
 }
 
 async function main() {
