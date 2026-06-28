@@ -57,3 +57,15 @@ test("resolveRcCommandExecution avoids shell mode on Windows by invoking cmd.exe
   assert.deepEqual(execution.args, ["/d", "/s", "/c", "pnpm --filter @martin/core test"]);
   assert.equal(execution.shell, false);
 });
+
+test("resolveRcCommandExecution runs absolute Windows executables directly", () => {
+  const execution = resolveRcCommandExecution(
+    ["C:\\Program Files\\nodejs\\node.exe", "C:\\repo\\dist\\bin\\martin-loop.js", "--help"],
+    "win32",
+    "C:\\Windows\\System32\\cmd.exe",
+  );
+
+  assert.equal(execution.command, "C:\\Program Files\\nodejs\\node.exe");
+  assert.deepEqual(execution.args, ["C:\\repo\\dist\\bin\\martin-loop.js", "--help"]);
+  assert.equal(execution.shell, false);
+});

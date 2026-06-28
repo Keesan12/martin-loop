@@ -97,22 +97,22 @@ export async function runPublicFacadeSmoke(options = {}) {
     );
 
     await runCommand(["npm", "install", tarballPath], { cwd: appDir });
-    const installedCli = resolveInstalledCliBinary(appDir);
+    const installedCliEntry = resolveInstalledCliEntry(appDir);
 
     const sdkRun = await runCommand(["node", "sdk-smoke.mjs"], { cwd: appDir });
 
-    const cliRun = await runCommand([installedCli, "--help"], { cwd: appDir });
+    const cliRun = await runCommand([process.execPath, installedCliEntry, "--help"], { cwd: appDir });
     if (!cliRun.stdout.includes("martin-loop run") && !cliRun.stdout.includes("Martin Loop CLI")) {
       throw new Error(`Expected CLI help output to include "martin-loop run" or "Martin Loop CLI".\n${cliRun.stdout}${cliRun.stderr}`);
     }
 
-    const startRun = await runCommand([installedCli, "start"], { cwd: appDir });
+    const startRun = await runCommand([process.execPath, installedCliEntry, "start"], { cwd: appDir });
     if (!/martin-loop proofRun|martin run/iu.test(`${startRun.stdout}\n${startRun.stderr}`)) {
       throw new Error(`Expected start command to describe the first-run governed workflow.\n${startRun.stdout}${startRun.stderr}`);
     }
 
     const demoTarget = path.join(appDir, "martin-loop-demo");
-    const demoRun = await runCommand([installedCli, "demo", "--dir", demoTarget], {
+    const demoRun = await runCommand([process.execPath, installedCliEntry, "demo", "--dir", demoTarget], {
       cwd: appDir,
     });
     const demoReadme = await readFile(path.join(demoTarget, "README.md"), "utf8");
@@ -137,7 +137,8 @@ export async function runPublicFacadeSmoke(options = {}) {
     const noopVerifier = process.platform === "win32" ? "cmd /c exit 0" : "true";
     const governedRun = await runCommand(
       [
-        installedCli,
+        process.execPath,
+        installedCliEntry,
         "--json",
         "run",
         "--engine",
@@ -181,7 +182,8 @@ export async function runPublicFacadeSmoke(options = {}) {
 
     const unsafeBypassRun = await runCommand(
       [
-        installedCli,
+        process.execPath,
+        installedCliEntry,
         "run",
         "--engine",
         "codex",
@@ -379,10 +381,8 @@ function tryParseJson(value) {
   }
 }
 
-function resolveInstalledCliBinary(appDir) {
-  return process.platform === "win32"
-    ? path.join(appDir, "node_modules", ".bin", "martin-loop.cmd")
-    : path.join(appDir, "node_modules", ".bin", "martin-loop");
+function resolveInstalledCliEntry(appDir) {
+  return path.join(appDir, "node_modules", "martin-loop", "dist", "bin", "martin-loop.js");
 }
 
 async function main() {
