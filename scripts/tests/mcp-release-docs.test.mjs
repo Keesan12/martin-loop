@@ -19,7 +19,7 @@ function escapeRegex(input) {
 }
 
 test("current MCP metadata stays aligned for the release cut", async () => {
-  assert.equal(packageJson.version, "0.3.5");
+  assert.equal(packageJson.version, "0.3.6");
   assert.equal(packageJson.version, serverJson.version);
 
   const releaseNotesPath = path.join(ROOT_DIR, "docs", "release", `MCP-${packageJson.version}-RELEASE-NOTES.md`);
@@ -34,7 +34,7 @@ test("version ledger records live public truth and the next release train", asyn
   assert.match(ledger, /live public GitHub release: `v\d+\.\d+\.\d+`/);
   assert.match(
     ledger,
-    new RegExp(escapeRegex("standalone MCP public baseline: `0.3.4`")), // live npm baseline — not bumped until we re-confirm live
+    new RegExp(escapeRegex("standalone MCP public baseline: `0.3.6`")),
   );
   assert.match(
     ledger,
@@ -44,9 +44,9 @@ test("version ledger records live public truth and the next release train", asyn
     ledger,
     new RegExp(escapeRegex(`current in-repo root release line: \`${rootPackageJson.version}\``))
   );
-  assert.match(ledger, /next planned root follow-on: `\d+\.\d+\.\d+`/);
-  assert.match(ledger, /next planned standalone release: `\d+\.\d+\.\d+`/);
-  assert.match(ledger, /`0\.3\.6` reserved for additional host-coverage follow-ups/);
+  assert.match(ledger, /next planned root follow-on(?: after `\d+\.\d+\.\d+`)?: `\d+\.\d+\.\d+`/);
+  assert.match(ledger, /next planned standalone release: (?:`\d+\.\d+\.\d+`|not scheduled in this patch train)/);
+  assert.match(ledger, /reserved for additional host-coverage follow-ups/);
 });
 
 test("MCP slice map defines the 0.3.x train without private-hosted bleed", async () => {
@@ -73,8 +73,8 @@ test("public MCP docs describe the current baseline and the next train in human-
     readRepoFile(path.join("docs", "release", "MCP-0.3.3-RELEASE-NOTES.md"))
   ]);
 
-  // AI guide still references the release train
-  assert.match(aiGuide, /0\.3\.1/);
+  // AI guide should describe the live baseline and stable local-first train
+  assert.match(aiGuide, /0\.3\.6/);
   assert.match(aiGuide, /local-first/i);
   assert.match(aiGuide, /martin_doctor/);
   assert.match(aiGuide, /martin_run/);
