@@ -26,6 +26,10 @@ import {
   type MartinMcpHost
 } from "../src/mcp-config.js";
 
+function normalizeWorkingDirectoryForExpectation(workingDirectory: string): string {
+  return process.platform === "win32" ? workingDirectory.toLowerCase() : workingDirectory;
+}
+
 // ---------------------------------------------------------------------------
 // 1. `martin estimate` CLI parsing
 // ---------------------------------------------------------------------------
@@ -169,7 +173,7 @@ describe("martin estimate command", () => {
         };
       };
 
-      expect(state.cli?.estimate?.workingDirectory).toBe(workspaceRoot.toLowerCase());
+      expect(state.cli?.estimate?.workingDirectory).toBe(normalizeWorkingDirectoryForExpectation(workspaceRoot));
     } finally {
       await rm(runsRoot, { recursive: true, force: true });
       await rm(workspaceRoot, { recursive: true, force: true });
