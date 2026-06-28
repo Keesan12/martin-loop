@@ -297,11 +297,26 @@ async function ensureBuiltPublicFacade(rootDir) {
     path.join(rootDir, "dist", "index.d.ts"),
     path.join(rootDir, "dist", "bin", "martin-loop.js"),
   ];
-  const allPresent = await Promise.all(
-    requiredFiles.map((filePath) => access(filePath).then(() => true).catch(() => false)),
-  );
+  const areAllPresent = async () => {
+    const allPresent = await Promise.all(
+      requiredFiles.map((filePath) => access(filePath).then(() => true).catch(() => false)),
+    );
+    return allPresent.every(Boolean);
+  };
 
-  if (!allPresent.every(Boolean)) {
+  if (await areAllPresent()) {
+    return;
+  }
+
+  await runCommand(["pnpm", "build"], {
+    cwd: rootDir,
+    env: {
+      ...process.env,
+      CI: process.env.CI ?? "true",
+    },
+  });
+
+  if (!(await areAllPresent())) {
     throw new Error("Public facade build is incomplete; run `pnpm build` before `pnpm public:smoke`.");
   }
 }
