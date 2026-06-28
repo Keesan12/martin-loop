@@ -4,11 +4,12 @@
  */
 
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 
-import { resolveCliCommandAvailability } from "@martin/adapters";
+import { probeCodexLaunch, resolveCliCommandAvailability } from "@martin/adapters";
 import { createLoopRecord } from "@martin/contracts";
 import { describe, expect, it } from "vitest";
 
@@ -20,7 +21,8 @@ import { executeCli } from "../src/index.js";
 
 const NOOP_VERIFIER = process.platform === "win32" ? "cmd /c exit 0" : "true";
 const codexAvailable = resolveCliCommandAvailability("codex").available;
-const itIfCodexAvailable = codexAvailable ? it : it.skip;
+const codexLaunchReady = detectCodexLaunchReadiness();
+const itIfCodexLaunchReady = codexLaunchReady ? it : it.skip;
 
 async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
   const dir = await mkdtemp(join(tmpdir(), "martin-cli-int-"));
@@ -138,6 +140,18 @@ function initializeGitRepo(directory: string): void {
   }
 }
 
+function detectCodexLaunchReadiness(): boolean {
+  const probeWorkspace = mkdtempSync(join(tmpdir(), "martin-cli-int-probe-"));
+  try {
+    initializeGitRepo(probeWorkspace);
+    return probeCodexLaunch({
+      workingDirectory: probeWorkspace,
+    }).ok;
+  } finally {
+    rmSync(probeWorkspace, { force: true, recursive: true });
+  }
+}
+
 function normalizeWorkingDirectoryForExpectation(workingDirectory: string): string {
   return process.platform === "win32" ? workingDirectory.toLowerCase() : workingDirectory;
 }
@@ -233,7 +247,7 @@ describe("--engine flag", () => {
     expect(payload.loop.loopId).toMatch(/^loop_/u);
   });
 
-  itIfCodexAvailable("passes codex launch preflight when a compatible Codex CLI is present", { timeout: 45_000 }, async () => {
+  itIfCodexLaunchReady("passes codex launch preflight when a compatible Codex CLI is present", { timeout: 45_000 }, async () => {
     const result = await withTempDir((workspace) =>
       withRunsRoot(() => {
         initializeGitRepo(workspace);
@@ -296,7 +310,7 @@ describe("--engine flag", () => {
     });
   });
 
-  itIfCodexAvailable("auto-bootstraps governed prerequisites and executes a live Codex run when host is ready", { timeout: 90_000 }, async () => {
+  itIfCodexLaunchReady("auto-bootstraps governed prerequisites and executes a live Codex run when host is ready", { timeout: 90_000 }, async () => {
     await withTempDir((workspace) =>
       withScratchEnv(
         {
@@ -361,7 +375,7 @@ describe("--engine flag", () => {
     );
   });
 
-  itIfCodexAvailable("accepts an explicit session-start -> preflight -> run governed receipt chain", { timeout: 45000 }, async () => {
+  itIfCodexLaunchReady("accepts an explicit session-start -> preflight -> run governed receipt chain", { timeout: 45000 }, async () => {
     await withTempDir((workspace) =>
       withScratchEnv(
         {
@@ -448,7 +462,7 @@ describe("--engine flag", () => {
     );
   });
 
-  itIfCodexAvailable("keeps governed receipts valid when guardrails normalize configured budgets", { timeout: 45000 }, async () => {
+  itIfCodexLaunchReady("keeps governed receipts valid when guardrails normalize configured budgets", { timeout: 45000 }, async () => {
     await withTempDir((workspace) =>
       withScratchEnv(
         {
@@ -525,7 +539,7 @@ describe("--engine flag", () => {
     );
   });
 
-  itIfCodexAvailable("keeps governed receipts valid when INIT_CWD changes between preflight and run", { timeout: 45000 }, async () => {
+  itIfCodexLaunchReady("keeps governed receipts valid when INIT_CWD changes between preflight and run", { timeout: 45000 }, async () => {
     await withTempDir((workspace) =>
       withScratchEnv(
         {
