@@ -5,7 +5,7 @@ Use this contract in the website repository so taxonomy copy cannot drift from r
 ## Source of truth
 
 - Canonical artifact: [`failure-taxonomy.runtime.json`](./failure-taxonomy.runtime.json)
-- Canonical doc: [`FAILURE-TAXONOMY-12.md`](./FAILURE-TAXONOMY-12.md)
+- Canonical doc: [`FAILURE-TAXONOMY-13.md`](./FAILURE-TAXONOMY-13.md)
 
 ## Required website behavior
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { execFileSync } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -106,12 +106,22 @@ export function collectTrackedFiles(rootDir = ROOT_DIR) {
 export async function runPublicPortabilityGuard(options = {}) {
   const rootDir = options.rootDir ?? ROOT_DIR;
   const trackedFiles = options.files ?? collectTrackedFiles(rootDir);
-  const scannedFiles = trackedFiles.filter((file) => shouldScanPath(file));
+  const candidateFiles = trackedFiles.filter((file) => shouldScanPath(file));
+  const scannedFiles = [];
   const violations = [];
 
-  for (const relativePath of scannedFiles) {
+  for (const relativePath of candidateFiles) {
     const fullPath = path.join(rootDir, relativePath);
+    try {
+      await stat(fullPath);
+    } catch (error) {
+      if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+        continue;
+      }
+      throw error;
+    }
     const contents = await readFile(fullPath, "utf8");
+    scannedFiles.push(relativePath);
     violations.push(...findPortabilityViolations(contents, relativePath));
   }
 
