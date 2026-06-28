@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [0.3.19]
+
+### Fixed
+- **Governed `--cwd` config lookup is now authoritative** — live and proof runs now resolve the default `martin.config.yaml` from the governed workspace passed via `--cwd` instead of the invocation root. This fixes budget, token-cap, and verifier-policy drift when MartinLoop is launched from a different directory than the repo being governed.
+- **Real Codex governed-budget verification now uses the correct workspace policy** — the live Codex receipt-chain path now honors workspace-local budget normalization, including `maxUsd`, `softLimitUsd`, `maxIterations`, and `maxTokens`, instead of silently falling back to the caller's local defaults.
+- **Public OSS Codex integration tests now reflect supported behavior** — fake Codex subprocess helpers were removed from the governed integration lane. Codex-required tests are availability-gated and run against real Codex host readiness when the CLI is present.
+- **Public repo planning residue removed** — tracked `.planning` files were removed from the public repo and `.planning/` is now ignored so internal planning artifacts cannot drift back into the public surface.
+- **Version truth resynced** — the public repo now reflects live package truth again: root release line advanced to `0.3.19`, and standalone `@martinloop/mcp` metadata now matches the already-live `0.3.6` package line.
+
 ## [0.3.16]
 
 ### Fixed

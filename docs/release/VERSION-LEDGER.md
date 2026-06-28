@@ -4,10 +4,10 @@ This file is the release source of truth for package/version mapping in this rep
 
 ## Root package: `martin-loop`
 
-- live npm dist-tag `latest`: `0.3.15` (0.3.16 pending merge of fix/0.3.16-governance-fixes)
-- live public GitHub release: `v0.3.15`
-- live public baseline in this train: `0.3.16`
-- root public baseline: `0.3.16`
+- live npm dist-tag `latest`: `0.3.18`
+- live public GitHub release: `v0.3.18`
+- live public baseline in this train: `0.3.18`
+- root public baseline: `0.3.18`
 - releases consumed since the original `0.2.8` launch:
   - `0.2.9` fixed proof-run classification, Windows `.cmd` resolution, and public provider defaults
   - `0.2.10` tightened verifier evidence, `--runs-dir` consistency, and public help output
@@ -25,20 +25,20 @@ This file is the release source of truth for package/version mapping in this rep
   - `0.3.14` Electron/IDE Node conflict fix — resolveSystemNode() finds system node.exe, not Electron's bundled Node
   - `0.3.15` martin mode, martin clean, preflight gate objective-hash removed, session-start optional when estimate present
   - `0.3.16` governance hooks on re-install, gate fires before engine check, estimate persistence, OpenAI 429/5xx retry
-- current in-repo root release line: `0.3.16`
-- next planned root follow-on: `0.4.0` for route compression and MCP economics surface
+  - `0.3.18` root release smoke and release-surface fixes
+- current in-repo root release line: `0.3.19`
+- next planned root follow-on after `0.3.19`: `0.4.0`
 
 ## Standalone package: `@martinloop/mcp`
 
-- live npm dist-tag `latest`: `0.3.4`
-- live public GitHub release: `mcp-v0.3.4`
-- live public baseline in this train: `0.3.4`
-- standalone MCP public baseline: `0.3.4`
-- live npm dist-tag `latest` for MCP: `0.3.5`
-- current in-repo standalone release line: `0.3.5` for auto-governance tools and governance-status resource
-- next planned standalone release: `0.3.6` for routing economics surface
+- live npm dist-tag `latest`: `0.3.6`
+- live public GitHub release: `mcp-v0.3.6`
+- live public baseline in this train: `0.3.6`
+- standalone MCP public baseline: `0.3.6`
+- current in-repo standalone release line: `0.3.6`
+- next planned standalone release: not scheduled in this patch train
 - next planned follow-ons:
-  - `0.3.6` reserved for additional host-coverage follow-ups
+  - reserved for additional host-coverage follow-ups when the MCP line changes again
 
 ## Release rules
 

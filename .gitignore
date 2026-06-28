@@ -21,6 +21,7 @@ coverage/
 # Cache directories
 .npm-cache/
 .cache/
+.planning/
 
 # Test output
 vitest-results.json

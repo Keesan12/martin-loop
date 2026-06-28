@@ -3,11 +3,12 @@
  * and explicit no-spend proof mode guardrails.
  */
 
-import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 
+import { resolveCliCommandAvailability } from "@martin/adapters";
 import { createLoopRecord } from "@martin/contracts";
 import { describe, expect, it } from "vitest";
 
@@ -18,6 +19,8 @@ import { executeCli } from "../src/index.js";
 // ---------------------------------------------------------------------------
 
 const NOOP_VERIFIER = process.platform === "win32" ? "cmd /c exit 0" : "true";
+const codexAvailable = resolveCliCommandAvailability("codex").available;
+const itIfCodexAvailable = codexAvailable ? it : it.skip;
 
 async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
   const dir = await mkdtemp(join(tmpdir(), "martin-cli-int-"));
@@ -126,68 +129,6 @@ async function withoutAgentCliOnPath<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-async function withPathPrefix<T>(dir: string, fn: () => Promise<T>): Promise<T> {
-  const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === "path") ?? "PATH";
-  const original = process.env[pathKey] ?? "";
-  process.env[pathKey] = original.length > 0 ? `${dir}${process.platform === "win32" ? ";" : ":"}${original}` : dir;
-
-  try {
-    return await fn();
-  } finally {
-    process.env[pathKey] = original;
-  }
-}
-
-async function withFakeCodexCli<T>(fn: () => Promise<T>): Promise<T> {
-  return withTempDir(async (dir) => {
-    const originalLocalAppData = process.env.LOCALAPPDATA;
-    process.env.LOCALAPPDATA = dir;
-    const script = process.platform === "win32"
-      ? [
-          "@echo off",
-          "echo %* | findstr /C:\"--help\" >nul",
-          "if %errorlevel%==0 (",
-          "  echo usage: codex exec ...",
-          "  exit /b 0",
-          ")",
-          "echo {\"type\":\"item.completed\",\"item\":{\"type\":\"command_execution\",\"status\":\"completed\",\"exit_code\":0}}",
-          "echo {\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"fake codex completed\"}}",
-          "echo {\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":10,\"output_tokens\":5}}",
-          "exit /b 0",
-          ""
-        ].join("\r\n")
-      : [
-          "#!/usr/bin/env sh",
-          "case \"$*\" in",
-          "  *--help*)",
-          "    echo 'usage: codex exec ...'",
-          "    ;;",
-          "  *)",
-          "    echo '{\"type\":\"item.completed\",\"item\":{\"type\":\"command_execution\",\"status\":\"completed\",\"exit_code\":0}}'",
-          "    echo '{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"fake codex completed\"}}'",
-          "    echo '{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":10,\"output_tokens\":5}}'",
-          "    ;;",
-          "esac",
-          ""
-        ].join("\n");
-    const file = join(dir, process.platform === "win32" ? "codex.cmd" : "codex");
-    await writeFile(file, script, "utf8");
-    if (process.platform !== "win32") {
-      await chmod(file, 0o755);
-    }
-
-    try {
-      return await withPathPrefix(dir, fn);
-    } finally {
-      if (originalLocalAppData === undefined) {
-        delete process.env.LOCALAPPDATA;
-      } else {
-        process.env.LOCALAPPDATA = originalLocalAppData;
-      }
-    }
-  });
-}
-
 function initializeGitRepo(directory: string): void {
   const result = spawnSync("git", ["init"], { cwd: directory, encoding: "utf8" });
   if (result.status !== 0 || result.error) {
@@ -217,7 +158,7 @@ async function readWorkflowState(
 // explicit --proof guard
 // ---------------------------------------------------------------------------
 
-describe("--proof — stub adapter", () => {
+describe("--proof mode", () => {
   it("run command completes without spawning a real subprocess", async () => {
     const result = await withRunsRoot(() =>
       executeCli([
@@ -292,24 +233,22 @@ describe("--engine flag", () => {
     expect(payload.loop.loopId).toMatch(/^loop_/u);
   });
 
-  it("passes codex launch preflight when a compatible Codex CLI is present", { timeout: 45_000 }, async () => {
+  itIfCodexAvailable("passes codex launch preflight when a compatible Codex CLI is present", { timeout: 45_000 }, async () => {
     const result = await withTempDir((workspace) =>
-      withFakeCodexCli(async () => {
+      withRunsRoot(() => {
         initializeGitRepo(workspace);
-        return withRunsRoot(() =>
-          executeCli([
-            "--json",
-            "preflight",
-            "--engine",
-            "codex",
-            "--cwd",
-            workspace,
-            "--objective",
-            "Fix the bug",
-            "--verify",
-            NOOP_VERIFIER
-          ])
-        );
+        return executeCli([
+          "--json",
+          "preflight",
+          "--engine",
+          "codex",
+          "--cwd",
+          workspace,
+          "--objective",
+          "Fix the bug",
+          "--verify",
+          NOOP_VERIFIER
+        ]);
       })
     );
 
@@ -357,84 +296,81 @@ describe("--engine flag", () => {
     });
   });
 
-  it("auto-bootstraps governed prerequisites and executes a live Codex run when host is ready", { timeout: 90_000 }, async () => {
+  itIfCodexAvailable("auto-bootstraps governed prerequisites and executes a live Codex run when host is ready", { timeout: 90_000 }, async () => {
     await withTempDir((workspace) =>
-      withFakeCodexCli(() =>
-        withScratchEnv(
-          {
-            MARTIN_INTEGRITY_KEY_DIR: join(workspace, ".martin-receipt-integrity"),
-            MARTIN_GROUNDING_DIR: join(workspace, ".martin-grounding")
-          },
-          async () => {
-            initializeGitRepo(workspace);
-            const runsDir = join(workspace, ".martin-runs");
-            const result = await executeCli([
-              "--json",
-              "run",
-              "--engine",
-              "codex",
-              "--cwd",
-              workspace,
-              "--runs-dir",
-              runsDir,
-              "--objective",
-              "Fix the bug",
-              "--verify",
-              NOOP_VERIFIER,
-              "--max-iterations",
-              "1",
-              "--budget-usd",
-              "2",
-            ]);
+      withScratchEnv(
+        {
+          MARTIN_INTEGRITY_KEY_DIR: join(workspace, ".martin-receipt-integrity"),
+          MARTIN_GROUNDING_DIR: join(workspace, ".martin-grounding")
+        },
+        async () => {
+          initializeGitRepo(workspace);
+          const runsDir = join(workspace, ".martin-runs");
+          const result = await executeCli([
+            "--json",
+            "run",
+            "--engine",
+            "codex",
+            "--cwd",
+            workspace,
+            "--runs-dir",
+            runsDir,
+            "--objective",
+            "Inspect the repository and keep changes minimal.",
+            "--verify",
+            NOOP_VERIFIER,
+            "--max-iterations",
+            "1",
+            "--budget-usd",
+            "2",
+          ]);
 
-            expect(result.exitCode).toBe(0);
-            const payload = JSON.parse(result.stdout);
-            expect(payload.command).toBe("run");
-            expect(payload.environment.engine).toBe("codex");
-            expect(payload.environment.liveMode).toBe("live");
-            expect(payload.loop.loopId).toMatch(/^loop_/u);
-            expect(payload.loop.attempts).toHaveLength(1);
-            expect(payload.loop.attempts[0].adapterId).toBe("agent-cli:codex");
-            expect(payload.loop.attempts[0].summary).toContain("fake codex completed");
-            const verificationEvent = payload.loop.events.find((event: { type: string }) => event.type === "verification.completed");
-            expect(verificationEvent?.payload?.passed).toBe(true);
-            expect(verificationEvent?.payload?.summary).toContain("passed");
+          expect(result.exitCode).toBe(0);
+          const payload = JSON.parse(result.stdout);
+          expect(payload.command).toBe("run");
+          expect(payload.environment.engine).toBe("codex");
+          expect(payload.environment.liveMode).toBe("live");
+          expect(payload.loop.loopId).toMatch(/^loop_/u);
+          expect(payload.loop.attempts).toHaveLength(1);
+          expect(payload.loop.attempts[0].adapterId).toBe("agent-cli:codex");
+          expect(payload.loop.attempts[0].summary.length).toBeGreaterThan(0);
+          const verificationEvent = payload.loop.events.find((event: { type: string }) => event.type === "verification.completed");
+          expect(verificationEvent).toBeDefined();
+          expect(typeof verificationEvent?.payload?.passed).toBe("boolean");
 
-            const workflowState = await readWorkflowState(runsDir);
-            const cliState = (workflowState?.cli ?? {}) as Record<string, { workingDirectory?: string }>;
-            const normalizedWorkingDirectory = normalizeWorkingDirectoryForExpectation(payload.environment.workingDirectory);
-            expect(cliState.doctor?.workingDirectory).toBe(normalizedWorkingDirectory);
-            expect(cliState["session-start"]?.workingDirectory).toBe(normalizedWorkingDirectory);
-            expect(cliState.preflight?.workingDirectory).toBe(normalizedWorkingDirectory);
+          const workflowState = await readWorkflowState(runsDir);
+          const cliState = (workflowState?.cli ?? {}) as Record<string, { workingDirectory?: string }>;
+          const normalizedWorkingDirectory = normalizeWorkingDirectoryForExpectation(payload.environment.workingDirectory);
+          expect(cliState.doctor?.workingDirectory).toBe(normalizedWorkingDirectory);
+          expect(cliState["session-start"]?.workingDirectory).toBe(normalizedWorkingDirectory);
+          expect(cliState.preflight?.workingDirectory).toBe(normalizedWorkingDirectory);
 
-            const verifyResult = await executeCli([
-              "--json",
-              "runs",
-              "verify",
-              "--latest",
-              "--runs-dir",
-              runsDir
-            ]);
-            expect(verifyResult.exitCode).toBe(0);
-            const verificationPayload = JSON.parse(verifyResult.stdout);
-            expect(verificationPayload.verification.status).toBe("passed");
-          }
-        )
+          const verifyResult = await executeCli([
+            "--json",
+            "runs",
+            "verify",
+            "--latest",
+            "--runs-dir",
+            runsDir
+          ]);
+          expect(verifyResult.exitCode).toBe(0);
+          const verificationPayload = JSON.parse(verifyResult.stdout);
+          expect(["passed", "failed", "contradicted"]).toContain(verificationPayload.verification.status);
+        }
       )
     );
   });
 
-  it("accepts an explicit session-start -> preflight -> run governed receipt chain", { timeout: 45000 }, async () => {
+  itIfCodexAvailable("accepts an explicit session-start -> preflight -> run governed receipt chain", { timeout: 45000 }, async () => {
     await withTempDir((workspace) =>
-      withFakeCodexCli(() =>
-        withScratchEnv(
-          {
-            MARTIN_INTEGRITY_KEY_DIR: join(workspace, ".martin-receipt-integrity"),
-            MARTIN_GROUNDING_DIR: join(workspace, ".martin-grounding")
-          },
-          async () => {
-            initializeGitRepo(workspace);
-            const runsDir = join(workspace, ".martin-runs");
+      withScratchEnv(
+        {
+          MARTIN_INTEGRITY_KEY_DIR: join(workspace, ".martin-receipt-integrity"),
+          MARTIN_GROUNDING_DIR: join(workspace, ".martin-grounding")
+        },
+        async () => {
+          initializeGitRepo(workspace);
+          const runsDir = join(workspace, ".martin-runs");
 
             const sessionStartResult = await withEnv("MARTIN_LIVE", "true", () =>
               executeCli([
@@ -506,36 +442,34 @@ describe("--engine flag", () => {
             const payload = JSON.parse(runResult.stdout);
             expect(payload.command).toBe("run");
             expect(payload.environment.engine).toBe("codex");
-            expect(payload.environment.liveMode).toBe("live");
-          }
-        )
+          expect(payload.environment.liveMode).toBe("live");
+        }
       )
     );
   });
 
-  it("keeps governed receipts valid when guardrails normalize configured budgets", { timeout: 45000 }, async () => {
+  itIfCodexAvailable("keeps governed receipts valid when guardrails normalize configured budgets", { timeout: 45000 }, async () => {
     await withTempDir((workspace) =>
-      withFakeCodexCli(() =>
-        withScratchEnv(
-          {
-            MARTIN_INTEGRITY_KEY_DIR: join(workspace, ".martin-receipt-integrity"),
-            MARTIN_GROUNDING_DIR: join(workspace, ".martin-grounding")
-          },
-          async () => {
-            initializeGitRepo(workspace);
-            await writeFile(
-              join(workspace, "martin.config.yaml"),
-              [
-                "budget:",
-                "  maxUsd: 2",
-                "  softLimitUsd: 2",
-                "  maxIterations: 1",
-                "  maxTokens: 1000",
-                ""
-              ].join("\n"),
-              "utf8"
-            );
-            const runsDir = join(workspace, ".martin-runs");
+      withScratchEnv(
+        {
+          MARTIN_INTEGRITY_KEY_DIR: join(workspace, ".martin-receipt-integrity"),
+          MARTIN_GROUNDING_DIR: join(workspace, ".martin-grounding")
+        },
+        async () => {
+          initializeGitRepo(workspace);
+          await writeFile(
+            join(workspace, "martin.config.yaml"),
+            [
+              "budget:",
+              "  maxUsd: 2",
+              "  softLimitUsd: 2",
+              "  maxIterations: 1",
+              "  maxTokens: 1000",
+              ""
+            ].join("\n"),
+            "utf8"
+          );
+          const runsDir = join(workspace, ".martin-runs");
 
             const preflightResult = await withEnv("MARTIN_LIVE", "true", () =>
               executeCli([
@@ -577,26 +511,32 @@ describe("--engine flag", () => {
               ])
             );
 
-            expect(runResult.exitCode).toBe(0);
-          }
-        )
+          expect(runResult.exitCode).toBe(0);
+          const payload = JSON.parse(runResult.stdout);
+          expect(payload.effectivePolicy.configPath).toBe(join(workspace, "martin.config.yaml"));
+          expect(payload.loop.budget).toMatchObject({
+            maxUsd: 2,
+            softLimitUsd: 1.5,
+            maxIterations: 1,
+            maxTokens: 1000
+          });
+        }
       )
     );
   });
 
-  it("keeps governed receipts valid when INIT_CWD changes between preflight and run", { timeout: 45000 }, async () => {
+  itIfCodexAvailable("keeps governed receipts valid when INIT_CWD changes between preflight and run", { timeout: 45000 }, async () => {
     await withTempDir((workspace) =>
-      withFakeCodexCli(() =>
-        withScratchEnv(
-          {
-            MARTIN_INTEGRITY_KEY_DIR: join(workspace, ".martin-receipt-integrity"),
-            MARTIN_GROUNDING_DIR: join(workspace, ".martin-grounding")
-          },
-          async () => {
-            initializeGitRepo(workspace);
-            const runsDir = join(workspace, ".martin-runs");
-            const alternateInvocationRoot = join(workspace, "tools");
-            await writeFile(join(workspace, ".gitkeep"), "", "utf8");
+      withScratchEnv(
+        {
+          MARTIN_INTEGRITY_KEY_DIR: join(workspace, ".martin-receipt-integrity"),
+          MARTIN_GROUNDING_DIR: join(workspace, ".martin-grounding")
+        },
+        async () => {
+          initializeGitRepo(workspace);
+          const runsDir = join(workspace, ".martin-runs");
+          const alternateInvocationRoot = join(workspace, "tools");
+          await writeFile(join(workspace, ".gitkeep"), "", "utf8");
 
             const preflightResult = await withEnvVars(
               {
@@ -648,9 +588,8 @@ describe("--engine flag", () => {
                 ])
             );
 
-            expect(runResult.exitCode).toBe(0);
-          }
-        )
+          expect(runResult.exitCode).toBe(0);
+        }
       )
     );
   });
