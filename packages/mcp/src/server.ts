@@ -776,7 +776,7 @@ export function createMartinMcpServer(serverInfo?: {
     {
       name: "martin_run",
       description:
-        "Execute a governed Martin Loop run on a coding task and return the run summary, spend, artifact rollup, and verification state. This hard-blocks until martin_doctor, martin_plan, and martin_preflight receipts exist for the same task.",
+        "Execute a governed Martin Loop run on a coding task and return the run summary, spend, artifact rollup, and verification state. This hard-blocks until martin_doctor, martin_estimate, martin_plan, and martin_preflight receipts exist for the same task.",
       annotations: {
         destructiveHint: true,
         idempotentHint: false,
@@ -1615,7 +1615,7 @@ export function createMartinMcpServer(serverInfo?: {
         workingDirectory: output.environment.workingDirectory,
         engine: input.engine,
         receiptScope: output.receiptScope
-      }).catch(() => {});
+      });
       return createToolSuccessResult(output, output.summary);
     }
 
@@ -1633,7 +1633,7 @@ export function createMartinMcpServer(serverInfo?: {
           repoRoot: output.workingDirectory,
           runsRoot: resolveRunsRoot(process.env)
         }
-      }).catch(() => {});
+      });
       return createToolSuccessResult(
         output,
         `Plan ready for ${output.objective} with ${output.risk.level} risk and ${output.approvalRecommendation.replace(/_/gu, " ")} approval.`
@@ -1655,7 +1655,7 @@ export function createMartinMcpServer(serverInfo?: {
           allowedPaths: output.normalized.allowedPaths,
           deniedPaths: output.normalized.deniedPaths,
           budget: output.normalized.budget
-        }).catch(() => {});
+        });
       }
       return createToolSuccessResult(output, output.summary);
     }
@@ -1789,11 +1789,18 @@ export function createMartinMcpServer(serverInfo?: {
     }
 
     if (name === "martin_estimate") {
-      const input = args as { objective: string; engine?: string; budgetUsd?: number; fileScope?: string[] };
+      const input = validateToolInput("martin_estimate", args) as {
+        objective: string;
+        engine?: MartinEngine;
+        budgetUsd?: number;
+        fileScope?: string[];
+      };
       const objective = input.objective;
       const engine = input.engine ?? "claude";
       const budgetUsd = input.budgetUsd ?? 5;
       const fileScope = input.fileScope ?? [];
+      const workingDirectory = resolveSafeRepoRoot();
+      const runsRoot = resolveRunsRoot(process.env);
       const route = classifyRoute({
         objective,
         verificationPlan: [],
@@ -1820,6 +1827,13 @@ export function createMartinMcpServer(serverInfo?: {
         recommendedModelTier: route.recommendedModelTier,
         estimatedSavingVsSonnetUsd: route.estimatedSavingVsSonnetUsd
       };
+      await recordMcpWorkflowStep({
+        runsRoot,
+        step: "estimate",
+        workingDirectory,
+        objective,
+        engine
+      });
       return createToolSuccessResult(
         output,
         `Estimate: ${route.selectedMode} route (${route.recommendedModelTier}), ~$${route.expectedCostUsd.toFixed(2)} expected cost, ${route.expectedPreworkBurnPct}% pre-work burn. Recommended budget: $${recommendedBudgetUsd.toFixed(2)}.`

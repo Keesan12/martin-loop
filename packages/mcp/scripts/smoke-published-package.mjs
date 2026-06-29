@@ -19,6 +19,7 @@ import {
 
 const REQUIRED_TOOLS = [
   "martin_doctor",
+  "martin_estimate",
   "martin_plan",
   "martin_preflight",
   "martin_run",
@@ -257,6 +258,15 @@ export async function runPublishedMcpSmoke(options = {}) {
         engine: "claude",
       },
     });
+    const estimateResult = await client.callTool({
+      name: "martin_estimate",
+      arguments: {
+        objective: "Summarize the current runtime state",
+        engine: "claude",
+        budgetUsd: 1,
+        fileScope: ["src/**"],
+      },
+    });
     const planResult = await client.callTool({
       name: "martin_plan",
       arguments: {
@@ -374,6 +384,7 @@ export async function runPublishedMcpSmoke(options = {}) {
     });
 
     const publishedUserJourney = {
+      estimateResult: JSON.parse(readTextContent(estimateResult)),
       planResult: JSON.parse(readTextContent(planResult)),
       preflightResult: JSON.parse(readTextContent(preflightResult)),
       listRuns: JSON.parse(readTextContent(listRuns)),
@@ -624,6 +635,7 @@ function readResourceText(result) {
 
 function assertPublishedUserJourneyEvidence(journey, expected) {
   const requiredKeys = [
+    "estimateResult",
     "preflightResult",
     "listRuns",
     "getRun",

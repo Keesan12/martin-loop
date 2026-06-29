@@ -392,13 +392,25 @@ describe("server validation", () => {
     });
   });
 
-  it("validates doctor and preflight public tool shapes", () => {
+  it("validates doctor, estimate, and preflight public tool shapes", () => {
     expect(
       validateToolInput("martin_doctor", {
         engine: "codex"
       })
     ).toEqual({
       engine: "codex"
+    });
+
+    expect(
+      validateToolInput("martin_estimate", {
+        objective: "Fix the bug",
+        budgetUsd: 5,
+        fileScope: ["src/**"]
+      })
+    ).toEqual({
+      objective: "Fix the bug",
+      budgetUsd: 5,
+      fileScope: ["src/**"]
     });
 
     expect(
@@ -569,7 +581,7 @@ describe("server validation", () => {
     });
   });
 
-  it("accepts a matching doctor-plan-preflight receipt chain for martin_run when maxUsd is below the default soft limit", async () => {
+  it("accepts a matching doctor-estimate-plan-preflight receipt chain for martin_run when maxUsd is below the default soft limit", async () => {
     await withValidationRunsRoot(async () => {
       await withValidationWorkspaceRoot(async (workspaceRoot) => {
         const previousLive = process.env.MARTIN_LIVE;
@@ -601,6 +613,23 @@ describe("server validation", () => {
               {}
             );
             expect((doctorResult as { isError?: boolean }).isError).not.toBe(true);
+
+            const estimateResult = await callTool(
+              {
+                method: "tools/call",
+                params: {
+                  name: "martin_estimate",
+                  arguments: {
+                    objective: "Summarize the current runtime state",
+                    engine: "claude",
+                    budgetUsd: 1,
+                    fileScope: ["src/**"]
+                  }
+                }
+              },
+              {}
+            );
+            expect((estimateResult as { isError?: boolean }).isError).not.toBe(true);
 
             const planResult = await callTool(
               {
@@ -683,7 +712,7 @@ describe("server validation", () => {
     });
   });
 
-  it("accepts a matching doctor-plan-preflight receipt chain when no path allow/deny filters are provided", async () => {
+  it("accepts a matching doctor-estimate-plan-preflight receipt chain when no path allow/deny filters are provided", async () => {
     await withValidationRunsRoot(async () => {
       await withValidationWorkspaceRoot(async (workspaceRoot) => {
         const previousLive = process.env.MARTIN_LIVE;
@@ -710,6 +739,20 @@ describe("server validation", () => {
                 params: {
                   name: "martin_doctor",
                   arguments: { workingDirectory: workspaceRoot, engine: "claude" }
+                }
+              },
+              {}
+            );
+            await callTool(
+              {
+                method: "tools/call",
+                params: {
+                  name: "martin_estimate",
+                  arguments: {
+                    objective,
+                    engine: "claude",
+                    budgetUsd: 1
+                  }
                 }
               },
               {}

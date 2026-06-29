@@ -706,9 +706,10 @@ async function buildGovernanceStatusResource(runsRoot: string, workingDirectory:
   const state = await readWorkflowState(runsRoot);
   const mcpState = state.mcp ?? {};
   const hasDoctor = Boolean(mcpState.doctor);
+  const hasEstimate = Boolean(mcpState.estimate);
   const hasPlan = Boolean(mcpState.plan);
   const hasPreflight = Boolean(mcpState.preflight);
-  const governed = hasDoctor && hasPlan && hasPreflight;
+  const governed = hasDoctor && hasEstimate && hasPlan && hasPreflight;
 
   const latest = await loadLatestRunForCompactResource(runsRoot);
   const budgetRemaining = (!latest.empty && latest.detail)
@@ -727,11 +728,14 @@ async function buildGovernanceStatusResource(runsRoot: string, workingDirectory:
 
   const missingSteps: string[] = [];
   if (!hasDoctor) missingSteps.push("martin_doctor");
+  if (!hasEstimate) missingSteps.push("martin_estimate");
   if (!hasPlan) missingSteps.push("martin_plan");
   if (!hasPreflight) missingSteps.push("martin_preflight");
 
   const recommendedAction = !hasDoctor
     ? "Run martin_doctor to confirm environment before any work."
+    : !hasEstimate
+      ? "Run martin_estimate to preview cost and route before spending."
     : !hasPlan
       ? "Run martin_plan with your objective to scope the task."
       : !hasPreflight
@@ -743,6 +747,7 @@ async function buildGovernanceStatusResource(runsRoot: string, workingDirectory:
     governed,
     workflowReceipts: {
       doctor: hasDoctor ? { recordedAt: mcpState.doctor!.recordedAt } : null,
+      estimate: hasEstimate ? { recordedAt: mcpState.estimate!.recordedAt } : null,
       plan: hasPlan ? { recordedAt: mcpState.plan!.recordedAt } : null,
       preflight: hasPreflight ? { recordedAt: mcpState.preflight!.recordedAt } : null
     },
@@ -750,7 +755,7 @@ async function buildGovernanceStatusResource(runsRoot: string, workingDirectory:
     budgetRemaining,
     unreceiptedRuns,
     recommendedAction,
-    requiredSequence: ["martin_doctor", "martin_plan", "martin_preflight", "martin_run", "martin_dossier"],
+    requiredSequence: ["martin_doctor", "martin_estimate", "martin_plan", "martin_preflight", "martin_run", "martin_dossier"],
     warning: governed ? undefined : "This session is NOT governed. Complete the required sequence before making changes."
   };
 }

@@ -31,6 +31,7 @@ type ToolName =
   | "martin_inspect"
   | "martin_status"
   | "martin_doctor"
+  | "martin_estimate"
   | "martin_plan"
   | "martin_preflight"
   | "martin_logs"
@@ -61,6 +62,8 @@ export function validateToolInput(name: ToolName, args: unknown): unknown {
       return validateStatusInput(args);
     case "martin_doctor":
       return validateDoctorInput(args);
+    case "martin_estimate":
+      return validateEstimateInput(args);
     case "martin_plan":
       return validatePlanInput(args);
     case "martin_preflight":
@@ -358,6 +361,23 @@ function validateDoctorInput(args: unknown): MartinDoctorInput {
       ? { runsDir: resolveSafeRunsRootPath(requireString(record.runsDir, "runsDir")) }
       : {}),
     ...optionalEnumAsObject(record.engine, "engine", MARTIN_ENGINE_VALUES)
+  };
+}
+
+function validateEstimateInput(args: unknown): {
+  objective: string;
+  engine?: (typeof MARTIN_ENGINE_VALUES)[number];
+  budgetUsd?: number;
+  fileScope?: string[];
+} {
+  const record = requireObject(args);
+  assertAllowedKeys(record, ["objective", "engine", "budgetUsd", "fileScope"]);
+
+  return {
+    objective: requireString(record.objective, "objective"),
+    ...optionalEnumAsObject(record.engine, "engine", MARTIN_ENGINE_VALUES),
+    ...optionalPositiveNumber(record.budgetUsd, "budgetUsd"),
+    ...optionalStringArrayAsObject(record.fileScope, "fileScope")
   };
 }
 
