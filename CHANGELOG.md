@@ -5,6 +5,15 @@
 ### Fixed
 - **Verifier defaults are less prone to false stop exits on longer suites** - default verifier timeout is now `120_000ms` (up from `60_000ms`) across CLI adapter paths, reducing timeout-driven `verification_failure` exits on healthy runs that take longer than one minute.
 
+## [0.3.19]
+
+### Fixed
+- **Workspace-scoped configuration resolution is now authoritative** - governed live and proof runs resolve the default `martin.config.yaml` from the workspace passed through `--cwd`, which fixes budget, token-cap, and verifier-policy drift when MartinLoop is launched outside the governed repository.
+- **Governed Codex budget verification now uses the correct workspace policy** - the live receipt-chain path honors workspace-local `maxUsd`, `softLimitUsd`, `maxIterations`, and `maxTokens` instead of falling back to invocation-root defaults.
+- **Codex integration coverage now reflects supported runtime behavior** - governed OSS tests run against actual Codex host availability when the CLI is present, and unsupported simulated subprocess paths were removed from the verification lane.
+- **Public repository hygiene is tighter** - internal planning artifacts were removed from the public surface, and `.planning/` is now ignored to prevent non-public workflow files from being reintroduced.
+- **Release metadata is back in sync with the published packages** - the root `martin-loop` release line is now `0.3.19`, and standalone `@martinloop/mcp` metadata matches the live `0.3.6` package line.
+
 ## [0.3.6]
 
 ### Fixed
