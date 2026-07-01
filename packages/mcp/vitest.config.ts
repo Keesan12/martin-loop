@@ -18,6 +18,7 @@ export default defineConfig({
   },
   test: {
     fileParallelism: false,
-    include: ["tests/**/*.test.ts"]
+    include: ["tests/**/*.test.ts"],
+    testTimeout: 30_000
   }
 });

@@ -126,6 +126,32 @@ function resolveRootPackageVersion(): string {
   return packageJson.version;
 }
 
+const STAR_CTA_LINES = [
+  "─────────────────────────────────────────────",
+  "⭐ MartinLoop saved you from a runaway bill.",
+  "   Star the repo: github.com/Keesan12/martin-loop",
+  "─────────────────────────────────────────────"
+] as const;
+
+type RunSuccessCallToAction = {
+  headline: string;
+  repo: string;
+  lines: readonly string[];
+};
+
+function buildRunSuccessCallToAction(loop: LoopRecord): RunSuccessCallToAction | undefined {
+  const verification = buildVerificationSummary(loop);
+  if (loop.status !== "completed" || loop.lifecycleState !== "completed" || verification.status !== "passed") {
+    return undefined;
+  }
+
+  return {
+    headline: "⭐ MartinLoop saved you from a runaway bill.",
+    repo: "github.com/Keesan12/martin-loop",
+    lines: STAR_CTA_LINES
+  };
+}
+
 const rootPackageVersion = resolveRootPackageVersion();
 let runAdapterOverrideForTests: MartinAdapter | undefined;
 
@@ -1249,6 +1275,7 @@ async function executeRunCommand(
   });
 
   const costProvenance = readCostProvenance(result.loop);
+  const successCallToAction = buildRunSuccessCallToAction(result.loop);
 
   return renderCliSuccess(outputMode, {
     data: {
@@ -1274,7 +1301,8 @@ async function executeRunCommand(
         engine: cliEnvironment.engine,
         liveMode: cliEnvironment.liveMode
       },
-      receiptScope
+      receiptScope,
+      ...(successCallToAction ? { successCallToAction } : {})
     },
     human: [
       `Started Martin Loop run ${result.loop.loopId}`,
@@ -1283,7 +1311,8 @@ async function executeRunCommand(
       `Runs root: ${cliEnvironment.runsRoot}`,
       `Verification plan: ${resolvedRequest.verificationPlan.join(", ") || "none"}`,
       `Attempts: ${result.loop.attempts.length}`,
-      `Actual cost (USD): ${result.loop.cost.actualUsd.toFixed(2)} — provenance: ${describeCostProvenance(costProvenance)}`
+      `Actual cost (USD): ${result.loop.cost.actualUsd.toFixed(2)} — provenance: ${describeCostProvenance(costProvenance)}`,
+      ...(successCallToAction ? ["", ...successCallToAction.lines] : [])
     ],
     quiet: result.loop.loopId,
     warnings

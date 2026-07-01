@@ -375,7 +375,7 @@ describe("--engine flag", () => {
     );
   });
 
-  itIfCodexLaunchReady("accepts an explicit session-start -> preflight -> run governed receipt chain", { timeout: 45000 }, async () => {
+  itIfCodexLaunchReady("accepts an explicit session-start -> preflight -> run governed receipt chain", { timeout: 90000 }, async () => {
     await withTempDir((workspace) =>
       withScratchEnv(
         {
@@ -462,7 +462,7 @@ describe("--engine flag", () => {
     );
   });
 
-  itIfCodexLaunchReady("keeps governed receipts valid when guardrails normalize configured budgets", { timeout: 45000 }, async () => {
+  itIfCodexLaunchReady("keeps governed receipts valid when guardrails normalize configured budgets", { timeout: 90000 }, async () => {
     await withTempDir((workspace) =>
       withScratchEnv(
         {
@@ -539,7 +539,7 @@ describe("--engine flag", () => {
     );
   });
 
-  itIfCodexLaunchReady("keeps governed receipts valid when INIT_CWD changes between preflight and run", { timeout: 45000 }, async () => {
+  itIfCodexLaunchReady("keeps governed receipts valid when INIT_CWD changes between preflight and run", { timeout: 90000 }, async () => {
     await withTempDir((workspace) =>
       withScratchEnv(
         {

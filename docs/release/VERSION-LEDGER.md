@@ -4,10 +4,10 @@ This file is the release source of truth for package/version mapping in this rep
 
 ## Root package: `martin-loop`
 
-- live npm dist-tag `latest`: `0.3.18`
-- live public GitHub release: `v0.3.18`
-- live public baseline in this train: `0.3.18`
-- root public baseline: `0.3.18`
+- live npm dist-tag `latest`: `0.4.0`
+- live public GitHub release: `v0.4.0`
+- live public baseline in this train: `0.4.0`
+- root public baseline: `0.4.0`
 - releases consumed since the original `0.2.8` launch:
   - `0.2.9` fixed proof-run classification, Windows `.cmd` resolution, and public provider defaults
   - `0.2.10` tightened verifier evidence, `--runs-dir` consistency, and public help output
@@ -26,8 +26,8 @@ This file is the release source of truth for package/version mapping in this rep
   - `0.3.15` martin mode, martin clean, preflight gate objective-hash removed, session-start optional when estimate present
   - `0.3.16` governance hooks on re-install, gate fires before engine check, estimate persistence, OpenAI 429/5xx retry
   - `0.3.18` root release smoke and release-surface fixes
-- current in-repo root release line: `0.3.19`
-- next planned root follow-on after `0.3.19`: `0.4.0`
+- current in-repo root release line: `0.4.0`
+- next planned root follow-on after `0.4.0`: `0.4.1`
 
 ## Standalone package: `@martinloop/mcp`
 

@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.4.0]
+
+### Added
+- **Success-only star CTA in `martin run` receipts** — successful, verifier-passed CLI runs now append the public repo star prompt in human output and expose the same CTA as a deterministic `successCallToAction` field in JSON output.
+- **Public license-surface regression guard** — release prep now includes an explicit repo test that fails if stale `MIT` licensing copy reappears in public README, docs, package metadata, workflow copy, or built `dist` artifacts.
+
+### Fixed
+- **Root release line advanced to `0.4.0`** — the public package version, README audit commands, release notes link, and root release guard now align with the documented post-`0.3.19` follow-on.
+- **Version ledger truth corrected before release** — the root ledger no longer claims the live public baseline is still `0.3.18`; the release source of truth now reflects the `0.3.19 -> 0.4.0` transition cleanly.
+
 ## [0.3.19]
 
 ### Fixed
