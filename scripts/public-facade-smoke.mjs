@@ -125,7 +125,7 @@ export async function runPublicFacadeSmoke(options = {}) {
     const governedGroundingDir = path.join(appDir, ".martin-grounding");
     const governedIntegrityDir = path.join(appDir, ".martin-receipt-integrity");
     await mkdir(governedWorkspace, { recursive: true });
-    initializeGitRepo(governedWorkspace);
+    await initializeGitRepo(governedWorkspace);
 
     const codexAvailable = isCliCommandAvailable("codex");
     const governedEnv = {
