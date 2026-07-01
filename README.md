@@ -84,7 +84,7 @@ npx -y martin-loop@latest session-start
 npx -y martin-loop@latest preflight "Summarize the demo workspace and prove tests still pass" --verify "npm test"
 ```
 
-`share --latest` writes three files into the selected run directory under `share/`: `run-receipt.json`, `run-receipt.md`, and `proof-card.svg`.
+`share --latest` writes `run-receipt.json` and `run-receipt.md` into the selected run directory under `share/`. Proof-card images are opt-in with `--with-proof-card` or `--proof-card-format`.
 
 Release notes for the current root package: [MartinLoop 0.4.0](./docs/release/OSS-0.4.0-RELEASE-NOTES.md).
 
@@ -139,11 +139,15 @@ npx -y martin-loop@0.4.0 share --latest --json
 
 For deterministic installs, pin the package line (`martin-loop@0.4.0`) or use `martin-loop@latest`. Plain `npx martin-loop` can resolve a stale local cache on some machines.
 
-Expected share bundle outputs:
+Default share bundle outputs:
 
 - `share/run-receipt.json`
 - `share/run-receipt.md`
-- `share/proof-card.svg`
+
+Optional proof-card outputs:
+
+- `share/proof-card-r<revision>-<hash>.svg`
+- `share/proof-card-r<revision>-<hash>.png`
 
 ## See It In Action
 
@@ -179,7 +183,7 @@ See the canonical table: [Failure Taxonomy (13 Runtime Classes)](./docs/oss/FAIL
 - Policy checks block unsafe verifier commands, risky path changes, and secret-like task inputs before execution.
 - Failure classification uses canonical runtime classes for triage and reporting. See [Failure Taxonomy (13 Runtime Classes)](./docs/oss/FAILURE-TAXONOMY-13.md).
 - Run receipts capture stop reason, verifier evidence, budget posture, integrity state, and the next safe action.
-- `martin share --latest` turns the latest governed run into a local share bundle with a redacted JSON receipt, Markdown recap, and proof-card SVG.
+- `martin share --latest` turns the latest governed run into a local share bundle with a redacted JSON receipt and Markdown recap. Proof-card images are generated only when explicitly requested.
 - MCP integration gives hosts one write-capable execution entrypoint plus richer planning, inspection, and review helpers.
 
 ## How It Works
@@ -301,7 +305,7 @@ npx martin-loop mcp print-config --host gemini --transport stdio --profile full-
 npx martin-loop mcp print-config --host generic --transport stdio --profile github-review
 ```
 
-The root `martin-loop` package and the standalone `@martinloop/mcp` package move on separate version lines. The current root package line here is `0.4.0`; the current standalone MCP package is `0.3.6`.
+The root `martin-loop` package and the standalone `@martinloop/mcp` package move on separate version lines. The current root package line here is `0.4.0`; the current standalone MCP source line is `0.3.7`, and the live npm baseline remains `0.3.6` until that standalone release is cut.
 
 The public MCP release train labels are:
 

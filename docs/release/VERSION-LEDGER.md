@@ -26,6 +26,7 @@ This file is the release source of truth for package/version mapping in this rep
   - `0.3.15` martin mode, martin clean, preflight gate objective-hash removed, session-start optional when estimate present
   - `0.3.16` governance hooks on re-install, gate fires before engine check, estimate persistence, OpenAI 429/5xx retry
   - `0.3.18` root release smoke and release-surface fixes
+  - `0.3.19` governed workspace-root config resolution, public Codex integration truth, OSS surface hygiene
 - current in-repo root release line: `0.4.0`
 - next planned root follow-on after `0.4.0`: `0.4.1`
 
@@ -35,8 +36,8 @@ This file is the release source of truth for package/version mapping in this rep
 - live public GitHub release: `mcp-v0.3.6`
 - live public baseline in this train: `0.3.6`
 - standalone MCP public baseline: `0.3.6`
-- current in-repo standalone release line: `0.3.6`
-- next planned standalone release: not scheduled in this patch train
+- current in-repo standalone release line: `0.3.7`
+- next planned standalone release: `0.3.7`
 - next planned follow-ons:
   - reserved for additional host-coverage follow-ups when the MCP line changes again
 

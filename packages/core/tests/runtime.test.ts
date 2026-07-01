@@ -558,12 +558,8 @@ describe("runMartin", () => {
   it("does not attribute pre-existing dirty repo files to a tool-launch-blocked attempt", async () => {
     const runsRoot = await mkdtemp(join(tmpdir(), "martin-env-dirty-boundary-"));
     const repoRoot = join(runsRoot, "repo");
-    await mkdir(join(repoRoot, "src"), { recursive: true });
-    await mkdir(join(repoRoot, "docs"), { recursive: true });
-    await writeFile(join(repoRoot, "src", "real.ts"), "export const real = 1;\n", "utf8");
-    await writeFile(join(repoRoot, "docs", "notes.md"), "clean baseline\n", "utf8");
-    initializeGitRepo(repoRoot);
-    await writeFile(join(repoRoot, "docs", "notes.md"), "pre-existing dirty notes\n", "utf8");
+    await materializeCommittedRepo(repoRoot);
+    await writeFile(join(repoRoot, "src", "real.ts"), "export const real = 2;\n", "utf8");
     const store = createFileRunStore({ runsRoot });
 
     const adapter: MartinAdapter = {
@@ -610,7 +606,7 @@ describe("runMartin", () => {
         objective: "Keep pre-existing dirty files out of attempt attribution when the adapter could not execute.",
         verificationPlan: ["npm test"],
         repoRoot,
-        allowedPaths: ["src/**"]
+        allowedPaths: ["docs/**"]
       },
       budget: {
         maxUsd: 10,
@@ -640,8 +636,8 @@ describe("runMartin", () => {
     expect(verificationEvent?.payload["warnings"]).toContain(
       "Adapter output reported a tool-launch problem before MartinLoop ran its own verifier: CreateProcessAsUserW failed: 5 before verifier execution in the adapter transcript."
     );
-    await expect(readFile(join(repoRoot, "docs", "notes.md"), "utf8")).resolves.toBe(
-      "pre-existing dirty notes\n"
+    await expect(readFile(join(repoRoot, "src", "real.ts"), "utf8")).resolves.toBe(
+      "export const real = 2;\n"
     );
   });
 

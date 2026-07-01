@@ -91,7 +91,7 @@ Every attempt runs your verifier. Every dollar is tracked. If the agent drifts o
 
 Your agent can pull context without side effects:
 
-`martin://runs/latest` · `martin://runs/latest/proof-card` · `martin://runs/latest/budget-status` · `martin://runs/latest/verifier-evidence` · `martin://runs/recent` · `martin://server/health` · `martin://policies/current` · `martin://agent/next-step` · `martin://guides/mcp-usage` · `martin://guides/agent-start` · `martin://repo/risk-map`
+`martin://runs/latest` · `martin://runs/latest/summary` · `martin://runs/latest/receipt` · `martin://runs/latest/proof-card` · `martin://runs/latest/budget-status` · `martin://runs/latest/verifier-evidence` · `martin://runs/recent` · `martin://server/health` · `martin://policies/current` · `martin://agent/next-step` · `martin://guides/mcp-usage` · `martin://guides/agent-start` · `martin://repo/risk-map`
 
 ### Configuration Profiles
 

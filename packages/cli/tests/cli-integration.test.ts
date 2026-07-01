@@ -9,11 +9,20 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 
-import { probeCodexLaunch, resolveCliCommandAvailability } from "@martin/adapters";
+import {
+  createStubDirectProviderAdapter,
+  detectCodexHostPlatform,
+  probeCodexLaunch,
+  resolveCliCommandAvailability
+} from "@martin/adapters";
 import { createLoopRecord } from "@martin/contracts";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
-import { executeCli } from "../src/index.js";
+import {
+  __setCodexHostOverridesForTests,
+  __setRunAdapterOverrideForTests,
+  executeCli
+} from "../src/index.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -23,6 +32,13 @@ const NOOP_VERIFIER = process.platform === "win32" ? "cmd /c exit 0" : "true";
 const codexAvailable = resolveCliCommandAvailability("codex").available;
 const codexLaunchReady = detectCodexLaunchReadiness();
 const itIfCodexLaunchReady = codexLaunchReady ? it : it.skip;
+const codexGovernedRunOptIn = process.env["MARTIN_TEST_ENABLE_LIVE_CODEX"] === "1";
+const itIfCodexLiveHostOptIn = codexLaunchReady && codexGovernedRunOptIn ? it : it.skip;
+
+afterEach(() => {
+  __setRunAdapterOverrideForTests(undefined);
+  __setCodexHostOverridesForTests(undefined);
+});
 
 async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
   const dir = await mkdtemp(join(tmpdir(), "martin-cli-int-"));
@@ -156,6 +172,59 @@ function normalizeWorkingDirectoryForExpectation(workingDirectory: string): stri
   return process.platform === "win32" ? workingDirectory.toLowerCase() : workingDirectory;
 }
 
+function installDeterministicCodexHost(): void {
+  const availability = {
+    command: "codex",
+    available: true,
+    locator: "test-override",
+    detail: "Codex launch overridden for deterministic governed CLI contract tests.",
+    resolvedPath: "codex",
+    candidatePaths: ["codex"]
+  };
+
+  __setCodexHostOverridesForTests({
+    availability,
+    probe: {
+      ok: true,
+      summary: "Codex launch overridden for deterministic governed CLI contract tests.",
+      availability,
+      diagnosis: {
+        hostPlatform: detectCodexHostPlatform(),
+        nativeInstallValid: true,
+        installKind: "native",
+        invocationMode: "direct",
+        sandboxMode: "workspace-write",
+        sandboxCompatible: true,
+        resolvedPath: "codex",
+        warnings: []
+      },
+      command: "codex",
+      args: ["exec"]
+    }
+  });
+
+  __setRunAdapterOverrideForTests(
+    createStubDirectProviderAdapter({
+      providerId: "codex-test",
+      model: "gpt-5.4",
+      responder: () => ({
+        status: "completed",
+        summary: "Deterministic Codex contract adapter completed.",
+        usage: {
+          actualUsd: 0,
+          tokensIn: 0,
+          tokensOut: 0,
+          provenance: "actual"
+        },
+        verification: {
+          passed: true,
+          summary: "Verification completed in deterministic CLI contract coverage."
+        }
+      })
+    })
+  );
+}
+
 async function readWorkflowState(
   runsRoot: string
 ): Promise<{ cli?: Record<string, unknown> } | undefined> {
@@ -247,7 +316,7 @@ describe("--engine flag", () => {
     expect(payload.loop.loopId).toMatch(/^loop_/u);
   });
 
-  itIfCodexLaunchReady("passes codex launch preflight when a compatible Codex CLI is present", { timeout: 45_000 }, async () => {
+  itIfCodexLiveHostOptIn("passes codex launch preflight when a compatible Codex CLI is present", { timeout: 45_000 }, async () => {
     const result = await withTempDir((workspace) =>
       withRunsRoot(() => {
         initializeGitRepo(workspace);
@@ -310,7 +379,7 @@ describe("--engine flag", () => {
     });
   });
 
-  itIfCodexLaunchReady("auto-bootstraps governed prerequisites and executes a live Codex run when host is ready", { timeout: 90_000 }, async () => {
+  itIfCodexLiveHostOptIn("auto-bootstraps governed prerequisites and executes a live Codex run when host is ready", { timeout: 90_000 }, async () => {
     await withTempDir((workspace) =>
       withScratchEnv(
         {
@@ -375,7 +444,7 @@ describe("--engine flag", () => {
     );
   });
 
-  itIfCodexLaunchReady("accepts an explicit session-start -> preflight -> run governed receipt chain", { timeout: 90000 }, async () => {
+  it("accepts an explicit session-start -> preflight -> run governed receipt chain", { timeout: 45000 }, async () => {
     await withTempDir((workspace) =>
       withScratchEnv(
         {
@@ -383,6 +452,7 @@ describe("--engine flag", () => {
           MARTIN_GROUNDING_DIR: join(workspace, ".martin-grounding")
         },
         async () => {
+          installDeterministicCodexHost();
           initializeGitRepo(workspace);
           const runsDir = join(workspace, ".martin-runs");
 
@@ -462,7 +532,7 @@ describe("--engine flag", () => {
     );
   });
 
-  itIfCodexLaunchReady("keeps governed receipts valid when guardrails normalize configured budgets", { timeout: 90000 }, async () => {
+  it("keeps governed receipts valid when guardrails normalize configured budgets", { timeout: 45000 }, async () => {
     await withTempDir((workspace) =>
       withScratchEnv(
         {
@@ -470,6 +540,7 @@ describe("--engine flag", () => {
           MARTIN_GROUNDING_DIR: join(workspace, ".martin-grounding")
         },
         async () => {
+          installDeterministicCodexHost();
           initializeGitRepo(workspace);
           await writeFile(
             join(workspace, "martin.config.yaml"),
@@ -539,7 +610,7 @@ describe("--engine flag", () => {
     );
   });
 
-  itIfCodexLaunchReady("keeps governed receipts valid when INIT_CWD changes between preflight and run", { timeout: 90000 }, async () => {
+  it("keeps governed receipts valid when INIT_CWD changes between preflight and run", { timeout: 45000 }, async () => {
     await withTempDir((workspace) =>
       withScratchEnv(
         {
@@ -547,6 +618,7 @@ describe("--engine flag", () => {
           MARTIN_GROUNDING_DIR: join(workspace, ".martin-grounding")
         },
         async () => {
+          installDeterministicCodexHost();
           initializeGitRepo(workspace);
           const runsDir = join(workspace, ".martin-runs");
           const alternateInvocationRoot = join(workspace, "tools");

@@ -37,11 +37,15 @@ npx -y martin-loop@latest runs verify --latest
 npx -y martin-loop@latest share --latest
 ```
 
-Expected receipt bundle outputs:
+Default receipt bundle outputs:
 
 - `share/run-receipt.json`
 - `share/run-receipt.md`
-- `share/proof-card.svg`
+
+Optional proof-card outputs:
+
+- `share/proof-card-r<revision>-<hash>.svg`
+- `share/proof-card-r<revision>-<hash>.png`
 
 ## Screenshot: budget cap, stop condition, receipt
 

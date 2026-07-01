@@ -2,11 +2,12 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { detectCodexHostPlatform } from "@martin/adapters";
 import { writeReceiptIntegrityMaterial } from "@martin/core";
 import { createLoopRecord, type LoopEventDraft, type LoopRecord } from "@martin/contracts";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
-import { executeCli } from "../src/index.js";
+import { __setCodexHostOverridesForTests, executeCli } from "../src/index.js";
 
 async function withEnv<T>(key: string, value: string, fn: () => Promise<T>): Promise<T> {
   const original = process.env[key];
@@ -21,6 +22,42 @@ async function withEnv<T>(key: string, value: string, fn: () => Promise<T>): Pro
       process.env[key] = original;
     }
   }
+}
+
+afterEach(() => {
+  __setCodexHostOverridesForTests(undefined);
+});
+
+function installDeterministicCodexDiagnostics(): void {
+  const availability = {
+    command: "codex",
+    available: true,
+    locator: "test-override",
+    detail: "Codex diagnostics overridden for deterministic operator-command tests.",
+    resolvedPath: "codex",
+    candidatePaths: ["codex"]
+  };
+
+  __setCodexHostOverridesForTests({
+    availability,
+    probe: {
+      ok: true,
+      summary: "Codex diagnostics overridden for deterministic operator-command tests.",
+      availability,
+      diagnosis: {
+        hostPlatform: detectCodexHostPlatform(),
+        nativeInstallValid: true,
+        installKind: "native",
+        invocationMode: "direct",
+        sandboxMode: "workspace-write",
+        sandboxCompatible: true,
+        resolvedPath: "codex",
+        warnings: []
+      },
+      command: "codex",
+      args: ["exec"]
+    }
+  });
 }
 
 function makeLoopRecord(): LoopRecord {
@@ -524,6 +561,7 @@ describe("operator commands", () => {
       const workingDirectory = await mkdtemp(join(tmpdir(), "martin-cli-start-"));
 
       try {
+        installDeterministicCodexDiagnostics();
         await writeFile(
           join(workingDirectory, "package.json"),
           JSON.stringify({ name: "demo", version: "1.0.0", scripts: { test: "node -e \"process.exit(0)\"" } }, null, 2),
@@ -563,6 +601,7 @@ describe("operator commands", () => {
       const workingDirectory = await mkdtemp(join(tmpdir(), "martin-cli-enable-"));
 
       try {
+        installDeterministicCodexDiagnostics();
         const enable = JSON.parse(
           (
             await executeCli([
@@ -662,7 +701,7 @@ describe("challenge command", () => {
 });
 
 describe("share command", () => {
-  it("writes a shareable receipt bundle for the latest persisted run", async () => {
+  it("writes receipt-first share artifacts and appends the aggregated ledgers only once per receipt state", async () => {
     await withRunsRoot(async (runsRoot) => {
       const loop = makeLoopRecord();
       const loopDir = join(runsRoot, loop.loopId);
@@ -682,29 +721,83 @@ describe("share command", () => {
         files: {
           receiptJson: string;
           receiptMarkdown: string;
-          proofCardSvg: string;
+          proofCardSvg?: string;
+          proofCardPng?: string;
+        };
+        ledgers: {
+          markdown: string;
+          jsonl: string;
+          revision: number;
+          appended: boolean;
         };
       };
+      const second = await executeCli(["--json", "share", "--latest"]);
+      const secondPayload = JSON.parse(second.stdout) as typeof payload;
 
       expect(result.exitCode).toBe(0);
       expect(payload.command).toBe("share");
       expect(payload.loopId).toBe(loop.loopId);
       expect(payload.outputDir).toBe(join(loopDir, "share"));
+      expect(payload.files.proofCardSvg).toBeUndefined();
+      expect(payload.files.proofCardPng).toBeUndefined();
+      expect(payload.ledgers.revision).toBe(1);
+      expect(payload.ledgers.appended).toBe(true);
+      expect(secondPayload.ledgers.revision).toBe(1);
+      expect(secondPayload.ledgers.appended).toBe(false);
 
       const receiptJson = await readFile(payload.files.receiptJson, "utf8");
       const receiptMarkdown = await readFile(payload.files.receiptMarkdown, "utf8");
-      const proofCardSvg = await readFile(payload.files.proofCardSvg, "utf8");
+      const ledgerJsonl = await readFile(payload.ledgers.jsonl, "utf8");
+      const ledgerMarkdown = await readFile(payload.ledgers.markdown, "utf8");
 
       expect(receiptJson).toContain('"schemaVersion": "martin.share-receipt.v1"');
       expect(receiptJson).toContain('"loopId": "loop_');
+      expect(receiptJson).toContain('"proofCardGenerated": false');
       expect(receiptJson).not.toContain(runsRoot);
       expect(receiptJson).not.toContain("file:///tmp/diff.patch");
       expect(receiptJson).toContain("[redacted-path]/diff.patch");
-      expect(receiptMarkdown).toContain("# Martin Loop Share Receipt");
+      expect(receiptMarkdown).toContain("# Martin Loop Run Receipt");
+      expect(receiptMarkdown).toContain("## Artifacts");
       expect(receiptMarkdown).toContain("Receipt integrity material missing: Martin proof is not trustworthy.");
       expect(receiptMarkdown).not.toContain(runsRoot);
-      expect(proofCardSvg).toContain("Martin Loop Proof Card");
-      expect(proofCardSvg).not.toContain(runsRoot);
+      expect(ledgerJsonl.trim().split(/\r?\n/)).toHaveLength(1);
+      expect(ledgerMarkdown).toContain(`## ${loop.loopId} · rev 1`);
+    });
+  });
+
+  it("generates revision-safe proof-card artifacts only when explicitly requested", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const loop = makeLoopRecord();
+      const loopDir = join(runsRoot, loop.loopId);
+      await mkdir(loopDir, { recursive: true });
+      await writeFile(join(loopDir, "loop-record.json"), JSON.stringify(loop, null, 2), "utf8");
+      await writeFile(
+        join(runsRoot, `${loop.workspaceId}.jsonl`),
+        `${JSON.stringify({ loopId: loop.loopId, status: loop.status, updatedAt: loop.updatedAt })}\n`,
+        "utf8"
+      );
+
+      const result = await executeCli([
+        "--json",
+        "share",
+        "--latest",
+        "--with-proof-card",
+        "--proof-card-format",
+        "both"
+      ]);
+      const payload = JSON.parse(result.stdout) as {
+        files: {
+          receiptJson: string;
+          proofCardSvg?: string;
+          proofCardPng?: string;
+        };
+      };
+
+      expect(result.exitCode).toBe(0);
+      expect(payload.files.proofCardSvg).toContain("proof-card-r1-");
+      expect(payload.files.proofCardPng).toContain("proof-card-r1-");
+      await expect(readFile(payload.files.proofCardSvg!, "utf8")).resolves.toContain("Martin Loop Proof Card");
+      await expect(readFile(payload.files.proofCardPng!)).resolves.toBeInstanceOf(Buffer);
     });
   });
 });

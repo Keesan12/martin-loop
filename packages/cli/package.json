@@ -19,6 +19,7 @@
   "dependencies": {
     "@martin/adapters": "workspace:*",
     "@martin/core": "workspace:*",
-    "@martin/contracts": "workspace:*"
+    "@martin/contracts": "workspace:*",
+    "@resvg/resvg-js": "^2.6.2"
   }
 }

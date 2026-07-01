@@ -167,7 +167,7 @@ For low-context agents, start with compact resources:
 
 ```json
 {
-  "uri": "martin://runs/latest/proof-card"
+  "uri": "martin://runs/latest/receipt"
 }
 ```
 
@@ -287,6 +287,7 @@ Or ask for a kickoff/debug prompt:
 - `martin://runs/triage`
 - `martin://runs/latest`
 - `martin://runs/latest/summary`
+- `martin://runs/latest/receipt`
 - `martin://runs/latest/proof-card`
 - `martin://runs/latest/budget-status`
 - `martin://runs/latest/verifier-evidence`

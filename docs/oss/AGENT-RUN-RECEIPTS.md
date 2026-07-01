@@ -21,7 +21,7 @@ The OSS receipt is intentionally local-first. It prioritizes deterministic inspe
 | `verification` | Verifier summary for the selected run. |
 | `receipt` | Governed-run summary with next safe action and risk posture fields. |
 | `artifacts` | Local artifact references included in the dossier view. |
-| `proofCard` | Portable proof-card content rendered into the Markdown and SVG outputs. |
+| `proofCard` | Optional portable proof-card content that can be rendered into image outputs when explicitly requested. |
 | `warnings` | Non-fatal warnings collected while building the receipt bundle. |
 
 ## Expected CLI and MCP surfaces
@@ -85,7 +85,11 @@ Expected bundle output under the selected run directory in `share/`:
 
 - `run-receipt.json` (machine-readable summary)
 - `run-receipt.md` (human-readable recap)
-- `proof-card.svg` (portable visual card)
+
+Optional proof-card outputs:
+
+- `proof-card-r<revision>-<hash>.svg` (portable visual card)
+- `proof-card-r<revision>-<hash>.png` (portable visual card)
 
 The proof card is intentionally a terminal-style receipt, not a marketing card. It uses a dark CLI layout, line rules, monospaced evidence rows, green only for verified/pass states, and red only for failed, missing, or boundary states. Do not restyle it into rounded boxes, blue palettes, gradients, certificate layouts, or dashboard cards without an explicit visual review.
 

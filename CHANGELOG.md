@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Added
+- **Receipt-first share ledgers** — `martin share` now appends stable `run-receipts.md` and `run-receipts.jsonl` ledgers alongside the per-run share bundle, keyed by receipt-state revision so repeated shares do not overwrite or duplicate prior evidence.
+
+### Changed
+- **Receipts are now the default share artifact** — default share output is `run-receipt.json` plus `run-receipt.md`; proof-card images are generated only when explicitly requested.
+- **MCP discovery now points hosts at receipt-first trust surfaces** — the default low-context workflow now centers `martin://agent/next-step`, `martin://runs/latest/summary`, and `martin://runs/latest/receipt`, with proof-card views treated as optional derived artifacts.
+- **Repo-pinned pnpm policy is now authoritative** — workspace overrides and allowed built dependencies now live in `pnpm-workspace.yaml`, matching the repo-pinned `pnpm@10.33.0` toolchain instead of relying on deprecated root-package config.
+
+### Fixed
+- **Verifier-only adapter test seams now flow through git change reads** — injected spawn implementations are used consistently across verifier-only proof paths, preventing hidden subprocess drift in governed validation lanes.
+- **Standalone MCP release-doc tests no longer hardcode the prior package line** — release metadata checks now follow package metadata, reducing manual version-chase risk in future patch trains.
+
 ## [0.4.0]
 
 ### Added
@@ -17,8 +29,8 @@
 ### Fixed
 - **Governed `--cwd` config lookup is now authoritative** — live and proof runs now resolve the default `martin.config.yaml` from the governed workspace passed via `--cwd` instead of the invocation root. This fixes budget, token-cap, and verifier-policy drift when MartinLoop is launched from a different directory than the repo being governed.
 - **Real Codex governed-budget verification now uses the correct workspace policy** — the live Codex receipt-chain path now honors workspace-local budget normalization, including `maxUsd`, `softLimitUsd`, `maxIterations`, and `maxTokens`, instead of silently falling back to the caller's local defaults.
-- **Public OSS Codex integration tests now reflect supported behavior** — fake Codex subprocess helpers were removed from the governed integration lane. Codex-required tests are availability-gated and run against real Codex host readiness when the CLI is present.
-- **Public repo planning residue removed** — tracked `.planning` files were removed from the public repo and `.planning/` is now ignored so internal planning artifacts cannot drift back into the public surface.
+- **Public OSS Codex integration tests now reflect supported behavior** — governed integration coverage now distinguishes deterministic unit coverage from host-availability checks, and Codex-required tests run only when the CLI is present.
+- **Public release-surface hygiene tightened** — tracked `.planning` files were removed from the public repo and `.planning/` is now ignored so internal planning artifacts cannot drift back into the OSS surface.
 - **Version truth resynced** — the public repo now reflects live package truth again: root release line advanced to `0.3.19`, and standalone `@martinloop/mcp` metadata now matches the already-live `0.3.6` package line.
 
 ## [0.3.16]

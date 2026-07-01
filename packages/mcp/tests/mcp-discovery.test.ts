@@ -131,6 +131,7 @@ describe("Martin MCP discovery resources", () => {
       MARTIN_STATIC_RESOURCE_URIS.triage,
       MARTIN_STATIC_RESOURCE_URIS.latestRun,
       MARTIN_STATIC_RESOURCE_URIS.latestSummary,
+      MARTIN_STATIC_RESOURCE_URIS.latestReceipt,
       MARTIN_STATIC_RESOURCE_URIS.latestProofCard,
       MARTIN_STATIC_RESOURCE_URIS.latestBudgetStatus,
       MARTIN_STATIC_RESOURCE_URIS.latestVerifierEvidence,
@@ -175,6 +176,7 @@ describe("Martin MCP discovery resources", () => {
       const recentRuns = await readMartinResource({ uri: MARTIN_STATIC_RESOURCE_URIS.recentRuns, runsDir: runsRoot });
       const triage = await readMartinResource({ uri: MARTIN_STATIC_RESOURCE_URIS.triage, runsDir: runsRoot });
       const latestSummary = await readMartinResource({ uri: MARTIN_STATIC_RESOURCE_URIS.latestSummary, runsDir: runsRoot });
+      const latestReceipt = await readMartinResource({ uri: MARTIN_STATIC_RESOURCE_URIS.latestReceipt, runsDir: runsRoot });
       const latestProofCard = await readMartinResource({ uri: MARTIN_STATIC_RESOURCE_URIS.latestProofCard, runsDir: runsRoot });
       const budgetStatus = await readMartinResource({ uri: MARTIN_STATIC_RESOURCE_URIS.latestBudgetStatus, runsDir: runsRoot });
       const verifierEvidence = await readMartinResource({ uri: MARTIN_STATIC_RESOURCE_URIS.latestVerifierEvidence, runsDir: runsRoot });
@@ -192,6 +194,9 @@ describe("Martin MCP discovery resources", () => {
       expect(triage.contents[0]?.text).toContain("\"findingCount\"");
       expect(triage.contents[0]?.text).toContain("\"verification_failed\"");
       expect(latestSummary.contents[0]?.text).toContain("\"kind\": \"latest-summary\"");
+      expect(latestReceipt.contents[0]?.text).toContain("\"kind\": \"latest-receipt\"");
+      expect(latestReceipt.contents[0]?.text).toContain("\"proofCard\"");
+      expect(latestReceipt.contents[0]?.text).toContain("\"artifactGuaranteed\": false");
       expect(latestSummary.contents[0]?.text).toContain("\"whatMartinPrevented\"");
       expect(latestProofCard.contents[0]?.text).toContain("# Martin Proof Card");
       expect(latestProofCard.contents[0]?.text).toContain("Verifier: failed honestly");

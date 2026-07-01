@@ -142,7 +142,12 @@ By default MartinLoop writes:
 
 - `run-receipt.json`
 - `run-receipt.md`
-- `proof-card.svg`
+
+Proof-card images are optional:
+
+- `--with-proof-card`
+- `--proof-card-format svg|png|both`
+- revision-safe image filenames such as `proof-card-r1-1a2b3c4d.svg`
 
 The default output location is the selected run directory under `share/`.
 

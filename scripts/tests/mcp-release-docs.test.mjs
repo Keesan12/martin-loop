@@ -19,7 +19,6 @@ function escapeRegex(input) {
 }
 
 test("current MCP metadata stays aligned for the release cut", async () => {
-  assert.equal(packageJson.version, "0.3.6");
   assert.equal(packageJson.version, serverJson.version);
 
   const releaseNotesPath = path.join(ROOT_DIR, "docs", "release", `MCP-${packageJson.version}-RELEASE-NOTES.md`);
@@ -74,7 +73,8 @@ test("public MCP docs describe the current baseline and the next train in human-
   ]);
 
   // AI guide should describe the live baseline and stable local-first train
-  assert.match(aiGuide, /0\.3\.6/);
+  assert.match(aiGuide, new RegExp(escapeRegex(packageJson.version)));
+  assert.match(aiGuide, /live npm baseline remains `0\.3\.6` until/i);
   assert.match(aiGuide, /local-first/i);
   assert.match(aiGuide, /martin_doctor/);
   assert.match(aiGuide, /martin_run/);
