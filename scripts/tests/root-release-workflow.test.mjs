@@ -18,9 +18,9 @@ test("root release workflow uses GitHub Actions trusted publishing without npm t
   assert.match(workflow, /npm publish "\$\{\{ steps\.root-pack\.outputs\.tarball \}\}" --access public --provenance/);
   assert.match(workflow, /npm view "martin-loop@\$\{\{ steps\.package-version\.outputs\.version \}\}" version/);
   assert.match(workflow, /actions\/checkout@v6/);
-  assert.match(workflow, /pnpm\/action-setup@v6/);
+  assert.match(workflow, /pnpm\/action-setup@b0f76dfb45f55f8421693e4803ac7bb65143bd34/);
   assert.match(workflow, /actions\/setup-node@v6/);
-  assert.match(workflow, /softprops\/action-gh-release@v3/);
+  assert.match(workflow, /softprops\/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b/);
 
   assert.doesNotMatch(workflow, /NODE_AUTH_TOKEN/);
   assert.doesNotMatch(workflow, /NPM_TOKEN/);
