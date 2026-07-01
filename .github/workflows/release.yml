@@ -18,7 +18,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@b0f76dfb45f55f8421693e4803ac7bb65143bd34
         with:
           version: 10.33.0
 
@@ -104,7 +104,7 @@ jobs:
           exit 1
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b
         with:
           files: ${{ steps.root-pack.outputs.tarball }}
           body: ${{ steps.changelog.outputs.body }}
