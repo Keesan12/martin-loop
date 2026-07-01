@@ -19,7 +19,7 @@ for (const [actionName, shaPattern] of PINNED_ACTIONS) {
     for (const workflowName of workflowNames) {
       const workflowPath = path.join(WORKFLOWS_DIR, workflowName);
       const workflow = await readFile(workflowPath, "utf8");
-      const matches = [...workflow.matchAll(new RegExp(`${actionName.replaceAll("/", "\\/")}@([^\\s]+)`, "g"))];
+      const matches = [...workflow.matchAll(new RegExp(`uses:\\s+${actionName.replaceAll("/", "\\/")}@([^\\s#]+)`, "gm"))];
 
       for (const match of matches) {
         const ref = match[1];
