@@ -448,72 +448,6 @@ describe("executeCli", () => {
     }
   });
 
-  it("supports verify-only runs without invoking a coding adapter", { timeout: 30_000 }, async () => {
-    const directory = await mkdtemp(join(tmpdir(), "martin-cli-verify-only-"));
-
-    try {
-      const result = await withIsolatedRunsEnv(directory, () =>
-        executeCli([
-          "--json",
-          "run",
-          "--objective",
-          "Verify the contracts package without edits",
-          "--engine",
-          "codex",
-          "--verify-only",
-          "--verify",
-          `"${process.execPath}" -e "process.exit(0)"`,
-          "--cwd",
-          directory,
-          "--allow-path",
-          "packages/contracts/**"
-        ])
-      );
-
-      expect(result.exitCode).toBe(0);
-
-      const payload = JSON.parse(result.stdout);
-
-      expect(payload.decision.lifecycleState).toBe("completed");
-      expect(payload.loop.lifecycleState).toBe("completed");
-      expect(payload.loop.task.mutationMode).toBe("verify_only");
-      expect(payload.loop.cost.actualUsd).toBe(0);
-    } finally {
-      await rm(directory, { force: true, recursive: true });
-    }
-  });
-
-  it("persists verifier timeout on governed runs", { timeout: 30_000 }, async () => {
-    const directory = await mkdtemp(join(tmpdir(), "martin-cli-verify-timeout-"));
-
-    try {
-      const result = await withIsolatedRunsEnv(directory, () =>
-        executeCli([
-          "--json",
-          "run",
-          "--objective",
-          "Verify timeout persistence",
-          "--engine",
-          "codex",
-          "--verify-only",
-          "--verify",
-          `"${process.execPath}" -e "process.exit(0)"`,
-          "--verify-timeout-ms",
-          "240000",
-          "--cwd",
-          directory
-        ])
-      );
-
-      expect(result.exitCode).toBe(0);
-
-      const payload = JSON.parse(result.stdout);
-      expect(payload.loop.task.verificationTimeoutMs).toBe(240000);
-    } finally {
-      await rm(directory, { force: true, recursive: true });
-    }
-  });
-
   it("supports --proof runs as no-spend proof executions without rewriting mutation mode", { timeout: 30_000 }, async () => {
     const directory = await mkdtemp(join(tmpdir(), "martin-cli-proof-mode-"));
 
@@ -538,7 +472,6 @@ describe("executeCli", () => {
       expect(payload.environment.liveMode).toBe("proof");
       expect(payload.loop.cost.actualUsd).toBe(0);
       expect(payload.loop.task.mutationMode).toBeUndefined();
-      expect(payload.loop.attempts[0]?.adapterId).not.toBe("direct:verifier:verify-only");
       expect(["completed", "diminishing_returns"]).toContain(payload.loop.lifecycleState);
     } finally {
       await rm(directory, { force: true, recursive: true });

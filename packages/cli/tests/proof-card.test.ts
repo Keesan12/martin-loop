@@ -55,24 +55,16 @@ describe("Martin proof cards", () => {
     expect(markdown).not.toContain("Martin stopped Ralph here.");
   });
 
-  it("fails closed for proof and verifier-only runs", () => {
+  it("fails closed for proof runs", () => {
     const proofCard = buildMartinProofCard({
       ...completeInput(),
       runMode: "proof"
-    });
-    const verifyOnlyCard = buildMartinProofCard({
-      ...completeInput(),
-      runMode: "verify_only"
     });
 
     expect(renderMartinProofCardMarkdown(proofCard)).toContain(
       "Proof or verifier-only runs are evidence boundaries, not real Martin mutation receipts."
     );
-    expect(renderMartinProofCardMarkdown(verifyOnlyCard)).toContain(
-      "Proof or verifier-only runs are evidence boundaries, not real Martin mutation receipts."
-    );
     expect(proofCard.proofVerdict).toBe("EVIDENCE_BOUNDARY");
-    expect(verifyOnlyCard.proofVerdict).toBe("EVIDENCE_BOUNDARY");
   });
 
   it("fails closed when receipt integrity is unavailable", () => {

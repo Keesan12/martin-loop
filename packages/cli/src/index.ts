@@ -15,7 +15,6 @@ import {
   probeCodexLaunch,
   resolveCliCommandAvailability,
   createStubDirectProviderAdapter,
-  createVerifierOnlyAdapter
 } from "@martin/adapters";
 import { runMartin, classifyRoute, resolveModelForTier, getHistoricalDirectSuccessRate, getPreference, recordPreference, type MartinAdapter } from "@martin/core";
 import {
@@ -1015,7 +1014,6 @@ export function renderCliHelp(): string {
     "  --verify <cmd>           Shell command to run as the verifier after each attempt.",
     "  --verify-timeout-ms <n>  Verifier timeout in milliseconds.",
     "  --proof                  Run in no-spend proof mode (explicit opt-in).",
-    "  --verify-only            Skip the coding adapter and run the verifier only.",
     "  --unsafe-allow-unguarded-run",
     "                           Bypass doctor/preflight run-gate checks for this invocation only.",
     "  --allow-path <glob>      Restrict agent writes to this path pattern (repeatable).",
@@ -1064,8 +1062,7 @@ async function executeRunCommand(
   });
   const effectiveMutationMode = resolvedRequest.mutationMode;
   const receiptScope = buildCliReceiptScope(cliEnvironment);
-  const engineRequired =
-    effectiveMutationMode !== "verify_only" && cliEnvironment.liveMode === "live";
+  const engineRequired = cliEnvironment.liveMode === "live";
   const preRunWarnings: string[] = [];
 
   if (engineRequired && !resolvedRequest.unsafeAllowUnguardedRun) {
@@ -2445,7 +2442,7 @@ async function executePreflightCommand(
     request.verificationPlan.length > 0
       ? request.verificationPlan
       : resolvedGuardrails.verifierRules;
-  const engineRequired = request.mutationMode !== "verify_only" && environment.liveMode === "live";
+  const engineRequired = environment.liveMode === "live";
   const receiptScope = buildCliReceiptScope(environment);
 
   const workingDirectoryExists = await stat(environment.workingDirectory).then(() => true).catch(() => false);
@@ -3339,9 +3336,6 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
         request.runsDir = next;
         index += 1;
         break;
-      case "--verify-only":
-        request.mutationMode = "verify_only";
-        break;
       case "--proof":
         request.liveMode = "proof";
         break;
@@ -3962,13 +3956,6 @@ function selectAdapter(
   // Use auto-selected model when no explicit --model flag was given.
   // autoSelectModel comes from resolveModelForTier(route.recommendedModelTier, engine).
   const effectiveModel = modelOverride ?? autoSelectModel;
-
-  if (mutationMode === "verify_only") {
-    return createVerifierOnlyAdapter({
-      workingDirectory,
-      ...(verifyTimeoutMs !== undefined ? { verifyTimeoutMs } : {})
-    });
-  }
 
   if (liveMode === "proof") {
     return createStubDirectProviderAdapter({

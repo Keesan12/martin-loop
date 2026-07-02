@@ -1251,24 +1251,15 @@ function buildPrompt(request: MartinAdapterRequest): string {
   const mutationMode = request.context.mutationMode ?? "edit";
 
   lines.push("You are running in autonomous agentic mode.");
-  if (mutationMode === "verify_only") {
-    lines.push("DO NOT EDIT FILES. Run the verifier only and report whether it passes.");
-    lines.push("Do not ask for confirmation. Do not ask clarifying questions.");
-  } else {
-    lines.push("MAKE ALL REQUIRED FILE EDITS NOW. Do not ask for confirmation. Do not ask clarifying questions.");
-    lines.push("Do not explain what you found without also making the changes. Edit the files and complete the task.");
-  }
+  lines.push("MAKE ALL REQUIRED FILE EDITS NOW. Do not ask for confirmation. Do not ask clarifying questions.");
+  lines.push("Do not explain what you found without also making the changes. Edit the files and complete the task.");
   lines.push("");
 
   lines.push("If PROGRESS.md exists in your working directory, read it first for context from prior attempts.");
   lines.push("If it does not exist, proceed with the objective below.");
   lines.push("");
 
-  lines.push(
-    mutationMode === "verify_only"
-      ? "Complete the following verification-only task without making file changes."
-      : "Complete the following coding task. Make all necessary file changes."
-  );
+  lines.push("Complete the following coding task. Make all necessary file changes.");
   lines.push("When you are done, the verification commands listed below must pass.");
   lines.push("");
 
@@ -1311,11 +1302,7 @@ function buildPrompt(request: MartinAdapterRequest): string {
   lines.push(`  Attempt ${String(attemptNumber)}`);
   lines.push(`  Remaining budget: $${String(request.context.remainingBudgetUsd)} USD`);
   lines.push(`  Remaining iterations: ${String(request.context.remainingIterations)}`);
-  lines.push(
-    mutationMode === "verify_only"
-      ? "  Do not modify files; only run verification."
-      : "  Do not expand scope beyond what is needed to pass verification."
-  );
+  lines.push("  Do not expand scope beyond what is needed to pass verification.");
   lines.push("");
 
   if (request.previousAttempts.length > 0) {

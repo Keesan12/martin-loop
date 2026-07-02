@@ -78,7 +78,7 @@ export type ExecutionProfile =
   | "staging_controlled"
   | "research_untrusted";
 
-export type MutationMode = "edit" | "verify_only";
+export type MutationMode = "edit";
 
 export interface ApprovalPolicy {
   dependencyAdds?: boolean;
