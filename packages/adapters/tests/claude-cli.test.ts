@@ -630,7 +630,6 @@ describe("createVerifierOnlyAdapter", () => {
             objective: "Run verification only",
             verificationPlan: [],
             verificationStack: [],
-            mutationMode: "verify_only",
             focus: "verify only",
             remainingBudgetUsd: 8,
             remainingIterations: 1,
@@ -676,7 +675,6 @@ describe("createVerifierOnlyAdapter", () => {
             verificationPlan: [
               `"${process.execPath}" -e "require('node:fs').writeFileSync('tracked.txt','changed')"`
             ],
-            mutationMode: "verify_only",
             focus: "verify only",
             remainingBudgetUsd: 8,
             remainingIterations: 1,
