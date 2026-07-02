@@ -48,7 +48,7 @@ describe("compileExecutionPolicy", () => {
         policyProfile: "balanced",
         telemetryDestination: "control-plane",
         repoRoot: "C:/repo",
-        mutationMode: "verify_only",
+        mutationMode: "edit",
         allowedPaths: ["src/**"],
         deniedPaths: ["docs/**"],
         acceptanceCriteria: ["Verifier stays green."],
@@ -70,7 +70,7 @@ describe("compileExecutionPolicy", () => {
     });
     expect(policy.task).toEqual({
       verificationPlan: ["pnpm test", "pnpm lint"],
-      mutationMode: "verify_only",
+      mutationMode: "edit",
       repoRoot: "C:/repo",
       allowedPaths: ["src/**"],
       deniedPaths: ["docs/**"],

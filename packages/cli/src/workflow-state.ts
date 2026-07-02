@@ -109,14 +109,7 @@ export async function recordCliWorkflowStep(input: CliWorkflowStepInput): Promis
 }
 
 export async function evaluateCliRunGate(input: CliRunGateInput): Promise<CliRunGateResult> {
-  if (input.mutationMode === "verify_only") {
-    return {
-      allowed: true,
-      nextCommand: "martin-loop run --verify-only",
-      message: "verify_only mode does not require a governed coding receipt chain.",
-      missingSteps: []
-    };
-  }
+
 
   const state = await readWorkflowState(input.runsRoot);
   const cliState = state.cli ?? {};

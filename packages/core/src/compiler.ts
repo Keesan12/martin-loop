@@ -62,16 +62,10 @@ export function compilePromptPacket(request: CompilerAdapterRequest): PromptPack
     .filter((a) => a.failureClass && a.intervention)
     .map((a) => `${a.failureClass}:${a.intervention}`);
 
-  const guidanceParts: string[] =
-    request.context.mutationMode === "verify_only"
-      ? [
-          "Do not modify files.",
-          "Run the verifier only and report whether it passed."
-        ]
-      : [
-          "Only modify files directly required to satisfy the contract.",
-          "Do not touch files outside the allowed paths."
-        ];
+  const guidanceParts: string[] = [
+    "Only modify files directly required to satisfy the contract.",
+    "Do not touch files outside the allowed paths."
+  ];
 
   if (request.context.allowedPaths && request.context.allowedPaths.length > 0) {
     guidanceParts.push(
