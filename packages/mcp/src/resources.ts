@@ -1,3 +1,7 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { homedir } from "node:os";
+
 import type {
   ReadResourceResult,
   Resource,
@@ -47,7 +51,8 @@ export const MARTIN_STATIC_RESOURCE_URIS = {
   operatingRulesGuide: "martin://guides/operating-rules",
   publishReadinessGuide: "martin://guides/publish-readiness",
   governanceStatus: "martin://agent/governance-status",
-  memorySummary: "martin://agent/memory-summary"
+  memorySummary: "martin://agent/memory-summary",
+  modeStatus: "martin://agent/mode-status"
 } as const;
 
 export const MARTIN_RESOURCE_TEMPLATES: ResourceTemplate[] = [
@@ -231,6 +236,13 @@ export const MARTIN_STATIC_RESOURCES: Resource[] = [
     title: "Martin Memory Summary",
     description: "MartinLoop persistent memory: user preferences, consent signals, budget patterns, and behavioral observations aggregated over time. Read at session start to personalize recommendations.",
     mimeType: "application/json"
+  },
+  {
+    uri: MARTIN_STATIC_RESOURCE_URIS.modeStatus,
+    name: "martin_mode_status",
+    title: "Martin Mode Status",
+    description: "Current Martin working mode (auto, plan, or edits) and consent state. Read before starting agent work to confirm whether the user expects autonomous execution, plan approval, or per-edit review.",
+    mimeType: "application/json"
   }
 ];
 
@@ -324,6 +336,9 @@ export async function readMartinResource(
 
     case MARTIN_STATIC_RESOURCE_URIS.governanceStatus:
       return jsonResource(input.uri, withDiscoveryMetadata(await buildGovernanceStatusResource(context.runsRoot, context.workingDirectory), context.runsRoot));
+
+    case MARTIN_STATIC_RESOURCE_URIS.modeStatus:
+      return jsonResource(input.uri, withDiscoveryMetadata(await buildModeStatusResource(), context.runsRoot));
 
     case MARTIN_STATIC_RESOURCE_URIS.agentNextStep:
       return jsonResource(input.uri, withDiscoveryMetadata(await buildAgentNextStepResource(context.runsRoot), context.runsRoot));
@@ -1058,6 +1073,35 @@ Use this guide when reviewing whether the public MCP package is ready to publish
 - Distinguish local package validation from live registry readiness.
 - If a discovery helper exists but is not yet wired into the server, report that as an integration gap instead of treating the capability as fully shipped.
 `;
+}
+
+async function buildModeStatusResource(): Promise<Record<string, unknown>> {
+  let currentMode = "auto";
+  let modeConfigured = false;
+  try {
+    const config = JSON.parse(
+      await readFile(join(homedir(), ".martin", "config.json"), "utf8")
+    ) as { defaultMode?: string };
+    if (config.defaultMode) {
+      currentMode = config.defaultMode;
+      modeConfigured = true;
+    }
+  } catch { /* fresh install — default to auto */ }
+
+  return {
+    kind: "mode-status",
+    currentMode,
+    modeConfigured,
+    modes: {
+      auto: "MartinLoop governs autonomously — estimate, preflight, run, receipt without per-step approval.",
+      plan: "MartinLoop shows the proposed plan before executing. Agent waits for user approval.",
+      edits: "MartinLoop shows each file change before writing. Maximum human control."
+    },
+    agentGuidance: modeConfigured
+      ? `User has explicitly set mode to "${currentMode}". Respect this preference during the session.`
+      : "Mode not explicitly configured. Defaulting to auto. Suggest running `martin mode auto|plan|edits` to set a preference.",
+    changeCommand: "martin mode auto | plan | edits"
+  };
 }
 
 function withDiscoveryMetadata(value: unknown, runsRoot?: string): Record<string, unknown> {

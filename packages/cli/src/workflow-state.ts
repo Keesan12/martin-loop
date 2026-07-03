@@ -89,6 +89,50 @@ export async function consumeFirstRunBanner(runsRoot: string): Promise<string | 
   ].join("\n");
 }
 
+// Write the "plan" step into the mcp section of the shared workflow-state.json.
+// The CLI and MCP packages share the same _martin/workflow-state.json file;
+// the CLI writes to `cli.*` steps and can also stamp `mcp.plan` so that
+// martin://agent/governance-status and martin gate reflect plan completion.
+export async function recordMcpPlanStep(input: {
+  runsRoot: string;
+  workingDirectory: string;
+  objective: string;
+  receiptScope?: ReceiptScope;
+}): Promise<void> {
+  const statePath = join(resolve(input.runsRoot), WORKFLOW_STATE_DIRECTORY, WORKFLOW_STATE_FILENAME);
+  let state: { version: 1; cli?: Record<string, unknown>; mcp?: Record<string, unknown> } = { version: 1 };
+  try {
+    const raw = await readFile(statePath, "utf8");
+    const parsed = JSON.parse(raw) as typeof state;
+    if (parsed.version === 1) {
+      state = parsed;
+    }
+  } catch { /* fresh state */ }
+
+  const normalized = process.platform === "win32" ? resolve(input.workingDirectory).toLowerCase() : resolve(input.workingDirectory);
+  const objectiveKey = input.objective.trim().replace(/\s+/gu, " ").toLowerCase();
+  const scopeKey = input.receiptScope
+    ? createHash("sha256").update(JSON.stringify({
+        invocationRoot: process.platform === "win32" ? resolve(input.receiptScope.invocationRoot ?? input.receiptScope.workingDirectory ?? "").toLowerCase() : resolve(input.receiptScope.invocationRoot ?? input.receiptScope.workingDirectory ?? ""),
+        workingDirectory: process.platform === "win32" ? resolve(input.receiptScope.workingDirectory ?? input.receiptScope.repoRoot ?? "").toLowerCase() : resolve(input.receiptScope.workingDirectory ?? input.receiptScope.repoRoot ?? ""),
+        repoRoot: process.platform === "win32" ? resolve(input.receiptScope.repoRoot ?? input.receiptScope.workingDirectory ?? "").toLowerCase() : resolve(input.receiptScope.repoRoot ?? input.receiptScope.workingDirectory ?? ""),
+        runsRoot: process.platform === "win32" ? resolve(input.receiptScope.runsRoot ?? "").toLowerCase() : resolve(input.receiptScope.runsRoot ?? "")
+      })).digest("hex").slice(0, 12)
+    : undefined;
+
+  state.mcp ??= {};
+  state.mcp["plan"] = {
+    step: "plan",
+    recordedAt: new Date().toISOString(),
+    workingDirectory: normalized,
+    objectiveKey,
+    ...(scopeKey ? { scopeKey } : {})
+  };
+
+  await mkdir(join(resolve(input.runsRoot), WORKFLOW_STATE_DIRECTORY), { recursive: true });
+  await writeFile(statePath, JSON.stringify(state, null, 2), "utf8");
+}
+
 export async function recordCliWorkflowStep(input: CliWorkflowStepInput): Promise<void> {
   const state = await readWorkflowState(input.runsRoot);
   const receipt: CliWorkflowReceipt = {
