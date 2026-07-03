@@ -2482,7 +2482,7 @@ async function executePreflightCommand(
   const receiptScope = buildCliReceiptScope(environment);
 
   const workingDirectoryExists = await stat(environment.workingDirectory).then(() => true).catch(() => false);
-  const codexAvailability = resolveCliCommandAvailability("codex");
+  const codexAvailability = resolveCodexAvailabilityForCli();
   const geminiAvailability = resolveCliCommandAvailability("gemini");
   const codexProbe =
     engineRequired && environment.engine === "codex" && workingDirectoryExists
