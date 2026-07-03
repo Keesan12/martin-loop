@@ -1,6 +1,6 @@
-# MartinLoop 0.3.19 — Governed Codex truth lock and repository cleanup
+# MartinLoop 0.3.19 — Governed workspace config correction
 
-`0.3.19` ships a governance correctness fix for real MartinLoop Codex runs and cleans up public repo drift that should not have remained on the OSS surface.
+`0.3.19` corrected a workspace-resolution defect in governed Codex runs and brought the public release surface back into version-truth alignment.
 
 ## What changed
 
@@ -16,21 +16,21 @@ When MartinLoop was launched from one directory but asked to govern a different 
 
 ### Real Codex governed tests now verify supported behavior
 
-The public OSS Codex integration lane no longer leans on fake subprocess presence for governed run behavior. The supported split is now explicit:
+The public OSS Codex integration lane now draws a clearer boundary between deterministic unit coverage and host-dependent governed execution:
 
 - deterministic unit tests always run
 - Codex-required tests probe real CLI availability
 - live governed Codex receipt-chain tests run only when the host is actually ready
 
-This makes the public test surface more honest and keeps MartinLoop aligned with real operator environments.
+This keeps the public test surface aligned with real operator environments and avoids overstating host readiness in environments where Codex is not installed.
 
-### Public planning residue removed
+### Public release surface tightened
 
 Tracked `.planning` files that did not belong on the public OSS surface were removed, and `.planning/` is now ignored so the same contamination class cannot slip back into the repo.
 
 ### Version surfaces resynced
 
-This release also normalizes repo metadata that had drifted behind live package truth:
+This release also realigns repo metadata with the package lines already live on npm:
 
 - root package advances to `0.3.19`
 - standalone `@martinloop/mcp` metadata now reflects the already-live `0.3.6` line
@@ -46,4 +46,4 @@ npx -y martin-loop@0.3.19 start
 
 - real Codex CLI integration lane passed in a live Codex environment after the config-root fix
 - public deterministic CLI governance tests passed
-- public repo contamination cleanup removed tracked internal planning surfaces
+- public release-surface scan removed tracked internal planning artifacts from the OSS lane

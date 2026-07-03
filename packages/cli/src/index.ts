@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -153,6 +154,17 @@ function buildRunSuccessCallToAction(loop: LoopRecord): RunSuccessCallToAction |
 
 const rootPackageVersion = resolveRootPackageVersion();
 let runAdapterOverrideForTests: MartinAdapter | undefined;
+type CodexAvailabilityForTests = ReturnType<typeof resolveCliCommandAvailability>;
+type CodexProbeForTests = ReturnType<typeof probeCodexLaunch>;
+let codexAvailabilityOverrideForTests: CodexAvailabilityForTests | undefined;
+let codexProbeOverrideForTests:
+  | CodexProbeForTests
+  | ((input: {
+      workingDirectory: string;
+      availability: CodexAvailabilityForTests;
+      model?: string;
+    }) => CodexProbeForTests)
+  | undefined;
 
 export type RunCommandRequest = {
   workspaceId: string;
@@ -370,6 +382,8 @@ type ShareCommand = {
   command: "share";
   selector: MartinRunSelector;
   outputDir?: string;
+  proofCard: boolean;
+  proofCardFormat: "svg" | "png" | "both";
 };
 
 type BadgeCommand = {
@@ -565,6 +579,22 @@ export async function executeCli(args: string[]): Promise<{
 
 export function __setRunAdapterOverrideForTests(adapter?: MartinAdapter): void {
   runAdapterOverrideForTests = adapter;
+}
+
+export function __setCodexHostOverridesForTests(
+  overrides?: {
+    availability?: CodexAvailabilityForTests;
+    probe?:
+      | CodexProbeForTests
+      | ((input: {
+          workingDirectory: string;
+          availability: CodexAvailabilityForTests;
+          model?: string;
+        }) => CodexProbeForTests);
+  }
+): void {
+  codexAvailabilityOverrideForTests = overrides?.availability;
+  codexProbeOverrideForTests = overrides?.probe;
 }
 
 export function parseCliArguments(args: string[]): ParsedCliArguments {
@@ -878,10 +908,13 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
   }
 
   if (command === "share") {
+    const proofCard = hasFlag(rest, "--with-proof-card") || readOption(rest, "--proof-card-format") !== undefined;
     return {
       command: "share",
       selector: parseRunSelector(rest, { allowLatest: true }),
-      ...(readOption(rest, "--out-dir") ? { outputDir: readOption(rest, "--out-dir") } : {})
+      ...(readOption(rest, "--out-dir") ? { outputDir: readOption(rest, "--out-dir") } : {}),
+      proofCard: hasFlag(rest, "--no-proof-card") ? false : proofCard,
+      proofCardFormat: parseShareProofCardFormat(rest)
     };
   }
 
@@ -935,7 +968,7 @@ export function renderCliHelp(): string {
     "  martin-loop resume <loopId>              (published alias)",
     "  martin bench --suite <suiteId>",
     "  martin challenge [--loop-id <id> | --file <path> | --latest] [--format markdown|svg]",
-    "  martin share (--loop-id <id> | --file <path> | --latest) [--out-dir <path>]",
+    "  martin share (--loop-id <id> | --file <path> | --latest) [--out-dir <path>] [--with-proof-card] [--proof-card-format <svg|png|both>]",
     "  martin badge [--format svg|json]",
     "",
     "Operator commands:",
@@ -964,7 +997,7 @@ export function renderCliHelp(): string {
     "  mcp print-config  Print a known-good MCP config snippet for Codex, Claude, Gemini, or generic hosts.",
     "  mcp install       Write a starter MCP config, or call Claude Code directly for local scope.",
     "  challenge    Print a shareable local proof card for the Under-$3 challenge.",
-    "  share        Write a local share bundle with a redacted receipt JSON, proof Markdown, and proof SVG.",
+    "  share        Write a local share bundle with a redacted receipt JSON and Markdown receipt; proof-card images are opt-in.",
     "  badge        Print an agent reliability readiness badge from local evidence.",
     "",
     "Compatibility aliases:",
@@ -982,6 +1015,9 @@ export function renderCliHelp(): string {
     "  --latest                 Select the most recently updated loop.",
     "  --attempt-index <n>      Select a specific attempt for attempt inspection.",
     "  --out-dir <path>         Override where `martin share` writes the local bundle.",
+    "  --with-proof-card        Generate proof-card image artifacts for martin share.",
+    "  --proof-card-format <f>  Proof-card format: svg, png, or both (default: svg when enabled).",
+    "  --no-proof-card          Force receipt-only share output, even when defaults change elsewhere.",
     "",
     "Phase command-center options:",
     "  --cwd <path>             Repo root containing phase state; imports .gsd state when present.",
@@ -1153,8 +1189,8 @@ async function executeRunCommand(
   let codexCommandOverride: string | undefined;
 
   if (engineRequired && cliEnvironment.engine === "codex") {
-    const codexAvailability = resolveCliCommandAvailability("codex");
-    const codexProbe = probeCodexLaunch({
+    const codexAvailability = resolveCodexAvailabilityForCli();
+    const codexProbe = resolveCodexProbeForCli({
       workingDirectory: cliEnvironment.workingDirectory,
       availability: codexAvailability,
       model: resolvedRequest.model
@@ -1617,13 +1653,13 @@ async function executeDoctorCommand(
   const workingDirectoryReady = await stat(environment.workingDirectory).then(() => true).catch(() => false);
   const runsRootReady = await stat(environment.runsRoot).then(() => true).catch(() => false);
   const claudeAvailable = isCommandAvailable("claude");
-  const codexAvailability = resolveCliCommandAvailability("codex");
+  const codexAvailability = resolveCodexAvailabilityForCli();
   const codexAvailable = codexAvailability.available;
   const geminiAvailability = resolveCliCommandAvailability("gemini");
   const geminiAvailable = geminiAvailability.available;
   const codexProbe =
     environment.liveMode === "live" && environment.engine === "codex" && workingDirectoryReady
-      ? probeCodexLaunch({
+      ? resolveCodexProbeForCli({
           workingDirectory: environment.workingDirectory,
           availability: codexAvailability
         })
@@ -2119,7 +2155,7 @@ async function collectStartEnvironmentSnapshot(
   const workingDirectoryReady = await stat(workingDirectory).then(() => true).catch(() => false);
   const runsRootReady = await stat(runsRoot).then(() => true).catch(() => false);
   const claudeAvailable = isCommandAvailable("claude");
-  const codexAvailability = resolveCliCommandAvailability("codex");
+  const codexAvailability = resolveCodexAvailabilityForCli();
   const geminiAvailability = resolveCliCommandAvailability("gemini");
   const verifier = await detectVerifierCommand(workingDirectory);
   const recommendedEngine = selectRecommendedEngine({
@@ -2446,11 +2482,11 @@ async function executePreflightCommand(
   const receiptScope = buildCliReceiptScope(environment);
 
   const workingDirectoryExists = await stat(environment.workingDirectory).then(() => true).catch(() => false);
-  const codexAvailability = resolveCliCommandAvailability("codex");
+  const codexAvailability = resolveCodexAvailabilityForCli();
   const geminiAvailability = resolveCliCommandAvailability("gemini");
   const codexProbe =
     engineRequired && environment.engine === "codex" && workingDirectoryExists
-      ? probeCodexLaunch({
+      ? resolveCodexProbeForCli({
           workingDirectory: environment.workingDirectory,
           availability: codexAvailability,
           model: request.model
@@ -4003,6 +4039,28 @@ function selectAdapter(
   });
 }
 
+function resolveCodexAvailabilityForCli(): CodexAvailabilityForTests {
+  return codexAvailabilityOverrideForTests ?? resolveCliCommandAvailability("codex");
+}
+
+function resolveCodexProbeForCli(input: {
+  workingDirectory: string;
+  availability: CodexAvailabilityForTests;
+  model?: string;
+}): CodexProbeForTests {
+  if (typeof codexProbeOverrideForTests === "function") {
+    return codexProbeOverrideForTests(input);
+  }
+  if (codexProbeOverrideForTests) {
+    return codexProbeOverrideForTests;
+  }
+  return probeCodexLaunch({
+    workingDirectory: input.workingDirectory,
+    availability: input.availability,
+    ...(input.model ? { model: input.model } : {})
+  });
+}
+
 function buildDoctorRecommendations(input: {
   liveMode: "live" | "proof";
   engine: "claude" | "codex" | "gemini" | "openai" | string;
@@ -4225,6 +4283,11 @@ function parseChallengeFormat(tokens: string[]): "markdown" | "svg" {
   return format === "svg" ? "svg" : "markdown";
 }
 
+function parseShareProofCardFormat(tokens: string[]): "svg" | "png" | "both" {
+  const format = readOption(tokens, "--proof-card-format");
+  return format === "png" || format === "both" ? format : "svg";
+}
+
 async function executeShareCommand(
   command: ShareCommand,
   outputMode: MartinOutputMode
@@ -4239,33 +4302,33 @@ async function executeShareCommand(
         });
   const outputDir = resolveShareOutputDirectory(detail, command.outputDir);
   const shareBundle = buildShareBundle(detail);
-
-  await mkdir(outputDir, { recursive: true });
-
-  const files = {
-    receiptJson: join(outputDir, "run-receipt.json"),
-    receiptMarkdown: join(outputDir, "run-receipt.md"),
-    proofCardSvg: join(outputDir, "proof-card.svg")
-  };
-
-  await writeFile(files.receiptJson, `${JSON.stringify(shareBundle.receipt, null, 2)}\n`, "utf8");
-  await writeFile(files.receiptMarkdown, shareBundle.markdown, "utf8");
-  await writeFile(files.proofCardSvg, shareBundle.svg, "utf8");
+  const shared = await writeShareArtifacts({
+    runsRoot: detail.runsRoot,
+    outputDir,
+    loop: detail.loop,
+    shareBundle,
+    proofCard: command.proofCard,
+    proofCardFormat: command.proofCardFormat
+  });
 
   return renderCliSuccess(outputMode, {
     data: {
       command: "share",
       loopId: detail.loop.loopId,
       outputDir,
-      files,
-      receipt: shareBundle.receipt
+      files: shared.files,
+      ledgers: shared.ledgers,
+      receipt: shared.receipt
     },
     human: [
       `Share bundle written for ${detail.loop.loopId}`,
       `Output directory: ${outputDir}`,
-      `JSON receipt: ${files.receiptJson}`,
-      `Markdown receipt: ${files.receiptMarkdown}`,
-      `Proof card SVG: ${files.proofCardSvg}`
+      `JSON receipt: ${shared.files.receiptJson}`,
+      `Markdown receipt: ${shared.files.receiptMarkdown}`,
+      ...(shared.files.proofCardSvg ? [`Proof card SVG: ${shared.files.proofCardSvg}`] : []),
+      ...(shared.files.proofCardPng ? [`Proof card PNG: ${shared.files.proofCardPng}`] : []),
+      `Receipt ledger (Markdown): ${shared.ledgers.markdown}`,
+      `Receipt ledger (JSONL): ${shared.ledgers.jsonl}`
     ],
     quiet: outputDir,
     warnings: dedupeWarnings([...selected.warnings, ...detail.warnings, ...shareBundle.warnings])
@@ -4274,8 +4337,8 @@ async function executeShareCommand(
 
 function buildShareBundle(detail: Awaited<ReturnType<typeof loadPersistedLoop>>): {
   receipt: Record<string, unknown>;
-  markdown: string;
-  svg: string;
+  card: ReturnType<typeof buildMartinProofCard>;
+  verification: ReturnType<typeof buildVerificationSummary>;
   warnings: string[];
 } {
   const dossier = buildRunDossier(detail);
@@ -4312,17 +4375,8 @@ function buildShareBundle(detail: Awaited<ReturnType<typeof loadPersistedLoop>>)
 
   return {
     receipt,
-    markdown: renderShareReceiptMarkdown({
-      loop: detail.loop,
-      card,
-      verification,
-      receipt: receipt["receipt"] as {
-        nextSafeAction?: string;
-      },
-      receiptIntegrity: detail.integrity.state,
-      warnings: receiptWarnings
-    }),
-    svg: renderMartinProofCardSvg(card),
+    card,
+    verification,
     warnings: receiptWarnings
   };
 }
@@ -4331,37 +4385,391 @@ function renderShareReceiptMarkdown(input: {
   loop: LoopRecord;
   card: ReturnType<typeof buildMartinProofCard>;
   verification: ReturnType<typeof buildVerificationSummary>;
-  receipt: {
+  receipt: Record<string, unknown>;
+  share: {
+    revision: number;
+    receiptStateHash: string;
+    artifactFiles: readonly string[];
+    ledgerFiles: readonly string[];
+  };
+  receiptFields: {
+    whatHappened?: string;
+    whatMartinPrevented?: string[];
     nextSafeAction?: string;
   };
   receiptIntegrity: string;
   warnings: string[];
 }): string {
   const proofCardMarkdown = renderMartinProofCardMarkdown(input.card).trimEnd();
+  const loopSummary = input.receipt["loop"] as {
+    title?: string;
+    objective?: string;
+    status?: string;
+    lifecycleState?: string;
+    spendUsd?: number;
+    budgetUsd?: number;
+    attempts?: number;
+  };
+  const verificationSummary = input.receipt["verification"] as { status?: string; summary?: string } | undefined;
+  const spendUsd =
+    typeof loopSummary?.spendUsd === "number" ? `$${loopSummary.spendUsd.toFixed(4)}` : "unknown";
+  const budgetUsd =
+    typeof loopSummary?.budgetUsd === "number" ? `$${loopSummary.budgetUsd.toFixed(4)}` : "unknown";
+
   return [
-    "# Martin Loop Share Receipt",
+    "# Martin Loop Run Receipt",
     "",
-    `Generated from local Martin Loop evidence for loop ${redactAbsolutePaths(input.loop.loopId)}.`,
+    "Human-first receipt generated from local Martin Loop evidence.",
     "",
-    `- Status: ${redactAbsolutePaths(input.loop.status)} / ${redactAbsolutePaths(input.loop.lifecycleState)}`,
+    "## Run Identity",
+    "",
+    `- Loop ID: ${redactAbsolutePaths(input.loop.loopId)}`,
+    `- Title: ${redactAbsolutePaths(loopSummary?.title ?? input.loop.task.title)}`,
+    `- Objective: ${redactAbsolutePaths(loopSummary?.objective ?? input.loop.task.objective)}`,
+    `- Revision: ${String(input.share.revision)}`,
+    `- Receipt state hash: ${input.share.receiptStateHash}`,
+    "",
+    "## Verdict",
+    "",
+    `- Status: ${redactAbsolutePaths(loopSummary?.status ?? input.loop.status)} / ${redactAbsolutePaths(loopSummary?.lifecycleState ?? input.loop.lifecycleState)}`,
     `- Receipt integrity: ${redactAbsolutePaths(input.receiptIntegrity)}`,
-    `- Verification: ${redactAbsolutePaths(input.verification.status)}`,
-    `- Attempts: ${String(input.loop.attempts.length)}`,
-    `- Next safe action: ${redactAbsolutePaths(input.receipt.nextSafeAction ?? "Run preflight before the next attempt.")}`,
+    `- Verification: ${redactAbsolutePaths(verificationSummary?.status ?? input.verification.status)}`,
+    `- Attempts: ${String(loopSummary?.attempts ?? input.loop.attempts.length)}`,
     "",
-    "## Proof Card",
+    "## Verifier Evidence",
+    "",
+    `- Summary: ${redactAbsolutePaths(verificationSummary?.summary ?? input.verification.summary)}`,
+    "",
+    "## Budget / Spend Posture",
+    "",
+    `- Spend: ${spendUsd}`,
+    `- Budget: ${budgetUsd}`,
+    "",
+    "## What Happened",
+    "",
+    redactAbsolutePaths(input.receiptFields.whatHappened ?? "No attempt summary was recorded."),
+    "",
+    "## What Martin Prevented",
+    "",
+    `- ${(input.receiptFields.whatMartinPrevented ?? ["No prevention claim is available."]).map(redactAbsolutePaths).join("; ")}`,
+    "",
+    "## Next Safe Action",
+    "",
+    redactAbsolutePaths(input.receiptFields.nextSafeAction ?? "Run preflight before the next attempt."),
+    "",
+    "## Artifacts",
+    "",
+    ...input.share.artifactFiles.map((file) => `- ${file}`),
+    ...input.share.ledgerFiles.map((file) => `- ${file}`),
+    "",
+    "## Proof View",
     "",
     proofCardMarkdown,
     ...(input.warnings.length > 0
       ? ["", "## Warnings", "", ...input.warnings.map((warning) => `- ${redactAbsolutePaths(warning)}`)]
       : []),
-    "",
-    "## Notes",
-    "",
-    "- This bundle is generated from local Martin Loop run evidence.",
-    "- Absolute machine paths are redacted so the receipt can be shared without leaking workstation details.",
     ""
   ].join("\n");
+}
+
+async function writeShareArtifacts(input: {
+  runsRoot: string;
+  outputDir: string;
+  loop: LoopRecord;
+  shareBundle: ReturnType<typeof buildShareBundle>;
+  proofCard: boolean;
+  proofCardFormat: "svg" | "png" | "both";
+}): Promise<{
+  files: {
+    receiptJson: string;
+    receiptMarkdown: string;
+    proofCardSvg?: string;
+    proofCardPng?: string;
+  };
+  ledgers: {
+    markdown: string;
+    jsonl: string;
+    revision: number;
+    stateHash: string;
+    appended: boolean;
+  };
+  receipt: Record<string, unknown>;
+}> {
+  await mkdir(input.outputDir, { recursive: true });
+
+  const files = {
+    receiptJson: join(input.outputDir, "run-receipt.json"),
+    receiptMarkdown: join(input.outputDir, "run-receipt.md")
+  } as {
+    receiptJson: string;
+    receiptMarkdown: string;
+    proofCardSvg?: string;
+    proofCardPng?: string;
+  };
+  const ledgers = {
+    markdown: join(input.runsRoot, "run-receipts.md"),
+    jsonl: join(input.runsRoot, "run-receipts.jsonl")
+  };
+  const stateHash = createHash("sha256")
+    .update(JSON.stringify(normalizeShareReceiptForHash(input.shareBundle.receipt)))
+    .digest("hex");
+  const ledgerState = await resolveShareLedgerState({
+    jsonlPath: ledgers.jsonl,
+    loopId: input.loop.loopId,
+    stateHash
+  });
+  const proofBaseName = `proof-card-r${String(ledgerState.revision)}-${stateHash.slice(0, 8)}`;
+
+  if (input.proofCard && (input.proofCardFormat === "svg" || input.proofCardFormat === "both")) {
+    files.proofCardSvg = join(input.outputDir, `${proofBaseName}.svg`);
+  }
+  if (input.proofCard && (input.proofCardFormat === "png" || input.proofCardFormat === "both")) {
+    files.proofCardPng = join(input.outputDir, `${proofBaseName}.png`);
+  }
+
+  const receipt = redactShareValue({
+    ...input.shareBundle.receipt,
+    share: {
+      generatedAt: new Date().toISOString(),
+      revision: ledgerState.revision,
+      receiptStateHash: stateHash,
+      proofCardGenerated: input.proofCard,
+      proofCardFormat: input.proofCard ? input.proofCardFormat : undefined,
+      artifacts: {
+        receiptJson: "run-receipt.json",
+        receiptMarkdown: "run-receipt.md",
+        ...(files.proofCardSvg ? { proofCardSvg: proofBaseName + ".svg" } : {}),
+        ...(files.proofCardPng ? { proofCardPng: proofBaseName + ".png" } : {})
+      },
+      ledgers: {
+        markdown: "run-receipts.md",
+        jsonl: "run-receipts.jsonl"
+      }
+    }
+  }) as Record<string, unknown>;
+
+  const markdown = renderShareReceiptMarkdown({
+    loop: input.loop,
+    card: input.shareBundle.card,
+    verification: input.shareBundle.verification,
+    receipt,
+    share: {
+      revision: ledgerState.revision,
+      receiptStateHash: stateHash,
+      artifactFiles: [
+        "run-receipt.json",
+        "run-receipt.md",
+        ...(files.proofCardSvg ? [proofBaseName + ".svg"] : []),
+        ...(files.proofCardPng ? [proofBaseName + ".png"] : [])
+      ],
+      ledgerFiles: ["run-receipts.md", "run-receipts.jsonl"]
+    },
+    receiptFields: receipt["receipt"] as {
+      whatHappened?: string;
+      whatMartinPrevented?: string[];
+      nextSafeAction?: string;
+    },
+    receiptIntegrity: String(
+      ((receipt["receiptIntegrity"] as { state?: string } | undefined)?.state ?? "unknown")
+    ),
+    warnings: input.shareBundle.warnings
+  });
+
+  await writeFile(files.receiptJson, `${JSON.stringify(receipt, null, 2)}\n`, "utf8");
+  await writeFile(files.receiptMarkdown, markdown, "utf8");
+
+  const proofCardSvg = renderMartinProofCardSvg(input.shareBundle.card);
+  if (files.proofCardSvg) {
+    await writeFileIfAbsent(files.proofCardSvg, proofCardSvg, "utf8");
+  }
+  if (files.proofCardPng) {
+    await writeFileIfAbsent(files.proofCardPng, await renderProofCardPng(proofCardSvg));
+  }
+
+  if (ledgerState.appended) {
+    const ledgerEntry = buildShareLedgerEntry({
+      receipt,
+      revision: ledgerState.revision,
+      stateHash,
+      proofArtifacts: [
+        ...(files.proofCardSvg ? [proofBaseName + ".svg"] : []),
+        ...(files.proofCardPng ? [proofBaseName + ".png"] : [])
+      ]
+    });
+    const existingJsonl = await readFile(ledgers.jsonl, "utf8").catch(() => "");
+    const existingMarkdown = await readFile(ledgers.markdown, "utf8").catch(() => "");
+    await writeFile(
+      ledgers.jsonl,
+      `${existingJsonl}${JSON.stringify(ledgerEntry)}\n`,
+      "utf8"
+    );
+    await writeFile(
+      ledgers.markdown,
+      `${existingMarkdown}${existingMarkdown.trim().length > 0 ? "\n\n---\n\n" : ""}${renderShareLedgerMarkdownEntry(ledgerEntry)}`,
+      "utf8"
+    );
+  }
+
+  return {
+    files,
+    ledgers: {
+      markdown: ledgers.markdown,
+      jsonl: ledgers.jsonl,
+      revision: ledgerState.revision,
+      stateHash,
+      appended: ledgerState.appended
+    },
+    receipt
+  };
+}
+
+async function resolveShareLedgerState(input: {
+  jsonlPath: string;
+  loopId: string;
+  stateHash: string;
+}): Promise<{ revision: number; appended: boolean }> {
+  const raw = await readFile(input.jsonlPath, "utf8").catch(() => "");
+  const entries = raw
+    .split(/\r?\n/gu)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      try {
+        return JSON.parse(line) as {
+          loopId?: string;
+          revision?: number;
+          receiptStateHash?: string;
+        };
+      } catch {
+        return undefined;
+      }
+    })
+    .filter((entry): entry is { loopId?: string; revision?: number; receiptStateHash?: string } => entry !== undefined);
+  const existing = entries.find(
+    (entry) => entry.loopId === input.loopId && entry.receiptStateHash === input.stateHash
+  );
+  if (existing && typeof existing.revision === "number") {
+    return { revision: existing.revision, appended: false };
+  }
+  const maxRevision = entries
+    .filter((entry) => entry.loopId === input.loopId && typeof entry.revision === "number")
+    .reduce((highest, entry) => Math.max(highest, entry.revision ?? 0), 0);
+  return { revision: maxRevision + 1, appended: true };
+}
+
+function normalizeShareReceiptForHash(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => normalizeShareReceiptForHash(item));
+  }
+
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([key]) => key !== "generatedAt" && key !== "settledAt")
+        .map(([key, item]) => [key, normalizeShareReceiptForHash(item)])
+    );
+  }
+
+  return value;
+}
+
+function buildShareLedgerEntry(input: {
+  receipt: Record<string, unknown>;
+  revision: number;
+  stateHash: string;
+  proofArtifacts: readonly string[];
+}): Record<string, unknown> {
+  const loop = (input.receipt["loop"] ?? {}) as Record<string, unknown>;
+  const verification = (input.receipt["verification"] ?? {}) as Record<string, unknown>;
+  const shareReceipt = (input.receipt["receipt"] ?? {}) as Record<string, unknown>;
+
+  return redactShareValue({
+    kind: "martin.share-ledger-entry.v1",
+    generatedAt: input.receipt["generatedAt"],
+    loopId: loop["loopId"],
+    revision: input.revision,
+    receiptStateHash: input.stateHash,
+    title: loop["title"],
+    objective: loop["objective"],
+    status: loop["status"],
+    lifecycleState: loop["lifecycleState"],
+    verificationStatus: verification["status"],
+    spendUsd: loop["spendUsd"],
+    budgetUsd: loop["budgetUsd"],
+    attempts: loop["attempts"],
+    nextSafeAction: shareReceipt["nextSafeAction"],
+    whatHappened: shareReceipt["whatHappened"],
+    whatMartinPrevented: shareReceipt["whatMartinPrevented"],
+    artifacts: ["run-receipt.json", "run-receipt.md", ...input.proofArtifacts]
+  }) as Record<string, unknown>;
+}
+
+function renderShareLedgerMarkdownEntry(entry: Record<string, unknown>): string {
+  const prevented = Array.isArray(entry["whatMartinPrevented"])
+    ? (entry["whatMartinPrevented"] as unknown[]).map((item) => String(item)).join("; ")
+    : "No prevention claim is available.";
+  const artifacts = Array.isArray(entry["artifacts"])
+    ? (entry["artifacts"] as unknown[]).map((item) => `- ${String(item)}`)
+    : [];
+
+  return [
+    `## ${String(entry["loopId"] ?? "unknown-loop")} · rev ${String(entry["revision"] ?? 1)}`,
+    "",
+    `- Title: ${String(entry["title"] ?? "unknown")}`,
+    `- Status: ${String(entry["status"] ?? "unknown")} / ${String(entry["lifecycleState"] ?? "unknown")}`,
+    `- Verification: ${String(entry["verificationStatus"] ?? "unknown")}`,
+    `- Spend: ${typeof entry["spendUsd"] === "number" ? `$${Number(entry["spendUsd"]).toFixed(4)}` : "unknown"}`,
+    `- Budget: ${typeof entry["budgetUsd"] === "number" ? `$${Number(entry["budgetUsd"]).toFixed(4)}` : "unknown"}`,
+    `- Next safe action: ${String(entry["nextSafeAction"] ?? "Run preflight before the next attempt.")}`,
+    "",
+    "### What Happened",
+    "",
+    String(entry["whatHappened"] ?? "No attempt summary was recorded."),
+    "",
+    "### What Martin Prevented",
+    "",
+    `- ${prevented}`,
+    "",
+    "### Artifacts",
+    "",
+    ...artifacts,
+    ""
+  ].join("\n");
+}
+
+async function renderProofCardPng(svg: string): Promise<Buffer> {
+  const { Resvg } = require("@resvg/resvg-js") as {
+    Resvg: new (
+      svg: string,
+      options: {
+        fitTo: {
+          mode: "width";
+          value: number;
+        };
+      }
+    ) => { render(): { asPng(): Buffer } };
+  };
+  const rendered = new Resvg(svg, {
+    fitTo: {
+      mode: "width",
+      value: 1200
+    }
+  }).render();
+  return rendered.asPng();
+}
+
+async function writeFileIfAbsent(path: string, contents: string | Buffer, encoding?: BufferEncoding): Promise<void> {
+  const exists = await stat(path)
+    .then(() => true)
+    .catch(() => false);
+  if (exists) {
+    return;
+  }
+  if (typeof contents === "string") {
+    await writeFile(path, contents, encoding ?? "utf8");
+    return;
+  }
+  await writeFile(path, contents);
 }
 
 function resolveShareOutputDirectory(

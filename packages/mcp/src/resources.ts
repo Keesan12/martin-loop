@@ -31,6 +31,7 @@ export const MARTIN_STATIC_RESOURCE_URIS = {
   triage: "martin://runs/triage",
   latestRun: "martin://runs/latest",
   latestSummary: "martin://runs/latest/summary",
+  latestReceipt: "martin://runs/latest/receipt",
   latestProofCard: "martin://runs/latest/proof-card",
   latestBudgetStatus: "martin://runs/latest/budget-status",
   latestVerifierEvidence: "martin://runs/latest/verifier-evidence",
@@ -113,10 +114,17 @@ export const MARTIN_STATIC_RESOURCES: Resource[] = [
     mimeType: "application/json"
   },
   {
+    uri: MARTIN_STATIC_RESOURCE_URIS.latestReceipt,
+    name: "martin_latest_receipt",
+    title: "Martin Latest Receipt",
+    description: "Canonical structured receipt for the latest run; use this before optional proof-card views.",
+    mimeType: "application/json"
+  },
+  {
     uri: MARTIN_STATIC_RESOURCE_URIS.latestProofCard,
     name: "martin_latest_proof_card",
     title: "Martin Latest Proof Card",
-    description: "Small Markdown receipt showing what happened, what Martin prevented, and the next safe action.",
+    description: "Optional Markdown proof view derived from the latest receipt.",
     mimeType: "text/markdown"
   },
   {
@@ -283,6 +291,9 @@ export async function readMartinResource(
 
     case MARTIN_STATIC_RESOURCE_URIS.latestSummary:
       return jsonResource(input.uri, withDiscoveryMetadata(await buildLatestSummaryResource(context.runsRoot), context.runsRoot));
+
+    case MARTIN_STATIC_RESOURCE_URIS.latestReceipt:
+      return jsonResource(input.uri, withDiscoveryMetadata(await buildLatestReceiptResource(context.runsRoot), context.runsRoot));
 
     case MARTIN_STATIC_RESOURCE_URIS.latestProofCard:
       return textResource(input.uri, "text/markdown", await buildLatestProofCardResource(context.runsRoot));
@@ -504,6 +515,47 @@ async function buildLatestSummaryResource(runsRoot: string): Promise<Record<stri
   };
 }
 
+async function buildLatestReceiptResource(runsRoot: string): Promise<Record<string, unknown>> {
+  const latest = await loadLatestRunForCompactResource(runsRoot);
+  if (latest.empty || !latest.detail) {
+    return compactEmptyState("latest-receipt", runsRoot, latest.warnings);
+  }
+
+  const ledgerEvents = await readLedgerEvents(latest.detail);
+  const loop = latest.detail.loop as Parameters<typeof buildPersistedLoopPreview>[0];
+  const verification = buildVerificationHistorySnapshot(loop, ledgerEvents);
+  const preview = buildPersistedLoopPreview(loop);
+
+  return {
+    kind: "latest-receipt",
+    loop: preview,
+    task: {
+      title: loop.task?.title,
+      objective: loop.task?.objective,
+      verificationPlan: loop.task?.verificationPlan ?? []
+    },
+    receiptIntegrity: latest.detail.loop.receiptIntegrity,
+    verification: {
+      status: verification.latestVerification?.passed === true
+        ? "passed"
+        : verification.latestVerification?.passed === false
+          ? "failed"
+          : "unavailable",
+      summary: verification.latestVerification?.summary,
+      latest: verification.latestVerification,
+      count: verification.verificationCount
+    },
+    whatHappened: loop.attempts.at(-1)?.summary ?? verification.latestVerification?.summary ?? loop.task?.objective,
+    whatMartinPrevented: describePrevention(loop),
+    nextSafeAction: inferAgentNextStep(loop, verification),
+    proofCard: {
+      artifactGuaranteed: false,
+      resource: MARTIN_STATIC_RESOURCE_URIS.latestProofCard
+    },
+    warnings: [...latest.detail.warnings, ...verification.warnings]
+  };
+}
+
 async function buildLatestBudgetStatusResource(runsRoot: string): Promise<Record<string, unknown>> {
   const latest = await loadLatestRunForCompactResource(runsRoot);
   if (latest.empty || !latest.detail) {
@@ -648,7 +700,7 @@ async function buildLatestProofCardResource(runsRoot: string): Promise<string> {
       "",
       "What happened: Martin has not found a local run record in this runs root.",
       "What Martin prevented: unknown until a governed run executes.",
-      "Next safe action: call `martin_doctor`, run `npx martin-loop demo`, then inspect `martin://runs/latest/summary`.",
+      "Next safe action: call `martin_doctor`, run `npx martin-loop demo`, then inspect `martin://runs/latest/receipt` or `martin://runs/latest/summary`.",
       "",
       "Estimate note: no cost or token savings are claimed without run evidence.",
       ""
@@ -811,15 +863,15 @@ function inferAgentNextStep(
     return {
       action: "triage_before_retry",
       toolOrResource: "martin_triage_runs",
-      instruction: "Call `martin_triage_runs` and inspect the proof card before spending another attempt."
+      instruction: "Call `martin_triage_runs` and inspect the latest receipt before spending another attempt."
     };
   }
 
   if (loop.status === "completed" && verification.latestVerification?.passed === true) {
     return {
       action: "prove_and_share",
-      toolOrResource: MARTIN_STATIC_RESOURCE_URIS.latestProofCard,
-      instruction: "Read the proof card and full dossier before sharing or promoting the result."
+      toolOrResource: MARTIN_STATIC_RESOURCE_URIS.latestReceipt,
+      instruction: "Read the latest receipt and full dossier before sharing or promoting the result; generate a proof card only when a visual artifact is explicitly needed."
     };
   }
 
@@ -846,14 +898,14 @@ Martin Loop exposes governed coding workflows over MCP. Use the server health an
 2. Use the \`martin_governed_coding_kickoff\` prompt to frame a governed coding request.
 3. Call \`martin_preflight\` before \`martin_run\` when the task or safety envelope is non-trivial.
 4. After execution, inspect \`${MARTIN_STATIC_RESOURCE_URIS.recentRuns}\`, \`martin://runs/{loopId}\`, and \`martin://runs/{loopId}/verification\`.
-5. For low-context agents, read \`${MARTIN_STATIC_RESOURCE_URIS.agentNextStep}\`, \`${MARTIN_STATIC_RESOURCE_URIS.latestSummary}\`, or \`${MARTIN_STATIC_RESOURCE_URIS.latestProofCard}\` before asking for full JSON.
+5. For low-context agents, read \`${MARTIN_STATIC_RESOURCE_URIS.agentNextStep}\`, \`${MARTIN_STATIC_RESOURCE_URIS.latestSummary}\`, or \`${MARTIN_STATIC_RESOURCE_URIS.latestReceipt}\` before asking for full JSON. Treat \`${MARTIN_STATIC_RESOURCE_URIS.latestProofCard}\` as an optional derived view.
 6. Read \`${MARTIN_STATIC_RESOURCE_URIS.triage}\` or call \`martin_triage_runs\` to prioritize which run needs attention first.
 7. Use \`martin_debug_failed_run\` when a loop exits failed, budget-bound, or escalated.
 
 ## Current Martin MCP Surface
 
 - Tools: \`martin_run\`, \`martin_inspect\`, \`martin_status\`, \`martin_doctor\`, \`martin_preflight\`, \`martin_list_runs\`, \`martin_triage_runs\`, \`martin_get_run\`, \`martin_get_attempt\`, \`martin_get_verification_results\`, \`martin_run_dossier\`
-- Static resources: \`${MARTIN_STATIC_RESOURCE_URIS.serverHealth}\`, \`${MARTIN_STATIC_RESOURCE_URIS.recentRuns}\`, \`${MARTIN_STATIC_RESOURCE_URIS.triage}\`, \`${MARTIN_STATIC_RESOURCE_URIS.latestSummary}\`, \`${MARTIN_STATIC_RESOURCE_URIS.latestProofCard}\`, \`${MARTIN_STATIC_RESOURCE_URIS.latestBudgetStatus}\`, \`${MARTIN_STATIC_RESOURCE_URIS.latestVerifierEvidence}\`, \`${MARTIN_STATIC_RESOURCE_URIS.latestRollbackEvidence}\`, \`${MARTIN_STATIC_RESOURCE_URIS.agentNextStep}\`, \`${MARTIN_STATIC_RESOURCE_URIS.mcpUsageGuide}\`, \`${MARTIN_STATIC_RESOURCE_URIS.agentStartGuide}\`, \`${MARTIN_STATIC_RESOURCE_URIS.publishReadinessGuide}\`
+- Static resources: \`${MARTIN_STATIC_RESOURCE_URIS.serverHealth}\`, \`${MARTIN_STATIC_RESOURCE_URIS.recentRuns}\`, \`${MARTIN_STATIC_RESOURCE_URIS.triage}\`, \`${MARTIN_STATIC_RESOURCE_URIS.latestSummary}\`, \`${MARTIN_STATIC_RESOURCE_URIS.latestReceipt}\`, \`${MARTIN_STATIC_RESOURCE_URIS.latestProofCard}\`, \`${MARTIN_STATIC_RESOURCE_URIS.latestBudgetStatus}\`, \`${MARTIN_STATIC_RESOURCE_URIS.latestVerifierEvidence}\`, \`${MARTIN_STATIC_RESOURCE_URIS.latestRollbackEvidence}\`, \`${MARTIN_STATIC_RESOURCE_URIS.agentNextStep}\`, \`${MARTIN_STATIC_RESOURCE_URIS.mcpUsageGuide}\`, \`${MARTIN_STATIC_RESOURCE_URIS.agentStartGuide}\`, \`${MARTIN_STATIC_RESOURCE_URIS.publishReadinessGuide}\`
 - Resource templates: \`martin://runs/{loopId}\`, \`martin://runs/{loopId}/attempts/{attemptIndex}\`, \`martin://runs/{loopId}/verification\`
 - Prompts: \`martin_start\`, \`martin_preflight\`, \`martin_triage\`, \`martin_resume\`, \`martin_prove\`, \`martin_release_check\`, \`martin_governed_coding_kickoff\`, \`martin_debug_failed_run\`, \`martin_publish_readiness_review\`, \`martin_triage_run_store\`
 
@@ -881,7 +933,7 @@ Use Martin Loop as the local governor before you spend agent tokens or retry a f
 2. If no runs exist, call \`martin_doctor\`, then \`martin_preflight\`.
 3. If a run exists, read \`${MARTIN_STATIC_RESOURCE_URIS.latestSummary}\` before reading full run JSON.
 4. If the verifier failed, use prompt \`martin_debug_failed_run\` or \`martin_triage\`.
-5. If you need a shareable receipt, read \`${MARTIN_STATIC_RESOURCE_URIS.latestProofCard}\`.
+5. If you need a shareable receipt, read \`${MARTIN_STATIC_RESOURCE_URIS.latestReceipt}\` first. Generate or inspect \`${MARTIN_STATIC_RESOURCE_URIS.latestProofCard}\` only when a visual artifact is explicitly required.
 
 ## Install Profiles
 
@@ -920,7 +972,8 @@ Use this guide when an IDE or agent needs to know which Martin surface to call n
 
 - Need the smallest next action: \`${MARTIN_STATIC_RESOURCE_URIS.agentNextStep}\`
 - Need a quick receipt: \`${MARTIN_STATIC_RESOURCE_URIS.latestSummary}\`
-- Need a shareable proof object: \`${MARTIN_STATIC_RESOURCE_URIS.latestProofCard}\`
+- Need the structured receipt source of truth: \`${MARTIN_STATIC_RESOURCE_URIS.latestReceipt}\`
+- Need an optional visual proof object: \`${MARTIN_STATIC_RESOURCE_URIS.latestProofCard}\`
 - Need a full run review: \`martin_dossier\`
 - Need to decide whether to retry: \`martin_triage_runs\`
 - Need IDE setup guidance: \`${MARTIN_STATIC_RESOURCE_URIS.ideOnboardingGuide}\`

@@ -4,7 +4,7 @@ import type { ChildProcess, SpawnOptions } from "node:child_process";
 
 import { describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -645,28 +645,21 @@ describe("createVerifierOnlyAdapter", () => {
     }
   });
 
-  it("reports verifier-created file changes instead of treating verify-only as clean", { timeout: 15000 }, async () => {
-    const directory = await mkdtemp(join(tmpdir(), "martin-verify-only-"));
+  it("reports verifier-created file changes instead of treating verify-only as clean", async () => {
+    const trustedWorkspaceRoot = join(process.cwd(), ".tmp");
+    await mkdir(trustedWorkspaceRoot, { recursive: true });
+    const directory = await mkdtemp(join(trustedWorkspaceRoot, "martin-verify-only-"));
+    const calls: SpawnCall[] = [];
 
     try {
-      spawnSync("git", ["init"], { cwd: directory, stdio: "ignore" });
-      await writeFile(join(directory, "tracked.txt"), "original", "utf8");
-      spawnSync("git", ["add", "tracked.txt"], { cwd: directory, stdio: "ignore" });
-      spawnSync(
-        "git",
-        [
-          "-c",
-          "user.email=martin@example.com",
-          "-c",
-          "user.name=Martin Test",
-          "commit",
-          "-m",
-          "seed"
-        ],
-        { cwd: directory, stdio: "ignore" }
-      );
-
-      const adapter = createVerifierOnlyAdapter({ workingDirectory: directory });
+      const adapter = createVerifierOnlyAdapter({
+        workingDirectory: directory,
+        spawnImpl: createScriptedSpawn(calls, [
+          { stdout: "" },
+          { stdout: "" },
+          { stdout: " M tracked.txt\u0000" }
+        ])
+      });
       const result = await adapter.execute(
         makeRequest({
           context: {
@@ -685,6 +678,8 @@ describe("createVerifierOnlyAdapter", () => {
 
       expect(result.verification.passed).toBe(true);
       expect(result.execution?.changedFiles).toContain("tracked.txt");
+      expect(calls.some((call) => call.command === "git")).toBe(true);
+      expect(calls.some((call) => call.command === process.execPath)).toBe(true);
     } finally {
       await rm(directory, { force: true, recursive: true });
     }

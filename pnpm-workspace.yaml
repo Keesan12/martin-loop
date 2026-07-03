@@ -1,9 +1,9 @@
 packages:
   - "packages/*"
   - "benchmarks"
-allowBuilds:
-  esbuild: true
-  protobufjs: true
+onlyBuiltDependencies:
+  - esbuild
+  - protobufjs
 overrides:
   "@hono/node-server": "^1.19.13"
   ajv: "^8.20.0"

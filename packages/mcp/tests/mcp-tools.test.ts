@@ -5,7 +5,7 @@ import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "n
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { writeReceiptIntegrityMaterial, type RunStore } from "@martin/core";
+import { writeReceiptIntegrityMaterial, type RunMartinInput, type RunMartinResult, type RunStore } from "@martin/core";
 import { createLoopRecord } from "@martin/contracts";
 import type { SpawnLike } from "@martin/adapters";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -20,6 +20,7 @@ import { martinPreflightTool } from "../src/tools/preflight.js";
 import { martinRunDossierTool } from "../src/tools/run-dossier.js";
 import {
   __setProofModeVerifierSpawnImplForTests,
+  __setRunMartinImplForTests,
   __setRunStoreOverrideForTests,
   runLoopTool
 } from "../src/tools/run-loop.js";
@@ -152,6 +153,7 @@ function createImmediateSpawn(calls: Array<{ command: string; args: readonly str
 
 afterEach(() => {
   __setProofModeVerifierSpawnImplForTests(undefined);
+  __setRunMartinImplForTests(undefined);
   __setRunStoreOverrideForTests(undefined);
 });
 
@@ -163,6 +165,31 @@ function createMemoryRunStore(runsRoot: string): RunStore {
     async appendLedger() {},
     async writeAttemptArtifacts() {},
     async writeLoopRecord() {}
+  };
+}
+
+function createStubRunMartinResult(input: RunMartinInput): RunMartinResult {
+  const loop = createLoopRecord({
+    workspaceId: input.workspaceId,
+    projectId: input.projectId,
+    task: input.task,
+    budget: input.budget,
+    ...(input.receiptScope ? { receiptScope: input.receiptScope } : {}),
+    ...(input.metadata ? { metadata: input.metadata } : {})
+  });
+
+  return {
+    loop: {
+      ...loop,
+      status: "exited",
+      lifecycleState: "budget_exit"
+    },
+    decision: {
+      shouldExit: true,
+      lifecycleState: "budget_exit",
+      status: "exited",
+      reason: "stubbed runMartin result"
+    }
   };
 }
 
@@ -829,61 +856,91 @@ describe("martinTriageRunsTool", () => {
     "detects tampering in canonical persisted runs and surfaces receipt scope",
     async () => {
       await withRunsRoot(async (runsRoot) => {
-        const originalEnv = process.env.MARTIN_LIVE;
-        process.env.MARTIN_LIVE = "false";
-        const verifierCalls: Array<{ command: string; args: readonly string[]; options?: SpawnOptions }> = [];
-        __setProofModeVerifierSpawnImplForTests(createImmediateSpawn(verifierCalls));
+        const repoRoot = process.cwd();
+        const baseLoop = makeLoopRecord();
+        const loop = {
+          ...baseLoop,
+          status: "completed" as const,
+          lifecycleState: "completed" as const,
+          task: {
+            ...baseLoop.task,
+            repoRoot
+          },
+          attempts: [
+            {
+              attemptId: "att_tamper_1",
+              index: 1,
+              adapterId: "direct:verifier:verify-only",
+              model: "verify-only",
+              startedAt: "2026-06-07T12:00:00.000Z",
+              completedAt: "2026-06-07T12:00:05.000Z",
+              summary: "Verification completed before tamper."
+            }
+          ],
+          events: [
+            {
+              eventId: "evt_tamper_1",
+              timestamp: "2026-06-07T12:00:05.000Z",
+              type: "verification.completed" as const,
+              lifecycleState: "verifying" as const,
+              payload: {
+                attemptId: "att_tamper_1",
+                passed: true,
+                summary: "Verification completed before tamper."
+              }
+            }
+          ]
+        };
+        const loopDir = join(runsRoot, loop.loopId);
+        const loopRecordPath = join(loopDir, "loop-record.json");
+        const eventsPath = join(loopDir, "events.jsonl");
+        const tamperWarning =
+          "Receipt integrity is tamper_detected; persisted verifier evidence is not trustworthy yet.";
+        const expectedReceiptScope = {
+          workingDirectory: repoRoot,
+          repoRoot,
+          runsRoot
+        };
 
-        try {
-          const result = await runLoopTool({
-            objective: "Create a canonical run, then tamper with the persisted loop record.",
-            workingDirectory: ".",
-            verificationPlan: ["node --version"],
-            maxIterations: 1,
-            maxUsd: 1
-          });
-          const loopRecordPath = join(runsRoot, result.loopId, "loop-record.json");
-          const tamperWarning =
-            "Receipt integrity is tamper_detected; persisted verifier evidence is not trustworthy yet.";
-          const expectedReceiptScope = {
-            workingDirectory: process.cwd(),
-            repoRoot: process.cwd(),
-            runsRoot
-          };
+        await mkdir(loopDir, { recursive: true });
+        await writeFile(loopRecordPath, `${JSON.stringify(loop, null, 2)}\n`, "utf8");
+        await writeFile(
+          eventsPath,
+          loop.events.map((entry) => JSON.stringify(entry)).join("\n").concat("\n"),
+          "utf8"
+        );
+        await writeReceiptIntegrityMaterial({
+          runId: loop.loopId,
+          runsRoot,
+          loopRecord: loop,
+          ledgerEntries: loop.events,
+          scope: expectedReceiptScope,
+          signedAt: loop.updatedAt
+        });
 
-          const baselineRun = await martinGetRunTool({ loopId: result.loopId });
-          expect(baselineRun.receiptIntegrity.state).toBe("verified");
-          expect(baselineRun.receiptScope).toMatchObject(expectedReceiptScope);
-          expect(verifierCalls).toHaveLength(1);
-          expect(verifierCalls[0]?.command).toBe("node");
-          expect(verifierCalls[0]?.args).toEqual(["--version"]);
+        const baselineRun = await martinGetRunTool({ loopId: loop.loopId });
+        expect(baselineRun.receiptIntegrity.state).toBe("verified");
+        expect(baselineRun.receiptScope).toMatchObject(expectedReceiptScope);
 
-          const persisted = JSON.parse(await readFile(loopRecordPath, "utf8"));
-          persisted.task.title = "Tampered after receipt material was created.";
-          await writeFile(loopRecordPath, JSON.stringify(persisted, null, 2), "utf8");
+        const persisted = JSON.parse(await readFile(loopRecordPath, "utf8"));
+        persisted.task.title = "Tampered after receipt material was created.";
+        await writeFile(loopRecordPath, JSON.stringify(persisted, null, 2), "utf8");
 
-          const run = await martinGetRunTool({ loopId: result.loopId });
-          const verification = await martinGetVerificationResultsTool({ loopId: result.loopId });
-          const dossier = await martinRunDossierTool({ loopId: result.loopId });
+        const run = await martinGetRunTool({ loopId: loop.loopId });
+        const verification = await martinGetVerificationResultsTool({ loopId: loop.loopId });
+        const dossier = await martinRunDossierTool({ loopId: loop.loopId });
 
-          expect(run.receiptIntegrity.state).toBe("tamper_detected");
-          expect(run.receiptScope).toMatchObject(expectedReceiptScope);
-          expect(run.warnings).toContain(tamperWarning);
+        expect(run.receiptIntegrity.state).toBe("tamper_detected");
+        expect(run.receiptScope).toMatchObject(expectedReceiptScope);
+        expect(run.warnings).toContain(tamperWarning);
 
-          expect(verification.receiptIntegrity.state).toBe("tamper_detected");
-          expect(verification.receiptScope).toMatchObject(expectedReceiptScope);
-          expect(verification.warnings).toContain(tamperWarning);
+        expect(verification.receiptIntegrity.state).toBe("tamper_detected");
+        expect(verification.receiptScope).toMatchObject(expectedReceiptScope);
+        expect(verification.warnings).toContain(tamperWarning);
 
-          expect(dossier.receiptIntegrity.state).toBe("tamper_detected");
-          expect(dossier.receiptScope).toMatchObject(expectedReceiptScope);
-          expect(dossier.warnings).toContain(tamperWarning);
-        } finally {
-          if (originalEnv === undefined) {
-            delete process.env.MARTIN_LIVE;
-          } else {
-            process.env.MARTIN_LIVE = originalEnv;
-          }
-        }
+        expect(dossier.receiptIntegrity.state).toBe("tamper_detected");
+        expect(dossier.receiptScope).toMatchObject(expectedReceiptScope);
+        expect(dossier.warnings).toContain(tamperWarning);
       });
     }
   );
@@ -1231,6 +1288,9 @@ describe("runLoopTool", () => {
       process.env.MARTIN_LIVE = "false";
       const calls: Array<{ command: string; args: readonly string[]; options?: SpawnOptions }> = [];
       __setProofModeVerifierSpawnImplForTests(createImmediateSpawn(calls));
+      const trustedWorkspaceRoot = join(process.cwd(), ".tmp");
+      await mkdir(trustedWorkspaceRoot, { recursive: true });
+      const workingDirectory = await mkdtemp(join(trustedWorkspaceRoot, "mcp-proof-mode-"));
 
       try {
         await withMemoryRunStore(async (store) => {
@@ -1238,15 +1298,16 @@ describe("runLoopTool", () => {
 
           const result = await runLoopTool({
             objective: "Validate proof-mode verifier seams",
+            workingDirectory,
             verificationPlan: ["node --version"],
             maxIterations: 1,
             maxUsd: 1
           });
 
           expect(result.loopId).toMatch(/^loop_/u);
-          expect(calls).toHaveLength(1);
-          expect(calls[0]?.command).toBe("node");
-          expect(calls[0]?.args).toEqual(["--version"]);
+          const verificationCalls = calls.filter((call) => call.command === "node");
+          expect(verificationCalls).toHaveLength(1);
+          expect(verificationCalls[0]?.args).toEqual(["--version"]);
         });
       } finally {
         if (originalEnv === undefined) {
@@ -1254,50 +1315,65 @@ describe("runLoopTool", () => {
         } else {
           process.env.MARTIN_LIVE = originalEnv;
         }
+        await rm(workingDirectory, { recursive: true, force: true }).catch(() => {});
       }
     });
   });
 
   it("persists verifier timeout in the loop task contract", async () => {
-    await withRunsRoot(async () => {
-      const originalEnv = process.env.MARTIN_LIVE;
-      process.env.MARTIN_LIVE = "false";
+    const originalEnv = process.env.MARTIN_LIVE;
+    process.env.MARTIN_LIVE = "false";
+    const trustedWorkspaceRoot = join(process.cwd(), ".tmp");
+    await mkdir(trustedWorkspaceRoot, { recursive: true });
+    const workingDirectory = await mkdtemp(join(trustedWorkspaceRoot, "mcp-timeout-"));
+    let capturedInput: RunMartinInput | undefined;
 
-      try {
-        const result = await runLoopTool({
-          objective: "Persist verifier timeout",
-          verificationPlan: ["node --version"],
-          verifyTimeoutMs: 240000,
-          maxIterations: 1,
-          maxUsd: 1
-        });
-
-        const loopRecord = JSON.parse(
-          await readFile(result.inspection.loopRecordPath, "utf8")
-        ) as {
-          task?: { verificationTimeoutMs?: number };
-        };
-
-        expect(loopRecord.task?.verificationTimeoutMs).toBe(240000);
-      } finally {
-        if (originalEnv === undefined) {
-          delete process.env.MARTIN_LIVE;
-        } else {
-          process.env.MARTIN_LIVE = originalEnv;
-        }
-      }
+    __setRunMartinImplForTests(async (input) => {
+      capturedInput = input;
+      return createStubRunMartinResult(input);
     });
+
+    try {
+      const result = await runLoopTool({
+        objective: "Persist verifier timeout",
+        workingDirectory,
+        verificationPlan: [],
+        verifyTimeoutMs: 240000,
+        maxIterations: 1,
+        maxUsd: 1
+      });
+
+      expect(result.loopId).toBeTruthy();
+      expect(capturedInput?.task.verificationTimeoutMs).toBe(240000);
+    } finally {
+      if (originalEnv === undefined) {
+        delete process.env.MARTIN_LIVE;
+      } else {
+        process.env.MARTIN_LIVE = originalEnv;
+      }
+      await rm(workingDirectory, { recursive: true, force: true }).catch(() => {});
+    }
   });
 
   it("returns a loop outcome in stub mode (MARTIN_LIVE=false)", async () => {
     // Set stub mode so the adapter doesn't try to spawn claude
     const originalEnv = process.env.MARTIN_LIVE;
     process.env.MARTIN_LIVE = "false";
+    const trustedWorkspaceRoot = join(process.cwd(), ".tmp");
+    await mkdir(trustedWorkspaceRoot, { recursive: true });
+    const workingDirectory = await mkdtemp(join(trustedWorkspaceRoot, "mcp-stub-mode-"));
+    let capturedInput: RunMartinInput | undefined;
+
+    __setRunMartinImplForTests(async (input) => {
+      capturedInput = input;
+      return createStubRunMartinResult(input);
+    });
 
     try {
       await withRunsRoot(async () => {
         const result = await runLoopTool({
           objective: "Add a console.log to index.ts",
+          workingDirectory,
           allowedPaths: ["src/**"],
           deniedPaths: ["docs/security/**"],
           verificationPlan: [],
@@ -1310,7 +1386,9 @@ describe("runLoopTool", () => {
         expect(typeof result.attempts).toBe("number");
         expect(typeof result.costUsd).toBe("number");
         expect(result.budget.softLimitUsd).toBe(5);
-        expect(["completed", "exited", "failed"]).toContain(result.status);
+        expect(result.status).toBe("exited");
+        expect(capturedInput?.task.allowedPaths).toEqual(["src/**"]);
+        expect(capturedInput?.task.deniedPaths).toEqual(["docs/security/**"]);
       });
     } finally {
       if (originalEnv === undefined) {
@@ -1318,6 +1396,7 @@ describe("runLoopTool", () => {
       } else {
         process.env.MARTIN_LIVE = originalEnv;
       }
+      await rm(workingDirectory, { recursive: true, force: true }).catch(() => {});
     }
   });
 
@@ -1325,20 +1404,31 @@ describe("runLoopTool", () => {
     // Mock runMartin to avoid real execution
     const originalEnv = process.env.MARTIN_LIVE;
     process.env.MARTIN_LIVE = "false";
+    const trustedWorkspaceRoot = join(process.cwd(), ".tmp");
+    await mkdir(trustedWorkspaceRoot, { recursive: true });
+    const workspaceRoot = await mkdtemp(join(trustedWorkspaceRoot, "mcp-workspace-"));
 
     try {
       await withRunsRoot(async () =>
         withMemoryRunStore(async (store) => {
           __setRunStoreOverrideForTests(store);
+          let capturedInput: RunMartinInput | undefined;
+          __setRunMartinImplForTests(async (input) => {
+            capturedInput = input;
+            return createStubRunMartinResult(input);
+          });
 
           const result = await runLoopTool({
             objective: "Fix the bug",
+            workingDirectory: workspaceRoot,
             workspaceId: "ws_custom",
             projectId: "proj_custom",
             maxIterations: 1
           });
 
           expect(result.loopId).toBeTruthy();
+          expect(capturedInput?.workspaceId).toBe("ws_custom");
+          expect(capturedInput?.projectId).toBe("proj_custom");
         })
       );
     } finally {
@@ -1347,6 +1437,7 @@ describe("runLoopTool", () => {
       } else {
         process.env.MARTIN_LIVE = originalEnv;
       }
+      await rm(workspaceRoot, { recursive: true, force: true }).catch(() => {});
     }
   });
 
@@ -1355,19 +1446,30 @@ describe("runLoopTool", () => {
     process.env.MARTIN_LIVE = "false";
     const fakeCliDir = await mkdtemp(join(tmpdir(), "martin-mcp-cli-"));
     const markerPath = join(fakeCliDir, "probe-invoked.txt");
+    let capturedInput: RunMartinInput | undefined;
+
+    __setRunMartinImplForTests(async (input) => {
+      capturedInput = input;
+      return createStubRunMartinResult(input);
+    });
 
     try {
       await installFakeCliProbe(fakeCliDir, "claude", markerPath);
 
       await withRunsRoot(async () =>
-        withPathPrefix(fakeCliDir, async () => {
-          const result = await runLoopTool({
-            objective: "Proof mode should not probe the requested engine",
-            maxIterations: 1
-          });
+        withMemoryRunStore(async (store) => {
+          __setRunStoreOverrideForTests(store);
 
-          expect(result.loopId).toBeTruthy();
-          expect(result.attempts).toBeGreaterThan(0);
+          await withPathPrefix(fakeCliDir, async () => {
+            const result = await runLoopTool({
+              objective: "Proof mode should not probe the requested engine",
+              maxIterations: 1
+            });
+
+            expect(result.loopId).toBeTruthy();
+            expect(result.status).toBe("exited");
+            expect(capturedInput?.adapter.adapterId).toBe("direct:verifier:verify-only");
+          });
         })
       );
 
@@ -1384,27 +1486,43 @@ describe("runLoopTool", () => {
   });
 
   it("respects engine selection — codex adapter has different adapterId", async () => {
-    // We can't run codex in CI, but we can verify the adapter wires correctly
-    // by checking that the stub path still returns a result
+    // In proof mode we should still accept the engine selection input while
+    // routing through the verifier-only adapter instead of probing a live CLI.
     const originalEnv = process.env.MARTIN_LIVE;
     process.env.MARTIN_LIVE = "false";
+    const trustedWorkspaceRoot = join(process.cwd(), ".tmp");
+    await mkdir(trustedWorkspaceRoot, { recursive: true });
+    const workingDirectory = await mkdtemp(join(trustedWorkspaceRoot, "mcp-codex-mode-"));
+    let capturedInput: RunMartinInput | undefined;
+
+    __setRunMartinImplForTests(async (input) => {
+      capturedInput = input;
+      return createStubRunMartinResult(input);
+    });
 
     try {
-      await withRunsRoot(async () => {
-        const result = await runLoopTool({
-          objective: "Fix the bug",
-          engine: "codex",
-          maxIterations: 1
-        });
+      await withRunsRoot(async () =>
+        withMemoryRunStore(async (store) => {
+          __setRunStoreOverrideForTests(store);
 
-        expect(result.loopId).toBeTruthy();
-      });
+          const result = await runLoopTool({
+            objective: "Fix the bug",
+            workingDirectory,
+            engine: "codex",
+            maxIterations: 1
+          });
+
+          expect(result.loopId).toBeTruthy();
+          expect(capturedInput?.adapter.adapterId).toBe("direct:verifier:verify-only");
+        })
+      );
     } finally {
       if (originalEnv === undefined) {
         delete process.env.MARTIN_LIVE;
       } else {
         process.env.MARTIN_LIVE = originalEnv;
       }
+      await rm(workingDirectory, { recursive: true, force: true }).catch(() => {});
     }
   });
 

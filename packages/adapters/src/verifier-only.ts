@@ -35,7 +35,7 @@ export function createVerifierOnlyAdapter(
         (request.context.verificationStack?.length ?? 0) > 0;
 
       const baselineChangedFiles = shouldTrackVerifierWrites
-        ? new Set(await readGitChangedFiles(workingDirectory, 5_000))
+        ? new Set(await readGitChangedFiles(workingDirectory, 5_000, options.spawnImpl))
         : new Set<string>();
       const verification = await runVerification(
         request.context.verificationPlan,
@@ -45,7 +45,7 @@ export function createVerifierOnlyAdapter(
         options.spawnImpl
       );
       const changedFiles = shouldTrackVerifierWrites
-        ? (await readGitChangedFiles(workingDirectory, 5_000)).filter(
+        ? (await readGitChangedFiles(workingDirectory, 5_000, options.spawnImpl)).filter(
             (file) => !baselineChangedFiles.has(file)
           )
         : [];

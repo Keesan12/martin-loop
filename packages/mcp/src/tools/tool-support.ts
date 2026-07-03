@@ -693,6 +693,7 @@ export function buildSuggestedResourceUris(loopId: string): string[] {
     "martin://runs/triage",
     "martin://runs/latest",
     "martin://runs/latest/summary",
+    "martin://runs/latest/receipt",
     "martin://runs/latest/proof-card",
     "martin://runs/latest/budget-status",
     "martin://runs/latest/verifier-evidence",

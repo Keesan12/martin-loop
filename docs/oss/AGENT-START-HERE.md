@@ -35,7 +35,7 @@ npx martin-loop runs verify --latest
 npx martin-loop share --latest
 ```
 
-The bundle includes `run-receipt.json`, `run-receipt.md`, and `proof-card.svg`. The proof card should look like a terminal receipt: dark canvas, rows, divider lines, monospaced evidence, green pass states, and red boundary states. Keep uncertainty visible. If rollback, integrity, cost, or verifier evidence is missing, render it as missing instead of turning the run into a success claim.
+The default bundle includes `run-receipt.json` and `run-receipt.md`. Proof-card images are optional and should only be generated when an operator explicitly asks for a visual artifact. When generated, the proof card should look like a terminal receipt: dark canvas, rows, divider lines, monospaced evidence, green pass states, and red boundary states. Keep uncertainty visible. If rollback, integrity, cost, or verifier evidence is missing, render it as missing instead of turning the run into a success claim.
 
 ## MCP Profile Defaults
 
@@ -76,6 +76,7 @@ Recommended compact resources:
 
 - `martin://agent/next-step`
 - `martin://runs/latest/summary`
+- `martin://runs/latest/receipt`
 - `martin://runs/latest/proof-card`
 - `martin://runs/latest/budget-status`
 - `martin://runs/latest/verifier-evidence`
