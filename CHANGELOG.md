@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.4.1]
+
 ### Added
 - **Receipt-first share ledgers** — `martin share` now appends stable `run-receipts.md` and `run-receipts.jsonl` ledgers alongside the per-run share bundle, keyed by receipt-state revision so repeated shares do not overwrite or duplicate prior evidence.
 
@@ -11,6 +13,7 @@
 - **Repo-pinned pnpm policy is now authoritative** — workspace overrides and allowed built dependencies now live in `pnpm-workspace.yaml`, matching the repo-pinned `pnpm@10.33.0` toolchain instead of relying on deprecated root-package config.
 
 ### Fixed
+- **Preflight receipt now written correctly in all CI environments** — `executePreflightCommand` was calling the raw `resolveCliCommandAvailability("codex")` import, which bypasses the test-injectable override. On runners where the Codex CLI is not installed this caused the preflight to mark itself not-ready and skip writing the workflow receipt, breaking the full session-start → preflight → run governed receipt chain. The call now goes through `resolveCodexAvailabilityForCli()`, which checks the override first and falls back to the real availability probe.
 - **Verifier-only adapter test seams now flow through git change reads** — injected spawn implementations are used consistently across verifier-only proof paths, preventing hidden subprocess drift in governed validation lanes.
 - **Standalone MCP release-doc tests no longer hardcode the prior package line** — release metadata checks now follow package metadata, reducing manual version-chase risk in future patch trains.
 
