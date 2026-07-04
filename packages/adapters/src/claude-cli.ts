@@ -824,10 +824,14 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
       }
 
       if (agentResult.exitCode !== 0 && agentResult.stdout.trim().length === 0) {
+        const fullStderr = agentResult.stderr.trim();
+        const stderrSnippet = fullStderr ? fullStderr.slice(0, 2000) : "(no stderr)";
+        const stdoutLen = agentResult.stdout.length;
+        const diagnosticSummary = `${options.command} exited (code ${String(agentResult.exitCode)}) with empty stdout (${String(stdoutLen)} bytes). stderr: ${stderrSnippet}`;
         const failureMessage = formatPreVerifierSubprocessFailure(options.command, agentResult.stderr, agentResult.exitCode);
         return {
           status: "failed",
-          summary: `${options.command} subprocess exited before verifier execution.`,
+          summary: diagnosticSummary,
           usage: normalizeUsage({
             actualUsd: 0,
             tokensIn: 0,
@@ -836,7 +840,8 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
           }),
           verification: { passed: false, summary: `Verifier not run: ${failureMessage}` },
           failure: {
-            message: failureMessage
+            // Full stderr preserved here — summary is capped at 2000 chars
+            message: fullStderr || failureMessage
           }
         };
       }
@@ -1137,11 +1142,15 @@ export function createClaudeCliAdapter(options: ClaudeCliAdapterOptions = {}): M
       "--verbose",
       "--print",
       "--dangerously-skip-permissions",
-      // Prevent the child Claude process from loading the parent's MCP servers.
-      // Without this, a MartinLoop MCP server in the user's config gets spawned
-      // inside the governed subprocess, causing conflicts and "MCP server being
-      // overwritten" errors.
-      "--strict-mcp-config",
+      // Subprocess isolation strategy:
+      // --bare: skips hooks (prevents SessionEnd/hook failures causing non-zero exits),
+      //   MCP server loading, LSP, CLAUDE.md discovery, and background prefetches.
+      //   Requires ANTHROPIC_API_KEY (OAuth/keychain auth not available in bare mode).
+      // --strict-mcp-config: fallback when ANTHROPIC_API_KEY is not set — still
+      //   prevents parent MCP servers from being inherited by the subprocess.
+      ...(process.env["ANTHROPIC_API_KEY"] ? ["--bare"] : ["--strict-mcp-config"]),
+      // NOTE: --max-tokens does not exist in the claude CLI. Token cap enforcement
+      // is handled at the MartinLoop layer via streamingUsageCap, not via subprocess flags.
       ...modelArgs,
       ...extraArgs
     ],

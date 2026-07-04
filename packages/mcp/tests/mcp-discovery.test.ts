@@ -147,7 +147,8 @@ describe("Martin MCP discovery resources", () => {
       MARTIN_STATIC_RESOURCE_URIS.operatingRulesGuide,
       MARTIN_STATIC_RESOURCE_URIS.publishReadinessGuide,
       MARTIN_STATIC_RESOURCE_URIS.governanceStatus,
-      MARTIN_STATIC_RESOURCE_URIS.memorySummary
+      MARTIN_STATIC_RESOURCE_URIS.memorySummary,
+      MARTIN_STATIC_RESOURCE_URIS.modeStatus
     ]);
     expect(listedTemplates.resourceTemplates.map((template) => template.uriTemplate)).toEqual([
       "martin://runs/{loopId}",

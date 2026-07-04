@@ -85,7 +85,7 @@ import {
   type IntegrityStatus
 } from "./run-store.js";
 import { CliCommandError, renderCliError, renderCliSuccess } from "./ux.js";
-import { evaluateCliRunGate, recordCliWorkflowStep } from "./workflow-state.js";
+import { evaluateCliRunGate, recordCliWorkflowStep, recordMcpPlanStep } from "./workflow-state.js";
 
 const require = createRequire(import.meta.url);
 const packageJson = require("../package.json") as { version: string };
@@ -392,6 +392,26 @@ type BadgeCommand = {
   runsDir?: string;
 };
 
+type PlanCommand = {
+  command: "plan";
+  objective: string;
+  verify?: string;
+  budgetUsd?: number;
+  cwd?: string;
+  runsDir?: string;
+};
+
+type ExecuteCommand = {
+  command: "execute";
+  objective: string;
+  verify?: string;
+  budgetUsd?: number;
+  maxIterations?: number;
+  engine?: "claude" | "codex" | "gemini" | "openai";
+  cwd?: string;
+  runsDir?: string;
+};
+
 type Under3BenchFixture = {
   suiteId: string;
   label: string;
@@ -475,7 +495,9 @@ export type ParsedCliArguments =
   | CleanCommand
   | ChallengeCommand
   | ShareCommand
-  | BadgeCommand;
+  | BadgeCommand
+  | PlanCommand
+  | ExecuteCommand;
 
 export async function executeCli(args: string[]): Promise<{
   exitCode: number;
@@ -571,6 +593,10 @@ export async function executeCli(args: string[]): Promise<{
         return await executeShareCommand(parsed, outputMode);
       case "badge":
         return await executeBadgeCommand(parsed, outputMode);
+      case "plan":
+        return await executePlanCommand(parsed, outputMode);
+      case "execute":
+        return await executeExecuteCommand(parsed, outputMode);
     }
   } catch (error) {
     return renderCliError(outputMode, error);
@@ -722,6 +748,41 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
   if (command === "start" || command === "tour") {
     return {
       command: "start",
+      ...(readOption(rest, "--cwd") ? { cwd: readOption(rest, "--cwd") } : {}),
+      ...(readOption(rest, "--runs-dir") ? { runsDir: readOption(rest, "--runs-dir") } : {})
+    };
+  }
+
+  if (command === "plan") {
+    const objective = rest[0] && !rest[0].startsWith("--") ? rest[0] : readOption(rest, "--objective") ?? "";
+    if (!objective) {
+      return { command: "help" };
+    }
+    return {
+      command: "plan",
+      objective,
+      ...(readOption(rest, "--verify") ? { verify: readOption(rest, "--verify") } : {}),
+      ...(readOption(rest, "--budget-usd") ? { budgetUsd: toFiniteNumber(readOption(rest, "--budget-usd") ?? "") } : {}),
+      ...(readOption(rest, "--cwd") ? { cwd: readOption(rest, "--cwd") } : {}),
+      ...(readOption(rest, "--runs-dir") ? { runsDir: readOption(rest, "--runs-dir") } : {})
+    };
+  }
+
+  if (command === "execute") {
+    const objective = rest[0] && !rest[0].startsWith("--") ? rest[0] : readOption(rest, "--objective") ?? "";
+    if (!objective) {
+      return { command: "help" };
+    }
+    return {
+      command: "execute",
+      objective,
+      ...(readOption(rest, "--verify") ? { verify: readOption(rest, "--verify") } : {}),
+      ...(readOption(rest, "--budget-usd") ? { budgetUsd: toFiniteNumber(readOption(rest, "--budget-usd") ?? "") } : {}),
+      ...(readOption(rest, "--max-iterations") ? { maxIterations: toFiniteNumber(readOption(rest, "--max-iterations") ?? "") } : {}),
+      ...(readOption(rest, "--engine") === "codex" ? { engine: "codex" as const } : {}),
+      ...(readOption(rest, "--engine") === "claude" ? { engine: "claude" as const } : {}),
+      ...(readOption(rest, "--engine") === "gemini" ? { engine: "gemini" as const } : {}),
+      ...(readOption(rest, "--engine") === "openai" ? { engine: "openai" as const } : {}),
       ...(readOption(rest, "--cwd") ? { cwd: readOption(rest, "--cwd") } : {}),
       ...(readOption(rest, "--runs-dir") ? { runsDir: readOption(rest, "--runs-dir") } : {})
     };
@@ -1306,6 +1367,17 @@ async function executeRunCommand(
       `Persisted run artifacts could not be written: ${error instanceof Error ? error.message : String(error)}`
     );
   });
+
+  if (result.loop.status === "completed" && result.loop.lifecycleState === "completed") {
+    try {
+      const { recordSuccessfulRun } = await import("./run-stats.js");
+      const { maybeShowStarPrompt } = await import("./star-prompt.js");
+      const { maybeShowFeedbackFlow } = await import("./feedback.js");
+      const stats = recordSuccessfulRun(packageJson.version);
+      await maybeShowStarPrompt(stats.totalSuccessfulRuns);
+      await maybeShowFeedbackFlow(stats.totalSuccessfulRuns);
+    } catch { /* never block output for engagement prompts */ }
+  }
 
   const costProvenance = readCostProvenance(result.loop);
   const successCallToAction = buildRunSuccessCallToAction(result.loop);
@@ -1932,8 +2004,22 @@ async function executeStartCommand(
       "",
       modeConfigured
         ? `Mode: ${currentMode} (change with martin mode auto|plan|edits)`
-        : "Mode: automode recommended — martin mode auto (governs autonomously, best for most work)",
+        : "Mode: not set — choose how MartinLoop interacts before your first governed run",
       "",
+      ...(!modeConfigured ? [
+        "── Consent: Choose Your Working Mode ──",
+        "  auto   — Governs autonomously: estimate → preflight → run → receipt.",
+        "           Best for most work. MartinLoop acts without per-step approval.",
+        "  plan   — Shows the plan before executing. You approve each step.",
+        "  edits  — Shows each file change before writing. Maximum control.",
+        "",
+        "  $ martin mode auto     # recommended",
+        "  $ martin mode plan     # approval required",
+        "  $ martin mode edits    # per-edit review",
+        "",
+        "  Runs are blocked until a mode is set or you explicitly accept auto.",
+        ""
+      ] : []),
       "Environment",
       `  Host:       ${detectedIDE.host}`,
       `  Verifier:   ${snapshot.verifier.command}${snapshot.verifier.detected ? "" : " (default)"}`,
@@ -2989,6 +3075,91 @@ async function executeModeCommand(
     ],
     quiet: command.mode
   });
+}
+
+async function executePlanCommand(
+  command: Extract<ParsedCliArguments, { command: "plan" }>,
+  outputMode: MartinOutputMode
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  const environment = resolveCliEnvironment({ cwd: command.cwd, runsDir: command.runsDir });
+  const receiptScope = buildCliReceiptScope(environment);
+
+  // Scope the plan to what is known: objective, optional verifier, optional budget.
+  const verificationPlan = command.verify ? [command.verify] : [];
+  const budgetUsd = command.budgetUsd ?? 5;
+
+  // Record plan step into the mcp section so governance-status and martin gate reflect it.
+  await recordMcpPlanStep({
+    runsRoot: environment.runsRoot,
+    workingDirectory: environment.workingDirectory,
+    objective: command.objective,
+    receiptScope
+  }).catch(() => {});
+
+  const planOutput = {
+    command: "plan",
+    objective: command.objective,
+    workingDirectory: environment.workingDirectory,
+    verificationPlan,
+    budget: {
+      maxUsd: budgetUsd,
+      note: "Confirm with `martin estimate` before spending."
+    },
+    proposedApproach: [
+      "Run `martin doctor` to confirm environment readiness.",
+      `Run \`martin estimate "${command.objective}" --budget-usd ${budgetUsd}\` to preview cost.`,
+      command.verify
+        ? `Run \`martin preflight "${command.objective}" --verify "${command.verify}"\` to lock the contract.`
+        : `Run \`martin preflight "${command.objective}"\` to lock the contract.`,
+      command.verify
+        ? `Run \`martin execute "${command.objective}" --verify "${command.verify}" --budget-usd ${budgetUsd}\` to govern execution.`
+        : `Run \`martin run "${command.objective}" --budget-usd ${budgetUsd}\` to govern execution.`
+    ],
+    nextStep: command.verify
+      ? `martin preflight "${command.objective}" --verify "${command.verify}"`
+      : `martin preflight "${command.objective}"`
+  };
+
+  return renderCliSuccess(outputMode, {
+    data: planOutput,
+    human: [
+      "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+      " MartinLoop — Governed Plan",
+      "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+      "",
+      `Objective: ${command.objective}`,
+      `Directory: ${environment.workingDirectory}`,
+      ...(verificationPlan.length > 0 ? [`Verifier:  ${verificationPlan[0]}`] : []),
+      `Budget:    $${budgetUsd} max`,
+      "",
+      "Proposed sequence:",
+      ...planOutput.proposedApproach.map((step, i) => `  ${i + 1}. ${step}`),
+      "",
+      "Plan receipt recorded. Next:",
+      `  $ ${planOutput.nextStep}`
+    ],
+    quiet: `plan:${command.objective.slice(0, 40)}`
+  });
+}
+
+async function executeExecuteCommand(
+  command: Extract<ParsedCliArguments, { command: "execute" }>,
+  outputMode: MartinOutputMode
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  // `martin execute` is a governed alias for `martin run` that enforces
+  // the plan→preflight→run sequence. It delegates to the run executor
+  // with the same arguments, relying on the run gate to block if preflight
+  // is missing.
+  const runRequest = parseRunRequest([
+    command.objective,
+    ...(command.verify ? ["--verify", command.verify] : []),
+    "--budget-usd", String(command.budgetUsd ?? 5),
+    ...(command.maxIterations ? ["--max-iterations", String(command.maxIterations)] : []),
+    ...(command.engine ? ["--engine", command.engine] : []),
+    ...(command.cwd ? ["--cwd", command.cwd] : []),
+    ...(command.runsDir ? ["--runs-dir", command.runsDir] : [])
+  ]);
+  return executeRunCommand(runRequest, outputMode);
 }
 
 async function executeCleanCommand(
