@@ -53,7 +53,7 @@ When adding a new failure mode, open a PR that includes all fields below so main
 ## Verification
 
 - [ ] Added/updated tests for classification.
-- [ ] Added/updated docs (include `docs/agent-failure-atlas.md` if relevant).
+- [ ] Added/updated docs (include failure taxonomy docs if relevant).
 - [ ] Verified `dossier`, `runs verify`, and `share` behavior for this mode.
 ```
 
