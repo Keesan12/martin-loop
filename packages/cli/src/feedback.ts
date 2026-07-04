@@ -5,8 +5,7 @@ import { readRunStats, writeRunStats } from "./run-stats.js";
 
 const FEEDBACK_FILE       = martinFilePath("feedback.jsonl");
 const DESIGN_PARTNER_FILE = martinFilePath("design-partners.jsonl");
-const WEB3FORMS_KEY       = process.env["MARTIN_WEB3FORMS_KEY"]
-  ?? "03bc4ccb-1338-44c9-b140-7c4dd484d1ab";
+const WEB3FORMS_KEY       = process.env["MARTIN_WEB3FORMS_KEY"] ?? "f77cbe5d-3993-4b09-b8df-c6da94523ae6";
 const ENDPOINT = "https://api.web3forms.com/submit";
 
 // ─── Trigger logic ────────────────────────────────────────────────────────────
@@ -194,11 +193,12 @@ async function showDesignPartnerPrompt(runCount: number, version: string): Promi
   process.stdout.write("  Are you open to being a design partner? [Y/n]\n  > ");
 
   const answer = await readSingleLine();
-  if (answer.trim().toLowerCase() !== "y") {
-    if (answer.trim() !== "") {
-      console.log("");
-      console.log("  No problem — appreciate you using MartinLoop.");
-    }
+  const normalized = answer.trim().toLowerCase();
+
+  // [Y/n] — Enter or "y" = yes; anything else = no
+  if (normalized !== "" && normalized !== "y") {
+    console.log("");
+    console.log("  No problem — appreciate you using MartinLoop.");
     return false;
   }
 
@@ -211,6 +211,14 @@ async function showDesignPartnerPrompt(runCount: number, version: string): Promi
 
   process.stdout.write("  Work email:\n  > ");
   const email = await readSingleLine();
+
+  // Basic email validation — skip signup if format is invalid
+  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailPattern.test(email.trim())) {
+    console.log("");
+    console.log("  Invalid email — we weren't able to save your signup.");
+    return false;
+  }
 
   process.stdout.write("  Company name:\n  > ");
   const company = await readSingleLine();
@@ -261,7 +269,7 @@ async function showDesignPartnerPrompt(runCount: number, version: string): Promi
 
   writeLocal(DESIGN_PARTNER_FILE, entry);
   await sendToWeb3Forms({
-    subject: `🌟 MartinLoop Design Partner — ${firstName.trim()} ${lastName.trim()} @ ${company.trim()}`,
+    subject: `MartinLoop Design Partner — ${firstName.trim()} ${lastName.trim()} @ ${company.trim()}`,
     first_name: firstName.trim(),
     last_name: lastName.trim(),
     email: email.trim(),
@@ -283,14 +291,21 @@ function writeLocal(file: string, entry: object): void {
 }
 
 async function sendToWeb3Forms(data: Record<string, unknown>): Promise<void> {
+  if (WEB3FORMS_KEY.trim().length === 0) return; // Opt-out: set MARTIN_WEB3FORMS_KEY="" to disable
   try {
-    const res = await fetch(ENDPOINT, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ access_key: WEB3FORMS_KEY, from_name: "MartinLoop CLI", ...data }),
-      signal: AbortSignal.timeout(5_000)
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5_000);
+    try {
+      const res = await fetch(ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ access_key: WEB3FORMS_KEY, from_name: "MartinLoop CLI", ...data }),
+        signal: controller.signal
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    } finally {
+      clearTimeout(timeout);
+    }
   } catch {
     // Silent fail — data already written locally
   }

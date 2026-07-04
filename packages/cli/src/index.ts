@@ -762,7 +762,7 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
       command: "plan",
       objective,
       ...(readOption(rest, "--verify") ? { verify: readOption(rest, "--verify") } : {}),
-      ...(readOption(rest, "--budget-usd") ? { budgetUsd: Number(readOption(rest, "--budget-usd")) } : {}),
+      ...(readOption(rest, "--budget-usd") ? { budgetUsd: toFiniteNumber(readOption(rest, "--budget-usd") ?? "") } : {}),
       ...(readOption(rest, "--cwd") ? { cwd: readOption(rest, "--cwd") } : {}),
       ...(readOption(rest, "--runs-dir") ? { runsDir: readOption(rest, "--runs-dir") } : {})
     };
@@ -777,8 +777,8 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
       command: "execute",
       objective,
       ...(readOption(rest, "--verify") ? { verify: readOption(rest, "--verify") } : {}),
-      ...(readOption(rest, "--budget-usd") ? { budgetUsd: Number(readOption(rest, "--budget-usd")) } : {}),
-      ...(readOption(rest, "--max-iterations") ? { maxIterations: Number(readOption(rest, "--max-iterations")) } : {}),
+      ...(readOption(rest, "--budget-usd") ? { budgetUsd: toFiniteNumber(readOption(rest, "--budget-usd") ?? "") } : {}),
+      ...(readOption(rest, "--max-iterations") ? { maxIterations: toFiniteNumber(readOption(rest, "--max-iterations") ?? "") } : {}),
       ...(readOption(rest, "--engine") === "codex" ? { engine: "codex" as const } : {}),
       ...(readOption(rest, "--engine") === "claude" ? { engine: "claude" as const } : {}),
       ...(readOption(rest, "--engine") === "gemini" ? { engine: "gemini" as const } : {}),
