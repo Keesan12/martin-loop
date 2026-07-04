@@ -30,4 +30,4 @@ This note summarizes the public documentation surface changes introduced in the 
 
 - New canonical taxonomy docs:
   - [FAILURE-TAXONOMY-14.md](./FAILURE-TAXONOMY-14.md)
-  - [../agent-failure-atlas.md](../agent-failure-atlas.md)
+  - Agent failure atlas — maintained in internal documentation

@@ -57,4 +57,4 @@ Use this screenshot as the visual proof anchor in issues, demos, and external wa
 
 - [Agent run receipts](./AGENT-RUN-RECEIPTS.md)
 - [Budget caps](../concepts/budget-caps.md)
-- [Agent failure atlas](../agent-failure-atlas.md)
+- Agent failure atlas — maintained in internal documentation
