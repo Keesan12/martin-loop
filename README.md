@@ -363,7 +363,6 @@ More detail: [SDK reference](./docs/reference/sdk.md) and [package map](./docs/r
 
 - [Quickstart](./docs/getting-started/quickstart.md)
 - [Examples](./docs/getting-started/examples.md)
-- [Failure Taxonomy (Runtime Classes)](./docs/oss/FAILURE-TAXONOMY-13.md)
 - [Failure Taxonomy (13 Runtime Classes)](./docs/oss/FAILURE-TAXONOMY-13.md)
 - [PRE-028-PUBLIC-SURFACE-DIFF.md](./docs/oss/PRE-028-PUBLIC-SURFACE-DIFF.md)
 - [Claude Code walkthrough](./docs/getting-started/claude-code.md)
