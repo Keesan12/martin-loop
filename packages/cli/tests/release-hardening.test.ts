@@ -55,7 +55,7 @@ describe("subpath exports", () => {
     };
 
     for (const subpath of ["./core", "./contracts", "./adapters"]) {
-      const entry = pkg.exports[subpath];
+      const entry = pkg.exports[subpath]!;
       expect(entry).toBeDefined();
       expect(typeof entry.types).toBe("string");
       expect(typeof entry.default).toBe("string");

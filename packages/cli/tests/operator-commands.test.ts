@@ -227,6 +227,73 @@ describe("operator commands", () => {
     });
   });
 
+  it("keeps martin gate blocked until preflight exists even when doctor and estimate receipts are present", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      await mkdir(join(runsRoot, "_martin"), { recursive: true });
+      await writeFile(
+        join(runsRoot, "_martin", "workflow-state.json"),
+        JSON.stringify(
+          {
+            version: 1,
+            cli: {
+              doctor: {
+                step: "doctor",
+                recordedAt: "2026-06-30T10:00:00.000Z",
+                workingDirectory: process.cwd()
+              },
+              estimate: {
+                step: "estimate",
+                recordedAt: "2026-06-30T10:01:00.000Z",
+                workingDirectory: process.cwd()
+              }
+            }
+          },
+          null,
+          2
+        ),
+        "utf8"
+      );
+
+      const blocked = await executeCli(["gate"]);
+      expect(blocked.exitCode).toBe(1);
+      expect(blocked.stdout).toContain("martin preflight");
+
+      await writeFile(
+        join(runsRoot, "_martin", "workflow-state.json"),
+        JSON.stringify(
+          {
+            version: 1,
+            cli: {
+              doctor: {
+                step: "doctor",
+                recordedAt: "2026-06-30T10:00:00.000Z",
+                workingDirectory: process.cwd()
+              },
+              estimate: {
+                step: "estimate",
+                recordedAt: "2026-06-30T10:01:00.000Z",
+                workingDirectory: process.cwd()
+              },
+              preflight: {
+                step: "preflight",
+                recordedAt: "2026-06-30T10:02:00.000Z",
+                workingDirectory: process.cwd()
+              }
+            }
+          },
+          null,
+          2
+        ),
+        "utf8"
+      );
+
+      const passed = await executeCli(["gate"]);
+      expect(passed.exitCode).toBe(0);
+      expect(passed.stdout).toContain("MartinLoop governance: PASS");
+      expect(passed.stdout).toContain("Preflight: ✓");
+    });
+  });
+
   it("loads persisted runs through dossier, attempt, verify, and triage commands", async () => {
     await withRunsRoot(async (runsRoot) => {
       const loop = makeLoopRecord();

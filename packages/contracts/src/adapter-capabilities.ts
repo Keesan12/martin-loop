@@ -1,5 +1,5 @@
 export type DiffVisibilityLevel = "none" | "git" | "adapter_reported";
-export type VerifierCompatibility = "full" | "verify_only" | "unsupported";
+export type VerifierCompatibility = "full" | "proof" | "unsupported";
 export type SandboxExpectation =
   | "host_process"
   | "workspace_write"

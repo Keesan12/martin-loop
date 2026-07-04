@@ -1,3 +1,13 @@
+/**
+ * Contracts for the Martin Loop agentic system.
+ *
+ * This module defines the core type contracts and data structures for autonomous agent loop management,
+ * including loop lifecycle states, task definitions, budget tracking, cost accounting, verification,
+ * patch decisions, telemetry, and governance policies. It provides the public API surface for
+ * creating and managing loop records, handling events, validating batches, and tracking
+ * portfolio snapshots and routing economics.
+ */
+
 export type LoopStatus =
   | "queued"
   | "running"
@@ -78,7 +88,7 @@ export type ExecutionProfile =
   | "staging_controlled"
   | "research_untrusted";
 
-export type MutationMode = "edit" | "verify_only";
+export type MutationMode = "edit";
 
 export interface ApprovalPolicy {
   dependencyAdds?: boolean;

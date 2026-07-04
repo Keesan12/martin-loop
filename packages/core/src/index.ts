@@ -583,7 +583,6 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
   let currentAdapterIndex = 0;
   let currentAdapter = adapterChain[currentAdapterIndex] ?? input.adapter;
   let useCompressedContext = false;
-  const isVerifyOnly = input.task.mutationMode === "verify_only";
   const executionProfile = resolveExecutionProfile({
     executionProfile: input.task.executionProfile,
     allowedNetworkDomains: input.task.allowedNetworkDomains
@@ -1204,110 +1203,9 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     // a git repo) and silently return [], which would falsely trigger no_code_change.
     const changedFileEvidenceAvailable =
       result.execution?.changedFiles !== undefined || changedFiles.length > 0;
-    const isVerifierOnlyAdapter = executingAdapter.adapterId === "direct:verifier:verify-only";
-    const patchTruthCountsEdits =
-      !isVerifyOnly && !isVerifierOnlyAdapter && changedFileEvidenceAvailable;
-
-    if (isVerifyOnly && changedFiles.length > 0) {
-      const patchDecision = evaluatePatchDecision({
-        verificationPassed: verification.passed,
-        previousVerifierScore,
-        verifierScore: verification.passed ? 1 : 0,
-        scopeViolationCount: changedFiles.length,
-        changedFileCount: changedFiles.length,
-        diffNovelty: 1,
-        diffStats: result.execution?.diffStats,
-        costUsd: getUsageUsd(result.usage),
-        summary: result.summary
-      });
-      const verifyOnlyExitDecision: ExitDecision = {
-        shouldExit: true,
-        lifecycleState: "human_escalation",
-        status: "exited",
-        reason: "Verify-only mode forbids file changes.",
-        failureClass: "safety_leash_blocked",
-        safetySurface: "filesystem",
-        reasonCode: "verify_only_write_attempt"
-      };
-      const rollbackOutcome = await restoreRollbackBoundary({
-        repoRoot: request.context.repoRoot,
-        boundary: rollbackBoundary,
-        restoredAt: attemptCompletedAt,
-        decision: patchDecision.decision
-      });
-
-      if (input.store) {
-        const verifyOnlyViolation: SafetyViolation = {
-          kind: "path_not_allowed",
-          message: `Verify-only mode forbids changed files: ${changedFiles.join(", ")}`,
-          file: changedFiles[0]
-        };
-        await input.store.writeAttemptArtifacts(loop.loopId, currentAttemptIndex, {
-          compiledContext,
-          leash: createLeashArtifact(
-            {
-              surface: "filesystem",
-              reason: verifyOnlyExitDecision.reason,
-              violations: [verifyOnlyViolation]
-            },
-            currentAttemptIndex
-          ),
-          patchScore: patchDecision.score,
-          patchDecision: toPatchDecisionArtifact(patchDecision),
-          ...(rollbackBoundary ? { rollbackBoundary } : {}),
-          ...(rollbackOutcome ? { rollbackOutcome } : {})
-        });
-        await input.store.appendLedger(
-          loop.loopId,
-          makeLedgerEvent({
-            kind: "safety.violations_found",
-            runId: loop.loopId,
-            attemptIndex: currentAttemptIndex,
-            payload: {
-              surface: "filesystem",
-              blocked: true,
-              attemptIndex: currentAttemptIndex,
-              violations: [
-                {
-                  kind: "path_not_allowed",
-                  message: verifyOnlyExitDecision.reason,
-                  files: changedFiles
-                }
-              ]
-            }
-          })
-        );
-        await input.store.appendLedger(
-          loop.loopId,
-          makeLedgerEvent({
-            kind: "attempt.discarded",
-            runId: loop.loopId,
-            attemptIndex: currentAttemptIndex,
-            payload: {
-              decision: patchDecision.decision,
-              reason: patchDecision.summary,
-              reasonCodes: patchDecision.reasonCodes,
-              score: patchDecision.score.score
-            }
-          })
-        );
-        await input.store.appendLedger(
-          loop.loopId,
-          makeLedgerEvent({
-            kind: "run.exited",
-            runId: loop.loopId,
-            payload: createRunExitPayload(verifyOnlyExitDecision)
-          })
-        );
-      }
-
-      const finalizedLoop = finalizeLoop(loop, verifyOnlyExitDecision, now(), idFactory);
-      await persistLoopRecordIfSupported(input.store, finalizedLoop);
-      return {
-        loop: finalizedLoop,
-        decision: verifyOnlyExitDecision
-      };
-    }
+    // Verifier-only adapter deprecated; treat as regular adapter
+    const isVerifierOnlyAdapter = false;
+    const patchTruthCountsEdits = changedFileEvidenceAvailable;
 
     const filesystemDecision = evaluateFilesystemLeash({
       repoRoot: request.context.repoRoot,

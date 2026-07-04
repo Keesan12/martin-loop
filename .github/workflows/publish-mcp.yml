@@ -45,7 +45,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@b0f76dfb45f55f8421693e4803ac7bb65143bd34
         with:
           version: 10.33.0
 
@@ -151,7 +151,7 @@ jobs:
           done
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b
         with:
           tag_name: ${{ steps.release-vars.outputs.tag }}
           name: "@martinloop/mcp ${{ steps.mcp-metadata.outputs.package_version }}"

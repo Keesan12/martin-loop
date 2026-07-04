@@ -111,7 +111,7 @@ test("root README is a public product entry point", async () => {
     "## Visual Proof",
     "## See It In Action",
     "## Ralph-Style Loops",
-    "## Failure Taxonomy (12 Runtime Classes)",
+    "## Failure Taxonomy (13 Runtime Classes)",
     "## What It Does",
     "## How It Works",
     "## CLI",
@@ -139,7 +139,7 @@ test("root README is a public product entry point", async () => {
   assert.match(readme, /## Visual Proof/);
   assert.match(readme, /## See It In Action/);
   assert.match(readme, /## Ralph-Style Loops/);
-  assert.match(readme, /## Failure Taxonomy \(12 Runtime Classes\)/);
+  assert.match(readme, /## Failure Taxonomy \(13 Runtime Classes\)/);
   assert.match(readme, /MartinLoop turns an AI coding run into an inspectable execution record/i);
   assert.match(readme, /Ungoverned agents can retry until cost and scope drift/i);
   assert.match(readme, /<img src="\.\/docs\/assets\/cli-animated\.svg" alt="MartinLoop CLI showing a governed agent run"/);
@@ -154,7 +154,9 @@ test("root README is a public product entry point", async () => {
   assert.match(readme, /Star this repo/i);
   assert.match(readme, /href="https:\/\/martinloop\.com"/);
   assert.match(readme, /href="mailto:support@martinloop\.com"/);
-  assert.match(readme, /\[Failure Taxonomy \(12 Runtime Classes\)]\(.*docs\/oss\/FAILURE-TAXONOMY-12\.md\)/);
+  assert.doesNotMatch(readme, /\bMIT Licensed\b/i);
+  assert.doesNotMatch(readme, /\bMIT License\b/i);
+  assert.match(readme, /\[Failure Taxonomy \(13 Runtime Classes\)]\(.*docs\/oss\/FAILURE-TAXONOMY-13\.md\)/);
   assert.match(readme, /--budget <n>/);
   assert.match(readme, /--allow-path <glob>/);
   assert.match(readme, /npx(?: -y)? martin-loop(?:@latest)? demo/);
@@ -170,8 +172,8 @@ test("root README is a public product entry point", async () => {
   assert.doesNotMatch(readme, /What's New In/i);
 });
 
-test("canonical public failure taxonomy contains exactly 12 runtime class labels", async () => {
-  const taxonomy = await readRepoFile("docs/oss/FAILURE-TAXONOMY-12.md");
+test("canonical public failure taxonomy contains exactly 13 runtime class labels", async () => {
+  const taxonomy = await readRepoFile("docs/oss/FAILURE-TAXONOMY-13.md");
   const labels = [...taxonomy.matchAll(/^\| `([a-z0-9_]+)` \|/gm)].map((match) => match[1]);
 
   assert.deepEqual(labels, [
@@ -187,6 +189,7 @@ test("canonical public failure taxonomy contains exactly 12 runtime class labels
     "environment_mismatch",
     "budget_pressure",
     "safety_leash_blocked",
+    "sandbox_write_blocked",
   ]);
 });
 

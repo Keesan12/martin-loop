@@ -17,7 +17,7 @@ test("canonical taxonomy artifacts stay synced with FAILURE_CLASSES", async () =
 
   const classes = await loadFailureClassesFromContracts();
   const artifact = JSON.parse(await readRepoFile(path.join("docs", "oss", "failure-taxonomy.runtime.json")));
-  const doc = await readRepoFile(path.join("docs", "oss", "FAILURE-TAXONOMY-12.md"));
+  const doc = await readRepoFile(path.join("docs", "oss", "FAILURE-TAXONOMY-13.md"));
   const docClasses = [...doc.matchAll(/^\| `([a-z_]+)` \|/gm)].map((entry) => entry[1]);
 
   assert.deepEqual(artifact.failureClasses, classes);
@@ -28,12 +28,13 @@ test("canonical taxonomy artifacts stay synced with FAILURE_CLASSES", async () =
 test("public taxonomy copy never claims non-canonical class counts", async () => {
   const [readme, taxonomyDoc, ossReadme] = await Promise.all([
     readRepoFile("README.md"),
-    readRepoFile(path.join("docs", "oss", "FAILURE-TAXONOMY-12.md")),
+    readRepoFile(path.join("docs", "oss", "FAILURE-TAXONOMY-13.md")),
     readRepoFile(path.join("docs", "oss", "README.md"))
   ]);
 
   for (const contents of [readme, taxonomyDoc, ossReadme]) {
     assert.doesNotMatch(contents, /\b11-class failure taxonomy\b/i);
+    assert.doesNotMatch(contents, /\b12 runtime classes\b/i);
     assert.doesNotMatch(contents, /\b14 Known Modes\b/i);
     assert.doesNotMatch(contents, /\bcanonical 14-class\b/i);
   }

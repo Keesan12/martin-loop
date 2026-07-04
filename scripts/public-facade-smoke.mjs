@@ -37,7 +37,7 @@ export function createPublicFacadeSmokePlan(options = {}) {
       description: "A governed Codex run auto-bootstraps governed prerequisites from a clean temp install.",
     },
     unsafeBypassSmoke: {
-      description: "unsafe-allow-unguarded-run remains available as an explicit operator bypass.",
+      description: "unsafe-allow-unguarded-run is fail-closed for live governed coding runs.",
     },
   };
 }
@@ -123,7 +123,7 @@ export async function runPublicFacadeSmoke(options = {}) {
     const governedGroundingDir = path.join(appDir, ".martin-grounding");
     const governedIntegrityDir = path.join(appDir, ".martin-receipt-integrity");
     await mkdir(governedWorkspace, { recursive: true });
-    initializeGitRepo(governedWorkspace);
+    await initializeGitRepo(governedWorkspace);
 
     const fakeCodex = await createFakeCodexCli(tempRoot);
     const governedEnv = {
@@ -187,8 +187,8 @@ export async function runPublicFacadeSmoke(options = {}) {
       ],
       { cwd: appDir, env: governedEnv, allowFailure: true },
     );
-    if (unsafeBypassRun.exitCode === 8) {
-      throw new Error(`Expected unsafe bypass smoke to avoid the governed receipt-chain block.\n${unsafeBypassRun.stdout}${unsafeBypassRun.stderr}`);
+    if (unsafeBypassRun.exitCode !== 8) {
+      throw new Error(`Expected unsafe bypass smoke to fail closed for live governed runs.\n${unsafeBypassRun.stdout}${unsafeBypassRun.stderr}`);
     }
 
     return {
@@ -217,7 +217,7 @@ export async function runPublicFacadeSmoke(options = {}) {
         adapterId: governedAdapterId,
       },
       unsafeBypassSmoke: {
-        ok: unsafeBypassRun.exitCode !== 8,
+        ok: unsafeBypassRun.exitCode === 8,
         command: "npx martin-loop run --engine codex --unsafe-allow-unguarded-run",
         exitCode: unsafeBypassRun.exitCode,
       },

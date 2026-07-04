@@ -57,7 +57,7 @@ describe("appendTraceEntry", () => {
     const raw = await readFile(join(tempDir, "_martin", "trace-log.jsonl"), "utf8");
     const lines = raw.trim().split("\n");
     expect(lines).toHaveLength(1);
-    expect(JSON.parse(lines[0]).loopId).toBe(entry.loopId);
+    expect(JSON.parse(lines[0]!).loopId).toBe(entry.loopId);
   });
 
   it("appends multiple entries without overwriting", async () => {
@@ -70,9 +70,9 @@ describe("appendTraceEntry", () => {
     const raw = await readFile(join(tempDir, "_martin", "trace-log.jsonl"), "utf8");
     const lines = raw.trim().split("\n");
     expect(lines).toHaveLength(3);
-    expect(JSON.parse(lines[0]).loopId).toBe("loop_first");
-    expect(JSON.parse(lines[1]).loopId).toBe("loop_second");
-    expect(JSON.parse(lines[2]).loopId).toBe("loop_third");
+    expect(JSON.parse(lines[0]!).loopId).toBe("loop_first");
+    expect(JSON.parse(lines[1]!).loopId).toBe("loop_second");
+    expect(JSON.parse(lines[2]!).loopId).toBe("loop_third");
   });
 });
 
@@ -90,8 +90,8 @@ describe("readTraceEntries", () => {
 
     const entries = await readTraceEntries(tempDir);
     expect(entries).toHaveLength(2);
-    expect(entries[0].actualCostUsd).toBe(1.00);
-    expect(entries[1].actualCostUsd).toBe(2.50);
+    expect(entries[0]!.actualCostUsd).toBe(1.00);
+    expect(entries[1]!.actualCostUsd).toBe(2.50);
   });
 });
 
@@ -141,8 +141,8 @@ describe("aggregateTraces", () => {
     ];
 
     const agg = aggregateTraces(entries);
-    expect(agg.topFailureClasses[0].failureClass).toBe("verification_failure");
-    expect(agg.topFailureClasses[0].count).toBe(3);
+    expect(agg.topFailureClasses[0]!.failureClass).toBe("verification_failure");
+    expect(agg.topFailureClasses[0]!.count).toBe(3);
   });
 });
 

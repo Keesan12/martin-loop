@@ -1,8 +1,9 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
-import { probeCodexLaunch, resolveCliCommandAvailability } from "@martin/adapters";
+import { diagnoseCodexHost, resolveCliCommandAvailability } from "@martin/adapters";
 import { resolveRunsRoot } from "@martin/core";
+import { isMacOrUbuntu } from "./utils/platform.js";
 
 const DEFAULT_BLOCKED_PATHS = [
   ".env",
@@ -519,7 +520,7 @@ async function buildPhaseContract(rootDir: string, phaseWorkspace: PhaseWorkspac
     },
     verifiers: finalVerifiers,
     riskLevel: missingSafeguards.length > 0 ? "high" : "medium",
-    requiresApproval: missingSafeguards.length > 0,
+    requiresApproval: missingSafeguards.length > 0 && !isMacOrUbuntu(),
     missingSafeguards,
     source: phaseWorkspace.contractPath ?? phaseWorkspace.planPath ?? "generated_safe_default"
   };
@@ -619,13 +620,10 @@ function buildSessionStartHostDiagnostics(
   }
 
   const availability = resolveCliCommandAvailability("codex");
-  const probe =
-    mode === "live"
-      ? probeCodexLaunch({
-          workingDirectory: receiptScope.workingDirectory,
-          availability
-        })
-      : undefined;
+  const diagnosis = diagnoseCodexHost(availability);
+  const summary = availability.available
+    ? "Codex CLI detected. Run martin preflight for a live launch check before governed execution."
+    : availability.detail;
 
   return {
     mode,
@@ -635,23 +633,14 @@ function buildSessionStartHostDiagnostics(
       detail: availability.detail,
       ...(availability.resolvedPath ? { resolvedPath: availability.resolvedPath } : {}),
       ...(availability.candidatePaths?.length ? { candidatePaths: availability.candidatePaths } : {}),
-      ...(probe
-        ? {
-            selectedPath: probe.command,
-            hostPlatform: probe.diagnosis.hostPlatform,
-            installKind: probe.diagnosis.installKind,
-            nativeInstallValid: probe.diagnosis.nativeInstallValid,
-            invocationMode: probe.diagnosis.invocationMode,
-            sandboxMode: probe.diagnosis.sandboxMode,
-            sandboxCompatible: probe.diagnosis.sandboxCompatible,
-            launchReady: probe.ok,
-            summary: probe.summary,
-            ...(probe.diagnosis.remediation ? { remediation: probe.diagnosis.remediation } : {}),
-            ...(probe.candidateProbeResults?.length
-              ? { candidateProbeResults: probe.candidateProbeResults }
-              : {})
-          }
-        : {})
+      hostPlatform: diagnosis.hostPlatform,
+      installKind: diagnosis.installKind,
+      nativeInstallValid: diagnosis.nativeInstallValid,
+      invocationMode: diagnosis.invocationMode,
+      sandboxMode: diagnosis.sandboxMode,
+      sandboxCompatible: diagnosis.sandboxCompatible,
+      summary,
+      ...(diagnosis.remediation ? { remediation: diagnosis.remediation } : {})
     }
   };
 }

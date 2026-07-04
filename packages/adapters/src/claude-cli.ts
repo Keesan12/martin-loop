@@ -378,7 +378,8 @@ interface StreamingUsageSnapshot {
 
 function createStreamingUsageInspector(
   capUsd: number,
-  modelLabel: string | undefined
+  modelLabel: string | undefined,
+  promptTokenEstimate: number
 ): {
   onChunk: (chunk: Buffer, terminate: (reason: string) => void) => void;
   snapshot: () => StreamingUsageSnapshot;
@@ -390,7 +391,9 @@ function createStreamingUsageInspector(
   // Safety margin: terminate at 80% of cap to bound one-turn overshoot.
   // Without this, a single expensive turn can blow past the cap before the
   // next check fires (proven live: $1.50 cap → $28.42 actual).
-  const effectiveCapUsd = capUsd * 0.8;
+  const largeContext = promptTokenEstimate > 10_000;
+  const effectiveCapRatio = largeContext ? 0.7 : 0.8;
+  const effectiveCapUsd = capUsd * effectiveCapRatio;
 
   // Token-count ceiling fallback: if no usage events are ever parsed (e.g.
   // Claude changes its stream-json event format), use raw byte volume as a
@@ -420,7 +423,7 @@ function createStreamingUsageInspector(
     if (capUsd > 0 && cumulativeUsd > effectiveCapUsd) {
       terminate(
         `Streaming usage cap exceeded after ${String(turns)} turn(s): cumulative cost ~$${cumulativeUsd.toFixed(4)} ` +
-          `surpassed the per-attempt cap $${capUsd.toFixed(4)} (80% threshold: $${effectiveCapUsd.toFixed(4)}). ` +
+          `surpassed the per-attempt cap $${capUsd.toFixed(4)} (${String(Math.round(effectiveCapRatio * 100))}% threshold: $${effectiveCapUsd.toFixed(4)}). ` +
           `Subprocess terminated to bound runaway overspend.`
       );
     }
@@ -463,11 +466,27 @@ function createStreamingUsageInspector(
       return;
     }
 
+    const turnUsd = (turnTokensIn / 1000) * pricing.inputPer1K + (turnTokensOut / 1000) * pricing.outputPer1K;
+    const remainingBudgetBeforeTurn = Math.max(capUsd - cumulativeUsd, 0);
+
+    if (capUsd > 0 && remainingBudgetBeforeTurn > 0 && turnUsd > remainingBudgetBeforeTurn * 0.5) {
+      cumulativeUsd += turnUsd;
+      tokensIn += turnTokensIn;
+      tokensOut += turnTokensOut;
+      turns += 1;
+      usageEventSeen = true;
+      terminate(
+        `Single turn spend ~$${turnUsd.toFixed(4)} consumed more than 50% of the remaining per-attempt budget ` +
+          `($${remainingBudgetBeforeTurn.toFixed(4)} before the turn). Subprocess terminated to prevent a one-turn overshoot.`
+      );
+      return;
+    }
+
     tokensIn += turnTokensIn;
     tokensOut += turnTokensOut;
     turns += 1;
     usageEventSeen = true;
-    cumulativeUsd += (turnTokensIn / 1000) * pricing.inputPer1K + (turnTokensOut / 1000) * pricing.outputPer1K;
+    cumulativeUsd += turnUsd;
 
     checkBudgetExceeded(terminate);
   };
@@ -612,7 +631,7 @@ function inferStructuralClassHint(
  * Example for Claude:  () => ["--output-format", "json", "--print"]
  * Example for Codex:   () => ["exec", "--sandbox", "workspace-write", "-"]
  */
-export type CliArgsBuilder = (prompt: string) => string[];
+export type CliArgsBuilder = (prompt: string, request: MartinAdapterRequest) => string[];
 export type CliStdinBuilder = (prompt: string) => string | undefined;
 
 export interface AgentCliAdapterOptions {
@@ -759,7 +778,7 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
         }
       }
 
-      const args = options.argsBuilder(prompt);
+      const args = options.argsBuilder(prompt, request);
       const stdinData = options.stdinBuilder?.(prompt);
 
       // Live cumulative-cost circuit breaker: a single attempt should never be
@@ -770,7 +789,11 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
       // to roughly one turn's overshoot rather than the entire runaway session.
       const streamingUsage =
         options.streamingUsageCap && request.context.remainingBudgetUsd > 0
-          ? createStreamingUsageInspector(request.context.remainingBudgetUsd, options.model ?? options.command)
+          ? createStreamingUsageInspector(
+            request.context.remainingBudgetUsd,
+            options.model ?? options.command,
+            estimatedUsage.tokensIn
+          )
           : undefined;
 
       const agentResult = await runSubprocess(options.command, args, {
@@ -824,10 +847,14 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
       }
 
       if (agentResult.exitCode !== 0 && agentResult.stdout.trim().length === 0) {
+        const fullStderr = agentResult.stderr.trim();
+        const stderrSnippet = fullStderr ? fullStderr.slice(0, 2000) : "(no stderr)";
+        const stdoutLen = agentResult.stdout.length;
+        const diagnosticSummary = `${options.command} exited (code ${String(agentResult.exitCode)}) with empty stdout (${String(stdoutLen)} bytes). stderr: ${stderrSnippet}`;
         const failureMessage = formatPreVerifierSubprocessFailure(options.command, agentResult.stderr, agentResult.exitCode);
         return {
           status: "failed",
-          summary: `${options.command} subprocess exited before verifier execution.`,
+          summary: diagnosticSummary,
           usage: normalizeUsage({
             actualUsd: 0,
             tokensIn: 0,
@@ -836,7 +863,8 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
           }),
           verification: { passed: false, summary: `Verifier not run: ${failureMessage}` },
           failure: {
-            message: failureMessage
+            // Full stderr preserved here — summary is capped at 2000 chars
+            message: fullStderr || failureMessage
           }
         };
       }
@@ -888,7 +916,6 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
           }
         };
       }
-
       const agentText =
         codexJsonlResult?.summary ??
         geminiJsonResult?.summary ??
@@ -1131,17 +1158,21 @@ export function createClaudeCliAdapter(options: ClaudeCliAdapterOptions = {}): M
     supportsJsonOutput: true,
     streamingUsageCap: true,
     spawnImpl: options.spawnImpl,
-    argsBuilder: (_prompt) => [
+    argsBuilder: (_prompt, request) => [
       "--output-format",
       "stream-json",
       "--verbose",
       "--print",
       "--dangerously-skip-permissions",
-      // Prevent the child Claude process from loading the parent's MCP servers.
-      // Without this, a MartinLoop MCP server in the user's config gets spawned
-      // inside the governed subprocess, causing conflicts and "MCP server being
-      // overwritten" errors.
-      "--strict-mcp-config",
+      // Subprocess isolation strategy:
+      // --bare: skips hooks (prevents SessionEnd/hook failures causing non-zero exits),
+      //   MCP server loading, LSP, CLAUDE.md discovery, and background prefetches.
+      //   Requires ANTHROPIC_API_KEY (OAuth/keychain auth not available in bare mode).
+      // --strict-mcp-config: fallback when ANTHROPIC_API_KEY is not set — still
+      //   prevents parent MCP servers from being inherited by the subprocess.
+      ...(process.env["ANTHROPIC_API_KEY"] ? ["--bare"] : ["--strict-mcp-config"]),
+      // NOTE: --max-tokens does not exist in the claude CLI. Token cap enforcement
+      // is handled at the MartinLoop layer via streamingUsageCap, not via subprocess flags.
       ...modelArgs,
       ...extraArgs
     ],
@@ -1251,24 +1282,15 @@ function buildPrompt(request: MartinAdapterRequest): string {
   const mutationMode = request.context.mutationMode ?? "edit";
 
   lines.push("You are running in autonomous agentic mode.");
-  if (mutationMode === "verify_only") {
-    lines.push("DO NOT EDIT FILES. Run the verifier only and report whether it passes.");
-    lines.push("Do not ask for confirmation. Do not ask clarifying questions.");
-  } else {
-    lines.push("MAKE ALL REQUIRED FILE EDITS NOW. Do not ask for confirmation. Do not ask clarifying questions.");
-    lines.push("Do not explain what you found without also making the changes. Edit the files and complete the task.");
-  }
+  lines.push("MAKE ALL REQUIRED FILE EDITS NOW. Do not ask for confirmation. Do not ask clarifying questions.");
+  lines.push("Do not explain what you found without also making the changes. Edit the files and complete the task.");
   lines.push("");
 
   lines.push("If PROGRESS.md exists in your working directory, read it first for context from prior attempts.");
   lines.push("If it does not exist, proceed with the objective below.");
   lines.push("");
 
-  lines.push(
-    mutationMode === "verify_only"
-      ? "Complete the following verification-only task without making file changes."
-      : "Complete the following coding task. Make all necessary file changes."
-  );
+  lines.push("Complete the following coding task. Make all necessary file changes.");
   lines.push("When you are done, the verification commands listed below must pass.");
   lines.push("");
 
@@ -1311,11 +1333,7 @@ function buildPrompt(request: MartinAdapterRequest): string {
   lines.push(`  Attempt ${String(attemptNumber)}`);
   lines.push(`  Remaining budget: $${String(request.context.remainingBudgetUsd)} USD`);
   lines.push(`  Remaining iterations: ${String(request.context.remainingIterations)}`);
-  lines.push(
-    mutationMode === "verify_only"
-      ? "  Do not modify files; only run verification."
-      : "  Do not expand scope beyond what is needed to pass verification."
-  );
+  lines.push("  Do not expand scope beyond what is needed to pass verification.");
   lines.push("");
 
   if (request.previousAttempts.length > 0) {

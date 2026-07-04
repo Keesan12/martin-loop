@@ -418,8 +418,36 @@ describe("executeCli", () => {
     }
   });
 
-  it("supports verify-only runs without invoking a coding adapter", { timeout: 30_000 }, async () => {
-    const directory = await mkdtemp(join(tmpdir(), "martin-cli-verify-only-"));
+
+  it("prints the repo star CTA only for successful human-readable runs", { timeout: 30_000 }, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-star-cta-"));
+
+    try {
+      const result = await withIsolatedRunsEnv(directory, () =>
+        executeCli([
+          "run",
+          "--objective",
+          "Verify the contracts package without edits",
+          "--engine",
+          "codex",
+          "--verify-only",
+          "--verify",
+          `"${process.execPath}" -e "process.exit(0)"`,
+          "--cwd",
+          directory
+        ])
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("MartinLoop saved you from a runaway bill.");
+      expect(result.stdout).toContain("Star the repo: github.com/Keesan12/martin-loop");
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("keeps the repo star CTA out of machine-readable JSON output", { timeout: 30_000 }, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-star-cta-json-"));
 
     try {
       const result = await withIsolatedRunsEnv(directory, () =>
@@ -434,20 +462,13 @@ describe("executeCli", () => {
           "--verify",
           `"${process.execPath}" -e "process.exit(0)"`,
           "--cwd",
-          directory,
-          "--allow-path",
-          "packages/contracts/**"
+          directory
         ])
       );
 
       expect(result.exitCode).toBe(0);
-
-      const payload = JSON.parse(result.stdout);
-
-      expect(payload.decision.lifecycleState).toBe("completed");
-      expect(payload.loop.lifecycleState).toBe("completed");
-      expect(payload.loop.task.mutationMode).toBe("verify_only");
-      expect(payload.loop.cost.actualUsd).toBe(0);
+      expect(result.stdout).not.toContain("Star the repo");
+      expect(result.stdout).not.toContain("runaway bill");
     } finally {
       await rm(directory, { force: true, recursive: true });
     }
@@ -508,7 +529,6 @@ describe("executeCli", () => {
       expect(payload.environment.liveMode).toBe("proof");
       expect(payload.loop.cost.actualUsd).toBe(0);
       expect(payload.loop.task.mutationMode).toBeUndefined();
-      expect(payload.loop.attempts[0]?.adapterId).not.toBe("direct:verifier:verify-only");
       expect(["completed", "diminishing_returns"]).toContain(payload.loop.lifecycleState);
     } finally {
       await rm(directory, { force: true, recursive: true });

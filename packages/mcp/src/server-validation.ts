@@ -24,7 +24,7 @@ import type { MartinRunDossierInput } from "./tools/run-dossier.js";
 import type { MartinRunControlRequestInput } from "./tools/run-controls.js";
 import type { RunLoopInput } from "./tools/run-loop.js";
 import type { MartinTriageRunsInput } from "./tools/triage-runs.js";
-import { MARTIN_ENGINE_VALUES } from "./tools/tool-support.js";
+import { MARTIN_ENGINE_VALUES, type MartinEngine } from "./tools/tool-support.js";
 
 type ToolName =
   | "martin_run"
@@ -33,6 +33,7 @@ type ToolName =
   | "martin_doctor"
   | "martin_plan"
   | "martin_preflight"
+  | "martin_estimate"
   | "martin_logs"
   | "martin_cancel"
   | "martin_pause"
@@ -65,6 +66,8 @@ export function validateToolInput(name: ToolName, args: unknown): unknown {
       return validatePlanInput(args);
     case "martin_preflight":
       return validatePreflightInput(args);
+    case "martin_estimate":
+      return validateEstimateInput(args);
     case "martin_logs":
       return validateLogsInput(args);
     case "martin_cancel":
@@ -367,6 +370,30 @@ function validatePreflightInput(args: unknown): MartinPreflightInput {
 
 function validatePlanInput(args: unknown): MartinPlanInput {
   return validateRunInput(args);
+}
+
+function validateEstimateInput(args: unknown): {
+  objective: string;
+  engine?: MartinEngine;
+  budgetUsd?: number;
+  fileScope?: string[];
+  workingDirectory?: string;
+} {
+  const record = requireObject(args);
+  assertAllowedKeys(record, ["objective", "engine", "budgetUsd", "fileScope", "workingDirectory"]);
+
+  const engine = optionalEnum(record.engine, "engine", MARTIN_ENGINE_VALUES);
+  const fileScope = normalizeSafePathPatterns(record.fileScope, "fileScope");
+
+  return {
+    objective: requireString(record.objective, "objective"),
+    ...(engine ? { engine } : {}),
+    ...optionalPositiveNumber(record.budgetUsd, "budgetUsd"),
+    ...(fileScope ? { fileScope } : {}),
+    ...(record.workingDirectory !== undefined
+      ? { workingDirectory: resolveSafeRepoRoot(requireString(record.workingDirectory, "workingDirectory")) }
+      : {})
+  };
 }
 
 function validateLogsInput(args: unknown): MartinLogsInput {

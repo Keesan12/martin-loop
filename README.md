@@ -86,7 +86,7 @@ npx -y martin-loop@latest preflight "Summarize the demo workspace and prove test
 
 `share --latest` writes three files into the selected run directory under `share/`: `run-receipt.json`, `run-receipt.md`, and `proof-card.svg`.
 
-Release notes for the current root package: [MartinLoop 0.3.13](./docs/release/OSS-0.3.13-RELEASE-NOTES.md).
+Release notes for the current root package: [MartinLoop 0.3.16](./docs/release/OSS-0.3.16-RELEASE-NOTES.md).
 
 ## Visual Proof
 
@@ -166,18 +166,18 @@ MartinLoop keeps the useful part of the loop, then adds brakes:
 - preserve rollback and verifier evidence for review
 - reduce runaway context growth with compact run summaries
 
-## Failure Taxonomy (12 Runtime Classes)
+## Failure Taxonomy (13 Runtime Classes)
 
-Public governed runs use one canonical taxonomy: the 12 runtime `FailureClass` values from `@martin/contracts`.
+Public governed runs use one canonical taxonomy: the 13 runtime `FailureClass` values from `@martin/contracts`.
 
-See the canonical table: [Failure Taxonomy (12 Runtime Classes)](./docs/oss/FAILURE-TAXONOMY-12.md).
+See the canonical table: [Failure Taxonomy (13 Runtime Classes)](./docs/oss/FAILURE-TAXONOMY-13.md).
 
 ## What It Does
 
 - Budget caps stop the next attempt before a configured USD, token, or iteration limit is exceeded.
 - Verifier gates require a real check, such as `npm test`, before a run can count as complete.
 - Policy checks block unsafe verifier commands, risky path changes, and secret-like task inputs before execution.
-- Failure classification uses canonical runtime classes for triage and reporting. See [Failure Taxonomy (12 Runtime Classes)](./docs/oss/FAILURE-TAXONOMY-12.md).
+- Failure classification uses canonical runtime classes for triage and reporting. See [Failure Taxonomy (13 Runtime Classes)](./docs/oss/FAILURE-TAXONOMY-13.md).
 - Run receipts capture stop reason, verifier evidence, budget posture, integrity state, and the next safe action.
 - `martin share --latest` turns the latest governed run into a local share bundle with a redacted JSON receipt, Markdown recap, and proof-card SVG.
 - MCP integration gives hosts one write-capable execution entrypoint plus richer planning, inspection, and review helpers.
@@ -360,7 +360,7 @@ More detail: [SDK reference](./docs/reference/sdk.md) and [package map](./docs/r
 - [Quickstart](./docs/getting-started/quickstart.md)
 - [Examples](./docs/getting-started/examples.md)
 - [Agent Failure Atlas](./docs/agent-failure-atlas.md)
-- [Failure Taxonomy (12 Runtime Classes)](./docs/oss/FAILURE-TAXONOMY-12.md)
+- [Failure Taxonomy (13 Runtime Classes)](./docs/oss/FAILURE-TAXONOMY-13.md)
 - [PRE-028-PUBLIC-SURFACE-DIFF.md](./docs/oss/PRE-028-PUBLIC-SURFACE-DIFF.md)
 - [Claude Code walkthrough](./docs/getting-started/claude-code.md)
 - [Codex setup](./docs/getting-started/codex.md)

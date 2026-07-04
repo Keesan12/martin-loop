@@ -100,6 +100,7 @@ export const MARTIN_RESOURCE_URIS = [
   "martin://verifiers/results",
   "martin://agent/next-step",
   "martin://agent/governance-status",
+  "martin://agent/mode-status",
   "martin://agent/memory-summary",
   "martin://guides/mcp-usage",
   "martin://guides/agent-start",

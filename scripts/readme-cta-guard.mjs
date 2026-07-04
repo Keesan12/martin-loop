@@ -37,12 +37,21 @@ export const REQUIRED_CTA_CHECKS = [
   },
 ];
 
+const FORBIDDEN_LICENSE_NEEDLES = [
+  "MIT Licensed",
+  "MIT License",
+  "License: MIT",
+  "Licensed under MIT"
+];
+
 export function evaluateReadmeCtaGuards(readmeContents) {
   const missingChecks = REQUIRED_CTA_CHECKS.filter((check) => !readmeContents.includes(check.needle));
+  const forbiddenLicenseChecks = FORBIDDEN_LICENSE_NEEDLES.filter((needle) => readmeContents.includes(needle));
 
   return {
-    ok: missingChecks.length === 0,
+    ok: missingChecks.length === 0 && forbiddenLicenseChecks.length === 0,
     missingChecks: missingChecks.map(({ id, description }) => ({ id, description })),
+    forbiddenLicenseChecks,
   };
 }
 
@@ -84,6 +93,13 @@ async function main() {
     process.stderr.write("Missing required anchors:\n");
     for (const missing of result.missingChecks) {
       process.stderr.write(`- ${missing.id}: ${missing.description}\n`);
+    }
+  }
+
+  if (result.forbiddenLicenseChecks.length > 0) {
+    process.stderr.write("Forbidden stale license copy:\n");
+    for (const needle of result.forbiddenLicenseChecks) {
+      process.stderr.write(`- ${needle}\n`);
     }
   }
 

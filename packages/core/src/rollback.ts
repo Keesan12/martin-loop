@@ -55,12 +55,12 @@ export async function captureRollbackBoundary(input: {
     snapshots.push(await readRollbackSnapshot(input.repoRoot, filePath));
   }
 
+  const headRef = readGitScalar(input.repoRoot, ["rev-parse", "HEAD"]);
+
   return {
     strategy: "git_head_plus_snapshot",
     capturedAt: input.capturedAt,
-    ...(readGitScalar(input.repoRoot, ["rev-parse", "HEAD"])
-      ? { headRef: readGitScalar(input.repoRoot, ["rev-parse", "HEAD"]) }
-      : {}),
+    ...(headRef ? { headRef } : {}),
     trackedDirtyFiles: repoState.trackedDirtyFiles,
     untrackedFiles: repoState.untrackedFiles,
     snapshots

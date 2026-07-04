@@ -22,10 +22,6 @@ export {
   type CliArgsBuilder
 } from "./claude-cli.js";
 export {
-  createVerifierOnlyAdapter,
-  type VerifierOnlyAdapterOptions
-} from "./verifier-only.js";
-export {
   createOpenAiCompatibleAdapter,
   resolveOpenAiCompatibleRuntimeConfig,
   type OpenAiCompatibleAdapterOptions

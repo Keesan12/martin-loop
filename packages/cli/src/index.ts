@@ -15,7 +15,6 @@ import {
   probeCodexLaunch,
   resolveCliCommandAvailability,
   createStubDirectProviderAdapter,
-  createVerifierOnlyAdapter
 } from "@martin/adapters";
 import { runMartin, classifyRoute, resolveModelForTier, getHistoricalDirectSuccessRate, getPreference, recordPreference, type MartinAdapter } from "@martin/core";
 import {
@@ -309,6 +308,8 @@ type EstimateCommand = {
   engine: string;
   budgetUsd: number;
   fileScope: string[];
+  cwd?: string;
+  runsDir?: string;
 };
 
 type GateCommand = {
@@ -656,7 +657,9 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
       objective,
       engine: readOption(rest, "--engine") ?? "claude",
       budgetUsd: toFiniteNumber(readOption(rest, "--budget-usd") ?? readOption(rest, "--budget") ?? "5") || 5,
-      fileScope
+      fileScope,
+      ...(readOption(rest, "--cwd") ? { cwd: readOption(rest, "--cwd") } : {}),
+      ...(readOption(rest, "--runs-dir") ? { runsDir: readOption(rest, "--runs-dir") } : {})
     };
   }
 
@@ -985,9 +988,8 @@ export function renderCliHelp(): string {
     "  --verify <cmd>           Shell command to run as the verifier after each attempt.",
     "  --verify-timeout-ms <n>  Verifier timeout in milliseconds.",
     "  --proof                  Run in no-spend proof mode (explicit opt-in).",
-    "  --verify-only            Skip the coding adapter and run the verifier only.",
     "  --unsafe-allow-unguarded-run",
-    "                           Bypass doctor/preflight run-gate checks for this invocation only.",
+    "                           Deprecated for live coding runs; use --proof for explicit no-spend lanes.",
     "  --allow-path <glob>      Restrict agent writes to this path pattern (repeatable).",
     "  --deny-path <glob>       Block agent from this path pattern (repeatable).",
     "  --accept <criterion>     Add an acceptance criterion to the prompt (repeatable).",
@@ -1034,92 +1036,78 @@ async function executeRunCommand(
   });
   const effectiveMutationMode = resolvedRequest.mutationMode;
   const receiptScope = buildCliReceiptScope(cliEnvironment);
-  const engineRequired =
-    effectiveMutationMode !== "verify_only" && cliEnvironment.liveMode === "live";
+  const engineRequired = cliEnvironment.liveMode === "live";
   const preRunWarnings: string[] = [];
 
-  if (engineRequired && !resolvedRequest.unsafeAllowUnguardedRun) {
-    if (outputMode === "json") {
-      const bootstrap = await autoBootstrapGovernedRun({
-        request: resolvedRequest,
-        environment: cliEnvironment,
-        receiptScope
-      });
-      if (bootstrap.warnings.length > 0) {
-        preRunWarnings.push(...bootstrap.warnings);
+  if (engineRequired && resolvedRequest.unsafeAllowUnguardedRun) {
+    throw new CliCommandError(
+      "policy_blocked",
+      "--unsafe-allow-unguarded-run is blocked for live governed coding runs.",
+      {
+        suggestion:
+          "Run `martin-loop doctor`, `martin-loop session-start`, `martin-loop estimate`, and `martin-loop preflight` before retrying, or use `--proof` for an explicit no-spend lane.",
+        details: {
+          allowedNoSpendModes: ["proof"]
+        }
       }
-      if (!bootstrap.ready) {
-        throw new CliCommandError(
-          "policy_blocked",
-          "Governed run preflight blocked execution. Resolve the blocking issues and retry.",
-          {
-            suggestion: buildPreflightSuggestion(resolvedRequest.objective, resolvedRequest.verificationPlan),
-            details: {
-              blockingIssues: bootstrap.blockingIssues
-            }
-          }
-        );
-      }
-    } else {
-      // Governance gate fires first — receipts must exist before we check whether
-      // the engine CLI is installed. "Run estimate first" is higher priority feedback
-      // than "install the engine CLI", and this keeps gate behavior consistent across
-      // environments where the engine binary may not be on PATH (e.g. CI runners).
-      const gate = await evaluateCliRunGate({
-        runsRoot: cliEnvironment.runsRoot,
-        workingDirectory: cliEnvironment.workingDirectory,
-        objective: resolvedRequest.objective,
-        engine: cliEnvironment.engine,
-        verificationPlan: resolvedRequest.verificationPlan,
-        mutationMode: effectiveMutationMode,
-        receiptScope,
-        allowedPaths: resolvedRequest.allowedPaths,
-        deniedPaths: resolvedRequest.deniedPaths,
-        budget: resolvedRequest.budget
-      });
-
-      if (!gate.allowed) {
-        throw new CliCommandError("policy_blocked", gate.message, {
-          suggestion: gate.nextCommand,
-          details: {
-            missingSteps: gate.missingSteps,
-            receiptScope
-          }
-        });
-      }
-
-      const blockingIssues: string[] = [];
-      const workingDirectoryExists = await stat(cliEnvironment.workingDirectory).then(() => true).catch(() => false);
-      if (!workingDirectoryExists) {
-        blockingIssues.push("Working directory does not exist.");
-      }
-      if (cliEnvironment.engine === "claude" && !isCommandAvailable("claude")) {
-        blockingIssues.push("Claude CLI is not available on PATH.");
-      }
-      if (cliEnvironment.engine === "codex" && !resolveCliCommandAvailability("codex").available) {
-        blockingIssues.push("Codex CLI is not available on PATH.");
-      }
-      if (cliEnvironment.engine === "gemini" && !resolveCliCommandAvailability("gemini").available) {
-        blockingIssues.push("Gemini CLI is not available on PATH.");
-      }
-
-      if (blockingIssues.length > 0) {
-        throw new CliCommandError(
-          "policy_blocked",
-          "Governed run preflight blocked execution. Resolve the blocking issues and retry.",
-          {
-            suggestion: buildPreflightSuggestion(resolvedRequest.objective, resolvedRequest.verificationPlan),
-            details: {
-              blockingIssues
-            }
-          }
-        );
-      }
-    }
-  } else if (engineRequired && resolvedRequest.unsafeAllowUnguardedRun) {
-    preRunWarnings.push(
-      "Run-gate bypassed by --unsafe-allow-unguarded-run; doctor/preflight receipts were not enforced for this run."
     );
+  }
+
+  if (engineRequired) {
+    // Governance gate fires first — receipts must exist before we check whether
+    // the engine CLI is installed. "Run estimate first" is higher priority feedback
+    // than "install the engine CLI", and this keeps gate behavior consistent across
+    // human and JSON surfaces.
+    const gate = await evaluateCliRunGate({
+      runsRoot: cliEnvironment.runsRoot,
+      workingDirectory: cliEnvironment.workingDirectory,
+      objective: resolvedRequest.objective,
+      engine: cliEnvironment.engine,
+      verificationPlan: resolvedRequest.verificationPlan,
+      mutationMode: effectiveMutationMode,
+      receiptScope,
+      allowedPaths: resolvedRequest.allowedPaths,
+      deniedPaths: resolvedRequest.deniedPaths,
+      budget: resolvedRequest.budget
+    });
+
+    if (!gate.allowed) {
+      throw new CliCommandError("policy_blocked", gate.message, {
+        suggestion: gate.nextCommand,
+        details: {
+          missingSteps: gate.missingSteps,
+          receiptScope
+        }
+      });
+    }
+
+    const blockingIssues: string[] = [];
+    const workingDirectoryExists = await stat(cliEnvironment.workingDirectory).then(() => true).catch(() => false);
+    if (!workingDirectoryExists) {
+      blockingIssues.push("Working directory does not exist.");
+    }
+    if (cliEnvironment.engine === "claude" && !isCommandAvailable("claude")) {
+      blockingIssues.push("Claude CLI is not available on PATH.");
+    }
+    if (cliEnvironment.engine === "codex" && !resolveCliCommandAvailability("codex").available) {
+      blockingIssues.push("Codex CLI is not available on PATH.");
+    }
+    if (cliEnvironment.engine === "gemini" && !resolveCliCommandAvailability("gemini").available) {
+      blockingIssues.push("Gemini CLI is not available on PATH.");
+    }
+
+    if (blockingIssues.length > 0) {
+      throw new CliCommandError(
+        "policy_blocked",
+        "Governed run preflight blocked execution. Resolve the blocking issues and retry.",
+        {
+          suggestion: buildPreflightSuggestion(resolvedRequest.objective, resolvedRequest.verificationPlan),
+          details: {
+            blockingIssues
+          }
+        }
+      );
+    }
   }
 
   let result: Awaited<ReturnType<typeof runMartin>>;
@@ -1245,6 +1233,7 @@ async function executeRunCommand(
   });
 
   const costProvenance = readCostProvenance(result.loop);
+  const successStarCta = buildSuccessStarCtaLines(result.loop);
 
   return renderCliSuccess(outputMode, {
     data: {
@@ -1279,150 +1268,30 @@ async function executeRunCommand(
       `Runs root: ${cliEnvironment.runsRoot}`,
       `Verification plan: ${resolvedRequest.verificationPlan.join(", ") || "none"}`,
       `Attempts: ${result.loop.attempts.length}`,
-      `Actual cost (USD): ${result.loop.cost.actualUsd.toFixed(2)} — provenance: ${describeCostProvenance(costProvenance)}`
+      `Actual cost (USD): ${result.loop.cost.actualUsd.toFixed(2)} — provenance: ${describeCostProvenance(costProvenance)}`,
+      ...successStarCta
     ],
     quiet: result.loop.loopId,
     warnings
   });
 }
 
+function buildSuccessStarCtaLines(loop: LoopRecord): string[] {
+  if (!(loop.status === "completed" && loop.lifecycleState === "completed")) {
+    return [];
+  }
+
+  return [
+    "─────────────────────────────────────────────",
+    "⭐ MartinLoop saved you from a runaway bill.",
+    "   Star the repo: github.com/Keesan12/martin-loop",
+    "─────────────────────────────────────────────"
+  ];
+}
+
 function buildPreflightSuggestion(objective: string, verificationPlan: string[]): string {
   const verify = verificationPlan[0] ? ` --verify "${verificationPlan[0]}"` : "";
   return `martin-loop preflight "${objective}"${verify}`;
-}
-
-function describeWorkflowPersistenceIssue(step: "doctor" | "estimate" | "session-start" | "preflight"): string {
-  if (step === "doctor") {
-    return "MartinLoop could not persist the doctor receipt needed for governed execution.";
-  }
-  if (step === "estimate") {
-    return "Run `martin estimate \"<objective>\"` to preview cost before this run.";
-  }
-  if (step === "session-start") {
-    return "MartinLoop could not persist the session-start receipt needed for governed execution.";
-  }
-  return "MartinLoop could not persist the preflight receipt needed for governed execution.";
-}
-
-async function autoBootstrapGovernedRun(input: {
-  request: RunCommandRequest;
-  environment: ReturnType<typeof resolveCliEnvironment>;
-  receiptScope: ReturnType<typeof buildCliReceiptScope>;
-}): Promise<{
-  ready: boolean;
-  blockingIssues: string[];
-  warnings: string[];
-}> {
-  const preflightResult = await executePreflightCommand(input.request, "json");
-  let payload: {
-    ready?: boolean;
-    blockingIssues?: unknown;
-    warnings?: unknown;
-  } = {};
-  try {
-    payload = JSON.parse(preflightResult.stdout) as {
-      ready?: boolean;
-      blockingIssues?: unknown;
-      warnings?: unknown;
-    };
-  } catch {
-    return {
-      ready: false,
-      blockingIssues: ["Unable to parse preflight output."],
-      warnings: []
-    };
-  }
-
-  const blockingIssues = Array.isArray(payload.blockingIssues)
-    ? payload.blockingIssues.filter((item): item is string => typeof item === "string")
-    : [];
-  const warnings = Array.isArray(payload.warnings)
-    ? payload.warnings.filter((item): item is string => typeof item === "string")
-    : [];
-  if (payload.ready !== true) {
-    return {
-      ready: false,
-      blockingIssues,
-      warnings
-    };
-  }
-
-  const persistenceWarnings: string[] = [];
-  await recordCliWorkflowStep({
-    runsRoot: input.environment.runsRoot,
-    step: "doctor",
-    workingDirectory: input.environment.workingDirectory,
-    engine: input.environment.engine,
-    receiptScope: input.receiptScope
-  }).catch((error: unknown) => {
-    persistenceWarnings.push(
-      `${describeWorkflowPersistenceIssue("doctor")} ${error instanceof Error ? error.message : String(error)}`
-    );
-  });
-
-  await recordCliWorkflowStep({
-    runsRoot: input.environment.runsRoot,
-    step: "session-start",
-    workingDirectory: input.environment.workingDirectory,
-    engine: input.environment.engine,
-    receiptScope: input.receiptScope
-  }).catch((error: unknown) => {
-    persistenceWarnings.push(
-      `${describeWorkflowPersistenceIssue("session-start")} ${error instanceof Error ? error.message : String(error)}`
-    );
-  });
-
-  // Record estimate receipt during auto-bootstrap so the run gate passes.
-  // Auto-bootstrap performs preflight which validates cost/scope — recording
-  // an estimate receipt here represents that the system assessed the task
-  // before execution, even when the user didn't explicitly run martin estimate.
-  await recordCliWorkflowStep({
-    runsRoot: input.environment.runsRoot,
-    step: "estimate",
-    workingDirectory: input.environment.workingDirectory,
-    objective: input.request.objective,
-    receiptScope: input.receiptScope
-  }).catch((error: unknown) => {
-    persistenceWarnings.push(
-      `${describeWorkflowPersistenceIssue("estimate")} ${error instanceof Error ? error.message : String(error)}`
-    );
-  });
-
-  const gate = await evaluateCliRunGate({
-    runsRoot: input.environment.runsRoot,
-    workingDirectory: input.environment.workingDirectory,
-    objective: input.request.objective,
-    engine: input.environment.engine,
-    verificationPlan: input.request.verificationPlan,
-    mutationMode: input.request.mutationMode,
-    receiptScope: input.receiptScope,
-    allowedPaths: input.request.allowedPaths,
-    deniedPaths: input.request.deniedPaths,
-    budget: input.request.budget
-  });
-
-  if (!gate.allowed) {
-    const gateIssues =
-      gate.missingSteps.length > 0
-        ? gate.missingSteps
-            .filter(
-              (step): step is "doctor" | "estimate" | "session-start" | "preflight" =>
-                step === "doctor" || step === "estimate" || step === "session-start" || step === "preflight"
-            )
-            .map((step) => describeWorkflowPersistenceIssue(step))
-        : [gate.message];
-    return {
-      ready: false,
-      blockingIssues: persistenceWarnings.length > 0 ? persistenceWarnings : gateIssues,
-      warnings
-    };
-  }
-
-  return {
-    ready: true,
-    blockingIssues: [],
-    warnings: [...warnings, ...persistenceWarnings]
-  };
 }
 
 async function executeInspectCommand(
@@ -1581,8 +1450,8 @@ async function executeDoctorCommand(
     engine: command.engine
   });
   const configPath = command.configPath
-    ? resolveConfigPath(command.configPath)
-    : join(environment.invocationRoot, "martin.config.yaml");
+    ? resolveConfigPath(command.configPath, environment.workingDirectory)
+    : join(environment.workingDirectory, "martin.config.yaml");
   const configExists = await stat(configPath).then(() => true).catch(() => false);
   const workingDirectoryReady = await stat(environment.workingDirectory).then(() => true).catch(() => false);
   const runsRootReady = await stat(environment.runsRoot).then(() => true).catch(() => false);
@@ -1913,7 +1782,7 @@ async function executeEnableCommand(
   });
   const snapshot = await collectStartEnvironmentSnapshot(environment.workingDirectory, environment.runsRoot);
   const configPath = command.configPath
-    ? resolveConfigPath(command.configPath)
+    ? resolveConfigPath(command.configPath, environment.workingDirectory)
     : join(environment.workingDirectory, "martin.config.yaml");
   const configExists = await stat(configPath).then(() => true).catch(() => false);
   if (configExists && !command.force) {
@@ -2412,7 +2281,7 @@ async function executePreflightCommand(
     request.verificationPlan.length > 0
       ? request.verificationPlan
       : resolvedGuardrails.verifierRules;
-  const engineRequired = request.mutationMode !== "verify_only" && environment.liveMode === "live";
+  const engineRequired = environment.liveMode === "live";
   const receiptScope = buildCliReceiptScope(environment);
 
   const workingDirectoryExists = await stat(environment.workingDirectory).then(() => true).catch(() => false);
@@ -2802,16 +2671,16 @@ async function executeGateCommand(
   }
   const hasDoctor = Boolean(mcpState.doctor);
   const hasEstimate = Boolean(mcpState.estimate);
-  const hasPlan = Boolean(mcpState.plan);
   const hasPreflight = Boolean(mcpState.preflight);
   // Estimate is required — it proves the agent understood the cost before starting.
-  // Plan is optional for lightweight work; estimate + doctor + preflight is the minimum.
-  const governed = hasDoctor && hasEstimate;
+  // Plan remains optional for lightweight work, but preflight is mandatory before
+  // any surface can claim the repo is governance-ready.
+  const governed = hasDoctor && hasEstimate && hasPreflight;
 
   const missingSteps: string[] = [];
   if (!hasDoctor) missingSteps.push("martin doctor");
   if (!hasEstimate) missingSteps.push("martin estimate \"<your objective>\"");
-  if (!hasPreflight && hasPlan) missingSteps.push("martin preflight \"<your objective>\"");
+  if (!hasPreflight) missingSteps.push("martin preflight \"<your objective>\"");
 
   if (governed) {
     return renderCliSuccess(outputMode, {
@@ -2843,7 +2712,7 @@ async function executeGateCommand(
     "This work is not governed. Complete the required steps first:",
     ...missingSteps.map((step) => `  ✗ ${step}`),
     "",
-    "MartinLoop requires doctor → plan → preflight before any code changes.",
+    "MartinLoop requires doctor → estimate → preflight before any code changes.",
     "Run the missing commands above, then retry."
   ];
 
@@ -2970,7 +2839,7 @@ async function executeEstimateCommand(
   command: Extract<ParsedCliArguments, { command: "estimate" }>,
   outputMode: MartinOutputMode
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  const environment = resolveCliEnvironment({ cwd: undefined, runsDir: undefined });
+  const environment = resolveCliEnvironment({ cwd: command.cwd, runsDir: command.runsDir });
   // Feed real historical success rate from the trace store into the route classifier.
   // This reduces Pre Work Burn over time as Martin learns from past runs.
   const historicalDirectSuccessRate = await getHistoricalDirectSuccessRate(environment.runsRoot).catch(() => undefined);
@@ -2986,9 +2855,9 @@ async function executeEstimateCommand(
     ? Math.max(2, Math.round(route.expectedCostUsd * 3 * 100) / 100)
     : Math.max(5, Math.round(route.expectedCostUsd * 2 * 100) / 100);
 
-  // Record estimate receipt — this is what martin gate checks to confirm
-  // an estimate was run before work began. Fire-and-forget.
-  recordCliWorkflowStep({
+  // Persist the estimate receipt before returning so follow-up `martin gate`
+  // invocations in separate CLI processes see the same runs-dir/cwd state.
+  await recordCliWorkflowStep({
     runsRoot: environment.runsRoot,
     step: "estimate",
     workingDirectory: environment.workingDirectory,
@@ -3305,9 +3174,6 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
       case "--runs-dir":
         request.runsDir = next;
         index += 1;
-        break;
-      case "--verify-only":
-        request.mutationMode = "verify_only";
         break;
       case "--proof":
         request.liveMode = "proof";
@@ -3689,7 +3555,8 @@ function renderDemoInstructions(targetDirectory: string): string {
 async function resolveGuardrails(
   request: RunCommandRequest
 ): Promise<ResolvedGuardrails> {
-  const { config, configPath } = await loadGuardrailsConfig(request.configPath);
+  const configLookupRoot = request.cwd ? resolve(request.cwd) : resolveInvocationRoot();
+  const { config, configPath } = await loadGuardrailsConfig(request.configPath, configLookupRoot);
 
   const budget: LoopBudget = {
     maxUsd: config?.budget?.maxUsd ?? request.budget.maxUsd,
@@ -3745,11 +3612,12 @@ async function resolveGuardrails(
 }
 
 async function loadGuardrailsConfig(
-  configPath?: string
+  configPath?: string,
+  baseDirectory = resolveInvocationRoot()
 ): Promise<{ config: GuardrailsConfig | undefined; configPath: string }> {
   const resolvedPath = configPath
-    ? resolveConfigPath(configPath)
-    : join(resolveInvocationRoot(), "martin.config.yaml");
+    ? resolveConfigPath(configPath, baseDirectory)
+    : join(baseDirectory, "martin.config.yaml");
   const configIsExplicit = typeof configPath === "string" && configPath.trim().length > 0;
 
   try {
@@ -3774,7 +3642,7 @@ async function loadGuardrailsConfig(
   }
 }
 
-function resolveConfigPath(configPath: string): string {
+function resolveConfigPath(configPath: string, baseDirectory = resolveInvocationRoot()): string {
   const normalizedConfigPath =
     process.platform === "win32" ? configPath : configPath.replace(/\\/g, "/");
 
@@ -3782,7 +3650,7 @@ function resolveConfigPath(configPath: string): string {
     return normalizedConfigPath;
   }
 
-  return resolve(resolveInvocationRoot(), normalizedConfigPath);
+  return resolve(baseDirectory, normalizedConfigPath);
 }
 
 function parseGuardrailsYaml(contents: string): GuardrailsConfig {
@@ -3927,13 +3795,6 @@ function selectAdapter(
   // Use auto-selected model when no explicit --model flag was given.
   // autoSelectModel comes from resolveModelForTier(route.recommendedModelTier, engine).
   const effectiveModel = modelOverride ?? autoSelectModel;
-
-  if (mutationMode === "verify_only") {
-    return createVerifierOnlyAdapter({
-      workingDirectory,
-      ...(verifyTimeoutMs !== undefined ? { verifyTimeoutMs } : {})
-    });
-  }
 
   if (liveMode === "proof") {
     return createStubDirectProviderAdapter({
@@ -4178,9 +4039,7 @@ function deriveLoopRunMode(loop: LoopRecord): string {
   if (loop.task.mutationMode) {
     return loop.task.mutationMode;
   }
-  if (loop.attempts.some((attempt) => attempt.adapterId === "direct:verifier:verify-only")) {
-    return "verify_only";
-  }
+  // Determine run mode based on proof adapters or zero cost.
   if (loop.attempts.some((attempt) => attempt.adapterId === "direct:proof:no-mutation")) {
     return "proof";
   }
@@ -4189,6 +4048,7 @@ function deriveLoopRunMode(loop: LoopRecord): string {
   }
   return "not recorded";
 }
+
 
 function latestExitReason(loop: LoopRecord): string {
   const exitEvent = [...loop.events].reverse().find((event) => event.type === "run.completed");
@@ -4464,7 +4324,7 @@ async function buildLocalReliabilityScoreInput(runsDir?: string): Promise<Martin
     ? await loadPersistedLoop({ latest: true }).catch(() => null)
     : null;
   const latestLoop = latestPersisted?.loop ?? loops.loops[0];
-  const configPath = join(environment.invocationRoot, "martin.config.yaml");
+  const configPath = join(environment.workingDirectory, "martin.config.yaml");
   const configExists = await stat(configPath).then((entry) => entry.isFile()).catch(() => false);
   const budgetConfigured =
     configExists ||
