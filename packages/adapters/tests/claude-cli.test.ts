@@ -1005,6 +1005,21 @@ describe("createClaudeCliAdapter", () => {
       expect(result.failure?.message).toContain("80% threshold");
     });
   });
+
+  it("enforces token guardrails via streamingUsageCap, not --max-tokens subprocess flag", async () => {
+    const calls: SpawnCall[] = [];
+    const adapter = createClaudeCliAdapter({
+      spawnImpl: createScriptedSpawn(calls)
+    });
+
+    const result = await adapter.execute(makeRequest());
+
+    expect(result.status).toBe("completed");
+    // --max-tokens does not exist in the claude CLI; token cap is enforced by
+    // the streaming budget circuit breaker (streamingUsageCap), not a subprocess flag.
+    // Regression guard: ensure this flag is never re-introduced.
+    expect(calls[0]?.args).not.toContain("--max-tokens");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1086,7 +1101,6 @@ describe("createCodexCliAdapter", () => {
     // Regression guard: ensure this flag is never re-introduced.
     expect(calls[0]?.args).not.toContain("--max-tokens");
   });
-
 
   it("preserves custom Codex model, sandbox, and extra exec flags before stdin prompt", async () => {
     const calls: SpawnCall[] = [];
