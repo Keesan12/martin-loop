@@ -31,7 +31,7 @@ This file is the release source of truth for package/version mapping in this rep
   - `0.4.1` preflight receipt written on all CI platforms (codex availability override fix), receipt-first trust surface defaults
   - `0.4.2` error normalization restored, Codex launch failure diagnostics improved, token flag regression guard added
 - current in-repo root release line: `0.4.2`
-- next planned root follow-on after `0.4.2`: TBD
+- next planned root follow-on after `0.4.2`: `0.4.3`
 
 ## Standalone package: `@martinloop/mcp`
 
