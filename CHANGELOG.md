@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.4.2]
+
+### Fixed
+- **Error normalization restored** — `failure.message` now consistently carries the normalized, parseable failure signal that downstream consumers depend on. Raw stderr is preserved in the `summary` field for diagnostics. Regression introduced in 0.4.1.
+- **Improved Codex launch failure diagnostics** — When Codex exits immediately with no output, the failure summary now surfaces the actual exit code and stderr content instead of a generic message, making failures actionable.
+- **Token flag regression guard** — `--max-tokens` (which does not exist in the Claude CLI) is now explicitly tested as absent. Token enforcement is via the streaming budget circuit breaker.
+
 ## [0.4.1]
 
 ### Added
