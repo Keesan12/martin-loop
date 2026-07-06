@@ -840,8 +840,10 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
           }),
           verification: { passed: false, summary: `Verifier not run: ${failureMessage}` },
           failure: {
-            // Full stderr preserved here — summary is capped at 2000 chars
-            message: fullStderr || failureMessage
+            // Raw stderr is preserved in diagnosticSummary above; use the
+            // normalized/classified message here so downstream consumers and
+            // tests get a consistent, parseable failure signal.
+            message: failureMessage
           }
         };
       }

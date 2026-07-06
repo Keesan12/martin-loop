@@ -1005,6 +1005,21 @@ describe("createClaudeCliAdapter", () => {
       expect(result.failure?.message).toContain("80% threshold");
     });
   });
+
+  it("enforces token guardrails via streamingUsageCap, not --max-tokens subprocess flag", async () => {
+    const calls: SpawnCall[] = [];
+    const adapter = createClaudeCliAdapter({
+      spawnImpl: createScriptedSpawn(calls)
+    });
+
+    const result = await adapter.execute(makeRequest());
+
+    expect(result.status).toBe("completed");
+    // --max-tokens does not exist in the claude CLI; token cap is enforced by
+    // the streaming budget circuit breaker (streamingUsageCap), not a subprocess flag.
+    // Regression guard: ensure this flag is never re-introduced.
+    expect(calls[0]?.args).not.toContain("--max-tokens");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1070,6 +1085,21 @@ describe("createCodexCliAdapter", () => {
     expect(calls[0]?.options?.cwd).toBe(workingDirectory);
     expect(calls[0]?.stdin).toContain("OBJECTIVE:");
     expect(calls[0]?.stdin).toContain("update the target file");
+  });
+
+  it("enforces token guardrails via streamingUsageCap, not --max-tokens subprocess flag", async () => {
+    const calls: SpawnCall[] = [];
+    const adapter = createClaudeCliAdapter({
+      spawnImpl: createScriptedSpawn(calls)
+    });
+
+    const result = await adapter.execute(makeRequest());
+
+    expect(result.status).toBe("completed");
+    // --max-tokens does not exist in the claude CLI; token cap is enforced by
+    // the streaming budget circuit breaker (streamingUsageCap), not a subprocess flag.
+    // Regression guard: ensure this flag is never re-introduced.
+    expect(calls[0]?.args).not.toContain("--max-tokens");
   });
 
   it("preserves custom Codex model, sandbox, and extra exec flags before stdin prompt", async () => {
@@ -1244,7 +1274,10 @@ describe("createCodexCliAdapter", () => {
     );
 
     expect(result.status).toBe("failed");
-    expect(result.summary).toContain("before verifier execution");
+    // Diagnostic summary surfaces exit code and stderr so failures are
+    // actionable rather than a generic "before verifier execution" message.
+    expect(result.summary).toContain("codex exited (code 2)");
+    expect(result.summary).toContain("--full-auto");
     expect(result.verification.summary).toContain("Verifier not run");
     expect(result.failure?.message).toContain("environment_mismatch");
     expect(calls).toHaveLength(1);
