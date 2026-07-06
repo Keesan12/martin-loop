@@ -305,7 +305,7 @@ npx martin-loop mcp print-config --host gemini --transport stdio --profile full-
 npx martin-loop mcp print-config --host generic --transport stdio --profile github-review
 ```
 
-The root `martin-loop` package and the standalone `@martinloop/mcp` package move on separate version lines. The current root package line here is `0.4.2`; the current standalone MCP source line is `0.3.7`, and the live npm baseline remains `0.3.6` until that standalone release is cut.
+The root `martin-loop` package and the standalone `@martinloop/mcp` package move on separate version lines. The current root package line here is `0.4.2`; the current standalone MCP source line is `0.3.7`, and the live npm baseline is `0.3.7`.
 
 The public MCP release train labels are:
 
