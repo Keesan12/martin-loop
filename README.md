@@ -74,7 +74,7 @@ martin-loop --version
 
 If this flow is useful, open an issue with feedback so we can keep improving the public experience.
 
-`start` prints the first-run guided path. `run` auto-checks `doctor`, `session-start`, and `preflight`, then executes when the environment is ready. Use `--proof` only when you intentionally want an explicit no-spend lane.
+`start` prints the first-run guided path. `run` auto-checks `doctor`, `session-start`, and `preflight`, then executes when the environment is ready.
 
 Inspect-first flow:
 
@@ -115,7 +115,7 @@ This real governed run spent `$0.51` against a `$3.00` budget. The verifier pass
 Generate your own receipt after a governed run:
 
 ```sh
-npx -y martin-loop@latest run "Summarize the demo workspace and prove tests still pass" --proof --verify "npm test"
+npx -y martin-loop@latest run "Summarize the demo workspace and prove tests still pass" --verify "npm test"
 npx -y martin-loop@latest runs verify --latest
 npx -y martin-loop@latest share --latest
 ```
@@ -132,12 +132,12 @@ npx -y martin-loop@0.4.2 start
 npx -y martin-loop@0.4.2 demo
 cd martin-loop-demo
 npm install
-npx -y martin-loop@0.4.1 run "Summarize the demo workspace and prove tests still pass" --verify "npm test" --budget-usd 2 --max-iterations 1 --json
-npx -y martin-loop@0.4.1 dossier --latest --json
-npx -y martin-loop@0.4.1 share --latest --json
+npx -y martin-loop@0.4.2 run "Summarize the demo workspace and prove tests still pass" --verify "npm test" --budget-usd 2 --max-iterations 1 --json
+npx -y martin-loop@0.4.2 dossier --latest --json
+npx -y martin-loop@0.4.2 share --latest --json
 ```
 
-For deterministic installs, pin the package line (`martin-loop@0.4.1`) or use `martin-loop@latest`. Plain `npx martin-loop` can resolve a stale local cache on some machines.
+For deterministic installs, pin the package line (`martin-loop@0.4.2`) or use `martin-loop@latest`. Plain `npx martin-loop` can resolve a stale local cache on some machines.
 
 Default share bundle outputs:
 
