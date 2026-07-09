@@ -598,7 +598,7 @@ function suggestInstall(command: string): string {
   if (command === "claude") {
     const installCmd = process.platform === "win32"
       ? "irm https://claude.ai/install.ps1 | iex"
-      : "curl -fsSL https://claude.ai/install.sh | sh";
+      : "curl -fsSL https://claude.ai/install.sh | bash";
     return `Install with: ${installCmd}  — or: npm install -g @anthropic-ai/claude-code`;
   }
   const installs: Record<string, string> = {
