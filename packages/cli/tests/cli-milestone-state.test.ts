@@ -254,13 +254,21 @@ describe("recordRunAndGetPrompt — CI guard", () => {
   });
 
   it("returns empty result when stdout is not a TTY", async () => {
-    const ttyMock = vi.spyOn(process.stdout, "isTTY", "get").mockReturnValue(false);
+    // vi.spyOn requires the property to already exist on the object.
+    // process.stdout.isTTY is undefined in non-TTY test environments,
+    // so Object.defineProperty is required here too.
+    const savedDescriptor = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
+    Object.defineProperty(process.stdout, "isTTY", { value: false, configurable: true, writable: true });
     try {
       const result = await recordRunAndGetPrompt(BASE_INPUT);
       expect(result.inlineMilestones).toHaveLength(0);
       expect(result.interactivePrompt).toBeNull();
     } finally {
-      ttyMock.mockRestore();
+      if (savedDescriptor) {
+        Object.defineProperty(process.stdout, "isTTY", savedDescriptor);
+      } else {
+        delete (process.stdout as unknown as Record<string, unknown>)["isTTY"];
+      }
     }
   });
 });

@@ -213,12 +213,12 @@ function freshState(): MilestoneState {
 // Streak computation
 // ---------------------------------------------------------------------------
 
-function updateStreak(state: MilestoneState, now: Date): number {
-  if (!state.lastRunAt) return 1;
-  const last = new Date(state.lastRunAt);
+function updateStreak(prevLastRunAt: string | null, currentStreak: number, now: Date): number {
+  if (!prevLastRunAt) return 1;
+  const last = new Date(prevLastRunAt);
   const daysDiff = Math.floor((now.getTime() - last.getTime()) / (24 * 60 * 60 * 1000));
-  if (daysDiff === 0) return state.dailyStreakDays; // same day
-  if (daysDiff === 1) return state.dailyStreakDays + 1; // consecutive
+  if (daysDiff === 0) return currentStreak; // same day
+  if (daysDiff === 1) return currentStreak + 1; // consecutive
   return 1; // streak broken
 }
 
@@ -253,6 +253,7 @@ export async function recordRunAndGetPrompt(input: {
   else state.failedRunCount += 1;
 
   if (!state.firstRunAt) state.firstRunAt = now.toISOString();
+  const prevLastRunAt = state.lastRunAt;
   state.lastRunAt = now.toISOString();
 
   state.totalActualSpendUsd += input.actualSpendUsd;
@@ -281,9 +282,9 @@ export async function recordRunAndGetPrompt(input: {
     state.reposUsed = [...state.reposUsed, repoKey];
   }
 
-  // Streak
+  // Streak — use prevLastRunAt captured before state.lastRunAt was overwritten
   if (input.success) {
-    state.dailyStreakDays = updateStreak(state, now);
+    state.dailyStreakDays = updateStreak(prevLastRunAt, state.dailyStreakDays, now);
   }
 
   // Counters
