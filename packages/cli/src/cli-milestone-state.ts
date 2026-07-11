@@ -136,12 +136,31 @@ export function wasVerifierBlocked(loop: LoopRecord): boolean {
 // State I/O
 // ---------------------------------------------------------------------------
 
+// Fill any fields that may be absent in a v5 state written by an older iteration
+// of this module. Spreads defaults first so new fields always have a safe value.
+function fillDefaults(parsed: Record<string, unknown>): MilestoneState {
+  const defaults = freshState();
+  return {
+    ...defaults,
+    ...(parsed as Partial<MilestoneState>),
+    version: 5,
+    // Nested objects need explicit merge so a partial sub-object doesn't
+    // silently drop sibling keys added in later iterations.
+    star: { ...defaults.star, ...(parsed["star"] as typeof defaults.star ?? {}) },
+    feedback: { ...defaults.feedback, ...(parsed["feedback"] as typeof defaults.feedback ?? {}) },
+    waitlist: { ...defaults.waitlist, ...(parsed["waitlist"] as typeof defaults.waitlist ?? {}) },
+    loopMilestones: { ...defaults.loopMilestones, ...(parsed["loopMilestones"] as typeof defaults.loopMilestones ?? {}) },
+    streakMilestones: { ...defaults.streakMilestones, ...(parsed["streakMilestones"] as typeof defaults.streakMilestones ?? {}) },
+    savingsMilestones: { ...defaults.savingsMilestones, ...(parsed["savingsMilestones"] as typeof defaults.savingsMilestones ?? {}) },
+  };
+}
+
 async function readState(): Promise<MilestoneState> {
   try {
     const raw = await readFile(STATE_PATH, "utf8");
-    const parsed = JSON.parse(raw) as MilestoneState;
-    if (parsed.version === 5) return parsed;
-  } catch { /* first run or corrupt */ }
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    if (parsed["version"] === 5) return fillDefaults(parsed);
+  } catch { /* first run or corrupt — start fresh */ }
   return freshState();
 }
 

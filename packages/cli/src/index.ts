@@ -83,8 +83,20 @@ import {
   triagePersistedLoops,
   type IntegrityStatus
 } from "./run-store.js";
-import { CliCommandError, renderCliError, renderCliSuccess } from "./ux.js";
+import { CliCommandError, renderCliError, renderCliSuccess, renderRunHeader, renderInlineMilestone, renderMilestonePrompt, renderLoopCard } from "./ux.js";
 import { evaluateCliRunGate, recordCliWorkflowStep } from "./workflow-state.js";
+import {
+  recordRunAndGetPrompt,
+  readMilestoneState,
+  recordStarConfirmed,
+  recordWaitlistJoined,
+  recordWaitlistDeclined,
+  recordFeedback,
+  deriveSavingsConfidence,
+  estimatedUncontrolledUsd,
+  wasRollbackTaken,
+  wasVerifierBlocked
+} from "./cli-milestone-state.js";
 
 const require = createRequire(import.meta.url);
 const packageJson = require("../package.json") as { version: string };
@@ -1233,9 +1245,36 @@ async function executeRunCommand(
   });
 
   const costProvenance = readCostProvenance(result.loop);
-  const successStarCta = buildSuccessStarCtaLines(result.loop);
 
-  return renderCliSuccess(outputMode, {
+  const confidence = deriveSavingsConfidence(result.loop);
+  const uncontrolled = estimatedUncontrolledUsd(result.loop);
+  const savedThisRun = confidence !== "unavailable"
+    ? Math.max(0, uncontrolled - result.loop.cost.actualUsd)
+    : 0;
+
+  const milestoneState = await readMilestoneState();
+  const currentRank = milestoneState?.currentRank ?? "Observer";
+  const runHeader = renderRunHeader(
+    currentRank,
+    result.loop.status === "completed" && result.loop.lifecycleState === "completed",
+    result.loop.attempts.length,
+    result.loop.cost.actualUsd,
+    savedThisRun,
+    milestoneState?.totalSavedUsd ?? 0,
+    confidence
+  );
+
+  const { inlineMilestones, interactivePrompt } = await recordRunAndGetPrompt({
+    success: result.loop.status === "completed" && result.loop.lifecycleState === "completed",
+    repoRoot: cliEnvironment.workingDirectory,
+    actualSpendUsd: result.loop.cost.actualUsd,
+    estimatedUncontrolledUsd: uncontrolled,
+    savingsConfidence: confidence,
+    rollbackTaken: wasRollbackTaken(result.loop),
+    verifierBlock: wasVerifierBlocked(result.loop)
+  });
+
+  const output = renderCliSuccess(outputMode, {
     data: {
       command: "run",
       decision: result.decision,
@@ -1262,6 +1301,7 @@ async function executeRunCommand(
       receiptScope
     },
     human: [
+      runHeader,
       `Started Martin Loop run ${result.loop.loopId}`,
       `Status: ${result.loop.status} / ${result.loop.lifecycleState}`,
       `Working directory: ${cliEnvironment.workingDirectory}`,
@@ -1269,24 +1309,30 @@ async function executeRunCommand(
       `Verification plan: ${resolvedRequest.verificationPlan.join(", ") || "none"}`,
       `Attempts: ${result.loop.attempts.length}`,
       `Actual cost (USD): ${result.loop.cost.actualUsd.toFixed(2)} — provenance: ${describeCostProvenance(costProvenance)}`,
-      ...successStarCta
+      ...inlineMilestones.map(renderInlineMilestone)
     ],
     quiet: result.loop.loopId,
     warnings
   });
-}
 
-function buildSuccessStarCtaLines(loop: LoopRecord): string[] {
-  if (!(loop.status === "completed" && loop.lifecycleState === "completed")) {
-    return [];
-  }
+  void renderMilestonePrompt(
+    interactivePrompt,
+    {
+      rank: currentRank,
+      prevRank: milestoneState?.currentRank ?? null,
+      totalSavedUsd: milestoneState?.totalSavedUsd ?? 0,
+      successfulRunCount: milestoneState?.successfulRunCount ?? 0,
+      starShownCount: milestoneState?.star.shownCount ?? 0
+    },
+    {
+      onStarConfirmed: recordStarConfirmed,
+      onWaitlistJoined: recordWaitlistJoined,
+      onWaitlistDeclined: recordWaitlistDeclined,
+      onFeedback: recordFeedback
+    }
+  );
 
-  return [
-    "─────────────────────────────────────────────",
-    "⭐ MartinLoop saved you from a runaway bill.",
-    "   Star the repo: github.com/Keesan12/martin-loop",
-    "─────────────────────────────────────────────"
-  ];
+  return output;
 }
 
 function buildPreflightSuggestion(objective: string, verificationPlan: string[]): string {

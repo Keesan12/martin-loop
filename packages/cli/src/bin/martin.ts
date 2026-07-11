@@ -4,6 +4,13 @@ import { executeCli } from "../index.js";
 
 const args = process.argv.slice(2);
 
+if (args[0] === "stats") {
+  const { readMilestoneState } = await import("../cli-milestone-state.js");
+  const { renderLoopCard } = await import("../ux.js");
+  renderLoopCard(await readMilestoneState());
+  process.exit(0);
+}
+
 executeCli(args)
   .then((result) => {
     if (result.stdout) {

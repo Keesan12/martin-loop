@@ -146,22 +146,33 @@ function toCliFailurePayload(error: unknown): CliFailurePayload {
 // ---------------------------------------------------------------------------
 
 import * as readline from "node:readline";
-import { execSync } from "node:child_process";
+import { exec } from "node:child_process";
 import type { MilestoneState, InlineMilestone, InteractivePrompt, RankName } from "./cli-milestone-state.js";
 import { nextRank } from "./cli-milestone-state.js";
+
+const KEY_TIMEOUT_MS = 30_000;
 
 function readSingleKey(): Promise<string> {
   return new Promise((resolve) => {
     if (!process.stdin.isTTY) { resolve(""); return; }
-    process.stdin.setRawMode(true);
-    process.stdin.resume();
-    process.stdin.setEncoding("utf8");
-    process.stdin.once("data", (key: string) => {
+
+    let settled = false;
+    const settle = (key: string): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
       process.stdin.setRawMode(false);
       process.stdin.pause();
       process.stdout.write("\n");
       resolve(key);
-    });
+    };
+
+    const timer = setTimeout(() => settle(""), KEY_TIMEOUT_MS);
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
+    process.stdin.setEncoding("utf8");
+    process.stdin.once("data", (key: string) => settle(key));
+    process.stdin.once("error", () => settle(""));
   });
 }
 
@@ -173,17 +184,40 @@ function readLine(): Promise<string> {
   });
 }
 
-function openUrl(url: string): Promise<void> {
-  try {
-    const cmd = process.platform === "win32" ? `start "" "${url}"` :
-      process.platform === "darwin" ? `open "${url}"` : `xdg-open "${url}"`;
-    execSync(cmd, { stdio: "ignore" });
-  } catch { /* best effort */ }
-  return Promise.resolve();
+function openUrl(url: string): void {
+  const cmd = process.platform === "win32" ? `start "" "${url}"` :
+    process.platform === "darwin" ? `open "${url}"` : `xdg-open "${url}"`;
+  exec(cmd); // fire-and-forget — best effort
 }
 
 const SEPARATOR = "━".repeat(47);
 const THIN = "─".repeat(47);
+
+const STREAK_MESSAGES: Record<number, string> = {
+  3: "🔥 3-day streak. this is becoming a pattern.",
+  7: "🔥 7-day streak. that's a workflow, not a trial.",
+  14: "🔥 14 days. this is infrastructure now.",
+  30: "🔥 30-day streak. control plane energy.",
+  100: "🔥 100-day streak. legend territory."
+};
+
+const SAVINGS_MESSAGES: Record<number, string> = {
+  10: "  💰 $10 saved lifetime. receipts are real.",
+  50: "  💰 $50 saved lifetime. martin is earning its keep.",
+  100: "  💰 $100 saved. three digits. this is infrastructure now.",
+  500: "  💰 $500 saved. operator-tier governance.",
+  1000: "  💰 $1,000 saved. the receipts speak for themselves."
+};
+
+const LOOP_MESSAGES: Record<number, string> = {
+  10: "10 governed loops.",
+  25: "25 loops. pattern established.",
+  50: "50 loops. this is how the good teams work.",
+  100: "100 loops. three digits of governed execution.",
+  250: "250 loops. serious infrastructure.",
+  500: "500 loops. this is a different category of operator.",
+  1000: "1,000 loops. legend."
+};
 
 export function buildRankHeader(rank: RankName, termWidth: number): string {
   const left = "∞ martinloop";
@@ -238,62 +272,39 @@ export function renderRunHeader(
 
 export function renderInlineMilestone(milestone: InlineMilestone): string {
   if (milestone.kind === "streak_milestone") {
-    const days = milestone.days;
-    const messages: Record<number, string> = {
-      3: "🔥 3-day streak. this is becoming a pattern.",
-      7: "🔥 7-day streak. that's a workflow, not a trial.",
-      14: "🔥 14 days. this is infrastructure now.",
-      30: "🔥 30-day streak. control plane energy.",
-      100: "🔥 100-day streak. legend territory."
-    };
-    return messages[days] ?? `🔥 ${days}-day streak.`;
+    return STREAK_MESSAGES[milestone.days] ?? `🔥 ${milestone.days}-day streak.`;
   }
-
-  // savings_milestone
-  const usd = milestone.usd;
-  const messages: Record<number, string> = {
-    10: `  💰 $${usd} saved lifetime. receipts are real.`,
-    50: `  💰 $${usd} saved lifetime. martin is earning its keep.`,
-    100: `  💰 $${usd} saved. three digits. this is infrastructure now.`,
-    500: `  💰 $${usd} saved. operator-tier governance.`,
-    1000: `  💰 $1,000 saved. the receipts speak for themselves.`
-  };
-  return messages[usd] ?? `  💰 $${usd} saved lifetime.`;
+  return SAVINGS_MESSAGES[milestone.usd] ?? `  💰 $${milestone.usd} saved lifetime.`;
 }
 
 export function renderLoopMilestoneBox(count: number, rank: RankName, prevRank: RankName | null): string {
   const rankLine = rank !== prevRank ? `\n  ⬡ rank unlocked: ${rank}` : "";
-  const messages: Record<number, string> = {
-    10: "10 governed loops.",
-    25: "25 loops. pattern established.",
-    50: "50 loops. this is how the good teams work.",
-    100: "100 loops. three digits of governed execution.",
-    250: "250 loops. serious infrastructure.",
-    500: "500 loops. this is a different category of operator.",
-    1000: "1,000 loops. legend."
-  };
-  const body = messages[count] ?? `${count} loops.`;
-  return [
-    "",
-    THIN,
-    `  ∞ ${body}${rankLine}`,
-    THIN,
-    ""
-  ].join("\n");
+  const body = LOOP_MESSAGES[count] ?? `${count} loops.`;
+  return ["", THIN, `  ∞ ${body}${rankLine}`, THIN, ""].join("\n");
+}
+
+export interface MilestonePromptCtx {
+  rank: RankName;
+  prevRank: RankName | null;
+  totalSavedUsd: number;
+  successfulRunCount: number;
+  starShownCount: number;
+}
+
+export interface MilestonePromptCallbacks {
+  onStarConfirmed: () => Promise<void>;
+  onWaitlistJoined: (email: string) => Promise<void>;
+  onWaitlistDeclined: () => Promise<void>;
+  onFeedback: (score: number, featureVote?: string, email?: string) => Promise<void>;
 }
 
 export async function renderMilestonePrompt(
   prompt: InteractivePrompt,
-  rank: RankName,
-  prevRank: RankName | null,
-  totalSavedUsd: number,
-  successfulRunCount: number,
-  starShownCount: number,
-  onStarConfirmed: () => Promise<void>,
-  onWaitlistJoined: (email: string) => Promise<void>,
-  onWaitlistDeclined: () => Promise<void>,
-  onFeedback: (score: number, featureVote?: string, email?: string) => Promise<void>
+  ctx: MilestonePromptCtx,
+  callbacks: MilestonePromptCallbacks
 ): Promise<void> {
+  const { rank, prevRank, totalSavedUsd, successfulRunCount, starShownCount } = ctx;
+  const { onStarConfirmed, onWaitlistJoined, onWaitlistDeclined, onFeedback } = callbacks;
   if (!prompt || !process.stdout.isTTY) return;
 
   if (prompt.kind === "loop_milestone") {
@@ -435,7 +446,6 @@ export function renderLoopCard(state: MilestoneState | null): void {
   lines.push(pad(`   current rank   ${state.currentRank}`));
 
   // Next rank
-  const { nextRank } = require("./cli-milestone-state.js") as typeof import("./cli-milestone-state.js");
   const next = nextRank(state.currentRank);
   if (next) {
     lines.push(pad(`   next rank      ${next.name} at ${next.loopsNeeded} loops`));
