@@ -254,21 +254,14 @@ describe("recordRunAndGetPrompt — CI guard", () => {
   });
 
   it("returns empty result when stdout is not a TTY", async () => {
-    // vi.spyOn requires the property to already exist on the object.
-    // process.stdout.isTTY is undefined in non-TTY test environments,
-    // so Object.defineProperty is required here too.
-    const savedDescriptor = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
-    Object.defineProperty(process.stdout, "isTTY", { value: false, configurable: true, writable: true });
+    const orig = process.stdout.isTTY;
+    (process.stdout as NodeJS.WriteStream & { isTTY: boolean }).isTTY = false;
     try {
       const result = await recordRunAndGetPrompt(BASE_INPUT);
       expect(result.inlineMilestones).toHaveLength(0);
       expect(result.interactivePrompt).toBeNull();
     } finally {
-      if (savedDescriptor) {
-        Object.defineProperty(process.stdout, "isTTY", savedDescriptor);
-      } else {
-        delete (process.stdout as unknown as Record<string, unknown>)["isTTY"];
-      }
+      (process.stdout as NodeJS.WriteStream & { isTTY: boolean }).isTTY = orig;
     }
   });
 });
@@ -408,10 +401,10 @@ describe("recordRunAndGetPrompt — star Tier 3 fallback", () => {
       estimatedUncontrolledUsd: 0,
     });
 
-    expect(result.interactivePrompt).toEqual({ kind: "star" });
+    expect(result.interactivePrompt).toEqual({ kind: "star", hard: false });
   });
 
-  it("does not fire star before run 5 under the Tier 3 fallback path", async () => {
+  it("does not fire star when already shown twice (max 2 shows)", async () => {
     mockStateFile(makeState({
       successfulRunCount: 3,
       runCount: 3,
@@ -425,7 +418,7 @@ describe("recordRunAndGetPrompt — star Tier 3 fallback", () => {
         featureVotes: [],
         email: null,
       },
-      star: { shownCount: 0, confirmed: false },
+      star: { shownCount: 2, confirmed: false },
     }));
 
     const result = await runWithTty({
@@ -435,7 +428,7 @@ describe("recordRunAndGetPrompt — star Tier 3 fallback", () => {
       estimatedUncontrolledUsd: 0,
     });
 
-    // successfulRunCount becomes 4 — Tier 3 requires exactly 5
+    // shownCount >= 2 suppresses further star prompts
     expect(result.interactivePrompt?.kind).not.toBe("star");
   });
 });

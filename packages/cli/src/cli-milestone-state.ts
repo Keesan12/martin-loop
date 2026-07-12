@@ -1,6 +1,8 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
+// Set by npm/pnpm when running as a package script; "unknown" in test/direct-node contexts.
+const CLI_VERSION: string = process.env["npm_package_version"] ?? "unknown";
 
 import type { LoopRecord } from "@martin/contracts";
 
@@ -401,19 +403,43 @@ export async function recordStarConfirmed(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Web3Forms submission — best-effort, never blocks user flow.
-// Requires MARTIN_WEB3FORMS_KEY env var. No-op when absent.
-// Key distribution strategy (proxy vs build-time injection) is a
-// separate decision — do not hardcode here.
+// CLI intake — best-effort, never blocks user flow.
+// Submits to MartinLoop-owned endpoint. Key lives server-side, never in CLI.
+// Override endpoint with MARTIN_INTAKE_URL env var for dev/self-hosting.
 // ---------------------------------------------------------------------------
 
-async function submitToWeb3Forms(payload: Record<string, string>): Promise<void> {
-  const key = process.env["MARTIN_WEB3FORMS_KEY"];
-  if (!key) return;
+// No default URL — submissions are a no-op until MARTIN_INTAKE_URL is set.
+// This is intentional: the Supabase Edge Function URL will be set here once
+// the function is deployed. Do not hardcode a placeholder that looks real.
+const INTAKE_URL = process.env["MARTIN_INTAKE_URL"];
+
+type IntakePayload = {
+  source: "martin-cli";
+  event: "feedback" | "pilot_interest";
+  cliVersion: string;
+  email?: string;
+  score?: number;
+  featureVote?: string;
+  consentToContact: boolean;
+  platform: NodeJS.Platform;
+  createdAt: string;
+};
+
+async function submitToIntake(payload: IntakePayload): Promise<void> {
+  if (!INTAKE_URL) return;
   try {
-    const body = new URLSearchParams({ access_key: key, ...payload });
-    await fetch("https://api.web3forms.com/submit", { method: "POST", body });
-  } catch { /* best effort — never surface network errors to the user */ }
+    const res = await fetch(INTAKE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  } catch {
+    try {
+      const draftPath = join(homedir(), ".martin", "intake-draft.jsonl");
+      await appendFile(draftPath, JSON.stringify({ ...payload, _failedAt: new Date().toISOString() }) + "\n");
+    } catch { /* double silent fail */ }
+  }
 }
 
 export async function recordWaitlistJoined(email: string): Promise<void> {
@@ -422,7 +448,15 @@ export async function recordWaitlistJoined(email: string): Promise<void> {
   state.waitlist.email = email;
   state.waitlist.shownAt = new Date().toISOString();
   await writeState(state);
-  void submitToWeb3Forms({ subject: "martinloop pilot access", email });
+  void submitToIntake({
+    source: "martin-cli",
+    event: "pilot_interest",
+    cliVersion: CLI_VERSION,
+    email,
+    consentToContact: true,
+    platform: process.platform,
+    createdAt: new Date().toISOString(),
+  });
 }
 
 export async function recordWaitlistDeclined(): Promise<void> {
@@ -443,11 +477,16 @@ export async function recordFeedback(score: number, featureVote?: string, email?
   if (featureVote) state.feedback.featureVotes = [...state.feedback.featureVotes, featureVote];
   if (email) state.feedback.email = email;
   await writeState(state);
-  void submitToWeb3Forms({
-    subject: "martinloop feedback",
-    score: String(score),
-    ...(featureVote ? { feature: featureVote } : {}),
+  void submitToIntake({
+    source: "martin-cli",
+    event: "feedback",
+    cliVersion: CLI_VERSION,
+    score,
+    ...(featureVote ? { featureVote } : {}),
     ...(email ? { email } : {}),
+    consentToContact: !!email,
+    platform: process.platform,
+    createdAt: new Date().toISOString(),
   });
 }
 
