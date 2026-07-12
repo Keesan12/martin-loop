@@ -712,7 +712,7 @@ describe("runMartin", () => {
     expect(artifact.verdict).toBe("clean");
   });
 
-  it.skip("allows verifier-only runs to complete without code changes when verification passes", async () => {
+  it("allows verifier-only runs to complete without code changes when verification passes", async () => {
     const adapter: MartinAdapter = {
       adapterId: "direct:verify-only",
       kind: "direct-provider",
