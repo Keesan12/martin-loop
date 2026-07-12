@@ -69,7 +69,7 @@ export type InlineMilestone =
 
 export type InteractivePrompt =
   | { kind: "loop_milestone"; count: number }
-  | { kind: "star" }
+  | { kind: "star"; hard: boolean }
   | { kind: "feedback" }
   | { kind: "waitlist" }
   | null;
@@ -382,17 +382,9 @@ function selectGtmPrompt(
     return { kind: "feedback" };
   }
 
-  // Star: $1+ saved OR Tier 3 fallback at run 5. Max 2 shows. Suppress after confirmed.
-  if (!state.star.confirmed && state.star.shownCount < 2) {
-    const starBySpend = state.totalSavedUsd >= 1;
-    const starTier3Fallback = state.savingsConfidence === "unavailable" && state.successfulRunCount === 5;
-    // Second ask requires $25+ and first was skipped
-    const isSecondAsk = state.star.shownCount === 1;
-    const secondAskEligible = !isSecondAsk || state.totalSavedUsd >= 25;
-
-    if ((starBySpend || starTier3Fallback) && secondAskEligible) {
-      return { kind: "star" };
-    }
+  // Star: soft from run 2, hard from run 10. Max 2 shows total. Suppress after confirmed.
+  if (!state.star.confirmed && state.star.shownCount < 2 && state.successfulRunCount >= 2) {
+    return { kind: "star", hard: state.successfulRunCount >= 10 };
   }
 
   return null;
@@ -408,12 +400,29 @@ export async function recordStarConfirmed(): Promise<void> {
   await writeState(state);
 }
 
+// ---------------------------------------------------------------------------
+// Web3Forms submission — best-effort, never blocks user flow.
+// Requires MARTIN_WEB3FORMS_KEY env var. No-op when absent.
+// Key distribution strategy (proxy vs build-time injection) is a
+// separate decision — do not hardcode here.
+// ---------------------------------------------------------------------------
+
+async function submitToWeb3Forms(payload: Record<string, string>): Promise<void> {
+  const key = process.env["MARTIN_WEB3FORMS_KEY"];
+  if (!key) return;
+  try {
+    const body = new URLSearchParams({ access_key: key, ...payload });
+    await fetch("https://api.web3forms.com/submit", { method: "POST", body });
+  } catch { /* best effort — never surface network errors to the user */ }
+}
+
 export async function recordWaitlistJoined(email: string): Promise<void> {
   const state = await readState();
   state.waitlist.status = "joined";
   state.waitlist.email = email;
   state.waitlist.shownAt = new Date().toISOString();
   await writeState(state);
+  void submitToWeb3Forms({ subject: "martinloop pilot access", email });
 }
 
 export async function recordWaitlistDeclined(): Promise<void> {
@@ -434,6 +443,12 @@ export async function recordFeedback(score: number, featureVote?: string, email?
   if (featureVote) state.feedback.featureVotes = [...state.feedback.featureVotes, featureVote];
   if (email) state.feedback.email = email;
   await writeState(state);
+  void submitToWeb3Forms({
+    subject: "martinloop feedback",
+    score: String(score),
+    ...(featureVote ? { feature: featureVote } : {}),
+    ...(email ? { email } : {}),
+  });
 }
 
 // ---------------------------------------------------------------------------

@@ -313,19 +313,29 @@ export async function renderMilestonePrompt(
   }
 
   if (prompt.kind === "star") {
-    if (starShownCount === 0) {
+    if (prompt.hard) {
+      // Hard ask — run 10+. Direct, no fluff. martin is free and staying that way.
       process.stdout.write(
-        `\n⭐  you've saved $${totalSavedUsd.toFixed(2)} in agent spend with martin.\n` +
-        "if you want to keep it moving, a star takes 3 seconds:\n" +
+        `\n${successfulRunCount} governed loops. martin is free and always will be.\n` +
+        "a star is the only ask we make — it takes 3 seconds and keeps this moving:\n" +
+        "   github.com/Keesan12/martin-loop\n" +
+        "[s] open  ·  [enter] skip\n"
+      );
+    } else if (starShownCount === 0) {
+      // Soft first ask — run 2+
+      process.stdout.write(
+        "\nmartin is free. it stays that way because people star it.\n" +
+        "if it saved you time today, 3 seconds here helps more people find it:\n" +
         "   github.com/Keesan12/martin-loop\n" +
         "[s] open  ·  [enter] skip\n"
       );
     } else {
+      // Soft second ask — still not hard threshold, but shown once already
       process.stdout.write(
-        `\n🏆  $${Math.floor(totalSavedUsd)} saved. ${successfulRunCount} loops. you're basically a power user.\n` +
-        "the star's still sitting there if you want to make it official.\n" +
+        `\n$${totalSavedUsd.toFixed(2)} saved. ${successfulRunCount} loops. still free.\n` +
+        "the star's there if you want to make it official — last time we'll ask:\n" +
         "   github.com/Keesan12/martin-loop\n" +
-        "[s] open  ·  [enter] skip — last time we'll ask\n"
+        "[s] open  ·  [enter] skip\n"
       );
     }
     const key = await readSingleKey();
@@ -340,7 +350,7 @@ export async function renderMilestonePrompt(
   if (prompt.kind === "feedback") {
     process.stdout.write(
       "\nquick one — [enter] to skip entirely.\n" +
-      "on a scale of 0–5, is martin actually earning its keep?  "
+      "0–5: is martin actually earning its keep?  "
     );
     const line = await readLine();
     const trimmed = line.trim();
@@ -355,7 +365,10 @@ export async function renderMilestonePrompt(
       process.stdout.write("what should we build next? (one feature, or [enter] to skip)  ");
       const vote = await readLine();
       if (vote.trim()) featureVote = vote.trim();
-      process.stdout.write("email for early access? ([enter] to skip)  ");
+      process.stdout.write(
+        "want pilot access? early features, direct line to the founding team,\n" +
+        "releases before public — email to join: _  ([enter] to skip)  "
+      );
       const em = await readLine();
       if (em.trim()) email = em.trim();
     } else if (score <= 2) {
@@ -369,14 +382,16 @@ export async function renderMilestonePrompt(
   }
 
   if (prompt.kind === "waitlist") {
+    const savingsLine = totalSavedUsd >= 50 ? ` and saved $${Math.floor(totalSavedUsd)}+` : "";
     process.stdout.write(
-      "\nyou've run martin across 2+ repos" +
-      (totalSavedUsd >= 50 ? ` and saved $${Math.floor(totalSavedUsd)}+` : "") +
-      ".\n" +
-      "that's not a side project. that's a workflow.\n\n" +
-      "pilot access: team dashboards, trace intelligence, audit\n" +
-      "exports, and direct access to us while we build it.\n\n" +
-      "email to reserve a spot: _  ([enter] to skip)\n"
+      `\nyou've governed ${successfulRunCount} loops${savingsLine}. that's a workflow, not a trial.\n\n` +
+      "we're onboarding pilot partners now — what you get:\n" +
+      "  · new features before public release\n" +
+      "  · direct access to the founding team\n" +
+      "  · input on what gets built next\n" +
+      "  · early pricing before it changes\n\n" +
+      "what we ask: real feedback and one conversation.\n\n" +
+      "email to join the pilot: _  ([enter] to skip)\n"
     );
     const line = await readLine();
     if (line.trim()) {
