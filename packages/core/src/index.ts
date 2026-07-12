@@ -1203,9 +1203,6 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     // a git repo) and silently return [], which would falsely trigger no_code_change.
     const changedFileEvidenceAvailable =
       result.execution?.changedFiles !== undefined || changedFiles.length > 0;
-    // Verifier-only adapter deprecated; treat as regular adapter
-    const isVerifierOnlyAdapter = false;
-    const patchTruthCountsEdits = changedFileEvidenceAvailable;
 
     const filesystemDecision = evaluateFilesystemLeash({
       repoRoot: request.context.repoRoot,
@@ -1418,15 +1415,17 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       }
     }
 
+    const shouldEvaluatePatchTruth = result.status === "completed" && tracksWorkspaceMutations;
+
     let patchDecision: EvaluatedPatchDecision | undefined;
-    if (result.status === "completed") {
+    if (shouldEvaluatePatchTruth) {
       patchDecision = evaluatePatchDecision({
         verificationPassed: verification.passed,
         previousVerifierScore,
         verifierScore: verification.passed ? 1 : 0,
         groundingViolationCount: groundingScanResult?.violations.length ?? 0,
-        changedFileCount: patchTruthCountsEdits ? changedFiles.length : undefined,
-        diffNovelty: patchTruthCountsEdits ? (changedFiles.length > 0 ? 1 : 0) : undefined,
+        changedFileCount: changedFileEvidenceAvailable ? changedFiles.length : undefined,
+        diffNovelty: changedFileEvidenceAvailable ? (changedFiles.length > 0 ? 1 : 0) : undefined,
         diffStats: result.execution?.diffStats,
         costUsd: getUsageUsd(result.usage),
         summary: result.summary

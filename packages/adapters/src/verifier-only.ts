@@ -26,7 +26,8 @@ export function createVerifierOnlyAdapter(
       transport: "cli",
       capabilities: createAdapterCapabilities({
         usageSettlement: true,
-        diffArtifacts: true
+        diffArtifacts: true,
+        workspaceMutations: false
       })
     },
     async execute(request) {
