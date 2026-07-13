@@ -3,7 +3,6 @@ import { join, resolve } from "node:path";
 
 import { diagnoseCodexHost, resolveCliCommandAvailability } from "@martin/adapters";
 import { resolveRunsRoot } from "@martin/core";
-import { isMacOrUbuntu } from "./utils/platform.js";
 
 const DEFAULT_BLOCKED_PATHS = [
   ".env",
@@ -520,7 +519,7 @@ async function buildPhaseContract(rootDir: string, phaseWorkspace: PhaseWorkspac
     },
     verifiers: finalVerifiers,
     riskLevel: missingSafeguards.length > 0 ? "high" : "medium",
-    requiresApproval: missingSafeguards.length > 0 && !isMacOrUbuntu(),
+    requiresApproval: missingSafeguards.length > 0,
     missingSafeguards,
     source: phaseWorkspace.contractPath ?? phaseWorkspace.planPath ?? "generated_safe_default"
   };
