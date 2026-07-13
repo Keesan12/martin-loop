@@ -248,7 +248,7 @@ describe("executeCli", () => {
       /martin run "Summarize this repository and confirm the verifier is green\." --verify "(npm|pnpm) test" --budget-usd 2 --max-iterations 1/u
     );
     expect(result.stdout).toMatch(
-      /martin enable --engine claude --verify "(npm|pnpm) test" --budget-usd 2 --max-iterations 1/u
+      /martin enable --engine (claude|codex|gemini|openai) --verify "(npm|pnpm) test" --budget-usd 2 --max-iterations 1/u
     );
   });
 
@@ -423,6 +423,9 @@ describe("executeCli", () => {
     const directory = await mkdtemp(join(tmpdir(), "martin-cli-star-cta-"));
 
     try {
+      installFastRunAdapter();
+      const previousMartinLive = process.env.MARTIN_LIVE;
+      process.env.MARTIN_LIVE = "false";
       const result = await withIsolatedRunsEnv(directory, () =>
         executeCli([
           "run",
@@ -437,6 +440,11 @@ describe("executeCli", () => {
           directory
         ])
       );
+      if (previousMartinLive === undefined) {
+        delete process.env.MARTIN_LIVE;
+      } else {
+        process.env.MARTIN_LIVE = previousMartinLive;
+      }
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain("MartinLoop saved you from a runaway bill.");
@@ -450,6 +458,9 @@ describe("executeCli", () => {
     const directory = await mkdtemp(join(tmpdir(), "martin-cli-star-cta-json-"));
 
     try {
+      installFastRunAdapter();
+      const previousMartinLive = process.env.MARTIN_LIVE;
+      process.env.MARTIN_LIVE = "false";
       const result = await withIsolatedRunsEnv(directory, () =>
         executeCli([
           "--json",
@@ -465,6 +476,11 @@ describe("executeCli", () => {
           directory
         ])
       );
+      if (previousMartinLive === undefined) {
+        delete process.env.MARTIN_LIVE;
+      } else {
+        process.env.MARTIN_LIVE = previousMartinLive;
+      }
 
       expect(result.exitCode).toBe(0);
       expect(result.stdout).not.toContain("Star the repo");
@@ -478,6 +494,9 @@ describe("executeCli", () => {
     const directory = await mkdtemp(join(tmpdir(), "martin-cli-verify-timeout-"));
 
     try {
+      installFastRunAdapter();
+      const previousMartinLive = process.env.MARTIN_LIVE;
+      process.env.MARTIN_LIVE = "false";
       const result = await withIsolatedRunsEnv(directory, () =>
         executeCli([
           "--json",
@@ -495,6 +514,11 @@ describe("executeCli", () => {
           directory
         ])
       );
+      if (previousMartinLive === undefined) {
+        delete process.env.MARTIN_LIVE;
+      } else {
+        process.env.MARTIN_LIVE = previousMartinLive;
+      }
 
       expect(result.exitCode).toBe(0);
 
