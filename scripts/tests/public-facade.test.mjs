@@ -20,7 +20,7 @@ test("createPublicFacadeSmokePlan targets the frozen public package surface", ()
   assert.match(plan.cliSmoke.description, /npx martin-loop/i);
   assert.match(plan.startSmoke.description, /first-run governed workflow/i);
   assert.match(plan.demoSmoke.description, /demo copies the packaged sandbox/i);
-  assert.match(plan.governedRunSmoke.description, /real Codex CLI when available/i);
+  assert.match(plan.governedRunSmoke.description, /governed receipt workflow/i);
   assert.match(plan.unsafeBypassSmoke.description, /unsafe-allow-unguarded-run/i);
 });
 
