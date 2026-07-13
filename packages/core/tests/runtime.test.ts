@@ -712,14 +712,22 @@ describe("runMartin", () => {
     expect(artifact.verdict).toBe("clean");
   });
 
-  it.skip("allows verifier-only runs to complete without code changes when verification passes", async () => {
+  it("allows verifier-only runs to complete without code changes when verification passes", async () => {
     const adapter: MartinAdapter = {
       adapterId: "direct:verify-only",
       kind: "direct-provider",
       label: "Verify only adapter",
       metadata: {
         providerId: "openai",
-        model: "gpt-5-mini"
+        model: "gpt-5-mini",
+        capabilities: {
+          preflight: true,
+          usageSettlement: true,
+          diffArtifacts: true,
+          structuredErrors: false,
+          cachingSignals: false,
+          workspaceMutations: false
+        }
       },
       async execute() {
         return {
@@ -780,7 +788,15 @@ describe("runMartin", () => {
       label: "Verifier-only proof adapter",
       metadata: {
         providerId: "openai",
-        model: "gpt-5-mini"
+        model: "gpt-5-mini",
+        capabilities: {
+          preflight: true,
+          usageSettlement: true,
+          diffArtifacts: true,
+          structuredErrors: false,
+          cachingSignals: false,
+          workspaceMutations: false
+        }
       },
       async execute() {
         return {

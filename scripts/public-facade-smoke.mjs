@@ -34,7 +34,7 @@ export function createPublicFacadeSmokePlan(options = {}) {
       description: "npx martin-loop demo copies the packaged sandbox from a clean temp install.",
     },
     governedRunSmoke: {
-      description: "A governed Codex run auto-bootstraps governed prerequisites from a clean temp install.",
+      description: "A governed Codex run honors the governed receipt workflow from a clean temp install.",
     },
     unsafeBypassSmoke: {
       description: "unsafe-allow-unguarded-run is fail-closed for live governed coding runs.",
@@ -128,6 +128,7 @@ export async function runPublicFacadeSmoke(options = {}) {
     const fakeCodex = await createFakeCodexCli(tempRoot);
     const governedEnv = {
       LOCALAPPDATA: fakeCodex.localAppData,
+      MARTIN_LIVE: "true",
       MARTIN_RUNS_DIR: governedRunsDir,
       MARTIN_GROUNDING_DIR: governedGroundingDir,
       MARTIN_INTEGRITY_KEY_DIR: governedIntegrityDir,
@@ -135,6 +136,74 @@ export async function runPublicFacadeSmoke(options = {}) {
     };
 
     const noopVerifier = process.platform === "win32" ? "cmd /c exit 0" : "true";
+    await runCommand(
+      [
+        "npx",
+        "martin-loop",
+        "--json",
+        "doctor",
+        "--engine",
+        "codex",
+        "--cwd",
+        governedWorkspace,
+        "--runs-dir",
+        governedRunsDir,
+      ],
+      { cwd: appDir, env: governedEnv },
+    );
+    await runCommand(
+      [
+        "npx",
+        "martin-loop",
+        "--json",
+        "session-start",
+        "--cwd",
+        governedWorkspace,
+        "--runs-dir",
+        governedRunsDir,
+      ],
+      { cwd: appDir, env: governedEnv },
+    );
+    await runCommand(
+      [
+        "npx",
+        "martin-loop",
+        "--json",
+        "preflight",
+        "--engine",
+        "codex",
+        "--cwd",
+        governedWorkspace,
+        "--runs-dir",
+        governedRunsDir,
+        "--objective",
+        "Fix the bug",
+        "--verify",
+        noopVerifier,
+        "--max-iterations",
+        "1",
+        "--budget-usd",
+        "2",
+      ],
+      { cwd: appDir, env: governedEnv },
+    );
+    await runCommand(
+      [
+        "npx",
+        "martin-loop",
+        "estimate",
+        "Fix the bug",
+        "--engine",
+        "codex",
+        "--cwd",
+        governedWorkspace,
+        "--runs-dir",
+        governedRunsDir,
+        "--budget-usd",
+        "2",
+      ],
+      { cwd: appDir, env: governedEnv },
+    );
     const governedRun = await runCommand(
       [
         "npx",

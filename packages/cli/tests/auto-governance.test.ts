@@ -169,7 +169,9 @@ describe("martin estimate command", () => {
         };
       };
 
-      expect(state.cli?.estimate?.workingDirectory).toBe(workspaceRoot.toLowerCase());
+      expect(state.cli?.estimate?.workingDirectory).toBe(
+        process.platform === "win32" ? workspaceRoot.toLowerCase() : workspaceRoot
+      );
     } finally {
       await rm(runsRoot, { recursive: true, force: true });
       await rm(workspaceRoot, { recursive: true, force: true });
