@@ -419,8 +419,8 @@ describe("executeCli", () => {
   });
 
 
-  it("prints the repo star CTA only for successful human-readable runs", { timeout: 30_000 }, async () => {
-    const directory = await mkdtemp(join(tmpdir(), "martin-cli-star-cta-"));
+  it("prints the v5 run header for successful human-readable runs", { timeout: 30_000 }, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-run-header-"));
 
     try {
       installFastRunAdapter();
@@ -447,15 +447,17 @@ describe("executeCli", () => {
       }
 
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain("MartinLoop saved you from a runaway bill.");
-      expect(result.stdout).toContain("Star the repo: github.com/Keesan12/martin-loop");
+      expect(result.stdout).toContain("∞ martinloop");
+      expect(result.stdout).toContain("✓ verified");
+      expect(result.stdout).not.toContain("MartinLoop saved you from a runaway bill.");
+      expect(result.stdout).not.toContain("Star the repo:");
     } finally {
       await rm(directory, { force: true, recursive: true });
     }
   });
 
-  it("keeps the repo star CTA out of machine-readable JSON output", { timeout: 30_000 }, async () => {
-    const directory = await mkdtemp(join(tmpdir(), "martin-cli-star-cta-json-"));
+  it("keeps the v5 run header out of machine-readable JSON output", { timeout: 30_000 }, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-run-header-json-"));
 
     try {
       installFastRunAdapter();
@@ -483,6 +485,7 @@ describe("executeCli", () => {
       }
 
       expect(result.exitCode).toBe(0);
+      expect(result.stdout).not.toContain("∞ martinloop");
       expect(result.stdout).not.toContain("Star the repo");
       expect(result.stdout).not.toContain("runaway bill");
     } finally {
