@@ -384,6 +384,20 @@ describe("--engine flag", () => {
           installFastRunAdapter();
           const runsDir = join(workspace, ".martin-runs");
 
+            const doctorResult = await withEnv("MARTIN_LIVE", "true", () =>
+              executeCli([
+                "--json",
+                "doctor",
+                "--engine",
+                "codex",
+                "--cwd",
+                workspace,
+                "--runs-dir",
+                runsDir
+              ])
+            );
+            expect(doctorResult.exitCode).toBe(0);
+
             const sessionStartResult = await withEnv("MARTIN_LIVE", "true", () =>
               executeCli([
                 "--json",
@@ -426,7 +440,18 @@ describe("--engine flag", () => {
 
             // Estimate required before governed run — proves cost was reviewed
             await withEnv("MARTIN_LIVE", "true", () =>
-              executeCli(["estimate", "Fix the bug", "--engine", "codex", "--runs-dir", runsDir, "--budget-usd", "2"])
+              executeCli([
+                "estimate",
+                "Fix the bug",
+                "--engine",
+                "codex",
+                "--cwd",
+                workspace,
+                "--runs-dir",
+                runsDir,
+                "--budget-usd",
+                "2"
+              ])
             );
 
             const runResult = await withEnv("MARTIN_LIVE", "true", () =>
@@ -483,6 +508,20 @@ describe("--engine flag", () => {
           );
           const runsDir = join(workspace, ".martin-runs");
 
+            const doctorResult = await withEnv("MARTIN_LIVE", "true", () =>
+              executeCli([
+                "--json",
+                "doctor",
+                "--engine",
+                "codex",
+                "--cwd",
+                workspace,
+                "--runs-dir",
+                runsDir
+              ])
+            );
+            expect(doctorResult.exitCode).toBe(0);
+
             const preflightResult = await withEnv("MARTIN_LIVE", "true", () =>
               executeCli([
                 "--json",
@@ -503,7 +542,18 @@ describe("--engine flag", () => {
 
             // Estimate required before governed run
             await withEnv("MARTIN_LIVE", "true", () =>
-              executeCli(["estimate", "Verify the outreach runtime", "--engine", "codex", "--runs-dir", runsDir, "--budget-usd", "2"])
+              executeCli([
+                "estimate",
+                "Verify the outreach runtime",
+                "--engine",
+                "codex",
+                "--cwd",
+                workspace,
+                "--runs-dir",
+                runsDir,
+                "--budget-usd",
+                "2"
+              ])
             );
 
             const runResult = await withEnv("MARTIN_LIVE", "true", () =>
@@ -550,6 +600,25 @@ describe("--engine flag", () => {
           const alternateInvocationRoot = join(workspace, "tools");
           await writeFile(join(workspace, ".gitkeep"), "", "utf8");
 
+            const doctorResult = await withEnvVars(
+              {
+                MARTIN_LIVE: "true",
+                INIT_CWD: workspace
+              },
+              () =>
+                executeCli([
+                  "--json",
+                  "doctor",
+                  "--engine",
+                  "codex",
+                  "--cwd",
+                  workspace,
+                  "--runs-dir",
+                  runsDir
+                ])
+            );
+            expect(doctorResult.exitCode).toBe(0);
+
             const preflightResult = await withEnvVars(
               {
                 MARTIN_LIVE: "true",
@@ -575,7 +644,18 @@ describe("--engine flag", () => {
 
             // Estimate required before governed run
             await withEnv("MARTIN_LIVE", "true", () =>
-              executeCli(["estimate", "Verify the outreach runtime", "--engine", "codex", "--runs-dir", runsDir, "--budget-usd", "2"])
+              executeCli([
+                "estimate",
+                "Verify the outreach runtime",
+                "--engine",
+                "codex",
+                "--cwd",
+                workspace,
+                "--runs-dir",
+                runsDir,
+                "--budget-usd",
+                "2"
+              ])
             );
 
             const runResult = await withEnvVars(
