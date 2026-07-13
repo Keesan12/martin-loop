@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawn } from "node:child_process";
-import { access, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, chmod, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -168,6 +168,23 @@ export async function runPublicFacadeSmoke(options = {}) {
       [
         "npx",
         "martin-loop",
+        "estimate",
+        "Fix the bug",
+        "--engine",
+        "codex",
+        "--cwd",
+        governedWorkspace,
+        "--runs-dir",
+        governedRunsDir,
+        "--budget-usd",
+        "2",
+      ],
+      { cwd: appDir, env: governedEnv },
+    );
+    const preflightRun = await runCommand(
+      [
+        "npx",
+        "martin-loop",
         "--json",
         "preflight",
         "--engine",
@@ -187,23 +204,10 @@ export async function runPublicFacadeSmoke(options = {}) {
       ],
       { cwd: appDir, env: governedEnv },
     );
-    await runCommand(
-      [
-        "npx",
-        "martin-loop",
-        "estimate",
-        "Fix the bug",
-        "--engine",
-        "codex",
-        "--cwd",
-        governedWorkspace,
-        "--runs-dir",
-        governedRunsDir,
-        "--budget-usd",
-        "2",
-      ],
-      { cwd: appDir, env: governedEnv },
-    );
+    const preflightPayload = JSON.parse(preflightRun.stdout);
+    if (preflightPayload?.ready !== true) {
+      throw new Error(`Expected governed public smoke preflight to be ready.\n${preflightRun.stdout}${preflightRun.stderr}`);
+    }
     const governedRun = await runCommand(
       [
         "npx",
@@ -422,6 +426,7 @@ async function createFakeCodexCli(tempRoot) {
       ].join("\n");
   await writeFile(file, script, "utf8");
   if (process.platform !== "win32") {
+    await chmod(file, 0o755);
     await access(file);
   }
 
