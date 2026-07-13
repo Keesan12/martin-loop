@@ -408,10 +408,9 @@ export async function recordStarConfirmed(): Promise<void> {
 // Override endpoint with MARTIN_INTAKE_URL env var for dev/self-hosting.
 // ---------------------------------------------------------------------------
 
-// No default URL — submissions are a no-op until MARTIN_INTAKE_URL is set.
-// This is intentional: the Supabase Edge Function URL will be set here once
-// the function is deployed. Do not hardcode a placeholder that looks real.
-const INTAKE_URL = process.env["MARTIN_INTAKE_URL"];
+const INTAKE_URL =
+  process.env["MARTIN_INTAKE_URL"] ??
+  "https://tupopqvqnyyjuxseyxkr.supabase.co/functions/v1/cli-intake";
 
 type IntakePayload = {
   source: "martin-cli";
