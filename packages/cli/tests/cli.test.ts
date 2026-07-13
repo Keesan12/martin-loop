@@ -278,7 +278,7 @@ describe("executeCli", () => {
       /martin run "Summarize this repository and confirm the verifier is green\." --verify "(npm|pnpm) test" --budget-usd 2 --max-iterations 1/u
     );
     expect(result.stdout).toMatch(
-      /martin enable --engine \S+ --verify "(npm|pnpm) test" --budget-usd 2 --max-iterations 1/u
+      /martin enable --engine (claude|codex|gemini|openai) --verify "(npm|pnpm) test" --budget-usd 2 --max-iterations 1/u
     );
   });
 
