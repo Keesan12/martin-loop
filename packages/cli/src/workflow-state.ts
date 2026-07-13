@@ -27,6 +27,7 @@ interface CliWorkflowReceipt {
   engine?: string;
   verificationPlanKey?: string;
   scopeKey?: string;
+  canonicalScopeKey?: string;
   pathScopeKey?: string;
   budgetKey?: string;
 }
@@ -143,6 +144,7 @@ export async function recordCliWorkflowStep(input: CliWorkflowStepInput): Promis
     ...(input.engine ? { engine: input.engine } : {}),
     ...(input.verificationPlan ? { verificationPlanKey: hashVerificationPlan(input.verificationPlan) } : {}),
     ...(input.receiptScope ? { scopeKey: hashReceiptScope(input.receiptScope) } : {}),
+    ...(input.receiptScope ? { canonicalScopeKey: hashCanonicalReceiptScope(input.receiptScope) } : {}),
     pathScopeKey: hashPathScope(input.allowedPaths ?? [], input.deniedPaths ?? []),
     ...(input.budget ? { budgetKey: hashBudget(input.budget) } : {})
   };
@@ -169,13 +171,24 @@ export async function evaluateCliRunGate(input: CliRunGateInput): Promise<CliRun
       runsRoot: input.runsRoot
     }
   );
+  const canonicalScopeKey = hashCanonicalReceiptScope(
+    input.receiptScope ?? {
+      invocationRoot: input.workingDirectory,
+      workingDirectory: input.workingDirectory,
+      repoRoot: input.workingDirectory,
+      runsRoot: input.runsRoot
+    }
+  );
   const pathScopeKey = hashPathScope(input.allowedPaths ?? [], input.deniedPaths ?? []);
   const budgetKey = input.budget ? hashBudget(input.budget) : undefined;
   const missingSteps: CliWorkflowStepName[] = [];
 
+  // Doctor/session-start are repo-scoped readiness checks. They should remain
+  // valid when INIT_CWD changes inside the same repo, but must still fail
+  // closed if the canonical repo/runsRoot identity changes.
   const doctorReady = isFresh(cliState["doctor"], DOCTOR_TTL_MS, (receipt) =>
     receipt.workingDirectory === workingDirectory &&
-    receipt.scopeKey === scopeKey
+    matchesCanonicalScope(receipt, canonicalScopeKey, scopeKey)
   );
   if (!doctorReady) {
     missingSteps.push("doctor");
@@ -198,15 +211,15 @@ export async function evaluateCliRunGate(input: CliRunGateInput): Promise<CliRun
     estimateReady || // estimate satisfies session requirement
     isFresh(cliState["session-start"], SESSION_TTL_MS, (receipt) =>
       receipt.workingDirectory === workingDirectory &&
-      receipt.scopeKey === scopeKey
+      matchesCanonicalScope(receipt, canonicalScopeKey, scopeKey)
     ) ||
     isFresh(cliState["start"], SESSION_TTL_MS, (receipt) =>
       receipt.workingDirectory === workingDirectory &&
-      receipt.scopeKey === scopeKey
+      matchesCanonicalScope(receipt, canonicalScopeKey, scopeKey)
     ) ||
     isFresh(cliState["tour"], SESSION_TTL_MS, (receipt) =>
       receipt.workingDirectory === workingDirectory &&
-      receipt.scopeKey === scopeKey
+      matchesCanonicalScope(receipt, canonicalScopeKey, scopeKey)
     );
   if (!sessionReady) {
     missingSteps.push("session-start");
@@ -334,6 +347,29 @@ function hashReceiptScope(receiptScope: ReceiptScope): string {
     runsRoot: normalizeWorkingDirectory(receiptScope.runsRoot ?? "")
   };
   return createHash("sha256").update(JSON.stringify(normalized)).digest("hex").slice(0, 12);
+}
+
+function hashCanonicalReceiptScope(receiptScope: ReceiptScope): string {
+  const normalized = {
+    workingDirectory: normalizeWorkingDirectory(
+      receiptScope.workingDirectory ?? receiptScope.repoRoot ?? ""
+    ),
+    repoRoot: normalizeWorkingDirectory(receiptScope.repoRoot ?? receiptScope.workingDirectory ?? ""),
+    runsRoot: normalizeWorkingDirectory(receiptScope.runsRoot ?? "")
+  };
+  return createHash("sha256").update(JSON.stringify(normalized)).digest("hex").slice(0, 12);
+}
+
+function matchesCanonicalScope(
+  receipt: CliWorkflowReceipt,
+  canonicalScopeKey: string,
+  exactScopeKey: string
+): boolean {
+  if (receipt.canonicalScopeKey) {
+    return receipt.canonicalScopeKey === canonicalScopeKey;
+  }
+
+  return receipt.scopeKey === exactScopeKey;
 }
 
 function hashPathScope(allowedPaths: string[], deniedPaths: string[]): string {
