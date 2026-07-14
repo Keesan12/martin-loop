@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawn, spawnSync } from "node:child_process";
-import { access, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, chmod, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -34,8 +34,7 @@ export function createPublicFacadeSmokePlan(options = {}) {
       description: "npx martin-loop demo copies the packaged sandbox from a clean temp install.",
     },
     governedRunSmoke: {
-      description:
-        "A governed Codex run uses the real Codex CLI when available and reports truthful availability blocks when it is not.",
+      description: "A governed Codex run honors the governed receipt workflow from a clean temp install.",
     },
     unsafeBypassSmoke: {
       description: "unsafe-allow-unguarded-run remains available as an explicit operator bypass.",
@@ -127,14 +126,96 @@ export async function runPublicFacadeSmoke(options = {}) {
     await mkdir(governedWorkspace, { recursive: true });
     await initializeGitRepo(governedWorkspace);
 
+    const fakeCodex = await createFakeCodexCli(tempRoot);
     const codexAvailable = isCliCommandAvailable("codex");
     const governedEnv = {
+      LOCALAPPDATA: fakeCodex.localAppData,
+      MARTIN_LIVE: "true",
       MARTIN_RUNS_DIR: governedRunsDir,
       MARTIN_GROUNDING_DIR: governedGroundingDir,
       MARTIN_INTEGRITY_KEY_DIR: governedIntegrityDir,
+      PATH: withPrependedPath(process.env.PATH ?? "", fakeCodex.binDir),
     };
+    const governedRunEnv = codexAvailable
+      ? governedEnv
+      : {
+          ...governedEnv,
+          PATH: process.env.PATH ?? "",
+        };
 
     const noopVerifier = process.platform === "win32" ? "cmd /c exit 0" : "true";
+    await runCommand(
+      [
+        "npx",
+        "martin-loop",
+        "--json",
+        "doctor",
+        "--engine",
+        "codex",
+        "--cwd",
+        governedWorkspace,
+        "--runs-dir",
+        governedRunsDir,
+      ],
+      { cwd: appDir, env: governedEnv },
+    );
+    await runCommand(
+      [
+        "npx",
+        "martin-loop",
+        "--json",
+        "session-start",
+        "--cwd",
+        governedWorkspace,
+        "--runs-dir",
+        governedRunsDir,
+      ],
+      { cwd: appDir, env: governedEnv },
+    );
+    await runCommand(
+      [
+        "npx",
+        "martin-loop",
+        "estimate",
+        "Fix the bug",
+        "--engine",
+        "codex",
+        "--cwd",
+        governedWorkspace,
+        "--runs-dir",
+        governedRunsDir,
+        "--budget-usd",
+        "2",
+      ],
+      { cwd: appDir, env: governedEnv },
+    );
+    const preflightRun = await runCommand(
+      [
+        "npx",
+        "martin-loop",
+        "--json",
+        "preflight",
+        "--engine",
+        "codex",
+        "--cwd",
+        governedWorkspace,
+        "--runs-dir",
+        governedRunsDir,
+        "--objective",
+        "Fix the bug",
+        "--verify",
+        noopVerifier,
+        "--max-iterations",
+        "1",
+        "--budget-usd",
+        "2",
+      ],
+      { cwd: appDir, env: governedEnv },
+    );
+    const preflightPayload = JSON.parse(preflightRun.stdout);
+    if (preflightPayload?.ready !== true) {
+      throw new Error(`Expected governed public smoke preflight to be ready.\n${preflightRun.stdout}${preflightRun.stderr}`);
+    }
     const governedRun = await runCommand(
       [
         process.execPath,
@@ -156,7 +237,7 @@ export async function runPublicFacadeSmoke(options = {}) {
         "--budget-usd",
         "2",
       ],
-      { cwd: appDir, env: governedEnv, allowFailure: !codexAvailable },
+      { cwd: appDir, env: governedRunEnv, allowFailure: !codexAvailable },
     );
     const governedPayload = tryParseJson(governedRun.stdout);
     const governedAdapterId = governedPayload?.loop?.attempts?.[0]?.adapterId;
@@ -344,6 +425,53 @@ function buildLifecycleSafeEnv(sourceEnv = process.env) {
   return env;
 }
 
+async function createFakeCodexCli(tempRoot) {
+  const binDir = path.join(tempRoot, "fake-codex-bin");
+  const localAppData = path.join(tempRoot, "localappdata");
+  await mkdir(binDir, { recursive: true });
+  await mkdir(localAppData, { recursive: true });
+
+  const file = path.join(binDir, process.platform === "win32" ? "codex.cmd" : "codex");
+  const script = process.platform === "win32"
+    ? [
+        "@echo off",
+        "echo %* | findstr /C:\"--help\" >nul",
+        "if %errorlevel%==0 (",
+        "  echo usage: codex exec ...",
+        "  exit /b 0",
+        ")",
+        "echo {\"type\":\"item.completed\",\"item\":{\"type\":\"command_execution\",\"status\":\"completed\",\"exit_code\":0}}",
+        "echo {\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"fake codex completed\"}}",
+        "echo {\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":10,\"output_tokens\":5}}",
+        "exit /b 0",
+        "",
+      ].join("\r\n")
+    : [
+        "#!/usr/bin/env sh",
+        "case \"$*\" in",
+        "  *--help*)",
+        "    echo 'usage: codex exec ...'",
+        "    ;;",
+        "  *)",
+        "    echo '{\"type\":\"item.completed\",\"item\":{\"type\":\"command_execution\",\"status\":\"completed\",\"exit_code\":0}}'",
+        "    echo '{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"fake codex completed\"}}'",
+        "    echo '{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":10,\"output_tokens\":5}}'",
+        "    ;;",
+        "esac",
+        "",
+      ].join("\n");
+  await writeFile(file, script, "utf8");
+  if (process.platform !== "win32") {
+    await chmod(file, 0o755);
+    await access(file);
+  }
+
+  return {
+    binDir,
+    localAppData,
+  };
+}
+
 function initializeGitRepo(directory) {
   const result = spawn(process.platform === "win32" ? "git.exe" : "git", ["init"], {
     cwd: directory,
@@ -383,6 +511,12 @@ function tryParseJson(value) {
 
 function resolveInstalledCliEntry(appDir) {
   return path.join(appDir, "node_modules", "martin-loop", "dist", "bin", "martin-loop.js");
+}
+
+function withPrependedPath(originalPath, directory) {
+  return originalPath.length > 0
+    ? `${directory}${process.platform === "win32" ? ";" : ":"}${originalPath}`
+    : directory;
 }
 
 async function main() {

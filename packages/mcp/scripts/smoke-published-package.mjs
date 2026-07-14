@@ -258,6 +258,14 @@ export async function runPublishedMcpSmoke(options = {}) {
         engine: "claude",
       },
     });
+    const planResult = await client.callTool({
+      name: "martin_plan",
+      arguments: {
+        objective: "Summarize the current runtime state",
+        workingDirectory: workspaceRoot,
+        context: "Keep the smoke run local and within the seeded workspace.",
+      },
+    });
     const estimateResult = await client.callTool({
       name: "martin_estimate",
       arguments: {
@@ -267,14 +275,7 @@ export async function runPublishedMcpSmoke(options = {}) {
         fileScope: ["src/**"],
       },
     });
-    const planResult = await client.callTool({
-      name: "martin_plan",
-      arguments: {
-        objective: "Summarize the current runtime state",
-        workingDirectory: workspaceRoot,
-        context: "Keep the smoke run local and within the seeded workspace.",
-      },
-    });
+    const estimatePayload = readToolJson(estimateResult, "martin_estimate");
     const kickoffPrompt = await client.getPrompt({
       name: "martin_governed_coding_kickoff",
       arguments: {
@@ -332,7 +333,7 @@ export async function runPublishedMcpSmoke(options = {}) {
         projectId: "proj_published_smoke",
       },
     });
-    const runResultPayload = JSON.parse(readTextContent(runResult));
+    const runResultPayload = readToolJson(runResult, "martin_run");
     const runLoopId = runResultPayload.loopId;
     if (typeof runLoopId !== "string" || runLoopId.length === 0) {
       throw new Error("Published martin_run did not return a loopId for follow-up inspection.");
@@ -384,14 +385,14 @@ export async function runPublishedMcpSmoke(options = {}) {
     });
 
     const publishedUserJourney = {
-      estimateResult: JSON.parse(readTextContent(estimateResult)),
-      planResult: JSON.parse(readTextContent(planResult)),
-      preflightResult: JSON.parse(readTextContent(preflightResult)),
-      listRuns: JSON.parse(readTextContent(listRuns)),
-      getRun: JSON.parse(readTextContent(getRun)),
-      getAttempt: JSON.parse(readTextContent(getAttempt)),
-      getVerificationResults: JSON.parse(readTextContent(getVerificationResults)),
-      runDossier: JSON.parse(readTextContent(runDossier)),
+      planResult: readToolJson(planResult, "martin_plan"),
+      estimateResult: estimatePayload,
+      preflightResult: readToolJson(preflightResult, "martin_preflight"),
+      listRuns: readToolJson(listRuns, "martin_list_runs"),
+      getRun: readToolJson(getRun, "martin_get_run"),
+      getAttempt: readToolJson(getAttempt, "martin_get_attempt"),
+      getVerificationResults: readToolJson(getVerificationResults, "martin_get_verification_results"),
+      runDossier: readToolJson(runDossier, "martin_run_dossier"),
       dynamicRunResource: JSON.parse(readResourceText(dynamicRunResource)),
       dynamicVerificationResource: JSON.parse(readResourceText(dynamicVerificationResource)),
       kickoffPrompt,
@@ -403,13 +404,13 @@ export async function runPublishedMcpSmoke(options = {}) {
       attemptIndex: runAttemptIndex,
     });
 
-    const degradedInspectPayload = JSON.parse(readTextContent(degradedInspect));
+    const degradedInspectPayload = readToolJson(degradedInspect, "martin_inspect");
     if (!Array.isArray(degradedInspectPayload.warnings) ||
       !degradedInspectPayload.warnings.some((warning) => warning.includes("loop_broken"))) {
       throw new Error("Published martin_inspect did not surface degraded run-store warnings.");
     }
 
-    const triagePayload = JSON.parse(readTextContent(triageRuns));
+    const triagePayload = readToolJson(triageRuns, "martin_triage_runs");
     if (!Array.isArray(triagePayload.findings)) {
       throw new Error("Published martin_triage_runs did not return findings.");
     }
@@ -418,7 +419,7 @@ export async function runPublishedMcpSmoke(options = {}) {
       throw new Error("Published MCP server did not return a typed invalid_input error for path traversal.");
     }
 
-    const doctorPayload = JSON.parse(readTextContent(doctorResult));
+    const doctorPayload = readToolJson(doctorResult, "martin_doctor");
     if (!Array.isArray(doctorPayload.warnings) ||
       !doctorPayload.warnings.some((warning) => warning.includes("loop_broken"))) {
       throw new Error("Published martin_doctor did not include degraded run-store warnings.");
@@ -448,9 +449,9 @@ export async function runPublishedMcpSmoke(options = {}) {
       serverHealth: JSON.parse(readResourceText(serverHealthResource)),
       triageResource: JSON.parse(readResourceText(triageResource)),
       triagePrompt,
-      canonicalInspect: JSON.parse(readTextContent(canonicalInspect)),
-      jsonlInspect: JSON.parse(readTextContent(jsonlInspect)),
-      latestStatus: JSON.parse(readTextContent(latestStatus)),
+      canonicalInspect: readToolJson(canonicalInspect, "martin_inspect canonical"),
+      jsonlInspect: readToolJson(jsonlInspect, "martin_inspect jsonl"),
+      latestStatus: readToolJson(latestStatus, "martin_status"),
       degradedInspect: degradedInspectPayload,
       triageRuns: triagePayload,
       invalidInspectError: invalidInspect._meta?.["martinloop/error"] ?? null,
@@ -620,6 +621,16 @@ function readTextContent(result) {
   return first.text;
 }
 
+function readToolJson(result, label) {
+  const text = readTextContent(result);
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    const prefix = result?.isError ? "MCP tool returned an error" : "MCP tool returned non-JSON text";
+    throw new Error(`${prefix} for ${label}: ${text}`);
+  }
+}
+
 function readResourceText(result) {
   if (!Array.isArray(result.contents) || result.contents.length === 0) {
     throw new Error("MCP resource read returned no contents.");
@@ -657,6 +668,10 @@ function assertPublishedUserJourneyEvidence(journey, expected) {
 
   if (journey.preflightResult.normalized?.objective !== "Summarize the current runtime state") {
     throw new Error("Published martin_preflight did not preserve the packaged smoke objective.");
+  }
+
+  if (journey.estimateResult.objective !== "Summarize the current runtime state") {
+    throw new Error("Published martin_estimate did not preserve the packaged smoke objective.");
   }
 
   if (!journey.listRuns.recentRuns?.some((run) => run.loopId === expected.loopId)) {
