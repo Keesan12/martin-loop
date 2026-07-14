@@ -258,15 +258,6 @@ export async function runPublishedMcpSmoke(options = {}) {
         engine: "claude",
       },
     });
-    const estimateResult = await client.callTool({
-      name: "martin_estimate",
-      arguments: {
-        objective: "Summarize the current runtime state",
-        engine: "claude",
-        budgetUsd: 1,
-        fileScope: ["src/**"],
-      },
-    });
     const planResult = await client.callTool({
       name: "martin_plan",
       arguments: {
@@ -279,7 +270,6 @@ export async function runPublishedMcpSmoke(options = {}) {
       name: "martin_estimate",
       arguments: {
         objective: "Summarize the current runtime state",
-        workingDirectory: workspaceRoot,
         engine: "claude",
         budgetUsd: 1,
         fileScope: ["src/**"],

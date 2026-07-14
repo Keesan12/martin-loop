@@ -507,6 +507,12 @@ function resolveInstalledCliEntry(appDir) {
   return path.join(appDir, "node_modules", "martin-loop", "dist", "bin", "martin-loop.js");
 }
 
+function withPrependedPath(originalPath, directory) {
+  return originalPath.length > 0
+    ? `${directory}${process.platform === "win32" ? ";" : ":"}${originalPath}`
+    : directory;
+}
+
 async function main() {
   const result = await runPublicFacadeSmoke({ rootDir: process.cwd() });
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
