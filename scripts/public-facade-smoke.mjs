@@ -134,8 +134,14 @@ export async function runPublicFacadeSmoke(options = {}) {
       MARTIN_RUNS_DIR: governedRunsDir,
       MARTIN_GROUNDING_DIR: governedGroundingDir,
       MARTIN_INTEGRITY_KEY_DIR: governedIntegrityDir,
-      PATH: codexAvailable ? withPrependedPath(process.env.PATH ?? "", fakeCodex.binDir) : (process.env.PATH ?? ""),
+      PATH: withPrependedPath(process.env.PATH ?? "", fakeCodex.binDir),
     };
+    const governedRunEnv = codexAvailable
+      ? governedEnv
+      : {
+          ...governedEnv,
+          PATH: process.env.PATH ?? "",
+        };
 
     const noopVerifier = process.platform === "win32" ? "cmd /c exit 0" : "true";
     await runCommand(
@@ -231,7 +237,7 @@ export async function runPublicFacadeSmoke(options = {}) {
         "--budget-usd",
         "2",
       ],
-      { cwd: appDir, env: governedEnv, allowFailure: !codexAvailable },
+      { cwd: appDir, env: governedRunEnv, allowFailure: !codexAvailable },
     );
     const governedPayload = tryParseJson(governedRun.stdout);
     const governedAdapterId = governedPayload?.loop?.attempts?.[0]?.adapterId;
