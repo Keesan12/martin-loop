@@ -134,7 +134,7 @@ export async function runPublicFacadeSmoke(options = {}) {
       MARTIN_RUNS_DIR: governedRunsDir,
       MARTIN_GROUNDING_DIR: governedGroundingDir,
       MARTIN_INTEGRITY_KEY_DIR: governedIntegrityDir,
-      PATH: withPrependedPath(process.env.PATH ?? "", fakeCodex.binDir),
+      PATH: codexAvailable ? withPrependedPath(process.env.PATH ?? "", fakeCodex.binDir) : (process.env.PATH ?? ""),
     };
 
     const noopVerifier = process.platform === "win32" ? "cmd /c exit 0" : "true";
