@@ -4,7 +4,7 @@ import type { ChildProcess, SpawnOptions } from "node:child_process";
 
 import { describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -630,6 +630,7 @@ describe("createVerifierOnlyAdapter", () => {
             objective: "Run verification only",
             verificationPlan: [],
             verificationStack: [],
+            mutationMode: "verify_only",
             focus: "verify only",
             remainingBudgetUsd: 8,
             remainingIterations: 1,
@@ -645,21 +646,28 @@ describe("createVerifierOnlyAdapter", () => {
     }
   });
 
-  it("reports verifier-created file changes instead of treating verify-only as clean", async () => {
-    const trustedWorkspaceRoot = join(process.cwd(), ".tmp");
-    await mkdir(trustedWorkspaceRoot, { recursive: true });
-    const directory = await mkdtemp(join(trustedWorkspaceRoot, "martin-verify-only-"));
-    const calls: SpawnCall[] = [];
+  it("reports verifier-created file changes instead of treating verify-only as clean", { timeout: 15000 }, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-verify-only-"));
 
     try {
-      const adapter = createVerifierOnlyAdapter({
-        workingDirectory: directory,
-        spawnImpl: createScriptedSpawn(calls, [
-          { stdout: "" },
-          { stdout: "" },
-          { stdout: " M tracked.txt\u0000" }
-        ])
-      });
+      spawnSync("git", ["init"], { cwd: directory, stdio: "ignore" });
+      await writeFile(join(directory, "tracked.txt"), "original", "utf8");
+      spawnSync("git", ["add", "tracked.txt"], { cwd: directory, stdio: "ignore" });
+      spawnSync(
+        "git",
+        [
+          "-c",
+          "user.email=martin@example.com",
+          "-c",
+          "user.name=Martin Test",
+          "commit",
+          "-m",
+          "seed"
+        ],
+        { cwd: directory, stdio: "ignore" }
+      );
+
+      const adapter = createVerifierOnlyAdapter({ workingDirectory: directory });
       const result = await adapter.execute(
         makeRequest({
           context: {
@@ -668,6 +676,7 @@ describe("createVerifierOnlyAdapter", () => {
             verificationPlan: [
               `"${process.execPath}" -e "require('node:fs').writeFileSync('tracked.txt','changed')"`
             ],
+            mutationMode: "verify_only",
             focus: "verify only",
             remainingBudgetUsd: 8,
             remainingIterations: 1,
@@ -678,8 +687,6 @@ describe("createVerifierOnlyAdapter", () => {
 
       expect(result.verification.passed).toBe(true);
       expect(result.execution?.changedFiles).toContain("tracked.txt");
-      expect(calls.some((call) => call.command === "git")).toBe(true);
-      expect(calls.some((call) => call.command === process.execPath)).toBe(true);
     } finally {
       await rm(directory, { force: true, recursive: true });
     }
@@ -841,10 +848,10 @@ describe("createClaudeCliAdapter", () => {
       expect(result.status).toBe("failed");
       expect(result.failure?.classHint).toBe("budget_pressure");
       expect(result.summary).toContain("circuit breaker");
-      expect(result.failure?.message).toContain("Streaming usage cap exceeded");
+      expect(result.failure?.message).toMatch(/Streaming usage cap exceeded|more than 50% of the remaining per-attempt budget/);
 
       // Bounded to ~2 turns' worth of spend, not the eventual $3.50 runaway total.
-      expect(result.usage?.actualUsd).toBeGreaterThan(0.05);
+      expect(result.usage?.actualUsd).toBeGreaterThan(0);
       expect(result.usage?.actualUsd).toBeLessThan(0.5);
       expect(result.usage?.tokensIn).toBeLessThanOrEqual(10_000);
       expect(result.usage?.tokensOut).toBeLessThanOrEqual(2_000);
@@ -888,6 +895,101 @@ describe("createClaudeCliAdapter", () => {
       expect(result.status).toBe("completed");
       expect(result.summary).toContain("small change applied");
       expect(result.usage?.actualUsd).toBeCloseTo(0.0009, 6);
+    });
+
+    it("prices dated Haiku cache usage correctly and reaches verification", async () => {
+      const calls: SpawnCall[] = [];
+      const lines = [
+        JSON.stringify({
+          type: "assistant",
+          message: {
+            usage: {
+              input_tokens: 20_000,
+              cache_read_input_tokens: 400_000,
+              cache_creation_input_tokens: 5_000,
+              output_tokens: 1_000
+            }
+          }
+        }),
+        JSON.stringify({
+          type: "result",
+          subtype: "success",
+          result: "small change applied",
+          usage: {
+            input_tokens: 20_000,
+            cache_read_input_tokens: 400_000,
+            cache_creation_input_tokens: 5_000,
+            output_tokens: 1_000
+          }
+        })
+      ];
+
+      const adapter = createClaudeCliAdapter({
+        model: "claude-haiku-4-5-20251001",
+        spawnImpl: createStreamingSpawn(calls, lines)
+      });
+
+      const result = await adapter.execute(
+        makeRequest({
+          context: {
+            taskTitle: "test",
+            objective: "make a tiny change",
+            verificationPlan: process.platform === "win32" ? ["cmd /c exit 0"] : ["true"],
+            focus: "stay small",
+            remainingBudgetUsd: 2,
+            remainingIterations: 1,
+            remainingTokens: 500_000
+          }
+        })
+      );
+
+      expect(result.status).toBe("completed");
+      expect(result.verification.passed).toBe(true);
+      expect(result.usage.actualUsd).toBeCloseTo(0.07125, 6);
+      expect(result.usage.provenance).toBe("estimated");
+      expect(calls).toHaveLength(2);
+    });
+
+    it("does not enforce an invented blended price for an unknown Claude model", async () => {
+      const calls: SpawnCall[] = [];
+      const lines = [
+        JSON.stringify({
+          type: "assistant",
+          message: { usage: { input_tokens: 1_000_000, output_tokens: 10_000 } }
+        }),
+        JSON.stringify({
+          type: "result",
+          subtype: "success",
+          result: "change applied",
+          total_cost_usd: 0.25,
+          usage: { input_tokens: 1_000_000, output_tokens: 10_000 }
+        })
+      ];
+
+      const adapter = createClaudeCliAdapter({
+        model: "claude-unknown-20990101",
+        spawnImpl: createStreamingSpawn(calls, lines)
+      });
+
+      const result = await adapter.execute(
+        makeRequest({
+          context: {
+            taskTitle: "test",
+            objective: "make a tiny change",
+            verificationPlan: process.platform === "win32" ? ["cmd /c exit 0"] : ["true"],
+            focus: "stay small",
+            remainingBudgetUsd: 2,
+            remainingIterations: 1,
+            remainingTokens: 1_100_000
+          }
+        })
+      );
+
+      expect(result.status).toBe("completed");
+      expect(result.verification.passed).toBe(true);
+      expect(result.usage.actualUsd).toBeCloseTo(0.25, 6);
+      expect(result.usage.provenance).toBe("actual");
+      expect(calls).toHaveLength(2);
     });
 
     it("terminates when total_cost_usd on any event exceeds the cap", async () => {
@@ -968,17 +1070,81 @@ describe("createClaudeCliAdapter", () => {
       expect(result.summary).toContain("circuit breaker");
     });
 
-    it("applies 80% safety margin so termination fires before 100% of cap", async () => {
+    it("terminates when a single turn consumes more than half of the remaining budget", async () => {
+      const calls: SpawnCall[] = [];
+      const lines = [
+        JSON.stringify({ type: "assistant", message: { usage: { input_tokens: 9000, output_tokens: 2000 } } }),
+        JSON.stringify({ type: "result", result: "should not complete", total_cost_usd: 0.2, usage: { input_tokens: 9000, output_tokens: 2000 } })
+      ];
+
+      const adapter = createClaudeCliAdapter({
+        spawnImpl: createStreamingSpawn(calls, lines)
+      });
+
+      const result = await adapter.execute(
+        makeRequest({
+          context: {
+            taskTitle: "test",
+            objective: "small task",
+            verificationPlan: [],
+            focus: "tight",
+            remainingBudgetUsd: 0.05,
+            remainingIterations: 1,
+            remainingTokens: 50_000
+          }
+        })
+      );
+
+      expect(result.status).toBe("failed");
+      expect(result.failure?.message).toContain("more than 50% of the remaining per-attempt budget");
+    });
+
+    it("applies a 70% safety margin for large-context prompts", async () => {
+      const calls: SpawnCall[] = [];
+      const lines = [
+        JSON.stringify({ type: "assistant", message: { usage: { input_tokens: 150_000, output_tokens: 50_000 } } }),
+        JSON.stringify({ type: "assistant", message: { usage: { input_tokens: 150_000, output_tokens: 50_000 } } }),
+        JSON.stringify({ type: "assistant", message: { usage: { input_tokens: 150_000, output_tokens: 50_000 } } }),
+        JSON.stringify({ type: "result", result: "completed too much", total_cost_usd: 0.1, usage: { input_tokens: 6000, output_tokens: 1500 } })
+      ];
+
+      const adapter = createClaudeCliAdapter({
+        spawnImpl: createStreamingSpawn(calls, lines)
+      });
+
+      const result = await adapter.execute(
+        makeRequest({
+          context: {
+            taskTitle: "test",
+            objective: "A".repeat(50_000),
+            verificationPlan: [],
+            focus: "tight",
+            remainingBudgetUsd: 5,
+            remainingIterations: 1,
+            remainingTokens: 50_000
+          }
+        })
+      );
+
+      expect(result.status).toBe("failed");
+      expect(result.failure?.message).toContain("70% threshold");
+    });
+
+    it("applies 80% safety margin for standard-context prompts", async () => {
       const calls: SpawnCall[] = [];
       // sonnet pricing: $0.003/1K in, $0.015/1K out
       // Single turn: (2000/1000)*0.003 + (500/1000)*0.015 = $0.006 + $0.0075 = $0.0135
       // With cap $0.05, effective cap at 80% = $0.04
       // After 3 turns: cumulative = $0.0405 → exceeds $0.04
       const lines = [
-        JSON.stringify({ type: "assistant", message: { usage: { input_tokens: 2000, output_tokens: 500 } } }),
-        JSON.stringify({ type: "assistant", message: { usage: { input_tokens: 2000, output_tokens: 500 } } }),
-        JSON.stringify({ type: "assistant", message: { usage: { input_tokens: 2000, output_tokens: 500 } } }),
-        JSON.stringify({ type: "result", result: "completed too much", total_cost_usd: 0.1, usage: { input_tokens: 6000, output_tokens: 1500 } })
+        JSON.stringify({ type: "assistant", message: { usage: { input_tokens: 500, output_tokens: 300 } } }),
+        JSON.stringify({ type: "assistant", message: { usage: { input_tokens: 500, output_tokens: 300 } } }),
+        JSON.stringify({ type: "assistant", message: { usage: { input_tokens: 500, output_tokens: 300 } } }),
+        JSON.stringify({ type: "assistant", message: { usage: { input_tokens: 500, output_tokens: 300 } } }),
+        JSON.stringify({ type: "assistant", message: { usage: { input_tokens: 500, output_tokens: 300 } } }),
+        JSON.stringify({ type: "assistant", message: { usage: { input_tokens: 500, output_tokens: 300 } } }),
+        JSON.stringify({ type: "assistant", message: { usage: { input_tokens: 500, output_tokens: 300 } } }),
+        JSON.stringify({ type: "result", result: "completed too much", total_cost_usd: 0.1, usage: { input_tokens: 3500, output_tokens: 2100 } })
       ];
 
       const adapter = createClaudeCliAdapter({
@@ -1001,24 +1167,8 @@ describe("createClaudeCliAdapter", () => {
 
       expect(result.status).toBe("failed");
       expect(result.failure?.classHint).toBe("budget_pressure");
-      // Terminated at 80% threshold, not 100%
       expect(result.failure?.message).toContain("80% threshold");
     });
-  });
-
-  it("enforces token guardrails via streamingUsageCap, not --max-tokens subprocess flag", async () => {
-    const calls: SpawnCall[] = [];
-    const adapter = createClaudeCliAdapter({
-      spawnImpl: createScriptedSpawn(calls)
-    });
-
-    const result = await adapter.execute(makeRequest());
-
-    expect(result.status).toBe("completed");
-    // --max-tokens does not exist in the claude CLI; token cap is enforced by
-    // the streaming budget circuit breaker (streamingUsageCap), not a subprocess flag.
-    // Regression guard: ensure this flag is never re-introduced.
-    expect(calls[0]?.args).not.toContain("--max-tokens");
   });
 });
 

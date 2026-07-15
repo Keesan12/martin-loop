@@ -36,24 +36,33 @@ import {
 // ---------------------------------------------------------------------------
 // Cost estimation
 //
-// Token costs are estimated using a blended average across top models:
-// Anthropic Sonnet, OpenAI GPT-4o Mini, Gemini Flash, Meta Llama 3.
-// Override at runtime with --input-cost-per-1k / --output-cost-per-1k CLI
-// flags or martin.config.yaml pricing section.
+// Streaming enforcement needs a model-specific estimate until Claude emits
+// authoritative total_cost_usd on the final result event. Unknown Claude
+// models are never assigned another model's price.
 // ---------------------------------------------------------------------------
 
 const BLENDED_INPUT_COST_PER_1K = 0.003;   // $/1K input tokens
 const BLENDED_OUTPUT_COST_PER_1K = 0.012;  // $/1K output tokens
 
-// Per-model overrides for common Claude models (fallback: blended average)
-const MODEL_PRICING: Record<string, { inputPer1K: number; cachedInputPer1K?: number; outputPer1K: number }> = {
-  "claude-opus-4-6":   { inputPer1K: 0.015, outputPer1K: 0.075 },
-  "claude-sonnet-4-6": { inputPer1K: 0.003, outputPer1K: 0.015 },
-  "claude-haiku-4-5":  { inputPer1K: 0.00025, outputPer1K: 0.00125 },
-  // Keep legacy names working
-  "claude-opus":       { inputPer1K: 0.015, outputPer1K: 0.075 },
-  "claude-sonnet":     { inputPer1K: 0.003, outputPer1K: 0.015 },
-  "claude-haiku":      { inputPer1K: 0.00025, outputPer1K: 0.00125 },
+interface ModelPricing {
+  inputPer1K: number;
+  cachedInputPer1K?: number;
+  cacheCreationInputPer1K?: number;
+  outputPer1K: number;
+}
+
+interface ModelPricingResolution {
+  status: "exact" | "alias" | "unknown";
+  canonicalModelId?: string;
+  pricing?: ModelPricing;
+}
+
+// USD per 1K tokens. Claude cache creation uses the documented default
+// five-minute rate; cache reads are priced independently from fresh input.
+const MODEL_PRICING: Record<string, ModelPricing> = {
+  "claude-opus-4-6":   { inputPer1K: 0.005, cachedInputPer1K: 0.0005, cacheCreationInputPer1K: 0.00625, outputPer1K: 0.025 },
+  "claude-sonnet-4-6": { inputPer1K: 0.003, cachedInputPer1K: 0.0003, cacheCreationInputPer1K: 0.00375, outputPer1K: 0.015 },
+  "claude-haiku-4-5":  { inputPer1K: 0.001, cachedInputPer1K: 0.0001, cacheCreationInputPer1K: 0.00125, outputPer1K: 0.005 },
   // OpenAI coding models
   "codex":             { inputPer1K: 0.00125, cachedInputPer1K: 0.000125, outputPer1K: 0.01 },
   "gpt-5-codex":       { inputPer1K: 0.00125, cachedInputPer1K: 0.000125, outputPer1K: 0.01 },
@@ -62,6 +71,53 @@ const MODEL_PRICING: Record<string, { inputPer1K: number; cachedInputPer1K?: num
   "gpt-5.2-codex":     { inputPer1K: 0.00175, cachedInputPer1K: 0.000175, outputPer1K: 0.014 },
   "codex-mini-latest": { inputPer1K: 0.0015, cachedInputPer1K: 0.000375, outputPer1K: 0.006 }
 };
+
+const CLAUDE_MODEL_ALIASES = [
+  { canonicalModelId: "claude-opus-4-6", aliases: [/^claude-opus-4-6-\d{8}$/u, /^claude-opus$/u] },
+  { canonicalModelId: "claude-sonnet-4-6", aliases: [/^claude-sonnet-4-6-\d{8}$/u, /^claude-sonnet$/u] },
+  { canonicalModelId: "claude-haiku-4-5", aliases: [/^claude-haiku-4-5-\d{8}$/u, /^claude-haiku$/u] }
+] as const;
+
+function resolveModelPricing(modelLabel: string | undefined): ModelPricingResolution {
+  const normalized = modelLabel?.trim().toLowerCase();
+  if (!normalized) {
+    return { status: "unknown" };
+  }
+
+  const exact = MODEL_PRICING[normalized];
+  if (exact) {
+    return { status: "exact", canonicalModelId: normalized, pricing: exact };
+  }
+
+  for (const family of CLAUDE_MODEL_ALIASES) {
+    if (family.aliases.some((alias) => alias.test(normalized))) {
+      return {
+        status: "alias",
+        canonicalModelId: family.canonicalModelId,
+        pricing: MODEL_PRICING[family.canonicalModelId]
+      };
+    }
+  }
+
+  return { status: "unknown" };
+}
+
+function calculateUsageCost(
+  usage: {
+    inputTokens: number;
+    cachedInputTokens: number;
+    cacheCreationInputTokens: number;
+    outputTokens: number;
+  },
+  pricing: ModelPricing
+): number {
+  return (
+    (usage.inputTokens / 1000) * pricing.inputPer1K +
+    (usage.cachedInputTokens / 1000) * (pricing.cachedInputPer1K ?? pricing.inputPer1K) +
+    (usage.cacheCreationInputTokens / 1000) * (pricing.cacheCreationInputPer1K ?? pricing.inputPer1K) +
+    (usage.outputTokens / 1000) * pricing.outputPer1K
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Claude CLI JSON output shape (--output-format json)
@@ -134,17 +190,15 @@ function extractUsage(
     });
   }
 
-  const promptTokens =
-    (parsed.usage.inputTokens ?? parsed.usage.input_tokens ?? 0) +
-    (parsed.usage.cacheCreationInputTokens ?? parsed.usage.cache_creation_input_tokens ?? 0);
+  const promptTokens = parsed.usage.inputTokens ?? parsed.usage.input_tokens ?? 0;
+  const cacheCreationInputTokens =
+    parsed.usage.cacheCreationInputTokens ?? parsed.usage.cache_creation_input_tokens ?? 0;
   const cachedInputTokens =
     parsed.usage.cacheReadInputTokens ?? parsed.usage.cache_read_input_tokens ?? 0;
-  const tokensIn = promptTokens + cachedInputTokens;
+  const tokensIn = promptTokens + cachedInputTokens + cacheCreationInputTokens;
   const tokensOut = parsed.usage.outputTokens ?? parsed.usage.output_tokens ?? 0;
 
-  const pricing =
-    (modelLabel ? MODEL_PRICING[modelLabel] : undefined) ??
-    { inputPer1K: BLENDED_INPUT_COST_PER_1K, outputPer1K: BLENDED_OUTPUT_COST_PER_1K };
+  const pricingResolution = resolveModelPricing(modelLabel);
 
   // Prefer Claude's own authoritative total_cost_usd (present on the final
   // `result` event in json/stream-json output) over our pricing-table estimate,
@@ -152,22 +206,27 @@ function extractUsage(
   const hasAuthoritativeCost = typeof parsed.total_cost_usd === "number";
   const actualUsd: number = hasAuthoritativeCost
     ? (parsed.total_cost_usd as number)
-    : (promptTokens / 1000) * pricing.inputPer1K +
-      (cachedInputTokens / 1000) * (pricing.cachedInputPer1K ?? pricing.inputPer1K) +
-      (tokensOut / 1000) * pricing.outputPer1K;
+    : pricingResolution.pricing
+      ? calculateUsageCost({
+          inputTokens: promptTokens,
+          cachedInputTokens,
+          cacheCreationInputTokens,
+          outputTokens: tokensOut
+        }, pricingResolution.pricing)
+      : 0;
 
   return normalizeUsage({
     actualUsd: Number(actualUsd.toFixed(6)),
     tokensIn,
     tokensOut,
     cachedInputTokens,
-    provenance: hasAuthoritativeCost ? "actual" : "estimated",
+    provenance: hasAuthoritativeCost ? "actual" : pricingResolution.pricing ? "estimated" : "unavailable",
     providerSettlement: {
       providerId: "claude",
       model: modelLabel ?? "claude",
       transport: "cli",
       source: "claude_json",
-      inputTokens: promptTokens,
+      inputTokens: promptTokens + cacheCreationInputTokens,
       cachedInputTokens,
       outputTokens: tokensOut,
       rawUsageAvailable: true,
@@ -378,28 +437,30 @@ interface StreamingUsageSnapshot {
 
 function createStreamingUsageInspector(
   capUsd: number,
-  modelLabel: string | undefined
+  modelLabel: string | undefined,
+  promptTokenEstimate: number
 ): {
   onChunk: (chunk: Buffer, terminate: (reason: string) => void) => void;
   snapshot: () => StreamingUsageSnapshot;
 } {
-  const pricing =
-    (modelLabel ? MODEL_PRICING[modelLabel] : undefined) ??
-    { inputPer1K: BLENDED_INPUT_COST_PER_1K, outputPer1K: BLENDED_OUTPUT_COST_PER_1K };
+  let pricingResolution = resolveModelPricing(modelLabel);
 
   // Safety margin: terminate at 80% of cap to bound one-turn overshoot.
   // Without this, a single expensive turn can blow past the cap before the
   // next check fires (proven live: $1.50 cap → $28.42 actual).
-  const effectiveCapUsd = capUsd * 0.8;
+  const largeContext = promptTokenEstimate > 10_000;
+  const effectiveCapRatio = largeContext ? 0.7 : 0.8;
+  const effectiveCapUsd = capUsd * effectiveCapRatio;
 
   // Token-count ceiling fallback: if no usage events are ever parsed (e.g.
   // Claude changes its stream-json event format), use raw byte volume as a
   // last-resort circuit breaker. Derived from budget / blended cost per char.
-  const blendedCostPerChar =
-    (pricing.inputPer1K / 1000 / 4) + (pricing.outputPer1K / 1000 / 4);
-  const bytesCeiling = blendedCostPerChar > 0
-    ? Math.ceil((capUsd / blendedCostPerChar) * 2)
-    : 100_000_000;
+  const resolveBlendedCostPerChar = () => {
+    const pricing = pricingResolution.pricing;
+    return pricing
+      ? (pricing.inputPer1K / 1000 / 4) + (pricing.outputPer1K / 1000 / 4)
+      : undefined;
+  };
 
   // Time-based fallback: if we receive data but no usage events for this long,
   // estimate spend from byte volume and enforce the cap. Prevents the inspector
@@ -420,7 +481,7 @@ function createStreamingUsageInspector(
     if (capUsd > 0 && cumulativeUsd > effectiveCapUsd) {
       terminate(
         `Streaming usage cap exceeded after ${String(turns)} turn(s): cumulative cost ~$${cumulativeUsd.toFixed(4)} ` +
-          `surpassed the per-attempt cap $${capUsd.toFixed(4)} (80% threshold: $${effectiveCapUsd.toFixed(4)}). ` +
+          `surpassed the per-attempt cap $${capUsd.toFixed(4)} (${String(Math.round(effectiveCapRatio * 100))}% threshold: $${effectiveCapUsd.toFixed(4)}). ` +
           `Subprocess terminated to bound runaway overspend.`
       );
     }
@@ -430,6 +491,10 @@ function createStreamingUsageInspector(
     event: Record<string, unknown>,
     terminate: (reason: string) => void
   ) => {
+    if (event.type === "system" && event.subtype === "init" && typeof event.model === "string") {
+      pricingResolution = resolveModelPricing(event.model);
+    }
+
     // Check for authoritative total_cost_usd on ANY event — if Claude reports
     // cost exceeding cap, terminate immediately regardless of event type.
     if (typeof event.total_cost_usd === "number" && event.total_cost_usd > 0) {
@@ -453,13 +518,43 @@ function createStreamingUsageInspector(
     }
 
     const usageRecord = usage as Record<string, number>;
-    const turnTokensIn =
-      (usageRecord.input_tokens ?? usageRecord.inputTokens ?? 0) +
-      (usageRecord.cache_read_input_tokens ?? usageRecord.cacheReadInputTokens ?? 0) +
-      (usageRecord.cache_creation_input_tokens ?? usageRecord.cacheCreationInputTokens ?? 0);
+    const turnInputTokens = usageRecord.input_tokens ?? usageRecord.inputTokens ?? 0;
+    const turnCachedInputTokens =
+      usageRecord.cache_read_input_tokens ?? usageRecord.cacheReadInputTokens ?? 0;
+    const turnCacheCreationInputTokens =
+      usageRecord.cache_creation_input_tokens ?? usageRecord.cacheCreationInputTokens ?? 0;
+    const turnTokensIn = turnInputTokens + turnCachedInputTokens + turnCacheCreationInputTokens;
     const turnTokensOut = usageRecord.output_tokens ?? usageRecord.outputTokens ?? 0;
 
     if (turnTokensIn === 0 && turnTokensOut === 0) {
+      return;
+    }
+
+    const turnUsd = pricingResolution.pricing
+      ? calculateUsageCost({
+          inputTokens: turnInputTokens,
+          cachedInputTokens: turnCachedInputTokens,
+          cacheCreationInputTokens: turnCacheCreationInputTokens,
+          outputTokens: turnTokensOut
+        }, pricingResolution.pricing)
+      : undefined;
+    const remainingBudgetBeforeTurn = Math.max(capUsd - cumulativeUsd, 0);
+
+    if (
+      turnUsd !== undefined &&
+      capUsd > 0 &&
+      remainingBudgetBeforeTurn > 0 &&
+      turnUsd > remainingBudgetBeforeTurn * 0.5
+    ) {
+      cumulativeUsd += turnUsd;
+      tokensIn += turnTokensIn;
+      tokensOut += turnTokensOut;
+      turns += 1;
+      usageEventSeen = true;
+      terminate(
+        `Single turn spend ~$${turnUsd.toFixed(4)} consumed more than 50% of the remaining per-attempt budget ` +
+          `($${remainingBudgetBeforeTurn.toFixed(4)} before the turn). Subprocess terminated to prevent a one-turn overshoot.`
+      );
       return;
     }
 
@@ -467,7 +562,9 @@ function createStreamingUsageInspector(
     tokensOut += turnTokensOut;
     turns += 1;
     usageEventSeen = true;
-    cumulativeUsd += (turnTokensIn / 1000) * pricing.inputPer1K + (turnTokensOut / 1000) * pricing.outputPer1K;
+    if (turnUsd !== undefined) {
+      cumulativeUsd += turnUsd;
+    }
 
     checkBudgetExceeded(terminate);
   };
@@ -502,7 +599,11 @@ function createStreamingUsageInspector(
       // Token-count ceiling fallback: if we've ingested a lot of bytes but
       // never seen a single usage event, the event format may have changed
       // and the inspector is silently blind. Terminate as a last resort.
-      if (!usageEventSeen && capUsd > 0 && totalBytes > bytesCeiling) {
+      const blendedCostPerChar = resolveBlendedCostPerChar();
+      const bytesCeiling = blendedCostPerChar && blendedCostPerChar > 0
+        ? Math.ceil((capUsd / blendedCostPerChar) * 2)
+        : undefined;
+      if (!usageEventSeen && capUsd > 0 && bytesCeiling !== undefined && totalBytes > bytesCeiling) {
         terminate(
           `Streaming byte ceiling exceeded (${String(totalBytes)} bytes > ${String(bytesCeiling)} ceiling) ` +
             `without any usage events parsed. The Claude stream-json event format may have changed. ` +
@@ -522,8 +623,8 @@ function createStreamingUsageInspector(
         Date.now() - firstChunkAt > USAGE_BLIND_TIMEOUT_MS &&
         totalBytes > 10_000
       ) {
-        const estimatedUsd = totalBytes * blendedCostPerChar;
-        if (estimatedUsd > effectiveCapUsd) {
+        const estimatedUsd = blendedCostPerChar === undefined ? undefined : totalBytes * blendedCostPerChar;
+        if (estimatedUsd !== undefined && estimatedUsd > effectiveCapUsd) {
           terminate(
             `No usage events received after ${String(Math.round((Date.now() - firstChunkAt) / 1000))}s ` +
               `(${String(totalBytes)} bytes). Estimated cost ~$${estimatedUsd.toFixed(4)} exceeds cap ` +
@@ -612,7 +713,7 @@ function inferStructuralClassHint(
  * Example for Claude:  () => ["--output-format", "json", "--print"]
  * Example for Codex:   () => ["exec", "--sandbox", "workspace-write", "-"]
  */
-export type CliArgsBuilder = (prompt: string) => string[];
+export type CliArgsBuilder = (prompt: string, request: MartinAdapterRequest) => string[];
 export type CliStdinBuilder = (prompt: string) => string | undefined;
 
 export interface AgentCliAdapterOptions {
@@ -737,12 +838,12 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
 
     async execute(request: MartinAdapterRequest): Promise<MartinAdapterResult> {
       const prompt = buildPrompt(request);
-      const estimatedUsage = estimateUsage(prompt, options.model ?? options.command);
+      const estimatedUsage = estimateUsage(prompt, options.model ?? options.command, options.command);
 
       // Preflight: bail if projected cost exceeds remaining budget
       if (request.context.remainingBudgetUsd > 0) {
-        const projected = estimatePromptCost(prompt, options.model ?? "");
-        if (projected > request.context.remainingBudgetUsd * 0.95) {
+        const projected = estimatePromptCost(prompt, options.model ?? "", options.command);
+        if (projected !== undefined && projected > request.context.remainingBudgetUsd * 0.95) {
           return {
             status: "failed",
             summary: `Preflight: projected cost $${projected.toFixed(4)} exceeds remaining budget $${request.context.remainingBudgetUsd.toFixed(4)}.`,
@@ -759,7 +860,7 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
         }
       }
 
-      const args = options.argsBuilder(prompt);
+      const args = options.argsBuilder(prompt, request);
       const stdinData = options.stdinBuilder?.(prompt);
 
       // Live cumulative-cost circuit breaker: a single attempt should never be
@@ -770,7 +871,11 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
       // to roughly one turn's overshoot rather than the entire runaway session.
       const streamingUsage =
         options.streamingUsageCap && request.context.remainingBudgetUsd > 0
-          ? createStreamingUsageInspector(request.context.remainingBudgetUsd, options.model ?? options.command)
+          ? createStreamingUsageInspector(
+            request.context.remainingBudgetUsd,
+            options.model ?? options.command,
+            estimatedUsage.tokensIn
+          )
           : undefined;
 
       const agentResult = await runSubprocess(options.command, args, {
@@ -895,7 +1000,6 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
           }
         };
       }
-
       const agentText =
         codexJsonlResult?.summary ??
         geminiJsonResult?.summary ??
@@ -1138,7 +1242,7 @@ export function createClaudeCliAdapter(options: ClaudeCliAdapterOptions = {}): M
     supportsJsonOutput: true,
     streamingUsageCap: true,
     spawnImpl: options.spawnImpl,
-    argsBuilder: (_prompt) => [
+    argsBuilder: (_prompt, request) => [
       "--output-format",
       "stream-json",
       "--verbose",
@@ -1397,23 +1501,39 @@ function sanitizeForPrompt(input: string): string {
   return redactSecretsForPrompt(out);
 }
 
-function estimatePromptCost(promptText: string, model: string): number {
+function estimatePromptCost(
+  promptText: string,
+  model: string,
+  providerCommand?: string
+): number | undefined {
   const inputTokens = Math.ceil(promptText.length / 3.5);
   const outputTokens = 2000;
-  const pricing = MODEL_PRICING[model] ?? { inputPer1K: BLENDED_INPUT_COST_PER_1K, outputPer1K: BLENDED_OUTPUT_COST_PER_1K };
+  const pricing = resolveModelPricing(model).pricing ?? (
+    providerCommand === "claude"
+      ? undefined
+      : { inputPer1K: BLENDED_INPUT_COST_PER_1K, outputPer1K: BLENDED_OUTPUT_COST_PER_1K }
+  );
+  if (!pricing) {
+    return undefined;
+  }
   return (inputTokens / 1000) * pricing.inputPer1K + (outputTokens / 1000) * pricing.outputPer1K;
 }
 
-function estimateUsage(promptText: string, model: string): MartinAdapterResult["usage"] {
+function estimateUsage(
+  promptText: string,
+  model: string,
+  providerCommand?: string
+): MartinAdapterResult["usage"] {
   const inputTokens = Math.ceil(promptText.length / 3.5);
   const outputTokens = 2_000;
+  const estimatedUsd = estimatePromptCost(promptText, model, providerCommand);
 
   return normalizeUsage({
-    actualUsd: estimatePromptCost(promptText, model),
-    estimatedUsd: estimatePromptCost(promptText, model),
+    actualUsd: estimatedUsd ?? 0,
+    ...(estimatedUsd === undefined ? {} : { estimatedUsd }),
     tokensIn: inputTokens,
     tokensOut: outputTokens,
-    provenance: "estimated"
+    provenance: estimatedUsd === undefined ? "unavailable" : "estimated"
   });
 }
 
