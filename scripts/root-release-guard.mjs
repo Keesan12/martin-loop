@@ -112,12 +112,17 @@ export async function inspectPackedFiles(options = {}) {
     { cwd: rootDir },
   );
   const packArtifacts = extractPackJsonPayload(packRun.stdout);
-  const files = Array.isArray(packArtifacts)
-    ? packArtifacts[0]?.files?.map((entry) => entry.path).filter((entry) => typeof entry === "string")
-    : [];
+  return extractPackedFilePaths(packArtifacts);
+}
+
+export function extractPackedFilePaths(packArtifacts) {
+  const artifact = Array.isArray(packArtifacts) ? packArtifacts[0] : null;
+  const artifactFiles = Array.isArray(artifact?.files) ? artifact.files : [];
+  const files = artifactFiles.map((entry) => entry.path).filter((entry) => typeof entry === "string");
 
   if (files.length === 0) {
-    throw new Error("npm pack --dry-run did not report any packaged files.");
+    const artifactKeys = artifact === null ? "none" : Object.keys(artifact).sort().join(", ");
+    throw new Error(`npm pack --dry-run did not report any packaged files. Artifact keys: ${artifactKeys}.`);
   }
 
   return files;
@@ -125,9 +130,83 @@ export async function inspectPackedFiles(options = {}) {
 
 export function extractPackJsonPayload(stdout) {
   const trimmed = stdout.trim();
-  const trailingJsonMatch = trimmed.match(/(\[\s*\{[\s\S]*\}\s*\])$/);
-  const jsonPayload = trailingJsonMatch?.[1] ?? trimmed;
-  return JSON.parse(jsonPayload);
+  if (trimmed.length === 0) {
+    throw new Error("npm pack --json produced no stdout.");
+  }
+
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    // npm versions may print notices around --json output. Extract the first
+    // balanced JSON value so release validation stays tied to npm's payload.
+  }
+
+  for (let index = 0; index < trimmed.length; index += 1) {
+    if (trimmed[index] !== "[" && trimmed[index] !== "{") {
+      continue;
+    }
+
+    const candidate = extractBalancedJsonValue(trimmed, index);
+    if (candidate === null) {
+      continue;
+    }
+
+    try {
+      return JSON.parse(candidate);
+    } catch {
+      continue;
+    }
+  }
+
+  throw new Error("Unable to parse npm pack --json output.");
+}
+
+function extractBalancedJsonValue(text, startIndex) {
+  const stack = [];
+  let inString = false;
+  let escaped = false;
+
+  for (let index = startIndex; index < text.length; index += 1) {
+    const character = text[index];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === "\\") {
+        escaped = true;
+      } else if (character === "\"") {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (character === "\"") {
+      inString = true;
+      continue;
+    }
+
+    if (character === "[") {
+      stack.push("]");
+      continue;
+    }
+
+    if (character === "{") {
+      stack.push("}");
+      continue;
+    }
+
+    if (character === "]" || character === "}") {
+      if (stack.pop() !== character) {
+        return null;
+      }
+
+      if (stack.length === 0) {
+        return text.slice(startIndex, index + 1);
+      }
+    }
+  }
+
+  return null;
 }
 
 export async function assertVendoredCliManifest(rootDir) {
