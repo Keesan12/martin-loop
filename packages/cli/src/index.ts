@@ -1980,7 +1980,7 @@ async function executeStartCommand(
       recommended: {
         engine: snapshot.recommendedEngine,
         verifier: snapshot.verifier.command,
-        budgetUsd: 2,
+        budgetUsd: defaultBudgetUsd,
         maxIterations: 1
       },
       next: {
@@ -1991,7 +1991,7 @@ async function executeStartCommand(
         preflight: preflightCommand,
         run: governedRunCommand,
         proofRun: proofCommand,
-        enable: `martin enable --engine ${snapshot.recommendedEngine} --verify "${snapshot.verifier.command}" --budget-usd 2 --max-iterations 1`,
+        enable: `martin enable --engine ${snapshot.recommendedEngine} --verify "${snapshot.verifier.command}" --budget-usd ${defaultBudgetUsd} --max-iterations 1`,
         review: "martin review",
         dossier: "martin dossier --latest",
         share: "martin share --latest"
@@ -2048,7 +2048,7 @@ async function executeStartCommand(
       `  $ ${proofCommand}`,
       "",
       "Set repo defaults",
-      `  $ martin enable --engine ${snapshot.recommendedEngine} --verify "${snapshot.verifier.command}" --budget-usd 2 --max-iterations 1`
+      `  $ martin enable --engine ${snapshot.recommendedEngine} --verify "${snapshot.verifier.command}" --budget-usd ${defaultBudgetUsd} --max-iterations 1`
     ],
     quiet: "martin start"
   });
