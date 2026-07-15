@@ -116,7 +116,7 @@ export async function inspectPackedFiles(options = {}) {
 }
 
 export function extractPackedFilePaths(packArtifacts) {
-  const artifact = Array.isArray(packArtifacts) ? packArtifacts[0] : null;
+  const artifact = Array.isArray(packArtifacts) ? packArtifacts[0] : packArtifacts;
   const artifactFiles = Array.isArray(artifact?.files) ? artifact.files : [];
   const files = artifactFiles.map((entry) => entry.path).filter((entry) => typeof entry === "string");
 

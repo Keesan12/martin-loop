@@ -135,6 +135,18 @@ test("extractPackedFilePaths fails closed on an empty files array", () => {
   );
 });
 
+test("extractPackedFilePaths accepts a single-package object payload", () => {
+  const files = extractPackedFilePaths({
+    filename: "martin-loop-0.4.3.tgz",
+    files: [
+      { path: "package.json" },
+      { path: "dist/index.js" },
+    ],
+  });
+
+  assert.deepEqual(files, ["package.json", "dist/index.js"]);
+});
+
 test("assertPackedSurface rejects missing expected files and forbidden absolute paths", () => {
   assert.throws(
     () =>
