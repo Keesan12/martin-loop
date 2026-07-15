@@ -135,6 +135,21 @@ test("extractPackedFilePaths fails closed on an empty files array", () => {
   );
 });
 
+test("extractPackedFilePaths accepts a keyed package object payload", () => {
+  assert.deepEqual(
+    extractPackedFilePaths({
+      "martin-loop": {
+        filename: "martin-loop-0.4.3.tgz",
+        files: [
+          { path: "package.json" },
+          { path: "dist/bin/martin-loop.js" },
+        ],
+      },
+    }),
+    ["package.json", "dist/bin/martin-loop.js"],
+  );
+});
+
 test("assertPackedSurface rejects missing expected files and forbidden absolute paths", () => {
   assert.throws(
     () =>
