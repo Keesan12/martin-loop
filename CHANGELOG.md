@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.4.3]
+
+### Fixed
+- **Start budget preference consistency** — `martin start` now uses the stored default budget consistently across recommended estimate, run, proof-run, and enable commands.
+- **Generated workflow commands preserve context** — start output now carries explicit `--cwd` and `--runs-dir` through the generated doctor, estimate, preflight, run, enable, dossier, and share commands.
+- **Preflight reuse is bound to execution bounds** — governed runs now require a fresh preflight when engine, verifier, path scope, or budget bounds change, while unchanged bounds continue through the receipt chain normally.
+
 ## [0.4.2]
 
 ### Fixed
