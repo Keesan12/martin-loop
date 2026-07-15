@@ -86,7 +86,7 @@ npx -y martin-loop@latest preflight "Summarize the demo workspace and prove test
 
 `share --latest` writes `run-receipt.json` and `run-receipt.md` into the selected run directory under `share/`. Proof-card images are opt-in with `--with-proof-card` or `--proof-card-format`.
 
-Release notes for the current root package: [MartinLoop 0.4.2](./docs/release/OSS-0.4.2-RELEASE-NOTES.md).
+Release notes for the current root package: [MartinLoop 0.4.3](./docs/release/OSS-0.4.3-RELEASE-NOTES.md).
 
 ## Visual Proof
 
@@ -127,17 +127,17 @@ Example receipt files: [Markdown](./docs/examples/proof-receipts/live-governed-r
 Use this lane from a clean temp directory to verify the public CLI flow exactly as shipped:
 
 ```sh
-npx -y martin-loop@0.4.2 --version
-npx -y martin-loop@0.4.2 start
-npx -y martin-loop@0.4.2 demo
+npx -y martin-loop@0.4.3 --version
+npx -y martin-loop@0.4.3 start
+npx -y martin-loop@0.4.3 demo
 cd martin-loop-demo
 npm install
-npx -y martin-loop@0.4.2 run "Summarize the demo workspace and prove tests still pass" --verify "npm test" --budget-usd 2 --max-iterations 1 --json
-npx -y martin-loop@0.4.2 dossier --latest --json
-npx -y martin-loop@0.4.2 share --latest --json
+npx -y martin-loop@0.4.3 run "Summarize the demo workspace and prove tests still pass" --verify "npm test" --budget-usd 2 --max-iterations 1 --json
+npx -y martin-loop@0.4.3 dossier --latest --json
+npx -y martin-loop@0.4.3 share --latest --json
 ```
 
-For deterministic installs, pin the package line (`martin-loop@0.4.2`) or use `martin-loop@latest`. Plain `npx martin-loop` can resolve a stale local cache on some machines.
+For deterministic installs, pin the package line (`martin-loop@0.4.3`) or use `martin-loop@latest`. Plain `npx martin-loop` can resolve a stale local cache on some machines.
 
 Default share bundle outputs:
 
@@ -305,7 +305,7 @@ npx martin-loop mcp print-config --host gemini --transport stdio --profile full-
 npx martin-loop mcp print-config --host generic --transport stdio --profile github-review
 ```
 
-The root `martin-loop` package and the standalone `@martinloop/mcp` package move on separate version lines. The current root package line here is `0.4.2`; the current standalone MCP source line is `0.3.7`, and the live npm baseline is `0.3.7`.
+The root `martin-loop` package and the standalone `@martinloop/mcp` package move on separate version lines. The current root package line here is `0.4.3`; the current standalone MCP source line is `0.3.7`, and the live npm baseline is `0.3.7`.
 
 The public MCP release train labels are:
 

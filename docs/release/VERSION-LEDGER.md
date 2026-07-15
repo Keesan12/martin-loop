@@ -4,10 +4,10 @@ This file is the release source of truth for package/version mapping in this rep
 
 ## Root package: `martin-loop`
 
-- live npm dist-tag `latest`: `0.4.2`
-- live public GitHub release: `v0.4.2`
-- live public baseline in this train: `0.4.2`
-- root public baseline: `0.4.2`
+- live npm dist-tag `latest`: `0.4.3`
+- live public GitHub release: `v0.4.3`
+- live public baseline in this train: `0.4.3`
+- root public baseline: `0.4.3`
 - releases consumed since the original `0.2.8` launch:
   - `0.2.9` fixed proof-run classification, Windows `.cmd` resolution, and public provider defaults
   - `0.2.10` tightened verifier evidence, `--runs-dir` consistency, and public help output
@@ -30,8 +30,9 @@ This file is the release source of truth for package/version mapping in this rep
   - `0.4.0` receipt-first share ledgers, receipts as default share artifact, MCP discovery updated, --verify-only removed, CI action SHA pinning
   - `0.4.1` preflight receipt written on all CI platforms (codex availability override fix), receipt-first trust surface defaults
   - `0.4.2` error normalization restored, Codex launch failure diagnostics improved, token flag regression guard added
-- current in-repo root release line: `0.4.2`
-- next planned root follow-on after `0.4.2`: `0.4.3`
+  - `0.4.3` start budget consistency, generated command context preservation, preflight execution-bound reuse checks
+- current in-repo root release line: `0.4.3`
+- next planned root follow-on after `0.4.3`: `0.4.4`
 
 ## Standalone package: `@martinloop/mcp`
 
