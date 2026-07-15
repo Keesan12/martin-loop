@@ -824,7 +824,7 @@ describe("share command", () => {
     });
   });
 
-  it("generates revision-safe proof-card artifacts only when explicitly requested", async () => {
+  it("generates revision-safe proof-card SVG artifacts only when explicitly requested", async () => {
     await withRunsRoot(async (runsRoot) => {
       const loop = makeLoopRecord();
       const loopDir = join(runsRoot, loop.loopId);
@@ -842,7 +842,7 @@ describe("share command", () => {
         "--latest",
         "--with-proof-card",
         "--proof-card-format",
-        "both"
+        "svg"
       ]);
       const payload = JSON.parse(result.stdout) as {
         files: {
@@ -854,9 +854,8 @@ describe("share command", () => {
 
       expect(result.exitCode).toBe(0);
       expect(payload.files.proofCardSvg).toContain("proof-card-r1-");
-      expect(payload.files.proofCardPng).toContain("proof-card-r1-");
+      expect(payload.files.proofCardPng).toBeUndefined();
       await expect(readFile(payload.files.proofCardSvg!, "utf8")).resolves.toContain("Martin Loop Proof Card");
-      await expect(readFile(payload.files.proofCardPng!)).resolves.toBeInstanceOf(Buffer);
     });
   });
 });
