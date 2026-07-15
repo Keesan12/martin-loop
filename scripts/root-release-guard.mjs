@@ -116,7 +116,7 @@ export async function inspectPackedFiles(options = {}) {
 }
 
 export function extractPackedFilePaths(packArtifacts) {
-  const artifact = Array.isArray(packArtifacts) ? packArtifacts[0] : packArtifacts;
+  const artifact = normalizePackArtifact(packArtifacts);
   const artifactFiles = Array.isArray(artifact?.files) ? artifact.files : [];
   const files = artifactFiles.map((entry) => entry.path).filter((entry) => typeof entry === "string");
 
@@ -126,6 +126,25 @@ export function extractPackedFilePaths(packArtifacts) {
   }
 
   return files;
+}
+
+function normalizePackArtifact(packArtifacts) {
+  if (Array.isArray(packArtifacts)) {
+    return packArtifacts[0] ?? null;
+  }
+
+  if (packArtifacts !== null && typeof packArtifacts === "object") {
+    if (Array.isArray(packArtifacts.files)) {
+      return packArtifacts;
+    }
+
+    const keyedArtifacts = Object.values(packArtifacts).filter(
+      (artifact) => artifact !== null && typeof artifact === "object",
+    );
+    return keyedArtifacts[0] ?? null;
+  }
+
+  return null;
 }
 
 export function extractPackJsonPayload(stdout) {
