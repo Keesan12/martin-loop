@@ -9,6 +9,8 @@ import {
   assertPackedSurface,
   assertRootVersionPolicy,
   assertVendoredCliManifest,
+  extractPackedFilePaths,
+  extractPackJsonPayload,
   runRootReleaseGuard,
 } from "../root-release-guard.mjs";
 
@@ -66,6 +68,110 @@ test("assertPackedSurface rejects forbidden vendored implementation paths", () =
         "dist/vendor/cli/bin/martin.js",
       ]),
     /forbidden vendored implementation path/i,
+  );
+});
+
+test("extractPackJsonPayload parses npm pack json output containing one package", () => {
+  const payload = extractPackJsonPayload(
+    JSON.stringify([
+      {
+        filename: "martin-loop-0.4.3.tgz",
+        files: [
+          { path: "package.json" },
+          { path: "dist/bin/martin-loop.js" },
+        ],
+      },
+    ]),
+  );
+
+  assert.equal(payload[0].filename, "martin-loop-0.4.3.tgz");
+  assert.equal(payload[0].files[1].path, "dist/bin/martin-loop.js");
+});
+
+test("extractPackJsonPayload parses npm warnings before json", () => {
+  const payload = extractPackJsonPayload(
+    [
+      "npm warn config production Use --omit=dev instead.",
+      JSON.stringify([{ files: [{ path: "package.json" }] }]),
+    ].join("\n"),
+  );
+
+  assert.equal(payload[0].files[0].path, "package.json");
+});
+
+test("extractPackJsonPayload parses Windows CRLF output and paths containing spaces", () => {
+  const payload = extractPackJsonPayload(
+    [
+      "npm notice package",
+      JSON.stringify([{ files: [{ path: "demo/seeded-workspace/file with spaces.txt" }] }]),
+      "",
+    ].join("\r\n"),
+  );
+
+  assert.equal(payload[0].files[0].path, "demo/seeded-workspace/file with spaces.txt");
+});
+
+test("extractPackJsonPayload parses multiple json package objects", () => {
+  const payload = extractPackJsonPayload(
+    JSON.stringify([
+      { filename: "first.tgz", files: [{ path: "package.json" }] },
+      { filename: "second.tgz", files: [{ path: "README.md" }] },
+    ]),
+  );
+
+  assert.equal(payload.length, 2);
+  assert.equal(payload[1].filename, "second.tgz");
+});
+
+test("extractPackJsonPayload fails closed on malformed json and empty output", () => {
+  assert.throws(() => extractPackJsonPayload(""), /no stdout/i);
+  assert.throws(() => extractPackJsonPayload("npm notice\n[{ bad json }\n"), /unable to parse/i);
+});
+
+test("extractPackedFilePaths fails closed on an empty files array", () => {
+  assert.throws(
+    () => extractPackedFilePaths([{ filename: "martin-loop-0.4.3.tgz", files: [] }]),
+    /did not report any packaged files/i,
+  );
+});
+
+test("assertPackedSurface rejects missing expected files and forbidden absolute paths", () => {
+  assert.throws(
+    () =>
+      assertPackedSurface([
+        "package.json",
+        "README.md",
+        "CODE_OF_CONDUCT.md",
+      ]),
+    /missing required file/i,
+  );
+
+  assert.throws(
+    () =>
+      assertPackedSurface([
+        "package.json",
+        "README.md",
+        "CODE_OF_CONDUCT.md",
+        "dist/index.js",
+        "dist/index.d.ts",
+        "dist/bin/martin-loop.js",
+        "C:/Users/Torram/private.txt",
+      ]),
+    /unexpected path/i,
+  );
+
+  assert.throws(
+    () =>
+      assertPackedSurface([
+        "package.json",
+        "README.md",
+        "CODE_OF_CONDUCT.md",
+        "dist/index.js",
+        "dist/index.d.ts",
+        "dist/bin/martin-loop.js",
+        "/Users/private/file.txt",
+      ]),
+    /unexpected path/i,
   );
 });
 
