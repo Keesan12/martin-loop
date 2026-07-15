@@ -1952,10 +1952,17 @@ async function executeStartCommand(
   await recordPreference(environment.runsRoot, "onboarding.start.lastRun", new Date().toISOString(), "inferred").catch(() => {});
 
   const objective = "Summarize this repository and confirm the verifier is green.";
-  const preflightCommand = `martin preflight "${objective}" --verify "${snapshot.verifier.command}"`;
-  const governedRunCommand = `martin run "${objective}" --verify "${snapshot.verifier.command}" --budget-usd ${defaultBudgetUsd} --max-iterations 1`;
-  const proofCommand = `martin run "${objective}" --proof --verify "${snapshot.verifier.command}" --budget-usd ${defaultBudgetUsd} --max-iterations 1`;
-  const estimateCommand = `martin estimate "${objective}" --engine ${snapshot.recommendedEngine} --budget-usd ${defaultBudgetUsd}`;
+  const contextFlags = renderStartContextFlags(command);
+  const preflightCommand = `martin preflight "${objective}" --verify "${snapshot.verifier.command}"${contextFlags}`;
+  const governedRunCommand = `martin run "${objective}" --verify "${snapshot.verifier.command}" --budget-usd ${defaultBudgetUsd} --max-iterations 1${contextFlags}`;
+  const proofCommand = `martin run "${objective}" --proof --verify "${snapshot.verifier.command}" --budget-usd ${defaultBudgetUsd} --max-iterations 1${contextFlags}`;
+  const estimateCommand = `martin estimate "${objective}" --engine ${snapshot.recommendedEngine} --budget-usd ${defaultBudgetUsd}${contextFlags}`;
+  const doctorCommand = `martin doctor${contextFlags}`;
+  const sessionStartCommand = `martin session-start${contextFlags}`;
+  const enableCommand = `martin enable --engine ${snapshot.recommendedEngine} --verify "${snapshot.verifier.command}" --budget-usd ${defaultBudgetUsd} --max-iterations 1${contextFlags}`;
+  const reviewCommand = `martin review${renderRunsDirContextFlag(command)}`;
+  const dossierCommand = `martin dossier --latest${renderRunsDirContextFlag(command)}`;
+  const shareCommand = `martin share --latest${renderRunsDirContextFlag(command)}`;
 
   await recordCliWorkflowStep({
     runsRoot: environment.runsRoot,
@@ -1980,21 +1987,21 @@ async function executeStartCommand(
       recommended: {
         engine: snapshot.recommendedEngine,
         verifier: snapshot.verifier.command,
-        budgetUsd: 2,
+        budgetUsd: defaultBudgetUsd,
         maxIterations: 1
       },
       next: {
         mcpInstall: detectedIDE.mcpInstallCommand,
-        doctor: "martin doctor",
+        doctor: doctorCommand,
         estimate: estimateCommand,
-        sessionStart: "martin session-start",
+        sessionStart: sessionStartCommand,
         preflight: preflightCommand,
         run: governedRunCommand,
         proofRun: proofCommand,
-        enable: `martin enable --engine ${snapshot.recommendedEngine} --verify "${snapshot.verifier.command}" --budget-usd 2 --max-iterations 1`,
-        review: "martin review",
-        dossier: "martin dossier --latest",
-        share: "martin share --latest"
+        enable: enableCommand,
+        review: reviewCommand,
+        dossier: dossierCommand,
+        share: shareCommand
       }
     },
     human: [
@@ -2036,22 +2043,38 @@ async function executeStartCommand(
       `  $ ${estimateCommand}`,
       "",
       "── Step 3: Governed Run ──",
-      `  $ martin doctor`,
+      `  $ ${doctorCommand}`,
       `  $ ${preflightCommand}`,
       `  $ ${governedRunCommand}`,
       "",
       "── Step 4: Inspect Results ──",
-      `  $ martin dossier --latest`,
-      `  $ martin share --latest`,
+      `  $ ${dossierCommand}`,
+      `  $ ${shareCommand}`,
       "",
       "No-spend proof lane",
       `  $ ${proofCommand}`,
       "",
       "Set repo defaults",
-      `  $ martin enable --engine ${snapshot.recommendedEngine} --verify "${snapshot.verifier.command}" --budget-usd 2 --max-iterations 1`
+      `  $ ${enableCommand}`
     ],
     quiet: "martin start"
   });
+}
+
+function renderStartContextFlags(command: StartCommand): string {
+  return [renderCwdContextFlag(command), renderRunsDirContextFlag(command)].filter(Boolean).join("");
+}
+
+function renderCwdContextFlag(command: StartCommand): string {
+  return command.cwd ? ` --cwd "${escapeCliDoubleQuoted(command.cwd)}"` : "";
+}
+
+function renderRunsDirContextFlag(command: StartCommand): string {
+  return command.runsDir ? ` --runs-dir "${escapeCliDoubleQuoted(command.runsDir)}"` : "";
+}
+
+function escapeCliDoubleQuoted(value: string): string {
+  return value.replaceAll('"', '\\"');
 }
 
 async function executeEnableCommand(

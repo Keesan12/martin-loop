@@ -197,4 +197,131 @@ describe("workflow state gate", () => {
       await rm(runsRoot, { recursive: true, force: true });
     }
   });
+
+  it("blocks run when path scope differs from the preflight receipt", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-workflow-state-path-scope-"));
+    const workingDirectory = join(runsRoot, "workspace");
+    const objective = "Verify scoped changes";
+    const verificationPlan = ["npm test"];
+    const receiptScope = {
+      invocationRoot: workingDirectory,
+      workingDirectory,
+      repoRoot: workingDirectory,
+      runsRoot
+    };
+    const budget = {
+      maxUsd: 1,
+      softLimitUsd: 1,
+      maxIterations: 1,
+      maxTokens: 1000
+    };
+
+    try {
+      await recordCliWorkflowStep({
+        runsRoot,
+        step: "doctor",
+        workingDirectory,
+        receiptScope
+      });
+      await recordCliWorkflowStep({
+        runsRoot,
+        step: "estimate",
+        workingDirectory,
+        objective,
+        receiptScope
+      });
+      await recordCliWorkflowStep({
+        runsRoot,
+        step: "preflight",
+        workingDirectory,
+        objective,
+        engine: "codex",
+        verificationPlan,
+        receiptScope,
+        allowedPaths: ["docs/**"],
+        budget
+      });
+
+      const gate = await evaluateCliRunGate({
+        runsRoot,
+        workingDirectory,
+        objective,
+        engine: "codex",
+        verificationPlan,
+        receiptScope,
+        allowedPaths: ["packages/**"],
+        budget
+      });
+
+      expect(gate.allowed).toBe(false);
+      expect(gate.missingSteps).toContain("preflight");
+      expect(gate.nextCommand).toContain("martin-loop preflight");
+      expect(gate.message).toContain("path scope or budget changed");
+    } finally {
+      await rm(runsRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("blocks run when verifier bounds differ from the preflight receipt", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-workflow-state-verifier-"));
+    const workingDirectory = join(runsRoot, "workspace");
+    const objective = "Verify scoped changes";
+    const receiptScope = {
+      invocationRoot: workingDirectory,
+      workingDirectory,
+      repoRoot: workingDirectory,
+      runsRoot
+    };
+    const budget = {
+      maxUsd: 1,
+      softLimitUsd: 1,
+      maxIterations: 1,
+      maxTokens: 1000
+    };
+
+    try {
+      await recordCliWorkflowStep({
+        runsRoot,
+        step: "doctor",
+        workingDirectory,
+        receiptScope
+      });
+      await recordCliWorkflowStep({
+        runsRoot,
+        step: "estimate",
+        workingDirectory,
+        objective,
+        receiptScope
+      });
+      await recordCliWorkflowStep({
+        runsRoot,
+        step: "preflight",
+        workingDirectory,
+        objective,
+        engine: "codex",
+        verificationPlan: ["npm test"],
+        receiptScope,
+        allowedPaths: ["packages/**"],
+        budget
+      });
+
+      const gate = await evaluateCliRunGate({
+        runsRoot,
+        workingDirectory,
+        objective,
+        engine: "codex",
+        verificationPlan: ["npm run test:ci"],
+        receiptScope,
+        allowedPaths: ["packages/**"],
+        budget
+      });
+
+      expect(gate.allowed).toBe(false);
+      expect(gate.missingSteps).toContain("preflight");
+      expect(gate.nextCommand).toContain("martin-loop preflight");
+      expect(gate.message).toContain("engine, verifier, path scope or budget changed");
+    } finally {
+      await rm(runsRoot, { recursive: true, force: true });
+    }
+  });
 });

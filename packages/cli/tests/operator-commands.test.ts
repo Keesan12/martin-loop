@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { detectCodexHostPlatform } from "@martin/adapters";
-import { writeReceiptIntegrityMaterial } from "@martin/core";
+import { recordPreference, writeReceiptIntegrityMaterial } from "@martin/core";
 import { createLoopRecord, type LoopEventDraft, type LoopRecord } from "@martin/contracts";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -586,7 +586,7 @@ describe("operator commands", () => {
           maxIterations: 1
         });
         expect(start.next).toHaveProperty("proofRun");
-        expect(start.next.share).toBe("martin share --latest");
+        expect(start.next.share).toContain(`--runs-dir "${runsRoot}"`);
         expect(env.command).toBe("env");
         expect(env.verifier.command).toBe("npm test");
         expect(env.receiptSigning).toHaveProperty("ready");
@@ -634,6 +634,65 @@ describe("operator commands", () => {
         await expect(readFile(enable.configPath, "utf8")).resolves.toContain("policyProfile: strict_local");
         expect(review.command).toBe("review");
         expect(review.status).toBe("no_runs");
+      } finally {
+        await rm(workingDirectory, { force: true, recursive: true }).catch(() => {});
+      }
+    });
+  });
+
+  it("start uses stored budget preference consistently in onboarding commands", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const workingDirectory = await mkdtemp(join(tmpdir(), "martin-cli-start-budget-"));
+
+      try {
+        await writeFile(
+          join(workingDirectory, "package.json"),
+          JSON.stringify({ name: "demo", version: "1.0.0", scripts: { test: "node -e \"process.exit(0)\"" } }, null, 2),
+          "utf8"
+        );
+        await recordPreference(runsRoot, "budget.default", 7, "explicit");
+
+        const start = JSON.parse(
+          (
+            await executeCli(["--json", "start", "--cwd", workingDirectory, "--runs-dir", runsRoot])
+          ).stdout
+        );
+
+        expect(start.recommended.budgetUsd).toBe(7);
+        expect(start.next.estimate).toContain("--budget-usd 7");
+        expect(start.next.run).toContain("--budget-usd 7");
+        expect(start.next.proofRun).toContain("--budget-usd 7");
+        expect(start.next.enable).toContain("--budget-usd 7");
+      } finally {
+        await rm(workingDirectory, { force: true, recursive: true }).catch(() => {});
+      }
+    });
+  });
+
+  it("start carries explicit cwd and runs-dir into generated next-step commands", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const workingDirectory = await mkdtemp(join(tmpdir(), "martin-cli-start-context-"));
+
+      try {
+        await writeFile(
+          join(workingDirectory, "package.json"),
+          JSON.stringify({ name: "demo", version: "1.0.0", scripts: { test: "node -e \"process.exit(0)\"" } }, null, 2),
+          "utf8"
+        );
+
+        const start = JSON.parse(
+          (
+            await executeCli(["--json", "start", "--cwd", workingDirectory, "--runs-dir", runsRoot])
+          ).stdout
+        );
+
+        expect(start.next.doctor).toContain(`--cwd "${workingDirectory}"`);
+        expect(start.next.doctor).toContain(`--runs-dir "${runsRoot}"`);
+        expect(start.next.estimate).toContain(`--cwd "${workingDirectory}"`);
+        expect(start.next.estimate).toContain(`--runs-dir "${runsRoot}"`);
+        expect(start.next.preflight).toContain(`--cwd "${workingDirectory}"`);
+        expect(start.next.run).toContain(`--runs-dir "${runsRoot}"`);
+        expect(start.next.enable).toContain(`--cwd "${workingDirectory}"`);
       } finally {
         await rm(workingDirectory, { force: true, recursive: true }).catch(() => {});
       }

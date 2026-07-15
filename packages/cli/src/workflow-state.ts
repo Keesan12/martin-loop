@@ -225,13 +225,17 @@ export async function evaluateCliRunGate(input: CliRunGateInput): Promise<CliRun
     missingSteps.push("session-start");
   }
 
-  // Preflight check: match on workingDirectory + engine only (not objective/verifier hash).
+  // Preflight check: match on workingDirectory + engine + execution bounds.
   // The full hash match was too strict — minor objective wording differences would break
   // the receipt chain. The key governance signal is that preflight ran for this directory
   // and engine recently; the exact objective text can drift between preflight and run.
+  // Path policy and budget are execution bounds, so changing them requires a fresh preflight.
   const preflightReady = isFresh(cliState["preflight"], PREFLIGHT_TTL_MS, (receipt) =>
     receipt.workingDirectory === workingDirectory &&
-    receipt.engine === engine
+    receipt.engine === engine &&
+    receipt.verificationPlanKey === verificationPlanKey &&
+    receipt.pathScopeKey === pathScopeKey &&
+    (!budgetKey || receipt.budgetKey === budgetKey)
   );
   if (!preflightReady) {
     missingSteps.push("preflight");
@@ -280,7 +284,10 @@ function buildBlockedMessage(missingSteps: CliWorkflowStepName[], nextCommand: s
   const labels = missingSteps.map((step) =>
     step === "session-start" ? "session start" : step
   );
-  return `Governed run blocked until MartinLoop receipts exist for ${labels.join(", ")}. Next command: ${nextCommand}`;
+  const preflightReason = missingSteps.includes("preflight")
+    ? " Preflight must be rerun when engine, verifier, path scope or budget changed."
+    : "";
+  return `Governed run blocked until MartinLoop receipts exist for ${labels.join(", ")}.${preflightReason} Next command: ${nextCommand}`;
 }
 
 async function readWorkflowState(runsRoot: string): Promise<WorkflowState> {
