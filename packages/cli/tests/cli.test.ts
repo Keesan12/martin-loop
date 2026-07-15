@@ -8,9 +8,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createLoopRecord } from "../../contracts/src/index.js";
 import { __setRunAdapterOverrideForTests, executeCli, parseCliArguments } from "../src/index.js";
 
-const STAR_CTA_HEADLINE = "⭐ MartinLoop saved you from a runaway bill.";
-const STAR_CTA_REPO = "github.com/Keesan12/martin-loop";
-
 function installFastRunAdapter(): void {
   __setRunAdapterOverrideForTests(
     createStubDirectProviderAdapter({
@@ -28,33 +25,6 @@ function installFastRunAdapter(): void {
         verification: {
           passed: true,
           summary: "Verification skipped in config-focused CLI tests."
-        }
-      })
-    })
-  );
-}
-
-function installFailingRunAdapter(): void {
-  __setRunAdapterOverrideForTests(
-    createStubDirectProviderAdapter({
-      providerId: "test",
-      model: "slow-fail",
-      responder: () => ({
-        status: "failed",
-        summary: "The adapter could not satisfy the verifier.",
-        usage: {
-          actualUsd: 0,
-          tokensIn: 0,
-          tokensOut: 0,
-          provenance: "actual"
-        },
-        verification: {
-          passed: false,
-          summary: "Verification failed in the stub adapter."
-        },
-        failure: {
-          message: "Verification failed in the stub adapter.",
-          classHint: "verification_failure"
         }
       })
     })
@@ -448,6 +418,120 @@ describe("executeCli", () => {
     }
   });
 
+
+  it("prints the v5 run header for successful human-readable runs", { timeout: 30_000 }, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-run-header-"));
+
+    try {
+      installFastRunAdapter();
+      const previousMartinLive = process.env.MARTIN_LIVE;
+      process.env.MARTIN_LIVE = "false";
+      const result = await withIsolatedRunsEnv(directory, () =>
+        executeCli([
+          "run",
+          "--objective",
+          "Verify the contracts package without edits",
+          "--engine",
+          "codex",
+          "--verify-only",
+          "--verify",
+          `"${process.execPath}" -e "process.exit(0)"`,
+          "--cwd",
+          directory
+        ])
+      );
+      if (previousMartinLive === undefined) {
+        delete process.env.MARTIN_LIVE;
+      } else {
+        process.env.MARTIN_LIVE = previousMartinLive;
+      }
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("∞ martinloop");
+      expect(result.stdout).toContain("✓ verified");
+      expect(result.stdout).not.toContain("MartinLoop saved you from a runaway bill.");
+      expect(result.stdout).not.toContain("Star the repo:");
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("keeps the v5 run header out of machine-readable JSON output", { timeout: 30_000 }, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-run-header-json-"));
+
+    try {
+      installFastRunAdapter();
+      const previousMartinLive = process.env.MARTIN_LIVE;
+      process.env.MARTIN_LIVE = "false";
+      const result = await withIsolatedRunsEnv(directory, () =>
+        executeCli([
+          "--json",
+          "run",
+          "--objective",
+          "Verify the contracts package without edits",
+          "--engine",
+          "codex",
+          "--verify-only",
+          "--verify",
+          `"${process.execPath}" -e "process.exit(0)"`,
+          "--cwd",
+          directory
+        ])
+      );
+      if (previousMartinLive === undefined) {
+        delete process.env.MARTIN_LIVE;
+      } else {
+        process.env.MARTIN_LIVE = previousMartinLive;
+      }
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).not.toContain("∞ martinloop");
+      expect(result.stdout).not.toContain("Star the repo");
+      expect(result.stdout).not.toContain("runaway bill");
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("persists verifier timeout on governed runs", { timeout: 30_000 }, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-verify-timeout-"));
+
+    try {
+      installFastRunAdapter();
+      const previousMartinLive = process.env.MARTIN_LIVE;
+      process.env.MARTIN_LIVE = "false";
+      const result = await withIsolatedRunsEnv(directory, () =>
+        executeCli([
+          "--json",
+          "run",
+          "--objective",
+          "Verify timeout persistence",
+          "--engine",
+          "codex",
+          "--verify-only",
+          "--verify",
+          `"${process.execPath}" -e "process.exit(0)"`,
+          "--verify-timeout-ms",
+          "240000",
+          "--cwd",
+          directory
+        ])
+      );
+      if (previousMartinLive === undefined) {
+        delete process.env.MARTIN_LIVE;
+      } else {
+        process.env.MARTIN_LIVE = previousMartinLive;
+      }
+
+      expect(result.exitCode).toBe(0);
+
+      const payload = JSON.parse(result.stdout);
+      expect(payload.loop.task.verificationTimeoutMs).toBe(240000);
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
   it("supports --proof runs as no-spend proof executions without rewriting mutation mode", { timeout: 30_000 }, async () => {
     const directory = await mkdtemp(join(tmpdir(), "martin-cli-proof-mode-"));
 
@@ -473,125 +557,6 @@ describe("executeCli", () => {
       expect(payload.loop.cost.actualUsd).toBe(0);
       expect(payload.loop.task.mutationMode).toBeUndefined();
       expect(["completed", "diminishing_returns"]).toContain(payload.loop.lifecycleState);
-    } finally {
-      await rm(directory, { force: true, recursive: true });
-    }
-  });
-
-  it("adds the star CTA to successful run JSON output only", { timeout: 30_000 }, async () => {
-    const directory = await mkdtemp(join(tmpdir(), "martin-cli-star-cta-json-"));
-
-    try {
-      installFastRunAdapter();
-      const result = await withIsolatedRunsEnv(directory, () =>
-        executeCli([
-          "--json",
-          "run",
-          "--objective",
-          "Confirm the success CTA is present",
-          "--proof",
-          "--cwd",
-          directory
-        ])
-      );
-
-      expect(result.exitCode).toBe(0);
-
-      const payload = JSON.parse(result.stdout);
-      expect(payload.decision.status).toBe("completed");
-      expect(payload.successCallToAction).toEqual({
-        headline: STAR_CTA_HEADLINE,
-        repo: STAR_CTA_REPO,
-        lines: [
-          "─────────────────────────────────────────────",
-          STAR_CTA_HEADLINE,
-          `   Star the repo: ${STAR_CTA_REPO}`,
-          "─────────────────────────────────────────────"
-        ]
-      });
-    } finally {
-      await rm(directory, { force: true, recursive: true });
-    }
-  });
-
-  it("adds the star CTA block to successful human run output", { timeout: 30_000 }, async () => {
-    const directory = await mkdtemp(join(tmpdir(), "martin-cli-star-cta-human-"));
-
-    try {
-      installFastRunAdapter();
-      const result = await withIsolatedRunsEnv(directory, () =>
-        executeCli([
-          "run",
-          "--objective",
-          "Confirm the human success CTA is present",
-          "--proof",
-          "--cwd",
-          directory
-        ])
-      );
-
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain(STAR_CTA_HEADLINE);
-      expect(result.stdout).toContain(`Star the repo: ${STAR_CTA_REPO}`);
-    } finally {
-      await rm(directory, { force: true, recursive: true });
-    }
-  });
-
-  it("does not add the star CTA when the run exits on budget failure", { timeout: 30_000 }, async () => {
-    const directory = await mkdtemp(join(tmpdir(), "martin-cli-star-cta-budget-exit-"));
-
-    try {
-      installFailingRunAdapter();
-      const result = await withIsolatedRunsEnv(directory, () =>
-        executeCli([
-          "--json",
-          "run",
-          "--objective",
-          "Force a non-success exit",
-          "--proof",
-          "--max-iterations",
-          "1",
-          "--cwd",
-          directory
-        ])
-      );
-
-      expect(result.exitCode).toBe(0);
-
-      const payload = JSON.parse(result.stdout);
-      expect(payload.decision.status).toBe("exited");
-      expect(payload.decision.lifecycleState).toBe("budget_exit");
-      expect(payload.successCallToAction).toBeUndefined();
-    } finally {
-      await rm(directory, { force: true, recursive: true });
-    }
-  });
-
-  it("does not add the star CTA when safety escalation blocks the run", { timeout: 30_000 }, async () => {
-    const directory = await mkdtemp(join(tmpdir(), "martin-cli-star-cta-human-escalation-"));
-
-    try {
-      const result = await withIsolatedRunsEnv(directory, () =>
-        executeCli([
-          "--json",
-          "run",
-          "--objective",
-          "Block a destructive verifier command",
-          "--proof",
-          "--verify",
-          "rm -rf .",
-          "--cwd",
-          directory
-        ])
-      );
-
-      expect(result.exitCode).toBe(0);
-
-      const payload = JSON.parse(result.stdout);
-      expect(payload.decision.status).toBe("exited");
-      expect(payload.decision.lifecycleState).toBe("human_escalation");
-      expect(payload.successCallToAction).toBeUndefined();
     } finally {
       await rm(directory, { force: true, recursive: true });
     }
@@ -696,7 +661,6 @@ describe("executeCli", () => {
       expect(result.stdout).toContain("--budget-usd 2 --max-iterations 1");
       expect(result.stdout).toContain("Optional explicit no-spend proof run:");
       expect(result.stdout).toContain("Task ideas live in");
-      expect(result.stdout).not.toContain(STAR_CTA_HEADLINE);
       expect(await readFile(join(targetDirectory, "README.md"), "utf8")).toContain("Demo Sandbox");
     } finally {
       process.chdir(previousCwd);
