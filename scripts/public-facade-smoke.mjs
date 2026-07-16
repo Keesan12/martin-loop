@@ -13,6 +13,16 @@ import {
   inspectPackedFiles,
 } from "./root-release-guard.mjs";
 
+function getFirstPackArtifact(raw) {
+  if (Array.isArray(raw)) return raw[0];
+  if (raw && typeof raw === "object") {
+    const values = Object.values(raw);
+    const first = Array.isArray(values[0]) ? values[0][0] : values[0];
+    return first;
+  }
+  return undefined;
+}
+
 export function createPublicFacadeSmokePlan(options = {}) {
   const rootDir = options.rootDir ?? process.cwd();
 
