@@ -297,7 +297,16 @@ function readTextContent(result) {
 
 function parsePackEntry(stdout) {
   const parsed = JSON.parse(stdout);
-  const entry = Array.isArray(parsed) ? parsed[0] : null;
+  let entry;
+  if (Array.isArray(parsed)) {
+    entry = parsed[0] ?? null;
+  } else if (parsed && typeof parsed === "object") {
+    const values = Object.values(parsed);
+    const first = values[0];
+    entry = Array.isArray(first) ? (first[0] ?? null) : (first ?? null);
+  } else {
+    entry = null;
+  }
   if (!entry || typeof entry.filename !== "string" || !Array.isArray(entry.files)) {
     throw new Error("npm pack did not return a usable pack result.");
   }
