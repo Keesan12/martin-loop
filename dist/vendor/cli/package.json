@@ -1,6 +1,6 @@
 {
   "name": "@martin/cli",
-  "version": "0.4.3",
+  "version": "0.4.5",
   "type": "module",
   "description": "Martin Loop CLI — budget-aware coding loops with failure classification and verified exits.",
   "main": "./index.js",
