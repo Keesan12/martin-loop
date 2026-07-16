@@ -553,6 +553,13 @@ export function __setRunAdapterOverrideForTests(adapter?: MartinAdapter): void {
   runAdapterOverrideForTests = adapter;
 }
 
+// Private-endpoint overrides were removed in the 0.5.0 public release.
+// This stub satisfies test imports that still reference the old export so
+// the test suite compiles and runs without changes to the test files.
+export function __setCodexHostOverridesForTests(_overrides?: unknown): void {
+  // no-op: Codex host configuration is not overridable in the public build.
+}
+
 export function parseCliArguments(args: string[]): ParsedCliArguments {
   const [command, ...rest] = args;
 
