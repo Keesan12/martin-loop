@@ -6,6 +6,16 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { resolveRcCommandExecution } from "./rc-validation.mjs";
+
+function getFirstPackArtifact(raw) {
+  if (Array.isArray(raw)) return raw[0];
+  if (raw && typeof raw === 'object') {
+    const values = Object.values(raw);
+    const first = Array.isArray(values[0]) ? values[0][0] : values[0];
+    return first;
+  }
+  return undefined;
+}
 import { extractPackJsonPayload } from "./root-release-guard.mjs";
 
 export async function packRootRelease(options = {}) {
@@ -18,7 +28,7 @@ export async function packRootRelease(options = {}) {
     { cwd: rootDir },
   );
   const packArtifacts = extractPackJsonPayload(packRun.stdout);
-  const tarballName = Array.isArray(packArtifacts) ? packArtifacts[0]?.filename : null;
+  const tarballName = getFirstPackArtifact(packArtifacts)?.filename ?? null;
 
   if (typeof tarballName !== "string" || tarballName.length === 0) {
     throw new Error("npm pack did not return a tarball filename.");

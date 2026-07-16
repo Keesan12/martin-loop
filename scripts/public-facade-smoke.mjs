@@ -60,7 +60,7 @@ export async function runPublicFacadeSmoke(options = {}) {
       cwd: rootDir,
     });
     const packArtifacts = extractPackJsonPayload(packRun.stdout);
-    const tarballName = Array.isArray(packArtifacts) ? packArtifacts[0]?.filename : undefined;
+    const tarballName = getFirstPackArtifact(packArtifacts)?.filename;
 
     if (typeof tarballName !== "string" || tarballName.trim().length === 0) {
       throw new Error("npm pack did not return a tarball filename.");
