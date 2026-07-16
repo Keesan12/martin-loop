@@ -1,6 +1,6 @@
 # MCP For AI Agents
 
-`@martinloop/mcp@0.3.7` is the current standalone MCP source line for MartinLoop. The live npm baseline remains `0.3.6` until the `0.3.7` release is published, and follow-on standalone releases should still be cut only when the MCP surface itself changes.
+`@martinloop/mcp@0.4.0` is the current standalone MCP source line for MartinLoop. The live npm baseline remains `0.3.6` until the `0.4.0` release is published, and follow-on standalone releases should still be cut only when the MCP surface itself changes.
 
 It is built for hosts that need a governed local-first workflow, not a vague bag of tools.
 
@@ -62,9 +62,9 @@ claude mcp add --transport stdio --scope user martin-loop -- cmd /c npx -y @mart
 
 ## What comes next in the train
 
-- `0.3.7` is the current standalone MCP source line.
-- `0.3.6` remains the live npm baseline until `0.3.7` ships.
+- `0.4.0` is the current standalone MCP source line.
+- `0.3.6` remains the live npm baseline until `0.4.0` ships.
 - follow-on MCP versions should ship only when the standalone server surface changes.
-- future `0.3.x` follow-ons stay local-first and stdio-first.
+- future follow-ons stay local-first and stdio-first.
 
 None of those slices should imply hosted transport, tenant features, or billing surfaces.
