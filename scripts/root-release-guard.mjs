@@ -355,7 +355,7 @@ async function main() {
     pack: args.pack,
   });
 
-  process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+  process.stderr.write(`${JSON.stringify(result, null, 2)}\n`);
 }
 
 const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : "";
