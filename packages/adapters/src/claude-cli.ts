@@ -582,10 +582,12 @@ function createStreamingUsageInspector(
       return;
     }
 
-    extractUsageFromEvent(event, terminate);
-
+    // result events contain aggregate usage that duplicates previously streamed
+    // assistant-message usage events — skip to avoid double-counting.
     if (event.type === "result") {
       finalResult = event as unknown as ClaudeJsonOutput;
+    } else {
+      extractUsageFromEvent(event, terminate);
     }
   };
 
