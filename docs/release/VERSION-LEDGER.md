@@ -31,8 +31,10 @@ This file is the release source of truth for package/version mapping in this rep
   - `0.4.1` preflight receipt written on all CI platforms (codex availability override fix), receipt-first trust surface defaults
   - `0.4.2` error normalization restored, Codex launch failure diagnostics improved, token flag regression guard added
   - `0.4.3` start budget consistency, generated command context preservation, preflight execution-bound reuse checks
-- current in-repo root release line: `0.4.3`
-- next planned root follow-on after `0.4.3`: `0.4.4`
+  - `0.4.4` model-specific pricing, cache-aware cost accounting, streaming budget guard, keyed npm-pack payload fix
+  - `0.4.5` Pre Work Burn tracking, routing economics, route classification, cost-per-outcome
+- current in-repo root release line: `0.4.5`
+- next planned root follow-on after `0.4.5`: `0.4.6`
 
 ## Standalone package: `@martinloop/mcp`
 
@@ -40,8 +42,8 @@ This file is the release source of truth for package/version mapping in this rep
 - live public GitHub release: `mcp-v0.3.6`
 - live public baseline in this train: `0.3.6`
 - standalone MCP public baseline: `0.3.6`
-- current in-repo standalone release line: `0.3.7`
-- next planned standalone release: `0.3.7`
+- current in-repo standalone release line: `0.3.9`
+- next planned standalone release: `0.3.10`
 - next planned follow-ons:
   - reserved for additional host-coverage follow-ups when the MCP line changes again
 

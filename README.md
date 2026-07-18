@@ -86,7 +86,7 @@ npx -y martin-loop@latest preflight "Summarize the demo workspace and prove test
 
 `share --latest` writes `run-receipt.json` and `run-receipt.md` into the selected run directory under `share/`. Proof-card images are opt-in with `--with-proof-card` or `--proof-card-format`.
 
-Release notes for the current root package: [MartinLoop 0.4.3](./docs/release/OSS-0.4.3-RELEASE-NOTES.md).
+Release notes for the current root package: [MartinLoop 0.4.5](./docs/release/OSS-0.4.5-RELEASE-NOTES.md).
 
 ## Visual Proof
 
