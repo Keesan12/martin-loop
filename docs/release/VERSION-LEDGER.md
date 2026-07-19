@@ -32,7 +32,7 @@ This file is the release source of truth for package/version mapping in this rep
   - `0.4.2` error normalization restored, Codex launch failure diagnostics improved, token flag regression guard added
   - `0.4.3` start budget consistency, generated command context preservation, preflight execution-bound reuse checks
   - `0.4.4` model-specific pricing, cache-aware cost accounting, streaming budget guard, keyed npm-pack payload fix
-  - `0.4.5` Pre Work Burn tracking, routing economics, route classification, cost-per-outcome
+  - `0.4.5` MartinLoop Arcade — terminal Space Invaders during long governed runs, proactive opt-in prompt, automatic fallback in CI/non-TTY
 - current in-repo root release line: `0.4.5`
 - next planned root follow-on after `0.4.5`: `0.4.6`
 
@@ -42,8 +42,8 @@ This file is the release source of truth for package/version mapping in this rep
 - live public GitHub release: `mcp-v0.3.6`
 - live public baseline in this train: `0.3.6`
 - standalone MCP public baseline: `0.3.6`
-- current in-repo standalone release line: `0.3.9`
-- next planned standalone release: `0.3.10`
+- current in-repo standalone release line: `0.3.8`
+- next planned standalone release: `0.3.9`
 - next planned follow-ons:
   - reserved for additional host-coverage follow-ups when the MCP line changes again
 

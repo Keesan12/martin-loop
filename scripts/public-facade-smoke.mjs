@@ -13,6 +13,16 @@ import {
   inspectPackedFiles,
 } from "./root-release-guard.mjs";
 
+function getFirstPackArtifact(raw) {
+  if (Array.isArray(raw)) return raw[0];
+  if (raw && typeof raw === "object") {
+    const values = Object.values(raw);
+    const first = Array.isArray(values[0]) ? values[0][0] : values[0];
+    return first;
+  }
+  return undefined;
+}
+
 export function createPublicFacadeSmokePlan(options = {}) {
   const rootDir = options.rootDir ?? process.cwd();
 
@@ -60,7 +70,7 @@ export async function runPublicFacadeSmoke(options = {}) {
       cwd: rootDir,
     });
     const packArtifacts = extractPackJsonPayload(packRun.stdout);
-    const tarballName = Array.isArray(packArtifacts) ? packArtifacts[0]?.filename : undefined;
+    const tarballName = getFirstPackArtifact(packArtifacts)?.filename;
 
     if (typeof tarballName !== "string" || tarballName.trim().length === 0) {
       throw new Error("npm pack did not return a tarball filename.");

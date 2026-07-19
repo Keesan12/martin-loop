@@ -88,6 +88,26 @@ npx -y martin-loop@latest preflight "Summarize the demo workspace and prove test
 
 Release notes for the current root package: [MartinLoop 0.4.5](./docs/release/OSS-0.4.5-RELEASE-NOTES.md).
 
+## MartinLoop Arcade
+
+Long governed runs can take a few minutes. MartinLoop Arcade keeps the terminal useful while you wait.
+
+After 30 seconds, if the run is still going and you are in an interactive terminal, MartinLoop asks once:
+
+```
+Still working. Play MartinLoop Arcade while you wait? [y/N]
+```
+
+Pressing `y` launches a terminal Space Invaders game. The governed run continues in the background — receipts, budget tracking, and the final result are untouched. The game closes automatically when the run finishes and the terminal is fully restored.
+
+The prompt never appears in CI, piped output, JSON mode, or non-interactive environments.
+
+```sh
+martin run "your task" --verify "npm test"          # prompts after 30 s if still running
+martin run "your task" --verify "npm test" --arcade  # offer the game immediately
+martin run "your task" --verify "npm test" --no-arcade  # disable the prompt
+```
+
 ## Visual Proof
 
 MartinLoop turns an AI coding run into an inspectable execution record: budget used, verifier result, changed files, rollback evidence, and final receipt.

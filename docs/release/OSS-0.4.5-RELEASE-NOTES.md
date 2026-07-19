@@ -1,17 +1,21 @@
-# MartinLoop 0.4.5 — Pre Work Burn tracking and routing economics
+# MartinLoop 0.4.5 — MartinLoop Arcade
 
-`0.4.5` is a focused patch on top of `0.4.4` that adds Pre Work Burn tracking, routing economics, route classification, and cost-per-outcome data to governed run receipts.
+`0.4.5` ships the MartinLoop Arcade: a terminal Space Invaders game that plays while a governed run works in the background.
 
 ## What changed
 
-- Pre Work Burn tracking records the proportion of budget consumed before execution begins, exposing setup overhead in run receipts
-- routing economics surfaces structured cost data so teams can compare routes across runs
-- route classification distinguishes cost-effective execution from over-budget routes in dossier output
-- cost-per-outcome normalizes run spend against verifier results for cross-run comparison
+- MartinLoop Arcade launches automatically when a governed run has been running for 30 seconds in an interactive terminal
+- The game prompts once: "Still working. Play MartinLoop Arcade while you wait? [y/N]" — default is No
+- Accepting starts Space Invaders while the governed run continues uninterrupted in the background
+- The game closes automatically when the run completes, and the real result, receipt, and exit code are preserved
+- Terminal state (cursor, input mode, screen) is fully restored after the game exits under all conditions including errors and Ctrl+C
+- `--arcade` flag starts or offers the game immediately without waiting for the 30-second threshold
+- `--no-arcade` disables the prompt entirely for that run
+- The prompt never appears in CI, piped output, JSON mode, or non-interactive agent execution — it is opt-in only
 
 ## Why it matters
 
-Budget governance requires knowing not just what a run cost, but when cost was incurred. Pre Work Burn separates planning and setup overhead from execution cost, making the budget ledger more accurate and easier to act on.
+Long governed runs can take several minutes. The arcade keeps the terminal useful without interrupting the run or compromising its receipts. The game is themed around MartinLoop's job: the player is the governance engine defending the budget from Token Spenders, CPU Hogs, API Callers, and Budget Drains.
 
 ## Upgrade / audit lane
 
@@ -29,6 +33,6 @@ npx -y martin-loop@0.4.5 share --latest --json
 ## Package lines in this release
 
 - root package advances to `0.4.5`
-- standalone `@martinloop/mcp` advances to `0.3.9`
+- standalone `@martinloop/mcp` remains at `0.3.8` (no MCP server changes in this release)
 
 See [VERSION-LEDGER.md](./VERSION-LEDGER.md) for the canonical version map.
