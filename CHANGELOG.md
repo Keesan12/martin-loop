@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+## [0.4.5]
+
+### Added
+- **MartinLoop Arcade** — terminal Space Invaders game that plays while a governed run works in the background. After 30 seconds of run time, interactive terminals receive a single opt-in prompt: "Still working. Play MartinLoop Arcade while you wait? [y/N]". The game closes automatically when the run completes; receipts, budget tracking, and the final result are unaffected.
+- `--arcade` flag to offer or start the Arcade immediately without waiting for the 30-second threshold.
+- `--no-arcade` flag to suppress the prompt for a specific run.
+- Arcade never appears in CI, piped output, JSON mode, or non-interactive environments.
+
+## [0.4.4]
+
+### Added
+- **Model-specific pricing** — cost accounting now uses per-model input/output token rates rather than a single default, improving accuracy for runs that use non-default models.
+- **Cache-aware cost accounting** — cache read tokens are billed at the correct (lower) rate and tracked separately in the run receipt.
+- **Streaming budget guard** — token usage is now checked against the budget cap in real time during streaming, not only at iteration boundaries.
+
+### Fixed
+- **Keyed npm-pack payload** — pack result JSON is now keyed consistently so downstream release steps can locate the tarball path regardless of runner platform.
+- **Adapter result double-counting** — `result` events from the Claude CLI contain aggregate usage that duplicates previously streamed per-message usage; these events are now excluded from the cost accumulator.
+
 ## [0.4.3]
 
 ### Fixed
