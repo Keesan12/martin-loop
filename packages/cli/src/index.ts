@@ -187,6 +187,10 @@ export type RunCommandRequest = {
   allowedPaths?: string[];
   deniedPaths?: string[];
   acceptanceCriteria?: string[];
+  /** Offer or start the Arcade immediately (skips the 30 s wait). */
+  arcade?: boolean;
+  /** Disable the automatic Arcade prompt for this run. */
+  noArcade?: boolean;
 };
 
 type GuardrailsConfig = {
@@ -1301,7 +1305,7 @@ async function executeRunCommand(
     autoSelectedModel
   );
   try {
-    result = await runMartin({
+    const runPromise = runMartin({
       workspaceId: resolvedRequest.workspaceId,
       projectId: resolvedRequest.projectId,
       receiptScope: {
@@ -1325,6 +1329,11 @@ async function executeRunCommand(
       budget: resolvedRequest.budget,
       metadata: resolvedRequest.metadata,
       adapter
+    });
+    const { maybePlayArcadeWhileWaiting } = await import("./arcade/index.js");
+    result = await maybePlayArcadeWhileWaiting(runPromise, {
+      force: resolvedRequest.arcade,
+      disabled: resolvedRequest.noArcade || outputMode === "json"
     });
   } catch (error) {
     const fallbackLoop = createLoopRecord({
@@ -3598,6 +3607,12 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
         request.engine = next;
         index += 1;
         break;
+      case "--arcade":
+        request.arcade = true;
+        break;
+      case "--no-arcade":
+        request.noArcade = true;
+        break;
       default:
         break;
     }
@@ -3623,7 +3638,9 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
     ...(request.unsafeAllowUnguardedRun ? { unsafeAllowUnguardedRun: true } : {}),
     ...(request.allowedPaths?.length ? { allowedPaths: request.allowedPaths } : {}),
     ...(request.deniedPaths?.length ? { deniedPaths: request.deniedPaths } : {}),
-    ...(request.acceptanceCriteria?.length ? { acceptanceCriteria: request.acceptanceCriteria } : {})
+    ...(request.acceptanceCriteria?.length ? { acceptanceCriteria: request.acceptanceCriteria } : {}),
+    ...(request.arcade ? { arcade: true } : {}),
+    ...(request.noArcade ? { noArcade: true } : {})
   };
 }
 

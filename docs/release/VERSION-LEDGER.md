@@ -32,8 +32,9 @@ This file is the release source of truth for package/version mapping in this rep
   - `0.4.2` error normalization restored, Codex launch failure diagnostics improved, token flag regression guard added
   - `0.4.3` start budget consistency, generated command context preservation, preflight execution-bound reuse checks
   - `0.4.4` model-specific pricing, cache-aware cost accounting, streaming budget guard, keyed npm-pack payload fix
-- current in-repo root release line: `0.4.4`
-- next planned root follow-on after `0.4.4`: `0.4.5`
+  - `0.4.5` MartinLoop Arcade — terminal Space Invaders during long governed runs, proactive opt-in prompt, automatic fallback in CI/non-TTY
+- current in-repo root release line: `0.4.5`
+- next planned root follow-on after `0.4.5`: `0.4.6`
 
 ## Standalone package: `@martinloop/mcp`
 
