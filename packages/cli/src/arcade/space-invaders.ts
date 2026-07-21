@@ -817,6 +817,9 @@ export function playWhileWaiting<T>(task: Promise<T>, opts: ArcadeOptions = {}):
         state.runLabel = opts.runResultLabel ?? "run complete.";
         state.status   = "run_complete";
         explode(state, Math.floor(gameCols / 2), Math.floor(gameRows / 2), P.player, 20);
+        // Auto-exit 2 s after the run completes so the terminal is restored
+        // without requiring the user to press Q.
+        setTimeout(finish, 2_000);
       }
 
       if (keys.quit) { finish(); return; }
