@@ -81,12 +81,13 @@ async function showRatingPrompt(runCount: number, version: string, totalRuns: nu
   console.log("  4  Really useful, part of my workflow");
   console.log("  5  Can't imagine working without it");
   console.log("");
-  process.stdout.write("  [1–5 or Enter to skip]\n  > ");
+  process.stdout.write("  [1–5 — key registers instantly, Enter to skip]\n  > ");
 
-  const ratingInput = await readSingleLine();
-  const rating = parseInt(ratingInput.trim(), 10);
+  const ratingKey = await readSingleKeypress();
+  process.stdout.write(`${ratingKey}\n`);
+  const rating = parseInt(ratingKey, 10);
 
-  if (!ratingInput.trim() || isNaN(rating) || rating < 1 || rating > 5) {
+  if (!ratingKey || ratingKey === "\r" || ratingKey === "\n" || isNaN(rating) || rating < 1 || rating > 5) {
     console.log("");
     return 0;
   }
@@ -318,5 +319,29 @@ function readSingleLine(): Promise<string> {
     const timeout = setTimeout(() => { rl.close(); resolve(""); }, 30_000);
     rl.once("line", (line) => { clearTimeout(timeout); rl.close(); resolve(line); });
     rl.once("close", () => { clearTimeout(timeout); resolve(""); });
+  });
+}
+
+function readSingleKeypress(): Promise<string> {
+  return new Promise((resolve) => {
+    const stdin = process.stdin;
+    if (!stdin.isTTY) { resolve(""); return; }
+    const prev = stdin.isRaw;
+    stdin.setRawMode(true);
+    stdin.resume();
+    stdin.setEncoding("utf-8");
+    const timeout = setTimeout(() => { cleanup(); resolve(""); }, 30_000);
+    const onData = (key: string) => {
+      if (key === "\u0003") { cleanup(); process.exit(0); }
+      cleanup();
+      resolve(key);
+    };
+    const cleanup = () => {
+      clearTimeout(timeout);
+      stdin.removeListener("data", onData);
+      stdin.setRawMode(prev ?? false);
+      stdin.pause();
+    };
+    stdin.on("data", onData);
   });
 }

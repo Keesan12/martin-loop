@@ -1377,19 +1377,23 @@ async function executeRunCommand(
     );
   });
 
+  const costProvenance = readCostProvenance(result.loop);
+  const successCallToAction = buildRunSuccessCallToAction(result.loop);
+  const isInteractiveTty = outputMode === "human" && process.stdout.isTTY === true && process.stdin.isTTY === true;
+
   if (result.loop.status === "completed" && result.loop.lifecycleState === "completed") {
     try {
       const { recordSuccessfulRun } = await import("./run-stats.js");
-      const { maybeShowStarPrompt } = await import("./star-prompt.js");
+      const { maybeShowStarPrompt, showInlineStarCta } = await import("./star-prompt.js");
       const { maybeShowFeedbackFlow } = await import("./feedback.js");
       const stats = recordSuccessfulRun(packageJson.version);
       await maybeShowStarPrompt(stats.totalSuccessfulRuns);
       await maybeShowFeedbackFlow(stats.totalSuccessfulRuns);
+      if (successCallToAction && isInteractiveTty) {
+        await showInlineStarCta();
+      }
     } catch { /* never block output for engagement prompts */ }
   }
-
-  const costProvenance = readCostProvenance(result.loop);
-  const successCallToAction = buildRunSuccessCallToAction(result.loop);
 
   return renderCliSuccess(outputMode, {
     data: {
@@ -1426,7 +1430,8 @@ async function executeRunCommand(
       `Verification plan: ${resolvedRequest.verificationPlan.join(", ") || "none"}`,
       `Attempts: ${result.loop.attempts.length}`,
       `Actual cost (USD): ${result.loop.cost.actualUsd.toFixed(2)} — provenance: ${describeCostProvenance(costProvenance)}`,
-      ...(successCallToAction ? ["", ...successCallToAction.lines] : [])
+      // Static CTA only for non-TTY mode (piped/JSON). TTY shows interactive showInlineStarCta above.
+      ...(successCallToAction && !isInteractiveTty ? ["", ...successCallToAction.lines] : [])
     ],
     quiet: result.loop.loopId,
     warnings

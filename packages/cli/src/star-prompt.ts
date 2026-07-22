@@ -54,6 +54,32 @@ export async function maybeShowStarPrompt(runCount: number): Promise<void> {
   writeRunStats(stats);
 }
 
+export async function showInlineStarCta(): Promise<void> {
+  if (!process.stdout.isTTY || !process.stdin.isTTY) return;
+  console.log("");
+  console.log("─────────────────────────────────────────────");
+  console.log("⭐ MartinLoop saved you from a runaway bill.");
+  console.log(`   ${STAR_URL}`);
+  console.log("");
+  console.log("   [Enter] open in browser   [s] skip");
+  process.stdout.write("   > ");
+  const key = await readSingleKeypress();
+  console.log("");
+  if (key === "\r" || key === "\n") {
+    try {
+      const { exec } = await import("node:child_process");
+      const cmd = process.platform === "win32" ? `start "" "${STAR_URL}"`
+        : process.platform === "darwin" ? `open "${STAR_URL}"`
+        : `xdg-open "${STAR_URL}"`;
+      exec(cmd);
+      console.log("   Opening GitHub... ⭐");
+    } catch {
+      console.log(`   Open this in your browser: ${STAR_URL}`);
+    }
+  }
+  console.log("─────────────────────────────────────────────");
+}
+
 async function readSingleKeypress(): Promise<string> {
   return new Promise((resolve) => {
     const stdin = process.stdin;
