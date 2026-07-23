@@ -14,6 +14,8 @@ const OSS_CORE_PATHS = [
 
 const ALLOWED_TOP_LEVEL_ENTRIES = [
   ".github",
+  "action",
+  "action.yml",
   "benchmarks",
   "CONTEXT.md",
   "deploy",
