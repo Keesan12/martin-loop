@@ -150,6 +150,63 @@ jobs:
             sleep $((attempt * 20))
           done
 
+      - name: Check official MCP Registry
+        id: registry-state
+        shell: bash
+        env:
+          SERVER_NAME: ${{ steps.mcp-metadata.outputs.server_name }}
+          SERVER_VERSION: ${{ steps.mcp-metadata.outputs.server_version }}
+        run: |
+          ENCODED_NAME="${SERVER_NAME//\//%2F}"
+          REGISTRY_URL="https://registry.modelcontextprotocol.io/v0.1/servers/${ENCODED_NAME}/versions/${SERVER_VERSION}"
+          HTTP_CODE=$(curl --silent --show-error --output /tmp/mcp-registry-response.json --write-out '%{http_code}' "$REGISTRY_URL")
+
+          case "$HTTP_CODE" in
+            200)
+              echo "publish_needed=false" >> "$GITHUB_OUTPUT"
+              echo "${SERVER_NAME}@${SERVER_VERSION} is already registered."
+              ;;
+            404)
+              echo "publish_needed=true" >> "$GITHUB_OUTPUT"
+              echo "${SERVER_NAME}@${SERVER_VERSION} is not registered yet."
+              ;;
+            *)
+              cat /tmp/mcp-registry-response.json || true
+              echo "Unexpected MCP Registry response: HTTP ${HTTP_CODE}"
+              exit 1
+              ;;
+          esac
+
+      - name: Install mcp-publisher
+        if: steps.registry-state.outputs.publish_needed == 'true'
+        working-directory: packages/mcp
+        shell: bash
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+          ./mcp-publisher --help
+
+      - name: Authenticate to official MCP Registry
+        if: steps.registry-state.outputs.publish_needed == 'true'
+        working-directory: packages/mcp
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish to official MCP Registry
+        if: steps.registry-state.outputs.publish_needed == 'true'
+        working-directory: packages/mcp
+        run: ./mcp-publisher publish
+
+      - name: Verify official MCP Registry listing
+        shell: bash
+        env:
+          SERVER_NAME: ${{ steps.mcp-metadata.outputs.server_name }}
+          SERVER_VERSION: ${{ steps.mcp-metadata.outputs.server_version }}
+        run: |
+          ENCODED_NAME="${SERVER_NAME//\//%2F}"
+          curl --fail --show-error --silent \
+            "https://registry.modelcontextprotocol.io/v0.1/servers/${ENCODED_NAME}/versions/${SERVER_VERSION}" \
+            > /tmp/mcp-registry-verified.json
+          cat /tmp/mcp-registry-verified.json
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b
         with:
