@@ -1,0 +1,62 @@
+name: MartinLoop Budget Gate
+description: Fail CI when a governed AI coding run exceeds budget, fails verification, or has untrusted receipt integrity.
+author: MartinLoop contributors
+
+branding:
+  icon: shield
+  color: purple
+
+inputs:
+  receipt:
+    description: Optional path to run-receipt.json. When omitted, the action exports the latest MartinLoop run.
+    required: false
+    default: ""
+  max-usd:
+    description: Maximum allowed actual spend in USD.
+    required: false
+    default: "3"
+  martin-version:
+    description: MartinLoop npm version used to export the latest receipt when receipt is omitted.
+    required: false
+    default: "latest"
+  require-verifier:
+    description: Fail unless the verifier result is passed.
+    required: false
+    default: "true"
+  require-integrity:
+    description: Fail unless receipt integrity is verified or signed.
+    required: false
+    default: "true"
+  allow-unknown-cost:
+    description: Permit a receipt whose actual cost is unavailable.
+    required: false
+    default: "false"
+
+outputs:
+  receipt-path:
+    description: Resolved receipt path.
+    value: ${{ steps.gate.outputs.receipt-path }}
+  actual-usd:
+    description: Parsed actual spend.
+    value: ${{ steps.gate.outputs.actual-usd }}
+  verifier-status:
+    description: Parsed verifier status.
+    value: ${{ steps.gate.outputs.verifier-status }}
+  integrity-status:
+    description: Parsed receipt integrity status.
+    value: ${{ steps.gate.outputs.integrity-status }}
+
+runs:
+  using: composite
+  steps:
+    - id: gate
+      name: Enforce MartinLoop budget and verifier gate
+      shell: bash
+      env:
+        MARTIN_ACTION_RECEIPT: ${{ inputs.receipt }}
+        MARTIN_ACTION_MAX_USD: ${{ inputs.max-usd }}
+        MARTIN_ACTION_VERSION: ${{ inputs.martin-version }}
+        MARTIN_ACTION_REQUIRE_VERIFIER: ${{ inputs.require-verifier }}
+        MARTIN_ACTION_REQUIRE_INTEGRITY: ${{ inputs.require-integrity }}
+        MARTIN_ACTION_ALLOW_UNKNOWN_COST: ${{ inputs.allow-unknown-cost }}
+      run: node "${{ github.action_path }}/action/gate.mjs"
