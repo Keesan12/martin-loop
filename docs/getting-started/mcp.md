@@ -67,4 +67,8 @@ If your host supports allow-lists, start with the `minimal` profile or an equiva
 
 Expanded profiles add `martin_run`, run-control helpers, and GitHub review helpers only when the host actually needs them.
 
+## Other Coding-Agent Hosts
+
+Roo Code, Cline, and OpenCode can launch MartinLoop through their local MCP configuration. See [Agent Host Integrations](./agent-host-integrations.md) for copyable host configs, a three-line repository policy, verification requirements, and the current Aider compatibility boundary.
+
 More detail: [MCP tool reference](../reference/mcp-tools.md) and [MCP compatibility](../reference/mcp-compatibility.md).
