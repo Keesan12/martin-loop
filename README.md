@@ -2,12 +2,17 @@
 <div align="center">
   <img src="./docs/assets/martinloop-logo.png" alt="MartinLoop" width="260">
 
-  **MartinLoop gives AI coding agents budgets, stop conditions, rollback rules, and receipts.**
+  **Autonomous AI needs an independent control layer.**
+
+  **MartinLoop makes every agent action bounded, verified, reversible, priced, and provable.**
+
+  Starting with software work across Claude, Codex, Gemini, Cursor, and internal agent systems.
 
   Built from thousands of agent runs where the problem was not intelligence -- it was uncontrolled execution.
 
   **Get started:** `npx -y martin-loop@latest start`  
-  **Try the demo:** `npx -y martin-loop@latest demo`
+  **Try the demo:** `npx -y martin-loop@latest demo`  
+  **Connect the MCP:** `npx -y @martinloop/mcp`
 
   [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square&logo=apache)](./LICENSE)
   [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&logo=typescript&logoColor=white)](./tsconfig.base.json)
@@ -16,12 +21,13 @@
   [![npm downloads](https://img.shields.io/npm/dm/martin-loop?style=flat-square&label=downloads)](https://www.npmjs.com/package/martin-loop)
   [![martin-loop MCP server](https://glama.ai/mcp/servers/Keesan12/martin-loop/badges/score.svg)](https://glama.ai/mcp/servers/Keesan12/martin-loop)
 
-  MartinLoop is part of the NVIDIA Inception program.
   <br>
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="./docs/assets/nvidia-inception-program.png">
-    <img src="./docs/assets/nvidia-inception-program-light.png" alt="NVIDIA Inception Program logo" width="280">
-  </picture>
+  <a href="https://martinloop.com/" aria-label="MartinLoop program memberships">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://martinloop.com/programs/martinloop-program-memberships-dark.svg">
+      <img src="https://martinloop.com/programs/martinloop-program-memberships-light.svg" alt="MartinLoop is a member of NVIDIA Inception, Microsoft for Startups, AWS Activate, and Google for Startups" width="760">
+    </picture>
+  </a>
 </div>
 
 ## Why MartinLoop
