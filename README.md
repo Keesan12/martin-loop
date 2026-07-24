@@ -14,6 +14,7 @@
   [![Node](https://img.shields.io/badge/node-%3E%3D20-3c873a?style=flat-square&logo=nodedotjs&logoColor=white)](#quick-start)
   [![npm version](https://img.shields.io/npm/v/martin-loop?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/martin-loop)
   [![npm downloads](https://img.shields.io/npm/dm/martin-loop?style=flat-square&label=downloads)](https://www.npmjs.com/package/martin-loop)
+  [![martin-loop MCP server](https://glama.ai/mcp/servers/Keesan12/martin-loop/badges/score.svg)](https://glama.ai/mcp/servers/Keesan12/martin-loop)
 
   MartinLoop is part of the NVIDIA Inception program.
   <br>
@@ -301,6 +302,12 @@ pnpm --filter @martin/benchmarks report:ralphy
 The installed-package command reads the shipped public fixtures. The repo-clone workflow runs the public benchmark workspace directly.
 
 ## MCP
+
+<div align="center">
+  <a href="https://glama.ai/mcp/servers/Keesan12/martin-loop">
+    <img src="https://glama.ai/mcp/servers/Keesan12/martin-loop/badges/card.svg" alt="MartinLoop MCP server on Glama">
+  </a>
+</div>
 
 Run the standalone MCP package directly:
 
