@@ -9,7 +9,7 @@
 
   [![npm version](https://img.shields.io/npm/v/@martinloop/mcp?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/@martinloop/mcp)
   [![npm downloads](https://img.shields.io/npm/dm/@martinloop/mcp?style=flat-square&label=downloads)](https://www.npmjs.com/package/@martinloop/mcp)
-  [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square&logo=apache)](../../LICENSE)
+  [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square&logo=apache)](https://github.com/Keesan12/martin-loop/blob/main/LICENSE)
   [![Node](https://img.shields.io/badge/node-%3E%3D20-3c873a?style=flat-square&logo=nodedotjs&logoColor=white)](#requirements)
   [![Glama score](https://glama.ai/mcp/servers/Keesan12/martin-loop/badges/score.svg)](https://glama.ai/mcp/servers/Keesan12/martin-loop)
 </div>
