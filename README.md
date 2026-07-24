@@ -309,6 +309,12 @@ The installed-package command reads the shipped public fixtures. The repo-clone 
   </a>
 </div>
 
+Related MCP servers commonly used alongside MartinLoop:
+
+- [GitHub MCP Server](https://glama.ai/mcp/servers/github/github-mcp-server) for repository, issue, and pull-request operations.
+- [Git MCP server](https://glama.ai/mcp/servers/modelcontextprotocol/git) for local repository inspection and version-control actions.
+- [Playwright MCP](https://glama.ai/mcp/servers/microsoft/playwright-mcp) for browser-based verification and end-to-end testing.
+
 Run the standalone MCP package directly:
 
 ```sh
