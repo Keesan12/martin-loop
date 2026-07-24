@@ -1,0 +1,51 @@
+name: Apply Glama README metadata
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/apply-glama-readme.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  update-readme:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Add Glama badges in stable positions
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          readme = Path("README.md")
+          text = readme.read_text(encoding="utf-8")
+
+          score_badge = "  [![martin-loop MCP server](https://glama.ai/mcp/servers/Keesan12/martin-loop/badges/score.svg)](https://glama.ai/mcp/servers/Keesan12/martin-loop)"
+          downloads_badge = "  [![npm downloads](https://img.shields.io/npm/dm/martin-loop?style=flat-square&label=downloads)](https://www.npmjs.com/package/martin-loop)"
+          if score_badge not in text:
+              if downloads_badge not in text:
+                  raise SystemExit("README badge anchor not found")
+              text = text.replace(downloads_badge, downloads_badge + "\n" + score_badge, 1)
+
+          card_block = """<div align=\"center\">\n  <a href=\"https://glama.ai/mcp/servers/Keesan12/martin-loop\">\n    <img src=\"https://glama.ai/mcp/servers/Keesan12/martin-loop/badges/card.svg\" alt=\"MartinLoop MCP server on Glama\">\n  </a>\n</div>\n\n"""
+          mcp_anchor = "## MCP\n\n"
+          if "badges/card.svg" not in text:
+              if mcp_anchor not in text:
+                  raise SystemExit("README MCP section anchor not found")
+              text = text.replace(mcp_anchor, mcp_anchor + card_block, 1)
+
+          readme.write_text(text, encoding="utf-8")
+          Path(".github/workflows/apply-glama-readme.yml").unlink()
+          PY
+      - name: Commit README update and remove one-off workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md .github/workflows/apply-glama-readme.yml
+          git commit -m "docs: add Glama MCP badges"
+          git push origin HEAD:main
