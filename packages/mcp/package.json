@@ -8,53 +8,14 @@
   "license": "Apache-2.0",
   "author": "MartinLoop contributors",
   "homepage": "https://martinloop.com/",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/Keesan12/martin-loop.git",
-    "directory": "packages/mcp"
-  },
-  "bugs": {
-    "url": "https://github.com/Keesan12/martin-loop/issues"
-  },
-  "keywords": [
-    "mcp",
-    "mcp-server",
-    "model-context-protocol",
-    "martin-loop",
-    "ai-agent",
-    "ai-governance",
-    "agent-governance",
-    "claude",
-    "claude-code",
-    "codex",
-    "cursor",
-    "budget-guardrails",
-    "verifier-gates",
-    "martin_doctor",
-    "martin_triage_runs",
-    "martin_run_dossier",
-    "mcp-resources",
-    "mcp-prompts"
-  ],
-  "bin": {
-    "mcp": "./dist/server.js",
-    "martin-loop-mcp": "./dist/server.js"
-  },
-  "exports": {
-    "./server.json": "./server.json",
-    "./package.json": "./package.json"
-  },
-  "files": [
-    "dist",
-    "README.md",
-    "server.json"
-  ],
-  "engines": {
-    "node": ">=20.0.0"
-  },
-  "publishConfig": {
-    "access": "public"
-  },
+  "repository": {"type":"git","url":"git+https://github.com/Keesan12/martin-loop.git","directory":"packages/mcp"},
+  "bugs": {"url":"https://github.com/Keesan12/martin-loop/issues"},
+  "keywords": ["mcp","mcp-server","model-context-protocol","martin-loop","ai-agent","ai-governance","agent-governance","claude","claude-code","codex","cursor","budget-guardrails","verifier-gates","martin_doctor","martin_triage_runs","martin_run_dossier","mcp-resources","mcp-prompts"],
+  "bin": {"mcp":"./dist/server.js","martin-loop-mcp":"./dist/server.js"},
+  "exports": {"./server.json":"./server.json","./package.json":"./package.json"},
+  "files": ["dist","README.md","server.json"],
+  "engines": {"node":">=20.0.0"},
+  "publishConfig": {"access":"public"},
   "scripts": {
     "build": "node ./scripts/build-package.mjs",
     "prepack": "pnpm build",
@@ -66,7 +27,9 @@
     "test": "vitest run --maxWorkers=1",
     "lint": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/server.js",
-    "inspect:live": "node ./scripts/inspect-live.mjs"
+    "inspect:live": "node ./scripts/inspect-live.mjs",
+    "mcpb:build": "node ./mcpb/build-mcpb.mjs",
+    "mcpb:validate": "npx --yes @anthropic-ai/mcpb@2 validate ./dist-mcpb/martinloop"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
@@ -77,7 +40,5 @@
     "@opentelemetry/sdk-logs": "^0.214.0",
     "ts-morph": "^21.0.0"
   },
-  "devDependencies": {
-    "@martin/contracts": "workspace:*"
-  }
+  "devDependencies": {"@martin/contracts":"workspace:*"}
 }
