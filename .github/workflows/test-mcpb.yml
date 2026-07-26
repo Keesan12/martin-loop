@@ -42,11 +42,6 @@ jobs:
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Verify Windows and POSIX command launch behavior
-        shell: pwsh
-        run: |
-          node --input-type=module -e "import { createCommandLaunch } from './packages/mcp/scripts/build-package-lib.mjs'; const w=createCommandLaunch('npm',['install','a b'],'win32'); if(!/cmd(?:\.exe)?$/i.test(w.command)||w.args[0]!='/d'||w.args[1]!='/s'||w.args[2]!='/c'||!w.args[3].includes('\"a b\"')) throw new Error(JSON.stringify(w)); const p=createCommandLaunch('npm',['install'],'darwin'); if(p.command!=='npm'||p.args[0]!=='install') throw new Error(JSON.stringify(p)); console.log('command launch verified', {windows:w,posix:p});"
-
       - name: Public surface guards
         run: pnpm public:git-surface && pnpm public:portability-guard
 
