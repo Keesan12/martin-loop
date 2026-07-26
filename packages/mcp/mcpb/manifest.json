@@ -1,0 +1,81 @@
+{
+  "$schema": "https://raw.githubusercontent.com/modelcontextprotocol/mcpb/main/schemas/mcpb-manifest-v0.3.schema.json",
+  "manifest_version": "0.3",
+  "name": "martinloop",
+  "display_name": "MartinLoop",
+  "version": "0.3.8",
+  "description": "Independent governance and authorization layer for autonomous AI coding-agent execution.",
+  "long_description": "MartinLoop governs autonomous software work with budgets, verification gates, controlled execution, recovery, rollback evidence, and auditable run receipts. It runs locally so it can inspect and govern work inside user-approved repositories without uploading source code to a hosted MartinLoop service.",
+  "author": {
+    "name": "MartinLoop",
+    "email": "keesan@martinloop.com",
+    "url": "https://martinloop.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Keesan12/martin-loop.git"
+  },
+  "homepage": "https://martinloop.com",
+  "documentation": "https://github.com/Keesan12/martin-loop#readme",
+  "support": "https://github.com/Keesan12/martin-loop/issues",
+  "license": "Apache-2.0",
+  "keywords": [
+    "ai-agents",
+    "agent-governance",
+    "coding-agents",
+    "budgets",
+    "verification",
+    "rollback",
+    "audit",
+    "receipts",
+    "mcp"
+  ],
+  "server": {
+    "type": "node",
+    "entry_point": "server/dist/server.js",
+    "mcp_config": {
+      "command": "node",
+      "args": [
+        "${__dirname}/server/dist/server.js"
+      ],
+      "env": {
+        "MARTIN_MCP_WORKSPACE_ROOT": "${user_config.workspace_root}",
+        "MARTIN_RUNS_DIR": "${user_config.runs_root}",
+        "MARTIN_LIVE": "${user_config.live_mode}"
+      }
+    }
+  },
+  "user_config": {
+    "workspace_root": {
+      "type": "directory",
+      "title": "Workspace repository",
+      "description": "The repository or workspace MartinLoop is allowed to inspect and govern.",
+      "required": true
+    },
+    "runs_root": {
+      "type": "directory",
+      "title": "MartinLoop run storage",
+      "description": "Local directory used for MartinLoop receipts, evidence, and run records.",
+      "required": true
+    },
+    "live_mode": {
+      "type": "boolean",
+      "title": "Enable live execution",
+      "description": "Allow tools that can start or control live agent execution. Leave disabled for inspection-only use.",
+      "default": false,
+      "required": true
+    }
+  },
+  "compatibility": {
+    "platforms": [
+      "darwin",
+      "win32",
+      "linux"
+    ],
+    "runtimes": {
+      "node": ">=20.0.0"
+    }
+  },
+  "tools_generated": true,
+  "prompts_generated": true
+}
