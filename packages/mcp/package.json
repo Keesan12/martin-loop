@@ -66,9 +66,7 @@
     "test": "vitest run --maxWorkers=1",
     "lint": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/server.js",
-    "inspect:live": "node ./scripts/inspect-live.mjs",
-    "mcpb:build": "node ./mcpb/build-mcpb.mjs",
-    "mcpb:validate": "npx --yes @anthropic-ai/mcpb@2 validate ./dist-mcpb/martinloop"
+    "inspect:live": "node ./scripts/inspect-live.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
