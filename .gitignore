@@ -7,11 +7,6 @@ coverage/
 .next/
 .turbo/
 *.tsbuildinfo
-packages/mcp/dist-mcpb/
-packages/mcp/*.mcpb
-packages/mcp/*.sha256
-packages/mcp/mcp-publisher.exe
-packages/mcp/mcp-publisher_*.tar.gz
 
 # Environment
 .env
