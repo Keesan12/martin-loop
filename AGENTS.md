@@ -5,6 +5,44 @@
 This repository uses AI coding assistants for maintenance tasks.
 Agents must treat this repository as a public open-source project.
 
+## Mandatory Local Workspace Rule
+
+All MartinLoop repositories, clones, worktrees, temporary test repositories,
+runner installations, durable test evidence, and agent-created working folders
+on this machine must live under this single approved root:
+
+```text
+C:\Users\Torram\OneDrive\Documents\Codex Main\Setup Stuff
+```
+
+This rule is non-negotiable.
+
+Agents must not create, clone, copy, move, or continue MartinLoop work in:
+
+- Desktop or any Desktop subfolder
+- `C:\Users\Torram` outside the approved root
+- Downloads or Documents outside the approved root
+- AppData
+- operating-system Temp directories
+- arbitrary `tmp-*`, scratch, cache, or one-off folders elsewhere on the machine
+- consumer repositories used only for external testing
+
+Use clearly named subdirectories beneath the approved root for every clone,
+worktree, disposable test environment, self-hosted runner, and evidence folder.
+Operating-system temporary files created automatically during a command are
+allowed only while that command runs; they must not become durable repositories,
+workspaces, evidence stores, or agent handoff locations.
+
+Before creating any local folder, an agent must print and verify the intended
+absolute path. If the path is outside the approved root, stop and correct it
+before doing any work.
+
+Agents must not instruct another agent or the maintainer to create a MartinLoop
+workspace outside the approved root. Existing MartinLoop work discovered outside
+the approved root must be preserved safely, moved or recreated beneath the
+approved root, and removed from the old location only after all valid work is
+confirmed on the correct remote branch.
+
 ## Public Surface Rule
 
 Everything committed to this repo must be appropriate for public users, contributors, package consumers, and external reviewers.
