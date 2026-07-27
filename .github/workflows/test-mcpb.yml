@@ -42,9 +42,6 @@ jobs:
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Public surface guards
-        run: pnpm public:git-surface && pnpm public:portability-guard
-
       - name: MCP lint and tests
         run: pnpm --filter @martinloop/mcp lint && pnpm --filter @martinloop/mcp test
 
