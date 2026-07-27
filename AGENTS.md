@@ -9,19 +9,17 @@ Agents must treat this repository as a public open-source project.
 
 All MartinLoop repositories, clones, worktrees, temporary test repositories,
 runner installations, durable test evidence, and agent-created working folders
-on this machine must live under this single approved root:
+on a maintainer machine must live under the maintainer's canonical workspace
+root, as defined in the local environment.
 
-```text
-C:\Users\Torram\OneDrive\Documents\Codex Main\Setup Stuff
-```
-
+Confirm the exact approved workspace root before beginning work on a machine.
 This rule is non-negotiable.
 
 Agents must not create, clone, copy, move, or continue MartinLoop work in:
 
 - Desktop or any Desktop subfolder
-- `C:\Users\Torram` outside the approved root
-- Downloads or Documents outside the approved root
+- user-profile folders outside the approved workspace root
+- Downloads or Documents outside the approved workspace root
 - AppData
 - operating-system Temp directories
 - arbitrary `tmp-*`, scratch, cache, or one-off folders elsewhere on the machine
