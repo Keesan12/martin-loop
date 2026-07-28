@@ -56,10 +56,31 @@ test("publish-mcp workflow covers trusted publishing, local-pack proof, and publ
   assert.match(workflow, /softprops\/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b/);
   assert.match(workflow, /name:\s*"@martinloop\/mcp/);
   assert.match(workflow, /body_path:\s*"docs\/release\/MCP-\$\{\{\s*steps\.mcp-metadata\.outputs\.package_version\s*\}\}-RELEASE-NOTES\.md"/);
+  assert.match(workflow, /pnpm --filter @martinloop\/mcp mcpb:build/);
+  assert.match(workflow, /pnpm --filter @martinloop\/mcp mcpb:validate/);
+  assert.match(
+    workflow,
+    /packages\/mcp\/dist-mcpb\/martinloop-\$\{\{\s*steps\.mcp-metadata\.outputs\.package_version\s*\}\}\.mcpb/,
+  );
+  assert.match(
+    workflow,
+    /packages\/mcp\/dist-mcpb\/martinloop-\$\{\{\s*steps\.mcp-metadata\.outputs\.package_version\s*\}\}\.mcpb\.sha256/,
+  );
+  assert.match(workflow, /fail_on_unmatched_files:\s*true/);
   assert.doesNotMatch(workflow, /registry-url/);
   assert.doesNotMatch(workflow, /NODE_AUTH_TOKEN/);
   assert.doesNotMatch(workflow, /NPM_TOKEN/);
   assert.doesNotMatch(workflow, /secrets\./);
+});
+
+test("publish-mcp workflow fails closed when MCPB release assets are missing", async () => {
+  const workflowPath = path.join(ROOT_DIR, ".github", "workflows", "publish-mcp.yml");
+  const workflow = await readFile(workflowPath, "utf8");
+
+  assert.match(workflow, /persist-credentials:\s*false/);
+  assert.match(workflow, /Verify MCPB release assets/);
+  assert.match(workflow, /test -f "\$\{MCPB_PATH\}"/);
+  assert.match(workflow, /sha256sum --check/);
 });
 
 test("metadata reader emits GitHub output keys from packages/mcp", () => {
