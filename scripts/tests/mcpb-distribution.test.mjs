@@ -14,8 +14,14 @@ async function read(relativePath) {
 
 test("MCPB workflow does not persist checkout credentials", async () => {
   const workflow = await read(".github/workflows/test-mcpb.yml");
+  const checkoutSteps = workflow
+    .split(/\r?\n(?=\s*-\s+uses:)/u)
+    .filter((step) => /uses:\s*actions\/checkout@v6/u.test(step));
 
-  assert.match(workflow, /uses:\s*actions\/checkout@v6[\s\S]*?persist-credentials:\s*false/);
+  assert.ok(checkoutSteps.length > 0, "expected at least one checkout step");
+  for (const checkoutStep of checkoutSteps) {
+    assert.match(checkoutStep, /persist-credentials:\s*false/u);
+  }
 });
 
 test("MCPB dependencies and commands are lockfile managed", async () => {

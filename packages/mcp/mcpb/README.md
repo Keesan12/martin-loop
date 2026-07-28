@@ -7,6 +7,9 @@ Packages the existing `@martinloop/mcp` local stdio server as an MCP Bundle (`.m
 From the repository root, install the reviewed workspace lockfile. Then build and
 validate the bundle from `packages/mcp`:
 
+Commit or stash any uncommitted changes under `packages/mcp` before building;
+the release builder intentionally requires that package tree to be clean.
+
 ```bash
 pnpm install --frozen-lockfile
 cd packages/mcp
