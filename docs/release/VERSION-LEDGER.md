@@ -38,12 +38,12 @@ This file is the release source of truth for package/version mapping in this rep
 
 ## Standalone package: `@martinloop/mcp`
 
-- live npm dist-tag `latest`: `0.3.6`
-- live public GitHub release: `mcp-v0.3.6`
-- live public baseline in this train: `0.3.6`
-- standalone MCP public baseline: `0.3.6`
-- current in-repo standalone release line: `0.3.8`
-- next planned standalone release: `0.3.9`
+- live npm dist-tag `latest`: `0.3.9`
+- live public GitHub release: `mcp-v0.3.9`
+- live public baseline in this train: `0.3.9`
+- standalone MCP public baseline: `0.3.9`
+- current in-repo standalone release line: `0.3.9`
+- next planned standalone release: not scheduled in this patch train
 - next planned follow-ons:
   - reserved for additional host-coverage follow-ups when the MCP line changes again
 

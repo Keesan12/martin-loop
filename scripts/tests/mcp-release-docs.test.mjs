@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 
 import packageJson from "../../packages/mcp/package.json" with { type: "json" };
 import serverJson from "../../packages/mcp/server.json" with { type: "json" };
+import mcpbManifest from "../../packages/mcp/mcpb/manifest.json" with { type: "json" };
 import rootPackageJson from "../../package.json" with { type: "json" };
 
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -20,10 +21,24 @@ function escapeRegex(input) {
 
 test("current MCP metadata stays aligned for the release cut", async () => {
   assert.equal(packageJson.version, serverJson.version);
+  assert.equal(packageJson.version, mcpbManifest.version);
+  assert.equal(packageJson.version, "0.3.9");
+  assert.equal(serverJson.packages[0]?.version, "0.3.9");
+  assert.equal(rootPackageJson.version, "0.4.5");
 
   const releaseNotesPath = path.join(ROOT_DIR, "docs", "release", `MCP-${packageJson.version}-RELEASE-NOTES.md`);
 
   await access(releaseNotesPath);
+});
+
+test("0.3.9 release notes describe the audited MCPB distribution", async () => {
+  const releaseNotes = await readRepoFile(path.join("docs", "release", "MCP-0.3.9-RELEASE-NOTES.md"));
+
+  assert.match(releaseNotes, /0\.3\.9/);
+  assert.match(releaseNotes, /MCPB/);
+  assert.match(releaseNotes, /checksum/i);
+  assert.match(releaseNotes, /MARTIN_LIVE/);
+  assert.doesNotMatch(releaseNotes, /ML_Core_OSS_Internal|public-staging|C:\\Users\\/);
 });
 
 test("version ledger records live public truth and the next release train", async () => {
@@ -33,7 +48,7 @@ test("version ledger records live public truth and the next release train", asyn
   assert.match(ledger, /live public GitHub release: `v\d+\.\d+\.\d+`/);
   assert.match(
     ledger,
-    new RegExp(escapeRegex("standalone MCP public baseline: `0.3.6`")),
+    new RegExp(escapeRegex(`standalone MCP public baseline: \`${packageJson.version}\``)),
   );
   assert.match(
     ledger,
@@ -74,7 +89,7 @@ test("public MCP docs describe the current baseline and the next train in human-
 
   // AI guide should describe the live baseline and stable local-first train
   assert.match(aiGuide, new RegExp(escapeRegex(packageJson.version)));
-  assert.match(aiGuide, /live npm baseline remains `0\.3\.6` until/i);
+  assert.match(aiGuide, new RegExp(escapeRegex(`live npm baseline is \`${packageJson.version}\``), "i"));
   assert.match(aiGuide, /local-first/i);
   assert.match(aiGuide, /martin_doctor/);
   assert.match(aiGuide, /martin_run/);
