@@ -27,6 +27,7 @@ const ALLOWED_TOP_LEVEL_ENTRIES = [
   "CHANGELOG.md",
   "CODE_OF_CONDUCT.md",
   "CONTRIBUTING.md",
+  "glama.json",
   "LICENSE",
   "martin.config.example.yaml",
   "package.json",

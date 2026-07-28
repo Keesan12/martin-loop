@@ -132,7 +132,7 @@ test("root README is a public product entry point", async () => {
     previousIndex = index;
   }
 
-  assert.match(readme, /MartinLoop gives AI coding agents budgets, stop conditions, rollback rules, and receipts\./i);
+  assert.match(readme, /MartinLoop makes every agent action bounded, verified, reversible, priced, and provable\./i);
   assert.match(readme, /Built from thousands of agent runs where the problem was not intelligence -- it was uncontrolled execution\./i);
   assert.match(readme, /## Why Teams Adopt MartinLoop/);
   assert.match(readme, /## 2-Minute Install Path/);
