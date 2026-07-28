@@ -1,0 +1,4 @@
+server/node_modules/**/test/**
+server/node_modules/**/tests/**
+server/node_modules/**/__tests__/**
+server/node_modules/**/.github/**
