@@ -2,7 +2,7 @@
 
 The `@martinloop/mcp` package exposes MartinLoop through stdio for MCP-capable hosts.
 
-`0.3.0` is the current public MCP package line. It adds a stronger guided flow for hosts and a stricter run gate so `martin_run` only starts after the matching readiness, planning, and preflight steps have happened.
+Machine-readable release truth for the current public OSS line lives in [`distribution/release-truth.json`](../../distribution/release-truth.json). The human-facing release map lives in [`docs/release/VERSION-LEDGER.md`](../release/VERSION-LEDGER.md).
 
 ## Install
 
@@ -38,10 +38,15 @@ claude mcp add --transport stdio --scope user martin-loop -- cmd /c npx -y @mart
 npx martin-loop mcp print-config --host codex --transport stdio --profile minimal
 npx martin-loop mcp print-config --host claude --transport stdio --profile diagnostic
 npx martin-loop mcp print-config --host gemini --transport stdio --profile full-local
+npx martin-loop mcp print-config --host cursor --transport stdio --profile starter
+npx martin-loop mcp print-config --host copilot --transport stdio --profile starter
+npx martin-loop mcp print-config --host continue --transport stdio --profile starter
 npx martin-loop mcp print-config --host generic --transport stdio --profile github-review
 ```
 
 `npx martin-loop mcp install` writes only when the target file is absent or when it detects an existing MartinLoop block it can update safely. For hand-maintained host configs, print the config and merge it yourself.
+
+Supported MCP config targets from the root CLI are `codex`, `claude`, `gemini`, `cursor`, `copilot`, `continue`, and `generic`.
 
 ## Recommended Host Flow
 

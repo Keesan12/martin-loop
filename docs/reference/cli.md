@@ -23,8 +23,8 @@ martin-loop challenge [--loop-id <id> | --file <path> | --latest] [--format mark
 martin-loop share (--loop-id <id> | --file <path> | --latest) [--out-dir <path>]
 martin-loop badge [--format svg|json] [--runs-dir <path>]
 martin-loop runs list|get|attempt|verify ...
-martin-loop mcp print-config --host <codex|claude|gemini|generic>
-martin-loop mcp install --host <codex|claude|gemini|generic>
+martin-loop mcp print-config --host <codex|claude|gemini|cursor|copilot|continue|generic>
+martin-loop mcp install --host <codex|claude|gemini|cursor|copilot|continue|generic>
 ```
 
 ## Onboarding Flow

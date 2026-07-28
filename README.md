@@ -242,8 +242,8 @@ martin-loop bench --suite <suiteId>
 martin-loop triage
 martin-loop dossier (--latest | --loop-id <id> | --file <path>)
 martin-loop runs list|get|attempt|verify ...
-martin-loop mcp print-config --host <codex|claude|gemini|generic>
-martin-loop mcp install --host <codex|claude|gemini|generic>
+martin-loop mcp print-config --host <codex|claude|gemini|cursor|copilot|continue|generic>
+martin-loop mcp install --host <codex|claude|gemini|cursor|copilot|continue|generic>
 martin-loop challenge [--loop-id <id> | --file <path> | --latest]
 martin-loop share (--loop-id <id> | --file <path> | --latest) [--out-dir <path>]
 martin-loop badge [--format svg|json] [--runs-dir <path>]
@@ -341,10 +341,13 @@ Generate host config from the root CLI:
 npx martin-loop mcp print-config --host codex --transport stdio --profile minimal
 npx martin-loop mcp print-config --host claude --transport stdio --profile diagnostic
 npx martin-loop mcp print-config --host gemini --transport stdio --profile full-local
+npx martin-loop mcp print-config --host cursor --transport stdio --profile starter
+npx martin-loop mcp print-config --host copilot --transport stdio --profile starter
+npx martin-loop mcp print-config --host continue --transport stdio --profile starter
 npx martin-loop mcp print-config --host generic --transport stdio --profile github-review
 ```
 
-The root `martin-loop` package and the standalone `@martinloop/mcp` package move on separate version lines. The current root package line here is `0.4.3`; the current standalone MCP source line is `0.3.7`, and the live npm baseline is `0.3.7`.
+The root `martin-loop` package and the standalone `@martinloop/mcp` package move on separate version lines. Machine-readable release truth lives in [`distribution/release-truth.json`](./distribution/release-truth.json), and the human-facing release map lives in [`docs/release/VERSION-LEDGER.md`](./docs/release/VERSION-LEDGER.md).
 
 The public MCP release train labels are:
 
