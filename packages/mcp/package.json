@@ -68,7 +68,7 @@
     "start": "node dist/server.js",
     "inspect:live": "node ./scripts/inspect-live.mjs",
     "mcpb:build": "node ./mcpb/build-mcpb.mjs",
-    "mcpb:validate": "npx --yes @anthropic-ai/mcpb@2 validate ./dist-mcpb/martinloop"
+    "mcpb:validate": "mcpb validate ./dist-mcpb/martinloop"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
@@ -80,6 +80,7 @@
     "ts-morph": "^21.0.0"
   },
   "devDependencies": {
+    "@anthropic-ai/mcpb": "2.1.2",
     "@martin/contracts": "workspace:*"
   }
 }

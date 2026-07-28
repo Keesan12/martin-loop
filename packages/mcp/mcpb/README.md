@@ -2,11 +2,14 @@
 
 Packages the existing `@martinloop/mcp` local stdio server as an MCP Bundle (`.mcpb`). This is an additional distribution format; it does not replace npm or the official MCP Registry package.
 
-## Build
+## Install and build
 
-From `packages/mcp`:
+From the repository root, install the reviewed workspace lockfile. Then build and
+validate the bundle from `packages/mcp`:
 
 ```bash
+pnpm install --frozen-lockfile
+cd packages/mcp
 pnpm mcpb:build
 pnpm mcpb:validate
 ```
@@ -18,7 +21,17 @@ dist-mcpb/martinloop-<version>.mcpb
 dist-mcpb/martinloop-<version>.mcpb.sha256
 ```
 
-## Runtime configuration
+## Import and launch
+
+Open a client that supports MCP Bundles, choose its bundle import or install
+command, and select `dist-mcpb/martinloop-<version>.mcpb`. Review the requested
+configuration, finish the import, and launch MartinLoop from the client's MCP
+server controls.
+
+The exact import label varies by client. Keep the `.mcpb` file intact; do not
+extract it and launch files from inside the archive.
+
+## Configure the server
 
 | Setting | Environment variable | Purpose |
 |---|---|---|
@@ -28,9 +41,17 @@ dist-mcpb/martinloop-<version>.mcpb.sha256
 
 `live_mode` defaults to `false`. MartinLoop must reject workspace escapes, avoid stdout contamination, and never package credentials, `.env` files, source repositories, or existing receipts.
 
-## Cross-platform requirement
+Set `workspace_root` to the repository MartinLoop may access. Set `runs_root` to
+the directory where run receipts should be written. Leave `live_mode` disabled
+until you intentionally want governed execution.
 
-The builder uses the repository's shared `createCommandLaunch` helper. Windows commands run through `cmd.exe /d /s /c` with argument quoting; macOS and Linux execute commands directly with `shell: false`.
+## Verify the installation
+
+After launch, confirm that the client reports the MartinLoop server as connected
+and that its tools are listed. Run the doctor or status tool first, with
+`live_mode` still `false`, and verify that the response is structured MCP output
+without terminal text mixed into the protocol stream. A live execution request
+must remain blocked while `MARTIN_LIVE=false`.
 
 ## Release gate
 

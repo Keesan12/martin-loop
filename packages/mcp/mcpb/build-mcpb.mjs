@@ -6,8 +6,6 @@ import { cp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
-import { createCommandLaunch } from "../scripts/build-package-lib.mjs";
-
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(scriptDirectory, "..");
 const repositoryRoot = path.resolve(packageRoot, "../..");
@@ -17,8 +15,7 @@ const serverRoot = path.join(stagingRoot, "server");
 
 function run(command, args, options = {}) {
   return new Promise((resolve, reject) => {
-    const launch = createCommandLaunch(command, args);
-    const child = spawn(launch.command, launch.args, {
+    const child = spawn(command, args, {
       cwd: options.cwd ?? packageRoot,
       env: { ...process.env, ...options.env },
       stdio: "inherit",
@@ -33,6 +30,14 @@ function run(command, args, options = {}) {
   });
 }
 
+function runPnpm(args, options = {}) {
+  const pnpmCli = process.env.npm_execpath;
+  if (!pnpmCli) {
+    throw new Error("MCPB builds must run through pnpm so npm_execpath identifies the locked pnpm CLI.");
+  }
+  return run(process.execPath, [pnpmCli, ...args], options);
+}
+
 async function isFile(filePath) {
   try { return (await stat(filePath)).isFile(); } catch { return false; }
 }
@@ -42,17 +47,16 @@ async function isDirectory(directoryPath) {
 }
 
 function assertReleaseTreeClean() {
-  try {
-    const status = execFileSync("git", ["status", "--porcelain", "--", "packages/mcp"], {
+  const status = execFileSync(
+    "git",
+    ["-c", `safe.directory=${repositoryRoot}`, "status", "--porcelain", "--", "packages/mcp"],
+    {
       cwd: repositoryRoot,
       encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"]
-    }).trim();
-    if (status) throw new Error(`Uncommitted changes exist under packages/mcp:\n${status}`);
-  } catch (error) {
-    if (error instanceof Error && error.message.startsWith("Uncommitted changes")) throw error;
-    process.stderr.write("[warn] Could not verify git clean state.\n");
-  }
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  ).trim();
+  if (status) throw new Error(`Uncommitted changes exist under packages/mcp:\n${status}`);
 }
 
 async function verifyStaging() {
@@ -87,31 +91,45 @@ async function build() {
   const bundleName = `martinloop-${packageJson.version}.mcpb`;
   const bundlePath = path.join(outputRoot, bundleName);
   await rm(outputRoot, { recursive: true, force: true });
-  await mkdir(serverRoot, { recursive: true });
+  await mkdir(stagingRoot, { recursive: true });
 
-  await run("pnpm", ["build"], { cwd: packageRoot });
+  await runPnpm(["build"], { cwd: packageRoot });
   const builtServer = path.join(packageRoot, "dist", "server.js");
   if (!(await isFile(builtServer))) throw new Error(`Build did not produce ${builtServer}`);
 
-  await cp(path.join(packageRoot, "dist"), path.join(serverRoot, "dist"), { recursive: true });
-  await cp(path.join(packageRoot, "README.md"), path.join(serverRoot, "README.md"));
+  await runPnpm(
+    [
+      "--config.inject-workspace-packages=true",
+      "--config.node-linker=hoisted",
+      "--filter",
+      "@martinloop/mcp",
+      "deploy",
+      "--prod",
+      serverRoot,
+    ],
+    { cwd: repositoryRoot },
+  );
+
+  const deployedPackagePath = path.join(serverRoot, "package.json");
+  const deployedPackage = JSON.parse(await readFile(deployedPackagePath, "utf8"));
+  delete deployedPackage.devDependencies;
+  delete deployedPackage.optionalDependencies;
+  delete deployedPackage.pnpm;
+  await writeFile(deployedPackagePath, `${JSON.stringify(deployedPackage, null, 2)}\n`);
+
+  await rm(path.join(serverRoot, "pnpm-lock.yaml"), { force: true });
+  await rm(path.join(serverRoot, "node_modules", ".modules.yaml"), { force: true });
+  await rm(path.join(serverRoot, "node_modules", ".pnpm-workspace-state-v1.json"), { force: true });
+  await rm(path.join(serverRoot, "node_modules", ".pnpm"), { recursive: true, force: true });
+  await rm(path.join(serverRoot, "node_modules", ".bin"), { recursive: true, force: true });
+
   await cp(path.join(repositoryRoot, "LICENSE"), path.join(stagingRoot, "LICENSE"));
+  await cp(path.join(scriptDirectory, ".mcpbignore"), path.join(stagingRoot, ".mcpbignore"));
   await writeFile(path.join(stagingRoot, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
 
-  const runtimePackage = {
-    name: "@martinloop/mcp-mcpb-runtime",
-    version: packageJson.version,
-    private: true,
-    type: "module",
-    engines: { node: ">=20.0.0" },
-    dependencies: packageJson.dependencies
-  };
-  await writeFile(path.join(serverRoot, "package.json"), `${JSON.stringify(runtimePackage, null, 2)}\n`);
-
-  await run("npm", ["install", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund", "--package-lock=false"], { cwd: serverRoot });
   await verifyStaging();
-  await run("npx", ["--yes", "@anthropic-ai/mcpb@2", "validate", stagingRoot]);
-  await run("npx", ["--yes", "@anthropic-ai/mcpb@2", "pack", stagingRoot, bundlePath]);
+  await runPnpm(["exec", "mcpb", "validate", stagingRoot]);
+  await runPnpm(["exec", "mcpb", "pack", stagingRoot, bundlePath]);
   if (!(await isFile(bundlePath))) throw new Error(`Bundle was not created: ${bundlePath}`);
 
   const digest = await sha256(bundlePath);

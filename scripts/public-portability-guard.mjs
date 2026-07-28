@@ -37,7 +37,6 @@ const PORTABILITY_RULES = [
 ];
 
 const PATH_ALLOWLIST = [
-  /^AGENTS\.md$/,
   /^scripts\/public-copy-scan\.mjs$/,
   /^scripts\/public-git-surface-guard\.mjs$/,
   /^scripts\/public-portability-guard\.mjs$/,
