@@ -88,7 +88,9 @@ describe("mcp config helpers", () => {
   it("writes Claude governance hooks only with explicit consent", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "martin-cli-governance-consent-"));
     const previousUserProfile = process.env.USERPROFILE;
+    const previousHome = process.env.HOME;
     process.env.USERPROFILE = cwd;
+    process.env.HOME = cwd;
 
     try {
       const input = {
@@ -109,6 +111,11 @@ describe("mcp config helpers", () => {
         delete process.env.USERPROFILE;
       } else {
         process.env.USERPROFILE = previousUserProfile;
+      }
+      if (previousHome === undefined) {
+        delete process.env.HOME;
+      } else {
+        process.env.HOME = previousHome;
       }
       await rm(cwd, { recursive: true, force: true });
     }
