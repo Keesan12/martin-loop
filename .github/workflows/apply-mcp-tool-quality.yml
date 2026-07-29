@@ -1,0 +1,33 @@
+name: Apply MCP tool quality hardening
+
+on:
+  push:
+    branches:
+      - chore/mcp-tool-quality-a-grade
+    paths:
+      - scripts/harden-mcp-tool-definitions.mjs
+      - .github/workflows/apply-mcp-tool-quality.yml
+
+permissions:
+  contents: write
+
+jobs:
+  harden:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chore/mcp-tool-quality-a-grade
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/harden-mcp-tool-definitions.mjs
+      - run: |
+          git diff --check
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add packages/mcp/src/server.ts
+          git diff --cached --quiet && exit 0
+          git commit -m "feat(mcp): harden tool definitions for Glama quality"
+          git push
