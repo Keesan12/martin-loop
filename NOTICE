@@ -1,0 +1,21 @@
+MartinLoop
+Copyright 2025-present MartinLoop contributors
+
+This product includes software developed by the MartinLoop project
+(https://martinloop.com), originally released at
+https://github.com/Keesan12/martin-loop.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+This NOTICE file must be reproduced in redistributed and derivative
+works, per Apache License 2.0 Section 4(d). It does not restrict
+usage, modification, or commercial redistribution permitted under
+the License — it preserves attribution to the original project.
+
+Portions of this software may include third-party components under
+their own licenses; see individual package manifests under packages/
+for details.

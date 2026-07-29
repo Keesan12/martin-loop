@@ -31,6 +31,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Verify NOTICE file present
+        shell: bash
+        run: |
+          test -f NOTICE
+          grep -q "martinloop.com" NOTICE
+          grep -q "Apache License, Version 2.0" NOTICE
+
       - name: Run public copy and portability guards
         run: |
           pnpm public:copy-scan
