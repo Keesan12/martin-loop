@@ -347,6 +347,8 @@ npx martin-loop mcp print-config --host continue --transport stdio --profile sta
 npx martin-loop mcp print-config --host generic --transport stdio --profile github-review
 ```
 
+The native installer supports user and project scopes for all seven hosts, plus Claude Code's local scope. Use `mcp install --dry-run` to preview the config target, enabled tools, and governance guidance before writing. The authoritative host-to-file and profile matrix is in the [MCP setup guide](./docs/getting-started/mcp.md).
+
 The root `martin-loop` package and the standalone `@martinloop/mcp` package move on separate version lines. Machine-readable release truth lives in [`distribution/release-truth.json`](./distribution/release-truth.json), and the human-facing release map lives in [`docs/release/VERSION-LEDGER.md`](./docs/release/VERSION-LEDGER.md).
 
 The public MCP release train labels are:

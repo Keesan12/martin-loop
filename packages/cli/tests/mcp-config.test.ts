@@ -22,12 +22,58 @@ import {
   installMcpConfig,
   MARTIN_DIAGNOSTIC_TOOLS,
   MARTIN_FULL_TOOLS,
+  MARTIN_MCP_HOST_MATRIX,
+  MARTIN_MCP_HOSTS,
+  MARTIN_MCP_PROFILES,
   MARTIN_MINIMAL_TOOLS,
   MARTIN_PAID_REMOTE_TOOLS,
-  MARTIN_STARTER_TOOLS
+  MARTIN_STARTER_TOOLS,
+  isMartinMcpHost,
+  supportsMartinMcpScope
 } from "../src/mcp-config.js";
 
 describe("mcp config helpers", () => {
+  it("publishes one canonical MCP host capability matrix", () => {
+    expect(MARTIN_MCP_HOSTS).toEqual([
+      "codex",
+      "claude",
+      "gemini",
+      "cursor",
+      "copilot",
+      "continue",
+      "generic"
+    ]);
+    expect(Object.keys(MARTIN_MCP_HOST_MATRIX)).toEqual([...MARTIN_MCP_HOSTS]);
+    expect(MARTIN_MCP_HOST_MATRIX.claude.scopes).toEqual(["user", "project", "local"]);
+    expect(MARTIN_MCP_HOST_MATRIX.codex.scopes).toEqual(["user", "project"]);
+    expect(MARTIN_MCP_PROFILES).toContain("paid-remote");
+    expect(isMartinMcpHost("continue")).toBe(true);
+    expect(isMartinMcpHost("unknown")).toBe(false);
+    expect(supportsMartinMcpScope("claude", "local")).toBe(true);
+    expect(supportsMartinMcpScope("cursor", "local")).toBe(false);
+  });
+
+  it("keeps the public installer guide aligned with the canonical host matrix", () => {
+    const guide = readFileSync(
+      fileURLToPath(new URL("../../../docs/getting-started/mcp.md", import.meta.url)),
+      "utf8"
+    );
+
+    for (const host of MARTIN_MCP_HOSTS) {
+      const capability = MARTIN_MCP_HOST_MATRIX[host];
+      expect(guide).toContain(`\`${host}\``);
+      for (const target of Object.values(capability.configTargets)) {
+        expect(guide).toContain(target);
+      }
+    }
+
+    for (const profile of MARTIN_MCP_PROFILES) {
+      expect(guide).toContain(`\`${profile}\``);
+    }
+    expect(guide).toContain("`--dry-run`");
+    expect(guide).toContain("governance");
+  });
+
   it("keeps the CLI starter allow-list aligned with MCP discovery metadata", () => {
     expect([...MARTIN_STARTER_TOOLS]).toEqual([...MARTIN_STARTER_TOOL_NAMES]);
   });

@@ -45,6 +45,10 @@ import {
   buildMcpInstallPlan,
   hostRequiresExperimentalRemoteOptIn,
   installMcpConfig,
+  isMartinMcpHost,
+  MARTIN_MCP_HOSTS,
+  MARTIN_MCP_PROFILES,
+  supportsMartinMcpScope,
   type MartinMcpHost,
   type MartinMcpPlatform,
   type MartinMcpProfile,
@@ -138,6 +142,9 @@ const STAR_CTA_LINES = [
 ] as const;
 const CLI_TAGLINE_LINE = "AI agents are easy to run. Hard to govern.";
 const CLI_ATTRIBUTION_LINE = "Apache 2.0 · martinloop.com · github.com/Keesan12/martin-loop";
+const MCP_HOST_USAGE = MARTIN_MCP_HOSTS.join("|");
+const MCP_HOST_LIST = MARTIN_MCP_HOSTS.join(", ");
+const MCP_PROFILE_LIST = MARTIN_MCP_PROFILES.join(", ");
 const CLI_VERSION_ATTRIBUTION_SUFFIX = "Apache 2.0 · martinloop.com";
 
 type RunSuccessCallToAction = {
@@ -1032,8 +1039,8 @@ export function renderCliHelp(): string {
     "  martin runs get (--loop-id <id> | --file <path> | --latest) [options]",
     "  martin runs attempt (--loop-id <id> | --file <path>) [--attempt-index <n>] [options]",
     "  martin runs verify (--loop-id <id> | --file <path> | --latest) [options]",
-    "  martin mcp print-config --host <codex|claude|gemini|cursor|copilot|continue|generic> [--scope <user|project|local>] [options]",
-    "  martin mcp install --host <codex|claude|gemini|cursor|copilot|continue|generic> [--scope <user|project|local>] [--dry-run] [options]",
+    `  martin mcp print-config --host <${MCP_HOST_USAGE}> [--scope <user|project|local>] [options]`,
+    `  martin mcp install --host <${MCP_HOST_USAGE}> [--scope <user|project|local>] [--dry-run] [options]`,
     "  martin demo [--dir <path>] [--force]",
     "  martin-loop demo [--dir <path>] [--force] (published alias)",
     "  martin inspect --file <path>",
@@ -1068,7 +1075,7 @@ export function renderCliHelp(): string {
     "  gate         Hard governance check — exits non-zero if doctor/estimate are missing. Use in hooks.",
     "  mode         Show or set working mode: auto (default), plan, edits.",
     "  clean        Remove MartinLoop artifacts (_martin/, old run records).",
-    "  mcp print-config  Print a known-good MCP config snippet for Codex, Claude, Gemini, or generic hosts.",
+    "  mcp print-config  Print a known-good MCP config for a supported host without writing files.",
     "  mcp install       Write a starter MCP config, or call Claude Code directly for local scope.",
     "  challenge    Print a shareable local proof card for the Under-$3 challenge.",
     "  share        Write a local share bundle with a redacted receipt JSON and Markdown receipt; proof-card images are opt-in.",
@@ -1102,11 +1109,11 @@ export function renderCliHelp(): string {
     "  --force                  Allow martin enable to overwrite an existing config file.",
     "",
     "MCP config options:",
-    "  --host <name>            codex, claude, gemini, cursor, copilot, continue, or generic.",
+    `  --host <name>            ${MCP_HOST_LIST}.`,
     "  --scope <name>           user or project for all hosts; Claude also supports local.",
     "  --transport <name>       stdio (default) or remote.",
     "  --experimental-remote-hosts  Required to enable remote transport for cursor/copilot/continue.",
-    "  --profile <name>         minimal (default), diagnostic, github-review, full-local, paid-remote, starter, or full.",
+    `  --profile <name>         ${MCP_PROFILE_LIST}; minimal is the default.`,
     "  --platform <name>        windows, macos, or linux recipe shaping.",
     "",
     "Run options:",
@@ -3695,23 +3702,20 @@ function parseRunSelector(
 function parseMcpHost(tokens: string[]): MartinMcpHost {
   const host = readOption(tokens, "--host");
 
-  if (
-    host === "codex" || host === "claude" || host === "gemini" || host === "generic" ||
-    host === "cursor" || host === "copilot" || host === "continue"
-  ) {
+  if (isMartinMcpHost(host)) {
     return host;
   }
 
   if (host === undefined) {
     throw new CliCommandError(
       "invalid_input",
-      "mcp commands require --host <codex|claude|gemini|cursor|copilot|continue|generic>.",
-      { suggestion: "Pass --host codex, --host claude, --host cursor, --host copilot, --host continue, or --host generic." }
+      `mcp commands require --host <${MCP_HOST_USAGE}>.`,
+      { suggestion: `Pass one of: ${MCP_HOST_LIST}.` }
     );
   }
 
   throw new CliCommandError("invalid_input", `Invalid --host value: ${host}.`, {
-    suggestion: "Use --host codex, --host claude, --host gemini, --host cursor, --host copilot, --host continue, or --host generic."
+    suggestion: `Use one of: ${MCP_HOST_LIST}.`
   });
 }
 
@@ -3722,18 +3726,17 @@ function parseMcpScope(host: MartinMcpHost, tokens: string[]): MartinMcpScope {
     return "user";
   }
 
-  if (scope === "local") {
-    if (host !== "claude") {
-      throw new CliCommandError("invalid_input", `Host ${host} does not support --scope local.`, {
-        suggestion: "Use --scope user or --scope project, or switch to --host claude."
-      });
-    }
-
+  if (
+    (scope === "user" || scope === "project" || scope === "local") &&
+    supportsMartinMcpScope(host, scope)
+  ) {
     return scope;
   }
 
-  if (scope === "user" || scope === "project") {
-    return scope;
+  if (scope === "local") {
+    throw new CliCommandError("invalid_input", `Host ${host} does not support --scope local.`, {
+      suggestion: "Use --scope user or --scope project, or switch to --host claude."
+    });
   }
 
   throw new CliCommandError("invalid_input", `Invalid --scope value: ${scope}.`, {

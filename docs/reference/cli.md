@@ -27,6 +27,19 @@ martin-loop mcp print-config --host <codex|claude|gemini|cursor|copilot|continue
 martin-loop mcp install --host <codex|claude|gemini|cursor|copilot|continue|generic>
 ```
 
+## MCP Installer
+
+The native installer supports Codex, Claude Code, Gemini CLI, Cursor, VS Code / GitHub Copilot (`copilot`), Continue, and generic MCP hosts.
+
+```text
+--scope <user|project|local>  user or project for every host; local is Claude-only
+--profile <name>              minimal, diagnostic, github-review, full-local, paid-remote, starter, or full
+--transport <stdio|remote>    stdio by default
+--dry-run                     preview the target and generated config without writing
+```
+
+Every preview includes the config target, enabled tools, and governance guidance. See the [MCP setup guide](../getting-started/mcp.md) for the authoritative host-to-file matrix and safe install behavior.
+
 ## Onboarding Flow
 
 Use this sequence when you are new to the product or setting up a fresh repo:

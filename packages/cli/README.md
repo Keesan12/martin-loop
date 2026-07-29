@@ -42,10 +42,14 @@ npx martin-loop doctor
 
 - local `stdio` is the default and best path for fast local iteration
 - public OSS guidance covers:
-  - `--host codex|claude|gemini|generic`
+  - `--host codex|claude|gemini|cursor|copilot|continue|generic`
+  - `--scope user|project` for every host, plus Claude-only `local`
   - `--transport stdio`
-  - `--profile minimal|diagnostic|github-review|full-local|starter|full`
+  - `--profile minimal|diagnostic|github-review|full-local|paid-remote|starter|full`
   - `--platform windows|macos|linux`
+  - `--dry-run` for a no-write install preview
+
+The canonical host, scope, config-target, profile, and governance matrix is in the [MCP setup guide](../../docs/getting-started/mcp.md).
 
 ## Recommended flow
 
@@ -117,10 +121,10 @@ The minimal allow-list stays aligned with the MCP discovery metadata: `martin_do
 
 ## Host coverage
 
-- `codex`: local stdio profiles
-- `claude`: local, user, and project scopes
-- `gemini`: local `settings.json` snippets plus `includeTools`
-- `generic`: JSON config for wrapper hosts and MCP-aware agent shells
+- `codex`, `claude`, `gemini`, `cursor`, `copilot`, `continue`, and `generic` are supported config targets.
+- Every host supports user and project scope. Claude Code also supports its CLI-managed local scope.
+- `print-config` and `install --dry-run` show the target, generated config, enabled tools, and governance guidance without changing host files.
+- The installer refuses to replace an existing config unless it can safely update the MartinLoop entry.
 
 Generated stdio launchers are platform-aware:
 

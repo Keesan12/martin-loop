@@ -72,8 +72,8 @@ assertInvariant(
   "packages/mcp/src/server.ts"
 );
 assertInvariant(
-  "host coverage includes cursor/copilot/continue",
-  /"cursor"\s*\|\s*"copilot"\s*\|\s*"continue"/u,
+  "canonical host matrix includes every supported MCP host",
+  /MARTIN_MCP_HOSTS\s*=\s*\[\s*"codex",\s*"claude",\s*"gemini",\s*"cursor",\s*"copilot",\s*"continue",\s*"generic"\s*\]\s*as const/u,
   "packages/cli/src/mcp-config.ts"
 );
 assertInvariant(

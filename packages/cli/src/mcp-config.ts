@@ -94,11 +94,119 @@ export const MARTIN_PAID_REMOTE_TOOLS = [
   "martin_eval"
 ] as const;
 
-export type MartinMcpHost = "codex" | "claude" | "gemini" | "generic" | "cursor" | "copilot" | "continue";
-export type MartinMcpScope = "user" | "project" | "local";
+export const MARTIN_MCP_HOSTS = [
+  "codex",
+  "claude",
+  "gemini",
+  "cursor",
+  "copilot",
+  "continue",
+  "generic"
+] as const;
+
+export type MartinMcpHost = typeof MARTIN_MCP_HOSTS[number];
+
+export const MARTIN_MCP_SCOPES = ["user", "project", "local"] as const;
+export type MartinMcpScope = typeof MARTIN_MCP_SCOPES[number];
 export type MartinMcpTransport = "stdio" | "remote";
-export type MartinMcpProfile = "minimal" | "diagnostic" | "github-review" | "full-local" | "paid-remote" | "starter" | "full";
+
+export const MARTIN_MCP_PROFILES = [
+  "minimal",
+  "diagnostic",
+  "github-review",
+  "full-local",
+  "paid-remote",
+  "starter",
+  "full"
+] as const;
+
+export type MartinMcpProfile = typeof MARTIN_MCP_PROFILES[number];
 export type MartinMcpPlatform = "windows" | "macos" | "linux";
+
+export interface MartinMcpHostCapability {
+  displayName: string;
+  scopes: readonly MartinMcpScope[];
+  configTargets: Readonly<Partial<Record<MartinMcpScope, string>>>;
+  governanceTarget: string;
+}
+
+export const MARTIN_MCP_HOST_MATRIX = {
+  codex: {
+    displayName: "Codex",
+    scopes: ["user", "project"],
+    configTargets: {
+      user: "$CODEX_HOME/config.toml (defaults to ~/.codex/config.toml)",
+      project: ".codex/config.toml"
+    },
+    governanceTarget: "AGENTS.md or ~/.codex/instructions.md"
+  },
+  claude: {
+    displayName: "Claude Code",
+    scopes: ["user", "project", "local"],
+    configTargets: {
+      user: "~/.claude.json",
+      project: ".mcp.json",
+      local: "claude mcp add --scope local"
+    },
+    governanceTarget: "~/.claude/settings.json"
+  },
+  gemini: {
+    displayName: "Gemini CLI",
+    scopes: ["user", "project"],
+    configTargets: {
+      user: "~/.gemini/settings.json",
+      project: ".gemini/settings.json"
+    },
+    governanceTarget: "GEMINI.md or ~/.gemini/GEMINI.md"
+  },
+  cursor: {
+    displayName: "Cursor",
+    scopes: ["user", "project"],
+    configTargets: {
+      user: "~/.cursor/mcp.json",
+      project: ".cursor/mcp.json"
+    },
+    governanceTarget: ".cursor/rules/martin-governance.mdc"
+  },
+  copilot: {
+    displayName: "VS Code / GitHub Copilot",
+    scopes: ["user", "project"],
+    configTargets: {
+      user: "~/.vscode/settings.json",
+      project: ".vscode/settings.json"
+    },
+    governanceTarget: ".github/copilot-instructions.md"
+  },
+  continue: {
+    displayName: "Continue",
+    scopes: ["user", "project"],
+    configTargets: {
+      user: "~/.continue/config.json",
+      project: ".continue/config.json"
+    },
+    governanceTarget: ".continue/rules/martin-governance.md"
+  },
+  generic: {
+    displayName: "Generic MCP host",
+    scopes: ["user", "project"],
+    configTargets: {
+      user: "~/.martin-loop/mcp.generic.json",
+      project: ".martin-loop/mcp.generic.json"
+    },
+    governanceTarget: "Manual host instructions"
+  }
+} as const satisfies Record<MartinMcpHost, MartinMcpHostCapability>;
+
+export function isMartinMcpHost(value: string | undefined): value is MartinMcpHost {
+  return MARTIN_MCP_HOSTS.some((host) => host === value);
+}
+
+export function supportsMartinMcpScope(
+  host: MartinMcpHost,
+  scope: MartinMcpScope
+): boolean {
+  return MARTIN_MCP_HOST_MATRIX[host].scopes.some((supportedScope) => supportedScope === scope);
+}
 
 export interface MartinMcpConfigInput {
   host: MartinMcpHost;
