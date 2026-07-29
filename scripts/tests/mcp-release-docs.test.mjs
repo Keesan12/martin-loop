@@ -182,7 +182,7 @@ test("active public docs do not claim stale current MCP versions or hide support
   ]);
 
   for (const contents of [readme, cliReference]) {
-    assert.match(contents, /<codex\|claude\|gemini\|cursor\|copilot\|continue\|generic>/);
+    assert.match(contents, /<codex\|claude\|gemini\|cursor\|vscode\|copilot\|continue\|generic>/);
   }
 
   assert.doesNotMatch(mcpGuide, /current public MCP package line/);

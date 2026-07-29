@@ -242,8 +242,8 @@ martin-loop bench --suite <suiteId>
 martin-loop triage
 martin-loop dossier (--latest | --loop-id <id> | --file <path>)
 martin-loop runs list|get|attempt|verify ...
-martin-loop mcp print-config --host <codex|claude|gemini|cursor|copilot|continue|generic>
-martin-loop mcp install --host <codex|claude|gemini|cursor|copilot|continue|generic>
+martin-loop mcp print-config --host <codex|claude|gemini|cursor|vscode|copilot|continue|generic>
+martin-loop mcp install --host <codex|claude|gemini|cursor|vscode|copilot|continue|generic>
 martin-loop challenge [--loop-id <id> | --file <path> | --latest]
 martin-loop share (--loop-id <id> | --file <path> | --latest) [--out-dir <path>]
 martin-loop badge [--format svg|json] [--runs-dir <path>]
@@ -342,12 +342,13 @@ npx martin-loop mcp print-config --host codex --transport stdio --profile minima
 npx martin-loop mcp print-config --host claude --transport stdio --profile diagnostic
 npx martin-loop mcp print-config --host gemini --transport stdio --profile full-local
 npx martin-loop mcp print-config --host cursor --transport stdio --profile starter
+npx martin-loop mcp print-config --host vscode --transport stdio --profile starter
 npx martin-loop mcp print-config --host copilot --transport stdio --profile starter
 npx martin-loop mcp print-config --host continue --transport stdio --profile starter
 npx martin-loop mcp print-config --host generic --transport stdio --profile github-review
 ```
 
-The native installer supports user and project scopes for all seven hosts, plus Claude Code's local scope. Use `mcp install --dry-run` to preview the config target, enabled tools, and governance guidance before writing. The authoritative host-to-file and profile matrix is in the [MCP setup guide](./docs/getting-started/mcp.md).
+The native installer supports user and project scopes for every host, plus Claude Code's local scope. `copilot` remains a compatibility alias for the VS Code target. Use `mcp install --dry-run` to preview changes. File-backed installs are atomic, backed up, and available to `mcp verify-install`, `mcp rollback`, and `mcp uninstall`. Governance files require the explicit `--install-governance` flag. The authoritative host-to-file and profile matrix is in the [MCP setup guide](./docs/getting-started/mcp.md).
 
 The root `martin-loop` package and the standalone `@martinloop/mcp` package move on separate version lines. Machine-readable release truth lives in [`distribution/release-truth.json`](./distribution/release-truth.json), and the human-facing release map lives in [`docs/release/VERSION-LEDGER.md`](./docs/release/VERSION-LEDGER.md).
 

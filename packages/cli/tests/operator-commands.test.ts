@@ -536,7 +536,7 @@ describe("operator commands", () => {
   });
 
   it("rejects invalid MCP host and scope values instead of silently falling back", async () => {
-    const invalidHost = await executeCli(["mcp", "print-config", "--host", "vscode"]);
+    const invalidHost = await executeCli(["mcp", "print-config", "--host", "unknown"]);
     const invalidScope = await executeCli(["mcp", "install", "--host", "codex", "--scope", "workspace"]);
     const invalidLocalScope = await executeCli(["mcp", "install", "--host", "codex", "--scope", "local"]);
     const invalidTransport = await executeCli(["mcp", "print-config", "--host", "codex", "--transport", "sse"]);

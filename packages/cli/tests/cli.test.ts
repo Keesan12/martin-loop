@@ -226,7 +226,51 @@ describe("parseCliArguments", () => {
       transport: "remote",
       profile: "paid-remote",
       experimentalRemoteHosts: true,
-      dryRun: false
+      dryRun: false,
+      installGovernance: false
+    });
+  });
+
+  it("requires an explicit MCP governance install flag", () => {
+    expect(
+      parseCliArguments([
+        "mcp",
+        "install",
+        "--host",
+        "claude",
+        "--scope",
+        "project",
+        "--install-governance"
+      ])
+    ).toMatchObject({
+      command: "mcp_install",
+      host: "claude",
+      scope: "project",
+      installGovernance: true
+    });
+  });
+
+  it("parses MCP verify, rollback, and uninstall commands", () => {
+    expect(
+      parseCliArguments(["mcp", "verify-install", "--host", "vscode", "--scope", "project"])
+    ).toMatchObject({
+      command: "mcp_verify_install",
+      host: "vscode",
+      scope: "project"
+    });
+    expect(
+      parseCliArguments(["mcp", "rollback", "--host", "codex", "--scope", "user"])
+    ).toMatchObject({
+      command: "mcp_rollback",
+      host: "codex",
+      scope: "user"
+    });
+    expect(
+      parseCliArguments(["mcp", "uninstall", "--host", "generic", "--scope", "project"])
+    ).toMatchObject({
+      command: "mcp_uninstall",
+      host: "generic",
+      scope: "project"
     });
   });
 });
@@ -243,6 +287,38 @@ describe("executeCli", () => {
     expect(result.stdout).toContain("martin runs verify (--loop-id <id> | --file <path> | --latest) [options]");
     expect(result.stdout).toContain("martin start [options]");
     expect(result.stdout).toContain("--experimental-remote-hosts");
+  });
+
+  it("installs, verifies, and uninstalls a file-backed MCP config", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-mcp-roundtrip-"));
+    const previousUserProfile = process.env.USERPROFILE;
+    process.env.USERPROFILE = directory;
+
+    try {
+      const common = [
+        "--host",
+        "generic",
+        "--scope",
+        "project",
+        "--cwd",
+        directory
+      ];
+      expect((await executeCli(["mcp", "install", ...common])).exitCode).toBe(0);
+      const verified = await executeCli(["mcp", "verify-install", ...common]);
+      expect(verified.exitCode).toBe(0);
+      expect(verified.stdout).toContain("Verified MartinLoop MCP install");
+      expect((await executeCli(["mcp", "uninstall", ...common])).exitCode).toBe(0);
+      await expect(
+        readFile(join(directory, ".martin-loop", "mcp.generic.json"), "utf8")
+      ).rejects.toThrow();
+    } finally {
+      if (previousUserProfile === undefined) {
+        delete process.env.USERPROFILE;
+      } else {
+        process.env.USERPROFILE = previousUserProfile;
+      }
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   it("blocks remote MCP config for cursor without explicit experimental opt-in", async () => {

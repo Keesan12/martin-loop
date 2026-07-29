@@ -73,7 +73,7 @@ assertInvariant(
 );
 assertInvariant(
   "canonical host matrix includes every supported MCP host",
-  /MARTIN_MCP_HOSTS\s*=\s*\[\s*"codex",\s*"claude",\s*"gemini",\s*"cursor",\s*"copilot",\s*"continue",\s*"generic"\s*\]\s*as const/u,
+  /MARTIN_MCP_HOSTS\s*=\s*\[\s*"codex",\s*"claude",\s*"gemini",\s*"cursor",\s*"vscode",\s*"copilot",\s*"continue",\s*"generic"\s*\]\s*as const/u,
   "packages/cli/src/mcp-config.ts"
 );
 assertInvariant(
@@ -177,7 +177,7 @@ function assertReleaseTruthDocumentation() {
   assertNotMatch("AI guide stale live baseline claim", aiGuide, /live npm baseline/u);
 
   for (const target of [readme, cliReference]) {
-    assertMatch("MCP host coverage", target, /<codex\|claude\|gemini\|cursor\|copilot\|continue\|generic>/u);
+    assertMatch("MCP host coverage", target, /<codex\|claude\|gemini\|cursor\|vscode\|copilot\|continue\|generic>/u);
   }
 
   for (const host of ["cursor", "copilot", "continue"]) {
