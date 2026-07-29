@@ -192,7 +192,6 @@ function assertReleaseTruthDocumentation() {
 function buildReleaseTruth() {
   return {
     schemaVersion: 1,
-    generatedAt: resolveGeneratedAt(),
     cli: {
       package: packageJson.name,
       version: packageJson.version,
@@ -213,31 +212,6 @@ function buildReleaseTruth() {
     repository: packageJson.repository?.url?.replace(/^git\+/, "").replace(/\.git$/u, "") ?? "https://github.com/Keesan12/martin-loop",
     website: String(packageJson.homepage ?? "https://martinloop.com/").replace(/\/$/u, "")
   };
-}
-
-function resolveGeneratedAt() {
-  try {
-    return execFileSync(
-      "git",
-      [
-        "log",
-        "-1",
-        "--format=%cI",
-        "--",
-        "package.json",
-        "packages/mcp/package.json",
-        "packages/mcp/server.json",
-        "packages/mcp/mcpb/manifest.json"
-      ],
-      {
-        cwd: repoRoot,
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "ignore"]
-      }
-    ).trim();
-  } catch {
-    return "1970-01-01T00:00:00+00:00";
-  }
 }
 
 function resolveMcpbSha256(version) {

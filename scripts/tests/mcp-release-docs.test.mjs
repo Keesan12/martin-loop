@@ -36,6 +36,7 @@ test("generated release truth matches the public package metadata", async () => 
   const releaseTruth = JSON.parse(await readRepoFile(path.join("distribution", "release-truth.json")));
 
   assert.equal(releaseTruth.schemaVersion, 1);
+  assert.equal("generatedAt" in releaseTruth, false);
   assert.equal(releaseTruth.cli.package, rootPackageJson.name);
   assert.equal(releaseTruth.cli.version, rootPackageJson.version);
   assert.equal(releaseTruth.mcp.package, packageJson.name);
