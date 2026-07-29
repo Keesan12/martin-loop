@@ -1,8 +1,13 @@
-import { access, mkdir, readFile, writeFile } from "node:fs/promises";
+// SPDX-FileCopyrightText: MartinLoop contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
+import { access, mkdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 
+import { recordMartinMcpInstall, writeFileAtomically } from "./mcp-install-state.js";
 import { CliCommandError } from "./ux.js";
 
 export const MARTIN_STARTER_TOOLS = [
@@ -90,11 +95,129 @@ export const MARTIN_PAID_REMOTE_TOOLS = [
   "martin_eval"
 ] as const;
 
-export type MartinMcpHost = "codex" | "claude" | "gemini" | "generic" | "cursor" | "copilot" | "continue";
-export type MartinMcpScope = "user" | "project" | "local";
+export const MARTIN_MCP_HOSTS = [
+  "codex",
+  "claude",
+  "gemini",
+  "cursor",
+  "vscode",
+  "copilot",
+  "continue",
+  "generic"
+] as const;
+
+export type MartinMcpHost = typeof MARTIN_MCP_HOSTS[number];
+
+export const MARTIN_MCP_SCOPES = ["user", "project", "local"] as const;
+export type MartinMcpScope = typeof MARTIN_MCP_SCOPES[number];
 export type MartinMcpTransport = "stdio" | "remote";
-export type MartinMcpProfile = "minimal" | "diagnostic" | "github-review" | "full-local" | "paid-remote" | "starter" | "full";
+
+export const MARTIN_MCP_PROFILES = [
+  "minimal",
+  "diagnostic",
+  "github-review",
+  "full-local",
+  "paid-remote",
+  "starter",
+  "full"
+] as const;
+
+export type MartinMcpProfile = typeof MARTIN_MCP_PROFILES[number];
 export type MartinMcpPlatform = "windows" | "macos" | "linux";
+
+export interface MartinMcpHostCapability {
+  displayName: string;
+  scopes: readonly MartinMcpScope[];
+  configTargets: Readonly<Partial<Record<MartinMcpScope, string>>>;
+  governanceTarget: string;
+}
+
+export const MARTIN_MCP_HOST_MATRIX = {
+  codex: {
+    displayName: "Codex",
+    scopes: ["user", "project"],
+    configTargets: {
+      user: "$CODEX_HOME/config.toml (defaults to ~/.codex/config.toml)",
+      project: ".codex/config.toml"
+    },
+    governanceTarget: "AGENTS.md or ~/.codex/instructions.md"
+  },
+  claude: {
+    displayName: "Claude Code",
+    scopes: ["user", "project", "local"],
+    configTargets: {
+      user: "~/.claude.json",
+      project: ".mcp.json",
+      local: "claude mcp add --scope local"
+    },
+    governanceTarget: "~/.claude/settings.json"
+  },
+  gemini: {
+    displayName: "Gemini CLI",
+    scopes: ["user", "project"],
+    configTargets: {
+      user: "~/.gemini/settings.json",
+      project: ".gemini/settings.json"
+    },
+    governanceTarget: "GEMINI.md or ~/.gemini/GEMINI.md"
+  },
+  cursor: {
+    displayName: "Cursor",
+    scopes: ["user", "project"],
+    configTargets: {
+      user: "~/.cursor/mcp.json",
+      project: ".cursor/mcp.json"
+    },
+    governanceTarget: ".cursor/rules/martin-governance.mdc"
+  },
+  vscode: {
+    displayName: "VS Code",
+    scopes: ["user", "project"],
+    configTargets: {
+      user: "VS Code command palette: MCP: Add Server",
+      project: ".vscode/mcp.json"
+    },
+    governanceTarget: ".github/copilot-instructions.md"
+  },
+  copilot: {
+    displayName: "GitHub Copilot (VS Code compatibility alias)",
+    scopes: ["user", "project"],
+    configTargets: {
+      user: "VS Code command palette: MCP: Add Server",
+      project: ".vscode/mcp.json"
+    },
+    governanceTarget: ".github/copilot-instructions.md"
+  },
+  continue: {
+    displayName: "Continue",
+    scopes: ["user", "project"],
+    configTargets: {
+      user: "~/.continue/config.json",
+      project: ".continue/config.json"
+    },
+    governanceTarget: ".continue/rules/martin-governance.md"
+  },
+  generic: {
+    displayName: "Generic MCP host",
+    scopes: ["user", "project"],
+    configTargets: {
+      user: "~/.martin-loop/mcp.generic.json",
+      project: ".martin-loop/mcp.generic.json"
+    },
+    governanceTarget: "Manual host instructions"
+  }
+} as const satisfies Record<MartinMcpHost, MartinMcpHostCapability>;
+
+export function isMartinMcpHost(value: string | undefined): value is MartinMcpHost {
+  return MARTIN_MCP_HOSTS.some((host) => host === value);
+}
+
+export function supportsMartinMcpScope(
+  host: MartinMcpHost,
+  scope: MartinMcpScope
+): boolean {
+  return MARTIN_MCP_HOST_MATRIX[host].scopes.some((supportedScope) => supportedScope === scope);
+}
 
 export interface MartinMcpConfigInput {
   host: MartinMcpHost;
@@ -115,7 +238,7 @@ export interface MartinMcpInstallPlan extends Required<Omit<MartinMcpConfigInput
   content: string;
   serverId: string;
   enabledTools: string[];
-  installMethod: "file" | "command";
+  installMethod: "file" | "command" | "instructions";
   governanceHooks: GovernanceHooksOutput;
 }
 
@@ -128,9 +251,14 @@ export interface GovernanceHooksOutput {
   instructions: string;
 }
 
+export interface MartinMcpInstallOptions {
+  installGovernance?: boolean;
+  stateRoot?: string;
+}
+
 const DEFAULT_REMOTE_URL = "https://remote.martinloop.local/mcp";
 const DEFAULT_REMOTE_TOKEN_ENV = "MARTIN_REMOTE_TOKEN";
-const REMOTE_EXPERIMENTAL_HOSTS = new Set<MartinMcpHost>(["cursor", "copilot", "continue"]);
+const REMOTE_EXPERIMENTAL_HOSTS = new Set<MartinMcpHost>(["cursor", "vscode", "copilot", "continue"]);
 
 export function buildMcpInstallPlan(input: MartinMcpConfigInput): MartinMcpInstallPlan {
   const normalized = normalizeInput(input);
@@ -145,21 +273,27 @@ export function buildMcpInstallPlan(input: MartinMcpConfigInput): MartinMcpInsta
     content,
     serverId,
     enabledTools: [...selectTools(normalized.profile)],
-    installMethod: normalized.host === "claude" && normalized.scope === "local" ? "command" : "file",
+    installMethod:
+      normalized.host === "claude" && normalized.scope === "local"
+        ? "command"
+        : (normalized.host === "vscode" || normalized.host === "copilot") && normalized.scope === "user"
+          ? "instructions"
+          : "file",
     governanceHooks: buildGovernanceHooks(normalized.host, normalized.scope)
   };
 }
 
 export async function installMcpConfig(
-  input: MartinMcpConfigInput
+  input: MartinMcpConfigInput,
+  options: MartinMcpInstallOptions = {}
 ): Promise<MartinMcpInstallPlan> {
   const plan = buildMcpInstallPlan(input);
+  if (plan.installMethod === "instructions") {
+    return plan;
+  }
   if (plan.installMethod === "command") {
     await installClaudeLocalScope(plan);
-    // For Claude Code, also auto-install governance hooks into ~/.claude/settings.json
-    if (plan.host === "claude") {
-      await installClaudeGovernanceHooks().catch(() => {});
-    }
+    await maybeInstallGovernance(plan, options);
     return plan;
   }
 
@@ -171,18 +305,21 @@ export async function installMcpConfig(
       // Config already present — still ensure governance hooks are installed.
       // On first installs of older versions the hooks were never written; re-running
       // install must be idempotent and always leave hooks in place.
-      if (plan.host === "claude") {
-        await installClaudeGovernanceHooks().catch(() => {});
-      }
+      await maybeInstallGovernance(plan, options);
       return plan;
     }
 
     const merged = mergeHostConfig(plan.host, plan.serverId, existing, plan.content);
     if (merged) {
-      await writeFile(plan.targetPath, merged, "utf8");
-      if (plan.host === "claude") {
-        await installClaudeGovernanceHooks().catch(() => {});
-      }
+      await recordMartinMcpInstall({
+        host: plan.host,
+        scope: plan.scope,
+        targetPath: plan.targetPath,
+        content: merged,
+        previousContent: existing,
+        stateRoot: options.stateRoot
+      });
+      await maybeInstallGovernance(plan, options);
       return plan;
     }
 
@@ -196,12 +333,24 @@ export async function installMcpConfig(
     );
   }
 
-  await mkdir(path.dirname(plan.targetPath), { recursive: true });
-  await writeFile(plan.targetPath, plan.content, "utf8");
-  if (plan.host === "claude") {
-    await installClaudeGovernanceHooks().catch(() => {});
-  }
+  await recordMartinMcpInstall({
+    host: plan.host,
+    scope: plan.scope,
+    targetPath: plan.targetPath,
+    content: plan.content,
+    stateRoot: options.stateRoot
+  });
+  await maybeInstallGovernance(plan, options);
   return plan;
+}
+
+async function maybeInstallGovernance(
+  plan: MartinMcpInstallPlan,
+  options: MartinMcpInstallOptions
+): Promise<void> {
+  if (options.installGovernance && plan.host === "claude") {
+    await installClaudeGovernanceHooks();
+  }
 }
 
 /**
@@ -272,7 +421,7 @@ async function installClaudeGovernanceHooks(): Promise<void> {
 
   settings.hooks = { ...hooks, PreToolUse: preToolUse, Stop: stop };
   await mkdir(path.join(homedir(), ".claude"), { recursive: true });
-  await writeFile(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf8");
+  await writeFileAtomically(settingsPath, JSON.stringify(settings, null, 2) + "\n");
 }
 
 function normalizeInput(input: MartinMcpConfigInput): Required<Omit<MartinMcpConfigInput, "remoteUrl">> & {
@@ -304,6 +453,7 @@ function buildHostConfig(
       return buildGeminiConfigSnippet(input);
     case "cursor":
       return buildCursorConfigSnippet(input);
+    case "vscode":
     case "copilot":
       return buildCopilotConfigSnippet(input);
     case "continue":
@@ -530,11 +680,10 @@ function resolveTargetPath(
       : joinTargetPath(input.cwd, ".cursor", "mcp.json");
   }
 
-  if (input.host === "copilot") {
-    // GitHub Copilot agent mode reads MCP config from VS Code settings.json
+  if (input.host === "vscode" || input.host === "copilot") {
     return input.scope === "user"
-      ? path.join(homedir(), ".vscode", "settings.json")
-      : joinTargetPath(input.cwd, ".vscode", "settings.json");
+      ? "VS Code user MCP configuration (use `MCP: Add Server` in the command palette)"
+      : joinTargetPath(input.cwd, ".vscode", "mcp.json");
   }
 
   if (input.host === "continue") {
@@ -610,9 +759,9 @@ function buildCursorConfigSnippet(
 }
 
 // ---------------------------------------------------------------------------
-// GitHub Copilot config builder
-// Writes to .vscode/settings.json under "github.copilot.chat.mcpServers"
-// Compatible with VS Code Copilot agent mode (GA May 2025)
+// VS Code MCP config builder
+// Writes project config to .vscode/mcp.json under the current "servers" key.
+// "copilot" remains a compatibility alias for the same VS Code surface.
 // ---------------------------------------------------------------------------
 
 function buildCopilotConfigSnippet(
@@ -623,7 +772,7 @@ function buildCopilotConfigSnippet(
   return (
     JSON.stringify(
       {
-        "github.copilot.chat.mcpServers": {
+        servers: {
           [serverId]: {
             ...(input.transport === "remote"
               ? {
@@ -762,8 +911,8 @@ function hasMartinServerInParsedConfig(
   serverId: string,
   parsed: Record<string, unknown>
 ): boolean {
-  if (host === "copilot") {
-    const servers = parsed["github.copilot.chat.mcpServers"];
+  if (host === "vscode" || host === "copilot") {
+    const servers = parsed.servers;
     return isRecord(servers) && serverId in servers;
   }
 
@@ -808,19 +957,19 @@ function mergeHostParsedConfig(
   existing: Record<string, unknown>,
   generated: Record<string, unknown>
 ): Record<string, unknown> | undefined {
-  if (host === "copilot") {
-    const existingServers = isRecord(existing["github.copilot.chat.mcpServers"])
-      ? { ...existing["github.copilot.chat.mcpServers"] }
+  if (host === "vscode" || host === "copilot") {
+    const existingServers = isRecord(existing.servers)
+      ? { ...existing.servers }
       : {};
-    const generatedServers = isRecord(generated["github.copilot.chat.mcpServers"])
-      ? generated["github.copilot.chat.mcpServers"]
+    const generatedServers = isRecord(generated.servers)
+      ? generated.servers
       : undefined;
     if (!generatedServers) {
       return undefined;
     }
     return {
       ...existing,
-      "github.copilot.chat.mcpServers": {
+      servers: {
         ...existingServers,
         ...generatedServers
       }
@@ -982,6 +1131,7 @@ function buildGovernanceHooks(host: MartinMcpHost, scope: MartinMcpScope): Gover
         instructions: "Save to .cursor/rules/martin-governance.mdc in your project."
       };
 
+    case "vscode":
     case "copilot":
       return {
         host,

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: MartinLoop contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 import { buildLoopCollectionSummary, buildLoopPreview } from "./tool-support.js";
 import { listLoopRecords } from "./run-store.js";
 

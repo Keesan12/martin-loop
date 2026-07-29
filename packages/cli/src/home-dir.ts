@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: MartinLoop contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";

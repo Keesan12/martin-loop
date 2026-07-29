@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: MartinLoop contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 import { describe, expect, it } from "vitest";
 
 import { compileExecutionPolicy } from "../src/index.js";

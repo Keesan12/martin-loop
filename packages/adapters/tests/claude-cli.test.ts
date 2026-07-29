@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: MartinLoop contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 import { EventEmitter } from "node:events";
 import { PassThrough, Writable } from "node:stream";
 import type { ChildProcess, SpawnOptions } from "node:child_process";

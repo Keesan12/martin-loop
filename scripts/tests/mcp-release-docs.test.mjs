@@ -29,6 +29,24 @@ test("current MCP metadata stays aligned for the release cut", async () => {
   const releaseNotesPath = path.join(ROOT_DIR, "docs", "release", `MCP-${packageJson.version}-RELEASE-NOTES.md`);
 
   await access(releaseNotesPath);
+  await access(path.join(ROOT_DIR, "distribution", "release-truth.json"));
+});
+
+test("generated release truth matches the public package metadata", async () => {
+  const releaseTruth = JSON.parse(await readRepoFile(path.join("distribution", "release-truth.json")));
+
+  assert.equal(releaseTruth.schemaVersion, 1);
+  assert.equal("generatedAt" in releaseTruth, false);
+  assert.equal(releaseTruth.cli.package, rootPackageJson.name);
+  assert.equal(releaseTruth.cli.version, rootPackageJson.version);
+  assert.equal(releaseTruth.mcp.package, packageJson.name);
+  assert.equal(releaseTruth.mcp.version, packageJson.version);
+  assert.equal(releaseTruth.mcp.registryName, packageJson.mcpName);
+  assert.equal(releaseTruth.mcp.install, "npx -y @martinloop/mcp");
+  assert.equal(releaseTruth.mcpb.built, true);
+  assert.equal(releaseTruth.mcpb.released, true);
+  assert.match(releaseTruth.mcpb.releaseUrl, /mcp-v0\.3\.9\/martinloop-0\.3\.9\.mcpb$/);
+  assert.match(releaseTruth.mcpb.sha256, /^[a-f0-9]{64}$/);
 });
 
 test("0.3.9 release notes describe the audited MCPB distribution", async () => {
@@ -87,9 +105,8 @@ test("public MCP docs describe the current baseline and the next train in human-
     readRepoFile(path.join("docs", "release", "MCP-0.3.3-RELEASE-NOTES.md"))
   ]);
 
-  // AI guide should describe the live baseline and stable local-first train
-  assert.match(aiGuide, new RegExp(escapeRegex(packageJson.version)));
-  assert.match(aiGuide, new RegExp(escapeRegex(`live npm baseline is \`${packageJson.version}\``), "i"));
+  // AI guide should point to the generated truth source and stable local-first train
+  assert.match(aiGuide, /distribution\/release-truth\.json/);
   assert.match(aiGuide, /local-first/i);
   assert.match(aiGuide, /martin_doctor/);
   assert.match(aiGuide, /martin_run/);
@@ -155,5 +172,24 @@ test("public MCP docs stay free of internal workspace leakage", async () => {
     for (const pattern of forbiddenPatterns) {
       assert.doesNotMatch(contents, pattern);
     }
+  }
+});
+
+test("active public docs do not claim stale current MCP versions or hide supported hosts", async () => {
+  const [readme, cliReference, mcpGuide] = await Promise.all([
+    readRepoFile("README.md"),
+    readRepoFile(path.join("docs", "reference", "cli.md")),
+    readRepoFile(path.join("docs", "getting-started", "mcp.md")),
+  ]);
+
+  for (const contents of [readme, cliReference]) {
+    assert.match(contents, /<codex\|claude\|gemini\|cursor\|vscode\|copilot\|continue\|generic>/);
+  }
+
+  assert.doesNotMatch(mcpGuide, /current public MCP package line/);
+  assert.match(mcpGuide, /distribution\/release-truth\.json/);
+
+  for (const host of ["cursor", "copilot", "continue"]) {
+    assert.match(mcpGuide, new RegExp(`\\b${host}\\b`, "i"));
   }
 });

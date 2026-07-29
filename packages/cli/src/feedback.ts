@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: MartinLoop contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 import { appendFileSync } from "node:fs";
 import * as readline from "node:readline";
 import { martinFilePath, ensureMartinDir } from "./home-dir.js";

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: MartinLoop contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 export const MARTIN_ERROR_CATEGORIES = [
   "invalid_input",
   "environment",
@@ -7,7 +11,8 @@ export const MARTIN_ERROR_CATEGORIES = [
   "verification_failed",
   "policy_blocked",
   "budget_exit",
-  "transient"
+  "transient",
+  "install_failed"
 ] as const;
 
 export type MartinErrorCategory = (typeof MARTIN_ERROR_CATEGORIES)[number];

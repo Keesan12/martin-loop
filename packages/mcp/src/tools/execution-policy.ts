@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: MartinLoop contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 import { DEFAULT_BUDGET, type ExecutionPolicy } from "@martin/contracts";
 import { compileExecutionPolicy } from "@martin/core";
 

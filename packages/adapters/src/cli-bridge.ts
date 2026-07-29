@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: MartinLoop contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
 import { delimiter, dirname, extname, isAbsolute, join, resolve } from "node:path";
 import { existsSync, readFileSync } from "node:fs";

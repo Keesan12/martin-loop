@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: MartinLoop contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 import { describe, it, expect } from "vitest";
 import { shouldShowStarPrompt } from "../src/star-prompt.js";
 import { shouldShowRating, shouldShowFeatureRequest, shouldShowDesignPartner } from "../src/feedback.js";

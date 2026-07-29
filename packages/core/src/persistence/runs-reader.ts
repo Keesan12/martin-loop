@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: MartinLoop contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * Reads completed loop records from ~/.martin/runs/ for analysis.
  * Used by the Trust Calibration Engine and other offline analytics.

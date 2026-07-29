@@ -91,10 +91,14 @@
     "release:validate:platforms": "node ./scripts/release-matrix.mjs",
     "release:matrix:local": "node ./scripts/release-matrix.mjs",
     "release:truth-check": "node ./scripts/release-truth-check.mjs --allow-divergence-marker=[sync-parity]",
+    "native:build": "node ./scripts/build-native.mjs",
+    "native:verify": "node ./scripts/verify-native-release-assets.mjs",
     "run:cli": "pnpm --filter @martin/cli dev"
   },
   "devDependencies": {
     "@types/node": "^22.13.10",
+    "@yao-pkg/pkg": "6.21.0",
+    "esbuild": "0.27.4",
     "tsx": "^4.19.3",
     "typescript": "^5.8.2",
     "vite": "^7.3.2",

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: MartinLoop contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 import { createHash } from "node:crypto";
 import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
@@ -41,6 +45,10 @@ import {
   buildMcpInstallPlan,
   hostRequiresExperimentalRemoteOptIn,
   installMcpConfig,
+  isMartinMcpHost,
+  MARTIN_MCP_HOSTS,
+  MARTIN_MCP_PROFILES,
+  supportsMartinMcpScope,
   type MartinMcpHost,
   type MartinMcpPlatform,
   type MartinMcpProfile,
@@ -52,6 +60,11 @@ import {
   MARTIN_MINIMAL_TOOLS,
   MARTIN_STARTER_TOOLS
 } from "./mcp-config.js";
+import {
+  rollbackMartinMcpInstall,
+  uninstallMartinMcp,
+  verifyMartinMcpInstall
+} from "./mcp-install-state.js";
 import { persistLoopArtifacts } from "./persistence.js";
 import {
   buildMartinProofCard,
@@ -86,9 +99,14 @@ import {
 } from "./run-store.js";
 import { CliCommandError, renderCliError, renderCliSuccess } from "./ux.js";
 import { evaluateCliRunGate, recordCliWorkflowStep, recordMcpPlanStep } from "./workflow-state.js";
+import { InstallError, runInstall } from "./commands/install.js";
 
 const require = createRequire(import.meta.url);
-const packageJson = require("../package.json") as { version: string };
+declare const __MARTIN_NATIVE_PACKAGE_VERSION__: string | undefined;
+const packageJson =
+  typeof __MARTIN_NATIVE_PACKAGE_VERSION__ === "string"
+    ? { version: __MARTIN_NATIVE_PACKAGE_VERSION__ }
+    : (require("../package.json") as { version: string });
 type PackageManifest = {
   name?: string;
   version?: string;
@@ -132,6 +150,12 @@ const STAR_CTA_LINES = [
   "   Star the repo: github.com/Keesan12/martin-loop",
   "─────────────────────────────────────────────"
 ] as const;
+const CLI_TAGLINE_LINE = "AI agents are easy to run. Hard to govern.";
+const CLI_ATTRIBUTION_LINE = "Apache 2.0 · martinloop.com · github.com/Keesan12/martin-loop";
+const MCP_HOST_USAGE = MARTIN_MCP_HOSTS.join("|");
+const MCP_HOST_LIST = MARTIN_MCP_HOSTS.join(", ");
+const MCP_PROFILE_LIST = MARTIN_MCP_PROFILES.join(", ");
+const CLI_VERSION_ATTRIBUTION_SUFFIX = "Apache 2.0 · martinloop.com";
 
 type RunSuccessCallToAction = {
   headline: string;
@@ -342,6 +366,14 @@ type McpCommand =
       experimentalRemoteHosts: boolean;
       platform?: MartinMcpPlatform;
       dryRun: boolean;
+      installGovernance: boolean;
+    }
+  | {
+      command: "mcp_verify_install" | "mcp_rollback" | "mcp_uninstall";
+      host: MartinMcpHost;
+      scope: MartinMcpScope;
+      cwd?: string;
+      runsDir?: string;
     };
 
 type EstimateCommand = {
@@ -501,7 +533,12 @@ export type ParsedCliArguments =
   | ShareCommand
   | BadgeCommand
   | PlanCommand
-  | ExecuteCommand;
+  | ExecuteCommand
+  | {
+      command: "install";
+      version?: string;
+      directory?: string;
+    };
 
 export async function executeCli(args: string[]): Promise<{
   exitCode: number;
@@ -525,7 +562,7 @@ export async function executeCli(args: string[]): Promise<{
       case "version":
         return {
           exitCode: 0,
-          stdout: rootPackageVersion,
+          stdout: `${rootPackageVersion} · ${CLI_VERSION_ATTRIBUTION_SUFFIX}`,
           stderr: ""
         };
       case "bench":
@@ -591,6 +628,10 @@ export async function executeCli(args: string[]): Promise<{
         return await executeMcpPrintConfigCommand(parsed, outputMode);
       case "mcp_install":
         return await executeMcpInstallCommand(parsed, outputMode);
+      case "mcp_verify_install":
+      case "mcp_rollback":
+      case "mcp_uninstall":
+        return await executeMcpStateCommand(parsed, outputMode);
       case "challenge":
         return await executeChallengeCommand(parsed, outputMode);
       case "share":
@@ -601,6 +642,8 @@ export async function executeCli(args: string[]): Promise<{
         return await executePlanCommand(parsed, outputMode);
       case "execute":
         return await executeExecuteCommand(parsed, outputMode);
+      case "install":
+        return await executeNativeInstallCommand(parsed, outputMode);
     }
   } catch (error) {
     return renderCliError(outputMode, error);
@@ -660,6 +703,16 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
       command: "demo",
       directory: resolve(readOption(rest, "--dir") ?? join(process.cwd(), "martin-loop-demo")),
       force: hasFlag(rest, "--force")
+    };
+  }
+
+  if (command === "install") {
+    const version = readOption(rest, "--version");
+    const directory = readOption(rest, "--dir");
+    return {
+      command: "install",
+      ...(version ? { version } : {}),
+      ...(directory ? { directory } : {})
     };
   }
 
@@ -956,7 +1009,31 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
         ...(remoteTokenEnv ? { remoteTokenEnv } : {}),
         experimentalRemoteHosts,
         ...(platform ? { platform } : {}),
-        dryRun: hasFlag(subcommandArgs, "--dry-run")
+        dryRun: hasFlag(subcommandArgs, "--dry-run"),
+        installGovernance: hasFlag(subcommandArgs, "--install-governance")
+      };
+    }
+
+    if (
+      subcommand === "verify-install" ||
+      subcommand === "rollback" ||
+      subcommand === "uninstall"
+    ) {
+      const host = parseMcpHost(subcommandArgs);
+      const scope = parseMcpScope(host, subcommandArgs);
+      const cwd = readOption(subcommandArgs, "--cwd");
+      const runsDir = readOption(subcommandArgs, "--runs-dir");
+      return {
+        command:
+          subcommand === "verify-install"
+            ? "mcp_verify_install"
+            : subcommand === "rollback"
+              ? "mcp_rollback"
+              : "mcp_uninstall",
+        host,
+        scope,
+        ...(cwd ? { cwd } : {}),
+        ...(runsDir ? { runsDir } : {})
       };
     }
 
@@ -1004,6 +1081,8 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
 export function renderCliHelp(): string {
   return [
     "Martin Loop CLI",
+    CLI_TAGLINE_LINE,
+    CLI_ATTRIBUTION_LINE,
     "",
     "Usage:",
     "  martin run <objective> [options]",
@@ -1011,6 +1090,7 @@ export function renderCliHelp(): string {
     "  martin preflight <objective> [options]",
     "  martin start [options]",
     "  martin enable [options]",
+    "  martin install [--version <version>] [--dir <path>]",
     "  martin env [options]",
     "  martin review [--loop-id <id> | --file <path> | --latest] [options]",
     "  martin receipts explain [--loop-id <id> | --file <path> | --latest] [options]",
@@ -1023,8 +1103,11 @@ export function renderCliHelp(): string {
     "  martin runs get (--loop-id <id> | --file <path> | --latest) [options]",
     "  martin runs attempt (--loop-id <id> | --file <path>) [--attempt-index <n>] [options]",
     "  martin runs verify (--loop-id <id> | --file <path> | --latest) [options]",
-    "  martin mcp print-config --host <codex|claude|gemini|cursor|copilot|continue|generic> [--scope <user|project|local>] [options]",
-    "  martin mcp install --host <codex|claude|gemini|cursor|copilot|continue|generic> [--scope <user|project|local>] [--dry-run] [options]",
+    `  martin mcp print-config --host <${MCP_HOST_USAGE}> [--scope <user|project|local>] [options]`,
+    `  martin mcp install --host <${MCP_HOST_USAGE}> [--scope <user|project|local>] [--dry-run] [options]`,
+    `  martin mcp verify-install --host <${MCP_HOST_USAGE}> [--scope <user|project|local>]`,
+    `  martin mcp rollback --host <${MCP_HOST_USAGE}> [--scope <user|project|local>]`,
+    `  martin mcp uninstall --host <${MCP_HOST_USAGE}> [--scope <user|project|local>]`,
     "  martin demo [--dir <path>] [--force]",
     "  martin-loop demo [--dir <path>] [--force] (published alias)",
     "  martin inspect --file <path>",
@@ -1039,6 +1122,7 @@ export function renderCliHelp(): string {
     "Operator commands:",
     "  start        Guided first-run summary: repo detection, verifier suggestion, provider readiness, and safe next steps.",
     "  enable       Write repo-local Martin defaults to martin.config.yaml (engine, verifier, budget).",
+    "  install      Install or upgrade the verified native executable from GitHub Releases.",
     "  env          Print compact environment truth for provider/auth/verifier/readiness.",
     "  review       Print a human-friendly summary for the latest governed run.",
     "  receipts explain  Explain receipt trust state and what to do next.",
@@ -1059,8 +1143,11 @@ export function renderCliHelp(): string {
     "  gate         Hard governance check — exits non-zero if doctor/estimate are missing. Use in hooks.",
     "  mode         Show or set working mode: auto (default), plan, edits.",
     "  clean        Remove MartinLoop artifacts (_martin/, old run records).",
-    "  mcp print-config  Print a known-good MCP config snippet for Codex, Claude, Gemini, or generic hosts.",
+    "  mcp print-config  Print a known-good MCP config for a supported host without writing files.",
     "  mcp install       Write a starter MCP config, or call Claude Code directly for local scope.",
+    "  mcp verify-install Verify the installed config against the local install ledger.",
+    "  mcp rollback      Restore the config state before the latest MartinLoop install.",
+    "  mcp uninstall     Restore the config state before MartinLoop was first installed.",
     "  challenge    Print a shareable local proof card for the Under-$3 challenge.",
     "  share        Write a local share bundle with a redacted receipt JSON and Markdown receipt; proof-card images are opt-in.",
     "  badge        Print an agent reliability readiness badge from local evidence.",
@@ -1093,11 +1180,12 @@ export function renderCliHelp(): string {
     "  --force                  Allow martin enable to overwrite an existing config file.",
     "",
     "MCP config options:",
-    "  --host <name>            codex, claude, gemini, cursor, copilot, continue, or generic.",
+    `  --host <name>            ${MCP_HOST_LIST}.`,
     "  --scope <name>           user or project for all hosts; Claude also supports local.",
     "  --transport <name>       stdio (default) or remote.",
-    "  --experimental-remote-hosts  Required to enable remote transport for cursor/copilot/continue.",
-    "  --profile <name>         minimal (default), diagnostic, github-review, full-local, paid-remote, starter, or full.",
+    "  --experimental-remote-hosts  Required to enable remote transport for cursor/vscode/copilot/continue.",
+    "  --install-governance      Write supported host governance hooks; never enabled by default.",
+    `  --profile <name>         ${MCP_PROFILE_LIST}; minimal is the default.`,
     "  --platform <name>        windows, macos, or linux recipe shaping.",
     "",
     "Run options:",
@@ -2022,6 +2110,7 @@ async function executeStartCommand(
       "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
       " MartinLoop — Governed AI Coding",
       "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+      CLI_ATTRIBUTION_LINE,
       "",
       modeConfigured
         ? `Mode: ${currentMode} (change with martin mode auto|plan|edits)`
@@ -3179,6 +3268,40 @@ async function executePlanCommand(
   });
 }
 
+async function executeNativeInstallCommand(
+  command: Extract<ParsedCliArguments, { command: "install" }>,
+  outputMode: MartinOutputMode
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  try {
+    const result = await runInstall({
+      outputMode,
+      ...(command.version ? { version: command.version } : {}),
+      ...(command.directory ? { dir: resolve(command.directory) } : {})
+    });
+    return renderCliSuccess(outputMode, {
+      data: {
+        command: "install",
+        version: result.version,
+        target: result.target,
+        assetName: result.assetName,
+        installPath: result.installPath,
+        aliasPath: result.aliasPath,
+        ...(result.backupPath ? { backupPath: result.backupPath } : {})
+      },
+      human: `Installed martin-loop ${result.version} to ${result.installPath}`,
+      quiet: result.installPath
+    });
+  } catch (error) {
+    if (error instanceof InstallError) {
+      throw new CliCommandError("install_failed", error.message, {
+        suggestion:
+          "Confirm the requested release has a native asset and matching .sha256 file, then retry."
+      });
+    }
+    throw error;
+  }
+}
+
 async function executeExecuteCommand(
   command: Extract<ParsedCliArguments, { command: "execute" }>,
   outputMode: MartinOutputMode
@@ -3396,7 +3519,9 @@ async function executeMcpInstallCommand(
     ...(command.remoteTokenEnv ? { remoteTokenEnv: command.remoteTokenEnv } : {}),
     ...(command.platform ? { platform: command.platform } : {})
   };
-  const plan = command.dryRun ? buildMcpInstallPlan(input) : await installMcpConfig(input);
+  const plan = command.dryRun
+    ? buildMcpInstallPlan(input)
+    : await installMcpConfig(input, { installGovernance: command.installGovernance });
 
   return renderCliSuccess(outputMode, {
     data: {
@@ -3406,6 +3531,7 @@ async function executeMcpInstallCommand(
       transport: command.transport,
       profile: command.profile,
       dryRun: command.dryRun,
+      installGovernance: command.installGovernance,
       targetPath: plan.targetPath,
       content: plan.content,
       serverId: plan.serverId,
@@ -3427,6 +3553,70 @@ async function executeMcpInstallCommand(
     ],
     quiet: plan.targetPath,
     warnings: remotePolicyWarnings
+  });
+}
+
+async function executeMcpStateCommand(
+  command: Extract<
+    ParsedCliArguments,
+    { command: "mcp_verify_install" | "mcp_rollback" | "mcp_uninstall" }
+  >,
+  outputMode: MartinOutputMode
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  const environment = resolveCliEnvironment({
+    cwd: command.cwd,
+    runsDir: command.runsDir
+  });
+  const plan = buildMcpInstallPlan({
+    host: command.host,
+    scope: command.scope,
+    cwd: environment.workingDirectory,
+    runsRoot: environment.runsRoot
+  });
+  if (plan.installMethod !== "file") {
+    throw new CliCommandError(
+      "invalid_input",
+      `${command.host} ${command.scope} scope is not managed by a local config file.`,
+      { suggestion: plan.targetPath }
+    );
+  }
+
+  const selector = {
+    host: command.host,
+    scope: command.scope,
+    targetPath: plan.targetPath
+  };
+
+  if (command.command === "mcp_verify_install") {
+    const verification = await verifyMartinMcpInstall(selector);
+    if (verification.status !== "ok") {
+      throw new CliCommandError(
+        "environment",
+        `MCP install verification failed for ${plan.targetPath}: ${verification.status}.`,
+        { suggestion: "Inspect the host config before running rollback or uninstall." }
+      );
+    }
+    return renderCliSuccess(outputMode, {
+      data: { command: command.command, host: command.host, scope: command.scope, ...verification },
+      human: [`Verified MartinLoop MCP install for ${command.host}`, `Target: ${plan.targetPath}`],
+      quiet: plan.targetPath
+    });
+  }
+
+  if (command.command === "mcp_rollback") {
+    const record = await rollbackMartinMcpInstall(selector);
+    return renderCliSuccess(outputMode, {
+      data: { command: command.command, host: command.host, scope: command.scope, record },
+      human: [`Rolled back MartinLoop MCP install for ${command.host}`, `Target: ${plan.targetPath}`],
+      quiet: plan.targetPath
+    });
+  }
+
+  const records = await uninstallMartinMcp(selector);
+  return renderCliSuccess(outputMode, {
+    data: { command: command.command, host: command.host, scope: command.scope, records },
+    human: [`Uninstalled MartinLoop MCP config for ${command.host}`, `Target: ${plan.targetPath}`],
+    quiet: plan.targetPath
   });
 }
 
@@ -3685,23 +3875,20 @@ function parseRunSelector(
 function parseMcpHost(tokens: string[]): MartinMcpHost {
   const host = readOption(tokens, "--host");
 
-  if (
-    host === "codex" || host === "claude" || host === "gemini" || host === "generic" ||
-    host === "cursor" || host === "copilot" || host === "continue"
-  ) {
+  if (isMartinMcpHost(host)) {
     return host;
   }
 
   if (host === undefined) {
     throw new CliCommandError(
       "invalid_input",
-      "mcp commands require --host <codex|claude|gemini|cursor|copilot|continue|generic>.",
-      { suggestion: "Pass --host codex, --host claude, --host cursor, --host copilot, --host continue, or --host generic." }
+      `mcp commands require --host <${MCP_HOST_USAGE}>.`,
+      { suggestion: `Pass one of: ${MCP_HOST_LIST}.` }
     );
   }
 
   throw new CliCommandError("invalid_input", `Invalid --host value: ${host}.`, {
-    suggestion: "Use --host codex, --host claude, --host gemini, --host cursor, --host copilot, --host continue, or --host generic."
+    suggestion: `Use one of: ${MCP_HOST_LIST}.`
   });
 }
 
@@ -3712,18 +3899,17 @@ function parseMcpScope(host: MartinMcpHost, tokens: string[]): MartinMcpScope {
     return "user";
   }
 
-  if (scope === "local") {
-    if (host !== "claude") {
-      throw new CliCommandError("invalid_input", `Host ${host} does not support --scope local.`, {
-        suggestion: "Use --scope user or --scope project, or switch to --host claude."
-      });
-    }
-
+  if (
+    (scope === "user" || scope === "project" || scope === "local") &&
+    supportsMartinMcpScope(host, scope)
+  ) {
     return scope;
   }
 
-  if (scope === "user" || scope === "project") {
-    return scope;
+  if (scope === "local") {
+    throw new CliCommandError("invalid_input", `Host ${host} does not support --scope local.`, {
+      suggestion: "Use --scope user or --scope project, or switch to --host claude."
+    });
   }
 
   throw new CliCommandError("invalid_input", `Invalid --scope value: ${scope}.`, {

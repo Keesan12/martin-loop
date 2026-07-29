@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: MartinLoop contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 export type DiffVisibilityLevel = "none" | "git" | "adapter_reported";
 export type VerifierCompatibility = "full" | "verify_only" | "unsupported";
 export type SandboxExpectation =

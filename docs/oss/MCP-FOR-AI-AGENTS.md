@@ -1,6 +1,6 @@
 # MCP For AI Agents
 
-`@martinloop/mcp@0.3.9` is the current standalone MCP source line for MartinLoop. The live npm baseline is `0.3.9`, and follow-on standalone releases should still be cut only when the MCP surface itself changes.
+Machine-readable release truth for the standalone MCP release line lives in [`distribution/release-truth.json`](../../distribution/release-truth.json). Follow-on standalone releases should still be cut only when the MCP surface itself changes.
 
 It is built for hosts that need a governed local-first workflow, not a vague bag of tools.
 
@@ -50,6 +50,17 @@ claude mcp add --transport stdio --scope user martin-loop -- npx -y @martinloop/
 claude mcp add --transport stdio --scope user martin-loop -- cmd /c npx -y @martinloop/mcp
 ```
 
+### Other supported host targets
+
+Use the root CLI when you want host-specific configs for Cursor, VS Code / GitHub Copilot, Continue, or generic MCP shells:
+
+```sh
+npx -y martin-loop@latest mcp print-config --host cursor --profile starter
+npx -y martin-loop@latest mcp print-config --host copilot --profile starter
+npx -y martin-loop@latest mcp print-config --host continue --profile starter
+npx -y martin-loop@latest mcp print-config --host generic --profile minimal
+```
+
 ### Generic stdio config
 
 ```json
@@ -62,7 +73,7 @@ claude mcp add --transport stdio --scope user martin-loop -- cmd /c npx -y @mart
 
 ## What comes next in the train
 
-- `0.3.9` is the current standalone MCP source line and live npm baseline.
+- the standalone MCP release line is recorded in `distribution/release-truth.json`.
 - follow-on MCP versions should ship only when the standalone server surface changes.
 - future `0.3.x` follow-ons stay local-first and stdio-first.
 

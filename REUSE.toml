@@ -1,0 +1,20 @@
+version = 1
+
+[[annotations]]
+path = [
+  "*",
+  ".*",
+  ".github/**",
+  "benchmarks/**",
+  "demo/**",
+  "deploy/**",
+  "dist/**",
+  "distribution/**",
+  "docs/**",
+  "examples/**",
+  "packages/**",
+  "scripts/**"
+]
+precedence = "closest"
+SPDX-FileCopyrightText = "MartinLoop contributors"
+SPDX-License-Identifier = "Apache-2.0"

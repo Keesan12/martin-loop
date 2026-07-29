@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: MartinLoop contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 import { loadDetailedLoopRecord, readLedgerEvents } from "./run-store.js";
 import { resolveTrustedLoopRepoRoot } from "../server-validation.js";
 import { buildVerificationSummary } from "./tool-support.js";

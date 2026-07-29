@@ -1,5 +1,9 @@
+// SPDX-FileCopyrightText: MartinLoop contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 import { readFileSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,12 +22,247 @@ import {
   installMcpConfig,
   MARTIN_DIAGNOSTIC_TOOLS,
   MARTIN_FULL_TOOLS,
+  MARTIN_MCP_HOST_MATRIX,
+  MARTIN_MCP_HOSTS,
+  MARTIN_MCP_PROFILES,
   MARTIN_MINIMAL_TOOLS,
   MARTIN_PAID_REMOTE_TOOLS,
-  MARTIN_STARTER_TOOLS
+  MARTIN_STARTER_TOOLS,
+  isMartinMcpHost,
+  supportsMartinMcpScope
 } from "../src/mcp-config.js";
+import * as installState from "../src/mcp-install-state.js";
 
 describe("mcp config helpers", () => {
+  it("publishes one canonical MCP host capability matrix", () => {
+    expect(MARTIN_MCP_HOSTS).toEqual([
+      "codex",
+      "claude",
+      "gemini",
+      "cursor",
+      "vscode",
+      "copilot",
+      "continue",
+      "generic"
+    ]);
+    expect(Object.keys(MARTIN_MCP_HOST_MATRIX)).toEqual([...MARTIN_MCP_HOSTS]);
+    expect(MARTIN_MCP_HOST_MATRIX.claude.scopes).toEqual(["user", "project", "local"]);
+    expect(MARTIN_MCP_HOST_MATRIX.codex.scopes).toEqual(["user", "project"]);
+    expect(MARTIN_MCP_PROFILES).toContain("paid-remote");
+    expect(isMartinMcpHost("continue")).toBe(true);
+    expect(isMartinMcpHost("unknown")).toBe(false);
+    expect(supportsMartinMcpScope("claude", "local")).toBe(true);
+    expect(supportsMartinMcpScope("cursor", "local")).toBe(false);
+  });
+
+  it("writes current VS Code project config and keeps copilot as an alias", () => {
+    for (const host of ["vscode", "copilot"] as const) {
+      const plan = buildMcpInstallPlan({
+        host,
+        scope: "project",
+        cwd: "C:\\repo",
+        runsRoot: "C:\\runs"
+      });
+
+      expect(plan.targetPath).toBe("C:\\repo\\.vscode\\mcp.json");
+      expect(plan.installMethod).toBe("file");
+      const config = JSON.parse(plan.content) as {
+        servers: Record<string, unknown>;
+      };
+      expect(config.servers["martin-loop"]).toBeDefined();
+    }
+  });
+
+  it("returns native VS Code setup instructions for user scope", () => {
+    const plan = buildMcpInstallPlan({
+      host: "vscode",
+      scope: "user",
+      cwd: "C:\\repo",
+      runsRoot: "C:\\runs"
+    });
+
+    expect(plan.installMethod).toBe("instructions");
+    expect(plan.targetPath).toContain("MCP: Add Server");
+  });
+
+  it("writes Claude governance hooks only with explicit consent", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "martin-cli-governance-consent-"));
+    const previousUserProfile = process.env.USERPROFILE;
+    const previousHome = process.env.HOME;
+    process.env.USERPROFILE = cwd;
+    process.env.HOME = cwd;
+
+    try {
+      const input = {
+        host: "claude" as const,
+        scope: "project" as const,
+        cwd,
+        runsRoot: join(cwd, ".runs")
+      };
+      const settingsPath = join(cwd, ".claude", "settings.json");
+
+      await installMcpConfig(input, { installGovernance: false });
+      await expect(readFile(settingsPath, "utf8")).rejects.toThrow();
+
+      await installMcpConfig(input, { installGovernance: true });
+      expect(await readFile(settingsPath, "utf8")).toContain("npx martin-loop gate --quiet");
+    } finally {
+      if (previousUserProfile === undefined) {
+        delete process.env.USERPROFILE;
+      } else {
+        process.env.USERPROFILE = previousUserProfile;
+      }
+      if (previousHome === undefined) {
+        delete process.env.HOME;
+      } else {
+        process.env.HOME = previousHome;
+      }
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it("records an atomic install with a restorable backup", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "martin-cli-install-state-"));
+
+    try {
+      const configDir = join(cwd, ".martin-loop");
+      const configPath = join(configDir, "mcp.generic.json");
+      const stateRoot = join(cwd, ".install-state");
+      await mkdir(configDir, { recursive: true });
+      const existing = `${JSON.stringify({
+        mcpServers: {
+          existing: { command: "node", args: ["server.js"] }
+        }
+      }, null, 2)}\n`;
+      await writeFile(configPath, existing, "utf8");
+
+      await installMcpConfig(
+        {
+          host: "generic",
+          scope: "project",
+          cwd,
+          runsRoot: join(cwd, ".runs")
+        },
+        { stateRoot }
+      );
+
+      const ledger = JSON.parse(
+        await readFile(join(stateRoot, "install-state.json"), "utf8")
+      ) as {
+        installs: Array<{ backupPath: string | null; targetPath: string }>;
+      };
+      expect(ledger.installs).toHaveLength(1);
+      expect(ledger.installs[0]?.targetPath).toBe(configPath);
+      const backupPath = ledger.installs[0]?.backupPath;
+      expect(backupPath).not.toBeNull();
+      expect(await readFile(backupPath!, "utf8")).toBe(existing);
+      expect((await readdir(configDir)).some((name) => name.endsWith(".tmp"))).toBe(false);
+      expect((await readdir(stateRoot)).some((name) => name.endsWith(".tmp"))).toBe(false);
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it("verifies and rolls back the latest recorded install", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "martin-cli-install-rollback-"));
+
+    try {
+      const configDir = join(cwd, ".martin-loop");
+      const configPath = join(configDir, "mcp.generic.json");
+      const stateRoot = join(cwd, ".install-state");
+      await mkdir(configDir, { recursive: true });
+      const existing = `${JSON.stringify({
+        mcpServers: {
+          existing: { command: "node", args: ["server.js"] }
+        }
+      }, null, 2)}\n`;
+      await writeFile(configPath, existing, "utf8");
+
+      await installMcpConfig(
+        {
+          host: "generic",
+          scope: "project",
+          cwd,
+          runsRoot: join(cwd, ".runs")
+        },
+        { stateRoot }
+      );
+
+      const selector = {
+        host: "generic",
+        scope: "project",
+        targetPath: configPath,
+        stateRoot
+      };
+      await expect(installState.verifyMartinMcpInstall(selector)).resolves.toMatchObject({
+        status: "ok",
+        targetPath: configPath
+      });
+      await installState.rollbackMartinMcpInstall(selector);
+      expect(await readFile(configPath, "utf8")).toBe(existing);
+      expect((await installState.readMartinMcpInstallLedger(stateRoot)).installs).toHaveLength(0);
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it("uninstalls a newly created config and refuses modified files", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "martin-cli-install-uninstall-"));
+
+    try {
+      const configPath = join(cwd, ".martin-loop", "mcp.generic.json");
+      const stateRoot = join(cwd, ".install-state");
+      const input = {
+        host: "generic" as const,
+        scope: "project" as const,
+        cwd,
+        runsRoot: join(cwd, ".runs")
+      };
+      await installMcpConfig(input, { stateRoot });
+      await writeFile(configPath, "{\"changed\":true}\n", "utf8");
+
+      const selector = {
+        host: "generic",
+        scope: "project",
+        targetPath: configPath,
+        stateRoot
+      };
+      await expect(installState.verifyMartinMcpInstall(selector)).resolves.toMatchObject({
+        status: "modified"
+      });
+      await expect(installState.uninstallMartinMcp(selector)).rejects.toThrow(
+        "Refusing to modify"
+      );
+
+      await writeFile(configPath, buildMcpInstallPlan(input).content, "utf8");
+      await installState.uninstallMartinMcp(selector);
+      await expect(readFile(configPath, "utf8")).rejects.toThrow();
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps the public installer guide aligned with the canonical host matrix", () => {
+    const guide = readFileSync(
+      fileURLToPath(new URL("../../../docs/getting-started/mcp.md", import.meta.url)),
+      "utf8"
+    );
+
+    for (const host of MARTIN_MCP_HOSTS) {
+      const capability = MARTIN_MCP_HOST_MATRIX[host];
+      expect(guide).toContain(`\`${host}\``);
+      for (const target of Object.values(capability.configTargets)) {
+        expect(guide).toContain(target);
+      }
+    }
+
+    for (const profile of MARTIN_MCP_PROFILES) {
+      expect(guide).toContain(`\`${profile}\``);
+    }
+    expect(guide).toContain("`--dry-run`");
+    expect(guide).toContain("governance");
+  });
+
   it("keeps the CLI starter allow-list aligned with MCP discovery metadata", () => {
     expect([...MARTIN_STARTER_TOOLS]).toEqual([...MARTIN_STARTER_TOOL_NAMES]);
   });
@@ -242,17 +481,17 @@ describe("mcp config helpers", () => {
     }
   });
 
-  it("merges into existing Copilot settings without destructive overwrite", async () => {
+  it("merges into existing VS Code MCP config without destructive overwrite", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "martin-cli-copilot-config-"));
 
     try {
       const configDir = join(cwd, ".vscode");
       await mkdir(configDir, { recursive: true });
-      const configPath = join(configDir, "settings.json");
+      const configPath = join(configDir, "mcp.json");
       const existing = JSON.stringify(
         {
-          "editor.formatOnSave": true,
-          "github.copilot.chat.mcpServers": {
+          inputs: [],
+          servers: {
             "existing-server": {
               command: "node",
               args: ["./server.js"]
@@ -272,11 +511,11 @@ describe("mcp config helpers", () => {
       });
 
       const merged = JSON.parse(await readFile(configPath, "utf8")) as {
-        "editor.formatOnSave": boolean;
-        "github.copilot.chat.mcpServers": Record<string, unknown>;
+        inputs: unknown[];
+        servers: Record<string, unknown>;
       };
-      expect(merged["editor.formatOnSave"]).toBe(true);
-      expect(Object.keys(merged["github.copilot.chat.mcpServers"])).toEqual(
+      expect(merged.inputs).toEqual([]);
+      expect(Object.keys(merged.servers)).toEqual(
         expect.arrayContaining(["existing-server", "martin-loop"])
       );
     } finally {
@@ -290,10 +529,10 @@ describe("mcp config helpers", () => {
     try {
       const configDir = join(cwd, ".vscode");
       await mkdir(configDir, { recursive: true });
-      const configPath = join(configDir, "settings.json");
+      const configPath = join(configDir, "mcp.json");
       const existing = JSON.stringify(
         {
-          "github.copilot.chat.mcpServers": {
+          servers: {
             "martin-loop": {
               command: "npx",
               args: ["-y", "@martinloop/mcp"]
@@ -396,7 +635,7 @@ describe("mcp config helpers", () => {
     }
   });
 
-  it("writes governance hooks on re-install when ~/.claude.json already has martin-loop", async () => {
+  it("keeps governance hook writes behind the explicit install option", async () => {
     // Regression test: installMcpConfig was returning early (without calling
     // installClaudeGovernanceHooks) when the MCP config already existed in ~/.claude.json.
     // This meant users who installed an older version never got governance hooks on upgrade.
@@ -433,7 +672,10 @@ describe("mcp config helpers", () => {
       );
       // Count call sites — must be ≥ 3 (already-exists, merged, new-file paths)
       const callSites = (src.match(/installClaudeGovernanceHooks\(\)/g) ?? []).length;
-      expect(callSites).toBeGreaterThanOrEqual(3);
+      expect(src).toContain("options.installGovernance");
+      expect(callSites).toBe(2);
+      expect(src).toContain("writeFileAtomically(settingsPath");
+      expect(src).not.toContain("writeFile(settingsPath");
     } finally {
       await rm(tmpHome, { recursive: true, force: true });
     }
