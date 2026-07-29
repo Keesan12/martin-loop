@@ -29,6 +29,8 @@ const ALLOWED_TOP_LEVEL_ENTRIES = [
   "CODE_OF_CONDUCT.md",
   "CONTRIBUTING.md",
   "glama.json",
+  "install.ps1",
+  "install.sh",
   "LICENSE",
   "LICENSES",
   "martin.config.example.yaml",
