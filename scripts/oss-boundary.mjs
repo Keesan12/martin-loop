@@ -18,6 +18,7 @@ const ALLOWED_TOP_LEVEL_ENTRIES = [
   "CONTEXT.md",
   "deploy",
   "demo",
+  "distribution",
   "docs",
   "examples",
   "packages",
