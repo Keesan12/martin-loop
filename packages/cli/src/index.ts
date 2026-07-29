@@ -99,9 +99,14 @@ import {
 } from "./run-store.js";
 import { CliCommandError, renderCliError, renderCliSuccess } from "./ux.js";
 import { evaluateCliRunGate, recordCliWorkflowStep, recordMcpPlanStep } from "./workflow-state.js";
+import { InstallError, runInstall } from "./commands/install.js";
 
 const require = createRequire(import.meta.url);
-const packageJson = require("../package.json") as { version: string };
+declare const __MARTIN_NATIVE_PACKAGE_VERSION__: string | undefined;
+const packageJson =
+  typeof __MARTIN_NATIVE_PACKAGE_VERSION__ === "string"
+    ? { version: __MARTIN_NATIVE_PACKAGE_VERSION__ }
+    : (require("../package.json") as { version: string });
 type PackageManifest = {
   name?: string;
   version?: string;
@@ -528,7 +533,12 @@ export type ParsedCliArguments =
   | ShareCommand
   | BadgeCommand
   | PlanCommand
-  | ExecuteCommand;
+  | ExecuteCommand
+  | {
+      command: "install";
+      version?: string;
+      directory?: string;
+    };
 
 export async function executeCli(args: string[]): Promise<{
   exitCode: number;
@@ -632,6 +642,8 @@ export async function executeCli(args: string[]): Promise<{
         return await executePlanCommand(parsed, outputMode);
       case "execute":
         return await executeExecuteCommand(parsed, outputMode);
+      case "install":
+        return await executeNativeInstallCommand(parsed, outputMode);
     }
   } catch (error) {
     return renderCliError(outputMode, error);
@@ -691,6 +703,16 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
       command: "demo",
       directory: resolve(readOption(rest, "--dir") ?? join(process.cwd(), "martin-loop-demo")),
       force: hasFlag(rest, "--force")
+    };
+  }
+
+  if (command === "install") {
+    const version = readOption(rest, "--version");
+    const directory = readOption(rest, "--dir");
+    return {
+      command: "install",
+      ...(version ? { version } : {}),
+      ...(directory ? { directory } : {})
     };
   }
 
@@ -1068,6 +1090,7 @@ export function renderCliHelp(): string {
     "  martin preflight <objective> [options]",
     "  martin start [options]",
     "  martin enable [options]",
+    "  martin install [--version <version>] [--dir <path>]",
     "  martin env [options]",
     "  martin review [--loop-id <id> | --file <path> | --latest] [options]",
     "  martin receipts explain [--loop-id <id> | --file <path> | --latest] [options]",
@@ -1099,6 +1122,7 @@ export function renderCliHelp(): string {
     "Operator commands:",
     "  start        Guided first-run summary: repo detection, verifier suggestion, provider readiness, and safe next steps.",
     "  enable       Write repo-local Martin defaults to martin.config.yaml (engine, verifier, budget).",
+    "  install      Install or upgrade the verified native executable from GitHub Releases.",
     "  env          Print compact environment truth for provider/auth/verifier/readiness.",
     "  review       Print a human-friendly summary for the latest governed run.",
     "  receipts explain  Explain receipt trust state and what to do next.",
@@ -3242,6 +3266,40 @@ async function executePlanCommand(
     ],
     quiet: `plan:${command.objective.slice(0, 40)}`
   });
+}
+
+async function executeNativeInstallCommand(
+  command: Extract<ParsedCliArguments, { command: "install" }>,
+  outputMode: MartinOutputMode
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  try {
+    const result = await runInstall({
+      outputMode,
+      ...(command.version ? { version: command.version } : {}),
+      ...(command.directory ? { dir: resolve(command.directory) } : {})
+    });
+    return renderCliSuccess(outputMode, {
+      data: {
+        command: "install",
+        version: result.version,
+        target: result.target,
+        assetName: result.assetName,
+        installPath: result.installPath,
+        aliasPath: result.aliasPath,
+        ...(result.backupPath ? { backupPath: result.backupPath } : {})
+      },
+      human: `Installed martin-loop ${result.version} to ${result.installPath}`,
+      quiet: result.installPath
+    });
+  } catch (error) {
+    if (error instanceof InstallError) {
+      throw new CliCommandError("install_failed", error.message, {
+        suggestion:
+          "Confirm the requested release has a native asset and matching .sha256 file, then retry."
+      });
+    }
+    throw error;
+  }
 }
 
 async function executeExecuteCommand(
