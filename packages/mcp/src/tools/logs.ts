@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: MartinLoop contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 import { readRunControlState } from "./run-controls.js";
 import { loadDetailedLoopRecord, readLedgerEvents } from "./run-store.js";
 

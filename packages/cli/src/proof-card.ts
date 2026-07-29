@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: MartinLoop contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 import type { ReceiptIntegrityState } from "@martin/contracts";
 
 export interface MartinProofCardInput {

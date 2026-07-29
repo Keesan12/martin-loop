@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: MartinLoop contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 import { existsSync, lstatSync, realpathSync } from "node:fs";
 import { dirname, extname, isAbsolute, relative, resolve } from "node:path";
 

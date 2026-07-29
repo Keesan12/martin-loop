@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: MartinLoop contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 import { createHash } from "node:crypto";
 import { open, readFile, readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";

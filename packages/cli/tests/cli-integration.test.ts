@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: MartinLoop contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * CLI integration tests covering adapter selection, engine flags,
  * and explicit no-spend proof mode guardrails.
@@ -905,6 +909,8 @@ describe("help command", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe("");
+    expect(result.stdout).toContain("AI agents are easy to run. Hard to govern.");
+    expect(result.stdout).toContain("Apache 2.0 · martinloop.com · github.com/Keesan12/martin-loop");
     expect(result.stdout).toContain("martin-loop run");
     expect(result.stdout).toContain("martin-loop demo");
     expect(result.stdout).toContain("martin-loop inspect");

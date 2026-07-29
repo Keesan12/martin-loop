@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: MartinLoop contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * Corpus intelligence tests — Layer 5 proactive issue detection.
  * Covers readLocalCorpusRisk, computeScopeFingerprint, and preflight corpus output.

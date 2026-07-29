@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: MartinLoop contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 import type { LoopBudget, ReceiptScope } from "@martin/contracts";
 type McpWorkflowStepName = "doctor" | "plan" | "preflight";
 interface McpWorkflowReceipt {

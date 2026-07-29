@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: MartinLoop contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 import type { MartinAdapter } from "@martin/core";
 
 import { readGitChangedFiles, runVerification, type SpawnLike } from "./cli-bridge.js";

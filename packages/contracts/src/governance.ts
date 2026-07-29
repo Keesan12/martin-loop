@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: MartinLoop contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 export type PolicyProfile = "strict" | "balanced" | "overnight" | "debug";
 export type DestructiveActionPolicy = "never" | "approval" | "allowed";
 export type TelemetryDestination = "local-only" | "control-plane";

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: MartinLoop contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 import { readRunStats, writeRunStats } from "./run-stats.js";
 
 const STAR_URL = "https://github.com/Keesan12/martin-loop";

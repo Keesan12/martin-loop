@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: MartinLoop contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: MartinLoop contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * Tests for the OpenAI-compatible adapter.
  * Uses a local mock HTTP server to avoid any real API calls.

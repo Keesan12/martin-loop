@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: MartinLoop contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 import { compilePromptPacket, type CompilerAdapterRequest, type PromptPacket } from "../compiler.js";
 import { makeLedgerEvent } from "./ledger.js";
 import type { RunStore } from "./store.js";

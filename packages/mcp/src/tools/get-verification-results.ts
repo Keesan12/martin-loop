@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: MartinLoop contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 import { buildLoopPreview, buildVerificationSummary, resolveReceiptIntegrity } from "./tool-support.js";
 import { loadDetailedLoopRecord, readLedgerEvents } from "./run-store.js";
 import type { ReceiptIntegritySummary, ReceiptScope } from "@martin/contracts";

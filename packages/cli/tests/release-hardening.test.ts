@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: MartinLoop contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * Release hardening tests for features shipped in 0.3.8–0.3.10.
  *
@@ -182,7 +186,7 @@ describe("CLI version reporting", () => {
   it("version command returns exit code 0 with version string", async () => {
     const result = await executeCli(["--version"]);
     expect(result.exitCode).toBe(0);
-    expect(result.stdout.trim()).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(result.stdout.trim()).toMatch(/^\d+\.\d+\.\d+ · Apache 2\.0 · martinloop\.com$/);
   });
 
   it("vendored CLI version matches root package version", () => {

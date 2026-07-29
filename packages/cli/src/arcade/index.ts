@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: MartinLoop contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 export { playWhileWaiting } from "./space-invaders.js";
 export type { ArcadeOptions } from "./space-invaders.js";
 

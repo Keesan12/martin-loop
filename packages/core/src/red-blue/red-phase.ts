@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: MartinLoop contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 import { PROBE_COUNTS, RED_PHASE_MODEL, resolveRedBudgetPolicy, type RiskTier } from "./risk-tiers.js";
 
 // ─── Public types ─────────────────────────────────────────────────────────────

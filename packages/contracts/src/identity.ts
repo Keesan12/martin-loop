@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: MartinLoop contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 export type IdentityAlgorithm = "ed25519";
 
 export type IdentityRole =

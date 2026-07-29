@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: MartinLoop contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 import { resolveRunsRoot, type LedgerEvent, type LoopAttemptRecord, type LoopRunRecord } from "@martin/core";
 import type { LoopArtifact, LoopAttempt, LoopEvent, LoopTask } from "@martin/contracts";
 

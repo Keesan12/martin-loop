@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: MartinLoop contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -232,6 +236,8 @@ describe("executeCli", () => {
     const result = await executeCli(["--help"]);
 
     expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("AI agents are easy to run. Hard to govern.");
+    expect(result.stdout).toContain("Apache 2.0 · martinloop.com · github.com/Keesan12/martin-loop");
     expect(result.stdout).toContain("martin start [options]");
     expect(result.stdout).toContain("martin receipts explain");
     expect(result.stdout).toContain("martin runs verify (--loop-id <id> | --file <path> | --latest) [options]");
@@ -264,7 +270,7 @@ describe("executeCli", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe("");
-    expect(result.stdout).toBe(rootPackageVersion);
+    expect(result.stdout).toBe(`${rootPackageVersion} · Apache 2.0 · martinloop.com`);
   });
 
   it("renders start onboarding guidance with governed defaults", { timeout: 30_000 }, async () => {
@@ -272,6 +278,7 @@ describe("executeCli", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("MartinLoop — Governed AI Coding");
+    expect(result.stdout).toContain("Apache 2.0 · martinloop.com · github.com/Keesan12/martin-loop");
     expect(result.stdout).toContain("martin doctor");
     expect(result.stdout).toContain("martin estimate");
     expect(result.stdout).toMatch(

@@ -1,3 +1,7 @@
+// SPDX-FileCopyrightText: MartinLoop contributors
+//
+// SPDX-License-Identifier: Apache-2.0
+
 import { createHash } from "node:crypto";
 import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
@@ -132,6 +136,9 @@ const STAR_CTA_LINES = [
   "   Star the repo: github.com/Keesan12/martin-loop",
   "─────────────────────────────────────────────"
 ] as const;
+const CLI_TAGLINE_LINE = "AI agents are easy to run. Hard to govern.";
+const CLI_ATTRIBUTION_LINE = "Apache 2.0 · martinloop.com · github.com/Keesan12/martin-loop";
+const CLI_VERSION_ATTRIBUTION_SUFFIX = "Apache 2.0 · martinloop.com";
 
 type RunSuccessCallToAction = {
   headline: string;
@@ -525,7 +532,7 @@ export async function executeCli(args: string[]): Promise<{
       case "version":
         return {
           exitCode: 0,
-          stdout: rootPackageVersion,
+          stdout: `${rootPackageVersion} · ${CLI_VERSION_ATTRIBUTION_SUFFIX}`,
           stderr: ""
         };
       case "bench":
@@ -1004,6 +1011,8 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
 export function renderCliHelp(): string {
   return [
     "Martin Loop CLI",
+    CLI_TAGLINE_LINE,
+    CLI_ATTRIBUTION_LINE,
     "",
     "Usage:",
     "  martin run <objective> [options]",
@@ -2022,6 +2031,7 @@ async function executeStartCommand(
       "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
       " MartinLoop — Governed AI Coding",
       "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+      CLI_ATTRIBUTION_LINE,
       "",
       modeConfigured
         ? `Mode: ${currentMode} (change with martin mode auto|plan|edits)`
