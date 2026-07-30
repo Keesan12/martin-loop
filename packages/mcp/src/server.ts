@@ -740,27 +740,146 @@ const planOutputSchema = {
 
 const logsOutputSchema = {
   type: "object",
-  additionalProperties: true
+  additionalProperties: false,
+  properties: {
+    source: { type: "string", description: "Resolved path to the loop-record source file." },
+    sourceKind: {
+      type: "string",
+      enum: ["file", "loop_id", "latest", "runs_root"],
+      description: "How the run was identified: by file path, loop ID, latest flag, or runs directory."
+    },
+    loopId: { type: "string", description: "Unique MartinLoop run identifier." },
+    logCount: { type: "integer", description: "Number of log entries returned after applying the limit." },
+    live: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        lifecycleState: { type: "string", description: "Current run lifecycle state (e.g. running, completed, cancelled)." },
+        pauseState: {
+          type: "string",
+          enum: ["active", "paused", "cancellation_requested"],
+          description: "Whether the run is active, paused, or has a pending cancellation."
+        },
+        approvalState: {
+          type: "string",
+          enum: ["not_required", "resume_requested"],
+          description: "Whether the run is waiting at a human-approval checkpoint."
+        }
+      },
+      required: ["lifecycleState", "pauseState", "approvalState"]
+    },
+    entries: {
+      type: "array",
+      description: "Log entries sorted by timestamp descending, capped at limit.",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          timestamp: { type: "string", description: "ISO 8601 timestamp of the event, if present." },
+          source: {
+            type: "string",
+            enum: ["event", "ledger", "control"],
+            description: "Origin stream: loop event bus, governance ledger, or operator control receipts."
+          },
+          kind: { type: "string", description: "Event type or control action name." },
+          payload: { type: "object", additionalProperties: true, description: "Event-specific payload data." }
+        },
+        required: ["source", "kind", "payload"]
+      }
+    }
+  },
+  required: ["source", "sourceKind", "loopId", "logCount", "live", "entries"]
 } as const;
 
 const controlOutputSchema = {
   type: "object",
-  additionalProperties: true
+  additionalProperties: false,
+  properties: {
+    loopId: { type: "string", description: "MartinLoop run identifier the control was applied to." },
+    action: {
+      type: "string",
+      enum: ["pause", "cancel", "continue"],
+      description: "The control action that was recorded."
+    },
+    controlId: { type: "string", description: "Unique receipt ID for this control action." },
+    requestedAt: { type: "string", description: "ISO 8601 timestamp when the control was recorded." },
+    requestedBy: { type: "string", description: "Identity that requested the control, if provided." },
+    reason: { type: "string", description: "Human-readable reason for the control, if provided." }
+  },
+  required: ["loopId", "action", "controlId", "requestedAt"]
 } as const;
 
 const evalOutputSchema = {
   type: "object",
-  additionalProperties: true
+  additionalProperties: false,
+  properties: {
+    source: { type: "string", description: "Resolved path to the loop-record source file." },
+    sourceKind: {
+      type: "string",
+      enum: ["file", "loop_id", "latest", "runs_root"],
+      description: "How the run was identified."
+    },
+    loopId: { type: "string", description: "Unique MartinLoop run identifier." },
+    score: { type: "number", description: "Numeric evaluation score from 0–100." },
+    grade: {
+      type: "string",
+      enum: ["mergeable", "mergeable_with_review", "needs_review", "blocked", "insufficient_evidence"],
+      description: "Overall merge readiness grade derived from the six check dimensions."
+    },
+    checks: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        taskCompletion: { type: "string", enum: ["passed", "warning", "failed"], description: "Whether the run reached a completed status." },
+        verifier: { type: "string", enum: ["passed", "warning", "failed"], description: "Whether automated verifiers passed." },
+        diffDiscipline: { type: "string", enum: ["passed", "warning", "failed"], description: "Whether file-scope discipline was maintained." },
+        regressionRisk: { type: "string", enum: ["passed", "warning", "failed"], description: "Whether regression risk signals were detected." },
+        securityRisk: { type: "string", enum: ["passed", "warning", "failed"], description: "Whether security risk signals were detected." },
+        reviewability: { type: "string", enum: ["passed", "warning", "failed"], description: "Whether the PR body and dossier are reviewer-ready." }
+      },
+      required: ["taskCompletion", "verifier", "diffDiscipline", "regressionRisk", "securityRisk", "reviewability"]
+    },
+    warnings: { type: "array", items: { type: "string" }, description: "Non-blocking advisory warnings from the evaluation." },
+    summary: { type: "string", description: "One-paragraph plain-English evaluation summary." }
+  },
+  required: ["source", "sourceKind", "loopId", "score", "grade", "checks", "warnings", "summary"]
 } as const;
 
 const prSummaryOutputSchema = {
   type: "object",
-  additionalProperties: true
+  additionalProperties: false,
+  properties: {
+    loopId: { type: "string", description: "MartinLoop run identifier used to generate the summary." },
+    title: { type: "string", description: "Suggested GitHub pull-request title." },
+    body: { type: "string", description: "GitHub-flavoured Markdown PR body containing the run dossier." },
+    grade: {
+      type: "string",
+      enum: ["mergeable", "mergeable_with_review", "needs_review", "blocked", "insufficient_evidence"],
+      description: "Verification grade assigned to the run."
+    },
+    score: { type: "number", description: "Numeric verification score from 0–100." }
+  },
+  required: ["loopId", "title", "body", "grade", "score"]
 } as const;
 
 const prReviewOutputSchema = {
   type: "object",
-  additionalProperties: true
+  additionalProperties: false,
+  properties: {
+    loopId: { type: "string", description: "MartinLoop run identifier the review was performed against." },
+    verdict: {
+      type: "string",
+      enum: ["approve_with_review", "needs_changes", "blocked"],
+      description: "Merge verdict: approve_with_review means safe to merge with human review; needs_changes requires fixes; blocked means do not merge."
+    },
+    findings: {
+      type: "array",
+      items: { type: "string" },
+      description: "Specific findings that informed the verdict."
+    },
+    summary: { type: "string", description: "Plain-English review summary." }
+  },
+  required: ["loopId", "verdict", "findings", "summary"]
 } as const;
 
 export function createMartinMcpServer(serverInfo?: {
@@ -1074,20 +1193,26 @@ export function createMartinMcpServer(serverInfo?: {
     {
       name: "martin_logs",
       description:
-        "Read recent Martin loop events, ledger entries, and operator control receipts for live observability.",
+        "Read recent MartinLoop events, ledger entries, and operator control receipts for a single run. " +
+        "Use to observe live or completed run activity, diagnose stuck or failed runs, or audit operator actions. " +
+        "Do not use to check run completion status — use martin_get_status instead. " +
+        "Do not use to retrieve verification evidence — use martin_get_verification_results instead. " +
+        "This tool only reads persisted run files and does not execute commands, modify state, or contact GitHub.",
       annotations: {
         readOnlyHint: true,
-        idempotentHint: true
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
       },
       inputSchema: {
         type: "object",
         additionalProperties: false,
         properties: {
-          file: { type: "string" },
-          loopId: { type: "string" },
-          runsDir: { type: "string" },
-          latest: { const: true },
-          limit: { type: "integer", minimum: 1 }
+          file: { type: "string", description: "Absolute or relative path to a loop-record.json file or run directory. Mutually exclusive with loopId and latest." },
+          loopId: { type: "string", description: "MartinLoop run identifier from the run store. Mutually exclusive with file and latest." },
+          runsDir: { type: "string", description: "Override the default run-store root directory. Optional; defaults to the MartinLoop runs directory." },
+          latest: { const: true, description: "When true, loads the most recently updated run in the run store. Mutually exclusive with file and loopId." },
+          limit: { type: "integer", minimum: 1, description: "Maximum number of log entries to return, sorted by timestamp descending. Defaults to 20." }
         },
         oneOf: [{ required: ["file"] }, { required: ["loopId"] }, { required: ["latest"] }]
       },
@@ -1291,10 +1416,16 @@ export function createMartinMcpServer(serverInfo?: {
     {
       name: "martin_get_verification_results",
       description:
-        "Load verification evidence for a Martin run from stored loop events and ledger entries.",
+        "Load structured verification evidence for a MartinLoop run — verifier commands, pass/fail outcomes, and contradiction signals — from stored loop events and ledger entries. " +
+        "Use after a run completes to confirm whether automated verifiers passed before merging or promoting the result. " +
+        "Do not use to get a merge-readiness grade — use martin_eval for a scored grade with six check dimensions. " +
+        "Do not use for live run status — use martin_get_status instead. " +
+        "This tool only reads persisted run files and does not execute commands, modify state, or contact GitHub.",
       annotations: {
         readOnlyHint: true,
-        idempotentHint: true
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
       },
       inputSchema: {
         type: "object",
@@ -1302,10 +1433,10 @@ export function createMartinMcpServer(serverInfo?: {
         properties: {
           file: {
             type: "string",
-            description: "Path to a canonical loop-record.json file or run directory."
+            description: "Absolute or relative path to a loop-record.json file or run directory. Mutually exclusive with loopId."
           },
-          loopId: { type: "string", description: "Loop ID under the run store." },
-          runsDir: { type: "string", description: "Optional runs-root override." }
+          loopId: { type: "string", description: "MartinLoop run identifier from the run store. Mutually exclusive with file." },
+          runsDir: { type: "string", description: "Override the default run-store root directory. Optional." }
         },
         oneOf: [{ required: ["file"] }, { required: ["loopId"] }]
       },
@@ -1367,19 +1498,26 @@ export function createMartinMcpServer(serverInfo?: {
     {
       name: "martin_eval",
       description:
-        "Grade a Martin run for task completion, verifier health, diff discipline, risk, and reviewability.",
+        "Grade a MartinLoop run across six dimensions — task completion, verifier health, diff discipline, regression risk, security risk, and reviewability — and return a scored merge-readiness verdict. " +
+        "Use after a governed run completes to decide whether the result is safe to merge or promote. " +
+        "Use before martin_pr_summary or martin_create_pr to confirm the run is merge-ready. " +
+        "Do not use to retrieve raw verification command output — use martin_get_verification_results for that. " +
+        "Do not use to review an existing PR body — use martin_review_pr instead. " +
+        "This tool reads saved run evidence and inspects local git signals; it does not modify state or contact GitHub.",
       annotations: {
         readOnlyHint: true,
-        idempotentHint: true
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
       },
       inputSchema: {
         type: "object",
         additionalProperties: false,
         properties: {
-          file: { type: "string" },
-          loopId: { type: "string" },
-          runsDir: { type: "string" },
-          latest: { const: true }
+          file: { type: "string", description: "Absolute or relative path to a loop-record.json file or run directory. Mutually exclusive with loopId and latest." },
+          loopId: { type: "string", description: "MartinLoop run identifier from the run store. Mutually exclusive with file and latest." },
+          runsDir: { type: "string", description: "Override the default run-store root directory. Optional." },
+          latest: { const: true, description: "When true, evaluates the most recently updated run in the run store. Mutually exclusive with file and loopId." }
         },
         oneOf: [{ required: ["file"] }, { required: ["loopId"] }, { required: ["latest"] }]
       },
@@ -1388,20 +1526,27 @@ export function createMartinMcpServer(serverInfo?: {
     {
       name: "martin_pr_summary",
       description:
-        "Generate a PR title and body with a MartinLoop dossier block for a completed run.",
+        "Generate a GitHub-ready pull-request title and Markdown body from a completed MartinLoop run dossier, including its verification grade and score. " +
+        "Use after a governed run completes when you need PR copy without creating the PR. " +
+        "Use martin_create_pr instead to actually open the PR on GitHub. " +
+        "Use martin_review_pr to evaluate an existing PR body against run evidence. " +
+        "Use martin_eval first if you need a merge-readiness grade before generating the PR body. " +
+        "This tool only reads saved run evidence and does not modify the repository or contact GitHub.",
       annotations: {
         readOnlyHint: true,
-        idempotentHint: true
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
       },
       inputSchema: {
         type: "object",
         additionalProperties: false,
         properties: {
-          file: { type: "string" },
-          loopId: { type: "string" },
-          runsDir: { type: "string" },
-          latest: { const: true },
-          format: { type: "string", enum: ["json", "md", "github-pr"] }
+          file: { type: "string", description: "Absolute or relative path to a loop-record.json file or run directory. Mutually exclusive with loopId and latest." },
+          loopId: { type: "string", description: "MartinLoop run identifier from the run store. Mutually exclusive with file and latest." },
+          runsDir: { type: "string", description: "Override the default run-store root directory. Optional." },
+          latest: { const: true, description: "When true, generates the summary for the most recently updated run. Mutually exclusive with file and loopId." },
+          format: { type: "string", enum: ["json", "md", "github-pr"], description: "Dossier rendering format. Defaults to github-pr for PR body generation. Use md for plain Markdown or json for structured output." }
         },
         oneOf: [{ required: ["file"] }, { required: ["loopId"] }, { required: ["latest"] }]
       },
@@ -1435,21 +1580,28 @@ export function createMartinMcpServer(serverInfo?: {
     {
       name: "martin_review_pr",
       description:
-        "Review a PR or PR draft against the Martin dossier and evaluation evidence.",
+        "Review a PR body or draft against the MartinLoop run dossier and evaluation evidence, and return a verdict with specific findings. " +
+        "Use when you have an existing PR body and want to check whether it accurately represents the governed run evidence. " +
+        "Supply prBody to review a specific body string; omit it to evaluate the auto-generated dossier body. " +
+        "Do not use to generate a PR body from scratch — use martin_pr_summary instead. " +
+        "Do not use to open or create a PR — use martin_create_pr instead. " +
+        "This tool only reads saved run evidence and does not modify the repository or contact GitHub.",
       annotations: {
         readOnlyHint: true,
-        idempotentHint: true
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
       },
       inputSchema: {
         type: "object",
         additionalProperties: false,
         properties: {
-          file: { type: "string" },
-          loopId: { type: "string" },
-          runsDir: { type: "string" },
-          latest: { const: true },
-          format: { type: "string", enum: ["json", "md", "github-pr"] },
-          prBody: { type: "string" }
+          file: { type: "string", description: "Absolute or relative path to a loop-record.json file or run directory. Mutually exclusive with loopId and latest." },
+          loopId: { type: "string", description: "MartinLoop run identifier from the run store. Mutually exclusive with file and latest." },
+          runsDir: { type: "string", description: "Override the default run-store root directory. Optional." },
+          latest: { const: true, description: "When true, reviews against the most recently updated run. Mutually exclusive with file and loopId." },
+          format: { type: "string", enum: ["json", "md", "github-pr"], description: "Dossier format used when generating the reference body for comparison. Defaults to github-pr." },
+          prBody: { type: "string", description: "The PR body text to review. If omitted, the auto-generated dossier body is evaluated instead." }
         },
         oneOf: [{ required: ["file"] }, { required: ["loopId"] }, { required: ["latest"] }]
       },
