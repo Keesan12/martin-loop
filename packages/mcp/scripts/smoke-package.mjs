@@ -10,6 +10,10 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
 import { buildStandaloneMcpPackage } from "./build-package-lib.mjs";
+import {
+  findSingleTarball,
+  normalizePackedTarEntries,
+} from "../../../scripts/root-release-guard.mjs";
 
 const REQUIRED_TOOLS = [
   "martin_doctor",
@@ -78,21 +82,16 @@ export async function runStandaloneMcpSmoke(options = {}) {
   try {
     await buildStandaloneMcpPackage({ packageDir });
 
-    const packDryRun = await runCommand(npmCommand(), ["pack", "--ignore-scripts", "--json", "--dry-run"], {
-      cwd: packageDir,
-    });
-    const dryRunEntry = parsePackEntry(packDryRun.stdout);
-    const tarballFiles = dryRunEntry.files.map((file) => file.path).sort();
-    assertTarballFileSet(tarballFiles);
-
-    const packRun = await runCommand(
+    await runCommand(
       npmCommand(),
-      ["pack", "--ignore-scripts", "--json", "--pack-destination", packDir],
+      ["pack", "--ignore-scripts", "--pack-destination", packDir],
       { cwd: packageDir },
     );
-    const packEntry = parsePackEntry(packRun.stdout);
-    const tarballFilename = packEntry.filename;
-    const tarballPath = path.join(packDir, packEntry.filename);
+    const tarballFilename = await findSingleTarball(packDir);
+    const tarballPath = path.join(packDir, tarballFilename);
+    const tarList = await runCommand(tarCommand(), ["-tf", tarballFilename], { cwd: packDir });
+    const tarballFiles = normalizePackedTarEntries(tarList.stdout.split(/\r?\n/u)).sort();
+    assertTarballFileSet(tarballFiles);
 
     const [packedManifestOutput, packedServerOutput] = await Promise.all([
       runCommand(
@@ -300,15 +299,6 @@ function readTextContent(result) {
   }
 
   return first.text;
-}
-
-function parsePackEntry(stdout) {
-  const parsed = JSON.parse(stdout);
-  const entry = Array.isArray(parsed) ? parsed[0] : null;
-  if (!entry || typeof entry.filename !== "string" || !Array.isArray(entry.files)) {
-    throw new Error("npm pack did not return a usable pack result.");
-  }
-  return entry;
 }
 
 function npmCommand() {

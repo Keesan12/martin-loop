@@ -6,23 +6,18 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { resolveRcCommandExecution } from "./rc-validation.mjs";
-import { extractPackJsonPayload } from "./root-release-guard.mjs";
+import { findSingleTarball } from "./root-release-guard.mjs";
 
 export async function packRootRelease(options = {}) {
   const rootDir = options.rootDir ?? process.cwd();
   const outputDir = path.resolve(rootDir, options.outputDir ?? "dist-release");
   await mkdir(outputDir, { recursive: true });
 
-  const packRun = await runCommand(
-    ["npm", "pack", "--json", "--pack-destination", outputDir],
+  await runCommand(
+    ["npm", "pack", "--pack-destination", outputDir],
     { cwd: rootDir },
   );
-  const packArtifacts = extractPackJsonPayload(packRun.stdout);
-  const tarballName = Array.isArray(packArtifacts) ? packArtifacts[0]?.filename : null;
-
-  if (typeof tarballName !== "string" || tarballName.length === 0) {
-    throw new Error("npm pack did not return a tarball filename.");
-  }
+  const tarballName = await findSingleTarball(outputDir);
 
   return {
     outputDir,
