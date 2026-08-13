@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
 import { spawn } from "node:child_process";
-import { access, readFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -104,22 +105,39 @@ export function assertPackedSurface(packedFiles) {
 export async function inspectPackedFiles(options = {}) {
   const rootDir = options.rootDir ?? process.cwd();
   const ignoreScripts = options.ignoreScripts ?? true;
-  const command = ["npm", "pack", "--dry-run", "--json"];
-  if (ignoreScripts) {
-    command.push("--ignore-scripts");
-  }
-  const packRun = await runCommand(
-    command,
-    { cwd: rootDir },
-  );
-  const packArtifacts = extractPackJsonPayload(packRun.stdout);
-  const files = extractPackFilePaths(packArtifacts);
+  const packDestination = await mkdtemp(path.join(os.tmpdir(), "martin-root-pack-"));
 
-  if (files.length === 0) {
-    throw new Error("npm pack --dry-run did not report any packaged files.");
-  }
+  try {
+    const command = ["npm", "pack", "--pack-destination", packDestination];
+    if (ignoreScripts) {
+      command.push("--ignore-scripts");
+    }
+    await runCommand(command, { cwd: rootDir });
 
-  return files;
+    const tarballs = (await readdir(packDestination)).filter((entry) => entry.endsWith(".tgz"));
+    if (tarballs.length !== 1) {
+      throw new Error(`npm pack produced ${tarballs.length} tarballs; expected exactly one.`);
+    }
+
+    const tarRun = await runCommand(
+      ["tar", "-tf", path.join(packDestination, tarballs[0])],
+      { cwd: rootDir },
+    );
+    const files = normalizePackedTarEntries(tarRun.stdout.split(/\r?\n/u));
+    if (files.length === 0) {
+      throw new Error("Packed tarball did not contain any files.");
+    }
+
+    return files;
+  } finally {
+    await rm(packDestination, { force: true, recursive: true });
+  }
+}
+
+export function normalizePackedTarEntries(entries) {
+  return entries
+    .map((entry) => entry.trim().replace(/^package\//u, ""))
+    .filter((entry) => entry.length > 0 && !entry.endsWith("/"));
 }
 
 export function extractPackJsonPayload(stdout) {

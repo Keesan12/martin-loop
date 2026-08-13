@@ -10,6 +10,7 @@ import {
   assertRootVersionPolicy,
   assertVendoredCliManifest,
   extractPackFilePaths,
+  normalizePackedTarEntries,
   runRootReleaseGuard,
 } from "../root-release-guard.mjs";
 
@@ -94,6 +95,19 @@ test("extractPackFilePaths accepts npm pack object and array envelopes", () => {
 
   assert.deepEqual(extractPackFilePaths([artifact]), ["package.json", "dist/index.js"]);
   assert.deepEqual(extractPackFilePaths(artifact), ["package.json", "dist/index.js"]);
+});
+
+test("normalizePackedTarEntries reads the real npm tarball surface", () => {
+  assert.deepEqual(
+    normalizePackedTarEntries([
+      "package/",
+      "package/package.json",
+      "package/dist/index.js",
+      "package/dist/vendor/adapters/codex.js",
+      "",
+    ]),
+    ["package.json", "dist/index.js", "dist/vendor/adapters/codex.js"],
+  );
 });
 
 test("assertVendoredCliManifest accepts the sanitized vendored CLI package manifest", async () => {
