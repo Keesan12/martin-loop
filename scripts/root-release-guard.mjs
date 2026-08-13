@@ -114,13 +114,10 @@ export async function inspectPackedFiles(options = {}) {
     }
     await runCommand(command, { cwd: rootDir });
 
-    const tarballs = (await readdir(packDestination)).filter((entry) => entry.endsWith(".tgz"));
-    if (tarballs.length !== 1) {
-      throw new Error(`npm pack produced ${tarballs.length} tarballs; expected exactly one.`);
-    }
+    const tarballName = await findSingleTarball(packDestination);
 
     const tarRun = await runCommand(
-      ["tar", "-tf", path.join(packDestination, tarballs[0])],
+      ["tar", "-tf", path.join(packDestination, tarballName)],
       { cwd: rootDir },
     );
     const files = normalizePackedTarEntries(tarRun.stdout.split(/\r?\n/u));
@@ -132,6 +129,14 @@ export async function inspectPackedFiles(options = {}) {
   } finally {
     await rm(packDestination, { force: true, recursive: true });
   }
+}
+
+export async function findSingleTarball(directory) {
+  const tarballs = (await readdir(directory)).filter((entry) => entry.endsWith(".tgz"));
+  if (tarballs.length !== 1) {
+    throw new Error(`npm pack produced ${tarballs.length} tarballs; expected exactly one.`);
+  }
+  return tarballs[0];
 }
 
 export function normalizePackedTarEntries(entries) {

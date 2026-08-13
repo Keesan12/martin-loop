@@ -10,6 +10,7 @@ import {
   assertRootVersionPolicy,
   assertVendoredCliManifest,
   extractPackFilePaths,
+  findSingleTarball,
   normalizePackedTarEntries,
   runRootReleaseGuard,
 } from "../root-release-guard.mjs";
@@ -108,6 +109,14 @@ test("normalizePackedTarEntries reads the real npm tarball surface", () => {
     ]),
     ["package.json", "dist/index.js", "dist/vendor/adapters/codex.js"],
   );
+});
+
+test("findSingleTarball discovers the real npm pack artifact", async () => {
+  await withTempRoot(async (tempRoot) => {
+    await writeFile(path.join(tempRoot, "martin-loop-0.5.0.tgz"), "artifact", "utf8");
+
+    assert.equal(await findSingleTarball(tempRoot), "martin-loop-0.5.0.tgz");
+  });
 });
 
 test("assertVendoredCliManifest accepts the sanitized vendored CLI package manifest", async () => {

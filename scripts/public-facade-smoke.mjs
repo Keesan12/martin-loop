@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { resolveRcCommandExecution } from "./rc-validation.mjs";
 import {
   assertPackedSurface,
-  extractPackJsonPayload,
+  findSingleTarball,
   inspectPackedFiles,
 } from "./root-release-guard.mjs";
 
@@ -56,16 +56,10 @@ export async function runPublicFacadeSmoke(options = {}) {
   await mkdir(appDir, { recursive: true });
 
   try {
-    const packRun = await runCommand(["npm", "pack", "--json", "--ignore-scripts", "--pack-destination", packDir], {
+    await runCommand(["npm", "pack", "--ignore-scripts", "--pack-destination", packDir], {
       cwd: rootDir,
     });
-    const packArtifacts = extractPackJsonPayload(packRun.stdout);
-    const tarballName = Array.isArray(packArtifacts) ? packArtifacts[0]?.filename : undefined;
-
-    if (typeof tarballName !== "string" || tarballName.trim().length === 0) {
-      throw new Error("npm pack did not return a tarball filename.");
-    }
-
+    const tarballName = await findSingleTarball(packDir);
     const tarballPath = path.join(packDir, tarballName);
     await writeFile(
       path.join(appDir, "package.json"),
