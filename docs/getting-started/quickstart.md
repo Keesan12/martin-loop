@@ -40,7 +40,7 @@ npm view martin-loop version
 npm view @martinloop/mcp version
 ```
 
-If `npx martin-loop --version` differs from npm live, run `npx -y martin-loop@latest --version` or pin `@0.3.2` to avoid local cache drift.
+If `npx martin-loop --version` differs from npm live, run `npx -y martin-loop@latest --version` or pin `@0.5.0` to avoid local cache drift.
 
 ## Run a Governed Task
 

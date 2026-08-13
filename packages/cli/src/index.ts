@@ -1437,14 +1437,14 @@ async function executeRunCommand(
     telemetryConfig = await initializeTelemetryIfNeeded({
       config: telemetryConfig,
       endpoint: resolveProductEventsEndpoint(),
-      cliVersion: packageJson.version,
+      cliVersion: rootPackageVersion,
     });
     void sendProductEvent({
       endpoint: resolveProductEventsEndpoint(),
       config: telemetryConfig,
       event: "run_started",
       payload: { command: "run" },
-      cliVersion: packageJson.version,
+      cliVersion: rootPackageVersion,
       env: process.env,
     });
   }
@@ -1577,7 +1577,7 @@ async function executeRunCommand(
         config: telemetryConfig,
         event: "run_completed",
         payload: { durationMs: 0, command: "run", receiptGenerated: Boolean(receiptScope), recoveryOccurred: false },
-        cliVersion: packageJson.version,
+        cliVersion: rootPackageVersion,
         env: process.env,
       });
     } else if (telemetryWasActiveAtRunStart) {
@@ -1586,7 +1586,7 @@ async function executeRunCommand(
         config: telemetryConfig,
         event: "run_failed",
         payload: { durationMs: 0, command: "run", reason: toTelemetryFailureReason(result.decision.reasonCode) },
-        cliVersion: packageJson.version,
+        cliVersion: rootPackageVersion,
         env: process.env,
       });
     }
@@ -1653,7 +1653,7 @@ async function executeRunCommand(
     if (remoteEndpoint && isInteractiveTty) {
       try {
         const fetched = await fetchRemoteExperience(
-          { schemaVersion: 1, cliVersion: packageJson.version, nodeVersion: process.version, platform: process.platform, arch: process.arch },
+          { schemaVersion: 1, cliVersion: rootPackageVersion, nodeVersion: process.version, platform: process.platform, arch: process.arch },
           { endpoint: remoteEndpoint, timeoutMs: 1500 }
         );
         if (fetched) {
@@ -1727,7 +1727,7 @@ async function executeRunCommand(
             await renderDashboardInviteInteractive(msg, {
               emitClicked: async (expId, expType) => {
                 try {
-                  void sendProductEvent({ endpoint: resolveProductEventsEndpoint(), config: telemetryConfig, event: "remote_experience_clicked", payload: { experienceId: expId, experienceType: expType }, cliVersion: packageJson.version });
+                  void sendProductEvent({ endpoint: resolveProductEventsEndpoint(), config: telemetryConfig, event: "remote_experience_clicked", payload: { experienceId: expId, experienceType: expType }, cliVersion: rootPackageVersion });
                 } catch { /* non-fatal */ }
               },
               recordDelivered: recordRemoteExperienceDelivered,

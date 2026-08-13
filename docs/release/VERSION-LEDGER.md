@@ -4,10 +4,10 @@ This file is the release source of truth for package/version mapping in this rep
 
 ## Root package: `martin-loop`
 
-- live npm dist-tag `latest`: `0.4.5`
-- live public GitHub release: `v0.4.5`
-- live public baseline in this train: `0.4.5`
-- root public baseline: `0.4.5`
+- live npm dist-tag `latest`: `0.5.0`
+- live public GitHub release: `v0.5.0`
+- live public baseline in this train: `0.5.0`
+- root public baseline: `0.5.0`
 - releases consumed since the original `0.2.8` launch:
   - `0.2.9` fixed proof-run classification, Windows `.cmd` resolution, and public provider defaults
   - `0.2.10` tightened verifier evidence, `--runs-dir` consistency, and public help output
@@ -34,16 +34,16 @@ This file is the release source of truth for package/version mapping in this rep
   - `0.4.4` model-specific pricing, cache-aware accounting, and streaming budget enforcement
   - `0.4.5` MartinLoop Arcade for interactive governed runs
   - `0.5.0` fail-closed verification authority, workspace-bound evidence, native install, execution-surface hardening, and MCP lifecycle expansion
-- current in-repo root release target: `0.5.0` (pending public release)
+- current in-repo root release line: `0.5.0`
 - next planned root follow-on: not scheduled
 
 ## Standalone package: `@martinloop/mcp`
 
-- live npm dist-tag `latest`: `0.3.9`
-- live public GitHub release: `mcp-v0.3.9`
-- live public baseline in this train: `0.3.9`
-- standalone MCP public baseline: `0.3.9`
-- current in-repo standalone release target: `0.5.0` (pending public release)
+- live npm dist-tag `latest`: `0.5.0`
+- live public GitHub release: `mcp-v0.5.0`
+- live public baseline in this train: `0.5.0`
+- standalone MCP public baseline: `0.5.0`
+- current in-repo standalone release line: `0.5.0`
 - MCPB remains at its previously released `0.3.9` artifact and is not advanced in `0.5.0`
 - next planned standalone release: not scheduled
 

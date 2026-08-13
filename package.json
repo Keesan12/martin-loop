@@ -94,6 +94,7 @@
     "release:validate:platforms": "node ./scripts/release-matrix.mjs",
     "release:matrix:local": "node ./scripts/release-matrix.mjs",
     "release:truth-check": "node ./scripts/release-truth-check.mjs --allow-divergence-marker=[sync-parity]",
+    "release:authority:check": "node ./scripts/fleet-release-authority-check.mjs",
     "run:cli": "pnpm --filter @martin/cli dev",
     "public:promotion-guard": "node scripts/public-portability-guard.mjs"
   },
