@@ -62,11 +62,7 @@ By default MartinLoop writes the bundle into the selected run directory under `s
 
 - `run-receipt.json`
 - `run-receipt.md`
-
-Generate proof-card images only when explicitly requested:
-
-- `pnpm run:cli -- share --latest --with-proof-card`
-- `pnpm run:cli -- share --latest --proof-card-format both`
+- `proof-card.svg`
 
 Use `--out-dir <path>` when you want the bundle somewhere else.
 

@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 /**
  * Route classification and compression for governed agent runs.
  *

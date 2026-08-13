@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { access, chmod, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -12,16 +12,6 @@ import {
   extractPackJsonPayload,
   inspectPackedFiles,
 } from "./root-release-guard.mjs";
-
-function getFirstPackArtifact(raw) {
-  if (Array.isArray(raw)) return raw[0];
-  if (raw && typeof raw === "object") {
-    const values = Object.values(raw);
-    const first = Array.isArray(values[0]) ? values[0][0] : values[0];
-    return first;
-  }
-  return undefined;
-}
 
 export function createPublicFacadeSmokePlan(options = {}) {
   const rootDir = options.rootDir ?? process.cwd();
@@ -47,7 +37,7 @@ export function createPublicFacadeSmokePlan(options = {}) {
       description: "A governed Codex run honors the governed receipt workflow from a clean temp install.",
     },
     unsafeBypassSmoke: {
-      description: "unsafe-allow-unguarded-run remains available as an explicit operator bypass.",
+      description: "unsafe-allow-unguarded-run is fail-closed for live governed coding runs.",
     },
   };
 }
@@ -70,7 +60,7 @@ export async function runPublicFacadeSmoke(options = {}) {
       cwd: rootDir,
     });
     const packArtifacts = extractPackJsonPayload(packRun.stdout);
-    const tarballName = getFirstPackArtifact(packArtifacts)?.filename;
+    const tarballName = Array.isArray(packArtifacts) ? packArtifacts[0]?.filename : undefined;
 
     if (typeof tarballName !== "string" || tarballName.trim().length === 0) {
       throw new Error("npm pack did not return a tarball filename.");
@@ -106,22 +96,21 @@ export async function runPublicFacadeSmoke(options = {}) {
     );
 
     await runCommand(["npm", "install", tarballPath], { cwd: appDir });
-    const installedCliEntry = resolveInstalledCliEntry(appDir);
 
     const sdkRun = await runCommand(["node", "sdk-smoke.mjs"], { cwd: appDir });
 
-    const cliRun = await runCommand([process.execPath, installedCliEntry, "--help"], { cwd: appDir });
+    const cliRun = await runCommand(["npx", "martin-loop", "--help"], { cwd: appDir });
     if (!cliRun.stdout.includes("martin-loop run") && !cliRun.stdout.includes("Martin Loop CLI")) {
       throw new Error(`Expected CLI help output to include "martin-loop run" or "Martin Loop CLI".\n${cliRun.stdout}${cliRun.stderr}`);
     }
 
-    const startRun = await runCommand([process.execPath, installedCliEntry, "start"], { cwd: appDir });
+    const startRun = await runCommand(["npx", "martin-loop", "start"], { cwd: appDir });
     if (!/martin-loop proofRun|martin run/iu.test(`${startRun.stdout}\n${startRun.stderr}`)) {
       throw new Error(`Expected start command to describe the first-run governed workflow.\n${startRun.stdout}${startRun.stderr}`);
     }
 
     const demoTarget = path.join(appDir, "martin-loop-demo");
-    const demoRun = await runCommand([process.execPath, installedCliEntry, "demo", "--dir", demoTarget], {
+    const demoRun = await runCommand(["npx", "martin-loop", "demo", "--dir", demoTarget], {
       cwd: appDir,
     });
     const demoReadme = await readFile(path.join(demoTarget, "README.md"), "utf8");
@@ -137,7 +126,6 @@ export async function runPublicFacadeSmoke(options = {}) {
     await initializeGitRepo(governedWorkspace);
 
     const fakeCodex = await createFakeCodexCli(tempRoot);
-    const codexAvailable = isCliCommandAvailable("codex");
     const governedEnv = {
       LOCALAPPDATA: fakeCodex.localAppData,
       MARTIN_LIVE: "true",
@@ -146,12 +134,6 @@ export async function runPublicFacadeSmoke(options = {}) {
       MARTIN_INTEGRITY_KEY_DIR: governedIntegrityDir,
       PATH: withPrependedPath(process.env.PATH ?? "", fakeCodex.binDir),
     };
-    const governedRunEnv = codexAvailable
-      ? governedEnv
-      : {
-          ...governedEnv,
-          PATH: process.env.PATH ?? "",
-        };
 
     const noopVerifier = process.platform === "win32" ? "cmd /c exit 0" : "true";
     await runCommand(
@@ -228,8 +210,8 @@ export async function runPublicFacadeSmoke(options = {}) {
     }
     const governedRun = await runCommand(
       [
-        process.execPath,
-        installedCliEntry,
+        "npx",
+        "martin-loop",
         "--json",
         "run",
         "--engine",
@@ -247,34 +229,18 @@ export async function runPublicFacadeSmoke(options = {}) {
         "--budget-usd",
         "2",
       ],
-      { cwd: appDir, env: governedRunEnv, allowFailure: !codexAvailable },
+      { cwd: appDir, env: governedEnv },
     );
-    const governedPayload = tryParseJson(governedRun.stdout);
+    const governedPayload = JSON.parse(governedRun.stdout);
     const governedAdapterId = governedPayload?.loop?.attempts?.[0]?.adapterId;
-    if (codexAvailable) {
-      if (governedAdapterId !== "agent-cli:codex") {
-        throw new Error(`Expected governed public smoke to execute through the Codex adapter.\n${governedRun.stdout}${governedRun.stderr}`);
-      }
-    } else {
-      const blockingIssues = Array.isArray(governedPayload?.details?.blockingIssues)
-        ? governedPayload.details.blockingIssues.join("\n")
-        : `${governedRun.stdout}\n${governedRun.stderr}`;
-      if (governedRun.exitCode !== 8 || governedPayload?.category !== "policy_blocked") {
-        throw new Error(
-          `Expected governed public smoke to report a truthful Codex availability block when Codex is missing.\n${governedRun.stdout}${governedRun.stderr}`,
-        );
-      }
-      if (!/Codex CLI is not available on PATH|codex is not installed|Codex launch probe failed/iu.test(blockingIssues)) {
-        throw new Error(
-          `Expected governed public smoke to explain the missing Codex CLI.\n${governedRun.stdout}${governedRun.stderr}`,
-        );
-      }
+    if (governedAdapterId !== "agent-cli:codex") {
+      throw new Error(`Expected governed public smoke to execute through the Codex adapter.\n${governedRun.stdout}${governedRun.stderr}`);
     }
 
     const unsafeBypassRun = await runCommand(
       [
-        process.execPath,
-        installedCliEntry,
+        "npx",
+        "martin-loop",
         "run",
         "--engine",
         "codex",
@@ -294,8 +260,8 @@ export async function runPublicFacadeSmoke(options = {}) {
       ],
       { cwd: appDir, env: governedEnv, allowFailure: true },
     );
-    if (unsafeBypassRun.exitCode === 8) {
-      throw new Error(`Expected unsafe bypass smoke to avoid the governed receipt-chain block.\n${unsafeBypassRun.stdout}${unsafeBypassRun.stderr}`);
+    if (unsafeBypassRun.exitCode !== 8) {
+      throw new Error(`Expected unsafe bypass smoke to fail closed for live governed runs.\n${unsafeBypassRun.stdout}${unsafeBypassRun.stderr}`);
     }
 
     return {
@@ -321,11 +287,10 @@ export async function runPublicFacadeSmoke(options = {}) {
       },
       governedRunSmoke: {
         ok: true,
-        status: codexAvailable ? "executed" : "availability-blocked",
-        adapterId: codexAvailable ? governedAdapterId : null,
+        adapterId: governedAdapterId,
       },
       unsafeBypassSmoke: {
-        ok: unsafeBypassRun.exitCode !== 8,
+        ok: unsafeBypassRun.exitCode === 8,
         command: "npx martin-loop run --engine codex --unsafe-allow-unguarded-run",
         exitCode: unsafeBypassRun.exitCode,
       },
@@ -384,32 +349,21 @@ async function runCommand(command, options) {
 }
 
 async function ensureBuiltPublicFacade(rootDir) {
+  // Always rebuild package dist + facade for smoke checks so stale local
+  // artifacts cannot bypass release-surface guards.
+  await runCommand(["pnpm", "build"], { cwd: rootDir });
+
   const requiredFiles = [
     path.join(rootDir, "dist", "index.js"),
     path.join(rootDir, "dist", "index.d.ts"),
     path.join(rootDir, "dist", "bin", "martin-loop.js"),
   ];
-  const areAllPresent = async () => {
-    const allPresent = await Promise.all(
-      requiredFiles.map((filePath) => access(filePath).then(() => true).catch(() => false)),
-    );
-    return allPresent.every(Boolean);
-  };
+  const allPresent = await Promise.all(
+    requiredFiles.map((filePath) => access(filePath).then(() => true).catch(() => false)),
+  );
 
-  if (await areAllPresent()) {
-    return;
-  }
-
-  await runCommand(["pnpm", "build"], {
-    cwd: rootDir,
-    env: {
-      ...process.env,
-      CI: process.env.CI ?? "true",
-    },
-  });
-
-  if (!(await areAllPresent())) {
-    throw new Error("Public facade build is incomplete; run `pnpm build` before `pnpm public:smoke`.");
+  if (!allPresent.every(Boolean)) {
+    throw new Error("Public facade build is incomplete; required dist artifacts are missing.");
   }
 }
 
@@ -499,28 +453,6 @@ function initializeGitRepo(directory) {
       resolve();
     });
   });
-}
-
-function isCliCommandAvailable(command) {
-  const probe = spawnSync(command, ["--help"], {
-    encoding: "utf8",
-    shell: false,
-    timeout: 10_000,
-    stdio: "ignore",
-  });
-  return probe.status === 0;
-}
-
-function tryParseJson(value) {
-  try {
-    return JSON.parse(value);
-  } catch {
-    return null;
-  }
-}
-
-function resolveInstalledCliEntry(appDir) {
-  return path.join(appDir, "node_modules", "martin-loop", "dist", "bin", "martin-loop.js");
 }
 
 function withPrependedPath(originalPath, directory) {

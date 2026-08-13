@@ -6,10 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import type { MartinAdapterRequest } from "@martin/core";
 
-import {
-  createStubAgentCliAdapter,
-  createStubDirectProviderAdapter
-} from "../src/index.js";
+import { createStubDirectProviderAdapter } from "../src/index.js";
 
 describe("createStubDirectProviderAdapter", () => {
   it("returns a safe default failure until a live provider is wired in", async () => {
@@ -29,45 +26,6 @@ describe("createStubDirectProviderAdapter", () => {
     expect(result.failure?.message).toContain("not configured");
     expect(result.usage.actualUsd).toBe(0);
     expect(result.usage.provenance).toBe("unavailable");
-  });
-});
-
-describe("createStubAgentCliAdapter", () => {
-  it("supports injected responders while keeping CLI metadata visible", async () => {
-    const adapter = createStubAgentCliAdapter({
-      command: ["martin", "run"],
-      profile: "sandbox",
-      responder: async (request) => ({
-        status: "completed",
-        summary: `Simulated CLI run for ${request.task.title}.`,
-        usage: {
-          actualUsd: 0,
-          tokensIn: 0,
-          tokensOut: 0
-        },
-        verification: {
-          passed: true,
-          summary: "Simulated CLI verification passed"
-        },
-        artifacts: [
-          {
-            artifactId: "artifact_trace",
-            kind: "trace",
-            label: "CLI transcript",
-            uri: "memory://cli-trace"
-          }
-        ]
-      })
-    });
-
-    const result = await adapter.execute(createRequest());
-
-    expect(adapter.kind).toBe("agent-cli");
-    expect(adapter.metadata.command).toBe("martin run");
-    expect(adapter.metadata.profile).toBe("sandbox");
-    expect(adapter.metadata.transport).toBe("cli");
-    expect(result.status).toBe("completed");
-    expect(result.artifacts?.[0]?.kind).toBe("trace");
   });
 });
 

@@ -19,7 +19,6 @@ import {
 
 const REQUIRED_TOOLS = [
   "martin_doctor",
-  "martin_estimate",
   "martin_plan",
   "martin_preflight",
   "martin_run",
@@ -270,6 +269,7 @@ export async function runPublishedMcpSmoke(options = {}) {
       name: "martin_estimate",
       arguments: {
         objective: "Summarize the current runtime state",
+        workingDirectory: workspaceRoot,
         engine: "claude",
         budgetUsd: 1,
         fileScope: ["src/**"],
@@ -591,12 +591,7 @@ async function buildLocalFallbackTarballSpec({ packageDir, tempPackDir }) {
     ["pack", "--ignore-scripts", "--json", "--pack-destination", tempPackDir],
     { cwd: packageDir },
   );
-  const packRaw = JSON.parse(packRun.stdout);
-  const packEntry = Array.isArray(packRaw)
-    ? (packRaw[0] ?? null)
-    : packRaw && typeof packRaw === "object"
-      ? (() => { const first = Object.values(packRaw)[0]; return Array.isArray(first) ? (first[0] ?? null) : (first ?? null); })()
-      : null;
+  const packEntry = JSON.parse(packRun.stdout)?.[0];
   if (!packEntry?.filename) {
     throw new Error("Unable to create fallback MCP tarball for smoke verification.");
   }

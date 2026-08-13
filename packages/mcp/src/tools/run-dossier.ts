@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 import {
   buildArtifactSummary,
   buildBudgetSnapshot,
@@ -22,7 +18,8 @@ import {
 import { readRunControlState } from "./run-controls.js";
 import { martinEvalTool } from "./eval.js";
 import { assessRunRisk, inspectRepoSignals } from "./workflow-governance.js";
-import type { ReceiptIntegritySummary, ReceiptScope } from "@martin/contracts";
+import { buildVerifiedHandoff } from "@martin/core";
+import type { ReceiptIntegritySummary, ReceiptScope, TerminationEnvelopeV1, VerifiedHandoffV1 } from "@martin/contracts";
 
 export interface MartinRunDossierInput {
   file?: string;
@@ -67,6 +64,8 @@ export interface MartinRunDossierOutput {
   };
   evaluation: Awaited<ReturnType<typeof martinEvalTool>>;
   control: Awaited<ReturnType<typeof readRunControlState>>;
+  terminationEnvelope?: TerminationEnvelopeV1;
+  verifiedHandoff: VerifiedHandoffV1;
   format: "json" | "md" | "github-pr";
   rendered?: string;
   inspection: {
@@ -137,6 +136,7 @@ export async function martinRunDossierTool(
     cost: buildCostSnapshot(detail.loop.cost),
     receiptIntegrity: resolveReceiptIntegrity(detail.loop),
     ...(detail.loop.receiptScope ? { receiptScope: detail.loop.receiptScope } : {}),
+    ...(detail.loop.terminationEnvelope ? { terminationEnvelope: detail.loop.terminationEnvelope } : {}),
     attempts,
     verification,
     artifacts: buildArtifactSummary(detail.loop),
@@ -155,7 +155,38 @@ export async function martinRunDossierTool(
       ...(detail.canonicalLoopRecordPath ? { canonicalLoopRecordPath: detail.canonicalLoopRecordPath } : {}),
       ...(detail.ledgerPath ? { ledgerPath: detail.ledgerPath } : {})
     },
-    warnings: [...detail.warnings, ...verification.warnings]
+    warnings: [...detail.warnings, ...verification.warnings],
+    verifiedHandoff: buildVerifiedHandoff({
+      loop: detail.loop as import("@martin/contracts").LoopRecord,
+      receiptIntegrity: resolveReceiptIntegrity(detail.loop),
+      verification: {
+        status: verification.status,
+        summary: verification.summary ?? "No verification summary recorded.",
+        steps: [],
+        warnings: verification.warnings,
+      },
+      scope: {
+        status:
+          detail.loop.task?.allowedPaths?.length ||
+          detail.loop.task?.deniedPaths?.length
+            ? "WITHIN_SCOPE"
+            : "NOT_EVALUATED",
+        allowedPaths: detail.loop.task?.allowedPaths ?? [],
+        deniedPaths: detail.loop.task?.deniedPaths ?? [],
+        changedFiles: [],
+        violations: [],
+      },
+      testIntegrity: {
+        status: "NOT_EVALUATED",
+        verdict: "NOT_EVALUATED",
+        protectedPaths: [],
+        changedProtectedPaths: [],
+        findings: [],
+        summary: "Automatic test-integrity evidence was not recorded for this run.",
+      },
+      unresolvedWork: verification.status === "passed" ? [] : [verification.summary ?? "Verification did not pass."],
+      nextAction: review.nextAction,
+    }),
   };
 
   if (output.format !== "json") {
@@ -167,7 +198,13 @@ export async function martinRunDossierTool(
 
 function renderDossier(output: MartinRunDossierOutput): string {
   const lines = [
-    output.format === "github-pr" ? "## MartinLoop Run Dossier" : "# MartinLoop Run Dossier",
+    output.format === "github-pr" ? "## MartinLoop Verified Handoff" : "# MartinLoop Verified Handoff",
+    "",
+    `Outcome: ${output.verifiedHandoff.outcome}`,
+    `Definition of Done: ${output.verifiedHandoff.definitionOfDone.acceptanceCriteria.length} acceptance criterion/criteria`,
+    `Verification: ${output.verifiedHandoff.verification.status}`,
+    `Scope: ${output.verifiedHandoff.scope.status}`,
+    `Test Integrity: ${output.verifiedHandoff.testIntegrity.verdict}`,
     "",
     `Objective: ${output.loop.objective}`,
     `Run: ${output.loop.loopId}`,

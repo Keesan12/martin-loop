@@ -1,9 +1,5 @@
 #!/usr/bin/env node
 
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 /**
  * Martin Loop MCP Server
  *
@@ -22,6 +18,7 @@
  *   node dist/server.js
  */
 
+import { createServer as createHttpServer, type IncomingMessage, type Server as NodeHttpServer, type ServerResponse } from "node:http";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { realpathSync } from "node:fs";
 import path from "node:path";
@@ -30,6 +27,7 @@ import { resolveRunsRoot } from "@martin/core";
 import type { LoopBudget, ReceiptScope } from "@martin/contracts";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
   CallToolRequestSchema,
   GetPromptRequestSchema,
@@ -740,146 +738,27 @@ const planOutputSchema = {
 
 const logsOutputSchema = {
   type: "object",
-  additionalProperties: false,
-  properties: {
-    source: { type: "string", description: "Resolved path to the loop-record source file." },
-    sourceKind: {
-      type: "string",
-      enum: ["file", "loop_id", "latest", "runs_root"],
-      description: "How the run was identified: by file path, loop ID, latest flag, or runs directory."
-    },
-    loopId: { type: "string", description: "Unique MartinLoop run identifier." },
-    logCount: { type: "integer", description: "Number of log entries returned after applying the limit." },
-    live: {
-      type: "object",
-      additionalProperties: false,
-      properties: {
-        lifecycleState: { type: "string", description: "Current run lifecycle state (e.g. running, completed, cancelled)." },
-        pauseState: {
-          type: "string",
-          enum: ["active", "paused", "cancellation_requested"],
-          description: "Whether the run is active, paused, or has a pending cancellation."
-        },
-        approvalState: {
-          type: "string",
-          enum: ["not_required", "resume_requested"],
-          description: "Whether the run is waiting at a human-approval checkpoint."
-        }
-      },
-      required: ["lifecycleState", "pauseState", "approvalState"]
-    },
-    entries: {
-      type: "array",
-      description: "Log entries sorted by timestamp descending, capped at limit.",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          timestamp: { type: "string", description: "ISO 8601 timestamp of the event, if present." },
-          source: {
-            type: "string",
-            enum: ["event", "ledger", "control"],
-            description: "Origin stream: loop event bus, governance ledger, or operator control receipts."
-          },
-          kind: { type: "string", description: "Event type or control action name." },
-          payload: { type: "object", additionalProperties: true, description: "Event-specific payload data." }
-        },
-        required: ["source", "kind", "payload"]
-      }
-    }
-  },
-  required: ["source", "sourceKind", "loopId", "logCount", "live", "entries"]
+  additionalProperties: true
 } as const;
 
 const controlOutputSchema = {
   type: "object",
-  additionalProperties: false,
-  properties: {
-    loopId: { type: "string", description: "MartinLoop run identifier the control was applied to." },
-    action: {
-      type: "string",
-      enum: ["pause", "cancel", "continue"],
-      description: "The control action that was recorded."
-    },
-    controlId: { type: "string", description: "Unique receipt ID for this control action." },
-    requestedAt: { type: "string", description: "ISO 8601 timestamp when the control was recorded." },
-    requestedBy: { type: "string", description: "Identity that requested the control, if provided." },
-    reason: { type: "string", description: "Human-readable reason for the control, if provided." }
-  },
-  required: ["loopId", "action", "controlId", "requestedAt"]
+  additionalProperties: true
 } as const;
 
 const evalOutputSchema = {
   type: "object",
-  additionalProperties: false,
-  properties: {
-    source: { type: "string", description: "Resolved path to the loop-record source file." },
-    sourceKind: {
-      type: "string",
-      enum: ["file", "loop_id", "latest", "runs_root"],
-      description: "How the run was identified."
-    },
-    loopId: { type: "string", description: "Unique MartinLoop run identifier." },
-    score: { type: "number", description: "Numeric evaluation score from 0–100." },
-    grade: {
-      type: "string",
-      enum: ["mergeable", "mergeable_with_review", "needs_review", "blocked", "insufficient_evidence"],
-      description: "Overall merge readiness grade derived from the six check dimensions."
-    },
-    checks: {
-      type: "object",
-      additionalProperties: false,
-      properties: {
-        taskCompletion: { type: "string", enum: ["passed", "warning", "failed"], description: "Whether the run reached a completed status." },
-        verifier: { type: "string", enum: ["passed", "warning", "failed"], description: "Whether automated verifiers passed." },
-        diffDiscipline: { type: "string", enum: ["passed", "warning", "failed"], description: "Whether file-scope discipline was maintained." },
-        regressionRisk: { type: "string", enum: ["passed", "warning", "failed"], description: "Whether regression risk signals were detected." },
-        securityRisk: { type: "string", enum: ["passed", "warning", "failed"], description: "Whether security risk signals were detected." },
-        reviewability: { type: "string", enum: ["passed", "warning", "failed"], description: "Whether the PR body and dossier are reviewer-ready." }
-      },
-      required: ["taskCompletion", "verifier", "diffDiscipline", "regressionRisk", "securityRisk", "reviewability"]
-    },
-    warnings: { type: "array", items: { type: "string" }, description: "Non-blocking advisory warnings from the evaluation." },
-    summary: { type: "string", description: "One-paragraph plain-English evaluation summary." }
-  },
-  required: ["source", "sourceKind", "loopId", "score", "grade", "checks", "warnings", "summary"]
+  additionalProperties: true
 } as const;
 
 const prSummaryOutputSchema = {
   type: "object",
-  additionalProperties: false,
-  properties: {
-    loopId: { type: "string", description: "MartinLoop run identifier used to generate the summary." },
-    title: { type: "string", description: "Suggested GitHub pull-request title." },
-    body: { type: "string", description: "GitHub-flavoured Markdown PR body containing the run dossier." },
-    grade: {
-      type: "string",
-      enum: ["mergeable", "mergeable_with_review", "needs_review", "blocked", "insufficient_evidence"],
-      description: "Verification grade assigned to the run."
-    },
-    score: { type: "number", description: "Numeric verification score from 0–100." }
-  },
-  required: ["loopId", "title", "body", "grade", "score"]
+  additionalProperties: true
 } as const;
 
 const prReviewOutputSchema = {
   type: "object",
-  additionalProperties: false,
-  properties: {
-    loopId: { type: "string", description: "MartinLoop run identifier the review was performed against." },
-    verdict: {
-      type: "string",
-      enum: ["approve_with_review", "needs_changes", "blocked"],
-      description: "Merge verdict: approve_with_review means safe to merge with human review; needs_changes requires fixes; blocked means do not merge."
-    },
-    findings: {
-      type: "array",
-      items: { type: "string" },
-      description: "Specific findings that informed the verdict."
-    },
-    summary: { type: "string", description: "Plain-English review summary." }
-  },
-  required: ["loopId", "verdict", "findings", "summary"]
+  additionalProperties: true
 } as const;
 
 export function createMartinMcpServer(serverInfo?: {
@@ -1193,26 +1072,20 @@ export function createMartinMcpServer(serverInfo?: {
     {
       name: "martin_logs",
       description:
-        "Read recent MartinLoop events, ledger entries, and operator control receipts for a single run. " +
-        "Use to observe live or completed run activity, diagnose stuck or failed runs, or audit operator actions. " +
-        "Do not use to check run completion status — use martin_get_status instead. " +
-        "Do not use to retrieve verification evidence — use martin_get_verification_results instead. " +
-        "This tool only reads persisted run files and does not execute commands, modify state, or contact GitHub.",
+        "Read recent Martin loop events, ledger entries, and operator control receipts for live observability.",
       annotations: {
         readOnlyHint: true,
-        destructiveHint: false,
-        idempotentHint: true,
-        openWorldHint: false
+        idempotentHint: true
       },
       inputSchema: {
         type: "object",
         additionalProperties: false,
         properties: {
-          file: { type: "string", description: "Absolute or relative path to a loop-record.json file or run directory. Mutually exclusive with loopId and latest." },
-          loopId: { type: "string", description: "MartinLoop run identifier from the run store. Mutually exclusive with file and latest." },
-          runsDir: { type: "string", description: "Override the default run-store root directory. Optional; defaults to the MartinLoop runs directory." },
-          latest: { const: true, description: "When true, loads the most recently updated run in the run store. Mutually exclusive with file and loopId." },
-          limit: { type: "integer", minimum: 1, description: "Maximum number of log entries to return, sorted by timestamp descending. Defaults to 20." }
+          file: { type: "string" },
+          loopId: { type: "string" },
+          runsDir: { type: "string" },
+          latest: { const: true },
+          limit: { type: "integer", minimum: 1 }
         },
         oneOf: [{ required: ["file"] }, { required: ["loopId"] }, { required: ["latest"] }]
       },
@@ -1416,16 +1289,10 @@ export function createMartinMcpServer(serverInfo?: {
     {
       name: "martin_get_verification_results",
       description:
-        "Load structured verification evidence for a MartinLoop run — verifier commands, pass/fail outcomes, and contradiction signals — from stored loop events and ledger entries. " +
-        "Use after a run completes to confirm whether automated verifiers passed before merging or promoting the result. " +
-        "Do not use to get a merge-readiness grade — use martin_eval for a scored grade with six check dimensions. " +
-        "Do not use for live run status — use martin_get_status instead. " +
-        "This tool only reads persisted run files and does not execute commands, modify state, or contact GitHub.",
+        "Load verification evidence for a Martin run from stored loop events and ledger entries.",
       annotations: {
         readOnlyHint: true,
-        destructiveHint: false,
-        idempotentHint: true,
-        openWorldHint: false
+        idempotentHint: true
       },
       inputSchema: {
         type: "object",
@@ -1433,10 +1300,10 @@ export function createMartinMcpServer(serverInfo?: {
         properties: {
           file: {
             type: "string",
-            description: "Absolute or relative path to a loop-record.json file or run directory. Mutually exclusive with loopId."
+            description: "Path to a canonical loop-record.json file or run directory."
           },
-          loopId: { type: "string", description: "MartinLoop run identifier from the run store. Mutually exclusive with file." },
-          runsDir: { type: "string", description: "Override the default run-store root directory. Optional." }
+          loopId: { type: "string", description: "Loop ID under the run store." },
+          runsDir: { type: "string", description: "Optional runs-root override." }
         },
         oneOf: [{ required: ["file"] }, { required: ["loopId"] }]
       },
@@ -1498,26 +1365,19 @@ export function createMartinMcpServer(serverInfo?: {
     {
       name: "martin_eval",
       description:
-        "Grade a MartinLoop run across six dimensions — task completion, verifier health, diff discipline, regression risk, security risk, and reviewability — and return a scored merge-readiness verdict. " +
-        "Use after a governed run completes to decide whether the result is safe to merge or promote. " +
-        "Use before martin_pr_summary or martin_create_pr to confirm the run is merge-ready. " +
-        "Do not use to retrieve raw verification command output — use martin_get_verification_results for that. " +
-        "Do not use to review an existing PR body — use martin_review_pr instead. " +
-        "This tool reads saved run evidence and inspects local git signals; it does not modify state or contact GitHub.",
+        "Grade a Martin run for task completion, verifier health, diff discipline, risk, and reviewability.",
       annotations: {
         readOnlyHint: true,
-        destructiveHint: false,
-        idempotentHint: true,
-        openWorldHint: false
+        idempotentHint: true
       },
       inputSchema: {
         type: "object",
         additionalProperties: false,
         properties: {
-          file: { type: "string", description: "Absolute or relative path to a loop-record.json file or run directory. Mutually exclusive with loopId and latest." },
-          loopId: { type: "string", description: "MartinLoop run identifier from the run store. Mutually exclusive with file and latest." },
-          runsDir: { type: "string", description: "Override the default run-store root directory. Optional." },
-          latest: { const: true, description: "When true, evaluates the most recently updated run in the run store. Mutually exclusive with file and loopId." }
+          file: { type: "string" },
+          loopId: { type: "string" },
+          runsDir: { type: "string" },
+          latest: { const: true }
         },
         oneOf: [{ required: ["file"] }, { required: ["loopId"] }, { required: ["latest"] }]
       },
@@ -1526,27 +1386,20 @@ export function createMartinMcpServer(serverInfo?: {
     {
       name: "martin_pr_summary",
       description:
-        "Generate a GitHub-ready pull-request title and Markdown body from a completed MartinLoop run dossier, including its verification grade and score. " +
-        "Use after a governed run completes when you need PR copy without creating the PR. " +
-        "Use martin_create_pr instead to actually open the PR on GitHub. " +
-        "Use martin_review_pr to evaluate an existing PR body against run evidence. " +
-        "Use martin_eval first if you need a merge-readiness grade before generating the PR body. " +
-        "This tool only reads saved run evidence and does not modify the repository or contact GitHub.",
+        "Generate a PR title and body with a MartinLoop dossier block for a completed run.",
       annotations: {
         readOnlyHint: true,
-        destructiveHint: false,
-        idempotentHint: true,
-        openWorldHint: false
+        idempotentHint: true
       },
       inputSchema: {
         type: "object",
         additionalProperties: false,
         properties: {
-          file: { type: "string", description: "Absolute or relative path to a loop-record.json file or run directory. Mutually exclusive with loopId and latest." },
-          loopId: { type: "string", description: "MartinLoop run identifier from the run store. Mutually exclusive with file and latest." },
-          runsDir: { type: "string", description: "Override the default run-store root directory. Optional." },
-          latest: { const: true, description: "When true, generates the summary for the most recently updated run. Mutually exclusive with file and loopId." },
-          format: { type: "string", enum: ["json", "md", "github-pr"], description: "Dossier rendering format. Defaults to github-pr for PR body generation. Use md for plain Markdown or json for structured output." }
+          file: { type: "string" },
+          loopId: { type: "string" },
+          runsDir: { type: "string" },
+          latest: { const: true },
+          format: { type: "string", enum: ["json", "md", "github-pr"] }
         },
         oneOf: [{ required: ["file"] }, { required: ["loopId"] }, { required: ["latest"] }]
       },
@@ -1580,28 +1433,21 @@ export function createMartinMcpServer(serverInfo?: {
     {
       name: "martin_review_pr",
       description:
-        "Review a PR body or draft against the MartinLoop run dossier and evaluation evidence, and return a verdict with specific findings. " +
-        "Use when you have an existing PR body and want to check whether it accurately represents the governed run evidence. " +
-        "Supply prBody to review a specific body string; omit it to evaluate the auto-generated dossier body. " +
-        "Do not use to generate a PR body from scratch — use martin_pr_summary instead. " +
-        "Do not use to open or create a PR — use martin_create_pr instead. " +
-        "This tool only reads saved run evidence and does not modify the repository or contact GitHub.",
+        "Review a PR or PR draft against the Martin dossier and evaluation evidence.",
       annotations: {
         readOnlyHint: true,
-        destructiveHint: false,
-        idempotentHint: true,
-        openWorldHint: false
+        idempotentHint: true
       },
       inputSchema: {
         type: "object",
         additionalProperties: false,
         properties: {
-          file: { type: "string", description: "Absolute or relative path to a loop-record.json file or run directory. Mutually exclusive with loopId and latest." },
-          loopId: { type: "string", description: "MartinLoop run identifier from the run store. Mutually exclusive with file and latest." },
-          runsDir: { type: "string", description: "Override the default run-store root directory. Optional." },
-          latest: { const: true, description: "When true, reviews against the most recently updated run. Mutually exclusive with file and loopId." },
-          format: { type: "string", enum: ["json", "md", "github-pr"], description: "Dossier format used when generating the reference body for comparison. Defaults to github-pr." },
-          prBody: { type: "string", description: "The PR body text to review. If omitted, the auto-generated dossier body is evaluated instead." }
+          file: { type: "string" },
+          loopId: { type: "string" },
+          runsDir: { type: "string" },
+          latest: { const: true },
+          format: { type: "string", enum: ["json", "md", "github-pr"] },
+          prBody: { type: "string" }
         },
         oneOf: [{ required: ["file"] }, { required: ["loopId"] }, { required: ["latest"] }]
       },
@@ -1637,6 +1483,10 @@ export function createMartinMcpServer(serverInfo?: {
             type: "array",
             items: { type: "string" },
             description: "Optional file paths to scope the estimate."
+          },
+          workingDirectory: {
+            type: "string",
+            description: "Optional workspace path for recording the estimate receipt against the same task root you plan to run."
           }
         },
         required: ["objective"]
@@ -1771,7 +1621,7 @@ export function createMartinMcpServer(serverInfo?: {
         workingDirectory: output.environment.workingDirectory,
         engine: input.engine,
         receiptScope: output.receiptScope
-      });
+      }).catch(() => {});
       return createToolSuccessResult(output, output.summary);
     }
 
@@ -1789,7 +1639,7 @@ export function createMartinMcpServer(serverInfo?: {
           repoRoot: output.workingDirectory,
           runsRoot: resolveRunsRoot(process.env)
         }
-      });
+      }).catch(() => {});
       return createToolSuccessResult(
         output,
         `Plan ready for ${output.objective} with ${output.risk.level} risk and ${output.approvalRecommendation.replace(/_/gu, " ")} approval.`
@@ -1811,7 +1661,7 @@ export function createMartinMcpServer(serverInfo?: {
           allowedPaths: output.normalized.allowedPaths,
           deniedPaths: output.normalized.deniedPaths,
           budget: output.normalized.budget
-        });
+        }).catch(() => {});
       }
       return createToolSuccessResult(output, output.summary);
     }
@@ -1947,16 +1797,17 @@ export function createMartinMcpServer(serverInfo?: {
     if (name === "martin_estimate") {
       const input = validateToolInput("martin_estimate", args) as {
         objective: string;
-        engine?: MartinEngine;
+        engine?: string;
         budgetUsd?: number;
         fileScope?: string[];
+        workingDirectory?: string;
       };
       const objective = input.objective;
       const engine = input.engine ?? "claude";
       const budgetUsd = input.budgetUsd ?? 5;
       const fileScope = input.fileScope ?? [];
-      const workingDirectory = resolveSafeRepoRoot();
       const runsRoot = resolveRunsRoot(process.env);
+      const workingDirectory = input.workingDirectory ?? resolveSafeRepoRoot();
       const route = classifyRoute({
         objective,
         verificationPlan: [],
@@ -1988,8 +1839,14 @@ export function createMartinMcpServer(serverInfo?: {
         step: "estimate",
         workingDirectory,
         objective,
-        engine
-      });
+        engine,
+        receiptScope: {
+          invocationRoot: resolveSafeRepoRoot(),
+          workingDirectory,
+          repoRoot: workingDirectory,
+          runsRoot
+        }
+      }).catch(() => {});
       return createToolSuccessResult(
         output,
         `Estimate: ${route.selectedMode} route (${route.recommendedModelTier}), ~$${route.expectedCostUsd.toFixed(2)} expected cost, ${route.expectedPreworkBurnPct}% pre-work burn. Recommended budget: $${recommendedBudgetUsd.toFixed(2)}.`
@@ -2020,6 +1877,147 @@ export async function connectMartinMcpStdioServer() {
   return server;
 }
 
+export interface MartinMcpHttpServerOptions {
+  host?: string;
+  port?: number;
+  path?: string;
+}
+
+export interface MartinMcpHttpServerHandle {
+  server: NodeHttpServer;
+  host: string;
+  port: number;
+  path: string;
+  endpoint: string;
+  close: () => Promise<void>;
+}
+
+export function parseMartinMcpServerArgs(argv: string[]): { transport: "stdio" } | {
+  transport: "http";
+  host: string;
+  port: number;
+  path: string;
+} {
+  let transport: "stdio" | "http" = "stdio";
+  let host = "127.0.0.1";
+  let port = 3033;
+  let path = "/mcp";
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = argv[index];
+    if (token === "--http") {
+      transport = "http";
+      continue;
+    }
+    if (token === "--port") {
+      const next = argv[index + 1];
+      const parsed = Number(next);
+      if (!Number.isInteger(parsed) || parsed < 0 || parsed > 65535) {
+        throw new Error(`Invalid --port value '${next ?? ""}'.`);
+      }
+      port = parsed;
+      index += 1;
+      continue;
+    }
+    if (token === "--host") {
+      const next = argv[index + 1];
+      if (!next) {
+        throw new Error("Missing value for --host.");
+      }
+      host = next;
+      index += 1;
+      continue;
+    }
+    if (token === "--path") {
+      const next = argv[index + 1];
+      if (!next || !next.startsWith("/")) {
+        throw new Error("MCP HTTP path must start with '/'.");
+      }
+      path = next;
+      index += 1;
+    }
+  }
+
+  return transport === "http"
+    ? { transport, host, port, path }
+    : { transport };
+}
+
+export async function connectMartinMcpHttpServer(
+  options: MartinMcpHttpServerOptions = {}
+): Promise<MartinMcpHttpServerHandle> {
+  const host = options.host ?? "127.0.0.1";
+  const port = options.port ?? 3033;
+  const path = options.path ?? "/mcp";
+
+  const mcpServer = createMartinMcpServer();
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: undefined
+  });
+  await mcpServer.connect(transport);
+
+  const httpServer = createHttpServer(async (req, res) => {
+    try {
+      const requestUrl = new URL(req.url ?? "/", `http://${req.headers.host ?? `${host}:${port}`}`);
+      if (requestUrl.pathname !== path) {
+        res.statusCode = 404;
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify({ error: "not_found", path: requestUrl.pathname }));
+        return;
+      }
+
+      if (req.method === "POST") {
+        const parsedBody = await readJsonBody(req, res);
+        if (res.writableEnded) {
+          return;
+        }
+        await transport.handleRequest(req, res, parsedBody);
+        return;
+      }
+
+      if (req.method === "GET" || req.method === "DELETE") {
+        await transport.handleRequest(req, res);
+        return;
+      }
+
+      res.statusCode = 405;
+      res.setHeader("allow", "GET, POST, DELETE");
+      res.end();
+    } catch (error) {
+      if (!res.headersSent) {
+        res.statusCode = 500;
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify({ error: "internal_error", message: (error as Error).message }));
+      }
+    }
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    httpServer.once("error", reject);
+    httpServer.listen(port, host, () => {
+      httpServer.off("error", reject);
+      resolve();
+    });
+  });
+
+  const address = httpServer.address();
+  const resolvedPort = typeof address === "object" && address ? address.port : port;
+
+  return {
+    server: httpServer,
+    host,
+    port: resolvedPort,
+    path,
+    endpoint: `http://${host}:${resolvedPort}${path}`,
+    close: async () => {
+      await transport.close();
+      await new Promise<void>((resolve) => {
+        httpServer.close(() => resolve());
+      });
+    }
+  };
+}
+
 export function isDirectExecutionEntry(
   entryPath: string | undefined,
   moduleUrl: string = import.meta.url
@@ -2046,5 +2044,32 @@ function realPathOrResolved(filePath: string): string {
 }
 
 if (isDirectExecution()) {
-  await connectMartinMcpStdioServer();
+  const startup = parseMartinMcpServerArgs(process.argv.slice(2));
+  if (startup.transport === "http") {
+    await connectMartinMcpHttpServer(startup);
+  } else {
+    await connectMartinMcpStdioServer();
+  }
+}
+
+async function readJsonBody(
+  req: IncomingMessage,
+  res: ServerResponse
+): Promise<unknown> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  const raw = Buffer.concat(chunks).toString("utf8").trim();
+  if (!raw) {
+    return undefined;
+  }
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    res.statusCode = 400;
+    res.setHeader("content-type", "application/json");
+    res.end(JSON.stringify({ error: "invalid_json" }));
+    return undefined;
+  }
 }

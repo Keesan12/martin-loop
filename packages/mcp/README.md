@@ -1,196 +1,137 @@
-# MartinLoop MCP
+# @martinloop/mcp
 
-<div align="center">
-  <img src="https://raw.githubusercontent.com/Keesan12/martin-loop/main/docs/assets/martinloop-logo.png" alt="MartinLoop" width="240">
+You give an AI agent a coding task. It runs. You get a bill.
 
-  **Stop runaway loops, bad code, and token waste.**
+But did it actually work? Did it pass your tests? How much did it spend? What files did it touch? Did it loop 47 times trying the same broken approach?
 
-  The governed MCP runtime for Claude Code, Codex, Gemini CLI, Cursor, and autonomous coding agents.
+You don't know. And that's the problem.
 
-  [![npm version](https://img.shields.io/npm/v/@martinloop/mcp?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/@martinloop/mcp)
-  [![npm downloads](https://img.shields.io/npm/dm/@martinloop/mcp?style=flat-square&label=downloads)](https://www.npmjs.com/package/@martinloop/mcp)
-  [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square&logo=apache)](https://github.com/Keesan12/martin-loop/blob/main/LICENSE)
-  [![Node](https://img.shields.io/badge/node-%3E%3D20-3c873a?style=flat-square&logo=nodedotjs&logoColor=white)](#requirements)
-  [![Glama score](https://glama.ai/mcp/servers/Keesan12/martin-loop/badges/score.svg)](https://glama.ai/mcp/servers/Keesan12/martin-loop)
-</div>
+## What This Does
 
-AI coding agents can write code. MartinLoop decides whether they are allowed to keep spending, whether the result is actually verified, and what evidence must remain for review.
+MartinLoop is a governed loop for AI coding agents. You tell it what to do, set a budget, and point it at your test suite. It runs the agent, checks your tests after every attempt, and stops when either the tests pass or the money runs out.
 
-It wraps agent execution with:
+When it's done, you get a receipt — not a vague summary, but a structured record: dollars spent, attempts made, verification results, files changed, and whether you got what you asked for.
 
-- hard USD, token, iteration, time, command, and file-change limits
-- verifier gates that must pass before completion
-- allowed and denied path contracts
-- preflight checks before any execution or spend
-- durable pause, continue, and cancel receipts
-- failure triage, run dossiers, evaluations, and PR-review evidence
+**One line to connect it:**
 
-## Connect in one command
+```sh
+claude mcp add martin-loop -- npx -y @martinloop/mcp
+```
 
-| Host | Command |
-| --- | --- |
-| Claude Code | `claude mcp add martin-loop -- npx -y @martinloop/mcp` |
-| Codex | `codex mcp add martin-loop -- npx -y @martinloop/mcp` |
-| Gemini CLI | `gemini mcp add martin-loop -- npx -y @martinloop/mcp` |
-| Any stdio MCP host | `npx -y @martinloop/mcp` |
+That's it. Your agent now runs governed.
 
-Windows Claude Code:
+## Real Numbers From Real Runs
 
+We tested this against live repos with real API spend:
+
+| What happened | Without MartinLoop | With MartinLoop |
+|---|---|---|
+| Budget: $1.50 task | Agent spent **$28.42** | Agent stopped at **$1.20** |
+| Failing verifier | Retried indefinitely | Stopped after 3 attempts with diagnosis |
+| CLI not on PATH | "not available on PATH" (dead stop) | Auto-discovered in AppData, kept running |
+| `bun run lint && bun run test` | Passed `&&` as a literal arg (always fails) | Routed through shell, worked |
+
+These aren't hypotheticals. The $28 overshoot happened in production testing. We fixed the circuit breaker in `0.3.8`.
+
+## Install
+
+### Claude Code
+```sh
+claude mcp add martin-loop -- npx -y @martinloop/mcp
+```
+
+Windows:
 ```sh
 claude mcp add --transport stdio --scope user martin-loop -- cmd /c npx -y @martinloop/mcp
 ```
 
-No API key is required to start and inspect the server. Live execution requires a supported coding-agent CLI and its normal authentication.
-
-## Why agents use MartinLoop
-
-| Uncontrolled agent run | Governed MartinLoop run |
-| --- | --- |
-| The agent decides when it is done | Your verifier decides whether completion is valid |
-| Retries continue until the user notices | Hard budgets and stop conditions prevent open-ended spend |
-| Scope drifts across the repository | Allowed and denied paths constrain writes |
-| The final answer hides failed attempts | The dossier preserves attempts, costs, verification, and artifacts |
-| Process control is ephemeral | Pause, continue, and cancel actions leave durable receipts |
-| “Probably fixed” becomes accepted | Missing, failed, contradicted, or unknown verification stays incomplete |
-
-MartinLoop is not another coding agent. It is the enforcement and evidence layer around the agents you already use.
-
-## Agent operating contract
-
-Use this sequence for governed coding work:
-
-```text
-martin_doctor
-  → martin_estimate
-  → martin_plan
-  → martin_preflight
-  → martin_run
-  → martin_dossier
-  → martin_eval
+### Codex
+```sh
+codex mcp add martin-loop -- npx -y @martinloop/mcp
 ```
 
-### Rules for agents
-
-1. Start with `martin_doctor` to inspect the environment and run store.
-2. Call `martin_estimate` before spending.
-3. Keep the same objective and compatible scope through estimate, plan, preflight, and run.
-4. Prefer read-only tools until execution is explicitly authorized.
-5. Treat failed, contradicted, missing, or unknown verification as incomplete.
-6. Use `martin://agent/next-step` or `martin://guides/agent-start` when the next action is unclear.
-7. Do not use `martin_create_pr` with `execute: true` unless the user has explicitly authorized a GitHub write.
-
-`martin_run` intentionally hard-blocks until the required doctor, estimate, plan, and preflight receipts exist for the same task.
-
-## What a governed run looks like
-
-```text
-User objective:
-"Fix the auth regression. Budget: $3. Verify: npm test."
-
-doctor       checks environment, CLI availability, and run storage
-estimate     predicts route, spend, and pre-work burn without spending
-plan         defines scope, verifier proposal, policy pack, and risk
-preflight    validates the contract before execution
-run          executes inside budget, scope, policy, and verifier gates
-dossier      returns attempts, cost, verification, artifacts, and evidence paths
-eval         grades completion, verifier health, risk, and reviewability
+### Gemini CLI
+```sh
+gemini mcp add martin-loop -- npx -y @martinloop/mcp
 ```
 
-Every attempt is bounded by the run contract. A confident model answer does not override a failed verifier.
-
-## Proof, not promises
-
-This real governed run spent `$0.51` against a `$3.00` budget. The verifier passed and the receipt integrity was signed. MartinLoop still kept the result at `EVIDENCE_BOUNDARY` because rollback evidence had not been recorded.
-
-<div align="center">
-  <img src="https://raw.githubusercontent.com/Keesan12/martin-loop/main/docs/assets/proof-receipt-live-governed.png" alt="MartinLoop governed run receipt showing spend, budget, verifier result, integrity, and evidence boundary" width="720">
-</div>
-
-Inspect the example receipt:
-
-- [Markdown receipt](https://github.com/Keesan12/martin-loop/blob/main/docs/examples/proof-receipts/live-governed-run-receipt.md)
-- [JSON receipt](https://github.com/Keesan12/martin-loop/blob/main/docs/examples/proof-receipts/live-governed-run-receipt.json)
-
-## Tool surface
-
-### Governed workflow
-
-- `martin_doctor` — inspect environment readiness; expected first call
-- `martin_estimate` — estimate cost and route without spending
-- `martin_plan` — produce scoped plan, verifier proposal, policy pack, and risk
-- `martin_preflight` — validate readiness before execution
-- `martin_run` — execute a governed coding task
-- `martin_pause` — record a durable pause request
-- `martin_continue` — record a durable resume request
-- `martin_cancel` — record a durable cancellation request
-
-### Inspection and review
-
-- `martin_status`, `martin_logs`, `martin_inspect`
-- `martin_list_runs`, `martin_triage_runs`
-- `martin_get_run`, `martin_get_attempt`, `martin_get_verification_results`
-- `martin_run_dossier`, `martin_dossier`, `martin_eval`
-- `martin_pr_summary`, `martin_create_pr`, `martin_review_pr`
-
-### Read-only resources
-
-The server exposes run summaries, receipts, budget status, verifier evidence, policies, health, agent guidance, and repository-risk context through `martin://` resources, including:
-
-```text
-martin://runs/latest
-martin://runs/latest/summary
-martin://runs/latest/receipt
-martin://runs/latest/budget-status
-martin://runs/latest/verifier-evidence
-martin://runs/recent
-martin://server/health
-martin://policies/current
-martin://agent/next-step
-martin://guides/agent-start
-martin://repo/risk-map
+### Any MCP Host
+```sh
+npx -y @martinloop/mcp
 ```
 
-Use resources when the agent needs context without side effects.
+## How a Governed Run Works
 
-## Configuration profiles
+```
+You: "Fix the auth bug. Budget $3. Verify: npm test"
 
-Generate host config tuned to the minimum surface needed:
+  martin_doctor     →  checks CLI, auth, environment
+  martin_plan       →  scopes the task, sets constraints
+  martin_preflight  →  validates before any spend
+  martin_run        →  agent works inside budget + verifier gates
+  martin_dossier    →  receipt: $1.40 spent, 2 attempts, tests pass
+```
+
+Every attempt runs your verifier. Every dollar is tracked. If the agent drifts off-task, the scope contract catches it. If it blows the budget, the circuit breaker kills the subprocess mid-stream — not after the bill arrives.
+
+## What Your Agent Gets
+
+### 21 Tools
+
+**Run the loop:**
+`martin_doctor` `martin_plan` `martin_preflight` `martin_run` `martin_pause` `martin_continue` `martin_cancel`
+
+**Inspect results:**
+`martin_status` `martin_logs` `martin_dossier` `martin_eval` `martin_inspect` `martin_list_runs` `martin_get_run` `martin_get_attempt` `martin_get_verification_results` `martin_triage_runs`
+
+**Ship the work:**
+`martin_pr_summary` `martin_create_pr` `martin_review_pr`
+
+### 11 Read-Only Resources
+
+Your agent can pull context without side effects:
+
+`martin://runs/latest` · `martin://runs/latest/proof-card` · `martin://runs/latest/budget-status` · `martin://runs/latest/verifier-evidence` · `martin://runs/recent` · `martin://server/health` · `martin://policies/current` · `martin://agent/next-step` · `martin://guides/mcp-usage` · `martin://guides/agent-start` · `martin://repo/risk-map`
+
+### Configuration Profiles
+
+Generate host config tuned to your workflow:
 
 ```sh
-npx martin-loop mcp print-config --host claude --profile minimal
-npx martin-loop mcp print-config --host claude --profile diagnostic
-npx martin-loop mcp print-config --host claude --profile full-local
-npx martin-loop mcp print-config --host claude --profile github-review
+npx martin-loop mcp print-config --host claude --profile minimal        # run + inspect
+npx martin-loop mcp print-config --host claude --profile diagnostic     # + doctor + triage
+npx martin-loop mcp print-config --host claude --profile full-local     # all local tools
+npx martin-loop mcp print-config --host claude --profile github-review  # + PR workflow
 ```
 
-- `minimal` — core run and inspection path
-- `diagnostic` — adds doctor and triage surfaces
-- `full-local` — all local tools
-- `github-review` — adds PR evidence and review workflow
+## What Happens When Things Go Wrong
 
-## Trust boundaries
+MartinLoop doesn't just report failures — it tries to fix them:
 
-- Cost and token values include provenance: actual, estimated, or unavailable.
-- A verifier proves only the commands you configured, not every product requirement.
-- Receipt integrity must be verified before evidence is trusted externally.
-- Unknown or missing evidence never passes silently.
-- MartinLoop does not guarantee that an agent will produce correct code; it makes execution bounded, verification explicit, and failure reviewable.
+| Failure | Old behavior | Now |
+|---|---|---|
+| CLI not on PATH | Error message, dead stop | Searches npm global, homebrew, nvm, scoop — uses what it finds |
+| Verifier says "command not found" | Generic "verification failed" | Tells the next attempt: "bun is missing, install with `npm i -g bun`" |
+| `git restore` fails mid-rollback | Throws, leaves dirty state | Retries once, falls back to `git checkout`, cleans up |
+| Invalid `--profile` flag | Crashes | Warns, falls back to `minimal`, keeps running |
+
+## Who Uses This
+
+- **Engineers running overnight agent loops** — you need a kill switch that actually works, and a receipt in the morning
+- **Teams with shared API budgets** — you need per-task spend caps, not org-wide prayer
+- **Anyone reviewing agent-generated PRs** — the dossier shows what the agent tried, what passed, and what didn't
 
 ## Requirements
 
 - Node.js 20+
-- One supported coding-agent CLI for live execution: Claude Code, Codex, Gemini CLI, or an OpenAI-compatible route
-- Git repository for rollback-aware and changed-file workflows
+- One AI coding CLI: [Claude Code](https://docs.anthropic.com/claude-code), [Codex](https://github.com/openai/codex), or [Gemini CLI](https://github.com/google/gemini-cli)
 
 ## Links
 
-- [Glama server page](https://glama.ai/mcp/servers/Keesan12/martin-loop)
-- [npm: @martinloop/mcp](https://www.npmjs.com/package/@martinloop/mcp)
-- [GitHub source and issues](https://github.com/Keesan12/martin-loop)
-- [MCP setup guide](https://github.com/Keesan12/martin-loop/blob/main/docs/getting-started/mcp.md)
-- [MCP tool reference](https://github.com/Keesan12/martin-loop/blob/main/docs/reference/mcp-tools.md)
+- [martin-loop](https://www.npmjs.com/package/martin-loop) — the standalone CLI
+- [GitHub](https://github.com/Keesan12/martin-loop) — source and issues
 - [martinloop.com](https://martinloop.com)
 
 ## License
 
-Apache-2.0.
+Apache-2.0

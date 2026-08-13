@@ -1,13 +1,10 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { verifyReceiptIntegrityFromFiles } from "@martin/core";
 import { createLoopRecord } from "@martin/contracts";
 
 import { persistLoopArtifacts } from "../src/persistence.js";
@@ -148,5 +145,49 @@ describe("persistLoopArtifacts", () => {
     expect(lines).toHaveLength(2);
     expect(lines[0]).toContain('"eventId":"evt_1"');
     expect(lines[1]).toContain('"eventId":"evt_2"');
+  });
+
+  it("signs the exact timestamp-ordered events.jsonl ledger it persists", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-persist-integrity-"));
+    const loop = createLoopRecord({
+      workspaceId: "ws_integrity",
+      projectId: "proj_integrity",
+      task: {
+        title: "Persist ordered events",
+        objective: "Sign the same ledger bytes verifier reads.",
+        verificationPlan: ["pnpm test"]
+      },
+      events: [
+        {
+          eventId: "evt_budget",
+          type: "budget.updated",
+          timestamp: "2026-08-04T00:28:23.460Z",
+          lifecycleState: "running",
+          payload: { actualUsd: 0 }
+        },
+        {
+          eventId: "evt_verify",
+          type: "verification.completed",
+          timestamp: "2026-08-04T00:28:23.459Z",
+          lifecycleState: "verifying",
+          payload: { passed: false, summary: "No live provider request was attempted." }
+        }
+      ]
+    });
+
+    await persistLoopArtifacts(loop, { runsRoot });
+
+    const base = join(runsRoot, loop.loopId);
+    const events = await readFile(join(base, "events.jsonl"), "utf8");
+    expect(events.indexOf("evt_verify")).toBeLessThan(events.indexOf("evt_budget"));
+
+    const integrity = await verifyReceiptIntegrityFromFiles({
+      runId: loop.loopId,
+      runsRoot,
+      loopRecordPath: join(base, "loop-record.json"),
+      ledgerPath: join(base, "events.jsonl")
+    });
+    expect(integrity.state).toBe("verified");
+    expect(integrity.reason).not.toBe("ledger_hash_mismatch");
   });
 });

@@ -1,9 +1,9 @@
 {
   "name": "@martin/cli",
-  "version": "0.4.5",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Martin Loop CLI — budget-aware coding loops with failure classification and verified exits.",
+  "description": "Open-source execution control for coding agents with verifier-gated completion, stop limits, rollback evidence, and Verified Handoffs.",
   "bin": {
     "martin": "dist/bin/martin.js"
   },
@@ -19,7 +19,6 @@
   "dependencies": {
     "@martin/adapters": "workspace:*",
     "@martin/core": "workspace:*",
-    "@martin/contracts": "workspace:*",
-    "@resvg/resvg-js": "^2.6.2"
+    "@martin/contracts": "workspace:*"
   }
 }

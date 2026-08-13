@@ -5,42 +5,6 @@
 This repository uses AI coding assistants for maintenance tasks.
 Agents must treat this repository as a public open-source project.
 
-## Mandatory Local Workspace Rule
-
-All MartinLoop repositories, clones, worktrees, temporary test repositories,
-runner installations, durable test evidence, and agent-created working folders
-on a maintainer machine must live under the maintainer's canonical workspace
-root, as defined in the local environment.
-
-Confirm the exact approved workspace root before beginning work on a machine.
-This rule is non-negotiable.
-
-Agents must not create, clone, copy, move, or continue MartinLoop work in:
-
-- Desktop or any Desktop subfolder
-- user-profile folders outside the approved workspace root
-- Downloads or Documents outside the approved workspace root
-- AppData
-- operating-system Temp directories
-- arbitrary `tmp-*`, scratch, cache, or one-off folders elsewhere on the machine
-- consumer repositories used only for external testing
-
-Use clearly named subdirectories beneath the approved root for every clone,
-worktree, disposable test environment, self-hosted runner, and evidence folder.
-Operating-system temporary files created automatically during a command are
-allowed only while that command runs; they must not become durable repositories,
-workspaces, evidence stores, or agent handoff locations.
-
-Before creating any local folder, an agent must print and verify the intended
-absolute path. If the path is outside the approved root, stop and correct it
-before doing any work.
-
-Agents must not instruct another agent or the maintainer to create a MartinLoop
-workspace outside the approved root. Existing MartinLoop work discovered outside
-the approved root must be preserved safely, moved or recreated beneath the
-approved root, and removed from the old location only after all valid work is
-confirmed on the correct remote branch.
-
 ## Public Surface Rule
 
 Everything committed to this repo must be appropriate for public users, contributors, package consumers, and external reviewers.
@@ -95,3 +59,73 @@ Do not change proof receipts into rounded cards, blue palettes, gradients,
 certificate layouts, dashboard cards, or decorative marketing graphics unless
 the maintainer explicitly asks for that change and receives side-by-side
 visual renders before approval.
+
+## Release/version editing barrier
+
+Agents must not update release versions, release notes, README release links, version ledgers, package manifests, or public-facing release docs by ad-hoc search/replace.
+
+Before changing any release/version file, the agent must produce and follow a release matrix containing:
+
+- root package version
+- standalone MCP package version
+- previous public root version
+- previous public MCP version
+- intended release branch
+- intended target branch
+- expected tag names
+- expected npm package names
+- files expected to change
+- files explicitly not expected to change
+- source of truth for each value
+
+The release matrix must be derived from existing package manifests, release plan docs, git tags, current branch, and npm/package metadata where applicable. If any value conflicts, the agent must stop and report the conflict instead of guessing.
+
+Agents must not blindly replace old versions with new versions. Every changed occurrence must be classified as one of:
+
+- current release version
+- previous/live public baseline
+- next planned version
+- historical changelog entry
+- example command
+- URL/link target
+- package manifest value
+
+Historical entries must not be rewritten unless the task explicitly says to correct history.
+
+"Current version" and "next planned version" are different fields. Updating one does not automatically update the other.
+
+Before staging release/version changes, the agent must show the release matrix, a diff of changed release files, and a per-file explanation of why each changed line is correct. The agent must then run the release/version consistency check if present, or manually grep all old and new version strings and explain every remaining occurrence.
+
+No release/version commit may be made if it contains placeholder release claims, fabricated publication status, private repository paths, duplicated or contradictory version statements, mechanically-replaced "next planned" values, or test claims without exact commands and exit codes.
+
+If context is running low before validation is complete, the agent must push a clearly named remote recovery branch and stop. It must not rush an incomplete release commit onto the source branch.
+
+## Public repo hygiene — pre-commit scan
+
+Before committing staged content to any public-facing repo, scan for:
+
+- local absolute filesystem paths
+- internal repo names, handoff notes, session state, or planning docs
+- fabricated publication status or unpublished release claims
+- local-only worktree references or machine-specific dependencies
+- screenshots, logs, or transcripts that reference private systems
+
+If any are found, stop and sanitize the staged content before committing.
+
+## Verification completion — INC-001
+
+A lint, build, test, smoke, or release command may only be reported as **passed** when its operating-system exit code was **observed** and equals `0`.
+
+A terminal timeout, stream timeout, truncated log, missing exit code, or agent-session interruption is **UNKNOWN**, never PASS.
+
+**Required reporting pattern:**
+
+```bash
+pnpm lint;  echo LINT_EXIT:$?
+pnpm build; echo BUILD_EXIT:$?
+pnpm test;  echo TEST_EXIT:$?
+```
+
+The actual exit code must appear in the governed receipt. Timeouts must be rerun or recovered from persisted governed command evidence before continuing.
+
+UNKNOWN has the same release authority as FAILED. Neither may be overridden without rerunning verification and observing exit code 0.

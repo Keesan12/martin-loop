@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 // ─── Risk Tier Definitions ────────────────────────────────────────────────────
 // Governs how aggressively Red phase probes a patch and whether a model call
 // is permitted. Budget caps are expressed as fractions of the Blue phase budget.

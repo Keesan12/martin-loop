@@ -1,7 +1,7 @@
 {
   "name": "martin-loop",
   "private": false,
-  "version": "0.4.5",
+  "version": "0.5.0",
   "type": "module",
   "description": "Open-source command center for governed AI coding agents with built-in onboarding, hard gates, MCP, and shareable run receipts.",
   "packageManager": "pnpm@10.33.0",
@@ -26,7 +26,7 @@
   "homepage": "https://martinloop.com/",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Keesan12/martin-loop.git"
+    "url": "git+https://github.com/Keesan12/martin-loop.git"
   },
   "bugs": {
     "url": "https://github.com/Keesan12/martin-loop/issues"
@@ -34,8 +34,8 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "martin": "./dist/bin/martin-loop.js",
-    "martin-loop": "./dist/bin/martin-loop.js"
+    "martin": "dist/bin/martin-loop.js",
+    "martin-loop": "dist/bin/martin-loop.js"
   },
   "exports": {
     ".": {
@@ -76,6 +76,9 @@
     "test": "pnpm --filter @martin/contracts test && pnpm --filter @martin/core test:baseline && pnpm --filter @martin/adapters test:baseline && pnpm --filter @martin/benchmarks test && pnpm --filter @martin/cli test && pnpm --filter @martinloop/mcp test:baseline && node --test --test-concurrency=1 scripts/tests/*.mjs",
     "test:full": "pnpm -r --workspace-concurrency=1 test && node --test --test-concurrency=1 scripts/tests/*.mjs",
     "lint": "pnpm -r lint",
+    "release:truth:generate": "node scripts/public-release-truth.mjs",
+    "release:truth:check": "node scripts/public-release-truth.mjs --check",
+    "product-truth:validate": "node scripts/validate-product-truth.mjs",
     "public:copy-scan": "node ./scripts/public-copy-scan.mjs",
     "public:portability-guard": "node ./scripts/public-portability-guard.mjs",
     "public:readme-cta-guard": "node ./scripts/readme-cta-guard.mjs",
@@ -91,14 +94,11 @@
     "release:validate:platforms": "node ./scripts/release-matrix.mjs",
     "release:matrix:local": "node ./scripts/release-matrix.mjs",
     "release:truth-check": "node ./scripts/release-truth-check.mjs --allow-divergence-marker=[sync-parity]",
-    "native:build": "node ./scripts/build-native.mjs",
-    "native:verify": "node ./scripts/verify-native-release-assets.mjs",
-    "run:cli": "pnpm --filter @martin/cli dev"
+    "run:cli": "pnpm --filter @martin/cli dev",
+    "public:promotion-guard": "node scripts/public-portability-guard.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.13.10",
-    "@yao-pkg/pkg": "6.21.0",
-    "esbuild": "0.27.4",
     "tsx": "^4.19.3",
     "typescript": "^5.8.2",
     "vite": "^7.3.2",
@@ -116,5 +116,21 @@
   "workspaces": [
     "packages/*",
     "benchmarks"
-  ]
+  ],
+  "pnpm": {
+    "overrides": {
+      "@hono/node-server": "^1.19.13",
+      "ajv": "^8.20.0",
+      "fast-uri": "^3.1.2",
+      "hono": "^4.12.21",
+      "ip-address": "^10.1.1",
+      "postcss": "^8.5.15",
+      "qs": "^6.15.2",
+      "vite": "^7.3.2"
+    }
+  },
+  "directories": {
+    "doc": "docs",
+    "example": "examples"
+  }
 }

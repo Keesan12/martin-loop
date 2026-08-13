@@ -34,6 +34,7 @@ test("public taxonomy copy never claims non-canonical class counts", async () =>
 
   for (const contents of [readme, taxonomyDoc, ossReadme]) {
     assert.doesNotMatch(contents, /\b11-class failure taxonomy\b/i);
+    assert.doesNotMatch(contents, /\b12 runtime classes\b/i);
     assert.doesNotMatch(contents, /\b14 Known Modes\b/i);
     assert.doesNotMatch(contents, /\bcanonical 14-class\b/i);
   }

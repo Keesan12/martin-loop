@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 import path from "node:path";
 import { decideCircuitBreak } from "@martin/core";
 

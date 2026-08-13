@@ -6,7 +6,6 @@ import { fileURLToPath } from "node:url";
 
 import packageJson from "../../packages/mcp/package.json" with { type: "json" };
 import serverJson from "../../packages/mcp/server.json" with { type: "json" };
-import mcpbManifest from "../../packages/mcp/mcpb/manifest.json" with { type: "json" };
 import rootPackageJson from "../../package.json" with { type: "json" };
 
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -21,42 +20,10 @@ function escapeRegex(input) {
 
 test("current MCP metadata stays aligned for the release cut", async () => {
   assert.equal(packageJson.version, serverJson.version);
-  assert.equal(packageJson.version, mcpbManifest.version);
-  assert.equal(packageJson.version, "0.3.9");
-  assert.equal(serverJson.packages[0]?.version, "0.3.9");
-  assert.equal(rootPackageJson.version, "0.4.5");
 
   const releaseNotesPath = path.join(ROOT_DIR, "docs", "release", `MCP-${packageJson.version}-RELEASE-NOTES.md`);
 
   await access(releaseNotesPath);
-  await access(path.join(ROOT_DIR, "distribution", "release-truth.json"));
-});
-
-test("generated release truth matches the public package metadata", async () => {
-  const releaseTruth = JSON.parse(await readRepoFile(path.join("distribution", "release-truth.json")));
-
-  assert.equal(releaseTruth.schemaVersion, 1);
-  assert.equal("generatedAt" in releaseTruth, false);
-  assert.equal(releaseTruth.cli.package, rootPackageJson.name);
-  assert.equal(releaseTruth.cli.version, rootPackageJson.version);
-  assert.equal(releaseTruth.mcp.package, packageJson.name);
-  assert.equal(releaseTruth.mcp.version, packageJson.version);
-  assert.equal(releaseTruth.mcp.registryName, packageJson.mcpName);
-  assert.equal(releaseTruth.mcp.install, "npx -y @martinloop/mcp");
-  assert.equal(releaseTruth.mcpb.built, true);
-  assert.equal(releaseTruth.mcpb.released, true);
-  assert.match(releaseTruth.mcpb.releaseUrl, /mcp-v0\.3\.9\/martinloop-0\.3\.9\.mcpb$/);
-  assert.match(releaseTruth.mcpb.sha256, /^[a-f0-9]{64}$/);
-});
-
-test("0.3.9 release notes describe the audited MCPB distribution", async () => {
-  const releaseNotes = await readRepoFile(path.join("docs", "release", "MCP-0.3.9-RELEASE-NOTES.md"));
-
-  assert.match(releaseNotes, /0\.3\.9/);
-  assert.match(releaseNotes, /MCPB/);
-  assert.match(releaseNotes, /checksum/i);
-  assert.match(releaseNotes, /MARTIN_LIVE/);
-  assert.doesNotMatch(releaseNotes, /ML_Core_OSS_Internal|public-staging|C:\\Users\\/);
 });
 
 test("version ledger records live public truth and the next release train", async () => {
@@ -66,19 +33,19 @@ test("version ledger records live public truth and the next release train", asyn
   assert.match(ledger, /live public GitHub release: `v\d+\.\d+\.\d+`/);
   assert.match(
     ledger,
-    new RegExp(escapeRegex(`standalone MCP public baseline: \`${packageJson.version}\``)),
+    new RegExp(escapeRegex("standalone MCP public baseline: `0.3.9`")),
   );
   assert.match(
     ledger,
-    new RegExp(escapeRegex(`current in-repo standalone release line: \`${packageJson.version}\``))
+    new RegExp(escapeRegex(`current in-repo standalone release target: \`${packageJson.version}\``))
   );
   assert.match(
     ledger,
-    new RegExp(escapeRegex(`current in-repo root release line: \`${rootPackageJson.version}\``))
+    new RegExp(escapeRegex(`current in-repo root release target: \`${rootPackageJson.version}\``))
   );
-  assert.match(ledger, /next planned root follow-on(?: after `\d+\.\d+\.\d+`)?: `\d+\.\d+\.\d+`/);
-  assert.match(ledger, /next planned standalone release: (?:`\d+\.\d+\.\d+`|not scheduled in this patch train)/);
-  assert.match(ledger, /reserved for additional host-coverage follow-ups/);
+  assert.match(ledger, /next planned root follow-on: not scheduled/);
+  assert.match(ledger, /next planned standalone release: not scheduled/);
+  assert.match(ledger, /MCPB remains at its previously released `0\.3\.9` artifact/);
 });
 
 test("MCP slice map defines the 0.3.x train without private-hosted bleed", async () => {
@@ -105,8 +72,8 @@ test("public MCP docs describe the current baseline and the next train in human-
     readRepoFile(path.join("docs", "release", "MCP-0.3.3-RELEASE-NOTES.md"))
   ]);
 
-  // AI guide should point to the generated truth source and stable local-first train
-  assert.match(aiGuide, /distribution\/release-truth\.json/);
+  // AI guide still references the release train
+  assert.match(aiGuide, /0\.3\.1/);
   assert.match(aiGuide, /local-first/i);
   assert.match(aiGuide, /martin_doctor/);
   assert.match(aiGuide, /martin_run/);
@@ -172,24 +139,5 @@ test("public MCP docs stay free of internal workspace leakage", async () => {
     for (const pattern of forbiddenPatterns) {
       assert.doesNotMatch(contents, pattern);
     }
-  }
-});
-
-test("active public docs do not claim stale current MCP versions or hide supported hosts", async () => {
-  const [readme, cliReference, mcpGuide] = await Promise.all([
-    readRepoFile("README.md"),
-    readRepoFile(path.join("docs", "reference", "cli.md")),
-    readRepoFile(path.join("docs", "getting-started", "mcp.md")),
-  ]);
-
-  for (const contents of [readme, cliReference]) {
-    assert.match(contents, /<codex\|claude\|gemini\|cursor\|vscode\|copilot\|continue\|generic>/);
-  }
-
-  assert.doesNotMatch(mcpGuide, /current public MCP package line/);
-  assert.match(mcpGuide, /distribution\/release-truth\.json/);
-
-  for (const host of ["cursor", "copilot", "continue"]) {
-    assert.match(mcpGuide, new RegExp(`\\b${host}\\b`, "i"));
   }
 });

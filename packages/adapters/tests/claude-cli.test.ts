@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 import { EventEmitter } from "node:events";
 import { PassThrough, Writable } from "node:stream";
 import type { ChildProcess, SpawnOptions } from "node:child_process";
@@ -20,10 +16,8 @@ import {
   createClaudeCliAdapter,
   createCodexCliAdapter,
   createGeminiCliAdapter,
-  createVerifierOnlyAdapter,
   type SpawnLike
 } from "../src/index.js";
-import { DEFAULT_CODEX_CHATGPT_MODEL } from "../src/codex-launcher.js";
 import { containsShellOperator, readGitChangedFiles, readGitExecutionArtifacts, runSubprocess, splitCommand } from "../src/cli-bridge.js";
 
 // ---------------------------------------------------------------------------
@@ -33,6 +27,7 @@ import { containsShellOperator, readGitChangedFiles, readGitExecutionArtifacts, 
 function makeRequest(overrides: Partial<MartinAdapterRequest> = {}): MartinAdapterRequest {
   return {
     loopId: "loop_test",
+    workspaceId: "ws_test",
     attemptId: "att_test_1",
     context: {
       taskTitle: "Fix the off-by-one error",
@@ -289,6 +284,22 @@ describe("createAgentCliAdapter", () => {
 
     expect(result.status).toBe("completed");
     expect(result.verification.passed).toBe(true);
+    expect(result.verification.steps).toEqual([
+      expect.objectContaining({
+        command: request.context.verificationPlan[0],
+        launched: true,
+        completed: true,
+        crashed: false,
+        exitCode: 0,
+        timedOut: false,
+      }),
+    ]);
+    expect(result.verification.binding).toEqual({
+      runId: request.loopId,
+      workspaceId: request.workspaceId,
+      cwd: process.cwd(),
+      commands: request.context.verificationPlan,
+    });
   });
 
   it("returns failed when verification command exits non-zero", async () => {
@@ -601,99 +612,6 @@ describe("runSubprocess", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe("");
     expect(result.timedOut).toBe(false);
-  });
-});
-
-describe("createVerifierOnlyAdapter", () => {
-  it("short-circuits git inspection outside a repository", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "martin-no-git-"));
-    let spawnCalls = 0;
-    const spawnImpl: SpawnLike = () => {
-      spawnCalls += 1;
-      throw new Error("git subprocess should not run outside a repository");
-    };
-
-    try {
-      await expect(readGitChangedFiles(directory, 1_000, spawnImpl)).resolves.toEqual([]);
-      await expect(readGitExecutionArtifacts(directory, 1_000, spawnImpl)).resolves.toEqual({});
-      expect(spawnCalls).toBe(0);
-    } finally {
-      await rm(directory, { recursive: true, force: true });
-    }
-  });
-
-  it("skips baseline diff scans when verify-only has no verification steps", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "martin-verify-empty-"));
-
-    try {
-      const adapter = createVerifierOnlyAdapter({ workingDirectory: directory });
-      const result = await adapter.execute(
-        makeRequest({
-          context: {
-            taskTitle: "verify only",
-            objective: "Run verification only",
-            verificationPlan: [],
-            verificationStack: [],
-            mutationMode: "verify_only",
-            focus: "verify only",
-            remainingBudgetUsd: 8,
-            remainingIterations: 1,
-            remainingTokens: 10_000
-          }
-        })
-      );
-
-      expect(result.status).toBe("completed");
-      expect(result.execution?.changedFiles).toEqual([]);
-    } finally {
-      await rm(directory, { recursive: true, force: true });
-    }
-  });
-
-  it("reports verifier-created file changes instead of treating verify-only as clean", { timeout: 15000 }, async () => {
-    const directory = await mkdtemp(join(tmpdir(), "martin-verify-only-"));
-
-    try {
-      spawnSync("git", ["init"], { cwd: directory, stdio: "ignore" });
-      await writeFile(join(directory, "tracked.txt"), "original", "utf8");
-      spawnSync("git", ["add", "tracked.txt"], { cwd: directory, stdio: "ignore" });
-      spawnSync(
-        "git",
-        [
-          "-c",
-          "user.email=martin@example.com",
-          "-c",
-          "user.name=Martin Test",
-          "commit",
-          "-m",
-          "seed"
-        ],
-        { cwd: directory, stdio: "ignore" }
-      );
-
-      const adapter = createVerifierOnlyAdapter({ workingDirectory: directory });
-      const result = await adapter.execute(
-        makeRequest({
-          context: {
-            taskTitle: "verify only",
-            objective: "Run verification only",
-            verificationPlan: [
-              `"${process.execPath}" -e "require('node:fs').writeFileSync('tracked.txt','changed')"`
-            ],
-            mutationMode: "verify_only",
-            focus: "verify only",
-            remainingBudgetUsd: 8,
-            remainingIterations: 1,
-            remainingTokens: 10_000
-          }
-        })
-      );
-
-      expect(result.verification.passed).toBe(true);
-      expect(result.execution?.changedFiles).toContain("tracked.txt");
-    } finally {
-      await rm(directory, { force: true, recursive: true });
-    }
   });
 });
 
@@ -1225,17 +1143,15 @@ describe("createCodexCliAdapter", () => {
       "--ignore-user-config",
       "--cd",
       workingDirectory,
-      "--sandbox",
-      "workspace-write",
+      "--approve-for-me",
       "--json",
       "--color",
       "never",
-      "--model",
-      DEFAULT_CODEX_CHATGPT_MODEL,
       "-"
     ]);
     expect(calls[0]?.args).not.toContain("--full-auto");
     expect(calls[0]?.args).not.toContain("--stdin-prompt");
+    expect(calls[0]?.args).not.toContain("--model");
     expect(calls[0]?.options?.cwd).toBe(workingDirectory);
     expect(calls[0]?.stdin).toContain("OBJECTIVE:");
     expect(calls[0]?.stdin).toContain("update the target file");

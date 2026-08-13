@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 /**
  * Ledger event types for the Phase 3 persistence stack.
  * These are WRITE-side events that go into ledger.jsonl — separate from the
@@ -19,7 +15,16 @@ export type LedgerEventKind =
   | "budget.settled"
   | "attempt.kept"
   | "attempt.discarded"
-  | "run.exited";
+  | "run.exited"
+  | "run.terminated"
+  | "run.diagnostic"
+  | "context.shadow_compiled"
+  | "context.manifest_compiled"
+  // A-CTX-2 — context handoff lifecycle
+  | "context.handoff.received"
+  | "context.handoff.verified"
+  | "context.handoff.blocked"
+  | "context.object.excluded";
 
 export interface LedgerEvent {
   kind: LedgerEventKind;

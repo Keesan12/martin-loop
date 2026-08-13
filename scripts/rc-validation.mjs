@@ -122,14 +122,6 @@ export function resolveRcCommandExecution(
   comSpec = process.env.ComSpec ?? "cmd.exe",
 ) {
   if (platform === "win32") {
-    const firstArg = command[0] ?? "";
-    if (/^(?:[A-Za-z]:[\\/]|\\\\)/.test(firstArg)) {
-      return {
-        command: firstArg,
-        args: command.slice(1),
-        shell: false,
-      };
-    }
     const commandLine = command.map(quoteForWindowsShell).join(" ");
     return {
       command: comSpec,

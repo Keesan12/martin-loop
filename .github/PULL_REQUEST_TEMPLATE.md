@@ -1,27 +1,24 @@
 ## Summary
 
-<!-- What changed, and why? Keep it short. -->
+<!-- What does this PR do and why? -->
 
-## Related issue
+## Product truth
 
-<!-- Example: Closes #71 -->
+Select exactly one:
 
-## Verification
+- [ ] This PR does not change claim-relevant behavior or public product copy.
+- [ ] This PR changes claim-relevant behavior or public copy, and I updated:
+  - `docs/product-truth/CLAIMS-REGISTRY.md`
+  - `docs/product-truth/claims-registry.json`
+  - `docs/product-truth/public-release-truth.json` when versions/counts changed
 
-<!-- List the exact commands or manual checks you ran. If a check was not run, say why. -->
+Evidence added or updated:
 
-- [ ] `pnpm test`
-- [ ] `pnpm lint`
-- [ ] `pnpm build`
-- [ ] Manual check:
+<!-- Exact test, source path, receipt or release evidence -->
 
-## Risk and rollback
+## Test plan
 
-<!-- Note risky files, dependency changes, config changes, or migration concerns. Say how to back out safely. -->
-
-## Checklist
-
-- [ ] I kept the change focused and easy to review.
-- [ ] I updated docs or examples if behavior changed.
-- [ ] I did not include secrets, tokens, local paths, or non-public workspace details.
-- [ ] CodeRabbit review workflow ran for this PR, or I documented the blocker.
+- [ ] All existing tests pass (`pnpm test`)
+- [ ] New behavior has test coverage
+- [ ] `node scripts/validate-product-truth.mjs` passes
+- [ ] `node scripts/public-release-truth.mjs --check` passes (if versions changed)

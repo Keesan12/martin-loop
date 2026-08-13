@@ -1,14 +1,23 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 import {
   probeCodexLaunch,
   resolveCliCommandAvailability,
   type CodexHostPlatform
 } from "@martin/adapters";
-import { resolveRunsRoot } from "@martin/core";
+import {
+  fetchSelectedMessage,
+  getMcpInstalledVersion,
+  isCooldownExpired,
+  isDismissed,
+  isNewerVersion,
+  loadDeliveryRecord,
+  recordShown,
+  resolveDefaultLedgerPath,
+  resolveRunsRoot,
+  saveDeliveryRecord,
+} from "@martin/core";
+import type { UpdateAvailableField } from "@martin/contracts";
 
+import { MARTIN_MCP_PACKAGE_VERSION } from "../package-version.js";
 import { resolveSafeRepoRoot } from "../server-validation.js";
 import {
   createSkippedCliAvailability,
@@ -137,11 +146,19 @@ export interface MartinPreflightOutput {
   risk: MartinRiskAssessment;
   runContract: MartinRunContract;
   plan: MartinPlanProposal;
+  updateAvailable?: UpdateAvailableField;
 }
 
 export async function martinPreflightTool(
   input: MartinPreflightInput
 ): Promise<MartinPreflightOutput> {
+  // Fire delivery fetch early so it races with the rest of preflight work.
+  const mcpVersion = getMcpInstalledVersion() ?? MARTIN_MCP_PACKAGE_VERSION;
+  const deliveryFetchPromise = fetchSelectedMessage(
+    { clientVersion: mcpVersion, clientKind: "mcp", trigger: "version_check" },
+    { timeoutMs: 3_000 }
+  ).catch(() => null);
+
   const executionMode = resolveExecutionMode();
   const workspaceRoot = resolveSafeRepoRoot();
   const workingDirectory = resolveSafeRepoRoot(input.workingDirectory);
@@ -290,6 +307,42 @@ export async function martinPreflightTool(
     policy,
     risk: runContract.risk,
     runContract,
-    plan
+    plan,
+    ...await resolvePreflightUpdateAvailable(deliveryFetchPromise, mcpVersion)
   };
+}
+
+async function resolvePreflightUpdateAvailable(
+  fetchPromise: Promise<import("@martin/contracts").DeliveryMessage | null>,
+  currentVersion: string
+): Promise<{ updateAvailable?: UpdateAvailableField }> {
+  try {
+    const message = await fetchPromise;
+    if (!message) return {};
+    if (message.action.type !== "upgrade_mcp") return {};
+    const targetVersion = message.action.targetVersion;
+    if (!targetVersion) return {};
+    if (!isNewerVersion(currentVersion, targetVersion)) return {};
+
+    const ledgerPath = resolveDefaultLedgerPath();
+    const record = loadDeliveryRecord(ledgerPath);
+    const nowMs = Date.now();
+
+    if (!isCooldownExpired(record, nowMs)) return {};
+    if (isDismissed(record, message.id)) return {};
+
+    try {
+      saveDeliveryRecord(ledgerPath, recordShown(record, message, nowMs));
+    } catch { /* ledger write failure must not surface */ }
+
+    return {
+      updateAvailable: {
+        targetVersion,
+        kind: "mcp",
+        message: message.body
+      }
+    };
+  } catch {
+    return {};
+  }
 }

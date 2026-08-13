@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 import { accessSync, constants } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
@@ -13,7 +9,8 @@ import type {
   LoopEvent,
   LoopTask,
   ReceiptIntegritySummary,
-  ReceiptScope
+  ReceiptScope,
+  TerminationEnvelopeV1
 } from "@martin/contracts";
 import {
   evaluateCostGovernor,
@@ -41,6 +38,7 @@ export interface InspectableLoopRecord extends Omit<LoopRunRecord, "attempts" | 
   metadata?: Record<string, string>;
   receiptIntegrity?: ReceiptIntegritySummary;
   receiptScope?: ReceiptScope;
+  terminationEnvelope?: TerminationEnvelopeV1;
   routingEconomics?: import("@martin/contracts").RoutingEconomics;
 }
 
@@ -283,11 +281,6 @@ function discoverCommonInstallDirectories(command: string): string[] {
     if (localAppData) {
       dirs.push(join(localAppData, "OpenAI", "Codex", "bin"));
     }
-    // Claude Code native installer places binary at %USERPROFILE%\.local\bin
-    const userProfile = process.env.USERPROFILE ?? process.env.HOMEPATH;
-    if (userProfile) {
-      dirs.push(join(userProfile, ".local", "bin"));
-    }
     // Scoop
     if (home) {
       dirs.push(join(home, "scoop", "shims"));
@@ -354,14 +347,8 @@ function isOnPathDirectly(command: string, resolvedPath: string): boolean {
  * Returns a platform-specific one-liner install command for a known CLI.
  */
 function suggestInstallCommand(command: string): string {
-  if (command === "claude") {
-    const installCmd = process.platform === "win32"
-      ? "irm https://claude.ai/install.ps1 | iex"
-      : "curl -fsSL https://claude.ai/install.sh | bash";
-    return `Install with: ${installCmd}`;
-  }
-
   const npmInstalls: Record<string, string> = {
+    claude: "npm install -g @anthropic-ai/claude-code",
     codex: "npm install -g @openai/codex",
     gemini: "npm install -g @google/gemini-cli"
   };
@@ -708,7 +695,6 @@ export function buildSuggestedResourceUris(loopId: string): string[] {
     "martin://runs/triage",
     "martin://runs/latest",
     "martin://runs/latest/summary",
-    "martin://runs/latest/receipt",
     "martin://runs/latest/proof-card",
     "martin://runs/latest/budget-status",
     "martin://runs/latest/verifier-evidence",

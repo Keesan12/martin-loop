@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -72,7 +68,6 @@ export async function persistLoopArtifacts(
     writeJsonFile(join(loopRoot, "state.json"), state),
     writeJsonFile(join(loopRoot, "loop-record.json"), loop),
     writeJsonFile(join(loopRoot, "loop.json"), loop),
-    writeEvents(join(loopRoot, "events.jsonl"), loop.events),
     ...loop.attempts.map((attempt) =>
       writeJsonFile(
         join(attemptsRoot, `${String(attempt.index).padStart(3, "0")}-${attempt.attemptId}.json`),
@@ -80,6 +75,7 @@ export async function persistLoopArtifacts(
       )
     )
   ]);
+  const persistedEvents = await writeEvents(join(loopRoot, "events.jsonl"), loop.events);
 
   // Append summary to workspace-level index
   await appendFile(
@@ -105,7 +101,7 @@ export async function persistLoopArtifacts(
     runId: loop.loopId,
     runsRoot,
     loopRecord: loop,
-    ledgerEntries: loop.events,
+    ledgerEntries: persistedEvents,
     scope:
       loop.receiptScope ??
       {
@@ -145,20 +141,21 @@ async function writeJsonFile(path: string, value: unknown): Promise<void> {
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
-async function writeEvents(path: string, events: LoopRecord["events"]): Promise<void> {
+async function writeEvents(path: string, events: LoopRecord["events"]): Promise<LoopRecord["events"]> {
   const existing = await loadExistingEvents(path);
   if (existing.malformed) {
     if (events.length === 0) {
-      return;
+      return [];
     }
     const appended = events.map((event) => `${JSON.stringify(event)}\n`).join("");
     await appendFile(path, appended, "utf8");
-    return;
+    return events;
   }
 
   const merged = mergeEvents(existing.events, events);
   const body = merged.map((event) => JSON.stringify(event)).join("\n");
   await writeFile(path, body.length > 0 ? `${body}\n` : "", "utf8");
+  return merged;
 }
 
 async function loadExistingEvents(path: string): Promise<{

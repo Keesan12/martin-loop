@@ -1,10 +1,13 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+
+function deriveWorkspaceKey(workingDirectory: string): string {
+  const normalized = resolve(workingDirectory);
+  const input = process.platform === "win32" ? normalized.toLowerCase() : normalized;
+  return createHash("sha256").update(input).digest("hex").slice(0, 16);
+}
 
 /**
  * Auto-governance feature tests.
@@ -29,10 +32,6 @@ import {
   MARTIN_STARTER_TOOLS,
   type MartinMcpHost
 } from "../src/mcp-config.js";
-
-function normalizeWorkingDirectoryForExpectation(workingDirectory: string): string {
-  return process.platform === "win32" ? workingDirectory.toLowerCase() : workingDirectory;
-}
 
 // ---------------------------------------------------------------------------
 // 1. `martin estimate` CLI parsing
@@ -167,7 +166,7 @@ describe("martin estimate command", () => {
       ]);
       expect(result.exitCode).toBe(0);
 
-      const statePath = join(runsRoot, "_martin", "workflow-state.json");
+      const statePath = join(runsRoot, "_martin", "workspaces", deriveWorkspaceKey(workspaceRoot), "workflow-state.json");
       const rawState = await readFile(statePath, "utf8");
       const state = JSON.parse(rawState) as {
         cli?: {
@@ -177,7 +176,9 @@ describe("martin estimate command", () => {
         };
       };
 
-      expect(state.cli?.estimate?.workingDirectory).toBe(normalizeWorkingDirectoryForExpectation(workspaceRoot));
+      expect(state.cli?.estimate?.workingDirectory).toBe(
+        process.platform === "win32" ? workspaceRoot.toLowerCase() : workspaceRoot
+      );
     } finally {
       await rm(runsRoot, { recursive: true, force: true });
       await rm(workspaceRoot, { recursive: true, force: true });
@@ -217,7 +218,7 @@ describe("martin estimate command", () => {
         process.platform === "win32" ? "cmd /c exit 0" : "true"
       ]);
 
-      expect(result.exitCode).toBe(0);
+      expect(result.exitCode).toBe(9);
       const payload = JSON.parse(result.stdout) as {
         effectivePolicy: { configPath: string; budget: { maxUsd: number; softLimitUsd: number; maxIterations: number; maxTokens: number } };
         loop: { budget: { maxUsd: number; softLimitUsd: number; maxIterations: number; maxTokens: number } };

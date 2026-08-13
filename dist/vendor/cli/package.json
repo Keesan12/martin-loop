@@ -1,8 +1,8 @@
 {
   "name": "@martin/cli",
-  "version": "0.4.5",
+  "version": "0.5.0",
   "type": "module",
-  "description": "Martin Loop CLI — budget-aware coding loops with failure classification and verified exits.",
+  "description": "Open-source execution control for coding agents with verifier-gated completion, stop limits, rollback evidence, and Verified Handoffs.",
   "main": "./index.js",
   "types": "./index.d.ts",
   "exports": {

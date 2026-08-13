@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 import type { ApprovalPolicy, LoopBudget, LoopTask, MutationMode } from "./index.js";
 import type {
   DestructiveActionPolicy,

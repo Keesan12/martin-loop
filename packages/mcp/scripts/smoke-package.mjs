@@ -176,6 +176,13 @@ export async function runStandaloneMcpSmoke(options = {}) {
 }
 
 function assertTarballFileSet(filePaths) {
+  const retiredExecutionFiles = filePaths.filter((filePath) =>
+    /^dist\/vendor\/adapters\/(?:stub-agent-cli|verifier-only)\.(?:js|d\.ts)$/u.test(filePath),
+  );
+  if (retiredExecutionFiles.length > 0) {
+    throw new Error(`Tarball contains retired execution adapters: ${retiredExecutionFiles.join(", ")}`);
+  }
+
   const unexpected = filePaths.filter(
     (filePath) =>
       filePath !== "package.json" &&
@@ -297,16 +304,7 @@ function readTextContent(result) {
 
 function parsePackEntry(stdout) {
   const parsed = JSON.parse(stdout);
-  let entry;
-  if (Array.isArray(parsed)) {
-    entry = parsed[0] ?? null;
-  } else if (parsed && typeof parsed === "object") {
-    const values = Object.values(parsed);
-    const first = values[0];
-    entry = Array.isArray(first) ? (first[0] ?? null) : (first ?? null);
-  } else {
-    entry = null;
-  }
+  const entry = Array.isArray(parsed) ? parsed[0] : null;
   if (!entry || typeof entry.filename !== "string" || !Array.isArray(entry.files)) {
     throw new Error("npm pack did not return a usable pack result.");
   }

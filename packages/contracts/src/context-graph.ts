@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 export type ContextGraphNodeKind = "source_file" | "document" | "manifest" | "script" | "config";
 
 export type ContextGraphEdgeKind = "imports" | "documents";

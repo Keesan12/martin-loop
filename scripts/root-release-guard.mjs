@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 import { resolveRcCommandExecution } from "./rc-validation.mjs";
 
-const ROOT_VERSION_PATTERN = /^0\.(?:2|3|4)\.\d+$/;
+const ROOT_VERSION_PATTERN = /^0\.(?:2|3|4|5)\.\d+$/;
 const ALLOWED_FILES = [
   "benchmarks/fixtures",
   "CODE_OF_CONDUCT.md",
@@ -34,6 +34,7 @@ const ALLOWED_PACKED_PREFIXES = [
 const FORBIDDEN_PACKED_PATH_PATTERNS = [
   /^dist\/vendor\/cli\/bin\//u,
   /^dist\/vendor\/adapters\/stub-agent-cli\.(?:js|d\.ts)$/u,
+  /^dist\/vendor\/adapters\/verifier-only\.(?:js|d\.ts)$/u,
 ];
 
 export async function runRootReleaseGuard(options = {}) {
@@ -76,7 +77,7 @@ export async function runRootReleaseGuard(options = {}) {
 
 export function assertRootVersionPolicy(version) {
   if (!ROOT_VERSION_PATTERN.test(version)) {
-    throw new Error(`Root martin-loop version must stay on the 0.2.x, 0.3.x, or 0.4.x line. Received ${version}.`);
+    throw new Error(`Root martin-loop version must stay on the 0.2.x through 0.5.x lines. Received ${version}.`);
   }
 }
 
@@ -112,120 +113,22 @@ export async function inspectPackedFiles(options = {}) {
     { cwd: rootDir },
   );
   const packArtifacts = extractPackJsonPayload(packRun.stdout);
-  return extractPackedFilePaths(packArtifacts);
-}
-
-export function extractPackedFilePaths(packArtifacts) {
-  const artifact = normalizePackArtifact(packArtifacts);
-  const artifactFiles = Array.isArray(artifact?.files) ? artifact.files : [];
-  const files = artifactFiles.map((entry) => entry.path).filter((entry) => typeof entry === "string");
+  const files = Array.isArray(packArtifacts)
+    ? packArtifacts[0]?.files?.map((entry) => entry.path).filter((entry) => typeof entry === "string")
+    : [];
 
   if (files.length === 0) {
-    const artifactKeys = artifact === null ? "none" : Object.keys(artifact).sort().join(", ");
-    throw new Error(`npm pack --dry-run did not report any packaged files. Artifact keys: ${artifactKeys}.`);
+    throw new Error("npm pack --dry-run did not report any packaged files.");
   }
 
   return files;
 }
 
-function normalizePackArtifact(packArtifacts) {
-  if (Array.isArray(packArtifacts)) {
-    return packArtifacts[0] ?? null;
-  }
-
-  if (packArtifacts !== null && typeof packArtifacts === "object") {
-    if (Array.isArray(packArtifacts.files)) {
-      return packArtifacts;
-    }
-
-    const keyedArtifacts = Object.values(packArtifacts).filter(
-      (artifact) => artifact !== null && typeof artifact === "object",
-    );
-    return keyedArtifacts[0] ?? null;
-  }
-
-  return null;
-}
-
 export function extractPackJsonPayload(stdout) {
   const trimmed = stdout.trim();
-  if (trimmed.length === 0) {
-    throw new Error("npm pack --json produced no stdout.");
-  }
-
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    // npm versions may print notices around --json output. Extract the first
-    // balanced JSON value so release validation stays tied to npm's payload.
-  }
-
-  for (let index = 0; index < trimmed.length; index += 1) {
-    if (trimmed[index] !== "[" && trimmed[index] !== "{") {
-      continue;
-    }
-
-    const candidate = extractBalancedJsonValue(trimmed, index);
-    if (candidate === null) {
-      continue;
-    }
-
-    try {
-      return JSON.parse(candidate);
-    } catch {
-      continue;
-    }
-  }
-
-  throw new Error("Unable to parse npm pack --json output.");
-}
-
-function extractBalancedJsonValue(text, startIndex) {
-  const stack = [];
-  let inString = false;
-  let escaped = false;
-
-  for (let index = startIndex; index < text.length; index += 1) {
-    const character = text[index];
-
-    if (inString) {
-      if (escaped) {
-        escaped = false;
-      } else if (character === "\\") {
-        escaped = true;
-      } else if (character === "\"") {
-        inString = false;
-      }
-      continue;
-    }
-
-    if (character === "\"") {
-      inString = true;
-      continue;
-    }
-
-    if (character === "[") {
-      stack.push("]");
-      continue;
-    }
-
-    if (character === "{") {
-      stack.push("}");
-      continue;
-    }
-
-    if (character === "]" || character === "}") {
-      if (stack.pop() !== character) {
-        return null;
-      }
-
-      if (stack.length === 0) {
-        return text.slice(startIndex, index + 1);
-      }
-    }
-  }
-
-  return null;
+  const trailingJsonMatch = trimmed.match(/(\[\s*\{[\s\S]*\}\s*\])$/);
+  const jsonPayload = trailingJsonMatch?.[1] ?? trimmed;
+  return JSON.parse(jsonPayload);
 }
 
 export async function assertVendoredCliManifest(rootDir) {
@@ -355,7 +258,7 @@ async function main() {
     pack: args.pack,
   });
 
-  process.stderr.write(`${JSON.stringify(result, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 }
 
 const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : "";

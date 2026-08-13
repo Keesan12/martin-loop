@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 import { describe, expect, it } from "vitest";
 
 import {
@@ -66,7 +62,7 @@ describe("Martin proof cards", () => {
     });
 
     expect(renderMartinProofCardMarkdown(proofCard)).toContain(
-      "Proof or verifier-only runs are evidence boundaries, not real Martin mutation receipts."
+      "No-spend proof runs are evidence boundaries, not real Martin mutation receipts."
     );
     expect(proofCard.proofVerdict).toBe("EVIDENCE_BOUNDARY");
   });

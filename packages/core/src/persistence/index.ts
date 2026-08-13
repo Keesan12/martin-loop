@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 export { makeLedgerEvent } from "./ledger.js";
 export type { LedgerEvent, LedgerEventDraft, LedgerEventKind } from "./ledger.js";
 export {
@@ -29,3 +25,25 @@ export {
 export type { LoopAttemptRecord, LoopRunRecord } from "./runs-reader.js";
 export { compileAndPersistContext } from "./compiler.js";
 export type { CompileResult } from "./compiler.js";
+export {
+  buildContextHandoffReceipt,
+  computeFileHash,
+  contextHandoffPath,
+  readContextHandoff,
+  writeContextHandoff
+} from "./context-handoff-store.js";
+export type { BuildHandoffReceiptInput } from "./context-handoff-store.js";
+export {
+  attachRun,
+  changeMissionStatus,
+  createMission,
+  missionDir,
+  readMission,
+  readMissionLedger,
+  verifyMissionLedger
+} from "./mission-store.js";
+export type {
+  AttachRunOptions,
+  ChangeMissionStatusOptions,
+  LedgerIntegrityResult
+} from "./mission-store.js";

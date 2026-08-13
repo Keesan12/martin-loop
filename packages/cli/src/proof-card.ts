@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 import type { ReceiptIntegrityState } from "@martin/contracts";
 
 export interface MartinProofCardInput {
@@ -46,7 +42,7 @@ const COMPLETE_EVIDENCE_LINE = "Martin stopped Ralph here.";
 const INCOMPLETE_EVIDENCE_LINE =
   "Incomplete Martin proof: missing budget, rollback, or verifier evidence.";
 const NON_MUTATING_EVIDENCE_LINE =
-  "Proof or verifier-only runs are evidence boundaries, not real Martin mutation receipts.";
+  "No-spend proof runs are evidence boundaries, not real Martin mutation receipts.";
 const UNSIGNED_EVIDENCE_LINE = "Receipt integrity unavailable: Martin proof is not yet trustworthy.";
 const TAMPERED_EVIDENCE_LINE = "Receipt integrity failed: Martin proof is not trustworthy.";
 const RELOCATED_EVIDENCE_LINE = "Receipt relocated: Martin proof requires canonical verification.";

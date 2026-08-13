@@ -75,7 +75,7 @@ npx -y martin-loop@latest share --latest
 
 Use `triage` to rank saved runs by urgency. Use `dossier` when you want one run receipt: stop reason, verifier evidence, budget status, rollback or artifact evidence, and the next safe action. Use `share` when you want a redacted bundle you can attach to a ticket, send to a teammate, or keep with the run directory.
 
-The default share bundle contains `run-receipt.json` and `run-receipt.md`. Generate proof-card images only when you explicitly ask for them with `--with-proof-card` or `--proof-card-format`.
+The share bundle contains `run-receipt.json`, `run-receipt.md`, and `proof-card.svg`.
 
 To print exact artifact paths from your latest run:
 

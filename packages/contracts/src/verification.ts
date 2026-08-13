@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 export type VerifierExitReason =
   | "passed"
   | "non_zero_exit"

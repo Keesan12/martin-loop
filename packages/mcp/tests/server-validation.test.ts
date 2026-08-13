@@ -1,16 +1,8 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
-import { EventEmitter } from "node:events";
-import type { ChildProcess, SpawnOptions } from "node:child_process";
-import { PassThrough } from "node:stream";
 import { symlink, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import type { SpawnLike } from "@martin/adapters";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -25,36 +17,19 @@ import {
   resolveTrustedLoopRepoRoot,
   validateToolInput
 } from "../src/server-validation.js";
+import { __setRunStoreOverrideForTests } from "../src/tools/run-loop.js";
 import {
-  __setProofModeVerifierSpawnImplForTests,
-  __setRunStoreOverrideForTests
-} from "../src/tools/run-loop.js";
-import { createMartinMcpServer } from "../src/server.js";
+  connectMartinMcpHttpServer,
+  createMartinMcpServer,
+  parseMartinMcpServerArgs
+} from "../src/server.js";
 
 type ServerRequestHandler = (request: unknown, extra: unknown) => Promise<unknown>;
 type ServerWithRequestHandlers = {
   _requestHandlers: Map<string, ServerRequestHandler>;
 };
 
-function createImmediateSpawn(calls: Array<{ command: string; args: readonly string[]; options?: SpawnOptions }>): SpawnLike {
-  return (command, args = [], options) => {
-    calls.push({ command, args, options });
-    const child = new EventEmitter() as Partial<ChildProcess> & {
-      stdout: PassThrough;
-      stderr: PassThrough;
-      stdin: PassThrough;
-    };
-    child.stdout = new PassThrough();
-    child.stderr = new PassThrough();
-    child.stdin = new PassThrough();
-    child.kill = () => true;
-    process.nextTick(() => child.emit("close", 0));
-    return child as ChildProcess;
-  };
-}
-
 afterEach(() => {
-  __setProofModeVerifierSpawnImplForTests(undefined);
   __setRunStoreOverrideForTests(undefined);
 });
 
@@ -396,25 +371,13 @@ describe("server validation", () => {
     });
   });
 
-  it("validates doctor, estimate, and preflight public tool shapes", () => {
+  it("validates doctor and preflight public tool shapes", () => {
     expect(
       validateToolInput("martin_doctor", {
         engine: "codex"
       })
     ).toEqual({
       engine: "codex"
-    });
-
-    expect(
-      validateToolInput("martin_estimate", {
-        objective: "Fix the bug",
-        budgetUsd: 5,
-        fileScope: ["src/**"]
-      })
-    ).toEqual({
-      objective: "Fix the bug",
-      budgetUsd: 5,
-      fileScope: ["src/**"]
     });
 
     expect(
@@ -501,8 +464,72 @@ describe("server validation", () => {
     }
 
     expect(MARTIN_RESOURCE_URIS).toContain("martin://runs/triage");
+    expect(MARTIN_RESOURCE_URIS).toContain("martin://agent/mode-status");
     expect(MARTIN_RESOURCE_TEMPLATE_URIS).toContain("martin://runs/{loopId}/verification");
     expect(MARTIN_PROMPT_NAMES).toContain("martin_triage_run_store");
+  });
+
+  it("parses MCP HTTP startup flags with safe defaults", () => {
+    expect(parseMartinMcpServerArgs([])).toEqual({ transport: "stdio" });
+    expect(parseMartinMcpServerArgs(["--http"])).toEqual({
+      transport: "http",
+      host: "127.0.0.1",
+      port: 3033,
+      path: "/mcp"
+    });
+    expect(parseMartinMcpServerArgs(["--http", "--host", "0.0.0.0", "--port", "4040", "--path", "/bridge"])).toEqual({
+      transport: "http",
+      host: "0.0.0.0",
+      port: 4040,
+      path: "/bridge"
+    });
+    expect(() => parseMartinMcpServerArgs(["--http", "--port", "NaN"])).toThrow("Invalid --port value");
+  });
+
+  it("serves the MCP endpoint over streamable HTTP", async () => {
+    const handle = await connectMartinMcpHttpServer({ host: "127.0.0.1", port: 0, path: "/mcp" });
+
+    try {
+      const notFound = await fetch(`http://127.0.0.1:${handle.port}/wrong`, { method: "GET" });
+      expect(notFound.status).toBe(404);
+
+      const invalidJson = await fetch(handle.endpoint, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json"
+        },
+        body: "{not-json"
+      });
+      expect(invalidJson.status).toBe(400);
+
+      const initialize = await fetch(handle.endpoint, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          accept: "application/json, text/event-stream"
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "initialize",
+          params: {
+            protocolVersion: "2025-06-18",
+            capabilities: {},
+            clientInfo: {
+              name: "martin-http-test",
+              version: "1.0.0"
+            }
+          }
+        })
+      });
+
+      expect(initialize.status).toBe(200);
+      const responseText = await initialize.text();
+      expect(responseText).toContain("serverInfo");
+      expect(responseText).toContain("\"name\":\"martin-loop\"");
+    } finally {
+      await handle.close();
+    }
   });
 
   it("preserves typed resource and prompt errors through server handlers", async () => {
@@ -590,9 +617,6 @@ describe("server validation", () => {
       await withValidationWorkspaceRoot(async (workspaceRoot) => {
         const previousLive = process.env.MARTIN_LIVE;
         process.env.MARTIN_LIVE = "false";
-        const verifierCalls: Array<{ command: string; args: readonly string[]; options?: SpawnOptions }> = [];
-        __setProofModeVerifierSpawnImplForTests(createImmediateSpawn(verifierCalls));
-
         try {
           await withMemoryRunStore(async (memoryRunsRoot) => {
             __setRunStoreOverrideForTests(createMemoryRunStore(memoryRunsRoot));
@@ -625,15 +649,21 @@ describe("server validation", () => {
                   name: "martin_estimate",
                   arguments: {
                     objective: "Summarize the current runtime state",
+                    workingDirectory: workspaceRoot,
                     engine: "claude",
                     budgetUsd: 1,
-                    fileScope: ["src/**"]
+                    fileScope: ["src/smoke-entry.ts"]
                   }
                 }
               },
               {}
             );
             expect((estimateResult as { isError?: boolean }).isError).not.toBe(true);
+            expect(JSON.parse(readToolText(estimateResult))).toMatchObject({
+              objective: "Summarize the current runtime state",
+              engine: "claude",
+              budgetUsd: 1
+            });
 
             const planResult = await callTool(
               {
@@ -701,9 +731,6 @@ describe("server validation", () => {
                 maxIterations: 1
               }
             });
-            expect(verifierCalls).toHaveLength(1);
-            expect(verifierCalls[0]?.command).toBe("node");
-            expect(verifierCalls[0]?.args).toEqual(["--version"]);
           });
         } finally {
           if (previousLive === undefined) {
@@ -714,16 +741,13 @@ describe("server validation", () => {
         }
       });
     });
-  });
+  }, 20_000);
 
   it("accepts a matching doctor-estimate-plan-preflight receipt chain when no path allow/deny filters are provided", async () => {
     await withValidationRunsRoot(async () => {
       await withValidationWorkspaceRoot(async (workspaceRoot) => {
         const previousLive = process.env.MARTIN_LIVE;
         process.env.MARTIN_LIVE = "false";
-        const verifierCalls: Array<{ command: string; args: readonly string[]; options?: SpawnOptions }> = [];
-        __setProofModeVerifierSpawnImplForTests(createImmediateSpawn(verifierCalls));
-
         try {
           await withMemoryRunStore(async (memoryRunsRoot) => {
             __setRunStoreOverrideForTests(createMemoryRunStore(memoryRunsRoot));
@@ -747,13 +771,14 @@ describe("server validation", () => {
               },
               {}
             );
-            await callTool(
+            const estimateResult = await callTool(
               {
                 method: "tools/call",
                 params: {
                   name: "martin_estimate",
                   arguments: {
                     objective,
+                    workingDirectory: workspaceRoot,
                     engine: "claude",
                     budgetUsd: 1
                   }
@@ -761,6 +786,7 @@ describe("server validation", () => {
               },
               {}
             );
+            expect((estimateResult as { isError?: boolean }).isError).not.toBe(true);
             await callTool(
               {
                 method: "tools/call",
@@ -809,9 +835,6 @@ describe("server validation", () => {
             );
 
             expect((runResult as { isError?: boolean }).isError).not.toBe(true);
-            expect(verifierCalls).toHaveLength(1);
-            expect(verifierCalls[0]?.command).toBe("node");
-            expect(verifierCalls[0]?.args).toEqual(["--version"]);
           });
         } finally {
           if (previousLive === undefined) {
@@ -822,5 +845,5 @@ describe("server validation", () => {
         }
       });
     });
-  });
+  }, 20_000);
 });

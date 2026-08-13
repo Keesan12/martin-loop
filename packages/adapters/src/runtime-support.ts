@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 import type { MartinAdapter, MartinAdapterResult } from "@martin/core";
 
 type StructuredError = NonNullable<NonNullable<MartinAdapterResult["execution"]>["structuredErrors"]>[number];

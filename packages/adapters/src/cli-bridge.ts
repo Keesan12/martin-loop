@@ -1,12 +1,9 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
-import { delimiter, dirname, extname, isAbsolute, join, resolve } from "node:path";
+import { basename, delimiter, dirname, extname, isAbsolute, join, resolve } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 
 import { diffStatsFromNumstat } from "./runtime-support.js";
+import type { VerifierExecutionBinding } from "@martin/core";
 
 export type SpawnLike = (
   command: string,
@@ -19,6 +16,8 @@ export interface SubprocessResult {
   stdout: string;
   stderr: string;
   timedOut: boolean;
+  completed: boolean;
+  crashed: boolean;
   /**
    * True when the subprocess was terminated early because its combined
    * stdout+stderr exceeded `maxOutputBytes` — a circuit breaker against
@@ -44,11 +43,14 @@ export interface VerificationOutcome {
   summary: string;
   steps: VerificationStepOutcome[];
   warnings?: string[];
+  binding: VerifierExecutionBinding;
 }
 
 export interface VerificationStepOutcome {
   command: string;
   launched: boolean;
+  completed: boolean;
+  crashed: boolean;
   exitCode?: number;
   timedOut: boolean;
   fastFail: boolean;
@@ -81,6 +83,8 @@ export async function runSubprocess(
      * a runaway final usage figure.
      */
     onStdoutChunk?: (chunk: Buffer, terminate: (reason: string) => void) => void;
+    /** Optional abort signal — kills the subprocess when aborted. */
+    signal?: AbortSignal;
   }
 ): Promise<SubprocessResult> {
   return new Promise((resolve) => {
@@ -113,7 +117,7 @@ export async function runSubprocess(
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      resolveOnce({ exitCode: 1, stdout: "", stderr: message, launched: false });
+      resolveOnce({ exitCode: 1, stdout: "", stderr: message, launched: false, completed: false, crashed: true });
       return;
     }
 
@@ -136,6 +140,18 @@ export async function runSubprocess(
       terminationReason = reason;
       proc.kill("SIGTERM");
     };
+
+    // Honour the harness abort signal — kill the subprocess immediately
+    if (options.signal !== undefined) {
+      const sig = options.signal;
+      if (sig.aborted) {
+        proc.kill("SIGTERM");
+      } else {
+        const onAbort = () => { proc.kill("SIGTERM"); };
+        sig.addEventListener("abort", onAbort, { once: true });
+        proc.on("close", () => { sig.removeEventListener("abort", onAbort); });
+      }
+    }
 
     proc.stdout?.on("data", (chunk: Buffer) => {
       if (outputCapped || timedOut || terminationReason) {
@@ -183,16 +199,19 @@ export async function runSubprocess(
 
     proc.on("error", (error) => {
       clearTimeout(timer);
-      resolveOnce({ exitCode: 1, stdout: "", stderr: error.message, launched: false });
+      resolveOnce({ exitCode: 1, stdout: "", stderr: error.message, launched: false, completed: false, crashed: true });
     });
 
     proc.on("close", (code) => {
       clearTimeout(timer);
+      const completed = code !== null && !timedOut && !outputCapped && !terminationReason;
       resolveOnce({
         exitCode: code ?? 1,
         stdout: Buffer.concat(stdoutChunks).toString("utf8"),
         stderr: Buffer.concat(stderrChunks).toString("utf8"),
-        launched: true
+        launched: true,
+        completed,
+        crashed: !completed && !timedOut && !outputCapped && !terminationReason,
       });
     });
 
@@ -207,7 +226,9 @@ export async function runSubprocess(
             exitCode: 1,
             stdout: Buffer.concat(stdoutChunks).toString("utf8"),
             stderr: stdinError.message,
-            launched: false
+            launched: false,
+            completed: false,
+            crashed: true,
           });
         }
       }
@@ -220,7 +241,8 @@ export async function runVerification(
   cwd: string,
   timeoutMs: number,
   verificationStack?: Array<{ command: string; type: string; fastFail?: boolean }>,
-  spawnImpl?: SpawnLike
+  spawnImpl?: SpawnLike,
+  binding?: Omit<VerifierExecutionBinding, "commands">
 ): Promise<VerificationOutcome> {
   const steps = verificationStack && verificationStack.length > 0
     ? verificationStack.map((step) => ({
@@ -229,8 +251,15 @@ export async function runVerification(
       }))
     : commands.map((command) => ({ command, fastFail: true }));
 
+  const executionBinding: VerifierExecutionBinding = {
+    runId: binding?.runId ?? "unbound",
+    workspaceId: binding?.workspaceId ?? "unbound",
+    cwd: binding?.cwd ?? cwd,
+    commands: steps.map((step) => step.command),
+  };
+
   if (steps.length === 0) {
-    return { passed: true, summary: "No verification commands specified.", steps: [] };
+    return { passed: true, summary: "No verification commands specified.", steps: [], binding: executionBinding };
   }
 
   const failedSteps: string[] = [];
@@ -272,6 +301,8 @@ export async function runVerification(
     stepOutcomes.push({
       command: step.command,
       launched: result.launched,
+      completed: result.completed,
+      crashed: result.crashed,
       exitCode: result.exitCode,
       timedOut: result.timedOut,
       fastFail: step.fastFail,
@@ -283,6 +314,7 @@ export async function runVerification(
         passed: false,
         summary: `Verification timed out: ${step.command}`,
         steps: stepOutcomes,
+        binding: executionBinding,
         ...(warnings.length ? { warnings } : {})
       };
     }
@@ -293,7 +325,7 @@ export async function runVerification(
         warnings.push(`Verifier never launched: ${step.command}`);
       }
       if (step.fastFail) {
-        return { passed: false, summary, steps: stepOutcomes, ...(warnings.length ? { warnings } : {}) };
+        return { passed: false, summary, steps: stepOutcomes, binding: executionBinding, ...(warnings.length ? { warnings } : {}) };
       }
       failedSteps.push(step.command);
     }
@@ -304,6 +336,7 @@ export async function runVerification(
       passed: false,
       summary: `Failed steps: ${failedSteps.join(", ")}`,
       steps: stepOutcomes,
+      binding: executionBinding,
       ...(warnings.length ? { warnings } : {})
     };
   }
@@ -312,6 +345,7 @@ export async function runVerification(
     passed: true,
     summary: `All ${String(steps.length)} verification step(s) passed.`,
     steps: stepOutcomes,
+    binding: executionBinding,
     ...(warnings.length ? { warnings } : {})
   };
 }
@@ -545,21 +579,34 @@ export function resolveNpmShimScript(shimPath: string): string | undefined {
 
   const shimDir = dirname(shimPath);
   const scriptPathPattern = /["']?(?:%~?dp0%?|\$basedir)[\\/]([^"'\s]+\.[cm]?js)["']?/gi;
-  const matches = contents.matchAll(scriptPathPattern);
+  const matches = [...contents.matchAll(scriptPathPattern)];
 
+  // Collect all candidate scripts that exist on disk.
+  const candidates: string[] = [];
   for (const match of matches) {
     const relativeScript = match[1];
-    if (!relativeScript) {
-      continue;
-    }
+    if (!relativeScript) continue;
     const segments = relativeScript.split(/[\\/]+/u).filter(Boolean);
     const resolvedScript = resolve(shimDir, ...segments);
     if (existsSync(resolvedScript)) {
-      return resolvedScript;
+      candidates.push(resolvedScript);
     }
   }
 
-  return undefined;
+  if (candidates.length === 0) return undefined;
+
+  // npm.cmd / npm.ps1 / npm.bat shims reference both npm-prefix.js and npm-cli.js.
+  // npm-cli.js is the semantic npm CLI entry point — never pick npm-prefix.js for
+  // these. Fail closed: if npm-cli.js is not among the resolved candidates, return
+  // undefined so the caller falls back to wrapper-shell behavior.
+  const shimBasename = basename(shimPath).toLowerCase();
+  if (/^npm(\.(cmd|ps1|bat))?$/.test(shimBasename)) {
+    return candidates.find((p) => basename(p).toLowerCase() === "npm-cli.js");
+  }
+
+  // For all other npm-installed executables (codex.cmd, claude.ps1, etc.), the
+  // shim wraps exactly one package bin target — use the first resolving candidate.
+  return candidates[0];
 }
 
 /**

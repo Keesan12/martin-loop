@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 /**
  * Release hardening tests for features shipped in 0.3.8–0.3.10.
  *
@@ -33,7 +29,7 @@ import {
 } from "../../core/src/routing.js";
 import { calculateCostPerOutcome } from "../../core/src/policy.js";
 import { createCodexCliAdapter, createClaudeCliAdapter, createGeminiCliAdapter } from "../../adapters/src/claude-cli.js";
-import { DEFAULT_CODEX_CHATGPT_MODEL } from "../../adapters/src/codex-launcher.js";
+import { buildCodexExecArgs } from "../../adapters/src/codex-launcher.js";
 
 // ---------------------------------------------------------------------------
 // 1. Subpath exports — verify package.json exports field
@@ -59,12 +55,12 @@ describe("subpath exports", () => {
     };
 
     for (const subpath of ["./core", "./contracts", "./adapters"]) {
-      const entry = pkg.exports[subpath];
+      const entry = pkg.exports[subpath]!;
       expect(entry).toBeDefined();
-      expect(typeof (entry as { types?: string })?.types).toBe("string");
-      expect(typeof (entry as { default?: string })?.default).toBe("string");
-      expect((entry as { types?: string })?.types).toMatch(/\.d\.ts$/);
-      expect((entry as { default?: string })?.default).toMatch(/\.js$/);
+      expect(typeof entry.types).toBe("string");
+      expect(typeof entry.default).toBe("string");
+      expect(entry.types).toMatch(/\.d\.ts$/);
+      expect(entry.default).toMatch(/\.js$/);
     }
   });
 });
@@ -74,8 +70,10 @@ describe("subpath exports", () => {
 // ---------------------------------------------------------------------------
 
 describe("Codex adapter configuration", () => {
-  it("defaults to gpt-5.4 model", () => {
-    expect(DEFAULT_CODEX_CHATGPT_MODEL).toBe("gpt-5.4");
+  it("omits --model when no model is provided (delegated CLI chooses its own default)", () => {
+    const args = buildCodexExecArgs({ workingDirectory: process.cwd(), mode: "prompt" });
+    expect(args).not.toContain("--model");
+    expect(args).toContain("--approve-for-me");
     const adapter = createCodexCliAdapter();
     expect(adapter.adapterId).toContain("codex");
   });
@@ -186,7 +184,7 @@ describe("CLI version reporting", () => {
   it("version command returns exit code 0 with version string", async () => {
     const result = await executeCli(["--version"]);
     expect(result.exitCode).toBe(0);
-    expect(result.stdout.trim()).toMatch(/^\d+\.\d+\.\d+ · Apache 2\.0 · martinloop\.com$/);
+    expect(result.stdout.trim()).toMatch(/^\d+\.\d+\.\d+$/);
   });
 
   it("vendored CLI version matches root package version", () => {

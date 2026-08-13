@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -177,6 +173,59 @@ describe("findPersistedLoopEvidence", () => {
         runsRoot,
         loop: expect.objectContaining({ loopId: validLoop.loopId }),
       });
+    });
+  });
+
+  it("shared runs-dir cannot cross-satisfy workspace evidence", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const workspaceA = makeLoopRecord({
+        loopId: "loop_workspace_a",
+        workspaceId: "workspace-A",
+        updatedAt: "2026-06-06T20:20:00.000Z",
+      });
+      const workspaceB = makeLoopRecord({
+        loopId: "loop_workspace_b",
+        workspaceId: "workspace-B",
+        updatedAt: "2026-06-06T20:19:00.000Z",
+      });
+
+      for (const loop of [workspaceA, workspaceB]) {
+        const loopDir = join(runsRoot, loop.loopId);
+        await mkdir(loopDir, { recursive: true });
+        await writeFile(join(loopDir, "loop-record.json"), JSON.stringify(loop), "utf8");
+      }
+
+      await expect(
+        findPersistedLoopEvidence(runsRoot, { workspaceId: "workspace-B" })
+      ).resolves.toMatchObject({ loop: expect.objectContaining({ loopId: workspaceB.loopId }) });
+
+      await expect(
+        findPersistedLoopEvidence(runsRoot, { workspaceId: "workspace-C" })
+      ).resolves.not.toHaveProperty("loop");
+    });
+  });
+
+  it("implicit default storage does not globally scan legacy records for workspace evidence", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const previousRunsRoot = process.env["MARTIN_RUNS_DIR"];
+      process.env["MARTIN_RUNS_DIR"] = runsRoot;
+      const workspaceA = makeLoopRecord({
+        loopId: "loop_default_workspace_a",
+        workspaceId: "workspace-A",
+        updatedAt: "2026-06-06T20:20:00.000Z",
+      });
+      const loopDir = join(runsRoot, workspaceA.loopId);
+      await mkdir(loopDir, { recursive: true });
+      await writeFile(join(loopDir, "loop-record.json"), JSON.stringify(workspaceA), "utf8");
+
+      try {
+        await expect(
+          findPersistedLoopEvidence(undefined, { workspaceId: "workspace-A" })
+        ).resolves.toMatchObject({ runsRoot, loop: undefined });
+      } finally {
+        if (previousRunsRoot === undefined) delete process.env["MARTIN_RUNS_DIR"];
+        else process.env["MARTIN_RUNS_DIR"] = previousRunsRoot;
+      }
     });
   });
 });

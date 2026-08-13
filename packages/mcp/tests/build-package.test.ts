@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 import { describe, expect, it } from "vitest";
 import packageJson from "../package.json";
 import serverJson from "../server.json";

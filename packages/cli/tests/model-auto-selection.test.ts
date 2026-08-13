@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 /**
  * Autonomous model selection tests.
  *
@@ -10,6 +6,8 @@
  * No mocks. All tests call real classifyRoute and resolveModelForTier.
  */
 
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { classifyRoute, resolveModelForTier, selectBestEngine, type AvailableEngine } from "../../core/src/routing.js";
 import { parseCliArguments } from "../src/index.js";
@@ -73,6 +71,19 @@ describe("resolveModelForTier cross-engine", () => {
   it("unknown engine falls back to claude model", () => {
     const model = resolveModelForTier("sonnet", "unknown-engine");
     expect(model).toBe("claude-sonnet-4-6");
+  });
+});
+
+describe("live execution model authority", () => {
+  it("keeps recommendations out of execution unless --model is explicit", () => {
+    const source = readFileSync(
+      fileURLToPath(new URL("../src/index.ts", import.meta.url)),
+      "utf8"
+    );
+
+    expect(source).not.toContain("autoSelectedModel");
+    expect(source).not.toContain("autoSelectModel");
+    expect(source).toContain("const effectiveModel = modelOverride;");
   });
 });
 

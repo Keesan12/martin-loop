@@ -132,7 +132,7 @@ test("root README is a public product entry point", async () => {
     previousIndex = index;
   }
 
-  assert.match(readme, /MartinLoop makes every agent action bounded, verified, reversible, priced, and provable\./i);
+  assert.match(readme, /MartinLoop gives AI coding agents budgets, stop conditions, rollback rules, and receipts\./i);
   assert.match(readme, /Built from thousands of agent runs where the problem was not intelligence -- it was uncontrolled execution\./i);
   assert.match(readme, /## Why Teams Adopt MartinLoop/);
   assert.match(readme, /## 2-Minute Install Path/);
@@ -154,11 +154,13 @@ test("root README is a public product entry point", async () => {
   assert.match(readme, /Star this repo/i);
   assert.match(readme, /href="https:\/\/martinloop\.com"/);
   assert.match(readme, /href="mailto:support@martinloop\.com"/);
+  assert.doesNotMatch(readme, /\bMIT Licensed\b/i);
+  assert.doesNotMatch(readme, /\bMIT License\b/i);
   assert.match(readme, /\[Failure Taxonomy \(13 Runtime Classes\)]\(.*docs\/oss\/FAILURE-TAXONOMY-13\.md\)/);
   assert.match(readme, /--budget <n>/);
   assert.match(readme, /--allow-path <glob>/);
   assert.match(readme, /npx(?: -y)? martin-loop(?:@latest)? demo/);
-  assert.match(readme, /npx(?: -y)? martin-loop(?:@latest)? run .* --verify "npm test"/);
+  assert.match(readme, /npx(?: -y)? martin-loop(?:@latest)? run .* --proof --verify "npm test"/);
   assert.match(readme, /npx(?: -y)? martin-loop(?:@latest)? dossier --latest/);
   assert.match(readme, /npx martin-loop bench --suite under-3-challenge/);
   assert.match(readme, /pnpm --filter @martin\/benchmarks build/);

@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 import { buildAttemptArtifactsReference, buildAttemptSummary, buildLoopPreview } from "./tool-support.js";
 import { loadAttemptFromLoop } from "./run-store.js";
 

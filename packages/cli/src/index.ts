@@ -1,8 +1,3 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
-import { createHash } from "node:crypto";
 import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -18,13 +13,27 @@ import {
   createOpenAiCompatibleAdapter,
   resolveOpenAiCompatibleRuntimeConfig,
   probeCodexLaunch,
+  checkCodexSandboxPreflight,
   resolveCliCommandAvailability,
   createStubDirectProviderAdapter,
 } from "@martin/adapters";
-import { runMartin, classifyRoute, resolveModelForTier, getHistoricalDirectSuccessRate, getPreference, recordPreference, type MartinAdapter } from "@martin/core";
+import { runMartin, classifyRoute, resolveModelForTier, getHistoricalDirectSuccessRate, getPreference, recordPreference, writeExitSignal, type MartinAdapter } from "@martin/core";
+import {
+  fetchSelectedMessage,
+  getCliInstalledVersion,
+  isCooldownExpired,
+  isDismissed,
+  isNewerVersion,
+  loadDeliveryRecord,
+  recordShown,
+  resolveDefaultLedgerPath,
+  saveDeliveryRecord,
+} from "@martin/core";
 import {
   buildPortfolioSnapshot,
   createLoopRecord,
+  EXIT_SIGNAL_VERSION,
+  type ExitSignalV1,
   type LoopBudget,
   type LoopRecord,
   type MartinOutputMode,
@@ -45,10 +54,6 @@ import {
   buildMcpInstallPlan,
   hostRequiresExperimentalRemoteOptIn,
   installMcpConfig,
-  isMartinMcpHost,
-  MARTIN_MCP_HOSTS,
-  MARTIN_MCP_PROFILES,
-  supportsMartinMcpScope,
   type MartinMcpHost,
   type MartinMcpPlatform,
   type MartinMcpProfile,
@@ -60,11 +65,6 @@ import {
   MARTIN_MINIMAL_TOOLS,
   MARTIN_STARTER_TOOLS
 } from "./mcp-config.js";
-import {
-  rollbackMartinMcpInstall,
-  uninstallMartinMcp,
-  verifyMartinMcpInstall
-} from "./mcp-install-state.js";
 import { persistLoopArtifacts } from "./persistence.js";
 import {
   buildMartinProofCard,
@@ -97,16 +97,28 @@ import {
   triagePersistedLoops,
   type IntegrityStatus
 } from "./run-store.js";
-import { CliCommandError, renderCliError, renderCliSuccess } from "./ux.js";
-import { evaluateCliRunGate, recordCliWorkflowStep, recordMcpPlanStep } from "./workflow-state.js";
+import { CliCommandError, exitCodeForGovernedOutcome, renderCliError, renderCliSuccess, renderRunHeader, renderInlineMilestone, renderMilestonePrompt, renderLoopCard, type RunOutcome } from "./ux.js";
+import { deriveWorkspaceId, evaluateCliRunGate, recordCliWorkflowStep } from "./workflow-state.js";
+import {
+  recordRunAndGetPrompt,
+  retryQueuedIntake,
+  readMilestoneState,
+  recordStarConfirmed,
+  recordWaitlistJoined,
+  recordWaitlistDeclined,
+  recordFeedback,
+  deriveSavingsConfidence,
+  estimatedUncontrolledUsd,
+  wasRollbackTaken,
+  wasVerifierBlocked,
+  isBadgeCtaEligible,
+  recordBadgeCtaShown
+} from "./cli-milestone-state.js";
+import { MARTINLOOP_BADGE_CTA, MARTINLOOP_BADGE_MARKDOWN } from "./governed-badge.js";
 import { InstallError, runInstall } from "./commands/install.js";
 
 const require = createRequire(import.meta.url);
-declare const __MARTIN_NATIVE_PACKAGE_VERSION__: string | undefined;
-const packageJson =
-  typeof __MARTIN_NATIVE_PACKAGE_VERSION__ === "string"
-    ? { version: __MARTIN_NATIVE_PACKAGE_VERSION__ }
-    : (require("../package.json") as { version: string });
+const packageJson = require("../package.json") as { version: string };
 type PackageManifest = {
   name?: string;
   version?: string;
@@ -146,15 +158,15 @@ function resolveRootPackageVersion(): string {
 
 const STAR_CTA_LINES = [
   "─────────────────────────────────────────────",
-  "⭐ MartinLoop saved you from a runaway bill.",
-  "   Star the repo: github.com/Keesan12/martin-loop",
+  "⭐ MartinLoop produced a verified handoff.",
+  "   Useful? Star the repo: github.com/Keesan12/martin-loop",
   "─────────────────────────────────────────────"
 ] as const;
-const CLI_TAGLINE_LINE = "AI agents are easy to run. Hard to govern.";
+const CLI_TAGLINE_LINE = "Your coding agent says it's done. MartinLoop makes it prove it.";
 const CLI_ATTRIBUTION_LINE = "Apache 2.0 · martinloop.com · github.com/Keesan12/martin-loop";
-const MCP_HOST_USAGE = MARTIN_MCP_HOSTS.join("|");
-const MCP_HOST_LIST = MARTIN_MCP_HOSTS.join(", ");
-const MCP_PROFILE_LIST = MARTIN_MCP_PROFILES.join(", ");
+const MCP_HOST_USAGE = "codex|claude|gemini|generic|cursor|copilot|continue";
+const MCP_HOST_LIST = "codex, claude, gemini, generic, cursor, copilot, continue";
+const MCP_PROFILE_LIST = "minimal, diagnostic, github-review, full-local, paid-remote, starter, full";
 const CLI_VERSION_ATTRIBUTION_SUFFIX = "Apache 2.0 · martinloop.com";
 
 type RunSuccessCallToAction = {
@@ -170,25 +182,15 @@ function buildRunSuccessCallToAction(loop: LoopRecord): RunSuccessCallToAction |
   }
 
   return {
-    headline: "⭐ MartinLoop saved you from a runaway bill.",
+    headline: "⭐ MartinLoop produced a verified handoff.",
     repo: "github.com/Keesan12/martin-loop",
     lines: STAR_CTA_LINES
   };
 }
 
+
 const rootPackageVersion = resolveRootPackageVersion();
 let runAdapterOverrideForTests: MartinAdapter | undefined;
-type CodexAvailabilityForTests = ReturnType<typeof resolveCliCommandAvailability>;
-type CodexProbeForTests = ReturnType<typeof probeCodexLaunch>;
-let codexAvailabilityOverrideForTests: CodexAvailabilityForTests | undefined;
-let codexProbeOverrideForTests:
-  | CodexProbeForTests
-  | ((input: {
-      workingDirectory: string;
-      availability: CodexAvailabilityForTests;
-      model?: string;
-    }) => CodexProbeForTests)
-  | undefined;
 
 export type RunCommandRequest = {
   workspaceId: string;
@@ -211,10 +213,7 @@ export type RunCommandRequest = {
   allowedPaths?: string[];
   deniedPaths?: string[];
   acceptanceCriteria?: string[];
-  /** Offer or start the Arcade immediately (skips the 30 s wait). */
-  arcade?: boolean;
-  /** Disable the automatic Arcade prompt for this run. */
-  noArcade?: boolean;
+  approvalPolicy?: import("@martin/contracts").ApprovalPolicy;
 };
 
 type GuardrailsConfig = {
@@ -366,14 +365,6 @@ type McpCommand =
       experimentalRemoteHosts: boolean;
       platform?: MartinMcpPlatform;
       dryRun: boolean;
-      installGovernance: boolean;
-    }
-  | {
-      command: "mcp_verify_install" | "mcp_rollback" | "mcp_uninstall";
-      host: MartinMcpHost;
-      scope: MartinMcpScope;
-      cwd?: string;
-      runsDir?: string;
     };
 
 type EstimateCommand = {
@@ -418,33 +409,28 @@ type ShareCommand = {
   command: "share";
   selector: MartinRunSelector;
   outputDir?: string;
-  proofCard: boolean;
-  proofCardFormat: "svg" | "png" | "both";
 };
 
 type BadgeCommand = {
   command: "badge";
   format: "svg" | "json";
   runsDir?: string;
+  governed?: boolean;
 };
 
-type PlanCommand = {
-  command: "plan";
-  objective: string;
-  verify?: string;
-  budgetUsd?: number;
-  cwd?: string;
+type CancelCommand = {
+  command: "cancel";
+  runId: string;
+  reason?: string;
   runsDir?: string;
 };
 
-type ExecuteCommand = {
-  command: "execute";
-  objective: string;
-  verify?: string;
-  budgetUsd?: number;
-  maxIterations?: number;
-  engine?: "claude" | "codex" | "gemini" | "openai";
-  cwd?: string;
+type SignalCommand = {
+  command: "signal";
+  runId: string;
+  event: string;
+  disposition: "stop" | "continue";
+  reason?: string;
   runsDir?: string;
 };
 
@@ -532,8 +518,12 @@ export type ParsedCliArguments =
   | ChallengeCommand
   | ShareCommand
   | BadgeCommand
-  | PlanCommand
-  | ExecuteCommand
+  | CancelCommand
+  | SignalCommand
+  | {
+      command: "telemetry";
+      action: "status" | "explain" | "on" | "off";
+    }
   | {
       command: "install";
       version?: string;
@@ -552,6 +542,31 @@ export async function executeCli(args: string[]): Promise<{
     outputMode = global.outputMode;
     const parsed = parseCliArguments(global.commandArgs);
 
+    // Startup update check — global-npm channel only, interactive TTY, before command dispatch.
+    // "updated": user pressed Y, update attempted, do not continue original command.
+    // "deferred": user pressed L, continue but suppress optional post-run prompts.
+    // false: prompt not shown.
+    let startupPromptShown = false;
+    {
+      const { maybeShowUpdatePrompt, shouldShowUpdatePrompt, detectInstallChannel } = await import("./update-prompt.js");
+      const channel = detectInstallChannel();
+      if (shouldShowUpdatePrompt({
+        currentVersion: rootPackageVersion,
+        interactiveTty: process.stdout.isTTY === true && process.stdin.isTTY === true,
+        outputMode,
+        ci: Boolean(process.env["CI"]),
+        command: parsed.command,
+        channel,
+      })) {
+        const promptResult = await maybeShowUpdatePrompt(rootPackageVersion);
+        if (promptResult === "updated") {
+          // Update was attempted; do not run the original command in this process.
+          return { exitCode: 0, stdout: "", stderr: "" };
+        }
+        startupPromptShown = promptResult === "deferred";
+      }
+    }
+
     switch (parsed.command) {
       case "help":
         return {
@@ -562,7 +577,7 @@ export async function executeCli(args: string[]): Promise<{
       case "version":
         return {
           exitCode: 0,
-          stdout: `${rootPackageVersion} · ${CLI_VERSION_ATTRIBUTION_SUFFIX}`,
+          stdout: rootPackageVersion,
           stderr: ""
         };
       case "bench":
@@ -583,7 +598,7 @@ export async function executeCli(args: string[]): Promise<{
         });
       }
       case "run":
-        return await executeRunCommand(parsed.request, outputMode);
+        return await executeRunCommand(parsed.request, outputMode, startupPromptShown);
       case "inspect":
         return await executeInspectCommand(parsed, outputMode);
       case "resume":
@@ -628,20 +643,21 @@ export async function executeCli(args: string[]): Promise<{
         return await executeMcpPrintConfigCommand(parsed, outputMode);
       case "mcp_install":
         return await executeMcpInstallCommand(parsed, outputMode);
-      case "mcp_verify_install":
-      case "mcp_rollback":
-      case "mcp_uninstall":
-        return await executeMcpStateCommand(parsed, outputMode);
       case "challenge":
         return await executeChallengeCommand(parsed, outputMode);
       case "share":
         return await executeShareCommand(parsed, outputMode);
       case "badge":
         return await executeBadgeCommand(parsed, outputMode);
-      case "plan":
-        return await executePlanCommand(parsed, outputMode);
-      case "execute":
-        return await executeExecuteCommand(parsed, outputMode);
+      case "cancel":
+        return await executeCancelCommand(parsed, outputMode);
+      case "signal":
+        return await executeSignalCommand(parsed, outputMode);
+      case "telemetry": {
+        const { executeTelemetryCommand } = await import("./telemetry.js");
+        const exitCode = await executeTelemetryCommand(parsed.action);
+        return renderCliSuccess(outputMode, { data: { command: "telemetry", action: parsed.action }, human: [], quiet: "", exitCode });
+      }
       case "install":
         return await executeNativeInstallCommand(parsed, outputMode);
     }
@@ -653,6 +669,19 @@ export async function executeCli(args: string[]): Promise<{
 export function __setRunAdapterOverrideForTests(adapter?: MartinAdapter): void {
   runAdapterOverrideForTests = adapter;
 }
+
+// ─── Codex host override (test seam) ─────────────────────────────────────────
+type CodexAvailabilityForTests = ReturnType<typeof resolveCliCommandAvailability>;
+type CodexProbeForTests = ReturnType<typeof probeCodexLaunch>;
+let codexAvailabilityOverrideForTests: CodexAvailabilityForTests | undefined;
+let codexProbeOverrideForTests:
+  | CodexProbeForTests
+  | ((input: {
+      workingDirectory: string;
+      availability: CodexAvailabilityForTests;
+      model?: string;
+    }) => CodexProbeForTests)
+  | undefined;
 
 export function __setCodexHostOverridesForTests(
   overrides?: {
@@ -691,6 +720,16 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
       : { command: "preflight", request };
   }
 
+  if (command === "install") {
+    const version = readOption(rest, "--version");
+    const directory = readOption(rest, "--dir");
+    return {
+      command: "install",
+      ...(version ? { version } : {}),
+      ...(directory ? { directory } : {})
+    };
+  }
+
   if (command === "bench") {
     return {
       command: "bench",
@@ -703,16 +742,6 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
       command: "demo",
       directory: resolve(readOption(rest, "--dir") ?? join(process.cwd(), "martin-loop-demo")),
       force: hasFlag(rest, "--force")
-    };
-  }
-
-  if (command === "install") {
-    const version = readOption(rest, "--version");
-    const directory = readOption(rest, "--dir");
-    return {
-      command: "install",
-      ...(version ? { version } : {}),
-      ...(directory ? { directory } : {})
     };
   }
 
@@ -810,41 +839,6 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
     };
   }
 
-  if (command === "plan") {
-    const objective = rest[0] && !rest[0].startsWith("--") ? rest[0] : readOption(rest, "--objective") ?? "";
-    if (!objective) {
-      return { command: "help" };
-    }
-    return {
-      command: "plan",
-      objective,
-      ...(readOption(rest, "--verify") ? { verify: readOption(rest, "--verify") } : {}),
-      ...(readOption(rest, "--budget-usd") ? { budgetUsd: toFiniteNumber(readOption(rest, "--budget-usd") ?? "") } : {}),
-      ...(readOption(rest, "--cwd") ? { cwd: readOption(rest, "--cwd") } : {}),
-      ...(readOption(rest, "--runs-dir") ? { runsDir: readOption(rest, "--runs-dir") } : {})
-    };
-  }
-
-  if (command === "execute") {
-    const objective = rest[0] && !rest[0].startsWith("--") ? rest[0] : readOption(rest, "--objective") ?? "";
-    if (!objective) {
-      return { command: "help" };
-    }
-    return {
-      command: "execute",
-      objective,
-      ...(readOption(rest, "--verify") ? { verify: readOption(rest, "--verify") } : {}),
-      ...(readOption(rest, "--budget-usd") ? { budgetUsd: toFiniteNumber(readOption(rest, "--budget-usd") ?? "") } : {}),
-      ...(readOption(rest, "--max-iterations") ? { maxIterations: toFiniteNumber(readOption(rest, "--max-iterations") ?? "") } : {}),
-      ...(readOption(rest, "--engine") === "codex" ? { engine: "codex" as const } : {}),
-      ...(readOption(rest, "--engine") === "claude" ? { engine: "claude" as const } : {}),
-      ...(readOption(rest, "--engine") === "gemini" ? { engine: "gemini" as const } : {}),
-      ...(readOption(rest, "--engine") === "openai" ? { engine: "openai" as const } : {}),
-      ...(readOption(rest, "--cwd") ? { cwd: readOption(rest, "--cwd") } : {}),
-      ...(readOption(rest, "--runs-dir") ? { runsDir: readOption(rest, "--runs-dir") } : {})
-    };
-  }
-
   if (command === "enable") {
     return {
       command: "enable",
@@ -919,7 +913,7 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
     };
   }
 
-  if (command === "dossier") {
+  if (command === "dossier" || command === "handoff") {
     return {
       command: "dossier",
       selector: parseRunSelector(rest, { allowLatest: true })
@@ -1009,31 +1003,7 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
         ...(remoteTokenEnv ? { remoteTokenEnv } : {}),
         experimentalRemoteHosts,
         ...(platform ? { platform } : {}),
-        dryRun: hasFlag(subcommandArgs, "--dry-run"),
-        installGovernance: hasFlag(subcommandArgs, "--install-governance")
-      };
-    }
-
-    if (
-      subcommand === "verify-install" ||
-      subcommand === "rollback" ||
-      subcommand === "uninstall"
-    ) {
-      const host = parseMcpHost(subcommandArgs);
-      const scope = parseMcpScope(host, subcommandArgs);
-      const cwd = readOption(subcommandArgs, "--cwd");
-      const runsDir = readOption(subcommandArgs, "--runs-dir");
-      return {
-        command:
-          subcommand === "verify-install"
-            ? "mcp_verify_install"
-            : subcommand === "rollback"
-              ? "mcp_rollback"
-              : "mcp_uninstall",
-        host,
-        scope,
-        ...(cwd ? { cwd } : {}),
-        ...(runsDir ? { runsDir } : {})
+        dryRun: hasFlag(subcommandArgs, "--dry-run")
       };
     }
 
@@ -1050,13 +1020,10 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
   }
 
   if (command === "share") {
-    const proofCard = hasFlag(rest, "--with-proof-card") || readOption(rest, "--proof-card-format") !== undefined;
     return {
       command: "share",
       selector: parseRunSelector(rest, { allowLatest: true }),
-      ...(readOption(rest, "--out-dir") ? { outputDir: readOption(rest, "--out-dir") } : {}),
-      proofCard: hasFlag(rest, "--no-proof-card") ? false : proofCard,
-      proofCardFormat: parseShareProofCardFormat(rest)
+      ...(readOption(rest, "--out-dir") ? { outputDir: readOption(rest, "--out-dir") } : {})
     };
   }
 
@@ -1064,8 +1031,80 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
     return {
       command: "badge",
       format: parseBadgeFormat(rest),
+      ...(readOption(rest, "--runs-dir") ? { runsDir: readOption(rest, "--runs-dir") } : {}),
+      ...(rest.includes("--governed") ? { governed: true } : {})
+    };
+  }
+
+  if (command === "cancel") {
+    const runId = rest[0] && !rest[0].startsWith("--") ? rest[0] : undefined;
+    if (!runId) {
+      throw new CliCommandError(
+        "invalid_input",
+        "cancel requires a run ID. Usage: martin cancel <run-id> [--reason \"...\"]"
+      );
+    }
+    const reason = readOption(rest, "--reason");
+    if (reason !== undefined && reason.length > 512) {
+      throw new CliCommandError("invalid_input", "Reason exceeds 512 characters.");
+    }
+    return {
+      command: "cancel",
+      runId,
+      ...(reason !== undefined ? { reason } : {}),
       ...(readOption(rest, "--runs-dir") ? { runsDir: readOption(rest, "--runs-dir") } : {})
     };
+  }
+
+  if (command === "signal") {
+    const runId = rest[0] && !rest[0].startsWith("--") ? rest[0] : undefined;
+    if (!runId) {
+      throw new CliCommandError(
+        "invalid_input",
+        "signal requires a run ID. Usage: martin signal <run-id> --event <name> [--disposition stop|continue]"
+      );
+    }
+    const event = readOption(rest, "--event");
+    if (!event) {
+      throw new CliCommandError(
+        "invalid_input",
+        "signal requires --event <name>. Usage: martin signal <run-id> --event <name> [--disposition stop|continue]"
+      );
+    }
+    if (event.length > 256) {
+      throw new CliCommandError("invalid_input", "Event name exceeds 256 characters.");
+    }
+    const dispositionRaw = readOption(rest, "--disposition") ?? "stop";
+    if (dispositionRaw !== "stop" && dispositionRaw !== "continue") {
+      throw new CliCommandError(
+        "invalid_input",
+        `Invalid disposition ${JSON.stringify(dispositionRaw)}. Must be "stop" or "continue".`
+      );
+    }
+    const reason = readOption(rest, "--reason");
+    if (reason !== undefined && reason.length > 512) {
+      throw new CliCommandError("invalid_input", "Reason exceeds 512 characters.");
+    }
+    return {
+      command: "signal",
+      runId,
+      event,
+      disposition: dispositionRaw as "stop" | "continue",
+      ...(reason !== undefined ? { reason } : {}),
+      ...(readOption(rest, "--runs-dir") ? { runsDir: readOption(rest, "--runs-dir") } : {})
+    };
+  }
+
+  if (command === "telemetry") {
+    const [subcommand] = rest;
+    const action =
+      subcommand === "status" ||
+      subcommand === "explain" ||
+      subcommand === "on" ||
+      subcommand === "off"
+        ? subcommand
+        : "status";
+    return { command: "telemetry", action };
   }
 
   if (!command.startsWith("-")) {
@@ -1103,11 +1142,8 @@ export function renderCliHelp(): string {
     "  martin runs get (--loop-id <id> | --file <path> | --latest) [options]",
     "  martin runs attempt (--loop-id <id> | --file <path>) [--attempt-index <n>] [options]",
     "  martin runs verify (--loop-id <id> | --file <path> | --latest) [options]",
-    `  martin mcp print-config --host <${MCP_HOST_USAGE}> [--scope <user|project|local>] [options]`,
-    `  martin mcp install --host <${MCP_HOST_USAGE}> [--scope <user|project|local>] [--dry-run] [options]`,
-    `  martin mcp verify-install --host <${MCP_HOST_USAGE}> [--scope <user|project|local>]`,
-    `  martin mcp rollback --host <${MCP_HOST_USAGE}> [--scope <user|project|local>]`,
-    `  martin mcp uninstall --host <${MCP_HOST_USAGE}> [--scope <user|project|local>]`,
+    "  martin mcp print-config --host <codex|claude|gemini|cursor|copilot|continue|generic> [--scope <user|project|local>] [options]",
+    "  martin mcp install --host <codex|claude|gemini|cursor|copilot|continue|generic> [--scope <user|project|local>] [--dry-run] [options]",
     "  martin demo [--dir <path>] [--force]",
     "  martin-loop demo [--dir <path>] [--force] (published alias)",
     "  martin inspect --file <path>",
@@ -1116,13 +1152,13 @@ export function renderCliHelp(): string {
     "  martin-loop resume <loopId>              (published alias)",
     "  martin bench --suite <suiteId>",
     "  martin challenge [--loop-id <id> | --file <path> | --latest] [--format markdown|svg]",
-    "  martin share (--loop-id <id> | --file <path> | --latest) [--out-dir <path>] [--with-proof-card] [--proof-card-format <svg|png|both>]",
+    "  martin share (--loop-id <id> | --file <path> | --latest) [--out-dir <path>]",
     "  martin badge [--format svg|json]",
+    "  martin badge --governed",
     "",
     "Operator commands:",
     "  start        Guided first-run summary: repo detection, verifier suggestion, provider readiness, and safe next steps.",
     "  enable       Write repo-local Martin defaults to martin.config.yaml (engine, verifier, budget).",
-    "  install      Install or upgrade the verified native executable from GitHub Releases.",
     "  env          Print compact environment truth for provider/auth/verifier/readiness.",
     "  review       Print a human-friendly summary for the latest governed run.",
     "  receipts explain  Explain receipt trust state and what to do next.",
@@ -1143,14 +1179,14 @@ export function renderCliHelp(): string {
     "  gate         Hard governance check — exits non-zero if doctor/estimate are missing. Use in hooks.",
     "  mode         Show or set working mode: auto (default), plan, edits.",
     "  clean        Remove MartinLoop artifacts (_martin/, old run records).",
-    "  mcp print-config  Print a known-good MCP config for a supported host without writing files.",
+    "  mcp print-config  Print a known-good MCP config snippet for Codex, Claude, Gemini, or generic hosts.",
     "  mcp install       Write a starter MCP config, or call Claude Code directly for local scope.",
-    "  mcp verify-install Verify the installed config against the local install ledger.",
-    "  mcp rollback      Restore the config state before the latest MartinLoop install.",
-    "  mcp uninstall     Restore the config state before MartinLoop was first installed.",
     "  challenge    Print a shareable local proof card for the Under-$3 challenge.",
-    "  share        Write a local share bundle with a redacted receipt JSON and Markdown receipt; proof-card images are opt-in.",
+    "  share        Write a local share bundle with a redacted receipt JSON, proof Markdown, and proof SVG.",
     "  badge        Print an agent reliability readiness badge from local evidence.",
+    "  cancel       Write a human_interrupt signal to stop a running loop.  Usage: martin cancel <run-id> [--reason \"...\"]",
+    "  signal       Write an external_event signal.  Usage: martin signal <run-id> --event <name> [--disposition stop|continue]",
+    "  telemetry [status|explain|on|off]  Manage anonymous usage analytics.",
     "",
     "Compatibility aliases:",
     "  inspect      Legacy file-based summary view. Prefer `martin dossier` or `martin runs get`.",
@@ -1167,9 +1203,6 @@ export function renderCliHelp(): string {
     "  --latest                 Select the most recently updated loop.",
     "  --attempt-index <n>      Select a specific attempt for attempt inspection.",
     "  --out-dir <path>         Override where `martin share` writes the local bundle.",
-    "  --with-proof-card        Generate proof-card image artifacts for martin share.",
-    "  --proof-card-format <f>  Proof-card format: svg, png, or both (default: svg when enabled).",
-    "  --no-proof-card          Force receipt-only share output, even when defaults change elsewhere.",
     "",
     "Phase command-center options:",
     "  --cwd <path>             Repo root containing phase state; imports .gsd state when present.",
@@ -1180,12 +1213,11 @@ export function renderCliHelp(): string {
     "  --force                  Allow martin enable to overwrite an existing config file.",
     "",
     "MCP config options:",
-    `  --host <name>            ${MCP_HOST_LIST}.`,
+    "  --host <name>            codex, claude, gemini, cursor, copilot, continue, or generic.",
     "  --scope <name>           user or project for all hosts; Claude also supports local.",
     "  --transport <name>       stdio (default) or remote.",
-    "  --experimental-remote-hosts  Required to enable remote transport for cursor/vscode/copilot/continue.",
-    "  --install-governance      Write supported host governance hooks; never enabled by default.",
-    `  --profile <name>         ${MCP_PROFILE_LIST}; minimal is the default.`,
+    "  --experimental-remote-hosts  Required to enable remote transport for cursor/copilot/continue.",
+    "  --profile <name>         minimal (default), diagnostic, github-review, full-local, paid-remote, starter, or full.",
     "  --platform <name>        windows, macos, or linux recipe shaping.",
     "",
     "Run options:",
@@ -1204,7 +1236,7 @@ export function renderCliHelp(): string {
     "  --verify-timeout-ms <n>  Verifier timeout in milliseconds.",
     "  --proof                  Run in no-spend proof mode (explicit opt-in).",
     "  --unsafe-allow-unguarded-run",
-    "                           Bypass doctor/preflight run-gate checks for this invocation only.",
+    "                           Deprecated for live coding runs; use --proof for explicit no-spend lanes.",
     "  --allow-path <glob>      Restrict agent writes to this path pattern (repeatable).",
     "  --deny-path <glob>       Block agent from this path pattern (repeatable).",
     "  --accept <criterion>     Add an acceptance criterion to the prompt (repeatable).",
@@ -1226,8 +1258,10 @@ export function renderCliHelp(): string {
 
 async function executeRunCommand(
   request: RunCommandRequest,
-  outputMode: MartinOutputMode
+  outputMode: MartinOutputMode,
+  startupPromptShown = false
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  const runStartMs = Date.now();
   const resolvedGuardrails = await resolveGuardrails(request);
   const verificationPlan =
     request.verificationPlan.length > 0
@@ -1249,99 +1283,117 @@ async function executeRunCommand(
     engine: resolvedRequest.engine,
     liveMode: resolvedRequest.liveMode
   });
+  if (resolvedRequest.workspaceId === "ws_default") {
+    resolvedRequest.workspaceId = deriveWorkspaceId(cliEnvironment.workingDirectory);
+  }
   const effectiveMutationMode = resolvedRequest.mutationMode;
   const receiptScope = buildCliReceiptScope(cliEnvironment);
   const engineRequired = cliEnvironment.liveMode === "live";
   const preRunWarnings: string[] = [];
 
-  if (engineRequired && !resolvedRequest.unsafeAllowUnguardedRun) {
-    if (outputMode === "json") {
-      const bootstrap = await autoBootstrapGovernedRun({
-        request: resolvedRequest,
-        environment: cliEnvironment,
-        receiptScope
-      });
-      if (bootstrap.warnings.length > 0) {
-        preRunWarnings.push(...bootstrap.warnings);
-      }
-      if (!bootstrap.ready) {
-        throw new CliCommandError(
-          "policy_blocked",
-          "Governed run preflight blocked execution. Resolve the blocking issues and retry.",
-          {
-            suggestion: buildPreflightSuggestion(resolvedRequest.objective, resolvedRequest.verificationPlan),
-            details: {
-              blockingIssues: bootstrap.blockingIssues
-            }
-          }
-        );
-      }
-    } else {
-      // Governance gate fires first — receipts must exist before we check whether
-      // the engine CLI is installed. "Run estimate first" is higher priority feedback
-      // than "install the engine CLI", and this keeps gate behavior consistent across
-      // environments where the engine binary may not be on PATH (e.g. CI runners).
-      const gate = await evaluateCliRunGate({
-        runsRoot: cliEnvironment.runsRoot,
-        workingDirectory: cliEnvironment.workingDirectory,
-        objective: resolvedRequest.objective,
-        engine: cliEnvironment.engine,
-        verificationPlan: resolvedRequest.verificationPlan,
-        mutationMode: effectiveMutationMode,
-        receiptScope,
-        allowedPaths: resolvedRequest.allowedPaths,
-        deniedPaths: resolvedRequest.deniedPaths,
-        budget: resolvedRequest.budget
-      });
+  // Fire delivery fetch early so it races with the run. Never throws.
+  const deliveryFetchPromise = fetchSelectedMessage(
+    { clientVersion: rootPackageVersion, clientKind: "cli", trigger: "version_check" },
+    { timeoutMs: 3_000 }
+  ).catch(() => null);
 
-      if (!gate.allowed) {
-        throw new CliCommandError("policy_blocked", gate.message, {
-          suggestion: gate.nextCommand,
-          details: {
-            missingSteps: gate.missingSteps,
-            receiptScope
-          }
-        });
+  if (engineRequired && resolvedRequest.unsafeAllowUnguardedRun) {
+    throw new CliCommandError(
+      "policy_blocked",
+      "--unsafe-allow-unguarded-run is blocked for live governed coding runs.",
+      {
+        suggestion:
+          "Run `martin-loop doctor`, `martin-loop session-start`, `martin-loop estimate`, and `martin-loop preflight` before retrying, or use `--proof` for an explicit no-spend lane.",
+        details: {
+          allowedNoSpendModes: ["proof"]
+        }
       }
-
-      const blockingIssues: string[] = [];
-      const workingDirectoryExists = await stat(cliEnvironment.workingDirectory).then(() => true).catch(() => false);
-      if (!workingDirectoryExists) {
-        blockingIssues.push("Working directory does not exist.");
-      }
-      if (cliEnvironment.engine === "claude" && !isCommandAvailable("claude")) {
-        blockingIssues.push("Claude CLI is not available on PATH.");
-      }
-      if (cliEnvironment.engine === "codex" && !resolveCliCommandAvailability("codex").available) {
-        blockingIssues.push("Codex CLI is not available on PATH.");
-      }
-      if (cliEnvironment.engine === "gemini" && !resolveCliCommandAvailability("gemini").available) {
-        blockingIssues.push("Gemini CLI is not available on PATH.");
-      }
-
-      if (blockingIssues.length > 0) {
-        throw new CliCommandError(
-          "policy_blocked",
-          "Governed run preflight blocked execution. Resolve the blocking issues and retry.",
-          {
-            suggestion: buildPreflightSuggestion(resolvedRequest.objective, resolvedRequest.verificationPlan),
-            details: {
-              blockingIssues
-            }
-          }
-        );
-      }
-    }
-  } else if (engineRequired && resolvedRequest.unsafeAllowUnguardedRun) {
-    preRunWarnings.push(
-      "Run-gate bypassed by --unsafe-allow-unguarded-run; doctor/preflight receipts were not enforced for this run."
     );
+  }
+
+  if (engineRequired) {
+    // Governance gate fires first — receipts must exist before we check whether
+    // the engine CLI is installed. "Run estimate first" is higher priority feedback
+    // than "install the engine CLI", and this keeps gate behavior consistent across
+    // human and JSON surfaces.
+    const gate = await evaluateCliRunGate({
+      runsRoot: cliEnvironment.runsRoot,
+      workingDirectory: cliEnvironment.workingDirectory,
+      objective: resolvedRequest.objective,
+      engine: cliEnvironment.engine,
+      verificationPlan: resolvedRequest.verificationPlan,
+      mutationMode: effectiveMutationMode,
+      receiptScope,
+      allowedPaths: resolvedRequest.allowedPaths,
+      deniedPaths: resolvedRequest.deniedPaths,
+      budget: resolvedRequest.budget
+    });
+
+    if (!gate.allowed) {
+      throw new CliCommandError("policy_blocked", gate.message, {
+        suggestion: gate.nextCommand,
+        details: {
+          missingSteps: gate.missingSteps,
+          receiptScope
+        }
+      });
+    }
+
+    const blockingIssues: string[] = [];
+    const workingDirectoryExists = await stat(cliEnvironment.workingDirectory).then(() => true).catch(() => false);
+    if (!workingDirectoryExists) {
+      blockingIssues.push("Working directory does not exist.");
+    }
+    if (cliEnvironment.engine === "claude" && !isCommandAvailable("claude")) {
+      blockingIssues.push("Claude CLI is not available on PATH.");
+    }
+    if (cliEnvironment.engine === "codex" && !resolveCodexAvailabilityForCli().available) {
+      blockingIssues.push("Codex CLI is not available on PATH.");
+    }
+    if (cliEnvironment.engine === "gemini" && !resolveCliCommandAvailability("gemini").available) {
+      blockingIssues.push("Gemini CLI is not available on PATH.");
+    }
+
+    if (blockingIssues.length > 0) {
+      throw new CliCommandError(
+        "policy_blocked",
+        "Governed run preflight blocked execution. Resolve the blocking issues and retry.",
+        {
+          suggestion: buildPreflightSuggestion(resolvedRequest.objective, resolvedRequest.verificationPlan),
+          details: {
+            blockingIssues
+          }
+        }
+      );
+    }
   }
 
   let result: Awaited<ReturnType<typeof runMartin>>;
   let codexCommandOverride: string | undefined;
 
   if (engineRequired && cliEnvironment.engine === "codex") {
+    const sandboxPreflight = checkCodexSandboxPreflight({
+      requestedSandbox: "workspace-write",
+      workingDirectory: cliEnvironment.workingDirectory
+    });
+
+    receiptScope.requestedSandbox = "workspace-write";
+    receiptScope.effectiveSandbox = sandboxPreflight.effectiveSandbox;
+    receiptScope.writableRoot = sandboxPreflight.writableRoot;
+    receiptScope.capabilitySource = sandboxPreflight.capabilitySource;
+
+    if (!sandboxPreflight.ok) {
+      throw new CliCommandError("policy_blocked", "Sandbox preflight rejected the write mission.", {
+        suggestion: sandboxPreflight.remediation,
+        details: {
+          requestedCapability: sandboxPreflight.requestedCapability,
+          detectedCapability: sandboxPreflight.detectedCapability,
+          affectedPath: sandboxPreflight.affectedPath,
+          capabilitySource: sandboxPreflight.capabilitySource
+        }
+      });
+    }
+
     const codexAvailability = resolveCodexAvailabilityForCli();
     const codexProbe = resolveCodexProbeForCli({
       workingDirectory: cliEnvironment.workingDirectory,
@@ -1366,22 +1418,6 @@ async function executeRunCommand(
     codexCommandOverride = codexProbe.command;
   }
 
-  // Auto-select model based on task complexity when --model was not explicitly set.
-  // classifyRoute scores the objective and recommends haiku/sonnet/opus.
-  // resolveModelForTier maps that tier to a concrete model ID for the engine.
-  let autoSelectedModel: string | undefined;
-  if (!resolvedRequest.model) {
-    const route = classifyRoute({
-      objective: resolvedRequest.objective ?? resolvedRequest.title ?? "",
-      verificationPlan: resolvedRequest.verificationPlan,
-      budgetUsd: resolvedRequest.budget.maxUsd
-    });
-    autoSelectedModel = resolveModelForTier(
-      route.recommendedModelTier,
-      resolvedRequest.engine ?? "claude"
-    );
-  }
-
   const adapter = selectAdapter(
     resolvedRequest.engine,
     cliEnvironment.workingDirectory,
@@ -1389,11 +1425,44 @@ async function executeRunCommand(
     effectiveMutationMode,
     cliEnvironment.liveMode,
     codexCommandOverride,
-    resolvedRequest.verifyTimeoutMs,
-    autoSelectedModel
+    resolvedRequest.verifyTimeoutMs
   );
+  // Load telemetry state before the governed run.
+  const { readTelemetryConfig, isTelemetrySendingEnabled, initializeTelemetryIfNeeded,
+          sendProductEvent, resolveProductEventsEndpoint, shouldShowTelemetryNotice,
+          toTelemetryFailureReason, renderTelemetryNotice } = await import("./telemetry.js");
+  let telemetryConfig = await readTelemetryConfig();
+  const telemetryWasActiveAtRunStart = isTelemetrySendingEnabled(telemetryConfig);
+  if (telemetryWasActiveAtRunStart) {
+    telemetryConfig = await initializeTelemetryIfNeeded({
+      config: telemetryConfig,
+      endpoint: resolveProductEventsEndpoint(),
+      cliVersion: packageJson.version,
+    });
+    void sendProductEvent({
+      endpoint: resolveProductEventsEndpoint(),
+      config: telemetryConfig,
+      event: "run_started",
+      payload: { command: "run" },
+      cliVersion: packageJson.version,
+      env: process.env,
+    });
+  }
+
+  const isDemoMission =
+    resolvedRequest.allowedPaths?.length === 1 && resolvedRequest.allowedPaths[0] === "DEMO.md";
+
+  if (isDemoMission) {
+    const gitStatus = spawnSync("git", ["status", "--porcelain"], { cwd: cliEnvironment.workingDirectory, encoding: "utf8" });
+    if (gitStatus.stdout.trim() !== "") {
+      throw new CliCommandError("environment", "Demo repository is not clean before execution.", {
+        suggestion: "Commit or stash changes before running the demo."
+      });
+    }
+  }
+
   try {
-    const runPromise = runMartin({
+    result = await runMartin({
       workspaceId: resolvedRequest.workspaceId,
       projectId: resolvedRequest.projectId,
       receiptScope: {
@@ -1412,17 +1481,29 @@ async function executeRunCommand(
         ...(resolvedRequest.deniedPaths?.length ? { deniedPaths: resolvedRequest.deniedPaths } : {}),
         ...(resolvedRequest.acceptanceCriteria?.length
           ? { acceptanceCriteria: resolvedRequest.acceptanceCriteria }
-          : {})
+          : {}),
+        ...(resolvedRequest.approvalPolicy ? { approvalPolicy: resolvedRequest.approvalPolicy } : {})
       },
       budget: resolvedRequest.budget,
       metadata: resolvedRequest.metadata,
-      adapter
+      adapter,
     });
-    const { maybePlayArcadeWhileWaiting } = await import("./arcade/index.js");
-    result = await maybePlayArcadeWhileWaiting(runPromise, {
-      force: resolvedRequest.arcade,
-      disabled: resolvedRequest.noArcade || outputMode === "json"
-    });
+
+    if (isDemoMission && result.loop.receiptScope) {
+      const gitStatus = spawnSync("git", ["status", "--porcelain", "-uall"], { cwd: cliEnvironment.workingDirectory, encoding: "utf8" });
+      const changedFiles = gitStatus.stdout.trim().split("\n").filter(Boolean).map(line => line.substring(3));
+
+      result.loop.receiptScope.demoChangedFiles = changedFiles;
+
+
+      const modifiedOtherFiles = changedFiles.filter(f => f !== "DEMO.md");
+      if (modifiedOtherFiles.length > 0) {
+        throw new CliCommandError("policy_blocked", "Verification failed: Demo run modified files other than DEMO.md", {
+          suggestion: "The demo run is strictly limited to modifying DEMO.md.",
+          details: { changedFiles }
+        });
+      }
+    }
   } catch (error) {
     const fallbackLoop = createLoopRecord({
       workspaceId: resolvedRequest.workspaceId,
@@ -1459,31 +1540,209 @@ async function executeRunCommand(
   }
 
   const warnings: string[] = [...preRunWarnings];
+  let persistenceFinalized = true;
   await persistLoopArtifacts(result.loop, { runsRoot: cliEnvironment.runsRoot }).catch((error: unknown) => {
+    persistenceFinalized = false;
     warnings.push(
       `Persisted run artifacts could not be written: ${error instanceof Error ? error.message : String(error)}`
     );
   });
 
   const costProvenance = readCostProvenance(result.loop);
-  const successCallToAction = buildRunSuccessCallToAction(result.loop);
+
+  const confidence = deriveSavingsConfidence(result.loop);
+  const uncontrolled = estimatedUncontrolledUsd(result.loop);
+  const savedThisRun = confidence !== "unavailable"
+    ? Math.max(0, uncontrolled - result.loop.cost.actualUsd)
+    : 0;
+
+  // Used by post-run output and PRE — defined here so they are in scope throughout.
+  const successCallToAction = resolvedRequest.liveMode === "proof"
+    ? buildRunSuccessCallToAction(result.loop)
+    : undefined;
   const isInteractiveTty = outputMode === "human" && process.stdout.isTTY === true && process.stdin.isTTY === true;
+  const runCompleted = result.loop.status === "completed" && result.loop.lifecycleState === "completed";
+  const runVerified = buildVerificationSummary(result.loop).status === "passed";
+  const governedOutcome = runCompleted
+    ? runVerified
+      ? "VERIFIED" as const
+      : "NEEDS_REVIEW" as const
+    : "STOPPED" as const;
 
-  if (result.loop.status === "completed" && result.loop.lifecycleState === "completed") {
-    try {
-      const { recordSuccessfulRun } = await import("./run-stats.js");
-      const { maybeShowStarPrompt, showInlineStarCta } = await import("./star-prompt.js");
-      const { maybeShowFeedbackFlow } = await import("./feedback.js");
-      const stats = recordSuccessfulRun(packageJson.version);
-      await maybeShowStarPrompt(stats.totalSuccessfulRuns);
-      await maybeShowFeedbackFlow(stats.totalSuccessfulRuns);
-      if (successCallToAction && isInteractiveTty) {
-        await showInlineStarCta();
-      }
-    } catch { /* never block output for engagement prompts */ }
-  }
+  // Fire post-run telemetry (bounded, non-fatal; telemetryConfig loaded before the run).
+  try {
+    if (runCompleted) {
+      void sendProductEvent({
+        endpoint: resolveProductEventsEndpoint(),
+        config: telemetryConfig,
+        event: "run_completed",
+        payload: { durationMs: 0, command: "run", receiptGenerated: Boolean(receiptScope), recoveryOccurred: false },
+        cliVersion: packageJson.version,
+        env: process.env,
+      });
+    } else if (telemetryWasActiveAtRunStart) {
+      void sendProductEvent({
+        endpoint: resolveProductEventsEndpoint(),
+        config: telemetryConfig,
+        event: "run_failed",
+        payload: { durationMs: 0, command: "run", reason: toTelemetryFailureReason(result.decision.reasonCode) },
+        cliVersion: packageJson.version,
+        env: process.env,
+      });
+    }
+  } catch { /* telemetry must never affect run result */ }
 
-  return renderCliSuccess(outputMode, {
+  const milestoneState = await readMilestoneState();
+  const currentRank = milestoneState?.currentRank ?? "Observer";
+  const verificationPassed = buildVerificationSummary(result.loop).status === "passed";
+  const isApprovalBlocked =
+    result.decision.failureClass === "safety_leash_blocked" &&
+    (result.decision.reasonCode === "dependency_approval_required" ||
+      result.decision.reasonCode === "migration_approval_required" ||
+      result.decision.reasonCode === "config_change_approval_required");
+
+  const runOutcome: RunOutcome =
+    result.loop.status === "completed" && result.loop.lifecycleState === "completed"
+      ? "success"
+      : result.loop.lifecycleState === "human_escalation" && verificationPassed
+        ? "awaiting_signoff"
+        : isApprovalBlocked
+          ? "approval_blocked"
+          : "failure";
+  const runSucceeded = runOutcome === "success" || runOutcome === "awaiting_signoff";
+  const runHeader = renderRunHeader(
+    currentRank,
+    runOutcome,
+    result.loop.attempts.length,
+    result.loop.cost.actualUsd,
+    savedThisRun,
+    milestoneState?.totalSavedUsd ?? 0,
+    confidence,
+    persistenceFinalized
+  );
+
+  const { inlineMilestones, interactivePrompt } = await recordRunAndGetPrompt({
+    success: runSucceeded,
+    repoRoot: cliEnvironment.workingDirectory,
+    actualSpendUsd: result.loop.cost.actualUsd,
+    estimatedUncontrolledUsd: uncontrolled,
+    savingsConfidence: confidence,
+    rollbackTaken: wasRollbackTaken(result.loop),
+    verifierBlock: wasVerifierBlocked(result.loop)
+  });
+
+  // ─── Post-Run Experience (one interactive slot) ───────────────────────────
+  // PRE fires before renderMilestonePrompt and consumes the interactive slot when
+  // it returns a non-none experience. renderMilestonePrompt receives null in that case
+  // to enforce the one-prompt-per-run rule.
+  let milestoneInteractivePrompt = interactivePrompt;
+  try {
+    const { selectPostRunExperience } = await import("./post-run-experience/coordinator.js");
+    const { renderPostRunExperience } = await import("./post-run-experience/renderer.js");
+    const {
+      fetchRemoteExperience, resolveRemoteExperienceEndpoint,
+      isRemoteExperienceOnCooldown, isRemoteExperienceDismissed,
+      recordRemoteExperienceDelivered, recordRemoteExperienceDismissed,
+    } = await import("./remote-experience.js");
+    const { renderRemoteExperienceMessage, renderDashboardInviteInteractive } = await import("./post-run-experience/renderer.js");
+
+    // Fetch remote experience concurrently; best-effort, 1.5s timeout.
+    let remoteRequired: import("./remote-experience.js").RemoteExperienceV1 | null = null;
+    let remoteEngagement: import("./remote-experience.js").RemoteExperienceV1 | null = null;
+    const remoteEndpoint = resolveRemoteExperienceEndpoint();
+    if (remoteEndpoint && isInteractiveTty) {
+      try {
+        const fetched = await fetchRemoteExperience(
+          { schemaVersion: 1, cliVersion: packageJson.version, nodeVersion: process.version, platform: process.platform, arch: process.arch },
+          { endpoint: remoteEndpoint, timeoutMs: 1500 }
+        );
+        if (fetched) {
+          const onCooldown = await isRemoteExperienceOnCooldown(fetched.cooldownKey);
+          const dismissed = fetched.class === "engagement" ? await isRemoteExperienceDismissed("dashboard_invite") : false;
+          if (!onCooldown && !dismissed) {
+            if (fetched.class === "required") remoteRequired = fetched;
+            else remoteEngagement = fetched;
+          }
+        }
+      } catch { /* remote experience fetch must never affect the run result */ }
+    }
+
+    const preExperience = selectPostRunExperience({
+      run: {
+        completed: runCompleted,
+        verified: runVerified,
+        receiptFinalized: persistenceFinalized,
+        persistenceFinalized,
+        exitCode: isApprovalBlocked ? 2 : exitCodeForGovernedOutcome(governedOutcome),
+      },
+      environment: {
+        interactiveTty: isInteractiveTty,
+        ci: Boolean(process.env["CI"]),
+        outputMode,
+        startupPromptShown,
+      },
+      telemetry: {
+        noticeEligible: shouldShowTelemetryNotice({ config: telemetryConfig, interactiveTty: isInteractiveTty, humanOutput: outputMode === "human", env: process.env }),
+      },
+      localEngagement: {
+        runFiveFeedbackEligible: interactivePrompt?.kind === "feedback",
+        starEligible: interactivePrompt?.kind === "star",
+        badgeEligible: milestoneState !== null && isBadgeCtaEligible(milestoneState),
+      },
+      remote: {
+        required: remoteRequired,
+        engagement: remoteEngagement,
+      },
+    });
+
+    if (preExperience.kind !== "none") {
+      milestoneInteractivePrompt = null; // PRE consumed the slot
+      await renderPostRunExperience(preExperience, {
+        renderRequiredNotice: async (msg) => { await renderRemoteExperienceMessage(msg); },
+        renderTelemetryNotice: async () => { telemetryConfig = await renderTelemetryNotice(telemetryConfig); },
+        renderRunFiveFeedback: async () => {
+          // Delegate to the existing milestone renderer for consistent UX.
+          await renderMilestonePrompt(
+            interactivePrompt,
+            { rank: currentRank, prevRank: milestoneState?.currentRank ?? null, totalSavedUsd: milestoneState?.totalSavedUsd ?? 0, successfulRunCount: milestoneState?.successfulRunCount ?? 0, starShownCount: milestoneState?.star.shownCount ?? 0 },
+            { onStarConfirmed: recordStarConfirmed, onWaitlistJoined: recordWaitlistJoined, onWaitlistDeclined: recordWaitlistDeclined, onFeedback: recordFeedback }
+          );
+        },
+        renderStarPrompt: async () => {
+          // Delegate to the existing milestone renderer for consistent UX.
+          await renderMilestonePrompt(
+            interactivePrompt,
+            { rank: currentRank, prevRank: milestoneState?.currentRank ?? null, totalSavedUsd: milestoneState?.totalSavedUsd ?? 0, successfulRunCount: milestoneState?.successfulRunCount ?? 0, starShownCount: milestoneState?.star.shownCount ?? 0 },
+            { onStarConfirmed: recordStarConfirmed, onWaitlistJoined: recordWaitlistJoined, onWaitlistDeclined: recordWaitlistDeclined, onFeedback: recordFeedback }
+          );
+        },
+        renderBadge: async () => {
+          for (const line of MARTINLOOP_BADGE_CTA) {
+            process.stdout.write(`${line}\n`);
+          }
+          await recordBadgeCtaShown().catch(() => undefined);
+        },
+        renderRemoteExperience: async (msg) => {
+          if (msg.type === "dashboard_invite") {
+            await renderDashboardInviteInteractive(msg, {
+              emitClicked: async (expId, expType) => {
+                try {
+                  void sendProductEvent({ endpoint: resolveProductEventsEndpoint(), config: telemetryConfig, event: "remote_experience_clicked", payload: { experienceId: expId, experienceType: expType }, cliVersion: packageJson.version });
+                } catch { /* non-fatal */ }
+              },
+              recordDelivered: recordRemoteExperienceDelivered,
+              recordDismissed: recordRemoteExperienceDismissed,
+            });
+          } else {
+            await renderRemoteExperienceMessage(msg);
+            await recordRemoteExperienceDelivered(msg.cooldownKey);
+          }
+        },
+      });
+    }
+  } catch { /* PRE must never affect the primary run result */ }
+
+  const output = renderCliSuccess(outputMode, {
     data: {
       command: "run",
       decision: result.decision,
@@ -1511,6 +1770,7 @@ async function executeRunCommand(
       ...(successCallToAction ? { successCallToAction } : {})
     },
     human: [
+      runHeader,
       `Started Martin Loop run ${result.loop.loopId}`,
       `Status: ${result.loop.status} / ${result.loop.lifecycleState}`,
       `Working directory: ${cliEnvironment.workingDirectory}`,
@@ -1518,12 +1778,55 @@ async function executeRunCommand(
       `Verification plan: ${resolvedRequest.verificationPlan.join(", ") || "none"}`,
       `Attempts: ${result.loop.attempts.length}`,
       `Actual cost (USD): ${result.loop.cost.actualUsd.toFixed(2)} — provenance: ${describeCostProvenance(costProvenance)}`,
-      // Static CTA only for non-TTY mode (piped/JSON). TTY shows interactive showInlineStarCta above.
+      ...(isApprovalBlocked ? [
+        "",
+        "Blocked: the agent needs operator approval to proceed.",
+        "Re-run with --approve-dependency-changes (or --approve-migrations / --approve-config-changes as appropriate).",
+        `The workspace is unchanged. Review the blocked attempt: martin receipt --run ${result.loop.loopId}`
+      ] : []),
+      ...inlineMilestones.map(renderInlineMilestone),
+      // Static CTA only for non-TTY mode (piped/JSON). TTY uses the interactive milestone prompt.
       ...(successCallToAction && !isInteractiveTty ? ["", ...successCallToAction.lines] : [])
     ],
     quiet: result.loop.loopId,
-    warnings
+    warnings,
+    exitCode: isApprovalBlocked ? 2 : exitCodeForGovernedOutcome(governedOutcome)
   });
+
+  await renderMilestonePrompt(
+    milestoneInteractivePrompt,
+    {
+      rank: currentRank,
+      prevRank: milestoneState?.currentRank ?? null,
+      totalSavedUsd: milestoneState?.totalSavedUsd ?? 0,
+      successfulRunCount: milestoneState?.successfulRunCount ?? 0,
+      starShownCount: milestoneState?.star.shownCount ?? 0
+    },
+    {
+      onStarConfirmed: recordStarConfirmed,
+      onWaitlistJoined: recordWaitlistJoined,
+      onWaitlistDeclined: recordWaitlistDeclined,
+      onFeedback: recordFeedback
+    }
+  );
+
+  // Replay queued intake submissions from previous failed network requests.
+  // Fires only on verified-success interactive TTY runs. Never throws — primary run is unaffected.
+  if (runSucceeded && outputMode === "human" && process.stdout.isTTY && process.stdin.isTTY && !process.env["CI"]) {
+    retryQueuedIntake().catch(() => undefined);
+  }
+
+  // Settle the delivery fetch (already done or within 3s timeout) and
+  // surface a notification if one is due. Never throws — primary run is unaffected.
+  const updateNotification = await resolveDeliveryNotification(deliveryFetchPromise, rootPackageVersion);
+  // Approval-blocked runs exit with code 2 (distinct from 1=failure, 0=success)
+  // so callers and CI can detect the approval requirement without parsing output.
+  const finalOutput = isApprovalBlocked ? { ...output, exitCode: 2 } : output;
+  if (updateNotification !== null) {
+    return appendDeliveryNotification(finalOutput, updateNotification, outputMode);
+  }
+
+  return finalOutput;
 }
 
 function buildPreflightSuggestion(objective: string, verificationPlan: string[]): string {
@@ -1531,137 +1834,88 @@ function buildPreflightSuggestion(objective: string, verificationPlan: string[])
   return `martin-loop preflight "${objective}"${verify}`;
 }
 
-function describeWorkflowPersistenceIssue(step: "doctor" | "estimate" | "session-start" | "preflight"): string {
-  if (step === "doctor") {
-    return "MartinLoop could not persist the doctor receipt needed for governed execution.";
-  }
-  if (step === "estimate") {
-    return "Run `martin estimate \"<objective>\"` to preview cost before this run.";
-  }
-  if (step === "session-start") {
-    return "MartinLoop could not persist the session-start receipt needed for governed execution.";
-  }
-  return "MartinLoop could not persist the preflight receipt needed for governed execution.";
+// ─── Delivery notification helpers ───────────────────────────────────────────
+
+interface DeliveryNotification {
+  line: string;
+  updateAvailable: { targetVersion: string; kind: "cli" | "mcp"; message?: string };
 }
 
-async function autoBootstrapGovernedRun(input: {
-  request: RunCommandRequest;
-  environment: ReturnType<typeof resolveCliEnvironment>;
-  receiptScope: ReturnType<typeof buildCliReceiptScope>;
-}): Promise<{
-  ready: boolean;
-  blockingIssues: string[];
-  warnings: string[];
-}> {
-  const preflightResult = await executePreflightCommand(input.request, "json");
-  let payload: {
-    ready?: boolean;
-    blockingIssues?: unknown;
-    warnings?: unknown;
-  } = {};
+/**
+ * Awaits the in-flight delivery fetch, applies cooldown/dismissal guards,
+ * updates the local ledger, and returns a notification payload — or null if
+ * nothing should be shown. Never throws.
+ */
+async function resolveDeliveryNotification(
+  fetchPromise: Promise<import("@martin/contracts").DeliveryMessage | null>,
+  currentVersion: string
+): Promise<DeliveryNotification | null> {
   try {
-    payload = JSON.parse(preflightResult.stdout) as {
-      ready?: boolean;
-      blockingIssues?: unknown;
-      warnings?: unknown;
+    const message = await fetchPromise;
+    if (!message) return null;
+
+    // Only surface update-kind messages that represent a real version bump.
+    if (message.action.type !== "upgrade_cli") return null;
+    const targetVersion = message.action.targetVersion;
+    if (!targetVersion) return null;
+    if (!isNewerVersion(currentVersion, targetVersion)) return null;
+
+    const ledgerPath = resolveDefaultLedgerPath();
+    const record = loadDeliveryRecord(ledgerPath);
+    const nowMs = Date.now();
+
+    if (!isCooldownExpired(record, nowMs)) return null;
+    if (isDismissed(record, message.id)) return null;
+
+    // Record shown and persist ledger (best-effort).
+    try {
+      saveDeliveryRecord(ledgerPath, recordShown(record, message, nowMs));
+    } catch {
+      // ledger write failure must never surface to the user
+    }
+
+    const installedVersion = getCliInstalledVersion() ?? currentVersion;
+    const line = `\nUpdate available: martin-loop ${installedVersion} → ${targetVersion}\nRun: npm install -g martin-loop@${targetVersion}`;
+
+    return {
+      line,
+      updateAvailable: { targetVersion, kind: "cli", message: message.body }
     };
   } catch {
-    return {
-      ready: false,
-      blockingIssues: ["Unable to parse preflight output."],
-      warnings: []
-    };
+    return null;
   }
+}
 
-  const blockingIssues = Array.isArray(payload.blockingIssues)
-    ? payload.blockingIssues.filter((item): item is string => typeof item === "string")
-    : [];
-  const warnings = Array.isArray(payload.warnings)
-    ? payload.warnings.filter((item): item is string => typeof item === "string")
-    : [];
-  if (payload.ready !== true) {
-    return {
-      ready: false,
-      blockingIssues,
-      warnings
-    };
+/**
+ * Appends a delivery notification to an already-rendered CLI output object.
+ * JSON mode: injects updateAvailable into the payload.
+ * Human mode: appends a text line.
+ * Quiet / piped mode: no change — callers that pipe stdout must not receive noise.
+ */
+function appendDeliveryNotification(
+  output: { exitCode: number; stdout: string; stderr: string },
+  notification: DeliveryNotification,
+  mode: MartinOutputMode
+): { exitCode: number; stdout: string; stderr: string } {
+  if (mode === "json") {
+    try {
+      const parsed = JSON.parse(output.stdout) as Record<string, unknown>;
+      return {
+        ...output,
+        stdout: JSON.stringify({ ...parsed, updateAvailable: notification.updateAvailable }, null, 2)
+      };
+    } catch {
+      return output;
+    }
   }
-
-  const persistenceWarnings: string[] = [];
-  await recordCliWorkflowStep({
-    runsRoot: input.environment.runsRoot,
-    step: "doctor",
-    workingDirectory: input.environment.workingDirectory,
-    engine: input.environment.engine,
-    receiptScope: input.receiptScope
-  }).catch((error: unknown) => {
-    persistenceWarnings.push(
-      `${describeWorkflowPersistenceIssue("doctor")} ${error instanceof Error ? error.message : String(error)}`
-    );
-  });
-
-  await recordCliWorkflowStep({
-    runsRoot: input.environment.runsRoot,
-    step: "session-start",
-    workingDirectory: input.environment.workingDirectory,
-    engine: input.environment.engine,
-    receiptScope: input.receiptScope
-  }).catch((error: unknown) => {
-    persistenceWarnings.push(
-      `${describeWorkflowPersistenceIssue("session-start")} ${error instanceof Error ? error.message : String(error)}`
-    );
-  });
-
-  // Record estimate receipt during auto-bootstrap so the run gate passes.
-  // Auto-bootstrap performs preflight which validates cost/scope — recording
-  // an estimate receipt here represents that the system assessed the task
-  // before execution, even when the user didn't explicitly run martin estimate.
-  await recordCliWorkflowStep({
-    runsRoot: input.environment.runsRoot,
-    step: "estimate",
-    workingDirectory: input.environment.workingDirectory,
-    objective: input.request.objective,
-    receiptScope: input.receiptScope
-  }).catch((error: unknown) => {
-    persistenceWarnings.push(
-      `${describeWorkflowPersistenceIssue("estimate")} ${error instanceof Error ? error.message : String(error)}`
-    );
-  });
-
-  const gate = await evaluateCliRunGate({
-    runsRoot: input.environment.runsRoot,
-    workingDirectory: input.environment.workingDirectory,
-    objective: input.request.objective,
-    engine: input.environment.engine,
-    verificationPlan: input.request.verificationPlan,
-    mutationMode: input.request.mutationMode,
-    receiptScope: input.receiptScope,
-    allowedPaths: input.request.allowedPaths,
-    deniedPaths: input.request.deniedPaths,
-    budget: input.request.budget
-  });
-
-  if (!gate.allowed) {
-    const gateIssues =
-      gate.missingSteps.length > 0
-        ? gate.missingSteps
-            .filter(
-              (step): step is "doctor" | "estimate" | "session-start" | "preflight" =>
-                step === "doctor" || step === "estimate" || step === "session-start" || step === "preflight"
-            )
-            .map((step) => describeWorkflowPersistenceIssue(step))
-        : [gate.message];
-    return {
-      ready: false,
-      blockingIssues: persistenceWarnings.length > 0 ? persistenceWarnings : gateIssues,
-      warnings
-    };
+  if (mode === "quiet") {
+    // Quiet / piped callers consume only the primary value — no notification noise.
+    return output;
   }
-
+  // Human mode: append notification line.
   return {
-    ready: true,
-    blockingIssues: [],
-    warnings: [...warnings, ...persistenceWarnings]
+    ...output,
+    stdout: output.stdout + notification.line
   };
 }
 
@@ -1838,7 +2092,22 @@ async function executeDoctorCommand(
           availability: codexAvailability
         })
       : undefined;
+
+  const sandboxPreflight = environment.engine === "codex"
+    ? checkCodexSandboxPreflight({
+        requestedSandbox: "read-only",
+        workingDirectory: environment.workingDirectory
+      })
+    : undefined;
+
   const receiptScope = buildCliReceiptScope(environment);
+  if (sandboxPreflight) {
+    receiptScope.requestedSandbox = "read-only";
+    receiptScope.effectiveSandbox = sandboxPreflight.effectiveSandbox;
+    receiptScope.writableRoot = sandboxPreflight.writableRoot;
+    receiptScope.capabilitySource = sandboxPreflight.capabilitySource;
+  }
+
   const warnings: string[] = [];
 
   if (!workingDirectoryReady) {
@@ -2054,17 +2323,10 @@ async function executeStartCommand(
   await recordPreference(environment.runsRoot, "onboarding.start.lastRun", new Date().toISOString(), "inferred").catch(() => {});
 
   const objective = "Summarize this repository and confirm the verifier is green.";
-  const contextFlags = renderStartContextFlags(command);
-  const preflightCommand = `martin preflight "${objective}" --verify "${snapshot.verifier.command}"${contextFlags}`;
-  const governedRunCommand = `martin run "${objective}" --verify "${snapshot.verifier.command}" --budget-usd ${defaultBudgetUsd} --max-iterations 1${contextFlags}`;
-  const proofCommand = `martin run "${objective}" --proof --verify "${snapshot.verifier.command}" --budget-usd ${defaultBudgetUsd} --max-iterations 1${contextFlags}`;
-  const estimateCommand = `martin estimate "${objective}" --engine ${snapshot.recommendedEngine} --budget-usd ${defaultBudgetUsd}${contextFlags}`;
-  const doctorCommand = `martin doctor${contextFlags}`;
-  const sessionStartCommand = `martin session-start${contextFlags}`;
-  const enableCommand = `martin enable --engine ${snapshot.recommendedEngine} --verify "${snapshot.verifier.command}" --budget-usd ${defaultBudgetUsd} --max-iterations 1${contextFlags}`;
-  const reviewCommand = `martin review${renderRunsDirContextFlag(command)}`;
-  const dossierCommand = `martin dossier --latest${renderRunsDirContextFlag(command)}`;
-  const shareCommand = `martin share --latest${renderRunsDirContextFlag(command)}`;
+  const preflightCommand = `martin preflight "${objective}" --verify "${snapshot.verifier.command}"`;
+  const governedRunCommand = `martin run "${objective}" --verify "${snapshot.verifier.command}" --budget-usd ${defaultBudgetUsd} --max-iterations 1`;
+  const proofCommand = `martin run "${objective}" --proof --verify "${snapshot.verifier.command}" --budget-usd ${defaultBudgetUsd} --max-iterations 1`;
+  const estimateCommand = `martin estimate "${objective}" --engine ${snapshot.recommendedEngine} --budget-usd ${defaultBudgetUsd}`;
 
   await recordCliWorkflowStep({
     runsRoot: environment.runsRoot,
@@ -2089,47 +2351,32 @@ async function executeStartCommand(
       recommended: {
         engine: snapshot.recommendedEngine,
         verifier: snapshot.verifier.command,
-        budgetUsd: defaultBudgetUsd,
+        budgetUsd: 2,
         maxIterations: 1
       },
       next: {
         mcpInstall: detectedIDE.mcpInstallCommand,
-        doctor: doctorCommand,
+        doctor: "martin doctor",
         estimate: estimateCommand,
-        sessionStart: sessionStartCommand,
+        sessionStart: "martin session-start",
         preflight: preflightCommand,
         run: governedRunCommand,
         proofRun: proofCommand,
-        enable: enableCommand,
-        review: reviewCommand,
-        dossier: dossierCommand,
-        share: shareCommand
+        enable: `martin enable --engine ${snapshot.recommendedEngine} --verify "${snapshot.verifier.command}" --budget-usd 2 --max-iterations 1`,
+        review: "martin review",
+        dossier: "martin dossier --latest",
+        share: "martin share --latest"
       }
     },
     human: [
       "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
       " MartinLoop — Governed AI Coding",
       "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-      CLI_ATTRIBUTION_LINE,
       "",
       modeConfigured
         ? `Mode: ${currentMode} (change with martin mode auto|plan|edits)`
-        : "Mode: not set — choose how MartinLoop interacts before your first governed run",
+        : "Mode: automode recommended — martin mode auto (governs autonomously, best for most work)",
       "",
-      ...(!modeConfigured ? [
-        "── Consent: Choose Your Working Mode ──",
-        "  auto   — Governs autonomously: estimate → preflight → run → receipt.",
-        "           Best for most work. MartinLoop acts without per-step approval.",
-        "  plan   — Shows the plan before executing. You approve each step.",
-        "  edits  — Shows each file change before writing. Maximum control.",
-        "",
-        "  $ martin mode auto     # recommended",
-        "  $ martin mode plan     # approval required",
-        "  $ martin mode edits    # per-edit review",
-        "",
-        "  Runs are blocked until a mode is set or you explicitly accept auto.",
-        ""
-      ] : []),
       "Environment",
       `  Host:       ${detectedIDE.host}`,
       `  Verifier:   ${snapshot.verifier.command}${snapshot.verifier.detected ? "" : " (default)"}`,
@@ -2146,38 +2393,22 @@ async function executeStartCommand(
       `  $ ${estimateCommand}`,
       "",
       "── Step 3: Governed Run ──",
-      `  $ ${doctorCommand}`,
+      `  $ martin doctor`,
       `  $ ${preflightCommand}`,
       `  $ ${governedRunCommand}`,
       "",
       "── Step 4: Inspect Results ──",
-      `  $ ${dossierCommand}`,
-      `  $ ${shareCommand}`,
+      `  $ martin dossier --latest`,
+      `  $ martin share --latest`,
       "",
       "No-spend proof lane",
       `  $ ${proofCommand}`,
       "",
       "Set repo defaults",
-      `  $ ${enableCommand}`
+      `  $ martin enable --engine ${snapshot.recommendedEngine} --verify "${snapshot.verifier.command}" --budget-usd 2 --max-iterations 1`
     ],
     quiet: "martin start"
   });
-}
-
-function renderStartContextFlags(command: StartCommand): string {
-  return [renderCwdContextFlag(command), renderRunsDirContextFlag(command)].filter(Boolean).join("");
-}
-
-function renderCwdContextFlag(command: StartCommand): string {
-  return command.cwd ? ` --cwd "${escapeCliDoubleQuoted(command.cwd)}"` : "";
-}
-
-function renderRunsDirContextFlag(command: StartCommand): string {
-  return command.runsDir ? ` --runs-dir "${escapeCliDoubleQuoted(command.runsDir)}"` : "";
-}
-
-function escapeCliDoubleQuoted(value: string): string {
-  return value.replaceAll('"', '\\"');
 }
 
 async function executeEnableCommand(
@@ -2704,6 +2935,21 @@ async function executePreflightCommand(
           model: request.model
         })
       : undefined;
+
+  const requestedSandbox = request.mutationMode === "edit" ? "workspace-write" : "read-only";
+  const sandboxPreflight = environment.engine === "codex"
+    ? checkCodexSandboxPreflight({
+        requestedSandbox,
+        workingDirectory: environment.workingDirectory
+      })
+    : undefined;
+
+  if (sandboxPreflight) {
+    receiptScope.requestedSandbox = requestedSandbox;
+    receiptScope.effectiveSandbox = sandboxPreflight.effectiveSandbox;
+    receiptScope.writableRoot = sandboxPreflight.writableRoot;
+    receiptScope.capabilitySource = sandboxPreflight.capabilitySource;
+  }
   if (!workingDirectoryExists) {
     blockingIssues.push("Working directory does not exist.");
   }
@@ -2719,6 +2965,9 @@ async function executePreflightCommand(
   }
   if (engineRequired && environment.engine === "codex" && codexProbe && !codexProbe.ok) {
     blockingIssues.push(codexProbe.summary);
+  }
+  if (engineRequired && environment.engine === "codex" && sandboxPreflight && !sandboxPreflight.ok) {
+    blockingIssues.push(sandboxPreflight.remediation);
   }
   if (verificationPlan.length === 0) {
     warnings.push("No verification plan is configured for this run.");
@@ -3080,16 +3329,16 @@ async function executeGateCommand(
   }
   const hasDoctor = Boolean(mcpState.doctor);
   const hasEstimate = Boolean(mcpState.estimate);
-  const hasPlan = Boolean(mcpState.plan);
   const hasPreflight = Boolean(mcpState.preflight);
   // Estimate is required — it proves the agent understood the cost before starting.
-  // Plan is optional for lightweight work; estimate + doctor + preflight is the minimum.
-  const governed = hasDoctor && hasEstimate;
+  // Plan remains optional for lightweight work, but preflight is mandatory before
+  // any surface can claim the repo is governance-ready.
+  const governed = hasDoctor && hasEstimate && hasPreflight;
 
   const missingSteps: string[] = [];
   if (!hasDoctor) missingSteps.push("martin doctor");
   if (!hasEstimate) missingSteps.push("martin estimate \"<your objective>\"");
-  if (!hasPreflight && hasPlan) missingSteps.push("martin preflight \"<your objective>\"");
+  if (!hasPreflight) missingSteps.push("martin preflight \"<your objective>\"");
 
   if (governed) {
     return renderCliSuccess(outputMode, {
@@ -3121,7 +3370,7 @@ async function executeGateCommand(
     "This work is not governed. Complete the required steps first:",
     ...missingSteps.map((step) => `  ✗ ${step}`),
     "",
-    "MartinLoop requires doctor → plan → preflight before any code changes.",
+    "MartinLoop requires doctor → estimate → preflight before any code changes.",
     "Run the missing commands above, then retry."
   ];
 
@@ -3203,71 +3452,6 @@ async function executeModeCommand(
   });
 }
 
-async function executePlanCommand(
-  command: Extract<ParsedCliArguments, { command: "plan" }>,
-  outputMode: MartinOutputMode
-): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  const environment = resolveCliEnvironment({ cwd: command.cwd, runsDir: command.runsDir });
-  const receiptScope = buildCliReceiptScope(environment);
-
-  // Scope the plan to what is known: objective, optional verifier, optional budget.
-  const verificationPlan = command.verify ? [command.verify] : [];
-  const budgetUsd = command.budgetUsd ?? 5;
-
-  // Record plan step into the mcp section so governance-status and martin gate reflect it.
-  await recordMcpPlanStep({
-    runsRoot: environment.runsRoot,
-    workingDirectory: environment.workingDirectory,
-    objective: command.objective,
-    receiptScope
-  }).catch(() => {});
-
-  const planOutput = {
-    command: "plan",
-    objective: command.objective,
-    workingDirectory: environment.workingDirectory,
-    verificationPlan,
-    budget: {
-      maxUsd: budgetUsd,
-      note: "Confirm with `martin estimate` before spending."
-    },
-    proposedApproach: [
-      "Run `martin doctor` to confirm environment readiness.",
-      `Run \`martin estimate "${command.objective}" --budget-usd ${budgetUsd}\` to preview cost.`,
-      command.verify
-        ? `Run \`martin preflight "${command.objective}" --verify "${command.verify}"\` to lock the contract.`
-        : `Run \`martin preflight "${command.objective}"\` to lock the contract.`,
-      command.verify
-        ? `Run \`martin execute "${command.objective}" --verify "${command.verify}" --budget-usd ${budgetUsd}\` to govern execution.`
-        : `Run \`martin run "${command.objective}" --budget-usd ${budgetUsd}\` to govern execution.`
-    ],
-    nextStep: command.verify
-      ? `martin preflight "${command.objective}" --verify "${command.verify}"`
-      : `martin preflight "${command.objective}"`
-  };
-
-  return renderCliSuccess(outputMode, {
-    data: planOutput,
-    human: [
-      "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-      " MartinLoop — Governed Plan",
-      "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-      "",
-      `Objective: ${command.objective}`,
-      `Directory: ${environment.workingDirectory}`,
-      ...(verificationPlan.length > 0 ? [`Verifier:  ${verificationPlan[0]}`] : []),
-      `Budget:    $${budgetUsd} max`,
-      "",
-      "Proposed sequence:",
-      ...planOutput.proposedApproach.map((step, i) => `  ${i + 1}. ${step}`),
-      "",
-      "Plan receipt recorded. Next:",
-      `  $ ${planOutput.nextStep}`
-    ],
-    quiet: `plan:${command.objective.slice(0, 40)}`
-  });
-}
-
 async function executeNativeInstallCommand(
   command: Extract<ParsedCliArguments, { command: "install" }>,
   outputMode: MartinOutputMode
@@ -3300,26 +3484,6 @@ async function executeNativeInstallCommand(
     }
     throw error;
   }
-}
-
-async function executeExecuteCommand(
-  command: Extract<ParsedCliArguments, { command: "execute" }>,
-  outputMode: MartinOutputMode
-): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  // `martin execute` is a governed alias for `martin run` that enforces
-  // the plan→preflight→run sequence. It delegates to the run executor
-  // with the same arguments, relying on the run gate to block if preflight
-  // is missing.
-  const runRequest = parseRunRequest([
-    command.objective,
-    ...(command.verify ? ["--verify", command.verify] : []),
-    "--budget-usd", String(command.budgetUsd ?? 5),
-    ...(command.maxIterations ? ["--max-iterations", String(command.maxIterations)] : []),
-    ...(command.engine ? ["--engine", command.engine] : []),
-    ...(command.cwd ? ["--cwd", command.cwd] : []),
-    ...(command.runsDir ? ["--runs-dir", command.runsDir] : [])
-  ]);
-  return executeRunCommand(runRequest, outputMode);
 }
 
 async function executeCleanCommand(
@@ -3519,9 +3683,7 @@ async function executeMcpInstallCommand(
     ...(command.remoteTokenEnv ? { remoteTokenEnv: command.remoteTokenEnv } : {}),
     ...(command.platform ? { platform: command.platform } : {})
   };
-  const plan = command.dryRun
-    ? buildMcpInstallPlan(input)
-    : await installMcpConfig(input, { installGovernance: command.installGovernance });
+  const plan = command.dryRun ? buildMcpInstallPlan(input) : await installMcpConfig(input);
 
   return renderCliSuccess(outputMode, {
     data: {
@@ -3531,7 +3693,6 @@ async function executeMcpInstallCommand(
       transport: command.transport,
       profile: command.profile,
       dryRun: command.dryRun,
-      installGovernance: command.installGovernance,
       targetPath: plan.targetPath,
       content: plan.content,
       serverId: plan.serverId,
@@ -3553,70 +3714,6 @@ async function executeMcpInstallCommand(
     ],
     quiet: plan.targetPath,
     warnings: remotePolicyWarnings
-  });
-}
-
-async function executeMcpStateCommand(
-  command: Extract<
-    ParsedCliArguments,
-    { command: "mcp_verify_install" | "mcp_rollback" | "mcp_uninstall" }
-  >,
-  outputMode: MartinOutputMode
-): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  const environment = resolveCliEnvironment({
-    cwd: command.cwd,
-    runsDir: command.runsDir
-  });
-  const plan = buildMcpInstallPlan({
-    host: command.host,
-    scope: command.scope,
-    cwd: environment.workingDirectory,
-    runsRoot: environment.runsRoot
-  });
-  if (plan.installMethod !== "file") {
-    throw new CliCommandError(
-      "invalid_input",
-      `${command.host} ${command.scope} scope is not managed by a local config file.`,
-      { suggestion: plan.targetPath }
-    );
-  }
-
-  const selector = {
-    host: command.host,
-    scope: command.scope,
-    targetPath: plan.targetPath
-  };
-
-  if (command.command === "mcp_verify_install") {
-    const verification = await verifyMartinMcpInstall(selector);
-    if (verification.status !== "ok") {
-      throw new CliCommandError(
-        "environment",
-        `MCP install verification failed for ${plan.targetPath}: ${verification.status}.`,
-        { suggestion: "Inspect the host config before running rollback or uninstall." }
-      );
-    }
-    return renderCliSuccess(outputMode, {
-      data: { command: command.command, host: command.host, scope: command.scope, ...verification },
-      human: [`Verified MartinLoop MCP install for ${command.host}`, `Target: ${plan.targetPath}`],
-      quiet: plan.targetPath
-    });
-  }
-
-  if (command.command === "mcp_rollback") {
-    const record = await rollbackMartinMcpInstall(selector);
-    return renderCliSuccess(outputMode, {
-      data: { command: command.command, host: command.host, scope: command.scope, record },
-      human: [`Rolled back MartinLoop MCP install for ${command.host}`, `Target: ${plan.targetPath}`],
-      quiet: plan.targetPath
-    });
-  }
-
-  const records = await uninstallMartinMcp(selector);
-  return renderCliSuccess(outputMode, {
-    data: { command: command.command, host: command.host, scope: command.scope, records },
-    human: [`Uninstalled MartinLoop MCP config for ${command.host}`, `Target: ${plan.targetPath}`],
-    quiet: plan.targetPath
   });
 }
 
@@ -3802,11 +3899,14 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
         request.engine = next;
         index += 1;
         break;
-      case "--arcade":
-        request.arcade = true;
+      case "--approve-dependency-changes":
+        request.approvalPolicy = { ...request.approvalPolicy, dependencyAdds: true };
         break;
-      case "--no-arcade":
-        request.noArcade = true;
+      case "--approve-migrations":
+        request.approvalPolicy = { ...request.approvalPolicy, migrations: true };
+        break;
+      case "--approve-config-changes":
+        request.approvalPolicy = { ...request.approvalPolicy, configChanges: true };
         break;
       default:
         break;
@@ -3834,13 +3934,13 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
     ...(request.allowedPaths?.length ? { allowedPaths: request.allowedPaths } : {}),
     ...(request.deniedPaths?.length ? { deniedPaths: request.deniedPaths } : {}),
     ...(request.acceptanceCriteria?.length ? { acceptanceCriteria: request.acceptanceCriteria } : {}),
-    ...(request.arcade ? { arcade: true } : {}),
-    ...(request.noArcade ? { noArcade: true } : {})
+    ...(request.approvalPolicy ? { approvalPolicy: request.approvalPolicy } : {})
   };
 }
 
 function parseRunListFilters(tokens: string[]): MartinRunListFilters {
   return {
+    workspaceId: deriveWorkspaceId(resolveCliEnvironment().workingDirectory),
     ...(readOption(tokens, "--runs-dir") ? { runsDir: readOption(tokens, "--runs-dir") } : {}),
     ...(readOption(tokens, "--limit") ? { limit: Number(readOption(tokens, "--limit")) } : {}),
     ...(readOption(tokens, "--status") ? { status: readOption(tokens, "--status") } : {}),
@@ -3860,6 +3960,7 @@ function parseRunSelector(
   options: { allowLatest: boolean; includeAttemptIndex?: boolean }
 ): MartinRunSelector {
   const selector: MartinRunSelector = {
+    workspaceId: deriveWorkspaceId(resolveCliEnvironment().workingDirectory),
     ...(readOption(tokens, "--runs-dir") ? { runsDir: readOption(tokens, "--runs-dir") } : {}),
     ...(readOption(tokens, "--file") ? { file: readOption(tokens, "--file") } : {}),
     ...(readOption(tokens, "--loop-id") ? { loopId: readOption(tokens, "--loop-id") } : {}),
@@ -3875,20 +3976,23 @@ function parseRunSelector(
 function parseMcpHost(tokens: string[]): MartinMcpHost {
   const host = readOption(tokens, "--host");
 
-  if (isMartinMcpHost(host)) {
+  if (
+    host === "codex" || host === "claude" || host === "gemini" || host === "generic" ||
+    host === "cursor" || host === "copilot" || host === "continue"
+  ) {
     return host;
   }
 
   if (host === undefined) {
     throw new CliCommandError(
       "invalid_input",
-      `mcp commands require --host <${MCP_HOST_USAGE}>.`,
-      { suggestion: `Pass one of: ${MCP_HOST_LIST}.` }
+      "mcp commands require --host <codex|claude|gemini|cursor|copilot|continue|generic>.",
+      { suggestion: "Pass --host codex, --host claude, --host cursor, --host copilot, --host continue, or --host generic." }
     );
   }
 
   throw new CliCommandError("invalid_input", `Invalid --host value: ${host}.`, {
-    suggestion: `Use one of: ${MCP_HOST_LIST}.`
+    suggestion: "Use --host codex, --host claude, --host gemini, --host cursor, --host copilot, --host continue, or --host generic."
   });
 }
 
@@ -3899,17 +4003,18 @@ function parseMcpScope(host: MartinMcpHost, tokens: string[]): MartinMcpScope {
     return "user";
   }
 
-  if (
-    (scope === "user" || scope === "project" || scope === "local") &&
-    supportsMartinMcpScope(host, scope)
-  ) {
+  if (scope === "local") {
+    if (host !== "claude") {
+      throw new CliCommandError("invalid_input", `Host ${host} does not support --scope local.`, {
+        suggestion: "Use --scope user or --scope project, or switch to --host claude."
+      });
+    }
+
     return scope;
   }
 
-  if (scope === "local") {
-    throw new CliCommandError("invalid_input", `Host ${host} does not support --scope local.`, {
-      suggestion: "Use --scope user or --scope project, or switch to --host claude."
-    });
+  if (scope === "user" || scope === "project") {
+    return scope;
   }
 
   throw new CliCommandError("invalid_input", `Invalid --scope value: ${scope}.`, {
@@ -4385,15 +4490,12 @@ function selectAdapter(
   mutationMode?: MutationMode,
   liveMode: "live" | "proof" = "live",
   codexCommandOverride?: string,
-  verifyTimeoutMs?: number,
-  autoSelectModel?: string
+  verifyTimeoutMs?: number
 ): MartinAdapter {
   if (runAdapterOverrideForTests) {
     return runAdapterOverrideForTests;
   }
-  // Use auto-selected model when no explicit --model flag was given.
-  // autoSelectModel comes from resolveModelForTier(route.recommendedModelTier, engine).
-  const effectiveModel = modelOverride ?? autoSelectModel;
+  const effectiveModel = modelOverride;
 
   if (liveMode === "proof") {
     return createStubDirectProviderAdapter({
@@ -4438,28 +4540,6 @@ function selectAdapter(
     workingDirectory,
     ...(verifyTimeoutMs !== undefined ? { verifyTimeoutMs } : {}),
     ...(effectiveModel ? { model: effectiveModel } : {})
-  });
-}
-
-function resolveCodexAvailabilityForCli(): CodexAvailabilityForTests {
-  return codexAvailabilityOverrideForTests ?? resolveCliCommandAvailability("codex");
-}
-
-function resolveCodexProbeForCli(input: {
-  workingDirectory: string;
-  availability: CodexAvailabilityForTests;
-  model?: string;
-}): CodexProbeForTests {
-  if (typeof codexProbeOverrideForTests === "function") {
-    return codexProbeOverrideForTests(input);
-  }
-  if (codexProbeOverrideForTests) {
-    return codexProbeOverrideForTests;
-  }
-  return probeCodexLaunch({
-    workingDirectory: input.workingDirectory,
-    availability: input.availability,
-    ...(input.model ? { model: input.model } : {})
   });
 }
 
@@ -4660,9 +4740,7 @@ function deriveLoopRunMode(loop: LoopRecord): string {
   if (loop.task.mutationMode) {
     return loop.task.mutationMode;
   }
-  if (loop.attempts.some((attempt) => attempt.adapterId === "direct:verifier:verify-only")) {
-    return "verify_only";
-  }
+  // Determine run mode based on proof adapters or zero cost.
   if (loop.attempts.some((attempt) => attempt.adapterId === "direct:proof:no-mutation")) {
     return "proof";
   }
@@ -4671,6 +4749,7 @@ function deriveLoopRunMode(loop: LoopRecord): string {
   }
   return "not recorded";
 }
+
 
 function latestExitReason(loop: LoopRecord): string {
   const exitEvent = [...loop.events].reverse().find((event) => event.type === "run.completed");
@@ -4683,11 +4762,6 @@ function latestExitReason(loop: LoopRecord): string {
 function parseChallengeFormat(tokens: string[]): "markdown" | "svg" {
   const format = readOption(tokens, "--format");
   return format === "svg" ? "svg" : "markdown";
-}
-
-function parseShareProofCardFormat(tokens: string[]): "svg" | "png" | "both" {
-  const format = readOption(tokens, "--proof-card-format");
-  return format === "png" || format === "both" ? format : "svg";
 }
 
 async function executeShareCommand(
@@ -4704,33 +4778,33 @@ async function executeShareCommand(
         });
   const outputDir = resolveShareOutputDirectory(detail, command.outputDir);
   const shareBundle = buildShareBundle(detail);
-  const shared = await writeShareArtifacts({
-    runsRoot: detail.runsRoot,
-    outputDir,
-    loop: detail.loop,
-    shareBundle,
-    proofCard: command.proofCard,
-    proofCardFormat: command.proofCardFormat
-  });
+
+  await mkdir(outputDir, { recursive: true });
+
+  const files = {
+    receiptJson: join(outputDir, "run-receipt.json"),
+    receiptMarkdown: join(outputDir, "run-receipt.md"),
+    proofCardSvg: join(outputDir, "proof-card.svg")
+  };
+
+  await writeFile(files.receiptJson, `${JSON.stringify(shareBundle.receipt, null, 2)}\n`, "utf8");
+  await writeFile(files.receiptMarkdown, shareBundle.markdown, "utf8");
+  await writeFile(files.proofCardSvg, shareBundle.svg, "utf8");
 
   return renderCliSuccess(outputMode, {
     data: {
       command: "share",
       loopId: detail.loop.loopId,
       outputDir,
-      files: shared.files,
-      ledgers: shared.ledgers,
-      receipt: shared.receipt
+      files,
+      receipt: shareBundle.receipt
     },
     human: [
       `Share bundle written for ${detail.loop.loopId}`,
       `Output directory: ${outputDir}`,
-      `JSON receipt: ${shared.files.receiptJson}`,
-      `Markdown receipt: ${shared.files.receiptMarkdown}`,
-      ...(shared.files.proofCardSvg ? [`Proof card SVG: ${shared.files.proofCardSvg}`] : []),
-      ...(shared.files.proofCardPng ? [`Proof card PNG: ${shared.files.proofCardPng}`] : []),
-      `Receipt ledger (Markdown): ${shared.ledgers.markdown}`,
-      `Receipt ledger (JSONL): ${shared.ledgers.jsonl}`
+      `JSON receipt: ${files.receiptJson}`,
+      `Markdown receipt: ${files.receiptMarkdown}`,
+      `Proof card SVG: ${files.proofCardSvg}`
     ],
     quiet: outputDir,
     warnings: dedupeWarnings([...selected.warnings, ...detail.warnings, ...shareBundle.warnings])
@@ -4739,8 +4813,8 @@ async function executeShareCommand(
 
 function buildShareBundle(detail: Awaited<ReturnType<typeof loadPersistedLoop>>): {
   receipt: Record<string, unknown>;
-  card: ReturnType<typeof buildMartinProofCard>;
-  verification: ReturnType<typeof buildVerificationSummary>;
+  markdown: string;
+  svg: string;
   warnings: string[];
 } {
   const dossier = buildRunDossier(detail);
@@ -4777,8 +4851,17 @@ function buildShareBundle(detail: Awaited<ReturnType<typeof loadPersistedLoop>>)
 
   return {
     receipt,
-    card,
-    verification,
+    markdown: renderShareReceiptMarkdown({
+      loop: detail.loop,
+      card,
+      verification,
+      receipt: receipt["receipt"] as {
+        nextSafeAction?: string;
+      },
+      receiptIntegrity: detail.integrity.state,
+      warnings: receiptWarnings
+    }),
+    svg: renderMartinProofCardSvg(card),
     warnings: receiptWarnings
   };
 }
@@ -4787,391 +4870,37 @@ function renderShareReceiptMarkdown(input: {
   loop: LoopRecord;
   card: ReturnType<typeof buildMartinProofCard>;
   verification: ReturnType<typeof buildVerificationSummary>;
-  receipt: Record<string, unknown>;
-  share: {
-    revision: number;
-    receiptStateHash: string;
-    artifactFiles: readonly string[];
-    ledgerFiles: readonly string[];
-  };
-  receiptFields: {
-    whatHappened?: string;
-    whatMartinPrevented?: string[];
+  receipt: {
     nextSafeAction?: string;
   };
   receiptIntegrity: string;
   warnings: string[];
 }): string {
   const proofCardMarkdown = renderMartinProofCardMarkdown(input.card).trimEnd();
-  const loopSummary = input.receipt["loop"] as {
-    title?: string;
-    objective?: string;
-    status?: string;
-    lifecycleState?: string;
-    spendUsd?: number;
-    budgetUsd?: number;
-    attempts?: number;
-  };
-  const verificationSummary = input.receipt["verification"] as { status?: string; summary?: string } | undefined;
-  const spendUsd =
-    typeof loopSummary?.spendUsd === "number" ? `$${loopSummary.spendUsd.toFixed(4)}` : "unknown";
-  const budgetUsd =
-    typeof loopSummary?.budgetUsd === "number" ? `$${loopSummary.budgetUsd.toFixed(4)}` : "unknown";
-
   return [
-    "# Martin Loop Run Receipt",
+    "# Martin Loop Share Receipt",
     "",
-    "Human-first receipt generated from local Martin Loop evidence.",
+    `Generated from local Martin Loop evidence for loop ${redactAbsolutePaths(input.loop.loopId)}.`,
     "",
-    "## Run Identity",
-    "",
-    `- Loop ID: ${redactAbsolutePaths(input.loop.loopId)}`,
-    `- Title: ${redactAbsolutePaths(loopSummary?.title ?? input.loop.task.title)}`,
-    `- Objective: ${redactAbsolutePaths(loopSummary?.objective ?? input.loop.task.objective)}`,
-    `- Revision: ${String(input.share.revision)}`,
-    `- Receipt state hash: ${input.share.receiptStateHash}`,
-    "",
-    "## Verdict",
-    "",
-    `- Status: ${redactAbsolutePaths(loopSummary?.status ?? input.loop.status)} / ${redactAbsolutePaths(loopSummary?.lifecycleState ?? input.loop.lifecycleState)}`,
+    `- Status: ${redactAbsolutePaths(input.loop.status)} / ${redactAbsolutePaths(input.loop.lifecycleState)}`,
     `- Receipt integrity: ${redactAbsolutePaths(input.receiptIntegrity)}`,
-    `- Verification: ${redactAbsolutePaths(verificationSummary?.status ?? input.verification.status)}`,
-    `- Attempts: ${String(loopSummary?.attempts ?? input.loop.attempts.length)}`,
+    `- Verification: ${redactAbsolutePaths(input.verification.status)}`,
+    `- Attempts: ${String(input.loop.attempts.length)}`,
+    `- Next safe action: ${redactAbsolutePaths(input.receipt.nextSafeAction ?? "Run preflight before the next attempt.")}`,
     "",
-    "## Verifier Evidence",
-    "",
-    `- Summary: ${redactAbsolutePaths(verificationSummary?.summary ?? input.verification.summary)}`,
-    "",
-    "## Budget / Spend Posture",
-    "",
-    `- Spend: ${spendUsd}`,
-    `- Budget: ${budgetUsd}`,
-    "",
-    "## What Happened",
-    "",
-    redactAbsolutePaths(input.receiptFields.whatHappened ?? "No attempt summary was recorded."),
-    "",
-    "## What Martin Prevented",
-    "",
-    `- ${(input.receiptFields.whatMartinPrevented ?? ["No prevention claim is available."]).map(redactAbsolutePaths).join("; ")}`,
-    "",
-    "## Next Safe Action",
-    "",
-    redactAbsolutePaths(input.receiptFields.nextSafeAction ?? "Run preflight before the next attempt."),
-    "",
-    "## Artifacts",
-    "",
-    ...input.share.artifactFiles.map((file) => `- ${file}`),
-    ...input.share.ledgerFiles.map((file) => `- ${file}`),
-    "",
-    "## Proof View",
+    "## Proof Card",
     "",
     proofCardMarkdown,
     ...(input.warnings.length > 0
       ? ["", "## Warnings", "", ...input.warnings.map((warning) => `- ${redactAbsolutePaths(warning)}`)]
       : []),
+    "",
+    "## Notes",
+    "",
+    "- This bundle is generated from local Martin Loop run evidence.",
+    "- Absolute machine paths are redacted so the receipt can be shared without leaking workstation details.",
     ""
   ].join("\n");
-}
-
-async function writeShareArtifacts(input: {
-  runsRoot: string;
-  outputDir: string;
-  loop: LoopRecord;
-  shareBundle: ReturnType<typeof buildShareBundle>;
-  proofCard: boolean;
-  proofCardFormat: "svg" | "png" | "both";
-}): Promise<{
-  files: {
-    receiptJson: string;
-    receiptMarkdown: string;
-    proofCardSvg?: string;
-    proofCardPng?: string;
-  };
-  ledgers: {
-    markdown: string;
-    jsonl: string;
-    revision: number;
-    stateHash: string;
-    appended: boolean;
-  };
-  receipt: Record<string, unknown>;
-}> {
-  await mkdir(input.outputDir, { recursive: true });
-
-  const files = {
-    receiptJson: join(input.outputDir, "run-receipt.json"),
-    receiptMarkdown: join(input.outputDir, "run-receipt.md")
-  } as {
-    receiptJson: string;
-    receiptMarkdown: string;
-    proofCardSvg?: string;
-    proofCardPng?: string;
-  };
-  const ledgers = {
-    markdown: join(input.runsRoot, "run-receipts.md"),
-    jsonl: join(input.runsRoot, "run-receipts.jsonl")
-  };
-  const stateHash = createHash("sha256")
-    .update(JSON.stringify(normalizeShareReceiptForHash(input.shareBundle.receipt)))
-    .digest("hex");
-  const ledgerState = await resolveShareLedgerState({
-    jsonlPath: ledgers.jsonl,
-    loopId: input.loop.loopId,
-    stateHash
-  });
-  const proofBaseName = `proof-card-r${String(ledgerState.revision)}-${stateHash.slice(0, 8)}`;
-
-  if (input.proofCard && (input.proofCardFormat === "svg" || input.proofCardFormat === "both")) {
-    files.proofCardSvg = join(input.outputDir, `${proofBaseName}.svg`);
-  }
-  if (input.proofCard && (input.proofCardFormat === "png" || input.proofCardFormat === "both")) {
-    files.proofCardPng = join(input.outputDir, `${proofBaseName}.png`);
-  }
-
-  const receipt = redactShareValue({
-    ...input.shareBundle.receipt,
-    share: {
-      generatedAt: new Date().toISOString(),
-      revision: ledgerState.revision,
-      receiptStateHash: stateHash,
-      proofCardGenerated: input.proofCard,
-      proofCardFormat: input.proofCard ? input.proofCardFormat : undefined,
-      artifacts: {
-        receiptJson: "run-receipt.json",
-        receiptMarkdown: "run-receipt.md",
-        ...(files.proofCardSvg ? { proofCardSvg: proofBaseName + ".svg" } : {}),
-        ...(files.proofCardPng ? { proofCardPng: proofBaseName + ".png" } : {})
-      },
-      ledgers: {
-        markdown: "run-receipts.md",
-        jsonl: "run-receipts.jsonl"
-      }
-    }
-  }) as Record<string, unknown>;
-
-  const markdown = renderShareReceiptMarkdown({
-    loop: input.loop,
-    card: input.shareBundle.card,
-    verification: input.shareBundle.verification,
-    receipt,
-    share: {
-      revision: ledgerState.revision,
-      receiptStateHash: stateHash,
-      artifactFiles: [
-        "run-receipt.json",
-        "run-receipt.md",
-        ...(files.proofCardSvg ? [proofBaseName + ".svg"] : []),
-        ...(files.proofCardPng ? [proofBaseName + ".png"] : [])
-      ],
-      ledgerFiles: ["run-receipts.md", "run-receipts.jsonl"]
-    },
-    receiptFields: receipt["receipt"] as {
-      whatHappened?: string;
-      whatMartinPrevented?: string[];
-      nextSafeAction?: string;
-    },
-    receiptIntegrity: String(
-      ((receipt["receiptIntegrity"] as { state?: string } | undefined)?.state ?? "unknown")
-    ),
-    warnings: input.shareBundle.warnings
-  });
-
-  await writeFile(files.receiptJson, `${JSON.stringify(receipt, null, 2)}\n`, "utf8");
-  await writeFile(files.receiptMarkdown, markdown, "utf8");
-
-  const proofCardSvg = renderMartinProofCardSvg(input.shareBundle.card);
-  if (files.proofCardSvg) {
-    await writeFileIfAbsent(files.proofCardSvg, proofCardSvg, "utf8");
-  }
-  if (files.proofCardPng) {
-    await writeFileIfAbsent(files.proofCardPng, await renderProofCardPng(proofCardSvg));
-  }
-
-  if (ledgerState.appended) {
-    const ledgerEntry = buildShareLedgerEntry({
-      receipt,
-      revision: ledgerState.revision,
-      stateHash,
-      proofArtifacts: [
-        ...(files.proofCardSvg ? [proofBaseName + ".svg"] : []),
-        ...(files.proofCardPng ? [proofBaseName + ".png"] : [])
-      ]
-    });
-    const existingJsonl = await readFile(ledgers.jsonl, "utf8").catch(() => "");
-    const existingMarkdown = await readFile(ledgers.markdown, "utf8").catch(() => "");
-    await writeFile(
-      ledgers.jsonl,
-      `${existingJsonl}${JSON.stringify(ledgerEntry)}\n`,
-      "utf8"
-    );
-    await writeFile(
-      ledgers.markdown,
-      `${existingMarkdown}${existingMarkdown.trim().length > 0 ? "\n\n---\n\n" : ""}${renderShareLedgerMarkdownEntry(ledgerEntry)}`,
-      "utf8"
-    );
-  }
-
-  return {
-    files,
-    ledgers: {
-      markdown: ledgers.markdown,
-      jsonl: ledgers.jsonl,
-      revision: ledgerState.revision,
-      stateHash,
-      appended: ledgerState.appended
-    },
-    receipt
-  };
-}
-
-async function resolveShareLedgerState(input: {
-  jsonlPath: string;
-  loopId: string;
-  stateHash: string;
-}): Promise<{ revision: number; appended: boolean }> {
-  const raw = await readFile(input.jsonlPath, "utf8").catch(() => "");
-  const entries = raw
-    .split(/\r?\n/gu)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      try {
-        return JSON.parse(line) as {
-          loopId?: string;
-          revision?: number;
-          receiptStateHash?: string;
-        };
-      } catch {
-        return undefined;
-      }
-    })
-    .filter((entry): entry is { loopId?: string; revision?: number; receiptStateHash?: string } => entry !== undefined);
-  const existing = entries.find(
-    (entry) => entry.loopId === input.loopId && entry.receiptStateHash === input.stateHash
-  );
-  if (existing && typeof existing.revision === "number") {
-    return { revision: existing.revision, appended: false };
-  }
-  const maxRevision = entries
-    .filter((entry) => entry.loopId === input.loopId && typeof entry.revision === "number")
-    .reduce((highest, entry) => Math.max(highest, entry.revision ?? 0), 0);
-  return { revision: maxRevision + 1, appended: true };
-}
-
-function normalizeShareReceiptForHash(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map((item) => normalizeShareReceiptForHash(item));
-  }
-
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value)
-        .filter(([key]) => key !== "generatedAt" && key !== "settledAt")
-        .map(([key, item]) => [key, normalizeShareReceiptForHash(item)])
-    );
-  }
-
-  return value;
-}
-
-function buildShareLedgerEntry(input: {
-  receipt: Record<string, unknown>;
-  revision: number;
-  stateHash: string;
-  proofArtifacts: readonly string[];
-}): Record<string, unknown> {
-  const loop = (input.receipt["loop"] ?? {}) as Record<string, unknown>;
-  const verification = (input.receipt["verification"] ?? {}) as Record<string, unknown>;
-  const shareReceipt = (input.receipt["receipt"] ?? {}) as Record<string, unknown>;
-
-  return redactShareValue({
-    kind: "martin.share-ledger-entry.v1",
-    generatedAt: input.receipt["generatedAt"],
-    loopId: loop["loopId"],
-    revision: input.revision,
-    receiptStateHash: input.stateHash,
-    title: loop["title"],
-    objective: loop["objective"],
-    status: loop["status"],
-    lifecycleState: loop["lifecycleState"],
-    verificationStatus: verification["status"],
-    spendUsd: loop["spendUsd"],
-    budgetUsd: loop["budgetUsd"],
-    attempts: loop["attempts"],
-    nextSafeAction: shareReceipt["nextSafeAction"],
-    whatHappened: shareReceipt["whatHappened"],
-    whatMartinPrevented: shareReceipt["whatMartinPrevented"],
-    artifacts: ["run-receipt.json", "run-receipt.md", ...input.proofArtifacts]
-  }) as Record<string, unknown>;
-}
-
-function renderShareLedgerMarkdownEntry(entry: Record<string, unknown>): string {
-  const prevented = Array.isArray(entry["whatMartinPrevented"])
-    ? (entry["whatMartinPrevented"] as unknown[]).map((item) => String(item)).join("; ")
-    : "No prevention claim is available.";
-  const artifacts = Array.isArray(entry["artifacts"])
-    ? (entry["artifacts"] as unknown[]).map((item) => `- ${String(item)}`)
-    : [];
-
-  return [
-    `## ${String(entry["loopId"] ?? "unknown-loop")} · rev ${String(entry["revision"] ?? 1)}`,
-    "",
-    `- Title: ${String(entry["title"] ?? "unknown")}`,
-    `- Status: ${String(entry["status"] ?? "unknown")} / ${String(entry["lifecycleState"] ?? "unknown")}`,
-    `- Verification: ${String(entry["verificationStatus"] ?? "unknown")}`,
-    `- Spend: ${typeof entry["spendUsd"] === "number" ? `$${Number(entry["spendUsd"]).toFixed(4)}` : "unknown"}`,
-    `- Budget: ${typeof entry["budgetUsd"] === "number" ? `$${Number(entry["budgetUsd"]).toFixed(4)}` : "unknown"}`,
-    `- Next safe action: ${String(entry["nextSafeAction"] ?? "Run preflight before the next attempt.")}`,
-    "",
-    "### What Happened",
-    "",
-    String(entry["whatHappened"] ?? "No attempt summary was recorded."),
-    "",
-    "### What Martin Prevented",
-    "",
-    `- ${prevented}`,
-    "",
-    "### Artifacts",
-    "",
-    ...artifacts,
-    ""
-  ].join("\n");
-}
-
-async function renderProofCardPng(svg: string): Promise<Buffer> {
-  const { Resvg } = require("@resvg/resvg-js") as {
-    Resvg: new (
-      svg: string,
-      options: {
-        fitTo: {
-          mode: "width";
-          value: number;
-        };
-      }
-    ) => { render(): { asPng(): Buffer } };
-  };
-  const rendered = new Resvg(svg, {
-    fitTo: {
-      mode: "width",
-      value: 1200
-    }
-  }).render();
-  return rendered.asPng();
-}
-
-async function writeFileIfAbsent(path: string, contents: string | Buffer, encoding?: BufferEncoding): Promise<void> {
-  const exists = await stat(path)
-    .then(() => true)
-    .catch(() => false);
-  if (exists) {
-    return;
-  }
-  if (typeof contents === "string") {
-    await writeFile(path, contents, encoding ?? "utf8");
-    return;
-  }
-  await writeFile(path, contents);
 }
 
 function resolveShareOutputDirectory(
@@ -5243,6 +4972,10 @@ async function executeBadgeCommand(
   command: BadgeCommand,
   outputMode: MartinOutputMode
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  if (command.governed) {
+    return { exitCode: 0, stdout: MARTINLOOP_BADGE_MARKDOWN, stderr: "" };
+  }
+
   const input = await buildLocalReliabilityScoreInput(command.runsDir);
   const score = computeMartinReliabilityScore(input);
   const svg = renderMartinReliabilityBadgeSvg(score);
@@ -5269,8 +5002,95 @@ async function executeBadgeCommand(
   });
 }
 
+async function executeCancelCommand(
+  command: CancelCommand,
+  outputMode: MartinOutputMode
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  const environment = resolveCliEnvironment({ runsDir: command.runsDir });
+
+  const signal: ExitSignalV1 = {
+    schemaVersion: EXIT_SIGNAL_VERSION,
+    runId: command.runId,
+    kind: "human_interrupt",
+    requestedAt: new Date().toISOString(),
+    requestedBy: "martin-cli",
+    ...(command.reason !== undefined ? { reason: command.reason } : {})
+  };
+
+  const outcome = await writeExitSignal(environment.runsRoot, signal);
+
+  if (outcome === "already_exists") {
+    return renderCliError(
+      outputMode,
+      new CliCommandError(
+        "policy_blocked",
+        `A human_interrupt signal for run ${command.runId} already exists. The original signal is preserved.`,
+        { suggestion: "Use martin runs get to inspect the existing signal." }
+      )
+    );
+  }
+
+  return renderCliSuccess(outputMode, {
+    data: { command: "cancel", runId: command.runId, kind: "human_interrupt", outcome: "created" },
+    human: `Interrupt signal written for run ${command.runId}.`,
+    quiet: command.runId
+  });
+}
+
+async function executeSignalCommand(
+  command: SignalCommand,
+  outputMode: MartinOutputMode
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  const disposition = command.disposition === "stop" ? "cancelled" : "satisfied";
+  const environment = resolveCliEnvironment({ runsDir: command.runsDir });
+
+  const signal: ExitSignalV1 = {
+    schemaVersion: EXIT_SIGNAL_VERSION,
+    runId: command.runId,
+    kind: "external_event",
+    requestedAt: new Date().toISOString(),
+    requestedBy: "martin-cli",
+    ...(command.reason !== undefined ? { reason: command.reason } : {}),
+    externalEvent: {
+      source: "martin-cli",
+      event: command.event,
+      disposition,
+      observedAt: new Date().toISOString(),
+      ...(command.reason !== undefined ? { reason: command.reason } : {})
+    }
+  };
+
+  const outcome = await writeExitSignal(environment.runsRoot, signal);
+
+  if (outcome === "already_exists") {
+    return renderCliError(
+      outputMode,
+      new CliCommandError(
+        "policy_blocked",
+        `An external_event signal for run ${command.runId} already exists. The original signal is preserved.`,
+        { suggestion: "Use martin runs get to inspect the existing signal." }
+      )
+    );
+  }
+
+  return renderCliSuccess(outputMode, {
+    data: {
+      command: "signal",
+      runId: command.runId,
+      kind: "external_event",
+      event: command.event,
+      disposition: command.disposition,
+      outcome: "created"
+    },
+    human: `External event signal written for run ${command.runId} (${command.event}, ${command.disposition}).`,
+    quiet: command.runId
+  });
+}
+
 async function loadLatestLoopIntegrity(runsDir?: string): Promise<IntegrityStatus | undefined> {
-  const evidence = await findPersistedLoopEvidence(runsDir).catch(() => ({
+  const environment = resolveCliEnvironment({ ...(runsDir ? { runsDir } : {}) });
+  const workspaceId = deriveWorkspaceId(environment.workingDirectory);
+  const evidence = await findPersistedLoopEvidence(runsDir, { workspaceId }).catch(() => ({
     loop: undefined as LoopRecord | undefined
   }));
 
@@ -5279,7 +5099,7 @@ async function loadLatestLoopIntegrity(runsDir?: string): Promise<IntegrityStatu
   }
 
   try {
-    const loaded = await loadPersistedLoop({ loopId: evidence.loop.loopId, ...(runsDir ? { runsDir } : {}) });
+    const loaded = await loadPersistedLoop({ loopId: evidence.loop.loopId, workspaceId, ...(runsDir ? { runsDir } : {}) });
     return loaded.integrity.state;
   } catch {
     return "unsigned";
@@ -5288,12 +5108,13 @@ async function loadLatestLoopIntegrity(runsDir?: string): Promise<IntegrityStatu
 
 async function buildLocalReliabilityScoreInput(runsDir?: string): Promise<MartinReliabilityScoreInput> {
   const environment = resolveCliEnvironment({ ...(runsDir ? { runsDir } : {}) });
+  const workspaceId = deriveWorkspaceId(environment.workingDirectory);
   const shouldInspectRunStore = process.env["MARTIN_RUNS_DIR"] !== undefined;
   const loops = shouldInspectRunStore
-    ? await listPersistedLoops({ limit: 20 }).catch(() => ({ loops: [] as LoopRecord[] }))
+    ? await listPersistedLoops({ limit: 20, workspaceId }).catch(() => ({ loops: [] as LoopRecord[] }))
     : { loops: [] as LoopRecord[] };
   const latestPersisted = shouldInspectRunStore
-    ? await loadPersistedLoop({ latest: true }).catch(() => null)
+    ? await loadPersistedLoop({ latest: true, workspaceId }).catch(() => null)
     : null;
   const latestLoop = latestPersisted?.loop ?? loops.loops[0];
   const configPath = join(environment.workingDirectory, "martin.config.yaml");
@@ -5367,4 +5188,28 @@ function parseOptionalRunSelector(tokens: string[]): MartinRunSelector | undefin
     ...(latest ? { latest } : {}),
     ...(runsDir ? { runsDir } : {})
   };
+}
+
+// ─── Codex host override helpers (test seam) ─────────────────────────────────
+
+function resolveCodexAvailabilityForCli(): CodexAvailabilityForTests {
+  return codexAvailabilityOverrideForTests ?? resolveCliCommandAvailability("codex");
+}
+
+function resolveCodexProbeForCli(input: {
+  workingDirectory: string;
+  availability: CodexAvailabilityForTests;
+  model?: string;
+}): CodexProbeForTests {
+  if (typeof codexProbeOverrideForTests === "function") {
+    return codexProbeOverrideForTests(input);
+  }
+  if (codexProbeOverrideForTests) {
+    return codexProbeOverrideForTests;
+  }
+  return probeCodexLaunch({
+    workingDirectory: input.workingDirectory,
+    availability: input.availability,
+    ...(input.model ? { model: input.model } : {})
+  });
 }

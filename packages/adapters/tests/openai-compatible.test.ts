@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 /**
  * Tests for the OpenAI-compatible adapter.
  * Uses a local mock HTTP server to avoid any real API calls.
@@ -171,6 +167,8 @@ describe("createOpenAiCompatibleAdapter", () => {
 
     expect(result.status).toBe("failed");
     expect(result.failure?.message).toBe("empty_response");
+    expect(result.usage.provenance).toBe("estimated");
+    expect(result.usage.estimatedUsd).toBe(result.usage.actualUsd);
   });
 
   it("skips git diff scans when no verification steps are configured", async () => {
@@ -267,6 +265,82 @@ describe("createOpenAiCompatibleAdapter", () => {
     // 1000 input tokens = $0.00027, 500 output tokens = $0.00055 → $0.00082
     expect(result.status).toBe("completed");
     expect(result.usage.actualUsd).toBeCloseTo(0.00027 + 0.00055, 5);
+    expect(result.usage.provenance).toBe("actual");
+  });
+
+  it("marks cost estimated when the provider omits token usage", async () => {
+    const { url, close } = await startMockServer(() => ({
+      body: {
+        choices: [{ message: { role: "assistant", content: "Fixed." }, finish_reason: "stop" }]
+      }
+    }));
+    mockClose = close;
+
+    const result = await createOpenAiCompatibleAdapter({
+      baseUrl: url,
+      model: "deepseek/deepseek-chat"
+    }).execute(makeRequest() as any);
+
+    expect(result.usage.provenance).toBe("estimated");
+    expect(result.usage.estimatedUsd).toBe(result.usage.actualUsd);
+  });
+
+  it("marks cost estimated when the provider reports only partial token usage", async () => {
+    const { url, close } = await startMockServer(() => ({
+      body: {
+        choices: [{ message: { role: "assistant", content: "Fixed." }, finish_reason: "stop" }],
+        usage: { prompt_tokens: 100 }
+      }
+    }));
+    mockClose = close;
+
+    const result = await createOpenAiCompatibleAdapter({
+      baseUrl: url,
+      model: "deepseek/deepseek-chat"
+    }).execute(makeRequest() as any);
+
+    expect(result.usage.tokensIn).toBe(100);
+    expect(result.usage.tokensOut).toBeGreaterThan(0);
+    expect(result.usage.provenance).toBe("estimated");
+    expect(result.usage.estimatedUsd).toBe(result.usage.actualUsd);
+  });
+
+  it("marks cost estimated when pricing falls back for an unknown model", async () => {
+    const { url, close } = await startMockServer(() => ({
+      body: {
+        choices: [{ message: { role: "assistant", content: "Fixed." }, finish_reason: "stop" }],
+        usage: { prompt_tokens: 100, completion_tokens: 50 }
+      }
+    }));
+    mockClose = close;
+
+    const result = await createOpenAiCompatibleAdapter({
+      baseUrl: url,
+      model: "provider/unknown-model"
+    }).execute(makeRequest() as any);
+
+    expect(result.usage.provenance).toBe("estimated");
+    expect(result.usage.estimatedUsd).toBe(result.usage.actualUsd);
+  });
+
+  it("marks empty-response cost estimated when pricing falls back for an unknown model", async () => {
+    const { url, close } = await startMockServer(() => ({
+      body: {
+        choices: [{ message: { role: "assistant", content: "" }, finish_reason: "stop" }],
+        usage: { prompt_tokens: 100, completion_tokens: 0 }
+      }
+    }));
+    mockClose = close;
+
+    const result = await createOpenAiCompatibleAdapter({
+      baseUrl: url,
+      model: "provider/unknown-model"
+    }).execute(makeRequest() as any);
+
+    expect(result.status).toBe("failed");
+    expect(result.failure?.message).toBe("empty_response");
+    expect(result.usage.provenance).toBe("estimated");
+    expect(result.usage.estimatedUsd).toBe(result.usage.actualUsd);
   });
 
   it("exposes correct adapterId and metadata", () => {

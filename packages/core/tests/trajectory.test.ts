@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 import { describe, expect, it } from "vitest";
 
 import {
@@ -56,6 +52,7 @@ describe("trajectory heuristics", () => {
   it("threads trajectory assessment through attempt admission", () => {
     const request: MartinAdapterRequest = {
       loopId: "loop_trajectory",
+      workspaceId: "ws_trajectory",
       attemptId: "att_004",
       context: {
         taskTitle: "Repair the runtime guard",

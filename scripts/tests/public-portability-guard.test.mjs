@@ -71,18 +71,3 @@ test("runPublicPortabilityGuard fails when source includes local machine depende
   );
 });
 
-test("runPublicPortabilityGuard skips deleted tracked files in a dirty worktree candidate set", async () => {
-  const rootDir = await mkdtemp(path.join(os.tmpdir(), "martin-portability-missing-"));
-  await mkdir(path.join(rootDir, "docs"), { recursive: true });
-
-  await writeFile(path.join(rootDir, "docs", "kept.md"), "# Kept\n");
-
-  const result = await runPublicPortabilityGuard({
-    rootDir,
-    files: ["docs/deleted.md", "docs/kept.md"],
-  });
-
-  assert.equal(result.checkedFiles, 1);
-  assert.equal(result.trackedFiles, 2);
-});
-

@@ -6,12 +6,17 @@ import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-const MARTIN_HOME = join(homedir(), ".martin");
-
-export function martinFilePath(...segments: string[]): string {
-  return join(MARTIN_HOME, ...segments);
+/**
+ * Returns an absolute path under ~/.martin/<filename>.
+ * Creates no directories — callers are responsible for mkdir.
+ */
+export function martinFilePath(filename: string): string {
+  return join(homedir(), ".martin", filename);
 }
 
+/**
+ * Ensures ~/.martin exists. Safe to call multiple times (mkdir recursive).
+ */
 export function ensureMartinDir(): void {
-  mkdirSync(MARTIN_HOME, { recursive: true });
+  mkdirSync(join(homedir(), ".martin"), { recursive: true });
 }

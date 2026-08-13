@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 import { spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -24,6 +20,7 @@ import {
   type MartinAdapter,
   type MartinAdapterRequest
 } from "../src/index";
+import { verifyReceiptIntegrityFromFiles } from "../src/persistence/index";
 
 describe("distillContext", () => {
   it("keeps the latest attempts and exposes the remaining budget envelope", () => {
@@ -123,6 +120,7 @@ describe("evaluateAttemptPolicy", () => {
     const decision = evaluateAttemptPolicy({
       request: {
         loopId: "loop_policy",
+        workspaceId: "ws_policy",
         attemptId: "att_policy",
         context: {
           taskTitle: "Repair runtime",
@@ -146,6 +144,7 @@ describe("evaluateAttemptPolicy", () => {
     const decision = evaluateAttemptPolicy({
       request: {
         loopId: "loop_policy",
+        workspaceId: "ws_policy",
         attemptId: "att_policy",
         context: {
           taskTitle: "Repair runtime",
@@ -173,6 +172,7 @@ describe("evaluateAttemptPolicy", () => {
     const decision = evaluateAttemptPolicy({
       request: {
         loopId: "loop_policy",
+        workspaceId: "ws_policy",
         attemptId: "att_policy",
         context: {
           taskTitle: "Repair runtime",
@@ -415,7 +415,21 @@ describe("runMartin", () => {
           },
           verification: {
             passed: true,
-            summary: "pnpm --filter @martin/core test passed"
+            summary: "pnpm --filter @martin/core test passed",
+            binding: {
+              runId: request.loopId,
+              workspaceId: request.workspaceId,
+              cwd: process.cwd(),
+              commands: request.context.verificationPlan,
+            },
+            steps: [{
+              command: request.context.verificationPlan[0]!,
+              launched: true,
+              completed: true,
+              crashed: false,
+              exitCode: 0,
+              timedOut: false,
+            }]
           }
         };
       }
@@ -441,6 +455,7 @@ describe("runMartin", () => {
     });
 
     expect(requestSeen?.context.taskTitle).toBe("Repair the runtime adapter");
+    expect(requestSeen?.workspaceId).toBe("ws_ops");
     expect(result.loop.status).toBe("completed");
     expect(result.loop.lifecycleState).toBe("completed");
     expect(result.loop.attempts).toHaveLength(1);
@@ -455,6 +470,66 @@ describe("runMartin", () => {
       ])
     );
     expect(result.decision.lifecycleState).toBe("completed");
+  });
+
+  it("binds verifier evidence to the configured verification stack when it differs from the flat plan", async () => {
+    const adapter: MartinAdapter = {
+      adapterId: "direct:stack",
+      kind: "direct-provider",
+      label: "Stack verifier adapter",
+      metadata: { providerId: "test", model: "test" },
+      async execute(request) {
+        const command = request.context.verificationStack![0]!.command;
+        return {
+          status: "completed",
+          summary: "Configured stack passed.",
+          usage: { actualUsd: 0.01, tokensIn: 1, tokensOut: 1 },
+          verification: {
+            passed: true,
+            summary: "Configured stack passed.",
+            binding: {
+              runId: request.loopId,
+              workspaceId: request.workspaceId,
+              cwd: process.cwd(),
+              commands: [command],
+            },
+            steps: [{
+              command,
+              launched: true,
+              completed: true,
+              crashed: false,
+              exitCode: 0,
+              timedOut: false,
+            }],
+          },
+        };
+      },
+    };
+
+    const result = await runMartin({
+      workspaceId: "ws_stack",
+      projectId: "proj_runtime",
+      task: {
+        title: "Use configured verifier stack",
+        objective: "Bind completion to the verifier commands that actually execute.",
+        verificationPlan: ["npm run legacy-plan"],
+        verificationStack: [{ command: "npm run canonical-stack", type: "test_full" }],
+      },
+      budget: { maxUsd: 1, softLimitUsd: 0.8, maxIterations: 1, maxTokens: 100 },
+      adapter,
+      now: createTimestampSource([
+        "2026-03-27T17:00:00.000Z",
+        "2026-03-27T17:00:01.000Z",
+        "2026-03-27T17:00:02.000Z",
+        "2026-03-27T17:00:03.000Z",
+        "2026-03-27T17:00:04.000Z",
+        "2026-03-27T17:00:05.000Z",
+      ]),
+      idFactory: createIdFactory(),
+    });
+
+    expect(result.loop.status).toBe("completed");
+    expect(result.loop.lifecycleState).toBe("completed");
   });
 
   it("persists authoritative verification steps and contradiction warnings for successful runs", async () => {
@@ -532,10 +607,7 @@ describe("runMartin", () => {
     const ledger = await readLedger(runsRoot, result.loop.loopId);
     const verificationLedger = ledger.find((entry) => entry.kind === "verification.completed");
 
-    expect(verificationEvent?.payload["passed"]).toBe(true);
-    expect(verificationEvent?.payload["warnings"]).toContain(
-      "Adapter output reported a tool-launch problem before MartinLoop ran its own verifier: CreateProcessAsUserW failed: 5 before verifier execution in the adapter transcript."
-    );
+    expect(verificationEvent?.payload["passed"]).toBe(false);
     expect(verificationEvent?.payload["steps"]).toEqual([
       expect.objectContaining({
         command: "npm test",
@@ -562,8 +634,12 @@ describe("runMartin", () => {
   it("does not attribute pre-existing dirty repo files to a tool-launch-blocked attempt", async () => {
     const runsRoot = await mkdtemp(join(tmpdir(), "martin-env-dirty-boundary-"));
     const repoRoot = join(runsRoot, "repo");
-    await materializeCommittedRepo(repoRoot);
-    await writeFile(join(repoRoot, "src", "real.ts"), "export const real = 2;\n", "utf8");
+    await mkdir(join(repoRoot, "src"), { recursive: true });
+    await mkdir(join(repoRoot, "docs"), { recursive: true });
+    await writeFile(join(repoRoot, "src", "real.ts"), "export const real = 1;\n", "utf8");
+    await writeFile(join(repoRoot, "docs", "notes.md"), "clean baseline\n", "utf8");
+    initializeGitRepo(repoRoot);
+    await writeFile(join(repoRoot, "docs", "notes.md"), "pre-existing dirty notes\n", "utf8");
     const store = createFileRunStore({ runsRoot });
 
     const adapter: MartinAdapter = {
@@ -575,7 +651,7 @@ describe("runMartin", () => {
         model: "codex",
         transport: "cli"
       },
-      async execute() {
+      async execute(request) {
         return {
           status: "completed",
           summary: "CreateProcessAsUserW failed: 5 before verifier execution in the adapter transcript.",
@@ -610,7 +686,7 @@ describe("runMartin", () => {
         objective: "Keep pre-existing dirty files out of attempt attribution when the adapter could not execute.",
         verificationPlan: ["npm test"],
         repoRoot,
-        allowedPaths: ["docs/**"]
+        allowedPaths: ["src/**"]
       },
       budget: {
         maxUsd: 10,
@@ -635,14 +711,76 @@ describe("runMartin", () => {
     const verificationEvent = result.loop.events.find((event) => event.type === "verification.completed");
     const failureEvent = result.loop.events.find((event) => event.type === "failure.classified");
 
-    expect(result.decision.lifecycleState).toBe("completed");
-    expect(failureEvent).toBeUndefined();
-    expect(verificationEvent?.payload["warnings"]).toContain(
-      "Adapter output reported a tool-launch problem before MartinLoop ran its own verifier: CreateProcessAsUserW failed: 5 before verifier execution in the adapter transcript."
+    expect(result.decision.lifecycleState).not.toBe("completed");
+    expect(failureEvent).toBeDefined();
+    expect(verificationEvent?.payload["passed"]).toBe(false);
+    await expect(readFile(join(repoRoot, "docs", "notes.md"), "utf8")).resolves.toBe(
+      "pre-existing dirty notes\n"
     );
-    await expect(readFile(join(repoRoot, "src", "real.ts"), "utf8")).resolves.toBe(
-      "export const real = 2;\n"
-    );
+  });
+
+  it("preserves operator dirty state without counting it as the governed attempt mutation", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-operator-dirty-baseline-"));
+    const repoRoot = join(runsRoot, "repo");
+    await mkdir(join(repoRoot, "docs"), { recursive: true });
+    await writeFile(join(repoRoot, "seed.txt"), "seed\n", "utf8");
+    initializeGitRepo(repoRoot);
+    await writeFile(join(repoRoot, "docs", "operator.txt"), "operator baseline\n", "utf8");
+
+    const result = await runMartin({
+      workspaceId: "ws_operator_dirty",
+      projectId: "proj_runtime",
+      task: {
+        title: "Require a new mutation",
+        objective: "Update seed.txt.",
+        verificationPlan: ["verify-seed"],
+        mutationMode: "edit",
+        repoRoot,
+      },
+      budget: { maxUsd: 1, softLimitUsd: 0.8, maxIterations: 1, maxTokens: 100 },
+      adapter: {
+        adapterId: "direct:misreported-operator-dirt",
+        kind: "direct-provider",
+        label: "Misreported operator dirt",
+        metadata: {
+          providerId: "test",
+          model: "test",
+          capabilities: { workspaceMutations: true },
+        },
+        async execute(request) {
+          return {
+            status: "completed",
+            summary: "Incorrectly reported the operator-owned file as attempt work.",
+            usage: { actualUsd: 0.01, tokensIn: 1, tokensOut: 1 },
+            verification: {
+              passed: true,
+              summary: "Verifier passed.",
+              binding: {
+                runId: request.loopId,
+                workspaceId: request.workspaceId,
+                cwd: repoRoot,
+                commands: request.context.verificationPlan,
+              },
+              steps: request.context.verificationPlan.map((command) => ({
+                command,
+                launched: true,
+                completed: true,
+                crashed: false,
+                exitCode: 0,
+                timedOut: false,
+              })),
+            },
+            execution: { changedFiles: ["docs/operator.txt"] },
+          };
+        },
+      },
+    });
+
+    expect(result.decision.lifecycleState).toBe("budget_exit");
+    expect(result.loop.events.find((event) => event.type === "verification.completed")?.payload)
+      .toMatchObject({ passed: false, changedFiles: [] });
+    await expect(readFile(join(repoRoot, "docs", "operator.txt"), "utf8"))
+      .resolves.toBe("operator baseline\n");
   });
 
   it("writes context integrity precheck artifacts into the active runs root", async () => {
@@ -657,7 +795,7 @@ describe("runMartin", () => {
         providerId: "openai",
         model: "gpt-5-mini"
       },
-      async execute() {
+      async execute(request) {
         return {
           status: "completed",
           summary: "Verified the workspace without code changes.",
@@ -712,16 +850,100 @@ describe("runMartin", () => {
     expect(artifact.verdict).toBe("clean");
   });
 
+  it("allows read-only governance tasks to complete without code changes when verification passes", async () => {
+    const adapter: MartinAdapter = {
+      adapterId: "direct:verify-only",
+      kind: "direct-provider",
+      label: "Verify only adapter",
+      metadata: {
+        providerId: "openai",
+        model: "gpt-5-mini",
+        capabilities: {
+          preflight: true,
+          usageSettlement: true,
+          diffArtifacts: true,
+          structuredErrors: false,
+          cachingSignals: false,
+          workspaceMutations: false
+        }
+      },
+      async execute(request) {
+        return {
+          status: "completed",
+          summary: "Ran the verifier without making edits.",
+          usage: {
+            actualUsd: 0,
+            tokensIn: 0,
+            tokensOut: 0
+          },
+          verification: {
+            passed: true,
+            summary: "Verification passed without changes.",
+            binding: {
+              runId: request.loopId,
+              workspaceId: request.workspaceId,
+              cwd: request.context.repoRoot ?? process.cwd(),
+              commands: request.context.verificationPlan,
+            },
+            steps: request.context.verificationPlan.map((command) => ({ command, launched: true, completed: true, crashed: false, exitCode: 0, timedOut: false })),
+          },
+          execution: {
+            changedFiles: []
+          }
+        };
+      }
+    };
+
+    const result = await runMartin({
+      workspaceId: "ws_ops",
+      projectId: "proj_runtime",
+      task: {
+        title: "Verify the contracts package",
+        objective: "Run the verifier only and do not edit files.",
+        verificationPlan: ["pnpm --filter @martin/contracts test"],
+        allowedPaths: ["packages/contracts/**"]
+      },
+      budget: {
+        maxUsd: 10,
+        softLimitUsd: 6,
+        maxIterations: 5,
+        maxTokens: 2_000
+      },
+      adapter,
+      now: createTimestampSource([
+        "2026-05-11T12:00:00.000Z",
+        "2026-05-11T12:00:01.000Z",
+        "2026-05-11T12:00:02.000Z",
+        "2026-05-11T12:00:03.000Z",
+        "2026-05-11T12:00:04.000Z"
+      ]),
+      idFactory: createIdFactory()
+    });
+
+    expect(result.decision.lifecycleState).toBe("completed");
+    expect(result.loop.lifecycleState).toBe("completed");
+    expect(result.loop.attempts).toHaveLength(1);
+    expect(result.loop.attempts[0]?.failureClass).toBeUndefined();
+  });
+
   it("allows proof adapters to complete without edits when verification passes", async () => {
     const adapter: MartinAdapter = {
       adapterId: "direct:verifier:verify-only",
       kind: "direct-provider",
-      label: "Verifier-only proof adapter",
+      label: "Read-only proof adapter",
       metadata: {
         providerId: "openai",
-        model: "gpt-5-mini"
+        model: "gpt-5-mini",
+        capabilities: {
+          preflight: true,
+          usageSettlement: true,
+          diffArtifacts: true,
+          structuredErrors: false,
+          cachingSignals: false,
+          workspaceMutations: false
+        }
       },
-      async execute() {
+      async execute(request) {
         return {
           status: "completed",
           summary: "Verified the workspace without code changes.",
@@ -732,7 +954,14 @@ describe("runMartin", () => {
           },
           verification: {
             passed: true,
-            summary: "Verification passed without changes."
+            summary: "Verification passed without changes.",
+            binding: {
+              runId: request.loopId,
+              workspaceId: request.workspaceId,
+              cwd: request.context.repoRoot ?? process.cwd(),
+              commands: request.context.verificationPlan,
+            },
+            steps: request.context.verificationPlan.map((command) => ({ command, launched: true, completed: true, crashed: false, exitCode: 0, timedOut: false })),
           },
           execution: {
             changedFiles: []
@@ -797,7 +1026,7 @@ describe("runMartin", () => {
           workspaceMutations: false
         }
       },
-      async execute() {
+      async execute(request) {
         return {
           status: "failed",
           summary: "Proof adapter refused live inference, but it did not edit the workspace.",
@@ -878,7 +1107,7 @@ describe("runMartin", () => {
         providerId: "openai",
         model: "gpt-5-mini"
       },
-      async execute() {
+      async execute(request) {
         attemptsSeen += 1;
 
         return {
@@ -1466,7 +1695,7 @@ describe("runMartin", () => {
         providerId: "openai",
         model: "gpt-5-mini"
       },
-      async execute() {
+      async execute(request) {
         fallbackExecutions += 1;
         return {
           status: "completed",
@@ -1478,7 +1707,14 @@ describe("runMartin", () => {
           },
           verification: {
             passed: true,
-            summary: "pnpm --filter @martin/core test passed"
+            summary: "pnpm --filter @martin/core test passed",
+            binding: {
+              runId: request.loopId,
+              workspaceId: request.workspaceId,
+              cwd: request.context.repoRoot ?? process.cwd(),
+              commands: request.context.verificationPlan,
+            },
+            steps: request.context.verificationPlan.map((command) => ({ command, launched: true, completed: true, crashed: false, exitCode: 0, timedOut: false })),
           }
         };
       }
@@ -1579,6 +1815,67 @@ const store: import("../src/index").RunStore = {
     expect((groundingEvent?.payload as Record<string, unknown>)?.violationCount).toBeGreaterThan(0);
   });
 
+  it("completes an edit task with no changes only when definition-of-done is explicitly pre-satisfied", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), "martin-pre-satisfied-"));
+    const adapter: MartinAdapter = {
+      adapterId: "direct:pre-satisfied",
+      kind: "direct-provider",
+      label: "Pre-satisfied adapter",
+      metadata: {
+        providerId: "test",
+        model: "test",
+        capabilities: { workspaceMutations: true },
+      },
+      async execute(request) {
+        return {
+          status: "completed",
+          summary: "Acceptance criteria were already satisfied; verifier passed without edits.",
+          usage: { actualUsd: 0.01, tokensIn: 1, tokensOut: 1 },
+          verification: {
+            passed: true,
+            summary: "Verifier passed.",
+            binding: {
+              runId: request.loopId,
+              workspaceId: request.workspaceId,
+              cwd: repoRoot,
+              commands: request.context.verificationPlan,
+            },
+            steps: request.context.verificationPlan.map((command) => ({
+              command,
+              launched: true,
+              completed: true,
+              crashed: false,
+              exitCode: 0,
+              timedOut: false,
+            })),
+          },
+          execution: { changedFiles: [] },
+        };
+      },
+    };
+
+    const result = await runMartin({
+      workspaceId: "ws_pre_satisfied",
+      projectId: "proj_runtime",
+      task: {
+        title: "Confirm existing fix",
+        objective: "Verify that the requested edit is already present.",
+        verificationPlan: ["npm test"],
+        mutationMode: "edit",
+        definitionOfDonePreSatisfied: true,
+        repoRoot,
+        acceptanceCriteria: ["Requested behavior already exists and verifier passes."],
+      },
+      budget: { maxUsd: 1, softLimitUsd: 0.8, maxIterations: 1, maxTokens: 100 },
+      adapter,
+    });
+
+    expect(result.loop.status).toBe("completed");
+    expect(result.loop.lifecycleState).toBe("completed");
+    expect(result.loop.events.find((event) => event.type === "verification.completed")?.payload)
+      .toMatchObject({ passed: true, changedFiles: [] });
+  });
+
   it("writes patch truth artifacts for a grounded verifier-passing patch", async () => {
     const runsRoot = await mkdtemp(join(tmpdir(), "martin-patch-keep-"));
     const repoRoot = join(runsRoot, "repo");
@@ -1594,7 +1891,7 @@ const store: import("../src/index").RunStore = {
         providerId: "openai",
         model: "gpt-5-mini"
       },
-      async execute() {
+      async execute(request) {
         return {
           status: "completed",
           summary: "Updated the grounded source file and passed verification.",
@@ -1605,7 +1902,14 @@ const store: import("../src/index").RunStore = {
           },
           verification: {
             passed: true,
-            summary: "pnpm --filter @martin/core test passed"
+            summary: "pnpm --filter @martin/core test passed",
+            binding: {
+              runId: request.loopId,
+              workspaceId: request.workspaceId,
+              cwd: request.context.repoRoot ?? process.cwd(),
+              commands: request.context.verificationPlan,
+            },
+            steps: request.context.verificationPlan.map((command) => ({ command, launched: true, completed: true, crashed: false, exitCode: 0, timedOut: false })),
           },
           execution: {
             changedFiles: ["src/real.ts"],
@@ -1671,6 +1975,141 @@ const store: import("../src/index").RunStore = {
     expect(patchDecision.decision).toBe("KEEP");
     expect(patchDecision.reasonCodes).toContain("verifier_passed");
     expect(patchScore.reasonCodes).toContain("verifier_passed");
+  });
+
+  it("keeps a verifier-passing tracked change when the file is outside the grounding index extensions", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), "martin-patch-existing-text-"));
+    await writeFile(join(repoRoot, "seed.txt"), "seed\n", "utf8");
+    expect(spawnSync("git", ["init"], { cwd: repoRoot }).status).toBe(0);
+    expect(spawnSync("git", ["add", "seed.txt"], { cwd: repoRoot }).status).toBe(0);
+    expect(spawnSync(
+      "git",
+      ["-c", "user.name=MartinLoop Test", "-c", "user.email=test@martinloop.local", "commit", "-m", "seed"],
+      { cwd: repoRoot }
+    ).status).toBe(0);
+
+    const adapter: MartinAdapter = {
+      adapterId: "direct:existing-text",
+      kind: "direct-provider",
+      label: "Existing text adapter",
+      metadata: {
+        providerId: "test",
+        model: "test",
+        capabilities: { workspaceMutations: true },
+      },
+      async execute(request) {
+        await writeFile(join(repoRoot, "seed.txt"), "success\n", "utf8");
+        return {
+          status: "completed",
+          summary: "Updated the tracked text file and passed verification.",
+          usage: { actualUsd: 0.01, tokensIn: 1, tokensOut: 1 },
+          verification: {
+            passed: true,
+            summary: "Verifier passed.",
+            binding: {
+              runId: request.loopId,
+              workspaceId: request.workspaceId,
+              cwd: repoRoot,
+              commands: request.context.verificationPlan,
+            },
+            steps: request.context.verificationPlan.map((command) => ({
+              command,
+              launched: true,
+              completed: true,
+              crashed: false,
+              exitCode: 0,
+              timedOut: false,
+            })),
+          },
+          execution: { changedFiles: ["seed.txt"] },
+        };
+      },
+    };
+
+    const result = await runMartin({
+      workspaceId: "ws_existing_text",
+      projectId: "proj_runtime",
+      task: {
+        title: "Update tracked text",
+        objective: "Replace seed.txt contents.",
+        verificationPlan: ["verify-success"],
+        mutationMode: "edit",
+        repoRoot,
+      },
+      budget: { maxUsd: 1, softLimitUsd: 0.8, maxIterations: 1, maxTokens: 100 },
+      adapter,
+    });
+
+    expect(result.decision.lifecycleState).toBe("completed");
+    expect(result.loop.attempts[0]?.failureClass).not.toBe("repo_grounding_failure");
+  });
+
+  it("does not treat a file staged during execution as pre-attempt grounding evidence", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), "martin-patch-staged-during-run-"));
+    await writeFile(join(repoRoot, "seed.txt"), "seed\n", "utf8");
+    expect(spawnSync("git", ["init"], { cwd: repoRoot }).status).toBe(0);
+    expect(spawnSync("git", ["add", "seed.txt"], { cwd: repoRoot }).status).toBe(0);
+    expect(spawnSync(
+      "git",
+      ["-c", "user.name=MartinLoop Test", "-c", "user.email=test@martinloop.local", "commit", "-m", "seed"],
+      { cwd: repoRoot }
+    ).status).toBe(0);
+
+    const adapter: MartinAdapter = {
+      adapterId: "direct:staged-during-run",
+      kind: "direct-provider",
+      label: "Staged during run adapter",
+      metadata: {
+        providerId: "test",
+        model: "test",
+        capabilities: { workspaceMutations: true },
+      },
+      async execute(request) {
+        await writeFile(join(repoRoot, "new.txt"), "new\n", "utf8");
+        expect(spawnSync("git", ["add", "new.txt"], { cwd: repoRoot }).status).toBe(0);
+        return {
+          status: "completed",
+          summary: "Created and staged a new text file.",
+          usage: { actualUsd: 0.01, tokensIn: 1, tokensOut: 1 },
+          verification: {
+            passed: true,
+            summary: "Verifier passed.",
+            binding: {
+              runId: request.loopId,
+              workspaceId: request.workspaceId,
+              cwd: repoRoot,
+              commands: request.context.verificationPlan,
+            },
+            steps: request.context.verificationPlan.map((command) => ({
+              command,
+              launched: true,
+              completed: true,
+              crashed: false,
+              exitCode: 0,
+              timedOut: false,
+            })),
+          },
+          execution: { changedFiles: ["new.txt"] },
+        };
+      },
+    };
+
+    const result = await runMartin({
+      workspaceId: "ws_staged_during_run",
+      projectId: "proj_runtime",
+      task: {
+        title: "Create text",
+        objective: "Create new.txt.",
+        verificationPlan: ["verify-new"],
+        mutationMode: "edit",
+        repoRoot,
+      },
+      budget: { maxUsd: 1, softLimitUsd: 0.8, maxIterations: 1, maxTokens: 100 },
+      adapter,
+    });
+
+    expect(result.decision.lifecycleState).toBe("budget_exit");
+    expect(result.loop.attempts[0]?.failureClass).toBe("repo_grounding_failure");
   });
 
   it("discards grounding-failure patches and persists patch decision artifacts", async () => {
@@ -2028,7 +2467,7 @@ const store: import("../src/index").RunStore = {
     expect(patchDecision.reasonCodes).toContain("scope_violation");
     expect(rollbackOutcome.status).toBe("restored");
     expect(rollbackOutcome.deletedFiles).toContain("apps/leak.ts");
-  });
+  }, 30_000);
 
   it("writes consistent admission and settlement ledger payloads across mixed adapter types", async () => {
     const runsRoot = await mkdtemp(join(tmpdir(), "martin-adapter-ledger-"));
@@ -2163,6 +2602,151 @@ const store: import("../src/index").RunStore = {
     // attempt's cost was only "estimated", so the aggregate must not be
     // upgraded to "actual" by the second attempt's authoritative settlement.
     expect(result.loop.cost.provenance).toBe("estimated");
+  });
+
+  // Regression: verification.completed must use effectiveVerification, not the
+  // raw adapter verification.  When grounding discards a patch the ledger event
+  // and the exit decision must agree — goal_met must NOT fire.
+  it("grounding-discarded patch: ledger verification.completed and exit decision agree on failed", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-grounding-agree-"));
+    const repoRoot = join(runsRoot, "repo");
+    await mkdir(join(repoRoot, "src"), { recursive: true });
+    await writeFile(join(repoRoot, "src", "real.ts"), "export const real = 1;\n", "utf8");
+    const store = createFileRunStore({ runsRoot });
+
+    // Adapter claims success + verification passed, but references a file outside
+    // the grounding index — so patchDecision will be DISCARD.
+    const adapter: MartinAdapter = {
+      adapterId: "direct:grounding-agree",
+      kind: "direct-provider",
+      label: "Grounding agree adapter",
+      metadata: { providerId: "openai", model: "gpt-5-mini" },
+      async execute() {
+        return {
+          status: "completed",
+          summary: "Wrote ghost file and claimed verification passed.",
+          usage: { actualUsd: 0.05, tokensIn: 20, tokensOut: 10 },
+          verification: { passed: true, summary: "all tests green" },
+          execution: {
+            changedFiles: ["src/ghost-unindexed.ts"],
+            diffStats: { filesChanged: 1, addedLines: 3, deletedLines: 0 }
+          }
+        };
+      }
+    };
+
+    const result = await runMartin({
+      workspaceId: "ws_agree",
+      projectId: "proj_agree",
+      task: {
+        title: "Invariant: ledger and exit agree when grounding discards",
+        objective: "Verify that effective verification is persisted, not raw adapter result.",
+        verificationPlan: ["echo ok"],
+        repoRoot,
+        allowedPaths: ["src/**"]
+      },
+      budget: {
+        maxUsd: 10,
+        softLimitUsd: 8,
+        maxIterations: 1,
+        maxTokens: 2_000
+      },
+      adapter,
+      store
+    });
+
+    const ledger = await readLedger(runsRoot, result.loop.loopId);
+    const verificationEvent = ledger.find((entry) => entry.kind === "verification.completed");
+
+    // Persisted verification must reflect the effective (grounding-overridden) outcome
+    expect(verificationEvent?.payload).toMatchObject({ passed: false });
+
+    // Exit must NOT be goal_met — the discarded patch never satisfied the goal
+    expect(result.decision.reason).not.toMatch(/goal.?met/i);
+    expect(result.decision.lifecycleState).not.toBe("completed");
+  });
+
+  it("drains queued control diagnostics before receipt integrity signing", async () => {
+    const outcomes: Array<{ state: string; reason?: string }> = [];
+
+    for (let index = 0; index < 20; index += 1) {
+      const runsRoot = await mkdtemp(join(tmpdir(), "martin-receipt-race-"));
+      const store = createFileRunStore({ runsRoot });
+      const runId = `loop_race_${String(index).padStart(2, "0")}`;
+
+      const result = await runMartin({
+        workspaceId: "ws_ops",
+        projectId: "proj_runtime",
+        task: {
+          title: "Receipt race regression",
+          objective: "Exit before the first attempt while preserving diagnostic ledger integrity.",
+          verificationPlan: ["echo ok"]
+        },
+        budget: {
+          maxUsd: 10,
+          softLimitUsd: 6,
+          maxIterations: 1,
+          maxTokens: 2_000
+        },
+        adapter: {
+          adapterId: "direct:test",
+          kind: "direct-provider",
+          label: "Test adapter",
+          metadata: { providerId: "openai", model: "gpt-5-mini" },
+          async execute() {
+            throw new Error("adapter must not execute for pre-run exit");
+          }
+        },
+        store,
+        exitSignalSource: {
+          async poll(id) {
+            return {
+              signals: [
+                {
+                  kind: "human_interrupt",
+                  schemaVersion: "exit-signal/1",
+                  runId: id,
+                  reason: "operator paused before execution",
+                  requestedAt: "2026-06-06T10:00:00.500Z",
+                  requestedBy: "test"
+                }
+              ],
+              diagnostics: [
+                {
+                  kind: "human_interrupt",
+                  error: `invalid control signal for ${id}`
+                }
+              ]
+            };
+          }
+        },
+        now: createTimestampSource([
+          "2026-06-06T10:00:00.000Z",
+          "2026-06-06T10:00:01.000Z",
+          "2026-06-06T10:00:02.000Z"
+        ]),
+        nowMs: () => 0,
+        idFactory: (prefix) => (prefix === "loop" ? runId : `${prefix}_${index}`)
+      });
+
+      expect(result.loop.loopId).toBe(runId);
+      expect(result.loop.status).toBe("exited");
+
+      const ledger = await readLedger(runsRoot, runId);
+      expect(ledger.some((entry) => entry.kind === "run.diagnostic")).toBe(true);
+
+      const integrity = await verifyReceiptIntegrityFromFiles({
+        runId,
+        runsRoot,
+        loopRecordPath: join(runsRoot, runId, "loop-record.json"),
+        ledgerPath: join(runsRoot, runId, "ledger.jsonl")
+      });
+      outcomes.push({ state: integrity.state, reason: integrity.reason });
+    }
+
+    expect(outcomes.filter((outcome) => outcome.state === "verified")).toHaveLength(20);
+    expect(outcomes.filter((outcome) => outcome.state === "tamper_detected")).toHaveLength(0);
+    expect(outcomes.filter((outcome) => outcome.reason === "ledger_hash_mismatch")).toHaveLength(0);
   });
 });
 

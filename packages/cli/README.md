@@ -19,13 +19,8 @@ The CLI now treats execution, diagnosis, persisted-run inspection, and MCP host 
 - `martin runs list|get|attempt|verify`
 - `martin mcp print-config`
 - `martin mcp install`
-- `martin mcp verify-install`
-- `martin mcp rollback`
-- `martin mcp uninstall`
 
 `martin mcp install` is intentionally conservative: it only writes a generated config when the target file is absent, or when it already detects a Martin Loop block and can stay idempotent. For mixed host configs, use `martin mcp print-config` and merge the Martin block yourself.
-
-File-backed installs use atomic replacement, preserve the previous config in the local install-backup directory, and record a checksum for `verify-install`, `rollback`, and `uninstall`. Governance guidance is always printed; host governance files are written only with `--install-governance`.
 
 ## Install
 
@@ -47,15 +42,10 @@ npx martin-loop doctor
 
 - local `stdio` is the default and best path for fast local iteration
 - public OSS guidance covers:
-  - `--host codex|claude|gemini|cursor|vscode|copilot|continue|generic`
-  - `--scope user|project` for every host, plus Claude-only `local`
+  - `--host codex|claude|gemini|generic`
   - `--transport stdio`
-  - `--profile minimal|diagnostic|github-review|full-local|paid-remote|starter|full`
+  - `--profile minimal|diagnostic|github-review|full-local|starter|full`
   - `--platform windows|macos|linux`
-  - `--dry-run` for a no-write install preview
-  - `--install-governance` for explicit Claude governance-hook consent
-
-The canonical host, scope, config-target, profile, and governance matrix is in the [MCP setup guide](../../docs/getting-started/mcp.md).
 
 ## Recommended flow
 
@@ -74,7 +64,7 @@ martin mcp print-config --host codex --profile minimal
 
 `martin session-start` and `martin phase` are local-first command-center helpers. They read local phase state and local MartinLoop run receipts, then produce an explicit run contract before any work is executed. Existing `.gsd` workspaces are imported as a compatibility format when present. `martin phase preflight` and `martin phase run` are dry-run by default; add `--execute` only after the generated contract has the right verifier, budget, allowed paths, and blocked paths.
 
-`martin share --latest` is the handoff step. It writes a redacted JSON receipt and a Markdown summary for the selected run. Proof-card images are opt-in with `--with-proof-card` or `--proof-card-format`.
+`martin share --latest` is the handoff step. It writes a redacted JSON receipt, a Markdown summary, and a proof-card SVG for the selected run.
 
 ## Benchmarks
 
@@ -127,10 +117,10 @@ The minimal allow-list stays aligned with the MCP discovery metadata: `martin_do
 
 ## Host coverage
 
-- `codex`, `claude`, `gemini`, `cursor`, `vscode`, `copilot`, `continue`, and `generic` are supported config targets. `copilot` remains a compatibility alias for VS Code.
-- Every host supports user and project scope. Claude Code also supports its CLI-managed local scope.
-- `print-config` and `install --dry-run` show the target, generated config, enabled tools, and governance guidance without changing host files.
-- The installer refuses to replace an existing config unless it can safely update the MartinLoop entry.
+- `codex`: local stdio profiles
+- `claude`: local, user, and project scopes
+- `gemini`: local `settings.json` snippets plus `includeTools`
+- `generic`: JSON config for wrapper hosts and MCP-aware agent shells
 
 Generated stdio launchers are platform-aware:
 

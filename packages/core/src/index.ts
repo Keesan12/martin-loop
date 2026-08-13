@@ -1,13 +1,11 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 import { spawnSync } from "node:child_process";
+import { isAbsolute, relative, resolve } from "node:path";
 
 import {
   type ApprovalPolicy,
   appendLoopEvent,
   createLoopRecord,
+  type ContextHandoffReceipt,
   type CostProvenance,
   type ExecutionProfile,
   type FailureClass,
@@ -76,11 +74,30 @@ import {
 import { compilePromptPacket } from "./compiler.js";
 import { makeLedgerEvent, resolveRunsRoot, runDir, type RunStore } from "./persistence/index.js";
 import {
+  createDefaultExitPolicy,
+  evaluateExitPolicy,
+  hashProgressState,
+  toLegacyExitDecision,
+  type ExitPolicyOverrides
+} from "./exits.js";
+import {
+  createFileExitSignalSource,
+  startExitSignalMonitor,
+  type ExitSignalSource
+} from "./exit-signal.js";
+import { persistTerminationEnvelope } from "./termination-store.js";
+import { calculateLoopAvoidedUsd } from "./savings.js";
+import {
   runContextIntegrityPrecheck,
   type ContextIntegrityPrecheck,
   type ContextIntegrityVerdict
 } from "./context-integrity.js";
 import { decideCircuitBreak } from "./trajectory.js";
+import { verifyContextHandoff, decideContextCircuitBreak } from "./context-handoff.js";
+import {
+  verifierActuallyPassed,
+  type VerifierExecutionBinding,
+} from "./verified-handoff.js";
 
 // ─── Public API re-exports ───────────────────────────────────────────────────
 export type {
@@ -163,6 +180,8 @@ export {
 export type { LocalIdentityAuthority } from "./identity.js";
 export { compileExecutionPolicy } from "./policy-compiler.js";
 export { assessTrajectory, decideCircuitBreak } from "./trajectory.js";
+export { calculateAvoidedUsd, calculateLoopAvoidedUsd } from "./savings.js";
+export type { AvoidedUsdInput } from "./savings.js";
 
 // ─── Routing economics ─────────────────────────────────────────────────────
 export { classifyRoute, evaluatePreworkBurnPolicy, resolveModelForTier, selectBestEngine } from "./routing.js";
@@ -193,6 +212,19 @@ export type { ContextIntegrityPrecheck, ContextIntegrityVerdict } from "./contex
 export { compilePromptPacket } from "./compiler.js";
 export type { PromptPacket, CompilerAdapterRequest } from "./compiler.js";
 
+// ─── Verified Handoff builder ────────────────────────────────────────────────
+export {
+  buildVerifiedHandoff,
+  resolveVerifiedHandoffOutcome,
+  toTestIntegrityVerdict,
+  verifierActuallyPassed,
+} from "./verified-handoff.js";
+export type {
+  BoundVerifierEvidence,
+  BuildVerifiedHandoffInput,
+  VerifierExecutionBinding,
+} from "./verified-handoff.js";
+
 // ─── Persistence (RunStore, LedgerEvent, FileRunStore) ──────────────────────
 export {
   createFileRunStore,
@@ -220,6 +252,37 @@ export type {
 export { compileAndPersistContext } from "./persistence/index.js";
 export type { CompileResult } from "./persistence/index.js";
 
+// ─── Context Shadow — A-CTX-0 ────────────────────────────────────────────────
+export { compileContextShadow, estimateContextTokens } from "./context-shadow.js";
+export type {
+  CompileContextShadowInput,
+  CompileContextShadowResult,
+  ContextShadowSegment
+} from "./context-shadow.js";
+
+// ─── Context Compiler — A-CTX-1 ──────────────────────────────────────────────
+export { compileContext, HEURISTIC_ADAPTER, MAX_RENDER_PASSES } from "./context-compiler.js";
+export type {
+  CompileContextInput,
+  CompileContextOutput,
+  ContextAdapter
+} from "./context-compiler.js";
+
+// ─── Context Handoff — A-CTX-2 ───────────────────────────────────────────────
+export { verifyContextHandoff, decideContextCircuitBreak } from "./context-handoff.js";
+export type { VerifyContextHandoffInput } from "./context-handoff.js";
+
+// ─── Context Chain Gate — C1 ─────────────────────────────────────────────────
+export { evaluateChainGate, renderGatePrComment } from "./context-chain-gate.js";
+export type {
+  ChainGateConfig,
+  ChainGateCost,
+  ChainGateConclusion,
+  ChainGateInput,
+  ChainGateResult,
+  GatePrCommentOptions
+} from "./context-chain-gate.js";
+
 // ─── MartinLoop Memory Store ────────────────────────────────────────────────
 export {
   appendMemory,
@@ -244,6 +307,7 @@ export type { TraceEntry, TraceAggregation } from "./persistence/trace-store.js"
 
 export interface MartinAdapterRequest {
   loopId: string;
+  workspaceId: string;
   attemptId: string;
   context: {
     taskTitle: string;
@@ -251,6 +315,7 @@ export interface MartinAdapterRequest {
     verificationPlan: string[];
     verificationStack?: LoopTask["verificationStack"];
     mutationMode?: MutationMode;
+    definitionOfDonePreSatisfied?: boolean;
     /** Absolute path to the repository root. */
     repoRoot?: string;
     /** Glob patterns for files the agent may modify. Empty = no restriction. */
@@ -268,11 +333,15 @@ export interface MartinAdapterRequest {
     remainingTokens: number;
   };
   previousAttempts: LoopAttempt[];
+  /** Abort signal propagated from the harness — adapters should honour it. */
+  signal?: AbortSignal;
 }
 
 export interface MartinVerificationStep {
   command: string;
   launched: boolean;
+  completed?: boolean;
+  crashed?: boolean;
   exitCode?: number;
   timedOut: boolean;
   fastFail?: boolean;
@@ -284,6 +353,7 @@ export interface MartinVerificationOutcome {
   summary: string;
   steps?: MartinVerificationStep[];
   warnings?: string[];
+  binding?: VerifierExecutionBinding;
 }
 
 export interface MartinAdapterResult {
@@ -304,6 +374,7 @@ export interface MartinAdapterResult {
     summary: string;
     steps?: MartinVerificationStep[];
     warnings?: string[];
+    binding?: VerifierExecutionBinding;
   };
   execution?: {
     changedFiles?: string[];
@@ -497,6 +568,21 @@ export interface RunMartinInput {
   receiptScope?: ReceiptScope;
   /** Optional persistence store. When provided, runMartin writes artifacts on each lifecycle event. */
   store?: RunStore;
+  /** Overrides for the default eight-exit policy derived from budget. */
+  exitPolicy?: ExitPolicyOverrides;
+  /** Source for durable cancellation/external-event signals. */
+  exitSignalSource?: ExitSignalSource;
+  /** Poll interval for the signal monitor in ms (default 250). */
+  exitSignalPollIntervalMs?: number;
+  /** Clock override for testing (default Date.now). */
+  nowMs?: () => number;
+  // ── A-CTX-2 context handoff gate ─────────────────────────────────────────
+  /** When provided, runMartin verifies the handoff before invoking the adapter. */
+  contextHandoff?: ContextHandoffReceipt;
+  /** true when the producer receipt file hash has been independently confirmed. */
+  producerReceiptVerified?: boolean;
+  /** Map of sha256 → true for every artifact available to the verifier. */
+  availableArtifacts?: ReadonlyMap<string, true>;
 }
 
 export interface RunMartinResult {
@@ -576,6 +662,92 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       })
     );
     await persistLoopRecordIfSupported(input.store, loop);
+  }
+
+  // ── A-CTX-2 context handoff gate ─────────────────────────────────────────
+  // The gate runs before ANY adapter call. A blocked handoff hard-stops the run
+  // and emits ledger evidence — the adapter is never invoked.
+  if (input.contextHandoff !== undefined) {
+    const handoffVerification = verifyContextHandoff({
+      handoff: input.contextHandoff,
+      producerReceiptVerified: input.producerReceiptVerified ?? false,
+      availableArtifacts: input.availableArtifacts ?? new Map()
+    });
+
+    if (input.store) {
+      await input.store.appendLedger(
+        loop.loopId,
+        makeLedgerEvent({
+          kind: "context.handoff.received",
+          runId: loop.loopId,
+          payload: {
+            handoffId: input.contextHandoff.handoffId,
+            chainId: input.contextHandoff.chainId,
+            producerRunId: input.contextHandoff.producerRunId,
+            upstreamIntegrity: input.contextHandoff.upstreamIntegrity
+          }
+        })
+      );
+    }
+
+    const handoffGate = decideContextCircuitBreak(handoffVerification);
+
+    if (handoffGate.shouldStop) {
+      if (input.store) {
+        await input.store.appendLedger(
+          loop.loopId,
+          makeLedgerEvent({
+            kind: "context.handoff.blocked",
+            runId: loop.loopId,
+            payload: {
+              reasonCode: handoffGate.reasonCode,
+              message: handoffGate.message,
+              integrity: handoffVerification.integrity,
+              reasons: handoffVerification.reasons
+            }
+          })
+        );
+        await input.store.appendLedger(
+          loop.loopId,
+          makeLedgerEvent({
+            kind: "run.exited",
+            runId: loop.loopId,
+            payload: {
+              status: "exited",
+              lifecycleState: "human_escalation",
+              reason: handoffGate.message ?? "Context handoff verification failed.",
+              reasonCode: handoffGate.reasonCode ?? "handoff_verification_failed"
+            }
+          })
+        );
+      }
+      const handoffExitDecision: ExitDecision = {
+        shouldExit: true,
+        lifecycleState: "human_escalation",
+        status: "exited",
+        reason: handoffGate.message ?? "Context handoff verification failed.",
+        reasonCode: handoffGate.reasonCode ?? "handoff_verification_failed"
+      };
+      const finalizedLoop = finalizeLoop(loop, handoffExitDecision, now(), idFactory);
+      await persistLoopRecordIfSupported(input.store, finalizedLoop);
+      return { loop: finalizedLoop, decision: handoffExitDecision };
+    }
+
+    if (input.store) {
+      await input.store.appendLedger(
+        loop.loopId,
+        makeLedgerEvent({
+          kind: "context.handoff.verified",
+          runId: loop.loopId,
+          payload: {
+            handoffId: input.contextHandoff.handoffId,
+            chainId: input.contextHandoff.chainId,
+            producerRunId: input.contextHandoff.producerRunId,
+            integrity: handoffVerification.integrity
+          }
+        })
+      );
+    }
   }
 
   const DEFAULT_FALLBACK_MODELS = [
@@ -700,6 +872,222 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
   let firstDeltaChangeType: "create" | "modify" | "delete" | "patch_proposed" | undefined;
   let preDeltaCostUsd = 0;
 
+  // ── Eight-exit runtime control state ─────────────────────────────────────
+  const nowMs = input.nowMs ?? (() => Date.now());
+  const exitPolicy = createDefaultExitPolicy(input.budget, input.exitPolicy);
+
+  let activeAttemptController: AbortController | undefined;
+  let observedHumanInterrupt: import("@martin/contracts").ExitSignalV1 | undefined;
+  let observedExternalEvent: import("@martin/contracts").ExternalExitEvent | undefined;
+  let terminationPromise: Promise<import("@martin/contracts").TerminationEnvelopeV1> | undefined;
+  const recentStateHashes: string[] = [];
+  let consecutiveErrors = 0;
+  // governedTurnsUsed starts from the already-completed attempt count so
+  // resumed runs count correctly; incremented once per governed attempt.
+  let governedTurnsUsed = loop.attempts.length;
+
+  const runsRoot = input.store?.runsRoot ?? resolveRunsRoot();
+  const exitSignalSource = input.exitSignalSource ?? createFileExitSignalSource(runsRoot);
+
+  // Diagnostic writes fire from sync callbacks — track them so the finally
+  // block can await completion before the run tears down.
+  const pendingControlWrites: Promise<void>[] = [];
+
+  // Non-null when the signal monitor itself fails — rethrown at the next
+  // evaluateCheckpoint so the run surfaces the error rather than silently
+  // losing cancellation.
+  let signalMonitorError: Error | undefined;
+
+  function observeSignals(signals: readonly import("@martin/contracts").ExitSignalV1[]): void {
+    for (const s of signals) {
+      if (s.kind === "human_interrupt") observedHumanInterrupt = s;
+      else if (s.kind === "external_event" && s.externalEvent !== undefined)
+        observedExternalEvent = s.externalEvent;
+    }
+  }
+
+  function queueControlDiagnostic(code: string, details: unknown): void {
+    if (!input.store) return;
+    pendingControlWrites.push(
+      input.store.appendLedger(
+        loop.loopId,
+        makeLedgerEvent({
+          kind: "run.diagnostic",
+          runId: loop.loopId,
+          payload: { code, details }
+        })
+      )
+    );
+  }
+
+  const runController = new AbortController();
+
+  const wallTimer =
+    exitPolicy.wallClock.maxElapsedMs > 0
+      ? setTimeout(() => {
+          activeAttemptController?.abort(new Error("MartinLoop wall-clock exit reached"));
+        }, exitPolicy.wallClock.maxElapsedMs)
+      : undefined;
+  (wallTimer as NodeJS.Timeout | undefined)?.unref?.();
+
+  const disposeSignalMonitor = startExitSignalMonitor({
+    source: exitSignalSource,
+    runId: loop.loopId,
+    controller: runController,
+    pollIntervalMs: input.exitSignalPollIntervalMs,
+    onSignal: (signals) => {
+      observeSignals(signals);
+      activeAttemptController?.abort(signals);
+    },
+    onDiagnostic: (diagnostics) => {
+      queueControlDiagnostic(
+        "exit_signal_invalid",
+        diagnostics.map(({ kind, error }) => ({ kind, error }))
+      );
+    },
+    onError: (err) => {
+      signalMonitorError = err instanceof Error ? err : new Error(String(err));
+      activeAttemptController?.abort(err);
+    }
+  });
+
+  // Snapshot of the current run state for eight-exit evaluation
+  function currentExitSnapshot(
+    phase: import("@martin/contracts").ExitEvaluationPhase,
+    result?: { status: "completed" | "failed"; verificationPassed: boolean }
+  ): import("@martin/contracts").ExitSnapshotV1 {
+    return {
+      phase,
+      evaluatedAt: now(),
+      runStartedAtMs: runStartMs,
+      nowMs: nowMs(),
+      turnsUsed: governedTurnsUsed,
+      actualUsd: loop.cost.actualUsd,
+      tokensUsed: loop.cost.tokensIn + loop.cost.tokensOut,
+      recentStateHashes: [...recentStateHashes],
+      consecutiveErrors,
+      ...(result !== undefined
+        ? {
+            result: {
+              status: result.status,
+              verificationPassed: result.verificationPassed,
+              verifierScore: result.verificationPassed ? 1 : 0
+            }
+          }
+        : {}),
+      ...(observedHumanInterrupt !== undefined ? { humanInterrupt: observedHumanInterrupt } : {}),
+      ...(observedExternalEvent !== undefined ? { externalEvent: observedExternalEvent } : {})
+    };
+  }
+
+  // Idempotent termination: only the first caller writes the envelope (A1 fix)
+  function finishFromEvaluation(
+    evaluation: import("@martin/contracts").ExitEvaluationV1
+  ): Promise<import("@martin/contracts").TerminationEnvelopeV1> {
+    if (terminationPromise !== undefined) return terminationPromise;
+    const envelope: import("@martin/contracts").TerminationEnvelopeV1 = {
+      schemaVersion: "termination/1",
+      class: "operational_exit",
+      exit: evaluation
+    };
+    terminationPromise = (async () => {
+      if (input.store) {
+        // persistTerminationEnvelope is atomic and returns the winning envelope
+        // (may differ from ours if another path won the race — that's fine).
+        await persistTerminationEnvelope(runDir(runsRoot, loop.loopId), envelope);
+        await input.store.appendLedger(
+          loop.loopId,
+          makeLedgerEvent({
+            kind: "run.terminated",
+            runId: loop.loopId,
+            payload: {
+              selectedExit: evaluation.primary,
+              matchedExits: evaluation.matched,
+              policyVersion: evaluation.policyVersion,
+              evaluationVersion: evaluation.schemaVersion,
+              terminationPhase: evaluation.phase
+            }
+          })
+        );
+      }
+      return envelope;
+    })();
+    return terminationPromise;
+  }
+
+  async function evaluateCheckpoint(
+    phase: import("@martin/contracts").ExitEvaluationPhase,
+    result?: { status: "completed" | "failed"; verificationPassed: boolean }
+  ): Promise<import("@martin/contracts").TerminationEnvelopeV1 | undefined> {
+    // Surface signal-monitor failures immediately rather than silently losing cancellation
+    if (signalMonitorError !== undefined) throw signalMonitorError;
+    const evaluation = evaluateExitPolicy(exitPolicy, currentExitSnapshot(phase, result));
+    return evaluation.shouldExit ? finishFromEvaluation(evaluation) : undefined;
+  }
+
+  async function terminateRun(
+    envelope: import("@martin/contracts").TerminationEnvelopeV1
+  ): Promise<RunMartinResult> {
+    if (envelope.class !== "operational_exit") {
+      throw new Error("terminateRun: unexpected non-operational envelope");
+    }
+    const legacyDecision = toLegacyExitDecision(
+      envelope.exit,
+      observedExternalEvent?.disposition
+    );
+    const exitDecision: ExitDecision = {
+      shouldExit: legacyDecision.shouldExit,
+      lifecycleState: legacyDecision.lifecycleState,
+      status: legacyDecision.status,
+      reason: legacyDecision.reason,
+      ...(legacyDecision.reasonCode ? { reasonCode: legacyDecision.reasonCode } : {}),
+      ...(legacyDecision.failureClass
+        ? { failureClass: legacyDecision.failureClass as ExitDecision["failureClass"] }
+        : {})
+    };
+    if (input.store) {
+      await input.store.appendLedger(
+        loop.loopId,
+        makeLedgerEvent({
+          kind: "run.exited",
+          runId: loop.loopId,
+          payload: createRunExitPayload(exitDecision)
+        })
+      );
+    }
+    const routingInput = {
+      runStartMs,
+      firstDeltaDetected,
+      firstDeltaTimestampMs,
+      firstDeltaFilePath,
+      firstDeltaChangeType,
+      preDeltaCostUsd
+    };
+    // Drain all pending diagnostic ledger writes BEFORE signing the receipt.
+    // persistLoopRecordIfSupported reads ledger.jsonl to compute the integrity hash;
+    // any write that lands after that read produces a false ledger_hash_mismatch on verify.
+    if (pendingControlWrites.length > 0) {
+      await Promise.all(pendingControlWrites.splice(0));
+    }
+    const finalizedLoop = finalizeLoop(loop, exitDecision, now(), idFactory, routingInput);
+    const finalizedWithEnvelope: LoopRecord = { ...finalizedLoop, terminationEnvelope: envelope };
+    await persistLoopRecordIfSupported(input.store, finalizedWithEnvelope);
+    return { loop: finalizedWithEnvelope, decision: exitDecision };
+  }
+
+  try {
+    // Poll once synchronously before the first attempt so any signal written
+    // before the run started is observed immediately (not after the first poll interval).
+    const initial = await exitSignalSource.poll(loop.loopId);
+    observeSignals(initial.signals);
+    if (initial.diagnostics.length > 0) {
+      queueControlDiagnostic("exit_signal_invalid", initial.diagnostics);
+    }
+
+    // Pre-run check — catches signals written before the first attempt starts
+    const preRunTerminal = await evaluateCheckpoint("pre_run");
+    if (preRunTerminal !== undefined) return await terminateRun(preRunTerminal);
+
   while (loop.attempts.length < loop.budget.maxIterations) {
     const distilled = distillContext(loop, {
       maxRecentAttempts: useCompressedContext ? 1 : (input.maxRecentAttempts ?? 3)
@@ -741,6 +1129,9 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
             payload: createRunExitPayload(preflightExitDecision)
           })
         );
+      }
+      if (pendingControlWrites.length > 0) {
+        await Promise.all(pendingControlWrites.splice(0));
       }
       const finalizedLoop = finalizeLoop(loop, preflightExitDecision, now(), idFactory);
       await persistLoopRecordIfSupported(input.store, finalizedLoop);
@@ -804,6 +1195,9 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
           })
         );
       }
+      if (pendingControlWrites.length > 0) {
+        await Promise.all(pendingControlWrites.splice(0));
+      }
       const finalizedLoop = finalizeLoop(loop, poisoningExitDecision, now(), idFactory);
       await persistLoopRecordIfSupported(input.store, finalizedLoop);
       return {
@@ -815,12 +1209,16 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     const admissionDecision = evaluateAttemptPolicy({
       request: {
         loopId: loop.loopId,
+        workspaceId: loop.workspaceId,
         attemptId,
         context: {
           taskTitle: loop.task.title,
           objective: loop.task.objective,
           verificationPlan: loop.task.verificationPlan,
           ...(loop.task.verificationStack ? { verificationStack: loop.task.verificationStack } : {}),
+          ...(loop.task.definitionOfDonePreSatisfied !== undefined
+            ? { definitionOfDonePreSatisfied: loop.task.definitionOfDonePreSatisfied }
+            : {}),
           ...(loop.task.repoRoot ? { repoRoot: loop.task.repoRoot } : {}),
           ...(loop.task.allowedPaths ? { allowedPaths: loop.task.allowedPaths } : {}),
           ...(loop.task.deniedPaths ? { deniedPaths: loop.task.deniedPaths } : {}),
@@ -870,6 +1268,9 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
           })
         );
       }
+      if (pendingControlWrites.length > 0) {
+        await Promise.all(pendingControlWrites.splice(0));
+      }
       const finalizedLoop = finalizeLoop(loop, exitDecision, now(), idFactory);
       await persistLoopRecordIfSupported(input.store, finalizedLoop);
       return {
@@ -916,6 +1317,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
 
     const request: MartinAdapterRequest = {
       loopId: loop.loopId,
+      workspaceId: loop.workspaceId,
       attemptId,
       context: {
         taskTitle: loop.task.title,
@@ -923,6 +1325,9 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         verificationPlan: loop.task.verificationPlan,
         ...(loop.task.verificationStack ? { verificationStack: loop.task.verificationStack } : {}),
         ...(loop.task.mutationMode ? { mutationMode: loop.task.mutationMode } : {}),
+        ...(loop.task.definitionOfDonePreSatisfied !== undefined
+          ? { definitionOfDonePreSatisfied: loop.task.definitionOfDonePreSatisfied }
+          : {}),
         ...(loop.task.repoRoot ? { repoRoot: loop.task.repoRoot } : {}),
         ...(loop.task.allowedPaths ? { allowedPaths: loop.task.allowedPaths } : {}),
         ...(loop.task.deniedPaths ? { deniedPaths: loop.task.deniedPaths } : {}),
@@ -944,16 +1349,39 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       request.context.repoRoot !== undefined &&
       executingAdapter.metadata.capabilities?.workspaceMutations !== false;
 
+    // Pre-attempt: check signals that arrived during guard evaluation
+    const preAttemptTerminal = await evaluateCheckpoint("pre_attempt");
+    if (preAttemptTerminal !== undefined) return await terminateRun(preAttemptTerminal);
+
+    activeAttemptController = new AbortController();
+    governedTurnsUsed += 1;
+
     const rollbackBoundary = tracksWorkspaceMutations
       ? await captureRollbackBoundary({
           repoRoot: request.context.repoRoot,
           capturedAt: attemptStartedAt
         })
       : undefined;
-    const result = await executingAdapter.execute(request);
+
+    let result: MartinAdapterResult;
+    try {
+      result = await executingAdapter.execute({
+        ...request,
+        signal: activeAttemptController.signal
+      });
+    } catch (execError) {
+      // Convert an abort (wall-clock or signal-driven) into the correct exit
+      // rather than letting it propagate as an unhandled exception.
+      const abortTerminal = await evaluateCheckpoint("post_attempt");
+      if (abortTerminal !== undefined) return await terminateRun(abortTerminal);
+      throw execError;
+    } finally {
+      activeAttemptController = undefined;
+    }
     const attemptCompletedAt = now();
     const compiledContext = compilePromptPacket(request);
-    const verification = normalizeVerificationOutcome(result);
+    const expectedVerifierBinding = resolveExpectedVerifierBinding(request);
+    const verification = normalizeVerificationOutcome(result, expectedVerifierBinding);
 
     // PATCH → VERIFY
     currentPhase = "VERIFY";
@@ -1002,6 +1430,16 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       updatedAt: attemptCompletedAt
     };
 
+    // ── Eight-exit state tracking ─────────────────────────────────────────
+    consecutiveErrors = result.status === "failed" ? consecutiveErrors + 1 : 0;
+    const stateHash = hashProgressState({
+      summary: result.summary,
+      verificationPassed: verification.passed,
+      status: result.status
+    });
+    if (recentStateHashes.length >= exitPolicy.progress.windowSize) recentStateHashes.shift();
+    recentStateHashes.push(stateHash);
+
     loop = appendLoopEvent(
       loop,
       {
@@ -1011,6 +1449,9 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       },
       { now: attemptCompletedAt, idFactory }
     );
+
+    // post_attempt check is deferred until after verification.completed and all
+    // per-attempt ledger writes — see the check just before before_retry below.
 
     const previousVerifierScore = getLastVerifierScore(loop);
 
@@ -1079,23 +1520,6 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       }
     }
 
-    loop = appendLoopEvent(
-      loop,
-      {
-        type: "verification.completed",
-        lifecycleState: verification.passed ? "completed" : "verifying",
-        payload: {
-          attemptId,
-          attemptIndex: currentAttemptIndex,
-          passed: verification.passed,
-          summary: verification.summary,
-          ...(verification.steps?.length ? { steps: verification.steps } : {}),
-          ...(verification.warnings?.length ? { warnings: verification.warnings } : {})
-        }
-      },
-      { now: attemptCompletedAt, idFactory }
-    );
-
     const costState = evaluateCostGovernor({
       budget: loop.budget,
       cost: loop.cost,
@@ -1137,21 +1561,6 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
           runId: loop.loopId,
           attemptIndex: currentAttemptIndex,
           payload: { status: result.status, summary: result.summary }
-        })
-      );
-      await input.store.appendLedger(
-        loop.loopId,
-        makeLedgerEvent({
-          kind: "verification.completed",
-          runId: loop.loopId,
-          attemptIndex: currentAttemptIndex,
-          payload: {
-            attemptId,
-            passed: verification.passed,
-            summary: verification.summary,
-            ...(verification.steps?.length ? { steps: verification.steps } : {}),
-            ...(verification.warnings?.length ? { warnings: verification.warnings } : {})
-          }
         })
       );
       await input.store.appendLedger(
@@ -1207,8 +1616,6 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     // a git repo) and silently return [], which would falsely trigger no_code_change.
     const changedFileEvidenceAvailable =
       result.execution?.changedFiles !== undefined || changedFiles.length > 0;
-    const isVerifierOnlyAdapter = executingAdapter.adapterId === "direct:verifier:verify-only";
-    const patchTruthCountsEdits = !isVerifierOnlyAdapter && changedFileEvidenceAvailable;
 
     const filesystemDecision = evaluateFilesystemLeash({
       repoRoot: request.context.repoRoot,
@@ -1290,6 +1697,9 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         );
       }
 
+      if (pendingControlWrites.length > 0) {
+        await Promise.all(pendingControlWrites.splice(0));
+      }
       const finalizedLoop = finalizeLoop(loop, filesystemExitDecision, now(), idFactory);
       await persistLoopRecordIfSupported(input.store, finalizedLoop);
       return {
@@ -1381,6 +1791,9 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         );
       }
 
+      if (pendingControlWrites.length > 0) {
+        await Promise.all(pendingControlWrites.splice(0));
+      }
       const finalizedLoop = finalizeLoop(loop, approvalExitDecision, now(), idFactory);
       await persistLoopRecordIfSupported(input.store, finalizedLoop);
       return {
@@ -1396,9 +1809,13 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     if (patchDiff && input.task.repoRoot) {
       try {
         const groundingIndex = await loadOrBuildRepoGroundingIndex(input.task.repoRoot);
-        groundingScanResult = scanPatchForGroundingViolations(patchDiff, groundingIndex, {
-          allowedPaths: input.task.allowedPaths
-        });
+        groundingScanResult = reconcileExistingGroundingFiles(
+          scanPatchForGroundingViolations(patchDiff, groundingIndex, {
+            allowedPaths: input.task.allowedPaths
+          }),
+          input.task.repoRoot,
+          rollbackBoundary
+        );
 
         if (input.store && groundingScanResult.violations.length > 0) {
           await input.store.appendLedger(
@@ -1421,15 +1838,19 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       }
     }
 
+    const shouldEvaluatePatchTruth = result.status === "completed" && tracksWorkspaceMutations;
+
     let patchDecision: EvaluatedPatchDecision | undefined;
-    if (result.status === "completed") {
+    if (shouldEvaluatePatchTruth) {
       patchDecision = evaluatePatchDecision({
         verificationPassed: verification.passed,
         previousVerifierScore,
         verifierScore: verification.passed ? 1 : 0,
         groundingViolationCount: groundingScanResult?.violations.length ?? 0,
-        changedFileCount: patchTruthCountsEdits ? changedFiles.length : undefined,
-        diffNovelty: patchTruthCountsEdits ? (changedFiles.length > 0 ? 1 : 0) : undefined,
+        changedFileCount: changedFileEvidenceAvailable ? changedFiles.length : undefined,
+        mutationRequired: request.context.mutationMode === "edit",
+        definitionOfDonePreSatisfied: request.context.definitionOfDonePreSatisfied,
+        diffNovelty: changedFileEvidenceAvailable ? (changedFiles.length > 0 ? 1 : 0) : undefined,
         diffStats: result.execution?.diffStats,
         costUsd: getUsageUsd(result.usage),
         summary: result.summary
@@ -1550,6 +1971,9 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         );
       }
 
+      if (pendingControlWrites.length > 0) {
+        await Promise.all(pendingControlWrites.splice(0));
+      }
       const finalizedLoop = finalizeLoop(loop, patchExitDecision, now(), idFactory);
       await persistLoopRecordIfSupported(input.store, finalizedLoop);
       return {
@@ -1592,6 +2016,60 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     if (failure) phaseRetryCount++;
     else phaseRetryCount = 0;
 
+    // Post-attempt: persisted verification and exit decisions must use the same
+    // authoritative outcome. effectiveResult reflects any grounding/leash override,
+    // so verification.completed is written here — never from the raw adapter result.
+    const effectiveVerification = normalizeVerificationOutcome(effectiveResult, expectedVerifierBinding);
+
+    loop = appendLoopEvent(
+      loop,
+      {
+        type: "verification.completed",
+        lifecycleState: effectiveVerification.passed ? "completed" : "verifying",
+        payload: {
+          attemptId,
+          attemptIndex: currentAttemptIndex,
+          passed: effectiveVerification.passed,
+          summary: effectiveVerification.summary,
+          ...(effectiveVerification.steps?.length ? { steps: effectiveVerification.steps } : {}),
+          ...(effectiveVerification.warnings?.length ? { warnings: effectiveVerification.warnings } : {}),
+          ...(effectiveVerification.binding ? { binding: effectiveVerification.binding } : {}),
+          changedFiles,
+        }
+      },
+      { now: attemptCompletedAt, idFactory }
+    );
+
+    if (input.store) {
+      await input.store.appendLedger(
+        loop.loopId,
+        makeLedgerEvent({
+          kind: "verification.completed",
+          runId: loop.loopId,
+          attemptIndex: currentAttemptIndex,
+          payload: {
+            attemptId,
+            passed: effectiveVerification.passed,
+            summary: effectiveVerification.summary,
+            ...(effectiveVerification.steps?.length ? { steps: effectiveVerification.steps } : {}),
+            ...(effectiveVerification.warnings?.length ? { warnings: effectiveVerification.warnings } : {}),
+            ...(effectiveVerification.binding ? { binding: effectiveVerification.binding } : {}),
+            changedFiles,
+          }
+        })
+      );
+    }
+
+    const postAttemptTerminal = await evaluateCheckpoint("post_attempt", {
+      status: effectiveResult.status === "completed" ? "completed" : "failed",
+      verificationPassed: effectiveVerification.passed
+    });
+    if (postAttemptTerminal !== undefined) return await terminateRun(postAttemptTerminal);
+
+    // Before-retry: check signals before scheduling the next attempt
+    const preRetryTerminal = await evaluateCheckpoint("before_retry");
+    if (preRetryTerminal !== undefined) return await terminateRun(preRetryTerminal);
+
     if (decision.shouldExit) {
       if (input.store) {
         await input.store.appendLedger(
@@ -1602,6 +2080,10 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
             payload: createRunExitPayload(decision)
           })
         );
+      }
+      // Drain pending diagnostic ledger writes before receipt signing.
+      if (pendingControlWrites.length > 0) {
+        await Promise.all(pendingControlWrites.splice(0));
       }
       const routingInput = { runStartMs, firstDeltaDetected, firstDeltaTimestampMs, firstDeltaFilePath, firstDeltaChangeType, preDeltaCostUsd };
       const finalizedLoop = finalizeLoop(loop, decision, now(), idFactory, routingInput);
@@ -1631,6 +2113,10 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     );
   }
 
+  // Drain pending diagnostic ledger writes before receipt signing.
+  if (pendingControlWrites.length > 0) {
+    await Promise.all(pendingControlWrites.splice(0));
+  }
   const routingInput = { runStartMs, firstDeltaDetected, firstDeltaTimestampMs, firstDeltaFilePath, firstDeltaChangeType, preDeltaCostUsd };
   const finalizedLoop = finalizeLoop(loop, decision, now(), idFactory, routingInput);
   await persistLoopRecordIfSupported(input.store, finalizedLoop);
@@ -1638,6 +2124,14 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     loop: finalizedLoop,
     decision
   };
+  } finally {
+    if (wallTimer !== undefined) clearTimeout(wallTimer);
+    disposeSignalMonitor();
+    runController.abort();
+    activeAttemptController?.abort();
+    // Flush any diagnostic ledger writes queued from signal callbacks
+    await Promise.all(pendingControlWrites);
+  }
 }
 
 function createRunExitPayload(decision: ExitDecision): Record<string, unknown> {
@@ -1705,7 +2199,7 @@ function finalizeLoop(
     firstDeltaFilePath?: string;
     firstDeltaChangeType?: "create" | "modify" | "delete" | "patch_proposed";
     preDeltaCostUsd: number;
-  }
+  },
 ): LoopRecord {
   const finalized = appendLoopEvent(
     loop,
@@ -1721,11 +2215,14 @@ function finalizeLoop(
     ? buildRoutingEconomics(finalized, routingEconomicsInput, decision)
     : undefined;
 
+  const avoidedUsd = calculateLoopAvoidedUsd({ loop: finalized, decision });
+
   return {
     ...finalized,
     status: decision.status,
     lifecycleState: decision.lifecycleState,
     updatedAt: timestamp,
+    cost: { ...finalized.cost, avoidedUsd },
     ...(routingEconomics ? { routingEconomics } : {})
   };
 }
@@ -1854,6 +2351,9 @@ function resolveChangedFiles(
   repoRoot?: string,
   rollbackBoundary?: RollbackBoundaryArtifact
 ): string[] {
+  if (repoRoot && rollbackBoundary?.headRef) {
+    return listAttemptChangedFilesSinceBoundary({ repoRoot, boundary: rollbackBoundary });
+  }
   if (result.execution?.changedFiles !== undefined) {
     return result.execution.changedFiles;
   }
@@ -1875,6 +2375,59 @@ function buildPatchDiff(result: MartinAdapterResult, changedFiles: string[]): st
       .join("\n");
   }
   return undefined;
+}
+
+function reconcileExistingGroundingFiles(
+  scan: GroundingScanResult,
+  repoRoot: string,
+  boundary?: RollbackBoundaryArtifact
+): GroundingScanResult {
+  const resolvedFiles = new Set(scan.resolvedFiles);
+  const violations = scan.violations.filter((violation) => {
+    if (violation.kind !== "file_not_found") {
+      return true;
+    }
+
+    const absolutePath = resolve(repoRoot, violation.reference);
+    const relativePath = relative(repoRoot, absolutePath);
+    const isInsideRepo = relativePath.length > 0 && !relativePath.startsWith("..") && !isAbsolute(relativePath);
+    if (!isInsideRepo || !isTrackedRepoFileAtBoundary(repoRoot, violation.reference, boundary)) {
+      return true;
+    }
+
+    resolvedFiles.add(violation.reference);
+    return false;
+  });
+
+  return {
+    ...scan,
+    violations,
+    resolvedFiles: [...resolvedFiles]
+  };
+}
+
+function isTrackedRepoFileAtBoundary(
+  repoRoot: string,
+  filePath: string,
+  boundary?: RollbackBoundaryArtifact
+): boolean {
+  if (!boundary) {
+    return false;
+  }
+
+  const normalizedPath = filePath.replace(/\\/gu, "/");
+  if (boundary.snapshots.some((snapshot) => snapshot.existed && snapshot.path === normalizedPath)) {
+    return true;
+  }
+  if (!boundary.headRef) {
+    return false;
+  }
+  const result = spawnSync(
+    "git",
+    ["-C", repoRoot, "cat-file", "-e", `${boundary.headRef}:${normalizedPath}`],
+    { encoding: "utf8", stdio: "ignore", windowsHide: true }
+  );
+  return result.status === 0;
 }
 
 function createBudgetSettlement(input: {
@@ -1966,18 +2519,39 @@ function truncateVerificationDetail(text: string, maxLength: number): string {
   return text.length <= maxLength ? text : `${text.slice(0, maxLength - 1)}…`;
 }
 
-function normalizeVerificationOutcome(result: MartinAdapterResult): MartinVerificationOutcome {
+function resolveExpectedVerifierBinding(request: MartinAdapterRequest): VerifierExecutionBinding {
+  const commands = request.context.verificationStack?.length
+    ? request.context.verificationStack.map((step) => step.command)
+    : request.context.verificationPlan;
+  return {
+    runId: request.loopId,
+    workspaceId: request.workspaceId,
+    cwd: request.context.repoRoot ?? process.cwd(),
+    commands,
+  };
+}
+
+function normalizeVerificationOutcome(
+  result: MartinAdapterResult,
+  expectedBinding: VerifierExecutionBinding
+): MartinVerificationOutcome {
   const warnings = [...(result.verification.warnings ?? [])];
   const contradiction = detectVerificationContradiction(result);
   if (contradiction && !warnings.includes(contradiction)) {
     warnings.push(contradiction);
   }
 
+  const executionPassed = verifierActuallyPassed(result.verification, expectedBinding);
+  if (result.verification.passed && !executionPassed && !contradiction) {
+    warnings.push("Verification evidence conflicts with the configured run, workspace, cwd, command, or subprocess result.");
+  }
+
   return {
-    passed: result.verification.passed,
+    passed: executionPassed && !contradiction,
     summary: result.verification.summary,
     ...(result.verification.steps?.length ? { steps: result.verification.steps } : {}),
-    ...(warnings.length ? { warnings } : {})
+    ...(warnings.length ? { warnings } : {}),
+    ...(result.verification.binding ? { binding: result.verification.binding } : {})
   };
 }
 
@@ -2130,3 +2704,46 @@ function applyPatchFailureToLoop(
     )
   };
 }
+
+export {
+  createDefaultExitPolicy,
+  evaluateExitPolicy,
+  hashProgressState,
+  toLegacyExitDecision,
+  validateExitPolicy
+} from "./exits.js";
+export type { ExitPolicyOverrides, LegacyExitDecision } from "./exits.js";
+export {
+  SignalDiagnosticError,
+  createFileExitSignalSource,
+  exitSignalPath,
+  readAllExitSignals,
+  readExitSignal,
+  startExitSignalMonitor,
+  writeExitSignal
+} from "./exit-signal.js";
+export type { ExitSignalSource, SignalDiagnostic, SignalReadResult } from "./exit-signal.js";
+
+// ─── R4 Delivery ─────────────────────────────────────────────────────────────
+export {
+  cacheMessage,
+  fetchSelectedMessage,
+  getCliInstalledVersion,
+  getMcpInstalledVersion,
+  isCooldownExpired,
+  isDismissed,
+  isNewerVersion,
+  loadDeliveryRecord,
+  parseMessageSelectionResponse,
+  recordDismissed,
+  recordShown,
+  resolveDefaultLedgerPath,
+  saveDeliveryRecord,
+} from "./delivery/index.js";
+export type {
+  MessageClientOptions,
+  MessageSelectRequest,
+  ParseFailure,
+  ParseResult,
+  ValidationError,
+} from "./delivery/index.js";
