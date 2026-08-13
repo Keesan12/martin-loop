@@ -113,9 +113,7 @@ export async function inspectPackedFiles(options = {}) {
     { cwd: rootDir },
   );
   const packArtifacts = extractPackJsonPayload(packRun.stdout);
-  const files = Array.isArray(packArtifacts)
-    ? packArtifacts[0]?.files?.map((entry) => entry.path).filter((entry) => typeof entry === "string")
-    : [];
+  const files = extractPackFilePaths(packArtifacts);
 
   if (files.length === 0) {
     throw new Error("npm pack --dry-run did not report any packaged files.");
@@ -129,6 +127,13 @@ export function extractPackJsonPayload(stdout) {
   const trailingJsonMatch = trimmed.match(/(\[\s*\{[\s\S]*\}\s*\])$/);
   const jsonPayload = trailingJsonMatch?.[1] ?? trimmed;
   return JSON.parse(jsonPayload);
+}
+
+export function extractPackFilePaths(packArtifacts) {
+  const artifact = Array.isArray(packArtifacts) ? packArtifacts[0] : packArtifacts;
+  return Array.isArray(artifact?.files)
+    ? artifact.files.map((entry) => entry.path).filter((entry) => typeof entry === "string")
+    : [];
 }
 
 export async function assertVendoredCliManifest(rootDir) {
