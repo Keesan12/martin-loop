@@ -10,74 +10,13 @@ permissions:
   id-token: write
 
 jobs:
-  build-native:
-    name: Native ${{ matrix.target }}
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: linux-x64
-            runner: ubuntu-latest
-            asset: martin-loop-linux-x64
-          - target: linux-arm64
-            runner: ubuntu-24.04-arm
-            asset: martin-loop-linux-arm64
-          - target: macos-x64
-            runner: macos-13
-            asset: martin-loop-macos-x64
-          - target: macos-arm64
-            runner: macos-latest
-            asset: martin-loop-macos-arm64
-          - target: win-x64
-            runner: windows-latest
-            asset: martin-loop-win-x64.exe
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-
-      - uses: pnpm/action-setup@b0f76dfb45f55f8421693e4803ac7bb65143bd34
-        with:
-          version: 10.33.0
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build CLI
-        run: pnpm build
-
-      - name: Build native asset
-        run: node ./scripts/build-native.mjs --skip-build
-        env:
-          NATIVE_TARGET: ${{ matrix.target }}
-
-      - name: Verify native asset and checksum
-        run: node ./scripts/verify-native-release-assets.mjs --target=${{ matrix.target }} --smoke
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: native-${{ matrix.target }}
-          if-no-files-found: error
-          retention-days: 1
-          path: |
-            dist/native/${{ matrix.asset }}
-            dist/native/${{ matrix.asset }}.sha256
-
   publish-npm:
     name: Publish to npm
     runs-on: ubuntu-latest
-    needs: build-native
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-          persist-credentials: false
 
       - uses: pnpm/action-setup@b0f76dfb45f55f8421693e4803ac7bb65143bd34
         with:
@@ -119,16 +58,6 @@ jobs:
           printf '%s\n' "$PACK_RESULT" > dist-release/pack-result.json
           TARBALL="$(node -e "const fs = require('fs'); const data = JSON.parse(fs.readFileSync('dist-release/pack-result.json', 'utf8')); process.stdout.write(data.tarballPath);")"
           echo "tarball=${TARBALL}" >> "$GITHUB_OUTPUT"
-
-      - name: Download native release assets
-        uses: actions/download-artifact@v4
-        with:
-          pattern: native-*
-          path: dist/native
-          merge-multiple: true
-
-      - name: Verify complete native release asset set
-        run: node ./scripts/verify-native-release-assets.mjs
 
       - name: Read package version
         id: package-version
@@ -177,19 +106,5 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b
         with:
-          fail_on_unmatched_files: true
-          files: |
-            ${{ steps.root-pack.outputs.tarball }}
-            install.sh
-            install.ps1
-            dist/native/martin-loop-linux-x64
-            dist/native/martin-loop-linux-x64.sha256
-            dist/native/martin-loop-linux-arm64
-            dist/native/martin-loop-linux-arm64.sha256
-            dist/native/martin-loop-macos-x64
-            dist/native/martin-loop-macos-x64.sha256
-            dist/native/martin-loop-macos-arm64
-            dist/native/martin-loop-macos-arm64.sha256
-            dist/native/martin-loop-win-x64.exe
-            dist/native/martin-loop-win-x64.exe.sha256
+          files: ${{ steps.root-pack.outputs.tarball }}
           body: ${{ steps.changelog.outputs.body }}

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { execFileSync } from "node:child_process";
-import { readFile, stat } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -40,10 +40,20 @@ const PATH_ALLOWLIST = [
   /^scripts\/public-copy-scan\.mjs$/,
   /^scripts\/public-git-surface-guard\.mjs$/,
   /^scripts\/public-portability-guard\.mjs$/,
+  // INTERNAL ONLY — promotion tooling; intentionally checks internal repo name as a validation constraint
+  /^scripts\/verify-public-promotion\.mjs$/,
   /^scripts\/tests\//,
   /(^|\/)tests\//,
   /\.test\.[cm]?[jt]sx?$/i,
   /^benchmarks\/fixtures\//,
+  // INTERNAL ONLY — these root files are never promoted to the public repo
+  /^CTO_AUDIT\.md$/,
+  /^NEXT_STEP\.md$/,
+  /^CLAUDE\.md$/,
+  // INTERNAL ONLY — Claude Code operating config, never promoted
+  /^\.claude\//,
+  // Non-public docs subdirectory — excluded from public projection
+  /^docs\/internal\//,
 ];
 
 export function normalizeRelativePath(value) {
@@ -106,22 +116,12 @@ export function collectTrackedFiles(rootDir = ROOT_DIR) {
 export async function runPublicPortabilityGuard(options = {}) {
   const rootDir = options.rootDir ?? ROOT_DIR;
   const trackedFiles = options.files ?? collectTrackedFiles(rootDir);
-  const candidateFiles = trackedFiles.filter((file) => shouldScanPath(file));
-  const scannedFiles = [];
+  const scannedFiles = trackedFiles.filter((file) => shouldScanPath(file));
   const violations = [];
 
-  for (const relativePath of candidateFiles) {
+  for (const relativePath of scannedFiles) {
     const fullPath = path.join(rootDir, relativePath);
-    try {
-      await stat(fullPath);
-    } catch (error) {
-      if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
-        continue;
-      }
-      throw error;
-    }
     const contents = await readFile(fullPath, "utf8");
-    scannedFiles.push(relativePath);
     violations.push(...findPortabilityViolations(contents, relativePath));
   }
 

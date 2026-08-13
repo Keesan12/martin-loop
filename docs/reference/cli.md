@@ -23,26 +23,9 @@ martin-loop challenge [--loop-id <id> | --file <path> | --latest] [--format mark
 martin-loop share (--loop-id <id> | --file <path> | --latest) [--out-dir <path>]
 martin-loop badge [--format svg|json] [--runs-dir <path>]
 martin-loop runs list|get|attempt|verify ...
-martin-loop mcp print-config --host <codex|claude|gemini|cursor|vscode|copilot|continue|generic>
-martin-loop mcp install --host <codex|claude|gemini|cursor|vscode|copilot|continue|generic>
-martin-loop mcp verify-install --host <host> [--scope <scope>]
-martin-loop mcp rollback --host <host> [--scope <scope>]
-martin-loop mcp uninstall --host <host> [--scope <scope>]
+martin-loop mcp print-config --host <codex|claude|gemini|generic>
+martin-loop mcp install --host <codex|claude|gemini|generic>
 ```
-
-## MCP Installer
-
-The native installer supports Codex, Claude Code, Gemini CLI, Cursor, VS Code (`vscode`), GitHub Copilot (`copilot`, a VS Code compatibility alias), Continue, and generic MCP hosts.
-
-```text
---scope <user|project|local>  user or project for every host; local is Claude-only
---profile <name>              minimal, diagnostic, github-review, full-local, paid-remote, starter, or full
---transport <stdio|remote>    stdio by default
---dry-run                     preview the target and generated config without writing
---install-governance          explicitly install supported governance hooks
-```
-
-Every preview includes the config target, enabled tools, and governance guidance. File-backed installs are atomic and recorded locally so they can be verified, rolled back, or uninstalled without overwriting user changes. See the [MCP setup guide](../getting-started/mcp.md) for the authoritative host-to-file matrix and safe install behavior.
 
 ## Onboarding Flow
 
@@ -69,7 +52,6 @@ npx -y martin-loop@latest share --latest
 --soft-limit-usd <n>    Soft budget threshold in USD
 --verify <cmd>          Verifier command after each attempt
 --proof                 Explicitly opt into a no-spend proof adapter lane
---verify-only           Explicitly skip the coding adapter and run verifier-only
 --unsafe-allow-unguarded-run
                         Bypass the local governance gate for this one run
 --max-iterations <n>    Maximum number of attempts
@@ -159,12 +141,7 @@ By default MartinLoop writes:
 
 - `run-receipt.json`
 - `run-receipt.md`
-
-Proof-card images are optional:
-
-- `--with-proof-card`
-- `--proof-card-format svg|png|both`
-- revision-safe image filenames such as `proof-card-r1-1a2b3c4d.svg`
+- `proof-card.svg`
 
 The default output location is the selected run directory under `share/`.
 

@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "context-manifest/1",
+  "manifestHash": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+  "taskId": "task_fixture_001",
+  "runId": "run_fixture_001",
+  "nowMs": 1753142400000,
+  "adapterVersion": "martin-core@0.1.0",
+  "policyHash": "b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3",
+  "budget": {
+    "modelWindowTokens": 200000,
+    "systemReserveTokens": 2000,
+    "outputReserveTokens": 4000,
+    "toolReserveTokens": 3000,
+    "overflowReserveTokens": 2000,
+    "maxWorkingSetTokens": 8000,
+    "pinnedTokensMax": 1500
+  },
+  "decisions": [
+    {
+      "objectId": "obj_mission_001",
+      "decision": "included",
+      "reason": "required",
+      "renderedTokens": 120
+    },
+    {
+      "objectId": "obj_task_001",
+      "decision": "included",
+      "reason": "within_budget",
+      "renderedTokens": 80
+    },
+    {
+      "objectId": "obj_source_001",
+      "decision": "excluded",
+      "reason": "budget_exhausted"
+    }
+  ],
+  "totalRenderedTokens": 200,
+  "renderPasses": 1,
+  "compilationDurationMs": 12
+}

@@ -1,16 +1,14 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 /**
  * CLI integration tests covering adapter selection, engine flags,
  * and explicit no-spend proof mode guardrails.
  */
 
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+
 import { spawnSync } from "node:child_process";
 
 import {
@@ -211,7 +209,7 @@ function installDeterministicCodexHost(): void {
     createStubDirectProviderAdapter({
       providerId: "codex-test",
       model: "gpt-5.4",
-      responder: () => ({
+      responder: (request) => ({
         status: "completed",
         summary: "Deterministic Codex contract adapter completed.",
         usage: {
@@ -222,18 +220,35 @@ function installDeterministicCodexHost(): void {
         },
         verification: {
           passed: true,
-          summary: "Verification completed in deterministic CLI contract coverage."
+          summary: "Verification completed in deterministic CLI contract coverage.",
+          binding: {
+            runId: request.loopId,
+            workspaceId: request.workspaceId,
+            cwd: request.context.repoRoot ?? process.cwd(),
+            commands: request.context.verificationPlan,
+          },
+          steps: request.context.verificationPlan.map((command) => ({ command, launched: true, completed: true, crashed: false, exitCode: 0, timedOut: false })),
         }
       })
     })
   );
 }
 
+function deriveWorkspaceKey(workingDirectory: string): string {
+  const normalized = resolve(workingDirectory);
+  const input = process.platform === "win32" ? normalized.toLowerCase() : normalized;
+  return createHash("sha256").update(input).digest("hex").slice(0, 16);
+}
+
 async function readWorkflowState(
-  runsRoot: string
+  runsRoot: string,
+  workingDirectory?: string
 ): Promise<{ cli?: Record<string, unknown> } | undefined> {
   try {
-    return JSON.parse(await readFile(join(runsRoot, "_martin", "workflow-state.json"), "utf8")) as {
+    const statePath = workingDirectory
+      ? join(runsRoot, "_martin", "workspaces", deriveWorkspaceKey(workingDirectory), "workflow-state.json")
+      : join(runsRoot, "_martin", "workflow-state.json");
+    return JSON.parse(await readFile(statePath, "utf8")) as {
       cli?: Record<string, unknown>;
     };
   } catch {
@@ -261,7 +276,7 @@ describe("--proof mode", () => {
       ])
     );
 
-    expect(result.exitCode).toBe(0);
+    expect(result.exitCode).toBe(9);
     const payload = JSON.parse(result.stdout);
     expect(payload.command).toBe("run");
     expect(payload.loop.loopId).toMatch(/^loop_/u);
@@ -314,7 +329,7 @@ describe("--engine flag", () => {
       ])
     );
 
-    expect(result.exitCode).toBe(0);
+    expect(result.exitCode).toBe(9);
     const payload = JSON.parse(result.stdout);
     // The adapter id should contain "claude" (it will be in the loop attempt if any ran)
     expect(payload.loop.loopId).toMatch(/^loop_/u);
@@ -425,7 +440,7 @@ describe("--engine flag", () => {
           expect(verificationEvent).toBeDefined();
           expect(typeof verificationEvent?.payload?.passed).toBe("boolean");
 
-          const workflowState = await readWorkflowState(runsDir);
+          const workflowState = await readWorkflowState(runsDir, payload.environment.workingDirectory);
           const cliState = (workflowState?.cli ?? {}) as Record<string, { workingDirectory?: string }>;
           const normalizedWorkingDirectory = normalizeWorkingDirectoryForExpectation(payload.environment.workingDirectory);
           expect(cliState.doctor?.workingDirectory).toBe(normalizedWorkingDirectory);
@@ -508,7 +523,7 @@ describe("--engine flag", () => {
             );
             expect(preflightResult.exitCode).toBe(0);
 
-            const workflowStateAfterPreflight = await readWorkflowState(runsDir);
+            const workflowStateAfterPreflight = await readWorkflowState(runsDir, workspace);
             const cliStateAfterPreflight = (workflowStateAfterPreflight?.cli ?? {}) as Record<string, { workingDirectory?: string }>;
             const normalizedWorkingDirectory = normalizeWorkingDirectoryForExpectation(workspace);
             expect(cliStateAfterPreflight["session-start"]?.workingDirectory).toBe(normalizedWorkingDirectory);
@@ -764,7 +779,7 @@ describe("--engine flag", () => {
     );
   });
 
-  it("accepts explicit unsafe gate bypass in live mode", { timeout: 15000 }, async () => {
+  it("rejects explicit unsafe gate bypass in live mode", { timeout: 15000 }, async () => {
     await withTempDir((workspace) =>
       withScratchEnv(
         {
@@ -788,8 +803,10 @@ describe("--engine flag", () => {
             ])
           );
 
-          expect(result.exitCode).not.toBe(8);
-          expect(result.stderr).not.toContain("Governed run preflight blocked execution");
+          expect(result.exitCode).toBe(8);
+          expect(result.stderr).toContain(
+            "--unsafe-allow-unguarded-run is blocked for live governed coding runs."
+          );
         }
       )
     );
@@ -816,7 +833,7 @@ describe("--cwd flag", () => {
         ])
       );
 
-      expect(result.exitCode).toBe(0);
+      expect(result.exitCode).toBe(9);
     });
   });
 });
@@ -909,7 +926,7 @@ describe("help command", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe("");
-    expect(result.stdout).toContain("AI agents are easy to run. Hard to govern.");
+    expect(result.stdout).toContain("Your coding agent says it's done. MartinLoop makes it prove it.");
     expect(result.stdout).toContain("Apache 2.0 · martinloop.com · github.com/Keesan12/martin-loop");
     expect(result.stdout).toContain("martin-loop run");
     expect(result.stdout).toContain("martin-loop demo");

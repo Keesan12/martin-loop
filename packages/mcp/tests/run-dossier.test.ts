@@ -1,12 +1,9 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { createLoopRecord } from "@martin/contracts";
+import type { TerminationEnvelopeV1 } from "@martin/contracts";
 import { describe, expect, it } from "vitest";
 
 import { martinRunDossierTool } from "../src/tools/run-dossier.js";
@@ -84,6 +81,69 @@ describe("martinRunDossierTool", () => {
       );
       expect(dossier.inspection.runsRoot).toBe(runsRoot);
       expect(workspaceRoot).not.toBe(process.cwd());
+    });
+  });
+
+  it("surfaces terminationEnvelope from a persisted loop record with wall_clock exit", { timeout: 20_000 }, async () => {
+    await withRunsAndWorkspace(async ({ runsRoot }) => {
+      const envelope: TerminationEnvelopeV1 = {
+        schemaVersion: "termination/1",
+        class: "operational_exit",
+        exit: {
+          schemaVersion: "exit_evaluation/1",
+          policyVersion: "exit_policy/1",
+          shouldExit: true,
+          primary: "wall_clock",
+          matched: ["wall_clock"],
+          phase: "attempt_completed",
+          evaluatedAt: "2026-07-30T00:00:00.000Z",
+          matches: [
+            {
+              kind: "wall_clock",
+              fired: true,
+              reason: "Wall-clock limit reached (3600s).",
+              evidence: {}
+            }
+          ]
+        }
+      };
+
+      const loop = createLoopRecord({
+        workspaceId: "ws_d5_mcp",
+        projectId: "proj_d5_mcp",
+        task: {
+          title: "D5 MCP surface proof",
+          objective: "Prove terminationEnvelope survives through MCP dossier tool.",
+          verificationPlan: ["vitest run"]
+        },
+        terminationEnvelope: envelope
+      });
+
+      // Stamp the lifecycle state to match a wall_clock exit
+      const terminatedLoop = {
+        ...loop,
+        status: "exited" as const,
+        lifecycleState: "wall_clock" as const
+      };
+
+      await mkdir(join(runsRoot, terminatedLoop.loopId), { recursive: true });
+      await writeFile(
+        join(runsRoot, terminatedLoop.loopId, "loop-record.json"),
+        JSON.stringify(terminatedLoop),
+        "utf8"
+      );
+
+      const dossier = await martinRunDossierTool({
+        loopId: terminatedLoop.loopId,
+        runsDir: runsRoot
+      });
+
+      // MCP surface proof: termination identity must be present and correct
+      expect(dossier.terminationEnvelope).toBeDefined();
+      expect(dossier.terminationEnvelope?.class).toBe("operational_exit");
+      expect(dossier.terminationEnvelope?.exit.primary).toBe("wall_clock");
+      expect(dossier.loop.lifecycleState).toBe("wall_clock");
+      expect(dossier.loop.loopId).toBe(terminatedLoop.loopId);
     });
   });
 });

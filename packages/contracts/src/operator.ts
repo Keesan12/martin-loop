@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 export const MARTIN_ERROR_CATEGORIES = [
   "invalid_input",
   "environment",
@@ -21,6 +17,7 @@ export type MartinOutputMode = "human" | "json" | "quiet";
 
 export interface MartinRunSelector {
   runsDir?: string;
+  workspaceId?: string;
   file?: string;
   loopId?: string;
   latest?: boolean;
@@ -29,6 +26,7 @@ export interface MartinRunSelector {
 
 export interface MartinRunListFilters {
   runsDir?: string;
+  workspaceId?: string;
   limit?: number;
   status?: string;
   lifecycleState?: string;

@@ -4,10 +4,10 @@ This file is the release source of truth for package/version mapping in this rep
 
 ## Root package: `martin-loop`
 
-- live npm dist-tag `latest`: `0.4.3`
-- live public GitHub release: `v0.4.3`
-- live public baseline in this train: `0.4.3`
-- root public baseline: `0.4.3`
+- live npm dist-tag `latest`: `0.4.5`
+- live public GitHub release: `v0.4.5`
+- live public baseline in this train: `0.4.5`
+- root public baseline: `0.4.5`
 - releases consumed since the original `0.2.8` launch:
   - `0.2.9` fixed proof-run classification, Windows `.cmd` resolution, and public provider defaults
   - `0.2.10` tightened verifier evidence, `--runs-dir` consistency, and public help output
@@ -27,14 +27,15 @@ This file is the release source of truth for package/version mapping in this rep
   - `0.3.16` governance hooks on re-install, gate fires before engine check, estimate persistence, OpenAI 429/5xx retry
   - `0.3.18` root release smoke and release-surface fixes
   - `0.3.19` governed workspace-root config resolution, public Codex integration truth, OSS surface hygiene
-  - `0.4.0` receipt-first share ledgers, receipts as default share artifact, MCP discovery updated, --verify-only removed, CI action SHA pinning
-  - `0.4.1` preflight receipt written on all CI platforms (codex availability override fix), receipt-first trust surface defaults
-  - `0.4.2` error normalization restored, Codex launch failure diagnostics improved, token flag regression guard added
-  - `0.4.3` start budget consistency, generated command context preservation, preflight execution-bound reuse checks
-  - `0.4.4` model-specific pricing, cache-aware cost accounting, streaming budget guard, keyed npm-pack payload fix
-  - `0.4.5` MartinLoop Arcade — terminal Space Invaders during long governed runs, proactive opt-in prompt, automatic fallback in CI/non-TTY
-- current in-repo root release line: `0.4.5`
-- next planned root follow-on after `0.4.5`: `0.4.6`
+  - `0.4.0` receipt-first share ledgers, receipt-default sharing, MCP discovery updates, and release-surface guards
+  - `0.4.1` CI preflight receipt consistency and receipt-first trust surfaces
+  - `0.4.2` error normalization and Codex launch diagnostics
+  - `0.4.3` start-budget consistency and execution-bound preflight reuse
+  - `0.4.4` model-specific pricing, cache-aware accounting, and streaming budget enforcement
+  - `0.4.5` MartinLoop Arcade for interactive governed runs
+  - `0.5.0` fail-closed verification authority, workspace-bound evidence, native install, execution-surface hardening, and MCP lifecycle expansion
+- current in-repo root release target: `0.5.0` (pending public release)
+- next planned root follow-on: not scheduled
 
 ## Standalone package: `@martinloop/mcp`
 
@@ -42,14 +43,13 @@ This file is the release source of truth for package/version mapping in this rep
 - live public GitHub release: `mcp-v0.3.9`
 - live public baseline in this train: `0.3.9`
 - standalone MCP public baseline: `0.3.9`
-- current in-repo standalone release line: `0.3.9`
-- next planned standalone release: not scheduled in this patch train
-- next planned follow-ons:
-  - reserved for additional host-coverage follow-ups when the MCP line changes again
+- current in-repo standalone release target: `0.5.0` (pending public release)
+- MCPB remains at its previously released `0.3.9` artifact and is not advanced in `0.5.0`
+- next planned standalone release: not scheduled
 
 ## Release rules
 
-- The root package line and the standalone MCP line move independently.
+- This release aligns the root package and standalone MCP package at `0.5.0`; later lines may move independently.
 - Do not infer standalone MCP release state from the root package, or the other way around.
 - Public release notes must be written for customers and evaluators, not for internal operators.
 - Public-facing examples, screenshots, README copy, and changelog entries must stay free of internal repo names, absolute system paths, private branch names, or process noise.

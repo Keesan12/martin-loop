@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -12,7 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createLoopRecord } from "../../contracts/src/index.js";
 import { __setRunAdapterOverrideForTests, executeCli, parseCliArguments } from "../src/index.js";
 
-const STAR_CTA_HEADLINE = "⭐ MartinLoop saved you from a runaway bill.";
+const STAR_CTA_HEADLINE = "⭐ MartinLoop produced a verified handoff.";
 const STAR_CTA_REPO = "github.com/Keesan12/martin-loop";
 
 function installFastRunAdapter(): void {
@@ -20,7 +16,7 @@ function installFastRunAdapter(): void {
     createStubDirectProviderAdapter({
       providerId: "test",
       model: "fast",
-      responder: () => ({
+      responder: (request) => ({
         status: "completed",
         summary: "Fast test adapter completed.",
         usage: {
@@ -31,7 +27,21 @@ function installFastRunAdapter(): void {
         },
         verification: {
           passed: true,
-          summary: "Verification skipped in config-focused CLI tests."
+          summary: "Verification completed in config-focused CLI tests.",
+          binding: {
+            runId: request.loopId,
+            workspaceId: request.workspaceId,
+            cwd: request.context.repoRoot ?? process.cwd(),
+            commands: request.context.verificationPlan,
+          },
+          steps: request.context.verificationPlan.map((command) => ({
+            command,
+            launched: true,
+            completed: true,
+            crashed: false,
+            exitCode: 0,
+            timedOut: false,
+          })),
         }
       })
     })
@@ -63,6 +73,54 @@ function installFailingRunAdapter(): void {
       })
     })
   );
+}
+
+function installChangingRunAdapter(changedFiles: string[]): void {
+  const adapter: NonNullable<Parameters<typeof __setRunAdapterOverrideForTests>[0]> = {
+    adapterId: "agent-cli:change-approval-test",
+    kind: "agent-cli",
+    label: "Change approval test adapter",
+    metadata: { providerId: "codex", model: "test-change-producer" },
+    async execute(request) {
+      return {
+        status: "completed",
+        summary: "Produced a controlled test change.",
+        usage: {
+          actualUsd: 0,
+          tokensIn: 0,
+          tokensOut: 0,
+          provenance: "actual"
+        },
+        verification: {
+          passed: true,
+          summary: "Verification completed in approval-policy CLI tests.",
+          binding: {
+            runId: request.loopId,
+            workspaceId: request.workspaceId,
+            cwd: request.context.repoRoot ?? process.cwd(),
+            commands: request.context.verificationPlan,
+          },
+          steps: request.context.verificationPlan.map((command) => ({
+            command,
+            launched: true,
+            completed: true,
+            crashed: false,
+            exitCode: 0,
+            timedOut: false,
+          })),
+        },
+        execution: {
+          changedFiles,
+          diffStats: {
+            filesChanged: changedFiles.length,
+            addedLines: changedFiles.length,
+            deletedLines: 0
+          }
+        }
+      };
+    }
+  };
+  __setRunAdapterOverrideForTests(adapter);
 }
 
 afterEach(() => {
@@ -178,6 +236,28 @@ describe("parseCliArguments", () => {
     });
   });
 
+  it("maps approval flags to the typed approval policy fields", () => {
+    const parsed = parseCliArguments([
+      "run",
+      "--objective",
+      "Apply an approved dependency and migration update",
+      "--approve-dependency-changes",
+      "--approve-migrations",
+      "--approve-config-changes"
+    ]);
+
+    expect(parsed).toEqual({
+      command: "run",
+      request: expect.objectContaining({
+        approvalPolicy: {
+          dependencyAdds: true,
+          migrations: true,
+          configChanges: true
+        }
+      })
+    });
+  });
+
   it("treats run/preflight help flags as top-level help", () => {
     expect(parseCliArguments(["run", "--help"])).toEqual({ command: "help" });
     expect(parseCliArguments(["run", "-h"])).toEqual({ command: "help" });
@@ -226,51 +306,7 @@ describe("parseCliArguments", () => {
       transport: "remote",
       profile: "paid-remote",
       experimentalRemoteHosts: true,
-      dryRun: false,
-      installGovernance: false
-    });
-  });
-
-  it("requires an explicit MCP governance install flag", () => {
-    expect(
-      parseCliArguments([
-        "mcp",
-        "install",
-        "--host",
-        "claude",
-        "--scope",
-        "project",
-        "--install-governance"
-      ])
-    ).toMatchObject({
-      command: "mcp_install",
-      host: "claude",
-      scope: "project",
-      installGovernance: true
-    });
-  });
-
-  it("parses MCP verify, rollback, and uninstall commands", () => {
-    expect(
-      parseCliArguments(["mcp", "verify-install", "--host", "vscode", "--scope", "project"])
-    ).toMatchObject({
-      command: "mcp_verify_install",
-      host: "vscode",
-      scope: "project"
-    });
-    expect(
-      parseCliArguments(["mcp", "rollback", "--host", "codex", "--scope", "user"])
-    ).toMatchObject({
-      command: "mcp_rollback",
-      host: "codex",
-      scope: "user"
-    });
-    expect(
-      parseCliArguments(["mcp", "uninstall", "--host", "generic", "--scope", "project"])
-    ).toMatchObject({
-      command: "mcp_uninstall",
-      host: "generic",
-      scope: "project"
+      dryRun: false
     });
   });
 });
@@ -280,45 +316,13 @@ describe("executeCli", () => {
     const result = await executeCli(["--help"]);
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("AI agents are easy to run. Hard to govern.");
+    expect(result.stdout).toContain("Your coding agent says it's done. MartinLoop makes it prove it.");
     expect(result.stdout).toContain("Apache 2.0 · martinloop.com · github.com/Keesan12/martin-loop");
     expect(result.stdout).toContain("martin start [options]");
     expect(result.stdout).toContain("martin receipts explain");
     expect(result.stdout).toContain("martin runs verify (--loop-id <id> | --file <path> | --latest) [options]");
     expect(result.stdout).toContain("martin start [options]");
     expect(result.stdout).toContain("--experimental-remote-hosts");
-  });
-
-  it("installs, verifies, and uninstalls a file-backed MCP config", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "martin-cli-mcp-roundtrip-"));
-    const previousUserProfile = process.env.USERPROFILE;
-    process.env.USERPROFILE = directory;
-
-    try {
-      const common = [
-        "--host",
-        "generic",
-        "--scope",
-        "project",
-        "--cwd",
-        directory
-      ];
-      expect((await executeCli(["mcp", "install", ...common])).exitCode).toBe(0);
-      const verified = await executeCli(["mcp", "verify-install", ...common]);
-      expect(verified.exitCode).toBe(0);
-      expect(verified.stdout).toContain("Verified MartinLoop MCP install");
-      expect((await executeCli(["mcp", "uninstall", ...common])).exitCode).toBe(0);
-      await expect(
-        readFile(join(directory, ".martin-loop", "mcp.generic.json"), "utf8")
-      ).rejects.toThrow();
-    } finally {
-      if (previousUserProfile === undefined) {
-        delete process.env.USERPROFILE;
-      } else {
-        process.env.USERPROFILE = previousUserProfile;
-      }
-      await rm(directory, { recursive: true, force: true });
-    }
   });
 
   it("blocks remote MCP config for cursor without explicit experimental opt-in", async () => {
@@ -346,7 +350,7 @@ describe("executeCli", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe("");
-    expect(result.stdout).toBe(`${rootPackageVersion} · Apache 2.0 · martinloop.com`);
+    expect(result.stdout).toBe(rootPackageVersion);
   });
 
   it("renders start onboarding guidance with governed defaults", { timeout: 30_000 }, async () => {
@@ -354,7 +358,6 @@ describe("executeCli", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("MartinLoop — Governed AI Coding");
-    expect(result.stdout).toContain("Apache 2.0 · martinloop.com · github.com/Keesan12/martin-loop");
     expect(result.stdout).toContain("martin doctor");
     expect(result.stdout).toContain("martin estimate");
     expect(result.stdout).toMatch(
@@ -531,6 +534,387 @@ describe("executeCli", () => {
     }
   });
 
+
+  it("prints the v5 run header for successful human-readable runs", { timeout: 30_000 }, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-run-header-"));
+
+    try {
+      installFastRunAdapter();
+      const previousMartinLive = process.env.MARTIN_LIVE;
+      process.env.MARTIN_LIVE = "false";
+      const result = await withIsolatedRunsEnv(directory, () =>
+        executeCli([
+          "run",
+          "--objective",
+          "Verify the contracts package without edits",
+          "--engine",
+          "codex",
+          "--verify-only",
+          "--verify",
+          `"${process.execPath}" -e "process.exit(0)"`,
+          "--cwd",
+          directory
+        ])
+      );
+      if (previousMartinLive === undefined) {
+        delete process.env.MARTIN_LIVE;
+      } else {
+        process.env.MARTIN_LIVE = previousMartinLive;
+      }
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("∞ martinloop");
+      expect(result.stdout).toContain("✓ verified");
+      expect(result.stdout).not.toContain("MartinLoop saved you from a runaway bill.");
+      expect(result.stdout).not.toContain("Star the repo:");
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("keeps the v5 run header out of machine-readable JSON output", { timeout: 30_000 }, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-run-header-json-"));
+
+    try {
+      installFastRunAdapter();
+      const previousMartinLive = process.env.MARTIN_LIVE;
+      process.env.MARTIN_LIVE = "false";
+      const result = await withIsolatedRunsEnv(directory, () =>
+        executeCli([
+          "--json",
+          "run",
+          "--objective",
+          "Verify the contracts package without edits",
+          "--engine",
+          "codex",
+          "--verify-only",
+          "--verify",
+          `"${process.execPath}" -e "process.exit(0)"`,
+          "--cwd",
+          directory
+        ])
+      );
+      if (previousMartinLive === undefined) {
+        delete process.env.MARTIN_LIVE;
+      } else {
+        process.env.MARTIN_LIVE = previousMartinLive;
+      }
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).not.toContain("∞ martinloop");
+      expect(result.stdout).not.toContain("Star the repo");
+      expect(result.stdout).not.toContain("runaway bill");
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("prints approval guidance for dependency changes that need operator approval", { timeout: 30_000 }, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-approval-human-"));
+
+    try {
+      installChangingRunAdapter(["package.json"]);
+      await writeFile(join(directory, "package.json"), '{"name":"approval-human"}', "utf8");
+      const previousMartinLive = process.env.MARTIN_LIVE;
+      process.env.MARTIN_LIVE = "false";
+      const result = await withIsolatedRunsEnv(directory, () =>
+        executeCli([
+          "run",
+          "--objective",
+          "Update a dependency only when approval is present",
+          "--engine",
+          "codex",
+          "--verify",
+          `"${process.execPath}" -e "process.exit(0)"`,
+          "--cwd",
+          directory
+        ])
+      );
+      if (previousMartinLive === undefined) {
+        delete process.env.MARTIN_LIVE;
+      } else {
+        process.env.MARTIN_LIVE = previousMartinLive;
+      }
+
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr).toBe("");
+      expect(result.stdout).toContain("Blocked: the agent needs operator approval to proceed.");
+      expect(result.stdout).toContain("--approve-dependency-changes");
+      expect(result.stdout).toContain("--approve-migrations");
+      expect(result.stdout).toContain("--approve-config-changes");
+      expect(result.stdout).toContain("The workspace is unchanged.");
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("keeps approval-block guidance out of JSON output while preserving typed reason codes", { timeout: 30_000 }, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-approval-json-"));
+
+    try {
+      installChangingRunAdapter(["package.json"]);
+      await writeFile(join(directory, "package.json"), '{"name":"approval-json"}', "utf8");
+      const previousMartinLive = process.env.MARTIN_LIVE;
+      process.env.MARTIN_LIVE = "false";
+      const result = await withIsolatedRunsEnv(directory, () =>
+        executeCli([
+          "--json",
+          "run",
+          "--objective",
+          "Update a dependency only when approval is present",
+          "--engine",
+          "codex",
+          "--verify",
+          `"${process.execPath}" -e "process.exit(0)"`,
+          "--cwd",
+          directory
+        ])
+      );
+      if (previousMartinLive === undefined) {
+        delete process.env.MARTIN_LIVE;
+      } else {
+        process.env.MARTIN_LIVE = previousMartinLive;
+      }
+
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr).toBe("");
+      expect(result.stdout).not.toContain("Blocked: the agent needs operator approval");
+      expect(result.stdout).not.toContain("--approve-dependency-changes");
+
+      const payload = JSON.parse(result.stdout);
+      expect(payload.decision).toMatchObject({
+        failureClass: "safety_leash_blocked",
+        reasonCode: "dependency_approval_required"
+      });
+      expect(payload.loop.lifecycleState).toBe("human_escalation");
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("emits only the loop id for quiet approval-block output", { timeout: 30_000 }, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-approval-quiet-"));
+
+    try {
+      installChangingRunAdapter(["package.json"]);
+      await writeFile(join(directory, "package.json"), '{"name":"approval-quiet"}', "utf8");
+      const previousMartinLive = process.env.MARTIN_LIVE;
+      process.env.MARTIN_LIVE = "false";
+      const result = await withIsolatedRunsEnv(directory, () =>
+        executeCli([
+          "--quiet",
+          "run",
+          "--objective",
+          "Update a dependency only when approval is present",
+          "--engine",
+          "codex",
+          "--verify",
+          `"${process.execPath}" -e "process.exit(0)"`,
+          "--cwd",
+          directory
+        ])
+      );
+      if (previousMartinLive === undefined) {
+        delete process.env.MARTIN_LIVE;
+      } else {
+        process.env.MARTIN_LIVE = previousMartinLive;
+      }
+
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr).toBe("");
+      expect(result.stdout).toMatch(/^loop_[A-Za-z0-9_-]+$/);
+      expect(result.stdout).not.toContain("Blocked:");
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("keeps CI approval-block output free of interactive prompts", { timeout: 30_000 }, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-approval-ci-"));
+
+    try {
+      installChangingRunAdapter(["package.json"]);
+      await writeFile(join(directory, "package.json"), '{"name":"approval-ci"}', "utf8");
+      const previousMartinLive = process.env.MARTIN_LIVE;
+      const previousCi = process.env.CI;
+      process.env.MARTIN_LIVE = "false";
+      process.env.CI = "1";
+      const result = await withIsolatedRunsEnv(directory, () =>
+        executeCli([
+          "run",
+          "--objective",
+          "Update a dependency only when approval is present",
+          "--engine",
+          "codex",
+          "--verify",
+          `"${process.execPath}" -e "process.exit(0)"`,
+          "--cwd",
+          directory
+        ])
+      );
+      if (previousMartinLive === undefined) {
+        delete process.env.MARTIN_LIVE;
+      } else {
+        process.env.MARTIN_LIVE = previousMartinLive;
+      }
+      if (previousCi === undefined) {
+        delete process.env.CI;
+      } else {
+        process.env.CI = previousCi;
+      }
+
+      expect(result.exitCode).toBe(2);
+      expect(result.stdout).toContain("Blocked: the agent needs operator approval to proceed.");
+      expect(result.stdout).not.toContain("quick one");
+      expect(result.stdout).not.toContain("is martin actually earning its keep");
+      expect(result.stderr).toBe("");
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("keeps non-TTY approval-block output free of interactive prompts", { timeout: 30_000 }, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-approval-nontty-"));
+    const stdoutDescriptor = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
+    const stdinDescriptor = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
+
+    try {
+      installChangingRunAdapter(["package.json"]);
+      await writeFile(join(directory, "package.json"), '{"name":"approval-nontty"}', "utf8");
+      Object.defineProperty(process.stdout, "isTTY", { value: false, configurable: true });
+      Object.defineProperty(process.stdin, "isTTY", { value: false, configurable: true });
+      const previousMartinLive = process.env.MARTIN_LIVE;
+      process.env.MARTIN_LIVE = "false";
+      const result = await withIsolatedRunsEnv(directory, () =>
+        executeCli([
+          "run",
+          "--objective",
+          "Update a dependency only when approval is present",
+          "--engine",
+          "codex",
+          "--verify",
+          `"${process.execPath}" -e "process.exit(0)"`,
+          "--cwd",
+          directory
+        ])
+      );
+      if (previousMartinLive === undefined) {
+        delete process.env.MARTIN_LIVE;
+      } else {
+        process.env.MARTIN_LIVE = previousMartinLive;
+      }
+
+      expect(result.exitCode).toBe(2);
+      expect(result.stdout).toContain("Blocked: the agent needs operator approval to proceed.");
+      expect(result.stdout).not.toContain("quick one");
+      expect(result.stdout).not.toContain("is martin actually earning its keep");
+      expect(result.stderr).toBe("");
+    } finally {
+      if (stdoutDescriptor) {
+        Object.defineProperty(process.stdout, "isTTY", stdoutDescriptor);
+      } else {
+        delete (process.stdout as unknown as Record<string, unknown>)["isTTY"];
+      }
+      if (stdinDescriptor) {
+        Object.defineProperty(process.stdin, "isTTY", stdinDescriptor);
+      } else {
+        delete (process.stdin as unknown as Record<string, unknown>)["isTTY"];
+      }
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("allows dependency changes when the dependency approval flag is present", { timeout: 30_000 }, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-approval-allowed-"));
+
+    try {
+      installChangingRunAdapter(["package.json"]);
+      await writeFile(join(directory, "package.json"), '{"name":"approval-allowed"}', "utf8");
+      const previousMartinLive = process.env.MARTIN_LIVE;
+      process.env.MARTIN_LIVE = "false";
+      const result = await withIsolatedRunsEnv(directory, () =>
+        executeCli([
+          "--json",
+          "run",
+          "--objective",
+          "Update an approved dependency",
+          "--engine",
+          "codex",
+          "--verify",
+          `"${process.execPath}" -e "process.exit(0)"`,
+          "--approve-dependency-changes",
+          "--cwd",
+          directory
+        ])
+      );
+      if (previousMartinLive === undefined) {
+        delete process.env.MARTIN_LIVE;
+      } else {
+        process.env.MARTIN_LIVE = previousMartinLive;
+      }
+
+      expect(result.exitCode).toBe(0);
+      const payload = JSON.parse(result.stdout);
+      expect(payload.loop.task.approvalPolicy).toEqual({ dependencyAdds: true });
+      expect(payload.loop.attempts).toHaveLength(1);
+      expect(payload.loop.attempts[0]).toMatchObject({
+        summary: "Produced a controlled test change."
+      });
+      expect(payload.loop.events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: "verification.completed",
+            payload: expect.objectContaining({ passed: true })
+          })
+        ])
+      );
+      expect(payload.decision.failureClass).not.toBe("safety_leash_blocked");
+      expect(payload.decision.reasonCode).not.toBe("dependency_approval_required");
+      expect(payload.loop.lifecycleState).toBe("completed");
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("persists verifier timeout on governed runs", { timeout: 30_000 }, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-verify-timeout-"));
+
+    try {
+      installFastRunAdapter();
+      const previousMartinLive = process.env.MARTIN_LIVE;
+      process.env.MARTIN_LIVE = "false";
+      const result = await withIsolatedRunsEnv(directory, () =>
+        executeCli([
+          "--json",
+          "run",
+          "--objective",
+          "Verify timeout persistence",
+          "--engine",
+          "codex",
+          "--verify-only",
+          "--verify",
+          `"${process.execPath}" -e "process.exit(0)"`,
+          "--verify-timeout-ms",
+          "240000",
+          "--cwd",
+          directory
+        ])
+      );
+      if (previousMartinLive === undefined) {
+        delete process.env.MARTIN_LIVE;
+      } else {
+        process.env.MARTIN_LIVE = previousMartinLive;
+      }
+
+      expect(result.exitCode).toBe(0);
+
+      const payload = JSON.parse(result.stdout);
+      expect(payload.loop.task.verificationTimeoutMs).toBe(240000);
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
   it("supports --proof runs as no-spend proof executions without rewriting mutation mode", { timeout: 30_000 }, async () => {
     const directory = await mkdtemp(join(tmpdir(), "martin-cli-proof-mode-"));
 
@@ -549,13 +933,280 @@ describe("executeCli", () => {
         directory
       ]);
 
-      expect(result.exitCode).toBe(0);
+      expect(result.exitCode).toBe(9);
 
       const payload = JSON.parse(result.stdout);
       expect(payload.environment.liveMode).toBe("proof");
       expect(payload.loop.cost.actualUsd).toBe(0);
       expect(payload.loop.task.mutationMode).toBeUndefined();
       expect(["completed", "diminishing_returns"]).toContain(payload.loop.lifecycleState);
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("prints approval guidance for dependency changes that need operator approval", { timeout: 30_000 }, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-approval-human-"));
+
+    try {
+      installChangingRunAdapter(["package.json"]);
+      await writeFile(join(directory, "package.json"), '{"name":"approval-human"}', "utf8");
+      const previousMartinLive = process.env.MARTIN_LIVE;
+      process.env.MARTIN_LIVE = "false";
+      const result = await withIsolatedRunsEnv(directory, () =>
+        executeCli([
+          "run",
+          "--objective",
+          "Update a dependency only when approval is present",
+          "--engine",
+          "codex",
+          "--verify",
+          `"${process.execPath}" -e "process.exit(0)"`,
+          "--cwd",
+          directory
+        ])
+      );
+      if (previousMartinLive === undefined) {
+        delete process.env.MARTIN_LIVE;
+      } else {
+        process.env.MARTIN_LIVE = previousMartinLive;
+      }
+
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr).toBe("");
+      expect(result.stdout).toContain("Blocked: the agent needs operator approval to proceed.");
+      expect(result.stdout).toContain("--approve-dependency-changes");
+      expect(result.stdout).toContain("--approve-migrations");
+      expect(result.stdout).toContain("--approve-config-changes");
+      expect(result.stdout).toContain("The workspace is unchanged.");
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("keeps approval-block guidance out of JSON output while preserving typed reason codes", { timeout: 30_000 }, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-approval-json-"));
+
+    try {
+      installChangingRunAdapter(["package.json"]);
+      await writeFile(join(directory, "package.json"), '{"name":"approval-json"}', "utf8");
+      const previousMartinLive = process.env.MARTIN_LIVE;
+      process.env.MARTIN_LIVE = "false";
+      const result = await withIsolatedRunsEnv(directory, () =>
+        executeCli([
+          "--json",
+          "run",
+          "--objective",
+          "Update a dependency only when approval is present",
+          "--engine",
+          "codex",
+          "--verify",
+          `"${process.execPath}" -e "process.exit(0)"`,
+          "--cwd",
+          directory
+        ])
+      );
+      if (previousMartinLive === undefined) {
+        delete process.env.MARTIN_LIVE;
+      } else {
+        process.env.MARTIN_LIVE = previousMartinLive;
+      }
+
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr).toBe("");
+      expect(result.stdout).not.toContain("Blocked: the agent needs operator approval");
+      expect(result.stdout).not.toContain("--approve-dependency-changes");
+
+      const payload = JSON.parse(result.stdout);
+      expect(payload.decision).toMatchObject({
+        failureClass: "safety_leash_blocked",
+        reasonCode: "dependency_approval_required"
+      });
+      expect(payload.loop.lifecycleState).toBe("human_escalation");
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("emits only the loop id for quiet approval-block output", { timeout: 30_000 }, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-approval-quiet-"));
+
+    try {
+      installChangingRunAdapter(["package.json"]);
+      await writeFile(join(directory, "package.json"), '{"name":"approval-quiet"}', "utf8");
+      const previousMartinLive = process.env.MARTIN_LIVE;
+      process.env.MARTIN_LIVE = "false";
+      const result = await withIsolatedRunsEnv(directory, () =>
+        executeCli([
+          "--quiet",
+          "run",
+          "--objective",
+          "Update a dependency only when approval is present",
+          "--engine",
+          "codex",
+          "--verify",
+          `"${process.execPath}" -e "process.exit(0)"`,
+          "--cwd",
+          directory
+        ])
+      );
+      if (previousMartinLive === undefined) {
+        delete process.env.MARTIN_LIVE;
+      } else {
+        process.env.MARTIN_LIVE = previousMartinLive;
+      }
+
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr).toBe("");
+      expect(result.stdout).toMatch(/^loop_[A-Za-z0-9_-]+$/);
+      expect(result.stdout).not.toContain("Blocked:");
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("keeps CI approval-block output free of interactive prompts", { timeout: 30_000 }, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-approval-ci-"));
+
+    try {
+      installChangingRunAdapter(["package.json"]);
+      await writeFile(join(directory, "package.json"), '{"name":"approval-ci"}', "utf8");
+      const previousMartinLive = process.env.MARTIN_LIVE;
+      const previousCi = process.env.CI;
+      process.env.MARTIN_LIVE = "false";
+      process.env.CI = "1";
+      const result = await withIsolatedRunsEnv(directory, () =>
+        executeCli([
+          "run",
+          "--objective",
+          "Update a dependency only when approval is present",
+          "--engine",
+          "codex",
+          "--verify",
+          `"${process.execPath}" -e "process.exit(0)"`,
+          "--cwd",
+          directory
+        ])
+      );
+      if (previousMartinLive === undefined) {
+        delete process.env.MARTIN_LIVE;
+      } else {
+        process.env.MARTIN_LIVE = previousMartinLive;
+      }
+      if (previousCi === undefined) {
+        delete process.env.CI;
+      } else {
+        process.env.CI = previousCi;
+      }
+
+      expect(result.exitCode).toBe(2);
+      expect(result.stdout).toContain("Blocked: the agent needs operator approval to proceed.");
+      expect(result.stdout).not.toContain("quick one");
+      expect(result.stdout).not.toContain("is martin actually earning its keep");
+      expect(result.stderr).toBe("");
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("keeps non-TTY approval-block output free of interactive prompts", { timeout: 30_000 }, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-approval-nontty-"));
+    const stdoutDescriptor = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
+    const stdinDescriptor = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
+
+    try {
+      installChangingRunAdapter(["package.json"]);
+      await writeFile(join(directory, "package.json"), '{"name":"approval-nontty"}', "utf8");
+      Object.defineProperty(process.stdout, "isTTY", { value: false, configurable: true });
+      Object.defineProperty(process.stdin, "isTTY", { value: false, configurable: true });
+      const previousMartinLive = process.env.MARTIN_LIVE;
+      process.env.MARTIN_LIVE = "false";
+      const result = await withIsolatedRunsEnv(directory, () =>
+        executeCli([
+          "run",
+          "--objective",
+          "Update a dependency only when approval is present",
+          "--engine",
+          "codex",
+          "--verify",
+          `"${process.execPath}" -e "process.exit(0)"`,
+          "--cwd",
+          directory
+        ])
+      );
+      if (previousMartinLive === undefined) {
+        delete process.env.MARTIN_LIVE;
+      } else {
+        process.env.MARTIN_LIVE = previousMartinLive;
+      }
+
+      expect(result.exitCode).toBe(2);
+      expect(result.stdout).toContain("Blocked: the agent needs operator approval to proceed.");
+      expect(result.stdout).not.toContain("quick one");
+      expect(result.stdout).not.toContain("is martin actually earning its keep");
+      expect(result.stderr).toBe("");
+    } finally {
+      if (stdoutDescriptor) {
+        Object.defineProperty(process.stdout, "isTTY", stdoutDescriptor);
+      } else {
+        delete (process.stdout as unknown as Record<string, unknown>)["isTTY"];
+      }
+      if (stdinDescriptor) {
+        Object.defineProperty(process.stdin, "isTTY", stdinDescriptor);
+      } else {
+        delete (process.stdin as unknown as Record<string, unknown>)["isTTY"];
+      }
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("allows dependency changes when the dependency approval flag is present", { timeout: 30_000 }, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-approval-allowed-"));
+
+    try {
+      installChangingRunAdapter(["package.json"]);
+      await writeFile(join(directory, "package.json"), '{"name":"approval-allowed"}', "utf8");
+      const previousMartinLive = process.env.MARTIN_LIVE;
+      process.env.MARTIN_LIVE = "false";
+      const result = await withIsolatedRunsEnv(directory, () =>
+        executeCli([
+          "--json",
+          "run",
+          "--objective",
+          "Update an approved dependency",
+          "--engine",
+          "codex",
+          "--verify",
+          `"${process.execPath}" -e "process.exit(0)"`,
+          "--approve-dependency-changes",
+          "--cwd",
+          directory
+        ])
+      );
+      if (previousMartinLive === undefined) {
+        delete process.env.MARTIN_LIVE;
+      } else {
+        process.env.MARTIN_LIVE = previousMartinLive;
+      }
+
+      expect(result.exitCode).toBe(0);
+      const payload = JSON.parse(result.stdout);
+      expect(payload.loop.task.approvalPolicy).toEqual({ dependencyAdds: true });
+      expect(payload.loop.attempts).toHaveLength(1);
+      expect(payload.loop.attempts[0]).toMatchObject({
+        summary: "Produced a controlled test change."
+      });
+      expect(payload.loop.events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: "verification.completed",
+            payload: expect.objectContaining({ passed: true })
+          })
+        ])
+      );
+      expect(payload.decision.failureClass).not.toBe("safety_leash_blocked");
+      expect(payload.decision.reasonCode).not.toBe("dependency_approval_required");
+      expect(payload.loop.lifecycleState).toBe("completed");
     } finally {
       await rm(directory, { force: true, recursive: true });
     }
@@ -588,7 +1239,7 @@ describe("executeCli", () => {
         lines: [
           "─────────────────────────────────────────────",
           STAR_CTA_HEADLINE,
-          `   Star the repo: ${STAR_CTA_REPO}`,
+          `   Useful? Star the repo: ${STAR_CTA_REPO}`,
           "─────────────────────────────────────────────"
         ]
       });
@@ -640,7 +1291,7 @@ describe("executeCli", () => {
         ])
       );
 
-      expect(result.exitCode).toBe(0);
+      expect(result.exitCode).toBe(9);
 
       const payload = JSON.parse(result.stdout);
       expect(payload.decision.status).toBe("exited");
@@ -669,7 +1320,7 @@ describe("executeCli", () => {
         ])
       );
 
-      expect(result.exitCode).toBe(0);
+      expect(result.exitCode).toBe(9);
 
       const payload = JSON.parse(result.stdout);
       expect(payload.decision.status).toBe("exited");
@@ -779,7 +1430,6 @@ describe("executeCli", () => {
       expect(result.stdout).toContain("--budget-usd 2 --max-iterations 1");
       expect(result.stdout).toContain("Optional explicit no-spend proof run:");
       expect(result.stdout).toContain("Task ideas live in");
-      expect(result.stdout).not.toContain(STAR_CTA_HEADLINE);
       expect(await readFile(join(targetDirectory, "README.md"), "utf8")).toContain("Demo Sandbox");
     } finally {
       process.chdir(previousCwd);

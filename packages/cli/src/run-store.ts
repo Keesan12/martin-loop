@@ -1,13 +1,16 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 import { createHash } from "node:crypto";
 import { open, readFile, readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 
-import { decideCircuitBreak, resolveRunsRoot, verifyReceiptIntegrityFromFiles } from "@martin/core";
+import {
+  buildVerifiedHandoff,
+  decideCircuitBreak,
+  resolveRunsRoot,
+  verifierActuallyPassed,
+  verifyReceiptIntegrityFromFiles,
+  type VerifierExecutionBinding,
+} from "@martin/core";
 import type {
   CostProvenance,
   LoopArtifact,
@@ -16,7 +19,8 @@ import type {
   MartinRunListFilters,
   MartinRunSelector,
   ReceiptIntegritySummary,
-  ReceiptScope
+  ReceiptScope,
+  VerifiedHandoffV1,
 } from "@martin/contracts";
 
 import { CliCommandError } from "./ux.js";
@@ -227,11 +231,15 @@ export interface VerificationSummary {
   completedAt?: string;
   steps: VerificationStepSummary[];
   warnings: string[];
+  binding?: VerifierExecutionBinding;
+  changedFiles: string[];
 }
 
 export interface VerificationStepSummary {
   command: string;
   launched: boolean;
+  completed?: boolean;
+  crashed?: boolean;
   exitCode?: number;
   timedOut?: boolean;
   fastFail?: boolean;
@@ -346,6 +354,9 @@ export async function listPersistedLoops(
 
   const loops = inspected.loops
     .filter((loop) => {
+      if (filters.workspaceId && loop.workspaceId !== filters.workspaceId) {
+        return false;
+      }
       if (filters.status && loop.status !== filters.status) {
         return false;
       }
@@ -451,7 +462,9 @@ export async function loadPersistedLoop(
   }
 
   const inspected = await collectPersistedLoops(runsRoot);
-  const loop = inspected.loops[0];
+  const loop = inspected.loops.find((candidate) =>
+    !selector.workspaceId || candidate.workspaceId === selector.workspaceId
+  );
   if (!loop) {
     throw new CliCommandError("not_found", "No persisted Martin loops were found.");
   }
@@ -542,35 +555,51 @@ export function buildVerificationSummary(loop: LoopRecord): VerificationSummary 
       summary: "No persisted verification evidence was found for this loop.",
       eventCount: 0,
       steps: [],
-      warnings: [...integrityWarnings, "Verification evidence was not recorded for this persisted loop."]
+      warnings: [...integrityWarnings, "Verification evidence was not recorded for this persisted loop."],
+      changedFiles: [],
     };
   }
 
   const payload = isRecord(latestEvent.payload) ? latestEvent.payload : undefined;
-  const passed = payload?.["passed"] === true;
+  const claimedPassed = payload?.["passed"] === true;
   const latestAttemptIndex =
     typeof payload?.["attemptIndex"] === "number"
       ? (payload["attemptIndex"] as number)
       : loop.attempts.at(-1)?.index;
   const warnings = [...integrityWarnings, ...readVerificationWarnings(payload)];
   const steps = readVerificationSteps(payload);
-  const contradicted = passed && hasVerificationContradiction(warnings, steps);
+  const binding = readVerifierBinding(payload);
+  const changedFiles = readStringArray(payload?.["changedFiles"]);
+  const expectedBinding: VerifierExecutionBinding | undefined = binding
+    ? {
+        runId: loop.loopId,
+        workspaceId: loop.workspaceId,
+        cwd: loop.receiptScope?.workingDirectory ?? loop.task.repoRoot ?? binding.cwd,
+        commands: loop.task.verificationPlan,
+      }
+    : undefined;
+  const executionPassed = expectedBinding
+    ? verifierActuallyPassed({ passed: claimedPassed, binding, steps }, expectedBinding)
+    : false;
+  const contradicted = claimedPassed && (!executionPassed || hasVerificationContradiction(warnings, steps));
 
   return {
-    status: contradicted ? "contradicted" : passed ? "passed" : "failed",
+    status: contradicted ? "contradicted" : executionPassed ? "passed" : "failed",
     summary:
       typeof payload?.["summary"] === "string"
         ? (payload["summary"] as string)
         : contradicted
           ? "Verifier evidence is contradicted by launch/runtime diagnostics."
-        : passed
+        : executionPassed
           ? "Verification passed."
           : "Verification failed.",
     eventCount: verificationEvents.length,
     ...(latestAttemptIndex !== undefined ? { latestAttemptIndex } : {}),
     completedAt: latestEvent.timestamp,
     steps,
-    warnings
+    warnings,
+    ...(binding ? { binding } : {}),
+    changedFiles,
   };
 }
 
@@ -646,11 +675,107 @@ export function buildRunReceipt(
   };
 }
 
+export function buildVerifiedHandoffFromPersistedLoop(
+  detail: PersistedLoopDetail
+): VerifiedHandoffV1 {
+  const verification = buildVerificationSummary(detail.loop);
+  const rollbackArtifacts = detail.loop.artifacts.filter((artifact) =>
+    /rollback|restore|diff|patch/iu.test(
+      `${artifact.kind} ${artifact.label} ${artifact.uri}`
+    )
+  );
+  const stopReason = detail.loop.events
+    .filter(
+      (event) =>
+        event.type === "run.completed" ||
+        (event.type as string) === "run.exited"
+    )
+    .at(-1)
+    ?.payload?.["reason"];
+
+  return buildVerifiedHandoff({
+    loop: detail.loop,
+    mutationRequired: detail.loop.task.mutationMode === "edit",
+    definitionOfDonePreSatisfied: detail.loop.task.definitionOfDonePreSatisfied,
+    receiptIntegrity: detail.integrity,
+    verification: {
+      status: verification.status,
+      summary: verification.summary,
+      steps: verification.steps.map((step) => ({
+        command: step.command,
+        launched: step.launched,
+        exitCode: step.exitCode,
+        timedOut: step.timedOut,
+        detail: step.detail,
+      })),
+      warnings: verification.warnings,
+      ...(verification.binding ? { binding: verification.binding } : {}),
+    },
+    scope: {
+      status:
+        detail.loop.task.allowedPaths?.length ||
+        detail.loop.task.deniedPaths?.length
+          ? "WITHIN_SCOPE"
+          : "NOT_EVALUATED",
+      allowedPaths: detail.loop.task.allowedPaths ?? [],
+      deniedPaths: detail.loop.task.deniedPaths ?? [],
+      changedFiles: verification.changedFiles,
+      violations: [],
+    },
+    testIntegrity: {
+      status: "NOT_EVALUATED",
+      verdict: "NOT_EVALUATED",
+      protectedPaths: [],
+      changedProtectedPaths: [],
+      findings: [],
+      summary: "Automatic test-integrity evidence was not recorded for this run.",
+    },
+    unresolvedWork:
+      verification.status === "passed" ? [] : [verification.summary],
+    ...(typeof stopReason === "string" ? { stopReason } : {}),
+    recovery: {
+      rollbackBoundaryAvailable: rollbackArtifacts.length > 0,
+      rollbackAttempted: rollbackArtifacts.some((artifact) =>
+        /restore|rollback outcome/iu.test(artifact.label)
+      ),
+      summary:
+        rollbackArtifacts.length > 0
+          ? `${rollbackArtifacts.length} rollback/recovery artifact(s) recorded.`
+          : "No rollback artifact was found in the persisted run.",
+    },
+    nextAction:
+      verification.status === "passed"
+        ? "Review the Verified Handoff and decide whether to merge or promote."
+        : "Resolve the failed or missing evidence before claiming completion.",
+  });
+}
+
+function readVerifierBinding(payload: Record<string, unknown> | undefined): VerifierExecutionBinding | undefined {
+  const value = payload?.["binding"];
+  if (!isRecord(value)) return undefined;
+  const commands = readStringArray(value["commands"]);
+  return typeof value["runId"] === "string" &&
+    typeof value["workspaceId"] === "string" &&
+    typeof value["cwd"] === "string"
+    ? {
+        runId: value["runId"],
+        workspaceId: value["workspaceId"],
+        cwd: value["cwd"],
+        commands,
+      }
+    : undefined;
+}
+
+function readStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
+}
+
 export function buildRunDossier(detail: PersistedLoopDetail): Record<string, unknown> {
   const verification = buildVerificationSummary(detail.loop);
   const artifactSummary = buildArtifactSummary(detail.loop);
   const receiptScope = resolveReceiptScope(detail.loop, detail.runsRoot);
   const receipt = buildRunReceipt(detail.loop, verification, receiptScope);
+  const verifiedHandoff = buildVerifiedHandoffFromPersistedLoop(detail);
 
   return {
     source: detail.source,
@@ -662,8 +787,12 @@ export function buildRunDossier(detail: PersistedLoopDetail): Record<string, unk
     loop: detail.loop,
     receiptIntegrity: detail.integrity,
     ...(receiptScope ? { receiptScope } : {}),
+    ...(detail.loop.terminationEnvelope
+      ? { terminationEnvelope: detail.loop.terminationEnvelope }
+      : {}),
     verification,
     receipt,
+    verifiedHandoff,
     artifacts: artifactSummary,
     recentEvents: detail.loop.events.slice(-10)
   };
@@ -687,7 +816,7 @@ export async function triagePersistedLoops(
 
 export async function findPersistedLoopEvidence(
   runsDir: string | undefined,
-  options: { invocationRoot?: string } = {}
+  options: { invocationRoot?: string; workspaceId?: string } = {}
 ): Promise<{ runsRoot: string; loop?: LoopRecord; warnings: string[] }> {
   const runsRoot = resolveRunsRootPath(runsDir, options.invocationRoot);
   const entries = await readdir(runsRoot, { withFileTypes: true }).catch((error: unknown) => {
@@ -702,20 +831,28 @@ export async function findPersistedLoopEvidence(
 
   entries.sort((left, right) => String(left.name).localeCompare(String(right.name)));
   const warnings: string[] = [];
-  const latestIndexed = await loadLatestLoopFromRunIndex(runsRoot, warnings);
-  if (latestIndexed) {
-    return {
-      runsRoot,
-      loop: latestIndexed,
-      warnings
-    };
-  }
-
-  const indexedLoop = await loadLatestLoopFromWorkspaceIndexes(runsRoot, entries, warnings);
+  const indexedLoop = await loadLatestLoopFromWorkspaceIndexes(runsRoot, entries, warnings, options.workspaceId);
   if (indexedLoop) {
     return {
       runsRoot,
       loop: indexedLoop,
+      warnings
+    };
+  }
+
+  if (options.workspaceId && runsDir === undefined) {
+    return {
+      runsRoot,
+      loop: undefined,
+      warnings
+    };
+  }
+
+  const latestIndexed = await loadLatestLoopFromRunIndex(runsRoot, warnings, options.workspaceId);
+  if (latestIndexed) {
+    return {
+      runsRoot,
+      loop: latestIndexed,
       warnings
     };
   }
@@ -731,6 +868,9 @@ export async function findPersistedLoopEvidence(
         }
 
         const loop = await readLoopRecordFile(canonical);
+        if (options.workspaceId && loop.workspaceId !== options.workspaceId) {
+          continue;
+        }
         const candidateTimestamp = loopTimestamp(loop);
         const latestTimestamp = latestLoop ? loopTimestamp(latestLoop) : Number.NEGATIVE_INFINITY;
         if (candidateTimestamp > latestTimestamp) {
@@ -745,7 +885,7 @@ export async function findPersistedLoopEvidence(
 
       const loop = (await readLoopsFromFile(path.join(runsRoot, entryName), runsRoot)).sort(
         (left, right) => loopTimestamp(right) - loopTimestamp(left)
-      )[0];
+      ).find((candidate) => !options.workspaceId || candidate.workspaceId === options.workspaceId);
       const candidateTimestamp = loop ? loopTimestamp(loop) : Number.NEGATIVE_INFINITY;
       const latestTimestamp = latestLoop ? loopTimestamp(latestLoop) : Number.NEGATIVE_INFINITY;
       if (loop && candidateTimestamp > latestTimestamp) {
@@ -815,6 +955,10 @@ async function listLoopsFromRunIndex(
       continue;
     }
 
+    if (filters.workspaceId && resolved.loop.workspaceId !== filters.workspaceId) {
+      continue;
+    }
+
     if (filters.adapterId && !resolved.loop.attempts.some((attempt) => attempt.adapterId === filters.adapterId)) {
       continue;
     }
@@ -833,7 +977,11 @@ async function listLoopsFromRunIndex(
   };
 }
 
-async function loadLatestLoopFromRunIndex(runsRoot: string, warnings: string[]): Promise<LoopRecord | undefined> {
+async function loadLatestLoopFromRunIndex(
+  runsRoot: string,
+  warnings: string[],
+  workspaceId?: string
+): Promise<LoopRecord | undefined> {
   const indexed = await readRunIndexEntries(runsRoot);
   if (indexed.entries.length === 0) {
     return undefined;
@@ -842,7 +990,10 @@ async function loadLatestLoopFromRunIndex(runsRoot: string, warnings: string[]):
   const deduped = dedupeRunIndexEntries(indexed.entries);
   for (const entry of deduped) {
     try {
-      return (await loadLoopById(entry.loopId, runsRoot)).loop;
+      const loop = (await loadLoopById(entry.loopId, runsRoot)).loop;
+      if (!workspaceId || loop.workspaceId === workspaceId) {
+        return loop;
+      }
     } catch (error) {
       warnings.push(
         `Run index pointed at unreadable loop '${entry.loopId}': ${error instanceof Error ? error.message : String(error)}`
@@ -1090,9 +1241,30 @@ async function resolveReceiptEvidencePath(runDirectory: string): Promise<string>
 async function loadLatestLoopFromWorkspaceIndexes(
   runsRoot: string,
   entries: ReadonlyArray<RunsDirEntry>,
-  warnings: string[]
+  warnings: string[],
+  workspaceId?: string
 ): Promise<LoopRecord | undefined> {
-  let latestSummary: { loopId: string; updatedAt: string } | undefined;
+  if (workspaceId) {
+    const workspaceIndex = path.join(runsRoot, `${workspaceId}.jsonl`);
+    try {
+      const summary = await readLatestWorkspaceIndexSummary(workspaceIndex);
+      if (!summary) {
+        return undefined;
+      }
+
+      const loop = (await loadLoopById(summary.loopId, runsRoot)).loop;
+      return loop.workspaceId === workspaceId ? loop : undefined;
+    } catch (error) {
+      if (!isMissing(error)) {
+        warnings.push(
+          `Skipped unreadable workspace index '${path.basename(workspaceIndex)}': ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+      return undefined;
+    }
+  }
+
+  const summaries: Array<{ loopId: string; updatedAt: string }> = [];
 
   for (const entry of entries) {
     const entryName = String(entry.name);
@@ -1106,13 +1278,7 @@ async function loadLatestLoopFromWorkspaceIndexes(
         continue;
       }
 
-      const candidateTimestamp = parseTimestamp(candidate.updatedAt);
-      const latestTimestamp = latestSummary
-        ? parseTimestamp(latestSummary.updatedAt)
-        : Number.NEGATIVE_INFINITY;
-      if (candidateTimestamp > latestTimestamp) {
-        latestSummary = candidate;
-      }
+      summaries.push(candidate);
     } catch (error) {
       warnings.push(
         `Skipped unreadable workspace index '${entryName}': ${error instanceof Error ? error.message : String(error)}`
@@ -1120,18 +1286,21 @@ async function loadLatestLoopFromWorkspaceIndexes(
     }
   }
 
-  if (!latestSummary) {
-    return undefined;
+  summaries.sort((left, right) => parseTimestamp(right.updatedAt) - parseTimestamp(left.updatedAt));
+  for (const summary of summaries) {
+    try {
+      const loop = (await loadLoopById(summary.loopId, runsRoot)).loop;
+      if (!workspaceId || loop.workspaceId === workspaceId) {
+        return loop;
+      }
+    } catch (error) {
+      warnings.push(
+        `Workspace index pointed at unreadable loop '${summary.loopId}': ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
   }
 
-  try {
-    return (await loadLoopById(latestSummary.loopId, runsRoot)).loop;
-  } catch (error) {
-    warnings.push(
-      `Workspace index pointed at unreadable loop '${latestSummary.loopId}': ${error instanceof Error ? error.message : String(error)}`
-    );
-    return undefined;
-  }
+  return undefined;
 }
 
 async function collectPersistedLoops(runsRoot: string): Promise<{ loops: LoopRecord[]; warnings: string[] }> {
@@ -1388,6 +1557,8 @@ function normalizeVerificationStep(candidate: unknown): VerificationStepSummary 
   return {
     command: candidate["command"],
     launched: candidate["launched"],
+    ...(typeof candidate["completed"] === "boolean" ? { completed: candidate["completed"] } : {}),
+    ...(typeof candidate["crashed"] === "boolean" ? { crashed: candidate["crashed"] } : {}),
     ...(typeof candidate["exitCode"] === "number" ? { exitCode: candidate["exitCode"] } : {}),
     ...(typeof candidate["timedOut"] === "boolean" ? { timedOut: candidate["timedOut"] } : {}),
     ...(typeof candidate["fastFail"] === "boolean" ? { fastFail: candidate["fastFail"] } : {}),

@@ -74,7 +74,8 @@ const ROOT_FILES = [
   "package.json",
 ];
 const DIRECTORY_RULES = [
-  { relativePath: "docs", include: (name) => name.endsWith(".md") },
+  // The docs/private subdirectory is excluded — only public-facing docs are promoted
+  { relativePath: "docs", include: (name, fullPath) => name.endsWith(".md") && !fullPath.includes(`${path.sep}docs${path.sep}internal${path.sep}`) && !fullPath.includes(`${path.sep}docs${path.sep}internal`) },
   { relativePath: ".github", include: (name) => name.endsWith(".md") || name.endsWith(".yml") || name.endsWith(".yaml") },
   { relativePath: "packages", include: (name, fullPath) => name === "README.md" && fullPath.includes(`${path.sep}packages${path.sep}`) },
 ];

@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 import type {
   BudgetPreflightEstimate,
   CostProvenance,
@@ -690,6 +686,8 @@ export interface PatchDecisionInput {
   safetyViolationCount?: number;
   scopeViolationCount?: number;
   changedFileCount?: number;
+  mutationRequired?: boolean;
+  definitionOfDonePreSatisfied?: boolean;
   diffNovelty?: number;
   diffStats?: {
     filesChanged: number;
@@ -799,6 +797,10 @@ export function scorePatchDecision(input: PatchDecisionInput): PatchScore {
   const safetyViolationCount = input.safetyViolationCount ?? 0;
   const changedFileEvidenceAvailable = input.changedFileCount !== undefined;
   const changedFileCount = input.changedFileCount ?? 0;
+  const auditablePreSatisfiedNoChange =
+    input.verificationPassed &&
+    input.mutationRequired === true &&
+    input.definitionOfDonePreSatisfied === true;
   const noveltyScore = input.diffNovelty ?? (changedFileCount > 0 ? 1 : 0);
   const diffRiskScore = computeDiffRiskScore(input.diffStats);
   const costUsd = roundUsd(input.costUsd ?? 0);
@@ -813,7 +815,7 @@ export function scorePatchDecision(input: PatchDecisionInput): PatchScore {
   if (scopeViolationCount > 0) {
     reasonCodes.push("scope_violation");
   }
-  if (changedFileEvidenceAvailable && changedFileCount === 0) {
+  if (changedFileEvidenceAvailable && changedFileCount === 0 && !auditablePreSatisfiedNoChange) {
     reasonCodes.push("no_code_change");
   }
   if (input.humanApprovalRequired) {
@@ -849,7 +851,7 @@ export function scorePatchDecision(input: PatchDecisionInput): PatchScore {
   if (input.humanApprovalRequired) {
     score -= 0.25;
   }
-  if (changedFileEvidenceAvailable && changedFileCount === 0) {
+  if (changedFileEvidenceAvailable && changedFileCount === 0 && !auditablePreSatisfiedNoChange) {
     score -= 0.35;
   }
   if (!input.verificationPassed && noveltyScore < 0.2 && verifierDelta <= 0) {

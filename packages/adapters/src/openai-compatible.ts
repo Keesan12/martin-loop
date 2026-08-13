@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 /**
  * OpenAI-compatible adapter for MartinLoop.
  *
@@ -89,6 +85,32 @@ function estimateCost(
   const actualUsd =
     (tokensIn / 1000) * pricing.inputPer1K + (tokensOut / 1000) * pricing.outputPer1K;
   return { tokensIn, tokensOut, actualUsd };
+}
+
+function normalizeOpenAiCompatibleUsage(input: {
+  model: string;
+  tokensIn: number;
+  tokensOut: number;
+  usageWasFullyProviderReported: boolean;
+}) {
+  const hasKnownPricing = KNOWN_MODEL_PRICING[input.model] !== undefined;
+  const pricing = KNOWN_MODEL_PRICING[input.model] ?? {
+    inputPer1K: FALLBACK_INPUT_PER_1K,
+    outputPer1K: FALLBACK_OUTPUT_PER_1K
+  };
+  const actualUsd =
+    (input.tokensIn / 1000) * pricing.inputPer1K +
+    (input.tokensOut / 1000) * pricing.outputPer1K;
+  const provenance =
+    input.usageWasFullyProviderReported && hasKnownPricing ? "actual" : "estimated";
+
+  return normalizeUsage({
+    actualUsd,
+    ...(provenance === "estimated" ? { estimatedUsd: actualUsd } : {}),
+    tokensIn: input.tokensIn,
+    tokensOut: input.tokensOut,
+    provenance
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -284,10 +306,12 @@ export function createOpenAiCompatibleAdapter(
       // indicate a permanent configuration problem.
       const MAX_RETRIES = 3;
       const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
+      const NON_RETRYABLE_STATUS = new Set([400, 401, 403]);
       const endpoint = `${baseUrl}/v1/chat/completions`;
       let responseText = "";
       let tokensIn = estimated.tokensIn;
       let tokensOut = 0;
+      let usageWasFullyProviderReported = false;
 
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
@@ -323,6 +347,17 @@ export function createOpenAiCompatibleAdapter(
 
           if (!res.ok || body.error) {
             const errMsg = body.error?.message ?? `HTTP ${res.status}`;
+            // Fail immediately on non-retryable errors (auth, bad request)
+            if (NON_RETRYABLE_STATUS.has(res.status)) {
+              return {
+                status: "failed",
+                summary: `${model} API error: ${errMsg}`,
+                usage: normalizeUsage({ actualUsd: 0, tokensIn: 0, tokensOut: 0, provenance: "unavailable" }),
+                verification: { passed: false, summary: "API call failed before verifier." },
+                failure: { message: errMsg, classHint: "infrastructure_error" as FailureClass }
+              };
+            }
+            // Retry on transient errors
             if (RETRYABLE_STATUS.has(res.status) && attempt < MAX_RETRIES - 1) {
               lastError = errMsg;
               // Exponential backoff: 1s, 2s, 4s
@@ -340,8 +375,13 @@ export function createOpenAiCompatibleAdapter(
 
           responseText = body.choices?.[0]?.message?.content ?? "";
           if (body.usage) {
-            tokensIn = body.usage.prompt_tokens ?? tokensIn;
-            tokensOut = body.usage.completion_tokens ?? 0;
+            const providerPromptTokens = body.usage.prompt_tokens;
+            const providerCompletionTokens = body.usage.completion_tokens;
+            usageWasFullyProviderReported =
+              typeof providerPromptTokens === "number" &&
+              typeof providerCompletionTokens === "number";
+            tokensIn = providerPromptTokens ?? tokensIn;
+            tokensOut = providerCompletionTokens ?? Math.ceil(responseText.length / CHARS_PER_TOKEN);
           } else {
             tokensOut = Math.ceil(responseText.length / CHARS_PER_TOKEN);
           }
@@ -383,7 +423,12 @@ export function createOpenAiCompatibleAdapter(
         return {
           status: "failed",
           summary: `${model} returned an empty response.`,
-          usage: normalizeUsage({ actualUsd: 0, tokensIn, tokensOut: 0, provenance: "actual" }),
+          usage: normalizeOpenAiCompatibleUsage({
+            model,
+            tokensIn,
+            tokensOut: 0,
+            usageWasFullyProviderReported
+          }),
           verification: { passed: false, summary: "Empty response — nothing to verify." },
           failure: { message: "empty_response" }
         };
@@ -394,7 +439,13 @@ export function createOpenAiCompatibleAdapter(
         request.context.verificationPlan,
         workingDirectory,
         verifyTimeoutMs,
-        request.context.verificationStack
+        request.context.verificationStack,
+        undefined,
+        {
+          runId: request.loopId,
+          workspaceId: request.workspaceId,
+          cwd: workingDirectory,
+        }
       );
 
       const execution = {
@@ -405,23 +456,16 @@ export function createOpenAiCompatibleAdapter(
           : []
       };
 
-      const pricing = KNOWN_MODEL_PRICING[model] ?? {
-        inputPer1K: FALLBACK_INPUT_PER_1K,
-        outputPer1K: FALLBACK_OUTPUT_PER_1K
-      };
-      const actualUsd =
-        (tokensIn / 1000) * pricing.inputPer1K + (tokensOut / 1000) * pricing.outputPer1K;
-
       return {
         status: verification.passed ? "completed" : "failed",
         summary: verification.passed
           ? `${model} completed the task. Verifier passed.`
           : `${model} completed but verifier failed: ${verification.summary}`,
-        usage: normalizeUsage({
-          actualUsd,
+        usage: normalizeOpenAiCompatibleUsage({
+          model,
           tokensIn,
           tokensOut,
-          provenance: "actual"
+          usageWasFullyProviderReported
         }),
         verification,
         execution,

@@ -2,14 +2,15 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { createHash, randomBytes } from "node:crypto";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import type { LoopBudget, MutationMode, ReceiptScope } from "@martin/contracts";
 
 const WORKFLOW_STATE_DIRECTORY = "_martin";
 const WORKFLOW_STATE_FILENAME = "workflow-state.json";
+const WORKSPACES_DIRECTORY = "workspaces";
 const DOCTOR_TTL_MS = 24 * 60 * 60 * 1000;
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 const PREFLIGHT_TTL_MS = 6 * 60 * 60 * 1000;
@@ -94,17 +95,18 @@ export async function consumeFirstRunBanner(runsRoot: string): Promise<string | 
   ].join("\n");
 }
 
-// Write the "plan" step into the mcp section of the shared workflow-state.json.
-// The CLI and MCP packages share the same _martin/workflow-state.json file;
-// the CLI writes to `cli.*` steps and can also stamp `mcp.plan` so that
-// martin://agent/governance-status and martin gate reflect plan completion.
+// Write the "plan" step into the mcp section of the per-workspace workflow-state.json.
+// CLI and MCP share the same per-workspace file so that martin://agent/governance-status
+// and martin gate reflect plan completion.
 export async function recordMcpPlanStep(input: {
   runsRoot: string;
   workingDirectory: string;
   objective: string;
   receiptScope?: ReceiptScope;
 }): Promise<void> {
-  const statePath = join(resolve(input.runsRoot), WORKFLOW_STATE_DIRECTORY, WORKFLOW_STATE_FILENAME);
+  const workspaceKey = deriveWorkspaceKey(input.workingDirectory);
+  const mcpDir = join(resolve(input.runsRoot), WORKFLOW_STATE_DIRECTORY, WORKSPACES_DIRECTORY, workspaceKey);
+  const statePath = join(mcpDir, WORKFLOW_STATE_FILENAME);
   let state: { version: 1; cli?: Record<string, unknown>; mcp?: Record<string, unknown> } = { version: 1 };
   try {
     const raw = await readFile(statePath, "utf8");
@@ -134,12 +136,14 @@ export async function recordMcpPlanStep(input: {
     ...(scopeKey ? { scopeKey } : {})
   };
 
-  await mkdir(join(resolve(input.runsRoot), WORKFLOW_STATE_DIRECTORY), { recursive: true });
-  await writeFile(statePath, JSON.stringify(state, null, 2), "utf8");
+  await mkdir(mcpDir, { recursive: true });
+  const mcpTmp = `${statePath}.${randomBytes(4).toString("hex")}.tmp`;
+  await writeFile(mcpTmp, JSON.stringify(state, null, 2), "utf8");
+  await rename(mcpTmp, statePath);
 }
 
 export async function recordCliWorkflowStep(input: CliWorkflowStepInput): Promise<void> {
-  const state = await readWorkflowState(input.runsRoot);
+  const state = await readWorkflowState(input.runsRoot, input.workingDirectory);
   const receipt: CliWorkflowReceipt = {
     step: input.step,
     recordedAt: new Date().toISOString(),
@@ -155,18 +159,14 @@ export async function recordCliWorkflowStep(input: CliWorkflowStepInput): Promis
 
   state.cli ??= {};
   state.cli[input.step] = receipt;
-  await writeWorkflowState(input.runsRoot, state);
+  await writeWorkflowState(input.runsRoot, state, input.workingDirectory);
 }
 
 export async function evaluateCliRunGate(input: CliRunGateInput): Promise<CliRunGateResult> {
-
-
-  const state = await readWorkflowState(input.runsRoot);
+  const state = await readWorkflowState(input.runsRoot, input.workingDirectory);
   const cliState = state.cli ?? {};
   const workingDirectory = normalizeWorkingDirectory(input.workingDirectory);
-  const objectiveKey = normalizeObjective(input.objective);
   const verificationPlanKey = hashVerificationPlan(input.verificationPlan);
-  const engine = input.engine ?? "claude";
   const scopeKey = hashReceiptScope(
     input.receiptScope ?? {
       invocationRoot: input.workingDirectory,
@@ -184,7 +184,6 @@ export async function evaluateCliRunGate(input: CliRunGateInput): Promise<CliRun
     }
   );
   const pathScopeKey = hashPathScope(input.allowedPaths ?? [], input.deniedPaths ?? []);
-  const budgetKey = input.budget ? hashBudget(input.budget) : undefined;
   const missingSteps: CliWorkflowStepName[] = [];
 
   // Doctor/session-start are repo-scoped readiness checks. They should remain
@@ -229,17 +228,14 @@ export async function evaluateCliRunGate(input: CliRunGateInput): Promise<CliRun
     missingSteps.push("session-start");
   }
 
-  // Preflight check: match on workingDirectory + engine + execution bounds.
-  // The full hash match was too strict — minor objective wording differences would break
-  // the receipt chain. The key governance signal is that preflight ran for this directory
-  // and engine recently; the exact objective text can drift between preflight and run.
-  // Path policy and budget are execution bounds, so changing them requires a fresh preflight.
+  // Preflight scope: workspace identity + verifier + path policy only.
+  // Engine, budget, max-iterations, and token limits are runtime execution controls —
+  // not safety identity. Changing them does NOT require a fresh preflight.
+  // Only a changed verifier command or path scope invalidates the receipt.
   const preflightReady = isFresh(cliState["preflight"], PREFLIGHT_TTL_MS, (receipt) =>
     receipt.workingDirectory === workingDirectory &&
-    receipt.engine === engine &&
     receipt.verificationPlanKey === verificationPlanKey &&
-    receipt.pathScopeKey === pathScopeKey &&
-    (!budgetKey || receipt.budgetKey === budgetKey)
+    receipt.pathScopeKey === pathScopeKey
   );
   if (!preflightReady) {
     missingSteps.push("preflight");
@@ -289,13 +285,15 @@ function buildBlockedMessage(missingSteps: CliWorkflowStepName[], nextCommand: s
     step === "session-start" ? "session start" : step
   );
   const preflightReason = missingSteps.includes("preflight")
-    ? " Preflight must be rerun when engine, verifier, path scope or budget changed."
+    ? " Preflight must be rerun when verifier or path scope changed."
     : "";
   return `Governed run blocked until MartinLoop receipts exist for ${labels.join(", ")}.${preflightReason} Next command: ${nextCommand}`;
 }
 
-async function readWorkflowState(runsRoot: string): Promise<WorkflowState> {
-  const statePath = resolveWorkflowStatePath(runsRoot);
+// Reads per-workspace state when workingDirectory is supplied; reads global state otherwise.
+// Global state is used only for flags like firstRunBannerShown that are not workspace-scoped.
+async function readWorkflowState(runsRoot: string, workingDirectory?: string): Promise<WorkflowState> {
+  const statePath = resolveWorkflowStatePath(runsRoot, workingDirectory);
   try {
     const raw = await readFile(statePath, "utf8");
     const parsed = JSON.parse(raw) as WorkflowState;
@@ -305,14 +303,30 @@ async function readWorkflowState(runsRoot: string): Promise<WorkflowState> {
   }
 }
 
-async function writeWorkflowState(runsRoot: string, state: WorkflowState): Promise<void> {
-  const statePath = resolveWorkflowStatePath(runsRoot);
-  await mkdir(join(resolve(runsRoot), WORKFLOW_STATE_DIRECTORY), { recursive: true });
-  await writeFile(statePath, JSON.stringify(state, null, 2), "utf8");
+// Writes per-workspace state atomically (tmp → rename) when workingDirectory is supplied.
+// Atomic rename prevents partial reads from concurrent processes in the same workspace.
+async function writeWorkflowState(runsRoot: string, state: WorkflowState, workingDirectory?: string): Promise<void> {
+  const statePath = resolveWorkflowStatePath(runsRoot, workingDirectory);
+  const dir = workingDirectory
+    ? join(resolve(runsRoot), WORKFLOW_STATE_DIRECTORY, WORKSPACES_DIRECTORY, deriveWorkspaceKey(workingDirectory))
+    : join(resolve(runsRoot), WORKFLOW_STATE_DIRECTORY);
+  await mkdir(dir, { recursive: true });
+  const tmpPath = `${statePath}.${randomBytes(4).toString("hex")}.tmp`;
+  await writeFile(tmpPath, JSON.stringify(state, null, 2), "utf8");
+  await rename(tmpPath, statePath);
 }
 
-function resolveWorkflowStatePath(runsRoot: string): string {
-  return join(resolve(runsRoot), WORKFLOW_STATE_DIRECTORY, WORKFLOW_STATE_FILENAME);
+// Per-workspace path: <runsRoot>/_martin/workspaces/<workspaceKey>/workflow-state.json
+// Global path:        <runsRoot>/_martin/workflow-state.json  (firstRunBanner only)
+//
+// COMPATIBILITY: pre-fix versions wrote all CLI receipts to the global path.
+// Legacy state is NOT migrated. Users must re-run the governance sequence once after upgrading.
+function resolveWorkflowStatePath(runsRoot: string, workingDirectory?: string): string {
+  const base = join(resolve(runsRoot), WORKFLOW_STATE_DIRECTORY);
+  if (workingDirectory) {
+    return join(base, WORKSPACES_DIRECTORY, deriveWorkspaceKey(workingDirectory), WORKFLOW_STATE_FILENAME);
+  }
+  return join(base, WORKFLOW_STATE_FILENAME);
 }
 
 function isFresh(
@@ -339,6 +353,20 @@ function normalizeWorkingDirectory(workingDirectory: string): string {
 
 function normalizeObjective(objective: string): string {
   return objective.trim().replace(/\s+/gu, " ").toLowerCase();
+}
+
+// Derives a stable per-workspace key from the normalized working directory path.
+// Uses SHA-256 so the key is portable (same repo on same machine = same key),
+// but does not encode machine-specific absolute paths into the stored receipts.
+export function deriveWorkspaceKey(workingDirectory: string): string {
+  return createHash("sha256")
+    .update(normalizeWorkingDirectory(workingDirectory))
+    .digest("hex")
+    .slice(0, 16);
+}
+
+export function deriveWorkspaceId(workingDirectory: string): string {
+  return `ws_${deriveWorkspaceKey(workingDirectory)}`;
 }
 
 function hashVerificationPlan(verificationPlan: string[]): string {

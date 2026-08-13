@@ -1,9 +1,5 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, extname, join, resolve } from "node:path";
 
 import { resolveNpmShimScript } from "./cli-bridge.js";
@@ -64,7 +60,141 @@ export interface CodexExecArgsOptions {
 
 type SpawnSyncLike = typeof spawnSync;
 const codexLaunchProbeCache = new Map<string, CodexLaunchProbeResult>();
-export const DEFAULT_CODEX_CHATGPT_MODEL = "gpt-5.4";
+
+// ---------------------------------------------------------------------------
+// Sandbox preflight — filesystem write capability probe
+// ---------------------------------------------------------------------------
+
+/**
+ * Outcome when the preflight probe confirms the working directory is writable.
+ * capabilitySource is always "probe" — result is measured, not assumed.
+ */
+export interface CodexSandboxPreflightOk {
+  ok: true;
+  effectiveSandbox: "read-only" | "workspace-write";
+  capabilitySource: "probe";
+  writableRoot: string;
+}
+
+/**
+ * Outcome when the working directory cannot be written but workspace-write
+ * was requested.  This is a first-class typed failure — distinct from a
+ * provider-unavailable or environment-mismatch error.  No model call has
+ * been attempted when this is returned.
+ */
+export interface CodexSandboxPreflightReadOnly {
+  ok: false;
+  code: "provider_sandbox_read_only";
+  requestedCapability: "workspace-write";
+  detectedCapability: "read-only";
+  effectiveSandbox: "read-only";
+  affectedPath: string;
+  writableRoot: string;
+  capabilitySource: "probe";
+  remediation: string;
+}
+
+export type CodexSandboxPreflightOutcome =
+  | CodexSandboxPreflightOk
+  | CodexSandboxPreflightReadOnly;
+
+/**
+ * Probes whether the given directory is writable by the current process.
+ *
+ * Strategy: create a uniquely named temp file inside the directory, write a
+ * sentinel byte, then remove it.  This is a real filesystem action — not an
+ * inference from binary metadata or launch-probe output.
+ *
+ * The probe leaves no file behind on either success or failure.
+ *
+ * Exported for unit testing with a real tmp directory.
+ */
+export function probeFilesystemWriteCapability(
+  directory: string
+): { writable: true } | { writable: false; reason: string } {
+  // Ensure the directory exists before probing.
+  try {
+    mkdirSync(directory, { recursive: true });
+  } catch (err) {
+    return {
+      writable: false,
+      reason: `Could not create directory ${directory}: ${err instanceof Error ? err.message : String(err)}`
+    };
+  }
+
+  // Use mkdtempSync so the filename is guaranteed unique even under concurrent runs.
+  let tempDir: string | undefined;
+  try {
+    tempDir = mkdtempSync(join(directory, ".ml-write-probe-"));
+    const tempFile = join(tempDir, "capability.tmp");
+    writeFileSync(tempFile, "\x01", { encoding: "binary", flag: "wx" });
+    unlinkSync(tempFile);
+    return { writable: true };
+  } catch (err) {
+    return {
+      writable: false,
+      reason: err instanceof Error ? err.message : String(err)
+    };
+  } finally {
+    if (tempDir) {
+      try { rmSync(tempDir, { recursive: true, force: true }); } catch { /* ignore cleanup errors */ }
+    }
+  }
+}
+
+/**
+ * Checks whether the requested sandbox mode is achievable for the given
+ * working directory.  The adapter receives `requestedSandbox` from CLI/core —
+ * it does not decide the mode itself.
+ *
+ * When `requestedSandbox` is "workspace-write" and the working directory is not
+ * writable, this function returns `provider_sandbox_read_only` before any model
+ * execution is attempted.
+ *
+ * When `requestedSandbox` is "read-only" no write probe is performed; the
+ * outcome is `ok: true, effectiveSandbox: "read-only"` immediately.
+ */
+export function checkCodexSandboxPreflight(input: {
+  requestedSandbox: "read-only" | "workspace-write";
+  workingDirectory: string;
+}): CodexSandboxPreflightOutcome {
+  const dir = resolve(input.workingDirectory);
+
+  if (input.requestedSandbox === "read-only") {
+    return {
+      ok: true,
+      effectiveSandbox: "read-only",
+      capabilitySource: "probe",
+      writableRoot: dir
+    };
+  }
+
+  // workspace-write: run the actual filesystem probe.
+  const probeResult = probeFilesystemWriteCapability(dir);
+  if (probeResult.writable) {
+    return {
+      ok: true,
+      effectiveSandbox: "workspace-write",
+      capabilitySource: "probe",
+      writableRoot: dir
+    };
+  }
+
+  return {
+    ok: false,
+    code: "provider_sandbox_read_only",
+    requestedCapability: "workspace-write",
+    detectedCapability: "read-only",
+    effectiveSandbox: "read-only",
+    affectedPath: dir,
+    writableRoot: dir,
+    capabilitySource: "probe",
+    remediation:
+      `The working directory ${dir} is not writable by the current process. ` +
+      "Launch MartinLoop in a session with write access to that directory, or use " +
+      "`--sandbox read-only` for inspection-only work."
+  };
+}
 
 export interface CodexProbeCandidateResult {
   path: string;
@@ -115,7 +245,7 @@ function buildProbeCacheKey(input: {
     workingDirectory: resolve(input.workingDirectory),
     platform: input.platform,
     candidatePaths: input.candidatePaths,
-    model: input.model ?? DEFAULT_CODEX_CHATGPT_MODEL
+    model: input.model
   });
 }
 
@@ -205,6 +335,23 @@ function codexProbePreference(diagnosis: CodexHostDiagnosis): number {
   return 3;
 }
 
+function codexProbeCandidatePreference(
+  path: string,
+  diagnosis: CodexHostDiagnosis,
+  platform: NodeJS.Platform
+): number {
+  const hostPreference = codexProbePreference(diagnosis) * 10;
+  if (platform !== "win32" || diagnosis.installKind !== "windows_shim") {
+    return hostPreference;
+  }
+
+  // `where codex` commonly returns npm's extensionless POSIX shim before
+  // `codex.cmd`. Node cannot spawn that text shim directly on Windows, while
+  // the .cmd/.ps1 shim has a supported invocation path (or can be unwrapped).
+  const extension = extname(path).toLowerCase();
+  return hostPreference + (extension === ".cmd" || extension === ".bat" || extension === ".ps1" ? 0 : 1);
+}
+
 function buildProbeCandidates(input: {
   availability: CliCommandAvailability;
   env: NodeJS.ProcessEnv;
@@ -237,7 +384,9 @@ function buildProbeCandidates(input: {
       return {
         path,
         diagnosis,
-        preference: input.platform === "win32" ? codexProbePreference(diagnosis) : 0,
+        preference: input.platform === "win32"
+          ? codexProbeCandidatePreference(path, diagnosis, input.platform)
+          : 0,
         discoveryIndex
       };
     })
@@ -371,12 +520,12 @@ function classifyProbeFailure(
     }
     return {
       summary:
-        `Codex launched with a model that is not supported for ChatGPT-account authentication. Use an explicit supported model such as \`${DEFAULT_CODEX_CHATGPT_MODEL}\` for governed Codex work.`,
+        "Codex launched with a model that is not supported for ChatGPT-account authentication. Pass an explicit model that your ChatGPT account supports for governed Codex work.",
       diagnosis: {
         ...diagnosis,
         warnings,
         remediation:
-          `Override the Codex launch model to a ChatGPT-account-supported option such as \`${DEFAULT_CODEX_CHATGPT_MODEL}\` before running governed Codex work.`
+          "Override the Codex launch model to a ChatGPT-account-supported option before running governed Codex work."
       }
     };
   }
@@ -462,6 +611,12 @@ export function buildCodexExecArgs(options: CodexExecArgsOptions): string[] {
   const sandbox = options.sandbox ?? "workspace-write";
   const modelArgs = options.model ? ["--model", options.model] : [];
   const extraArgs = options.extraArgs ?? [];
+  const sandboxArgs =
+    sandbox === "workspace-write"
+      // In Codex CLI, --approve-for-me is the write-enabled automatic-review
+      // mode and is mutually exclusive with --sandbox workspace-write.
+      ? ["--approve-for-me"]
+      : ["--sandbox", sandbox];
 
   return [
     "exec",
@@ -469,8 +624,7 @@ export function buildCodexExecArgs(options: CodexExecArgsOptions): string[] {
     "--ignore-user-config",
     "--cd",
     options.workingDirectory,
-    "--sandbox",
-    sandbox,
+    ...sandboxArgs,
     "--json",
     "--color",
     "never",
@@ -564,9 +718,6 @@ function discoverCommandOffPath(
     if (appData) dirs.push(join(appData, "npm"));
     const localAppData = env.LOCALAPPDATA;
     if (localAppData) dirs.push(join(localAppData, "OpenAI", "Codex", "bin"));
-    // Claude Code native installer places binary at %USERPROFILE%\.local\bin
-    const userProfile = env.USERPROFILE ?? env.HOMEPATH;
-    if (userProfile) dirs.push(join(userProfile, ".local", "bin"));
     if (home) dirs.push(join(home, "scoop", "shims"));
   } else {
     dirs.push("/usr/local/bin", "/opt/homebrew/bin");
@@ -599,13 +750,8 @@ function discoverCommandOffPath(
 }
 
 function suggestInstall(command: string): string {
-  if (command === "claude") {
-    const installCmd = process.platform === "win32"
-      ? "irm https://claude.ai/install.ps1 | iex"
-      : "curl -fsSL https://claude.ai/install.sh | bash";
-    return `Install with: ${installCmd}`;
-  }
   const installs: Record<string, string> = {
+    claude: "Install with: npm install -g @anthropic-ai/claude-code",
     codex: "Install with: npm install -g @openai/codex",
     gemini: "Install with: npm install -g @google/gemini-cli"
   };
@@ -719,7 +865,7 @@ export function probeCodexLaunch(
   });
   const args = buildCodexExecArgs({
     workingDirectory: input.workingDirectory,
-    model: input.model ?? DEFAULT_CODEX_CHATGPT_MODEL,
+    model: input.model,
     mode: "probe"
   });
 

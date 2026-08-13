@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 export { playWhileWaiting } from "./space-invaders.js";
 export type { ArcadeOptions } from "./space-invaders.js";
 
@@ -41,15 +37,14 @@ export async function maybePlayArcadeWhileWaiting<T>(
     return playWhileWaiting(task);
   }
 
-  // Race the task against the prompt delay.
   let timerId: ReturnType<typeof setTimeout> | undefined;
-  const delayPromise = new Promise<void>(resolve => {
+  const delayPromise = new Promise<void>((resolve) => {
     timerId = setTimeout(resolve, promptAfterMs);
   });
 
   type Raced<V> = { done: true; value: V } | { done: false };
   const outcome = await Promise.race<Raced<T>>([
-    task.then((v): Raced<T> => ({ done: true, value: v })),
+    task.then((value): Raced<T> => ({ done: true, value })),
     delayPromise.then((): Raced<T> => ({ done: false }))
   ]);
 
@@ -58,35 +53,34 @@ export async function maybePlayArcadeWhileWaiting<T>(
     return outcome.value;
   }
 
-  // Task is still running — prompt once.
-  const accepted = await promptOnce();
-  if (accepted) {
+  if (await promptOnce()) {
     const { playWhileWaiting } = await import("./space-invaders.js");
     return playWhileWaiting(task);
   }
   return task;
 }
 
-/**
- * Prompt the user once for the arcade. Returns true if they pressed y/Y.
- * Times out after 15 s and returns false. Restores terminal state on exit.
- */
 async function promptOnce(): Promise<boolean> {
-  return new Promise<boolean>(resolve => {
+  return new Promise<boolean>((resolve) => {
     const stdin = process.stdin;
-    if (!stdin.isTTY) { resolve(false); return; }
+    if (!stdin.isTTY) {
+      resolve(false);
+      return;
+    }
 
-    const prevRaw = stdin.isRaw;
-
+    const previousRaw = stdin.isRaw;
     const cleanup = (answer: boolean) => {
       clearTimeout(autoNo);
       stdin.removeListener("data", onKey);
-      try { stdin.setRawMode(prevRaw ?? false); } catch { /* ignore */ }
+      try {
+        stdin.setRawMode(previousRaw ?? false);
+      } catch {
+        // Terminal state restoration is best effort.
+      }
       stdin.pause();
       resolve(answer);
     };
 
-    // Auto-decline after 15 s so unattended runs are never blocked.
     const autoNo = setTimeout(() => {
       process.stdout.write("n\n");
       cleanup(false);
@@ -95,14 +89,12 @@ async function promptOnce(): Promise<boolean> {
     try {
       stdin.setRawMode(true);
     } catch {
-      // setRawMode can fail in certain environments — fall back to no prompt.
       clearTimeout(autoNo);
       resolve(false);
       return;
     }
     stdin.resume();
     stdin.setEncoding("utf-8");
-
     process.stdout.write(
       "\n\x1b[36mStill working.\x1b[0m " +
       "Play \x1b[1mMartinLoop Arcade\x1b[0m while you wait? " +
@@ -110,8 +102,11 @@ async function promptOnce(): Promise<boolean> {
     );
 
     const onKey = (key: string) => {
-      // Ctrl+C — honour it even mid-prompt.
-      if (key === "\u0003") { process.stdout.write("\n"); cleanup(false); process.exit(130); }
+      if (key === "\u0003") {
+        process.stdout.write("\n");
+        cleanup(false);
+        process.exit(130);
+      }
       const accepted = key === "y" || key === "Y";
       process.stdout.write(accepted ? "y\n" : "n\n");
       cleanup(accepted);

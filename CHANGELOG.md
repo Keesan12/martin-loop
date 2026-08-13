@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-12
+
+### Added
+- **Native installation command** — `martin install` downloads the requested release asset, verifies its checksum, replaces the executable atomically, and preserves rollback behavior.
+- **Governed handoff and lifecycle evidence** — run records now carry explicit mission, context, exit, termination, and verified-handoff information for inspection and automation.
+- **Expanded MCP lifecycle** — the standalone MCP package advances to `0.5.0` with install, verification, rollback, uninstall, discovery, and tool-validation updates.
+
+### Changed
+- **Model selection stays with the operator or host** — an explicit `--model` is passed through unchanged; without it, live execution does not inject a recommendation or hidden fallback model.
+- **Machine-facing CLI behavior is stricter** — positive budget inputs are validated at parse time, nested help is side-effect free, and JSON output is kept machine-parseable.
+- **Terminal UX polish retained** — the unpublished `0.4.6` Arcade auto-exit and single-keypress post-run interactions are absorbed into this release where supported by the current runtime.
+
+### Fixed
+- **Governed outcomes fail closed** — `VERIFIED`, `STOPPED`, and `NEEDS_REVIEW` now follow authoritative execution and verification evidence instead of presentation-layer rewrites.
+- **Verifier evidence is run- and workspace-bound** — missing, nonzero, stale, wrong-run, and wrong-workspace verifier results cannot satisfy the active run.
+- **Workspace evidence stays isolated** — default storage does not use a global fallback; an explicit legacy runs directory is filtered to the active canonical workspace.
+
 ## [0.4.5]
 
 ### Added
@@ -42,32 +59,23 @@
 
 ### Changed
 - **Receipts are now the default share artifact** — default share output is `run-receipt.json` plus `run-receipt.md`; proof-card images are generated only when explicitly requested.
-- **MCP discovery now points hosts at receipt-first trust surfaces** — the default low-context workflow now centers `martin://agent/next-step`, `martin://runs/latest/summary`, and `martin://runs/latest/receipt`, with proof-card views treated as optional derived artifacts.
-- **Repo-pinned pnpm policy is now authoritative** — workspace overrides and allowed built dependencies now live in `pnpm-workspace.yaml`, matching the repo-pinned `pnpm@10.33.0` toolchain instead of relying on deprecated root-package config.
+- **MCP discovery now points hosts at receipt-first trust surfaces** — the default low-context workflow now centers the current next-step and run-summary resources, with proof-card views treated as optional derived artifacts.
+- **Repo-pinned pnpm policy is now authoritative** — workspace overrides and allowed built dependencies now live in `pnpm-workspace.yaml`, matching the repo-pinned toolchain instead of relying on deprecated root-package config.
 
 ### Fixed
-- **Preflight receipt now written correctly in all CI environments** — `executePreflightCommand` was calling the raw `resolveCliCommandAvailability("codex")` import, which bypasses the test-injectable override. On runners where the Codex CLI is not installed this caused the preflight to mark itself not-ready and skip writing the workflow receipt, breaking the full session-start → preflight → run governed receipt chain. The call now goes through `resolveCodexAvailabilityForCli()`, which checks the override first and falls back to the real availability probe.
-- **Verifier-only adapter test seams now flow through git change reads** — injected spawn implementations are used consistently across verifier-only proof paths, preventing hidden subprocess drift in governed validation lanes.
-- **Standalone MCP release-doc tests no longer hardcode the prior package line** — release metadata checks now follow package metadata, reducing manual version-chase risk in future patch trains.
+- **Preflight receipts are written consistently in CI** — the CLI availability test seam is honored before the real host probe, preserving the governed receipt chain on runners without a locally installed Codex CLI.
+- **Verifier proof paths use injected subprocess seams consistently** — deterministic validation no longer drifts into hidden child processes.
+- **Standalone MCP release-doc tests follow package metadata** — release checks no longer hardcode the prior package line.
 
 ## [0.4.0]
 
 ### Added
-- **Success-only star CTA in `martin run` receipts** — successful, verifier-passed CLI runs now append the public repo star prompt in human output and expose the same CTA as a deterministic `successCallToAction` field in JSON output.
-- **Public license-surface regression guard** — release prep now includes an explicit repo test that fails if stale `MIT` licensing copy reappears in public README, docs, package metadata, workflow copy, or built `dist` artifacts.
+- **Success-only star CTA in `martin run` receipts** — successful, verifier-passed CLI runs append the public repo star prompt in human output and expose the same CTA as a deterministic JSON field.
+- **Public license-surface regression guard** — release prep fails if stale MIT licensing copy reappears in public docs, package metadata, workflows, or built artifacts.
 
 ### Fixed
-- **Root release line advanced to `0.4.0`** — the public package version, README audit commands, release notes link, and root release guard now align with the documented post-`0.3.19` follow-on.
-- **Version ledger truth corrected before release** — the root ledger no longer claims the live public baseline is still `0.3.18`; the release source of truth now reflects the `0.3.19 -> 0.4.0` transition cleanly.
-
-## [0.3.19]
-
-### Fixed
-- **Governed `--cwd` config lookup is now authoritative** — live and proof runs now resolve the default `martin.config.yaml` from the governed workspace passed via `--cwd` instead of the invocation root. This fixes budget, token-cap, and verifier-policy drift when MartinLoop is launched from a different directory than the repo being governed.
-- **Real Codex governed-budget verification now uses the correct workspace policy** — the live Codex receipt-chain path now honors workspace-local budget normalization, including `maxUsd`, `softLimitUsd`, `maxIterations`, and `maxTokens`, instead of silently falling back to the caller's local defaults.
-- **Public OSS Codex integration tests now reflect supported behavior** — governed integration coverage now distinguishes deterministic unit coverage from host-availability checks, and Codex-required tests run only when the CLI is present.
-- **Public release-surface hygiene tightened** — tracked `.planning` files were removed from the public repo and `.planning/` is now ignored so internal planning artifacts cannot drift back into the OSS surface.
-- **Version truth resynced** — the public repo now reflects live package truth again: root release line advanced to `0.3.19`, and standalone `@martinloop/mcp` metadata now matches the already-live `0.3.6` package line.
+- **Root release line advanced to `0.4.0`** — public package metadata, README audit commands, release notes, and guards were aligned.
+- **Version ledger truth corrected** — the public release source of truth was updated for the `0.3.19` to `0.4.0` transition.
 
 ## [0.3.16]
 

@@ -7,11 +7,6 @@ coverage/
 .next/
 .turbo/
 *.tsbuildinfo
-packages/mcp/dist-mcpb/
-packages/mcp/*.mcpb
-packages/mcp/*.sha256
-packages/mcp/mcp-publisher.exe
-packages/mcp/mcp-publisher_*.tar.gz
 
 # Environment
 .env
@@ -26,7 +21,6 @@ packages/mcp/mcp-publisher_*.tar.gz
 # Cache directories
 .npm-cache/
 .cache/
-.planning/
 
 # Test output
 vitest-results.json
@@ -38,6 +32,7 @@ output/
 /cm*.md
 /cmp*.md
 worktrees/
+.worktrees/
 
 # OS files
 .DS_Store
@@ -51,4 +46,21 @@ demo/
 !demo/
 !demo/seeded-workspace/
 !demo/seeded-workspace/**
+
+# ============================================================
+# INTERNAL FILES — NEVER COMMIT TO THIS REPO
+# This repo syncs to the PUBLIC GitHub at Keesan12/martin-loop.
+# These paths contain internal strategy, machine paths, and
+# confidential information that must never be public.
+# ============================================================
 docs/internal/
+.planning/
+old/
+research/
+scripts/config/
+*.handoff.md
+HANDOFF*.md
+MASTERPLAN*.md
+CONTEXT.md
+WORKSPACE-README.md
+martin.config.yaml

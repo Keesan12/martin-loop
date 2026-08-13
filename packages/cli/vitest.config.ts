@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 import { fileURLToPath } from "node:url";
 
 import { defineConfig } from "vitest/config";

@@ -1,0 +1,116 @@
+{
+  "schemaVersion": "1.0.0",
+  "verifiedAt": "2026-07-31",
+  "capabilities": [
+    {
+      "id": "verifier-gated-completion",
+      "status": "shipped",
+      "safeClaim": "MartinLoop requires evidence from configured checks before completion counts.",
+      "prohibitedClaims": [
+        "Guarantees bug-free software",
+        "Proves universal correctness",
+        "Automatically safe to merge"
+      ],
+      "evidence": [
+        "packages/contracts/src/index.ts",
+        "packages/core/src/index.ts",
+        "packages/cli/src/run-store.ts"
+      ]
+    },
+    {
+      "id": "scope-enforcement",
+      "status": "shipped",
+      "safeClaim": "MartinLoop detects configured out-of-scope changes, rejects the attempt and can restore the rollback boundary.",
+      "prohibitedClaims": [
+        "Blocks every prohibited write before execution"
+      ],
+      "evidence": [
+        "packages/core/src/index.ts",
+        "packages/core/src/leash.ts",
+        "packages/core/src/rollback.ts"
+      ]
+    },
+    {
+      "id": "test-integrity-current",
+      "status": "partial",
+      "safeClaim": "MartinLoop Core includes analysis primitives for suspicious new agent-generated tests.",
+      "prohibitedClaims": [
+        "Automatically verifies the complete test suite was not changed",
+        "Detects every form of test tampering"
+      ],
+      "evidence": [
+        "packages/core/src/test-integrity.ts",
+        "packages/core/tests/test-integrity.test.ts"
+      ]
+    },
+    {
+      "id": "test-integrity-asset-guard",
+      "status": "building",
+      "safeClaim": "MartinLoop is building runtime-integrated snapshot comparison for configured protected verification assets.",
+      "prohibitedClaims": [
+        "Checks existing test suite for unauthorized modification"
+      ],
+      "evidence": []
+    },
+    {
+      "id": "zero-config-boundaries",
+      "status": "partial",
+      "safeClaim": "MartinLoop provides guided setup for verifiers and run limits. Common ecosystems get discovery suggestions.",
+      "prohibitedClaims": [
+        "Zero configuration required",
+        "Automatic setup"
+      ],
+      "evidence": [
+        "packages/cli/src/index.ts",
+        "docs/getting-started/quickstart.md"
+      ]
+    },
+    {
+      "id": "verified-handoff",
+      "status": "shipped",
+      "safeClaim": "Every completed run produces a Verified Handoff with a deterministic outcome (VERIFIED / STOPPED / NEEDS_REVIEW) and inspectable evidence.",
+      "prohibitedClaims": [
+        "Automatically proves the run is safe to merge",
+        "VERIFIED means no bugs"
+      ],
+      "evidence": [
+        "packages/contracts/src/verified-handoff.ts",
+        "packages/core/src/verified-handoff.ts",
+        "packages/cli/src/run-store.ts"
+      ]
+    },
+    {
+      "id": "cost-budget-governance",
+      "status": "shipped",
+      "safeClaim": "MartinLoop enforces configurable USD and iteration budgets. Budget exits produce STOPPED outcomes.",
+      "prohibitedClaims": [
+        "Guarantees minimum cost"
+      ],
+      "evidence": [
+        "packages/contracts/src/index.ts",
+        "packages/core/src/index.ts"
+      ]
+    },
+    {
+      "id": "rollback-recovery",
+      "status": "shipped",
+      "safeClaim": "MartinLoop can capture a rollback boundary before execution and restore it after a rejected patch.",
+      "prohibitedClaims": [
+        "Guarantees complete rollback in all environments"
+      ],
+      "evidence": [
+        "packages/core/src/rollback.ts",
+        "packages/contracts/src/index.ts"
+      ]
+    },
+    {
+      "id": "sansa-fleet",
+      "status": "roadmap",
+      "safeClaim": "MartinLoop's architecture is designed to support multi-agent fleet governance. No shipped fleet primitives yet.",
+      "prohibitedClaims": [
+        "Fleet capability available"
+      ],
+      "evidence": []
+    }
+  ]
+}

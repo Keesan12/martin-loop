@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 import { describe, expect, it } from "vitest";
 
 import {
@@ -270,6 +266,51 @@ describe("Phase 9 trust-profile leash rules", () => {
         })
       ])
     );
+  });
+
+  it("allows dependency-related files when dependency approval is explicitly granted", () => {
+    const decision = evaluateChangeApprovalLeash({
+      changedFiles: ["package.json", "pnpm-lock.yaml"],
+      executionProfile: "strict_local",
+      approvalPolicy: {
+        dependencyAdds: true
+      }
+    });
+
+    expect(decision.allowed).toBe(true);
+    expect(decision.violations).toEqual([]);
+  });
+
+  it("requires approval before migration files can change", () => {
+    const decision = evaluateChangeApprovalLeash({
+      changedFiles: ["migrations/20260803010101_create_accounts.sql"],
+      executionProfile: "strict_local"
+    });
+
+    expect(decision.allowed).toBe(false);
+    expect(decision.blocked).toBe(true);
+    expect(decision.surface).toBe("dependency");
+    expect(decision.violations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "migration_approval_required",
+          file: "migrations/20260803010101_create_accounts.sql"
+        })
+      ])
+    );
+  });
+
+  it("allows migration files when migration approval is explicitly granted", () => {
+    const decision = evaluateChangeApprovalLeash({
+      changedFiles: ["migrations/20260803010101_create_accounts.sql"],
+      executionProfile: "strict_local",
+      approvalPolicy: {
+        migrations: true
+      }
+    });
+
+    expect(decision.allowed).toBe(true);
+    expect(decision.violations).toEqual([]);
   });
 
   it("requires approval before deployment or config files can change", () => {

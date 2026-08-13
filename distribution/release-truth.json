@@ -2,12 +2,12 @@
   "schemaVersion": 1,
   "cli": {
     "package": "martin-loop",
-    "version": "0.4.5",
+    "version": "0.5.0",
     "install": "npx -y martin-loop@latest"
   },
   "mcp": {
     "package": "@martinloop/mcp",
-    "version": "0.3.9",
+    "version": "0.5.0",
     "registryName": "io.github.Keesan12/martin-loop",
     "install": "npx -y @martinloop/mcp"
   },

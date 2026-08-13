@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "context-c5/1",
+  "resource": "context",
+  "event": "shadow_compiled",
+  "runId": "run_fixture_001",
+  "manifestId": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+  "manifestHash": "b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3",
+  "mode": "shadow",
+  "adapter": "martin-core",
+  "actualEstimatedTokens": 42,
+  "proposedEstimatedTokens": 42,
+  "candidateCount": 1,
+  "includedCount": 1,
+  "excludedCount": 0,
+  "requiredOverBudget": false,
+  "modelWindowTokens": null,
+  "modelWindowEvidence": "unknown",
+  "createdAt": "2026-07-22T00:00:00.000Z"
+}

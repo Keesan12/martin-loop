@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 import { buildPortfolioSnapshot, type LoopRecord, type PortfolioSnapshot } from "@martin/contracts";
 
 import { loadLoopRecordsForInspect } from "./run-store.js";

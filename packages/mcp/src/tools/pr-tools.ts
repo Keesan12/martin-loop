@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 import { spawnSync } from "node:child_process";
 
 import { loadDetailedLoopRecord } from "./run-store.js";

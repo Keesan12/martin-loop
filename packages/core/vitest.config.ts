@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 import { fileURLToPath } from "node:url";
 
 import { defineConfig } from "vitest/config";
@@ -14,6 +10,6 @@ export default defineConfig({
   },
   test: {
     include: ["tests/**/*.test.ts"],
-    testTimeout: 60_000
+    testTimeout: 15_000
   }
 });

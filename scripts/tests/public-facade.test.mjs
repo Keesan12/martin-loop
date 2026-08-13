@@ -24,7 +24,7 @@ test("createPublicFacadeSmokePlan targets the frozen public package surface", ()
   assert.match(plan.unsafeBypassSmoke.description, /unsafe-allow-unguarded-run/i);
 });
 
-test("runPublicFacadeSmoke proves the root SDK import, CLI help, start flow, demo sandbox, and truthful Codex availability behavior from a clean temp project", async () => {
+test("runPublicFacadeSmoke proves the root SDK import, CLI help, start flow, demo sandbox, governed run, and unsafe gate fail-closed behavior from a clean temp project", async () => {
   const result = await runPublicFacadeSmoke({ rootDir: ROOT_DIR });
 
   assert.equal(result.packageName, "martin-loop");
@@ -39,13 +39,8 @@ test("runPublicFacadeSmoke proves the root SDK import, CLI help, start flow, dem
   assert.equal(result.demoSmoke.ok, true);
   assert.equal(result.demoSmoke.command, "npx martin-loop demo --dir ./martin-loop-demo");
   assert.equal(result.governedRunSmoke.ok, true);
-  assert.match(result.governedRunSmoke.status, /executed|availability-blocked/);
-  if (result.governedRunSmoke.status === "executed") {
-    assert.equal(result.governedRunSmoke.adapterId, "agent-cli:codex");
-  } else {
-    assert.equal(result.governedRunSmoke.adapterId, null);
-  }
+  assert.equal(result.governedRunSmoke.adapterId, "agent-cli:codex");
   assert.equal(result.unsafeBypassSmoke.ok, true);
   assert.match(result.unsafeBypassSmoke.command, /unsafe-allow-unguarded-run/);
-  assert.notEqual(result.unsafeBypassSmoke.exitCode, 8);
+  assert.equal(result.unsafeBypassSmoke.exitCode, 8);
 });

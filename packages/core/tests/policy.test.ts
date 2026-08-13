@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 import { describe, expect, it } from "vitest";
 
 import {
@@ -207,6 +203,22 @@ describe("evaluatePatchDecision", () => {
 
     expect(decision.decision).toBe("DISCARD");
     expect(decision.reasonCodes).toContain("no_code_change");
+  });
+
+  it("keeps a verified edit task with auditable pre-satisfied definition-of-done evidence", () => {
+    const decision = evaluatePatchDecision({
+      verificationPassed: true,
+      previousVerifierScore: 1,
+      verifierScore: 1,
+      changedFileCount: 0,
+      diffNovelty: 0,
+      mutationRequired: true,
+      definitionOfDonePreSatisfied: true,
+      summary: "Acceptance criteria were already satisfied and the configured verifier passed.",
+    });
+
+    expect(decision.decision).toBe("KEEP");
+    expect(decision.reasonCodes).not.toContain("no_code_change");
   });
 
   it("challenge 17: discards a large diff when verifier score does not improve", () => {

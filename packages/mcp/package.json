@@ -1,10 +1,10 @@
 {
   "name": "@martinloop/mcp",
-  "version": "0.3.9",
+  "version": "0.5.0",
   "mcpName": "io.github.Keesan12/martin-loop",
   "private": false,
   "type": "module",
-  "description": "Governed MCP server for AI coding agents with budgets, verifier gates, and inspectable runs.",
+  "description": "MCP server for AI coding agents — verifier gates, stop limits, and Verified Handoffs.",
   "license": "Apache-2.0",
   "author": "MartinLoop contributors",
   "homepage": "https://martinloop.com/",
@@ -18,18 +18,11 @@
   },
   "keywords": [
     "mcp",
-    "mcp-server",
     "model-context-protocol",
     "martin-loop",
     "ai-agent",
-    "ai-governance",
-    "agent-governance",
     "claude",
-    "claude-code",
     "codex",
-    "cursor",
-    "budget-guardrails",
-    "verifier-gates",
     "martin_doctor",
     "martin_triage_runs",
     "martin_run_dossier",
@@ -66,9 +59,7 @@
     "test": "vitest run --maxWorkers=1",
     "lint": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/server.js",
-    "inspect:live": "node ./scripts/inspect-live.mjs",
-    "mcpb:build": "node ./mcpb/build-mcpb.mjs",
-    "mcpb:validate": "mcpb validate ./dist-mcpb/martinloop"
+    "inspect:live": "node ./scripts/inspect-live.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
@@ -80,7 +71,6 @@
     "ts-morph": "^21.0.0"
   },
   "devDependencies": {
-    "@anthropic-ai/mcpb": "2.1.2",
     "@martin/contracts": "workspace:*"
   }
 }

@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 /**
  * Real agent-CLI adapters.
  *
@@ -24,13 +20,14 @@ import type {
 } from "@martin/core";
 
 import {
+  readGitChangedFiles,
   readGitExecutionArtifacts,
   resolveGitRepositoryRoot,
   runSubprocess,
   runVerification,
   type SpawnLike
 } from "./cli-bridge.js";
-import { buildCodexExecArgs, DEFAULT_CODEX_CHATGPT_MODEL } from "./codex-launcher.js";
+import { buildCodexExecArgs } from "./codex-launcher.js";
 import {
   createAdapterCapabilities,
   normalizeStructuredErrors,
@@ -586,12 +583,10 @@ function createStreamingUsageInspector(
       return;
     }
 
-    // result events contain aggregate usage that duplicates previously streamed
-    // assistant-message usage events — skip to avoid double-counting.
+    extractUsageFromEvent(event, terminate);
+
     if (event.type === "result") {
       finalResult = event as unknown as ClaudeJsonOutput;
-    } else {
-      extractUsageFromEvent(event, terminate);
     }
   };
 
@@ -845,6 +840,14 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
     async execute(request: MartinAdapterRequest): Promise<MartinAdapterResult> {
       const prompt = buildPrompt(request);
       const estimatedUsage = estimateUsage(prompt, options.model ?? options.command, options.command);
+      const repoRoot = (request.context as { repoRoot?: string }).repoRoot;
+      const gitRepoRoot = repoRoot ? resolveGitRepositoryRoot(repoRoot) : undefined;
+      // A governed run may begin in a deliberately dirty workspace. Capture that
+      // baseline so existing operator work is neither reported as this run's
+      // execution nor treated as scope creep.
+      const baselineChangedFiles = gitRepoRoot
+        ? new Set(await readGitChangedFiles(gitRepoRoot, 5_000, options.spawnImpl))
+        : new Set<string>();
 
       // Preflight: bail if projected cost exceeds remaining budget
       if (request.context.remainingBudgetUsd > 0) {
@@ -889,7 +892,8 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
         timeoutMs,
         spawnImpl: options.spawnImpl,
         ...(stdinData === undefined ? {} : { stdinData }),
-        ...(streamingUsage ? { onStdoutChunk: streamingUsage.onChunk } : {})
+        ...(streamingUsage ? { onStdoutChunk: streamingUsage.onChunk } : {}),
+        ...(request.signal !== undefined ? { signal: request.signal } : {})
       });
 
       if (agentResult.terminationReason) {
@@ -1054,36 +1058,45 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
         workingDirectory,
         verifyTimeoutMs,
         verificationStack,
-        options.spawnImpl
+        options.spawnImpl,
+        {
+          runId: request.loopId,
+          workspaceId: request.workspaceId,
+          cwd: workingDirectory,
+        }
       );
 
       // Check for zero-diff (agent ran but made no file changes)
-      const repoRoot = (request.context as { repoRoot?: string }).repoRoot;
-      const gitRepoRoot = repoRoot ? resolveGitRepositoryRoot(repoRoot) : undefined;
-      let noDiff = false;
-      if (gitRepoRoot) {
-        noDiff = await checkNoDiff(gitRepoRoot, options.spawnImpl);
-      }
+      const postRunChangedFiles = gitRepoRoot
+        ? await readGitChangedFiles(gitRepoRoot, 5_000, options.spawnImpl)
+        : [];
+      const agentChangedFiles = postRunChangedFiles.filter(
+        (file) => !baselineChangedFiles.has(file)
+      );
+      const noDiff = gitRepoRoot !== undefined && agentChangedFiles.length === 0;
 
       // Extract structured errors from stderr/stdout for better failure context
       const structuredErrors = normalizeStructuredErrors(
         extractStructuredErrors(agentResult.stderr, agentResult.stdout)
       );
-      const executionArtifacts = gitRepoRoot
+      const rawExecutionArtifacts = gitRepoRoot
         ? await readGitExecutionArtifacts(gitRepoRoot, 5000, options.spawnImpl)
+        : undefined;
+      const executionArtifacts = rawExecutionArtifacts
+        ? {
+            ...(agentChangedFiles.length > 0 ? { changedFiles: agentChangedFiles } : {}),
+            ...(baselineChangedFiles.size === 0 && rawExecutionArtifacts.diffStats
+              ? { diffStats: rawExecutionArtifacts.diffStats }
+              : {})
+          }
         : undefined;
 
       // Scope contract enforcement: check touched files against allowedPaths/deniedPaths
       let scopeViolations: string[] = [];
       const scopeCtx = request.context as { allowedPaths?: string[]; deniedPaths?: string[] };
       if (gitRepoRoot && (scopeCtx.allowedPaths?.length || scopeCtx.deniedPaths?.length)) {
-        const diffResult = await runSubprocess("git", ["diff", "--name-only", "HEAD"], {
-          cwd: gitRepoRoot,
-          timeoutMs: 5000,
-          spawnImpl: options.spawnImpl
-        });
-        if (diffResult.exitCode === 0 && diffResult.stdout.trim()) {
-          const touchedFiles = diffResult.stdout.trim().split("\n").filter(Boolean);
+        if (agentChangedFiles.length > 0) {
+          const touchedFiles = agentChangedFiles;
           const allowed = scopeCtx.allowedPaths ?? [];
           const denied = scopeCtx.deniedPaths ?? [];
 
@@ -1114,7 +1127,7 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
           status: "completed",
           summary,
           usage,
-          verification: { passed: true, summary: verification.summary },
+          verification,
           ...(executionArtifacts
             ? {
                 execution: {
@@ -1162,7 +1175,7 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
 
         // Reset tracked files to HEAD so next attempt starts from clean state
         try {
-          if (gitRepoRoot) {
+          if (gitRepoRoot && baselineChangedFiles.size === 0) {
             await runSubprocess("git", ["restore", "--staged", "--worktree", "."], {
               cwd: gitRepoRoot,
               timeoutMs: 5000
@@ -1179,7 +1192,7 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
           ? `${summary}${errorBlock}${scopeViolations.length > 0 ? `\nScope violations: ${scopeViolations.join(", ")}` : ""}`
           : summary,
         usage,
-        verification: { passed: false, summary: verification.summary },
+        verification,
         ...(executionArtifacts
           ? {
               execution: {
@@ -1289,7 +1302,7 @@ export function createCodexCliAdapter(options: CodexCliAdapterOptions = {}): Mar
   const sandbox = options.sandbox ?? "workspace-write";
   const workingDirectory = options.workingDirectory ?? process.cwd();
   const command = options.command ?? "codex";
-  const launchModel = options.model ?? DEFAULT_CODEX_CHATGPT_MODEL;
+  const launchModel = options.model;
 
   return createAgentCliAdapter({
     command,
@@ -1588,13 +1601,4 @@ function extractStructuredErrors(stderr: string, stdout: string): StructuredErro
   }
 
   return errors.slice(0, 10); // cap at 10 to avoid bloating prompts
-}
-
-async function checkNoDiff(repoRoot: string, spawnImpl?: SpawnLike): Promise<boolean> {
-  const result = await runSubprocess("git", ["diff", "--name-only", "HEAD"], {
-    cwd: repoRoot,
-    timeoutMs: 5000,
-    spawnImpl
-  });
-  return result.exitCode === 0 && result.stdout.trim().length === 0;
 }

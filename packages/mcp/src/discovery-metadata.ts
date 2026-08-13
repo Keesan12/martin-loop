@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 import { createHash } from "node:crypto";
 
 export const MARTIN_TOOL_NAMES = [
@@ -95,7 +91,6 @@ export const MARTIN_RESOURCE_URIS = [
   "martin://runs/triage",
   "martin://runs/latest",
   "martin://runs/latest/summary",
-  "martin://runs/latest/receipt",
   "martin://runs/latest/proof-card",
   "martin://runs/latest/budget-status",
   "martin://runs/latest/verifier-evidence",
@@ -105,6 +100,7 @@ export const MARTIN_RESOURCE_URIS = [
   "martin://verifiers/results",
   "martin://agent/next-step",
   "martin://agent/governance-status",
+  "martin://agent/mode-status",
   "martin://agent/memory-summary",
   "martin://guides/mcp-usage",
   "martin://guides/agent-start",

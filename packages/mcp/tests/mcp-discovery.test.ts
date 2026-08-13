@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -135,7 +131,6 @@ describe("Martin MCP discovery resources", () => {
       MARTIN_STATIC_RESOURCE_URIS.triage,
       MARTIN_STATIC_RESOURCE_URIS.latestRun,
       MARTIN_STATIC_RESOURCE_URIS.latestSummary,
-      MARTIN_STATIC_RESOURCE_URIS.latestReceipt,
       MARTIN_STATIC_RESOURCE_URIS.latestProofCard,
       MARTIN_STATIC_RESOURCE_URIS.latestBudgetStatus,
       MARTIN_STATIC_RESOURCE_URIS.latestVerifierEvidence,
@@ -151,8 +146,8 @@ describe("Martin MCP discovery resources", () => {
       MARTIN_STATIC_RESOURCE_URIS.operatingRulesGuide,
       MARTIN_STATIC_RESOURCE_URIS.publishReadinessGuide,
       MARTIN_STATIC_RESOURCE_URIS.governanceStatus,
-      MARTIN_STATIC_RESOURCE_URIS.memorySummary,
-      MARTIN_STATIC_RESOURCE_URIS.modeStatus
+      MARTIN_STATIC_RESOURCE_URIS.modeStatus,
+      MARTIN_STATIC_RESOURCE_URIS.memorySummary
     ]);
     expect(listedTemplates.resourceTemplates.map((template) => template.uriTemplate)).toEqual([
       "martin://runs/{loopId}",
@@ -181,12 +176,12 @@ describe("Martin MCP discovery resources", () => {
       const recentRuns = await readMartinResource({ uri: MARTIN_STATIC_RESOURCE_URIS.recentRuns, runsDir: runsRoot });
       const triage = await readMartinResource({ uri: MARTIN_STATIC_RESOURCE_URIS.triage, runsDir: runsRoot });
       const latestSummary = await readMartinResource({ uri: MARTIN_STATIC_RESOURCE_URIS.latestSummary, runsDir: runsRoot });
-      const latestReceipt = await readMartinResource({ uri: MARTIN_STATIC_RESOURCE_URIS.latestReceipt, runsDir: runsRoot });
       const latestProofCard = await readMartinResource({ uri: MARTIN_STATIC_RESOURCE_URIS.latestProofCard, runsDir: runsRoot });
       const budgetStatus = await readMartinResource({ uri: MARTIN_STATIC_RESOURCE_URIS.latestBudgetStatus, runsDir: runsRoot });
       const verifierEvidence = await readMartinResource({ uri: MARTIN_STATIC_RESOURCE_URIS.latestVerifierEvidence, runsDir: runsRoot });
       const rollbackEvidence = await readMartinResource({ uri: MARTIN_STATIC_RESOURCE_URIS.latestRollbackEvidence, runsDir: runsRoot });
       const nextStep = await readMartinResource({ uri: MARTIN_STATIC_RESOURCE_URIS.agentNextStep, runsDir: runsRoot });
+      const modeStatus = await readMartinResource({ uri: MARTIN_STATIC_RESOURCE_URIS.modeStatus, runsDir: runsRoot });
 
       expect(guide.contents[0]?.text).toContain("martin_governed_coding_kickoff");
       expect(guide.contents[0]?.text).toContain("martin_start");
@@ -199,9 +194,6 @@ describe("Martin MCP discovery resources", () => {
       expect(triage.contents[0]?.text).toContain("\"findingCount\"");
       expect(triage.contents[0]?.text).toContain("\"verification_failed\"");
       expect(latestSummary.contents[0]?.text).toContain("\"kind\": \"latest-summary\"");
-      expect(latestReceipt.contents[0]?.text).toContain("\"kind\": \"latest-receipt\"");
-      expect(latestReceipt.contents[0]?.text).toContain("\"proofCard\"");
-      expect(latestReceipt.contents[0]?.text).toContain("\"artifactGuaranteed\": false");
       expect(latestSummary.contents[0]?.text).toContain("\"whatMartinPrevented\"");
       expect(latestProofCard.contents[0]?.text).toContain("# Martin Proof Card");
       expect(latestProofCard.contents[0]?.text).toContain("Verifier: failed honestly");
@@ -210,6 +202,8 @@ describe("Martin MCP discovery resources", () => {
       expect(rollbackEvidence.contents[0]?.text).toContain("\"kind\": \"rollback-evidence\"");
       expect(nextStep.contents[0]?.text).toContain("\"action\": \"debug_failed_run\"");
       expect(nextStep.contents[0]?.text).toContain("\"requiredWorkflow\"");
+      expect(modeStatus.contents[0]?.text).toContain("\"kind\": \"mode-status\"");
+      expect(modeStatus.contents[0]?.text).toContain("\"effectiveMode\": \"auto\"");
     });
   });
 

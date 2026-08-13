@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 import { evaluateCostGovernor } from "@martin/core";
 
 import { loadLoopRecordForStatus } from "./run-store.js";

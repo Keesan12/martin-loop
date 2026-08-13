@@ -1,12 +1,7 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 /**
  * Repo Style Analyzer — real tests.
  *
- * Runs analyzeRepoStyle against the actual ML_Core_OSS_Internal repo
- * to verify detection of real conventions.
+ * Runs analyzeRepoStyle against this repo to verify detection of real conventions.
  */
 
 import { resolve } from "node:path";

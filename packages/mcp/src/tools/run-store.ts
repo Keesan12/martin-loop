@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 import { open, readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 

@@ -1,15 +1,10 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 import {
   createClaudeCliAdapter,
   createCodexCliAdapter,
   createGeminiCliAdapter,
+  createStubDirectProviderAdapter,
   probeCodexLaunch,
-  resolveCliCommandAvailability,
-  createVerifierOnlyAdapter,
-  type SpawnLike
+  resolveCliCommandAvailability
 } from "@martin/adapters";
 
 import {
@@ -17,9 +12,7 @@ import {
   evaluateCostGovernor,
   resolveRunsRoot,
   runMartin,
-  type RunStore,
-  type RunMartinInput,
-  type RunMartinResult
+  type RunStore
 } from "@martin/core";
 import type { LoopBudget, ReceiptScope } from "@martin/contracts";
 
@@ -80,22 +73,10 @@ export interface RunLoopOutput {
   };
 }
 
-let proofModeVerifierSpawnImpl: SpawnLike | undefined;
 let runStoreOverrideForTests: RunStore | undefined;
-let runMartinImpl: (input: RunMartinInput) => Promise<RunMartinResult> = runMartin;
-
-export function __setProofModeVerifierSpawnImplForTests(spawnImpl?: SpawnLike): void {
-  proofModeVerifierSpawnImpl = spawnImpl;
-}
 
 export function __setRunStoreOverrideForTests(store?: RunStore): void {
   runStoreOverrideForTests = store;
-}
-
-export function __setRunMartinImplForTests(
-  impl?: (input: RunMartinInput) => Promise<RunMartinResult>
-): void {
-  runMartinImpl = impl ?? runMartin;
 }
 
 export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
@@ -151,11 +132,10 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
 
   const adapter =
     !executionMode.liveMode
-      ? createVerifierOnlyAdapter({
-          workingDirectory,
-          label: "Proof mode adapter (MARTIN_LIVE=false)",
-          ...(input.verifyTimeoutMs !== undefined ? { verifyTimeoutMs: input.verifyTimeoutMs } : {}),
-          ...(proofModeVerifierSpawnImpl ? { spawnImpl: proofModeVerifierSpawnImpl } : {})
+      ? createStubDirectProviderAdapter({
+          label: "Proof mode stub adapter (MARTIN_LIVE=false)",
+          providerId: "stub",
+          model: "stub"
         })
       : engine === "codex"
         ? createCodexCliAdapter({
@@ -189,7 +169,7 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
 
   const budget: LoopBudget = normalizeLoopBudget(partialBudget);
 
-  const result = await runMartinImpl({
+  const result = await runMartin({
     workspaceId: input.workspaceId ?? "ws_mcp",
     projectId: input.projectId ?? "proj_mcp",
     store: runStoreOverrideForTests ?? createFileRunStore({ runsRoot }),

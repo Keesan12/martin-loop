@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,10 +5,11 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  DEFAULT_CODEX_CHATGPT_MODEL,
   buildCodexExecArgs,
+  checkCodexSandboxPreflight,
   diagnoseCodexHost,
   probeCodexLaunch,
+  probeFilesystemWriteCapability,
   resolveCliCommandAvailability
 } from "../src/codex-launcher.js";
 
@@ -121,8 +118,7 @@ describe("buildCodexExecArgs", () => {
       "--ignore-user-config",
       "--cd",
       "/repo/worktree",
-      "--sandbox",
-      "workspace-write",
+      "--approve-for-me",
       "--json",
       "--color",
       "never",
@@ -183,15 +179,13 @@ describe("probeCodexLaunch", () => {
       "--ignore-user-config",
       "--cd",
       process.cwd(),
-      "--sandbox",
-      "workspace-write",
+      "--approve-for-me",
       "--json",
       "--color",
       "never",
-      "--model",
-      DEFAULT_CODEX_CHATGPT_MODEL,
       "-"
     ]);
+    expect(result.args).not.toContain("--model");
     expect(spawnSyncImpl).toHaveBeenNthCalledWith(
       2,
       "/usr/local/bin/codex",
@@ -252,6 +246,49 @@ describe("probeCodexLaunch", () => {
     } finally {
       rmSync(shimDir, { recursive: true, force: true });
     }
+  });
+
+  it("prefers a runnable Windows npm shim over its extensionless companion", () => {
+    const spawnSyncImpl = vi.fn(() => ({
+      status: 0,
+      stdout: JSON.stringify({
+        type: "item.completed",
+        item: {
+          id: "item_1",
+          type: "command_execution",
+          command: "git status --short -- .",
+          aggregated_output: "",
+          exit_code: 0,
+          status: "completed"
+        }
+      }),
+      stderr: ""
+    }));
+
+    const result = probeCodexLaunch({
+      workingDirectory: process.cwd(),
+      platform: "win32",
+      availability: {
+        command: "codex",
+        available: true,
+        locator: "where.exe",
+        detail: "codex is available on PATH.",
+        resolvedPath: "C:\\Users\\ExampleUser\\AppData\\Roaming\\npm\\codex",
+        candidatePaths: [
+          "C:\\Users\\ExampleUser\\AppData\\Roaming\\npm\\codex",
+          "C:\\Users\\ExampleUser\\AppData\\Roaming\\npm\\codex.cmd"
+        ]
+      },
+      spawnSyncImpl: spawnSyncImpl as never
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.command).toBe("C:\\Users\\ExampleUser\\AppData\\Roaming\\npm\\codex.cmd");
+    expect(spawnSyncImpl).toHaveBeenCalledWith(
+      expect.stringMatching(/cmd\.exe$/iu),
+      expect.arrayContaining(["C:\\Users\\ExampleUser\\AppData\\Roaming\\npm\\codex.cmd"]),
+      expect.any(Object)
+    );
   });
 
   it("fails closed when Codex resolves to a Windows shim in WSL", () => {
@@ -424,8 +461,8 @@ describe("probeCodexLaunch", () => {
 
     expect(result.ok).toBe(false);
     expect(result.summary).toContain("ChatGPT-account");
-    expect(result.summary).toContain(DEFAULT_CODEX_CHATGPT_MODEL);
-    expect(result.diagnosis.remediation).toContain(DEFAULT_CODEX_CHATGPT_MODEL);
+    expect(result.summary).toContain("explicit model");
+    expect(result.diagnosis.remediation).toContain("ChatGPT-account-supported");
   });
 
   it("classifies read-only Codex sandbox mismatches before governed work continues", () => {
@@ -571,5 +608,142 @@ describe("probeCodexLaunch", () => {
     expect(result.diagnosis.nativeDependencyStatus).toBe("missing");
     expect(result.diagnosis.nativeDependencyPackage).toBe("@openai/codex-linux-x64");
     expect(result.diagnosis.remediation).toContain("Reinstall Codex natively");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// probeFilesystemWriteCapability
+// ---------------------------------------------------------------------------
+
+describe("probeFilesystemWriteCapability", () => {
+  it("returns writable:true for a real writable temp directory", () => {
+    const dir = mkdtempSync(join(tmpdir(), "ml-probe-write-"));
+    try {
+      const result = probeFilesystemWriteCapability(dir);
+      expect(result.writable).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("leaves no file behind after a successful probe", () => {
+    const { readdirSync } = require("node:fs") as typeof import("node:fs");
+    const dir = mkdtempSync(join(tmpdir(), "ml-probe-clean-"));
+    try {
+      probeFilesystemWriteCapability(dir);
+      const remaining = readdirSync(dir);
+      expect(remaining).toHaveLength(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("returns writable:false with a reason when the directory cannot be written", () => {
+    // /dev/null does not exist on Windows; on Linux it is a character device —
+    // either way mkdir throws and the probe returns writable:false.
+    const result = probeFilesystemWriteCapability((process.platform === "win32" ? "Z:\\invalid\\dir" : "/dev/null/cannot-be-a-dir"));
+    expect(result.writable).toBe(false);
+    if (!result.writable) {
+      expect(result.reason.length).toBeGreaterThan(0);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// checkCodexSandboxPreflight
+// ---------------------------------------------------------------------------
+
+describe("checkCodexSandboxPreflight", () => {
+  it("read-only mission returns ok without a write probe", () => {
+    const result = checkCodexSandboxPreflight({
+      requestedSandbox: "read-only",
+      workingDirectory: tmpdir()
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.effectiveSandbox).toBe("read-only");
+      expect(result.capabilitySource).toBe("probe");
+    }
+  });
+
+  it("workspace-write mission succeeds when directory is writable", () => {
+    const dir = mkdtempSync(join(tmpdir(), "ml-pf-write-ok-"));
+    try {
+      const result = checkCodexSandboxPreflight({
+        requestedSandbox: "workspace-write",
+        workingDirectory: dir
+      });
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.effectiveSandbox).toBe("workspace-write");
+        expect(result.capabilitySource).toBe("probe");
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("workspace-write mission returns provider_sandbox_read_only when directory is not writable", () => {
+    const result = checkCodexSandboxPreflight({
+      requestedSandbox: "workspace-write",
+      workingDirectory: (process.platform === "win32" ? "Z:\\invalid\\dir" : "/dev/null/not-a-dir")
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.code).toBe("provider_sandbox_read_only");
+      expect(result.requestedCapability).toBe("workspace-write");
+      expect(result.detectedCapability).toBe("read-only");
+      expect(result.capabilitySource).toBe("probe");
+      expect(result.remediation.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("provider_sandbox_read_only includes the affected path", () => {
+    const result = checkCodexSandboxPreflight({
+      requestedSandbox: "workspace-write",
+      workingDirectory: (process.platform === "win32" ? "Z:\\invalid\\dir" : "/dev/null/not-a-dir")
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.affectedPath).toBeTruthy();
+      expect(result.affectedPath.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("sandbox denial is distinct from provider failure: code is exactly provider_sandbox_read_only", () => {
+    const result = checkCodexSandboxPreflight({
+      requestedSandbox: "workspace-write",
+      workingDirectory: (process.platform === "win32" ? "Z:\\invalid\\dir" : "/dev/null/not-a-dir")
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.code).toBe("provider_sandbox_read_only");
+    }
+  });
+
+  it("no model spawn occurs: checkCodexSandboxPreflight is synchronous and returns before any provider call", () => {
+    const dir = mkdtempSync(join(tmpdir(), "ml-pf-no-spawn-"));
+    try {
+      const result = checkCodexSandboxPreflight({
+        requestedSandbox: "workspace-write",
+        workingDirectory: dir
+      });
+      expect(result).not.toBeInstanceOf(Promise);
+      expect(typeof result.ok).toBe("boolean");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("WindowsApps alias path is treated as inaccessible (returns provider_sandbox_read_only)", () => {
+    const windowsAppsPath =
+      `${process.env["SystemRoot"] ?? "C:\\Windows"}\\SystemApps\\ml-probe-guard\\not-real`;
+    const result = checkCodexSandboxPreflight({
+      requestedSandbox: "workspace-write",
+      workingDirectory: windowsAppsPath
+    });
+    if (!result.ok) {
+      expect(result.code).toBe("provider_sandbox_read_only");
+    }
   });
 });

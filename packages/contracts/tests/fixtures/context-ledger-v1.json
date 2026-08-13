@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "context-ledger/1",
+  "entryType": "context",
+  "taskId": "task_fixture_001",
+  "runId": "run_fixture_001",
+  "manifestHash": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+  "totalIncluded": 2,
+  "totalExcluded": 1,
+  "totalFaultLoaded": 0,
+  "overflowCount": 0,
+  "faultBudgetUsed": 0,
+  "adapterVersion": "martin-core@0.1.0"
+}

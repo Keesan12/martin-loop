@@ -1,6 +1,14 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
+/**
+ * Contracts for the Martin Loop agentic system.
+ *
+ * This module defines the core type contracts and data structures for autonomous agent loop management,
+ * including loop lifecycle states, task definitions, budget tracking, cost accounting, verification,
+ * patch decisions, telemetry, and governance policies. It provides the public API surface for
+ * creating and managing loop records, handling events, validating batches, and tracking
+ * portfolio snapshots and routing economics.
+ */
+
+import type { TerminationEnvelopeV1 } from "./exits.js";
 
 export type LoopStatus =
   | "queued"
@@ -18,7 +26,10 @@ export type LoopLifecycleState =
   | "budget_exit"
   | "diminishing_returns"
   | "stuck_exit"
-  | "human_escalation";
+  | "human_escalation"
+  | "wall_clock"
+  | "error_threshold"
+  | "external_event";
 
 export const FAILURE_CLASSES = [
   "logic_error",
@@ -55,7 +66,8 @@ export type LoopEventType =
   | "intervention.selected"
   | "verification.completed"
   | "budget.updated"
-  | "run.completed";
+  | "run.completed"
+  | "run.terminated";
 
 export interface LoopTask {
   title: string;
@@ -65,6 +77,8 @@ export interface LoopTask {
   verificationTimeoutMs?: number;
   verificationStack?: VerificationStep[];
   mutationMode?: MutationMode;
+  /** Explicit task-authority evidence that all definition-of-done criteria were satisfied before execution. */
+  definitionOfDonePreSatisfied?: boolean;
   executionProfile?: ExecutionProfile;
   allowedNetworkDomains?: string[];
   approvalPolicy?: ApprovalPolicy;
@@ -144,6 +158,16 @@ export interface ReceiptScope {
   workingDirectory?: string;
   invocationRoot?: string;
   runsRoot?: string;
+  /** Sandbox mode the mission requested before execution. */
+  requestedSandbox?: "read-only" | "workspace-write" | "danger-full-access";
+  /** Effective sandbox capability detected by pre-run filesystem probe. */
+  effectiveSandbox?: "read-only" | "workspace-write" | "unknown";
+  /** Absolute path that the filesystem write probe tested. */
+  writableRoot?: string;
+  /** How the effective sandbox was determined. */
+  capabilitySource?: "probe" | "configured" | "unknown";
+  /** Enforced demo changes (DEMO.md-only enforcement output). */
+  demoChangedFiles?: string[];
 }
 
 export type ReceiptIntegrityState =
@@ -262,6 +286,8 @@ export interface LoopRecord {
   receiptScope?: ReceiptScope;
   receiptIntegrity?: ReceiptIntegritySummary;
   routingEconomics?: RoutingEconomics;
+  /** Canonical termination identity written by finishFromEvaluation. Present when run ended via exit policy. */
+  terminationEnvelope?: TerminationEnvelopeV1;
 }
 
 export interface LoopRecordDraft {
@@ -282,6 +308,7 @@ export interface LoopRecordDraft {
   updatedAt?: string;
   receiptScope?: ReceiptScope;
   receiptIntegrity?: ReceiptIntegritySummary;
+  terminationEnvelope?: TerminationEnvelopeV1;
 }
 
 export type {
@@ -430,6 +457,7 @@ export function createLoopRecord(
     updatedAt: draft.updatedAt ?? now,
     ...(draft.receiptScope ? { receiptScope: draft.receiptScope } : {}),
     ...(draft.receiptIntegrity ? { receiptIntegrity: draft.receiptIntegrity } : {}),
+    ...(draft.terminationEnvelope ? { terminationEnvelope: draft.terminationEnvelope } : {}),
     ...(draft.teamId ? { teamId: draft.teamId } : {})
   };
 }
@@ -636,6 +664,8 @@ function nextStatus(current: LoopStatus, eventType: LoopEventType): LoopStatus {
       return "verifying";
     case "run.completed":
       return current === "failed" ? "failed" : "completed";
+    case "run.terminated":
+      return "exited";
     default:
       return current;
   }
@@ -864,3 +894,109 @@ export type {
   TrajectoryAssessment,
   TrajectorySignal
 } from "./trajectory.js";
+export {
+  EXIT_KINDS,
+  EXIT_POLICY_VERSION,
+  EXIT_EVALUATION_VERSION,
+  EXIT_SIGNAL_VERSION,
+  TERMINATION_ENVELOPE_VERSION
+} from "./exits.js";
+export type {
+  ExitKind,
+  ExitEvaluationPhase,
+  ExternalEventDisposition,
+  ExternalExitEvent,
+  ExitPolicyV1,
+  ExitSignalV1,
+  ExitSnapshotV1,
+  ExitMatchV1,
+  ExitEvaluationV1,
+  TerminationEnvelopeV1
+} from "./exits.js";
+
+// ─── R4 Delivery — M1 Contract ──────────────────────────────────────────────
+export { ALLOWED_ACTION_TYPES, DELIVERY_MESSAGE_SCHEMA_VERSION, DELIVERY_RECORD_SCHEMA_VERSION, MESSAGE_SELECTION_RESPONSE_SCHEMA_VERSION } from "./delivery.js";
+export type { ActionType, DeliveryMessage, DeliveryRecord, MessageKind, MessageSelectionResponse, UpdateAvailableField } from "./delivery.js";
+
+// ─── Context Shadow — A-CTX-0 ────────────────────────────────────────────────
+export {
+  CONTEXT_SHADOW_MANIFEST_VERSION,
+  CONTEXT_C5_VERSION
+} from "./context-shadow.js";
+export type {
+  ContextC5EnvelopeV1,
+  ContextEvidence,
+  ContextShadowDecisionV1,
+  ContextShadowManifestV1,
+  ContextShadowSegmentInput,
+  ContextShadowSegmentKind
+} from "./context-shadow.js";
+
+// ─── Context Runtime — A-CTX-1 ───────────────────────────────────────────────
+export {
+  CONTEXT_MANIFEST_VERSION,
+  CONTEXT_LEDGER_VERSION
+} from "./context-manifest.js";
+export type {
+  ContinuationCheckpoint,
+  ContextBudget,
+  ContextCandidateDecision,
+  ContextFaultRequest,
+  ContextFaultResult,
+  ContextKind,
+  ContextLedgerEntry,
+  ContextManifest,
+  ContextObject,
+  ContextPolicy,
+  ContextPriority,
+  ContextSensitivity,
+  ContextTrust,
+  TaskItem,
+  UsageEvidence
+} from "./context-manifest.js";
+
+// ─── Track A — Verified Handoff ───────────────────────────────────────────────
+export {
+  EVIDENCE_STATUSES,
+  TEST_INTEGRITY_STATUSES,
+  TEST_INTEGRITY_VERDICTS,
+  VERIFIED_HANDOFF_OUTCOMES,
+} from "./verified-handoff.js";
+export type {
+  EvidenceStatus,
+  TestIntegrityStatus,
+  TestIntegrityVerdict,
+  VerifiedHandoffCheckV1,
+  VerifiedHandoffOutcome,
+  VerifiedHandoffRecoveryV1,
+  VerifiedHandoffRequirementV1,
+  VerifiedHandoffScopeV1,
+  VerifiedHandoffTestIntegrityV1,
+  VerifiedHandoffV1,
+} from "./verified-handoff.js";
+
+// ─── Context Handoff — A-CTX-2 ───────────────────────────────────────────────
+export { HANDOFF_SCHEMA_VERSION } from "./context-handoff.js";
+export type {
+  ChainIntegrityState,
+  ContextCircuitBreakResult,
+  ContextExclusionDecision,
+  ContextHandoffArtifact,
+  ContextHandoffClaim,
+  ContextHandoffReceipt,
+  ContextHandoffVerification,
+  HandoffClaimState
+} from "./context-handoff.js";
+
+export {
+  MISSION_SCHEMA_VERSION,
+  MISSION_STATUSES,
+  ALLOWED_MISSION_TRANSITIONS,
+  createMissionRecord,
+  isMissionTransitionAllowed
+} from './mission.js';
+export type {
+  MissionStatus, MissionDecision, MissionBudget, MissionCost,
+  MissionRunLink, MissionRunRole, MissionApproval, MissionOutcome,
+  MissionEvent, MissionEventKind, MissionRecord, MissionDraft
+} from './mission.js';

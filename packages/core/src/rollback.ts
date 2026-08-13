@@ -1,8 +1,5 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 
@@ -33,11 +30,27 @@ export function listAttemptChangedFilesSinceBoundary(input: {
 
   const baselineTracked = new Set(input.boundary.trackedDirtyFiles);
   const baselineUntracked = new Set(input.boundary.untrackedFiles);
+  const baselineContentChanges = input.boundary.snapshots
+    .filter((snapshot) => snapshot.existed && repoFileDiffersFromSnapshot(input.repoRoot!, snapshot))
+    .map((snapshot) => snapshot.path);
 
   return uniqueSorted([
     ...repoState.trackedDirtyFiles.filter((filePath) => !baselineTracked.has(filePath)),
-    ...repoState.untrackedFiles.filter((filePath) => !baselineUntracked.has(filePath))
+    ...repoState.untrackedFiles.filter((filePath) => !baselineUntracked.has(filePath)),
+    ...baselineContentChanges
   ]);
+}
+
+function repoFileDiffersFromSnapshot(
+  repoRoot: string,
+  snapshot: RollbackFileSnapshot
+): boolean {
+  try {
+    const current = readFileSync(resolveRepoPath(repoRoot, snapshot.path));
+    return current.toString("base64") !== snapshot.contentBase64;
+  } catch {
+    return true;
+  }
 }
 
 export async function captureRollbackBoundary(input: {

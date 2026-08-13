@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 import { appendFile, readFile } from "node:fs/promises";
 import path from "node:path";
 

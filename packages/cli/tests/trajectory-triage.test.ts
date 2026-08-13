@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,6 +6,7 @@ import { createLoopRecord } from "@martin/contracts";
 import { describe, expect, it } from "vitest";
 
 import { executeCli } from "../src/index.js";
+import { deriveWorkspaceId } from "../src/workflow-state.js";
 
 async function withRunsRoot<T>(fn: (runsRoot: string) => Promise<T>): Promise<T> {
   const previousRunsRoot = process.env.MARTIN_RUNS_DIR;
@@ -34,7 +31,7 @@ describe("CLI trajectory triage", () => {
     await withRunsRoot(async (runsRoot) => {
       const loop = {
         ...createLoopRecord({
-          workspaceId: "ws_ops",
+          workspaceId: deriveWorkspaceId(process.cwd()),
           projectId: "proj_runtime",
           task: {
             title: "Repair runtime guard",

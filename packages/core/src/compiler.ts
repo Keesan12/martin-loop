@@ -1,7 +1,3 @@
-// SPDX-FileCopyrightText: MartinLoop contributors
-//
-// SPDX-License-Identifier: Apache-2.0
-
 import type { LoopAttempt, LoopTask } from "@martin/contracts";
 import { redactSecretsFromText } from "./leash.js";
 

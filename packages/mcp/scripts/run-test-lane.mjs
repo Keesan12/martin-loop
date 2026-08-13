@@ -20,8 +20,8 @@ const heavyMcpToolsPattern = [
 ].join("|");
 
 const heavyServerValidationPattern = [
-  "accepts a matching doctor-estimate-plan-preflight receipt chain for martin_run when maxUsd is below the default soft limit",
-  "accepts a matching doctor-estimate-plan-preflight receipt chain when no path allow/deny filters are provided"
+  "accepts a matching doctor-plan-preflight receipt chain for martin_run when maxUsd is below the default soft limit",
+  "accepts a matching doctor-plan-preflight receipt chain when no path allow/deny filters are provided"
 ].join("|");
 
 const heavyMcpDiscoveryPattern = [
