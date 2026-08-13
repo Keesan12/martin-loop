@@ -9,6 +9,7 @@ import {
   assertPackedSurface,
   assertRootVersionPolicy,
   assertVendoredCliManifest,
+  extractPackFilePaths,
   runRootReleaseGuard,
 } from "../root-release-guard.mjs";
 
@@ -83,6 +84,16 @@ test("assertPackedSurface rejects forbidden vendored implementation paths", () =
       ]),
     /forbidden vendored implementation path/i,
   );
+});
+
+test("extractPackFilePaths accepts npm pack object and array envelopes", () => {
+  const artifact = {
+    filename: "martin-loop-0.5.0.tgz",
+    files: [{ path: "package.json" }, { path: "dist/index.js" }],
+  };
+
+  assert.deepEqual(extractPackFilePaths([artifact]), ["package.json", "dist/index.js"]);
+  assert.deepEqual(extractPackFilePaths(artifact), ["package.json", "dist/index.js"]);
 });
 
 test("assertVendoredCliManifest accepts the sanitized vendored CLI package manifest", async () => {
