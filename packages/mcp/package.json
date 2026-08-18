@@ -61,7 +61,8 @@
     "start": "node dist/server.js",
     "inspect:live": "node ./scripts/inspect-live.mjs",
     "mcpb:build": "node ./mcpb/build-mcpb.mjs",
-    "mcpb:validate": "mcpb validate ./dist-mcpb/martinloop"
+    "mcpb:validate": "mcpb validate ./dist-mcpb/martinloop",
+    "mcpb:smoke": "node ./mcpb/smoke-mcpb.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

@@ -42,6 +42,7 @@ test("MCPB dependencies and commands are lockfile managed", async () => {
 
   assert.equal(packageJson.devDependencies["@anthropic-ai/mcpb"], "2.1.2");
   assert.equal(packageJson.scripts["mcpb:validate"], "mcpb validate ./dist-mcpb/martinloop");
+  assert.equal(packageJson.scripts["mcpb:smoke"], "node ./mcpb/smoke-mcpb.mjs");
   assert.match(builder, /const pnpmCli = process\.env\.npm_execpath/);
   assert.match(
     builder,
@@ -58,6 +59,8 @@ test("MCPB dependencies and commands are lockfile managed", async () => {
   assert.match(builder, /node_modules", "\.pnpm"/);
   assert.match(ignore, /server\/node_modules\/\*\*\/test\/\*\*/);
   assert.match(ignore, /server\/node_modules\/\*\*\/tests\/\*\*/);
+  const workflow = await read(".github/workflows/test-mcpb.yml");
+  assert.match(workflow, /pnpm --filter @martinloop\/mcp mcpb:smoke/u);
 });
 
 test("AGENTS.md remains inside the public portability scan", () => {

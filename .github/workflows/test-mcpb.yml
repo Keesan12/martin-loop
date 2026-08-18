@@ -52,8 +52,8 @@ jobs:
       - name: MCP release reliability tests
         run: pnpm --filter @martinloop/mcp verify:release
 
-      - name: Build and validate MCPB
-        run: pnpm --filter @martinloop/mcp mcpb:build && pnpm --filter @martinloop/mcp mcpb:validate
+      - name: Build, validate, and launch MCPB
+        run: pnpm --filter @martinloop/mcp mcpb:build && pnpm --filter @martinloop/mcp mcpb:validate && pnpm --filter @martinloop/mcp mcpb:smoke
 
       - name: Inspect bundle and verify checksum
         shell: pwsh
