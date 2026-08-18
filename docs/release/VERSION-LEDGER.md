@@ -34,7 +34,7 @@ This file is the release source of truth for package/version mapping in this rep
   - `0.4.4` model-specific pricing, cache-aware accounting, and streaming budget enforcement
   - `0.4.5` MartinLoop Arcade for interactive governed runs
   - `0.5.0` fail-closed verification authority, workspace-bound evidence, native install, execution-surface hardening, and MCP lifecycle expansion
-- current in-repo root release target: `0.5.2` (release candidate)
+- current in-repo root release target: `0.5.2` (pending publication)
 - next planned root follow-on: not scheduled
 
 ## Standalone package: `@martinloop/mcp`
