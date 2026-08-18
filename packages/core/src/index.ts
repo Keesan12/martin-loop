@@ -405,7 +405,7 @@ export interface MartinAdapter {
   label: string;
   metadata: {
     providerId: string;
-    model: string;
+    model?: string;
     transport?: "cli" | "http" | "routed_http";
     capabilities?: {
       preflight?: boolean;
@@ -1390,7 +1390,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       attemptId,
       index: currentAttemptIndex,
       adapterId: executingAdapter.adapterId,
-      model: executingAdapter.metadata.model,
+      ...(executingAdapter.metadata.model ? { model: executingAdapter.metadata.model } : {}),
       startedAt: attemptStartedAt,
       completedAt: attemptCompletedAt,
       summary: result.summary,
@@ -2312,7 +2312,8 @@ function getUsageProvenance(usage: MartinAdapterResult["usage"]): CostProvenance
 const COST_PROVENANCE_RANK: Record<CostProvenance, number> = {
   unavailable: 0,
   estimated: 1,
-  actual: 2
+  calculated: 2,
+  actual: 3
 };
 
 /**

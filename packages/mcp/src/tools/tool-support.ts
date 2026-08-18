@@ -667,7 +667,7 @@ export async function buildAttemptArtifactsReference(
 }
 
 export function buildCostSnapshot(
-  cost: Pick<LoopCost, "actualUsd" | "tokensIn" | "tokensOut"> & {
+  cost: Pick<LoopCost, "actualUsd" | "tokensIn" | "tokensOut" | "provenance"> & {
     avoidedUsd?: number;
   }
 ): LoopCost {
@@ -675,7 +675,8 @@ export function buildCostSnapshot(
     actualUsd: cost.actualUsd,
     avoidedUsd: cost.avoidedUsd ?? 0,
     tokensIn: cost.tokensIn,
-    tokensOut: cost.tokensOut
+    tokensOut: cost.tokensOut,
+    provenance: cost.provenance ?? "unavailable"
   };
 }
 

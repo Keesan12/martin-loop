@@ -275,6 +275,8 @@ export function describeCostProvenance(provenance: CostProvenance): string {
   switch (provenance) {
     case "actual":
       return "provider-settled actual";
+    case "calculated":
+      return "calculated from observed usage";
     case "estimated":
       return "estimated";
     case "unavailable":

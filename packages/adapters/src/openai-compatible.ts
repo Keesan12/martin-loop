@@ -92,6 +92,8 @@ function normalizeOpenAiCompatibleUsage(input: {
   tokensIn: number;
   tokensOut: number;
   usageWasFullyProviderReported: boolean;
+  modelSource: "explicit_override" | "provider_configured";
+  billingMode: "metered_api" | "local_unmetered" | "unknown";
 }) {
   const hasKnownPricing = KNOWN_MODEL_PRICING[input.model] !== undefined;
   const pricing = KNOWN_MODEL_PRICING[input.model] ?? {
@@ -102,14 +104,28 @@ function normalizeOpenAiCompatibleUsage(input: {
     (input.tokensIn / 1000) * pricing.inputPer1K +
     (input.tokensOut / 1000) * pricing.outputPer1K;
   const provenance =
-    input.usageWasFullyProviderReported && hasKnownPricing ? "actual" : "estimated";
+    input.usageWasFullyProviderReported && hasKnownPricing ? "calculated" : "estimated";
 
   return normalizeUsage({
     actualUsd,
     ...(provenance === "estimated" ? { estimatedUsd: actualUsd } : {}),
     tokensIn: input.tokensIn,
     tokensOut: input.tokensOut,
-    provenance
+    provenance,
+    providerSettlement: {
+      providerId: "openai-compatible",
+      model: input.model,
+      transport: "http",
+      source: input.usageWasFullyProviderReported ? "openai_compatible_json" : "estimated_fallback",
+      inputTokens: input.tokensIn,
+      outputTokens: input.tokensOut,
+      billingMode: input.billingMode,
+      modelSource: input.modelSource,
+      pricingSource: hasKnownPricing ? "static_catalog" : "blended_fallback",
+      pricingVersion: "embedded-v1",
+      rawUsageAvailable: input.usageWasFullyProviderReported,
+      settledAt: new Date().toISOString()
+    }
   });
 }
 
@@ -257,6 +273,12 @@ export function createOpenAiCompatibleAdapter(
     );
   }
   const apiKey = options.apiKey ?? runtimeConfig.apiKey;
+  const modelSource = options.model ? "explicit_override" as const : "provider_configured" as const;
+  const billingMode = /^(?:https?:\/\/)?(?:localhost|127\.0\.0\.1|\[::1\])/iu.test(baseUrl)
+    ? "local_unmetered" as const
+    : apiKey
+      ? "metered_api" as const
+      : "unknown" as const;
 
   return {
     adapterId: `openai-compatible:${model}`,
@@ -430,7 +452,9 @@ export function createOpenAiCompatibleAdapter(
             model,
             tokensIn,
             tokensOut: 0,
-            usageWasFullyProviderReported
+            usageWasFullyProviderReported,
+            modelSource,
+            billingMode
           }),
           verification: { passed: false, summary: "Empty response — nothing to verify." },
           failure: { message: "empty_response" }
@@ -468,7 +492,9 @@ export function createOpenAiCompatibleAdapter(
           model,
           tokensIn,
           tokensOut,
-          usageWasFullyProviderReported
+          usageWasFullyProviderReported,
+          modelSource,
+          billingMode
         }),
         verification,
         execution,

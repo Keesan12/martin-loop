@@ -123,10 +123,13 @@ export function nextRank(rank: RankName): { name: RankName; loopsNeeded: number;
 // ---------------------------------------------------------------------------
 
 export function deriveSavingsConfidence(loop: LoopRecord): "confirmed" | "estimated" | "unavailable" {
+  const baseline = loop.cost.savingsBaseline;
+  if (!baseline || loop.cost.avoidedUsd <= 0) return "unavailable";
   const p = loop.cost.provenance;
-  if (p === "actual") return "confirmed";
-  if (p === "estimated") return "estimated";
-  return "unavailable";
+  if (p === "actual" && baseline.provenance === "actual" && baseline.source === "measured_control") {
+    return "confirmed";
+  }
+  return p === "unavailable" || baseline.provenance === "unavailable" ? "unavailable" : "estimated";
 }
 
 export function estimatedUncontrolledUsd(loop: LoopRecord): number {

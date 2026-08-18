@@ -265,7 +265,12 @@ describe("createOpenAiCompatibleAdapter", () => {
     // 1000 input tokens = $0.00027, 500 output tokens = $0.00055 → $0.00082
     expect(result.status).toBe("completed");
     expect(result.usage.actualUsd).toBeCloseTo(0.00027 + 0.00055, 5);
-    expect(result.usage.provenance).toBe("actual");
+    expect(result.usage.provenance).toBe("calculated");
+    expect(result.usage.providerSettlement).toMatchObject({
+      model: "deepseek/deepseek-chat",
+      modelSource: "explicit_override",
+      pricingSource: "static_catalog"
+    });
   });
 
   it("marks cost estimated when the provider omits token usage", async () => {

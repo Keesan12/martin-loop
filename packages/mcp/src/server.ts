@@ -134,9 +134,13 @@ const costSchema = {
     actualUsd: { type: "number" },
     avoidedUsd: { type: "number" },
     tokensIn: { type: "integer" },
-    tokensOut: { type: "integer" }
+    tokensOut: { type: "integer" },
+    provenance: {
+      type: "string",
+      enum: ["actual", "calculated", "estimated", "unavailable"]
+    }
   },
-  required: ["actualUsd", "avoidedUsd", "tokensIn", "tokensOut"]
+  required: ["actualUsd", "avoidedUsd", "tokensIn", "tokensOut", "provenance"]
 } as const;
 
 const verificationSchema = {

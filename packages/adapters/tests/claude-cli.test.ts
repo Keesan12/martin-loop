@@ -885,7 +885,7 @@ describe("createClaudeCliAdapter", () => {
       expect(result.status).toBe("completed");
       expect(result.verification.passed).toBe(true);
       expect(result.usage.actualUsd).toBeCloseTo(0.07125, 6);
-      expect(result.usage.provenance).toBe("estimated");
+      expect(result.usage.provenance).toBe("calculated");
       expect(calls).toHaveLength(2);
     });
 
@@ -1334,7 +1334,7 @@ describe("createCodexCliAdapter", () => {
 
     expect(result.status).toBe("completed");
     expect(result.summary).toContain("Patched the failing test");
-    expect(result.usage.provenance).toBe("actual");
+    expect(result.usage.provenance).toBe("calculated");
     expect(result.usage.tokensIn).toBe(1500);
     expect(result.usage.cachedInputTokens).toBe(300);
     expect(result.usage.tokensOut).toBe(250);
@@ -1386,7 +1386,7 @@ describe("createGeminiCliAdapter", () => {
     expect(adapter.adapterId).toBe("agent-cli:gemini");
     expect(adapter.kind).toBe("agent-cli");
     expect(adapter.metadata.providerId).toBe("gemini");
-    expect(adapter.metadata.model).toBe("agent-default");
+    expect(adapter.metadata.model).toBeUndefined();
     expect(adapter.metadata.transport).toBe("cli");
   });
 
@@ -1437,7 +1437,7 @@ describe("createGeminiCliAdapter", () => {
     expect(calls[0]?.args).not.toContain("--model");
     expect(calls[0]?.stdin).toContain("OBJECTIVE:");
     expect(result.summary).toContain("Patched the failing function");
-    expect(result.usage.provenance).toBe("actual");
+    expect(result.usage.provenance).toBe("estimated");
     expect(result.usage.tokensIn).toBe(150);
     expect(result.usage.tokensOut).toBe(55);
     expect(result.usage.cachedInputTokens).toBe(30);

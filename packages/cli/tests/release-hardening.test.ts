@@ -96,7 +96,7 @@ describe("Codex adapter configuration", () => {
 describe("Claude adapter configuration", () => {
   it("leaves model authority with Claude when no override is supplied", () => {
     const adapter = createClaudeCliAdapter();
-    expect(adapter.metadata.model).toBe("agent-default");
+    expect(adapter.metadata.model).toBeUndefined();
   });
 
   it("is an agent-cli kind adapter", () => {
@@ -112,7 +112,7 @@ describe("Claude adapter configuration", () => {
 describe("Gemini adapter configuration", () => {
   it("leaves model authority with Gemini Auto when no override is supplied", () => {
     const adapter = createGeminiCliAdapter();
-    expect(adapter.metadata.model).toBe("agent-default");
+    expect(adapter.metadata.model).toBeUndefined();
   });
 
   it("accepts custom model override", () => {

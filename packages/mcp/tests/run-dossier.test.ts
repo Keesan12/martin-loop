@@ -61,7 +61,8 @@ describe("martinRunDossierTool", () => {
           actualUsd: 1.25,
           avoidedUsd: 0,
           tokensIn: 100,
-          tokensOut: 50
+          tokensOut: 50,
+          provenance: "calculated"
         }
       });
 
@@ -80,6 +81,7 @@ describe("martinRunDossierTool", () => {
         "Wide edit scope overlaps with sensitive repo areas."
       );
       expect(dossier.inspection.runsRoot).toBe(runsRoot);
+      expect(dossier.cost.provenance).toBe("calculated");
       expect(workspaceRoot).not.toBe(process.cwd());
     });
   });
