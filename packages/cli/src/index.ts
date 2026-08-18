@@ -111,7 +111,12 @@ import {
   type IntegrityStatus
 } from "./run-store.js";
 import { CliCommandError, exitCodeForGovernedOutcome, renderCliError, renderCliSuccess, renderRunHeader, renderInlineMilestone, renderMilestonePrompt, renderLoopCard, type RunOutcome } from "./ux.js";
-import { deriveWorkspaceId, evaluateCliRunGate, recordCliWorkflowStep } from "./workflow-state.js";
+import {
+  deriveWorkspaceId,
+  evaluateCliPreflightGate,
+  evaluateCliRunGate,
+  recordCliWorkflowStep
+} from "./workflow-state.js";
 import {
   recordRunAndGetPrompt,
   retryQueuedIntake,
@@ -3154,12 +3159,36 @@ async function executePreflightCommand(
     );
   }
 
+  const workflowAdmission = engineRequired
+    ? await evaluateCliPreflightGate({
+        runsRoot: environment.runsRoot,
+        workingDirectory: environment.workingDirectory,
+        objective: request.objective,
+        engine: environment.engine,
+        verificationPlan,
+        mutationMode: request.mutationMode,
+        receiptScope,
+        allowedPaths: request.allowedPaths,
+        deniedPaths: request.deniedPaths,
+        budget: resolvedGuardrails.budget
+      })
+    : {
+        allowed: true,
+        nextCommand: "martin-loop run",
+        message: "No live governed workflow admission is required for this preflight.",
+        missingSteps: []
+      };
+  if (!workflowAdmission.allowed) {
+    blockingIssues.push(workflowAdmission.message);
+  }
+
   const ready = blockingIssues.length === 0;
   const data = {
     command: "preflight",
     ready,
     blockingIssues,
     warnings,
+    workflowAdmission,
     environment,
     receiptScope,
     scope: {
