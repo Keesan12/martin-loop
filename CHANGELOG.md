@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-08-18
+
+### Fixed
+- **Preflight readiness now matches run admission** — `martin preflight` uses the same workflow admission authority as `martin run`, so it cannot report `READY` while required doctor or estimate receipts would deterministically block the identical run.
+- **Workflow prerequisites are surfaced before spend** — preflight reports the missing readiness steps and next command, while identical task, verifier, path, budget, and workspace inputs that report `READY` are immediately admissible to run.
+
 ## [0.5.1] - 2026-08-18
 
 ### Added
