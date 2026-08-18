@@ -403,6 +403,28 @@ describe("buildVerifiedHandoff", () => {
     expect(handoff.outcome).toBe("NEEDS_REVIEW");
   });
 
+  it("fails closed for exported stub agent adapters", () => {
+    const handoff = buildVerifiedHandoff(
+      makeInput({
+        loop: makeLoop({
+          attempts: [
+            {
+              attemptId: "attempt_stub_agent",
+              index: 1,
+              adapterId: "agent-cli:stub:codex",
+              model: "codex",
+              startedAt: "2026-08-18T00:00:00.000Z",
+            },
+          ],
+        }),
+      })
+    );
+
+    expect(handoff.executionMode).toBe("simulated");
+    expect(handoff.governanceClaimEligible).toBe(false);
+    expect(handoff.outcome).toBe("NEEDS_REVIEW");
+  });
+
   it("keeps a zero-cost real governed adapter eligible", () => {
     const handoff = buildVerifiedHandoff(
       makeInput({

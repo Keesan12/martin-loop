@@ -129,8 +129,10 @@ export interface VerifiedHandoffV1 {
     verificationPlan: string[];
   };
   outcome: VerifiedHandoffOutcome;
-  executionMode: ExecutionMode;
-  governanceClaimEligible: boolean;
+  /** Added compatibly in 1.0.0; missing legacy values must be treated as non-governed. */
+  executionMode?: ExecutionMode;
+  /** Only an explicit true value is eligible for a governed VERIFIED claim. */
+  governanceClaimEligible?: boolean;
   sourceStatus: {
     status: LoopStatus;
     lifecycleState: LoopLifecycleState;

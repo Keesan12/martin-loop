@@ -49,6 +49,8 @@ function handoff(outcome: VerifiedHandoffV1["outcome"]): VerifiedHandoffV1 {
       verificationPlan: ["pnpm test"]
     },
     outcome,
+    executionMode: "governed",
+    governanceClaimEligible: true,
     sourceStatus: {
       status: outcome === "VERIFIED" ? "completed" : "failed",
       lifecycleState:
@@ -169,5 +171,23 @@ describe("Verified Handoff V2", () => {
       environment: { color: "auto", isTty: true, noColor: true }
     });
     expect(rendered).not.toContain("\u001b[");
+  });
+
+  it("fails closed when legacy handoffs omit execution provenance", () => {
+    const {
+      executionMode: _executionMode,
+      governanceClaimEligible: _governanceClaimEligible,
+      ...legacy
+    } = handoff("VERIFIED");
+
+    const rendered = renderVerifiedHandoff(legacy, {
+      width: 80,
+      environment: { color: "never" },
+    });
+
+    expect(rendered).toContain("NEEDS REVIEW");
+    expect(rendered).toContain("simulated");
+    expect(rendered).toContain("INELIGIBLE");
+    expect(rendered).not.toContain("— VERIFIED");
   });
 });

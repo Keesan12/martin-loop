@@ -14,6 +14,18 @@ test("production run entrypoints cannot construct the stub adapter", async () =>
   }
 });
 
+test("the exported stub agent adapter carries explicit simulated provenance", async () => {
+  const source = await readFile("packages/adapters/src/stub-agent-cli.ts", "utf8");
+
+  assert.match(source, /adapterId: `agent-cli:stub:/u);
+});
+
+test("the exported stub direct adapter carries explicit simulated provenance", async () => {
+  const source = await readFile("packages/adapters/src/stub-direct-provider.ts", "utf8");
+
+  assert.match(source, /adapterId: `direct:stub:/u);
+});
+
 test("verification-only entrypoints disclose the governed evidence boundary", async () => {
   const cli = await readFile("packages/cli/src/index.ts", "utf8");
   const mcp = await readFile("packages/mcp/src/tools/run-loop.ts", "utf8");

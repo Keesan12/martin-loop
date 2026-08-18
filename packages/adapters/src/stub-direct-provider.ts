@@ -12,7 +12,7 @@ export interface StubDirectProviderAdapterOptions {
 export function createStubDirectProviderAdapter(
   options: StubDirectProviderAdapterOptions
 ): MartinAdapter {
-  return createDirectProviderAdapter({
+  const adapter = createDirectProviderAdapter({
     providerId: options.providerId,
     model: options.model,
     label: options.label ?? `Stub direct provider (${options.providerId}/${options.model})`,
@@ -21,4 +21,9 @@ export function createStubDirectProviderAdapter(
     },
     responder: options.responder
   });
+
+  return {
+    ...adapter,
+    adapterId: `direct:stub:${options.providerId}:${options.model}`,
+  };
 }

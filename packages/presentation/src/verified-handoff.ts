@@ -59,7 +59,14 @@ export function renderVerifiedHandoff(
   const environment = options.environment ?? {};
   const width = terminalWidth(options.width);
   const bounded = (line: string): string => truncateVisible(line, width);
-  const outcome = handoff.outcome.replace("_", " ");
+  const executionMode = handoff.executionMode ?? "simulated";
+  const governanceClaimEligible =
+    executionMode === "governed" && handoff.governanceClaimEligible === true;
+  const effectiveOutcome =
+    handoff.outcome === "VERIFIED" && !governanceClaimEligible
+      ? "NEEDS_REVIEW"
+      : handoff.outcome;
+  const outcome = effectiveOutcome.replace("_", " ");
   const checks = handoff.verification.checks.map((check) => ({
     check: check.command,
     status: paint(
@@ -73,11 +80,13 @@ export function renderVerifiedHandoff(
     horizontalRule(width, "━"),
     bold("MARTINLOOP VERIFIED HANDOFF", environment) +
       " — " +
-      paint(outcome, outcomeTone(handoff.outcome), environment),
+      paint(outcome, outcomeTone(effectiveOutcome), environment),
     horizontalRule(width, "━"),
     "",
     bounded("Task".padEnd(20) + handoff.task.objective),
     bounded("Run".padEnd(20) + handoff.loopId),
+    bounded("Execution Mode".padEnd(20) + executionMode.replaceAll("_", " ")),
+    bounded("Governed Claim".padEnd(20) + (governanceClaimEligible ? "ELIGIBLE" : "INELIGIBLE")),
     bounded(
       "Verification".padEnd(20) + handoff.verification.status.replace("_", " "),
     ),
