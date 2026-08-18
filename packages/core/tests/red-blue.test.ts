@@ -32,13 +32,18 @@ describe("Red/Blue Control Plane (SLICE-01-A)", () => {
     expect(findings.probesRun).toBeGreaterThan(0);
   });
 
-  it("release-critical task: Red phase permits one Haiku call", async () => {
+  it("release-critical task records only model identity observed from its client", async () => {
     const mockClient: MockModelClient = {
-      complete: vi.fn().mockResolvedValue({ findings: [], tokensUsed: 100, costUsd: 0.001 })
+      complete: vi.fn().mockResolvedValue({
+        findings: [],
+        tokensUsed: 100,
+        costUsd: 0.001,
+        model: "configured-review-model",
+      })
     };
     const findings = await runRedPhase(mockPatch, "release_critical", 0.05, { modelClient: mockClient });
     expect(findings.modelCallMade).toBe(true);
-    expect(findings.modelUsed).toBe("claude-haiku-4-5-20251001");
+    expect(findings.modelUsed).toBe("configured-review-model");
     expect(mockClient.complete).toHaveBeenCalledTimes(1);
   });
 

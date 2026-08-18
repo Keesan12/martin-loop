@@ -367,7 +367,7 @@ function extractGeminiJsonResult(
         provenance: "unavailable",
         providerSettlement: {
           providerId: "gemini",
-          model: modelLabel ?? "flash",
+          model: modelLabel ?? "agent-default",
           transport: "cli",
           source: "unavailable",
           inputTokens: 0,
@@ -400,7 +400,7 @@ function extractGeminiJsonResult(
       provenance: "actual",
       providerSettlement: {
         providerId: "gemini",
-        model: modelLabel ?? "flash",
+        model: modelLabel ?? "agent-default",
         transport: "cli",
         source: "gemini_json",
         inputTokens: promptTokens,
@@ -796,7 +796,7 @@ export interface GeminiCliAdapterOptions {
   timeoutMs?: number;
   verifyTimeoutMs?: number;
   label?: string;
-  /** Override the model passed via --model flag. Defaults to the Gemini `flash` alias. */
+  /** Explicit model override passed via --model. Omitted to preserve Gemini Auto. */
   model?: string;
   /** Approval mode for headless Gemini runs. Defaults to yolo for autonomous execution. */
   approvalMode?: "default" | "auto_edit" | "yolo" | "plan";
@@ -826,7 +826,7 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
     label: options.label ?? `${options.command} CLI adapter`,
     metadata: {
       providerId: options.command,
-      model: options.model ?? options.command,
+      model: options.model ?? "agent-default",
       transport: "cli",
       capabilities: createAdapterCapabilities({
         preflight: true,
@@ -1030,7 +1030,7 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
               options.command === "codex"
                 ? {
                     providerId: "codex",
-                    model: options.model ?? "codex",
+                    model: options.model ?? "agent-default",
                     transport: "cli",
                     source: "estimated_fallback",
                     inputTokens: estimatedUsage.tokensIn,
@@ -1041,7 +1041,7 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
                 : options.command === "gemini"
                   ? {
                       providerId: "gemini",
-                      model: options.model ?? "flash",
+                      model: options.model ?? "agent-default",
                       transport: "cli",
                       source: "estimated_fallback",
                       inputTokens: estimatedUsage.tokensIn,
@@ -1208,19 +1208,6 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
           ...(classHint ? { classHint } : {})
         }
       };
-    },
-
-    /**
-     * Return a new adapter instance with a different model.
-     * Used by run-martin.ts when a change_model intervention fires.
-     * Model escalation order: haiku → sonnet → opus (cheapest-first, escalate on repeated failure).
-     */
-    withModel(newModel: string): MartinAdapter {
-      return createAgentCliAdapter({
-        ...options,
-        model: newModel,
-        adapterIdSuffix: `${options.adapterIdSuffix ?? options.command}:${newModel}`
-      });
     }
   };
 
@@ -1253,7 +1240,7 @@ export function createClaudeCliAdapter(options: ClaudeCliAdapterOptions = {}): M
   return createAgentCliAdapter({
     command: "claude",
     adapterIdSuffix: "claude",
-    model: options.model ?? "claude-sonnet-4-6",
+    model: options.model,
     label: options.label ?? "Claude CLI adapter",
     workingDirectory: options.workingDirectory,
     timeoutMs: options.timeoutMs,
@@ -1307,7 +1294,7 @@ export function createCodexCliAdapter(options: CodexCliAdapterOptions = {}): Mar
   return createAgentCliAdapter({
     command,
     adapterIdSuffix: "codex",
-    model: options.model ?? "codex",
+    model: options.model,
     label: options.label ?? "Codex CLI adapter",
     workingDirectory,
     timeoutMs: options.timeoutMs,
@@ -1331,7 +1318,7 @@ export function createCodexCliAdapter(options: CodexCliAdapterOptions = {}): Mar
 // ---------------------------------------------------------------------------
 
 /**
- * Spawns `gemini --model <model> --prompt "" --approval-mode <mode> --output-format json [...]`.
+ * Spawns `gemini [--model <explicit-model>] --prompt "" --approval-mode <mode> --output-format json [...]`.
  *
  * The prompt is delivered via stdin while forcing headless mode with `--prompt ""`,
  * which keeps large MartinLoop prompts off the command line on Windows.
@@ -1340,14 +1327,13 @@ export function createCodexCliAdapter(options: CodexCliAdapterOptions = {}): Mar
  *   npm install -g @google/gemini-cli
  */
 export function createGeminiCliAdapter(options: GeminiCliAdapterOptions = {}): MartinAdapter {
-  const model = options.model ?? "flash";
   const approvalMode = options.approvalMode ?? "yolo";
   const extraArgs = options.extraArgs ?? [];
 
   return createAgentCliAdapter({
     command: "gemini",
     adapterIdSuffix: "gemini",
-    model,
+    model: options.model,
     label: options.label ?? "Gemini CLI adapter",
     workingDirectory: options.workingDirectory,
     timeoutMs: options.timeoutMs,
@@ -1355,8 +1341,7 @@ export function createGeminiCliAdapter(options: GeminiCliAdapterOptions = {}): M
     supportsJsonOutput: false,
     spawnImpl: options.spawnImpl,
     argsBuilder: () => [
-      "--model",
-      model,
+      ...(options.model ? ["--model", options.model] : []),
       "--prompt",
       "",
       "--approval-mode",

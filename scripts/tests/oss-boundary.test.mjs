@@ -15,10 +15,17 @@ test("createOssBoundaryReport keeps only the OSS-safe workspace surface", async 
 
   assert.deepEqual(
     report.ossCorePackages.map((pkg) => pkg.name),
-    ["@martin/contracts", "@martin/core", "@martin/adapters", "@martin/cli", "@martinloop/mcp"],
+    [
+      "@martin/contracts",
+      "@martin/core",
+      "@martin/adapters",
+      "@martin/presentation",
+      "@martin/cli",
+      "@martinloop/mcp",
+    ],
   );
 
-  assert.equal(report.summary.ossCoreCount, 5);
+  assert.equal(report.summary.ossCoreCount, 6);
   assert.deepEqual(report.forbiddenTopLevelEntries, []);
   assert.deepEqual(report.unexpectedTopLevelEntries, []);
   assert.deepEqual(report.unexpectedPackageDirs, []);

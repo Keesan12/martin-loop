@@ -9,7 +9,7 @@ export interface RedBudgetPolicy {
   blueBudgetUsd: number;
   /** Cap on Red phase spend: 30% / 100% / 150% of Blue */
   redBudgetCapUsd: number;
-  /** Only release_critical permits a Haiku model call */
+  /** Only release_critical permits an optional configured model-client call. */
   modelCallAllowed: boolean;
 }
 
@@ -38,13 +38,10 @@ export function resolveRedBudgetPolicy(
  * Probe counts per tier.
  * baseline = standard 6-probe sweep
  * high_risk = paranoid 12-probe sweep
- * release_critical = paranoid 12-probe sweep + model
+ * release_critical = paranoid 12-probe sweep + configured model client
  */
 export const PROBE_COUNTS: Record<RiskTier, number> = {
   baseline: 6,
   high_risk: 12,
   release_critical: 12
 };
-
-/** The only model ever permitted in the Red phase. */
-export const RED_PHASE_MODEL = "claude-haiku-4-5-20251001" as const;

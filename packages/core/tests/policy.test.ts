@@ -129,7 +129,7 @@ describe("selectRecoveryRecipe", () => {
     const decision = selectRecoveryRecipe(evidence);
 
     expect(decision.recipe).toBe("strategy_swap");
-    expect(decision.intervention).toBe("change_model");
+    expect(decision.intervention).toBe("compress_context");
   });
 
   it("recommends abort_safety_violation when safetyRiskScore is high", () => {

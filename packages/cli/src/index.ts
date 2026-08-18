@@ -17,7 +17,7 @@ import {
   resolveCliCommandAvailability,
   createVerifierOnlyAdapter,
 } from "@martin/adapters";
-import { runMartin, classifyRoute, resolveModelForTier, getHistoricalDirectSuccessRate, getPreference, recordPreference, writeExitSignal, type MartinAdapter } from "@martin/core";
+import { runMartin, classifyRoute, getHistoricalDirectSuccessRate, getPreference, recordPreference, writeExitSignal, type MartinAdapter } from "@martin/core";
 import {
   fetchSelectedMessage,
   getCliInstalledVersion,
@@ -2225,7 +2225,7 @@ async function executeDoctorCommand(
         ...buildCodexEngineDiagnostics(codexAvailability, codexProbe)
       },
       openai: {
-        available: true,
+        available: Boolean(resolveOpenAiCompatibleRuntimeConfig().model),
         ...resolveOpenAiCompatibleRuntimeConfig()
       },
       gemini: {
@@ -2271,7 +2271,7 @@ async function executeDoctorCommand(
       `Claude CLI: ${claudeAvailable ? "available" : "missing"}`,
       `Codex CLI: ${codexAvailable ? "available" : "missing"}`,
       `Gemini CLI: ${geminiAvailable ? "available" : "missing"}`,
-      `OpenAI-compatible: ${resolveOpenAiCompatibleRuntimeConfig().baseUrl} (${resolveOpenAiCompatibleRuntimeConfig().model})`,
+      `OpenAI-compatible: ${resolveOpenAiCompatibleRuntimeConfig().baseUrl} (${resolveOpenAiCompatibleRuntimeConfig().model ?? "MODEL_CONFIGURATION_REQUIRED"})`,
       ...(codexProbe ? [`Codex launch probe: ${codexProbe.ok ? "ready" : codexProbe.summary}`] : []),
       `Receipt scope: repo=${receiptScope.repoRoot} runs=${receiptScope.runsRoot}`,
       `Config: ${configExists ? configPath : `not found at ${configPath}`}`
@@ -2335,7 +2335,7 @@ async function executeEnvCommand(
           ...(snapshot.geminiAvailability.resolvedPath ? { resolvedPath: snapshot.geminiAvailability.resolvedPath } : {})
         },
         openai: {
-          ready: true,
+          ready: Boolean(openai.model),
           baseUrl: openai.baseUrl,
           model: openai.model,
           apiKeyConfigured: openai.apiKeyConfigured
@@ -2357,7 +2357,7 @@ async function executeEnvCommand(
       `Claude: ${snapshot.claudeAvailable ? "ready" : "blocked (cli missing)"}`,
       `Codex: ${snapshot.codexAvailability.available ? "ready" : "blocked (cli missing)"}`,
       `Gemini: ${snapshot.geminiAvailability.available ? "ready" : "blocked (cli missing)"}`,
-      `OpenAI-compatible: ready (${openai.baseUrl}, ${openai.model})`,
+      `OpenAI-compatible: ${openai.model ? "ready" : "blocked"} (${openai.baseUrl}, ${openai.model ?? "MODEL_CONFIGURATION_REQUIRED"})`,
       `Receipt signing: ${snapshot.runsRootReady ? "ready" : "not initialized yet"}`,
       `Recommended engine: ${snapshot.recommendedEngine}`
     ],
@@ -3666,8 +3666,8 @@ async function executeEstimateCommand(
       compressed: route.compressed,
       ...(route.compressionSummary ? { compressionSummary: route.compressionSummary } : {}),
       recommendedBudgetUsd,
-      recommendedModelTier: route.recommendedModelTier,
-      estimatedSavingVsSonnetUsd: route.estimatedSavingVsSonnetUsd
+      modelAuthority: "agent_or_provider_default",
+      model: null
     },
     human: [
       "Martin Loop Cost Estimate",
@@ -3679,7 +3679,7 @@ async function executeEstimateCommand(
       "",
       `Route:          ${route.selectedMode}${route.compressed ? " (compressed)" : ""}`,
       `Confidence:     ${(route.confidence * 100).toFixed(0)}%`,
-      `Model tier:     ${route.recommendedModelTier} → ${resolveModelForTier(route.recommendedModelTier, command.engine) ?? (command.engine === "codex" ? "authenticated Codex default" : "configured adapter default")}${route.estimatedSavingVsSonnetUsd > 0 ? ` (saves ~$${route.estimatedSavingVsSonnetUsd.toFixed(2)} vs sonnet)` : ""}`,
+      "Model:          agent/provider default",
       `Expected cost:  $${route.expectedCostUsd.toFixed(2)}`,
       `Pre Work Burn:  ${route.expectedPreworkBurnPct}%`,
       `Recommended:    $${recommendedBudgetUsd.toFixed(2)}`,

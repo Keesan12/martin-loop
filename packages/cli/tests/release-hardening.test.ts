@@ -7,7 +7,7 @@
  *
  * Coverage:
  * - Subpath exports (0.3.10)
- * - Codex adapter --ignore-user-config + default model (0.3.10)
+ * - delegated-agent model authority and explicit override passthrough
  * - Claude adapter --strict-mcp-config isolation (0.3.10)
  * - All restored CLI commands parse correctly (0.3.10)
  * - CLI version reporting (0.3.10)
@@ -94,9 +94,9 @@ describe("Codex adapter configuration", () => {
 // ---------------------------------------------------------------------------
 
 describe("Claude adapter configuration", () => {
-  it("defaults to claude-sonnet-4-6 model", () => {
+  it("leaves model authority with Claude when no override is supplied", () => {
     const adapter = createClaudeCliAdapter();
-    expect(adapter.metadata.model).toBe("claude-sonnet-4-6");
+    expect(adapter.metadata.model).toBe("agent-default");
   });
 
   it("is an agent-cli kind adapter", () => {
@@ -110,9 +110,9 @@ describe("Claude adapter configuration", () => {
 // ---------------------------------------------------------------------------
 
 describe("Gemini adapter configuration", () => {
-  it("defaults to flash model", () => {
+  it("leaves model authority with Gemini Auto when no override is supplied", () => {
     const adapter = createGeminiCliAdapter();
-    expect(adapter.metadata.model).toBe("flash");
+    expect(adapter.metadata.model).toBe("agent-default");
   });
 
   it("accepts custom model override", () => {

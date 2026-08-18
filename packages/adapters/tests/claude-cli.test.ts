@@ -741,6 +741,10 @@ describe("createClaudeCliAdapter", () => {
       });
     }
 
+    function streamingInit(model = "claude-sonnet-4-6"): string {
+      return JSON.stringify({ type: "system", subtype: "init", model });
+    }
+
     it("kills a runaway subprocess once cumulative cost crosses the remaining budget", async () => {
       const calls: SpawnCall[] = [];
       // claude-sonnet-4-6 pricing: $0.003/1K in, $0.015/1K out.
@@ -748,6 +752,7 @@ describe("createClaudeCliAdapter", () => {
       // remainingBudgetUsd = 0.05 (well above the prompt-size preflight estimate,
       // so we actually reach the subprocess) → cap crossed partway through turn 2.
       const lines = [
+        streamingInit(),
         streamingTurn(5000, 1000),
         streamingTurn(5000, 1000),
         streamingTurn(5000, 1000),
@@ -970,6 +975,7 @@ describe("createClaudeCliAdapter", () => {
       const calls: SpawnCall[] = [];
       // Usage at top-level: { type: "...", usage: { input_tokens, output_tokens } }
       const lines = [
+        streamingInit(),
         JSON.stringify({ type: "turn_complete", usage: { input_tokens: 10_000, output_tokens: 2_000 } }),
         JSON.stringify({ type: "turn_complete", usage: { input_tokens: 10_000, output_tokens: 2_000 } }),
         JSON.stringify({ type: "turn_complete", usage: { input_tokens: 10_000, output_tokens: 2_000 } }),
@@ -1007,6 +1013,7 @@ describe("createClaudeCliAdapter", () => {
     it("terminates when a single turn consumes more than half of the remaining budget", async () => {
       const calls: SpawnCall[] = [];
       const lines = [
+        streamingInit(),
         JSON.stringify({ type: "assistant", message: { usage: { input_tokens: 9000, output_tokens: 2000 } } }),
         JSON.stringify({ type: "result", result: "should not complete", total_cost_usd: 0.2, usage: { input_tokens: 9000, output_tokens: 2000 } })
       ];
@@ -1036,6 +1043,7 @@ describe("createClaudeCliAdapter", () => {
     it("applies a 70% safety margin for large-context prompts", async () => {
       const calls: SpawnCall[] = [];
       const lines = [
+        streamingInit(),
         JSON.stringify({ type: "assistant", message: { usage: { input_tokens: 150_000, output_tokens: 50_000 } } }),
         JSON.stringify({ type: "assistant", message: { usage: { input_tokens: 150_000, output_tokens: 50_000 } } }),
         JSON.stringify({ type: "assistant", message: { usage: { input_tokens: 150_000, output_tokens: 50_000 } } }),
@@ -1071,6 +1079,7 @@ describe("createClaudeCliAdapter", () => {
       // With cap $0.05, effective cap at 80% = $0.04
       // After 3 turns: cumulative = $0.0405 → exceeds $0.04
       const lines = [
+        streamingInit(),
         JSON.stringify({ type: "assistant", message: { usage: { input_tokens: 500, output_tokens: 300 } } }),
         JSON.stringify({ type: "assistant", message: { usage: { input_tokens: 500, output_tokens: 300 } } }),
         JSON.stringify({ type: "assistant", message: { usage: { input_tokens: 500, output_tokens: 300 } } }),
@@ -1377,7 +1386,7 @@ describe("createGeminiCliAdapter", () => {
     expect(adapter.adapterId).toBe("agent-cli:gemini");
     expect(adapter.kind).toBe("agent-cli");
     expect(adapter.metadata.providerId).toBe("gemini");
-    expect(adapter.metadata.model).toBe("flash");
+    expect(adapter.metadata.model).toBe("agent-default");
     expect(adapter.metadata.transport).toBe("cli");
   });
 
@@ -1418,8 +1427,6 @@ describe("createGeminiCliAdapter", () => {
     expect(result.status).toBe("completed");
     expect(calls[0]?.command).toBe("gemini");
     expect(calls[0]?.args).toEqual([
-      "--model",
-      "flash",
       "--prompt",
       "",
       "--approval-mode",
@@ -1427,6 +1434,7 @@ describe("createGeminiCliAdapter", () => {
       "--output-format",
       "json"
     ]);
+    expect(calls[0]?.args).not.toContain("--model");
     expect(calls[0]?.stdin).toContain("OBJECTIVE:");
     expect(result.summary).toContain("Patched the failing function");
     expect(result.usage.provenance).toBe("actual");

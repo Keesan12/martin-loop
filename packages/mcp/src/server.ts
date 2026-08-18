@@ -1836,8 +1836,7 @@ export function createMartinMcpServer(serverInfo?: {
         compressed: route.compressed,
         ...(route.compressionSummary ? { compressionSummary: route.compressionSummary } : {}),
         recommendedBudgetUsd,
-        recommendedModelTier: route.recommendedModelTier,
-        estimatedSavingVsSonnetUsd: route.estimatedSavingVsSonnetUsd
+        modelAuthority: "agent_or_provider_default"
       };
       await recordMcpWorkflowStep({
         runsRoot,
@@ -1854,7 +1853,7 @@ export function createMartinMcpServer(serverInfo?: {
       }).catch(() => {});
       return createToolSuccessResult(
         output,
-        `Estimate: ${route.selectedMode} route (${route.recommendedModelTier}), ~$${route.expectedCostUsd.toFixed(2)} expected cost, ${route.expectedPreworkBurnPct}% pre-work burn. Recommended budget: $${recommendedBudgetUsd.toFixed(2)}.`
+        `Estimate: ${route.selectedMode} route, ~$${route.expectedCostUsd.toFixed(2)} expected cost, ${route.expectedPreworkBurnPct}% pre-work burn. Model authority remains with the agent/provider. Recommended budget: $${recommendedBudgetUsd.toFixed(2)}.`
       );
     }
 

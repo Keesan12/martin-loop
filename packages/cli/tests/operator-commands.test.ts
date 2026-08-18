@@ -149,9 +149,8 @@ describe("operator commands", () => {
     expect(payload.scope.repoRoot).toBe(payload.environment.workingDirectory);
     expect(payload.scope.runsRoot).toBe(payload.environment.runsRoot);
     expect(payload.engines.openai).toMatchObject({
-      available: true,
+      available: false,
       baseUrl: "https://api.openai.com",
-      model: "gpt-4.1-mini",
       apiKeyConfigured: false,
       authPosture: "anonymous_or_local"
     });

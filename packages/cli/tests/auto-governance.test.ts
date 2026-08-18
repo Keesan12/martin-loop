@@ -395,9 +395,9 @@ describe("Claude adapter MCP isolation", () => {
     expect(adapter.metadata.model).toBe("claude-sonnet-4-6");
   });
 
-  it("default model is claude-sonnet-4-6", async () => {
+  it("leaves the default model to the Claude CLI", async () => {
     const { createClaudeCliAdapter } = await import("../../adapters/src/claude-cli.js");
     const adapter = createClaudeCliAdapter();
-    expect(adapter.metadata.model).toBe("claude-sonnet-4-6");
+    expect(adapter.metadata.model).toBe("agent-default");
   });
 });

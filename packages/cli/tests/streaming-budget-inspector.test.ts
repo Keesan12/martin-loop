@@ -27,7 +27,7 @@ describe("Claude streaming usage cap configuration", () => {
   it("creates an adapter with streaming usage cap enabled", () => {
     const adapter = createClaudeCliAdapter();
     expect(adapter.adapterId).toContain("claude");
-    expect(adapter.metadata.model).toBe("claude-sonnet-4-6");
+    expect(adapter.metadata.model).toBe("agent-default");
   });
 
   it("passes custom model through to the adapter", () => {

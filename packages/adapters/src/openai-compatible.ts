@@ -14,7 +14,7 @@
  * Usage:
  *   # Defaults to OpenAI's hosted endpoint when MARTIN_OPENAI_BASE_URL is unset.
  *   MARTIN_OPENAI_API_KEY=sk-...
- *   MARTIN_OPENAI_MODEL=gpt-4.1-mini
+ *   MARTIN_OPENAI_MODEL=<provider-model-id>
  *   martin-loop run "fix the bug" --engine openai
  *
  *   # Or route to a third-party / self-hosted OpenAI-compatible endpoint:
@@ -178,13 +178,11 @@ Follow these rules exactly:
 - State what you changed and why at the end of your response.`;
 
 export const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com";
-export const DEFAULT_OPENAI_MODEL = "gpt-4.1-mini";
-
 export function resolveOpenAiCompatibleRuntimeConfig(
   env: NodeJS.ProcessEnv = process.env
 ): {
   baseUrl: string;
-  model: string;
+  model?: string;
   apiKey: string;
   apiKeyConfigured: boolean;
   authPosture: "api_key" | "anonymous_or_local";
@@ -192,7 +190,7 @@ export function resolveOpenAiCompatibleRuntimeConfig(
   const apiKey = env["MARTIN_OPENAI_API_KEY"] ?? "";
   return {
     baseUrl: env["MARTIN_OPENAI_BASE_URL"] ?? DEFAULT_OPENAI_BASE_URL,
-    model: env["MARTIN_OPENAI_MODEL"] ?? DEFAULT_OPENAI_MODEL,
+    ...(env["MARTIN_OPENAI_MODEL"] ? { model: env["MARTIN_OPENAI_MODEL"] } : {}),
     apiKey,
     apiKeyConfigured: apiKey.length > 0,
     authPosture: apiKey.length > 0 ? "api_key" : "anonymous_or_local"
@@ -253,6 +251,11 @@ export function createOpenAiCompatibleAdapter(
   const runtimeConfig = resolveOpenAiCompatibleRuntimeConfig();
   const baseUrl = (options.baseUrl ?? runtimeConfig.baseUrl).replace(/\/$/, "");
   const model = options.model ?? runtimeConfig.model;
+  if (!model) {
+    throw new Error(
+      "MODEL_CONFIGURATION_REQUIRED: set --model or MARTIN_OPENAI_MODEL for direct OpenAI-compatible execution."
+    );
+  }
   const apiKey = options.apiKey ?? runtimeConfig.apiKey;
 
   return {

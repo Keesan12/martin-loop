@@ -184,8 +184,8 @@ export { calculateAvoidedUsd, calculateLoopAvoidedUsd } from "./savings.js";
 export type { AvoidedUsdInput } from "./savings.js";
 
 // ─── Routing economics ─────────────────────────────────────────────────────
-export { classifyRoute, evaluatePreworkBurnPolicy, resolveModelForTier, selectBestEngine } from "./routing.js";
-export type { RouteDecision, RouteClassificationInput, AvailableEngine } from "./routing.js";
+export { classifyRoute, evaluatePreworkBurnPolicy } from "./routing.js";
+export type { RouteDecision, RouteClassificationInput } from "./routing.js";
 
 // ─── Test Integrity Validation ──────────────────────────────────────────────
 export {
@@ -418,7 +418,6 @@ export interface MartinAdapter {
     [key: string]: unknown;
   };
   execute(request: MartinAdapterRequest): Promise<MartinAdapterResult>;
-  withModel?(model: string): MartinAdapter;
 }
 
 export interface DistilledContext {
@@ -564,7 +563,6 @@ export interface RunMartinInput {
   now?: () => string;
   idFactory?: (prefix: string) => string;
   maxRecentAttempts?: number;
-  fallbackModels?: string[];
   fallbackAdapters?: MartinAdapter[];
   receiptScope?: ReceiptScope;
   /** Optional persistence store. When provided, runMartin writes artifacts on each lifecycle event. */
@@ -751,11 +749,6 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     }
   }
 
-  const DEFAULT_FALLBACK_MODELS = [
-    "claude-haiku-4-5",
-    "claude-sonnet-4-6",
-    "claude-opus-4-6"
-  ];
   const adapterChain = [input.adapter, ...(input.fallbackAdapters ?? [])];
   let currentAdapterIndex = 0;
   let currentAdapter = adapterChain[currentAdapterIndex] ?? input.adapter;
@@ -1468,14 +1461,6 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
           currentAdapterIndex += 1;
           currentAdapter = nextAdapter;
           adapterSwitched = true;
-        }
-      }
-
-      if (failure.recommendedIntervention === "change_model" && currentAdapter.withModel) {
-        const fallbackModels = input.fallbackModels ?? DEFAULT_FALLBACK_MODELS;
-        const nextModel = fallbackModels[loop.attempts.length % fallbackModels.length];
-        if (nextModel) {
-          currentAdapter = currentAdapter.withModel(nextModel);
         }
       }
 

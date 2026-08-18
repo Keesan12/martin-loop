@@ -8,6 +8,7 @@ const OSS_CORE_PATHS = [
   "packages/contracts",
   "packages/core",
   "packages/adapters",
+  "packages/presentation",
   "packages/cli",
   "packages/mcp",
 ];
