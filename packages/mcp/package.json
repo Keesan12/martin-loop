@@ -59,7 +59,9 @@
     "test": "vitest run --maxWorkers=1",
     "lint": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/server.js",
-    "inspect:live": "node ./scripts/inspect-live.mjs"
+    "inspect:live": "node ./scripts/inspect-live.mjs",
+    "mcpb:build": "node ./mcpb/build-mcpb.mjs",
+    "mcpb:validate": "mcpb validate ./dist-mcpb/martinloop"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
@@ -71,6 +73,7 @@
     "ts-morph": "^21.0.0"
   },
   "devDependencies": {
+    "@anthropic-ai/mcpb": "2.1.2",
     "@martin/contracts": "workspace:*"
   }
 }
