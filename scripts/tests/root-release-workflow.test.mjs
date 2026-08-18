@@ -26,6 +26,10 @@ test("root release workflow uses GitHub Actions trusted publishing without npm t
   assert.match(workflow, /pnpm --filter @martinloop\/mcp mcpb:smoke/);
   assert.match(workflow, /packages\/mcp\/dist-mcpb\/martinloop-\*\.mcpb/);
   assert.match(workflow, /packages\/mcp\/dist-mcpb\/martinloop-\*\.mcpb\.sha256/);
+  assert.ok(
+    workflow.indexOf("pnpm build") < workflow.indexOf("pnpm lint"),
+    "the clean release runner must build workspace type declarations before linting"
+  );
 
   assert.doesNotMatch(workflow, /NODE_AUTH_TOKEN/);
   assert.doesNotMatch(workflow, /NPM_TOKEN/);
