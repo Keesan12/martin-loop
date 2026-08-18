@@ -3,6 +3,7 @@ import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 import type {
+  CostProvenance,
   LoopArtifact,
   LoopBudget,
   LoopCost,
@@ -52,6 +53,7 @@ export interface LoopPreview {
   updatedAt?: string;
   attempts: number;
   costUsd: number;
+  costProvenance: CostProvenance;
   avoidedUsd: number;
   pressure: string;
   shouldStop: boolean;
@@ -176,7 +178,7 @@ export function resolveExecutionMode(): ExecutionMode {
     mode: liveMode ? "live" : "proof",
     detail: liveMode
       ? "Live CLI execution is enabled."
-      : "Proof mode is active because MARTIN_LIVE=false."
+      : "Verification-only mode is active because MARTIN_LIVE=false; governed VERIFIED is unavailable."
   };
 }
 
@@ -367,7 +369,7 @@ export function getEngineAvailability(engine: MartinEngine): CliAvailability {
 
 export function createSkippedCliAvailability(
   command: string,
-  detail = "Proof mode skipped live CLI availability detection."
+  detail = "Verification-only mode skipped live CLI availability detection; governed VERIFIED is unavailable."
 ): CliAvailability {
   return {
     command,
@@ -405,6 +407,7 @@ export function buildLoopPreview(loop: InspectableLoopRecord): LoopPreview {
     ...(loop.updatedAt ? { updatedAt: loop.updatedAt } : {}),
     attempts: loop.attempts.length,
     costUsd: loop.cost.actualUsd,
+    costProvenance: loop.cost.provenance ?? "unavailable",
     avoidedUsd: loop.cost.avoidedUsd ?? 0,
     pressure: costState.pressure,
     shouldStop: costState.shouldStop,
@@ -667,7 +670,7 @@ export async function buildAttemptArtifactsReference(
 }
 
 export function buildCostSnapshot(
-  cost: Pick<LoopCost, "actualUsd" | "tokensIn" | "tokensOut"> & {
+  cost: Pick<LoopCost, "actualUsd" | "tokensIn" | "tokensOut" | "provenance"> & {
     avoidedUsd?: number;
   }
 ): LoopCost {
@@ -675,7 +678,8 @@ export function buildCostSnapshot(
     actualUsd: cost.actualUsd,
     avoidedUsd: cost.avoidedUsd ?? 0,
     tokensIn: cost.tokensIn,
-    tokensOut: cost.tokensOut
+    tokensOut: cost.tokensOut,
+    provenance: cost.provenance ?? "unavailable"
   };
 }
 

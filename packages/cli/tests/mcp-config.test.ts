@@ -107,7 +107,7 @@ describe("mcp config helpers", () => {
 
     expect(plan.installMethod).toBe("command");
     expect(plan.targetPath).toContain("Claude Code local scope");
-    expect(plan.content).toContain("claude mcp add --transport http --scope local");
+    expect(plan.content).toContain("claude.cmd mcp add --transport http --scope local");
     expect(plan.content).toContain("martin-loop-remote");
   });
 
@@ -242,17 +242,17 @@ describe("mcp config helpers", () => {
     }
   });
 
-  it("merges into existing Copilot settings without destructive overwrite", async () => {
+  it("merges into an existing native VS Code MCP config without destructive overwrite", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "martin-cli-copilot-config-"));
 
     try {
       const configDir = join(cwd, ".vscode");
       await mkdir(configDir, { recursive: true });
-      const configPath = join(configDir, "settings.json");
+      const configPath = join(configDir, "mcp.json");
       const existing = JSON.stringify(
         {
-          "editor.formatOnSave": true,
-          "github.copilot.chat.mcpServers": {
+          inputs: [],
+          servers: {
             "existing-server": {
               command: "node",
               args: ["./server.js"]
@@ -264,19 +264,22 @@ describe("mcp config helpers", () => {
       );
       await writeFile(configPath, `${existing}\n`, "utf8");
 
-      await installMcpConfig({
-        host: "copilot",
-        scope: "project",
-        cwd,
-        runsRoot: join(cwd, ".runs")
-      });
+      await installMcpConfig(
+        {
+          host: "vscode",
+          scope: "project",
+          cwd,
+          runsRoot: join(cwd, ".runs")
+        },
+        { stateRoot: join(cwd, ".state") }
+      );
 
       const merged = JSON.parse(await readFile(configPath, "utf8")) as {
-        "editor.formatOnSave": boolean;
-        "github.copilot.chat.mcpServers": Record<string, unknown>;
+        inputs: unknown[];
+        servers: Record<string, unknown>;
       };
-      expect(merged["editor.formatOnSave"]).toBe(true);
-      expect(Object.keys(merged["github.copilot.chat.mcpServers"])).toEqual(
+      expect(merged.inputs).toEqual([]);
+      expect(Object.keys(merged.servers)).toEqual(
         expect.arrayContaining(["existing-server", "martin-loop"])
       );
     } finally {
@@ -284,16 +287,16 @@ describe("mcp config helpers", () => {
     }
   });
 
-  it("treats existing Copilot configs with martin-loop as idempotent", async () => {
+  it("treats existing native VS Code configs with martin-loop as idempotent", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "martin-cli-copilot-idempotent-"));
 
     try {
       const configDir = join(cwd, ".vscode");
       await mkdir(configDir, { recursive: true });
-      const configPath = join(configDir, "settings.json");
+      const configPath = join(configDir, "mcp.json");
       const existing = JSON.stringify(
         {
-          "github.copilot.chat.mcpServers": {
+          servers: {
             "martin-loop": {
               command: "npx",
               args: ["-y", "@martinloop/mcp"]
@@ -306,7 +309,7 @@ describe("mcp config helpers", () => {
       await writeFile(configPath, `${existing}\n`, "utf8");
 
       await installMcpConfig({
-        host: "copilot",
+        host: "vscode",
         scope: "project",
         cwd,
         runsRoot: join(cwd, ".runs")
@@ -340,12 +343,15 @@ describe("mcp config helpers", () => {
       );
       await writeFile(configPath, `${existing}\n`, "utf8");
 
-      await installMcpConfig({
-        host: "continue",
-        scope: "project",
-        cwd,
-        runsRoot: join(cwd, ".runs")
-      });
+      await installMcpConfig(
+        {
+          host: "continue",
+          scope: "project",
+          cwd,
+          runsRoot: join(cwd, ".runs")
+        },
+        { stateRoot: join(cwd, ".state") }
+      );
 
       expect(await readFile(configPath, "utf8")).toBe(`${existing}\n`);
     } finally {
@@ -376,12 +382,15 @@ describe("mcp config helpers", () => {
       );
       await writeFile(configPath, `${existing}\n`, "utf8");
 
-      await installMcpConfig({
-        host: "continue",
-        scope: "project",
-        cwd,
-        runsRoot: join(cwd, ".runs")
-      });
+      await installMcpConfig(
+        {
+          host: "continue",
+          scope: "project",
+          cwd,
+          runsRoot: join(cwd, ".runs")
+        },
+        { stateRoot: join(cwd, ".state") }
+      );
 
       const merged = JSON.parse(await readFile(configPath, "utf8")) as {
         telemetryEnabled: boolean;
@@ -396,7 +405,7 @@ describe("mcp config helpers", () => {
     }
   });
 
-  it("writes governance hooks on re-install when ~/.claude.json already has martin-loop", async () => {
+  it("keeps governance hook installation explicit", async () => {
     // Regression test: installMcpConfig was returning early (without calling
     // installClaudeGovernanceHooks) when the MCP config already existed in ~/.claude.json.
     // This meant users who installed an older version never got governance hooks on upgrade.
@@ -422,18 +431,12 @@ describe("mcp config helpers", () => {
         "utf8"
       );
 
-      // Run install against the temp home directory by overriding homedir via env
-      // We test the function directly with the temp paths to avoid side effects on the real home.
-      // The key assertion: the governance hooks function must be idempotent and installable
-      // regardless of whether the MCP config already existed.
-      // Verify the fix: all three code paths in installMcpConfig now call installClaudeGovernanceHooks.
       const src = readFileSync(
         fileURLToPath(new URL("../src/mcp-config.ts", import.meta.url)),
         "utf8"
       );
-      // Count call sites — must be ≥ 3 (already-exists, merged, new-file paths)
-      const callSites = (src.match(/installClaudeGovernanceHooks\(\)/g) ?? []).length;
-      expect(callSites).toBeGreaterThanOrEqual(3);
+      expect(src).toContain("options.installGovernance");
+      expect(src).toContain("await maybeInstallGovernance(plan, options)");
     } finally {
       await rm(tmpHome, { recursive: true, force: true });
     }

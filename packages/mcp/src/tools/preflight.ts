@@ -191,7 +191,7 @@ export async function martinPreflightTool(
   });
 
   if (!executionMode.liveMode) {
-    warnings.push("Proof mode is active; preflight only proves configuration shape, not live CLI readiness.");
+    warnings.push("Verification-only mode is active; it cannot emit governed VERIFIED or prove live CLI readiness.");
   } else if (!engineAvailability.available) {
     warnings.push(`Requested engine '${engine}' is not available on PATH.`);
   } else if (engine === "codex" && codexProbe && !codexProbe.ok) {

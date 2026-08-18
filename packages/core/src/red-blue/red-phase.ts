@@ -1,4 +1,4 @@
-import { PROBE_COUNTS, RED_PHASE_MODEL, resolveRedBudgetPolicy, type RiskTier } from "./risk-tiers.js";
+import { PROBE_COUNTS, resolveRedBudgetPolicy, type RiskTier } from "./risk-tiers.js";
 
 // ─── Public types ─────────────────────────────────────────────────────────────
 
@@ -21,7 +21,7 @@ export interface RedFindings {
 
 /** Minimal interface for the Anthropic model client (mockable in tests). */
 export interface MockModelClient {
-  complete(prompt: string): Promise<{ findings: RedFinding[]; tokensUsed: number; costUsd: number }>;
+  complete(prompt: string): Promise<{ findings: RedFinding[]; tokensUsed: number; costUsd: number; model?: string }>;
 }
 
 export interface RunRedPhaseOptions {
@@ -120,7 +120,7 @@ function runProgrammaticProbes(patch: PatchInput, paranoid: boolean): RedFinding
  *
  * - baseline: programmatic probes only, no model call
  * - high_risk: paranoid programmatic scan, no model call
- * - release_critical: paranoid scan + one Haiku model call
+ * - release_critical: paranoid scan + one configured model-client call
  */
 export async function runRedPhase(
   patch: PatchInput,
@@ -142,7 +142,7 @@ export async function runRedPhase(
     const result = await options.modelClient.complete(prompt);
     findings = [...findings, ...result.findings];
     modelCallMade = true;
-    modelUsed = RED_PHASE_MODEL;
+    modelUsed = result.model;
     budgetUsedUsd += result.costUsd;
   }
 

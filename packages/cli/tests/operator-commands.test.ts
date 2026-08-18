@@ -149,9 +149,8 @@ describe("operator commands", () => {
     expect(payload.scope.repoRoot).toBe(payload.environment.workingDirectory);
     expect(payload.scope.runsRoot).toBe(payload.environment.runsRoot);
     expect(payload.engines.openai).toMatchObject({
-      available: true,
+      available: false,
       baseUrl: "https://api.openai.com",
-      model: "gpt-4.1-mini",
       apiKeyConfigured: false,
       authPosture: "anonymous_or_local"
     });
@@ -559,11 +558,14 @@ describe("operator commands", () => {
     expect(claudeLocal.scope).toBe("local");
     expect(claudeLocal.installMethod).toBe("command");
     expect(claudeLocal.targetPath).toContain("Claude Code local scope");
-    expect(claudeLocal.content).toContain("claude mcp add --transport http --scope local");
+    const claudeCommand = process.platform === "win32" ? "claude.cmd" : "claude";
+    expect(claudeLocal.content).toContain(
+      `${claudeCommand} mcp add --transport http --scope local`
+    );
   });
 
   it("rejects invalid MCP host and scope values instead of silently falling back", async () => {
-    const invalidHost = await executeCli(["mcp", "print-config", "--host", "vscode"]);
+    const invalidHost = await executeCli(["mcp", "print-config", "--host", "not-a-host"]);
     const invalidScope = await executeCli(["mcp", "install", "--host", "codex", "--scope", "workspace"]);
     const invalidLocalScope = await executeCli(["mcp", "install", "--host", "codex", "--scope", "local"]);
     const invalidTransport = await executeCli(["mcp", "print-config", "--host", "codex", "--transport", "sse"]);
@@ -694,10 +696,12 @@ describe("challenge command", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("Martin Loop Under-$3 Challenge");
-    expect(result.stdout).toContain("$2.30");
-    expect(result.stdout).toContain("$3.00");
-    expect(result.stdout).toContain("passed");
-    expect(result.stdout).toContain("Martin stopped Ralph here.");
+    expect(result.stdout).toContain("$0.00 / $0.00");
+    expect(result.stdout).toContain("simulated");
+    expect(result.stdout).toContain("Receipt integrity unavailable");
+    expect(result.stdout).not.toContain("Generated from a local Martin Loop run record");
+    expect(result.stdout).not.toContain("$2.30");
+    expect(result.stdout).not.toContain("Martin stopped Ralph here.");
     expect(result.stdout).not.toMatch(/[A-Z]:\\/);
   });
 

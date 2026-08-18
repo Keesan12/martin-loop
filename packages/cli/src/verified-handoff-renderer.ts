@@ -23,6 +23,8 @@ export function renderVerifiedHandoffHuman(handoff: VerifiedHandoffV1): string {
     divider,
     `Task: ${handoff.task.objective}`,
     `Run: ${handoff.loopId}`,
+    `Execution Mode: ${handoff.executionMode}`,
+    `Governance Claim Eligible: ${handoff.governanceClaimEligible ? "YES" : "NO"}`,
     `Verification: ${handoff.verification.status}`,
     ...checks,
     `Scope: ${handoff.scope.status}`,

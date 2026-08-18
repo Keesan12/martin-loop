@@ -20,6 +20,7 @@ import {
   type MilestoneState,
 } from "../src/cli-milestone-state.js";
 import type { LoopRecord } from "@martin/contracts";
+import type { CostProvenance } from "@martin/contracts";
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -30,7 +31,8 @@ function makeLoop(overrides: {
   lifecycleState?: string;
   actualUsd?: number;
   avoidedUsd?: number;
-  provenance?: string;
+  provenance?: CostProvenance;
+  savingsBaseline?: LoopRecord["cost"]["savingsBaseline"];
 } = {}): LoopRecord {
   return {
     loopId: "test-loop",
@@ -43,7 +45,8 @@ function makeLoop(overrides: {
       avoidedUsd: overrides.avoidedUsd ?? 0.50,
       tokensIn: 100,
       tokensOut: 50,
-      provenance: overrides.provenance as "actual" | "estimated" | undefined,
+      provenance: overrides.provenance,
+      ...(overrides.savingsBaseline ? { savingsBaseline: overrides.savingsBaseline } : {}),
     },
     attempts: [],
     artifacts: [],
@@ -181,12 +184,29 @@ describe("nextRank", () => {
 // ---------------------------------------------------------------------------
 
 describe("deriveSavingsConfidence", () => {
-  it.each([
-    ["actual", "confirmed"],
-    ["estimated", "estimated"],
-    [undefined, "unavailable"],
-  ] as const)("provenance %s → confidence %s", (provenance, expected) => {
-    expect(deriveSavingsConfidence(makeLoop({ provenance }))).toBe(expected);
+  it("does not claim savings without a baseline", () => {
+    expect(deriveSavingsConfidence(makeLoop({ provenance: "actual" }))).toBe("unavailable");
+  });
+
+  it("confirms savings only against an actual measured control", () => {
+    expect(deriveSavingsConfidence(makeLoop({
+      provenance: "actual",
+      savingsBaseline: { usd: 0.60, source: "measured_control", provenance: "actual" }
+    }))).toBe("confirmed");
+  });
+
+  it("labels operator-supplied or estimated baselines as estimated", () => {
+    expect(deriveSavingsConfidence(makeLoop({
+      provenance: "calculated",
+      savingsBaseline: { usd: 0.60, source: "operator_supplied", provenance: "estimated" }
+    }))).toBe("estimated");
+  });
+
+  it("leaves savings unavailable when either cost input is unavailable", () => {
+    expect(deriveSavingsConfidence(makeLoop({
+      provenance: "unavailable",
+      savingsBaseline: { usd: 0.60, source: "measured_control", provenance: "actual" }
+    }))).toBe("unavailable");
   });
 });
 

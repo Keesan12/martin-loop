@@ -29,7 +29,19 @@ function makeLoop(
       acceptanceCriteria: ["All tests pass"],
     },
   });
-  return { ...base, ...overrides };
+  return {
+    ...base,
+    attempts: [
+      {
+        attemptId: "attempt_real",
+        index: 1,
+        adapterId: "agent-cli:codex",
+        model: "gpt-5.4",
+        startedAt: "2026-08-18T00:00:00.000Z",
+      },
+    ],
+    ...overrides,
+  };
 }
 
 function makeIntegrity(
@@ -70,6 +82,18 @@ describe("resolveVerifiedHandoffOutcome", () => {
       unresolvedWorkCount: 0,
     });
     expect(outcome).toBe("VERIFIED");
+  });
+
+  it("returns NEEDS_REVIEW when the execution cannot make governance claims", () => {
+    expect(
+      resolveVerifiedHandoffOutcome({
+        lifecycleState: "completed",
+        verificationStatus: "passed",
+        receiptIntegrity: "verified",
+        governanceClaimEligible: false,
+        unresolvedWorkCount: 0,
+      })
+    ).toBe("NEEDS_REVIEW");
   });
 
   it("returns STOPPED on budget_exit regardless of verifier", () => {
@@ -330,6 +354,131 @@ describe("buildVerifiedHandoff", () => {
     expect(handoff.outcome).toBe("VERIFIED");
     expect(handoff.schemaVersion).toBe("1.0.0");
     expect(handoff.handoffId).toMatch(/^vh_[0-9a-f]{16}$/);
+  });
+
+  it("fails closed for legacy direct stub evidence", () => {
+    const handoff = buildVerifiedHandoff(
+      makeInput({
+        loop: makeLoop({
+          status: "completed",
+          lifecycleState: "completed",
+          attempts: [
+            {
+              attemptId: "attempt_stub",
+              index: 1,
+              adapterId: "direct:stub:stub",
+              model: "stub",
+              startedAt: "2026-08-18T00:00:00.000Z",
+              completedAt: "2026-08-18T00:00:01.000Z",
+            },
+          ],
+        }),
+      })
+    );
+
+    expect(handoff.executionMode).toBe("simulated");
+    expect(handoff.governanceClaimEligible).toBe(false);
+    expect(handoff.outcome).toBe("NEEDS_REVIEW");
+  });
+
+  it("fails closed for deterministic fixture adapters", () => {
+    const handoff = buildVerifiedHandoff(
+      makeInput({
+        loop: makeLoop({
+          attempts: [
+            {
+              attemptId: "attempt_fixture",
+              index: 1,
+              adapterId: "direct:fixture:deterministic",
+              model: "fixture",
+              startedAt: "2026-08-18T00:00:00.000Z",
+            },
+          ],
+        }),
+      })
+    );
+
+    expect(handoff.executionMode).toBe("simulated");
+    expect(handoff.governanceClaimEligible).toBe(false);
+    expect(handoff.outcome).toBe("NEEDS_REVIEW");
+  });
+
+  it("fails closed for exported stub agent adapters", () => {
+    const handoff = buildVerifiedHandoff(
+      makeInput({
+        loop: makeLoop({
+          attempts: [
+            {
+              attemptId: "attempt_stub_agent",
+              index: 1,
+              adapterId: "agent-cli:stub:codex",
+              model: "codex",
+              startedAt: "2026-08-18T00:00:00.000Z",
+            },
+          ],
+        }),
+      })
+    );
+
+    expect(handoff.executionMode).toBe("simulated");
+    expect(handoff.governanceClaimEligible).toBe(false);
+    expect(handoff.outcome).toBe("NEEDS_REVIEW");
+  });
+
+  it("keeps a zero-cost real governed adapter eligible", () => {
+    const handoff = buildVerifiedHandoff(
+      makeInput({
+        loop: makeLoop({
+          status: "completed",
+          lifecycleState: "completed",
+          cost: {
+            actualUsd: 0,
+            avoidedUsd: 0,
+            tokensIn: 0,
+            tokensOut: 0,
+          },
+          attempts: [
+            {
+              attemptId: "attempt_codex",
+              index: 1,
+              adapterId: "agent-cli:codex",
+              model: "gpt-5.4",
+              startedAt: "2026-08-18T00:00:00.000Z",
+              completedAt: "2026-08-18T00:00:01.000Z",
+            },
+          ],
+        }),
+      })
+    );
+
+    expect(handoff.executionMode).toBe("governed");
+    expect(handoff.governanceClaimEligible).toBe(true);
+    expect(handoff.outcome).toBe("VERIFIED");
+  });
+
+  it("marks verifier-only evidence as ineligible for governed VERIFIED", () => {
+    const handoff = buildVerifiedHandoff(
+      makeInput({
+        loop: makeLoop({
+          status: "completed",
+          lifecycleState: "completed",
+          attempts: [
+            {
+              attemptId: "attempt_verifier",
+              index: 1,
+              adapterId: "direct:verifier:verify-only",
+              model: "verify-only",
+              startedAt: "2026-08-18T00:00:00.000Z",
+              completedAt: "2026-08-18T00:00:01.000Z",
+            },
+          ],
+        }),
+      })
+    );
+
+    expect(handoff.executionMode).toBe("verification_only");
+    expect(handoff.governanceClaimEligible).toBe(false);
+    expect(handoff.outcome).toBe("NEEDS_REVIEW");
   });
 
   it("produces STOPPED when lifecycle state is budget_exit", () => {

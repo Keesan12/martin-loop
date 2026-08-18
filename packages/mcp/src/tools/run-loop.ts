@@ -2,9 +2,10 @@ import {
   createClaudeCliAdapter,
   createCodexCliAdapter,
   createGeminiCliAdapter,
-  createStubDirectProviderAdapter,
+  createVerifierOnlyAdapter,
   probeCodexLaunch,
-  resolveCliCommandAvailability
+  resolveCliCommandAvailability,
+  type SpawnLike
 } from "@martin/adapters";
 
 import {
@@ -14,7 +15,12 @@ import {
   runMartin,
   type RunStore
 } from "@martin/core";
-import type { LoopBudget, ReceiptScope } from "@martin/contracts";
+import type {
+  CostProvenance,
+  ExecutionMode,
+  LoopBudget,
+  ReceiptScope
+} from "@martin/contracts";
 
 import { normalizeSafePathPatterns, resolveSafeRepoRoot } from "../server-validation.js";
 import { MartinToolError } from "./tool-errors.js";
@@ -51,7 +57,10 @@ export interface RunLoopOutput {
   reason: string;
   attempts: number;
   costUsd: number;
+  costProvenance: CostProvenance;
   verificationPassed: boolean;
+  executionMode: ExecutionMode;
+  governanceClaimEligible: boolean;
   loopId: string;
   pressure: string;
   shouldStop: boolean;
@@ -73,7 +82,12 @@ export interface RunLoopOutput {
   };
 }
 
+let proofModeVerifierSpawnImpl: SpawnLike | undefined;
 let runStoreOverrideForTests: RunStore | undefined;
+
+export function __setProofModeVerifierSpawnImplForTests(spawnImpl?: SpawnLike): void {
+  proofModeVerifierSpawnImpl = spawnImpl;
+}
 
 export function __setRunStoreOverrideForTests(store?: RunStore): void {
   runStoreOverrideForTests = store;
@@ -86,6 +100,9 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
   const allowedPaths = normalizeSafePathPatterns(input.allowedPaths, "allowedPaths");
   const deniedPaths = normalizeSafePathPatterns(input.deniedPaths, "deniedPaths");
   const executionMode = resolveExecutionMode();
+  const evidenceExecutionMode: ExecutionMode = executionMode.liveMode
+    ? "governed"
+    : "verification_only";
   const workspaceRoot = resolveSafeRepoRoot();
   const runsRoot = resolveRunsRoot(process.env);
   const receiptScope = {
@@ -101,7 +118,7 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
       if (!engineAvailability.available) {
         throw new MartinToolError("engine_unavailable", `Engine '${engine}' is not available on PATH.`, {
           category: "environment",
-          suggestion: "Install the requested CLI or set MARTIN_LIVE=false for a no-spend proof run.",
+          suggestion: "Install the requested CLI. MARTIN_LIVE=false is verification-only and cannot emit governed VERIFIED.",
           retryable: false
         });
       }
@@ -123,7 +140,7 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
       if (!engineAvailability.available) {
         throw new MartinToolError("engine_unavailable", `Engine '${engine}' is not available on PATH.`, {
           category: "environment",
-          suggestion: "Install the requested CLI or set MARTIN_LIVE=false for a no-spend proof run.",
+          suggestion: "Install the requested CLI. MARTIN_LIVE=false is verification-only and cannot emit governed VERIFIED.",
           retryable: false
         });
       }
@@ -132,10 +149,11 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
 
   const adapter =
     !executionMode.liveMode
-      ? createStubDirectProviderAdapter({
-          label: "Proof mode stub adapter (MARTIN_LIVE=false)",
-          providerId: "stub",
-          model: "stub"
+      ? createVerifierOnlyAdapter({
+          workingDirectory,
+          label: "Verification-only adapter (MARTIN_LIVE=false)",
+          ...(input.verifyTimeoutMs !== undefined ? { verifyTimeoutMs: input.verifyTimeoutMs } : {}),
+          ...(proofModeVerifierSpawnImpl ? { spawnImpl: proofModeVerifierSpawnImpl } : {})
         })
       : engine === "codex"
         ? createCodexCliAdapter({
@@ -186,6 +204,10 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
       ...(deniedPaths ? { deniedPaths } : {})
     },
     budget,
+    metadata: {
+      executionMode: evidenceExecutionMode,
+      governanceClaimEligible: evidenceExecutionMode === "governed" ? "true" : "false"
+    },
     adapter
   });
 
@@ -212,7 +234,10 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
     reason: result.decision.reason,
     attempts: result.loop.attempts.length,
     costUsd: result.loop.cost.actualUsd,
+    costProvenance: result.loop.cost.provenance ?? "unavailable",
     verificationPassed,
+    executionMode: evidenceExecutionMode,
+    governanceClaimEligible: evidenceExecutionMode === "governed",
     loopId: result.loop.loopId,
     pressure: costState.pressure,
     shouldStop: costState.shouldStop,

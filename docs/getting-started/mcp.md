@@ -38,10 +38,22 @@ claude mcp add --transport stdio --scope user martin-loop -- cmd /c npx -y @mart
 npx martin-loop mcp print-config --host codex --transport stdio --profile minimal
 npx martin-loop mcp print-config --host claude --transport stdio --profile diagnostic
 npx martin-loop mcp print-config --host gemini --transport stdio --profile full-local
+npx martin-loop mcp print-config --host cursor --transport stdio --profile minimal
+npx martin-loop mcp print-config --host vscode --transport stdio --profile minimal
 npx martin-loop mcp print-config --host generic --transport stdio --profile github-review
 ```
 
 `npx martin-loop mcp install` writes only when the target file is absent or when it detects an existing MartinLoop block it can update safely. For hand-maintained host configs, print the config and merge it yourself.
+
+File-based installs are recorded locally so MartinLoop can verify and safely reverse only the changes it made:
+
+```sh
+npx martin-loop mcp verify-install --host cursor --scope project
+npx martin-loop mcp rollback --host cursor --scope project
+npx martin-loop mcp uninstall --host cursor --scope project
+```
+
+Rollback and uninstall refuse to overwrite a host config that changed after installation. VS Code user installs use the native `MCP: Add Server` command; project installs use `.vscode/mcp.json` and support the same verification lifecycle.
 
 ## Recommended Host Flow
 

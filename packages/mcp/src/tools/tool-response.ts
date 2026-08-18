@@ -12,6 +12,11 @@ function createJsonBlock(output: object): TextContentBlock {
   };
 }
 
+function resolveHumanArtifact(output: object, summary: string): string {
+  const rendered = "rendered" in output ? output.rendered : undefined;
+  return typeof rendered === "string" && rendered.trim().length > 0 ? rendered : summary;
+}
+
 export function createToolSuccessResult<T extends object>(
   output: T,
   summary: string
@@ -21,11 +26,14 @@ export function createToolSuccessResult<T extends object>(
   _meta: Record<string, unknown>;
 } {
   return {
-    content: [createJsonBlock(output), { type: "text", text: summary }],
+    content: [
+      { type: "text", text: resolveHumanArtifact(output, summary) },
+      createJsonBlock(output)
+    ],
     structuredContent: output,
     _meta: {
       "martinloop/summary": summary,
-      "martinloop/contentVersion": "2026-05-15"
+      "martinloop/contentVersion": "2026-08-18"
     }
   };
 }

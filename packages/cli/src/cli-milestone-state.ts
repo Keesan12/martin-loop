@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
+
+import { martinFilePath } from "./home-dir.js";
 // Set by npm/pnpm when running as a package script; "unknown" in test/direct-node contexts.
 const CLI_VERSION: string = process.env["npm_package_version"] ?? "unknown";
 
@@ -10,7 +11,9 @@ import type { LoopRecord } from "@martin/contracts";
 // State file
 // ---------------------------------------------------------------------------
 
-const STATE_PATH = join(homedir(), ".martin", "milestone-state.json");
+function milestoneStatePath(): string {
+  return martinFilePath("milestone-state.json");
+}
 
 export interface MilestoneState {
   version: 5;
@@ -120,10 +123,13 @@ export function nextRank(rank: RankName): { name: RankName; loopsNeeded: number;
 // ---------------------------------------------------------------------------
 
 export function deriveSavingsConfidence(loop: LoopRecord): "confirmed" | "estimated" | "unavailable" {
+  const baseline = loop.cost.savingsBaseline;
+  if (!baseline || loop.cost.avoidedUsd <= 0) return "unavailable";
   const p = loop.cost.provenance;
-  if (p === "actual") return "confirmed";
-  if (p === "estimated") return "estimated";
-  return "unavailable";
+  if (p === "actual" && baseline.provenance === "actual" && baseline.source === "measured_control") {
+    return "confirmed";
+  }
+  return p === "unavailable" || baseline.provenance === "unavailable" ? "unavailable" : "estimated";
 }
 
 export function estimatedUncontrolledUsd(loop: LoopRecord): number {
@@ -164,7 +170,7 @@ function fillDefaults(parsed: Record<string, unknown>): MilestoneState {
 
 async function readState(): Promise<MilestoneState> {
   try {
-    const raw = await readFile(STATE_PATH, "utf8");
+    const raw = await readFile(milestoneStatePath(), "utf8");
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     if (parsed["version"] === 5) return fillDefaults(parsed);
   } catch { /* first run or corrupt — start fresh */ }
@@ -172,8 +178,9 @@ async function readState(): Promise<MilestoneState> {
 }
 
 async function writeState(state: MilestoneState): Promise<void> {
-  await mkdir(join(homedir(), ".martin"), { recursive: true });
-  await writeFile(STATE_PATH, JSON.stringify(state, null, 2), "utf8");
+  const statePath = milestoneStatePath();
+  await mkdir(dirname(statePath), { recursive: true });
+  await writeFile(statePath, JSON.stringify(state, null, 2), "utf8");
 }
 
 function freshState(): MilestoneState {
@@ -520,7 +527,7 @@ type RetryEntry = Omit<IntakePayload, "email"> & {
 };
 
 function intakeDraftPath(): string {
-  return join(homedir(), ".martin", "intake-draft.jsonl");
+  return martinFilePath("intake-draft.jsonl");
 }
 
 function queueLockPath(): string {
@@ -640,19 +647,31 @@ export async function submitToIntake(
 ): Promise<IntakeSubmissionResult> {
   const { queueOnFailure = true } = options;
   const controller = new AbortController();
-  // 3 s timeout — intake is optional and non-blocking; next-run retry handles failures.
-  const timer = setTimeout(() => controller.abort(), 3_000);
+  // Abort does not guarantee that Windows fetch settles promptly, so race the
+  // transport against an explicit deadline and let the queued retry handle it.
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<Response>((_, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      const error = new Error("Intake request timed out after 3 seconds.");
+      error.name = "AbortError";
+      reject(error);
+    }, 3_000);
+  });
 
   try {
-    const response = await fetch(getIntakeUrl(), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Idempotency-Key": `${payload.event}:${payload.cliVersion}:${payload.createdAt}`,
-      },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
+    const response = await Promise.race([
+      fetch(getIntakeUrl(), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": `${payload.event}:${payload.cliVersion}:${payload.createdAt}`,
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      }),
+      timeout,
+    ]);
 
     // 409 = idempotent duplicate
     if (response.status === 409) return { ok: true, status: "duplicate" };
@@ -709,7 +728,7 @@ export async function submitToIntake(
     }
     return result;
   } finally {
-    clearTimeout(timer);
+    if (timer !== undefined) clearTimeout(timer);
   }
 }
 
@@ -852,7 +871,7 @@ export async function recordFeedback(score: number, featureVote?: string, email?
 
 export async function readMilestoneState(): Promise<MilestoneState | null> {
   try {
-    const raw = await readFile(STATE_PATH, "utf8");
+    const raw = await readFile(milestoneStatePath(), "utf8");
     const parsed = JSON.parse(raw) as MilestoneState;
     return parsed.version === 5 ? parsed : null;
   } catch {

@@ -24,7 +24,7 @@ import { realpathSync } from "node:fs";
 import path from "node:path";
 
 import { resolveRunsRoot } from "@martin/core";
-import type { LoopBudget, ReceiptScope } from "@martin/contracts";
+import type { CostProvenance, LoopBudget, ReceiptScope } from "@martin/contracts";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -74,6 +74,13 @@ const stringArraySchema = {
   items: { type: "string" }
 } as const;
 
+function describeCostProvenance(provenance: CostProvenance): string {
+  if (provenance === "actual") return "provider-settled actual";
+  if (provenance === "calculated") return "calculated from observed usage";
+  if (provenance === "estimated") return "estimated";
+  return "unavailable";
+}
+
 const loopPreviewSchema = {
   type: "object",
   additionalProperties: true,
@@ -87,6 +94,10 @@ const loopPreviewSchema = {
     updatedAt: { type: "string" },
     attempts: { type: "integer" },
     costUsd: { type: "number" },
+    costProvenance: {
+      type: "string",
+      enum: ["actual", "calculated", "estimated", "unavailable"]
+    },
     avoidedUsd: { type: "number" },
     pressure: { type: "string" },
     shouldStop: { type: "boolean" },
@@ -106,6 +117,7 @@ const loopPreviewSchema = {
     "lifecycleState",
     "attempts",
     "costUsd",
+    "costProvenance",
     "avoidedUsd",
     "pressure",
     "shouldStop",
@@ -134,9 +146,13 @@ const costSchema = {
     actualUsd: { type: "number" },
     avoidedUsd: { type: "number" },
     tokensIn: { type: "integer" },
-    tokensOut: { type: "integer" }
+    tokensOut: { type: "integer" },
+    provenance: {
+      type: "string",
+      enum: ["actual", "calculated", "estimated", "unavailable"]
+    }
   },
-  required: ["actualUsd", "avoidedUsd", "tokensIn", "tokensOut"]
+  required: ["actualUsd", "avoidedUsd", "tokensIn", "tokensOut", "provenance"]
 } as const;
 
 const verificationSchema = {
@@ -277,6 +293,10 @@ const runOutputSchema = {
     reason: { type: "string" },
     attempts: { type: "integer" },
     costUsd: { type: "number" },
+    costProvenance: {
+      type: "string",
+      enum: ["actual", "calculated", "estimated", "unavailable"]
+    },
     verificationPassed: { type: "boolean" },
     loopId: { type: "string" },
     pressure: { type: "string" },
@@ -308,6 +328,7 @@ const runOutputSchema = {
     "reason",
     "attempts",
     "costUsd",
+    "costProvenance",
     "verificationPassed",
     "loopId",
     "pressure",
@@ -377,6 +398,10 @@ const statusOutputSchema = {
     lifecycleState: { type: "string" },
     attempts: { type: "integer" },
     costUsd: { type: "number" },
+    costProvenance: {
+      type: "string",
+      enum: ["actual", "calculated", "estimated", "unavailable"]
+    },
     avoidedUsd: { type: "number" },
     pressure: { type: "string" },
     shouldStop: { type: "boolean" },
@@ -400,6 +425,7 @@ const statusOutputSchema = {
     "lifecycleState",
     "attempts",
     "costUsd",
+    "costProvenance",
     "avoidedUsd",
     "pressure",
     "shouldStop",
@@ -1590,7 +1616,12 @@ export function createMartinMcpServer(serverInfo?: {
       const output = await runLoopTool(input);
       return createToolSuccessResult(
         output,
-        `Run ${output.loopId} is ${output.status}/${output.lifecycleState} after ${output.attempts} attempt(s); spend ${output.costUsd.toFixed(2)} USD.`
+        [
+          `Run ${output.loopId} is ${output.status}/${output.lifecycleState}`,
+          `after ${output.attempts} attempt(s); recorded cost ${output.costUsd.toFixed(2)} USD (${describeCostProvenance(output.costProvenance)}).`,
+          `Execution mode: ${output.executionMode}; governance claim eligible:`,
+          `${output.governanceClaimEligible ? "yes" : "no"}.`
+        ].join(" ")
       );
     }
 
@@ -1599,7 +1630,7 @@ export function createMartinMcpServer(serverInfo?: {
       const output = await inspectLoopTool(input);
       return createToolSuccessResult(
         output,
-        `Inspected ${output.loopCount} run(s) from ${output.source}; total actual spend ${output.portfolio.totalActualUsd.toFixed(2)} USD.`
+        `Inspected ${output.loopCount} run(s) from ${output.source}; total recorded cost ${output.portfolio.totalActualUsd.toFixed(2)} USD.`
       );
     }
 
@@ -1608,7 +1639,7 @@ export function createMartinMcpServer(serverInfo?: {
       const output = await getStatusTool(input);
       return createToolSuccessResult(
         output,
-        `Loop ${output.loopId} is ${output.status}/${output.lifecycleState}; pressure is ${output.pressure} with ${output.remainingBudgetUsd.toFixed(2)} USD remaining.`
+        `Loop ${output.loopId} is ${output.status}/${output.lifecycleState}; recorded cost is ${output.costUsd.toFixed(2)} USD (${describeCostProvenance(output.costProvenance)}), and pressure is ${output.pressure} with ${output.remainingBudgetUsd.toFixed(2)} USD remaining.`
       );
     }
 
@@ -1831,8 +1862,7 @@ export function createMartinMcpServer(serverInfo?: {
         compressed: route.compressed,
         ...(route.compressionSummary ? { compressionSummary: route.compressionSummary } : {}),
         recommendedBudgetUsd,
-        recommendedModelTier: route.recommendedModelTier,
-        estimatedSavingVsSonnetUsd: route.estimatedSavingVsSonnetUsd
+        modelAuthority: "agent_or_provider_default"
       };
       await recordMcpWorkflowStep({
         runsRoot,
@@ -1849,7 +1879,7 @@ export function createMartinMcpServer(serverInfo?: {
       }).catch(() => {});
       return createToolSuccessResult(
         output,
-        `Estimate: ${route.selectedMode} route (${route.recommendedModelTier}), ~$${route.expectedCostUsd.toFixed(2)} expected cost, ${route.expectedPreworkBurnPct}% pre-work burn. Recommended budget: $${recommendedBudgetUsd.toFixed(2)}.`
+        `Estimate: ${route.selectedMode} route, ~$${route.expectedCostUsd.toFixed(2)} expected cost, ${route.expectedPreworkBurnPct}% pre-work burn. Model authority remains with the agent/provider. Recommended budget: $${recommendedBudgetUsd.toFixed(2)}.`
       );
     }
 

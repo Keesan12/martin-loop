@@ -214,10 +214,13 @@ export async function martinDoctorTool(input: MartinDoctorInput): Promise<Martin
         ...(gemini.resolvedPath ? { resolvedPath: gemini.resolvedPath } : {})
       },
       openai: {
-        available: Boolean(process.env.MARTIN_OPENAI_API_KEY),
-        detail: process.env.MARTIN_OPENAI_API_KEY
-          ? `OpenAI-compatible endpoint configured (model: ${process.env.MARTIN_OPENAI_MODEL ?? "gpt-4.1-mini"})`
-          : "Set MARTIN_OPENAI_API_KEY and optionally MARTIN_OPENAI_BASE_URL + MARTIN_OPENAI_MODEL to enable."
+        available: Boolean(
+          process.env.MARTIN_OPENAI_MODEL &&
+          (process.env.MARTIN_OPENAI_API_KEY || process.env.MARTIN_OPENAI_BASE_URL)
+        ),
+        detail: process.env.MARTIN_OPENAI_MODEL
+          ? `OpenAI-compatible model configured: ${process.env.MARTIN_OPENAI_MODEL}.`
+          : "MODEL_CONFIGURATION_REQUIRED: set MARTIN_OPENAI_MODEL and the endpoint/auth required by your provider."
       }
     },
     ...(input.engine ? { requestedEngine: input.engine } : {}),

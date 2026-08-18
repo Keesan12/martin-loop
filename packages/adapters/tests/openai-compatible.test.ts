@@ -265,7 +265,12 @@ describe("createOpenAiCompatibleAdapter", () => {
     // 1000 input tokens = $0.00027, 500 output tokens = $0.00055 → $0.00082
     expect(result.status).toBe("completed");
     expect(result.usage.actualUsd).toBeCloseTo(0.00027 + 0.00055, 5);
-    expect(result.usage.provenance).toBe("actual");
+    expect(result.usage.provenance).toBe("calculated");
+    expect(result.usage.providerSettlement).toMatchObject({
+      model: "deepseek/deepseek-chat",
+      modelSource: "explicit_override",
+      pricingSource: "static_catalog"
+    });
   });
 
   it("marks cost estimated when the provider omits token usage", async () => {
@@ -355,27 +360,15 @@ describe("createOpenAiCompatibleAdapter", () => {
     expect(adapter.kind).toBe("direct-provider");
   });
 
-  it("defaults to the hosted OpenAI endpoint and model when config is omitted", async () => {
-    let capturedUrl = "";
-    const adapter = createOpenAiCompatibleAdapter({
-      fetchImpl: async (input) => {
-        capturedUrl = String(input);
-        return new Response(JSON.stringify({
-          choices: [{ message: { role: "assistant", content: "Fixed." }, finish_reason: "stop" }],
-          usage: { prompt_tokens: 10, completion_tokens: 5 }
-        }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" }
-        });
-      }
-    });
-
-    const result = await adapter.execute(makeRequest() as any);
-
-    expect(result.status).toBe("completed");
-    expect(adapter.adapterId).toBe("openai-compatible:gpt-4.1-mini");
-    expect(adapter.metadata.model).toBe("gpt-4.1-mini");
-    expect(capturedUrl).toBe("https://api.openai.com/v1/chat/completions");
+  it("requires explicit or provider-configured model authority", () => {
+    const previousModel = process.env.MARTIN_OPENAI_MODEL;
+    try {
+      delete process.env.MARTIN_OPENAI_MODEL;
+      expect(() => createOpenAiCompatibleAdapter({})).toThrow("MODEL_CONFIGURATION_REQUIRED");
+    } finally {
+      if (previousModel === undefined) delete process.env.MARTIN_OPENAI_MODEL;
+      else process.env.MARTIN_OPENAI_MODEL = previousModel;
+    }
   });
 
   it("uses the runtime API key when options.apiKey is unset", async () => {

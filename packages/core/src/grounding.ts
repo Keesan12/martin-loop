@@ -1,4 +1,5 @@
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { extname, join, relative } from "node:path";
 
@@ -14,6 +15,7 @@ export interface RepoGroundingIndex {
   createdAt: string;
   fileCount: number;
   files: RepoGroundingFile[];
+  repositoryFingerprint?: string;
 }
 
 export interface RepoGroundingHit {
@@ -46,14 +48,18 @@ export async function loadOrBuildRepoGroundingIndex(
   repoRoot: string
 ): Promise<RepoGroundingIndex> {
   const cachePath = getGroundingCachePath(repoRoot);
+  const repositoryFingerprint = await computeRepositoryFingerprint(repoRoot);
   try {
     const cached = JSON.parse(await readFile(cachePath, "utf8")) as RepoGroundingIndex;
-    if (cached?.schemaVersion === "martin.grounding.v1") {
+    if (
+      cached?.schemaVersion === "martin.grounding.v1" &&
+      cached.repositoryFingerprint === repositoryFingerprint
+    ) {
       return cached;
     }
   } catch {}
 
-  const index = await buildRepoGroundingIndex(repoRoot);
+  const index = await buildRepoGroundingIndex(repoRoot, repositoryFingerprint);
   try {
     await mkdir(resolveGroundingRoot(), { recursive: true });
     await writeFile(cachePath, JSON.stringify(index, null, 2), "utf8");
@@ -65,7 +71,8 @@ export async function loadOrBuildRepoGroundingIndex(
 }
 
 export async function buildRepoGroundingIndex(
-  repoRoot: string
+  repoRoot: string,
+  repositoryFingerprint?: string
 ): Promise<RepoGroundingIndex> {
   const files: RepoGroundingFile[] = [];
   const discovered = await walk(repoRoot, repoRoot, files, { count: 0 });
@@ -74,8 +81,45 @@ export async function buildRepoGroundingIndex(
     repoRoot,
     createdAt: new Date().toISOString(),
     fileCount: discovered.count,
-    files
+    files,
+    repositoryFingerprint: repositoryFingerprint ?? await computeRepositoryFingerprint(repoRoot)
   };
+}
+
+async function computeRepositoryFingerprint(repoRoot: string): Promise<string> {
+  const entries: string[] = [];
+  await collectFingerprintEntries(repoRoot, repoRoot, entries, { count: 0 });
+  entries.sort();
+  return createHash("sha256").update(entries.join("\n")).digest("hex");
+}
+
+async function collectFingerprintEntries(
+  repoRoot: string,
+  currentDir: string,
+  entries: string[],
+  state: { count: number }
+): Promise<void> {
+  if (state.count >= MAX_FILES) return;
+  const directoryEntries = await readdir(currentDir, { withFileTypes: true });
+
+  for (const entry of directoryEntries) {
+    if (state.count >= MAX_FILES) break;
+    const absPath = join(currentDir, entry.name);
+    if (entry.isDirectory()) {
+      if (!IGNORED_DIRS.has(entry.name)) {
+        await collectFingerprintEntries(repoRoot, absPath, entries, state);
+      }
+      continue;
+    }
+    if (!entry.isFile() || !TEXT_EXTENSIONS.has(extname(entry.name).toLowerCase())) continue;
+
+    try {
+      const metadata = await stat(absPath);
+      const relPath = relative(repoRoot, absPath).replace(/\\/g, "/");
+      entries.push(`${relPath}:${metadata.size}:${metadata.mtimeMs}`);
+      state.count += 1;
+    } catch {}
+  }
 }
 
 export function queryRepoGroundingIndex(

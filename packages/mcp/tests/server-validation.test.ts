@@ -62,6 +62,14 @@ function readToolText(result: unknown): string {
   return content[0].text ?? "";
 }
 
+function readToolStructuredContent(result: unknown): Record<string, unknown> {
+  const structuredContent = (result as { structuredContent?: unknown })?.structuredContent;
+  if (!structuredContent || typeof structuredContent !== "object" || Array.isArray(structuredContent)) {
+    throw new Error("Expected structured content from MCP tool result.");
+  }
+  return structuredContent as Record<string, unknown>;
+}
+
 async function withValidationRunsRoot<T>(fn: (runsRoot: string) => Promise<T>): Promise<T> {
   const previousRunsRoot = process.env.MARTIN_RUNS_DIR;
   const runsRoot = await mkdtemp(join(tmpdir(), "martin-mcp-validation-runs-"));
@@ -659,7 +667,8 @@ describe("server validation", () => {
               {}
             );
             expect((estimateResult as { isError?: boolean }).isError).not.toBe(true);
-            expect(JSON.parse(readToolText(estimateResult))).toMatchObject({
+            expect(readToolText(estimateResult)).toContain("Estimate:");
+            expect(readToolStructuredContent(estimateResult)).toMatchObject({
               objective: "Summarize the current runtime state",
               engine: "claude",
               budgetUsd: 1
@@ -701,7 +710,12 @@ describe("server validation", () => {
             );
 
             expect((preflightResult as { isError?: boolean }).isError).not.toBe(true);
-            expect(JSON.parse(readToolText(preflightResult)).normalized.budget.softLimitUsd).toBe(1);
+            expect(readToolText(preflightResult)).not.toMatch(/^\s*\{/u);
+            expect(
+              (readToolStructuredContent(preflightResult).normalized as {
+                budget: { softLimitUsd: number };
+              }).budget.softLimitUsd
+            ).toBe(1);
 
             const runResult = await callTool(
               {
@@ -724,7 +738,11 @@ describe("server validation", () => {
             );
 
             expect((runResult as { isError?: boolean }).isError).not.toBe(true);
-            expect(JSON.parse(readToolText(runResult))).toMatchObject({
+            expect(readToolText(runResult)).not.toMatch(/^\s*\{/u);
+            expect(readToolText(runResult)).toContain("Execution mode: verification_only");
+            expect(readToolStructuredContent(runResult)).toMatchObject({
+              executionMode: "verification_only",
+              governanceClaimEligible: false,
               budget: {
                 maxUsd: 1,
                 softLimitUsd: 1,

@@ -8,7 +8,8 @@
       "@martin/adapters": ["../adapters/src/index.ts"],
       "@martin/core": ["../core/src/index.ts"],
       "@martin/benchmarks": ["../../benchmarks/src/index.ts"],
-      "@martin/contracts": ["../contracts/src/index.ts"]
+      "@martin/contracts": ["../contracts/src/index.ts"],
+      "@martin/presentation": ["../presentation/src/index.ts"]
     }
   },
   "include": ["src/**/*.ts", "tests/**/*.ts"]

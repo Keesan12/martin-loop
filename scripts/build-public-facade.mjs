@@ -21,6 +21,11 @@ const PACKAGE_FACADES = [
     targetDir: ["dist", "vendor", "adapters"],
   },
   {
+    packageName: "@martin/presentation",
+    sourceDir: ["packages", "presentation", "dist"],
+    targetDir: ["dist", "vendor", "presentation"],
+  },
+  {
     packageName: "@martin/cli",
     sourceDir: ["packages", "cli", "dist"],
     targetDir: ["dist", "vendor", "cli"],
@@ -32,6 +37,7 @@ const REWRITABLE_PACKAGES = {
   "@martin/contracts": "contracts",
   "@martin/core": "core",
   "@martin/adapters": "adapters",
+  "@martin/presentation": "presentation",
   "@martin/cli": "cli",
 };
 
@@ -167,14 +173,14 @@ function shouldSkipFile(name, relativePath, packageName) {
     name.endsWith(".map") ||
     (
       packageName === "@martin/adapters" &&
-      /^(?:stub-agent-cli|verifier-only)\.(?:js|d\.ts)$/u.test(relativePath)
+      /^stub-(?:agent-cli|direct-provider)\.(?:js|d\.ts)$/u.test(relativePath)
     )
   );
 }
 
 function rewritePackageSpecifiers(contents, input) {
   return contents.replace(
-    /(['"])(@martin\/(?:contracts|core|adapters|cli))\1/g,
+    /(['"])(@martin\/(?:contracts|core|adapters|presentation|cli))\1/g,
     (_match, quote, packageName) => {
       const mapped = REWRITABLE_PACKAGES[packageName];
       if (!mapped) {

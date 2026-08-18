@@ -8,11 +8,13 @@ const OSS_CORE_PATHS = [
   "packages/contracts",
   "packages/core",
   "packages/adapters",
+  "packages/presentation",
   "packages/cli",
   "packages/mcp",
 ];
 
 const ALLOWED_TOP_LEVEL_ENTRIES = [
+  ".agents",
   ".github",
   "benchmarks",
   "CONTEXT.md",
@@ -28,6 +30,7 @@ const ALLOWED_TOP_LEVEL_ENTRIES = [
   "NOTICE",
   "packages",
   "REUSE.toml",
+  "plugins",
   "scripts",
   ".gitignore",
   "AGENTS.md",

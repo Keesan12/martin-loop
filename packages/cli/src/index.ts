@@ -15,9 +15,9 @@ import {
   probeCodexLaunch,
   checkCodexSandboxPreflight,
   resolveCliCommandAvailability,
-  createStubDirectProviderAdapter,
+  createVerifierOnlyAdapter,
 } from "@martin/adapters";
-import { runMartin, classifyRoute, resolveModelForTier, getHistoricalDirectSuccessRate, getPreference, recordPreference, writeExitSignal, type MartinAdapter } from "@martin/core";
+import { runMartin, classifyRoute, getHistoricalDirectSuccessRate, getPreference, recordPreference, writeExitSignal, type MartinAdapter } from "@martin/core";
 import {
   fetchSelectedMessage,
   getCliInstalledVersion,
@@ -42,6 +42,12 @@ import {
   type MutationMode,
   type ReceiptScope
 } from "@martin/contracts";
+import {
+  buildGovernedPlanStages,
+  renderGovernedRunPlan,
+  renderVerifiedHandoff,
+  type GovernedRunPlanView
+} from "@martin/presentation";
 
 import {
   buildNativePhaseRunRequest,
@@ -65,6 +71,11 @@ import {
   MARTIN_MINIMAL_TOOLS,
   MARTIN_STARTER_TOOLS
 } from "./mcp-config.js";
+import {
+  rollbackMartinMcpInstall,
+  uninstallMartinMcp,
+  verifyMartinMcpInstall
+} from "./mcp-install-state.js";
 import { persistLoopArtifacts } from "./persistence.js";
 import {
   buildMartinProofCard,
@@ -81,9 +92,11 @@ import {
 import {
   buildArtifactSummary,
   buildRunDossier,
+  buildVerifiedHandoffFromPersistedLoop,
   buildVerificationSummary,
   computeScopeFingerprint,
   describeCostProvenance,
+  deriveLoopExecutionBoundary,
   findPersistedLoopEvidence,
   listPersistedLoops,
   loadPersistedAttempt,
@@ -114,6 +127,7 @@ import {
   isBadgeCtaEligible,
   recordBadgeCtaShown
 } from "./cli-milestone-state.js";
+import { offerArcadeWhileWaiting } from "./arcade/offer.js";
 import { MARTINLOOP_BADGE_CTA, MARTINLOOP_BADGE_MARKDOWN } from "./governed-badge.js";
 import { InstallError, runInstall } from "./commands/install.js";
 
@@ -177,7 +191,12 @@ type RunSuccessCallToAction = {
 
 function buildRunSuccessCallToAction(loop: LoopRecord): RunSuccessCallToAction | undefined {
   const verification = buildVerificationSummary(loop);
-  if (loop.status !== "completed" || loop.lifecycleState !== "completed" || verification.status !== "passed") {
+  if (
+    loop.status !== "completed" ||
+    loop.lifecycleState !== "completed" ||
+    verification.status !== "passed" ||
+    !deriveLoopExecutionBoundary(loop).governanceClaimEligible
+  ) {
     return undefined;
   }
 
@@ -365,6 +384,14 @@ type McpCommand =
       experimentalRemoteHosts: boolean;
       platform?: MartinMcpPlatform;
       dryRun: boolean;
+      installGovernance: boolean;
+    }
+  | {
+      command: "mcp_verify_install" | "mcp_rollback" | "mcp_uninstall";
+      host: MartinMcpHost;
+      scope: MartinMcpScope;
+      cwd?: string;
+      runsDir?: string;
     };
 
 type EstimateCommand = {
@@ -643,6 +670,10 @@ export async function executeCli(args: string[]): Promise<{
         return await executeMcpPrintConfigCommand(parsed, outputMode);
       case "mcp_install":
         return await executeMcpInstallCommand(parsed, outputMode);
+      case "mcp_verify_install":
+      case "mcp_rollback":
+      case "mcp_uninstall":
+        return await executeMcpStateCommand(parsed, outputMode);
       case "challenge":
         return await executeChallengeCommand(parsed, outputMode);
       case "share":
@@ -1003,7 +1034,27 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
         ...(remoteTokenEnv ? { remoteTokenEnv } : {}),
         experimentalRemoteHosts,
         ...(platform ? { platform } : {}),
-        dryRun: hasFlag(subcommandArgs, "--dry-run")
+        dryRun: hasFlag(subcommandArgs, "--dry-run"),
+        installGovernance: hasFlag(subcommandArgs, "--install-governance")
+      };
+    }
+
+    if (subcommand === "verify-install" || subcommand === "rollback" || subcommand === "uninstall") {
+      const host = parseMcpHost(subcommandArgs);
+      const scope = parseMcpScope(host, subcommandArgs);
+      const cwd = readOption(subcommandArgs, "--cwd");
+      const runsDir = readOption(subcommandArgs, "--runs-dir");
+      return {
+        command:
+          subcommand === "verify-install"
+            ? "mcp_verify_install"
+            : subcommand === "rollback"
+              ? "mcp_rollback"
+              : "mcp_uninstall",
+        host,
+        scope,
+        ...(cwd ? { cwd } : {}),
+        ...(runsDir ? { runsDir } : {})
       };
     }
 
@@ -1142,8 +1193,12 @@ export function renderCliHelp(): string {
     "  martin runs get (--loop-id <id> | --file <path> | --latest) [options]",
     "  martin runs attempt (--loop-id <id> | --file <path>) [--attempt-index <n>] [options]",
     "  martin runs verify (--loop-id <id> | --file <path> | --latest) [options]",
-    "  martin mcp print-config --host <codex|claude|gemini|cursor|copilot|continue|generic> [--scope <user|project|local>] [options]",
-    "  martin mcp install --host <codex|claude|gemini|cursor|copilot|continue|generic> [--scope <user|project|local>] [--dry-run] [options]",
+    "  martin sync [status|flush]",
+    "  martin mcp print-config --host <codex|claude|gemini|cursor|vscode|copilot|continue|generic> [--scope <user|project|local>] [options]",
+    "  martin mcp install --host <codex|claude|gemini|cursor|vscode|copilot|continue|generic> [--scope <user|project|local>] [--dry-run] [options]",
+    "  martin mcp verify-install --host <name> [--scope <user|project|local>]",
+    "  martin mcp rollback --host <name> [--scope <user|project|local>]",
+    "  martin mcp uninstall --host <name> [--scope <user|project|local>]",
     "  martin demo [--dir <path>] [--force]",
     "  martin-loop demo [--dir <path>] [--force] (published alias)",
     "  martin inspect --file <path>",
@@ -1179,8 +1234,11 @@ export function renderCliHelp(): string {
     "  gate         Hard governance check — exits non-zero if doctor/estimate are missing. Use in hooks.",
     "  mode         Show or set working mode: auto (default), plan, edits.",
     "  clean        Remove MartinLoop artifacts (_martin/, old run records).",
-    "  mcp print-config  Print a known-good MCP config snippet for Codex, Claude, Gemini, or generic hosts.",
+    "  mcp print-config  Print a known-good MCP config for a supported host without writing files.",
     "  mcp install       Write a starter MCP config, or call Claude Code directly for local scope.",
+    "  mcp verify-install Verify the installed config against the local install ledger.",
+    "  mcp rollback      Restore the config state before the latest MartinLoop install.",
+    "  mcp uninstall     Restore the config state before MartinLoop was first installed.",
     "  challenge    Print a shareable local proof card for the Under-$3 challenge.",
     "  share        Write a local share bundle with a redacted receipt JSON, proof Markdown, and proof SVG.",
     "  badge        Print an agent reliability readiness badge from local evidence.",
@@ -1203,6 +1261,7 @@ export function renderCliHelp(): string {
     "  --latest                 Select the most recently updated loop.",
     "  --attempt-index <n>      Select a specific attempt for attempt inspection.",
     "  --out-dir <path>         Override where `martin share` writes the local bundle.",
+    "  --install-governance     Install supported host governance hooks with MCP config.",
     "",
     "Phase command-center options:",
     "  --cwd <path>             Repo root containing phase state; imports .gsd state when present.",
@@ -1234,9 +1293,9 @@ export function renderCliHelp(): string {
     "  --max-tokens <n>         Set the maximum total token budget.",
     "  --verify <cmd>           Shell command to run as the verifier after each attempt.",
     "  --verify-timeout-ms <n>  Verifier timeout in milliseconds.",
-    "  --proof                  Run in no-spend proof mode (explicit opt-in).",
+    "  --proof                  Run verification-only (cannot emit governed VERIFIED).",
     "  --unsafe-allow-unguarded-run",
-    "                           Deprecated for live coding runs; use --proof for explicit no-spend lanes.",
+    "                           Deprecated for live coding; --proof is non-governed evidence only.",
     "  --allow-path <glob>      Restrict agent writes to this path pattern (repeatable).",
     "  --deny-path <glob>       Block agent from this path pattern (repeatable).",
     "  --accept <criterion>     Add an acceptance criterion to the prompt (repeatable).",
@@ -1303,7 +1362,7 @@ async function executeRunCommand(
       "--unsafe-allow-unguarded-run is blocked for live governed coding runs.",
       {
         suggestion:
-          "Run `martin-loop doctor`, `martin-loop session-start`, `martin-loop estimate`, and `martin-loop preflight` before retrying, or use `--proof` for an explicit no-spend lane.",
+          "Run doctor, session-start, estimate, and preflight before retrying. `--proof` is verification-only and cannot emit governed VERIFIED.",
         details: {
           allowedNoSpendModes: ["proof"]
         }
@@ -1427,6 +1486,19 @@ async function executeRunCommand(
     codexCommandOverride,
     resolvedRequest.verifyTimeoutMs
   );
+  const executionMode = runAdapterOverrideForTests
+    ? "simulated"
+    : adapter.adapterId === "direct:verifier:verify-only"
+      ? "verification_only"
+      : adapter.adapterId === "direct:stub:stub" ||
+          adapter.adapterId === "direct:proof:no-mutation"
+        ? "simulated"
+        : "governed";
+  const executionMetadata = {
+    ...resolvedRequest.metadata,
+    executionMode,
+    governanceClaimEligible: executionMode === "governed" ? "true" : "false",
+  };
   // Load telemetry state before the governed run.
   const { readTelemetryConfig, isTelemetrySendingEnabled, initializeTelemetryIfNeeded,
           sendProductEvent, resolveProductEventsEndpoint, shouldShowTelemetryNotice,
@@ -1462,7 +1534,7 @@ async function executeRunCommand(
   }
 
   try {
-    result = await runMartin({
+    const governedTask = runMartin({
       workspaceId: resolvedRequest.workspaceId,
       projectId: resolvedRequest.projectId,
       receiptScope: {
@@ -1485,8 +1557,31 @@ async function executeRunCommand(
         ...(resolvedRequest.approvalPolicy ? { approvalPolicy: resolvedRequest.approvalPolicy } : {})
       },
       budget: resolvedRequest.budget,
-      metadata: resolvedRequest.metadata,
+      metadata: executionMetadata,
       adapter,
+    });
+    result = await offerArcadeWhileWaiting(governedTask, {
+      outputMode,
+      offerAfterMs: 2500,
+      runResultLabel: (completed) => {
+        const attempts = completed.loop.attempts.length;
+        const attemptLabel =
+          attempts + " attempt" + (attempts === 1 ? "" : "s");
+        const provenance = readCostProvenance(completed.loop);
+        const costLabel =
+          provenance === "unavailable"
+            ? "cost unavailable"
+            : "$" +
+              completed.loop.cost.actualUsd.toFixed(2) +
+              " " +
+              describeCostProvenance(provenance);
+        return (
+          "run finished · " +
+          attemptLabel +
+          " · " +
+          costLabel
+        );
+      },
     });
 
     if (isDemoMission && result.loop.receiptScope) {
@@ -1519,7 +1614,7 @@ async function executeRunCommand(
         repoRoot: cliEnvironment.workingDirectory
       },
       budget: resolvedRequest.budget,
-      metadata: resolvedRequest.metadata,
+      metadata: executionMetadata,
       receiptScope: {
         ...receiptScope
       },
@@ -1531,7 +1626,7 @@ async function executeRunCommand(
 
     throw new CliCommandError("environment", "Martin could not start the requested execution adapter.", {
       suggestion:
-        "Run `martin doctor` to verify engine availability, or rerun with `--proof` for an explicit no-spend lane.",
+        "Run `martin doctor` to verify engine availability. `--proof` is verification-only and cannot emit governed VERIFIED.",
       details: {
         loopId: fallbackLoop.loopId,
         reason: error instanceof Error ? error.message : String(error)
@@ -1549,6 +1644,33 @@ async function executeRunCommand(
   });
 
   const costProvenance = readCostProvenance(result.loop);
+  let verifiedHandoffHuman: string | undefined;
+  if (persistenceFinalized && outputMode === "human") {
+    try {
+      const persistedDetail = await loadPersistedLoop({
+        loopId: result.loop.loopId,
+        workspaceId: result.loop.workspaceId,
+        runsDir: cliEnvironment.runsRoot
+      });
+      verifiedHandoffHuman = renderVerifiedHandoff(
+        buildVerifiedHandoffFromPersistedLoop(persistedDetail),
+        {
+          width: process.stdout.columns,
+          environment: {
+            color: "auto",
+            isTty: process.stdout.isTTY === true,
+            term: process.env["TERM"]
+          }
+        }
+      );
+    } catch (error) {
+      warnings.push(
+        `Verified Handoff could not be rendered from persisted evidence: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+  }
 
   const confidence = deriveSavingsConfidence(result.loop);
   const uncontrolled = estimatedUncontrolledUsd(result.loop);
@@ -1563,8 +1685,11 @@ async function executeRunCommand(
   const isInteractiveTty = outputMode === "human" && process.stdout.isTTY === true && process.stdin.isTTY === true;
   const runCompleted = result.loop.status === "completed" && result.loop.lifecycleState === "completed";
   const runVerified = buildVerificationSummary(result.loop).status === "passed";
+  const governanceClaimEligible = deriveLoopExecutionBoundary(
+    result.loop
+  ).governanceClaimEligible;
   const governedOutcome = runCompleted
-    ? runVerified
+    ? runVerified && governanceClaimEligible
       ? "VERIFIED" as const
       : "NEEDS_REVIEW" as const
     : "STOPPED" as const;
@@ -1602,9 +1727,13 @@ async function executeRunCommand(
       result.decision.reasonCode === "config_change_approval_required");
 
   const runOutcome: RunOutcome =
-    result.loop.status === "completed" && result.loop.lifecycleState === "completed"
+    result.loop.status === "completed" &&
+    result.loop.lifecycleState === "completed" &&
+    governanceClaimEligible
       ? "success"
-      : result.loop.lifecycleState === "human_escalation" && verificationPassed
+      : result.loop.lifecycleState === "human_escalation" &&
+          verificationPassed &&
+          governanceClaimEligible
         ? "awaiting_signoff"
         : isApprovalBlocked
           ? "approval_blocked"
@@ -1618,7 +1747,8 @@ async function executeRunCommand(
     savedThisRun,
     milestoneState?.totalSavedUsd ?? 0,
     confidence,
-    persistenceFinalized
+    persistenceFinalized,
+    costProvenance
   );
 
   const { inlineMilestones, interactivePrompt } = await recordRunAndGetPrompt({
@@ -1770,6 +1900,7 @@ async function executeRunCommand(
       ...(successCallToAction ? { successCallToAction } : {})
     },
     human: [
+      ...(verifiedHandoffHuman ? [verifiedHandoffHuman, ""] : []),
       runHeader,
       `Started Martin Loop run ${result.loop.loopId}`,
       `Status: ${result.loop.status} / ${result.loop.lifecycleState}`,
@@ -1777,7 +1908,7 @@ async function executeRunCommand(
       `Runs root: ${cliEnvironment.runsRoot}`,
       `Verification plan: ${resolvedRequest.verificationPlan.join(", ") || "none"}`,
       `Attempts: ${result.loop.attempts.length}`,
-      `Actual cost (USD): ${result.loop.cost.actualUsd.toFixed(2)} — provenance: ${describeCostProvenance(costProvenance)}`,
+      `Cost (USD): ${result.loop.cost.actualUsd.toFixed(2)} — provenance: ${describeCostProvenance(costProvenance)}`,
       ...(isApprovalBlocked ? [
         "",
         "Blocked: the agent needs operator approval to proceed.",
@@ -2147,7 +2278,7 @@ async function executeDoctorCommand(
         ...buildCodexEngineDiagnostics(codexAvailability, codexProbe)
       },
       openai: {
-        available: true,
+        available: Boolean(resolveOpenAiCompatibleRuntimeConfig().model),
         ...resolveOpenAiCompatibleRuntimeConfig()
       },
       gemini: {
@@ -2193,7 +2324,7 @@ async function executeDoctorCommand(
       `Claude CLI: ${claudeAvailable ? "available" : "missing"}`,
       `Codex CLI: ${codexAvailable ? "available" : "missing"}`,
       `Gemini CLI: ${geminiAvailable ? "available" : "missing"}`,
-      `OpenAI-compatible: ${resolveOpenAiCompatibleRuntimeConfig().baseUrl} (${resolveOpenAiCompatibleRuntimeConfig().model})`,
+      `OpenAI-compatible: ${resolveOpenAiCompatibleRuntimeConfig().baseUrl} (${resolveOpenAiCompatibleRuntimeConfig().model ?? "MODEL_CONFIGURATION_REQUIRED"})`,
       ...(codexProbe ? [`Codex launch probe: ${codexProbe.ok ? "ready" : codexProbe.summary}`] : []),
       `Receipt scope: repo=${receiptScope.repoRoot} runs=${receiptScope.runsRoot}`,
       `Config: ${configExists ? configPath : `not found at ${configPath}`}`
@@ -2257,7 +2388,7 @@ async function executeEnvCommand(
           ...(snapshot.geminiAvailability.resolvedPath ? { resolvedPath: snapshot.geminiAvailability.resolvedPath } : {})
         },
         openai: {
-          ready: true,
+          ready: Boolean(openai.model),
           baseUrl: openai.baseUrl,
           model: openai.model,
           apiKeyConfigured: openai.apiKeyConfigured
@@ -2279,7 +2410,7 @@ async function executeEnvCommand(
       `Claude: ${snapshot.claudeAvailable ? "ready" : "blocked (cli missing)"}`,
       `Codex: ${snapshot.codexAvailability.available ? "ready" : "blocked (cli missing)"}`,
       `Gemini: ${snapshot.geminiAvailability.available ? "ready" : "blocked (cli missing)"}`,
-      `OpenAI-compatible: ready (${openai.baseUrl}, ${openai.model})`,
+      `OpenAI-compatible: ${openai.model ? "ready" : "blocked"} (${openai.baseUrl}, ${openai.model ?? "MODEL_CONFIGURATION_REQUIRED"})`,
       `Receipt signing: ${snapshot.runsRootReady ? "ready" : "not initialized yet"}`,
       `Recommended engine: ${snapshot.recommendedEngine}`
     ],
@@ -3082,19 +3213,35 @@ async function executePreflightCommand(
     ? `Run history: ${runHistoryRisk.runRecords} local run record(s)${runHistoryHotspots.length > 0 ? `, ${runHistoryHotspots.length} scope hotspot(s)` : ", no scope hotspots"}`
     : `Run history: no local persisted governed runs yet`;
   const riskWarnings = warnings.filter((warning) => warning.startsWith("Run history risk:"));
+  const planView: GovernedRunPlanView = {
+    ready,
+    task: request.title,
+    engine: environment.engine,
+    mode: environment.liveMode,
+    budget: resolvedGuardrails.budget,
+    verifier: verificationPlan,
+    receiptScope,
+    policyProfile: resolvedGuardrails.policyProfile,
+    blockingIssues,
+    warnings,
+    stages: []
+  };
+  planView.stages = buildGovernedPlanStages(planView);
 
   return renderCliSuccess(outputMode, {
     data,
     human: [
-      `Preflight ${ready ? "passed" : "blocked"} for ${request.title}`,
-      `Working directory: ${environment.workingDirectory}`,
-      `Engine: ${environment.engine} (${environment.liveMode})`,
-      `Verification plan: ${verificationPlan.join(", ") || "none"}`,
-      `Receipt scope: repo=${receiptScope.repoRoot} runs=${receiptScope.runsRoot}`,
+      renderGovernedRunPlan(planView, {
+        width: process.stdout.columns,
+        environment: {
+          color: "auto",
+          isTty: process.stdout.isTTY === true,
+          term: process.env["TERM"]
+        }
+      }),
       runHistoryLine,
       corpusLine,
-      ...riskWarnings,
-      ...(blockingIssues.length > 0 ? ["Blocking issues:", ...blockingIssues.map((issue) => `- ${issue}`)] : [])
+      ...riskWarnings
     ],
     quiet: ready ? "ready" : "blocked",
     warnings
@@ -3572,8 +3719,8 @@ async function executeEstimateCommand(
       compressed: route.compressed,
       ...(route.compressionSummary ? { compressionSummary: route.compressionSummary } : {}),
       recommendedBudgetUsd,
-      recommendedModelTier: route.recommendedModelTier,
-      estimatedSavingVsSonnetUsd: route.estimatedSavingVsSonnetUsd
+      modelAuthority: "agent_or_provider_default",
+      model: null
     },
     human: [
       "Martin Loop Cost Estimate",
@@ -3585,7 +3732,7 @@ async function executeEstimateCommand(
       "",
       `Route:          ${route.selectedMode}${route.compressed ? " (compressed)" : ""}`,
       `Confidence:     ${(route.confidence * 100).toFixed(0)}%`,
-      `Model tier:     ${route.recommendedModelTier} → ${resolveModelForTier(route.recommendedModelTier, command.engine)}${route.estimatedSavingVsSonnetUsd > 0 ? ` (saves ~$${route.estimatedSavingVsSonnetUsd.toFixed(2)} vs sonnet)` : ""}`,
+      "Model:          agent/provider default",
       `Expected cost:  $${route.expectedCostUsd.toFixed(2)}`,
       `Pre Work Burn:  ${route.expectedPreworkBurnPct}%`,
       `Recommended:    $${recommendedBudgetUsd.toFixed(2)}`,
@@ -3683,7 +3830,9 @@ async function executeMcpInstallCommand(
     ...(command.remoteTokenEnv ? { remoteTokenEnv: command.remoteTokenEnv } : {}),
     ...(command.platform ? { platform: command.platform } : {})
   };
-  const plan = command.dryRun ? buildMcpInstallPlan(input) : await installMcpConfig(input);
+  const plan = command.dryRun
+    ? buildMcpInstallPlan(input)
+    : await installMcpConfig(input, { installGovernance: command.installGovernance });
 
   return renderCliSuccess(outputMode, {
     data: {
@@ -3693,6 +3842,7 @@ async function executeMcpInstallCommand(
       transport: command.transport,
       profile: command.profile,
       dryRun: command.dryRun,
+      installGovernance: command.installGovernance,
       targetPath: plan.targetPath,
       content: plan.content,
       serverId: plan.serverId,
@@ -3714,6 +3864,67 @@ async function executeMcpInstallCommand(
     ],
     quiet: plan.targetPath,
     warnings: remotePolicyWarnings
+  });
+}
+
+async function executeMcpStateCommand(
+  command: Extract<
+    ParsedCliArguments,
+    { command: "mcp_verify_install" | "mcp_rollback" | "mcp_uninstall" }
+  >,
+  outputMode: MartinOutputMode
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  const environment = resolveCliEnvironment({ cwd: command.cwd, runsDir: command.runsDir });
+  const plan = buildMcpInstallPlan({
+    host: command.host,
+    scope: command.scope,
+    cwd: environment.workingDirectory,
+    runsRoot: environment.runsRoot
+  });
+  if (plan.installMethod !== "file") {
+    throw new CliCommandError(
+      "invalid_input",
+      `${command.host} ${command.scope} scope is not managed by a local config file.`,
+      { suggestion: plan.targetPath }
+    );
+  }
+
+  const selector = {
+    host: command.host,
+    scope: command.scope,
+    targetPath: plan.targetPath
+  };
+
+  if (command.command === "mcp_verify_install") {
+    const verification = await verifyMartinMcpInstall(selector);
+    if (verification.status !== "ok") {
+      throw new CliCommandError(
+        "environment",
+        `MCP install verification failed for ${plan.targetPath}: ${verification.status}.`,
+        { suggestion: "Inspect the host config before running rollback or uninstall." }
+      );
+    }
+    return renderCliSuccess(outputMode, {
+      data: { command: command.command, host: command.host, scope: command.scope, ...verification },
+      human: [`Verified MartinLoop MCP install for ${command.host}`, `Target: ${plan.targetPath}`],
+      quiet: plan.targetPath
+    });
+  }
+
+  if (command.command === "mcp_rollback") {
+    const record = await rollbackMartinMcpInstall(selector);
+    return renderCliSuccess(outputMode, {
+      data: { command: command.command, host: command.host, scope: command.scope, record },
+      human: [`Rolled back MartinLoop MCP install for ${command.host}`, `Target: ${plan.targetPath}`],
+      quiet: plan.targetPath
+    });
+  }
+
+  const records = await uninstallMartinMcp(selector);
+  return renderCliSuccess(outputMode, {
+    data: { command: command.command, host: command.host, scope: command.scope, records },
+    human: [`Uninstalled MartinLoop MCP config for ${command.host}`, `Target: ${plan.targetPath}`],
+    quiet: plan.targetPath
   });
 }
 
@@ -3978,7 +4189,7 @@ function parseMcpHost(tokens: string[]): MartinMcpHost {
 
   if (
     host === "codex" || host === "claude" || host === "gemini" || host === "generic" ||
-    host === "cursor" || host === "copilot" || host === "continue"
+    host === "cursor" || host === "vscode" || host === "copilot" || host === "continue"
   ) {
     return host;
   }
@@ -3986,13 +4197,13 @@ function parseMcpHost(tokens: string[]): MartinMcpHost {
   if (host === undefined) {
     throw new CliCommandError(
       "invalid_input",
-      "mcp commands require --host <codex|claude|gemini|cursor|copilot|continue|generic>.",
-      { suggestion: "Pass --host codex, --host claude, --host cursor, --host copilot, --host continue, or --host generic." }
+      "mcp commands require --host <codex|claude|gemini|cursor|vscode|copilot|continue|generic>.",
+      { suggestion: "Pass --host codex, --host claude, --host cursor, --host vscode, --host copilot, --host continue, or --host generic." }
     );
   }
 
   throw new CliCommandError("invalid_input", `Invalid --host value: ${host}.`, {
-    suggestion: "Use --host codex, --host claude, --host gemini, --host cursor, --host copilot, --host continue, or --host generic."
+    suggestion: "Use --host codex, --host claude, --host gemini, --host cursor, --host vscode, --host copilot, --host continue, or --host generic."
   });
 }
 
@@ -4246,7 +4457,7 @@ function renderDemoInstructions(targetDirectory: string): string {
     "Default first run (live spend-governed):",
     '  npx martin run "Summarize the demo workspace and confirm the verifier is green" --verify "npm test" --budget-usd 2 --max-iterations 1',
     "",
-    "Optional explicit no-spend proof run:",
+    "Optional verification-only run (non-governed; cannot emit VERIFIED):",
     '  npx martin run "Summarize the demo workspace and confirm the verifier is green" --proof --verify "npm test" --budget-usd 2 --max-iterations 1',
     "",
     "Optional live implementation run:",
@@ -4498,10 +4709,10 @@ function selectAdapter(
   const effectiveModel = modelOverride;
 
   if (liveMode === "proof") {
-    return createStubDirectProviderAdapter({
-      label: "Stub adapter (--proof)",
-      providerId: "stub",
-      model: "stub"
+    return createVerifierOnlyAdapter({
+      label: "Verifier-only adapter (--proof)",
+      workingDirectory,
+      ...(verifyTimeoutMs !== undefined ? { verifyTimeoutMs } : {})
     });
   }
 
@@ -4574,14 +4785,14 @@ function buildDoctorRecommendations(input: {
   }
 
   if (input.liveMode === "live" && input.engine === "codex" && !input.codexAvailable) {
-    recommendations.push("Install or expose the Codex CLI on PATH, or rerun with `--proof` for explicit no-spend validation.");
+    recommendations.push("Install or expose the Codex CLI on PATH. Use `--proof` only for non-governed verification evidence.");
   }
   if (input.liveMode === "live" && input.engine === "codex" && input.codexAvailable && input.codexLaunchReady === false) {
     recommendations.push(input.codexRemediation ?? "Run `martin preflight --engine codex` and fix the reported Codex host issue before governed work.");
   }
 
   if (input.liveMode === "live" && input.engine === "gemini" && !input.geminiAvailable) {
-    recommendations.push("Install or expose the Gemini CLI on PATH, or rerun with `--proof` for explicit no-spend validation.");
+    recommendations.push("Install or expose the Gemini CLI on PATH. Use `--proof` only for non-governed verification evidence.");
   }
 
   return recommendations;
@@ -4704,7 +4915,7 @@ function proofCardInputFromLoop(loop: LoopRecord): MartinProofCardInput {
     costSpend: `$${loop.cost.actualUsd.toFixed(2)}`,
     budget: `$${loop.budget.maxUsd.toFixed(2)}`,
     attempts: loop.attempts.length,
-    runMode: deriveLoopRunMode(loop),
+    runMode: deriveLoopExecutionBoundary(loop).executionMode,
     rollbackStatus,
     haltReason: latestExitReason(loop),
     evidenceBoundaryNotes: [
@@ -4720,36 +4931,22 @@ function defaultChallengeProofCardInput(): MartinProofCardInput {
   return {
     loopId: "loop_demo_challenge",
     objective: "Repair the failing MCP lane so the agent can reconnect.",
-    status: "completed",
-    lifecycle: "verified",
-    verifierStatus: "passed",
-    costSpend: "$2.30",
-    budget: "$3.00",
-    attempts: 2,
-    rollbackStatus: "captured",
-    haltReason: "verifier_passed",
+    status: "simulated",
+    lifecycle: "demo",
+    verifierStatus: "simulated",
+    costSpend: "$0.00",
+    budget: "$0.00",
+    attempts: 0,
+    runMode: "simulated",
+    rollbackStatus: "not_applicable",
+    haltReason: "sample_only",
     evidenceBoundaryNotes: [
-      "Generated from a local Martin Loop run record.",
-      "Hosted dashboards and private team telemetry are intentionally excluded from OSS proof cards."
+      "Deterministic simulated sample; not a governed run or receipt."
     ],
-    generatedAt: new Date().toISOString()
+    generatedAt: new Date().toISOString(),
+    receiptIntegrityState: "unsigned"
   };
 }
-
-function deriveLoopRunMode(loop: LoopRecord): string {
-  if (loop.task.mutationMode) {
-    return loop.task.mutationMode;
-  }
-  // Determine run mode based on proof adapters or zero cost.
-  if (loop.attempts.some((attempt) => attempt.adapterId === "direct:proof:no-mutation")) {
-    return "proof";
-  }
-  if (loop.cost.actualUsd === 0) {
-    return "proof";
-  }
-  return "not recorded";
-}
-
 
 function latestExitReason(loop: LoopRecord): string {
   const exitEvent = [...loop.events].reverse().find((event) => event.type === "run.completed");

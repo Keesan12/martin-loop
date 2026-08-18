@@ -178,9 +178,26 @@ interface GeminiJsonOutput {
   };
 }
 
+const EMBEDDED_PRICING_VERSION = "embedded-v1";
+
+function extractClaudeObservedModel(stdout: string): string | undefined {
+  for (const line of stdout.split(/\r?\n/u)) {
+    try {
+      const event = JSON.parse(line) as Record<string, unknown>;
+      if (event.type === "system" && event.subtype === "init" && typeof event.model === "string") {
+        return event.model;
+      }
+    } catch {
+      // Ignore non-JSON stream fragments.
+    }
+  }
+  return undefined;
+}
+
 function extractUsage(
   parsed: ClaudeJsonOutput | undefined,
-  modelLabel: string | undefined
+  modelLabel: string | undefined,
+  modelSource: "provider_reported" | "explicit_override" | "agent_default"
 ): MartinAdapterResult["usage"] {
   if (!parsed?.usage) {
     return normalizeUsage({
@@ -221,15 +238,24 @@ function extractUsage(
     tokensIn,
     tokensOut,
     cachedInputTokens,
-    provenance: hasAuthoritativeCost ? "actual" : pricingResolution.pricing ? "estimated" : "unavailable",
+    provenance: hasAuthoritativeCost ? "actual" : pricingResolution.pricing ? "calculated" : "unavailable",
     providerSettlement: {
       providerId: "claude",
-      model: modelLabel ?? "claude",
+      ...(modelLabel ? { model: modelLabel } : {}),
       transport: "cli",
       source: "claude_json",
       inputTokens: promptTokens + cacheCreationInputTokens,
       cachedInputTokens,
+      cacheCreationInputTokens,
       outputTokens: tokensOut,
+      billingMode: "unknown",
+      modelSource,
+      pricingSource: hasAuthoritativeCost
+        ? "provider_reported_total"
+        : pricingResolution.pricing
+          ? "static_catalog"
+          : "none",
+      ...(pricingResolution.pricing ? { pricingVersion: EMBEDDED_PRICING_VERSION } : {}),
       rawUsageAvailable: true,
       settledAt: new Date().toISOString()
     }
@@ -279,7 +305,7 @@ function extractCodexJsonlResult(
         provenance: "unavailable",
         providerSettlement: {
           providerId: "codex",
-          model: modelLabel ?? "codex",
+          ...(modelLabel ? { model: modelLabel } : {}),
           transport: "cli",
           source: "unavailable",
           inputTokens: 0,
@@ -297,9 +323,9 @@ function extractCodexJsonlResult(
   const reasoningOutputTokens = latestTurnCompleted.usage.reasoning_output_tokens ?? 0;
   const tokensIn = promptTokens + cachedInputTokens;
   const tokensOut = outputTokens + reasoningOutputTokens;
+  const exactPricing = modelLabel ? MODEL_PRICING[modelLabel] : undefined;
   const pricing =
-    (modelLabel ? MODEL_PRICING[modelLabel] : undefined) ??
-    MODEL_PRICING["codex"] ??
+    exactPricing ?? MODEL_PRICING["codex"] ??
     { inputPer1K: BLENDED_INPUT_COST_PER_1K, outputPer1K: BLENDED_OUTPUT_COST_PER_1K };
   const actualUsd =
     (promptTokens / 1000) * pricing.inputPer1K +
@@ -314,16 +340,20 @@ function extractCodexJsonlResult(
       tokensOut,
       cachedInputTokens,
       reasoningTokensOut: reasoningOutputTokens,
-      provenance: "actual",
+      provenance: exactPricing ? "calculated" : "estimated",
       providerSettlement: {
         providerId: "codex",
-        model: modelLabel ?? "codex",
+        ...(modelLabel ? { model: modelLabel } : {}),
         transport: "cli",
         source: "codex_jsonl",
         inputTokens: promptTokens,
         cachedInputTokens,
         outputTokens,
         reasoningOutputTokens,
+        billingMode: "unknown",
+        modelSource: modelLabel ? "explicit_override" : "agent_default",
+        pricingSource: exactPricing ? "static_catalog" : "blended_fallback",
+        pricingVersion: EMBEDDED_PRICING_VERSION,
         rawUsageAvailable: true,
         settledAt: new Date().toISOString()
       }
@@ -367,7 +397,7 @@ function extractGeminiJsonResult(
         provenance: "unavailable",
         providerSettlement: {
           providerId: "gemini",
-          model: modelLabel ?? "flash",
+          ...(modelLabel ? { model: modelLabel } : {}),
           transport: "cli",
           source: "unavailable",
           inputTokens: 0,
@@ -397,16 +427,20 @@ function extractGeminiJsonResult(
       tokensOut,
       cachedInputTokens,
       reasoningTokensOut: reasoningOutputTokens,
-      provenance: "actual",
+      provenance: "estimated",
       providerSettlement: {
         providerId: "gemini",
-        model: modelLabel ?? "flash",
+        ...(modelLabel ? { model: modelLabel } : {}),
         transport: "cli",
         source: "gemini_json",
         inputTokens: promptTokens,
         cachedInputTokens,
         outputTokens,
         reasoningOutputTokens,
+        billingMode: "unknown",
+        modelSource: modelLabel ? "explicit_override" : "agent_default",
+        pricingSource: "blended_fallback",
+        pricingVersion: EMBEDDED_PRICING_VERSION,
         rawUsageAvailable: true,
         settledAt: new Date().toISOString()
       }
@@ -796,7 +830,7 @@ export interface GeminiCliAdapterOptions {
   timeoutMs?: number;
   verifyTimeoutMs?: number;
   label?: string;
-  /** Override the model passed via --model flag. Defaults to the Gemini `flash` alias. */
+  /** Explicit model override passed via --model. Omitted to preserve Gemini Auto. */
   model?: string;
   /** Approval mode for headless Gemini runs. Defaults to yolo for autonomous execution. */
   approvalMode?: "default" | "auto_edit" | "yolo" | "plan";
@@ -826,7 +860,7 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
     label: options.label ?? `${options.command} CLI adapter`,
     metadata: {
       providerId: options.command,
-      model: options.model ?? options.command,
+      ...(options.model ? { model: options.model } : {}),
       transport: "cli",
       capabilities: createAdapterCapabilities({
         preflight: true,
@@ -1016,8 +1050,19 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
         parsed?.result ??
         agentResult.stdout.trim();
       const summary = truncate(agentText, 2000);
+      const observedClaudeModel = options.streamingUsageCap
+        ? extractClaudeObservedModel(agentResult.stdout)
+        : undefined;
       const usage = parsed?.usage
-        ? extractUsage(parsed, options.model)
+        ? extractUsage(
+            parsed,
+            observedClaudeModel ?? options.model,
+            observedClaudeModel
+              ? "provider_reported"
+              : options.model
+                ? "explicit_override"
+                : "agent_default"
+          )
         : codexJsonlResult?.usage ??
           geminiJsonResult?.usage ??
           normalizeUsage({
@@ -1030,7 +1075,7 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
               options.command === "codex"
                 ? {
                     providerId: "codex",
-                    model: options.model ?? "codex",
+                    ...(options.model ? { model: options.model } : {}),
                     transport: "cli",
                     source: "estimated_fallback",
                     inputTokens: estimatedUsage.tokensIn,
@@ -1041,7 +1086,7 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
                 : options.command === "gemini"
                   ? {
                       providerId: "gemini",
-                      model: options.model ?? "flash",
+                      ...(options.model ? { model: options.model } : {}),
                       transport: "cli",
                       source: "estimated_fallback",
                       inputTokens: estimatedUsage.tokensIn,
@@ -1208,19 +1253,6 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
           ...(classHint ? { classHint } : {})
         }
       };
-    },
-
-    /**
-     * Return a new adapter instance with a different model.
-     * Used by run-martin.ts when a change_model intervention fires.
-     * Model escalation order: haiku → sonnet → opus (cheapest-first, escalate on repeated failure).
-     */
-    withModel(newModel: string): MartinAdapter {
-      return createAgentCliAdapter({
-        ...options,
-        model: newModel,
-        adapterIdSuffix: `${options.adapterIdSuffix ?? options.command}:${newModel}`
-      });
     }
   };
 
@@ -1253,7 +1285,7 @@ export function createClaudeCliAdapter(options: ClaudeCliAdapterOptions = {}): M
   return createAgentCliAdapter({
     command: "claude",
     adapterIdSuffix: "claude",
-    model: options.model ?? "claude-sonnet-4-6",
+    model: options.model,
     label: options.label ?? "Claude CLI adapter",
     workingDirectory: options.workingDirectory,
     timeoutMs: options.timeoutMs,
@@ -1307,7 +1339,7 @@ export function createCodexCliAdapter(options: CodexCliAdapterOptions = {}): Mar
   return createAgentCliAdapter({
     command,
     adapterIdSuffix: "codex",
-    model: options.model ?? "codex",
+    model: options.model,
     label: options.label ?? "Codex CLI adapter",
     workingDirectory,
     timeoutMs: options.timeoutMs,
@@ -1331,7 +1363,7 @@ export function createCodexCliAdapter(options: CodexCliAdapterOptions = {}): Mar
 // ---------------------------------------------------------------------------
 
 /**
- * Spawns `gemini --model <model> --prompt "" --approval-mode <mode> --output-format json [...]`.
+ * Spawns `gemini [--model <explicit-model>] --prompt "" --approval-mode <mode> --output-format json [...]`.
  *
  * The prompt is delivered via stdin while forcing headless mode with `--prompt ""`,
  * which keeps large MartinLoop prompts off the command line on Windows.
@@ -1340,14 +1372,13 @@ export function createCodexCliAdapter(options: CodexCliAdapterOptions = {}): Mar
  *   npm install -g @google/gemini-cli
  */
 export function createGeminiCliAdapter(options: GeminiCliAdapterOptions = {}): MartinAdapter {
-  const model = options.model ?? "flash";
   const approvalMode = options.approvalMode ?? "yolo";
   const extraArgs = options.extraArgs ?? [];
 
   return createAgentCliAdapter({
     command: "gemini",
     adapterIdSuffix: "gemini",
-    model,
+    model: options.model,
     label: options.label ?? "Gemini CLI adapter",
     workingDirectory: options.workingDirectory,
     timeoutMs: options.timeoutMs,
@@ -1355,8 +1386,7 @@ export function createGeminiCliAdapter(options: GeminiCliAdapterOptions = {}): M
     supportsJsonOutput: false,
     spawnImpl: options.spawnImpl,
     argsBuilder: () => [
-      "--model",
-      model,
+      ...(options.model ? ["--model", options.model] : []),
       "--prompt",
       "",
       "--approval-mode",

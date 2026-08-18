@@ -677,12 +677,12 @@ function leaveArcadeMode(): void {
 // Public API
 // ─────────────────────────────────────────────────────────────────────────────
 
-export interface ArcadeOptions {
+export interface ArcadeOptions<T = unknown> {
   /**
    * Short label shown in the run-complete overlay beneath the ∞ header.
    * E.g. "verified · 1 attempt · $0.18 spent"
    */
-  runResultLabel?: string;
+  runResultLabel?: string | ((result: T) => string);
 }
 
 /**
@@ -694,7 +694,10 @@ export interface ArcadeOptions {
  *   - CI environment variable is set
  *   - Terminal is too small (< 50 cols or < 18 rows)
  */
-export function playWhileWaiting<T>(task: Promise<T>, opts: ArcadeOptions = {}): Promise<T> {
+export function playWhileWaiting<T>(
+  task: Promise<T>,
+  opts: ArcadeOptions<T> = {},
+): Promise<T> {
   const cols = process.stdout.columns ?? 0;
   const rows = process.stdout.rows    ?? 0;
 
@@ -814,7 +817,12 @@ export function playWhileWaiting<T>(task: Promise<T>, opts: ArcadeOptions = {}):
       // Notify game when the background task completes
       if (taskDone && !state.runDone) {
         state.runDone  = true;
-        state.runLabel = opts.runResultLabel ?? "run complete.";
+        state.runLabel =
+          typeof opts.runResultLabel === "function" && taskResult !== undefined
+            ? opts.runResultLabel(taskResult)
+            : typeof opts.runResultLabel === "string"
+              ? opts.runResultLabel
+              : "run finished";
         state.status   = "run_complete";
         explode(state, Math.floor(gameCols / 2), Math.floor(gameRows / 2), P.player, 20);
       }

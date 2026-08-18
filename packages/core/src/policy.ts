@@ -263,7 +263,7 @@ export function classifyFailure(input: {
       failureClass: "logic_error",
       rationale: "Oscillating failure pattern detected — switching strategy to break the cycle.",
       retryable: true,
-      recommendedIntervention: "change_model"
+      recommendedIntervention: "compress_context"
     };
   }
 
@@ -272,7 +272,7 @@ export function classifyFailure(input: {
     rationale: "The loop is still failing to produce a correct implementation.",
     retryable: true,
     recommendedIntervention:
-      repeatedFailure === "logic_error" ? "change_model" : "compress_context"
+      "compress_context"
   };
 }
 
@@ -495,7 +495,7 @@ function mapClassHintToAssessment(
         rationale: "Structural evidence: suspiciously short or trivial agent response.",
         retryable: true,
         recommendedIntervention:
-          repeatedFailure === "hallucination" ? "change_model" : "run_verifier"
+          repeatedFailure === "hallucination" ? "compress_context" : "run_verifier"
       };
     case "verification_failure":
     case "test_regression":
@@ -511,7 +511,7 @@ function mapClassHintToAssessment(
         failureClass: classHint,
         rationale: "Structural hint provided by adapter.",
         retryable: true,
-        recommendedIntervention: repeatedFailure ? "change_model" : "compress_context"
+        recommendedIntervention: "compress_context"
       };
   }
 }
@@ -749,7 +749,7 @@ export function selectRecoveryRecipe(evidence: EvidenceVector): RecoveryDecision
       return {
         recipe: "strategy_swap",
         rationale: "Very low diff novelty across repeated retries. Swap strategy.",
-        intervention: "change_model"
+        intervention: "compress_context"
       };
     }
 
@@ -764,7 +764,7 @@ export function selectRecoveryRecipe(evidence: EvidenceVector): RecoveryDecision
     return {
       recipe: "downgrade_model",
       rationale: "Cost efficiency is degrading or retries are exhausted. Downgrade the model.",
-      intervention: "change_model"
+      intervention: "compress_context"
     };
   }
 

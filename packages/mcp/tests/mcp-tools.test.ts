@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { writeReceiptIntegrityMaterial, type RunStore } from "@martin/core";
-import { createLoopRecord } from "@martin/contracts";
+import { createLoopRecord, type CostProvenance } from "@martin/contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { getStatusTool } from "../src/tools/get-status.js";
@@ -21,7 +21,13 @@ import { martinTriageRunsTool } from "../src/tools/triage-runs.js";
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeLoopRecord(overrides: { costUsd?: number; avoidedUsd?: number } = {}) {
+function makeLoopRecord(
+  overrides: {
+    costUsd?: number;
+    avoidedUsd?: number;
+    provenance?: CostProvenance;
+  } = {}
+) {
   const loop = createLoopRecord({
     workspaceId: "ws_test",
     projectId: "proj_test",
@@ -40,7 +46,8 @@ function makeLoopRecord(overrides: { costUsd?: number; avoidedUsd?: number } = {
       actualUsd: overrides.costUsd ?? 1.5,
       avoidedUsd: overrides.avoidedUsd ?? 0,
       tokensIn: 400,
-      tokensOut: 200
+      tokensOut: 200,
+      ...(overrides.provenance ? { provenance: overrides.provenance } : {})
     }
   });
 
@@ -145,6 +152,15 @@ function createMemoryRunStore(runsRoot: string): RunStore {
 // ---------------------------------------------------------------------------
 
 describe("getStatusTool", () => {
+  it("carries cost provenance through status and loop-preview DTOs", async () => {
+    const loop = makeLoopRecord({ costUsd: 3, provenance: "estimated" });
+
+    const result = await getStatusTool({ loopJson: JSON.stringify(loop) });
+
+    expect(result.costProvenance).toBe("estimated");
+    expect(result.inspection.loop.costProvenance).toBe("estimated");
+  });
+
   it("returns correct loop metadata and cost state from inline JSON", async () => {
     const loop = makeLoopRecord({ costUsd: 3 });
     const result = await getStatusTool({ loopJson: JSON.stringify(loop) });
@@ -1192,7 +1208,7 @@ describe("martinTriageRunsTool", () => {
 // ---------------------------------------------------------------------------
 
 describe("runLoopTool", () => {
-  it("uses a fail-closed no-provider stub for proof-mode contract tests", async () => {
+  it("runs real verification without granting a governed claim in verification-only mode", async () => {
     await withRunsRoot(async () => {
       const originalEnv = process.env.MARTIN_LIVE;
       process.env.MARTIN_LIVE = "false";
@@ -1201,14 +1217,17 @@ describe("runLoopTool", () => {
           __setRunStoreOverrideForTests(store);
 
           const result = await runLoopTool({
-            objective: "Validate proof-mode stub execution",
+            objective: "Validate verification-only execution",
             verificationPlan: ["node --version"],
             maxIterations: 1,
             maxUsd: 1
           });
 
           expect(result.loopId).toMatch(/^loop_/u);
-          expect(result.verificationPassed).toBe(false);
+          expect(result.verificationPassed).toBe(true);
+          expect(result.executionMode).toBe("verification_only");
+          expect(result.governanceClaimEligible).toBe(false);
+          expect(result.costProvenance).toBe("actual");
         });
       } finally {
         if (originalEnv === undefined) {
@@ -1251,8 +1270,7 @@ describe("runLoopTool", () => {
     });
   });
 
-  it("returns a loop outcome in stub mode (MARTIN_LIVE=false)", async () => {
-    // Set stub mode so the adapter doesn't try to spawn claude
+  it("labels MARTIN_LIVE=false as verification-only evidence", async () => {
     const originalEnv = process.env.MARTIN_LIVE;
     process.env.MARTIN_LIVE = "false";
 
@@ -1267,12 +1285,21 @@ describe("runLoopTool", () => {
           maxUsd: 5
         });
 
-        // Stub adapter returns failed, so loop exits with budget_exit or diminishing_returns
         expect(result.loopId).toMatch(/^loop_/u);
         expect(typeof result.attempts).toBe("number");
         expect(typeof result.costUsd).toBe("number");
         expect(result.budget.softLimitUsd).toBe(5);
         expect(["completed", "exited", "failed"]).toContain(result.status);
+        expect(result.executionMode).toBe("verification_only");
+        expect(result.governanceClaimEligible).toBe(false);
+
+        const loopRecord = JSON.parse(
+          await readFile(result.inspection.loopRecordPath, "utf8")
+        ) as { metadata?: Record<string, string> };
+        expect(loopRecord.metadata).toMatchObject({
+          executionMode: "verification_only",
+          governanceClaimEligible: "false"
+        });
       });
     } finally {
       if (originalEnv === undefined) {

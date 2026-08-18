@@ -3,7 +3,7 @@
   "manifest_version": "0.3",
   "name": "martinloop",
   "display_name": "MartinLoop",
-  "version": "0.3.9",
+  "version": "0.5.1",
   "description": "Independent governance and authorization layer for autonomous AI coding-agent execution.",
   "long_description": "MartinLoop governs autonomous software work with budgets, verification gates, controlled execution, recovery, rollback evidence, and auditable run receipts. It runs locally so it can inspect and govern work inside user-approved repositories without uploading source code to a hosted MartinLoop service.",
   "author": {"name":"MartinLoop","email":"keesan@martinloop.com","url":"https://martinloop.com"},

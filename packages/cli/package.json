@@ -10,7 +10,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "pnpm --filter @martin/contracts build && pnpm --filter @martin/core build && pnpm --filter @martin/adapters build && tsc -p tsconfig.build.json",
+    "build": "pnpm --filter @martin/contracts build && pnpm --filter @martin/presentation build && pnpm --filter @martin/core build && pnpm --filter @martin/adapters build && tsc -p tsconfig.build.json",
     "test": "vitest run",
     "lint": "tsc -p tsconfig.json --noEmit",
     "dev": "tsx --tsconfig tsconfig.json src/bin/martin.ts",
@@ -19,6 +19,7 @@
   "dependencies": {
     "@martin/adapters": "workspace:*",
     "@martin/core": "workspace:*",
-    "@martin/contracts": "workspace:*"
+    "@martin/contracts": "workspace:*",
+    "@martin/presentation": "workspace:*"
   }
 }

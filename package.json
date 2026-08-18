@@ -1,7 +1,7 @@
 {
   "name": "martin-loop",
   "private": false,
-  "version": "0.5.0",
+  "version": "0.5.1",
   "type": "module",
   "description": "Open-source command center for governed AI coding agents with built-in onboarding, hard gates, MCP, and shareable run receipts.",
   "packageManager": "pnpm@10.33.0",
@@ -67,7 +67,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "pnpm --filter @martin/contracts build && pnpm --filter @martin/core build && pnpm --filter @martin/adapters build && pnpm --filter @martin/benchmarks build && pnpm --filter @martin/cli build && pnpm --filter @martinloop/mcp build && node ./scripts/build-public-facade.mjs",
+    "build": "pnpm --filter @martin/contracts build && pnpm --filter @martin/core build && pnpm --filter @martin/adapters build && pnpm --filter @martin/presentation build && pnpm --filter @martin/benchmarks build && pnpm --filter @martin/cli build && pnpm --filter @martinloop/mcp build && node ./scripts/build-public-facade.mjs",
     "bench:build": "pnpm --filter @martin/benchmarks build",
     "bench:test": "pnpm --filter @martin/benchmarks test",
     "bench:eval": "pnpm --filter @martin/benchmarks eval",
@@ -79,6 +79,7 @@
     "release:truth:generate": "node scripts/public-release-truth.mjs",
     "release:truth:check": "node scripts/public-release-truth.mjs --check",
     "product-truth:validate": "node scripts/validate-product-truth.mjs",
+    "install:links": "node scripts/generate-install-links.mjs --markdown",
     "public:copy-scan": "node ./scripts/public-copy-scan.mjs",
     "public:portability-guard": "node ./scripts/public-portability-guard.mjs",
     "public:readme-cta-guard": "node ./scripts/readme-cta-guard.mjs",

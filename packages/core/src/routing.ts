@@ -22,14 +22,6 @@ export interface RouteDecision {
   blockedSteps: string[];
   compressed: boolean;
   compressionSummary?: string;
-  /**
-   * Recommended model tier based on task complexity and route.
-   * Follows cost-aware routing: direct → haiku/sonnet, manager → sonnet,
-   * consensus → opus. Never use a more expensive model than the task needs.
-   */
-  recommendedModelTier: "haiku" | "sonnet" | "opus";
-  /** Estimated cost saving vs always using sonnet */
-  estimatedSavingVsSonnetUsd: number;
 }
 
 export interface RouteClassificationInput {
@@ -142,174 +134,6 @@ function calculateDirectConfidence(signals: ComplexitySignals, input: RouteClass
 // Public API
 // ---------------------------------------------------------------------------
 
-// ---------------------------------------------------------------------------
-// Cost-aware model tier routing
-//
-// Engine-agnostic tier system — each engine maps tiers to real model IDs.
-// Never pay for reasoning/orchestration on simple tasks.
-//
-// Tier → concrete model per engine:
-//   haiku  → claude-haiku-4-5, gpt-4o-mini, gemini-2.5-flash, deepseek-chat, qwen3-8b,  llama-3.1-8b
-//   sonnet → claude-sonnet-4-6, gpt-4o,     gemini-2.5-pro,  deepseek-r1,   qwen3-32b, llama-3.3-70b
-//   opus   → claude-opus-4-6,  o3,          gemini-2.5-ultra, deepseek-r1-671b, qwen3-235b, llama-3.1-405b
-//
-// Pricing reference (USD per 1M tokens, approx 2026):
-//   haiku:  $0.80 input / $4.00 output  (~1x baseline)
-//   sonnet: $3.00 input / $15.00 output (~4x haiku)
-//   opus:   $15.00 input / $75.00 output (~19x haiku)
-// ---------------------------------------------------------------------------
-
-const SONNET_AVG_COST_PER_USD_BUDGET = 0.35; // sonnet uses ~35% of budget on average
-const HAIKU_AVG_COST_PER_USD_BUDGET = 0.10;  // haiku uses ~10% — ~3.5x cheaper
-
-function selectModelTier(
-  mode: "direct" | "manager" | "consensus"
-): RouteDecision["recommendedModelTier"] {
-  // Route already encodes complexity. Direct = passed the simplicity check → haiku.
-  if (mode === "direct") return "haiku";
-  if (mode === "manager") return "sonnet";
-  return "opus";
-}
-
-/**
- * Resolve a tier to a concrete model ID for a specific engine.
- * Allows downstream adapters to switch models automatically.
- */
-export function resolveModelForTier(
-  tier: RouteDecision["recommendedModelTier"],
-  engine: "claude" | "codex" | "gemini" | "openai" | string
-): string {
-  const matrix: Record<string, Record<string, string>> = {
-    claude: {
-      haiku:  "claude-haiku-4-5-20251001",
-      sonnet: "claude-sonnet-4-6",
-      opus:   "claude-opus-4-6"
-    },
-    codex: {
-      haiku:  "gpt-4o-mini",
-      sonnet: "gpt-4.1",
-      opus:   "o3"
-    },
-    gemini: {
-      haiku:  "gemini-2.5-flash",
-      sonnet: "gemini-2.5-pro",
-      opus:   "gemini-2.5-ultra"
-    },
-    openai: {
-      haiku:  "gpt-4o-mini",
-      sonnet: "gpt-4o",
-      opus:   "o3"
-    },
-    deepseek: {
-      haiku:  "deepseek-chat",
-      sonnet: "deepseek-r1",
-      opus:   "deepseek-r1"
-    },
-    qwen: {
-      haiku:  "qwen/qwen3-8b",
-      sonnet: "qwen/qwen3-32b",
-      opus:   "qwen/qwen3-235b-a22b"
-    },
-    llama: {
-      haiku:  "meta-llama/llama-3.1-8b-instruct",
-      sonnet: "meta-llama/llama-3.3-70b-instruct",
-      opus:   "meta-llama/llama-3.1-405b-instruct"
-    }
-  };
-
-  const engineKey = engine.toLowerCase().split("-")[0] ?? engine;
-  const claudeMatrix = matrix.claude;
-  return matrix[engineKey]?.[tier] ?? claudeMatrix?.[tier] ?? "claude-sonnet-4-6";
-}
-
-function estimateSavingVsSonnet(tier: RouteDecision["recommendedModelTier"], budgetUsd: number): number {
-  if (tier === "sonnet") return 0;
-  if (tier === "haiku") return Math.round((SONNET_AVG_COST_PER_USD_BUDGET - HAIKU_AVG_COST_PER_USD_BUDGET) * budgetUsd * 100) / 100;
-  // opus costs more than sonnet — negative saving
-  return Math.round(-1 * SONNET_AVG_COST_PER_USD_BUDGET * budgetUsd * 0.5 * 100) / 100;
-}
-
-/**
- * Available engine registry — describes what's installed and its capability.
- * Populated by doctor/preflight from PATH and env var detection.
- */
-export interface AvailableEngine {
-  id: string;
-  available: boolean;
-  /** Cost tier: cheap < mid < expensive */
-  costTier: "cheap" | "mid" | "expensive";
-  /** Capability tier: determines which task types this engine can handle */
-  capabilityTier: "haiku" | "sonnet" | "opus";
-}
-
-
-/**
- * Select the best available engine for a given tier requirement.
- *
- * When multiple engines are available, picks the cheapest that meets
- * the capability requirement. Falls back gracefully:
- * - If required tier unavailable, upgrades to next tier of same engine
- * - If only one engine family available, uses its best equivalent
- *
- * @param requiredTier - Minimum capability tier needed
- * @param availableEngines - What's installed and authenticated
- * @returns Best engine ID and concrete model to use
- */
-export function selectBestEngine(
-  requiredTier: RouteDecision["recommendedModelTier"],
-  availableEngines: AvailableEngine[]
-): { engineId: string; model: string; reasoning: string } {
-  const available = availableEngines.filter((e) => e.available);
-
-  if (available.length === 0) {
-    // Nothing detected — default to claude (user must install)
-    return {
-      engineId: "claude",
-      model: resolveModelForTier(requiredTier, "claude"),
-      reasoning: "No engines detected. Defaulting to claude. Run martin doctor for setup instructions."
-    };
-  }
-
-  const tierRank: Record<AvailableEngine["capabilityTier"], number> = {
-    haiku: 0, sonnet: 1, opus: 2
-  };
-  const requiredRank = tierRank[requiredTier];
-
-  // Find the cheapest engine that meets or exceeds the required tier
-  const eligible = available
-    .filter((e) => tierRank[e.capabilityTier] >= requiredRank)
-    .sort((a, b) => {
-      // Sort by cost (cheap first), then by exact tier match
-      const costOrder: Record<AvailableEngine["costTier"], number> = { cheap: 0, mid: 1, expensive: 2 };
-      if (costOrder[a.costTier] !== costOrder[b.costTier]) {
-        return costOrder[a.costTier] - costOrder[b.costTier];
-      }
-      // Prefer exact tier match over overqualified
-      const aExact = a.capabilityTier === requiredTier ? 0 : 1;
-      const bExact = b.capabilityTier === requiredTier ? 0 : 1;
-      return aExact - bExact;
-    });
-
-  if (eligible.length > 0) {
-    const best = eligible[0]!;
-    const model = resolveModelForTier(requiredTier, best.id);
-    return {
-      engineId: best.id,
-      model,
-      reasoning: `Selected ${best.id} (${model}) as cheapest available engine for ${requiredTier}-tier task.`
-    };
-  }
-
-  // All available engines are below required tier — upgrade to best available
-  const best = available.sort((a, b) => tierRank[b.capabilityTier] - tierRank[a.capabilityTier])[0]!;
-  const model = resolveModelForTier(best.capabilityTier, best.id);
-  return {
-    engineId: best.id,
-    model,
-    reasoning: `No ${requiredTier}-tier engine available. Upgrading to ${best.id} (${model}) — best available.`
-  };
-}
-
 export function classifyRoute(input: RouteClassificationInput): RouteDecision {
   const policy = { ...DEFAULT_ROUTING_POLICY, ...input.policy };
   const signals = extractComplexitySignals(input);
@@ -320,7 +144,6 @@ export function classifyRoute(input: RouteClassificationInput): RouteDecision {
 
   // Policy override: forced mode
   if (policy.mode === "direct") {
-    const tier = selectModelTier("direct");
     return {
       selectedMode: "direct",
       confidence: 1,
@@ -329,14 +152,11 @@ export function classifyRoute(input: RouteClassificationInput): RouteDecision {
       reason: ["Policy forces direct execution mode."],
       blockedSteps: ["manager", "planner", "router", "consensus"],
       compressed: true,
-      compressionSummary: "Policy: direct mode — skipping all orchestration.",
-      recommendedModelTier: tier,
-      estimatedSavingVsSonnetUsd: estimateSavingVsSonnet(tier, input.budgetUsd)
+      compressionSummary: "Policy: direct mode — skipping all orchestration."
     };
   }
 
   if (policy.mode === "consensus") {
-    const tier = selectModelTier("consensus");
     return {
       selectedMode: "consensus",
       confidence: 0.5,
@@ -344,9 +164,7 @@ export function classifyRoute(input: RouteClassificationInput): RouteDecision {
       expectedPreworkBurnPct: 35,
       reason: ["Policy forces consensus mode."],
       blockedSteps: [],
-      compressed: false,
-      recommendedModelTier: tier,
-      estimatedSavingVsSonnetUsd: estimateSavingVsSonnet(tier, input.budgetUsd)
+      compressed: false
     };
   }
 
@@ -359,7 +177,6 @@ export function classifyRoute(input: RouteClassificationInput): RouteDecision {
     if (signals.scopeRestricted) reason.push("Path scope is restricted.");
     blockedSteps.push("manager", "consensus");
 
-    const tier = selectModelTier("direct");
     return {
       selectedMode: "direct",
       confidence: directConfidence,
@@ -368,9 +185,7 @@ export function classifyRoute(input: RouteClassificationInput): RouteDecision {
       reason,
       blockedSteps,
       compressed: true,
-      compressionSummary: `Compressed from manager→planner→worker to direct worker. Estimated savings: ${String(Math.round(input.budgetUsd * 0.3 * 100) / 100)} USD.`,
-      recommendedModelTier: tier,
-      estimatedSavingVsSonnetUsd: estimateSavingVsSonnet(tier, input.budgetUsd)
+      compressionSummary: `Compressed from manager→planner→worker to direct worker. Estimated savings: ${String(Math.round(input.budgetUsd * 0.3 * 100) / 100)} USD.`
     };
   }
 
@@ -382,7 +197,6 @@ export function classifyRoute(input: RouteClassificationInput): RouteDecision {
 
   const needsConsensus = signals.hasSecurityKeywords && signals.hasMigrationKeywords;
   const mode = needsConsensus ? "consensus" : "manager";
-  const tier = selectModelTier(mode);
 
   return {
     selectedMode: mode,
@@ -391,9 +205,7 @@ export function classifyRoute(input: RouteClassificationInput): RouteDecision {
     expectedPreworkBurnPct: needsConsensus ? 40 : 25,
     reason,
     blockedSteps: needsConsensus ? [] : ["consensus"],
-    compressed: false,
-    recommendedModelTier: tier,
-    estimatedSavingVsSonnetUsd: estimateSavingVsSonnet(tier, input.budgetUsd)
+    compressed: false
   };
 }
 

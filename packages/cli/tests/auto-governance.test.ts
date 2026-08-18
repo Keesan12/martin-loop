@@ -218,7 +218,7 @@ describe("martin estimate command", () => {
         process.platform === "win32" ? "cmd /c exit 0" : "true"
       ]);
 
-      expect(result.exitCode).toBe(9);
+      expect(result.exitCode).toBe(7);
       const payload = JSON.parse(result.stdout) as {
         effectivePolicy: { configPath: string; budget: { maxUsd: number; softLimitUsd: number; maxIterations: number; maxTokens: number } };
         loop: { budget: { maxUsd: number; softLimitUsd: number; maxIterations: number; maxTokens: number } };
@@ -395,9 +395,9 @@ describe("Claude adapter MCP isolation", () => {
     expect(adapter.metadata.model).toBe("claude-sonnet-4-6");
   });
 
-  it("default model is claude-sonnet-4-6", async () => {
+  it("leaves the default model to the Claude CLI", async () => {
     const { createClaudeCliAdapter } = await import("../../adapters/src/claude-cli.js");
     const adapter = createClaudeCliAdapter();
-    expect(adapter.metadata.model).toBe("claude-sonnet-4-6");
+    expect(adapter.metadata.model).toBeUndefined();
   });
 });

@@ -17,6 +17,14 @@ export const VERIFIED_HANDOFF_OUTCOMES = [
 export type VerifiedHandoffOutcome =
   (typeof VERIFIED_HANDOFF_OUTCOMES)[number];
 
+export const EXECUTION_MODES = [
+  "governed",
+  "verification_only",
+  "simulated",
+] as const;
+
+export type ExecutionMode = (typeof EXECUTION_MODES)[number];
+
 export const EVIDENCE_STATUSES = [
   "PASSED",
   "FAILED",
@@ -121,6 +129,10 @@ export interface VerifiedHandoffV1 {
     verificationPlan: string[];
   };
   outcome: VerifiedHandoffOutcome;
+  /** Added compatibly in 1.0.0; missing legacy values must be treated as non-governed. */
+  executionMode?: ExecutionMode;
+  /** Only an explicit true value is eligible for a governed VERIFIED claim. */
+  governanceClaimEligible?: boolean;
   sourceStatus: {
     status: LoopStatus;
     lifecycleState: LoopLifecycleState;

@@ -63,8 +63,8 @@ assertInvariant(
   "packages/mcp/src/server.ts"
 );
 assertInvariant(
-  "host coverage includes cursor/copilot/continue",
-  /"cursor"\s*\|\s*"copilot"\s*\|\s*"continue"/u,
+  "host coverage includes codex/claude/cursor/vscode",
+  /export type MartinMcpHost = [^;]*"codex"[^;]*"claude"[^;]*"cursor"[^;]*"vscode"[^;]*;/u,
   "packages/cli/src/mcp-config.ts"
 );
 assertInvariant(

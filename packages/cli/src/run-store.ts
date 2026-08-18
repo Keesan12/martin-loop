@@ -6,6 +6,7 @@ import path from "node:path";
 import {
   buildVerifiedHandoff,
   decideCircuitBreak,
+  deriveVerifiedHandoffExecutionBoundary,
   resolveRunsRoot,
   verifierActuallyPassed,
   verifyReceiptIntegrityFromFiles,
@@ -267,10 +268,15 @@ export function readCostProvenance(loop: LoopRecord): CostProvenance {
   return loop.cost.provenance ?? "unavailable";
 }
 
+export const deriveLoopExecutionBoundary =
+  deriveVerifiedHandoffExecutionBoundary;
+
 export function describeCostProvenance(provenance: CostProvenance): string {
   switch (provenance) {
     case "actual":
       return "provider-settled actual";
+    case "calculated":
+      return "calculated from observed usage";
     case "estimated":
       return "estimated";
     case "unavailable":

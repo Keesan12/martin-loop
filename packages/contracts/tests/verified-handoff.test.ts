@@ -4,12 +4,21 @@
 import { describe, expect, it } from "vitest";
 import {
   EVIDENCE_STATUSES,
+  EXECUTION_MODES,
   TEST_INTEGRITY_STATUSES,
   TEST_INTEGRITY_VERDICTS,
   VERIFIED_HANDOFF_OUTCOMES,
 } from "../src/index.js";
 
 describe("VerifiedHandoffV1 constants", () => {
+  it("keeps execution provenance separate from cost provenance", () => {
+    expect(EXECUTION_MODES).toEqual([
+      "governed",
+      "verification_only",
+      "simulated",
+    ]);
+  });
+
   it("keeps the three canonical outcomes stable", () => {
     expect(VERIFIED_HANDOFF_OUTCOMES).toEqual([
       "VERIFIED",

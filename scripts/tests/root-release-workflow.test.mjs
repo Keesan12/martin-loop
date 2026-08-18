@@ -21,6 +21,11 @@ test("root release workflow uses GitHub Actions trusted publishing without npm t
   assert.match(workflow, /pnpm\/action-setup@b0f76dfb45f55f8421693e4803ac7bb65143bd34/);
   assert.match(workflow, /actions\/setup-node@v6/);
   assert.match(workflow, /softprops\/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b/);
+  assert.match(workflow, /pnpm --filter @martinloop\/mcp mcpb:build/);
+  assert.match(workflow, /pnpm --filter @martinloop\/mcp mcpb:validate/);
+  assert.match(workflow, /pnpm --filter @martinloop\/mcp mcpb:smoke/);
+  assert.match(workflow, /packages\/mcp\/dist-mcpb\/martinloop-\*\.mcpb/);
+  assert.match(workflow, /packages\/mcp\/dist-mcpb\/martinloop-\*\.mcpb\.sha256/);
 
   assert.doesNotMatch(workflow, /NODE_AUTH_TOKEN/);
   assert.doesNotMatch(workflow, /NPM_TOKEN/);

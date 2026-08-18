@@ -131,24 +131,35 @@ export interface LoopCost {
   estimatedUsd?: number;
   provenance?: CostProvenance;
   providerSettlement?: ProviderUsageSettlement;
+  savingsBaseline?: {
+    usd: number;
+    source: "measured_control" | "operator_supplied" | "fixture";
+    provenance: CostProvenance;
+  };
 }
 
 export type UsageSettlementSource =
   | "claude_json"
   | "codex_jsonl"
   | "gemini_json"
+  | "openai_compatible_json"
   | "estimated_fallback"
   | "unavailable";
 
 export interface ProviderUsageSettlement {
   providerId: string;
-  model: string;
+  model?: string;
   transport?: "cli" | "http" | "routed_http";
   source: UsageSettlementSource;
   inputTokens: number;
   cachedInputTokens?: number;
   outputTokens: number;
   reasoningOutputTokens?: number;
+  cacheCreationInputTokens?: number;
+  billingMode?: "metered_api" | "subscription" | "local_unmetered" | "unknown";
+  modelSource?: "provider_reported" | "explicit_override" | "provider_configured" | "agent_default" | "unavailable";
+  pricingSource?: "provider_reported_total" | "static_catalog" | "blended_fallback" | "none";
+  pricingVersion?: string;
   rawUsageAvailable: boolean;
   settledAt: string;
 }
@@ -247,7 +258,7 @@ export interface LoopAttempt {
   attemptId: string;
   index: number;
   adapterId: string;
-  model: string;
+  model?: string;
   startedAt: string;
   completedAt?: string;
   summary?: string;
@@ -733,7 +744,7 @@ export interface MachineState {
  * Cost provenance label — every budget metric must carry this.
  * Never conflate actual with estimated or unavailable.
  */
-export type CostProvenance = "actual" | "estimated" | "unavailable";
+export type CostProvenance = "actual" | "calculated" | "estimated" | "unavailable";
 
 /**
  * Per-attempt budget preflight estimate produced before admission.
@@ -958,12 +969,14 @@ export type {
 // ─── Track A — Verified Handoff ───────────────────────────────────────────────
 export {
   EVIDENCE_STATUSES,
+  EXECUTION_MODES,
   TEST_INTEGRITY_STATUSES,
   TEST_INTEGRITY_VERDICTS,
   VERIFIED_HANDOFF_OUTCOMES,
 } from "./verified-handoff.js";
 export type {
   EvidenceStatus,
+  ExecutionMode,
   TestIntegrityStatus,
   TestIntegrityVerdict,
   VerifiedHandoffCheckV1,

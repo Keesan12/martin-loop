@@ -82,7 +82,7 @@ test("assertPackedSurface rejects forbidden vendored implementation paths", () =
         "dist/index.js",
         "dist/index.d.ts",
         "dist/bin/martin-loop.js",
-        "dist/vendor/adapters/verifier-only.js",
+        "dist/vendor/adapters/stub-direct-provider.js",
       ]),
     /forbidden vendored implementation path/i,
   );

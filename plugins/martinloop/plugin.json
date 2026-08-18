@@ -1,0 +1,9 @@
+{
+  "name": "martinloop",
+  "version": "0.5.1",
+  "description": "Govern coding-agent work with budgets, stop conditions, and verifier-backed evidence.",
+  "author": { "name": "MartinLoop contributors" },
+  "homepage": "https://martinloop.com/",
+  "repository": "https://github.com/Keesan12/martin-loop",
+  "license": "Apache-2.0"
+}

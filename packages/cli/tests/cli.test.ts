@@ -2,18 +2,18 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createStubDirectProviderAdapter } from "@martin/adapters";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createLoopRecord } from "../../contracts/src/index.js";
 import { __setRunAdapterOverrideForTests, executeCli, parseCliArguments } from "../src/index.js";
+import { createTestAdapter } from "./_test-adapter.js";
 
 const STAR_CTA_HEADLINE = "⭐ MartinLoop produced a verified handoff.";
 const STAR_CTA_REPO = "github.com/Keesan12/martin-loop";
 
 function installFastRunAdapter(): void {
   __setRunAdapterOverrideForTests(
-    createStubDirectProviderAdapter({
+    createTestAdapter({
       providerId: "test",
       model: "fast",
       responder: (request) => ({
@@ -50,7 +50,7 @@ function installFastRunAdapter(): void {
 
 function installFailingRunAdapter(): void {
   __setRunAdapterOverrideForTests(
-    createStubDirectProviderAdapter({
+    createTestAdapter({
       providerId: "test",
       model: "slow-fail",
       responder: () => ({
@@ -306,7 +306,33 @@ describe("parseCliArguments", () => {
       transport: "remote",
       profile: "paid-remote",
       experimentalRemoteHosts: true,
-      dryRun: false
+      dryRun: false,
+      installGovernance: false
+    });
+  });
+
+  it("parses MCP install lifecycle commands", () => {
+    expect(parseCliArguments([
+      "mcp",
+      "verify-install",
+      "--host",
+      "vscode",
+      "--scope",
+      "project"
+    ])).toEqual({
+      command: "mcp_verify_install",
+      host: "vscode",
+      scope: "project"
+    });
+    expect(parseCliArguments(["mcp", "rollback", "--host", "cursor"])).toEqual({
+      command: "mcp_rollback",
+      host: "cursor",
+      scope: "user"
+    });
+    expect(parseCliArguments(["mcp", "uninstall", "--host", "codex"])).toEqual({
+      command: "mcp_uninstall",
+      host: "codex",
+      scope: "user"
     });
   });
 });
@@ -411,7 +437,7 @@ describe("executeCli", () => {
         process.env.MARTIN_LIVE = prevLive;
       }
 
-      expect(result.exitCode).toBe(0);
+      expect(result.exitCode).toBe(7);
 
       const payload = JSON.parse(result.stdout);
 
@@ -440,6 +466,8 @@ describe("executeCli", () => {
         maxTokens: 45000
       });
       expect(payload.loop.task.verificationPlan).toEqual(["pnpm test", "pnpm lint"]);
+      expect(payload.loop.metadata.executionMode).toBe("simulated");
+      expect(payload.loop.metadata.governanceClaimEligible).toBe("false");
     } finally {
       await rm(directory, { force: true, recursive: true });
     }
@@ -500,7 +528,7 @@ describe("executeCli", () => {
         process.env.MARTIN_LIVE = prevLive;
       }
 
-      expect(result.exitCode).toBe(0);
+      expect(result.exitCode).toBe(7);
 
       const payload = JSON.parse(result.stdout);
 
@@ -562,9 +590,9 @@ describe("executeCli", () => {
         process.env.MARTIN_LIVE = previousMartinLive;
       }
 
-      expect(result.exitCode).toBe(0);
+      expect(result.exitCode).toBe(7);
       expect(result.stdout).toContain("∞ martinloop");
-      expect(result.stdout).toContain("✓ verified");
+      expect(result.stdout).not.toContain("✓ verified");
       expect(result.stdout).not.toContain("MartinLoop saved you from a runaway bill.");
       expect(result.stdout).not.toContain("Star the repo:");
     } finally {
@@ -600,7 +628,7 @@ describe("executeCli", () => {
         process.env.MARTIN_LIVE = previousMartinLive;
       }
 
-      expect(result.exitCode).toBe(0);
+      expect(result.exitCode).toBe(7);
       expect(result.stdout).not.toContain("∞ martinloop");
       expect(result.stdout).not.toContain("Star the repo");
       expect(result.stdout).not.toContain("runaway bill");
@@ -853,7 +881,7 @@ describe("executeCli", () => {
         process.env.MARTIN_LIVE = previousMartinLive;
       }
 
-      expect(result.exitCode).toBe(0);
+      expect(result.exitCode).toBe(7);
       const payload = JSON.parse(result.stdout);
       expect(payload.loop.task.approvalPolicy).toEqual({ dependencyAdds: true });
       expect(payload.loop.attempts).toHaveLength(1);
@@ -906,7 +934,7 @@ describe("executeCli", () => {
         process.env.MARTIN_LIVE = previousMartinLive;
       }
 
-      expect(result.exitCode).toBe(0);
+      expect(result.exitCode).toBe(7);
 
       const payload = JSON.parse(result.stdout);
       expect(payload.loop.task.verificationTimeoutMs).toBe(240000);
@@ -915,7 +943,7 @@ describe("executeCli", () => {
     }
   });
 
-  it("supports --proof runs as no-spend proof executions without rewriting mutation mode", { timeout: 30_000 }, async () => {
+  it("runs --proof through verifier-only and cannot claim governed success", { timeout: 30_000 }, async () => {
     const directory = await mkdtemp(join(tmpdir(), "martin-cli-proof-mode-"));
 
     try {
@@ -933,13 +961,25 @@ describe("executeCli", () => {
         directory
       ]);
 
-      expect(result.exitCode).toBe(9);
+      expect(result.exitCode).toBe(7);
 
       const payload = JSON.parse(result.stdout);
       expect(payload.environment.liveMode).toBe("proof");
       expect(payload.loop.cost.actualUsd).toBe(0);
       expect(payload.loop.task.mutationMode).toBeUndefined();
-      expect(["completed", "diminishing_returns"]).toContain(payload.loop.lifecycleState);
+      expect(payload.loop.metadata.executionMode).toBe("verification_only");
+      expect(payload.loop.metadata.governanceClaimEligible).toBe("false");
+      expect(payload.loop.attempts[0].adapterId).toBe("direct:verifier:verify-only");
+      expect(payload.successCallToAction).toBeUndefined();
+
+      const persisted = JSON.parse(
+        await readFile(
+          join(payload.environment.runsRoot, payload.loop.loopId, "loop-record.json"),
+          "utf8"
+        )
+      );
+      expect(persisted.metadata.executionMode).toBe("verification_only");
+      expect(persisted.metadata.governanceClaimEligible).toBe("false");
     } finally {
       await rm(directory, { force: true, recursive: true });
     }
@@ -1189,7 +1229,7 @@ describe("executeCli", () => {
         process.env.MARTIN_LIVE = previousMartinLive;
       }
 
-      expect(result.exitCode).toBe(0);
+      expect(result.exitCode).toBe(7);
       const payload = JSON.parse(result.stdout);
       expect(payload.loop.task.approvalPolicy).toEqual({ dependencyAdds: true });
       expect(payload.loop.attempts).toHaveLength(1);
@@ -1212,7 +1252,7 @@ describe("executeCli", () => {
     }
   });
 
-  it("adds the star CTA to successful run JSON output only", { timeout: 30_000 }, async () => {
+  it("does not add a verified-success CTA to simulated test runs", { timeout: 30_000 }, async () => {
     const directory = await mkdtemp(join(tmpdir(), "martin-cli-star-cta-json-"));
 
     try {
@@ -1229,26 +1269,17 @@ describe("executeCli", () => {
         ])
       );
 
-      expect(result.exitCode).toBe(0);
+      expect(result.exitCode).toBe(7);
 
       const payload = JSON.parse(result.stdout);
       expect(payload.decision.status).toBe("completed");
-      expect(payload.successCallToAction).toEqual({
-        headline: STAR_CTA_HEADLINE,
-        repo: STAR_CTA_REPO,
-        lines: [
-          "─────────────────────────────────────────────",
-          STAR_CTA_HEADLINE,
-          `   Useful? Star the repo: ${STAR_CTA_REPO}`,
-          "─────────────────────────────────────────────"
-        ]
-      });
+      expect(payload.successCallToAction).toBeUndefined();
     } finally {
       await rm(directory, { force: true, recursive: true });
     }
   });
 
-  it("adds the star CTA block to successful human run output", { timeout: 30_000 }, async () => {
+  it("does not add a verified-success CTA block to simulated human output", { timeout: 30_000 }, async () => {
     const directory = await mkdtemp(join(tmpdir(), "martin-cli-star-cta-human-"));
 
     try {
@@ -1264,9 +1295,9 @@ describe("executeCli", () => {
         ])
       );
 
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout).toContain(STAR_CTA_HEADLINE);
-      expect(result.stdout).toContain(`Star the repo: ${STAR_CTA_REPO}`);
+      expect(result.exitCode).toBe(7);
+      expect(result.stdout).not.toContain(STAR_CTA_HEADLINE);
+      expect(result.stdout).not.toContain(`Star the repo: ${STAR_CTA_REPO}`);
     } finally {
       await rm(directory, { force: true, recursive: true });
     }
@@ -1376,7 +1407,7 @@ describe("executeCli", () => {
         ])
       );
 
-      expect(result.exitCode).toBe(0);
+      expect(result.exitCode).toBe(7);
 
       const payload = JSON.parse(result.stdout);
 
@@ -1428,7 +1459,9 @@ describe("executeCli", () => {
       expect(result.stdout).toContain("npm install");
       expect(result.stdout).toContain("Default first run (live spend-governed):");
       expect(result.stdout).toContain("--budget-usd 2 --max-iterations 1");
-      expect(result.stdout).toContain("Optional explicit no-spend proof run:");
+      expect(result.stdout).toContain(
+        "Optional verification-only run (non-governed; cannot emit VERIFIED):"
+      );
       expect(result.stdout).toContain("Task ideas live in");
       expect(await readFile(join(targetDirectory, "README.md"), "utf8")).toContain("Demo Sandbox");
     } finally {

@@ -184,8 +184,8 @@ export { calculateAvoidedUsd, calculateLoopAvoidedUsd } from "./savings.js";
 export type { AvoidedUsdInput } from "./savings.js";
 
 // ─── Routing economics ─────────────────────────────────────────────────────
-export { classifyRoute, evaluatePreworkBurnPolicy, resolveModelForTier, selectBestEngine } from "./routing.js";
-export type { RouteDecision, RouteClassificationInput, AvailableEngine } from "./routing.js";
+export { classifyRoute, evaluatePreworkBurnPolicy } from "./routing.js";
+export type { RouteDecision, RouteClassificationInput } from "./routing.js";
 
 // ─── Test Integrity Validation ──────────────────────────────────────────────
 export {
@@ -215,6 +215,7 @@ export type { PromptPacket, CompilerAdapterRequest } from "./compiler.js";
 // ─── Verified Handoff builder ────────────────────────────────────────────────
 export {
   buildVerifiedHandoff,
+  deriveVerifiedHandoffExecutionBoundary,
   resolveVerifiedHandoffOutcome,
   toTestIntegrityVerdict,
   verifierActuallyPassed,
@@ -404,7 +405,7 @@ export interface MartinAdapter {
   label: string;
   metadata: {
     providerId: string;
-    model: string;
+    model?: string;
     transport?: "cli" | "http" | "routed_http";
     capabilities?: {
       preflight?: boolean;
@@ -417,7 +418,6 @@ export interface MartinAdapter {
     [key: string]: unknown;
   };
   execute(request: MartinAdapterRequest): Promise<MartinAdapterResult>;
-  withModel?(model: string): MartinAdapter;
 }
 
 export interface DistilledContext {
@@ -563,7 +563,6 @@ export interface RunMartinInput {
   now?: () => string;
   idFactory?: (prefix: string) => string;
   maxRecentAttempts?: number;
-  fallbackModels?: string[];
   fallbackAdapters?: MartinAdapter[];
   receiptScope?: ReceiptScope;
   /** Optional persistence store. When provided, runMartin writes artifacts on each lifecycle event. */
@@ -750,11 +749,6 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     }
   }
 
-  const DEFAULT_FALLBACK_MODELS = [
-    "claude-haiku-4-5",
-    "claude-sonnet-4-6",
-    "claude-opus-4-6"
-  ];
   const adapterChain = [input.adapter, ...(input.fallbackAdapters ?? [])];
   let currentAdapterIndex = 0;
   let currentAdapter = adapterChain[currentAdapterIndex] ?? input.adapter;
@@ -1396,7 +1390,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       attemptId,
       index: currentAttemptIndex,
       adapterId: executingAdapter.adapterId,
-      model: executingAdapter.metadata.model,
+      ...(executingAdapter.metadata.model ? { model: executingAdapter.metadata.model } : {}),
       startedAt: attemptStartedAt,
       completedAt: attemptCompletedAt,
       summary: result.summary,
@@ -1467,14 +1461,6 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
           currentAdapterIndex += 1;
           currentAdapter = nextAdapter;
           adapterSwitched = true;
-        }
-      }
-
-      if (failure.recommendedIntervention === "change_model" && currentAdapter.withModel) {
-        const fallbackModels = input.fallbackModels ?? DEFAULT_FALLBACK_MODELS;
-        const nextModel = fallbackModels[loop.attempts.length % fallbackModels.length];
-        if (nextModel) {
-          currentAdapter = currentAdapter.withModel(nextModel);
         }
       }
 
@@ -1806,7 +1792,14 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     // Uses the task's repoRoot to build/load the grounding index, then scans any diff
     let groundingScanResult: GroundingScanResult | undefined;
     const patchDiff = buildPatchDiff(result, changedFiles);
-    if (patchDiff && input.task.repoRoot) {
+    const workspaceMutationCapable =
+      executingAdapter.metadata.capabilities?.workspaceMutations !== false;
+    const hasReportedOrObservedChanges =
+      changedFiles.length > 0 || (result.execution?.changedFiles?.length ?? 0) > 0;
+    const groundingEvidenceRequired =
+      result.status === "completed" && workspaceMutationCapable && hasReportedOrObservedChanges;
+    let groundingEvidenceAvailable = !groundingEvidenceRequired;
+    if (groundingEvidenceRequired && patchDiff && input.task.repoRoot) {
       try {
         const groundingIndex = await loadOrBuildRepoGroundingIndex(input.task.repoRoot);
         groundingScanResult = reconcileExistingGroundingFiles(
@@ -1816,6 +1809,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
           input.task.repoRoot,
           rollbackBoundary
         );
+        groundingEvidenceAvailable = true;
 
         if (input.store && groundingScanResult.violations.length > 0) {
           await input.store.appendLedger(
@@ -1834,11 +1828,25 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
           );
         }
       } catch {
-        // Grounding scan is best-effort — never fail the loop because of a scan error
+        // Availability is persisted below so scanner failures and missing
+        // grounding inputs follow the same recover-forward trust contract.
       }
     }
 
-    const shouldEvaluatePatchTruth = result.status === "completed" && tracksWorkspaceMutations;
+    if (groundingEvidenceRequired && !groundingEvidenceAvailable) {
+      // The completed work remains useful, but unavailable grounding evidence
+      // cannot be converted into a zero-violation governance claim.
+      loop = {
+        ...loop,
+        metadata: {
+          ...loop.metadata,
+          groundingEvidenceStatus: "unavailable"
+        }
+      };
+    }
+
+    const shouldEvaluatePatchTruth =
+      result.status === "completed" && tracksWorkspaceMutations && groundingEvidenceAvailable;
 
     let patchDecision: EvaluatedPatchDecision | undefined;
     if (shouldEvaluatePatchTruth) {
@@ -2326,7 +2334,8 @@ function getUsageProvenance(usage: MartinAdapterResult["usage"]): CostProvenance
 const COST_PROVENANCE_RANK: Record<CostProvenance, number> = {
   unavailable: 0,
   estimated: 1,
-  actual: 2
+  calculated: 2,
+  actual: 3
 };
 
 /**

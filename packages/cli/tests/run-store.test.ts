@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildVerificationSummary,
+  deriveLoopExecutionBoundary,
   findPersistedLoopEvidence,
   resolveCliEnvironment,
 } from "../src/run-store.js";
@@ -104,6 +105,51 @@ describe("buildVerificationSummary", () => {
     });
 
     expect(buildVerificationSummary(loop).steps).toEqual([{ command: "npm test", launched: true }]);
+  });
+});
+
+describe("deriveLoopExecutionBoundary", () => {
+  it("rejects legacy direct stub evidence even when metadata claims governed", () => {
+    const loop = makeLoopRecord({
+      metadata: {
+        executionMode: "governed",
+        governanceClaimEligible: "true",
+      },
+      attempts: [
+        {
+          attemptId: "attempt_stub",
+          index: 1,
+          adapterId: "direct:stub:stub",
+          model: "stub",
+          startedAt: "2026-08-18T00:00:00.000Z",
+        },
+      ],
+    });
+
+    expect(deriveLoopExecutionBoundary(loop)).toEqual({
+      executionMode: "simulated",
+      governanceClaimEligible: false,
+    });
+  });
+
+  it("does not infer simulation from zero cost", () => {
+    const loop = makeLoopRecord({
+      cost: { actualUsd: 0, avoidedUsd: 0, tokensIn: 0, tokensOut: 0 },
+      attempts: [
+        {
+          attemptId: "attempt_real",
+          index: 1,
+          adapterId: "agent-cli:codex",
+          model: "gpt-5.4",
+          startedAt: "2026-08-18T00:00:00.000Z",
+        },
+      ],
+    });
+
+    expect(deriveLoopExecutionBoundary(loop)).toEqual({
+      executionMode: "governed",
+      governanceClaimEligible: true,
+    });
   });
 });
 

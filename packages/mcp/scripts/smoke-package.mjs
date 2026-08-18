@@ -149,7 +149,7 @@ export async function runStandaloneMcpSmoke(options = {}) {
       },
     });
 
-    const statusPayload = JSON.parse(readTextContent(statusResult));
+    const statusPayload = readStructuredContent(statusResult, "martin_status");
     if (statusPayload.loopId === undefined || statusPayload.pressure === undefined) {
       throw new Error("Packaged martin_status response is missing expected fields.");
     }
@@ -176,7 +176,7 @@ export async function runStandaloneMcpSmoke(options = {}) {
 
 function assertTarballFileSet(filePaths) {
   const retiredExecutionFiles = filePaths.filter((filePath) =>
-    /^dist\/vendor\/adapters\/(?:stub-agent-cli|verifier-only)\.(?:js|d\.ts)$/u.test(filePath),
+    /^dist\/vendor\/adapters\/stub-(?:agent-cli|direct-provider)\.(?:js|d\.ts)$/u.test(filePath),
   );
   if (retiredExecutionFiles.length > 0) {
     throw new Error(`Tarball contains retired execution adapters: ${retiredExecutionFiles.join(", ")}`);
@@ -288,17 +288,13 @@ function assertPackedManifest(manifest, serverMetadata) {
   }
 }
 
-function readTextContent(result) {
-  if (!Array.isArray(result.content) || result.content.length === 0) {
-    throw new Error("MCP tool call returned no content.");
+function readStructuredContent(result, label) {
+  const payload = result?.structuredContent;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new Error(`Expected structuredContent from ${label}.`);
   }
 
-  const first = result.content[0];
-  if (first?.type !== "text" || typeof first.text !== "string") {
-    throw new Error("Expected text content from MCP tool call.");
-  }
-
-  return first.text;
+  return payload;
 }
 
 function npmCommand() {

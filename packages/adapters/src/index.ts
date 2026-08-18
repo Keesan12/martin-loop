@@ -3,10 +3,6 @@ export {
   type DirectProviderAdapterOptions
 } from "./direct-provider.js";
 export {
-  createStubDirectProviderAdapter,
-  type StubDirectProviderAdapterOptions
-} from "./stub-direct-provider.js";
-export {
   createAgentCliAdapter,
   createClaudeCliAdapter,
   createCodexCliAdapter,
@@ -22,6 +18,10 @@ export {
   resolveOpenAiCompatibleRuntimeConfig,
   type OpenAiCompatibleAdapterOptions
 } from "./openai-compatible.js";
+export {
+  createVerifierOnlyAdapter,
+  type VerifierOnlyAdapterOptions
+} from "./verifier-only.js";
 export {
   detectCodexHostPlatform,
   diagnoseCodexHost,

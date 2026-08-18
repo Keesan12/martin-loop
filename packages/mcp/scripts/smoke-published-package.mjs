@@ -618,6 +618,11 @@ function readTextContent(result) {
 }
 
 function readToolJson(result, label) {
+  const structuredContent = result?.structuredContent;
+  if (structuredContent && typeof structuredContent === "object" && !Array.isArray(structuredContent)) {
+    return structuredContent;
+  }
+
   const text = readTextContent(result);
   try {
     return JSON.parse(text);
