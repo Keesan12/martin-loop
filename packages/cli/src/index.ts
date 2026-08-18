@@ -121,6 +121,7 @@ import {
   isBadgeCtaEligible,
   recordBadgeCtaShown
 } from "./cli-milestone-state.js";
+import { offerArcadeWhileWaiting } from "./arcade/offer.js";
 import { MARTINLOOP_BADGE_CTA, MARTINLOOP_BADGE_MARKDOWN } from "./governed-badge.js";
 import { InstallError, runInstall } from "./commands/install.js";
 
@@ -1469,7 +1470,7 @@ async function executeRunCommand(
   }
 
   try {
-    result = await runMartin({
+    const governedTask = runMartin({
       workspaceId: resolvedRequest.workspaceId,
       projectId: resolvedRequest.projectId,
       receiptScope: {
@@ -1494,6 +1495,22 @@ async function executeRunCommand(
       budget: resolvedRequest.budget,
       metadata: resolvedRequest.metadata,
       adapter,
+    });
+    result = await offerArcadeWhileWaiting(governedTask, {
+      outputMode,
+      offerAfterMs: 2500,
+      runResultLabel: (completed) => {
+        const attempts = completed.loop.attempts.length;
+        const attemptLabel =
+          attempts + " attempt" + (attempts === 1 ? "" : "s");
+        return (
+          "run finished · " +
+          attemptLabel +
+          " · $" +
+          completed.loop.cost.actualUsd.toFixed(2) +
+          " actual"
+        );
+      },
     });
 
     if (isDemoMission && result.loop.receiptScope) {

@@ -1,13 +1,16 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
+  animateBannerShine,
   canAnimate,
   paint,
   padRightVisible,
   renderTable,
   stripAnsi,
   terminalAnsi,
-  visibleWidth
+  visibleWidth,
+  withSpinner,
+  writeHumanOutputWithShine
 } from "../src/index.js";
 
 describe("semantic terminal presentation", () => {
@@ -109,5 +112,83 @@ describe("motion policy", () => {
     expect(terminalAnsi.reset).toBe("\u001b[0m");
     expect(terminalAnsi.showCursor).toBe("\u001b[?25h");
     expect(terminalAnsi.eraseLine).toBe("\u001b[2K");
+  });
+
+  it("clears the line and restores the cursor after a banner shine", async () => {
+    const writes: string[] = [];
+    const write = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation((value) => {
+        writes.push(String(value));
+        return true;
+      });
+
+    try {
+      await animateBannerShine("M", {
+        outputMode: "human",
+        stdoutIsTty: true,
+        ci: false,
+        term: "xterm-256color"
+      });
+    } finally {
+      write.mockRestore();
+    }
+
+    const output = writes.join("");
+    expect(output).toContain(terminalAnsi.hideCursor);
+    expect(output).toContain(terminalAnsi.eraseLine);
+    expect(output).toContain(terminalAnsi.showCursor);
+  });
+
+  it("restores the cursor when a spinner task rejects", async () => {
+    const writes: string[] = [];
+    const write = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation((value) => {
+        writes.push(String(value));
+        return true;
+      });
+
+    try {
+      await expect(
+        withSpinner(
+          "Checking evidence",
+          async () => {
+            throw new Error("expected failure");
+          },
+          {
+            outputMode: "human",
+            stdoutIsTty: true,
+            ci: false,
+            term: "xterm-256color"
+          }
+        )
+      ).rejects.toThrow("expected failure");
+    } finally {
+      write.mockRestore();
+    }
+
+    expect(writes.join("")).toContain(terminalAnsi.showCursor);
+  });
+
+  it("writes stable output without motion for JSON mode", async () => {
+    const writes: string[] = [];
+    const write = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation((value) => {
+        writes.push(String(value));
+        return true;
+      });
+
+    try {
+      await writeHumanOutputWithShine("MARTINLOOP\ntruth", {
+        outputMode: "json",
+        stdoutIsTty: true
+      });
+    } finally {
+      write.mockRestore();
+    }
+
+    expect(writes.join("")).toBe("MARTINLOOP\ntruth\n");
   });
 });

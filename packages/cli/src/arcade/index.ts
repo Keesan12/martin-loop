@@ -115,3 +115,12 @@ async function promptOnce(): Promise<boolean> {
     stdin.on("data", onKey);
   });
 }
+export {
+  isArcadeOfferEligible,
+  offerArcadeWhileWaiting,
+} from "./offer.js";
+export type {
+  ArcadeMode,
+  ArcadeOfferOptions,
+  ArcadeOfferRuntime,
+} from "./offer.js";
