@@ -58,8 +58,9 @@ describe("live MCP server handshake", () => {
         name: "martin_debug_failed_run",
         arguments: { loopId, attemptIndex: "1" }
       });
+      expect(readTextContent(toolCall)).toContain(`Loaded Martin run ${loopId}`);
       const routedInspection = {
-        toolCall: JSON.parse(readTextContent(toolCall)),
+        toolCall: readStructuredContent(toolCall),
         resourceRead: JSON.parse(readResourceText(resourceRead)),
         promptFetch
       };
@@ -145,6 +146,20 @@ function readTextContent(result: {
   }
 
   return first.text;
+}
+
+function readStructuredContent(result: { structuredContent?: unknown }): {
+  loop: { loopId: string };
+  verification: { status: string };
+} {
+  if (!result.structuredContent || typeof result.structuredContent !== "object") {
+    throw new Error("Expected structured content from MCP tool call.");
+  }
+
+  return result.structuredContent as {
+    loop: { loopId: string };
+    verification: { status: string };
+  };
 }
 
 function readResourceText(result: {
