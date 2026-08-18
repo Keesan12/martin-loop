@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-08-18
+
+### Added
+- **Governed Run Plan and Verified Handoff** — terminal and MCP surfaces now present the configured finish line, evidence, scope, recovery state, and the authoritative `VERIFIED`, `STOPPED`, or `NEEDS REVIEW` outcome.
+- **MCPB distribution** — the desktop bundle is built, schema-validated, smoke-tested, checksummed, and attached to the root GitHub release.
+- **Install-everywhere lifecycle** — supported MCP hosts receive install, verification, rollback, and uninstall flows from one public package surface.
+
+### Changed
+- **Model authority stays with the user, agent, or provider** — MartinLoop no longer routes tasks to hard-coded models; explicit overrides remain supported and observed usage retains pricing provenance.
+- **IDE output is Markdown-first** — MCP responses preserve structured content and compatibility JSON while placing stable human-readable Markdown first.
+- **Terminal motion is presentation-only** — animation and Arcade remain isolated from governed evidence and are disabled for JSON, quiet, CI, non-TTY, reduced-motion, `TERM=dumb`, and `NO_COLOR` contexts.
+
+### Fixed
+- **Synthetic execution cannot become governed proof** — public runtime paths contain no stub adapters; verification-only runs execute real verifiers but remain ineligible for governed `VERIFIED` claims.
+- **Grounding uncertainty remains truthful** — missing or failed grounding evidence yields `NEEDS REVIEW` without aborting useful execution or treating unavailable evidence as clean evidence.
+- **Cost labels preserve provenance** — provider-settled, calculated, estimated, and unavailable cost states remain distinct across CLI, Handoff, MCP, and receipt surfaces.
+- **Windows execution and interaction hardening** — command wrappers, prompt cleanup, timeout handling, and terminal restoration retain cross-platform behavior without contaminating machine-readable output.
+
 ## [0.5.0] - 2026-08-12
 
 ### Added
