@@ -51,6 +51,12 @@ jobs:
           pnpm --filter @martinloop/mcp verify:release
           node ./scripts/root-release-guard.mjs --tag "${GITHUB_REF_NAME}" --pack
 
+      - name: Build, validate, and smoke-test MCPB
+        run: |
+          pnpm --filter @martinloop/mcp mcpb:build
+          pnpm --filter @martinloop/mcp mcpb:validate
+          pnpm --filter @martinloop/mcp mcpb:smoke
+
       - name: Pack root tarball
         id: root-pack
         run: |
@@ -106,5 +112,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b
         with:
-          files: ${{ steps.root-pack.outputs.tarball }}
+          files: |
+            ${{ steps.root-pack.outputs.tarball }}
+            packages/mcp/dist-mcpb/martinloop-*.mcpb
+            packages/mcp/dist-mcpb/martinloop-*.mcpb.sha256
           body: ${{ steps.changelog.outputs.body }}

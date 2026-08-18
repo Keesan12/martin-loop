@@ -22,6 +22,12 @@ export function canAnimate(env: MotionEnvironment = {}): boolean {
     return false;
   }
 
+  const noColor =
+    env.noColor ?? Object.prototype.hasOwnProperty.call(process.env, "NO_COLOR");
+  if (noColor) {
+    return false;
+  }
+
   const stdoutTty = env.stdoutIsTty ?? process.stdout.isTTY === true;
   if (!stdoutTty) {
     return false;

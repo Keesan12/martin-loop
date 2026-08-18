@@ -34,6 +34,30 @@ vi.mock("node:readline", () => {
 });
 
 describe("renderRunHeader — receipt persistence messaging", () => {
+  it.each([
+    ["actual", "$1.25 provider-settled actual"],
+    ["calculated", "$1.25 calculated from observed usage"],
+    ["estimated", "$1.25 estimated"],
+    ["unavailable", "cost unavailable"]
+  ] as const)("labels %s run cost truthfully", (provenance, expected) => {
+    const header = renderRunHeader(
+      "Observer",
+      "success",
+      1,
+      1.25,
+      0,
+      0,
+      "unavailable",
+      true,
+      provenance
+    );
+
+    expect(header).toContain(expected);
+    if (provenance !== "actual") {
+      expect(header).not.toContain("$1.25 actual");
+    }
+  });
+
   it("states that a failed run's signed receipt was retained", () => {
     const header = renderRunHeader("Observer", "failure", 2, 0, 0, 0, "unavailable", true);
 

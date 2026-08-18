@@ -1567,12 +1567,19 @@ async function executeRunCommand(
         const attempts = completed.loop.attempts.length;
         const attemptLabel =
           attempts + " attempt" + (attempts === 1 ? "" : "s");
+        const provenance = readCostProvenance(completed.loop);
+        const costLabel =
+          provenance === "unavailable"
+            ? "cost unavailable"
+            : "$" +
+              completed.loop.cost.actualUsd.toFixed(2) +
+              " " +
+              describeCostProvenance(provenance);
         return (
           "run finished · " +
           attemptLabel +
-          " · $" +
-          completed.loop.cost.actualUsd.toFixed(2) +
-          " actual"
+          " · " +
+          costLabel
         );
       },
     });
@@ -1740,7 +1747,8 @@ async function executeRunCommand(
     savedThisRun,
     milestoneState?.totalSavedUsd ?? 0,
     confidence,
-    persistenceFinalized
+    persistenceFinalized,
+    costProvenance
   );
 
   const { inlineMilestones, interactivePrompt } = await recordRunAndGetPrompt({

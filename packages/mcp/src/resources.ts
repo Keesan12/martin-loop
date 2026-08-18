@@ -17,6 +17,7 @@ import { martinRunDossierTool } from "./tools/run-dossier.js";
 import { inspectRepoSignals, buildPolicyPackDefinition, buildRepoRiskMap } from "./tools/workflow-governance.js";
 import { readWorkflowState } from "./workflow-state.js";
 import { readMemoryEntries, buildMemorySummary } from "@martin/core";
+import type { CostProvenance } from "@martin/contracts";
 import {
   buildAttemptSnapshot,
   buildPersistedLoopPreview,
@@ -53,6 +54,15 @@ export const MARTIN_STATIC_RESOURCE_URIS = {
   modeStatus: "martin://agent/mode-status",
   memorySummary: "martin://agent/memory-summary"
 } as const;
+
+function formatRecordedCost(usd: number, provenance: CostProvenance): string {
+  if (provenance === "unavailable") return "unavailable";
+  if (provenance === "actual") return `$${usd.toFixed(2)} provider-settled actual`;
+  if (provenance === "calculated") {
+    return `$${usd.toFixed(2)} calculated from observed usage`;
+  }
+  return `$${usd.toFixed(2)} estimated`;
+}
 
 export const MARTIN_RESOURCE_TEMPLATES: ResourceTemplate[] = [
   {
@@ -499,6 +509,7 @@ async function buildLatestSummaryResource(runsRoot: string): Promise<Record<stri
     budget: loop.budget,
     cost: {
       actualUsd: loop.cost.actualUsd,
+      provenance: loop.cost.provenance ?? "unavailable",
       avoidedUsdEstimate: loop.cost.avoidedUsd ?? 0,
       tokensIn: loop.cost.tokensIn,
       tokensOut: loop.cost.tokensOut,
@@ -537,6 +548,7 @@ async function buildLatestBudgetStatusResource(runsRoot: string): Promise<Record
     budget: loop.budget,
     cost: {
       actualUsd: loop.cost.actualUsd,
+      provenance: loop.cost.provenance ?? "unavailable",
       avoidedUsdEstimate: loop.cost.avoidedUsd ?? 0,
       tokensIn: loop.cost.tokensIn,
       tokensOut: loop.cost.tokensOut,
@@ -687,7 +699,7 @@ async function buildLatestProofCardResource(runsRoot: string): Promise<string> {
     `Run: \`${loop.loopId}\``,
     `Status: ${loop.status} / ${loop.lifecycleState}`,
     `Attempts: ${loop.attempts.length}`,
-    `Spend: $${loop.cost.actualUsd.toFixed(2)} actual, $${(loop.cost.avoidedUsd ?? 0).toFixed(2)} avoided estimate`,
+    `Spend: ${formatRecordedCost(loop.cost.actualUsd, loop.cost.provenance ?? "unavailable")}, $${(loop.cost.avoidedUsd ?? 0).toFixed(2)} avoided estimate`,
     `Tokens: ${loop.cost.tokensIn} in / ${loop.cost.tokensOut} out`,
     `Verifier: ${verifierStatus}`,
     "",

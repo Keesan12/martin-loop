@@ -1,4 +1,5 @@
 import type {
+  CostProvenance,
   EvidenceStatus,
   VerifiedHandoffOutcome,
   VerifiedHandoffV1,
@@ -40,6 +41,21 @@ function evidenceTone(status: EvidenceStatus): MartinTone {
 
 function humanize(value: string): string {
   return value.replaceAll("_", " ").toLowerCase();
+}
+
+function formatCost(usd: number, provenance: CostProvenance): string {
+  if (provenance === "unavailable") {
+    return "unavailable";
+  }
+
+  const amount = "$" + usd.toFixed(2);
+  if (provenance === "actual") {
+    return amount + " provider-settled actual";
+  }
+  if (provenance === "calculated") {
+    return amount + " calculated from observed usage";
+  }
+  return amount + " estimated";
 }
 
 function checkSymbol(status: EvidenceStatus): string {
@@ -96,11 +112,7 @@ export function renderVerifiedHandoff(
     bounded("Attempts".padEnd(20) + handoff.usage.attempts),
     bounded(
       "Cost".padEnd(20) +
-        "$" +
-        handoff.usage.actualUsd.toFixed(2) +
-        " actual (" +
-        handoff.usage.costProvenance +
-        ")",
+        formatCost(handoff.usage.actualUsd, handoff.usage.costProvenance),
     ),
   ];
 

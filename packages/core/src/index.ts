@@ -1792,7 +1792,14 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     // Uses the task's repoRoot to build/load the grounding index, then scans any diff
     let groundingScanResult: GroundingScanResult | undefined;
     const patchDiff = buildPatchDiff(result, changedFiles);
-    if (patchDiff && input.task.repoRoot) {
+    const workspaceMutationCapable =
+      executingAdapter.metadata.capabilities?.workspaceMutations !== false;
+    const hasReportedOrObservedChanges =
+      changedFiles.length > 0 || (result.execution?.changedFiles?.length ?? 0) > 0;
+    const groundingEvidenceRequired =
+      result.status === "completed" && workspaceMutationCapable && hasReportedOrObservedChanges;
+    let groundingEvidenceAvailable = !groundingEvidenceRequired;
+    if (groundingEvidenceRequired && patchDiff && input.task.repoRoot) {
       try {
         const groundingIndex = await loadOrBuildRepoGroundingIndex(input.task.repoRoot);
         groundingScanResult = reconcileExistingGroundingFiles(
@@ -1802,6 +1809,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
           input.task.repoRoot,
           rollbackBoundary
         );
+        groundingEvidenceAvailable = true;
 
         if (input.store && groundingScanResult.violations.length > 0) {
           await input.store.appendLedger(
@@ -1820,11 +1828,25 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
           );
         }
       } catch {
-        // Grounding scan is best-effort — never fail the loop because of a scan error
+        // Availability is persisted below so scanner failures and missing
+        // grounding inputs follow the same recover-forward trust contract.
       }
     }
 
-    const shouldEvaluatePatchTruth = result.status === "completed" && tracksWorkspaceMutations;
+    if (groundingEvidenceRequired && !groundingEvidenceAvailable) {
+      // The completed work remains useful, but unavailable grounding evidence
+      // cannot be converted into a zero-violation governance claim.
+      loop = {
+        ...loop,
+        metadata: {
+          ...loop.metadata,
+          groundingEvidenceStatus: "unavailable"
+        }
+      };
+    }
+
+    const shouldEvaluatePatchTruth =
+      result.status === "completed" && tracksWorkspaceMutations && groundingEvidenceAvailable;
 
     let patchDecision: EvaluatedPatchDecision | undefined;
     if (shouldEvaluatePatchTruth) {

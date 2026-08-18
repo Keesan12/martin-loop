@@ -12,6 +12,8 @@ import { readFile, readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { extname, join } from "node:path";
 
+import type { CostProvenance } from "@martin/contracts";
+
 export interface LoopAttemptRecord {
   index: number;
   model?: string;
@@ -39,6 +41,7 @@ export interface LoopRunRecord {
     tokensIn: number;
     tokensOut: number;
     avoidedUsd?: number;
+    provenance?: CostProvenance;
   };
   attempts: LoopAttemptRecord[];
   task: { title: string; objective: string };

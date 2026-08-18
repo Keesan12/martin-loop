@@ -15,7 +15,12 @@ import {
   runMartin,
   type RunStore
 } from "@martin/core";
-import type { ExecutionMode, LoopBudget, ReceiptScope } from "@martin/contracts";
+import type {
+  CostProvenance,
+  ExecutionMode,
+  LoopBudget,
+  ReceiptScope
+} from "@martin/contracts";
 
 import { normalizeSafePathPatterns, resolveSafeRepoRoot } from "../server-validation.js";
 import { MartinToolError } from "./tool-errors.js";
@@ -52,6 +57,7 @@ export interface RunLoopOutput {
   reason: string;
   attempts: number;
   costUsd: number;
+  costProvenance: CostProvenance;
   verificationPassed: boolean;
   executionMode: ExecutionMode;
   governanceClaimEligible: boolean;
@@ -228,6 +234,7 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
     reason: result.decision.reason,
     attempts: result.loop.attempts.length,
     costUsd: result.loop.cost.actualUsd,
+    costProvenance: result.loop.cost.provenance ?? "unavailable",
     verificationPassed,
     executionMode: evidenceExecutionMode,
     governanceClaimEligible: evidenceExecutionMode === "governed",

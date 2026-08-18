@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { writeReceiptIntegrityMaterial, type RunStore } from "@martin/core";
-import { createLoopRecord } from "@martin/contracts";
+import { createLoopRecord, type CostProvenance } from "@martin/contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { getStatusTool } from "../src/tools/get-status.js";
@@ -21,7 +21,13 @@ import { martinTriageRunsTool } from "../src/tools/triage-runs.js";
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeLoopRecord(overrides: { costUsd?: number; avoidedUsd?: number } = {}) {
+function makeLoopRecord(
+  overrides: {
+    costUsd?: number;
+    avoidedUsd?: number;
+    provenance?: CostProvenance;
+  } = {}
+) {
   const loop = createLoopRecord({
     workspaceId: "ws_test",
     projectId: "proj_test",
@@ -40,7 +46,8 @@ function makeLoopRecord(overrides: { costUsd?: number; avoidedUsd?: number } = {
       actualUsd: overrides.costUsd ?? 1.5,
       avoidedUsd: overrides.avoidedUsd ?? 0,
       tokensIn: 400,
-      tokensOut: 200
+      tokensOut: 200,
+      ...(overrides.provenance ? { provenance: overrides.provenance } : {})
     }
   });
 
@@ -145,6 +152,15 @@ function createMemoryRunStore(runsRoot: string): RunStore {
 // ---------------------------------------------------------------------------
 
 describe("getStatusTool", () => {
+  it("carries cost provenance through status and loop-preview DTOs", async () => {
+    const loop = makeLoopRecord({ costUsd: 3, provenance: "estimated" });
+
+    const result = await getStatusTool({ loopJson: JSON.stringify(loop) });
+
+    expect(result.costProvenance).toBe("estimated");
+    expect(result.inspection.loop.costProvenance).toBe("estimated");
+  });
+
   it("returns correct loop metadata and cost state from inline JSON", async () => {
     const loop = makeLoopRecord({ costUsd: 3 });
     const result = await getStatusTool({ loopJson: JSON.stringify(loop) });
@@ -1211,6 +1227,7 @@ describe("runLoopTool", () => {
           expect(result.verificationPassed).toBe(true);
           expect(result.executionMode).toBe("verification_only");
           expect(result.governanceClaimEligible).toBe(false);
+          expect(result.costProvenance).toBe("actual");
         });
       } finally {
         if (originalEnv === undefined) {

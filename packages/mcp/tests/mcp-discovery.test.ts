@@ -197,6 +197,8 @@ describe("Martin MCP discovery resources", () => {
       expect(latestSummary.contents[0]?.text).toContain("\"whatMartinPrevented\"");
       expect(latestProofCard.contents[0]?.text).toContain("# Martin Proof Card");
       expect(latestProofCard.contents[0]?.text).toContain("Verifier: failed honestly");
+      expect(latestProofCard.contents[0]?.text).toContain("Spend: unavailable");
+      expect(latestProofCard.contents[0]?.text).not.toContain(" actual");
       expect(budgetStatus.contents[0]?.text).toContain("\"kind\": \"budget-status\"");
       expect(verifierEvidence.contents[0]?.text).toContain("\"status\": \"failed\"");
       expect(rollbackEvidence.contents[0]?.text).toContain("\"kind\": \"rollback-evidence\"");

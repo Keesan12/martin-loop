@@ -3,6 +3,7 @@ import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 import type {
+  CostProvenance,
   LoopArtifact,
   LoopBudget,
   LoopCost,
@@ -52,6 +53,7 @@ export interface LoopPreview {
   updatedAt?: string;
   attempts: number;
   costUsd: number;
+  costProvenance: CostProvenance;
   avoidedUsd: number;
   pressure: string;
   shouldStop: boolean;
@@ -405,6 +407,7 @@ export function buildLoopPreview(loop: InspectableLoopRecord): LoopPreview {
     ...(loop.updatedAt ? { updatedAt: loop.updatedAt } : {}),
     attempts: loop.attempts.length,
     costUsd: loop.cost.actualUsd,
+    costProvenance: loop.cost.provenance ?? "unavailable",
     avoidedUsd: loop.cost.avoidedUsd ?? 0,
     pressure: costState.pressure,
     shouldStop: costState.shouldStop,
