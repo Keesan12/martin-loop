@@ -3679,7 +3679,7 @@ async function executeEstimateCommand(
       "",
       `Route:          ${route.selectedMode}${route.compressed ? " (compressed)" : ""}`,
       `Confidence:     ${(route.confidence * 100).toFixed(0)}%`,
-      `Model tier:     ${route.recommendedModelTier} → ${resolveModelForTier(route.recommendedModelTier, command.engine)}${route.estimatedSavingVsSonnetUsd > 0 ? ` (saves ~$${route.estimatedSavingVsSonnetUsd.toFixed(2)} vs sonnet)` : ""}`,
+      `Model tier:     ${route.recommendedModelTier} → ${resolveModelForTier(route.recommendedModelTier, command.engine) ?? (command.engine === "codex" ? "authenticated Codex default" : "configured adapter default")}${route.estimatedSavingVsSonnetUsd > 0 ? ` (saves ~$${route.estimatedSavingVsSonnetUsd.toFixed(2)} vs sonnet)` : ""}`,
       `Expected cost:  $${route.expectedCostUsd.toFixed(2)}`,
       `Pre Work Burn:  ${route.expectedPreworkBurnPct}%`,
       `Recommended:    $${recommendedBudgetUsd.toFixed(2)}`,
@@ -4830,7 +4830,6 @@ function defaultChallengeProofCardInput(): MartinProofCardInput {
     receiptIntegrityState: "unsigned"
   };
 }
-
 
 function latestExitReason(loop: LoopRecord): string {
   const exitEvent = [...loop.events].reverse().find((event) => event.type === "run.completed");

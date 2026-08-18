@@ -145,13 +145,11 @@ function calculateDirectConfidence(signals: ComplexitySignals, input: RouteClass
 // ---------------------------------------------------------------------------
 // Cost-aware model tier routing
 //
-// Engine-agnostic tier system — each engine maps tiers to real model IDs.
+// Engine-agnostic tier system. Delegated CLIs may own concrete model choice.
 // Never pay for reasoning/orchestration on simple tasks.
 //
-// Tier → concrete model per engine:
-//   haiku  → claude-haiku-4-5, gpt-4o-mini, gemini-2.5-flash, deepseek-chat, qwen3-8b,  llama-3.1-8b
-//   sonnet → claude-sonnet-4-6, gpt-4o,     gemini-2.5-pro,  deepseek-r1,   qwen3-32b, llama-3.3-70b
-//   opus   → claude-opus-4-6,  o3,          gemini-2.5-ultra, deepseek-r1-671b, qwen3-235b, llama-3.1-405b
+// Codex is intentionally not mapped to a concrete model: account and workspace
+// entitlements vary, so the authenticated CLI selects its compatible default.
 //
 // Pricing reference (USD per 1M tokens, approx 2026):
 //   haiku:  $0.80 input / $4.00 output  (~1x baseline)
@@ -172,33 +170,27 @@ function selectModelTier(
 }
 
 /**
- * Resolve a tier to a concrete model ID for a specific engine.
- * Allows downstream adapters to switch models automatically.
+ * Resolve a tier to a concrete model ID when the engine accepts provider model IDs.
+ * Returns undefined when Codex or an OpenAI-compatible adapter owns model selection.
+ * Callers may still pass an explicit model directly to the selected adapter.
  */
 export function resolveModelForTier(
   tier: RouteDecision["recommendedModelTier"],
   engine: "claude" | "codex" | "gemini" | "openai" | string
-): string {
+): string | undefined {
+  const engineKey = engine.toLowerCase().split("-")[0] ?? engine;
+  if (engineKey === "codex" || engineKey === "openai") return undefined;
+
   const matrix: Record<string, Record<string, string>> = {
     claude: {
       haiku:  "claude-haiku-4-5-20251001",
       sonnet: "claude-sonnet-4-6",
       opus:   "claude-opus-4-6"
     },
-    codex: {
-      haiku:  "gpt-4o-mini",
-      sonnet: "gpt-4.1",
-      opus:   "o3"
-    },
     gemini: {
       haiku:  "gemini-2.5-flash",
       sonnet: "gemini-2.5-pro",
       opus:   "gemini-2.5-ultra"
-    },
-    openai: {
-      haiku:  "gpt-4o-mini",
-      sonnet: "gpt-4o",
-      opus:   "o3"
     },
     deepseek: {
       haiku:  "deepseek-chat",
@@ -217,7 +209,6 @@ export function resolveModelForTier(
     }
   };
 
-  const engineKey = engine.toLowerCase().split("-")[0] ?? engine;
   const claudeMatrix = matrix.claude;
   return matrix[engineKey]?.[tier] ?? claudeMatrix?.[tier] ?? "claude-sonnet-4-6";
 }
@@ -258,14 +249,14 @@ export interface AvailableEngine {
 export function selectBestEngine(
   requiredTier: RouteDecision["recommendedModelTier"],
   availableEngines: AvailableEngine[]
-): { engineId: string; model: string; reasoning: string } {
+): { engineId: string; model?: string; reasoning: string } {
   const available = availableEngines.filter((e) => e.available);
 
   if (available.length === 0) {
     // Nothing detected — default to claude (user must install)
     return {
       engineId: "claude",
-      model: resolveModelForTier(requiredTier, "claude"),
+      model: resolveModelForTier(requiredTier, "claude")!,
       reasoning: "No engines detected. Defaulting to claude. Run martin doctor for setup instructions."
     };
   }
@@ -293,20 +284,22 @@ export function selectBestEngine(
   if (eligible.length > 0) {
     const best = eligible[0]!;
     const model = resolveModelForTier(requiredTier, best.id);
+    const modelLabel = model ?? "authenticated default";
     return {
       engineId: best.id,
-      model,
-      reasoning: `Selected ${best.id} (${model}) as cheapest available engine for ${requiredTier}-tier task.`
+      ...(model ? { model } : {}),
+      reasoning: `Selected ${best.id} (${modelLabel}) as cheapest available engine for ${requiredTier}-tier task.`
     };
   }
 
   // All available engines are below required tier — upgrade to best available
   const best = available.sort((a, b) => tierRank[b.capabilityTier] - tierRank[a.capabilityTier])[0]!;
   const model = resolveModelForTier(best.capabilityTier, best.id);
+  const modelLabel = model ?? "authenticated default";
   return {
     engineId: best.id,
-    model,
-    reasoning: `No ${requiredTier}-tier engine available. Upgrading to ${best.id} (${model}) — best available.`
+    ...(model ? { model } : {}),
+    reasoning: `No ${requiredTier}-tier engine available. Upgrading to ${best.id} (${modelLabel}) — best available.`
   };
 }
 

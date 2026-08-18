@@ -48,20 +48,24 @@ describe("resolveModelForTier cross-engine", () => {
     expect(resolveModelForTier("haiku", "claude")).toBe("claude-haiku-4-5-20251001");
   });
 
-  it("haiku → gpt-4o-mini for codex engine", () => {
-    expect(resolveModelForTier("haiku", "codex")).toBe("gpt-4o-mini");
+  it("leaves concrete model choice to the authenticated Codex CLI", () => {
+    expect(resolveModelForTier("haiku", "codex")).toBeUndefined();
   });
 
   it("haiku → gemini-2.5-flash for gemini engine", () => {
     expect(resolveModelForTier("haiku", "gemini")).toBe("gemini-2.5-flash");
   });
 
-  it("sonnet → gpt-4.1 for codex engine", () => {
-    expect(resolveModelForTier("sonnet", "codex")).toBe("gpt-4.1");
+  it("does not pin a Codex model for sonnet-tier work", () => {
+    expect(resolveModelForTier("sonnet", "codex")).toBeUndefined();
   });
 
-  it("opus → o3 for codex engine", () => {
-    expect(resolveModelForTier("opus", "codex")).toBe("o3");
+  it("does not pin a Codex model for opus-tier work", () => {
+    expect(resolveModelForTier("opus", "codex")).toBeUndefined();
+  });
+
+  it("leaves OpenAI-compatible model selection to adapter configuration", () => {
+    expect(resolveModelForTier("haiku", "openai")).toBeUndefined();
   });
 
   it("haiku → deepseek-chat for deepseek engine", () => {
@@ -84,6 +88,23 @@ describe("live execution model authority", () => {
     expect(source).not.toContain("autoSelectedModel");
     expect(source).not.toContain("autoSelectModel");
     expect(source).toContain("const effectiveModel = modelOverride;");
+
+    const adapterSelection = source.slice(
+      source.indexOf("function selectAdapter("),
+      source.indexOf("function buildDoctorRecommendations(")
+    );
+    expect(adapterSelection).toContain("const effectiveModel = modelOverride;");
+    expect(adapterSelection).toContain(
+      "...(effectiveModel ? { model: effectiveModel } : {})"
+    );
+    expect(adapterSelection).not.toContain("resolveModelForTier");
+    expect(adapterSelection).not.toContain("classifyRoute");
+
+    const routingSource = readFileSync(
+      fileURLToPath(new URL("../../core/src/routing.ts", import.meta.url)),
+      "utf8"
+    );
+    expect(routingSource).not.toContain("gpt-4o-mini");
   });
 });
 
