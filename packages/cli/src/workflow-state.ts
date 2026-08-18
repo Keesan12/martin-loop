@@ -163,6 +163,17 @@ export async function recordCliWorkflowStep(input: CliWorkflowStepInput): Promis
 }
 
 export async function evaluateCliRunGate(input: CliRunGateInput): Promise<CliRunGateResult> {
+  return evaluateCliWorkflowGate(input, false);
+}
+
+export async function evaluateCliPreflightGate(input: CliRunGateInput): Promise<CliRunGateResult> {
+  return evaluateCliWorkflowGate(input, true);
+}
+
+async function evaluateCliWorkflowGate(
+  input: CliRunGateInput,
+  candidatePreflight: boolean
+): Promise<CliRunGateResult> {
   const state = await readWorkflowState(input.runsRoot, input.workingDirectory);
   const cliState = state.cli ?? {};
   const workingDirectory = normalizeWorkingDirectory(input.workingDirectory);
@@ -232,11 +243,12 @@ export async function evaluateCliRunGate(input: CliRunGateInput): Promise<CliRun
   // Engine, budget, max-iterations, and token limits are runtime execution controls —
   // not safety identity. Changing them does NOT require a fresh preflight.
   // Only a changed verifier command or path scope invalidates the receipt.
-  const preflightReady = isFresh(cliState["preflight"], PREFLIGHT_TTL_MS, (receipt) =>
-    receipt.workingDirectory === workingDirectory &&
-    receipt.verificationPlanKey === verificationPlanKey &&
-    receipt.pathScopeKey === pathScopeKey
-  );
+  const preflightReady = candidatePreflight ||
+    isFresh(cliState["preflight"], PREFLIGHT_TTL_MS, (receipt) =>
+      receipt.workingDirectory === workingDirectory &&
+      receipt.verificationPlanKey === verificationPlanKey &&
+      receipt.pathScopeKey === pathScopeKey
+    );
   if (!preflightReady) {
     missingSteps.push("preflight");
   }
