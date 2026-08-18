@@ -33,7 +33,7 @@ test("version ledger records live public truth and the next release train", asyn
   assert.match(ledger, /live public GitHub release: `v\d+\.\d+\.\d+`/);
   assert.match(
     ledger,
-    new RegExp(escapeRegex("standalone MCP public baseline: `0.5.0`")),
+    new RegExp(escapeRegex(`standalone MCP public baseline: \`${packageJson.version}\``)),
   );
   assert.match(
     ledger,
@@ -45,7 +45,10 @@ test("version ledger records live public truth and the next release train", asyn
   );
   assert.match(ledger, /next planned root follow-on: not scheduled/);
   assert.match(ledger, /next planned standalone release: not scheduled/);
-  assert.match(ledger, /live MCPB baseline: `0\.3\.9`/);
+  assert.match(
+    ledger,
+    new RegExp(escapeRegex(`live MCPB baseline: \`${packageJson.version}\``))
+  );
   assert.match(
     ledger,
     new RegExp(escapeRegex(`current in-repo MCPB release target: \`${packageJson.version}\``))
