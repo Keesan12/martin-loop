@@ -30,7 +30,7 @@ One system to control, verify and understand coding-agent work.
 
 ## Start Here
 
-**Install** — run `npx -y martin-loop@0.5.1 start`, or install it globally with `npm install -g martin-loop@0.5.1`.
+**Install** — run `npx -y martin-loop@0.5.2 start`, or install it globally with `npm install -g martin-loop@0.5.2`.
 
 **Governed run** — define an objective, verifier, budget, and iteration cap with `martin run`.
 
@@ -109,7 +109,7 @@ npx -y martin-loop@latest preflight "Summarize the demo workspace and prove test
 
 `share --latest` writes three files into the selected run directory under `share/`: `run-receipt.json`, `run-receipt.md`, and `proof-card.svg`.
 
-Release notes for the current root package: [MartinLoop 0.5.1](./docs/release/OSS-0.5.1-RELEASE-NOTES.md).
+Release notes for the current root package: [MartinLoop 0.5.2](./docs/release/OSS-0.5.2-RELEASE-NOTES.md).
 
 ## Visual Proof
 
@@ -150,17 +150,17 @@ Example receipt files: [Markdown](./docs/examples/proof-receipts/live-governed-r
 Use this lane from a clean temp directory to verify the public CLI flow exactly as shipped:
 
 ```sh
-npx -y martin-loop@0.5.1 --version
-npx -y martin-loop@0.5.1 start
-npx -y martin-loop@0.5.1 demo
+npx -y martin-loop@0.5.2 --version
+npx -y martin-loop@0.5.2 start
+npx -y martin-loop@0.5.2 demo
 cd martin-loop-demo
 npm install
-npx -y martin-loop@0.5.1 run "Summarize the demo workspace and prove tests still pass" --verify "npm test" --budget-usd 2 --max-iterations 1 --json
-npx -y martin-loop@0.5.1 dossier --latest --json
-npx -y martin-loop@0.5.1 share --latest --json
+npx -y martin-loop@0.5.2 run "Summarize the demo workspace and prove tests still pass" --verify "npm test" --budget-usd 2 --max-iterations 1 --json
+npx -y martin-loop@0.5.2 dossier --latest --json
+npx -y martin-loop@0.5.2 share --latest --json
 ```
 
-For deterministic installs, pin the package line (`martin-loop@0.5.1`) or use `martin-loop@latest`. Plain `npx martin-loop` can resolve a stale local cache on some machines.
+For deterministic installs, pin the package line (`martin-loop@0.5.2`) or use `martin-loop@latest`. Plain `npx martin-loop` can resolve a stale local cache on some machines.
 
 Expected share bundle outputs:
 
@@ -333,7 +333,7 @@ npx martin-loop mcp print-config --host gemini --transport stdio --profile full-
 npx martin-loop mcp print-config --host generic --transport stdio --profile github-review
 ```
 
-The root `martin-loop` package, standalone `@martinloop/mcp` package, and MCPB artifact are aligned at `0.5.1` for this release. Their version lines may move independently in future releases.
+The root `martin-loop` package is `0.5.2`; standalone `@martinloop/mcp` and MCPB remain at `0.5.1` for this root-only corrective release. Their version lines move independently.
 
 The public MCP release train labels are:
 
