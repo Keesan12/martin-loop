@@ -1192,7 +1192,7 @@ describe("martinTriageRunsTool", () => {
 // ---------------------------------------------------------------------------
 
 describe("runLoopTool", () => {
-  it("uses a fail-closed no-provider stub for proof-mode contract tests", async () => {
+  it("runs real verification without granting a governed claim in verification-only mode", async () => {
     await withRunsRoot(async () => {
       const originalEnv = process.env.MARTIN_LIVE;
       process.env.MARTIN_LIVE = "false";
@@ -1201,14 +1201,16 @@ describe("runLoopTool", () => {
           __setRunStoreOverrideForTests(store);
 
           const result = await runLoopTool({
-            objective: "Validate proof-mode stub execution",
+            objective: "Validate verification-only execution",
             verificationPlan: ["node --version"],
             maxIterations: 1,
             maxUsd: 1
           });
 
           expect(result.loopId).toMatch(/^loop_/u);
-          expect(result.verificationPassed).toBe(false);
+          expect(result.verificationPassed).toBe(true);
+          expect(result.executionMode).toBe("verification_only");
+          expect(result.governanceClaimEligible).toBe(false);
         });
       } finally {
         if (originalEnv === undefined) {
