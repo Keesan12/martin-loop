@@ -10,7 +10,10 @@ export default defineConfig({
       "@martin/benchmarks": fileURLToPath(
         new URL("../../benchmarks/src/index.ts", import.meta.url)
       ),
-      "@martin/contracts": fileURLToPath(new URL("../contracts/src/index.ts", import.meta.url))
+      "@martin/contracts": fileURLToPath(new URL("../contracts/src/index.ts", import.meta.url)),
+      "@martin/presentation": fileURLToPath(
+        new URL("../presentation/src/index.ts", import.meta.url)
+      )
     }
   },
   test: {

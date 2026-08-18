@@ -67,7 +67,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "pnpm --filter @martin/contracts build && pnpm --filter @martin/core build && pnpm --filter @martin/adapters build && pnpm --filter @martin/benchmarks build && pnpm --filter @martin/cli build && pnpm --filter @martinloop/mcp build && node ./scripts/build-public-facade.mjs",
+    "build": "pnpm --filter @martin/contracts build && pnpm --filter @martin/core build && pnpm --filter @martin/adapters build && pnpm --filter @martin/presentation build && pnpm --filter @martin/benchmarks build && pnpm --filter @martin/cli build && pnpm --filter @martinloop/mcp build && node ./scripts/build-public-facade.mjs",
     "bench:build": "pnpm --filter @martin/benchmarks build",
     "bench:test": "pnpm --filter @martin/benchmarks test",
     "bench:eval": "pnpm --filter @martin/benchmarks eval",
