@@ -61,6 +61,35 @@ describe("semantic terminal presentation", () => {
     const plainLines = stripAnsi(rendered).split("\n");
     expect(new Set(plainLines.map((line) => line.length))).toEqual(new Set([19]));
   });
+
+  it.each([80, 120, 160])(
+    "honors a %i-column table width",
+    (width) => {
+      const rendered = renderTable(
+        [
+          {
+            stage: "Verification",
+            status: "NEXT",
+            gate: "C:\\Users\\Example\\Projects\\MartinLoop\\scripts\\very-long-verifier-command.ps1",
+            purpose: "Run configured completion checks and preserve evidence"
+          }
+        ],
+        [
+          { header: "STAGE", value: (row) => row.stage, minWidth: 18, maxWidth: 24 },
+          { header: "STATUS", value: (row) => row.status, minWidth: 12, maxWidth: 14 },
+          { header: "GATE", value: (row) => row.gate, minWidth: 18, maxWidth: 36 },
+          { header: "PURPOSE", value: (row) => row.purpose, minWidth: 24 }
+        ],
+        width
+      );
+
+      const lineWidths = stripAnsi(rendered)
+        .split("\n")
+        .map((line) => line.length);
+      expect(Math.max(...lineWidths)).toBeLessThanOrEqual(width);
+      expect(new Set(lineWidths).size).toBe(1);
+    }
+  );
 });
 
 describe("motion policy", () => {

@@ -9,5 +9,8 @@
     "build": "tsc -p tsconfig.build.json",
     "test": "vitest run",
     "lint": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@martin/contracts": "workspace:*"
   }
 }

@@ -26,3 +26,12 @@ export function truncateVisible(value: string, width: number): string {
 
   return Array.from(stripAnsi(value)).slice(0, width - 1).join("") + "…";
 }
+
+export function terminalWidth(width?: number): number {
+  const resolved = width ?? process.stdout.columns ?? 80;
+  return Math.max(40, Math.min(160, Math.floor(resolved)));
+}
+
+export function horizontalRule(width: number, character = "─"): string {
+  return character.repeat(Math.max(0, width));
+}

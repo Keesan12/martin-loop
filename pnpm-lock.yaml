@@ -119,6 +119,12 @@ importers:
         specifier: workspace:*
         version: link:../contracts
 
+  packages/presentation:
+    dependencies:
+      '@martin/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+
 packages:
 
   '@esbuild/aix-ppc64@0.27.4':
