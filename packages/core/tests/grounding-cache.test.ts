@@ -57,4 +57,37 @@ describe("loadOrBuildRepoGroundingIndex cache hardening", () => {
     expect(index.fileCount).toBeGreaterThanOrEqual(1);
     expect(index.files.some((file) => file.path === "src/core.ts")).toBe(true);
   });
+
+  it("rebuilds a cached index when a new repository file appears", async () => {
+    const root = await mkdtemp(join(tmpdir(), "martin-grounding-refresh-"));
+    await mkdir(join(root, "src"), { recursive: true });
+    await writeFile(join(root, "src", "existing.ts"), "export const existing = true;", "utf8");
+    const groundingDir = await mkdtemp(join(tmpdir(), "martin-grounding-refresh-cache-"));
+    const previousGroundingDir = process.env.MARTIN_GROUNDING_DIR;
+    process.env.MARTIN_GROUNDING_DIR = groundingDir;
+
+    try {
+      const { loadOrBuildRepoGroundingIndex, scanPatchForGroundingViolations } = await import(
+        "../src/grounding"
+      );
+      const initial = await loadOrBuildRepoGroundingIndex(root);
+      expect(initial.files.some((file) => file.path === "src/new-file.ts")).toBe(false);
+
+      await writeFile(join(root, "src", "new-file.ts"), "export const added = true;", "utf8");
+      const refreshed = await loadOrBuildRepoGroundingIndex(root);
+      const scan = scanPatchForGroundingViolations(
+        "--- a/src/new-file.ts\n+++ b/src/new-file.ts\n+export const added = true;",
+        refreshed
+      );
+
+      expect(refreshed.files.some((file) => file.path === "src/new-file.ts")).toBe(true);
+      expect(scan.violations.some((violation) => violation.kind === "file_not_found")).toBe(false);
+    } finally {
+      if (previousGroundingDir === undefined) {
+        delete process.env.MARTIN_GROUNDING_DIR;
+      } else {
+        process.env.MARTIN_GROUNDING_DIR = previousGroundingDir;
+      }
+    }
+  });
 });
