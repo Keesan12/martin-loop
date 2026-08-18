@@ -1,0 +1,20 @@
+{
+  "name": "martinloop",
+  "interface": {
+    "displayName": "MartinLoop"
+  },
+  "plugins": [
+    {
+      "name": "martinloop",
+      "source": {
+        "source": "local",
+        "path": "./plugins/martinloop"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

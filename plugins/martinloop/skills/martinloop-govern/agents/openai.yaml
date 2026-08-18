@@ -1,0 +1,4 @@
+interface:
+  display_name: "Govern with MartinLoop"
+  short_description: "Control a coding-agent run and require verifier-backed evidence."
+  default_prompt: "Use MartinLoop to preflight, govern, verify, and produce a dossier for this task."

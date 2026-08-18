@@ -558,11 +558,11 @@ describe("operator commands", () => {
     expect(claudeLocal.scope).toBe("local");
     expect(claudeLocal.installMethod).toBe("command");
     expect(claudeLocal.targetPath).toContain("Claude Code local scope");
-    expect(claudeLocal.content).toContain("claude mcp add --transport http --scope local");
+    expect(claudeLocal.content).toContain("claude.cmd mcp add --transport http --scope local");
   });
 
   it("rejects invalid MCP host and scope values instead of silently falling back", async () => {
-    const invalidHost = await executeCli(["mcp", "print-config", "--host", "vscode"]);
+    const invalidHost = await executeCli(["mcp", "print-config", "--host", "not-a-host"]);
     const invalidScope = await executeCli(["mcp", "install", "--host", "codex", "--scope", "workspace"]);
     const invalidLocalScope = await executeCli(["mcp", "install", "--host", "codex", "--scope", "local"]);
     const invalidTransport = await executeCli(["mcp", "print-config", "--host", "codex", "--transport", "sse"]);

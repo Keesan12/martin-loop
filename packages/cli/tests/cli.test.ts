@@ -306,7 +306,33 @@ describe("parseCliArguments", () => {
       transport: "remote",
       profile: "paid-remote",
       experimentalRemoteHosts: true,
-      dryRun: false
+      dryRun: false,
+      installGovernance: false
+    });
+  });
+
+  it("parses MCP install lifecycle commands", () => {
+    expect(parseCliArguments([
+      "mcp",
+      "verify-install",
+      "--host",
+      "vscode",
+      "--scope",
+      "project"
+    ])).toEqual({
+      command: "mcp_verify_install",
+      host: "vscode",
+      scope: "project"
+    });
+    expect(parseCliArguments(["mcp", "rollback", "--host", "cursor"])).toEqual({
+      command: "mcp_rollback",
+      host: "cursor",
+      scope: "user"
+    });
+    expect(parseCliArguments(["mcp", "uninstall", "--host", "codex"])).toEqual({
+      command: "mcp_uninstall",
+      host: "codex",
+      scope: "user"
     });
   });
 });

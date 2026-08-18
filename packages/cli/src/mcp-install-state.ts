@@ -4,8 +4,9 @@
 
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
+
+import { resolveMartinHome } from "./home-dir.js";
 
 export interface MartinMcpInstallRecord {
   id: string;
@@ -70,10 +71,7 @@ export async function recordMartinMcpInstall(
     installedAt: new Date().toISOString()
   };
   ledger.installs.push(record);
-  await writeFileAtomically(
-    join(stateRoot, "install-state.json"),
-    `${JSON.stringify(ledger, null, 2)}\n`
-  );
+  await writeLedger(stateRoot, ledger);
   return record;
 }
 
@@ -88,7 +86,7 @@ export async function readMartinMcpInstallLedger(
       return parsed;
     }
   } catch {
-    // Missing or invalid state is treated as an empty local ledger.
+    // Missing or invalid state is an empty local ledger, never evidence of an install.
   }
   return { schemaVersion: 1, installs: [] };
 }
@@ -165,7 +163,7 @@ export async function writeFileAtomically(
 }
 
 export function resolveMartinMcpInstallStateRoot(override?: string): string {
-  return override ?? join(homedir(), ".martin-loop", "mcp-installs");
+  return override ?? join(resolveMartinHome(), ".martin", "mcp-installs");
 }
 
 export function sha256(content: string): string {

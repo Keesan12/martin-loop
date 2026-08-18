@@ -79,6 +79,7 @@
     "release:truth:generate": "node scripts/public-release-truth.mjs",
     "release:truth:check": "node scripts/public-release-truth.mjs --check",
     "product-truth:validate": "node scripts/validate-product-truth.mjs",
+    "install:links": "node scripts/generate-install-links.mjs --markdown",
     "public:copy-scan": "node ./scripts/public-copy-scan.mjs",
     "public:portability-guard": "node ./scripts/public-portability-guard.mjs",
     "public:readme-cta-guard": "node ./scripts/readme-cta-guard.mjs",

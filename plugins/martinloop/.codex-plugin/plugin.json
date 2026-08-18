@@ -1,0 +1,29 @@
+{
+  "name": "martinloop",
+  "version": "0.3.5",
+  "description": "Govern coding-agent work with budgets, stop conditions, and verifier-backed evidence.",
+  "author": {
+    "name": "MartinLoop contributors",
+    "url": "https://martinloop.com/"
+  },
+  "homepage": "https://martinloop.com/",
+  "repository": "https://github.com/Keesan12/martin-loop",
+  "license": "Apache-2.0",
+  "keywords": ["agent-governance", "coding-agents", "mcp", "verification"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "MartinLoop",
+    "shortDescription": "Make coding agents prove completion.",
+    "longDescription": "MartinLoop adds controlled execution, budget limits, recovery, and verifier-backed handoffs to coding-agent workflows.",
+    "developerName": "MartinLoop contributors",
+    "category": "Productivity",
+    "capabilities": ["Interactive"],
+    "websiteURL": "https://martinloop.com/",
+    "defaultPrompt": [
+      "Use MartinLoop to govern this task and verify completion.",
+      "Run MartinLoop preflight before making changes.",
+      "Show the MartinLoop dossier for the latest governed run."
+    ]
+  },
+  "mcpServers": "./.mcp.json"
+}
