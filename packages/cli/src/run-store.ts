@@ -6,6 +6,7 @@ import path from "node:path";
 import {
   buildVerifiedHandoff,
   decideCircuitBreak,
+  deriveVerifiedHandoffExecutionBoundary,
   resolveRunsRoot,
   verifierActuallyPassed,
   verifyReceiptIntegrityFromFiles,
@@ -266,6 +267,9 @@ export interface TriageFinding {
 export function readCostProvenance(loop: LoopRecord): CostProvenance {
   return loop.cost.provenance ?? "unavailable";
 }
+
+export const deriveLoopExecutionBoundary =
+  deriveVerifiedHandoffExecutionBoundary;
 
 export function describeCostProvenance(provenance: CostProvenance): string {
   switch (provenance) {

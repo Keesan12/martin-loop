@@ -958,12 +958,14 @@ export type {
 // ─── Track A — Verified Handoff ───────────────────────────────────────────────
 export {
   EVIDENCE_STATUSES,
+  EXECUTION_MODES,
   TEST_INTEGRITY_STATUSES,
   TEST_INTEGRITY_VERDICTS,
   VERIFIED_HANDOFF_OUTCOMES,
 } from "./verified-handoff.js";
 export type {
   EvidenceStatus,
+  ExecutionMode,
   TestIntegrityStatus,
   TestIntegrityVerdict,
   VerifiedHandoffCheckV1,

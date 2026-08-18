@@ -215,6 +215,7 @@ export type { PromptPacket, CompilerAdapterRequest } from "./compiler.js";
 // ─── Verified Handoff builder ────────────────────────────────────────────────
 export {
   buildVerifiedHandoff,
+  deriveVerifiedHandoffExecutionBoundary,
   resolveVerifiedHandoffOutcome,
   toTestIntegrityVerdict,
   verifierActuallyPassed,

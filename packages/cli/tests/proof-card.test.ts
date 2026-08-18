@@ -28,7 +28,8 @@ const completeInput = (): MartinProofCardInput => ({
     "Artifacts live at C:\\workspace\\secret workspace\\runs\\loop_viral_001\\ledger.jsonl",
     "Verifier trace: /home/keesan/martin-loop/runs/loop_viral_001/verifier.txt"
   ],
-  generatedAt: "2026-05-20T14:30:00.000Z"
+  generatedAt: "2026-05-20T14:30:00.000Z",
+  receiptIntegrityState: "verified"
 });
 
 describe("Martin proof cards", () => {
@@ -65,6 +66,30 @@ describe("Martin proof cards", () => {
       "No-spend proof runs are evidence boundaries, not real Martin mutation receipts."
     );
     expect(proofCard.proofVerdict).toBe("EVIDENCE_BOUNDARY");
+  });
+
+  it("requires explicitly verified receipt integrity", () => {
+    const card = buildMartinProofCard({
+      ...completeInput(),
+      receiptIntegrityState: undefined,
+    });
+
+    expect(card.completeEvidence).toBe(false);
+    expect(card.proofVerdict).toBe("EVIDENCE_BOUNDARY");
+    expect(renderMartinProofCardMarkdown(card)).toContain(
+      "Receipt integrity unavailable: Martin proof is not yet trustworthy."
+    );
+  });
+
+  it("fails closed for simulated runs", () => {
+    const card = buildMartinProofCard({
+      ...completeInput(),
+      runMode: "simulated",
+      receiptIntegrityState: "verified",
+    });
+
+    expect(card.completeEvidence).toBe(false);
+    expect(card.proofVerdict).toBe("EVIDENCE_BOUNDARY");
   });
 
   it("fails closed when receipt integrity is unavailable", () => {

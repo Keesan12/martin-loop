@@ -1,6 +1,6 @@
 /**
  * CLI integration tests covering adapter selection, engine flags,
- * and explicit no-spend proof mode guardrails.
+ * and explicit verification-only evidence guardrails.
  */
 
 import { createHash } from "node:crypto";
@@ -261,7 +261,7 @@ async function readWorkflowState(
 // ---------------------------------------------------------------------------
 
 describe("--proof mode", () => {
-  it("run command completes without spawning a real subprocess", async () => {
+  it("runs only the explicit verifier and cannot claim governed success", async () => {
     const result = await withRunsRoot(() =>
       executeCli([
         "--json",
@@ -269,6 +269,8 @@ describe("--proof mode", () => {
         "--objective",
         "Add a greeting function",
         "--proof",
+        "--verify",
+        NOOP_VERIFIER,
         "--max-iterations",
         "1",
         "--budget-usd",
@@ -276,14 +278,14 @@ describe("--proof mode", () => {
       ])
     );
 
-    expect(result.exitCode).toBe(9);
+    expect(result.exitCode).toBe(7);
     const payload = JSON.parse(result.stdout);
     expect(payload.command).toBe("run");
     expect(payload.loop.loopId).toMatch(/^loop_/u);
     expect(typeof payload.loop.attempts).toBe("object");
   });
 
-  it("returns a valid loop record structure in stub mode", async () => {
+  it("returns a valid verification-only loop record structure", async () => {
     const result = await withRunsRoot(() =>
       executeCli([
         "--json",
@@ -295,6 +297,8 @@ describe("--proof mode", () => {
         "--objective",
         "Write a hello world function",
         "--proof",
+        "--verify",
+        NOOP_VERIFIER,
         "--max-iterations",
         "1"
       ])
@@ -304,6 +308,8 @@ describe("--proof mode", () => {
     expect(payload.loop.workspaceId).toBe("ws_stub");
     expect(payload.loop.projectId).toBe("proj_stub");
     expect(payload.loop.budget.maxIterations).toBe(1);
+    expect(payload.loop.metadata.executionMode).toBe("verification_only");
+    expect(payload.loop.metadata.governanceClaimEligible).toBe("false");
   });
 });
 
@@ -313,8 +319,7 @@ describe("--proof mode", () => {
 
 describe("--engine flag", () => {
   it("defaults to claude when no --engine flag is given", { timeout: 45_000 }, async () => {
-    // Use explicit no-spend proof mode — we verify no engine flag selects the claude adapter path,
-    // not that claude itself runs successfully
+    // Verification-only mode preserves the requested engine metadata without launching it.
     const result = await withRunsRoot(() =>
       executeCli([
         "--json",
@@ -322,6 +327,8 @@ describe("--engine flag", () => {
         "--objective",
         "Fix the bug",
         "--proof",
+        "--verify",
+        NOOP_VERIFIER,
         "--max-iterations",
         "1",
         "--budget-usd",
@@ -329,7 +336,7 @@ describe("--engine flag", () => {
       ])
     );
 
-    expect(result.exitCode).toBe(9);
+    expect(result.exitCode).toBe(7);
     const payload = JSON.parse(result.stdout);
     // The adapter id should contain "claude" (it will be in the loop attempt if any ran)
     expect(payload.loop.loopId).toMatch(/^loop_/u);
@@ -566,7 +573,7 @@ describe("--engine flag", () => {
               ])
             );
 
-            expect(runResult.exitCode).toBe(0);
+            expect(runResult.exitCode).toBe(7);
             const payload = JSON.parse(runResult.stdout);
             expect(payload.command).toBe("run");
             expect(payload.environment.engine).toBe("codex");
@@ -665,7 +672,7 @@ describe("--engine flag", () => {
               ])
             );
 
-          expect(runResult.exitCode).toBe(0);
+          expect(runResult.exitCode).toBe(7);
           const payload = JSON.parse(runResult.stdout);
           expect(payload.effectivePolicy.configPath).toBe(join(workspace, "martin.config.yaml"));
           expect(payload.loop.budget).toMatchObject({
@@ -773,7 +780,7 @@ describe("--engine flag", () => {
                 ])
             );
 
-          expect(runResult.exitCode).toBe(0);
+          expect(runResult.exitCode).toBe(7);
         }
       )
     );
@@ -828,12 +835,14 @@ describe("--cwd flag", () => {
           "--cwd",
           dir,
           "--proof",
+          "--verify",
+          NOOP_VERIFIER,
           "--max-iterations",
           "1"
         ])
       );
 
-      expect(result.exitCode).toBe(9);
+      expect(result.exitCode).toBe(7);
     });
   });
 });

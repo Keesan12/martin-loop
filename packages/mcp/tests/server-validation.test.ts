@@ -739,7 +739,10 @@ describe("server validation", () => {
 
             expect((runResult as { isError?: boolean }).isError).not.toBe(true);
             expect(readToolText(runResult)).not.toMatch(/^\s*\{/u);
+            expect(readToolText(runResult)).toContain("Execution mode: verification_only");
             expect(readToolStructuredContent(runResult)).toMatchObject({
+              executionMode: "verification_only",
+              governanceClaimEligible: false,
               budget: {
                 maxUsd: 1,
                 softLimitUsd: 1,

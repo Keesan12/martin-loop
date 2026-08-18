@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 
 import type {
   CostProvenance,
+  ExecutionMode,
   LoopRecord,
   ReceiptIntegritySummary,
   TestIntegrityStatus,
@@ -116,6 +117,7 @@ export function resolveVerifiedHandoffOutcome(input: {
   changedFileCount?: number;
   definitionOfDonePreSatisfied?: boolean;
   evidenceContradicted?: boolean;
+  governanceClaimEligible?: boolean;
   unresolvedWorkCount: number;
 }): VerifiedHandoffOutcome {
   if (
@@ -129,6 +131,7 @@ export function resolveVerifiedHandoffOutcome(input: {
 
   if (
     input.executionStatus === "failed" ||
+    input.governanceClaimEligible === false ||
     input.evidenceContradicted === true ||
     (input.mutationRequired === true &&
       (input.changedFileCount ?? 0) === 0 &&
@@ -159,6 +162,41 @@ export function resolveVerifiedHandoffOutcome(input: {
   }
 
   return "NEEDS_REVIEW";
+}
+
+const SIMULATED_ADAPTER_PATTERN = /(?:^|:)(?:stub|fixture|synthetic)(?::|$)/u;
+
+function isExecutionMode(value: string | undefined): value is ExecutionMode {
+  return value === "governed" || value === "verification_only" || value === "simulated";
+}
+
+export function deriveVerifiedHandoffExecutionBoundary(loop: LoopRecord): {
+  executionMode: ExecutionMode;
+  governanceClaimEligible: boolean;
+} {
+  const adapterIds = loop.attempts.map((attempt) => attempt.adapterId);
+  const hasSimulatedAdapter = adapterIds.some((adapterId) =>
+    adapterId === "direct:proof:no-mutation" ||
+    SIMULATED_ADAPTER_PATTERN.test(adapterId)
+  );
+  const hasVerifierOnlyAdapter = adapterIds.some(
+    (adapterId) => adapterId === "direct:verifier:verify-only"
+  );
+  const persistedMode = isExecutionMode(loop.metadata["executionMode"])
+    ? loop.metadata["executionMode"]
+    : undefined;
+
+  const executionMode: ExecutionMode = hasSimulatedAdapter
+    ? "simulated"
+    : hasVerifierOnlyAdapter
+      ? "verification_only"
+      : persistedMode ?? (adapterIds.length > 0 ? "governed" : "simulated");
+
+  return {
+    executionMode,
+    governanceClaimEligible:
+      executionMode === "governed" && adapterIds.length > 0,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -268,6 +306,8 @@ export function buildVerifiedHandoff(
       "Test integrity was not evaluated for this run.",
   };
 
+  const executionBoundary = deriveVerifiedHandoffExecutionBoundary(input.loop);
+
   const outcome = resolveVerifiedHandoffOutcome({
     lifecycleState: input.loop.lifecycleState,
     executionStatus: input.executionStatus,
@@ -279,6 +319,7 @@ export function buildVerifiedHandoff(
     changedFileCount: scope.changedFiles.length,
     definitionOfDonePreSatisfied: input.definitionOfDonePreSatisfied,
     evidenceContradicted: input.evidenceContradicted ?? input.verification.status === "contradicted",
+    governanceClaimEligible: executionBoundary.governanceClaimEligible,
     unresolvedWorkCount: unresolvedWork.length,
   });
 
@@ -301,6 +342,8 @@ export function buildVerifiedHandoff(
       verificationPlan: input.loop.task.verificationPlan,
     },
     outcome,
+    executionMode: executionBoundary.executionMode,
+    governanceClaimEligible: executionBoundary.governanceClaimEligible,
     sourceStatus: {
       status: input.loop.status,
       lifecycleState: input.loop.lifecycleState,

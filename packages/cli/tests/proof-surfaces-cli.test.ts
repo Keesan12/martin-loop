@@ -62,6 +62,8 @@ describe("CLI V2 proof-surface wiring", () => {
       "--objective",
       "Exercise the proof handoff",
       "--proof",
+      "--verify",
+      "node --version",
       "--max-iterations",
       "1",
       "--budget-usd",
@@ -70,9 +72,9 @@ describe("CLI V2 proof-surface wiring", () => {
       runsRoot
     ]);
 
-    expect(result.exitCode).toBe(9);
+    expect(result.exitCode).toBe(7);
     expect(result.stdout).toContain("MARTINLOOP VERIFIED HANDOFF");
-    expect(result.stdout).toContain("STOPPED");
+    expect(result.stdout).toContain("NEEDS REVIEW");
     expect(result.stdout).toContain("Receipt Integrity");
   });
 
@@ -83,6 +85,8 @@ describe("CLI V2 proof-surface wiring", () => {
       "--objective",
       "Exercise the quiet proof handoff",
       "--proof",
+      "--verify",
+      "node --version",
       "--max-iterations",
       "1",
       "--budget-usd",
@@ -91,7 +95,7 @@ describe("CLI V2 proof-surface wiring", () => {
       runsRoot
     ]);
 
-    expect(result.exitCode).toBe(9);
+    expect(result.exitCode).toBe(7);
     expect(result.stdout).toMatch(/^loop_/u);
     expect(result.stdout).not.toContain("VERIFIED HANDOFF");
     expect(result.stdout).not.toContain("\u001b[");

@@ -1251,8 +1251,7 @@ describe("runLoopTool", () => {
     });
   });
 
-  it("returns a loop outcome in stub mode (MARTIN_LIVE=false)", async () => {
-    // Set stub mode so the adapter doesn't try to spawn claude
+  it("labels MARTIN_LIVE=false as verification-only evidence", async () => {
     const originalEnv = process.env.MARTIN_LIVE;
     process.env.MARTIN_LIVE = "false";
 
@@ -1267,12 +1266,21 @@ describe("runLoopTool", () => {
           maxUsd: 5
         });
 
-        // Stub adapter returns failed, so loop exits with budget_exit or diminishing_returns
         expect(result.loopId).toMatch(/^loop_/u);
         expect(typeof result.attempts).toBe("number");
         expect(typeof result.costUsd).toBe("number");
         expect(result.budget.softLimitUsd).toBe(5);
         expect(["completed", "exited", "failed"]).toContain(result.status);
+        expect(result.executionMode).toBe("verification_only");
+        expect(result.governanceClaimEligible).toBe(false);
+
+        const loopRecord = JSON.parse(
+          await readFile(result.inspection.loopRecordPath, "utf8")
+        ) as { metadata?: Record<string, string> };
+        expect(loopRecord.metadata).toMatchObject({
+          executionMode: "verification_only",
+          governanceClaimEligible: "false"
+        });
       });
     } finally {
       if (originalEnv === undefined) {

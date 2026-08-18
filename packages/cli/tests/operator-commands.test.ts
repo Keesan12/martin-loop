@@ -694,10 +694,12 @@ describe("challenge command", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("Martin Loop Under-$3 Challenge");
-    expect(result.stdout).toContain("$2.30");
-    expect(result.stdout).toContain("$3.00");
-    expect(result.stdout).toContain("passed");
-    expect(result.stdout).toContain("Martin stopped Ralph here.");
+    expect(result.stdout).toContain("$0.00 / $0.00");
+    expect(result.stdout).toContain("simulated");
+    expect(result.stdout).toContain("Receipt integrity unavailable");
+    expect(result.stdout).not.toContain("Generated from a local Martin Loop run record");
+    expect(result.stdout).not.toContain("$2.30");
+    expect(result.stdout).not.toContain("Martin stopped Ralph here.");
     expect(result.stdout).not.toMatch(/[A-Z]:\\/);
   });
 

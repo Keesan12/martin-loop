@@ -1590,7 +1590,12 @@ export function createMartinMcpServer(serverInfo?: {
       const output = await runLoopTool(input);
       return createToolSuccessResult(
         output,
-        `Run ${output.loopId} is ${output.status}/${output.lifecycleState} after ${output.attempts} attempt(s); spend ${output.costUsd.toFixed(2)} USD.`
+        [
+          `Run ${output.loopId} is ${output.status}/${output.lifecycleState}`,
+          `after ${output.attempts} attempt(s); spend ${output.costUsd.toFixed(2)} USD.`,
+          `Execution mode: ${output.executionMode}; governance claim eligible:`,
+          `${output.governanceClaimEligible ? "yes" : "no"}.`
+        ].join(" ")
       );
     }
 

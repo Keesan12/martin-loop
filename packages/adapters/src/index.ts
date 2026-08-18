@@ -23,6 +23,10 @@ export {
   type OpenAiCompatibleAdapterOptions
 } from "./openai-compatible.js";
 export {
+  createVerifierOnlyAdapter,
+  type VerifierOnlyAdapterOptions
+} from "./verifier-only.js";
+export {
   detectCodexHostPlatform,
   diagnoseCodexHost,
   probeCodexLaunch,

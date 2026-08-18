@@ -15,7 +15,7 @@ import {
   probeCodexLaunch,
   checkCodexSandboxPreflight,
   resolveCliCommandAvailability,
-  createStubDirectProviderAdapter,
+  createVerifierOnlyAdapter,
 } from "@martin/adapters";
 import { runMartin, classifyRoute, resolveModelForTier, getHistoricalDirectSuccessRate, getPreference, recordPreference, writeExitSignal, type MartinAdapter } from "@martin/core";
 import {
@@ -91,6 +91,7 @@ import {
   buildVerificationSummary,
   computeScopeFingerprint,
   describeCostProvenance,
+  deriveLoopExecutionBoundary,
   findPersistedLoopEvidence,
   listPersistedLoops,
   loadPersistedAttempt,
@@ -185,7 +186,12 @@ type RunSuccessCallToAction = {
 
 function buildRunSuccessCallToAction(loop: LoopRecord): RunSuccessCallToAction | undefined {
   const verification = buildVerificationSummary(loop);
-  if (loop.status !== "completed" || loop.lifecycleState !== "completed" || verification.status !== "passed") {
+  if (
+    loop.status !== "completed" ||
+    loop.lifecycleState !== "completed" ||
+    verification.status !== "passed" ||
+    !deriveLoopExecutionBoundary(loop).governanceClaimEligible
+  ) {
     return undefined;
   }
 
@@ -1242,9 +1248,9 @@ export function renderCliHelp(): string {
     "  --max-tokens <n>         Set the maximum total token budget.",
     "  --verify <cmd>           Shell command to run as the verifier after each attempt.",
     "  --verify-timeout-ms <n>  Verifier timeout in milliseconds.",
-    "  --proof                  Run in no-spend proof mode (explicit opt-in).",
+    "  --proof                  Run verification-only (cannot emit governed VERIFIED).",
     "  --unsafe-allow-unguarded-run",
-    "                           Deprecated for live coding runs; use --proof for explicit no-spend lanes.",
+    "                           Deprecated for live coding; --proof is non-governed evidence only.",
     "  --allow-path <glob>      Restrict agent writes to this path pattern (repeatable).",
     "  --deny-path <glob>       Block agent from this path pattern (repeatable).",
     "  --accept <criterion>     Add an acceptance criterion to the prompt (repeatable).",
@@ -1311,7 +1317,7 @@ async function executeRunCommand(
       "--unsafe-allow-unguarded-run is blocked for live governed coding runs.",
       {
         suggestion:
-          "Run `martin-loop doctor`, `martin-loop session-start`, `martin-loop estimate`, and `martin-loop preflight` before retrying, or use `--proof` for an explicit no-spend lane.",
+          "Run doctor, session-start, estimate, and preflight before retrying. `--proof` is verification-only and cannot emit governed VERIFIED.",
         details: {
           allowedNoSpendModes: ["proof"]
         }
@@ -1435,6 +1441,19 @@ async function executeRunCommand(
     codexCommandOverride,
     resolvedRequest.verifyTimeoutMs
   );
+  const executionMode = runAdapterOverrideForTests
+    ? "simulated"
+    : adapter.adapterId === "direct:verifier:verify-only"
+      ? "verification_only"
+      : adapter.adapterId === "direct:stub:stub" ||
+          adapter.adapterId === "direct:proof:no-mutation"
+        ? "simulated"
+        : "governed";
+  const executionMetadata = {
+    ...resolvedRequest.metadata,
+    executionMode,
+    governanceClaimEligible: executionMode === "governed" ? "true" : "false",
+  };
   // Load telemetry state before the governed run.
   const { readTelemetryConfig, isTelemetrySendingEnabled, initializeTelemetryIfNeeded,
           sendProductEvent, resolveProductEventsEndpoint, shouldShowTelemetryNotice,
@@ -1493,7 +1512,7 @@ async function executeRunCommand(
         ...(resolvedRequest.approvalPolicy ? { approvalPolicy: resolvedRequest.approvalPolicy } : {})
       },
       budget: resolvedRequest.budget,
-      metadata: resolvedRequest.metadata,
+      metadata: executionMetadata,
       adapter,
     });
     result = await offerArcadeWhileWaiting(governedTask, {
@@ -1543,7 +1562,7 @@ async function executeRunCommand(
         repoRoot: cliEnvironment.workingDirectory
       },
       budget: resolvedRequest.budget,
-      metadata: resolvedRequest.metadata,
+      metadata: executionMetadata,
       receiptScope: {
         ...receiptScope
       },
@@ -1555,7 +1574,7 @@ async function executeRunCommand(
 
     throw new CliCommandError("environment", "Martin could not start the requested execution adapter.", {
       suggestion:
-        "Run `martin doctor` to verify engine availability, or rerun with `--proof` for an explicit no-spend lane.",
+        "Run `martin doctor` to verify engine availability. `--proof` is verification-only and cannot emit governed VERIFIED.",
       details: {
         loopId: fallbackLoop.loopId,
         reason: error instanceof Error ? error.message : String(error)
@@ -1614,8 +1633,11 @@ async function executeRunCommand(
   const isInteractiveTty = outputMode === "human" && process.stdout.isTTY === true && process.stdin.isTTY === true;
   const runCompleted = result.loop.status === "completed" && result.loop.lifecycleState === "completed";
   const runVerified = buildVerificationSummary(result.loop).status === "passed";
+  const governanceClaimEligible = deriveLoopExecutionBoundary(
+    result.loop
+  ).governanceClaimEligible;
   const governedOutcome = runCompleted
-    ? runVerified
+    ? runVerified && governanceClaimEligible
       ? "VERIFIED" as const
       : "NEEDS_REVIEW" as const
     : "STOPPED" as const;
@@ -1653,9 +1675,13 @@ async function executeRunCommand(
       result.decision.reasonCode === "config_change_approval_required");
 
   const runOutcome: RunOutcome =
-    result.loop.status === "completed" && result.loop.lifecycleState === "completed"
+    result.loop.status === "completed" &&
+    result.loop.lifecycleState === "completed" &&
+    governanceClaimEligible
       ? "success"
-      : result.loop.lifecycleState === "human_escalation" && verificationPassed
+      : result.loop.lifecycleState === "human_escalation" &&
+          verificationPassed &&
+          governanceClaimEligible
         ? "awaiting_signoff"
         : isApprovalBlocked
           ? "approval_blocked"
@@ -4314,7 +4340,7 @@ function renderDemoInstructions(targetDirectory: string): string {
     "Default first run (live spend-governed):",
     '  npx martin run "Summarize the demo workspace and confirm the verifier is green" --verify "npm test" --budget-usd 2 --max-iterations 1',
     "",
-    "Optional explicit no-spend proof run:",
+    "Optional verification-only run (non-governed; cannot emit VERIFIED):",
     '  npx martin run "Summarize the demo workspace and confirm the verifier is green" --proof --verify "npm test" --budget-usd 2 --max-iterations 1',
     "",
     "Optional live implementation run:",
@@ -4566,10 +4592,10 @@ function selectAdapter(
   const effectiveModel = modelOverride;
 
   if (liveMode === "proof") {
-    return createStubDirectProviderAdapter({
-      label: "Stub adapter (--proof)",
-      providerId: "stub",
-      model: "stub"
+    return createVerifierOnlyAdapter({
+      label: "Verifier-only adapter (--proof)",
+      workingDirectory,
+      ...(verifyTimeoutMs !== undefined ? { verifyTimeoutMs } : {})
     });
   }
 
@@ -4642,14 +4668,14 @@ function buildDoctorRecommendations(input: {
   }
 
   if (input.liveMode === "live" && input.engine === "codex" && !input.codexAvailable) {
-    recommendations.push("Install or expose the Codex CLI on PATH, or rerun with `--proof` for explicit no-spend validation.");
+    recommendations.push("Install or expose the Codex CLI on PATH. Use `--proof` only for non-governed verification evidence.");
   }
   if (input.liveMode === "live" && input.engine === "codex" && input.codexAvailable && input.codexLaunchReady === false) {
     recommendations.push(input.codexRemediation ?? "Run `martin preflight --engine codex` and fix the reported Codex host issue before governed work.");
   }
 
   if (input.liveMode === "live" && input.engine === "gemini" && !input.geminiAvailable) {
-    recommendations.push("Install or expose the Gemini CLI on PATH, or rerun with `--proof` for explicit no-spend validation.");
+    recommendations.push("Install or expose the Gemini CLI on PATH. Use `--proof` only for non-governed verification evidence.");
   }
 
   return recommendations;
@@ -4772,7 +4798,7 @@ function proofCardInputFromLoop(loop: LoopRecord): MartinProofCardInput {
     costSpend: `$${loop.cost.actualUsd.toFixed(2)}`,
     budget: `$${loop.budget.maxUsd.toFixed(2)}`,
     attempts: loop.attempts.length,
-    runMode: deriveLoopRunMode(loop),
+    runMode: deriveLoopExecutionBoundary(loop).executionMode,
     rollbackStatus,
     haltReason: latestExitReason(loop),
     evidenceBoundaryNotes: [
@@ -4788,34 +4814,21 @@ function defaultChallengeProofCardInput(): MartinProofCardInput {
   return {
     loopId: "loop_demo_challenge",
     objective: "Repair the failing MCP lane so the agent can reconnect.",
-    status: "completed",
-    lifecycle: "verified",
-    verifierStatus: "passed",
-    costSpend: "$2.30",
-    budget: "$3.00",
-    attempts: 2,
-    rollbackStatus: "captured",
-    haltReason: "verifier_passed",
+    status: "simulated",
+    lifecycle: "demo",
+    verifierStatus: "simulated",
+    costSpend: "$0.00",
+    budget: "$0.00",
+    attempts: 0,
+    runMode: "simulated",
+    rollbackStatus: "not_applicable",
+    haltReason: "sample_only",
     evidenceBoundaryNotes: [
-      "Generated from a local Martin Loop run record.",
-      "Hosted dashboards and private team telemetry are intentionally excluded from OSS proof cards."
+      "Deterministic simulated sample; not a governed run or receipt."
     ],
-    generatedAt: new Date().toISOString()
+    generatedAt: new Date().toISOString(),
+    receiptIntegrityState: "unsigned"
   };
-}
-
-function deriveLoopRunMode(loop: LoopRecord): string {
-  if (loop.task.mutationMode) {
-    return loop.task.mutationMode;
-  }
-  // Determine run mode based on proof adapters or zero cost.
-  if (loop.attempts.some((attempt) => attempt.adapterId === "direct:proof:no-mutation")) {
-    return "proof";
-  }
-  if (loop.cost.actualUsd === 0) {
-    return "proof";
-  }
-  return "not recorded";
 }
 
 

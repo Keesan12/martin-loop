@@ -176,7 +176,7 @@ export function resolveExecutionMode(): ExecutionMode {
     mode: liveMode ? "live" : "proof",
     detail: liveMode
       ? "Live CLI execution is enabled."
-      : "Proof mode is active because MARTIN_LIVE=false."
+      : "Verification-only mode is active because MARTIN_LIVE=false; governed VERIFIED is unavailable."
   };
 }
 
@@ -367,7 +367,7 @@ export function getEngineAvailability(engine: MartinEngine): CliAvailability {
 
 export function createSkippedCliAvailability(
   command: string,
-  detail = "Proof mode skipped live CLI availability detection."
+  detail = "Verification-only mode skipped live CLI availability detection; governed VERIFIED is unavailable."
 ): CliAvailability {
   return {
     command,

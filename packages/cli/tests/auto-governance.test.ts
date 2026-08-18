@@ -218,7 +218,7 @@ describe("martin estimate command", () => {
         process.platform === "win32" ? "cmd /c exit 0" : "true"
       ]);
 
-      expect(result.exitCode).toBe(9);
+      expect(result.exitCode).toBe(7);
       const payload = JSON.parse(result.stdout) as {
         effectivePolicy: { configPath: string; budget: { maxUsd: number; softLimitUsd: number; maxIterations: number; maxTokens: number } };
         loop: { budget: { maxUsd: number; softLimitUsd: number; maxIterations: number; maxTokens: number } };

@@ -111,9 +111,10 @@ export function buildMartinProofCard(input: MartinProofCardInput): MartinProofCa
     { label: FIELD_LABELS.generatedAt, value: generatedAt }
   ];
 
-  const trustworthyReceipt =
-    input.receiptIntegrityState === undefined || input.receiptIntegrityState === "verified";
-  const proofLikeRun = /^(proof|verify_only)$/iu.test(String(input.runMode ?? "").trim());
+  const trustworthyReceipt = input.receiptIntegrityState === "verified";
+  const proofLikeRun = /^(proof|verify_only|verification_only|simulated)$/iu.test(
+    String(input.runMode ?? "").trim()
+  );
   const completeEvidence =
     trustworthyReceipt &&
     !proofLikeRun &&
@@ -129,12 +130,10 @@ export function buildMartinProofCard(input: MartinProofCardInput): MartinProofCa
           ? RELOCATED_EVIDENCE_LINE
       : input.receiptIntegrityState === "selector_noncanonical"
             ? NONCANONICAL_EVIDENCE_LINE
+      : input.receiptIntegrityState === "unsigned" || input.receiptIntegrityState === undefined
+        ? UNSIGNED_EVIDENCE_LINE
       : proofLikeRun
         ? NON_MUTATING_EVIDENCE_LINE
-      : input.receiptIntegrityState === "unsigned"
-        ? UNSIGNED_EVIDENCE_LINE
-        : proofLikeRun
-          ? NON_MUTATING_EVIDENCE_LINE
         : completeEvidence
           ? COMPLETE_EVIDENCE_LINE
           : INCOMPLETE_EVIDENCE_LINE;
