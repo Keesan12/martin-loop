@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -104,12 +105,17 @@ function normalizeContents(contents, relativePath) {
 }
 
 export function collectTrackedFiles(rootDir = ROOT_DIR) {
-  const stdout = execFileSync("git", ["-C", rootDir, "ls-files", "-z"], { encoding: "utf8" });
+  const stdout = execFileSync(
+    "git",
+    ["-C", rootDir, "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+    { encoding: "utf8" }
+  );
   return stdout
     .split("\0")
     .map((value) => value.trim())
     .filter(Boolean)
     .map((value) => normalizeRelativePath(value))
+    .filter((value) => existsSync(path.join(rootDir, value)))
     .sort();
 }
 

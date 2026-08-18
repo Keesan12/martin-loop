@@ -16,7 +16,6 @@ import {
   createClaudeCliAdapter,
   createCodexCliAdapter,
   createGeminiCliAdapter,
-  createStubDirectProviderAdapter,
   type SpawnLike
 } from "../src/index.js";
 import { containsShellOperator, readGitChangedFiles, readGitExecutionArtifacts, runSubprocess, splitCommand } from "../src/cli-bridge.js";
@@ -419,17 +418,6 @@ describe("createAgentCliAdapter", () => {
     expect(result.status).toBe("completed");
     expect(result.usage.provenance).toBe("estimated");
     expect(result.usage.estimatedUsd).toBeGreaterThan(0);
-  });
-});
-
-describe("createStubDirectProviderAdapter", () => {
-  it("uses explicit simulated provenance even for a real-looking provider", () => {
-    const adapter = createStubDirectProviderAdapter({
-      providerId: "openai",
-      model: "gpt",
-    });
-
-    expect(adapter.adapterId).toBe("direct:stub:openai:gpt");
   });
 });
 

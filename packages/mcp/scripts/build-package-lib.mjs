@@ -280,7 +280,7 @@ function shouldSkipDirectory(name, relativePath) {
 function shouldSkipFile(name) {
   return (
     name.endsWith(".map") ||
-    /^(?:stub-agent-cli|verifier-only)\.(?:js|d\.ts)$/u.test(name)
+    /^stub-(?:agent-cli|direct-provider)\.(?:js|d\.ts)$/u.test(name)
   );
 }
 

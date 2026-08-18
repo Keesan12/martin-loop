@@ -35,6 +35,7 @@ const ALLOWED_PACKED_PREFIXES = [
 const FORBIDDEN_PACKED_PATH_PATTERNS = [
   /^dist\/vendor\/cli\/bin\//u,
   /^dist\/vendor\/adapters\/stub-agent-cli\.(?:js|d\.ts)$/u,
+  /^dist\/vendor\/adapters\/stub-direct-provider\.(?:js|d\.ts)$/u,
   /^dist\/vendor\/adapters\/verifier-only\.(?:js|d\.ts)$/u,
 ];
 

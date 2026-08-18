@@ -2,18 +2,18 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createStubDirectProviderAdapter } from "@martin/adapters";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createLoopRecord } from "../../contracts/src/index.js";
 import { __setRunAdapterOverrideForTests, executeCli, parseCliArguments } from "../src/index.js";
+import { createTestAdapter } from "./_test-adapter.js";
 
 const STAR_CTA_HEADLINE = "⭐ MartinLoop produced a verified handoff.";
 const STAR_CTA_REPO = "github.com/Keesan12/martin-loop";
 
 function installFastRunAdapter(): void {
   __setRunAdapterOverrideForTests(
-    createStubDirectProviderAdapter({
+    createTestAdapter({
       providerId: "test",
       model: "fast",
       responder: (request) => ({
@@ -50,7 +50,7 @@ function installFastRunAdapter(): void {
 
 function installFailingRunAdapter(): void {
   __setRunAdapterOverrideForTests(
-    createStubDirectProviderAdapter({
+    createTestAdapter({
       providerId: "test",
       model: "slow-fail",
       responder: () => ({

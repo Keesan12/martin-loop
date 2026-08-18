@@ -12,7 +12,6 @@ import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
 import {
-  createStubDirectProviderAdapter,
   detectCodexHostPlatform,
   probeCodexLaunch,
   resolveCliCommandAvailability
@@ -25,6 +24,7 @@ import {
   __setRunAdapterOverrideForTests,
   executeCli
 } from "../src/index.js";
+import { createTestAdapter } from "./_test-adapter.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -206,7 +206,7 @@ function installDeterministicCodexHost(): void {
   });
 
   __setRunAdapterOverrideForTests(
-    createStubDirectProviderAdapter({
+    createTestAdapter({
       providerId: "codex-test",
       model: "gpt-5.4",
       responder: (request) => ({

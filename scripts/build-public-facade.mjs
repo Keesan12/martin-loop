@@ -167,7 +167,7 @@ function shouldSkipFile(name, relativePath, packageName) {
     name.endsWith(".map") ||
     (
       packageName === "@martin/adapters" &&
-      /^(?:stub-agent-cli|verifier-only)\.(?:js|d\.ts)$/u.test(relativePath)
+      /^stub-(?:agent-cli|direct-provider)\.(?:js|d\.ts)$/u.test(relativePath)
     )
   );
 }

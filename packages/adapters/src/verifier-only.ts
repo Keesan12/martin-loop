@@ -43,7 +43,12 @@ export function createVerifierOnlyAdapter(
         workingDirectory,
         verifyTimeoutMs,
         request.context.verificationStack,
-        options.spawnImpl
+        options.spawnImpl,
+        {
+          runId: request.loopId,
+          workspaceId: request.workspaceId,
+          cwd: workingDirectory
+        }
       );
       const changedFiles = shouldTrackVerifierWrites
         ? (await readGitChangedFiles(workingDirectory, 5_000)).filter(

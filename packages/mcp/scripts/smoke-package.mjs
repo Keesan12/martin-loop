@@ -176,7 +176,7 @@ export async function runStandaloneMcpSmoke(options = {}) {
 
 function assertTarballFileSet(filePaths) {
   const retiredExecutionFiles = filePaths.filter((filePath) =>
-    /^dist\/vendor\/adapters\/(?:stub-agent-cli|verifier-only)\.(?:js|d\.ts)$/u.test(filePath),
+    /^dist\/vendor\/adapters\/stub-(?:agent-cli|direct-provider)\.(?:js|d\.ts)$/u.test(filePath),
   );
   if (retiredExecutionFiles.length > 0) {
     throw new Error(`Tarball contains retired execution adapters: ${retiredExecutionFiles.join(", ")}`);
