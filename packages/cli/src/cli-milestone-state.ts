@@ -644,19 +644,31 @@ export async function submitToIntake(
 ): Promise<IntakeSubmissionResult> {
   const { queueOnFailure = true } = options;
   const controller = new AbortController();
-  // 3 s timeout — intake is optional and non-blocking; next-run retry handles failures.
-  const timer = setTimeout(() => controller.abort(), 3_000);
+  // Abort does not guarantee that Windows fetch settles promptly, so race the
+  // transport against an explicit deadline and let the queued retry handle it.
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<Response>((_, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      const error = new Error("Intake request timed out after 3 seconds.");
+      error.name = "AbortError";
+      reject(error);
+    }, 3_000);
+  });
 
   try {
-    const response = await fetch(getIntakeUrl(), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Idempotency-Key": `${payload.event}:${payload.cliVersion}:${payload.createdAt}`,
-      },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
+    const response = await Promise.race([
+      fetch(getIntakeUrl(), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": `${payload.event}:${payload.cliVersion}:${payload.createdAt}`,
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      }),
+      timeout,
+    ]);
 
     // 409 = idempotent duplicate
     if (response.status === 409) return { ok: true, status: "duplicate" };
@@ -713,7 +725,7 @@ export async function submitToIntake(
     }
     return result;
   } finally {
-    clearTimeout(timer);
+    if (timer !== undefined) clearTimeout(timer);
   }
 }
 

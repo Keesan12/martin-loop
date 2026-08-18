@@ -14,8 +14,13 @@ export function martinFilePath(filename: string): string {
   return join(resolveMartinHome(), ".martin", filename);
 }
 
-export function resolveMartinHome(env: NodeJS.ProcessEnv = process.env): string {
-  const configuredHome = env["HOME"]?.trim() || env["USERPROFILE"]?.trim();
+export function resolveMartinHome(
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  const configuredHome = platform === "win32"
+    ? env["USERPROFILE"]?.trim() || env["HOME"]?.trim()
+    : env["HOME"]?.trim() || env["USERPROFILE"]?.trim();
   return configuredHome || homedir();
 }
 
