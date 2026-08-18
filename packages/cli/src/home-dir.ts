@@ -11,7 +11,12 @@ import { join } from "node:path";
  * Creates no directories — callers are responsible for mkdir.
  */
 export function martinFilePath(filename: string): string {
-  return join(homedir(), ".martin", filename);
+  return join(resolveMartinHome(), ".martin", filename);
+}
+
+export function resolveMartinHome(env: NodeJS.ProcessEnv = process.env): string {
+  const configuredHome = env["HOME"]?.trim() || env["USERPROFILE"]?.trim();
+  return configuredHome || homedir();
 }
 
 /**

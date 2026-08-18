@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
+
+import { martinFilePath } from "./home-dir.js";
 // Set by npm/pnpm when running as a package script; "unknown" in test/direct-node contexts.
 const CLI_VERSION: string = process.env["npm_package_version"] ?? "unknown";
 
@@ -10,7 +11,9 @@ import type { LoopRecord } from "@martin/contracts";
 // State file
 // ---------------------------------------------------------------------------
 
-const STATE_PATH = join(homedir(), ".martin", "milestone-state.json");
+function milestoneStatePath(): string {
+  return martinFilePath("milestone-state.json");
+}
 
 export interface MilestoneState {
   version: 5;
@@ -164,7 +167,7 @@ function fillDefaults(parsed: Record<string, unknown>): MilestoneState {
 
 async function readState(): Promise<MilestoneState> {
   try {
-    const raw = await readFile(STATE_PATH, "utf8");
+    const raw = await readFile(milestoneStatePath(), "utf8");
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     if (parsed["version"] === 5) return fillDefaults(parsed);
   } catch { /* first run or corrupt — start fresh */ }
@@ -172,8 +175,9 @@ async function readState(): Promise<MilestoneState> {
 }
 
 async function writeState(state: MilestoneState): Promise<void> {
-  await mkdir(join(homedir(), ".martin"), { recursive: true });
-  await writeFile(STATE_PATH, JSON.stringify(state, null, 2), "utf8");
+  const statePath = milestoneStatePath();
+  await mkdir(dirname(statePath), { recursive: true });
+  await writeFile(statePath, JSON.stringify(state, null, 2), "utf8");
 }
 
 function freshState(): MilestoneState {
@@ -520,7 +524,7 @@ type RetryEntry = Omit<IntakePayload, "email"> & {
 };
 
 function intakeDraftPath(): string {
-  return join(homedir(), ".martin", "intake-draft.jsonl");
+  return martinFilePath("intake-draft.jsonl");
 }
 
 function queueLockPath(): string {
@@ -852,7 +856,7 @@ export async function recordFeedback(score: number, featureVote?: string, email?
 
 export async function readMilestoneState(): Promise<MilestoneState | null> {
   try {
-    const raw = await readFile(STATE_PATH, "utf8");
+    const raw = await readFile(milestoneStatePath(), "utf8");
     const parsed = JSON.parse(raw) as MilestoneState;
     return parsed.version === 5 ? parsed : null;
   } catch {

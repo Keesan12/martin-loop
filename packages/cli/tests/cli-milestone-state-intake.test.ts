@@ -5,16 +5,13 @@
  * Queue file isolation: tests override HOME / USERPROFILE to a temp directory
  * so that intakeDraftPath() resolves inside the temp dir, not ~/.martin.
  *
- * State file (STATE_PATH) is computed at module load time and cannot be
- * redirected via env — the opt-out test writes to the real state path and
- * restores it on cleanup.
+ * Milestone state and queue files both resolve from the isolated home.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -85,9 +82,6 @@ const BASE_PAYLOAD: IntakePayload = {
   platform: process.platform,
   createdAt: new Date().toISOString(),
 };
-
-// Real state path — computed at module load time inside cli-milestone-state.ts
-const REAL_STATE_PATH = join(homedir(), ".martin", "milestone-state.json");
 
 describe("intake delivery outcomes", () => {
   it("records an accepted server response with its submission id", () => {
@@ -338,9 +332,7 @@ describe("opt-out clears and disables queue", () => {
     const before = await readFile(draftPath, "utf8");
     expect(before.split("\n").filter(Boolean).length).toBe(1);
 
-    // Write a state file with optedOut: true at the REAL state path
-    // (STATE_PATH is fixed at module load time — env override does not reach it)
-    const existingState = await readFile(REAL_STATE_PATH, "utf8").catch(() => null);
+    const statePath = join(tempHome, ".martin", "milestone-state.json");
     const optedOutState = {
       version: 5,
       firstRunAt: null,
@@ -369,27 +361,18 @@ describe("opt-out clears and disables queue", () => {
       suppressUntilRun: 0,
     };
 
-    await mkdir(dirname(REAL_STATE_PATH), { recursive: true });
-    await writeFile(REAL_STATE_PATH, JSON.stringify(optedOutState), "utf8");
+    await mkdir(dirname(statePath), { recursive: true });
+    await writeFile(statePath, JSON.stringify(optedOutState), "utf8");
 
-    try {
-      await retryQueuedIntake();
+    await retryQueuedIntake();
 
-      const after = await readFile(draftPath, "utf8").catch(() => "");
-      expect(after.split("\n").filter(Boolean).length).toBe(0);
+    const after = await readFile(draftPath, "utf8").catch(() => "");
+    expect(after.split("\n").filter(Boolean).length).toBe(0);
 
-      // Attempting to queue another entry while opted out — should not appear
-      await submitToIntake({ ...BASE_PAYLOAD, createdAt: new Date(Date.now() + 999).toISOString() });
-      const afterSecond = await readFile(draftPath, "utf8").catch(() => "");
-      expect(afterSecond.split("\n").filter(Boolean).length).toBe(0);
-    } finally {
-      // Restore original state file
-      if (existingState !== null) {
-        await writeFile(REAL_STATE_PATH, existingState, "utf8");
-      } else {
-        await rm(REAL_STATE_PATH, { force: true });
-      }
-    }
+    // Attempting to queue another entry while opted out — should not appear
+    await submitToIntake({ ...BASE_PAYLOAD, createdAt: new Date(Date.now() + 999).toISOString() });
+    const afterSecond = await readFile(draftPath, "utf8").catch(() => "");
+    expect(afterSecond.split("\n").filter(Boolean).length).toBe(0);
   });
 });
 
