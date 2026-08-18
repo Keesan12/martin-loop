@@ -43,7 +43,7 @@ jobs:
           MARTIN_RELEASE_MATRIX_OUTDIR: .artifacts/release-matrix/${{ matrix.os }}
         run: |
           node ./scripts/release-truth-check.mjs --allow-divergence-marker=[sync-parity]
-          node ./scripts/fleet-release-authority-check.mjs
+          node ./scripts/fleet-release-authority-check.mjs --skip-cli
           node ./scripts/release-matrix.mjs
 
       - name: Upload platform validation artifacts

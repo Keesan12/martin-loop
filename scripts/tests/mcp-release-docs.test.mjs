@@ -33,15 +33,15 @@ test("version ledger records live public truth and the next release train", asyn
   assert.match(ledger, /live public GitHub release: `v\d+\.\d+\.\d+`/);
   assert.match(
     ledger,
-    new RegExp(escapeRegex("standalone MCP public baseline: `0.3.9`")),
+    new RegExp(escapeRegex(`standalone MCP public baseline: \`${packageJson.version}\``)),
   );
   assert.match(
     ledger,
-    new RegExp(escapeRegex(`current in-repo standalone release target: \`${packageJson.version}\``))
+    new RegExp(escapeRegex(`current in-repo standalone release line: \`${packageJson.version}\``))
   );
   assert.match(
     ledger,
-    new RegExp(escapeRegex(`current in-repo root release target: \`${rootPackageJson.version}\``))
+    new RegExp(escapeRegex(`current in-repo root release line: \`${rootPackageJson.version}\``))
   );
   assert.match(ledger, /next planned root follow-on: not scheduled/);
   assert.match(ledger, /next planned standalone release: not scheduled/);
@@ -72,8 +72,8 @@ test("public MCP docs describe the current baseline and the next train in human-
     readRepoFile(path.join("docs", "release", "MCP-0.3.3-RELEASE-NOTES.md"))
   ]);
 
-  // AI guide still references the release train
-  assert.match(aiGuide, /0\.3\.1/);
+  // AI guide should describe the current release train without pinning stale historical baselines.
+  assert.match(aiGuide, new RegExp(escapeRegex(packageJson.version)));
   assert.match(aiGuide, /local-first/i);
   assert.match(aiGuide, /martin_doctor/);
   assert.match(aiGuide, /martin_run/);

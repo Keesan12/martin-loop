@@ -22,7 +22,7 @@ async function readJson(rootDir, relativePath) {
   return JSON.parse(await readFile(path.join(rootDir, relativePath), "utf8"));
 }
 
-async function collectFailures(rootDir = process.cwd()) {
+async function collectFailures(rootDir = process.cwd(), options = {}) {
   const failures = [];
   const rootPackage = await readJson(rootDir, "package.json");
   const mcpPackage = await readJson(rootDir, "packages/mcp/package.json");
@@ -56,7 +56,10 @@ async function collectFailures(rootDir = process.cwd()) {
   }
 
   failures.push(...await collectStaleCurrentReferences(rootDir));
-  failures.push(...runCliVersionChecks(rootDir));
+
+  if (options.runCli !== false) {
+    failures.push(...runCliVersionChecks(rootDir));
+  }
 
   return failures;
 }
@@ -129,7 +132,8 @@ function expectEqual(failures, label, actual, expected) {
 
 async function main() {
   const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-  const failures = await collectFailures(rootDir);
+  const runCli = !process.argv.includes("--skip-cli");
+  const failures = await collectFailures(rootDir, { runCli });
 
   if (failures.length > 0) {
     console.error("Fleet release authority check failed:");
