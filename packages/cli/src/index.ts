@@ -42,6 +42,12 @@ import {
   type MutationMode,
   type ReceiptScope
 } from "@martin/contracts";
+import {
+  buildGovernedPlanStages,
+  renderGovernedRunPlan,
+  renderVerifiedHandoff,
+  type GovernedRunPlanView
+} from "@martin/presentation";
 
 import {
   buildNativePhaseRunRequest,
@@ -81,6 +87,7 @@ import {
 import {
   buildArtifactSummary,
   buildRunDossier,
+  buildVerifiedHandoffFromPersistedLoop,
   buildVerificationSummary,
   computeScopeFingerprint,
   describeCostProvenance,
@@ -1549,6 +1556,33 @@ async function executeRunCommand(
   });
 
   const costProvenance = readCostProvenance(result.loop);
+  let verifiedHandoffHuman: string | undefined;
+  if (persistenceFinalized && outputMode === "human") {
+    try {
+      const persistedDetail = await loadPersistedLoop({
+        loopId: result.loop.loopId,
+        workspaceId: result.loop.workspaceId,
+        runsDir: cliEnvironment.runsRoot
+      });
+      verifiedHandoffHuman = renderVerifiedHandoff(
+        buildVerifiedHandoffFromPersistedLoop(persistedDetail),
+        {
+          width: process.stdout.columns,
+          environment: {
+            color: "auto",
+            isTty: process.stdout.isTTY === true,
+            term: process.env["TERM"]
+          }
+        }
+      );
+    } catch (error) {
+      warnings.push(
+        `Verified Handoff could not be rendered from persisted evidence: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+  }
 
   const confidence = deriveSavingsConfidence(result.loop);
   const uncontrolled = estimatedUncontrolledUsd(result.loop);
@@ -1770,6 +1804,7 @@ async function executeRunCommand(
       ...(successCallToAction ? { successCallToAction } : {})
     },
     human: [
+      ...(verifiedHandoffHuman ? [verifiedHandoffHuman, ""] : []),
       runHeader,
       `Started Martin Loop run ${result.loop.loopId}`,
       `Status: ${result.loop.status} / ${result.loop.lifecycleState}`,
@@ -3082,19 +3117,35 @@ async function executePreflightCommand(
     ? `Run history: ${runHistoryRisk.runRecords} local run record(s)${runHistoryHotspots.length > 0 ? `, ${runHistoryHotspots.length} scope hotspot(s)` : ", no scope hotspots"}`
     : `Run history: no local persisted governed runs yet`;
   const riskWarnings = warnings.filter((warning) => warning.startsWith("Run history risk:"));
+  const planView: GovernedRunPlanView = {
+    ready,
+    task: request.title,
+    engine: environment.engine,
+    mode: environment.liveMode,
+    budget: resolvedGuardrails.budget,
+    verifier: verificationPlan,
+    receiptScope,
+    policyProfile: resolvedGuardrails.policyProfile,
+    blockingIssues,
+    warnings,
+    stages: []
+  };
+  planView.stages = buildGovernedPlanStages(planView);
 
   return renderCliSuccess(outputMode, {
     data,
     human: [
-      `Preflight ${ready ? "passed" : "blocked"} for ${request.title}`,
-      `Working directory: ${environment.workingDirectory}`,
-      `Engine: ${environment.engine} (${environment.liveMode})`,
-      `Verification plan: ${verificationPlan.join(", ") || "none"}`,
-      `Receipt scope: repo=${receiptScope.repoRoot} runs=${receiptScope.runsRoot}`,
+      renderGovernedRunPlan(planView, {
+        width: process.stdout.columns,
+        environment: {
+          color: "auto",
+          isTty: process.stdout.isTTY === true,
+          term: process.env["TERM"]
+        }
+      }),
       runHistoryLine,
       corpusLine,
-      ...riskWarnings,
-      ...(blockingIssues.length > 0 ? ["Blocking issues:", ...blockingIssues.map((issue) => `- ${issue}`)] : [])
+      ...riskWarnings
     ],
     quiet: ready ? "ready" : "blocked",
     warnings

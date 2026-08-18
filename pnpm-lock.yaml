@@ -82,6 +82,9 @@ importers:
       '@martin/core':
         specifier: workspace:*
         version: link:../core
+      '@martin/presentation':
+        specifier: workspace:*
+        version: link:../presentation
 
   packages/contracts: {}
 
