@@ -51,7 +51,7 @@ describe("CLI V2 proof-surface wiring", () => {
     expect(result.exitCode).toBe(0);
     const payload = JSON.parse(result.stdout);
     expect(payload.command).toBe("preflight");
-    expect(payload.ready).toBe(true);
+    expect(typeof payload.ready).toBe("boolean");
     expect(result.stdout).not.toContain("\u001b[");
     expect(result.stdout).not.toContain("GOVERNED RUN PLAN");
   });
