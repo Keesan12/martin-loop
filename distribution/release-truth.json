@@ -14,8 +14,8 @@
   "mcpb": {
     "built": true,
     "released": true,
-    "releaseUrl": "https://github.com/Keesan12/martin-loop/releases/download/mcp-v0.3.9/martinloop-0.3.9.mcpb",
-    "sha256": "3b656a7d6f11f6a301b7aee291ba6f5ed29ba9e7dfc2d5ae530d57d93a13d958"
+    "releaseUrl": "https://github.com/Keesan12/martin-loop/releases/download/v0.5.1/martinloop-0.5.1.mcpb",
+    "sha256": "987a0c72a0db8ab0c190caf61d592d4a7d126b3b3a711a937c75a4406a7c940d"
   },
   "repository": "https://github.com/Keesan12/martin-loop",
   "website": "https://martinloop.com"
