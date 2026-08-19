@@ -389,37 +389,64 @@ async function createFakeCodexCli(tempRoot) {
   await mkdir(binDir, { recursive: true });
   await mkdir(localAppData, { recursive: true });
 
+  const implementation = path.join(binDir, "fake-codex.mjs");
+  const implementationSource = [
+    'import { readFileSync, writeFileSync } from "node:fs";',
+    "",
+    "const args = process.argv.slice(2);",
+    "const isExecHelp = args[0] === 'exec' && args.includes('--help');",
+    "const isGlobalHelp = args.length === 1 && args[0] === '--help';",
+    "",
+    "if (isGlobalHelp) {",
+    "  console.log('Usage: codex [OPTIONS] [COMMAND]');",
+    "  process.exit(0);",
+    "}",
+    "",
+    "if (isExecHelp) {",
+    "  console.log('Usage: codex exec [OPTIONS] [PROMPT]');",
+    "  console.log('  --sandbox <SANDBOX_MODE> [possible values: read-only, workspace-write]');",
+    "  console.log('  --cd <DIR>');",
+    "  console.log('  --json');",
+    "  console.log('  --color <WHEN> [possible values: always, never, auto]');",
+    "  console.log('  [PROMPT]');",
+    "  console.log(\"Read prompt from stdin when '-' is supplied.\");",
+    "  process.exit(0);",
+    "}",
+    "",
+    "if (args[0] !== 'exec') {",
+    "  console.error('unknown command');",
+    "  process.exit(2);",
+    "}",
+    "",
+    "const prompt = args.at(-1) === '-' ? readFileSync(0, 'utf8') : (args.at(-1) ?? '');",
+    "const marker = prompt.match(/\\.martin-codex-write-probe-[A-Za-z0-9.-]+\\.tmp/u)?.[0];",
+    "if (marker) {",
+    "  writeFileSync(marker, 'MARTIN_CODEX_WRITE_OK', 'utf8');",
+    "}",
+    "",
+    "console.log(JSON.stringify({ type: 'item.completed', item: { type: 'command_execution', status: 'completed', exit_code: 0 } }));",
+    "console.log(JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'fake codex completed' } }));",
+    "console.log(JSON.stringify({ type: 'turn.completed', usage: { input_tokens: 10, output_tokens: 5 } }));",
+    "",
+  ].join("\n");
+  await writeFile(implementation, implementationSource, "utf8");
+
   const file = path.join(binDir, process.platform === "win32" ? "codex.cmd" : "codex");
-  const script = process.platform === "win32"
-    ? [
-        "@echo off",
-        "echo %* | findstr /C:\"--help\" >nul",
-        "if %errorlevel%==0 (",
-        "  echo usage: codex exec ...",
-        "  exit /b 0",
-        ")",
-        "echo {\"type\":\"item.completed\",\"item\":{\"type\":\"command_execution\",\"status\":\"completed\",\"exit_code\":0}}",
-        "echo {\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"fake codex completed\"}}",
-        "echo {\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":10,\"output_tokens\":5}}",
-        "exit /b 0",
-        "",
-      ].join("\r\n")
-    : [
-        "#!/usr/bin/env sh",
-        "case \"$*\" in",
-        "  *--help*)",
-        "    echo 'usage: codex exec ...'",
-        "    ;;",
-        "  *)",
-        "    echo '{\"type\":\"item.completed\",\"item\":{\"type\":\"command_execution\",\"status\":\"completed\",\"exit_code\":0}}'",
-        "    echo '{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"fake codex completed\"}}'",
-        "    echo '{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":10,\"output_tokens\":5}}'",
-        "    ;;",
-        "esac",
-        "",
-      ].join("\n");
-  await writeFile(file, script, "utf8");
-  if (process.platform !== "win32") {
+  if (process.platform === "win32") {
+    const script = [
+      "@echo off",
+      `\"${process.execPath}\" \"%~dp0fake-codex.mjs\" %*`,
+      "exit /b %errorlevel%",
+      "",
+    ].join("\r\n");
+    await writeFile(file, script, "utf8");
+  } else {
+    const script = [
+      "#!/usr/bin/env sh",
+      `exec \"${process.execPath}\" \"$(dirname \"$0\")/fake-codex.mjs\" \"$@\"`,
+      "",
+    ].join("\n");
+    await writeFile(file, script, "utf8");
     await chmod(file, 0o755);
     await access(file);
   }
