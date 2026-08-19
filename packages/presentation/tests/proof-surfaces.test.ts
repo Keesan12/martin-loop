@@ -4,7 +4,9 @@ import { describe, expect, it } from "vitest";
 import {
   buildGovernedPlanStages,
   renderGovernedRunPlan,
+  renderGovernedRunPlanMarkdown,
   renderVerifiedHandoff,
+  renderVerifiedHandoffMarkdown,
   stripAnsi,
   type GovernedRunPlanView
 } from "../src/index.js";
@@ -219,5 +221,64 @@ describe("Verified Handoff V2", () => {
     expect(rendered).toContain("simulated");
     expect(rendered).toContain("INELIGIBLE");
     expect(rendered).not.toContain("— VERIFIED");
+  });
+});
+
+describe("renderVerifiedHandoffMarkdown", () => {
+  it.each(["VERIFIED", "NEEDS_REVIEW", "STOPPED"] as const)(
+    "renders %s outcome as plain Markdown",
+    (outcome) => {
+      const md = renderVerifiedHandoffMarkdown(handoff(outcome));
+      expect(md).toContain("## MartinLoop Verified Handoff");
+      expect(md).toContain(outcome.replace("_", " "));
+      expect(md).not.toContain("\u001b[");
+    }
+  );
+
+  it("includes formatCost output for actual provenance", () => {
+    const md = renderVerifiedHandoffMarkdown(handoff("VERIFIED"));
+    expect(md).toContain("provider-settled actual");
+  });
+
+  it("fails closed for legacy handoffs omitting execution provenance", () => {
+    const { executionMode: _e, governanceClaimEligible: _g, ...legacy } = handoff("VERIFIED");
+    const md = renderVerifiedHandoffMarkdown(legacy);
+    expect(md).toContain("NEEDS REVIEW");
+    expect(md).not.toContain("— VERIFIED");
+  });
+});
+
+// ─── CRITICAL: governance agreement ──────────────────────────────────────────
+// CLI terminal renderer and MCP Markdown renderer MUST agree on outcome.
+// A mismatch means the agent sees VERIFIED while the human sees NEEDS REVIEW.
+describe("governance agreement — terminal vs Markdown", () => {
+  it.each([
+    { outcome: "VERIFIED" as const, executionMode: "governed" as const, eligible: true,  expected: "VERIFIED" },
+    { outcome: "VERIFIED" as const, executionMode: "simulated" as const, eligible: false, expected: "NEEDS REVIEW" },
+    { outcome: "STOPPED"  as const, executionMode: "governed" as const, eligible: true,  expected: "STOPPED" },
+  ])("$expected: terminal and Markdown agree", ({ outcome, executionMode, eligible, expected }) => {
+    const h = { ...handoff(outcome), executionMode, governanceClaimEligible: eligible };
+    const terminal = stripAnsi(renderVerifiedHandoff(h, { width: 80, environment: { color: "never" } }));
+    const markdown = renderVerifiedHandoffMarkdown(h);
+    expect(terminal).toContain(expected);
+    expect(markdown).toContain(expected);
+  });
+});
+
+describe("renderGovernedRunPlanMarkdown", () => {
+  it("renders ready plan as plain Markdown", () => {
+    const md = renderGovernedRunPlanMarkdown(plan);
+    expect(md).toContain("## MartinLoop Governed Run Plan");
+    expect(md).toContain("READY");
+    expect(md).toContain("$10.00");
+    expect(md).not.toContain("\u001b[");
+  });
+
+  it("renders blocked plan with blocking issue", () => {
+    const blocked = { ...plan, ready: false, blockingIssues: ["Verifier unavailable"] };
+    blocked.stages = buildGovernedPlanStages(blocked);
+    const md = renderGovernedRunPlanMarkdown(blocked);
+    expect(md).toContain("BLOCKED");
+    expect(md).toContain("Verifier unavailable");
   });
 });
