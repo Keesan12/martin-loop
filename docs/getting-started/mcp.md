@@ -2,20 +2,24 @@
 
 The `@martinloop/mcp` package exposes MartinLoop through stdio for MCP-capable hosts.
 
-`0.3.0` is the current public MCP package line. It adds a stronger guided flow for hosts and a stricter run gate so `martin_run` only starts after the matching readiness, planning, and preflight steps have happened.
+`0.5.3` is the current in-repo MCP release target. It aligns the MCP surface with MartinLoop's end-to-end execution-control model and the capability-driven Codex host work in the root package.
+
+MartinLoop does not replace the host's coding agent or model selection. It connects the run around that agent from Definition of Done through preflight, control, verification, recovery evidence, receipts, and post-run analysis.
+
+For agent-readable context see [`../../llms.txt`](../../llms.txt), [`../../llms-full.txt`](../../llms-full.txt), and [`../for-agents.md`](../for-agents.md).
 
 ## Install
 
 Run the packaged server directly:
 
 ```sh
-npx -y @martinloop/mcp
+npx -y @martinloop/mcp@0.5.3
 ```
 
 Add it to Codex:
 
 ```sh
-codex mcp add martin-loop -- npx -y @martinloop/mcp
+codex mcp add martin-loop -- npx -y @martinloop/mcp@0.5.3
 ```
 
 Add it to Claude Code:
@@ -23,13 +27,13 @@ Add it to Claude Code:
 macOS/Linux:
 
 ```sh
-claude mcp add --transport stdio --scope user martin-loop -- npx -y @martinloop/mcp
+claude mcp add --transport stdio --scope user martin-loop -- npx -y @martinloop/mcp@0.5.3
 ```
 
 Windows:
 
 ```sh
-claude mcp add --transport stdio --scope user martin-loop -- cmd /c npx -y @martinloop/mcp
+claude mcp add --transport stdio --scope user martin-loop -- cmd /c npx -y @martinloop/mcp@0.5.3
 ```
 
 ## Generate Host Config
@@ -64,7 +68,13 @@ Rollback and uninstall refuse to overwrite a host config that changed after inst
 5. Use `martin_status` or `martin_logs` for live posture when the host needs it.
 6. Use `martin_dossier`, `martin_eval`, or the `martin_get_*` tools for evidence review.
 
-If the host tries to skip straight to `martin_run`, MartinLoop now blocks the call and points back to the missing step. That is deliberate. It keeps the "safe by default" path visible instead of relying on convention.
+The broader lifecycle is:
+
+```text
+DEFINE -> PREFLIGHT -> CONTROL -> VERIFY -> RECOVER -> PROVE -> ANALYZE
+```
+
+If the host tries to skip straight to `martin_run`, MartinLoop blocks the call when required workflow evidence is missing and points back to the next required step. That keeps the governed path explicit before agent spend.
 
 ## Start Safe
 
@@ -78,5 +88,14 @@ If your host supports allow-lists, start with the `minimal` profile or an equiva
 - `martin_dossier`
 
 Expanded profiles add `martin_run`, run-control helpers, and GitHub review helpers only when the host actually needs them.
+
+## Truth boundary
+
+MCP presentation does not create stronger evidence than the underlying run.
+
+- `VERIFIED` requires configured evidence supporting the Definition of Done.
+- `STOPPED` requires a configured hard boundary.
+- `NEEDS REVIEW` is used when completion cannot be established.
+- `MARTIN_LIVE=false` can provide inspection or verifier evidence, but it is not a governed coding-agent editing run.
 
 More detail: [MCP tool reference](../reference/mcp-tools.md) and [MCP compatibility](../reference/mcp-compatibility.md).

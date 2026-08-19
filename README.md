@@ -30,7 +30,7 @@ One system to control, verify and understand coding-agent work.
 
 ## Start Here
 
-**Install** — run `npx -y martin-loop@0.5.2 start`, or install it globally with `npm install -g martin-loop@0.5.2`.
+**Install** — run `npx -y martin-loop@0.5.3 start`, or install it globally with `npm install -g martin-loop@0.5.3`.
 
 **Governed run** — define an objective, verifier, budget, and iteration cap with `martin run`.
 
@@ -40,11 +40,59 @@ One system to control, verify and understand coding-agent work.
 
 **Receipts** — inspect the latest result with `martin dossier --latest` and validate stored integrity with `martin runs verify --latest`.
 
-**MCP** — install `@martinloop/mcp@0.5.1` in a supported host or generate host configuration with `martin mcp print-config`.
+**MCP** — install `@martinloop/mcp@0.5.3` in a supported host or generate host configuration with `martin mcp print-config`.
 
 **Documentation** — continue with the [quickstart](./docs/getting-started/quickstart.md), [CLI reference](./docs/reference/cli.md), or [MCP setup](./docs/getting-started/mcp.md).
 
 When `--model` is provided, MartinLoop passes it through unchanged. Without `--model`, the authenticated host runtime chooses its own default. MartinLoop does not inject a hidden fallback model.
+
+## For AI Agents
+
+MartinLoop is the execution-control system around coding agents. The coding agent still writes the code. MartinLoop governs the run and makes completion prove itself.
+
+Use MartinLoop when a coding task needs one or more of these controls:
+
+- preflight readiness before agent spend
+- hard budget and iteration limits
+- allowed or denied edit scope
+- controlled retries and stop conditions
+- independent verifier commands
+- recovery and rollback evidence
+- a finite completion decision
+- run receipts, dossiers, history, failure classification, and post-run analysis
+- one control layer across Codex, Claude Code, and other coding-agent environments
+
+Canonical lifecycle:
+
+```text
+DEFINE
+  -> PREFLIGHT
+  -> CONTROL
+  -> VERIFY
+  -> RECOVER
+  -> PROVE
+  -> ANALYZE
+```
+
+The product-level flow is **Definition of Done -> Controlled Run -> Verified Handoff**.
+
+For machine-readable context start with [`llms.txt`](./llms.txt), [`llms-full.txt`](./llms-full.txt), and [MartinLoop for AI Agents](./docs/for-agents.md).
+
+## One System Around the Run
+
+Teams should not need to stitch together a separate script or point tool for every part of coding-agent execution. MartinLoop connects the control path around the agent from preflight through post-run evidence.
+
+| Stage | MartinLoop role |
+| --- | --- |
+| Define | Capture the objective, verifier, budget, scope, and finish line. |
+| Preflight | Check readiness and required workflow evidence before agent spend. |
+| Control | Enforce budgets, attempts, path boundaries, policy, and stop conditions while the coding agent works. |
+| Verify | Run configured checks and bind the evidence to the active run and workspace. |
+| Recover | Preserve recovery and rollback state when another attempt or human review is required. |
+| Prove | Produce the authoritative `VERIFIED`, `STOPPED`, or `NEEDS REVIEW` handoff plus receipts. |
+| Analyze | Inspect run history, cost provenance, failure classes, dossiers, and shareable evidence after execution. |
+
+MartinLoop does not replace Git, GitHub, CI, dedicated security scanners, observability platforms, code review, or the coding agent itself. It gives those workflows one governed execution record to inspect.
 
 ## Why MartinLoop
 
@@ -109,7 +157,23 @@ npx -y martin-loop@latest preflight "Summarize the demo workspace and prove test
 
 `share --latest` writes three files into the selected run directory under `share/`: `run-receipt.json`, `run-receipt.md`, and `proof-card.svg`.
 
-Release notes for the current root package: [MartinLoop 0.5.2](./docs/release/OSS-0.5.2-RELEASE-NOTES.md).
+Release notes for the current root package: [MartinLoop 0.5.3](./docs/release/OSS-0.5.3-RELEASE-NOTES.md).
+
+## The Run From Start to Handoff
+
+MartinLoop's terminal presentation is built around the governed lifecycle, not around a single verifier command.
+
+**Governed Run Plan** shows the configured finish line before work starts, including the task, budget posture, verifier plan, scope, and execution boundaries.
+
+**Controlled Run** keeps the coding agent working inside those boundaries while MartinLoop tracks attempts, cost, stop conditions, and recovery state.
+
+**Verified Handoff** closes the loop with one authoritative outcome:
+
+- `VERIFIED` when the configured evidence supports the Definition of Done
+- `STOPPED` when a configured hard boundary ends the run
+- `NEEDS REVIEW` when completion cannot be established from the available evidence
+
+The handoff can include verifier steps, scope state, attempt count, cost provenance, unresolved evidence, recovery state, receipt integrity, and the next safe action. The exact fields depend on what the run actually established.
 
 ## Visual Proof
 
@@ -124,6 +188,14 @@ Ungoverned agents can retry until cost and scope drift. MartinLoop adds budget c
 <div align="center">
   <img src="./docs/assets/side-by-side.svg" alt="MartinLoop governed run compared with an unbounded retry loop" width="720" height="1080">
 </div>
+
+## MartinLoop Arcade
+
+Long governed runs do not have to mean staring at a spinner. In an interactive terminal, MartinLoop Arcade can be offered while the coding agent continues working in the background.
+
+Arcade is presentation-only. It cannot change the agent, budget, verifier, policy decision, run outcome, or receipt evidence. It stays out of JSON, CI, non-interactive, and other machine-readable execution paths.
+
+Use `--arcade` to offer Arcade immediately for a supported interactive run, or `--no-arcade` to suppress it for that run.
 
 ## Proof Receipts
 
@@ -150,17 +222,17 @@ Example receipt files: [Markdown](./docs/examples/proof-receipts/live-governed-r
 Use this lane from a clean temp directory to verify the public CLI flow exactly as shipped:
 
 ```sh
-npx -y martin-loop@0.5.2 --version
-npx -y martin-loop@0.5.2 start
-npx -y martin-loop@0.5.2 demo
+npx -y martin-loop@0.5.3 --version
+npx -y martin-loop@0.5.3 start
+npx -y martin-loop@0.5.3 demo
 cd martin-loop-demo
 npm install
-npx -y martin-loop@0.5.2 run "Summarize the demo workspace and prove tests still pass" --verify "npm test" --budget-usd 2 --max-iterations 1 --json
-npx -y martin-loop@0.5.2 dossier --latest --json
-npx -y martin-loop@0.5.2 share --latest --json
+npx -y martin-loop@0.5.3 run "Summarize the demo workspace and prove tests still pass" --verify "npm test" --budget-usd 2 --max-iterations 1 --json
+npx -y martin-loop@0.5.3 dossier --latest --json
+npx -y martin-loop@0.5.3 share --latest --json
 ```
 
-For deterministic installs, pin the package line (`martin-loop@0.5.2`) or use `martin-loop@latest`. Plain `npx martin-loop` can resolve a stale local cache on some machines.
+For deterministic installs, pin the package line (`martin-loop@0.5.3`) or use `martin-loop@latest`. Plain `npx martin-loop` can resolve a stale local cache on some machines.
 
 Expected share bundle outputs:
 
@@ -245,10 +317,10 @@ martin-loop badge [--format svg|json] [--runs-dir <path>]
 ```
 
 <!-- Generated by scripts/generate-install-links.mjs. -->
-<!-- MCP package: @martinloop/mcp@0.5.1 -->
+<!-- MCP package: @martinloop/mcp@0.5.3 -->
 
-[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_MartinLoop-007ACC?logo=visualstudiocode&logoColor=white)](vscode:mcp/install?%7B%22name%22%3A%22martin-loop%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40martinloop%2Fmcp%400.5.1%22%5D%7D)
-[![Add to Cursor](https://img.shields.io/badge/Cursor-Add_MartinLoop-111111)](cursor://anysphere.cursor-deeplink/mcp/install?name=martin-loop&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIkBtYXJ0aW5sb29wL21jcEAwLjUuMSJdfQ%3D%3D)
+[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_MartinLoop-007ACC?logo=visualstudiocode&logoColor=white)](vscode:mcp/install?%7B%22name%22%3A%22martin-loop%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40martinloop%2Fmcp%400.5.3%22%5D%7D)
+[![Add to Cursor](https://img.shields.io/badge/Cursor-Add_MartinLoop-111111)](cursor://anysphere.cursor-deeplink/mcp/install?name=martin-loop&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIkBtYXJ0aW5sb29wL21jcEAwLjUuMyJdfQ%3D%3D)
 
 Common options:
 
@@ -333,7 +405,7 @@ npx martin-loop mcp print-config --host gemini --transport stdio --profile full-
 npx martin-loop mcp print-config --host generic --transport stdio --profile github-review
 ```
 
-The root `martin-loop` package is `0.5.2`; standalone `@martinloop/mcp` and MCPB remain at `0.5.1` for this root-only corrective release. Their version lines move independently.
+The root `martin-loop` package, standalone `@martinloop/mcp` package, plugin metadata, and MCPB product version are aligned at `0.5.3`. The MCPB manifest schema remains `0.3`.
 
 The public MCP release train labels are:
 
@@ -343,6 +415,7 @@ The public MCP release train labels are:
 - `0.2.7` usability and review release
 - `0.3.0` host adoption and onboarding release
 - `0.3.1` review and handoff release
+- `0.5.3` execution-control and host-compatibility release
 
 The standalone MCP registry/server identifier is `io.github.Keesan12/martin-loop`.
 
@@ -391,6 +464,7 @@ More detail: [SDK reference](./docs/reference/sdk.md) and [package map](./docs/r
 
 - [Quickstart](./docs/getting-started/quickstart.md)
 - [Examples](./docs/getting-started/examples.md)
+- [MartinLoop for AI Agents](./docs/for-agents.md)
 - [Agent Failure Atlas](./docs/agent-failure-atlas.md)
 - [Failure Taxonomy (13 Runtime Classes)](./docs/oss/FAILURE-TAXONOMY-13.md)
 - [PRE-028-PUBLIC-SURFACE-DIFF.md](./docs/oss/PRE-028-PUBLIC-SURFACE-DIFF.md)

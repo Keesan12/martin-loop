@@ -6,7 +6,9 @@ It is safe by default:
 
 - the workflow uses `MARTIN_LIVE=false`
 - no provider secrets are required
-- the run still produces a persisted JSONL record that can be inspected and uploaded as an artifact
+- the verification lane still produces a persisted JSONL record that can be inspected and uploaded as an artifact
+
+Because `MARTIN_LIVE=false`, this checked-in example is **not** evidence that a coding agent edited the repository. It demonstrates verification, policy, budget configuration, persistence, and CI integration without pretending that no-spend verification is a governed coding-agent run.
 
 ## What is included
 
@@ -36,7 +38,7 @@ governance:
 1. checks out the repo
 2. installs pnpm and Node.js
 3. installs dependencies and builds the workspace
-4. runs MartinLoop with the example config and a verifier command
+4. runs the configured MartinLoop verification lane with a verifier command
 5. inspects the resulting JSONL record
 6. uploads the run record as a GitHub Actions artifact
 
@@ -46,8 +48,11 @@ This pattern makes CI automation more reviewable:
 
 - the spend ceiling is explicit
 - the verifier gate is explicit
+- the execution mode is explicit
 - the run leaves a machine-readable record behind
 - the default example is safe enough to fork and test without live credentials
+
+A real live coding-agent workflow can use the same larger lifecycle, `DEFINE -> PREFLIGHT -> CONTROL -> VERIFY -> RECOVER -> PROVE -> ANALYZE`, once the chosen agent is installed and authenticated.
 
 ## Where live credentials would be needed
 
@@ -62,9 +67,11 @@ If you want a live agent run in CI later, you would need to:
 
 Keep the same budget and verifier discipline even when the execution layer becomes live.
 
+For Codex, do not hard-code a compatibility flag from documentation. MartinLoop 0.5.3 negotiates capabilities from the resolved Codex binary.
+
 ## Expected output
 
-The run should leave a JSONL record at:
+The verification lane should leave a JSONL record at:
 
 ```text
 ~/.martin/runs/gh_budget_gate.jsonl
@@ -76,3 +83,5 @@ The inspect step should print a summary with fields such as:
 - `activeLoops`
 - `failuresCaught`
 - `averageExitSeconds`
+
+For canonical product and agent-facing definitions see [`../../README.md`](../../README.md), [`../../llms.txt`](../../llms.txt), and [`../../docs/for-agents.md`](../../docs/for-agents.md).

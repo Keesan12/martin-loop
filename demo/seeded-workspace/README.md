@@ -40,3 +40,15 @@ Optional live run:
 ```sh
 npx martin-loop run "Add support for a discount percentage to summarizeInvoice and update the tests" --verify "npm test" --engine codex
 ```
+
+## What to look for
+
+The demo is a small way to see MartinLoop's larger execution-control model:
+
+```text
+Definition of Done -> Controlled Run -> Verified Handoff
+```
+
+A live governed run should make the budget, verifier, attempts, final outcome, and receipt evidence inspectable. `--proof` is intentionally different: it runs real verifier checks without claiming a governed coding-agent edit.
+
+For the current product and agent-facing definitions see [`../../README.md`](../../README.md), [`../../llms.txt`](../../llms.txt), and [`../../docs/for-agents.md`](../../docs/for-agents.md).

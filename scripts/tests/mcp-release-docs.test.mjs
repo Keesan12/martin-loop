@@ -26,15 +26,13 @@ test("current MCP metadata stays aligned for the release cut", async () => {
   await access(releaseNotesPath);
 });
 
-test("version ledger records live public truth and the next release train", async () => {
+test("version ledger separates live public truth from pending release targets", async () => {
   const ledger = await readRepoFile(path.join("docs", "release", "VERSION-LEDGER.md"));
 
   assert.match(ledger, /root public baseline: `\d+\.\d+\.\d+`/);
   assert.match(ledger, /live public GitHub release: `v\d+\.\d+\.\d+`/);
-  assert.match(
-    ledger,
-    new RegExp(escapeRegex(`standalone MCP public baseline: \`${packageJson.version}\``)),
-  );
+  assert.match(ledger, /standalone MCP public baseline: `\d+\.\d+\.\d+`/);
+  assert.match(ledger, /live MCPB baseline: `\d+\.\d+\.\d+`/);
   assert.match(
     ledger,
     new RegExp(escapeRegex(`current in-repo standalone release target: \`${packageJson.version}\``))
@@ -43,16 +41,13 @@ test("version ledger records live public truth and the next release train", asyn
     ledger,
     new RegExp(escapeRegex(`current in-repo root release target: \`${rootPackageJson.version}\``))
   );
-  assert.match(ledger, /next planned root follow-on: not scheduled/);
-  assert.match(ledger, /next planned standalone release: not scheduled/);
-  assert.match(
-    ledger,
-    new RegExp(escapeRegex(`live MCPB baseline: \`${packageJson.version}\``))
-  );
   assert.match(
     ledger,
     new RegExp(escapeRegex(`current in-repo MCPB release target: \`${packageJson.version}\``))
   );
+  assert.match(ledger, /pending publication/i);
+  assert.match(ledger, /next planned root follow-on: not scheduled/);
+  assert.match(ledger, /next planned standalone release: not scheduled/);
 });
 
 test("MCP slice map defines the 0.3.x train without private-hosted bleed", async () => {

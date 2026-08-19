@@ -28,6 +28,8 @@ test("createOssBoundaryReport keeps only the OSS-safe workspace surface", async 
   assert.equal(report.summary.ossCoreCount, 6);
   assert.ok(report.topLevelEntries.includes(".agents"));
   assert.ok(report.topLevelEntries.includes("plugins"));
+  assert.ok(report.topLevelEntries.includes("llms.txt"));
+  assert.ok(report.topLevelEntries.includes("llms-full.txt"));
   assert.deepEqual(report.forbiddenTopLevelEntries, []);
   assert.deepEqual(report.unexpectedTopLevelEntries, []);
   assert.deepEqual(report.unexpectedPackageDirs, []);
