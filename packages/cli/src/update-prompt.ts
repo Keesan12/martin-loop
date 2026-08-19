@@ -87,6 +87,16 @@ export function shouldShowUpdatePrompt(input: UpdatePromptInput): boolean {
 
 // ─── Raw keypress ─────────────────────────────────────────────────────────────
 
+/**
+ * Maps a raw keypress byte sequence to an update prompt action.
+ * Ctrl+C, Enter, and newline all map to "l" (Later) — they must never kill
+ * the governed process. Only "y"/"Y" maps to "y" (Update now).
+ */
+export function classifyUpdateKey(key: string): "y" | "l" {
+  if (key === "\u0003" || key === "\r" || key === "\n") return "l";
+  return key.toLowerCase() === "y" ? "y" : "l";
+}
+
 async function readUpdateKey(): Promise<"y" | "l"> {
   return new Promise((resolve) => {
     const stdin = process.stdin;
@@ -97,9 +107,8 @@ async function readUpdateKey(): Promise<"y" | "l"> {
     stdin.setEncoding("utf-8");
     const timeout = setTimeout(() => { cleanup(); resolve("l"); }, 30_000);
     const onData = (key: string) => {
-      if (key === "\u0003") { cleanup(); process.exit(0); }
       cleanup();
-      resolve(key.toLowerCase() === "y" ? "y" : "l");
+      resolve(classifyUpdateKey(key));
     };
     const cleanup = () => {
       clearTimeout(timeout);
@@ -113,12 +122,24 @@ async function readUpdateKey(): Promise<"y" | "l"> {
 
 // ─── Update execution ─────────────────────────────────────────────────────────
 
+/**
+ * Returns [executable, args] for the npm global-update command on this platform.
+ * On Windows, .cmd files cannot be spawned with shell:false — use ComSpec instead.
+ * Exported for unit testing (pure function, no side effects).
+ */
+export function buildNpmUpdateCommand(
+  env: NodeJS.ProcessEnv = process.env
+): [string, string[]] {
+  if (process.platform === "win32") {
+    const comspec = env["ComSpec"] ?? "cmd.exe";
+    return [comspec, ["/d", "/s", "/c", "npm install --global martin-loop@latest"]];
+  }
+  return ["npm", ["install", "--global", "martin-loop@latest"]];
+}
+
 export function runNpmUpdate(): { success: boolean; error?: string } {
-  const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
-  const result = spawnSync(npmCmd, ["install", "--global", "martin-loop@latest"], {
-    stdio: "inherit",
-    shell: false,
-  });
+  const [cmd, args] = buildNpmUpdateCommand();
+  const result = spawnSync(cmd, args, { stdio: "inherit", shell: false });
   if (result.status === 0) return { success: true };
   return { success: false, error: result.error?.message ?? `exit ${result.status ?? "unknown"}` };
 }

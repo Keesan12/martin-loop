@@ -2,12 +2,19 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+// ─── Hoist spawnSync mock so factory can reference it ────────────────────────
+// vi.mock is hoisted by vitest; vi.hoisted() ensures the reference is ready.
+const mockSpawnSync = vi.hoisted(() => vi.fn());
+vi.mock("node:child_process", () => ({ spawnSync: mockSpawnSync }));
 import {
   fetchLatestNpmVersion,
   detectInstallChannel,
   shouldShowUpdatePrompt,
   runNpmUpdate,
+  classifyUpdateKey,
+  buildNpmUpdateCommand,
   maybeShowUpdatePrompt,
   type InstallChannel,
   type UpdatePromptInput,
@@ -148,12 +155,107 @@ describe("maybeShowUpdatePrompt", () => {
 // ─── runNpmUpdate ─────────────────────────────────────────────────────────────
 
 describe("runNpmUpdate", () => {
-  it("returns an object with success boolean and optional error", () => {
-    // We can't actually run npm in tests; just verify the return shape
+  beforeEach(() => {
+    mockSpawnSync.mockReset();
+  });
+
+  it("returns { success: true } when spawnSync exits 0", () => {
+    mockSpawnSync.mockReturnValue({ status: 0, error: undefined });
+    expect(runNpmUpdate()).toEqual({ success: true });
+  });
+
+  it("returns { success: false } with exit-code message when spawnSync exits non-zero", () => {
+    mockSpawnSync.mockReturnValue({ status: 1, error: undefined });
     const result = runNpmUpdate();
-    expect(typeof result.success).toBe("boolean");
-    if (!result.success) {
-      expect(typeof result.error).toBe("string");
+    expect(result.success).toBe(false);
+    expect(typeof result.error).toBe("string");
+    expect(result.error).toContain("1");
+  });
+
+  it("includes error.message when spawnSync sets an error object", () => {
+    mockSpawnSync.mockReturnValue({ status: null, error: new Error("ENOENT") });
+    const result = runNpmUpdate();
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("ENOENT");
+  });
+});
+
+// ─── classifyUpdateKey ────────────────────────────────────────────────────────
+
+describe("classifyUpdateKey", () => {
+  it("maps Y and y to 'y'", () => {
+    expect(classifyUpdateKey("y")).toBe("y");
+    expect(classifyUpdateKey("Y")).toBe("y");
+  });
+
+  it("maps L and l to 'l'", () => {
+    expect(classifyUpdateKey("l")).toBe("l");
+    expect(classifyUpdateKey("L")).toBe("l");
+  });
+
+  it("maps Enter (\\r) to 'l'", () => {
+    expect(classifyUpdateKey("\r")).toBe("l");
+  });
+
+  it("maps newline (\\n) to 'l'", () => {
+    expect(classifyUpdateKey("\n")).toBe("l");
+  });
+
+  it("maps Ctrl+C (\\u0003) to 'l' — must not call process.exit", () => {
+    // Regression test: before this fix, Ctrl+C called process.exit(0)
+    // which killed the governed process. It must now resolve to 'l'.
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+      throw new Error("process.exit called — regression!");
+    });
+    try {
+      expect(classifyUpdateKey("\u0003")).toBe("l");
+      expect(exitSpy).not.toHaveBeenCalled();
+    } finally {
+      exitSpy.mockRestore();
     }
+  });
+
+  it("maps any other key to 'l'", () => {
+    expect(classifyUpdateKey("n")).toBe("l");
+    expect(classifyUpdateKey("q")).toBe("l");
+    expect(classifyUpdateKey(" ")).toBe("l");
+    expect(classifyUpdateKey("\u001b")).toBe("l");
+  });
+});
+
+// ─── buildNpmUpdateCommand ────────────────────────────────────────────────────
+
+describe("buildNpmUpdateCommand", () => {
+  it("returns npm on non-windows", () => {
+    if (process.platform === "win32") return; // skip on actual win32
+    const [cmd, args] = buildNpmUpdateCommand({});
+    expect(cmd).toBe("npm");
+    expect(args).toContain("install");
+    expect(args).toContain("--global");
+  });
+
+  it("uses ComSpec on win32", () => {
+    const [cmd, args] = buildNpmUpdateCommand({ ComSpec: "C:\\Windows\\System32\\cmd.exe" });
+    // On any platform this pure function returns the win32 path when called
+    // with a win32 process.platform. We test the env-arg branch separately.
+    // The key contract: env["ComSpec"] is used, not npm.cmd.
+    if (process.platform === "win32") {
+      expect(cmd).toBe("C:\\Windows\\System32\\cmd.exe");
+      expect(args[0]).toBe("/d");
+      expect(args[1]).toBe("/s");
+      expect(args[2]).toBe("/c");
+      expect(args[3]).toContain("npm install");
+    }
+  });
+
+  it("falls back to cmd.exe when ComSpec is absent on win32", () => {
+    if (process.platform !== "win32") return;
+    const [cmd] = buildNpmUpdateCommand({});
+    expect(cmd).toBe("cmd.exe");
+  });
+
+  it("never uses npm.cmd", () => {
+    const [cmd] = buildNpmUpdateCommand(process.env);
+    expect(cmd).not.toBe("npm.cmd");
   });
 });
