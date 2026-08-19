@@ -68,6 +68,14 @@ function checkSymbol(status: EvidenceStatus): string {
   return "•";
 }
 
+function formatCost(usd: number, provenance: CostProvenance): string {
+  if (provenance === "unavailable") return "unavailable";
+  const amount = "$" + usd.toFixed(2);
+  if (provenance === "actual") return amount + " provider-settled actual";
+  if (provenance === "calculated") return amount + " calculated from observed usage";
+  return amount + " estimated";
+}
+
 export function renderVerifiedHandoff(
   handoff: VerifiedHandoffV1,
   options: VerifiedHandoffRenderOptions = {},
@@ -157,4 +165,86 @@ export function renderVerifiedHandoff(
   );
 
   return lines.map(bounded).join("\n");
+}
+
+/**
+ * Renders a VerifiedHandoffV1 as plain Markdown (no ANSI).
+ *
+ * CRITICAL: replicates the exact effectiveOutcome trust-authority check from
+ * renderVerifiedHandoff so that CLI and MCP surfaces always agree on
+ * VERIFIED / NEEDS REVIEW / STOPPED for the same input.
+ */
+export function renderVerifiedHandoffMarkdown(
+  handoff: VerifiedHandoffV1,
+  options: VerifiedHandoffRenderOptions = {},
+): string {
+  void options; // width/environment unused in plain Markdown
+  const executionMode = handoff.executionMode ?? "simulated";
+  const governanceClaimEligible =
+    executionMode === "governed" && handoff.governanceClaimEligible === true;
+  const effectiveOutcome =
+    handoff.outcome === "VERIFIED" && !governanceClaimEligible
+      ? "NEEDS_REVIEW"
+      : handoff.outcome;
+  const outcome = effectiveOutcome.replace("_", " ");
+
+  const lines: string[] = [
+    `## MartinLoop Verified Handoff — ${outcome}`,
+    "",
+    "| Field | Value |",
+    "|-------|-------|",
+    `| Task | ${handoff.task.objective} |`,
+    `| Run | ${handoff.loopId} |`,
+    `| Execution Mode | ${executionMode.replaceAll("_", " ")} |`,
+    `| Governed Claim | ${governanceClaimEligible ? "ELIGIBLE" : "INELIGIBLE"} |`,
+    `| Verification | ${handoff.verification.status.replace("_", " ")} |`,
+    `| Scope | ${handoff.scope.status.replaceAll("_", " ")} |`,
+    `| Test Integrity | ${handoff.testIntegrity.verdict} |`,
+    `| Receipt Integrity | ${handoff.receiptIntegrity.state} |`,
+    `| Attempts | ${handoff.usage.attempts} |`,
+    `| Cost | ${formatCost(handoff.usage.actualUsd, handoff.usage.costProvenance)} |`,
+  ];
+
+  if (handoff.verification.checks.length > 0) {
+    lines.push(
+      "",
+      "### Verification Evidence",
+      "",
+      "| Check | Status |",
+      "|-------|--------|",
+      ...handoff.verification.checks.map(
+        (check) =>
+          `| ${check.command} | ${checkSymbol(check.status)} ${check.status.replace("_", " ")} |`,
+      ),
+    );
+  }
+
+  if (handoff.stopReason) {
+    lines.push(
+      "",
+      "### Stop Reason",
+      "",
+      handoff.stopReason.replaceAll("_", " ").toLowerCase(),
+    );
+  }
+
+  lines.push("", "### Unresolved");
+  if (handoff.unresolvedWork.length === 0) {
+    lines.push("", "None recorded.");
+  } else {
+    lines.push("", ...handoff.unresolvedWork.map((item) => `- ${item}`));
+  }
+
+  lines.push(
+    "",
+    "### Recovery",
+    "",
+    handoff.recovery.summary,
+    "",
+    "### Next",
+    "",
+    handoff.nextAction,
+  );
+
+  return lines.join("\n");
 }

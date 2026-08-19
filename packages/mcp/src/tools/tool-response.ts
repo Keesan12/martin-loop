@@ -17,19 +17,31 @@ function resolveHumanArtifact(output: object, summary: string): string {
   return typeof rendered === "string" && rendered.trim().length > 0 ? rendered : summary;
 }
 
+export interface ToolSuccessRenderOptions {
+  /** Explicit human-readable Markdown for content[0].
+   *  Overrides resolveHumanArtifact fallback when provided. */
+  human?: string;
+  /** Include compatibility JSON block in content[]. Default: true.
+   *  Set false only after real-host testing proves structuredContent alone suffices. */
+  includeCompatibilityJson?: boolean;
+}
+
 export function createToolSuccessResult<T extends object>(
   output: T,
-  summary: string
+  summary: string,
+  options: ToolSuccessRenderOptions = {}
 ): {
   content: TextContentBlock[];
   structuredContent: T;
   _meta: Record<string, unknown>;
 } {
+  const humanText = options.human ?? resolveHumanArtifact(output, summary);
+  const content: TextContentBlock[] = [{ type: "text", text: humanText }];
+  if (options.includeCompatibilityJson !== false) {
+    content.push(createJsonBlock(output));
+  }
   return {
-    content: [
-      { type: "text", text: resolveHumanArtifact(output, summary) },
-      createJsonBlock(output)
-    ],
+    content,
     structuredContent: output,
     _meta: {
       "martinloop/summary": summary,
