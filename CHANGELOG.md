@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-08-19
+
+### Added
+- **Capability-driven Codex execution** — MartinLoop now interrogates the exact resolved Codex binary, preserves global-versus-`exec` option scope, and builds the governed invocation only from capabilities that binary advertises.
+- **Agent discovery surfaces** — `llms.txt`, `llms-full.txt`, and `docs/for-agents.md` give coding agents a canonical machine-readable description of MartinLoop's category, lifecycle, trust boundaries, and public entry points.
+
+### Changed
+- **One execution contract from readiness through run** — Codex doctor, preflight, and governed execution reuse the resolved binary and negotiated launch contract instead of rebuilding environment-specific assumptions.
+- **Public product narrative is end to end** — documentation now frames MartinLoop as the execution-control system around coding agents from Definition of Done through preflight, control, verification, recovery, proof, and post-run analysis.
+- **Root, MCP, MCPB, and plugin product metadata align at 0.5.3** — the public release train uses one product version while MCPB manifest schema remains `0.3`.
+
+### Fixed
+- **Unsupported Codex flags are no longer guessed** — optional sandbox, approval, automation, working-directory, model, JSON, color, and prompt-transport behavior is selected only from advertised capabilities.
+- **Writable readiness is proven before spend** — MartinLoop validates a safe write strategy with a temporary workspace marker before reporting Codex launch readiness and never escalates to a broader sandbox permission as a compatibility fallback.
+- **Release truth distinguishes live artifacts from pending targets** — pre-publication bookkeeping can advance package targets without pretending unpublished npm, GitHub, MCP, or MCPB artifacts are already live.
+
 ## [0.5.2] - 2026-08-18
 
 ### Fixed
@@ -77,7 +93,6 @@
 - **Token flag regression guard** — `--max-tokens` (which does not exist in the Claude CLI) is now explicitly tested as absent. Token enforcement is via the streaming budget circuit breaker.
 
 ## [0.4.1]
-
 ### Added
 - **Receipt-first share ledgers** — `martin share` now appends stable `run-receipts.md` and `run-receipts.jsonl` ledgers alongside the per-run share bundle, keyed by receipt-state revision so repeated shares do not overwrite or duplicate prior evidence.
 
