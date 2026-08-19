@@ -29,6 +29,16 @@ It works across Claude, Codex, Gemini, Cursor-connected workflows, and internal 
 
 MartinLoop is not another coding agent. It governs the agents creators and developers already use.
 
+The current public narrative is end to end:
+
+```text
+DEFINE -> PREFLIGHT -> CONTROL -> VERIFY -> RECOVER -> PROVE -> ANALYZE
+```
+
+Creators should show that full lifecycle when the experiment supports it. The useful contrast is not "another AI coding tool." It is one execution-control system around the coding agent instead of separate scripts and point tools for budgets, retries, stopping, verification, recovery, receipts, history, and analysis.
+
+For agent-readable context see [`../../llms.txt`](../../llms.txt), [`../../llms-full.txt`](../../llms-full.txt), and [`../for-agents.md`](../for-agents.md).
+
 ## One-command starting point
 
 ```sh
@@ -182,6 +192,9 @@ Give viewers the exact command, repository/task, and campaign link.
 - proof-card PNG/SVG
 - Git diff or changed-file review
 - optional Arcade mode footage during a long interactive run
+- Governed Run Plan presentation before execution
+- Verified Handoff presentation after execution
+- post-run dossier or history view that keeps the final outcome and evidence boundaries visible
 
 ## Creator independence
 
