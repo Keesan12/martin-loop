@@ -1,0 +1,81 @@
+name: Cut Release Tags
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  cut-release-tags:
+    name: Cut root and MCP release tags
+    if: contains(github.event.head_commit.message, '[cut-release]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release coordinates
+        id: versions
+        shell: bash
+        run: |
+          ROOT_VERSION="$(node -p "require('./package.json').version")"
+          MCP_VERSION="$(node -p "require('./packages/mcp/package.json').version")"
+          MCP_SERVER_VERSION="$(node -p "require('./packages/mcp/server.json').version")"
+          MCPB_VERSION="$(node -p "require('./packages/mcp/mcpb/manifest.json').version")"
+
+          if [ "$MCP_VERSION" != "$MCP_SERVER_VERSION" ]; then
+            echo "MCP package/server version mismatch: ${MCP_VERSION} != ${MCP_SERVER_VERSION}"
+            exit 1
+          fi
+          if [ "$MCP_VERSION" != "$MCPB_VERSION" ]; then
+            echo "MCP package/MCPB version mismatch: ${MCP_VERSION} != ${MCPB_VERSION}"
+            exit 1
+          fi
+
+          test -f "docs/release/OSS-${ROOT_VERSION}-RELEASE-NOTES.md"
+          test -f "docs/release/MCP-${MCP_VERSION}-RELEASE-NOTES.md"
+          node ./scripts/extract-changelog-entry.mjs --version "$ROOT_VERSION" >/dev/null
+
+          echo "root_version=${ROOT_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "mcp_version=${MCP_VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Refuse to move existing release tags
+        shell: bash
+        run: |
+          git fetch --tags --force
+          ROOT_TAG="v${{ steps.versions.outputs.root_version }}"
+          MCP_TAG="mcp-v${{ steps.versions.outputs.mcp_version }}"
+
+          if git rev-parse -q --verify "refs/tags/${ROOT_TAG}" >/dev/null; then
+            echo "Release tag ${ROOT_TAG} already exists. Refusing to move it."
+            exit 1
+          fi
+          if git rev-parse -q --verify "refs/tags/${MCP_TAG}" >/dev/null; then
+            echo "Release tag ${MCP_TAG} already exists. Refusing to move it."
+            exit 1
+          fi
+
+      - name: Create immutable release tags at this commit
+        shell: bash
+        run: |
+          ROOT_TAG="v${{ steps.versions.outputs.root_version }}"
+          MCP_TAG="mcp-v${{ steps.versions.outputs.mcp_version }}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git tag -a "$ROOT_TAG" "$GITHUB_SHA" -m "MartinLoop ${{ steps.versions.outputs.root_version }}"
+          git tag -a "$MCP_TAG" "$GITHUB_SHA" -m "@martinloop/mcp ${{ steps.versions.outputs.mcp_version }}"
+          git push origin "$ROOT_TAG" "$MCP_TAG"
+
+      - name: Verify tag commit parity
+        shell: bash
+        run: |
+          ROOT_TAG="v${{ steps.versions.outputs.root_version }}"
+          MCP_TAG="mcp-v${{ steps.versions.outputs.mcp_version }}"
+          test "$(git rev-parse "${ROOT_TAG}^{commit}")" = "$GITHUB_SHA"
+          test "$(git rev-parse "${MCP_TAG}^{commit}")" = "$GITHUB_SHA"
