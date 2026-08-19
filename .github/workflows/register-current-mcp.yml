@@ -2,6 +2,11 @@ name: register-current-mcp
 
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing mcp-vX.Y.Z tag to register
+        required: true
+        type: string
   push:
     branches:
       - main
@@ -17,12 +22,35 @@ jobs:
     name: Register current @martinloop/mcp release
     runs-on: ubuntu-latest
     steps:
+      - name: Resolve release ref
+        id: release-ref
+        shell: bash
+        env:
+          INPUT_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || '' }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            if [[ "$INPUT_TAG" != mcp-v* ]]; then
+              echo "Expected an mcp-vX.Y.Z tag."
+              exit 1
+            fi
+            echo "ref=${INPUT_TAG}" >> "$GITHUB_OUTPUT"
+            echo "tag=${INPUT_TAG}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+            echo "tag=" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Check out repository
         uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.release-ref.outputs.ref }}
+          fetch-depth: 0
 
       - name: Validate MCP metadata parity
         id: mcp-metadata
         shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.release-ref.outputs.tag }}
         run: |
           node <<'NODE' >> "$GITHUB_OUTPUT"
           const fs = require('node:fs');
@@ -42,6 +70,14 @@ jobs:
           console.log(`version=${pkg.version}`);
           console.log(`server_name=${server.name}`);
           NODE
+
+          if [ -n "$RELEASE_TAG" ]; then
+            TAG_VERSION="${RELEASE_TAG#mcp-v}"
+            if [ "$TAG_VERSION" = "$RELEASE_TAG" ] || [ "$TAG_VERSION" != "$(node -p "require('./packages/mcp/package.json').version")" ]; then
+              echo "Release tag ${RELEASE_TAG} does not match the checked-out MCP package version."
+              exit 1
+            fi
+          fi
 
       - name: Verify npm artifact exists
         shell: bash

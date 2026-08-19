@@ -14,6 +14,7 @@ on:
 permissions:
   contents: write
   id-token: write
+  actions: write
 
 jobs:
   publish-mcp:
@@ -156,3 +157,10 @@ jobs:
           tag_name: ${{ steps.release-vars.outputs.tag }}
           name: "@martinloop/mcp ${{ steps.mcp-metadata.outputs.package_version }}"
           body_path: "docs/release/MCP-${{ steps.mcp-metadata.outputs.package_version }}-RELEASE-NOTES.md"
+
+      - name: Register published MCP release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release-vars.outputs.tag }}
+        run: gh workflow run register-current-mcp.yml --ref main -f tag="$RELEASE_TAG"
