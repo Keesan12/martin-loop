@@ -5,14 +5,16 @@ export {
 export {
   createAgentCliAdapter,
   createClaudeCliAdapter,
-  createCodexCliAdapter,
   createGeminiCliAdapter,
   type AgentCliAdapterOptions,
   type ClaudeCliAdapterOptions,
-  type CodexCliAdapterOptions,
   type GeminiCliAdapterOptions,
   type CliArgsBuilder
 } from "./claude-cli.js";
+export {
+  createCodexCliAdapter,
+  type CodexCliAdapterOptions
+} from "./codex-cli.js";
 export {
   createOpenAiCompatibleAdapter,
   resolveOpenAiCompatibleRuntimeConfig,
@@ -23,14 +25,24 @@ export {
   type VerifierOnlyAdapterOptions
 } from "./verifier-only.js";
 export {
+  buildCodexExecArgs,
+  buildCodexStdin,
+  clearCodexCapabilityCacheForTests,
   detectCodexHostPlatform,
   diagnoseCodexHost,
+  probeCodexCapabilities,
   probeCodexLaunch,
   resolveCliCommandAvailability,
   type CliCommandAvailability,
+  type CodexApprovalCapability,
+  type CodexCapabilityFlag,
+  type CodexCapabilityProfile,
+  type CodexFlagScope,
   type CodexHostDiagnosis,
   type CodexHostPlatform,
   type CodexLaunchProbeResult,
+  type CodexPromptTransport,
+  type CodexSandboxCapability,
   checkCodexSandboxPreflight,
   probeFilesystemWriteCapability,
   type CodexSandboxPreflightOk,
