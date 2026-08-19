@@ -27,6 +27,8 @@ const ALLOWED_TOP_LEVEL_ENTRIES = [
   "install.ps1",
   "install.sh",
   "LICENSES",
+  "llms-full.txt",
+  "llms.txt",
   "NOTICE",
   "packages",
   "REUSE.toml",
