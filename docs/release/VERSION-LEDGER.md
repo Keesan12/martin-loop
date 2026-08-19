@@ -4,10 +4,10 @@ This file is the release source of truth for package/version mapping in this rep
 
 ## Root package: `martin-loop`
 
-- live npm dist-tag `latest`: `0.5.2`
-- live public GitHub release: `v0.5.2`
-- live public baseline in this train: `0.5.2`
-- root public baseline: `0.5.2`
+- live npm dist-tag `latest`: `0.5.3`
+- live public GitHub release: `v0.5.3`
+- live public baseline in this train: `0.5.3`
+- root public baseline: `0.5.3`
 - releases consumed since the original `0.2.8` launch:
   - `0.2.9` fixed proof-run classification, Windows `.cmd` resolution, and public provider defaults
   - `0.2.10` tightened verifier evidence, `--runs-dir` consistency, and public help output
@@ -36,28 +36,33 @@ This file is the release source of truth for package/version mapping in this rep
   - `0.5.0` fail-closed verification authority, workspace-bound evidence, native install, execution-surface hardening, and MCP lifecycle expansion
   - `0.5.1` Governed Run Plan, Verified Handoff, cost provenance, grounding truth, presentation hardening, and MCPB distribution
   - `0.5.2` aligned preflight readiness with the immediately following run admission gate
-- current in-repo root release target: `0.5.3` (pending publication)
+  - `0.5.3` added capability-driven Codex execution across host variants, aligned root/MCP/MCPB public versions, refreshed agent-discovery surfaces, and made release publication/registry handoff verifiable end to end
+- current in-repo root release target: `0.5.3` (released publicly)
 - next planned root follow-on: not scheduled
 
 ## Standalone package: `@martinloop/mcp`
 
-- live npm dist-tag `latest`: `0.5.1`
-- live public GitHub release: `mcp-v0.5.1`
-- live public baseline in this train: `0.5.1`
-- standalone MCP public baseline: `0.5.1`
-- current in-repo standalone release target: `0.5.3` (pending publication)
-- live MCPB baseline: `0.5.1`
-- current in-repo MCPB release target: `0.5.3` with manifest schema `0.3` (pending publication)
+- live npm dist-tag `latest`: `0.5.3`
+- live public GitHub release: `mcp-v0.5.3`
+- live public baseline in this train: `0.5.3`
+- standalone MCP public baseline: `0.5.3`
+- current in-repo standalone release target: `0.5.3` (released publicly)
+- official MCP Registry version: `0.5.3` (verified)
+- live MCPB baseline: `0.5.3`
+- current in-repo MCPB release target: `0.5.3` with manifest schema `0.3` (released publicly)
+- MCPB SHA-256: `913e7a9707b82b66012214f2780b44d2cb6eaa6112a875a264f50bb52e9fb907`
+- MCPB size: `8,102,303` bytes
 - next planned standalone release: not scheduled
 
 ## Release rules
 
 - Live public baselines describe artifacts that actually exist. In-repo targets may advance before publication and must remain clearly marked pending until trusted publishing succeeds.
-- The `0.5.3` train intends to align the root package, standalone MCP package, plugin metadata, and MCPB product version at `0.5.3`. MCPB manifest schema remains `0.3`.
+- The `0.5.3` train aligns the root package, standalone MCP package, plugin metadata, and MCPB product version at `0.5.3`. MCPB manifest schema remains `0.3`.
 - Do not infer standalone MCP release state from the root package, or the other way around.
 - Public release notes must be written for customers and evaluators, not for internal operators.
 - Public-facing examples, screenshots, README copy, and changelog entries must stay free of internal repo names, absolute system paths, private branch names, or process noise.
 - Publish only through GitHub Actions trusted publishing / OIDC.
+- A release is not complete until npm packages, GitHub releases, release assets, checksums, and applicable registry listings have been verified live.
 
 ## Validation baseline before any public prep branch
 
