@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import { setTimeout as delay } from "node:timers/promises";
 
 const repo = process.env.GITHUB_REPOSITORY ?? "Keesan12/martin-loop";
 const githubToken = process.env.GITHUB_TOKEN ?? "";
@@ -22,9 +23,7 @@ assert.equal(mcpb.manifest_version, "0.3", "MCPB manifest schema must remain 0.3
 
 function headersFor(url) {
   const parsed = new URL(url);
-  const base = {
-    "User-Agent": "martinloop-live-release-verifier",
-  };
+  const base = { "User-Agent": "martinloop-live-release-verifier" };
 
   if (parsed.hostname === "api.github.com") {
     return {
@@ -35,27 +34,41 @@ function headersFor(url) {
   }
 
   if (parsed.hostname === "registry.npmjs.org" || parsed.hostname === "registry.modelcontextprotocol.io") {
-    return {
-      ...base,
-      Accept: "application/json",
-    };
+    return { ...base, Accept: "application/json" };
   }
 
   return base;
 }
 
+async function fetchText(url) {
+  const response = await fetch(url, { headers: headersFor(url), redirect: "follow" });
+  return { response, text: await response.text() };
+}
+
 async function getJson(url, label) {
-  const response = await fetch(url, { headers: headersFor(url) });
-  const text = await response.text();
+  const { response, text } = await fetchText(url);
   if (!response.ok) {
     throw new Error(`${label} failed: HTTP ${response.status}\n${text.slice(0, 1000)}`);
   }
   return JSON.parse(text);
 }
 
+async function getJsonWith404Retries(url, label, attempts = 8) {
+  let lastStatus = 0;
+  let lastText = "";
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const { response, text } = await fetchText(url);
+    if (response.ok) return JSON.parse(text);
+    lastStatus = response.status;
+    lastText = text;
+    if (response.status !== 404 || attempt === attempts) break;
+    await delay(attempt * 5000);
+  }
+  throw new Error(`${label} failed after bounded retries: HTTP ${lastStatus}\n${lastText.slice(0, 1000)}`);
+}
+
 async function getText(url, label) {
-  const response = await fetch(url, { headers: headersFor(url), redirect: "follow" });
-  const text = await response.text();
+  const { response, text } = await fetchText(url);
   if (!response.ok) {
     throw new Error(`${label} failed: HTTP ${response.status}\n${text.slice(0, 1000)}`);
   }
@@ -118,7 +131,7 @@ assert.equal(actualSha, expectedSha, "MCPB asset must match its published SHA-25
 
 const encodedServer = encodeURIComponent(server.name);
 const registryUrl = `https://registry.modelcontextprotocol.io/v0.1/servers/${encodedServer}/versions/${mcpVersion}`;
-const registry = await getJson(registryUrl, "official MCP Registry listing");
+const registry = await getJsonWith404Retries(registryUrl, "official MCP Registry listing");
 
 console.log(JSON.stringify({
   verified: true,
@@ -137,7 +150,7 @@ console.log(JSON.stringify({
     tag: mcpTag,
     releaseUrl: mcpRelease.html_url,
     registryName: server.name,
-    registryVersion: registry.version ?? mcpVersion,
+    registryVerified: Boolean(registry),
   },
   mcpb: {
     version: mcpVersion,
