@@ -41,7 +41,7 @@ function createCodexSpawnRouter(input: {
     const executable = command === "codex" ? input.selectedBinary : command;
     const cwd = typeof options?.cwd === "string" ? options.cwd : input.workingDirectory;
     const plan = createSpawnPlan(executable, [...args], cwd, false);
-    return spawn(plan.command, plan.args, options);
+    return spawn(plan.command, plan.args, options ?? {});
   };
 }
 
