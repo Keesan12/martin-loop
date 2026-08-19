@@ -2,6 +2,12 @@
 
 Packages the existing `@martinloop/mcp` local stdio server as an MCP Bundle (`.mcpb`). This is an additional distribution format; it does not replace npm or the official MCP Registry package.
 
+The MCPB carries the same MartinLoop execution-control and evidence model as the standalone MCP package. Bundle packaging must not create a different meaning for `VERIFIED`, `STOPPED`, `NEEDS REVIEW`, cost provenance, verification-only execution, or receipt integrity.
+
+The 0.5.3 product version is aligned across the root package, standalone MCP package, plugin metadata, and MCPB. The MCPB manifest schema remains `0.3`.
+
+For agent-readable product context see [`../../../llms.txt`](../../../llms.txt), [`../../../llms-full.txt`](../../../llms-full.txt), and [`../../../docs/for-agents.md`](../../../docs/for-agents.md).
+
 ## Install and build
 
 From the repository root, install the reviewed workspace lockfile. Then build and
@@ -55,6 +61,8 @@ and that its tools are listed. Run the doctor or status tool first, with
 `live_mode` still `false`, and verify that the response is structured MCP output
 without terminal text mixed into the protocol stream. A live execution request
 must remain blocked while `MARTIN_LIVE=false`.
+
+A live-disabled tool call is inspection or verification evidence only. It must not be represented as proof that a coding agent edited the repository.
 
 ## Release gate
 
