@@ -147,6 +147,7 @@ describe("capability-driven Codex adapter", () => {
     const verifier = process.platform === "win32" ? "cmd /c exit 0" : "true";
     const profile = negotiatedProfile();
     const adapter = createCodexCliAdapter({
+      command: profile.binaryPath,
       capabilityProfile: profile,
       spawnImpl: createScriptedSpawn(calls, [{ stdout: "patched\n" }, { stdout: "ok\n" }])
     });
