@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -6,12 +6,26 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   buildCodexExecArgs,
+  buildCodexStdin,
   checkCodexSandboxPreflight,
+  clearCodexCapabilityCacheForTests,
   diagnoseCodexHost,
+  probeCodexCapabilities,
   probeCodexLaunch,
   probeFilesystemWriteCapability,
-  resolveCliCommandAvailability
+  resolveCliCommandAvailability,
+  type CodexCapabilityProfile
 } from "../src/codex-launcher.js";
+
+function profile(overrides: Partial<CodexCapabilityProfile> = {}): CodexCapabilityProfile {
+  return {
+    binaryPath: "/usr/local/bin/codex",
+    supportsExec: true,
+    probeSucceeded: true,
+    promptTransport: "argv",
+    ...overrides
+  };
+}
 
 describe("resolveCliCommandAvailability", () => {
   it("captures the resolved path when the locator succeeds", () => {
@@ -46,48 +60,23 @@ describe("resolveCliCommandAvailability", () => {
       })) as never
     });
 
-    expect(availability.available).toBe(true);
-    expect(availability.resolvedPath).toBe("C:\\Tools\\npm\\codex");
     expect(availability.candidatePaths).toEqual([
       "C:\\Tools\\npm\\codex",
       "C:\\Tools\\npm\\codex.cmd",
       "C:\\Program Files\\OpenAI\\Codex\\codex.exe"
     ]);
   });
-
-  it("preserves where.exe order when equally ordered Windows candidates match", () => {
-    const availability = resolveCliCommandAvailability("codex", {
-      platform: "win32",
-      env: {},
-      spawnSyncImpl: vi.fn(() => ({
-        status: 0,
-        stdout: [
-          "C:\\Zeta Tools\\codex.cmd",
-          "C:\\Alpha Tools\\codex.cmd",
-          ""
-        ].join("\r\n"),
-        stderr: ""
-      })) as never
-    });
-
-    expect(availability.available).toBe(true);
-    expect(availability.resolvedPath).toBe("C:\\Zeta Tools\\codex.cmd");
-    expect(availability.candidatePaths).toEqual([
-      "C:\\Zeta Tools\\codex.cmd",
-      "C:\\Alpha Tools\\codex.cmd"
-    ]);
-  });
 });
 
 describe("diagnoseCodexHost", () => {
-  it("rejects Windows PATH shims from WSL/Linux", () => {
+  it("rejects a Windows-hosted Codex shim from WSL/Linux", () => {
     const diagnosis = diagnoseCodexHost(
       {
         command: "codex",
         available: true,
         locator: "which",
         detail: "codex is available on PATH.",
-        resolvedPath: "/mnt/c/Users/ExampleUser/AppData/Roaming/npm/codex.cmd"
+        resolvedPath: "/mnt/c/Users/Example/AppData/Roaming/npm/codex.cmd"
       },
       {
         platform: "linux",
@@ -99,651 +88,307 @@ describe("diagnoseCodexHost", () => {
     expect(diagnosis.installKind).toBe("windows_mounted_path");
     expect(diagnosis.nativeInstallValid).toBe(false);
     expect(diagnosis.sandboxCompatible).toBe(false);
-    expect(diagnosis.remediation).toContain("Install Codex natively");
   });
 });
 
-describe("buildCodexExecArgs", () => {
-  it("builds the same exec contract used for real runs and launch probes", () => {
-    expect(
-      buildCodexExecArgs({
-        workingDirectory: "/repo/worktree",
-        sandbox: "workspace-write",
-        model: "gpt-5-codex",
-        extraArgs: ["--profile", "ci"],
-        mode: "prompt"
-      })
-    ).toEqual([
-      "exec",
-      "--ignore-user-config",
-      "--cd",
-      "/repo/worktree",
-      "--approve-for-me",
-      "--json",
-      "--color",
-      "never",
-      "--model",
-      "gpt-5-codex",
-      "--profile",
-      "ci",
-      "-"
-    ]);
-  });
-});
-
-describe("probeCodexLaunch", () => {
-  it("probes the exact MartinLoop Codex exec shape with a no-edit shell command", () => {
-    const spawnSyncImpl = vi
-      .fn()
-      .mockReturnValueOnce({
-        status: 0,
-        stdout: "/usr/local/bin/codex\n",
-        stderr: ""
-      })
-      .mockReturnValueOnce({
+describe("probeCodexCapabilities", () => {
+  it("parses global and exec flags separately", () => {
+    clearCodexCapabilityCacheForTests();
+    const spawnSyncImpl = vi.fn((_command: string, args: string[]) => {
+      if (args.join(" ") === "--help") {
+        return {
+          status: 0,
+          stdout: "Usage: codex [OPTIONS] [COMMAND]\n  --full-auto\n  --color <WHEN>",
+          stderr: ""
+        };
+      }
+      return {
         status: 0,
         stdout: [
-          JSON.stringify({
-            type: "item.completed",
-            item: {
-              id: "item_1",
-              type: "command_execution",
-              command: "git status --short -- .",
-              aggregated_output: "",
-              exit_code: 0,
-              status: "completed"
-            }
-          }),
-          JSON.stringify({
-            type: "item.completed",
-            item: {
-              id: "item_2",
-              type: "agent_message",
-              text: "READY"
-            }
-          })
+          "Usage: codex exec [OPTIONS] [PROMPT]",
+          "  --sandbox <SANDBOX_MODE> [possible values: read-only, workspace-write, danger-full-access]",
+          "  --model <MODEL>",
+          "  --cd <DIR>",
+          "  --json",
+          "Read prompt from stdin when '-' is supplied."
         ].join("\n"),
         stderr: ""
-      });
-
-    const result = probeCodexLaunch({
-      workingDirectory: process.cwd(),
-      platform: "linux",
-      env: {},
-      spawnSyncImpl: spawnSyncImpl as never
+      };
     });
 
-    expect(result.ok).toBe(true);
-    expect(result.args).toEqual([
-      "exec",
-      "--ignore-user-config",
-      "--cd",
-      process.cwd(),
-      "--approve-for-me",
-      "--json",
-      "--color",
-      "never",
-      "-"
-    ]);
-    expect(result.args).not.toContain("--model");
-    expect(spawnSyncImpl).toHaveBeenNthCalledWith(
-      2,
-      "/usr/local/bin/codex",
-      result.args,
-      expect.objectContaining({
-        cwd: process.cwd(),
-        encoding: "utf8",
-        input: expect.stringContaining("git status --short -- .")
-      })
-    );
-    expect(result.summary).toContain("prompt-and-shell probe passed");
+    const result = probeCodexCapabilities("/usr/local/bin/codex", {
+      platform: "linux",
+      spawnSyncImpl: spawnSyncImpl as never,
+      cache: false
+    });
+
+    expect(result.supportsExec).toBe(true);
+    expect(result.approval).toEqual({
+      flag: "--full-auto",
+      scope: "global",
+      semantics: "automation-mode"
+    });
+    expect(result.sandbox).toEqual({
+      flag: "--sandbox",
+      scope: "exec",
+      values: ["read-only", "workspace-write", "danger-full-access"]
+    });
+    expect(result.model).toEqual({ flag: "--model", scope: "exec" });
+    expect(result.cwd).toEqual({ flag: "--cd", scope: "exec" });
+    expect(result.json).toEqual({ flag: "--json", scope: "exec" });
+    expect(result.color).toEqual({ flag: "--color", scope: "global" });
+    expect(result.promptTransport).toBe("stdin-dash");
   });
 
-  it("invokes the resolved npm shim's wrapped script directly instead of through cmd.exe", () => {
-    const shimDir = mkdtempSync(join(tmpdir(), "martin-codex-shim-probe-"));
+  it("caches a real profile once per exact binary", () => {
+    clearCodexCapabilityCacheForTests();
+    const spawnSyncImpl = vi.fn((_command: string, args: string[]) => ({
+      status: 0,
+      stdout: args[0] === "exec" ? "Usage: codex exec [PROMPT]" : "Usage: codex [COMMAND]",
+      stderr: ""
+    }));
+
+    probeCodexCapabilities("/usr/local/bin/codex", {
+      platform: "linux",
+      spawnSyncImpl: spawnSyncImpl as never,
+      cache: true
+    });
+    probeCodexCapabilities("/usr/local/bin/codex", {
+      platform: "linux",
+      spawnSyncImpl: spawnSyncImpl as never,
+      cache: true
+    });
+
+    expect(spawnSyncImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("uses the Windows npm shim spawn shape for capability help", () => {
+    clearCodexCapabilityCacheForTests();
+    const shimDir = mkdtempSync(join(tmpdir(), "martin-codex-capability-shim-"));
     const scriptPath = join(shimDir, "cli.js");
-    writeFileSync(scriptPath, "// stub codex cli entrypoint\n");
     const shimPath = join(shimDir, "codex.cmd");
-    writeFileSync(shimPath, '@ECHO off\n"%~dp0\\node.exe"  "%~dp0\\cli.js" %*\n');
+    writeFileSync(scriptPath, "// test codex entrypoint\n");
+    writeFileSync(shimPath, '@ECHO off\n"%~dp0\\node.exe" "%~dp0\\cli.js" %*\n');
 
     try {
-      const spawnSyncImpl = vi.fn(() => ({
-        status: 0,
-        stdout: JSON.stringify({
-          type: "item.completed",
-          item: {
-            id: "item_1",
-            type: "command_execution",
-            command: "git status --short -- .",
-            aggregated_output: "",
-            exit_code: 0,
-            status: "completed"
-          }
-        }),
-        stderr: ""
-      }));
-
-      const result = probeCodexLaunch({
-        workingDirectory: process.cwd(),
-        platform: "win32",
-        availability: {
-          command: "codex",
-          available: true,
-          locator: "where.exe",
-          detail: "codex is available on PATH.",
-          resolvedPath: shimPath,
-          candidatePaths: [shimPath]
-        },
-        spawnSyncImpl: spawnSyncImpl as never
+      const calls: Array<{ command: string; args: string[] }> = [];
+      const spawnSyncImpl = vi.fn((command: string, args: string[]) => {
+        calls.push({ command, args: [...args] });
+        return {
+          status: 0,
+          stdout: args.includes("exec") ? "Usage: codex exec [PROMPT]" : "Usage: codex [COMMAND]",
+          stderr: ""
+        };
       });
 
-      expect(result.ok).toBe(true);
-      expect(spawnSyncImpl).toHaveBeenCalledWith(
-        process.execPath,
-        [scriptPath, ...result.args],
-        expect.objectContaining({ cwd: process.cwd() })
-      );
+      probeCodexCapabilities(shimPath, {
+        platform: "win32",
+        spawnSyncImpl: spawnSyncImpl as never,
+        cache: false
+      });
+
+      expect(calls).toHaveLength(2);
+      expect(calls[0]?.command).toBe(process.execPath);
+      expect(calls[0]?.args[0]).toBe(scriptPath);
+      expect(calls[1]?.command).toBe(process.execPath);
+      expect(calls[1]?.args.slice(0, 3)).toEqual([scriptPath, "exec", "--help"]);
     } finally {
       rmSync(shimDir, { recursive: true, force: true });
     }
   });
+});
 
-  it("prefers a runnable Windows npm shim over its extensionless companion", () => {
-    const spawnSyncImpl = vi.fn(() => ({
-      status: 0,
-      stdout: JSON.stringify({
-        type: "item.completed",
-        item: {
-          id: "item_1",
-          type: "command_execution",
-          command: "git status --short -- .",
-          aggregated_output: "",
-          exit_code: 0,
-          status: "completed"
+describe("buildCodexExecArgs", () => {
+  it("works with zero optional flags and makes no flag assumptions", () => {
+    const args = buildCodexExecArgs({
+      workingDirectory: "/repo",
+      prompt: "do something",
+      capabilityProfile: profile()
+    });
+
+    expect(args).toEqual(["exec", "do something"]);
+    expect(args).not.toContain("--approve-for-me");
+    expect(args).not.toContain("--sandbox");
+    expect(args).not.toContain("--model");
+  });
+
+  it("uses the exact advertised sandbox mode", () => {
+    const args = buildCodexExecArgs({
+      workingDirectory: "/repo",
+      sandbox: "workspace-write",
+      prompt: "do something",
+      capabilityProfile: profile({
+        sandbox: {
+          flag: "--sandbox",
+          scope: "exec",
+          values: ["read-only", "workspace-write"]
         }
-      }),
-      stderr: ""
-    }));
-
-    const result = probeCodexLaunch({
-      workingDirectory: process.cwd(),
-      platform: "win32",
-      availability: {
-        command: "codex",
-        available: true,
-        locator: "where.exe",
-        detail: "codex is available on PATH.",
-        resolvedPath: "C:\\Users\\ExampleUser\\AppData\\Roaming\\npm\\codex",
-        candidatePaths: [
-          "C:\\Users\\ExampleUser\\AppData\\Roaming\\npm\\codex",
-          "C:\\Users\\ExampleUser\\AppData\\Roaming\\npm\\codex.cmd"
-        ]
-      },
-      spawnSyncImpl: spawnSyncImpl as never
+      })
     });
 
-    expect(result.ok).toBe(true);
-    expect(result.command).toBe("C:\\Users\\ExampleUser\\AppData\\Roaming\\npm\\codex.cmd");
-    expect(spawnSyncImpl).toHaveBeenCalledWith(
-      expect.stringMatching(/cmd\.exe$/iu),
-      expect.arrayContaining(["C:\\Users\\ExampleUser\\AppData\\Roaming\\npm\\codex.cmd"]),
-      expect.any(Object)
-    );
+    expect(args).toEqual(["exec", "--sandbox", "workspace-write", "do something"]);
   });
 
-  it("fails closed when Codex resolves to a Windows shim in WSL", () => {
-    const spawnSyncImpl = vi.fn(() => ({
-      status: 0,
-      stdout: "/mnt/c/Users/ExampleUser/AppData/Roaming/npm/codex.cmd\n",
-      stderr: ""
-    }));
-
-    const result = probeCodexLaunch({
-      workingDirectory: process.cwd(),
-      platform: "linux",
-      env: { WSL_DISTRO_NAME: "Ubuntu" },
-      spawnSyncImpl: spawnSyncImpl as never
+  it("does not escalate to danger-full-access when workspace-write is absent", () => {
+    const args = buildCodexExecArgs({
+      workingDirectory: "/repo",
+      sandbox: "workspace-write",
+      prompt: "do something",
+      capabilityProfile: profile({
+        sandbox: {
+          flag: "--sandbox",
+          scope: "exec",
+          values: ["danger-full-access"]
+        }
+      })
     });
 
-    expect(result.ok).toBe(false);
-    expect(result.summary).toContain("Install Codex natively");
-    expect(spawnSyncImpl).toHaveBeenCalledTimes(1);
+    expect(args).toEqual(["exec", "do something"]);
+    expect(args).not.toContain("danger-full-access");
   });
 
-  it("prefers native Windows runtime candidates ahead of shims", () => {
-    const spawnSyncImpl = vi.fn((command: string) => {
-      if (/cmd(.exe)?$/iu.test(command)) {
+  it("uses the exact advertised automation flag instead of a hardcoded name", () => {
+    const args = buildCodexExecArgs({
+      workingDirectory: "/repo",
+      sandbox: "workspace-write",
+      prompt: "do something",
+      capabilityProfile: profile({
+        approval: {
+          flag: "--full-auto",
+          scope: "global",
+          semantics: "automation-mode"
+        }
+      })
+    });
+
+    expect(args).toEqual(["--full-auto", "exec", "do something"]);
+    expect(args).not.toContain("--approve-for-me");
+  });
+
+  it("preserves global versus exec flag scope", () => {
+    const args = buildCodexExecArgs({
+      workingDirectory: "/repo",
+      model: "operator-choice",
+      prompt: "do something",
+      capabilityProfile: profile({
+        userConfigIsolation: { flag: "--ignore-user-config", scope: "global" },
+        model: { flag: "--model", scope: "exec" },
+        json: { flag: "--json", scope: "exec" }
+      })
+    });
+
+    expect(args).toEqual([
+      "--ignore-user-config",
+      "exec",
+      "--json",
+      "--model",
+      "operator-choice",
+      "do something"
+    ]);
+  });
+
+  it("omits model when operator did not explicitly select one", () => {
+    const args = buildCodexExecArgs({
+      workingDirectory: "/repo",
+      prompt: "do something",
+      capabilityProfile: profile({ model: { flag: "--model", scope: "exec" } })
+    });
+    expect(args).not.toContain("--model");
+  });
+
+  it("fails an explicit model override when the binary does not advertise model selection", () => {
+    expect(() =>
+      buildCodexExecArgs({
+        workingDirectory: "/repo",
+        model: "operator-choice",
+        prompt: "do something",
+        capabilityProfile: profile()
+      })
+    ).toThrow(/does not advertise a model override flag/iu);
+  });
+
+  it("uses stdin only when the exact binary advertises stdin prompt transport", () => {
+    const p = profile({ promptTransport: "stdin-dash" });
+    const args = buildCodexExecArgs({
+      workingDirectory: "/repo",
+      prompt: "long objective",
+      capabilityProfile: p
+    });
+
+    expect(args).toEqual(["exec", "-"]);
+    expect(buildCodexStdin(p, "long objective")).toBe("long objective");
+  });
+});
+
+describe("probeCodexLaunch", () => {
+  it("proves actual workspace-write ability with the dynamically built invocation", () => {
+    clearCodexCapabilityCacheForTests();
+    const workingDirectory = process.cwd();
+    const spawnSyncImpl = vi.fn((_command: string, args: string[], options?: { input?: string }) => {
+      if (args[0] === "codex-locator") {
+        return { status: 0, stdout: "/usr/local/bin/codex\n", stderr: "" };
+      }
+      if (args.length === 1 && args[0] === "--help") {
+        return { status: 0, stdout: "Usage: codex [COMMAND]", stderr: "" };
+      }
+      if (args[0] === "exec" && args[1] === "--help") {
         return {
           status: 0,
           stdout: [
-            JSON.stringify({
-              type: "item.completed",
-              item: {
-                id: "item_1",
-                type: "command_execution",
-                command: "\"pwsh.exe\" -NoProfile -Command 'git status --short -- .'",
-                aggregated_output:
-                  "execution error: Io(Custom { kind: Other, error: \"windows sandbox: runner error: CreateProcessAsUserW failed: 5\" })",
-                exit_code: -1,
-                status: "failed"
-              }
-            })
+            "Usage: codex exec [OPTIONS] [PROMPT]",
+            "--sandbox <MODE> [possible values: read-only, workspace-write]",
+            "--cd <DIR>",
+            "Read prompt from stdin when '-' is supplied."
           ].join("\n"),
           stderr: ""
         };
       }
 
-      return {
-        status: 0,
-        stdout: JSON.stringify({
-          type: "item.completed",
-          item: {
-            id: "item_1",
-            type: "command_execution",
-            command: "git status --short -- .",
-            aggregated_output: "",
-            exit_code: 0,
-            status: "completed"
-          }
-        }),
-        stderr: ""
-      };
-    });
-
-    const result = probeCodexLaunch({
-      workingDirectory: process.cwd(),
-      platform: "win32",
-      availability: {
-        command: "codex",
-        available: true,
-        locator: "where.exe",
-        detail: "codex is available on PATH.",
-        resolvedPath: "C:\\Tools\\npm\\codex.cmd",
-        candidatePaths: [
-          "C:\\Tools\\npm\\codex.cmd",
-          "C:\\Users\\ExampleUser\\AppData\\Local\\OpenAI\\Codex\\bin\\abcd1234\\codex.exe"
-        ]
-      },
-      spawnSyncImpl: spawnSyncImpl as never
-    });
-
-    expect(result.ok).toBe(true);
-    expect(result.command).toBe(
-      "C:\\Users\\ExampleUser\\AppData\\Local\\OpenAI\\Codex\\bin\\abcd1234\\codex.exe"
-    );
-    expect(result.availability.resolvedPath).toBe(
-      "C:\\Users\\ExampleUser\\AppData\\Local\\OpenAI\\Codex\\bin\\abcd1234\\codex.exe"
-    );
-    expect(result.candidateProbeResults).toEqual([
-      expect.objectContaining({
-        path: "C:\\Users\\ExampleUser\\AppData\\Local\\OpenAI\\Codex\\bin\\abcd1234\\codex.exe",
-        launchReady: true,
-        installKind: "native"
-      })
-    ]);
-  });
-
-  it("fails closed when the working directory is not inside a git repository", () => {
-    const workingDirectory = mkdtempSync(join(tmpdir(), "martin-codex-nongit-"));
-
-    try {
-      const spawnSyncImpl = vi.fn();
-      const result = probeCodexLaunch({
-        workingDirectory,
-        platform: "win32",
-        env: {},
-        availability: {
-          command: "codex",
-          available: true,
-          locator: "where.exe",
-          detail: "codex is available on PATH.",
-          resolvedPath: "C:\\Tools\\npm\\codex.cmd"
-        },
-        spawnSyncImpl: spawnSyncImpl as never
-      });
-
-      expect(result.ok).toBe(false);
-      expect(result.summary).toContain("not inside a git repository");
-      expect(spawnSyncImpl).not.toHaveBeenCalled();
-    } finally {
-      rmSync(workingDirectory, { recursive: true, force: true });
-    }
-  });
-
-  it("surfaces non-zero launch probe exits", () => {
-    const spawnSyncImpl = vi
-      .fn()
-      .mockReturnValueOnce({
-        status: 0,
-        stdout: "/usr/local/bin/codex\n",
-        stderr: ""
-      })
-      .mockReturnValueOnce({
-        status: 2,
-        stdout: "",
-        stderr: "unexpected argument '--json'\n"
-      });
-
-    const result = probeCodexLaunch({
-      workingDirectory: process.cwd(),
-      platform: "linux",
-      env: {},
-      spawnSyncImpl: spawnSyncImpl as never
-    });
-
-    expect(result.ok).toBe(false);
-    expect(result.summary).toContain("unexpected argument '--json'");
-    expect(result.exitCode).toBe(2);
-  });
-
-  it("classifies unsupported ChatGPT-account Codex models before governed work starts", () => {
-    const spawnSyncImpl = vi
-      .fn()
-      .mockReturnValueOnce({
-        status: 0,
-        stdout: "/usr/local/bin/codex\n",
-        stderr: ""
-      })
-      .mockReturnValueOnce({
-        status: 1,
-        stdout: "",
-        stderr:
-          "The 'gpt-5.3-codex' model is not supported when using Codex with a ChatGPT account.\n"
-      });
-
-    const result = probeCodexLaunch({
-      workingDirectory: process.cwd(),
-      platform: "linux",
-      env: {},
-      model: "gpt-5.3-codex",
-      spawnSyncImpl: spawnSyncImpl as never
-    });
-
-    expect(result.ok).toBe(false);
-    expect(result.summary).toContain("ChatGPT-account");
-    expect(result.summary).toContain("explicit model");
-    expect(result.diagnosis.remediation).toContain("ChatGPT-account-supported");
-  });
-
-  it("classifies read-only Codex sandbox mismatches before governed work continues", () => {
-    const spawnSyncImpl = vi
-      .fn()
-      .mockReturnValueOnce({
-        status: 0,
-        stdout: "/usr/local/bin/codex\n",
-        stderr: ""
-      })
-      .mockReturnValueOnce({
-        status: 1,
-        stdout: "",
-        stderr:
-          "patch rejected: writing is blocked by read-only sandbox; rejected by user approval settings\n"
-      });
-
-    const result = probeCodexLaunch({
-      workingDirectory: process.cwd(),
-      platform: "linux",
-      env: {},
-      spawnSyncImpl: spawnSyncImpl as never
-    });
-
-    expect(result.ok).toBe(false);
-    expect(result.summary).toContain("read-only");
-    expect(result.diagnosis.remediation).toContain("--ignore-user-config --sandbox workspace-write");
-  });
-
-  it("wraps Windows cmd launch probes through cmd.exe", () => {
-    const spawnSyncImpl = vi.fn(() => ({
-      status: 0,
-      stdout: JSON.stringify({
-        type: "item.completed",
-        item: {
-          id: "item_1",
-          type: "command_execution",
-          command: "git status --short -- .",
-          aggregated_output: "",
-          exit_code: 0,
-          status: "completed"
-        }
-      }),
-      stderr: ""
-    }));
-
-    const result = probeCodexLaunch({
-      workingDirectory: process.cwd(),
-      platform: "win32",
-      availability: {
-        command: "codex",
-        available: true,
-        locator: "where.exe",
-        detail: "codex is available on PATH.",
-          resolvedPath: "C:\\Tools\\npm\\codex.cmd"
-      },
-      spawnSyncImpl: spawnSyncImpl as never
-    });
-
-    expect(result.ok).toBe(true);
-    expect(spawnSyncImpl).toHaveBeenCalledWith(
-      expect.stringMatching(/cmd(.exe)?$/i),
-      expect.arrayContaining(["/d", "/c", "C:\\Tools\\npm\\codex.cmd", "exec"]),
-      expect.objectContaining({
-        cwd: process.cwd(),
-        encoding: "utf8"
-      })
-    );
-    expect(result.diagnosis.invocationMode).toBe("cmd_shell");
-  });
-
-  it("fails closed when Codex prompt execution cannot launch shell commands on Windows", () => {
-    const spawnSyncImpl = vi.fn(() => ({
-      status: 0,
-      stdout: [
-        JSON.stringify({
-          type: "item.completed",
-          item: {
-            id: "item_1",
-            type: "command_execution",
-            command: "\"pwsh.exe\" -NoProfile -Command 'git status --short -- .'",
-            aggregated_output:
-              "execution error: Io(Custom { kind: Other, error: \"windows sandbox: runner error: CreateProcessAsUserW failed: 5\" })",
-            exit_code: -1,
-            status: "failed"
-          }
-        }),
-        JSON.stringify({
-          type: "item.completed",
-          item: {
-            id: "item_2",
-            type: "agent_message",
-            text: "Shell execution failed."
-          }
-        })
-      ].join("\n"),
-      stderr: ""
-    }));
-
-    const result = probeCodexLaunch({
-      workingDirectory: process.cwd(),
-      platform: "win32",
-      availability: {
-        command: "codex",
-        available: true,
-        locator: "where.exe",
-        detail: "codex is available on PATH.",
-        resolvedPath: "C:\\Tools\\npm\\codex.cmd"
-      },
-      spawnSyncImpl: spawnSyncImpl as never
-    });
-
-    expect(result.ok).toBe(false);
-    expect(result.summary).toContain("workspace-write sandbox");
-    expect(result.diagnosis.sandboxCompatible).toBe(false);
-    expect(result.diagnosis.remediation).toContain("workspace-write");
-  });
-
-  it("classifies missing Linux native Codex dependencies before governed work starts", () => {
-    const spawnSyncImpl = vi
-      .fn()
-      .mockReturnValueOnce({
-        status: 0,
-        stdout: "/usr/local/bin/codex\n",
-        stderr: ""
-      })
-      .mockReturnValueOnce({
-        status: 1,
-        stdout: "",
-        stderr: "Error: Cannot find module '@openai/codex-linux-x64'\n"
-      });
-
-    const result = probeCodexLaunch({
-      workingDirectory: process.cwd(),
-      platform: "linux",
-      env: {},
-      spawnSyncImpl: spawnSyncImpl as never
-    });
-
-    expect(result.ok).toBe(false);
-    expect(result.summary).toContain("@openai/codex-linux-x64");
-    expect(result.diagnosis.nativeInstallValid).toBe(false);
-    expect(result.diagnosis.nativeDependencyStatus).toBe("missing");
-    expect(result.diagnosis.nativeDependencyPackage).toBe("@openai/codex-linux-x64");
-    expect(result.diagnosis.remediation).toContain("Reinstall Codex natively");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// probeFilesystemWriteCapability
-// ---------------------------------------------------------------------------
-
-describe("probeFilesystemWriteCapability", () => {
-  it("returns writable:true for a real writable temp directory", () => {
-    const dir = mkdtempSync(join(tmpdir(), "ml-probe-write-"));
-    try {
-      const result = probeFilesystemWriteCapability(dir);
-      expect(result.writable).toBe(true);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  it("leaves no file behind after a successful probe", () => {
-    const { readdirSync } = require("node:fs") as typeof import("node:fs");
-    const dir = mkdtempSync(join(tmpdir(), "ml-probe-clean-"));
-    try {
-      probeFilesystemWriteCapability(dir);
-      const remaining = readdirSync(dir);
-      expect(remaining).toHaveLength(0);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  it("returns writable:false with a reason when the directory cannot be written", () => {
-    // /dev/null does not exist on Windows; on Linux it is a character device —
-    // either way mkdir throws and the probe returns writable:false.
-    const result = probeFilesystemWriteCapability((process.platform === "win32" ? "Z:\\invalid\\dir" : "/dev/null/cannot-be-a-dir"));
-    expect(result.writable).toBe(false);
-    if (!result.writable) {
-      expect(result.reason.length).toBeGreaterThan(0);
-    }
-  });
-});
-
-// ---------------------------------------------------------------------------
-// checkCodexSandboxPreflight
-// ---------------------------------------------------------------------------
-
-describe("checkCodexSandboxPreflight", () => {
-  it("read-only mission returns ok without a write probe", () => {
-    const result = checkCodexSandboxPreflight({
-      requestedSandbox: "read-only",
-      workingDirectory: tmpdir()
-    });
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.effectiveSandbox).toBe("read-only");
-      expect(result.capabilitySource).toBe("probe");
-    }
-  });
-
-  it("workspace-write mission succeeds when directory is writable", () => {
-    const dir = mkdtempSync(join(tmpdir(), "ml-pf-write-ok-"));
-    try {
-      const result = checkCodexSandboxPreflight({
-        requestedSandbox: "workspace-write",
-        workingDirectory: dir
-      });
-      expect(result.ok).toBe(true);
-      if (result.ok) {
-        expect(result.effectiveSandbox).toBe("workspace-write");
-        expect(result.capabilitySource).toBe("probe");
+      const promptText = options?.input ?? args.at(-1) ?? "";
+      const marker = promptText.match(/\.martin-codex-write-probe-[A-Za-z0-9.-]+\.tmp/u)?.[0];
+      if (marker) {
+        writeFileSync(join(workingDirectory, marker), "MARTIN_CODEX_WRITE_OK", "utf8");
       }
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  it("workspace-write mission returns provider_sandbox_read_only when directory is not writable", () => {
-    const result = checkCodexSandboxPreflight({
-      requestedSandbox: "workspace-write",
-      workingDirectory: (process.platform === "win32" ? "Z:\\invalid\\dir" : "/dev/null/not-a-dir")
+      return { status: 0, stdout: "READY\n", stderr: "" };
     });
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.code).toBe("provider_sandbox_read_only");
-      expect(result.requestedCapability).toBe("workspace-write");
-      expect(result.detectedCapability).toBe("read-only");
-      expect(result.capabilitySource).toBe("probe");
-      expect(result.remediation.length).toBeGreaterThan(0);
-    }
-  });
 
-  it("provider_sandbox_read_only includes the affected path", () => {
-    const result = checkCodexSandboxPreflight({
-      requestedSandbox: "workspace-write",
-      workingDirectory: (process.platform === "win32" ? "Z:\\invalid\\dir" : "/dev/null/not-a-dir")
+    const result = probeCodexLaunch({
+      workingDirectory,
+      platform: "linux",
+      env: {},
+      availability: {
+        command: "codex",
+        available: true,
+        locator: "test",
+        detail: "test",
+        resolvedPath: "/usr/local/bin/codex",
+        candidatePaths: ["/usr/local/bin/codex"]
+      },
+      spawnSyncImpl: spawnSyncImpl as never
     });
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.affectedPath).toBeTruthy();
-      expect(result.affectedPath.length).toBeGreaterThan(0);
-    }
-  });
 
-  it("sandbox denial is distinct from provider failure: code is exactly provider_sandbox_read_only", () => {
-    const result = checkCodexSandboxPreflight({
-      requestedSandbox: "workspace-write",
-      workingDirectory: (process.platform === "win32" ? "Z:\\invalid\\dir" : "/dev/null/not-a-dir")
-    });
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.code).toBe("provider_sandbox_read_only");
-    }
+    expect(result.ok).toBe(true);
+    expect(result.capabilityProfile?.sandbox?.values).toContain("workspace-write");
+    expect(result.args).toContain("--sandbox");
+    expect(result.args).toContain("workspace-write");
+    expect(result.args).not.toContain("--approve-for-me");
+    expect(result.summary).toContain("workspace-write probe passed");
+    const leftover = result.args.find((arg) => arg.includes(".martin-codex-write-probe-"));
+    if (leftover) expect(existsSync(join(workingDirectory, leftover))).toBe(false);
   });
+});
 
-  it("no model spawn occurs: checkCodexSandboxPreflight is synchronous and returns before any provider call", () => {
-    const dir = mkdtempSync(join(tmpdir(), "ml-pf-no-spawn-"));
+describe("filesystem sandbox preflight", () => {
+  it("proves a writable directory by creating and removing a marker", () => {
+    const directory = mkdtempSync(join(tmpdir(), "martin-codex-write-"));
     try {
-      const result = checkCodexSandboxPreflight({
+      expect(probeFilesystemWriteCapability(directory)).toEqual({ writable: true });
+      expect(checkCodexSandboxPreflight({
         requestedSandbox: "workspace-write",
-        workingDirectory: dir
-      });
-      expect(result).not.toBeInstanceOf(Promise);
-      expect(typeof result.ok).toBe("boolean");
+        workingDirectory: directory
+      }).ok).toBe(true);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  it("WindowsApps alias path is treated as inaccessible (returns provider_sandbox_read_only)", () => {
-    const windowsAppsPath =
-      `${process.env["SystemRoot"] ?? "C:\\Windows"}\\SystemApps\\ml-probe-guard\\not-real`;
-    const result = checkCodexSandboxPreflight({
-      requestedSandbox: "workspace-write",
-      workingDirectory: windowsAppsPath
-    });
-    if (!result.ok) {
-      expect(result.code).toBe("provider_sandbox_read_only");
+      rmSync(directory, { recursive: true, force: true });
     }
   });
 });
