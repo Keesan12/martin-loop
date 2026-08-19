@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "cli": {
     "package": "martin-loop",
-    "version": "0.5.1",
+    "version": "0.5.2",
     "install": "npx -y martin-loop@latest"
   },
   "mcp": {
