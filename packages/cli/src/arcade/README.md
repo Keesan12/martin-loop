@@ -7,9 +7,26 @@ to handle the result.
 
 Zero external dependencies. Node 18+. Pure ANSI escape codes.
 
+## Current product contract
+
+Arcade is part of MartinLoop's interactive terminal presentation, not its governance authority.
+
+- the governed coding-agent run starts independently of Arcade
+- Arcade input cannot change the agent, budget, verifier, policy decision, final outcome, or receipt evidence
+- quitting Arcade returns to the CLI while governed work continues according to the run contract
+- game completion cannot mark a coding task complete
+- JSON, quiet, CI, non-TTY, reduced-motion, unsuitable-terminal, and `NO_COLOR` paths must not receive Arcade presentation output that contaminates machine-readable evidence
+- terminal state, cursor visibility, and input mode must be restored after Arcade exits
+
+The intended user experience is simple: the coding agent works, MartinLoop keeps the run bounded, and the user can play while waiting without weakening the run contract.
+
+For the full agent-facing product model see [`../../../../llms-full.txt`](../../../../llms-full.txt) and [`../../../../docs/for-agents.md`](../../../../docs/for-agents.md).
+
 ---
 
 ## Theming
+
+Arcade uses terminal color to make run-state presentation legible while keeping color out of governed evidence and machine-readable output.
 
 | Element | Sprite | What it represents |
 |---|---|---|
@@ -41,6 +58,8 @@ level 4, faster cooldown at level 5.
 ---
 
 ## Wiring into `packages/cli/src/index.ts`
+
+The implementation is integrated into the CLI. The example below documents the boundary that must remain true if the integration is refactored.
 
 ### 1. Import
 
