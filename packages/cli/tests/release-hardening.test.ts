@@ -28,8 +28,20 @@ import {
   evaluatePreworkBurnPolicy
 } from "../../core/src/routing.js";
 import { calculateCostPerOutcome } from "../../core/src/policy.js";
-import { createCodexCliAdapter, createClaudeCliAdapter, createGeminiCliAdapter } from "../../adapters/src/claude-cli.js";
+import {
+  createCodexCliAdapter,
+  createClaudeCliAdapter,
+  createGeminiCliAdapter,
+  type CodexCapabilityProfile
+} from "../../adapters/src/index.js";
 import { buildCodexExecArgs } from "../../adapters/src/codex-launcher.js";
+
+const noFlagCodexProfile: CodexCapabilityProfile = {
+  binaryPath: "codex-test-bin",
+  supportsExec: true,
+  probeSucceeded: true,
+  promptTransport: "argv"
+};
 
 // ---------------------------------------------------------------------------
 // 1. Subpath exports — verify package.json exports field
@@ -66,25 +78,40 @@ describe("subpath exports", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 2. Codex adapter flags
+// 2. Codex adapter capabilities
 // ---------------------------------------------------------------------------
 
 describe("Codex adapter configuration", () => {
-  it("omits --model when no model is provided (delegated CLI chooses its own default)", () => {
-    const args = buildCodexExecArgs({ workingDirectory: process.cwd(), mode: "prompt" });
+  it("omits model and optional launch flags when the binary advertises none", () => {
+    const args = buildCodexExecArgs({
+      workingDirectory: process.cwd(),
+      mode: "prompt",
+      prompt: "test objective",
+      capabilityProfile: noFlagCodexProfile
+    });
+    expect(args).toEqual(["exec", "test objective"]);
     expect(args).not.toContain("--model");
-    expect(args).toContain("--approve-for-me");
-    const adapter = createCodexCliAdapter();
+    expect(args).not.toContain("--approve-for-me");
+    expect(args).not.toContain("--sandbox");
+
+    const adapter = createCodexCliAdapter({ capabilityProfile: noFlagCodexProfile });
     expect(adapter.adapterId).toContain("codex");
   });
 
-  it("accepts custom model override", () => {
-    const adapter = createCodexCliAdapter({ model: "o3" });
+  it("accepts custom model override without changing provider identity", () => {
+    const adapter = createCodexCliAdapter({
+      model: "o3",
+      capabilityProfile: {
+        ...noFlagCodexProfile,
+        model: { flag: "--model", scope: "exec" }
+      }
+    });
     expect(adapter.metadata.model).toBe("o3");
+    expect(adapter.metadata.providerId).toBe("codex");
   });
 
   it("is an agent-cli kind adapter", () => {
-    const adapter = createCodexCliAdapter();
+    const adapter = createCodexCliAdapter({ capabilityProfile: noFlagCodexProfile });
     expect(adapter.kind).toBe("agent-cli");
   });
 });
@@ -289,7 +316,6 @@ describe("cost-per-outcome calculation", () => {
     expect(result.costPerAttempt).toBe(2);
     expect(result.acceptanceRate).toBe(1);
     expect(result.costPerAcceptedChange).toBe(6);
-    // Wasted coordination on accepted run = prework cost
     expect(result.wastedCoordinationUsd).toBe(1.5);
   });
 
@@ -303,7 +329,6 @@ describe("cost-per-outcome calculation", () => {
     });
     expect(result.costPerAcceptedChange).toBeUndefined();
     expect(result.acceptanceRate).toBe(0);
-    // Wasted coordination on rejected run = total cost
     expect(result.wastedCoordinationUsd).toBe(5);
   });
 
@@ -341,11 +366,8 @@ describe("prework burn policy enforcement", () => {
   });
 
   it("exceeds when prework percentage exceeds percentage cap", () => {
-    // Use low absolute cost but high percentage to trigger the percentage check
-    // Default maxPreworkCostUsd is $2, so keep below that to test percentage path
     const result = evaluatePreworkBurnPolicy(1.5, 2, { maxPreworkBudgetPct: 50, maxPreworkCostUsd: 10 });
     expect(result.exceeded).toBe(true);
-    // 1.5/2 = 75% which exceeds the 50% cap
     expect(result.reason).toContain("75%");
     expect(result.reason).toContain("50%");
   });
