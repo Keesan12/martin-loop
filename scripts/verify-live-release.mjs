@@ -20,14 +20,32 @@ assert.equal(server.version, mcpVersion, "MCP server version must match package 
 assert.equal(mcpb.version, mcpVersion, "MCPB product version must match MCP package version");
 assert.equal(mcpb.manifest_version, "0.3", "MCPB manifest schema must remain 0.3");
 
-const headers = {
-  Accept: "application/vnd.github+json",
-  "User-Agent": "martinloop-live-release-verifier",
-  ...(githubToken ? { Authorization: `Bearer ${githubToken}` } : {}),
-};
+function headersFor(url) {
+  const parsed = new URL(url);
+  const base = {
+    "User-Agent": "martinloop-live-release-verifier",
+  };
 
-async function getJson(url, label, extraHeaders = {}) {
-  const response = await fetch(url, { headers: { ...headers, ...extraHeaders } });
+  if (parsed.hostname === "api.github.com") {
+    return {
+      ...base,
+      Accept: "application/vnd.github+json",
+      ...(githubToken ? { Authorization: `Bearer ${githubToken}` } : {}),
+    };
+  }
+
+  if (parsed.hostname === "registry.npmjs.org" || parsed.hostname === "registry.modelcontextprotocol.io") {
+    return {
+      ...base,
+      Accept: "application/json",
+    };
+  }
+
+  return base;
+}
+
+async function getJson(url, label) {
+  const response = await fetch(url, { headers: headersFor(url) });
   const text = await response.text();
   if (!response.ok) {
     throw new Error(`${label} failed: HTTP ${response.status}\n${text.slice(0, 1000)}`);
@@ -36,7 +54,7 @@ async function getJson(url, label, extraHeaders = {}) {
 }
 
 async function getText(url, label) {
-  const response = await fetch(url, { headers });
+  const response = await fetch(url, { headers: headersFor(url), redirect: "follow" });
   const text = await response.text();
   if (!response.ok) {
     throw new Error(`${label} failed: HTTP ${response.status}\n${text.slice(0, 1000)}`);
@@ -45,7 +63,7 @@ async function getText(url, label) {
 }
 
 async function getBytes(url, label) {
-  const response = await fetch(url, { headers });
+  const response = await fetch(url, { headers: headersFor(url), redirect: "follow" });
   const bytes = Buffer.from(await response.arrayBuffer());
   if (!response.ok) {
     throw new Error(`${label} failed: HTTP ${response.status}\n${bytes.toString("utf8", 0, Math.min(bytes.length, 1000))}`);
