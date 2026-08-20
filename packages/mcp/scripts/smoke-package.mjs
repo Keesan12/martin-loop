@@ -45,6 +45,8 @@ const REQUIRED_TARBALL_FILES = [
   "dist/vendor/contracts/index.js",
   "dist/vendor/core/index.d.ts",
   "dist/vendor/core/index.js",
+  "dist/vendor/presentation/index.d.ts",
+  "dist/vendor/presentation/index.js",
   "server.json",
   "package.json",
 ];
@@ -120,7 +122,12 @@ export async function runStandaloneMcpSmoke(options = {}) {
       command: launch.command,
       args: launch.args,
       cwd: tempRoot,
-      env: sanitizePackageManagerEnv(process.env),
+      env: {
+        ...sanitizePackageManagerEnv(process.env),
+        MARTIN_LIVE: "false",
+        MARTIN_NO_MOTION: "1",
+        NO_COLOR: "1",
+      },
       stderr: "pipe",
     });
     transport.stderr?.on("data", (chunk) => {
@@ -154,6 +161,24 @@ export async function runStandaloneMcpSmoke(options = {}) {
       throw new Error("Packaged martin_status response is missing expected fields.");
     }
 
+    const preflightResult = await client.callTool({
+      name: "martin_preflight",
+      arguments: {
+        objective: "Verify packaged MCP human proof surface",
+        workingDirectory: tempRoot,
+        engine: "codex",
+        verificationPlan: ["node --version"],
+        maxUsd: 1,
+        maxIterations: 1,
+      },
+    });
+    const preflightPayload = readStructuredContent(preflightResult, "martin_preflight");
+    const preflightPresentation = assertHumanFirstCompatibilityResponse(
+      preflightResult,
+      "martin_preflight",
+      "## MartinLoop Governed Run Plan",
+    );
+
     return {
       tarballPath,
       npxCommand: "npx -y @martinloop/mcp",
@@ -162,6 +187,8 @@ export async function runStandaloneMcpSmoke(options = {}) {
       packedDependencies: packedManifest.dependencies ?? {},
       packedServerMetadata,
       statusPayload,
+      preflightPayload,
+      preflightPresentation,
       stderr: stderrChunks.join(""),
     };
   } finally {
@@ -295,6 +322,56 @@ function readStructuredContent(result, label) {
   }
 
   return payload;
+}
+
+function assertHumanFirstCompatibilityResponse(result, label, expectedHeading) {
+  const content = result?.content;
+  if (!Array.isArray(content) || content.length < 2) {
+    throw new Error(`Expected human Markdown and compatibility JSON from ${label}.`);
+  }
+
+  const humanText = content[0]?.type === "text" ? content[0].text : undefined;
+  if (typeof humanText !== "string" || !humanText.includes(expectedHeading)) {
+    throw new Error(`Expected human-first Markdown heading from ${label}.`);
+  }
+  if (/\u001b\[/u.test(humanText)) {
+    throw new Error(`${label} human Markdown contains ANSI escape sequences.`);
+  }
+
+  const compatibilityText = content[1]?.type === "text" ? content[1].text : undefined;
+  if (typeof compatibilityText !== "string") {
+    throw new Error(`Expected compatibility JSON text block from ${label}.`);
+  }
+
+  let compatibilityPayload;
+  try {
+    compatibilityPayload = JSON.parse(compatibilityText);
+  } catch (error) {
+    throw new Error(
+      `${label} compatibility JSON is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
+  const structuredPayload = readStructuredContent(result, label);
+  if (JSON.stringify(compatibilityPayload) !== JSON.stringify(structuredPayload)) {
+    throw new Error(`${label} compatibility JSON does not match structuredContent.`);
+  }
+
+  return {
+    humanFirst: true,
+    compatibilityJson: true,
+    structuredContent: true,
+    ansiFree: true,
+  };
+}
+
+function parsePackEntry(stdout) {
+  const parsed = JSON.parse(stdout);
+  const entry = Array.isArray(parsed) ? parsed[0] : null;
+  if (!entry || typeof entry.filename !== "string" || !Array.isArray(entry.files)) {
+    throw new Error("npm pack did not return a usable pack result.");
+  }
+  return entry;
 }
 
 function npmCommand() {
