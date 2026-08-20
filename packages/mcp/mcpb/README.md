@@ -4,7 +4,7 @@ Packages the existing `@martinloop/mcp` local stdio server as an MCP Bundle (`.m
 
 The MCPB carries the same MartinLoop execution-control and evidence model as the standalone MCP package. Bundle packaging must not create a different meaning for `VERIFIED`, `STOPPED`, `NEEDS REVIEW`, cost provenance, verification-only execution, or receipt integrity.
 
-The 0.5.4 product version is aligned across the root package, standalone MCP package, plugin metadata, and MCPB. The MCPB manifest schema remains `0.3`.
+The 0.5.5 product version is aligned across the root package, standalone MCP package, plugin metadata, and MCPB. The MCPB manifest schema remains `0.3`.
 
 For agent-readable product context see [`../../../llms.txt`](../../../llms.txt), [`../../../llms-full.txt`](../../../llms-full.txt), and [`../../../docs/for-agents.md`](../../../docs/for-agents.md).
 
