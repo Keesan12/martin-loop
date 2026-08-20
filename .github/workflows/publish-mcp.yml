@@ -66,6 +66,8 @@ jobs:
 
       - name: Verify MCP package
         run: |
+          pnpm --filter @martin/contracts build
+          pnpm --filter @martin/presentation build
           pnpm --filter @martinloop/mcp lint
           pnpm --filter @martinloop/mcp test
           pnpm --filter @martinloop/mcp build
