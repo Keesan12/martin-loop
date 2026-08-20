@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [0.5.4] - 2026-08-20
+
+### Added
+- **Governed-autonomous execution contract** — MartinLoop now expresses autonomous coding intent independently of any provider or IDE, while adapters translate that intent into provider-specific capabilities.
+- **Human-first MCP proof surfaces** — MCP responses lead with readable Markdown while preserving structured content and compatibility JSON for clients that need machine-readable evidence.
+
+### Changed
+- **Codex autonomy is negotiated from the exact binary** — MartinLoop discovers the selected executable's capabilities, proves a workspace-bound write strategy, and reuses the negotiated result for execution.
+- **Provider execution timeouts are explicit run policy** — legitimate long autonomous turns can use a finite override without changing verifier timeout behavior.
+
+### Fixed
+- **Interactive permission downgrades are blocked** — governed-autonomous runs cannot silently fall back to provider prompts or override the negotiated permission mode through extra arguments.
+- **New-file grounding and public packaging are reliable** — patch-local declarations are grounded correctly, and internal test compatibility adapters remain excluded from published root and MCP artifacts.
+
 ## [0.5.3] - 2026-08-19
 
 ### Added
