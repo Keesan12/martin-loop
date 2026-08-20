@@ -76,6 +76,27 @@ function formatCost(usd: number, provenance: CostProvenance): string {
   return amount + " estimated";
 }
 
+/**
+ * Single source of truth for the trust-authority outcome calculation.
+ * Both terminal and Markdown renderers call this — never duplicate.
+ * Fail-closed: omitting executionMode or governanceClaimEligible downgrades
+ * VERIFIED → NEEDS_REVIEW, so legacy handoffs cannot claim full governance.
+ */
+function resolveHandoffAuthority(handoff: VerifiedHandoffV1): {
+  executionMode: string;
+  governanceClaimEligible: boolean;
+  effectiveOutcome: VerifiedHandoffOutcome;
+} {
+  const executionMode = handoff.executionMode ?? "simulated";
+  const governanceClaimEligible =
+    executionMode === "governed" && handoff.governanceClaimEligible === true;
+  const effectiveOutcome: VerifiedHandoffOutcome =
+    handoff.outcome === "VERIFIED" && !governanceClaimEligible
+      ? "NEEDS_REVIEW"
+      : handoff.outcome;
+  return { executionMode, governanceClaimEligible, effectiveOutcome };
+}
+
 export function renderVerifiedHandoff(
   handoff: VerifiedHandoffV1,
   options: VerifiedHandoffRenderOptions = {},
@@ -83,13 +104,8 @@ export function renderVerifiedHandoff(
   const environment = options.environment ?? {};
   const width = terminalWidth(options.width);
   const bounded = (line: string): string => truncateVisible(line, width);
-  const executionMode = handoff.executionMode ?? "simulated";
-  const governanceClaimEligible =
-    executionMode === "governed" && handoff.governanceClaimEligible === true;
-  const effectiveOutcome =
-    handoff.outcome === "VERIFIED" && !governanceClaimEligible
-      ? "NEEDS_REVIEW"
-      : handoff.outcome;
+  const { executionMode, governanceClaimEligible, effectiveOutcome } =
+    resolveHandoffAuthority(handoff);
   const outcome = effectiveOutcome.replace("_", " ");
   const checks = handoff.verification.checks.map((check) => ({
     check: check.command,
@@ -179,13 +195,8 @@ export function renderVerifiedHandoffMarkdown(
   options: VerifiedHandoffRenderOptions = {},
 ): string {
   void options; // width/environment unused in plain Markdown
-  const executionMode = handoff.executionMode ?? "simulated";
-  const governanceClaimEligible =
-    executionMode === "governed" && handoff.governanceClaimEligible === true;
-  const effectiveOutcome =
-    handoff.outcome === "VERIFIED" && !governanceClaimEligible
-      ? "NEEDS_REVIEW"
-      : handoff.outcome;
+  const { executionMode, governanceClaimEligible, effectiveOutcome } =
+    resolveHandoffAuthority(handoff);
   const outcome = effectiveOutcome.replace("_", " ");
 
   const lines: string[] = [
