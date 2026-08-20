@@ -68,14 +68,6 @@ function checkSymbol(status: EvidenceStatus): string {
   return "•";
 }
 
-function formatCost(usd: number, provenance: CostProvenance): string {
-  if (provenance === "unavailable") return "unavailable";
-  const amount = "$" + usd.toFixed(2);
-  if (provenance === "actual") return amount + " provider-settled actual";
-  if (provenance === "calculated") return amount + " calculated from observed usage";
-  return amount + " estimated";
-}
-
 /**
  * Single source of truth for the trust-authority outcome calculation.
  * Both terminal and Markdown renderers call this — never duplicate.

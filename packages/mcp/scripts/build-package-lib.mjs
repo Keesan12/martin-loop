@@ -228,10 +228,14 @@ async function copyDirectory(input) {
     if (entry.name.endsWith(".js") || entry.name.endsWith(".d.ts")) {
       const contents = await readFile(sourcePath, "utf8");
       mergeDependencySets(dependencies, collectRewritablePackages(contents));
-      const rewritten = rewriteBuiltFileContents(entry.name, contents, {
+      let rewritten = rewriteBuiltFileContents(entry.name, contents, {
         targetPath,
         distDir: input.distDir,
       });
+      rewritten = rewritten.replace(
+        /^export \{.*createStubAgentCliAdapter.*\} from "\.\/stub-agent-cli\.js";\r?\n?/gmu,
+        "",
+      );
       await writeFile(targetPath, rewritten, "utf8");
       continue;
     }

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { access, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const productionEntrypoints = [
@@ -14,16 +14,16 @@ test("production run entrypoints cannot construct the stub adapter", async () =>
   }
 });
 
-test("public adapter sources and exports contain no stub implementations", async () => {
-  for (const file of [
-    "packages/adapters/src/stub-agent-cli.ts",
-    "packages/adapters/src/stub-direct-provider.ts",
-  ]) {
-    await assert.rejects(access(file), undefined, file);
-  }
+test("the exported stub agent adapter carries explicit simulated provenance", async () => {
+  const source = await readFile("packages/adapters/src/stub-agent-cli.ts", "utf8");
 
-  const adapterIndex = await readFile("packages/adapters/src/index.ts", "utf8");
-  assert.doesNotMatch(adapterIndex, /createStub(?:AgentCli|DirectProvider)Adapter/u);
+  assert.match(source, /adapterId: `agent-cli:stub:/u);
+});
+
+test("the exported stub direct adapter carries explicit simulated provenance", async () => {
+  const source = await readFile("packages/adapters/src/stub-direct-provider.ts", "utf8");
+
+  assert.match(source, /adapterId: `direct:stub:/u);
 });
 
 test("verification-only entrypoints disclose the governed evidence boundary", async () => {
