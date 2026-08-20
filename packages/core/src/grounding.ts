@@ -284,7 +284,14 @@ export function scanPatchForGroundingViolations(
     index.files.flatMap((file) => file.symbols.map((symbol) => symbol.toLowerCase()))
   );
   const referencedFiles = new Set<string>();
+  const addedFiles = new Set<string>();
   const diffFilePattern = /^(?:---|\+\+\+)\s+[ab]\/(.+)$/gm;
+  const addedFilePattern = /^---\s+\/dev\/null\r?\n\+\+\+\s+b\/(.+)$/gm;
+
+  for (const match of diff.matchAll(addedFilePattern)) {
+    const filePath = match[1]?.trim();
+    if (filePath) addedFiles.add(filePath);
+  }
 
   for (const match of diff.matchAll(diffFilePattern)) {
     const filePath = match[1]?.trim();
@@ -294,7 +301,7 @@ export function scanPatchForGroundingViolations(
   }
 
   for (const filePath of referencedFiles) {
-    if (indexedPaths.has(filePath)) {
+    if (indexedPaths.has(filePath) || addedFiles.has(filePath)) {
       resolvedFiles.push(filePath);
     } else {
       violations.push({
@@ -320,7 +327,7 @@ export function scanPatchForGroundingViolations(
 
   const addedLinePattern = /^\+(?!\+\+)(.+)$/gm;
   const importPattern = /(?:import|require)\s*(?:.*\s+from\s+)?['"]([^'"]+)['"]/g;
-  const identifierPattern = /\b([A-Za-z_][A-Za-z0-9_]{2,})\b/g;
+  const callableIdentifierPattern = /(?<!\.)\b([A-Za-z_][A-Za-z0-9_]*)\s*\(/g;
   const symbolKeywords = new Set([
     "const",
     "let",
@@ -337,11 +344,34 @@ export function scanPatchForGroundingViolations(
     "true",
     "false",
     "null",
-    "undefined"
+    "undefined",
+    "if",
+    "for",
+    "while",
+    "switch",
+    "catch",
+    "typeof"
   ]);
+  const addedLines = [...diff.matchAll(addedLinePattern)].map((match) => match[1] ?? "");
+  const declaredSymbols = new Set<string>();
+  const declarationPattern = /\b(?:function|class|interface|type|enum|const|let|var)\s+([A-Za-z_][A-Za-z0-9_]*)/g;
 
-  for (const lineMatch of diff.matchAll(addedLinePattern)) {
-    const line = lineMatch[1] ?? "";
+  for (const line of addedLines) {
+    for (const declarationMatch of line.matchAll(declarationPattern)) {
+      const symbol = declarationMatch[1];
+      if (symbol) declaredSymbols.add(symbol.toLowerCase());
+    }
+
+    if (/^\s*import\b/u.test(line)) {
+      const importClause = line.match(/^\s*import\s+(.+?)\s+from\s+['"]/u)?.[1] ?? "";
+      for (const importSymbol of importClause.matchAll(/\b(?:as\s+)?([A-Za-z_][A-Za-z0-9_]*)\b/g)) {
+        const symbol = importSymbol[1];
+        if (symbol && symbol !== "as") declaredSymbols.add(symbol.toLowerCase());
+      }
+    }
+  }
+
+  for (const line of addedLines) {
 
     for (const importMatch of line.matchAll(importPattern)) {
       const reference = importMatch[1] ?? "";
@@ -355,6 +385,9 @@ export function scanPatchForGroundingViolations(
       const hasMatch = index.files.some((file) => {
         const withoutExt = file.path.replace(/\.(js|ts|tsx|jsx)$/, "");
         return withoutExt.endsWith(normalized) || withoutExt.includes(normalized);
+      }) || [...addedFiles].some((filePath) => {
+        const withoutExt = filePath.replace(/\.(js|ts|tsx|jsx)$/, "");
+        return withoutExt.endsWith(normalized) || withoutExt.includes(normalized);
       });
 
       if (!hasMatch) {
@@ -366,11 +399,12 @@ export function scanPatchForGroundingViolations(
       }
     }
 
-    for (const symbolMatch of line.matchAll(identifierPattern)) {
+    for (const symbolMatch of line.matchAll(callableIdentifierPattern)) {
       const symbol = symbolMatch[1];
       if (!symbol) continue;
       if (symbolKeywords.has(symbol)) continue;
-      if (symbol.toUpperCase() === symbol) continue;
+      if (/^[A-Z]/u.test(symbol)) continue;
+      if (declaredSymbols.has(symbol.toLowerCase())) continue;
       if (indexedSymbols.has(symbol.toLowerCase())) continue;
       if (/^[a-z]+$/.test(symbol) && symbol.length <= 4) continue;
 

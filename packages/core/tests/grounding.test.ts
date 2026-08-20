@@ -76,6 +76,71 @@ describe("repo grounding index", () => {
 });
 
 describe("scanPatchForGroundingViolations", () => {
+  it("accepts an allowed new file and symbols declared by that patch", async () => {
+    const root = await mkdtemp(join(tmpdir(), "martin-scan-new-file-"));
+    await mkdir(join(root, "packages", "contracts", "src"), { recursive: true });
+
+    const index = await buildRepoGroundingIndex(root);
+    const diff = `--- /dev/null
++++ b/packages/contracts/src/agent-execution.ts
+@@ -0,0 +1,8 @@
++export interface AgentExecutionContract {
++  intent: "governed-autonomous";
++}
++export function resolveAgentExecutionContract(): AgentExecutionContract {
++  const contract = { intent: "governed-autonomous" } as const;
++  return contract;
++}`;
+
+    const result = scanPatchForGroundingViolations(diff, index, {
+      allowedPaths: ["packages/contracts/src/agent-execution.ts"]
+    });
+
+    expect(result.violations).toEqual([]);
+    expect(result.resolvedFiles).toContain("packages/contracts/src/agent-execution.ts");
+  });
+
+  it("resolves a relative import between two files added by the same patch", async () => {
+    const root = await mkdtemp(join(tmpdir(), "martin-scan-new-import-"));
+    await mkdir(join(root, "src"), { recursive: true });
+    const index = await buildRepoGroundingIndex(root);
+    const diff = `--- /dev/null
++++ b/src/helper.ts
+@@ -0,0 +1 @@
++export function helper() { return true; }
+--- /dev/null
++++ b/src/consumer.ts
+@@ -0,0 +1,2 @@
++import { helper } from "./helper.js";
++export const result = helper();`;
+
+    const result = scanPatchForGroundingViolations(diff, index, {
+      allowedPaths: ["src/**"]
+    });
+
+    expect(result.violations).toEqual([]);
+  });
+
+  it("still rejects a new file outside explicit allowed paths", async () => {
+    const root = await mkdtemp(join(tmpdir(), "martin-scan-new-scope-"));
+    const index = await buildRepoGroundingIndex(root);
+    const diff = `--- /dev/null
++++ b/docs/unapproved.md
+@@ -0,0 +1 @@
++unapproved`;
+
+    const result = scanPatchForGroundingViolations(diff, index, {
+      allowedPaths: ["src/**"]
+    });
+
+    expect(result.violations).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: "patch_outside_allowed_paths",
+        reference: "docs/unapproved.md"
+      })
+    ]));
+  });
+
   it("detects a file_not_found violation when a diff references a nonexistent file", async () => {
     const root = await mkdtemp(join(tmpdir(), "martin-scan-"));
     await mkdir(join(root, "src"), { recursive: true });
