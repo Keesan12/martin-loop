@@ -9,6 +9,15 @@
  */
 
 import type { TerminationEnvelopeV1 } from "./exits.js";
+import type { AgentExecutionIntent } from "./agent-execution.js";
+
+export {
+  DEFAULT_AGENT_EXECUTION_INTENT,
+  DEFAULT_PROVIDER_EXECUTION_TIMEOUT_MS,
+  GOVERNED_AUTONOMOUS_BOUNDARY,
+  normalizeProviderExecutionTimeoutMs
+} from "./agent-execution.js";
+export type { AgentExecutionIntent } from "./agent-execution.js";
 
 export type LoopStatus =
   | "queued"
@@ -82,6 +91,10 @@ export interface LoopTask {
   executionProfile?: ExecutionProfile;
   allowedNetworkDomains?: string[];
   approvalPolicy?: ApprovalPolicy;
+  /** Provider-neutral execution posture. Defaults to governed autonomous execution. */
+  agentExecutionIntent?: AgentExecutionIntent;
+  /** Hard wall-clock limit for one provider coding process. */
+  providerExecutionTimeoutMs?: number;
   /** Glob patterns for files the agent is allowed to modify. Empty = no restriction. */
   allowedPaths?: string[];
   /** Glob patterns for files the agent must never modify. */
@@ -177,6 +190,8 @@ export interface ReceiptScope {
   writableRoot?: string;
   /** How the effective sandbox was determined. */
   capabilitySource?: "probe" | "configured" | "unknown";
+  agentExecutionIntent?: AgentExecutionIntent;
+  providerExecutionTimeoutMs?: number;
   /** Enforced demo changes (DEMO.md-only enforcement output). */
   demoChangedFiles?: string[];
 }

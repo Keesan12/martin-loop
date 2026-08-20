@@ -2,15 +2,16 @@ import { spawnSync } from "node:child_process";
 import { extname } from "node:path";
 
 import { createSpawnPlan, resolveNpmShimScript } from "./cli-bridge.js";
+import {
+  DEFAULT_AGENT_EXECUTION_INTENT,
+  type AgentExecutionIntent
+} from "@martin/contracts";
 
 export type CodexFlagScope = "global" | "exec";
 export type CodexPromptTransport = "stdin-dash" | "argv";
 export type CodexWriteStrategy =
   | "sandbox+approval"
-  | "sandbox"
-  | "automation"
-  | "approval"
-  | "default";
+  | "automation";
 
 export interface CodexCapabilityFlag {
   flag: string;
@@ -23,7 +24,15 @@ export interface CodexSandboxCapability extends CodexCapabilityFlag {
 
 export interface CodexApprovalCapability extends CodexCapabilityFlag {
   semantics: "approval-policy" | "automation-mode";
-  value?: string;
+  values?: string[];
+}
+
+export interface CodexAutonomyResolution {
+  binaryPath: string;
+  intent: AgentExecutionIntent;
+  strategy: "automation" | "sandbox+approval";
+  sandboxValue?: "workspace-write";
+  approvalValue?: string;
 }
 
 export interface CodexCapabilityProfile {
@@ -43,7 +52,6 @@ export interface CodexCapabilityProfile {
   userConfigIsolation?: CodexCapabilityFlag;
   promptTransport: CodexPromptTransport;
   promptTransports?: CodexPromptTransport[];
-  selectedWriteStrategy?: CodexWriteStrategy;
 }
 
 export interface CodexExecArgsOptions {
@@ -57,6 +65,7 @@ export interface CodexExecArgsOptions {
   capabilityProfile?: CodexCapabilityProfile;
   promptTransport?: CodexPromptTransport;
   writeStrategy?: CodexWriteStrategy;
+  autonomyResolution?: CodexAutonomyResolution;
 }
 
 type SpawnSyncLike = typeof spawnSync;
@@ -89,6 +98,22 @@ function flagContext(help: string, flag: string): string {
   const index = lines.findIndex((line) => line.includes(flag));
   if (index < 0) return "";
   return lines.slice(Math.max(0, index - 1), Math.min(lines.length, index + 3)).join("\n");
+}
+
+function parseAdvertisedValues(help: string, flag: string): string[] {
+  const flagIndex = help.indexOf(flag);
+  if (flagIndex < 0) return [];
+  const tail = help.slice(flagIndex);
+  const nextFlagOffset = tail.slice(flag.length).search(/\n\s*-/u);
+  const scoped = nextFlagOffset < 0
+    ? tail
+    : tail.slice(0, flag.length + nextFlagOffset);
+  const match = scoped.match(/possible values:\s*([^\]\n]+)/iu);
+  if (!match?.[1]) return [];
+  return match[1]
+    .split(",")
+    .map((value) => value.trim().replace(/[\].]$/u, ""))
+    .filter(Boolean);
 }
 
 function buildInjectedSpawnPlan(
@@ -213,8 +238,9 @@ export function probeCodexCapabilities(
   const approvalHelp = approvalFlag
     ? `${flagContext(globalHelp, approvalFlag.flag)}\n${flagContext(execHelp, approvalFlag.flag)}`
     : "";
-  const approvalPolicy = approvalFlag && /\bnever\b/iu.test(approvalHelp)
-    ? { ...approvalFlag, semantics: "approval-policy" as const, value: "never" }
+  const approvalValues = approvalFlag ? parseAdvertisedValues(approvalHelp, approvalFlag.flag) : [];
+  const approvalPolicy = approvalFlag
+    ? { ...approvalFlag, semantics: "approval-policy" as const, values: approvalValues }
     : undefined;
 
   const colorFlag = locateFlag(globalHelp, execHelp, ["--color"]);
@@ -275,14 +301,22 @@ function pushCapabilityArg(
 }
 
 export function codexWriteStrategies(profile: CodexCapabilityProfile): CodexWriteStrategy[] {
-  const strategies: CodexWriteStrategy[] = [];
-  const hasWorkspaceWrite = profile.sandbox?.values.includes("workspace-write") === true;
-  if (hasWorkspaceWrite && profile.approvalPolicy?.value === "never") strategies.push("sandbox+approval");
-  if (hasWorkspaceWrite) strategies.push("sandbox");
-  if (profile.automation) strategies.push("automation");
-  if (profile.approvalPolicy?.value === "never") strategies.push("approval");
-  strategies.push("default");
-  return [...new Set(strategies)];
+  return resolveCodexAutonomyCandidates(profile).map((candidate) => candidate.strategy);
+}
+
+export function resolveCodexAutonomyCandidates(
+  profile: CodexCapabilityProfile,
+  intent: AgentExecutionIntent = DEFAULT_AGENT_EXECUTION_INTENT
+): CodexAutonomyResolution[] {
+  const candidates: CodexAutonomyResolution[] = [];
+  if (profile.automation) {
+    candidates.push({
+      binaryPath: profile.binaryPath,
+      intent,
+      strategy: "automation"
+    });
+  }
+  return candidates;
 }
 
 export function buildCodexExecArgs(options: CodexExecArgsOptions): string[] {
@@ -291,24 +325,36 @@ export function buildCodexExecArgs(options: CodexExecArgsOptions): string[] {
     throw new Error(`Resolved Codex binary ${profile.binaryPath} does not advertise a usable exec subcommand.`);
   }
 
+  const resolution = options.autonomyResolution;
+  if (options.mode !== "probe" && !resolution) {
+    throw new Error(`Resolved Codex binary ${profile.binaryPath} has no negotiated governed-autonomous execution resolution.`);
+  }
+  const permissionFlags = [profile.sandbox?.flag, profile.automation?.flag, profile.approvalPolicy?.flag]
+    .filter((value): value is string => Boolean(value));
+  if ((options.extraArgs ?? []).some((arg) =>
+    arg === "danger-full-access" || permissionFlags.some((flag) => arg === flag || arg.startsWith(`${flag}=`))
+  )) {
+    throw new Error("Permission and sandbox controls cannot be supplied through extraArgs.");
+  }
+
   const globalArgs: string[] = [];
   const execArgs: string[] = [];
   const requestedSandbox = options.sandbox ?? "workspace-write";
-  const strategy = options.writeStrategy ?? profile.selectedWriteStrategy ?? codexWriteStrategies(profile)[0] ?? "default";
+  const strategy = resolution?.strategy ?? options.writeStrategy;
   const promptTransport = options.promptTransport ?? profile.promptTransport;
 
   if (profile.userConfigIsolation) pushCapabilityArg(globalArgs, execArgs, profile.userConfigIsolation);
   if (profile.cwd) pushCapabilityArg(globalArgs, execArgs, profile.cwd, options.workingDirectory);
 
   if (requestedSandbox === "workspace-write") {
-    if ((strategy === "sandbox" || strategy === "sandbox+approval") && profile.sandbox?.values.includes("workspace-write")) {
+    if (strategy === "sandbox+approval" && profile.sandbox?.values.includes("workspace-write")) {
       pushCapabilityArg(globalArgs, execArgs, profile.sandbox, "workspace-write");
     }
     if (strategy === "automation" && profile.automation) {
       pushCapabilityArg(globalArgs, execArgs, profile.automation);
     }
-    if ((strategy === "approval" || strategy === "sandbox+approval") && profile.approvalPolicy?.value) {
-      pushCapabilityArg(globalArgs, execArgs, profile.approvalPolicy, profile.approvalPolicy.value);
+    if (strategy === "sandbox+approval" && profile.approvalPolicy && resolution?.approvalValue) {
+      pushCapabilityArg(globalArgs, execArgs, profile.approvalPolicy, resolution.approvalValue);
     }
   } else {
     if (!profile.sandbox?.values.includes(requestedSandbox)) {

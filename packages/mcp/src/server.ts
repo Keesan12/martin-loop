@@ -848,6 +848,16 @@ export function createMartinMcpServer(serverInfo?: {
             exclusiveMinimum: 0,
             description: "Maximum total tokens across all attempts."
           },
+          verifyTimeoutMs: {
+            type: "integer",
+            exclusiveMinimum: 0,
+            description: "Hard timeout for each verifier command in milliseconds."
+          },
+          providerExecutionTimeoutMs: {
+            type: "integer",
+            exclusiveMinimum: 0,
+            description: "Hard timeout for each provider coding process in milliseconds."
+          },
           verificationPlan: {
             type: "array",
             items: { type: "string" },

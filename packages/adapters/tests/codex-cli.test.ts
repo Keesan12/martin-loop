@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import type { MartinAdapterRequest } from "@martin/core";
 import {
   createCodexCliAdapter,
+  type CodexAutonomyResolution,
   type CodexCapabilityProfile,
   type SpawnLike
 } from "../src/index.js";
@@ -78,11 +79,29 @@ function negotiatedProfile(overrides: Partial<CodexCapabilityProfile> = {}): Cod
     probeSucceeded: true,
     cwd: { flag: "--cd", scope: "exec" },
     sandbox: { flag: "--sandbox", scope: "exec", values: ["read-only", "workspace-write"] },
+    approvalPolicy: {
+      flag: "--ask-for-approval",
+      scope: "exec",
+      semantics: "approval-policy",
+      values: ["never"]
+    },
     json: { flag: "--json", scope: "exec" },
     color: { flag: "--color", scope: "exec", neverValue: "never" },
     promptTransport: "stdin-dash",
     promptTransports: ["stdin-dash", "argv"],
-    selectedWriteStrategy: "sandbox",
+    ...overrides
+  };
+}
+
+function negotiatedAutonomy(
+  overrides: Partial<CodexAutonomyResolution> = {}
+): CodexAutonomyResolution {
+  return {
+    binaryPath: "C:\\Program Files\\OpenAI\\Codex\\codex.exe",
+    intent: "governed-autonomous",
+    strategy: "sandbox+approval",
+    sandboxValue: "workspace-write",
+    approvalValue: "never",
     ...overrides
   };
 }
@@ -95,6 +114,7 @@ describe("capability-driven Codex adapter", () => {
     const adapter = createCodexCliAdapter({
       command: selectedBinary,
       capabilityProfile: profile,
+      autonomyResolution: negotiatedAutonomy({ binaryPath: selectedBinary }),
       spawnImpl: createScriptedSpawn(calls)
     });
     const result = await adapter.execute(request());
@@ -112,10 +132,13 @@ describe("capability-driven Codex adapter", () => {
     const profile = negotiatedProfile({
       sandbox: undefined,
       automation: { flag: "--full-auto", scope: "global", semantics: "automation-mode" },
-      approval: { flag: "--full-auto", scope: "global", semantics: "automation-mode" },
-      selectedWriteStrategy: "automation"
+      approval: { flag: "--full-auto", scope: "global", semantics: "automation-mode" }
     });
-    const adapter = createCodexCliAdapter({ capabilityProfile: profile, spawnImpl: createScriptedSpawn(calls) });
+    const adapter = createCodexCliAdapter({
+      capabilityProfile: profile,
+      autonomyResolution: negotiatedAutonomy({ strategy: "automation", sandboxValue: undefined, approvalValue: undefined }),
+      spawnImpl: createScriptedSpawn(calls)
+    });
     const result = await adapter.execute(request());
 
     expect(result.status).toBe("completed");
@@ -132,6 +155,7 @@ describe("capability-driven Codex adapter", () => {
       sandbox: "read-only",
       extraArgs: ["--ignore-rules"],
       capabilityProfile: profile,
+      autonomyResolution: negotiatedAutonomy(),
       spawnImpl: createScriptedSpawn(calls)
     });
     const result = await adapter.execute(request());
@@ -149,6 +173,7 @@ describe("capability-driven Codex adapter", () => {
     const adapter = createCodexCliAdapter({
       command: profile.binaryPath,
       capabilityProfile: profile,
+      autonomyResolution: negotiatedAutonomy(),
       spawnImpl: createScriptedSpawn(calls, [{ stdout: "patched\n" }, { stdout: "ok\n" }])
     });
     const result = await adapter.execute(request([verifier]));
@@ -164,6 +189,7 @@ describe("capability-driven Codex adapter", () => {
     const verifier = process.platform === "win32" ? "cmd /c exit 0" : "true";
     const adapter = createCodexCliAdapter({
       capabilityProfile: negotiatedProfile(),
+      autonomyResolution: negotiatedAutonomy(),
       spawnImpl: createScriptedSpawn(calls, [{ stderr: "unsupported invocation\n", exitCode: 2 }])
     });
     const result = await adapter.execute(request([verifier]));
@@ -182,6 +208,7 @@ describe("capability-driven Codex adapter", () => {
       command: profile.binaryPath,
       model: "gpt-5-codex",
       capabilityProfile: profile,
+      autonomyResolution: negotiatedAutonomy(),
       spawnImpl: createScriptedSpawn(calls, [
         {
           stdout: [
@@ -203,5 +230,13 @@ describe("capability-driven Codex adapter", () => {
     expect(result.usage.tokensIn).toBe(1500);
     expect(result.usage.tokensOut).toBe(250);
     expect(calls[0]?.command).toBe(profile.binaryPath);
+  });
+
+  it("rejects a capability profile or resolution for a different exact binary", () => {
+    expect(() => createCodexCliAdapter({
+      command: "C:\\Tools\\codex-b.exe",
+      capabilityProfile: negotiatedProfile({ binaryPath: "C:\\Tools\\codex-a.exe" }),
+      autonomyResolution: negotiatedAutonomy({ binaryPath: "C:\\Tools\\codex-a.exe" })
+    })).toThrow(/exact binary.*mismatch/iu);
   });
 });

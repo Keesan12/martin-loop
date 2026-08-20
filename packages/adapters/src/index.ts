@@ -37,6 +37,7 @@ export {
   resolveCliCommandAvailability,
   type CliCommandAvailability,
   type CodexApprovalCapability,
+  type CodexAutonomyResolution,
   type CodexCapabilityFlag,
   type CodexCapabilityProfile,
   type CodexFlagScope,

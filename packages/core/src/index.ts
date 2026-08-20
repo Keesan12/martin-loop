@@ -3,6 +3,10 @@ import { isAbsolute, relative, resolve } from "node:path";
 
 import {
   type ApprovalPolicy,
+  DEFAULT_AGENT_EXECUTION_INTENT,
+  DEFAULT_PROVIDER_EXECUTION_TIMEOUT_MS,
+  normalizeProviderExecutionTimeoutMs,
+  type AgentExecutionIntent,
   appendLoopEvent,
   createLoopRecord,
   type ContextHandoffReceipt,
@@ -101,6 +105,7 @@ import {
 
 // ─── Public API re-exports ───────────────────────────────────────────────────
 export type {
+  AgentExecutionIntent,
   ApprovalPolicy,
   BudgetPreflightEstimate,
   BudgetSettlement,
@@ -125,6 +130,7 @@ export type {
   FirstDelta,
   RoutingEconomics
 } from "@martin/contracts";
+export { DEFAULT_AGENT_EXECUTION_INTENT, DEFAULT_PROVIDER_EXECUTION_TIMEOUT_MS, GOVERNED_AUTONOMOUS_BOUNDARY, normalizeProviderExecutionTimeoutMs } from "@martin/contracts";
 export {
   classifyFailure,
   computeEvidenceVector,
@@ -328,6 +334,8 @@ export interface MartinAdapterRequest {
     executionProfile?: ExecutionProfile;
     allowedNetworkDomains?: string[];
     approvalPolicy?: ApprovalPolicy;
+    agentExecutionIntent?: AgentExecutionIntent;
+    providerExecutionTimeoutMs?: number;
     focus: string;
     remainingBudgetUsd: number;
     remainingIterations: number;
@@ -614,13 +622,19 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
   const now = input.now ?? (() => new Date().toISOString());
   const idFactory = input.idFactory;
 
+  const providerExecutionTimeoutMs = normalizeProviderExecutionTimeoutMs(
+    input.task.providerExecutionTimeoutMs
+  );
+  const agentExecutionIntent = input.task.agentExecutionIntent ?? DEFAULT_AGENT_EXECUTION_INTENT;
   let loop = createLoopRecord(
     {
       workspaceId: input.workspaceId,
       projectId: input.projectId,
-      task: input.task,
+      task: { ...input.task, agentExecutionIntent, providerExecutionTimeoutMs },
       budget: input.budget,
-      ...(input.receiptScope ? { receiptScope: input.receiptScope } : {}),
+      ...(input.receiptScope
+        ? { receiptScope: { ...input.receiptScope, agentExecutionIntent, providerExecutionTimeoutMs } }
+        : {}),
       ...(input.teamId ? { teamId: input.teamId } : {}),
       ...(input.metadata ? { metadata: input.metadata } : {})
     },
@@ -1222,6 +1236,8 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
             ? { allowedNetworkDomains: loop.task.allowedNetworkDomains }
             : {}),
           ...(loop.task.approvalPolicy ? { approvalPolicy: loop.task.approvalPolicy } : {}),
+          agentExecutionIntent: loop.task.agentExecutionIntent ?? DEFAULT_AGENT_EXECUTION_INTENT,
+          providerExecutionTimeoutMs: normalizeProviderExecutionTimeoutMs(loop.task.providerExecutionTimeoutMs),
           focus: distilled.focus,
           remainingBudgetUsd: distilled.constraints.remainingBudgetUsd,
           remainingIterations: distilled.constraints.remainingIterations,
@@ -1331,6 +1347,8 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
           ? { allowedNetworkDomains: loop.task.allowedNetworkDomains }
           : {}),
         ...(loop.task.approvalPolicy ? { approvalPolicy: loop.task.approvalPolicy } : {}),
+        agentExecutionIntent: loop.task.agentExecutionIntent ?? DEFAULT_AGENT_EXECUTION_INTENT,
+        providerExecutionTimeoutMs: normalizeProviderExecutionTimeoutMs(loop.task.providerExecutionTimeoutMs),
         focus: distilled.focus,
         remainingBudgetUsd: distilled.constraints.remainingBudgetUsd,
         remainingIterations: distilled.constraints.remainingIterations,

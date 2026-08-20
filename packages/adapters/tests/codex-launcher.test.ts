@@ -12,9 +12,11 @@ import {
   diagnoseCodexHost,
   probeCodexCapabilities,
   probeCodexLaunch,
+  resolveCodexAutonomyCandidates,
   probeFilesystemWriteCapability,
   resolveCliCommandAvailability,
   type CodexCapabilityProfile
+  , type CodexAutonomyResolution
 } from "../src/codex-launcher.js";
 
 function profile(overrides: Partial<CodexCapabilityProfile> = {}): CodexCapabilityProfile {
@@ -23,6 +25,18 @@ function profile(overrides: Partial<CodexCapabilityProfile> = {}): CodexCapabili
     supportsExec: true,
     probeSucceeded: true,
     promptTransport: "argv",
+    ...overrides
+  };
+}
+
+function autonomy(
+  binaryPath = "/usr/local/bin/codex",
+  overrides: Partial<CodexAutonomyResolution> = {}
+): CodexAutonomyResolution {
+  return {
+    binaryPath,
+    intent: "governed-autonomous",
+    strategy: "automation",
     ...overrides
   };
 }
@@ -92,6 +106,32 @@ describe("diagnoseCodexHost", () => {
 });
 
 describe("probeCodexCapabilities", () => {
+  it("discovers every advertised approval value without selecting a policy", () => {
+    const spawnSyncImpl = vi.fn((_command: string, args: string[]) => ({
+      status: 0,
+      stdout: args[0] === "exec"
+        ? [
+            "Usage: codex exec [OPTIONS] [PROMPT]",
+            "--ask-for-approval <POLICY> [possible values: untrusted, on-failure, on-request, never]"
+          ].join("\n")
+        : "Usage: codex [COMMAND]",
+      stderr: ""
+    }));
+
+    const result = probeCodexCapabilities("/tools/codex-a", {
+      platform: "linux",
+      spawnSyncImpl: spawnSyncImpl as never,
+      cache: false
+    });
+
+    expect(result.approvalPolicy?.values).toEqual([
+      "untrusted",
+      "on-failure",
+      "on-request",
+      "never"
+    ]);
+    expect(result).not.toHaveProperty("selectedWriteStrategy");
+  });
   it("parses global and exec flags separately", () => {
     clearCodexCapabilityCacheForTests();
     const spawnSyncImpl = vi.fn((_command: string, args: string[]) => {
@@ -199,10 +239,38 @@ describe("probeCodexCapabilities", () => {
 });
 
 describe("buildCodexExecArgs", () => {
+  it("refuses prompt execution without a negotiated autonomous resolution", () => {
+    expect(() => buildCodexExecArgs({
+      workingDirectory: "/repo",
+      prompt: "do something",
+      capabilityProfile: profile()
+    })).toThrow(/negotiated governed-autonomous/iu);
+  });
+
+  it("rejects permission overrides in extra arguments", () => {
+    const detected = profile({
+      automation: { flag: "--approve-for-me", scope: "exec", semantics: "automation-mode" }
+    });
+    expect(() => buildCodexExecArgs({
+      workingDirectory: "/repo",
+      prompt: "do something",
+      capabilityProfile: detected,
+      autonomyResolution: autonomy(),
+      extraArgs: ["--approve-for-me"]
+    })).toThrow(/permission.*extraArgs/iu);
+    expect(() => buildCodexExecArgs({
+      workingDirectory: "/repo",
+      prompt: "do something",
+      capabilityProfile: detected,
+      autonomyResolution: autonomy(),
+      extraArgs: ["--sandbox", "danger-full-access"]
+    })).toThrow(/permission.*extraArgs/iu);
+  });
   it("works with zero optional flags and makes no flag assumptions", () => {
     const args = buildCodexExecArgs({
       workingDirectory: "/repo",
       prompt: "do something",
+      mode: "probe",
       capabilityProfile: profile()
     });
 
@@ -222,11 +290,29 @@ describe("buildCodexExecArgs", () => {
           flag: "--sandbox",
           scope: "exec",
           values: ["read-only", "workspace-write"]
+        },
+        approvalPolicy: {
+          flag: "--ask-for-approval",
+          scope: "exec",
+          semantics: "approval-policy",
+          values: ["never"]
         }
+      }),
+      autonomyResolution: autonomy("/usr/local/bin/codex", {
+        strategy: "sandbox+approval",
+        sandboxValue: "workspace-write",
+        approvalValue: "never"
       })
     });
 
-    expect(args).toEqual(["exec", "--sandbox", "workspace-write", "do something"]);
+    expect(args).toEqual([
+      "exec",
+      "--sandbox",
+      "workspace-write",
+      "--ask-for-approval",
+      "never",
+      "do something"
+    ]);
   });
 
   it("does not escalate to danger-full-access when workspace-write is absent", () => {
@@ -234,13 +320,15 @@ describe("buildCodexExecArgs", () => {
       workingDirectory: "/repo",
       sandbox: "workspace-write",
       prompt: "do something",
+      mode: "probe",
       capabilityProfile: profile({
         sandbox: {
           flag: "--sandbox",
           scope: "exec",
           values: ["danger-full-access"]
         }
-      })
+      }),
+      autonomyResolution: autonomy()
     });
 
     expect(args).toEqual(["exec", "do something"]);
@@ -258,7 +346,8 @@ describe("buildCodexExecArgs", () => {
           scope: "global",
           semantics: "automation-mode"
         }
-      })
+      }),
+      autonomyResolution: autonomy()
     });
 
     expect(args).toEqual(["--full-auto", "exec", "do something"]);
@@ -270,6 +359,7 @@ describe("buildCodexExecArgs", () => {
       workingDirectory: "/repo",
       model: "operator-choice",
       prompt: "do something",
+      mode: "probe",
       capabilityProfile: profile({
         userConfigIsolation: { flag: "--ignore-user-config", scope: "global" },
         model: { flag: "--model", scope: "exec" },
@@ -291,6 +381,7 @@ describe("buildCodexExecArgs", () => {
     const args = buildCodexExecArgs({
       workingDirectory: "/repo",
       prompt: "do something",
+      mode: "probe",
       capabilityProfile: profile({ model: { flag: "--model", scope: "exec" } })
     });
     expect(args).not.toContain("--model");
@@ -302,6 +393,7 @@ describe("buildCodexExecArgs", () => {
         workingDirectory: "/repo",
         model: "operator-choice",
         prompt: "do something",
+        mode: "probe",
         capabilityProfile: profile()
       })
     ).toThrow(/does not advertise a model override flag/iu);
@@ -312,6 +404,7 @@ describe("buildCodexExecArgs", () => {
     const args = buildCodexExecArgs({
       workingDirectory: "/repo",
       prompt: "long objective",
+      mode: "probe",
       capabilityProfile: p
     });
 
@@ -320,11 +413,53 @@ describe("buildCodexExecArgs", () => {
   });
 });
 
+describe("resolveCodexAutonomyCandidates", () => {
+  it("keeps capability detection separate from governed-autonomous policy resolution", () => {
+    const candidates = resolveCodexAutonomyCandidates(profile({
+      automation: { flag: "--approve-for-me", scope: "exec", semantics: "automation-mode" },
+      sandbox: { flag: "--sandbox", scope: "exec", values: ["workspace-write", "danger-full-access"] },
+      approvalPolicy: {
+        flag: "--ask-for-approval",
+        scope: "global",
+        semantics: "approval-policy",
+        values: ["on-request", "never"]
+      }
+    }));
+
+    expect(candidates.map((candidate) => candidate.strategy)).toEqual([
+      "automation"
+    ]);
+    expect(candidates).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ approvalValue: "on-request" }),
+      expect.objectContaining({ approvalValue: "never" })
+    ]));
+    expect(candidates.flatMap((candidate) => Object.values(candidate))).not.toContain("danger-full-access");
+  });
+
+  it.each([
+    profile(),
+    profile({ sandbox: { flag: "--sandbox", scope: "exec", values: ["workspace-write"] } }),
+    profile({
+      approvalPolicy: {
+        flag: "--ask-for-approval",
+        scope: "exec",
+        semantics: "approval-policy",
+        values: ["never"]
+      }
+    }),
+    profile({ sandbox: { flag: "--sandbox", scope: "exec", values: ["danger-full-access"] } })
+  ])("does not downgrade to default, sandbox-only, approval-only, or danger", (detected) => {
+    expect(resolveCodexAutonomyCandidates(detected)).toEqual([]);
+  });
+});
+
 describe("probeCodexLaunch", () => {
   it("proves actual workspace-write ability with the dynamically built invocation", () => {
     clearCodexCapabilityCacheForTests();
     const workingDirectory = process.cwd();
-    const spawnSyncImpl = vi.fn((_command: string, args: string[], options?: { input?: string }) => {
+    let simulateOutsideEscape = false;
+    let observedTimeout: number | undefined;
+    const spawnSyncImpl = vi.fn((_command: string, args: string[], options?: { input?: string; timeout?: number }) => {
       if (args[0] === "codex-locator") {
         return { status: 0, stdout: "/usr/local/bin/codex\n", stderr: "" };
       }
@@ -336,7 +471,9 @@ describe("probeCodexLaunch", () => {
           status: 0,
           stdout: [
             "Usage: codex exec [OPTIONS] [PROMPT]",
+            "--full-auto  Run non-interactively with workspace-scoped automation",
             "--sandbox <MODE> [possible values: read-only, workspace-write]",
+            "--ask-for-approval <POLICY> [possible values: on-request, never]",
             "--cd <DIR>",
             "Read prompt from stdin when '-' is supplied."
           ].join("\n"),
@@ -345,6 +482,11 @@ describe("probeCodexLaunch", () => {
       }
 
       const promptText = options?.input ?? args.at(-1) ?? "";
+      observedTimeout = options?.timeout;
+      const outsideMarker = promptText.match(/"([^"]*\.martin-codex-outside-probe\.tmp)"/u)?.[1];
+      if (simulateOutsideEscape && outsideMarker) {
+        writeFileSync(outsideMarker, "MARTIN_CODEX_OUTSIDE_BAD", "utf8");
+      }
       const marker = promptText.match(/\.martin-codex-write-probe-[A-Za-z0-9.-]+\.tmp/u)?.[0];
       if (marker) {
         writeFileSync(join(workingDirectory, marker), "MARTIN_CODEX_WRITE_OK", "utf8");
@@ -367,14 +509,34 @@ describe("probeCodexLaunch", () => {
       spawnSyncImpl: spawnSyncImpl as never
     });
 
-    expect(result.ok).toBe(true);
+    expect(result.ok, JSON.stringify(result, null, 2)).toBe(true);
     expect(result.capabilityProfile?.sandbox?.values).toContain("workspace-write");
-    expect(result.args).toContain("--sandbox");
-    expect(result.args).toContain("workspace-write");
-    expect(result.args).not.toContain("--approve-for-me");
+    expect(result.args).toContain("--full-auto");
+    expect(result.args).not.toContain("--ask-for-approval");
     expect(result.summary).toContain("workspace-write probe passed");
+    expect(observedTimeout).toBe(300_000);
     const leftover = result.args.find((arg) => arg.includes(".martin-codex-write-probe-"));
     if (leftover) expect(existsSync(join(workingDirectory, leftover))).toBe(false);
+
+    simulateOutsideEscape = true;
+    const escaped = probeCodexLaunch({
+      workingDirectory,
+      platform: "linux",
+      env: {},
+      availability: {
+        command: "codex",
+        available: true,
+        locator: "test",
+        detail: "test",
+        resolvedPath: "/usr/local/bin/codex",
+        candidatePaths: ["/usr/local/bin/codex"]
+      },
+      spawnSyncImpl: spawnSyncImpl as never,
+      providerExecutionTimeoutMs: 900_000
+    });
+    expect(escaped.ok).toBe(false);
+    expect(escaped.summary).toMatch(/escaped|outside|boundary/iu);
+    expect(observedTimeout).toBe(900_000);
   });
 });
 

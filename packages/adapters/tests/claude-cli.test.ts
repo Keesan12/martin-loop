@@ -17,6 +17,7 @@ import {
   createCodexCliAdapter,
   createGeminiCliAdapter,
   type CodexCapabilityProfile,
+  type CodexAutonomyResolution,
   type SpawnLike
 } from "../src/index.js";
 import { containsShellOperator, readGitChangedFiles, readGitExecutionArtifacts, runSubprocess, splitCommand } from "../src/cli-bridge.js";
@@ -200,6 +201,7 @@ describe("createAgentCliAdapter", () => {
     expect(adapter.metadata.providerId).toBe("mytool");
     expect(adapter.metadata.model).toBe("mytool-v1");
     expect(adapter.metadata.transport).toBe("cli");
+    expect(adapter.metadata.agentExecutionIntent).toBe("governed-autonomous");
     expect(adapter.metadata.capabilities.usageSettlement).toBe(false);
   });
 
@@ -225,6 +227,29 @@ describe("createAgentCliAdapter", () => {
     expect(result.status).toBe("failed");
     expect(result.verification.passed).toBe(false);
     expect(result.failure?.message).toContain("stalled");
+  });
+
+  it("uses the governed request provider timeout as execution authority", async () => {
+    const adapter = createAgentCliAdapter({
+      command: process.execPath,
+      argsBuilder: () => ["-e", "setTimeout(() => process.exit(0), 100)"],
+      providerExecutionTimeoutMs: 10
+    });
+
+    const result = await adapter.execute(makeRequest({
+      context: {
+        taskTitle: "test",
+        objective: "test",
+        verificationPlan: [],
+        providerExecutionTimeoutMs: 500,
+        focus: "test",
+        remainingBudgetUsd: 8,
+        remainingIterations: 1,
+        remainingTokens: 1_000
+      }
+    }));
+
+    expect(result.status).toBe("completed");
   });
 
   it("normalizes sync ENOENT spawn failures into failed adapter results", async () => {
@@ -628,6 +653,7 @@ describe("createClaudeCliAdapter", () => {
     expect(adapter.kind).toBe("agent-cli");
     expect(adapter.metadata.providerId).toBe("claude");
     expect(adapter.metadata.transport).toBe("cli");
+    expect(adapter.metadata.agentExecutionIntent).toBe("governed-autonomous");
   });
 
   it("surfaces model in metadata when provided", () => {
@@ -716,6 +742,7 @@ describe("createClaudeCliAdapter", () => {
     expect(calls[0]?.args).toEqual(
       expect.arrayContaining(["--output-format", "stream-json", "--verbose"])
     );
+    expect(calls[0]?.args).toContain("--dangerously-skip-permissions");
     // Prefers Claude's own authoritative total_cost_usd over a pricing-table estimate.
     expect(result.usage?.actualUsd).toBeCloseTo(0.0042, 6);
     expect(result.usage?.provenance).toBe("actual");
@@ -1122,13 +1149,28 @@ function negotiatedCodexProfile(
       scope: "exec",
       values: ["read-only", "workspace-write"]
     },
+    approvalPolicy: {
+      flag: "--ask-for-approval",
+      scope: "exec",
+      semantics: "approval-policy",
+      values: ["never"]
+    },
     model: { flag: "--model", scope: "exec" },
     json: { flag: "--json", scope: "exec" },
     color: { flag: "--color", scope: "exec", neverValue: "never" },
     promptTransport: "stdin-dash",
     promptTransports: ["stdin-dash", "argv"],
-    selectedWriteStrategy: "sandbox",
     ...overrides
+  };
+}
+
+function negotiatedCodexAutonomy(): CodexAutonomyResolution {
+  return {
+    binaryPath: "codex",
+    intent: "governed-autonomous",
+    strategy: "sandbox+approval",
+    sandboxValue: "workspace-write",
+    approvalValue: "never"
   };
 }
 
@@ -1140,6 +1182,20 @@ describe("createCodexCliAdapter", () => {
     expect(adapter.kind).toBe("agent-cli");
     expect(adapter.metadata.providerId).toBe("codex");
     expect(adapter.metadata.transport).toBe("cli");
+    expect(adapter.metadata.agentExecutionIntent).toBe("governed-autonomous");
+  });
+
+  it.each(["default", "auto_edit", "plan"] as const)(
+    "rejects the interactive Gemini %s downgrade under governed autonomous execution",
+    (approvalMode) => {
+      expect(() => createGeminiCliAdapter({ approvalMode })).toThrow(/governed-autonomous.*yolo/iu);
+    }
+  );
+
+  it("rejects Gemini approval-mode overrides in extraArgs", () => {
+    expect(() => createGeminiCliAdapter({
+      extraArgs: ["--approval-mode", "plan"]
+    })).toThrow(/cannot be overridden/iu);
   });
 
   it("surfaces model in metadata when provided", () => {
@@ -1155,6 +1211,7 @@ describe("createCodexCliAdapter", () => {
       fullAuto: true,
       workingDirectory,
       capabilityProfile: negotiatedCodexProfile(),
+      autonomyResolution: negotiatedCodexAutonomy(),
       spawnImpl: createScriptedSpawn(calls)
     });
     const result = await adapter.execute(
@@ -1180,6 +1237,8 @@ describe("createCodexCliAdapter", () => {
       workingDirectory,
       "--sandbox",
       "workspace-write",
+      "--ask-for-approval",
+      "never",
       "--json",
       "--color",
       "never",
@@ -1216,6 +1275,7 @@ describe("createCodexCliAdapter", () => {
       sandbox: "read-only",
       extraArgs: ["--ignore-rules"],
       capabilityProfile: negotiatedCodexProfile(),
+      autonomyResolution: negotiatedCodexAutonomy(),
       spawnImpl: createScriptedSpawn(calls)
     });
     const result = await adapter.execute(
@@ -1253,6 +1313,8 @@ describe("createCodexCliAdapter", () => {
   it("runs MartinLoop verification after successful Codex exec completion", async () => {
     const calls: SpawnCall[] = [];
     const adapter = createCodexCliAdapter({
+      capabilityProfile: negotiatedCodexProfile(),
+      autonomyResolution: negotiatedCodexAutonomy(),
       spawnImpl: createScriptedSpawn(calls, [{ stdout: "patched\n" }, { stdout: "ok\n" }])
     });
     const result = await adapter.execute(
@@ -1278,6 +1340,8 @@ describe("createCodexCliAdapter", () => {
   it("fails closed when Codex exits non-zero before emitting structured completion", async () => {
     const calls: SpawnCall[] = [];
     const adapter = createCodexCliAdapter({
+      capabilityProfile: negotiatedCodexProfile(),
+      autonomyResolution: negotiatedCodexAutonomy(),
       spawnImpl: createScriptedSpawn(calls, [
         {
           stdout: "usage: codex exec ...\n",
@@ -1310,6 +1374,8 @@ describe("createCodexCliAdapter", () => {
     const calls: SpawnCall[] = [];
     const adapter = createCodexCliAdapter({
       model: "gpt-5-codex",
+      capabilityProfile: negotiatedCodexProfile(),
+      autonomyResolution: negotiatedCodexAutonomy(),
       spawnImpl: createScriptedSpawn(calls, [
         {
           stdout: [
@@ -1363,6 +1429,8 @@ describe("createCodexCliAdapter", () => {
   it("reports pre-verifier Codex launch failures without running verifier commands", async () => {
     const calls: SpawnCall[] = [];
     const adapter = createCodexCliAdapter({
+      capabilityProfile: negotiatedCodexProfile(),
+      autonomyResolution: negotiatedCodexAutonomy(),
       spawnImpl: createScriptedSpawn(calls, [
         { exitCode: 2, stderr: "unexpected argument '--full-auto'\n" }
       ])
@@ -1405,6 +1473,7 @@ describe("createGeminiCliAdapter", () => {
     expect(adapter.metadata.providerId).toBe("gemini");
     expect(adapter.metadata.model).toBeUndefined();
     expect(adapter.metadata.transport).toBe("cli");
+    expect(adapter.metadata.agentExecutionIntent).toBe("governed-autonomous");
   });
 
   it("uses Gemini headless mode with stdin-backed prompts", async () => {

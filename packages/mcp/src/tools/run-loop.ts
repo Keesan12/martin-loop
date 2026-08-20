@@ -44,6 +44,7 @@ export interface RunLoopInput {
   maxIterations?: number;
   maxTokens?: number;
   verifyTimeoutMs?: number;
+  providerExecutionTimeoutMs?: number;
   verificationPlan?: string[];
   allowedPaths?: string[];
   deniedPaths?: string[];
@@ -111,7 +112,7 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
     repoRoot: workingDirectory,
     runsRoot
   };
-  let codexCommandOverride: string | undefined;
+  let codexProbeOverride: ReturnType<typeof probeCodexLaunch> | undefined;
   if (executionMode.liveMode) {
     if (engine === "codex") {
       const engineAvailability = resolveCliCommandAvailability("codex");
@@ -125,7 +126,10 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
 
       const codexProbe = probeCodexLaunch({
         workingDirectory,
-        availability: engineAvailability
+        availability: engineAvailability,
+        ...(input.providerExecutionTimeoutMs !== undefined
+          ? { providerExecutionTimeoutMs: input.providerExecutionTimeoutMs }
+          : {})
       });
       if (!codexProbe.ok) {
         throw new MartinToolError("engine_unavailable", codexProbe.summary, {
@@ -134,7 +138,7 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
           retryable: false
         });
       }
-      codexCommandOverride = codexProbe.command;
+      codexProbeOverride = codexProbe;
     } else {
       const engineAvailability = getEngineAvailability(engine);
       if (!engineAvailability.available) {
@@ -159,18 +163,33 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
         ? createCodexCliAdapter({
             workingDirectory,
             ...(input.verifyTimeoutMs !== undefined ? { verifyTimeoutMs: input.verifyTimeoutMs } : {}),
+            ...(input.providerExecutionTimeoutMs !== undefined
+              ? { providerExecutionTimeoutMs: input.providerExecutionTimeoutMs }
+              : {}),
             ...(model ? { model } : {}),
-            ...(codexCommandOverride ? { command: codexCommandOverride } : {})
+            ...(codexProbeOverride
+              ? {
+                  command: codexProbeOverride.command,
+                  capabilityProfile: codexProbeOverride.capabilityProfile,
+                  autonomyResolution: codexProbeOverride.autonomyResolution
+                }
+              : {})
           })
         : engine === "gemini"
           ? createGeminiCliAdapter({
               workingDirectory,
               ...(input.verifyTimeoutMs !== undefined ? { verifyTimeoutMs: input.verifyTimeoutMs } : {}),
+              ...(input.providerExecutionTimeoutMs !== undefined
+                ? { providerExecutionTimeoutMs: input.providerExecutionTimeoutMs }
+                : {}),
               ...(model ? { model } : {})
             })
         : createClaudeCliAdapter({
             workingDirectory,
             ...(input.verifyTimeoutMs !== undefined ? { verifyTimeoutMs: input.verifyTimeoutMs } : {}),
+            ...(input.providerExecutionTimeoutMs !== undefined
+              ? { providerExecutionTimeoutMs: input.providerExecutionTimeoutMs }
+              : {}),
             ...(model ? { model } : {})
           });
 
@@ -198,6 +217,9 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
       verificationPlan: input.verificationPlan ?? [],
       ...(input.verifyTimeoutMs !== undefined
         ? { verificationTimeoutMs: input.verifyTimeoutMs }
+        : {}),
+      ...(input.providerExecutionTimeoutMs !== undefined
+        ? { providerExecutionTimeoutMs: input.providerExecutionTimeoutMs }
         : {}),
       repoRoot: workingDirectory,
       ...(allowedPaths ? { allowedPaths } : {}),

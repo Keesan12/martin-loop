@@ -33,6 +33,8 @@ export {
   clearCodexCapabilityCacheForTests,
   codexWriteStrategies,
   probeCodexCapabilities,
+  resolveCodexAutonomyCandidates,
+  type CodexAutonomyResolution,
   type CodexApprovalCapability,
   type CodexCapabilityFlag,
   type CodexCapabilityProfile,

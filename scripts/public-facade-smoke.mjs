@@ -404,6 +404,7 @@ async function createFakeCodexCli(tempRoot) {
     "",
     "if (isExecHelp) {",
     "  console.log('Usage: codex exec [OPTIONS] [PROMPT]');",
+    "  console.log('  --full-auto  Run non-interactively with workspace-scoped automation');",
     "  console.log('  --sandbox <SANDBOX_MODE> [possible values: read-only, workspace-write]');",
     "  console.log('  --cd <DIR>');",
     "  console.log('  --json');",

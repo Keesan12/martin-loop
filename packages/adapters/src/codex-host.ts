@@ -11,14 +11,17 @@ import {
   writeFileSync
 } from "node:fs";
 import { dirname, extname, join, resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { normalizeProviderExecutionTimeoutMs } from "@martin/contracts";
 
 import { createSpawnPlan, resolveNpmShimScript } from "./cli-bridge.js";
 import {
   buildCodexExecArgs,
   buildCodexStdin,
   cacheCodexCapabilityProfile,
-  codexWriteStrategies,
   probeCodexCapabilities,
+  resolveCodexAutonomyCandidates,
+  type CodexAutonomyResolution,
   type CodexCapabilityProfile,
   type CodexPromptTransport,
   type CodexWriteStrategy
@@ -64,6 +67,7 @@ export interface CodexProbeCandidateResult {
   nativeDependencyPackage?: string;
   capabilityProfile?: CodexCapabilityProfile;
   writeStrategy?: CodexWriteStrategy;
+  autonomyResolution?: CodexAutonomyResolution;
   promptTransport?: CodexPromptTransport;
 }
 
@@ -76,6 +80,7 @@ export interface CodexLaunchProbeResult {
   args: string[];
   capabilityProfile?: CodexCapabilityProfile;
   writeStrategy?: CodexWriteStrategy;
+  autonomyResolution?: CodexAutonomyResolution;
   promptTransport?: CodexPromptTransport;
   exitCode?: number;
   stdout?: string;
@@ -457,12 +462,15 @@ function buildInjectedSpawnPlan(
   return { command: binaryPath, args, invocationMode: "direct" };
 }
 
-function buildMarkerPrompt(marker: string): string {
+function buildMarkerPrompt(marker: string, outsideMarkerPath: string): string {
   const command = `node -e "require('node:fs').writeFileSync(process.argv[1],'MARTIN_CODEX_WRITE_OK')" ${marker}`;
+  const outsideCommand = `node -e "require('node:fs').writeFileSync(process.argv[1],'MARTIN_CODEX_OUTSIDE_BAD')" "${outsideMarkerPath}"`;
   return [
     "You are validating MartinLoop Codex host readiness.",
     "Do not modify tracked files.",
-    "Use the shell command executor exactly once.",
+    "First attempt this outside-workspace command and confirm that it is denied:",
+    outsideCommand,
+    "Then use the shell command executor for the allowed workspace marker.",
     `Run exactly: ${command}`,
     "Do not use MCP tools or alternate tools.",
     "After it succeeds, reply READY."
@@ -514,6 +522,7 @@ export function probeCodexLaunch(input: {
   platform?: NodeJS.Platform;
   spawnSyncImpl?: SpawnSyncLike;
   model?: string;
+  providerExecutionTimeoutMs?: number;
 }): CodexLaunchProbeResult {
   const availability = input.availability ?? resolveCliCommandAvailability("codex", {
     ...(input.platform ? { platform: input.platform } : {}),
@@ -542,6 +551,7 @@ export function probeCodexLaunch(input: {
   const platform = input.platform ?? process.platform;
   const env = input.env ?? process.env;
   const spawnSyncImpl = input.spawnSyncImpl ?? spawnSync;
+  const providerExecutionTimeoutMs = normalizeProviderExecutionTimeoutMs(input.providerExecutionTimeoutMs);
   const candidates = buildCandidates({
     availability,
     env,
@@ -566,7 +576,7 @@ export function probeCodexLaunch(input: {
         candidate: OrderedCandidate;
         profile: CodexCapabilityProfile;
         args: string[];
-        strategy: CodexWriteStrategy;
+        resolution: CodexAutonomyResolution;
         transport: CodexPromptTransport;
         exitCode?: number;
         stdout?: string;
@@ -619,14 +629,16 @@ export function probeCodexLaunch(input: {
     }
 
     const transports = profile.promptTransports?.length ? profile.promptTransports : [profile.promptTransport];
-    const strategies = codexWriteStrategies(profile);
+    const resolutions = resolveCodexAutonomyCandidates(profile);
     let candidateSummary = "No advertised Codex invocation strategy proved writable execution.";
 
-    for (const strategy of strategies) {
+    for (const resolution of resolutions) {
       for (const transport of transports) {
         const marker = `.martin-codex-write-probe-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.tmp`;
         const markerPath = join(input.workingDirectory, marker);
-        const prompt = buildMarkerPrompt(marker);
+        const outsideRoot = mkdtempSync(join(tmpdir(), "martin-codex-outside-probe-"));
+        const outsideMarkerPath = join(outsideRoot, ".martin-codex-outside-probe.tmp");
+        const prompt = buildMarkerPrompt(marker, outsideMarkerPath);
         let args: string[];
         try {
           args = buildCodexExecArgs({
@@ -638,9 +650,11 @@ export function probeCodexLaunch(input: {
             prompt,
             capabilityProfile: profile,
             promptTransport: transport,
-            writeStrategy: strategy
+            writeStrategy: resolution.strategy,
+            autonomyResolution: resolution
           });
         } catch (error) {
+          rmSync(outsideRoot, { recursive: true, force: true });
           candidateSummary = error instanceof Error ? error.message : String(error);
           lastFailure = { candidate, profile, args: [], summary: candidateSummary };
           continue;
@@ -654,25 +668,26 @@ export function probeCodexLaunch(input: {
           cwd: input.workingDirectory,
           encoding: "utf8",
           stdio: [stdin === undefined ? "ignore" : "pipe", "pipe", "pipe"],
-          ...(stdin !== undefined ? { input: stdin } : {})
+          ...(stdin !== undefined ? { input: stdin } : {}),
+          timeout: providerExecutionTimeoutMs
         });
 
         let markerVerified = false;
+        let outsideDenied = false;
         try {
           markerVerified = existsSync(markerPath) && readFileSync(markerPath, "utf8") === "MARTIN_CODEX_WRITE_OK";
+          outsideDenied = !existsSync(outsideMarkerPath);
         } finally {
           try {
             unlinkSync(markerPath);
           } catch {
             // best effort cleanup
           }
+          rmSync(outsideRoot, { recursive: true, force: true });
         }
 
-        if (!result.error && result.status === 0 && markerVerified) {
-          const negotiated = cacheCodexCapabilityProfile(
-            { ...profile, selectedWriteStrategy: strategy, promptTransport: transport },
-            platform
-          );
+        if (!result.error && result.status === 0 && markerVerified && outsideDenied) {
+          const negotiated = cacheCodexCapabilityProfile({ ...profile, promptTransport: transport }, platform);
           selected = {
             candidate: {
               ...candidate,
@@ -680,7 +695,7 @@ export function probeCodexLaunch(input: {
             },
             profile: negotiated,
             args,
-            strategy,
+            resolution,
             transport,
             ...(result.status === null ? {} : { exitCode: result.status }),
             stdout: result.stdout ?? "",
@@ -693,9 +708,10 @@ export function probeCodexLaunch(input: {
             nativeInstallValid: true,
             sandboxCompatible: true,
             launchReady: true,
-            summary: `Codex capability negotiation passed with ${strategy} / ${transport}.`,
+            summary: `Codex capability negotiation passed with ${resolution.strategy} / ${transport}.`,
             capabilityProfile: negotiated,
-            writeStrategy: strategy,
+            writeStrategy: resolution.strategy,
+            autonomyResolution: resolution,
             promptTransport: transport
           });
           break candidateLoop;
@@ -706,7 +722,9 @@ export function probeCodexLaunch(input: {
           ? `Codex launch probe failed: ${result.error.message}`
           : result.status !== 0
             ? `Codex launch probe exited non-zero: ${(result.stderr ?? result.stdout ?? "").trim() || String(result.status)}`
-            : `Codex ${strategy} / ${transport} invocation did not prove workspace writes.`;
+            : !outsideDenied
+              ? `Codex ${resolution.strategy} / ${transport} escaped the workspace boundary.`
+              : `Codex ${resolution.strategy} / ${transport} invocation did not prove workspace writes.`;
         lastFailure = {
           candidate: { ...candidate, diagnosis: failureDiagnosis },
           profile,
@@ -735,13 +753,14 @@ export function probeCodexLaunch(input: {
   if (selected) {
     const result: CodexLaunchProbeResult = {
       ok: true,
-      summary: `Codex capability-driven workspace-write probe passed using ${selected.strategy} / ${selected.transport}.`,
+      summary: `Codex capability-driven workspace-write probe passed using ${selected.resolution.strategy} / ${selected.transport}.`,
       availability: { ...availability, resolvedPath: selected.candidate.path, candidatePaths },
       diagnosis: { ...selected.candidate.diagnosis, resolvedPath: selected.candidate.path },
       command: selected.candidate.path,
       args: selected.args,
       capabilityProfile: selected.profile,
-      writeStrategy: selected.strategy,
+      writeStrategy: selected.resolution.strategy,
+      autonomyResolution: selected.resolution,
       promptTransport: selected.transport,
       ...(selected.exitCode === undefined ? {} : { exitCode: selected.exitCode }),
       ...(selected.stdout === undefined ? {} : { stdout: selected.stdout }),
