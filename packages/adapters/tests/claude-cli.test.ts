@@ -16,6 +16,7 @@ import {
   createClaudeCliAdapter,
   createCodexCliAdapter,
   createGeminiCliAdapter,
+  type CodexCapabilityProfile,
   type SpawnLike
 } from "../src/index.js";
 import { containsShellOperator, readGitChangedFiles, readGitExecutionArtifacts, runSubprocess, splitCommand } from "../src/cli-bridge.js";
@@ -1107,6 +1108,30 @@ describe("createClaudeCliAdapter", () => {
 // Codex-specific factory
 // ---------------------------------------------------------------------------
 
+function negotiatedCodexProfile(
+  overrides: Partial<CodexCapabilityProfile> = {}
+): CodexCapabilityProfile {
+  return {
+    binaryPath: "codex",
+    supportsExec: true,
+    probeSucceeded: true,
+    userConfigIsolation: { flag: "--ignore-user-config", scope: "exec" },
+    cwd: { flag: "--cd", scope: "exec" },
+    sandbox: {
+      flag: "--sandbox",
+      scope: "exec",
+      values: ["read-only", "workspace-write"]
+    },
+    model: { flag: "--model", scope: "exec" },
+    json: { flag: "--json", scope: "exec" },
+    color: { flag: "--color", scope: "exec", neverValue: "never" },
+    promptTransport: "stdin-dash",
+    promptTransports: ["stdin-dash", "argv"],
+    selectedWriteStrategy: "sandbox",
+    ...overrides
+  };
+}
+
 describe("createCodexCliAdapter", () => {
   it("returns correct adapterId and kind", () => {
     const adapter = createCodexCliAdapter();
@@ -1129,6 +1154,7 @@ describe("createCodexCliAdapter", () => {
     const adapter = createCodexCliAdapter({
       fullAuto: true,
       workingDirectory,
+      capabilityProfile: negotiatedCodexProfile(),
       spawnImpl: createScriptedSpawn(calls)
     });
     const result = await adapter.execute(
@@ -1152,13 +1178,15 @@ describe("createCodexCliAdapter", () => {
       "--ignore-user-config",
       "--cd",
       workingDirectory,
-      "--approve-for-me",
+      "--sandbox",
+      "workspace-write",
       "--json",
       "--color",
       "never",
       "-"
     ]);
     expect(calls[0]?.args).not.toContain("--full-auto");
+    expect(calls[0]?.args).not.toContain("--approve-for-me");
     expect(calls[0]?.args).not.toContain("--stdin-prompt");
     expect(calls[0]?.args).not.toContain("--model");
     expect(calls[0]?.options?.cwd).toBe(workingDirectory);
@@ -1187,6 +1215,7 @@ describe("createCodexCliAdapter", () => {
       model: "gpt-5.5",
       sandbox: "read-only",
       extraArgs: ["--ignore-rules"],
+      capabilityProfile: negotiatedCodexProfile(),
       spawnImpl: createScriptedSpawn(calls)
     });
     const result = await adapter.execute(
