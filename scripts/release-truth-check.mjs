@@ -62,11 +62,13 @@ assertInvariant(
   /MARTIN_ENGINE_VALUES/u,
   "packages/mcp/src/server.ts"
 );
-assertInvariant(
-  "host coverage includes codex/claude/cursor/vscode",
-  /export type MartinMcpHost = [^;]*"codex"[^;]*"claude"[^;]*"cursor"[^;]*"vscode"[^;]*;/u,
-  "packages/cli/src/mcp-config.ts"
-);
+for (const host of ["codex", "claude", "cursor", "vscode", "copilot", "continue"]) {
+  assertInvariant(
+    `host coverage includes ${host}`,
+    new RegExp(`(?:^|\\s|\\|)"${host}"(?:\\s|\\||;)`, "u"),
+    "packages/cli/src/mcp-config.ts"
+  );
+}
 assertInvariant(
   "experimental remote host policy helper",
   /hostRequiresExperimentalRemoteOptIn/u,
