@@ -24,6 +24,10 @@ export {
   createVerifierOnlyAdapter,
   type VerifierOnlyAdapterOptions
 } from "./verifier-only.js";
+/** @internal Test-only compatibility export. Public package builders strip this surface. */
+export { createStubAgentCliAdapter, type StubAgentCliAdapterOptions } from "./stub-agent-cli.js";
+/** @internal Test-only compatibility export. Public package builders strip this surface. */
+export { createStubDirectProviderAdapter, type StubDirectProviderAdapterOptions } from "./stub-direct-provider.js";
 export {
   buildCodexExecArgs,
   buildCodexStdin,
