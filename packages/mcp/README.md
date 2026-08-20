@@ -57,27 +57,27 @@ These aren't hypotheticals. The $28 overshoot happened in production testing. We
 
 ### Claude Code
 ```sh
-claude mcp add martin-loop -- npx -y @martinloop/mcp@0.5.4
+claude mcp add martin-loop -- npx -y @martinloop/mcp@0.5.5
 ```
 
 Windows:
 ```sh
-claude mcp add --transport stdio --scope user martin-loop -- cmd /c npx -y @martinloop/mcp@0.5.4
+claude mcp add --transport stdio --scope user martin-loop -- cmd /c npx -y @martinloop/mcp@0.5.5
 ```
 
 ### Codex
 ```sh
-codex mcp add martin-loop -- npx -y @martinloop/mcp@0.5.4
+codex mcp add martin-loop -- npx -y @martinloop/mcp@0.5.5
 ```
 
 ### Gemini CLI
 ```sh
-gemini mcp add martin-loop -- npx -y @martinloop/mcp@0.5.4
+gemini mcp add martin-loop -- npx -y @martinloop/mcp@0.5.5
 ```
 
 ### Any MCP Host
 ```sh
-npx -y @martinloop/mcp@0.5.4
+npx -y @martinloop/mcp@0.5.5
 ```
 
 ## How a Governed Run Works
@@ -139,7 +139,7 @@ MartinLoop does not round failure into success. It preserves the evidence and fo
 | `git restore` fails mid-rollback | Throws, leaves dirty state | Retries once, falls back to `git checkout`, cleans up |
 | Invalid `--profile` flag | Crashes | Warns, falls back to `minimal`, keeps running |
 
-## Codex compatibility in 0.5.4
+## Codex compatibility in 0.5.5
 
 MartinLoop no longer assumes one Codex host or one fixed Codex flag set. The CLI resolves the exact Codex executable, reads its advertised capabilities, negotiates a supported write strategy, proves that strategy before reporting launch readiness, and reuses the same contract for the governed run.
 

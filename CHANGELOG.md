@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.5] - 2026-08-20
+
+- Added a provider-neutral governed-autonomous execution contract across coding-agent integrations.
+- Hardened exact-binary Codex capability negotiation and prevented interactive permission downgrades.
+- Made provider execution timeouts configurable independently from verifier timeouts.
+- Improved workspace-bound launch probes, new-file grounding, and human-first MCP proof output.
+- Aligned root, MCP, plugin, MCPB, and generated install metadata for deterministic 0.5.5 installs.
+
 ## [Unreleased]
 
 ## [0.5.4] - 2026-08-20
