@@ -223,6 +223,7 @@ export type RunCommandRequest = {
   objective: string;
   verificationPlan: string[];
   verifyTimeoutMs?: number;
+  providerExecutionTimeoutMs?: number;
   metadata: Record<string, string>;
   budget: LoopBudget;
   budgetOverrides?: Partial<Record<keyof LoopBudget, true>>;
@@ -716,6 +717,7 @@ let codexProbeOverrideForTests:
       workingDirectory: string;
       availability: CodexAvailabilityForTests;
       model?: string;
+      providerExecutionTimeoutMs?: number;
     }) => CodexProbeForTests)
   | undefined;
 
@@ -728,6 +730,7 @@ export function __setCodexHostOverridesForTests(
           workingDirectory: string;
           availability: CodexAvailabilityForTests;
           model?: string;
+          providerExecutionTimeoutMs?: number;
         }) => CodexProbeForTests);
   }
 ): void {
@@ -1298,6 +1301,8 @@ export function renderCliHelp(): string {
     "  --max-tokens <n>         Set the maximum total token budget.",
     "  --verify <cmd>           Shell command to run as the verifier after each attempt.",
     "  --verify-timeout-ms <n>  Verifier timeout in milliseconds.",
+    "  --provider-execution-timeout-ms <n>",
+    "                           Provider coding-process timeout in milliseconds.",
     "  --proof                  Run verification-only (cannot emit governed VERIFIED).",
     "  --unsafe-allow-unguarded-run",
     "                           Deprecated for live coding; --proof is non-governed evidence only.",
@@ -1433,7 +1438,7 @@ async function executeRunCommand(
   }
 
   let result: Awaited<ReturnType<typeof runMartin>>;
-  let codexCommandOverride: string | undefined;
+  let codexProbeOverride: CodexProbeForTests | undefined;
 
   if (engineRequired && cliEnvironment.engine === "codex") {
     const sandboxPreflight = checkCodexSandboxPreflight({
@@ -1462,7 +1467,8 @@ async function executeRunCommand(
     const codexProbe = resolveCodexProbeForCli({
       workingDirectory: cliEnvironment.workingDirectory,
       availability: codexAvailability,
-      model: resolvedRequest.model
+      model: resolvedRequest.model,
+      providerExecutionTimeoutMs: resolvedRequest.providerExecutionTimeoutMs
     });
     if (!codexProbe.ok) {
       throw new CliCommandError("environment", codexProbe.summary, {
@@ -1479,7 +1485,7 @@ async function executeRunCommand(
         }
       });
     }
-    codexCommandOverride = codexProbe.command;
+    codexProbeOverride = codexProbe;
   }
 
   const adapter = selectAdapter(
@@ -1488,8 +1494,9 @@ async function executeRunCommand(
     resolvedRequest.model,
     effectiveMutationMode,
     cliEnvironment.liveMode,
-    codexCommandOverride,
-    resolvedRequest.verifyTimeoutMs
+    codexProbeOverride,
+    resolvedRequest.verifyTimeoutMs,
+    resolvedRequest.providerExecutionTimeoutMs,
   );
   const executionMode = runAdapterOverrideForTests
     ? "simulated"
@@ -1551,6 +1558,9 @@ async function executeRunCommand(
         verificationPlan: resolvedRequest.verificationPlan,
         ...(resolvedRequest.verifyTimeoutMs !== undefined
           ? { verificationTimeoutMs: resolvedRequest.verifyTimeoutMs }
+          : {}),
+        ...(resolvedRequest.providerExecutionTimeoutMs !== undefined
+          ? { providerExecutionTimeoutMs: resolvedRequest.providerExecutionTimeoutMs }
           : {}),
         ...(effectiveMutationMode ? { mutationMode: effectiveMutationMode } : {}),
         repoRoot: cliEnvironment.workingDirectory,
@@ -1614,6 +1624,9 @@ async function executeRunCommand(
         verificationPlan: resolvedRequest.verificationPlan,
         ...(resolvedRequest.verifyTimeoutMs !== undefined
           ? { verificationTimeoutMs: resolvedRequest.verifyTimeoutMs }
+          : {}),
+        ...(resolvedRequest.providerExecutionTimeoutMs !== undefined
+          ? { providerExecutionTimeoutMs: resolvedRequest.providerExecutionTimeoutMs }
           : {}),
         ...(effectiveMutationMode ? { mutationMode: effectiveMutationMode } : {}),
         repoRoot: cliEnvironment.workingDirectory
@@ -4041,6 +4054,10 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
         request.verifyTimeoutMs = toFiniteNumber(next ?? "");
         index += 1;
         break;
+      case "--provider-execution-timeout-ms":
+        request.providerExecutionTimeoutMs = toFiniteNumber(next ?? "");
+        index += 1;
+        break;
       case "--metadata":
         if (next) {
           const [key, value] = next.split("=");
@@ -4160,6 +4177,9 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
     objective: request.objective ?? request.title ?? "Martin Loop Task",
     verificationPlan,
     ...(request.verifyTimeoutMs !== undefined ? { verifyTimeoutMs: request.verifyTimeoutMs } : {}),
+    ...(request.providerExecutionTimeoutMs !== undefined
+      ? { providerExecutionTimeoutMs: request.providerExecutionTimeoutMs }
+      : {}),
     metadata,
     budget: request.budget as LoopBudget,
     ...(Object.keys(budgetOverrides).length > 0 ? { budgetOverrides } : {}),
@@ -4729,8 +4749,9 @@ function selectAdapter(
   modelOverride?: string,
   mutationMode?: MutationMode,
   liveMode: "live" | "proof" = "live",
-  codexCommandOverride?: string,
-  verifyTimeoutMs?: number
+  codexProbeOverride?: CodexProbeForTests,
+  verifyTimeoutMs?: number,
+  providerExecutionTimeoutMs?: number,
 ): MartinAdapter {
   if (runAdapterOverrideForTests) {
     return runAdapterOverrideForTests;
@@ -4749,8 +4770,15 @@ function selectAdapter(
     return createCodexCliAdapter({
       workingDirectory,
       ...(verifyTimeoutMs !== undefined ? { verifyTimeoutMs } : {}),
+      ...(providerExecutionTimeoutMs !== undefined ? { providerExecutionTimeoutMs } : {}),
       ...(effectiveModel ? { model: effectiveModel } : {}),
-      ...(codexCommandOverride ? { command: codexCommandOverride } : {})
+      ...(codexProbeOverride
+        ? {
+            command: codexProbeOverride.command,
+            capabilityProfile: codexProbeOverride.capabilityProfile,
+            autonomyResolution: codexProbeOverride.autonomyResolution
+          }
+        : {})
     });
   }
 
@@ -4758,6 +4786,7 @@ function selectAdapter(
     return createGeminiCliAdapter({
       workingDirectory,
       ...(verifyTimeoutMs !== undefined ? { verifyTimeoutMs } : {}),
+      ...(providerExecutionTimeoutMs !== undefined ? { providerExecutionTimeoutMs } : {}),
       ...(effectiveModel ? { model: effectiveModel } : {})
     });
   }
@@ -4779,6 +4808,7 @@ function selectAdapter(
   return createClaudeCliAdapter({
     workingDirectory,
     ...(verifyTimeoutMs !== undefined ? { verifyTimeoutMs } : {}),
+    ...(providerExecutionTimeoutMs !== undefined ? { providerExecutionTimeoutMs } : {}),
     ...(effectiveModel ? { model: effectiveModel } : {})
   });
 }
@@ -5426,6 +5456,7 @@ function resolveCodexProbeForCli(input: {
   workingDirectory: string;
   availability: CodexAvailabilityForTests;
   model?: string;
+  providerExecutionTimeoutMs?: number;
 }): CodexProbeForTests {
   if (typeof codexProbeOverrideForTests === "function") {
     return codexProbeOverrideForTests(input);
@@ -5436,6 +5467,9 @@ function resolveCodexProbeForCli(input: {
   return probeCodexLaunch({
     workingDirectory: input.workingDirectory,
     availability: input.availability,
+    ...(input.providerExecutionTimeoutMs !== undefined
+      ? { providerExecutionTimeoutMs: input.providerExecutionTimeoutMs }
+      : {}),
     ...(input.model ? { model: input.model } : {})
   });
 }

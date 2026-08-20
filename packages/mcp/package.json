@@ -75,6 +75,7 @@
   },
   "devDependencies": {
     "@anthropic-ai/mcpb": "2.1.2",
-    "@martin/contracts": "workspace:*"
+    "@martin/contracts": "workspace:*",
+    "@martin/presentation": "workspace:*"
   }
 }

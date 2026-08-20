@@ -197,3 +197,60 @@ export function renderGovernedRunPlan(
   );
   return lines.map((line) => bounded(line, width)).join("\n");
 }
+
+/**
+ * Renders a GovernedRunPlanView as plain Markdown (no ANSI).
+ */
+export function renderGovernedRunPlanMarkdown(
+  input: GovernedRunPlanView,
+  options: { includeStatus?: boolean } = {},
+): string {
+  void options;
+  const lines: string[] = [
+    `## MartinLoop Governed Run Plan — ${input.ready ? "READY" : "BLOCKED"}`,
+    "",
+    "| Field | Value |",
+    "|-------|-------|",
+    `| Task | ${input.task} |`,
+    `| Engine | ${input.engine} |`,
+    `| Mode | ${input.mode} |`,
+    `| Budget cap | $${input.budget.maxUsd.toFixed(2)} |`,
+    `| Soft limit | $${input.budget.softLimitUsd.toFixed(2)} |`,
+    `| Max attempts | ${input.budget.maxIterations} |`,
+    `| Verifier | ${input.verifier.join(", ") || "NOT CONFIGURED"} |`,
+    `| Policy | ${input.policyProfile} |`,
+    "",
+    "### Stages",
+    "",
+    "| Stage | Status | Gate | Purpose |",
+    "|-------|--------|------|---------|",
+    ...input.stages.map(
+      (s) => `| ${s.label} | ${s.state} | ${s.gate} | ${s.purpose} |`,
+    ),
+  ];
+
+  if (input.blockingIssues.length > 0) {
+    lines.push(
+      "",
+      "### Blocking Issues",
+      "",
+      ...input.blockingIssues.map((issue) => `- ✗ ${issue}`),
+    );
+  }
+
+  if (input.warnings.length > 0) {
+    lines.push(
+      "",
+      "### Warnings",
+      "",
+      ...input.warnings.map((w) => `- ${w}`),
+    );
+  }
+
+  lines.push(
+    "",
+    input.ready ? "**✓ READY TO EXECUTE**" : "**✗ PREFLIGHT BLOCKED**",
+  );
+
+  return lines.join("\n");
+}

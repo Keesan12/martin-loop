@@ -8,6 +8,7 @@ import {
   buildCodexExecArgs,
   buildCodexStdin,
   probeCodexCapabilities,
+  type CodexAutonomyResolution,
   type CodexCapabilityProfile
 } from "./codex-launcher.js";
 import { createSpawnPlan, type SpawnLike } from "./cli-bridge.js";
@@ -21,6 +22,7 @@ export interface CodexCliAdapterOptions extends Omit<LegacyCodexCliAdapterOption
    * for the process lifetime. Exposed for deterministic integrations/tests.
    */
   capabilityProfile?: CodexCapabilityProfile;
+  autonomyResolution?: CodexAutonomyResolution;
 }
 
 function createCodexSpawnRouter(input: {
@@ -56,9 +58,16 @@ function createCodexSpawnRouter(input: {
  */
 export function createCodexCliAdapter(options: CodexCliAdapterOptions = {}) {
   const workingDirectory = options.workingDirectory ?? process.cwd();
-  const selectedBinary = options.command ?? "codex";
+  const selectedBinary = options.command ?? options.capabilityProfile?.binaryPath ?? "codex";
   const capabilityProfile =
     options.capabilityProfile ?? probeCodexCapabilities(selectedBinary);
+  const autonomyResolution = options.autonomyResolution;
+  if (capabilityProfile.binaryPath !== selectedBinary) {
+    throw new Error("Codex exact binary capability profile mismatch.");
+  }
+  if (autonomyResolution && autonomyResolution.binaryPath !== selectedBinary) {
+    throw new Error("Codex exact binary autonomy resolution mismatch.");
+  }
   const sandbox = options.sandbox ?? "workspace-write";
   const extraArgs = options.extraArgs ?? [];
   const launchModel = options.model;
@@ -78,6 +87,8 @@ export function createCodexCliAdapter(options: CodexCliAdapterOptions = {}) {
     label: options.label ?? "Codex CLI adapter",
     workingDirectory,
     timeoutMs: options.timeoutMs,
+    agentExecutionIntent: options.agentExecutionIntent,
+    providerExecutionTimeoutMs: options.providerExecutionTimeoutMs,
     verifyTimeoutMs: options.verifyTimeoutMs,
     supportsJsonOutput: false,
     spawnImpl,
@@ -90,7 +101,8 @@ export function createCodexCliAdapter(options: CodexCliAdapterOptions = {}) {
         extraArgs,
         mode: "prompt",
         prompt,
-        capabilityProfile
+        capabilityProfile,
+        ...(autonomyResolution ? { autonomyResolution } : {})
       }),
     stdinBuilder: (prompt) => buildCodexStdin(capabilityProfile, prompt)
   });

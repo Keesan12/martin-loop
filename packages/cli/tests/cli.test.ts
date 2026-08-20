@@ -195,6 +195,8 @@ describe("parseCliArguments", () => {
       "60000",
       "--verify-timeout-ms",
       "240000",
+      "--provider-execution-timeout-ms",
+      "900000",
       "--policy",
       "balanced",
       "--telemetry",
@@ -212,6 +214,7 @@ describe("parseCliArguments", () => {
         objective: "Repair the flaky CI gate",
         verificationPlan: ["pnpm test", "pnpm build"],
         verifyTimeoutMs: 240000,
+        providerExecutionTimeoutMs: 900000,
         metadata: {
           policyProfile: "balanced",
           telemetryDestination: "control-plane",
@@ -924,6 +927,8 @@ describe("executeCli", () => {
           `"${process.execPath}" -e "process.exit(0)"`,
           "--verify-timeout-ms",
           "240000",
+          "--provider-execution-timeout-ms",
+          "900000",
           "--cwd",
           directory
         ])
@@ -938,6 +943,9 @@ describe("executeCli", () => {
 
       const payload = JSON.parse(result.stdout);
       expect(payload.loop.task.verificationTimeoutMs).toBe(240000);
+      expect(payload.loop.task.providerExecutionTimeoutMs).toBe(900000);
+      expect(payload.loop.receiptScope.providerExecutionTimeoutMs).toBe(900000);
+      expect(payload.loop.task.agentExecutionIntent).toBe("governed-autonomous");
     } finally {
       await rm(directory, { force: true, recursive: true });
     }

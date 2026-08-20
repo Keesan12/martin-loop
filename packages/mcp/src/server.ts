@@ -64,6 +64,7 @@ import { runLoopTool } from "./tools/run-loop.js";
 import { MARTIN_ENGINE_VALUES, type MartinEngine } from "./tools/tool-support.js";
 import { classifyRoute } from "@martin/core";
 import { createToolErrorResult, createToolSuccessResult } from "./tools/tool-response.js";
+import { buildGovernedPlanStages, renderGovernedRunPlanMarkdown, renderVerifiedHandoffMarkdown } from "@martin/presentation";
 import { MartinToolError, toToolFailure } from "./tools/tool-errors.js";
 import { normalizeLoopBudget } from "./tools/workflow-governance.js";
 import { resolveSafeRepoRoot, sanitizeToolErrorMessage, validateToolInput } from "./server-validation.js";
@@ -846,6 +847,16 @@ export function createMartinMcpServer(serverInfo?: {
             type: "integer",
             exclusiveMinimum: 0,
             description: "Maximum total tokens across all attempts."
+          },
+          verifyTimeoutMs: {
+            type: "integer",
+            exclusiveMinimum: 0,
+            description: "Hard timeout for each verifier command in milliseconds."
+          },
+          providerExecutionTimeoutMs: {
+            type: "integer",
+            exclusiveMinimum: 0,
+            description: "Hard timeout for each provider coding process in milliseconds."
           },
           verificationPlan: {
             type: "array",
@@ -1694,7 +1705,23 @@ export function createMartinMcpServer(serverInfo?: {
           budget: output.normalized.budget
         }).catch(() => {});
       }
-      return createToolSuccessResult(output, output.summary);
+      const prefPlanView = {
+        ready: output.ok,
+        task: output.normalized.objective,
+        engine: output.normalized.engine,
+        mode: output.readiness.liveMode ? ("live" as const) : ("proof" as const),
+        budget: output.normalized.budget,
+        verifier: output.normalized.verificationPlan,
+        receiptScope: output.receiptScope,
+        policyProfile: output.policy.name,
+        blockingIssues: output.ok ? [] : [output.summary],
+        warnings: output.warnings,
+        stages: [] as ReturnType<typeof buildGovernedPlanStages>
+      };
+      prefPlanView.stages = buildGovernedPlanStages(prefPlanView);
+      return createToolSuccessResult(output, output.summary, {
+        human: renderGovernedRunPlanMarkdown(prefPlanView)
+      });
     }
 
     if (name === "martin_logs") {
@@ -1774,7 +1801,8 @@ export function createMartinMcpServer(serverInfo?: {
       const output = await martinRunDossierTool(input);
       return createToolSuccessResult(
         output,
-        `Dossier ready for Martin run ${output.loop.loopId} with ${output.attempts.length} attempt(s).`
+        `Dossier ready for Martin run ${output.loop.loopId} with ${output.attempts.length} attempt(s).`,
+        { human: renderVerifiedHandoffMarkdown(output.verifiedHandoff) }
       );
     }
 
@@ -1783,7 +1811,8 @@ export function createMartinMcpServer(serverInfo?: {
       const output = await martinRunDossierTool(input);
       return createToolSuccessResult(
         output,
-        `Dossier ready for Martin run ${output.loop.loopId} in ${output.format} format.`
+        `Dossier ready for Martin run ${output.loop.loopId} in ${output.format} format.`,
+        { human: renderVerifiedHandoffMarkdown(output.verifiedHandoff) }
       );
     }
 

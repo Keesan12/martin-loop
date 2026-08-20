@@ -162,14 +162,8 @@ export interface CanonicalRunPaths {
 const CLI_CACHE_TTL_MS = 60_000;
 const RUN_STORE_CACHE_TTL_MS = 5_000;
 
-const cliAvailabilityCache = new Map<
-  string,
-  { expiresAt: number; value: CliAvailability }
->();
-const runStoreInspectionCache = new Map<
-  string,
-  { expiresAt: number; value: RunStoreInspection }
->();
+const cliAvailabilityCache = new Map<string, { expiresAt: number; value: CliAvailability }>();
+const runStoreInspectionCache = new Map<string, { expiresAt: number; value: RunStoreInspection }>();
 
 export function resolveExecutionMode(): ExecutionMode {
   const liveMode = process.env.MARTIN_LIVE !== "false";
@@ -185,182 +179,102 @@ export function resolveExecutionMode(): ExecutionMode {
 export function detectCliAvailability(command: string): CliAvailability {
   const cacheKey = `${process.platform}:${command}`;
   const cached = cliAvailabilityCache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) {
-    return cached.value;
-  }
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
 
   const locator = process.platform === "win32" ? "path-scan(win32)" : "path-scan(posix)";
   const resolvedPath = findCommandOnPath(command);
+  const value: CliAvailability = resolvedPath
+    ? {
+        command,
+        available: true,
+        locator,
+        detail: isOnPathDirectly(command, resolvedPath)
+          ? `${command} is available on PATH.`
+          : `${command} found at ${resolvedPath} (not on PATH, auto-discovered).`,
+        resolvedPath
+      }
+    : {
+        command,
+        available: false,
+        locator,
+        detail: `${command} is not installed. ${suggestInstallCommand(command)}`
+      };
 
-  const value: CliAvailability =
-    resolvedPath
-      ? {
-          command,
-          available: true,
-          locator,
-          detail: isOnPathDirectly(command, resolvedPath)
-            ? `${command} is available on PATH.`
-            : `${command} found at ${resolvedPath} (not on PATH, auto-discovered).`,
-          ...(resolvedPath ? { resolvedPath } : {})
-        }
-      : {
-          command,
-          available: false,
-          locator,
-          detail: `${command} is not installed. ${suggestInstallCommand(command)}`
-        };
-
-  cliAvailabilityCache.set(cacheKey, {
-    expiresAt: Date.now() + CLI_CACHE_TTL_MS,
-    value
-  });
-
+  cliAvailabilityCache.set(cacheKey, { expiresAt: Date.now() + CLI_CACHE_TTL_MS, value });
   return value;
 }
 
 function findCommandOnPath(command: string): string | undefined {
   const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === "path");
   const rawPath = pathKey ? process.env[pathKey] : undefined;
-
   const hasExtension = /\.[A-Za-z0-9]+$/u.test(command);
-  const candidateNames =
-    process.platform === "win32" && !hasExtension
-      ? (process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD")
-          .split(";")
-          .map((extension) => extension.trim())
-          .filter(Boolean)
-          .map((extension) => `${command}${extension.toLowerCase()}`)
-      : [command];
+  const candidateNames = process.platform === "win32" && !hasExtension
+    ? (process.env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";").map((extension) => extension.trim()).filter(Boolean).map((extension) => `${command}${extension.toLowerCase()}`)
+    : [command];
 
-  // 1. Search PATH entries
   if (rawPath) {
-    const pathEntries = rawPath
-      .split(process.platform === "win32" ? ";" : ":")
-      .map((entry) => entry.trim())
-      .filter(Boolean);
-
+    const pathEntries = rawPath.split(process.platform === "win32" ? ";" : ":").map((entry) => entry.trim()).filter(Boolean);
     for (const directory of pathEntries) {
       for (const candidateName of candidateNames) {
         const candidatePath = join(directory, candidateName);
-        if (isExecutablePath(candidatePath)) {
-          return candidatePath;
-        }
+        if (isExecutablePath(candidatePath)) return candidatePath;
       }
     }
   }
 
-  // 2. Search common install locations when PATH didn't find it.
-  //    This catches CLIs installed via npm/brew/pip that aren't on the
-  //    current shell's PATH (common in IDEs, CI, and agent environments).
   for (const directory of discoverCommonInstallDirectories(command)) {
     for (const candidateName of candidateNames) {
       const candidatePath = join(directory, candidateName);
-      if (isExecutablePath(candidatePath)) {
-        return candidatePath;
-      }
+      if (isExecutablePath(candidatePath)) return candidatePath;
     }
   }
-
   return undefined;
 }
 
-/**
- * Returns directories where CLI tools are commonly installed but may not
- * be on PATH. Checked only as a fallback after PATH search fails.
- */
 function discoverCommonInstallDirectories(command: string): string[] {
   const dirs: string[] = [];
   const home = process.env.HOME ?? process.env.USERPROFILE ?? "";
-
   if (process.platform === "win32") {
-    // npm global bin (Roaming)
     const appData = process.env.APPDATA;
-    if (appData) {
-      dirs.push(join(appData, "npm"));
-    }
-    // Codex desktop install
+    if (appData) dirs.push(join(appData, "npm"));
     const localAppData = process.env.LOCALAPPDATA;
-    if (localAppData) {
-      dirs.push(join(localAppData, "OpenAI", "Codex", "bin"));
-    }
-    // Scoop
-    if (home) {
-      dirs.push(join(home, "scoop", "shims"));
-    }
+    if (localAppData) dirs.push(join(localAppData, "OpenAI", "Codex", "bin"));
+    if (home) dirs.push(join(home, "scoop", "shims"));
   } else {
-    // Common Unix install paths
     dirs.push("/usr/local/bin", "/opt/homebrew/bin");
-    if (home) {
-      dirs.push(
-        join(home, ".local", "bin"),            // pip, pipx
-        join(home, ".npm-global", "bin"),        // npm prefix
-        join(home, ".bun", "bin"),               // bun
-        join(home, ".cargo", "bin"),             // cargo
-        join(home, "go", "bin")                  // go install
-      );
-    }
-    // nvm managed node
+    if (home) dirs.push(join(home, ".local", "bin"), join(home, ".npm-global", "bin"), join(home, ".bun", "bin"), join(home, ".cargo", "bin"), join(home, "go", "bin"));
     const nvmDir = process.env.NVM_DIR;
-    if (nvmDir) {
-      const nvmBin = join(nvmDir, "current", "bin");
-      dirs.push(nvmBin);
-    }
+    if (nvmDir) dirs.push(join(nvmDir, "current", "bin"));
   }
-
   return dirs.filter(Boolean);
 }
 
 function isExecutablePath(candidatePath: string): boolean {
   try {
-    accessSync(
-      candidatePath,
-      process.platform === "win32" ? constants.F_OK : constants.X_OK
-    );
+    accessSync(candidatePath, process.platform === "win32" ? constants.F_OK : constants.X_OK);
     return true;
   } catch {
     return false;
   }
 }
 
-/**
- * Returns true if the resolved path is inside a directory that's already
- * on PATH (i.e., it was found via normal PATH lookup, not auto-discovery).
- */
-function isOnPathDirectly(command: string, resolvedPath: string): boolean {
+function isOnPathDirectly(_command: string, resolvedPath: string): boolean {
   const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === "path");
   const rawPath = pathKey ? process.env[pathKey] : undefined;
   if (!rawPath) return false;
-
-  const pathEntries = rawPath
-    .split(process.platform === "win32" ? ";" : ":")
-    .map((entry) => entry.trim().replace(/[\\/]+$/u, ""))
-    .filter(Boolean);
-
-  const resolvedDir = resolvedPath
-    .replace(/[\\/][^\\/]+$/u, "")
-    .replace(/[\\/]+$/u, "");
-
-  return pathEntries.some(
-    (entry) => entry.toLowerCase() === resolvedDir.toLowerCase()
-  );
+  const pathEntries = rawPath.split(process.platform === "win32" ? ";" : ":").map((entry) => entry.trim().replace(/[\\/]+$/u, "")).filter(Boolean);
+  const resolvedDir = resolvedPath.replace(/[\\/][^\\/]+$/u, "").replace(/[\\/]+$/u, "");
+  return pathEntries.some((entry) => entry.toLowerCase() === resolvedDir.toLowerCase());
 }
 
-/**
- * Returns a platform-specific one-liner install command for a known CLI.
- */
 function suggestInstallCommand(command: string): string {
   const npmInstalls: Record<string, string> = {
     claude: "npm install -g @anthropic-ai/claude-code",
     codex: "npm install -g @openai/codex",
     gemini: "npm install -g @google/gemini-cli"
   };
-
   const install = npmInstalls[command];
-  if (install) {
-    return `Install with: ${install}`;
-  }
-
-  return `Install ${command} and ensure it is on PATH.`;
+  return install ? `Install with: ${install}` : `Install ${command} and ensure it is on PATH.`;
 }
 
 export function getEngineAvailability(engine: MartinEngine): CliAvailability {
@@ -371,12 +285,7 @@ export function createSkippedCliAvailability(
   command: string,
   detail = "Verification-only mode skipped live CLI availability detection; governed VERIFIED is unavailable."
 ): CliAvailability {
-  return {
-    command,
-    available: false,
-    locator: "skipped",
-    detail
-  };
+  return { command, available: false, locator: "skipped", detail };
 }
 
 export function formatUsd(value: number): string {
@@ -394,9 +303,7 @@ export function buildLoopPreview(loop: InspectableLoopRecord): LoopPreview {
     },
     attemptsUsed: loop.attempts.length
   });
-
   const lastAttempt = loop.attempts.at(-1);
-
   return {
     loopId: loop.loopId,
     title: loop.task?.title ?? loop.loopId,
@@ -427,17 +334,11 @@ function buildRoutingEconomicsSummary(economics: import("@martin/contracts").Rou
     totalCostUsd: economics.totalCostUsd,
     ...(economics.timeToFirstDeltaMs !== undefined ? { timeToFirstDeltaMs: economics.timeToFirstDeltaMs } : {}),
     ...(economics.costPerAcceptedChange !== undefined ? { costPerAcceptedChange: economics.costPerAcceptedChange } : {}),
-    ...(economics.routeRecommendation ? {
-      routeRecommendation: economics.routeRecommendation,
-      routeRecommendationReason: economics.routeRecommendationReason
-    } : {})
+    ...(economics.routeRecommendation ? { routeRecommendation: economics.routeRecommendation, routeRecommendationReason: economics.routeRecommendationReason } : {})
   };
 }
 
-export function buildAttemptSummary(
-  attempt: InspectableLoopAttempt,
-  artifacts?: AttemptArtifactFiles
-): AttemptSummary {
+export function buildAttemptSummary(attempt: InspectableLoopAttempt, artifacts?: AttemptArtifactFiles): AttemptSummary {
   return {
     index: attempt.index,
     ...(attempt.attemptId ? { attemptId: attempt.attemptId } : {}),
@@ -458,152 +359,59 @@ export function buildArtifactSummary(loop: InspectableLoopRecord): ArtifactSumma
     accumulator[artifact.kind] = (accumulator[artifact.kind] ?? 0) + 1;
     return accumulator;
   }, {});
-
   return {
     totalCount: artifacts.length,
     kinds,
-    highlights: artifacts.slice(0, 5).map((artifact) => ({
-      artifactId: artifact.artifactId,
-      kind: artifact.kind,
-      label: artifact.label,
-      uri: artifact.uri
-    }))
+    highlights: artifacts.slice(0, 5).map((artifact) => ({ artifactId: artifact.artifactId, kind: artifact.kind, label: artifact.label, uri: artifact.uri }))
   };
 }
 
-export function buildVerificationSummary(
-  loop: InspectableLoopRecord,
-  ledgerEvents: LedgerEvent[] = []
-): VerificationSummary {
-  const verificationEvents = (loop.events ?? []).filter(
-    (event) => event.type === "verification.completed"
-  );
-  const verificationLedgerEvents = ledgerEvents.filter(
-    (event) => event.kind === "verification.completed"
-  );
-
+export function buildVerificationSummary(loop: InspectableLoopRecord, ledgerEvents: LedgerEvent[] = []): VerificationSummary {
+  const verificationEvents = (loop.events ?? []).filter((event) => event.type === "verification.completed");
+  const verificationLedgerEvents = ledgerEvents.filter((event) => event.kind === "verification.completed");
   const warnings: string[] = [];
   const integrity = resolveReceiptIntegrity(loop);
   const ledgerWarnings = getLedgerWarnings(ledgerEvents);
-  if (integrity.state !== "verified") {
-    warnings.push(
-      `Receipt integrity is ${integrity.state}; persisted verifier evidence is not trustworthy yet.`
-    );
-  }
+  if (integrity.state !== "verified") warnings.push(`Receipt integrity is ${integrity.state}; persisted verifier evidence is not trustworthy yet.`);
   warnings.push(...ledgerWarnings);
-
-  if (verificationEvents.length === 0) {
-    warnings.push(
-      verificationLedgerEvents.length > 0
-        ? "No verification.completed events were found in the loop record; using ledger evidence."
-      : "No verification.completed events were found in the loop record."
-    );
-  }
-  if (verificationLedgerEvents.length === 0 && ledgerWarnings.length === 0) {
-    warnings.push("No verification.completed ledger events were found for this run.");
-  }
-
+  if (verificationEvents.length === 0) warnings.push(verificationLedgerEvents.length > 0 ? "No verification.completed events were found in the loop record; using ledger evidence." : "No verification.completed events were found in the loop record.");
+  if (verificationLedgerEvents.length === 0 && ledgerWarnings.length === 0) warnings.push("No verification.completed ledger events were found for this run.");
   const selectedEvidence = selectLatestVerificationEvidence(loop, verificationEvents, verificationLedgerEvents);
   warnings.push(...selectedEvidence.warnings);
-
   const latestEvidence = selectedEvidence.evidence;
-  if (!latestEvidence) {
-    return {
-      status: "not_run",
-      eventCount: verificationEvents.length,
-      ledgerEventCount: verificationLedgerEvents.length,
-      warnings
-    };
-  }
-
-  const contradicted =
-    latestEvidence.passed === true &&
-    warnings.some((warning) =>
-      warning.toLowerCase().includes("conflicts for the latest attempt")
-    );
-
+  if (!latestEvidence) return { status: "not_run", eventCount: verificationEvents.length, ledgerEventCount: verificationLedgerEvents.length, warnings };
+  const contradicted = latestEvidence.passed === true && warnings.some((warning) => warning.toLowerCase().includes("conflicts for the latest attempt"));
   return {
-    status:
-      contradicted
-        ? "contradicted"
-      : latestEvidence.passed === true
-        ? "passed"
-        : latestEvidence.passed === false
-          ? "failed"
-          : "not_run",
+    status: contradicted ? "contradicted" : latestEvidence.passed === true ? "passed" : latestEvidence.passed === false ? "failed" : "not_run",
     eventCount: verificationEvents.length,
     ledgerEventCount: verificationLedgerEvents.length,
     ...(latestEvidence.attemptIndex !== undefined ? { latestAttemptIndex: latestEvidence.attemptIndex } : {}),
     ...(latestEvidence.timestamp ? { completedAt: latestEvidence.timestamp } : {}),
-    ...(typeof latestEvidence.summary === "string" && latestEvidence.summary.trim().length > 0
-      ? { summary: latestEvidence.summary.trim() }
-      : {}),
+    ...(typeof latestEvidence.summary === "string" && latestEvidence.summary.trim().length > 0 ? { summary: latestEvidence.summary.trim() } : {}),
     warnings
   };
 }
 
 export function resolveReceiptIntegrity(loop: InspectableLoopRecord): ReceiptIntegritySummary {
-  return (
-    loop.receiptIntegrity ?? {
-      state: "selector_noncanonical",
-      reason: "Receipt integrity metadata was not available on the loop record."
-    }
-  );
+  return loop.receiptIntegrity ?? { state: "selector_noncanonical", reason: "Receipt integrity metadata was not available on the loop record." };
 }
 
 export function buildEventSummaries(loop: InspectableLoopRecord, limit = 5): EventSummary[] {
-  return (loop.events ?? [])
-    .slice(-limit)
-    .reverse()
-    .map((event) => ({
-      type: event.type,
-      ...(event.timestamp ? { timestamp: event.timestamp } : {}),
-      ...(event.lifecycleState ? { lifecycleState: event.lifecycleState } : {}),
-      payload: event.payload ?? {}
-    }));
+  return (loop.events ?? []).slice(-limit).reverse().map((event) => ({ type: event.type, ...(event.timestamp ? { timestamp: event.timestamp } : {}), ...(event.lifecycleState ? { lifecycleState: event.lifecycleState } : {}), payload: event.payload ?? {} }));
 }
 
-export function buildLoopCollectionSummary(
-  loops: Array<LoopRunRecord | InspectableLoopRecord>
-): LoopCollectionSummary {
-  const previews = loops
-    .map((loop) => buildLoopPreview(loop as InspectableLoopRecord))
-    .sort((left, right) => {
-      const leftTime = toPreviewTimestamp(left);
-      const rightTime = toPreviewTimestamp(right);
-      return rightTime - leftTime;
-    });
-
-  const statusBreakdown = countBy(previews, "status");
-  const lifecycleBreakdown = countBy(previews, "lifecycleState");
-
-  return {
-    ...(previews[0] ? { latestRun: previews[0] } : {}),
-    recentRuns: previews.slice(0, 5),
-    statusBreakdown,
-    lifecycleBreakdown
-  };
+export function buildLoopCollectionSummary(loops: Array<LoopRunRecord | InspectableLoopRecord>): LoopCollectionSummary {
+  const previews = loops.map((loop) => buildLoopPreview(loop as InspectableLoopRecord)).sort((left, right) => toPreviewTimestamp(right) - toPreviewTimestamp(left));
+  return { ...(previews[0] ? { latestRun: previews[0] } : {}), recentRuns: previews.slice(0, 5), statusBreakdown: countBy(previews, "status"), lifecycleBreakdown: countBy(previews, "lifecycleState") };
 }
 
-export async function inspectRunsRoot(
-  runsRoot: string = resolveRunsRoot(process.env)
-): Promise<RunStoreInspection> {
+export async function inspectRunsRoot(runsRoot: string = resolveRunsRoot(process.env)): Promise<RunStoreInspection> {
   const cached = runStoreInspectionCache.get(runsRoot);
-  if (cached && cached.expiresAt > Date.now()) {
-    return cached.value;
-  }
-
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
   let exists = false;
-
-  try {
-    exists = (await stat(runsRoot)).isDirectory();
-  } catch {
-    exists = false;
-  }
-
+  try { exists = (await stat(runsRoot)).isDirectory(); } catch { exists = false; }
   const inspected = await readAllLoopRecordsSafely(runsRoot);
   const summary = buildLoopCollectionSummary(inspected.loops);
-
   const value: RunStoreInspection = {
     runsRoot,
     exists,
@@ -614,65 +422,31 @@ export async function inspectRunsRoot(
     lifecycleBreakdown: summary.lifecycleBreakdown,
     warnings: inspected.warnings
   };
-
-  runStoreInspectionCache.set(runsRoot, {
-    expiresAt: Date.now() + RUN_STORE_CACHE_TTL_MS,
-    value
-  });
-
+  runStoreInspectionCache.set(runsRoot, { expiresAt: Date.now() + RUN_STORE_CACHE_TTL_MS, value });
   return value;
 }
 
 export function buildRunRecordPaths(runsRoot: string, loopId: string): CanonicalRunPaths {
   const runDirectory = join(runsRoot, loopId);
-  return {
-    runsRoot,
-    runDirectory,
-    loopRecordPath: join(runDirectory, "loop-record.json"),
-    ledgerPath: join(runDirectory, "ledger.jsonl")
-  };
+  return { runsRoot, runDirectory, loopRecordPath: join(runDirectory, "loop-record.json"), ledgerPath: join(runDirectory, "ledger.jsonl") };
 }
 
-export function buildAttemptArtifactDirectory(
-  runsRoot: string,
-  loopId: string,
-  attemptIndex: number
-): string {
-  return join(
-    runsRoot,
-    loopId,
-    "artifacts",
-    `attempt-${String(attemptIndex).padStart(3, "0")}`
-  );
+export function buildAttemptArtifactDirectory(runsRoot: string, loopId: string, attemptIndex: number): string {
+  return join(runsRoot, loopId, "artifacts", `attempt-${String(attemptIndex).padStart(3, "0")}`);
 }
 
-export async function buildAttemptArtifactsReference(
-  runsRoot: string,
-  loopId: string,
-  attemptIndex: number
-): Promise<AttemptArtifactFiles> {
+export async function buildAttemptArtifactsReference(runsRoot: string, loopId: string, attemptIndex: number): Promise<AttemptArtifactFiles> {
   const directory = buildAttemptArtifactDirectory(runsRoot, loopId, attemptIndex);
-
   try {
     const entries = await readdir(directory, { withFileTypes: true });
-    return {
-      directory,
-      available: true,
-      files: entries.filter((entry) => entry.isFile()).map((entry) => entry.name).sort()
-    };
+    return { directory, available: true, files: entries.filter((entry) => entry.isFile()).map((entry) => entry.name).sort() };
   } catch {
-    return {
-      directory,
-      available: false,
-      files: []
-    };
+    return { directory, available: false, files: [] };
   }
 }
 
 export function buildCostSnapshot(
-  cost: Pick<LoopCost, "actualUsd" | "tokensIn" | "tokensOut" | "provenance"> & {
-    avoidedUsd?: number;
-  }
+  cost: Pick<LoopCost, "actualUsd" | "tokensIn" | "tokensOut" | "provenance"> & { avoidedUsd?: number }
 ): LoopCost {
   return {
     actualUsd: cost.actualUsd,
@@ -684,68 +458,19 @@ export function buildCostSnapshot(
 }
 
 export function buildBudgetSnapshot(budget: LoopBudget): LoopBudget {
-  return {
-    maxUsd: budget.maxUsd,
-    softLimitUsd: budget.softLimitUsd,
-    maxIterations: budget.maxIterations,
-    maxTokens: budget.maxTokens
-  };
+  return { maxUsd: budget.maxUsd, softLimitUsd: budget.softLimitUsd, maxIterations: budget.maxIterations, maxTokens: budget.maxTokens };
 }
 
 export function buildSuggestedResourceUris(loopId: string): string[] {
-  return [
-    "martin://server/health",
-    "martin://runs/recent",
-    "martin://runs/triage",
-    "martin://runs/latest",
-    "martin://runs/latest/summary",
-    "martin://runs/latest/proof-card",
-    "martin://runs/latest/budget-status",
-    "martin://runs/latest/verifier-evidence",
-    "martin://runs/latest/rollback-evidence",
-    "martin://policies/current",
-    "martin://repo/risk-map",
-    "martin://verifiers/results",
-    "martin://agent/next-step",
-    `martin://runs/${loopId}`,
-    `martin://runs/${loopId}/dossier`,
-    `martin://runs/${loopId}/verification`,
-    "martin://guides/mcp-usage",
-    "martin://guides/agent-start",
-    "martin://guides/publish-readiness"
-  ];
+  return ["martin://server/health", "martin://runs/recent", "martin://runs/triage", "martin://runs/latest", "martin://runs/latest/summary", "martin://runs/latest/proof-card", "martin://runs/latest/budget-status", "martin://runs/latest/verifier-evidence", "martin://runs/latest/rollback-evidence", "martin://policies/current", "martin://repo/risk-map", "martin://verifiers/results", "martin://agent/next-step", `martin://runs/${loopId}`, `martin://runs/${loopId}/dossier`, `martin://runs/${loopId}/verification`, "martin://guides/mcp-usage", "martin://guides/agent-start", "martin://guides/publish-readiness"];
 }
 
 export function buildSuggestedPromptNames(): string[] {
-  return [
-    "martin_start",
-    "martin_preflight",
-    "martin_triage",
-    "martin_resume",
-    "martin_prove",
-    "martin_release_check",
-    "martin_governed_coding_kickoff",
-    "martin_debug_failed_run",
-    "martin_publish_readiness_review",
-    "martin_triage_run_store",
-    "safe_bug_fix",
-    "write_tests_first",
-    "small_refactor",
-    "security_review",
-    "pr_review",
-    "release_check"
-  ];
+  return ["martin_start", "martin_preflight", "martin_triage", "martin_resume", "martin_prove", "martin_release_check", "martin_governed_coding_kickoff", "martin_debug_failed_run", "martin_publish_readiness_review", "martin_triage_run_store", "safe_bug_fix", "write_tests_first", "small_refactor", "security_review", "pr_review", "release_check"];
 }
 
-function countBy<T, K extends keyof T>(
-  values: T[],
-  key: K
-): Record<string, number> {
-  return values.reduce<Record<string, number>>((accumulator, value) => {
-    const bucket = String(value[key]);
-    accumulator[bucket] = (accumulator[bucket] ?? 0) + 1;
-    return accumulator;
-  }, {});
+function countBy<T, K extends keyof T>(values: T[], key: K): Record<string, number> {
+  return values.reduce<Record<string, number>>((accumulator, value) => { const bucket = String(value[key]); accumulator[bucket] = (accumulator[bucket] ?? 0) + 1; return accumulator; }, {});
 }
 
 function toPreviewTimestamp(loop: LoopPreview): number {
@@ -757,85 +482,31 @@ function selectLatestVerificationEvidence(
   loop: InspectableLoopRecord,
   verificationEvents: Array<Pick<LoopEvent, "timestamp" | "payload">>,
   verificationLedgerEvents: LedgerEvent[]
-): {
-  evidence?: NormalizedVerificationEvidence;
-  warnings: string[];
-} {
+): { evidence?: NormalizedVerificationEvidence; warnings: string[] } {
   const warnings: string[] = [];
-  const futureEvidenceCount = [
-    ...verificationEvents.map((event) => event.timestamp),
-    ...verificationLedgerEvents.map((event) => event.timestamp)
-  ].filter(isFutureVerificationTimestamp).length;
-
-  if (futureEvidenceCount > 0) {
-    warnings.push(
-      `Ignored ${futureEvidenceCount} future-dated verification evidence item(s) that cannot be trusted yet.`
-    );
-  }
-
-  const evidence = [
-    ...verificationEvents.map((event) => normalizeLoopVerificationEvidence(loop, event)),
-    ...verificationLedgerEvents.map((event) => normalizeLedgerVerificationEvidence(loop, event))
-  ].filter((candidate): candidate is NormalizedVerificationEvidence => candidate !== undefined);
-
-  if (evidence.length === 0) {
-    return { warnings };
-  }
-
+  const futureEvidenceCount = [...verificationEvents.map((event) => event.timestamp), ...verificationLedgerEvents.map((event) => event.timestamp)].filter(isFutureVerificationTimestamp).length;
+  if (futureEvidenceCount > 0) warnings.push(`Ignored ${futureEvidenceCount} future-dated verification evidence item(s) that cannot be trusted yet.`);
+  const evidence = [...verificationEvents.map((event) => normalizeLoopVerificationEvidence(loop, event)), ...verificationLedgerEvents.map((event) => normalizeLedgerVerificationEvidence(loop, event))].filter((candidate): candidate is NormalizedVerificationEvidence => candidate !== undefined);
+  if (evidence.length === 0) return { warnings };
   evidence.sort((left, right) => new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime());
   const latest = evidence[0];
-  if (!latest) {
-    return { warnings };
-  }
-
-  const latestAttemptEvidence = evidence.filter((candidate) =>
-    latest.attemptId
-      ? candidate.attemptId === latest.attemptId
-      : latest.attemptIndex !== undefined
-        ? candidate.attemptIndex === latest.attemptIndex
-        : false
-  );
-  const distinctStatuses = new Set(
-    latestAttemptEvidence
-      .map((candidate) => candidate.passed)
-      .filter((candidate): candidate is boolean => typeof candidate === "boolean")
-  );
-
+  if (!latest) return { warnings };
+  const latestAttemptEvidence = evidence.filter((candidate) => latest.attemptId ? candidate.attemptId === latest.attemptId : latest.attemptIndex !== undefined ? candidate.attemptIndex === latest.attemptIndex : false);
+  const distinctStatuses = new Set(latestAttemptEvidence.map((candidate) => candidate.passed).filter((candidate): candidate is boolean => typeof candidate === "boolean"));
   if (distinctStatuses.size > 1) {
     warnings.push("Verification evidence conflicts for the latest attempt; marking verification as contradicted.");
     return { warnings };
   }
-
-  return {
-    evidence: latest,
-    warnings
-  };
+  return { evidence: latest, warnings };
 }
 
-function normalizeLoopVerificationEvidence(
-  loop: InspectableLoopRecord,
-  event: Pick<LoopEvent, "timestamp" | "payload">
-): NormalizedVerificationEvidence | undefined {
-  if (!isTrustedVerificationTimestamp(event.timestamp)) {
-    return undefined;
-  }
-
+function normalizeLoopVerificationEvidence(loop: InspectableLoopRecord, event: Pick<LoopEvent, "timestamp" | "payload">): NormalizedVerificationEvidence | undefined {
+  if (!isTrustedVerificationTimestamp(event.timestamp)) return undefined;
   const payload = isRecord(event.payload) ? event.payload : undefined;
   const attemptId = typeof payload?.["attemptId"] === "string" ? payload["attemptId"] : undefined;
-  const attemptIndex =
-    typeof payload?.["attemptIndex"] === "number" && Number.isInteger(payload["attemptIndex"])
-      ? payload["attemptIndex"]
-      : undefined;
-  const matchedAttempt = attemptId
-    ? loop.attempts.find((attempt) => attempt.attemptId === attemptId)
-    : attemptIndex !== undefined
-      ? loop.attempts.find((attempt) => attempt.index === attemptIndex)
-      : undefined;
-
-  if (!matchedAttempt) {
-    return undefined;
-  }
-
+  const attemptIndex = typeof payload?.["attemptIndex"] === "number" && Number.isInteger(payload["attemptIndex"]) ? payload["attemptIndex"] : undefined;
+  const matchedAttempt = attemptId ? loop.attempts.find((attempt) => attempt.attemptId === attemptId) : attemptIndex !== undefined ? loop.attempts.find((attempt) => attempt.index === attemptIndex) : undefined;
+  if (!matchedAttempt) return undefined;
   return {
     timestamp: event.timestamp,
     ...(matchedAttempt.attemptId ? { attemptId: matchedAttempt.attemptId } : {}),
@@ -845,28 +516,15 @@ function normalizeLoopVerificationEvidence(
   };
 }
 
-function normalizeLedgerVerificationEvidence(
-  loop: InspectableLoopRecord,
-  event: LedgerEvent
-): NormalizedVerificationEvidence | undefined {
-  if (!isTrustedVerificationTimestamp(event.timestamp)) {
-    return undefined;
-  }
-
-  if (event.attemptIndex === undefined || !Number.isInteger(event.attemptIndex)) {
-    return undefined;
-  }
-
+function normalizeLedgerVerificationEvidence(loop: InspectableLoopRecord, event: LedgerEvent): NormalizedVerificationEvidence | undefined {
+  if (!isTrustedVerificationTimestamp(event.timestamp)) return undefined;
+  if (event.attemptIndex === undefined || !Number.isInteger(event.attemptIndex)) return undefined;
   const payload = isRecord(event.payload) ? event.payload : undefined;
   const matchedAttempt = loop.attempts.find((attempt) => attempt.index === event.attemptIndex);
-
-  if (!matchedAttempt) {
-    return undefined;
-  }
-
+  if (!matchedAttempt) return undefined;
   return {
     timestamp: event.timestamp,
-    ...(matchedAttempt?.attemptId ? { attemptId: matchedAttempt.attemptId } : {}),
+    ...(matchedAttempt.attemptId ? { attemptId: matchedAttempt.attemptId } : {}),
     attemptIndex: event.attemptIndex,
     ...(typeof payload?.["passed"] === "boolean" ? { passed: payload["passed"] } : {}),
     ...(typeof payload?.["summary"] === "string" ? { summary: payload["summary"] } : {})
@@ -875,27 +533,17 @@ function normalizeLedgerVerificationEvidence(
 
 function isTrustedVerificationTimestamp(value: string): boolean {
   const timestamp = new Date(value).getTime();
-  if (!Number.isFinite(timestamp)) {
-    return false;
-  }
-
-  return timestamp <= Date.now() + 5 * 60_000;
+  return Number.isFinite(timestamp) && timestamp <= Date.now() + 5 * 60_000;
 }
 
 function isFutureVerificationTimestamp(value: string): boolean {
   const timestamp = new Date(value).getTime();
-  if (!Number.isFinite(timestamp)) {
-    return false;
-  }
-
-  return timestamp > Date.now() + 5 * 60_000;
+  return Number.isFinite(timestamp) && timestamp > Date.now() + 5 * 60_000;
 }
 
 function getLedgerWarnings(ledgerEvents: LedgerEvent[]): string[] {
   const diagnostics = ledgerEvents as LedgerEvent[] & { warnings?: unknown };
-  return Array.isArray(diagnostics.warnings)
-    ? diagnostics.warnings.filter((warning): warning is string => typeof warning === "string")
-    : [];
+  return Array.isArray(diagnostics.warnings) ? diagnostics.warnings.filter((warning): warning is string => typeof warning === "string") : [];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

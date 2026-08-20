@@ -82,19 +82,34 @@ describe("subpath exports", () => {
 // ---------------------------------------------------------------------------
 
 describe("Codex adapter configuration", () => {
-  it("omits model and optional launch flags when the binary advertises none", () => {
+  it("uses the negotiated automation capability without inventing model or sandbox flags", () => {
+    const capabilityProfile: CodexCapabilityProfile = {
+      ...noFlagCodexProfile,
+      automation: { flag: "--approve-for-me", scope: "exec", semantics: "automation-mode" }
+    };
     const args = buildCodexExecArgs({
       workingDirectory: process.cwd(),
       mode: "prompt",
       prompt: "test objective",
-      capabilityProfile: noFlagCodexProfile
+      capabilityProfile,
+      autonomyResolution: {
+        binaryPath: capabilityProfile.binaryPath,
+        intent: "governed-autonomous",
+        strategy: "automation"
+      }
     });
-    expect(args).toEqual(["exec", "test objective"]);
+    expect(args).toEqual(["exec", "--approve-for-me", "test objective"]);
     expect(args).not.toContain("--model");
-    expect(args).not.toContain("--approve-for-me");
     expect(args).not.toContain("--sandbox");
 
-    const adapter = createCodexCliAdapter({ capabilityProfile: noFlagCodexProfile });
+    const adapter = createCodexCliAdapter({
+      capabilityProfile,
+      autonomyResolution: {
+        binaryPath: capabilityProfile.binaryPath,
+        intent: "governed-autonomous",
+        strategy: "automation"
+      }
+    });
     expect(adapter.adapterId).toContain("codex");
   });
 

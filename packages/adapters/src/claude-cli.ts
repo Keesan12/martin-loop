@@ -18,6 +18,11 @@ import type {
   MartinAdapterRequest,
   MartinAdapterResult
 } from "@martin/core";
+import {
+  DEFAULT_AGENT_EXECUTION_INTENT,
+  normalizeProviderExecutionTimeoutMs,
+  type AgentExecutionIntent
+} from "@martin/core";
 
 import {
   readGitChangedFiles,
@@ -764,6 +769,8 @@ export interface AgentCliAdapterOptions {
   workingDirectory?: string;
   /** Timeout for the agent subprocess in ms. Defaults to 300_000 (5 min). */
   timeoutMs?: number;
+  agentExecutionIntent?: AgentExecutionIntent;
+  providerExecutionTimeoutMs?: number;
   /** Timeout per verification command in ms. Defaults to 120_000 (2 min). */
   verifyTimeoutMs?: number;
   /** Human-readable label shown in loop records. */
@@ -792,6 +799,8 @@ export interface AgentCliAdapterOptions {
 export interface ClaudeCliAdapterOptions {
   workingDirectory?: string;
   timeoutMs?: number;
+  agentExecutionIntent?: AgentExecutionIntent;
+  providerExecutionTimeoutMs?: number;
   verifyTimeoutMs?: number;
   label?: string;
   /** Override the model passed via --model flag. */
@@ -806,6 +815,8 @@ export interface CodexCliAdapterOptions {
   command?: string;
   workingDirectory?: string;
   timeoutMs?: number;
+  agentExecutionIntent?: AgentExecutionIntent;
+  providerExecutionTimeoutMs?: number;
   verifyTimeoutMs?: number;
   label?: string;
   /** Override the model passed via --model flag. */
@@ -828,6 +839,8 @@ export interface CodexCliAdapterOptions {
 export interface GeminiCliAdapterOptions {
   workingDirectory?: string;
   timeoutMs?: number;
+  agentExecutionIntent?: AgentExecutionIntent;
+  providerExecutionTimeoutMs?: number;
   verifyTimeoutMs?: number;
   label?: string;
   /** Explicit model override passed via --model. Omitted to preserve Gemini Auto. */
@@ -847,7 +860,10 @@ export interface GeminiCliAdapterOptions {
 
 export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAdapter {
   const workingDirectory = options.workingDirectory ?? process.cwd();
-  const timeoutMs = options.timeoutMs ?? 300_000;
+  const agentExecutionIntent = options.agentExecutionIntent ?? DEFAULT_AGENT_EXECUTION_INTENT;
+  const timeoutMs = normalizeProviderExecutionTimeoutMs(
+    options.providerExecutionTimeoutMs ?? options.timeoutMs
+  );
   const verifyTimeoutMs = options.verifyTimeoutMs ?? 120_000;
   const adapterId = `agent-cli:${options.adapterIdSuffix ?? options.command}`;
   const supportsJsonOutput = options.supportsJsonOutput === true;
@@ -862,6 +878,8 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
       providerId: options.command,
       ...(options.model ? { model: options.model } : {}),
       transport: "cli",
+      agentExecutionIntent,
+      providerExecutionTimeoutMs: timeoutMs,
       capabilities: createAdapterCapabilities({
         preflight: true,
         usageSettlement: supportsUsageSettlement,
@@ -905,6 +923,9 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
 
       const args = options.argsBuilder(prompt, request);
       const stdinData = options.stdinBuilder?.(prompt);
+      const executionTimeoutMs = normalizeProviderExecutionTimeoutMs(
+        request.context.providerExecutionTimeoutMs ?? timeoutMs
+      );
 
       // Live cumulative-cost circuit breaker: a single attempt should never be
       // allowed to spend more than the loop has left. `--output-format json`
@@ -923,7 +944,7 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
 
       const agentResult = await runSubprocess(options.command, args, {
         cwd: workingDirectory,
-        timeoutMs,
+        timeoutMs: executionTimeoutMs,
         spawnImpl: options.spawnImpl,
         ...(stdinData === undefined ? {} : { stdinData }),
         ...(streamingUsage ? { onStdoutChunk: streamingUsage.onChunk } : {}),
@@ -1289,6 +1310,8 @@ export function createClaudeCliAdapter(options: ClaudeCliAdapterOptions = {}): M
     label: options.label ?? "Claude CLI adapter",
     workingDirectory: options.workingDirectory,
     timeoutMs: options.timeoutMs,
+    agentExecutionIntent: options.agentExecutionIntent,
+    providerExecutionTimeoutMs: options.providerExecutionTimeoutMs,
     verifyTimeoutMs: options.verifyTimeoutMs,
     supportsJsonOutput: true,
     streamingUsageCap: true,
@@ -1343,6 +1366,8 @@ export function createCodexCliAdapter(options: CodexCliAdapterOptions = {}): Mar
     label: options.label ?? "Codex CLI adapter",
     workingDirectory,
     timeoutMs: options.timeoutMs,
+    agentExecutionIntent: options.agentExecutionIntent,
+    providerExecutionTimeoutMs: options.providerExecutionTimeoutMs,
     verifyTimeoutMs: options.verifyTimeoutMs,
     supportsJsonOutput: false,
     spawnImpl: options.spawnImpl,
@@ -1373,7 +1398,13 @@ export function createCodexCliAdapter(options: CodexCliAdapterOptions = {}): Mar
  */
 export function createGeminiCliAdapter(options: GeminiCliAdapterOptions = {}): MartinAdapter {
   const approvalMode = options.approvalMode ?? "yolo";
+  if (approvalMode !== "yolo") {
+    throw new Error("governed-autonomous Gemini execution requires yolo approval mode; interactive downgrade rejected.");
+  }
   const extraArgs = options.extraArgs ?? [];
+  if (extraArgs.some((arg) => arg === "--approval-mode" || arg.startsWith("--approval-mode="))) {
+    throw new Error("Gemini approval mode cannot be overridden through extraArgs.");
+  }
 
   return createAgentCliAdapter({
     command: "gemini",
@@ -1382,6 +1413,8 @@ export function createGeminiCliAdapter(options: GeminiCliAdapterOptions = {}): M
     label: options.label ?? "Gemini CLI adapter",
     workingDirectory: options.workingDirectory,
     timeoutMs: options.timeoutMs,
+    agentExecutionIntent: options.agentExecutionIntent,
+    providerExecutionTimeoutMs: options.providerExecutionTimeoutMs,
     verifyTimeoutMs: options.verifyTimeoutMs,
     supportsJsonOutput: false,
     spawnImpl: options.spawnImpl,
