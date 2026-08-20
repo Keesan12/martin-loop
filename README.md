@@ -320,7 +320,7 @@ martin-loop badge [--format svg|json] [--runs-dir <path>]
 <!-- MCP package: @martinloop/mcp@0.5.4 -->
 
 [![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_MartinLoop-007ACC?logo=visualstudiocode&logoColor=white)](vscode:mcp/install?%7B%22name%22%3A%22martin-loop%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40martinloop%2Fmcp%400.5.4%22%5D%7D)
-[![Add to Cursor](https://img.shields.io/badge/Cursor-Add_MartinLoop-111111)](cursor://anysphere.cursor-deeplink/mcp/install?name=martin-loop&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIkBtYXJ0aW5sb29wL21jcEAwLjUuMyJdfQ%3D%3D)
+[![Add to Cursor](https://img.shields.io/badge/Cursor-Add_MartinLoop-111111)](cursor://anysphere.cursor-deeplink/mcp/install?name=martin-loop&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIkBtYXJ0aW5sb29wL21jcEAwLjUuNCJdfQ%3D%3D)
 
 Common options:
 
