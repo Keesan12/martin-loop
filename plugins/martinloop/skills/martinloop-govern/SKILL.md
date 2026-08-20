@@ -37,7 +37,7 @@ Preserve the user's requested scope and never replace verifier evidence with an 
 
 ## Codex Hosts
 
-Do not assume one Codex flag contract applies to every installation. MartinLoop 0.5.3 resolves and interrogates the exact Codex executable, negotiates supported capabilities, proves a writable strategy, and reuses that execution contract for the governed run.
+Do not assume one Codex flag contract applies to every installation. MartinLoop 0.5.4 resolves and interrogates the exact Codex executable, negotiates governed-autonomous capabilities, proves a workspace-bound writable strategy, and reuses that execution contract for the governed run.
 
 Do not add a guessed approval, automation, sandbox, or model flag to work around a host mismatch.
 
