@@ -7,6 +7,7 @@ const ROOT_FACADE_PACKAGES = [
   "@martin/contracts",
   "@martin/core",
   "@martin/adapters",
+  "@martin/presentation",
 ];
 
 const PACKAGE_FACADES = [
@@ -40,6 +41,11 @@ const PACKAGE_FACADES = [
     sourceDir: ["packages", "adapters", "dist"],
     targetDir: ["dist", "vendor", "adapters"],
   },
+  {
+    packageName: "@martin/presentation",
+    sourceDir: ["packages", "presentation", "dist"],
+    targetDir: ["dist", "vendor", "presentation"],
+  },
 ];
 
 const PACKAGE_ASSETS = [
@@ -57,6 +63,7 @@ const REWRITABLE_PACKAGES = {
   "@martin/headlessos-core": "headlessos-core",
   "@martin/audit-exporter": "audit-exporter",
   "@martin/adapters": "adapters",
+  "@martin/presentation": "presentation",
 };
 
 export async function buildStandaloneMcpPackage(options = {}) {
@@ -285,7 +292,7 @@ function shouldSkipFile(name) {
 }
 
 export function collectRewritablePackages(contents) {
-  const matches = contents.match(/@martin\/(?:contracts|core|policy|headlessos-core|audit-exporter|adapters)(?:\/[^'"]+)?/g) ?? [];
+  const matches = contents.match(/@martin\/(?:contracts|core|policy|headlessos-core|audit-exporter|adapters|presentation)(?:\/[^'"]+)?/g) ?? [];
   return new Set(matches.map((match) => match.split("/").slice(0, 2).join("/")));
 }
 
@@ -297,7 +304,7 @@ function mergeDependencySets(target, source) {
 
 export function rewritePackageSpecifiers(contents, input) {
   return contents.replace(
-    /(['"])(@martin\/(?:contracts|core|policy|headlessos-core|audit-exporter|adapters)(?:\/[^'"]+)?)\1/g,
+    /(['"])(@martin\/(?:contracts|core|policy|headlessos-core|audit-exporter|adapters|presentation)(?:\/[^'"]+)?)\1/g,
     (_match, quote, packageName) => {
       const parts = packageName.split("/");
       const basePackageName = parts.slice(0, 2).join("/");

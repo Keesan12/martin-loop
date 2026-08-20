@@ -124,6 +124,9 @@ importers:
       '@martin/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@martin/presentation':
+        specifier: workspace:*
+        version: link:../presentation
 
   packages/presentation:
     dependencies:
