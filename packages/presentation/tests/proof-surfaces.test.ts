@@ -167,36 +167,6 @@ describe("Verified Handoff V2", () => {
     expect(rendered).not.toContain("budget exhausted");
   });
 
-  it("labels estimated handoff cost without calling it actual", () => {
-    const estimated = handoff("VERIFIED");
-    estimated.usage.costProvenance = "estimated";
-
-    const rendered = stripAnsi(renderVerifiedHandoff(estimated, { width: 120 }));
-
-    expect(rendered).toContain("$1.25 estimated");
-    expect(rendered).not.toContain("$1.25 actual");
-  });
-
-  it("labels calculated handoff cost as derived from observed usage", () => {
-    const calculated = handoff("VERIFIED");
-    calculated.usage.costProvenance = "calculated";
-
-    const rendered = stripAnsi(renderVerifiedHandoff(calculated, { width: 120 }));
-
-    expect(rendered).toContain("$1.25 calculated from observed usage");
-    expect(rendered).not.toContain("$1.25 actual");
-  });
-
-  it("renders unavailable handoff cost without a fabricated dollar amount", () => {
-    const unavailable = handoff("VERIFIED");
-    unavailable.usage.costProvenance = "unavailable";
-
-    const rendered = stripAnsi(renderVerifiedHandoff(unavailable, { width: 120 }));
-
-    expect(rendered).toContain("Cost                unavailable");
-    expect(rendered).not.toContain("$1.25");
-  });
-
   it("keeps NO_COLOR output free of ANSI sequences", () => {
     const rendered = renderVerifiedHandoff(handoff("VERIFIED"), {
       width: 120,

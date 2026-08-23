@@ -24,7 +24,7 @@ import { realpathSync } from "node:fs";
 import path from "node:path";
 
 import { resolveRunsRoot } from "@martin/core";
-import type { CostProvenance, LoopBudget, ReceiptScope } from "@martin/contracts";
+import type { LoopBudget, ReceiptScope } from "@martin/contracts";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -39,6 +39,16 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 
 import { MARTIN_MCP_PACKAGE_VERSION } from "./package-version.js";
+import {
+  MARTIN_ARCADE_FALLBACK_TEXT,
+  MARTIN_ARCADE_MIME_TYPE,
+  MARTIN_ARCADE_RESOURCE_URI,
+  MARTIN_ARCADE_UI_EXTENSION_ID,
+  buildArcadeToolDefinitions,
+  supportsMartinArcadeApp
+} from "./arcade/capabilities.js";
+import { listArcadeResources, readArcadeResource } from "./arcade/resource.js";
+import { readArcadeStatus } from "./arcade/status.js";
 import { getMartinPrompt, listMartinPrompts } from "./prompts.js";
 import {
   listMartinResources,
@@ -75,13 +85,6 @@ const stringArraySchema = {
   items: { type: "string" }
 } as const;
 
-function describeCostProvenance(provenance: CostProvenance): string {
-  if (provenance === "actual") return "provider-settled actual";
-  if (provenance === "calculated") return "calculated from observed usage";
-  if (provenance === "estimated") return "estimated";
-  return "unavailable";
-}
-
 const loopPreviewSchema = {
   type: "object",
   additionalProperties: true,
@@ -95,10 +98,6 @@ const loopPreviewSchema = {
     updatedAt: { type: "string" },
     attempts: { type: "integer" },
     costUsd: { type: "number" },
-    costProvenance: {
-      type: "string",
-      enum: ["actual", "calculated", "estimated", "unavailable"]
-    },
     avoidedUsd: { type: "number" },
     pressure: { type: "string" },
     shouldStop: { type: "boolean" },
@@ -118,7 +117,6 @@ const loopPreviewSchema = {
     "lifecycleState",
     "attempts",
     "costUsd",
-    "costProvenance",
     "avoidedUsd",
     "pressure",
     "shouldStop",
@@ -294,10 +292,6 @@ const runOutputSchema = {
     reason: { type: "string" },
     attempts: { type: "integer" },
     costUsd: { type: "number" },
-    costProvenance: {
-      type: "string",
-      enum: ["actual", "calculated", "estimated", "unavailable"]
-    },
     verificationPassed: { type: "boolean" },
     loopId: { type: "string" },
     pressure: { type: "string" },
@@ -329,7 +323,6 @@ const runOutputSchema = {
     "reason",
     "attempts",
     "costUsd",
-    "costProvenance",
     "verificationPassed",
     "loopId",
     "pressure",
@@ -399,10 +392,6 @@ const statusOutputSchema = {
     lifecycleState: { type: "string" },
     attempts: { type: "integer" },
     costUsd: { type: "number" },
-    costProvenance: {
-      type: "string",
-      enum: ["actual", "calculated", "estimated", "unavailable"]
-    },
     avoidedUsd: { type: "number" },
     pressure: { type: "string" },
     shouldStop: { type: "boolean" },
@@ -426,7 +415,6 @@ const statusOutputSchema = {
     "lifecycleState",
     "attempts",
     "costUsd",
-    "costProvenance",
     "avoidedUsd",
     "pressure",
     "shouldStop",
@@ -797,7 +785,16 @@ export function createMartinMcpServer(serverInfo?: {
       name: serverInfo?.name ?? "martin-loop",
       version: serverInfo?.version ?? MARTIN_MCP_PACKAGE_VERSION
     },
-    { capabilities: { tools: {}, resources: {}, prompts: {} } }
+    {
+      capabilities: {
+        tools: {},
+        resources: {},
+        prompts: {},
+        extensions: {
+          [MARTIN_ARCADE_UI_EXTENSION_ID]: { mimeTypes: [MARTIN_ARCADE_MIME_TYPE] }
+        }
+      }
+    } as never
   );
 
   server.setRequestHandler(ListToolsRequestSchema, () => ({
@@ -1547,13 +1544,16 @@ export function createMartinMcpServer(serverInfo?: {
         },
         required: ["objective", "engine", "budgetUsd", "selectedMode", "confidence", "expectedCostUsd", "expectedPreworkBurnPct", "reason"]
       }
-    }
+    },
+    ...buildArcadeToolDefinitions(server.getClientCapabilities())
   ]
   }));
 
-  server.setRequestHandler(ListResourcesRequestSchema, () => ({
-  ...listMartinResources()
-  }));
+  server.setRequestHandler(ListResourcesRequestSchema, () => {
+  const listed = listMartinResources();
+  const arcade = listArcadeResources(server.getClientCapabilities());
+  return { resources: [...listed.resources, ...arcade.resources] };
+  });
 
   server.setRequestHandler(ListResourceTemplatesRequestSchema, () => ({
   ...listMartinResourceTemplates()
@@ -1561,6 +1561,9 @@ export function createMartinMcpServer(serverInfo?: {
 
   server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
   try {
+    if (request.params.uri === MARTIN_ARCADE_RESOURCE_URI) {
+      return await readArcadeResource(request.params.uri);
+    }
     return await readMartinResource({ uri: request.params.uri });
   } catch (error) {
     if (error instanceof MartinToolError) {
@@ -1592,6 +1595,38 @@ export function createMartinMcpServer(serverInfo?: {
   const { name, arguments: args } = request.params;
 
   try {
+    if (name === "martin_arcade") {
+      const available = supportsMartinArcadeApp(server.getClientCapabilities());
+      return createToolSuccessResult(
+        {
+          available,
+          resourceUri: available ? MARTIN_ARCADE_RESOURCE_URI : null
+        },
+        MARTIN_ARCADE_FALLBACK_TEXT,
+        { human: MARTIN_ARCADE_FALLBACK_TEXT }
+      );
+    }
+
+    if (name === "martin_arcade_status") {
+      const input = args ?? {};
+      if (!input || typeof input !== "object" || Array.isArray(input)) {
+        throw new MartinToolError("invalid_arguments", "Arcade status input must be an object.", {
+          category: "invalid_input"
+        });
+      }
+      const keys = Object.keys(input);
+      if (keys.some((key) => key !== "loopId") || ("loopId" in input && typeof input.loopId !== "string")) {
+        throw new MartinToolError("invalid_arguments", "Arcade status accepts only an optional loopId.", {
+          category: "invalid_input"
+        });
+      }
+      const output = await readArcadeStatus(input as { loopId?: string });
+      return createToolSuccessResult(
+        output,
+        `MartinLoop Arcade status for ${output.loopId}: ${output.displayOutcome ?? output.lifecycleState}.`
+      );
+    }
+
     if (name === "martin_run") {
       const input = validateToolInput("martin_run", args) as Parameters<typeof runLoopTool>[0];
       const runsRoot = resolveRunsRoot(process.env);
@@ -1629,7 +1664,7 @@ export function createMartinMcpServer(serverInfo?: {
         output,
         [
           `Run ${output.loopId} is ${output.status}/${output.lifecycleState}`,
-          `after ${output.attempts} attempt(s); recorded cost ${output.costUsd.toFixed(2)} USD (${describeCostProvenance(output.costProvenance)}).`,
+          `after ${output.attempts} attempt(s); spend ${output.costUsd.toFixed(2)} USD.`,
           `Execution mode: ${output.executionMode}; governance claim eligible:`,
           `${output.governanceClaimEligible ? "yes" : "no"}.`
         ].join(" ")
@@ -1641,7 +1676,7 @@ export function createMartinMcpServer(serverInfo?: {
       const output = await inspectLoopTool(input);
       return createToolSuccessResult(
         output,
-        `Inspected ${output.loopCount} run(s) from ${output.source}; total recorded cost ${output.portfolio.totalActualUsd.toFixed(2)} USD.`
+        `Inspected ${output.loopCount} run(s) from ${output.source}; total actual spend ${output.portfolio.totalActualUsd.toFixed(2)} USD.`
       );
     }
 
@@ -1650,7 +1685,7 @@ export function createMartinMcpServer(serverInfo?: {
       const output = await getStatusTool(input);
       return createToolSuccessResult(
         output,
-        `Loop ${output.loopId} is ${output.status}/${output.lifecycleState}; recorded cost is ${output.costUsd.toFixed(2)} USD (${describeCostProvenance(output.costProvenance)}), and pressure is ${output.pressure} with ${output.remainingBudgetUsd.toFixed(2)} USD remaining.`
+        `Loop ${output.loopId} is ${output.status}/${output.lifecycleState}; pressure is ${output.pressure} with ${output.remainingBudgetUsd.toFixed(2)} USD remaining.`
       );
     }
 

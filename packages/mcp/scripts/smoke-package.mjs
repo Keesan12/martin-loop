@@ -10,10 +10,6 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
 import { buildStandaloneMcpPackage } from "./build-package-lib.mjs";
-import {
-  findSingleTarball,
-  normalizePackedTarEntries,
-} from "../../../scripts/root-release-guard.mjs";
 
 const REQUIRED_TOOLS = [
   "martin_doctor",
@@ -84,16 +80,21 @@ export async function runStandaloneMcpSmoke(options = {}) {
   try {
     await buildStandaloneMcpPackage({ packageDir });
 
-    await runCommand(
+    const packDryRun = await runCommand(npmCommand(), ["pack", "--ignore-scripts", "--json", "--dry-run"], {
+      cwd: packageDir,
+    });
+    const dryRunEntry = parsePackEntry(packDryRun.stdout);
+    const tarballFiles = dryRunEntry.files.map((file) => file.path).sort();
+    assertTarballFileSet(tarballFiles);
+
+    const packRun = await runCommand(
       npmCommand(),
-      ["pack", "--ignore-scripts", "--pack-destination", packDir],
+      ["pack", "--ignore-scripts", "--json", "--pack-destination", packDir],
       { cwd: packageDir },
     );
-    const tarballFilename = await findSingleTarball(packDir);
-    const tarballPath = path.join(packDir, tarballFilename);
-    const tarList = await runCommand(tarCommand(), ["-tf", tarballFilename], { cwd: packDir });
-    const tarballFiles = normalizePackedTarEntries(tarList.stdout.split(/\r?\n/u)).sort();
-    assertTarballFileSet(tarballFiles);
+    const packEntry = parsePackEntry(packRun.stdout);
+    const tarballFilename = packEntry.filename;
+    const tarballPath = path.join(packDir, packEntry.filename);
 
     const [packedManifestOutput, packedServerOutput] = await Promise.all([
       runCommand(
@@ -140,6 +141,16 @@ export async function runStandaloneMcpSmoke(options = {}) {
     );
 
     await client.connect(transport);
+
+    // ML-E2E-2026-08-20-MCP-VERSION-001: verify serverInfo.version matches package.json
+    const serverInfoVersion = client.getServerVersion?.()?.version;
+    if (serverInfoVersion !== undefined && serverInfoVersion !== packedManifest.version) {
+      throw new Error(
+        `MCP serverInfo.version drift: initialize reported "${serverInfoVersion}" but package.json version is "${packedManifest.version}". ` +
+        `Ensure MARTIN_MCP_PACKAGE_VERSION in package-version.ts is generated from package.json at build time.`,
+      );
+    }
+
     const tools = await client.listTools();
     const toolNames = tools.tools.map((tool) => tool.name).sort();
 
@@ -186,6 +197,7 @@ export async function runStandaloneMcpSmoke(options = {}) {
       tarballFiles,
       packedDependencies: packedManifest.dependencies ?? {},
       packedServerMetadata,
+      serverInitializeVersion: serverInfoVersion ?? "(not reported)",
       statusPayload,
       preflightPayload,
       preflightPresentation,
@@ -202,13 +214,6 @@ export async function runStandaloneMcpSmoke(options = {}) {
 }
 
 function assertTarballFileSet(filePaths) {
-  const retiredExecutionFiles = filePaths.filter((filePath) =>
-    /^dist\/vendor\/adapters\/stub-(?:agent-cli|direct-provider)\.(?:js|d\.ts)$/u.test(filePath),
-  );
-  if (retiredExecutionFiles.length > 0) {
-    throw new Error(`Tarball contains retired execution adapters: ${retiredExecutionFiles.join(", ")}`);
-  }
-
   const unexpected = filePaths.filter(
     (filePath) =>
       filePath !== "package.json" &&

@@ -1,4 +1,4 @@
-import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+﻿import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -1227,7 +1227,6 @@ describe("runLoopTool", () => {
           expect(result.verificationPassed).toBe(true);
           expect(result.executionMode).toBe("verification_only");
           expect(result.governanceClaimEligible).toBe(false);
-          expect(result.costProvenance).toBe("actual");
         });
       } finally {
         if (originalEnv === undefined) {

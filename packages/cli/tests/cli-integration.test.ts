@@ -12,6 +12,7 @@ import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
 import {
+  createStubDirectProviderAdapter,
   detectCodexHostPlatform,
   probeCodexLaunch,
   resolveCliCommandAvailability
@@ -24,7 +25,6 @@ import {
   __setRunAdapterOverrideForTests,
   executeCli
 } from "../src/index.js";
-import { createTestAdapter } from "./_test-adapter.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -206,7 +206,7 @@ function installDeterministicCodexHost(): void {
   });
 
   __setRunAdapterOverrideForTests(
-    createTestAdapter({
+    createStubDirectProviderAdapter({
       providerId: "codex-test",
       model: "gpt-5.4",
       responder: (request) => ({
@@ -405,114 +405,6 @@ describe("--engine flag", () => {
     });
   });
 
-  it("makes READY preflight authority match the immediately following run gate", { timeout: 45000 }, async () => {
-    await withTempDir((workspace) =>
-      withScratchEnv(
-        {
-          MARTIN_INTEGRITY_KEY_DIR: join(workspace, ".martin-receipt-integrity"),
-          MARTIN_GROUNDING_DIR: join(workspace, ".martin-grounding")
-        },
-        async () => {
-          installDeterministicCodexHost();
-          initializeGitRepo(workspace);
-          const runsDir = join(workspace, ".martin-runs");
-          const objective = "Fix the readiness contract";
-          const requestArgs = [
-            "--engine",
-            "codex",
-            "--cwd",
-            workspace,
-            "--runs-dir",
-            runsDir,
-            "--objective",
-            objective,
-            "--verify",
-            NOOP_VERIFIER,
-            "--max-iterations",
-            "1",
-            "--budget-usd",
-            "2"
-          ];
-
-          const freshPreflight = await withEnv("MARTIN_LIVE", "true", () =>
-            executeCli(["--json", "preflight", ...requestArgs])
-          );
-          expect(freshPreflight.exitCode).toBe(0);
-          expect(JSON.parse(freshPreflight.stdout)).toMatchObject({
-            command: "preflight",
-            ready: false,
-            workflowAdmission: {
-              allowed: false,
-              missingSteps: expect.arrayContaining(["doctor", "estimate"])
-            }
-          });
-
-          const doctorResult = await withEnv("MARTIN_LIVE", "true", () =>
-            executeCli([
-              "--json",
-              "doctor",
-              "--engine",
-              "codex",
-              "--cwd",
-              workspace,
-              "--runs-dir",
-              runsDir
-            ])
-          );
-          expect(doctorResult.exitCode).toBe(0);
-
-          const doctorOnlyPreflight = await withEnv("MARTIN_LIVE", "true", () =>
-            executeCli(["--json", "preflight", ...requestArgs])
-          );
-          expect(JSON.parse(doctorOnlyPreflight.stdout)).toMatchObject({
-            ready: false,
-            workflowAdmission: {
-              allowed: false,
-              missingSteps: expect.arrayContaining(["estimate"])
-            }
-          });
-
-          const estimateResult = await withEnv("MARTIN_LIVE", "true", () =>
-            executeCli([
-              "--json",
-              "estimate",
-              objective,
-              "--engine",
-              "codex",
-              "--cwd",
-              workspace,
-              "--runs-dir",
-              runsDir,
-              "--budget-usd",
-              "2"
-            ])
-          );
-          expect(estimateResult.exitCode).toBe(0);
-
-          const readyPreflight = await withEnv("MARTIN_LIVE", "true", () =>
-            executeCli(["--json", "preflight", ...requestArgs])
-          );
-          expect(JSON.parse(readyPreflight.stdout)).toMatchObject({
-            command: "preflight",
-            ready: true,
-            workflowAdmission: {
-              allowed: true,
-              missingSteps: []
-            }
-          });
-
-          const runResult = await withEnv("MARTIN_LIVE", "true", () =>
-            executeCli(["--json", "run", ...requestArgs])
-          );
-          expect(runResult.exitCode).not.toBe(8);
-          const runPayload = JSON.parse(runResult.stdout);
-          expect(runPayload.command).toBe("run");
-          expect(runPayload.loop.attempts).toHaveLength(1);
-        }
-      )
-    );
-  });
-
   itIfCodexLiveHostOptIn("auto-bootstraps governed prerequisites and executes a live Codex run when host is ready", { timeout: 90_000 }, async () => {
     await withTempDir((workspace) =>
       withScratchEnv(
@@ -616,22 +508,6 @@ describe("--engine flag", () => {
             );
             expect(sessionStartResult.exitCode).toBe(0);
 
-            // Estimate required before a READY preflight — proves cost was reviewed.
-            await withEnv("MARTIN_LIVE", "true", () =>
-              executeCli([
-                "estimate",
-                "Fix the bug",
-                "--engine",
-                "codex",
-                "--cwd",
-                workspace,
-                "--runs-dir",
-                runsDir,
-                "--budget-usd",
-                "2"
-              ])
-            );
-
             const preflightResult = await withEnv("MARTIN_LIVE", "true", () =>
               executeCli([
                 "--json",
@@ -659,6 +535,22 @@ describe("--engine flag", () => {
             const normalizedWorkingDirectory = normalizeWorkingDirectoryForExpectation(workspace);
             expect(cliStateAfterPreflight["session-start"]?.workingDirectory).toBe(normalizedWorkingDirectory);
             expect(cliStateAfterPreflight.preflight?.workingDirectory).toBe(normalizedWorkingDirectory);
+
+            // Estimate required before governed run — proves cost was reviewed
+            await withEnv("MARTIN_LIVE", "true", () =>
+              executeCli([
+                "estimate",
+                "Fix the bug",
+                "--engine",
+                "codex",
+                "--cwd",
+                workspace,
+                "--runs-dir",
+                runsDir,
+                "--budget-usd",
+                "2"
+              ])
+            );
 
             const runResult = await withEnv("MARTIN_LIVE", "true", () =>
               executeCli([
@@ -729,22 +621,6 @@ describe("--engine flag", () => {
             );
             expect(doctorResult.exitCode).toBe(0);
 
-            // Estimate required before a READY preflight.
-            await withEnv("MARTIN_LIVE", "true", () =>
-              executeCli([
-                "estimate",
-                "Verify the outreach runtime",
-                "--engine",
-                "codex",
-                "--cwd",
-                workspace,
-                "--runs-dir",
-                runsDir,
-                "--budget-usd",
-                "2"
-              ])
-            );
-
             const preflightResult = await withEnv("MARTIN_LIVE", "true", () =>
               executeCli([
                 "--json",
@@ -762,6 +638,22 @@ describe("--engine flag", () => {
               ])
             );
             expect(preflightResult.exitCode).toBe(0);
+
+            // Estimate required before governed run
+            await withEnv("MARTIN_LIVE", "true", () =>
+              executeCli([
+                "estimate",
+                "Verify the outreach runtime",
+                "--engine",
+                "codex",
+                "--cwd",
+                workspace,
+                "--runs-dir",
+                runsDir,
+                "--budget-usd",
+                "2"
+              ])
+            );
 
             const runResult = await withEnv("MARTIN_LIVE", "true", () =>
               executeCli([
@@ -827,22 +719,6 @@ describe("--engine flag", () => {
             );
             expect(doctorResult.exitCode).toBe(0);
 
-            // Estimate required before a READY preflight.
-            await withEnv("MARTIN_LIVE", "true", () =>
-              executeCli([
-                "estimate",
-                "Verify the outreach runtime",
-                "--engine",
-                "codex",
-                "--cwd",
-                workspace,
-                "--runs-dir",
-                runsDir,
-                "--budget-usd",
-                "2"
-              ])
-            );
-
             const preflightResult = await withEnvVars(
               {
                 MARTIN_LIVE: "true",
@@ -865,6 +741,22 @@ describe("--engine flag", () => {
                 ])
             );
             expect(preflightResult.exitCode).toBe(0);
+
+            // Estimate required before governed run
+            await withEnv("MARTIN_LIVE", "true", () =>
+              executeCli([
+                "estimate",
+                "Verify the outreach runtime",
+                "--engine",
+                "codex",
+                "--cwd",
+                workspace,
+                "--runs-dir",
+                runsDir,
+                "--budget-usd",
+                "2"
+              ])
+            );
 
             const runResult = await withEnvVars(
               {

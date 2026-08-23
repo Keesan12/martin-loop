@@ -111,12 +111,7 @@ import {
   type IntegrityStatus
 } from "./run-store.js";
 import { CliCommandError, exitCodeForGovernedOutcome, renderCliError, renderCliSuccess, renderRunHeader, renderInlineMilestone, renderMilestonePrompt, renderLoopCard, type RunOutcome } from "./ux.js";
-import {
-  deriveWorkspaceId,
-  evaluateCliPreflightGate,
-  evaluateCliRunGate,
-  recordCliWorkflowStep
-} from "./workflow-state.js";
+import { deriveWorkspaceId, evaluateCliRunGate, recordCliWorkflowStep } from "./workflow-state.js";
 import {
   recordRunAndGetPrompt,
   retryQueuedIntake,
@@ -134,7 +129,7 @@ import {
 } from "./cli-milestone-state.js";
 import { offerArcadeWhileWaiting } from "./arcade/offer.js";
 import { MARTINLOOP_BADGE_CTA, MARTINLOOP_BADGE_MARKDOWN } from "./governed-badge.js";
-import { InstallError, runInstall } from "./commands/install.js";
+import { enqueueLoopForHostedSync, flushSyncQueue, syncQueueStatus } from "./sync-client.js";
 
 const require = createRequire(import.meta.url);
 const packageJson = require("../package.json") as { version: string };
@@ -467,6 +462,11 @@ type SignalCommand = {
   runsDir?: string;
 };
 
+type SyncCommand = {
+  command: "sync";
+  sub: "flush" | "status";
+};
+
 type Under3BenchFixture = {
   suiteId: string;
   label: string;
@@ -553,14 +553,10 @@ export type ParsedCliArguments =
   | BadgeCommand
   | CancelCommand
   | SignalCommand
+  | SyncCommand
   | {
       command: "telemetry";
       action: "status" | "explain" | "on" | "off";
-    }
-  | {
-      command: "install";
-      version?: string;
-      directory?: string;
     };
 
 export async function executeCli(args: string[]): Promise<{
@@ -690,13 +686,18 @@ export async function executeCli(args: string[]): Promise<{
         return await executeCancelCommand(parsed, outputMode);
       case "signal":
         return await executeSignalCommand(parsed, outputMode);
+      case "sync":
+        if (parsed.sub === "flush") {
+          await flushSyncQueue();
+        } else {
+          await syncQueueStatus();
+        }
+        return { exitCode: 0, stdout: "", stderr: "" };
       case "telemetry": {
         const { executeTelemetryCommand } = await import("./telemetry.js");
         const exitCode = await executeTelemetryCommand(parsed.action);
         return renderCliSuccess(outputMode, { data: { command: "telemetry", action: parsed.action }, human: [], quiet: "", exitCode });
       }
-      case "install":
-        return await executeNativeInstallCommand(parsed, outputMode);
     }
   } catch (error) {
     return renderCliError(outputMode, error);
@@ -759,21 +760,30 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
       : { command: "preflight", request };
   }
 
-  if (command === "install") {
-    const version = readOption(rest, "--version");
-    const directory = readOption(rest, "--dir");
-    return {
-      command: "install",
-      ...(version ? { version } : {}),
-      ...(directory ? { directory } : {})
-    };
-  }
-
   if (command === "bench") {
     return {
       command: "bench",
       suiteId: readOption(rest, "--suite") ?? "ralphy-smoke"
     };
+  }
+
+  if (command === "sync") {
+    const [subcommand = "status", ...extra] = rest;
+    if (subcommand !== "status" && subcommand !== "flush") {
+      throw new CliCommandError(
+        "invalid_input",
+        `Unknown sync subcommand: ${subcommand}`,
+        { suggestion: "Use `martin sync status` or `martin sync flush`." }
+      );
+    }
+    if (extra.length > 0) {
+      throw new CliCommandError(
+        "invalid_input",
+        `martin sync ${subcommand} does not accept extra arguments.`,
+        { suggestion: `Run \`martin sync ${subcommand}\` without trailing arguments.` }
+      );
+    }
+    return { command: "sync", sub: subcommand };
   }
 
   if (command === "demo") {
@@ -1188,7 +1198,6 @@ export function renderCliHelp(): string {
     "  martin preflight <objective> [options]",
     "  martin start [options]",
     "  martin enable [options]",
-    "  martin install [--version <version>] [--dir <path>]",
     "  martin env [options]",
     "  martin review [--loop-id <id> | --file <path> | --latest] [options]",
     "  martin receipts explain [--loop-id <id> | --file <path> | --latest] [options]",
@@ -1238,6 +1247,7 @@ export function renderCliHelp(): string {
     "  runs get     Load a persisted loop by selector.",
     "  runs attempt Load a persisted attempt and linked verification summary.",
     "  runs verify  Read persisted verification evidence for one loop.",
+    "  sync         Show queued hosted sync status or flush eligible records.",
     "  estimate     Estimate cost, route, and Pre Work Burn for an objective without spending.",
     "  gate         Hard governance check — exits non-zero if doctor/estimate are missing. Use in hooks.",
     "  mode         Show or set working mode: auto (default), plan, edits.",
@@ -1582,19 +1592,12 @@ async function executeRunCommand(
         const attempts = completed.loop.attempts.length;
         const attemptLabel =
           attempts + " attempt" + (attempts === 1 ? "" : "s");
-        const provenance = readCostProvenance(completed.loop);
-        const costLabel =
-          provenance === "unavailable"
-            ? "cost unavailable"
-            : "$" +
-              completed.loop.cost.actualUsd.toFixed(2) +
-              " " +
-              describeCostProvenance(provenance);
         return (
           "run finished · " +
           attemptLabel +
-          " · " +
-          costLabel
+          " · $" +
+          completed.loop.cost.actualUsd.toFixed(2) +
+          " actual"
         );
       },
     });
@@ -1660,6 +1663,14 @@ async function executeRunCommand(
       `Persisted run artifacts could not be written: ${error instanceof Error ? error.message : String(error)}`
     );
   });
+  await enqueueLoopForHostedSync(result.loop, { runtimeVersion: rootPackageVersion });
+  if (process.env["MARTIN_TELEMETRY_ENDPOINT"] && process.env["MARTIN_API_TOKEN"]) {
+    void flushSyncQueue().catch((error: unknown) => {
+      console.error(
+        `[martin sync] Background flush failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+    });
+  }
 
   const costProvenance = readCostProvenance(result.loop);
   let verifiedHandoffHuman: string | undefined;
@@ -1765,8 +1776,7 @@ async function executeRunCommand(
     savedThisRun,
     milestoneState?.totalSavedUsd ?? 0,
     confidence,
-    persistenceFinalized,
-    costProvenance
+    persistenceFinalized
   );
 
   const { inlineMilestones, interactivePrompt } = await recordRunAndGetPrompt({
@@ -3172,36 +3182,12 @@ async function executePreflightCommand(
     );
   }
 
-  const workflowAdmission = engineRequired
-    ? await evaluateCliPreflightGate({
-        runsRoot: environment.runsRoot,
-        workingDirectory: environment.workingDirectory,
-        objective: request.objective,
-        engine: environment.engine,
-        verificationPlan,
-        mutationMode: request.mutationMode,
-        receiptScope,
-        allowedPaths: request.allowedPaths,
-        deniedPaths: request.deniedPaths,
-        budget: resolvedGuardrails.budget
-      })
-    : {
-        allowed: true,
-        nextCommand: "martin-loop run",
-        message: "No live governed workflow admission is required for this preflight.",
-        missingSteps: []
-      };
-  if (!workflowAdmission.allowed) {
-    blockingIssues.push(workflowAdmission.message);
-  }
-
   const ready = blockingIssues.length === 0;
   const data = {
     command: "preflight",
     ready,
     blockingIssues,
     warnings,
-    workflowAdmission,
     environment,
     receiptScope,
     scope: {
@@ -3639,40 +3625,6 @@ async function executeModeCommand(
     ],
     quiet: command.mode
   });
-}
-
-async function executeNativeInstallCommand(
-  command: Extract<ParsedCliArguments, { command: "install" }>,
-  outputMode: MartinOutputMode
-): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  try {
-    const result = await runInstall({
-      outputMode,
-      ...(command.version ? { version: command.version } : {}),
-      ...(command.directory ? { dir: resolve(command.directory) } : {})
-    });
-    return renderCliSuccess(outputMode, {
-      data: {
-        command: "install",
-        version: result.version,
-        target: result.target,
-        assetName: result.assetName,
-        installPath: result.installPath,
-        aliasPath: result.aliasPath,
-        ...(result.backupPath ? { backupPath: result.backupPath } : {})
-      },
-      human: `Installed martin-loop ${result.version} to ${result.installPath}`,
-      quiet: result.installPath
-    });
-  } catch (error) {
-    if (error instanceof InstallError) {
-      throw new CliCommandError("install_failed", error.message, {
-        suggestion:
-          "Confirm the requested release has a native asset and matching .sha256 file, then retry."
-      });
-    }
-    throw error;
-  }
 }
 
 async function executeCleanCommand(
