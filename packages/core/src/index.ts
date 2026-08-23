@@ -1,5 +1,4 @@
 import { spawnSync } from "node:child_process";
-import { isAbsolute, relative, resolve } from "node:path";
 
 import {
   type ApprovalPolicy,
@@ -1393,6 +1392,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     const attemptCompletedAt = now();
     const compiledContext = compilePromptPacket(request);
     const expectedVerifierBinding = resolveExpectedVerifierBinding(request);
+    const verifierConfigured = expectedVerifierBinding.commands.length > 0;
     const verification = normalizeVerificationOutcome(result, expectedVerifierBinding);
 
     // PATCH → VERIFY
@@ -1810,24 +1810,12 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     // Uses the task's repoRoot to build/load the grounding index, then scans any diff
     let groundingScanResult: GroundingScanResult | undefined;
     const patchDiff = buildPatchDiff(result, changedFiles);
-    const workspaceMutationCapable =
-      executingAdapter.metadata.capabilities?.workspaceMutations !== false;
-    const hasReportedOrObservedChanges =
-      changedFiles.length > 0 || (result.execution?.changedFiles?.length ?? 0) > 0;
-    const groundingEvidenceRequired =
-      result.status === "completed" && workspaceMutationCapable && hasReportedOrObservedChanges;
-    let groundingEvidenceAvailable = !groundingEvidenceRequired;
-    if (groundingEvidenceRequired && patchDiff && input.task.repoRoot) {
+    if (patchDiff && input.task.repoRoot) {
       try {
         const groundingIndex = await loadOrBuildRepoGroundingIndex(input.task.repoRoot);
-        groundingScanResult = reconcileExistingGroundingFiles(
-          scanPatchForGroundingViolations(patchDiff, groundingIndex, {
-            allowedPaths: input.task.allowedPaths
-          }),
-          input.task.repoRoot,
-          rollbackBoundary
-        );
-        groundingEvidenceAvailable = true;
+        groundingScanResult = scanPatchForGroundingViolations(patchDiff, groundingIndex, {
+          allowedPaths: input.task.allowedPaths
+        });
 
         if (input.store && groundingScanResult.violations.length > 0) {
           await input.store.appendLedger(
@@ -1846,25 +1834,12 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
           );
         }
       } catch {
-        // Availability is persisted below so scanner failures and missing
-        // grounding inputs follow the same recover-forward trust contract.
+        // Grounding scan is best-effort — never fail the loop because of a scan error
       }
     }
 
-    if (groundingEvidenceRequired && !groundingEvidenceAvailable) {
-      // The completed work remains useful, but unavailable grounding evidence
-      // cannot be converted into a zero-violation governance claim.
-      loop = {
-        ...loop,
-        metadata: {
-          ...loop.metadata,
-          groundingEvidenceStatus: "unavailable"
-        }
-      };
-    }
-
     const shouldEvaluatePatchTruth =
-      result.status === "completed" && tracksWorkspaceMutations && groundingEvidenceAvailable;
+      result.status === "completed" && tracksWorkspaceMutations && verifierConfigured;
 
     let patchDecision: EvaluatedPatchDecision | undefined;
     if (shouldEvaluatePatchTruth) {
@@ -1932,7 +1907,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         await input.store.appendLedger(
           loop.loopId,
           makeLedgerEvent({
-            kind: verification.passed ? "attempt.kept" : "attempt.discarded",
+            kind: verification.passed || !verifierConfigured ? "attempt.kept" : "attempt.discarded",
             runId: loop.loopId,
             attemptIndex: currentAttemptIndex,
             payload: { reason: verification.summary }
@@ -2031,6 +2006,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       lastResult: effectiveResult,
       lastFailure: failure,
       costState,
+      verificationRequired: verifierConfigured,
       canSwitchAdapter:
         failure?.recommendedIntervention === "switch_adapter" &&
         adapterChain[currentAdapterIndex] !== undefined &&
@@ -2378,9 +2354,6 @@ function resolveChangedFiles(
   repoRoot?: string,
   rollbackBoundary?: RollbackBoundaryArtifact
 ): string[] {
-  if (repoRoot && rollbackBoundary?.headRef) {
-    return listAttemptChangedFilesSinceBoundary({ repoRoot, boundary: rollbackBoundary });
-  }
   if (result.execution?.changedFiles !== undefined) {
     return result.execution.changedFiles;
   }
@@ -2402,59 +2375,6 @@ function buildPatchDiff(result: MartinAdapterResult, changedFiles: string[]): st
       .join("\n");
   }
   return undefined;
-}
-
-function reconcileExistingGroundingFiles(
-  scan: GroundingScanResult,
-  repoRoot: string,
-  boundary?: RollbackBoundaryArtifact
-): GroundingScanResult {
-  const resolvedFiles = new Set(scan.resolvedFiles);
-  const violations = scan.violations.filter((violation) => {
-    if (violation.kind !== "file_not_found") {
-      return true;
-    }
-
-    const absolutePath = resolve(repoRoot, violation.reference);
-    const relativePath = relative(repoRoot, absolutePath);
-    const isInsideRepo = relativePath.length > 0 && !relativePath.startsWith("..") && !isAbsolute(relativePath);
-    if (!isInsideRepo || !isTrackedRepoFileAtBoundary(repoRoot, violation.reference, boundary)) {
-      return true;
-    }
-
-    resolvedFiles.add(violation.reference);
-    return false;
-  });
-
-  return {
-    ...scan,
-    violations,
-    resolvedFiles: [...resolvedFiles]
-  };
-}
-
-function isTrackedRepoFileAtBoundary(
-  repoRoot: string,
-  filePath: string,
-  boundary?: RollbackBoundaryArtifact
-): boolean {
-  if (!boundary) {
-    return false;
-  }
-
-  const normalizedPath = filePath.replace(/\\/gu, "/");
-  if (boundary.snapshots.some((snapshot) => snapshot.existed && snapshot.path === normalizedPath)) {
-    return true;
-  }
-  if (!boundary.headRef) {
-    return false;
-  }
-  const result = spawnSync(
-    "git",
-    ["-C", repoRoot, "cat-file", "-e", `${boundary.headRef}:${normalizedPath}`],
-    { encoding: "utf8", stdio: "ignore", windowsHide: true }
-  );
-  return result.status === 0;
 }
 
 function createBudgetSettlement(input: {

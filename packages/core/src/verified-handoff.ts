@@ -83,6 +83,10 @@ export function verifierActuallyPassed(
     return false;
   }
 
+  if (expected.commands.length === 0) {
+    return false;
+  }
+
   if (
     evidence.binding.runId !== expected.runId ||
     evidence.binding.workspaceId !== expected.workspaceId ||
@@ -185,7 +189,6 @@ export function deriveVerifiedHandoffExecutionBoundary(loop: LoopRecord): {
   const persistedMode = isExecutionMode(loop.metadata["executionMode"])
     ? loop.metadata["executionMode"]
     : undefined;
-  const groundingEvidenceAvailable = loop.metadata["groundingEvidenceStatus"] !== "unavailable";
 
   const executionMode: ExecutionMode = hasSimulatedAdapter
     ? "simulated"
@@ -196,7 +199,7 @@ export function deriveVerifiedHandoffExecutionBoundary(loop: LoopRecord): {
   return {
     executionMode,
     governanceClaimEligible:
-      executionMode === "governed" && adapterIds.length > 0 && groundingEvidenceAvailable,
+      executionMode === "governed" && adapterIds.length > 0,
   };
 }
 
@@ -308,18 +311,41 @@ export function buildVerifiedHandoff(
   };
 
   const executionBoundary = deriveVerifiedHandoffExecutionBoundary(input.loop);
+  const verifierStepsActuallyPassed =
+    input.verification.steps.length > 0 &&
+    input.verification.steps.every(
+      (step) =>
+        step.launched === true &&
+        step.completed === true &&
+        step.crashed === false &&
+        step.timedOut !== true &&
+        step.exitCode === 0
+    );
+  const effectiveVerificationStatus =
+    input.verification.status === "passed" && !verifierStepsActuallyPassed
+      ? input.verification.steps.length === 0
+        ? "not_run"
+        : "contradicted"
+      : input.verification.status;
+  const verificationWarnings = [
+    ...input.verification.warnings,
+    ...(effectiveVerificationStatus !== input.verification.status
+      ? ["A VERIFIED claim requires at least one launched, completed, exit-zero verifier step."]
+      : []),
+  ];
 
   const outcome = resolveVerifiedHandoffOutcome({
     lifecycleState: input.loop.lifecycleState,
     executionStatus: input.executionStatus,
-    verificationStatus: input.verification.status,
+    verificationStatus: effectiveVerificationStatus,
     receiptIntegrity: input.receiptIntegrity.state,
     scopeStatus: scope.status,
     testIntegrityStatus: testIntegrity.status,
     mutationRequired: input.mutationRequired ?? input.loop.task.mutationMode === "edit",
     changedFileCount: scope.changedFiles.length,
     definitionOfDonePreSatisfied: input.definitionOfDonePreSatisfied,
-    evidenceContradicted: input.evidenceContradicted ?? input.verification.status === "contradicted",
+    evidenceContradicted:
+      input.evidenceContradicted ?? effectiveVerificationStatus === "contradicted",
     governanceClaimEligible: executionBoundary.governanceClaimEligible,
     unresolvedWorkCount: unresolvedWork.length,
   });
@@ -350,10 +376,10 @@ export function buildVerifiedHandoff(
       lifecycleState: input.loop.lifecycleState,
     },
     verification: {
-      status: toEvidenceStatus(input.verification.status),
+      status: toEvidenceStatus(effectiveVerificationStatus),
       summary: input.verification.summary,
       checks: input.verification.steps.map(toCheck),
-      warnings: input.verification.warnings,
+      warnings: verificationWarnings,
     },
     requirements: input.requirements ?? [],
     scope,

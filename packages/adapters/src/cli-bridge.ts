@@ -259,7 +259,13 @@ export async function runVerification(
   };
 
   if (steps.length === 0) {
-    return { passed: true, summary: "No verification commands specified.", steps: [], binding: executionBinding };
+    return {
+      passed: false,
+      summary: "No verification commands specified; execution is not VERIFIED.",
+      steps: [],
+      warnings: ["Execution completed without verifier evidence."],
+      binding: executionBinding,
+    };
   }
 
   const failedSteps: string[] = [];

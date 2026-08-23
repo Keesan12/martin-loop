@@ -1,5 +1,4 @@
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 
@@ -13,6 +12,13 @@ import type {
 interface RepoStateSnapshot {
   trackedDirtyFiles: string[];
   untrackedFiles: string[];
+}
+
+export class RollbackStateUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RollbackStateUnavailableError";
+  }
 }
 
 export function listAttemptChangedFilesSinceBoundary(input: {
@@ -30,27 +36,11 @@ export function listAttemptChangedFilesSinceBoundary(input: {
 
   const baselineTracked = new Set(input.boundary.trackedDirtyFiles);
   const baselineUntracked = new Set(input.boundary.untrackedFiles);
-  const baselineContentChanges = input.boundary.snapshots
-    .filter((snapshot) => snapshot.existed && repoFileDiffersFromSnapshot(input.repoRoot!, snapshot))
-    .map((snapshot) => snapshot.path);
 
   return uniqueSorted([
     ...repoState.trackedDirtyFiles.filter((filePath) => !baselineTracked.has(filePath)),
-    ...repoState.untrackedFiles.filter((filePath) => !baselineUntracked.has(filePath)),
-    ...baselineContentChanges
+    ...repoState.untrackedFiles.filter((filePath) => !baselineUntracked.has(filePath))
   ]);
-}
-
-function repoFileDiffersFromSnapshot(
-  repoRoot: string,
-  snapshot: RollbackFileSnapshot
-): boolean {
-  try {
-    const current = readFileSync(resolveRepoPath(repoRoot, snapshot.path));
-    return current.toString("base64") !== snapshot.contentBase64;
-  } catch {
-    return true;
-  }
 }
 
 export async function captureRollbackBoundary(input: {
@@ -193,6 +183,7 @@ function readRepoState(repoRoot: string): RepoStateSnapshot {
 }
 
 function readGitLines(repoRoot: string, args: string[]): string[] {
+  let lastFailure = "unknown Git failure";
   for (let attempt = 0; attempt < 2; attempt++) {
     const result = spawnSync("git", args, {
       cwd: repoRoot,
@@ -208,14 +199,18 @@ function readGitLines(repoRoot: string, args: string[]): string[] {
       );
     }
 
+    lastFailure = gitFailureMessage(result);
+
     // Retry once after a short delay — handles git lock-file contention
     // that occurs when another process holds .git/index.lock.
     if (attempt === 0 && result.status !== 0) {
-      spawnSync("sleep", ["0.5"], { encoding: "utf8" });
+      delaySynchronously(500);
     }
   }
 
-  return [];
+  throw new RollbackStateUnavailableError(
+    `Git rollback state unavailable for ${args.join(" ")}: ${lastFailure}`
+  );
 }
 
 function readGitScalar(repoRoot: string, args: string[]): string | undefined {
@@ -225,7 +220,9 @@ function readGitScalar(repoRoot: string, args: string[]): string | undefined {
   });
 
   if (result.status !== 0 || typeof result.stdout !== "string") {
-    return undefined;
+    throw new RollbackStateUnavailableError(
+      `Git rollback state unavailable for ${args.join(" ")}: ${gitFailureMessage(result)}`
+    );
   }
 
   const value = result.stdout.trim();
@@ -246,7 +243,12 @@ async function readRollbackSnapshot(
       encoding: "base64",
       contentBase64: contents.toString("base64")
     };
-  } catch {
+  } catch (error) {
+    if (!isFileNotFoundError(error)) {
+      throw new RollbackStateUnavailableError(
+        `Rollback snapshot unavailable for ${normalizeRepoPath(filePath)}: ${toErrorMessage(error)}`
+      );
+    }
     return {
       path: normalizeRepoPath(filePath),
       existed: false,
@@ -285,7 +287,7 @@ function restoreTrackedFileFromHead(repoRoot: string, filePath: string): void {
   }
 
   // Retry once after a short delay (git lock-file contention)
-  spawnSync("sleep", ["0.5"], { encoding: "utf8" });
+  delaySynchronously(500);
   const retry = spawnSync(
     "git",
     ["restore", "--staged", "--worktree", "--source=HEAD", "--", filePath],
@@ -362,4 +364,23 @@ function emptyRepoState(): RepoStateSnapshot {
 
 function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function gitFailureMessage(result: ReturnType<typeof spawnSync>): string {
+  if (result.error) {
+    return result.error.message;
+  }
+  if (typeof result.stderr === "string" && result.stderr.trim().length > 0) {
+    return result.stderr.trim();
+  }
+  return `git exited with status ${String(result.status)}`;
+}
+
+function isFileNotFoundError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error && error.code === "ENOENT";
+}
+
+function delaySynchronously(milliseconds: number): void {
+  const signal = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
+  Atomics.wait(signal, 0, 0, milliseconds);
 }

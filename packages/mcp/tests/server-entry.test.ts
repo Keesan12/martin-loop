@@ -8,20 +8,24 @@ import { describe, expect, it } from "vitest";
 import { isDirectExecutionEntry } from "../src/server.js";
 
 describe("server entrypoint", () => {
-  const symlinkTest = process.platform === "win32" ? it.skip : it;
-
-  symlinkTest("treats a symlinked bin path as direct execution", async () => {
+  it("treats a linked bin path as direct execution", async () => {
     const root = await mkdtemp(join(tmpdir(), "martin-mcp-entry-"));
     const realScriptPath = join(root, "dist", "server.js");
-    const symlinkPath = join(root, ".bin", "mcp");
+    const linkedEntryPath = process.platform === "win32"
+      ? join(root, "linked-dist", "server.js")
+      : join(root, ".bin", "mcp");
 
     await mkdir(join(root, "dist"), { recursive: true });
-    await mkdir(join(root, ".bin"), { recursive: true });
     await writeFile(realScriptPath, "// server entry placeholder\n", "utf8");
-    await symlink(realScriptPath, symlinkPath, process.platform === "win32" ? "file" : "file");
+    if (process.platform === "win32") {
+      await symlink(join(root, "dist"), join(root, "linked-dist"), "junction");
+    } else {
+      await mkdir(join(root, ".bin"), { recursive: true });
+      await symlink(realScriptPath, linkedEntryPath, "file");
+    }
 
     try {
-      expect(isDirectExecutionEntry(symlinkPath, pathToFileURL(realScriptPath).href)).toBe(true);
+      expect(isDirectExecutionEntry(linkedEntryPath, pathToFileURL(realScriptPath).href)).toBe(true);
     } finally {
       await rm(root, { recursive: true, force: true }).catch(() => {});
     }

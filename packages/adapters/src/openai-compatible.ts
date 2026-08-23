@@ -482,11 +482,14 @@ export function createOpenAiCompatibleAdapter(
             )
           : []
       };
+      const verificationConfigured = verification.binding.commands.length > 0;
 
       return {
-        status: verification.passed ? "completed" : "failed",
+        status: verification.passed || !verificationConfigured ? "completed" : "failed",
         summary: verification.passed
           ? `${model} completed the task. Verifier passed.`
+          : !verificationConfigured
+            ? `${model} completed the task without verifier evidence; outcome is not VERIFIED.`
           : `${model} completed but verifier failed: ${verification.summary}`,
         usage: normalizeOpenAiCompatibleUsage({
           model,
@@ -498,7 +501,7 @@ export function createOpenAiCompatibleAdapter(
         }),
         verification,
         execution,
-        ...(verification.passed ? {} : {
+        ...(verification.passed || !verificationConfigured ? {} : {
           failure: { message: verification.summary }
         })
       };

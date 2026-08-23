@@ -43,21 +43,6 @@ function humanize(value: string): string {
   return value.replaceAll("_", " ").toLowerCase();
 }
 
-function formatCost(usd: number, provenance: CostProvenance): string {
-  if (provenance === "unavailable") {
-    return "unavailable";
-  }
-
-  const amount = "$" + usd.toFixed(2);
-  if (provenance === "actual") {
-    return amount + " provider-settled actual";
-  }
-  if (provenance === "calculated") {
-    return amount + " calculated from observed usage";
-  }
-  return amount + " estimated";
-}
-
 function checkSymbol(status: EvidenceStatus): string {
   if (status === "PASSED") {
     return "✓";
@@ -66,6 +51,14 @@ function checkSymbol(status: EvidenceStatus): string {
     return "✕";
   }
   return "•";
+}
+
+function formatCost(usd: number, provenance: CostProvenance): string {
+  if (provenance === "unavailable") return "unavailable";
+  const amount = "$" + usd.toFixed(2);
+  if (provenance === "actual") return amount + " provider-settled actual";
+  if (provenance === "calculated") return amount + " calculated from observed usage";
+  return amount + " estimated";
 }
 
 /**

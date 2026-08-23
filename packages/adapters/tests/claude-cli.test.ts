@@ -16,6 +16,9 @@ import {
   createClaudeCliAdapter,
   createCodexCliAdapter,
   createGeminiCliAdapter,
+  createStubDirectProviderAdapter,
+  createStubAgentCliAdapter,
+  createVerifierOnlyAdapter,
   type CodexCapabilityProfile,
   type CodexAutonomyResolution,
   type SpawnLike
@@ -387,7 +390,7 @@ describe("createAgentCliAdapter", () => {
     expect(capturedArgs[0]).toContain("change_model");
   });
 
-  it("passes empty verification with no commands", async () => {
+  it("completes execution-only work without claiming verification", async () => {
     const adapter = createAgentCliAdapter({
       command: process.platform === "win32" ? "cmd" : "echo",
       argsBuilder: () =>
@@ -409,6 +412,8 @@ describe("createAgentCliAdapter", () => {
     const result = await adapter.execute(request);
 
     expect(result.status).toBe("completed");
+    expect(result.verification.passed).toBe(false);
+    expect(result.verification.steps).toEqual([]);
     expect(result.verification.summary).toContain("No verification commands");
   });
 
@@ -444,6 +449,25 @@ describe("createAgentCliAdapter", () => {
     expect(result.status).toBe("completed");
     expect(result.usage.provenance).toBe("estimated");
     expect(result.usage.estimatedUsd).toBeGreaterThan(0);
+  });
+});
+
+describe("createStubAgentCliAdapter", () => {
+  it("uses explicit simulated provenance in its adapter id", () => {
+    const adapter = createStubAgentCliAdapter({ command: ["codex"] });
+
+    expect(adapter.adapterId).toBe("agent-cli:stub:codex");
+  });
+});
+
+describe("createStubDirectProviderAdapter", () => {
+  it("uses explicit simulated provenance even for a real-looking provider", () => {
+    const adapter = createStubDirectProviderAdapter({
+      providerId: "openai",
+      model: "gpt",
+    });
+
+    expect(adapter.adapterId).toBe("direct:stub:openai:gpt");
   });
 });
 
@@ -638,6 +662,101 @@ describe("runSubprocess", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe("");
     expect(result.timedOut).toBe(false);
+  });
+});
+
+describe("createVerifierOnlyAdapter", () => {
+  it("short-circuits git inspection outside a repository", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-no-git-"));
+    let spawnCalls = 0;
+    const spawnImpl: SpawnLike = () => {
+      spawnCalls += 1;
+      throw new Error("git subprocess should not run outside a repository");
+    };
+
+    try {
+      await expect(readGitChangedFiles(directory, 1_000, spawnImpl)).resolves.toEqual([]);
+      await expect(readGitExecutionArtifacts(directory, 1_000, spawnImpl)).resolves.toEqual({});
+      expect(spawnCalls).toBe(0);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("skips baseline diff scans when verify-only has no verification steps", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-verify-empty-"));
+
+    try {
+      const adapter = createVerifierOnlyAdapter({ workingDirectory: directory });
+      const result = await adapter.execute(
+        makeRequest({
+          context: {
+            taskTitle: "verify only",
+            objective: "Run verification only",
+            verificationPlan: [],
+            verificationStack: [],
+            mutationMode: "verify_only",
+            focus: "verify only",
+            remainingBudgetUsd: 8,
+            remainingIterations: 1,
+            remainingTokens: 10_000
+          }
+        })
+      );
+
+      expect(result.status).toBe("failed");
+      expect(result.verification.passed).toBe(false);
+      expect(result.verification.steps).toEqual([]);
+      expect(result.execution?.changedFiles).toEqual([]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("reports verifier-created file changes instead of treating verify-only as clean", { timeout: 15000 }, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-verify-only-"));
+
+    try {
+      spawnSync("git", ["init"], { cwd: directory, stdio: "ignore" });
+      await writeFile(join(directory, "tracked.txt"), "original", "utf8");
+      spawnSync("git", ["add", "tracked.txt"], { cwd: directory, stdio: "ignore" });
+      spawnSync(
+        "git",
+        [
+          "-c",
+          "user.email=martin@example.com",
+          "-c",
+          "user.name=Martin Test",
+          "commit",
+          "-m",
+          "seed"
+        ],
+        { cwd: directory, stdio: "ignore" }
+      );
+
+      const adapter = createVerifierOnlyAdapter({ workingDirectory: directory });
+      const result = await adapter.execute(
+        makeRequest({
+          context: {
+            taskTitle: "verify only",
+            objective: "Run verification only",
+            verificationPlan: [
+              `"${process.execPath}" -e "require('node:fs').writeFileSync('tracked.txt','changed')"`
+            ],
+            mutationMode: "verify_only",
+            focus: "verify only",
+            remainingBudgetUsd: 8,
+            remainingIterations: 1,
+            remainingTokens: 10_000
+          }
+        })
+      );
+
+      expect(result.verification.passed).toBe(true);
+      expect(result.execution?.changedFiles).toContain("tracked.txt");
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
   });
 });
 

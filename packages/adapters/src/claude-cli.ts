@@ -1131,6 +1131,7 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
           cwd: workingDirectory,
         }
       );
+      const verificationConfigured = verification.binding.commands.length > 0;
 
       // Check for zero-diff (agent ran but made no file changes)
       const postRunChangedFiles = gitRepoRoot
@@ -1188,7 +1189,7 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
         request.context.objective
       );
 
-      if (verification.passed) {
+      if (verification.passed || !verificationConfigured) {
         return {
           status: "completed",
           summary,
