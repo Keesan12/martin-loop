@@ -60,7 +60,14 @@ function makeInput(
       status: "passed",
       summary: "All verifier steps passed.",
       steps: [
-        { command: "pnpm test", launched: true, exitCode: 0 },
+        {
+          command: "pnpm test",
+          launched: true,
+          completed: true,
+          crashed: false,
+          exitCode: 0,
+          timedOut: false,
+        },
       ],
       warnings: [],
     },
@@ -312,6 +319,16 @@ describe("verifierActuallyPassed", () => {
   it("rejects missing verifier evidence", () => {
     expect(verifierActuallyPassed(undefined, expected)).toBe(false);
   });
+
+  it("rejects verifier-free evidence instead of passing vacuously", () => {
+    const emptyBinding = { ...expected, commands: [] };
+    expect(
+      verifierActuallyPassed(
+        { passed: true, binding: emptyBinding, steps: [] },
+        emptyBinding
+      )
+    ).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -354,6 +371,22 @@ describe("buildVerifiedHandoff", () => {
     expect(handoff.outcome).toBe("VERIFIED");
     expect(handoff.schemaVersion).toBe("1.0.0");
     expect(handoff.handoffId).toMatch(/^vh_[0-9a-f]{16}$/);
+  });
+
+  it("does not produce VERIFIED when no verifier step ran", () => {
+    const handoff = buildVerifiedHandoff(
+      makeInput({
+        verification: {
+          status: "passed",
+          summary: "No verification commands specified.",
+          steps: [],
+          warnings: [],
+        },
+      })
+    );
+
+    expect(handoff.outcome).not.toBe("VERIFIED");
+    expect(handoff.verification.status).not.toBe("PASSED");
   });
 
   it("fails closed for legacy direct stub evidence", () => {

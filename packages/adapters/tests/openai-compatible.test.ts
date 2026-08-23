@@ -191,6 +191,8 @@ describe("createOpenAiCompatibleAdapter", () => {
       const result = await adapter.execute(makeRequest() as any);
 
       expect(result.status).toBe("completed");
+      expect(result.verification.passed).toBe(false);
+      expect(result.verification.summary).toContain("No verification commands");
       expect(result.execution?.changedFiles).toEqual([]);
     } finally {
       await rm(workingDirectory, { recursive: true, force: true });

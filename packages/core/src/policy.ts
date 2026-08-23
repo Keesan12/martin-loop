@@ -361,7 +361,17 @@ export function inferExit(input: {
   lastFailure?: FailureAssessment;
   costState: CostGovernorState;
   canSwitchAdapter?: boolean;
+  verificationRequired?: boolean;
 }): ExitDecision {
+  if (input.lastResult.status === "completed" && input.verificationRequired === false) {
+    return {
+      shouldExit: true,
+      lifecycleState: "completed",
+      status: "completed",
+      reason: "Execution-only work completed without verifier evidence; outcome is not VERIFIED."
+    };
+  }
+
   if (input.lastResult.status === "completed" && input.lastResult.verification.passed) {
     return {
       shouldExit: true,

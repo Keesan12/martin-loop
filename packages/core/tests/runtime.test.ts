@@ -280,6 +280,45 @@ describe("evaluateCostGovernor", () => {
 });
 
 describe("inferExit", () => {
+  it("finishes execution-only work without treating it as verified", () => {
+    const decision = inferExit({
+      loop: {
+        budget: {
+          maxUsd: 20,
+          softLimitUsd: 12,
+          maxIterations: 4,
+          maxTokens: 1_000
+        },
+        cost: {
+          actualUsd: 1,
+          avoidedUsd: 0,
+          tokensIn: 100,
+          tokensOut: 50
+        },
+        attempts: []
+      },
+      lastResult: {
+        status: "completed",
+        summary: "Execution completed without a configured verifier.",
+        usage: {
+          actualUsd: 0.1,
+          tokensIn: 20,
+          tokensOut: 10
+        },
+        verification: {
+          passed: false,
+          summary: "No verification commands specified."
+        }
+      },
+      verificationRequired: false,
+      costState: healthyCostState()
+    });
+
+    expect(decision.shouldExit).toBe(true);
+    expect(decision.lifecycleState).toBe("completed");
+    expect(decision.reason).toContain("not VERIFIED");
+  });
+
   it("stops the loop when the same logic failure keeps repeating", () => {
     const decision = inferExit({
       loop: {
@@ -1384,6 +1423,7 @@ describe("runMartin", () => {
     const repoRoot = join(runsRoot, "repo");
     await mkdir(repoRoot, { recursive: true });
     await writeFile(join(repoRoot, ".gitkeep"), "", "utf8");
+    initializeGitRepo(repoRoot);
     const store = createFileRunStore({ runsRoot });
 
     const adapter: MartinAdapter = {
@@ -1467,6 +1507,7 @@ describe("runMartin", () => {
     const repoRoot = join(runsRoot, "repo");
     await mkdir(repoRoot, { recursive: true });
     await writeFile(join(repoRoot, "package.json"), '{"name":"martin-runtime"}', "utf8");
+    initializeGitRepo(repoRoot);
     const store = createFileRunStore({ runsRoot });
 
     const adapter: MartinAdapter = {
@@ -1564,6 +1605,7 @@ describe("runMartin", () => {
     const repoRoot = join(runsRoot, "repo");
     await mkdir(join(repoRoot, ".github", "workflows"), { recursive: true });
     await writeFile(join(repoRoot, "vercel.json"), '{"version":2}', "utf8");
+    initializeGitRepo(repoRoot);
     const store = createFileRunStore({ runsRoot });
 
     const adapter: MartinAdapter = {
@@ -1769,6 +1811,7 @@ describe("runMartin", () => {
     const repoRoot = await mkdtempFs(joinPath(tmpdirOs(), "martin-runtime-grounding-"));
     await mkdirFs(joinPath(repoRoot, "src"), { recursive: true });
     await writeFileFs(joinPath(repoRoot, "src", "real.ts"), "export const x = 1;", "utf8");
+    initializeGitRepo(repoRoot);
 
 const ledgerEvents: import("../src/index").LedgerEvent[] = [];
 const store: import("../src/index").RunStore = {
@@ -1818,6 +1861,7 @@ const store: import("../src/index").RunStore = {
 
   it("completes an edit task with no changes only when definition-of-done is explicitly pre-satisfied", async () => {
     const repoRoot = await mkdtemp(join(tmpdir(), "martin-pre-satisfied-"));
+    initializeGitRepo(repoRoot);
     const adapter: MartinAdapter = {
       adapterId: "direct:pre-satisfied",
       kind: "direct-provider",
@@ -1882,6 +1926,7 @@ const store: import("../src/index").RunStore = {
     const repoRoot = join(runsRoot, "repo");
     await mkdir(join(repoRoot, "src"), { recursive: true });
     await writeFile(join(repoRoot, "src", "real.ts"), "export const real = 1;\n", "utf8");
+    initializeGitRepo(repoRoot);
     const store = createFileRunStore({ runsRoot });
 
     const adapter: MartinAdapter = {
@@ -2239,6 +2284,7 @@ const store: import("../src/index").RunStore = {
     const repoRoot = join(runsRoot, "repo");
     await mkdir(join(repoRoot, "src"), { recursive: true });
     await writeFile(join(repoRoot, "src", "real.ts"), "export const real = 1;\n", "utf8");
+    initializeGitRepo(repoRoot);
     const store = createFileRunStore({ runsRoot });
 
     const adapter: MartinAdapter = {
@@ -2327,6 +2373,7 @@ const store: import("../src/index").RunStore = {
     const repoRoot = join(runsRoot, "repo");
     await mkdir(join(repoRoot, "src"), { recursive: true });
     await writeFile(join(repoRoot, "src", "real.ts"), "export const real = 1;\n", "utf8");
+    initializeGitRepo(repoRoot);
     const store = createFileRunStore({ runsRoot });
 
     const adapter: MartinAdapter = {
@@ -2734,6 +2781,7 @@ const store: import("../src/index").RunStore = {
     const repoRoot = join(runsRoot, "repo");
     await mkdir(join(repoRoot, "src"), { recursive: true });
     await writeFile(join(repoRoot, "src", "real.ts"), "export const real = 1;\n", "utf8");
+    initializeGitRepo(repoRoot);
     const store = createFileRunStore({ runsRoot });
 
     // Adapter claims success + verification passed, but references a file outside
@@ -2958,7 +3006,7 @@ function initializeGitRepo(repoRoot: string): void {
   expect(runGit(repoRoot, ["config", "user.email", "martin@example.com"])).toBe(0);
   expect(runGit(repoRoot, ["config", "user.name", "Martin Loop"])).toBe(0);
   expect(runGit(repoRoot, ["add", "."])).toBe(0);
-  expect(runGit(repoRoot, ["commit", "-m", "init"])).toBe(0);
+  expect(runGit(repoRoot, ["commit", "--allow-empty", "-m", "init"])).toBe(0);
 }
 
 async function materializeCommittedRepo(

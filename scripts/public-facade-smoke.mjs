@@ -458,23 +458,11 @@ async function createFakeCodexCli(tempRoot) {
   };
 }
 
-function initializeGitRepo(directory) {
-  const result = spawn(process.platform === "win32" ? "git.exe" : "git", ["init"], {
-    cwd: directory,
-    stdio: "ignore",
-    shell: false,
-  });
-
-  return new Promise((resolve, reject) => {
-    result.on("error", reject);
-    result.on("close", (code) => {
-      if (code !== 0) {
-        reject(new Error(`Failed to initialize git repository. exit=${String(code)}`));
-        return;
-      }
-      resolve();
-    });
-  });
+async function initializeGitRepo(directory) {
+  await runCommand(["git", "init"], { cwd: directory });
+  await runCommand(["git", "config", "user.email", "public-facade@test.invalid"], { cwd: directory });
+  await runCommand(["git", "config", "user.name", "Public-Facade-Smoke"], { cwd: directory });
+  await runCommand(["git", "commit", "--allow-empty", "-m", "fixture"], { cwd: directory });
 }
 
 function withPrependedPath(originalPath, directory) {

@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,6 +11,14 @@ import { createTestAdapter } from "./_test-adapter.js";
 
 const STAR_CTA_HEADLINE = "⭐ MartinLoop produced a verified handoff.";
 const STAR_CTA_REPO = "github.com/Keesan12/martin-loop";
+
+function initializeCommittedGitRepository(directory: string): void {
+  expect(spawnSync("git", ["init"], { cwd: directory }).status).toBe(0);
+  expect(spawnSync("git", ["config", "user.email", "cli@test.invalid"], { cwd: directory }).status).toBe(0);
+  expect(spawnSync("git", ["config", "user.name", "CLI Test"], { cwd: directory }).status).toBe(0);
+  expect(spawnSync("git", ["add", "."], { cwd: directory }).status).toBe(0);
+  expect(spawnSync("git", ["commit", "--allow-empty", "-m", "fixture"], { cwd: directory }).status).toBe(0);
+}
 
 function installFastRunAdapter(): void {
   __setRunAdapterOverrideForTests(
@@ -646,6 +655,7 @@ describe("executeCli", () => {
     try {
       installChangingRunAdapter(["package.json"]);
       await writeFile(join(directory, "package.json"), '{"name":"approval-human"}', "utf8");
+      initializeCommittedGitRepository(directory);
       const previousMartinLive = process.env.MARTIN_LIVE;
       process.env.MARTIN_LIVE = "false";
       const result = await withIsolatedRunsEnv(directory, () =>
@@ -685,6 +695,7 @@ describe("executeCli", () => {
     try {
       installChangingRunAdapter(["package.json"]);
       await writeFile(join(directory, "package.json"), '{"name":"approval-json"}', "utf8");
+      initializeCommittedGitRepository(directory);
       const previousMartinLive = process.env.MARTIN_LIVE;
       process.env.MARTIN_LIVE = "false";
       const result = await withIsolatedRunsEnv(directory, () =>
@@ -729,6 +740,7 @@ describe("executeCli", () => {
     try {
       installChangingRunAdapter(["package.json"]);
       await writeFile(join(directory, "package.json"), '{"name":"approval-quiet"}', "utf8");
+      initializeCommittedGitRepository(directory);
       const previousMartinLive = process.env.MARTIN_LIVE;
       process.env.MARTIN_LIVE = "false";
       const result = await withIsolatedRunsEnv(directory, () =>
@@ -766,6 +778,7 @@ describe("executeCli", () => {
     try {
       installChangingRunAdapter(["package.json"]);
       await writeFile(join(directory, "package.json"), '{"name":"approval-ci"}', "utf8");
+      initializeCommittedGitRepository(directory);
       const previousMartinLive = process.env.MARTIN_LIVE;
       const previousCi = process.env.CI;
       process.env.MARTIN_LIVE = "false";
@@ -812,6 +825,7 @@ describe("executeCli", () => {
     try {
       installChangingRunAdapter(["package.json"]);
       await writeFile(join(directory, "package.json"), '{"name":"approval-nontty"}', "utf8");
+      initializeCommittedGitRepository(directory);
       Object.defineProperty(process.stdout, "isTTY", { value: false, configurable: true });
       Object.defineProperty(process.stdin, "isTTY", { value: false, configurable: true });
       const previousMartinLive = process.env.MARTIN_LIVE;
@@ -861,6 +875,7 @@ describe("executeCli", () => {
     try {
       installChangingRunAdapter(["package.json"]);
       await writeFile(join(directory, "package.json"), '{"name":"approval-allowed"}', "utf8");
+      initializeCommittedGitRepository(directory);
       const previousMartinLive = process.env.MARTIN_LIVE;
       process.env.MARTIN_LIVE = "false";
       const result = await withIsolatedRunsEnv(directory, () =>
@@ -999,6 +1014,7 @@ describe("executeCli", () => {
     try {
       installChangingRunAdapter(["package.json"]);
       await writeFile(join(directory, "package.json"), '{"name":"approval-human"}', "utf8");
+      initializeCommittedGitRepository(directory);
       const previousMartinLive = process.env.MARTIN_LIVE;
       process.env.MARTIN_LIVE = "false";
       const result = await withIsolatedRunsEnv(directory, () =>
@@ -1038,6 +1054,7 @@ describe("executeCli", () => {
     try {
       installChangingRunAdapter(["package.json"]);
       await writeFile(join(directory, "package.json"), '{"name":"approval-json"}', "utf8");
+      initializeCommittedGitRepository(directory);
       const previousMartinLive = process.env.MARTIN_LIVE;
       process.env.MARTIN_LIVE = "false";
       const result = await withIsolatedRunsEnv(directory, () =>
@@ -1082,6 +1099,7 @@ describe("executeCli", () => {
     try {
       installChangingRunAdapter(["package.json"]);
       await writeFile(join(directory, "package.json"), '{"name":"approval-quiet"}', "utf8");
+      initializeCommittedGitRepository(directory);
       const previousMartinLive = process.env.MARTIN_LIVE;
       process.env.MARTIN_LIVE = "false";
       const result = await withIsolatedRunsEnv(directory, () =>
@@ -1119,6 +1137,7 @@ describe("executeCli", () => {
     try {
       installChangingRunAdapter(["package.json"]);
       await writeFile(join(directory, "package.json"), '{"name":"approval-ci"}', "utf8");
+      initializeCommittedGitRepository(directory);
       const previousMartinLive = process.env.MARTIN_LIVE;
       const previousCi = process.env.CI;
       process.env.MARTIN_LIVE = "false";
@@ -1165,6 +1184,7 @@ describe("executeCli", () => {
     try {
       installChangingRunAdapter(["package.json"]);
       await writeFile(join(directory, "package.json"), '{"name":"approval-nontty"}', "utf8");
+      initializeCommittedGitRepository(directory);
       Object.defineProperty(process.stdout, "isTTY", { value: false, configurable: true });
       Object.defineProperty(process.stdin, "isTTY", { value: false, configurable: true });
       const previousMartinLive = process.env.MARTIN_LIVE;
@@ -1214,6 +1234,7 @@ describe("executeCli", () => {
     try {
       installChangingRunAdapter(["package.json"]);
       await writeFile(join(directory, "package.json"), '{"name":"approval-allowed"}', "utf8");
+      initializeCommittedGitRepository(directory);
       const previousMartinLive = process.env.MARTIN_LIVE;
       process.env.MARTIN_LIVE = "false";
       const result = await withIsolatedRunsEnv(directory, () =>
