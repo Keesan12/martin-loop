@@ -1,0 +1,139 @@
+name: publish-smithery
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Optional existing mcp-vX.Y.Z tag to publish
+        required: false
+        type: string
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/publish-smithery.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  publish-smithery:
+    name: Publish MartinLoop MCPB to Smithery
+    runs-on: ubuntu-latest
+    env:
+      SMITHERY_API_KEY: ${{ secrets.SMITHERY_API_KEY }}
+      SMITHERY_NAMESPACE: ${{ vars.SMITHERY_NAMESPACE || 'martinloop' }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Resolve MCPB release
+        id: release
+        shell: bash
+        env:
+          INPUT_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || '' }}
+        run: |
+          set -euo pipefail
+
+          if [[ -n "$INPUT_TAG" ]]; then
+            if [[ "$INPUT_TAG" != mcp-v* ]]; then
+              echo "Expected mcp-vX.Y.Z tag but received: $INPUT_TAG"
+              exit 1
+            fi
+            VERSION="${INPUT_TAG#mcp-v}"
+            URL="https://github.com/Keesan12/martin-loop/releases/download/v${VERSION}/martinloop-${VERSION}.mcpb"
+            SHA_URL="${URL}.sha256"
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            echo "url=$URL" >> "$GITHUB_OUTPUT"
+            echo "sha_url=$SHA_URL" >> "$GITHUB_OUTPUT"
+            echo "expected_sha=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          node <<'NODE' >> "$GITHUB_OUTPUT"
+          const fs = require('node:fs');
+          const truth = JSON.parse(fs.readFileSync('distribution/release-truth.json', 'utf8'));
+          if (!truth.mcpb?.released || !truth.mcpb?.releaseUrl || !truth.mcpb?.sha256) {
+            throw new Error('distribution/release-truth.json does not contain a released MCPB with checksum');
+          }
+          console.log(`version=${truth.mcpb.version}`);
+          console.log(`url=${truth.mcpb.releaseUrl}`);
+          console.log('sha_url=');
+          console.log(`expected_sha=${truth.mcpb.sha256}`);
+          NODE
+
+      - name: Require Smithery credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${SMITHERY_API_KEY:-}" ]]; then
+            echo "SMITHERY_API_KEY repository secret is required."
+            exit 1
+          fi
+          if [[ -z "${SMITHERY_NAMESPACE:-}" ]]; then
+            echo "SMITHERY_NAMESPACE is required."
+            exit 1
+          fi
+
+      - name: Download and verify MCPB
+        id: bundle
+        shell: bash
+        env:
+          MCPB_URL: ${{ steps.release.outputs.url }}
+          SHA_URL: ${{ steps.release.outputs.sha_url }}
+          EXPECTED_SHA: ${{ steps.release.outputs.expected_sha }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          BUNDLE="${RUNNER_TEMP}/martinloop-${VERSION}.mcpb"
+          curl --fail --location --show-error --silent "$MCPB_URL" --output "$BUNDLE"
+
+          if [[ -n "$EXPECTED_SHA" ]]; then
+            ACTUAL_SHA="$(sha256sum "$BUNDLE" | awk '{print $1}')"
+            test "$ACTUAL_SHA" = "$EXPECTED_SHA"
+          else
+            curl --fail --location --show-error --silent "$SHA_URL" --output "${BUNDLE}.sha256"
+            EXPECTED_SHA="$(awk '{print $1}' "${BUNDLE}.sha256")"
+            ACTUAL_SHA="$(sha256sum "$BUNDLE" | awk '{print $1}')"
+            test "$ACTUAL_SHA" = "$EXPECTED_SHA"
+          fi
+
+          echo "bundle=$BUNDLE" >> "$GITHUB_OUTPUT"
+          echo "sha256=$ACTUAL_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure Smithery namespace
+        shell: bash
+        run: npx -y smithery@1.2.0 namespace create "$SMITHERY_NAMESPACE"
+
+      - name: Publish MCPB to Smithery
+        shell: bash
+        env:
+          BUNDLE: ${{ steps.bundle.outputs.bundle }}
+        run: |
+          set -euo pipefail
+          QUALIFIED_NAME="${SMITHERY_NAMESPACE}/martin-loop"
+          npx -y smithery@1.2.0 --json mcp publish "$BUNDLE" -n "$QUALIFIED_NAME"
+
+      - name: Verify Smithery listing
+        shell: bash
+        run: |
+          set -euo pipefail
+          QUALIFIED_NAME="${SMITHERY_NAMESPACE}/martin-loop"
+          ENCODED_NAME="${QUALIFIED_NAME//\//%2F}"
+          for attempt in 1 2 3 4 5; do
+            if curl --fail --show-error --silent \
+              -H "Authorization: Bearer ${SMITHERY_API_KEY}" \
+              "https://api.smithery.ai/servers/${ENCODED_NAME}" \
+              > "${RUNNER_TEMP}/smithery-server.json"; then
+              node -e 'const fs=require("fs"); const s=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); if (s.qualifiedName !== process.argv[2]) process.exit(1); console.log(`Verified Smithery listing: ${s.qualifiedName}`);' "${RUNNER_TEMP}/smithery-server.json" "$QUALIFIED_NAME"
+              exit 0
+            fi
+            sleep $((attempt * 10))
+          done
+          echo "Smithery listing was not observable after bounded retries."
+          exit 1
