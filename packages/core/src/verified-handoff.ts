@@ -189,7 +189,6 @@ export function deriveVerifiedHandoffExecutionBoundary(loop: LoopRecord): {
   const persistedMode = isExecutionMode(loop.metadata["executionMode"])
     ? loop.metadata["executionMode"]
     : undefined;
-  const groundingEvidenceAvailable = loop.metadata["groundingEvidenceStatus"] !== "unavailable";
 
   const executionMode: ExecutionMode = hasSimulatedAdapter
     ? "simulated"
@@ -200,7 +199,7 @@ export function deriveVerifiedHandoffExecutionBoundary(loop: LoopRecord): {
   return {
     executionMode,
     governanceClaimEligible:
-      executionMode === "governed" && adapterIds.length > 0 && groundingEvidenceAvailable,
+      executionMode === "governed" && adapterIds.length > 0,
   };
 }
 

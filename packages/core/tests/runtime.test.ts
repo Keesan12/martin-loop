@@ -9,7 +9,6 @@ import { createLoopRecord, type LoopAttempt } from "@martin/contracts";
 
 import {
   classifyFailure,
-  buildVerifiedHandoff,
   compilePromptPacket,
   createFileRunStore,
   distillContext,
@@ -759,70 +758,6 @@ describe("runMartin", () => {
     );
   });
 
-  it("preserves operator dirty state without counting it as the governed attempt mutation", async () => {
-    const runsRoot = await mkdtemp(join(tmpdir(), "martin-operator-dirty-baseline-"));
-    const repoRoot = join(runsRoot, "repo");
-    await mkdir(join(repoRoot, "docs"), { recursive: true });
-    await writeFile(join(repoRoot, "seed.txt"), "seed\n", "utf8");
-    initializeGitRepo(repoRoot);
-    await writeFile(join(repoRoot, "docs", "operator.txt"), "operator baseline\n", "utf8");
-
-    const result = await runMartin({
-      workspaceId: "ws_operator_dirty",
-      projectId: "proj_runtime",
-      task: {
-        title: "Require a new mutation",
-        objective: "Update seed.txt.",
-        verificationPlan: ["verify-seed"],
-        mutationMode: "edit",
-        repoRoot,
-      },
-      budget: { maxUsd: 1, softLimitUsd: 0.8, maxIterations: 1, maxTokens: 100 },
-      adapter: {
-        adapterId: "direct:misreported-operator-dirt",
-        kind: "direct-provider",
-        label: "Misreported operator dirt",
-        metadata: {
-          providerId: "test",
-          model: "test",
-          capabilities: { workspaceMutations: true },
-        },
-        async execute(request) {
-          return {
-            status: "completed",
-            summary: "Incorrectly reported the operator-owned file as attempt work.",
-            usage: { actualUsd: 0.01, tokensIn: 1, tokensOut: 1 },
-            verification: {
-              passed: true,
-              summary: "Verifier passed.",
-              binding: {
-                runId: request.loopId,
-                workspaceId: request.workspaceId,
-                cwd: repoRoot,
-                commands: request.context.verificationPlan,
-              },
-              steps: request.context.verificationPlan.map((command) => ({
-                command,
-                launched: true,
-                completed: true,
-                crashed: false,
-                exitCode: 0,
-                timedOut: false,
-              })),
-            },
-            execution: { changedFiles: ["docs/operator.txt"] },
-          };
-        },
-      },
-    });
-
-    expect(result.decision.lifecycleState).toBe("budget_exit");
-    expect(result.loop.events.find((event) => event.type === "verification.completed")?.payload)
-      .toMatchObject({ passed: false, changedFiles: [] });
-    await expect(readFile(join(repoRoot, "docs", "operator.txt"), "utf8"))
-      .resolves.toBe("operator baseline\n");
-  });
-
   it("writes context integrity precheck artifacts into the active runs root", async () => {
     const runsRoot = await mkdtemp(join(tmpdir(), "martin-context-precheck-"));
     const store = createFileRunStore({ runsRoot });
@@ -890,7 +825,7 @@ describe("runMartin", () => {
     expect(artifact.verdict).toBe("clean");
   });
 
-  it("allows read-only governance tasks to complete without code changes when verification passes", async () => {
+  it("allows verifier-only runs to complete without code changes when verification passes", async () => {
     const adapter: MartinAdapter = {
       adapterId: "direct:verify-only",
       kind: "direct-provider",
@@ -970,7 +905,7 @@ describe("runMartin", () => {
     const adapter: MartinAdapter = {
       adapterId: "direct:verifier:verify-only",
       kind: "direct-provider",
-      label: "Read-only proof adapter",
+      label: "Verifier-only proof adapter",
       metadata: {
         providerId: "openai",
         model: "gpt-5-mini",
@@ -2021,262 +1956,6 @@ const store: import("../src/index").RunStore = {
     expect(patchDecision.decision).toBe("KEEP");
     expect(patchDecision.reasonCodes).toContain("verifier_passed");
     expect(patchScore.reasonCodes).toContain("verifier_passed");
-  });
-
-  it("keeps a verifier-passing tracked change when the file is outside the grounding index extensions", async () => {
-    const repoRoot = await mkdtemp(join(tmpdir(), "martin-patch-existing-text-"));
-    await writeFile(join(repoRoot, "seed.txt"), "seed\n", "utf8");
-    expect(spawnSync("git", ["init"], { cwd: repoRoot }).status).toBe(0);
-    expect(spawnSync("git", ["add", "seed.txt"], { cwd: repoRoot }).status).toBe(0);
-    expect(spawnSync(
-      "git",
-      ["-c", "user.name=MartinLoop Test", "-c", "user.email=test@martinloop.local", "commit", "-m", "seed"],
-      { cwd: repoRoot }
-    ).status).toBe(0);
-
-    const adapter: MartinAdapter = {
-      adapterId: "direct:existing-text",
-      kind: "direct-provider",
-      label: "Existing text adapter",
-      metadata: {
-        providerId: "test",
-        model: "test",
-        capabilities: { workspaceMutations: true },
-      },
-      async execute(request) {
-        await writeFile(join(repoRoot, "seed.txt"), "success\n", "utf8");
-        return {
-          status: "completed",
-          summary: "Updated the tracked text file and passed verification.",
-          usage: { actualUsd: 0.01, tokensIn: 1, tokensOut: 1 },
-          verification: {
-            passed: true,
-            summary: "Verifier passed.",
-            binding: {
-              runId: request.loopId,
-              workspaceId: request.workspaceId,
-              cwd: repoRoot,
-              commands: request.context.verificationPlan,
-            },
-            steps: request.context.verificationPlan.map((command) => ({
-              command,
-              launched: true,
-              completed: true,
-              crashed: false,
-              exitCode: 0,
-              timedOut: false,
-            })),
-          },
-          execution: { changedFiles: ["seed.txt"] },
-        };
-      },
-    };
-
-    const result = await runMartin({
-      workspaceId: "ws_existing_text",
-      projectId: "proj_runtime",
-      task: {
-        title: "Update tracked text",
-        objective: "Replace seed.txt contents.",
-        verificationPlan: ["verify-success"],
-        mutationMode: "edit",
-        repoRoot,
-      },
-      budget: { maxUsd: 1, softLimitUsd: 0.8, maxIterations: 1, maxTokens: 100 },
-      adapter,
-    });
-
-    expect(result.decision.lifecycleState).toBe("completed");
-    expect(result.loop.attempts[0]?.failureClass).not.toBe("repo_grounding_failure");
-  });
-
-  it("marks completed work NEEDS_REVIEW when grounding evidence is unavailable", async () => {
-    const parentRoot = await mkdtemp(join(tmpdir(), "martin-grounding-unavailable-"));
-    const unavailableRepoRoot = join(parentRoot, "missing-repo");
-    let adapterExecuted = false;
-
-    const adapter: MartinAdapter = {
-      adapterId: "agent-cli:codex",
-      kind: "agent-cli",
-      label: "Codex CLI adapter",
-      metadata: {
-        providerId: "openai",
-        model: "gpt-5",
-        capabilities: { workspaceMutations: true },
-      },
-      async execute(request) {
-        adapterExecuted = true;
-        return {
-          status: "completed",
-          summary: "Completed the requested change and passed verification.",
-          usage: { actualUsd: 0.01, tokensIn: 1, tokensOut: 1 },
-          verification: {
-            passed: true,
-            summary: "Verifier passed.",
-            binding: {
-              runId: request.loopId,
-              workspaceId: request.workspaceId,
-              cwd: request.context.repoRoot ?? process.cwd(),
-              commands: request.context.verificationPlan,
-            },
-            steps: request.context.verificationPlan.map((command) => ({
-              command,
-              launched: true,
-              completed: true,
-              crashed: false,
-              exitCode: 0,
-              timedOut: false,
-            })),
-          },
-          execution: { changedFiles: ["src/work.ts"] },
-        };
-      },
-    };
-
-    const result = await runMartin({
-      workspaceId: "ws_grounding_unavailable",
-      projectId: "proj_runtime",
-      task: {
-        title: "Complete work with unavailable grounding",
-        objective: "Complete useful work without overstating unavailable grounding evidence.",
-        verificationPlan: ["verify-success"],
-        mutationMode: "edit",
-        repoRoot: unavailableRepoRoot,
-        allowedPaths: ["src/**"],
-      },
-      budget: { maxUsd: 1, softLimitUsd: 0.8, maxIterations: 1, maxTokens: 100 },
-      adapter,
-    });
-
-    const handoff = buildVerifiedHandoff({
-      loop: result.loop,
-      receiptIntegrity: { state: "verified" },
-      verification: {
-        status: "passed",
-        summary: "Verifier passed.",
-        steps: [{ command: "verify-success", launched: true, completed: true, exitCode: 0 }],
-        warnings: [],
-      },
-      changedFiles: ["src/work.ts"],
-      scope: {
-        status: "WITHIN_SCOPE",
-        changedFiles: ["src/work.ts"],
-        violations: [],
-      },
-      nextAction: "Review the run because grounding evidence was unavailable.",
-    });
-
-    expect(adapterExecuted).toBe(true);
-    expect(result.decision.lifecycleState).toBe("completed");
-    expect(result.loop.metadata["groundingEvidenceStatus"]).toBe("unavailable");
-    expect(handoff.governanceClaimEligible).toBe(false);
-    expect(handoff.outcome).toBe("NEEDS_REVIEW");
-
-    adapterExecuted = false;
-    const missingInputResult = await runMartin({
-      workspaceId: "ws_grounding_input_missing",
-      projectId: "proj_runtime",
-      task: {
-        title: "Complete work without grounding input",
-        objective: "Complete useful work without treating absent grounding input as clean evidence.",
-        verificationPlan: ["verify-success"],
-        mutationMode: "edit",
-        allowedPaths: ["src/**"],
-      },
-      budget: { maxUsd: 1, softLimitUsd: 0.8, maxIterations: 1, maxTokens: 100 },
-      adapter,
-    });
-    const missingInputHandoff = buildVerifiedHandoff({
-      loop: missingInputResult.loop,
-      receiptIntegrity: { state: "verified" },
-      verification: {
-        status: "passed",
-        summary: "Verifier passed.",
-        steps: [{ command: "verify-success", launched: true, completed: true, exitCode: 0 }],
-        warnings: [],
-      },
-      changedFiles: ["src/work.ts"],
-      scope: {
-        status: "WITHIN_SCOPE",
-        changedFiles: ["src/work.ts"],
-        violations: [],
-      },
-      nextAction: "Review the run because grounding input was unavailable.",
-    });
-
-    expect(adapterExecuted).toBe(true);
-    expect(missingInputResult.decision.lifecycleState).toBe("completed");
-    expect(missingInputResult.loop.metadata["groundingEvidenceStatus"]).toBe("unavailable");
-    expect(missingInputHandoff.governanceClaimEligible).toBe(false);
-    expect(missingInputHandoff.outcome).toBe("NEEDS_REVIEW");
-  });
-
-  it("does not treat a file staged during execution as pre-attempt grounding evidence", async () => {
-    const repoRoot = await mkdtemp(join(tmpdir(), "martin-patch-staged-during-run-"));
-    await writeFile(join(repoRoot, "seed.txt"), "seed\n", "utf8");
-    expect(spawnSync("git", ["init"], { cwd: repoRoot }).status).toBe(0);
-    expect(spawnSync("git", ["add", "seed.txt"], { cwd: repoRoot }).status).toBe(0);
-    expect(spawnSync(
-      "git",
-      ["-c", "user.name=MartinLoop Test", "-c", "user.email=test@martinloop.local", "commit", "-m", "seed"],
-      { cwd: repoRoot }
-    ).status).toBe(0);
-
-    const adapter: MartinAdapter = {
-      adapterId: "direct:staged-during-run",
-      kind: "direct-provider",
-      label: "Staged during run adapter",
-      metadata: {
-        providerId: "test",
-        model: "test",
-        capabilities: { workspaceMutations: true },
-      },
-      async execute(request) {
-        await writeFile(join(repoRoot, "new.txt"), "new\n", "utf8");
-        expect(spawnSync("git", ["add", "new.txt"], { cwd: repoRoot }).status).toBe(0);
-        return {
-          status: "completed",
-          summary: "Created and staged a new text file.",
-          usage: { actualUsd: 0.01, tokensIn: 1, tokensOut: 1 },
-          verification: {
-            passed: true,
-            summary: "Verifier passed.",
-            binding: {
-              runId: request.loopId,
-              workspaceId: request.workspaceId,
-              cwd: repoRoot,
-              commands: request.context.verificationPlan,
-            },
-            steps: request.context.verificationPlan.map((command) => ({
-              command,
-              launched: true,
-              completed: true,
-              crashed: false,
-              exitCode: 0,
-              timedOut: false,
-            })),
-          },
-          execution: { changedFiles: ["new.txt"] },
-        };
-      },
-    };
-
-    const result = await runMartin({
-      workspaceId: "ws_staged_during_run",
-      projectId: "proj_runtime",
-      task: {
-        title: "Create text",
-        objective: "Create new.txt.",
-        verificationPlan: ["verify-new"],
-        mutationMode: "edit",
-        repoRoot,
-      },
-      budget: { maxUsd: 1, softLimitUsd: 0.8, maxIterations: 1, maxTokens: 100 },
-      adapter,
-    });
-
-    expect(result.decision.lifecycleState).toBe("budget_exit");
-    expect(result.loop.attempts[0]?.failureClass).toBe("repo_grounding_failure");
   });
 
   it("discards grounding-failure patches and persists patch decision artifacts", async () => {

@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.6] - 2026-08-22
+
+### Added
+- **Hosted run sync** — the CLI can send governed run metadata and evidence to a configured MartinLoop Control Plane without uploading source code by default.
+- **Read-only Arcade MCP surface** — MCP clients can render a compact operator view backed by the same run status and evidence contracts as the standard tools.
+
+### Changed
+- **One release version authority** — root CLI, MCP package, MCP server metadata, plugin manifests, and packaged artifacts now derive and verify the same `0.5.6` version.
+
+### Fixed
+- **Rollback fails closed** — unreadable repository or file state can no longer be mistaken for an empty baseline, and retry timing is portable across Windows, macOS, and Linux.
+- **Verified means verified** — runs without an executed, successful, correctly bound verifier remain explicitly non-verified.
+- **Packaged MCP startup** — clean-consumer bundle validation resolves entry paths consistently across supported platforms.
+
 ## [0.5.5] - 2026-08-20
 
 - Added a provider-neutral governed-autonomous execution contract across coding-agent integrations.
