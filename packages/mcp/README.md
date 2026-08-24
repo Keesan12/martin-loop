@@ -1,174 +1,117 @@
 # @martinloop/mcp
 
-You give an AI agent a coding task. It runs. You get a bill.
+Coding agents are getting good enough to do real software work. The messy part is everything around them.
 
-But did it actually work? Did it pass your tests? How much did it spend? What files did it touch? Did it loop 47 times trying the same broken approach?
+You still have to turn an idea into a clear finish line, keep the agent moving in the right direction, decide whether the result is actually ready, recover when it is not, and understand what happened before you ship it. Most people end up stitching that workflow together themselves.
 
-You don't know. And that's the problem.
+**MartinLoop is one system around coding agents so people can go from intent to a production-quality software handoff without building their own engineering stack around the agent.**
 
-## One system around the coding agent
+`@martinloop/mcp` is the MCP entry point into that system.
 
-MartinLoop is the execution-control system around coding agents. The coding agent still performs the software work. MartinLoop connects the run from Definition of Done through preflight, control, verification, recovery evidence, receipts, and post-run analysis.
+The coding agent still writes the code. MartinLoop connects the work around it.
 
 ```text
-DEFINE -> PREFLIGHT -> CONTROL -> VERIFY -> RECOVER -> PROVE -> ANALYZE
+INTENT -> DEFINITION OF DONE -> AGENT WORK -> VERIFY -> RECOVER -> HANDOFF
 ```
 
-The product-level flow is **Definition of Done -> Controlled Run -> Verified Handoff**.
-
-Through MCP, compatible hosts can use the same MartinLoop lifecycle without giving up the host's own model selection. MartinLoop does not inject a hidden fallback model.
-
-For agent-readable product context see [`../../llms.txt`](../../llms.txt), [`../../llms-full.txt`](../../llms-full.txt), and [`../../docs/for-agents.md`](../../docs/for-agents.md).
-
-## What This Does
-
-MartinLoop governs AI coding-agent execution. You define what the run needs to accomplish, set execution boundaries such as budget and verifier checks, and let the configured coding agent do the work inside that contract.
-
-When it's done, you get a receipt — not a vague summary, but a structured record: dollars spent when available, attempts made, verification results, files changed, recovery state, and what the available evidence established.
-
-The final governed outcome is one of:
-
-- `VERIFIED` when the configured evidence supports the Definition of Done
-- `STOPPED` when a configured hard boundary ends the run
-- `NEEDS REVIEW` when completion cannot be established from the available evidence
-
-**One line to connect it:**
-
-```sh
-claude mcp add martin-loop -- npx -y @martinloop/mcp
-```
-
-That's it. Your host can now use MartinLoop's governed run and evidence surfaces.
-
-## Real Numbers From Real Runs
-
-We tested this against live repos with real API spend:
-
-| What happened | Without MartinLoop | With MartinLoop |
-|---|---|---|
-| Budget: $1.50 task | Agent spent **$28.42** | Agent stopped at **$1.20** |
-| Failing verifier | Retried indefinitely | Stopped after 3 attempts with diagnosis |
-| CLI not on PATH | "not available on PATH" (dead stop) | Auto-discovered in AppData, kept running |
-| `bun run lint && bun run test` | Passed `&&` as a literal arg (always fails) | Routed through shell, worked |
-
-These aren't hypotheticals. The $28 overshoot happened in production testing. We fixed the circuit breaker in `0.3.8`.
-
-## Install
+## Connect MartinLoop
 
 ### Claude Code
+
 ```sh
-claude mcp add martin-loop -- npx -y @martinloop/mcp@0.5.5
+claude mcp add martin-loop -- npx -y @martinloop/mcp@latest
 ```
 
 Windows:
+
 ```sh
-claude mcp add --transport stdio --scope user martin-loop -- cmd /c npx -y @martinloop/mcp@0.5.5
+claude mcp add --transport stdio --scope user martin-loop -- cmd /c npx -y @martinloop/mcp@latest
 ```
 
 ### Codex
+
 ```sh
-codex mcp add martin-loop -- npx -y @martinloop/mcp@0.5.5
+codex mcp add martin-loop -- npx -y @martinloop/mcp@latest
 ```
 
 ### Gemini CLI
-```sh
-gemini mcp add martin-loop -- npx -y @martinloop/mcp@0.5.5
-```
-
-### Any MCP Host
-```sh
-npx -y @martinloop/mcp@0.5.5
-```
-
-## How a Governed Run Works
-
-```
-You: "Fix the auth bug. Budget $3. Verify: npm test"
-
-  martin_doctor     →  checks CLI, auth, environment
-  martin_plan       →  scopes the task, sets constraints
-  martin_preflight  →  validates before any spend
-  martin_run        →  agent works inside budget + verifier gates
-  martin_dossier    →  receipt: spend, attempts, verifier evidence, final outcome
-```
-
-Every attempt can be checked by your configured verifier. Budget and policy controls stay attached to the run. If the agent drifts off-task, the scope contract can block the change. If a hard spend boundary is reached, the run stops according to policy instead of silently retrying forever.
-
-## What Your Agent Gets
-
-### MCP Tools
-
-The exact tool set is discoverable from the running MCP server with `tools/list`; do not rely on a hard-coded count in documentation.
-
-**Run the loop:**
-`martin_doctor` `martin_plan` `martin_preflight` `martin_run` `martin_pause` `martin_continue` `martin_cancel`
-
-**Inspect results:**
-`martin_status` `martin_logs` `martin_dossier` `martin_eval` `martin_inspect` `martin_list_runs` `martin_get_run` `martin_get_attempt` `martin_get_verification_results` `martin_triage_runs`
-
-**Ship the work:**
-`martin_pr_summary` `martin_create_pr` `martin_review_pr`
-
-### Read-Only Resources
-
-The exact resource set is discoverable from the running MCP server; this documentation names the primary public resources without treating a count as a release invariant.
-
-Your agent can pull context without side effects:
-
-`martin://runs/latest` · `martin://runs/latest/proof-card` · `martin://runs/latest/budget-status` · `martin://runs/latest/verifier-evidence` · `martin://runs/recent` · `martin://server/health` · `martin://policies/current` · `martin://agent/next-step` · `martin://guides/mcp-usage` · `martin://guides/agent-start` · `martin://repo/risk-map`
-
-### Configuration Profiles
-
-Generate host config tuned to your workflow:
 
 ```sh
-npx martin-loop mcp print-config --host claude --profile minimal        # run + inspect
-npx martin-loop mcp print-config --host claude --profile diagnostic     # + doctor + triage
-npx martin-loop mcp print-config --host claude --profile full-local     # all local tools
-npx martin-loop mcp print-config --host claude --profile github-review  # + PR workflow
+gemini mcp add martin-loop -- npx -y @martinloop/mcp@latest
 ```
 
-## What Happens When Things Go Wrong
+### Any local MCP host
 
-MartinLoop does not round failure into success. It preserves the evidence and follows the configured recovery path while budget and policy still allow useful work.
+```sh
+npx -y @martinloop/mcp@latest
+```
 
-| Failure | Old behavior | Now |
-|---|---|---|
-| CLI not on PATH | Error message, dead stop | Searches npm global, homebrew, nvm, scoop — uses what it finds |
-| Verifier says "command not found" | Generic "verification failed" | Carries specific failure context into the next allowed attempt |
-| `git restore` fails mid-rollback | Throws, leaves dirty state | Retries once, falls back to `git checkout`, cleans up |
-| Invalid `--profile` flag | Crashes | Warns, falls back to `minimal`, keeps running |
+MartinLoop uses local stdio transport. The authenticated coding-agent host keeps authority over its own model selection; MartinLoop does not silently swap in a fallback model.
 
-## Codex compatibility in 0.5.5
+## What changes once it is connected
 
-MartinLoop no longer assumes one Codex host or one fixed Codex flag set. The CLI resolves the exact Codex executable, reads its advertised capabilities, negotiates a supported write strategy, proves that strategy before reporting launch readiness, and reuses the same contract for the governed run.
+Instead of treating the coding agent as a black box that returns a diff, the host gets one workflow around the job:
 
-That means MCP hosts can point MartinLoop at different Codex installations without requiring a documentation-specific approval or sandbox flag to exist everywhere.
+1. **Define what should ship.** Give the work an objective and a finish line.
+2. **Check that the run is ready.** Catch environment or workflow problems before spending a full run on them.
+3. **Let the coding agent do the work.** MartinLoop stays around the run rather than replacing the agent.
+4. **Check the result against the finish line.** Completion is based on the evidence you configured, not on the agent saying "done."
+5. **Recover when the result is not ready.** Preserve enough context to continue, stop, or hand the work to a person without starting from zero.
+6. **Hand off something understandable.** The next person or agent can see what happened and what remains unresolved.
 
-## Presentation and evidence
+The governed result is one of:
 
-MCP responses are Markdown-first for humans while retaining structured content for agents and automation. The presentation layer does not rewrite governed truth.
+- `VERIFIED` — the configured evidence supports the Definition of Done.
+- `STOPPED` — a configured execution boundary ended the run.
+- `NEEDS REVIEW` — the available evidence is not enough to establish completion.
 
-MartinLoop Arcade is a terminal-only experience. It does not run inside MCP and cannot influence MCP evidence, budgets, verification, or final outcomes.
+`VERIFIED` means the checks you chose passed for that run. It is not a claim that software is universally bug-free or automatically safe to merge.
 
-## Who Uses This
+## Why MCP matters here
 
-- **Engineers running overnight agent loops** — you need a kill switch that actually works, and a receipt in the morning
-- **Teams with shared API budgets** — you need per-task spend caps, not org-wide prayer
-- **Anyone reviewing agent-generated PRs** — the dossier shows what the agent tried, what passed, and what didn't
-- **Teams tired of stitching together point tools** — you want one execution-control lifecycle around coding-agent work from preflight through post-run analysis
+MartinLoop is useful as a standalone CLI, but MCP lets the coding environment use the same surrounding workflow directly.
+
+A compatible host can plan work, start or continue a governed run, inspect what happened, read verification evidence, review previous runs, and prepare a handoff without forcing the user to jump between unrelated tools.
+
+The exact tool and resource set is discoverable from the running server with `tools/list` and `resources/list`; documentation does not hard-code a count because the surface evolves between releases.
+
+Primary capabilities include:
+
+- planning and preflight
+- governed agent execution
+- run status and logs
+- verification results
+- run history and triage
+- dossiers and handoff evidence
+- PR preparation and review helpers
+
+## For people who are not trying to become the engineering department
+
+The larger MartinLoop direction is not "more controls for engineers." It is reducing how much infrastructure a person has to assemble just to get dependable software work out of coding agents.
+
+That matters for engineering teams, but it also matters for founders, operators, product people, and other non-engineers who can describe what they want built and need a clearer path from that intent to work they can review and ship.
+
+The technical controls underneath MartinLoop — budgets, scope boundaries, verifier commands, recovery evidence, receipts, failure classification, and cost provenance — support that workflow. They are not the product story by themselves.
 
 ## Requirements
 
 - Node.js 20+
-- One AI coding CLI: [Claude Code](https://docs.anthropic.com/claude-code), [Codex](https://github.com/openai/codex), or [Gemini CLI](https://github.com/google/gemini-cli)
+- A supported coding-agent environment such as Claude Code, Codex, or Gemini CLI for live coding work
+
+## Product context
+
+For machine-readable MartinLoop context:
+
+- [`../../llms.txt`](../../llms.txt)
+- [`../../llms-full.txt`](../../llms-full.txt)
+- [`../../docs/for-agents.md`](../../docs/for-agents.md)
 
 ## Links
 
-- [martin-loop](https://www.npmjs.com/package/martin-loop) — the standalone CLI
-- [MartinLoop for AI Agents](../../docs/for-agents.md)
-- [GitHub](https://github.com/Keesan12/martin-loop) — source and issues
-- [martinloop.com](https://martinloop.com)
+- [MartinLoop](https://martinloop.com)
+- [GitHub](https://github.com/Keesan12/martin-loop)
+- [Standalone CLI](https://www.npmjs.com/package/martin-loop)
+- [MCP package](https://www.npmjs.com/package/@martinloop/mcp)
 
 ## License
 
