@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "asOf": "2026-08-24",
+  "package": {
+    "name": "@martinloop/mcp",
+    "version": "0.5.6",
+    "install": "npx -y @martinloop/mcp@latest"
+  },
+  "live": {
+    "officialMcpRegistry": {
+      "status": "live",
+      "name": "io.github.Keesan12/martin-loop"
+    },
+    "smithery": {
+      "status": "live",
+      "server": "vamahalin/martin-loop",
+      "serverPage": "https://smithery.ai/servers/vamahalin/martin-loop",
+      "mcpUrl": "https://martin-loop--vamahalin.run.tools",
+      "publishedReleaseId": "b340e4e6-5126-4710-8dd8-941ff9981d21",
+      "publishedBundleVersion": "0.5.3"
+    },
+    "glama": {
+      "status": "live",
+      "serverPage": "https://glama.ai/mcp/servers/Keesan12/martin-loop",
+      "evaluation": {
+        "serverCoherence": "A",
+        "toolDefinitionQuality": "B",
+        "maintenance": "A",
+        "permissiveLicense": "A",
+        "profileCompletion": "100%"
+      }
+    }
+  },
+  "pending": {
+    "awesomeMcpServers": {
+      "status": "open_mergeable",
+      "url": "https://github.com/punkpeye/awesome-mcp-servers/pull/10851",
+      "note": "Glama condition is satisfied; latest maintainer follow-up has been posted."
+    },
+    "mcpSo": {
+      "status": "open",
+      "url": "https://github.com/chatmcp/mcpso/issues/3290",
+      "note": "Follow-up posted 2026-08-24; listing not yet verified live."
+    },
+    "clineMarketplace": {
+      "status": "open",
+      "url": "https://github.com/cline/mcp-marketplace/issues/1627",
+      "note": "Original submission and follow-up updated to current MartinLoop narrative on 2026-08-24."
+    },
+    "acuvity": {
+      "status": "open",
+      "url": "https://github.com/acuvity/mcp-servers-registry/issues/11",
+      "note": "Submission remains open; connected GitHub integration cannot write to this external repository."
+    },
+    "luciferForge": {
+      "status": "open",
+      "url": "https://github.com/LuciferForge/mcp-directory/issues/7",
+      "note": "Submission remains open; connected GitHub integration cannot write to this external repository."
+    },
+    "awesomeAgentHarness": {
+      "status": "open_mergeable",
+      "url": "https://github.com/AutoJunjie/awesome-agent-harness/pull/28"
+    },
+    "awesomeCodeAgents": {
+      "status": "open_mergeable",
+      "url": "https://github.com/sorrycc/awesome-code-agents/pull/33",
+      "note": "Fork diff updated to current narrative on 2026-08-24."
+    },
+    "awesomeRalph": {
+      "status": "open",
+      "url": "https://github.com/snwfdhmp/awesome-ralph/pull/26"
+    },
+    "awesomeAiCodingTools": {
+      "status": "open_mergeable",
+      "url": "https://github.com/ai-for-developers/awesome-ai-coding-tools/pull/387",
+      "note": "PR copy is stale; connected integration cannot write to upstream conversation."
+    }
+  },
+  "unverified": {
+    "pulseMcp": {
+      "status": "not_verified",
+      "note": "No completed submission or live listing has been verified yet."
+    }
+  }
+}
