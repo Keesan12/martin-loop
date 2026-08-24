@@ -116,13 +116,60 @@
     "awesomeAiCodingTools": {
       "status": "open_mergeable",
       "url": "https://github.com/ai-for-developers/awesome-ai-coding-tools/pull/387",
-      "note": "Existing PR copy is factual and technical; awaiting maintainer review."
+      "note": "Existing PR remains open and mergeable; connected GitHub integration currently blocks further external edits."
+    },
+    "mcpCentral": {
+      "status": "publication_automation_added",
+      "url": "https://mcpcentral.io",
+      "note": "Trusted MCP publishing workflow now targets MCPCentral with GitHub OIDC; current 0.5.6 publication is not marked live until registry verification succeeds."
+    },
+    "pulseMcp": {
+      "status": "submitted_by_email",
+      "url": "https://www.pulsemcp.com/servers",
+      "note": "Corporate-email listing/ingestion request sent from keesan@martinloop.com on 2026-08-24."
+    },
+    "mcpDirectory": {
+      "status": "submitted_by_email",
+      "url": "https://mcp.directory",
+      "note": "Corporate-email listing/claim request sent from keesan@martinloop.com on 2026-08-24."
+    },
+    "mcpServerFinder": {
+      "status": "submitted_by_email",
+      "url": "https://www.mcpserverfinder.com/servers",
+      "note": "Corporate-email listing request sent from keesan@martinloop.com on 2026-08-24."
+    },
+    "claudeRulesDirectory": {
+      "status": "submitted_by_email",
+      "note": "Free community listing request sent from keesan@martinloop.com on 2026-08-24."
+    },
+    "mcpServerHub": {
+      "status": "submitted_by_email",
+      "note": "Listing request sent from keesan@martinloop.com on 2026-08-24."
     }
   },
-  "unverified": {
-    "pulseMcp": {
-      "status": "not_verified",
-      "note": "No completed submission or live listing has been verified yet."
+  "manualTargets": {
+    "mcpMux": {
+      "status": "needs_fork_and_signed_pr",
+      "url": "https://github.com/mcpmux/mcp-servers",
+      "note": "High-intent one-click install registry; current connector has no fork action."
+    },
+    "chatMcpMarket": {
+      "status": "needs_fork_and_pr",
+      "url": "https://github.com/chatmcpclient/mcp_server_market",
+      "note": "ChatMCP market supports direct npx config; external issue/write attempt blocked by integration 403."
+    },
+    "dockerMcpRegistry": {
+      "status": "needs_dockerfile_and_validated_pr",
+      "url": "https://github.com/docker/mcp-registry",
+      "note": "MartinLoop does not currently ship a Dockerfile; do not submit until a container path is deliberately added and validated."
+    },
+    "findMcp": {
+      "status": "form_required",
+      "url": "https://findmcp.app/submit"
+    },
+    "mcpHub": {
+      "status": "form_required",
+      "url": "https://www.aimcp.info/en/submit"
     }
   }
 }
