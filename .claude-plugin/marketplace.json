@@ -1,0 +1,18 @@
+{
+  "name": "martinloop",
+  "owner": {
+    "name": "MartinLoop",
+    "email": "keesan@martinloop.com"
+  },
+  "plugins": [
+    {
+      "name": "martinloop",
+      "source": "./plugins/martinloop",
+      "description": "One system around coding agents to run, verify, recover, and hand off software work.",
+      "version": "0.5.6",
+      "author": {
+        "name": "MartinLoop contributors"
+      }
+    }
+  ]
+}
