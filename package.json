@@ -3,7 +3,7 @@
   "private": false,
   "version": "0.5.6",
   "type": "module",
-  "description": "Open-source command center for governed AI coding agents with built-in onboarding, hard gates, MCP, and shareable run receipts.",
+  "description": "One system around coding agents that helps people go from intent to production-quality software without stitching together separate tools.",
   "packageManager": "pnpm@10.33.0",
   "keywords": [
     "mcp",
