@@ -34,23 +34,59 @@
       "status": "live",
       "serverPage": "https://mcpservers.org/servers/keesan12/martin-loop",
       "note": "Live mirror listing verified 2026-08-24; mirror copy may lag the canonical repository metadata."
+    },
+    "awesomeAiDevtools": {
+      "status": "live",
+      "repository": "jamesmurdza/awesome-ai-devtools",
+      "url": "https://github.com/jamesmurdza/awesome-ai-devtools",
+      "note": "MartinLoop entry verified on the default-branch README 2026-08-24."
+    },
+    "awesomeAgentOrchestrators": {
+      "status": "live",
+      "repository": "andyrewlee/awesome-agent-orchestrators",
+      "url": "https://github.com/andyrewlee/awesome-agent-orchestrators",
+      "note": "MartinLoop entry verified on the default-branch README 2026-08-24."
+    },
+    "awesomeAiAgents2026": {
+      "status": "live",
+      "repository": "ARUNAGIRINATHAN-K/awesome-ai-agents-2026",
+      "url": "https://github.com/ARUNAGIRINATHAN-K/awesome-ai-agents-2026",
+      "note": "MartinLoop entry verified on the default-branch README 2026-08-24."
+    },
+    "awesomeAiDevTools": {
+      "status": "live",
+      "repository": "PierrunoYT/awesome-ai-dev-tools",
+      "url": "https://github.com/PierrunoYT/awesome-ai-dev-tools",
+      "note": "MartinLoop entry verified on the default-branch README 2026-08-24."
+    },
+    "awesomeMcpServersDhanushNehru": {
+      "status": "live",
+      "repository": "DhanushNehru/awesome-mcp-servers",
+      "url": "https://github.com/DhanushNehru/awesome-mcp-servers",
+      "note": "MartinLoop MCP entry verified under Development & DevOps on the default branch 2026-08-24."
+    },
+    "awesomeAiTools": {
+      "status": "live",
+      "repository": "pingan8787/awesome-ai-tools",
+      "url": "https://github.com/pingan8787/awesome-ai-tools",
+      "note": "MartinLoop entry verified in the Dev section on the default branch 2026-08-24."
     }
   },
   "pending": {
     "awesomeMcpServers": {
       "status": "open_mergeable",
       "url": "https://github.com/punkpeye/awesome-mcp-servers/pull/10851",
-      "note": "Glama condition is satisfied; latest follow-up has been posted."
+      "note": "Maintainer's Glama-score condition is satisfied; latest follow-up posted 2026-08-24; awaiting maintainer merge."
     },
     "mcpSo": {
       "status": "open",
       "url": "https://github.com/chatmcp/mcpso/issues/3290",
-      "note": "Follow-up posted 2026-08-24; listing not yet verified live."
+      "note": "Follow-up posted 2026-08-24 with package 0.5.6 and live registry/Smithery/Glama proof; no maintainer response yet."
     },
     "clineMarketplace": {
       "status": "open",
       "url": "https://github.com/cline/mcp-marketplace/issues/1627",
-      "note": "Original submission and follow-up updated to current MartinLoop narrative on 2026-08-24."
+      "note": "Submission and follow-up normalized to factual technical copy on 2026-08-24; no maintainer response yet."
     },
     "acuvity": {
       "status": "open",
@@ -64,21 +100,23 @@
     },
     "awesomeAgentHarness": {
       "status": "open_mergeable",
-      "url": "https://github.com/AutoJunjie/awesome-agent-harness/pull/28"
+      "url": "https://github.com/AutoJunjie/awesome-agent-harness/pull/28",
+      "note": "PR description and latest follow-up normalized to factual runtime/MCP copy on 2026-08-24."
     },
     "awesomeCodeAgents": {
       "status": "open_mergeable",
       "url": "https://github.com/sorrycc/awesome-code-agents/pull/33",
-      "note": "Fork diff updated to current narrative on 2026-08-24."
+      "note": "Fork diff, PR description, and latest follow-up normalized to factual technical copy on 2026-08-24."
     },
     "awesomeRalph": {
-      "status": "open",
-      "url": "https://github.com/snwfdhmp/awesome-ralph/pull/26"
+      "status": "open_mergeable",
+      "url": "https://github.com/snwfdhmp/awesome-ralph/pull/26",
+      "note": "PR title, description, and latest follow-up normalized to factual technical copy on 2026-08-24."
     },
     "awesomeAiCodingTools": {
       "status": "open_mergeable",
       "url": "https://github.com/ai-for-developers/awesome-ai-coding-tools/pull/387",
-      "note": "PR copy is stale; connected integration cannot write to upstream conversation."
+      "note": "Existing PR copy is factual and technical; awaiting maintainer review."
     }
   },
   "unverified": {
