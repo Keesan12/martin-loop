@@ -111,12 +111,12 @@ jobs:
           esac
 
       - name: Install mcp-publisher
-        if: steps.registry-state.outputs.publish_needed == 'true'
         working-directory: packages/mcp
         shell: bash
         run: |
           curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
           ./mcp-publisher --help
+          ./mcp-publisher validate
 
       - name: Authenticate to official MCP Registry
         if: steps.registry-state.outputs.publish_needed == 'true'
@@ -139,3 +139,28 @@ jobs:
             "https://registry.modelcontextprotocol.io/v0.1/servers/${ENCODED_NAME}/versions/${SERVER_VERSION}" \
             > /tmp/mcp-registry-verified.json
           cat /tmp/mcp-registry-verified.json
+
+      - name: Authenticate to MCPCentral
+        working-directory: packages/mcp
+        run: ./mcp-publisher login github-oidc --registry https://registry.mcpcentral.io
+
+      - name: Publish to MCPCentral
+        working-directory: packages/mcp
+        run: ./mcp-publisher publish
+
+      - name: Verify MCPCentral listing
+        shell: bash
+        env:
+          SERVER_NAME: ${{ steps.mcp-metadata.outputs.server_name }}
+        run: |
+          for attempt in 1 2 3 4 5; do
+            if curl --fail --show-error --silent \
+              "https://mcpcentral.io/api/servers/${SERVER_NAME}" \
+              > /tmp/mcpcentral-verified.json; then
+              cat /tmp/mcpcentral-verified.json
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "MCPCentral listing did not become readable after publication."
+          exit 1
