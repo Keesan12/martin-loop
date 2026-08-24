@@ -29,6 +29,11 @@
         "permissiveLicense": "A",
         "profileCompletion": "100%"
       }
+    },
+    "mcpserversOrg": {
+      "status": "live",
+      "serverPage": "https://mcpservers.org/servers/keesan12/martin-loop",
+      "note": "Live mirror listing verified 2026-08-24; mirror copy may lag the canonical repository metadata."
     }
   },
   "pending": {
