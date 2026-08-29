@@ -30,7 +30,7 @@ export interface CostGovernorState {
   shouldStop: boolean;
   remainingBudgetUsd: number;
   remainingIterations: number;
-  remainingTokens: number;
+  remainingTokens?: number;
   recommendedIntervention?: InterventionType;
 }
 
@@ -283,22 +283,21 @@ export function evaluateCostGovernor(input: {
 }): CostGovernorState {
   const remainingBudgetUsd = roundUsd(input.budget.maxUsd - input.cost.actualUsd);
   const remainingIterations = Math.max(input.budget.maxIterations - input.attemptsUsed, 0);
-  const remainingTokens = Math.max(
-    input.budget.maxTokens - input.cost.tokensIn - input.cost.tokensOut,
-    0
-  );
+  const remainingTokens = input.budget.maxTokens === undefined
+    ? undefined
+    : Math.max(input.budget.maxTokens - input.cost.tokensIn - input.cost.tokensOut, 0);
 
   if (
     input.cost.actualUsd >= input.budget.maxUsd ||
     input.attemptsUsed >= input.budget.maxIterations ||
-    remainingTokens <= 0
+    (remainingTokens !== undefined && remainingTokens <= 0)
   ) {
     return {
       pressure: "hard_limit",
       shouldStop: true,
       remainingBudgetUsd,
       remainingIterations,
-      remainingTokens,
+      ...(remainingTokens !== undefined ? { remainingTokens } : {}),
       recommendedIntervention: "stop_loop"
     };
   }
@@ -309,7 +308,7 @@ export function evaluateCostGovernor(input: {
       shouldStop: false,
       remainingBudgetUsd,
       remainingIterations,
-      remainingTokens,
+      ...(remainingTokens !== undefined ? { remainingTokens } : {}),
       recommendedIntervention: "compress_context"
     };
   }
@@ -319,7 +318,7 @@ export function evaluateCostGovernor(input: {
     shouldStop: false,
     remainingBudgetUsd,
     remainingIterations,
-    remainingTokens
+    ...(remainingTokens !== undefined ? { remainingTokens } : {})
   };
 }
 

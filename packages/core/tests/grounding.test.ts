@@ -1,7 +1,9 @@
+import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
 
 import { describe, expect, it } from "vitest";
 
@@ -11,6 +13,8 @@ import {
   queryRepoGroundingIndex,
   scanPatchForGroundingViolations
 } from "../src/index";
+
+const execFileAsync = promisify(execFile);
 
 describe("repo grounding index", () => {
   it("indexes repo files and returns relevant hits for the current objective", async () => {
@@ -76,6 +80,49 @@ describe("repo grounding index", () => {
 });
 
 describe("scanPatchForGroundingViolations", () => {
+  it("grounds a pre-existing tracked text result without treating scope permission as provenance", async () => {
+    const root = await mkdtemp(join(tmpdir(), "martin-scan-tracked-text-"));
+    await writeFile(join(root, "RESULT.txt"), "PLACEHOLDER_WRONG_CONTENT\n", "utf8");
+    await execFileAsync("git", ["-C", root, "init"]);
+    await execFileAsync("git", ["-C", root, "add", "RESULT.txt"]);
+
+    const index = await buildRepoGroundingIndex(root);
+    const diff = `--- a/RESULT.txt
++++ b/RESULT.txt
+@@ -1 +1 @@
+-PLACEHOLDER_WRONG_CONTENT
++MARTINLOOP_057_FINAL_E2E_OK`;
+
+    const result = scanPatchForGroundingViolations(diff, index, {
+      allowedPaths: ["RESULT.txt"]
+    });
+
+    expect(index.files.map((file) => file.path)).not.toContain("RESULT.txt");
+    expect(index.trackedPaths).toContain("RESULT.txt");
+    expect(result.violations).toEqual([]);
+    expect(result.resolvedFiles).toContain("RESULT.txt");
+  });
+
+  it("does not treat an allowed path as repository grounding evidence", async () => {
+    const root = await mkdtemp(join(tmpdir(), "martin-scan-allowed-not-grounded-"));
+    const index = await buildRepoGroundingIndex(root);
+    const diff = `--- a/RESULT.txt
++++ b/RESULT.txt
+@@ -0,0 +1 @@
++MARTINLOOP_057_FINAL_E2E_OK`;
+
+    const result = scanPatchForGroundingViolations(diff, index, {
+      allowedPaths: ["RESULT.txt"]
+    });
+
+    expect(result.violations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "file_not_found", reference: "RESULT.txt" })
+    ]));
+    expect(result.violations).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "patch_outside_allowed_paths" })
+    ]));
+  });
+
   it("accepts an allowed new file and symbols declared by that patch", async () => {
     const root = await mkdtemp(join(tmpdir(), "martin-scan-new-file-"));
     await mkdir(join(root, "packages", "contracts", "src"), { recursive: true });

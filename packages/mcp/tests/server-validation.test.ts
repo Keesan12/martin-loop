@@ -1,8 +1,12 @@
+import { EventEmitter } from "node:events";
+import type { ChildProcess, SpawnOptions } from "node:child_process";
+import { PassThrough } from "node:stream";
 import { symlink, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import type { SpawnLike } from "@martin/adapters";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -17,7 +21,10 @@ import {
   resolveTrustedLoopRepoRoot,
   validateToolInput
 } from "../src/server-validation.js";
-import { __setRunStoreOverrideForTests } from "../src/tools/run-loop.js";
+import {
+  __setProofModeVerifierSpawnImplForTests,
+  __setRunStoreOverrideForTests
+} from "../src/tools/run-loop.js";
 import {
   connectMartinMcpHttpServer,
   createMartinMcpServer,
@@ -29,7 +36,25 @@ type ServerWithRequestHandlers = {
   _requestHandlers: Map<string, ServerRequestHandler>;
 };
 
+function createImmediateSpawn(calls: Array<{ command: string; args: readonly string[]; options?: SpawnOptions }>): SpawnLike {
+  return (command, args = [], options) => {
+    calls.push({ command, args, options });
+    const child = new EventEmitter() as Partial<ChildProcess> & {
+      stdout: PassThrough;
+      stderr: PassThrough;
+      stdin: PassThrough;
+    };
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    child.stdin = new PassThrough();
+    child.kill = () => true;
+    process.nextTick(() => child.emit("close", 0));
+    return child as ChildProcess;
+  };
+}
+
 afterEach(() => {
+  __setProofModeVerifierSpawnImplForTests(undefined);
   __setRunStoreOverrideForTests(undefined);
 });
 
@@ -625,6 +650,9 @@ describe("server validation", () => {
       await withValidationWorkspaceRoot(async (workspaceRoot) => {
         const previousLive = process.env.MARTIN_LIVE;
         process.env.MARTIN_LIVE = "false";
+        const verifierCalls: Array<{ command: string; args: readonly string[]; options?: SpawnOptions }> = [];
+        __setProofModeVerifierSpawnImplForTests(createImmediateSpawn(verifierCalls));
+
         try {
           await withMemoryRunStore(async (memoryRunsRoot) => {
             __setRunStoreOverrideForTests(createMemoryRunStore(memoryRunsRoot));
@@ -749,6 +777,9 @@ describe("server validation", () => {
                 maxIterations: 1
               }
             });
+            expect(verifierCalls).toHaveLength(1);
+            expect(verifierCalls[0]?.command).toBe("node");
+            expect(verifierCalls[0]?.args).toEqual(["--version"]);
           });
         } finally {
           if (previousLive === undefined) {
@@ -766,6 +797,9 @@ describe("server validation", () => {
       await withValidationWorkspaceRoot(async (workspaceRoot) => {
         const previousLive = process.env.MARTIN_LIVE;
         process.env.MARTIN_LIVE = "false";
+        const verifierCalls: Array<{ command: string; args: readonly string[]; options?: SpawnOptions }> = [];
+        __setProofModeVerifierSpawnImplForTests(createImmediateSpawn(verifierCalls));
+
         try {
           await withMemoryRunStore(async (memoryRunsRoot) => {
             __setRunStoreOverrideForTests(createMemoryRunStore(memoryRunsRoot));
@@ -853,6 +887,9 @@ describe("server validation", () => {
             );
 
             expect((runResult as { isError?: boolean }).isError).not.toBe(true);
+            expect(verifierCalls).toHaveLength(1);
+            expect(verifierCalls[0]?.command).toBe("node");
+            expect(verifierCalls[0]?.args).toEqual(["--version"]);
           });
         } finally {
           if (previousLive === undefined) {

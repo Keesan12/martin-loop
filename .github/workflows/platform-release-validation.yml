@@ -42,8 +42,12 @@ jobs:
         env:
           MARTIN_RELEASE_MATRIX_OUTDIR: .artifacts/release-matrix/${{ matrix.os }}
         run: |
+          pnpm release:clean-check
+          node ./scripts/fleet-release-authority-check.mjs --source
           node ./scripts/release-truth-check.mjs --allow-divergence-marker=[sync-parity]
           node ./scripts/release-matrix.mjs
+          node ./scripts/fleet-release-authority-check.mjs --built
+          pnpm release:clean-check
 
       - name: Upload platform validation artifacts
         if: always()

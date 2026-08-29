@@ -1,5 +1,4 @@
 // SPDX-FileCopyrightText: MartinLoop contributors
-//
 // SPDX-License-Identifier: Apache-2.0
 
 import { createHash, randomUUID } from "node:crypto";
@@ -143,15 +142,9 @@ export async function uninstallMartinMcp(
   return records;
 }
 
-export async function writeFileAtomically(
-  targetPath: string,
-  content: string
-): Promise<void> {
+export async function writeFileAtomically(targetPath: string, content: string): Promise<void> {
   await mkdir(dirname(targetPath), { recursive: true });
-  const temporaryPath = join(
-    dirname(targetPath),
-    `.${basename(targetPath)}.${randomUUID()}.tmp`
-  );
+  const temporaryPath = join(dirname(targetPath), `.${basename(targetPath)}.${randomUUID()}.tmp`);
 
   try {
     await writeFile(temporaryPath, content, { encoding: "utf8", flag: "wx" });

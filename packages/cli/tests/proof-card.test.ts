@@ -63,7 +63,7 @@ describe("Martin proof cards", () => {
     });
 
     expect(renderMartinProofCardMarkdown(proofCard)).toContain(
-      "No-spend proof runs are evidence boundaries, not real Martin mutation receipts."
+      "Proof or verifier-only runs are evidence boundaries, not real Martin mutation receipts."
     );
     expect(proofCard.proofVerdict).toBe("EVIDENCE_BOUNDARY");
   });

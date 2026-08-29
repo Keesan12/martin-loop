@@ -4,22 +4,6 @@ Operator-first CLI for Martin Loop.
 
 Examples below assume either the installed `martin` alias, `npx martin-loop`, or `pnpm exec martin-loop`.
 
-## Current execution-control experience
-
-The CLI governs coding-agent work as one connected lifecycle:
-
-```text
-DEFINE -> PREFLIGHT -> CONTROL -> VERIFY -> RECOVER -> PROVE -> ANALYZE
-```
-
-The product-level flow is **Definition of Done -> Controlled Run -> Verified Handoff**.
-
-The coding agent still performs the software work. MartinLoop controls the run around it with preflight readiness, budgets, attempts, scope, stop conditions, verifier evidence, recovery state, receipts, history, and post-run analysis.
-
-Final governed outcomes are `VERIFIED`, `STOPPED`, or `NEEDS REVIEW`. A verifier failure can still lead to repair and another attempt while policy and budget allow. It is not automatically a hard stop.
-
-For agent-readable context see [`../../llms.txt`](../../llms.txt), [`../../llms-full.txt`](../../llms-full.txt), and [`../../docs/for-agents.md`](../../docs/for-agents.md).
-
 The CLI now treats execution, diagnosis, persisted-run inspection, and MCP host setup as one product family:
 
 - `martin doctor`
@@ -53,28 +37,6 @@ npx martin-loop doctor
 - default: human-readable summaries
 - `--json`: stable machine-readable payloads
 - `--quiet`: script-friendly primary identifier or path only
-
-Terminal color, motion, and Arcade are presentation-only. They are not part of JSON evidence or governed decision authority.
-
-## Codex host compatibility
-
-MartinLoop 0.5.3 does not assume one universal Codex CLI flag contract.
-
-For a Codex run the CLI resolves the executable it will actually use, reads the capabilities advertised by that binary, keeps global and `exec` option scope intact, negotiates a supported write strategy, proves workspace write ability before launch readiness, and reuses that execution contract for the governed run.
-
-Unsupported optional flags are omitted instead of guessed. MartinLoop does not silently widen sandbox permission as a compatibility fallback. Without an explicit `--model`, Codex keeps model-selection authority.
-
-## MartinLoop Arcade
-
-Interactive governed runs can offer MartinLoop Arcade while the coding agent keeps working in the background.
-
-- `--arcade` offers or starts Arcade immediately when supported
-- `--no-arcade` suppresses it for the run
-- the run continues independently of game input
-- Arcade cannot change budget, verification, policy, final outcome, or receipt evidence
-- Arcade stays disabled in JSON, CI, non-TTY, and other machine-readable paths
-
-See [`src/arcade/README.md`](src/arcade/README.md) for the presentation contract.
 
 ## MCP profiles
 

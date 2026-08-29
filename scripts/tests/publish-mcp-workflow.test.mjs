@@ -32,7 +32,7 @@ test("publish-mcp workflow enforces mcp tag parity against package and server me
   assert.match(workflow, /does not match server\.json version/);
 });
 
-test("publish-mcp workflow covers trusted publishing, published smoke, and registry handoff", async () => {
+test("publish-mcp workflow covers trusted publishing, local-pack proof, and published smoke", async () => {
   const workflowPath = path.join(ROOT_DIR, ".github", "workflows", "publish-mcp.yml");
   const workflow = await readFile(workflowPath, "utf8");
 
@@ -40,7 +40,6 @@ test("publish-mcp workflow covers trusted publishing, published smoke, and regis
   assert.match(workflow, /inputs:\s*[\s\S]*tag:/);
   assert.match(workflow, /permissions:\s*[\s\S]*id-token:\s*write/);
   assert.match(workflow, /permissions:\s*[\s\S]*contents:\s*write/);
-  assert.match(workflow, /permissions:\s*[\s\S]*actions:\s*write/);
   assert.match(workflow, /pnpm install --frozen-lockfile/);
   assert.match(workflow, /pnpm --filter @martinloop\/mcp lint/);
   assert.match(workflow, /pnpm --filter @martinloop\/mcp test/);
@@ -48,6 +47,10 @@ test("publish-mcp workflow covers trusted publishing, published smoke, and regis
   assert.match(workflow, /pnpm --filter @martinloop\/mcp smoke:pack/);
   assert.match(workflow, /pnpm --filter @martinloop\/mcp smoke:published:pack/);
   assert.match(workflow, /pnpm --filter @martinloop\/mcp verify:release/);
+  assert.match(workflow, /pnpm release:authority:check/);
+  assert.match(workflow, /pnpm release:authority:check:built/);
+  assert.match(workflow, /pnpm --filter @martinloop\/mcp version:check/);
+  assert.equal(workflow.match(/pnpm release:clean-check/g)?.length, 2);
   assert.match(workflow, /npm publish --access public --provenance/);
   assert.match(workflow, /npm view "@martinloop\/mcp@\$\{\{ steps\.mcp-metadata\.outputs\.package_version \}\}" version/);
   assert.match(workflow, /pnpm --filter @martinloop\/mcp smoke:published/);
@@ -57,9 +60,6 @@ test("publish-mcp workflow covers trusted publishing, published smoke, and regis
   assert.match(workflow, /softprops\/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b/);
   assert.match(workflow, /name:\s*"@martinloop\/mcp/);
   assert.match(workflow, /body_path:\s*"docs\/release\/MCP-\$\{\{\s*steps\.mcp-metadata\.outputs\.package_version\s*\}\}-RELEASE-NOTES\.md"/);
-  assert.match(workflow, /Register published MCP release/);
-  assert.match(workflow, /gh workflow run register-current-mcp\.yml --ref main -f tag="\$RELEASE_TAG"/);
-  assert.match(workflow, /RELEASE_TAG:\s*\$\{\{ steps\.release-vars\.outputs\.tag \}\}/);
   assert.doesNotMatch(workflow, /registry-url/);
   assert.doesNotMatch(workflow, /NODE_AUTH_TOKEN/);
   assert.doesNotMatch(workflow, /NPM_TOKEN/);

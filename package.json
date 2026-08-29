@@ -1,9 +1,9 @@
 {
   "name": "martin-loop",
   "private": false,
-  "version": "0.5.6",
+  "version": "0.5.7",
   "type": "module",
-  "description": "One system around coding agents that helps people go from intent to production-quality software without stitching together separate tools.",
+  "description": "Open-source command center for governed AI coding agents with built-in onboarding, hard gates, MCP, and shareable run receipts.",
   "packageManager": "pnpm@10.33.0",
   "keywords": [
     "coding-agent",
@@ -32,7 +32,7 @@
   "homepage": "https://martinloop.com/",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Keesan12/martin-loop.git"
+    "url": "https://github.com/Keesan12/martin-loop.git"
   },
   "bugs": {
     "url": "https://github.com/Keesan12/martin-loop/issues"
@@ -40,8 +40,8 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "martin": "dist/bin/martin-loop.js",
-    "martin-loop": "dist/bin/martin-loop.js"
+    "martin": "./dist/bin/martin-loop.js",
+    "martin-loop": "./dist/bin/martin-loop.js"
   },
   "exports": {
     ".": {
@@ -84,6 +84,9 @@
     "lint": "pnpm -r lint",
     "release:truth:generate": "node scripts/public-release-truth.mjs",
     "release:truth:check": "node scripts/public-release-truth.mjs --check",
+    "release:authority:check": "node scripts/fleet-release-authority-check.mjs --source",
+    "release:authority:check:built": "node scripts/fleet-release-authority-check.mjs --built",
+    "release:clean-check": "node scripts/assert-clean-worktree.mjs",
     "product-truth:validate": "node scripts/validate-product-truth.mjs",
     "install:links": "node scripts/generate-install-links.mjs --markdown",
     "public:copy-scan": "node ./scripts/public-copy-scan.mjs",
@@ -102,7 +105,9 @@
     "release:matrix:local": "node ./scripts/release-matrix.mjs",
     "release:truth-check": "node ./scripts/release-truth-check.mjs --allow-divergence-marker=[sync-parity]",
     "run:cli": "pnpm --filter @martin/cli dev",
-    "public:promotion-guard": "node scripts/public-portability-guard.mjs"
+    "public:promotion-guard": "node scripts/verify-public-promotion.mjs",
+    "test:promotion-guard": "node --test scripts/tests/verify-public-promotion.test.mjs",
+    "hooks:install:claude-public-write-guard": "node scripts/hooks/install-claude-public-write-hook.js"
   },
   "devDependencies": {
     "@types/node": "^22.13.10",
@@ -135,9 +140,5 @@
       "qs": "^6.15.2",
       "vite": "^7.3.2"
     }
-  },
-  "directories": {
-    "doc": "docs",
-    "example": "examples"
   }
 }

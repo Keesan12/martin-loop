@@ -238,7 +238,7 @@ function hashBudget(budget: LoopBudget): string {
     maxUsd: Number(budget.maxUsd.toFixed(4)),
     softLimitUsd: Number(budget.softLimitUsd.toFixed(4)),
     maxIterations: budget.maxIterations,
-    maxTokens: budget.maxTokens
+    ...(budget.maxTokens !== undefined ? { maxTokens: budget.maxTokens } : {})
   };
   return createHash("sha256").update(JSON.stringify(normalized)).digest("hex").slice(0, 12);
 }

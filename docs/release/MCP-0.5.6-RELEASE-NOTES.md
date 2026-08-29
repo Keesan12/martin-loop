@@ -1,5 +1,12 @@
 # @martinloop/mcp 0.5.6
 
-The 0.5.6 MCP package adds a read-only Arcade resource, aligns runtime and package version reporting, and hardens clean-consumer startup across supported platforms.
+This release strengthens packaged MCP portability and version integrity.
 
-Governance semantics are stricter: empty verifier plans cannot produce a `VERIFIED` handoff, while execution-only workflows remain available with an explicit non-verified result.
+## Changes
+
+- Canonicalizes temporary workspace paths in the packed-package smoke lane.
+- Keeps package, server initialization, plugin, MCPB product, and install metadata aligned at `0.5.6`.
+- Includes the read-only Arcade MCP App resource surface while retaining one governed execution authority.
+- Fails release validation when generated runtime metadata or source TypeScript resolution drifts.
+
+The MCPB manifest schema remains `0.3`; `0.5.6` is the product version.

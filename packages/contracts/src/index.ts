@@ -133,7 +133,7 @@ export interface LoopBudget {
   maxUsd: number;
   softLimitUsd: number;
   maxIterations: number;
-  maxTokens: number;
+  maxTokens?: number;
 }
 
 export interface LoopCost {
@@ -441,8 +441,7 @@ export interface ContractOptions {
 export const DEFAULT_BUDGET: LoopBudget = {
   maxUsd: 25,
   softLimitUsd: 15,
-  maxIterations: 8,
-  maxTokens: 80_000
+  maxIterations: 8
 };
 
 export const EMPTY_COST: LoopCost = {

@@ -114,24 +114,25 @@ export async function runPublicFacadeSmoke(options = {}) {
 
     const governedWorkspace = path.join(appDir, "governed-workspace");
     const governedRunsDir = path.join(appDir, ".martin-runs");
-    const governedGroundingDir = path.join(appDir, ".martin-grounding");
-    const governedIntegrityDir = path.join(appDir, ".martin-receipt-integrity");
-    await mkdir(governedWorkspace, { recursive: true });
-    await initializeGitRepo(governedWorkspace);
+      const governedGroundingDir = path.join(appDir, ".martin-grounding");
+      const governedIntegrityDir = path.join(appDir, ".martin-receipt-integrity");
+      await mkdir(governedWorkspace, { recursive: true });
+      await initializeGitRepo(governedWorkspace);
+      const noopVerifier = await createNoopVerifier(tempRoot);
 
-    const fakeCodex = await createFakeCodexCli(tempRoot);
-    const governedEnv = {
-      LOCALAPPDATA: fakeCodex.localAppData,
-      MARTIN_LIVE: "true",
-      MARTIN_RUNS_DIR: governedRunsDir,
-      MARTIN_GROUNDING_DIR: governedGroundingDir,
-      MARTIN_INTEGRITY_KEY_DIR: governedIntegrityDir,
-      PATH: withPrependedPath(process.env.PATH ?? "", fakeCodex.binDir),
-    };
+      const fakeCodex = await createFakeCodexCli(tempRoot);
+      const governedEnv = {
+        APPDATA: fakeCodex.appData,
+        LOCALAPPDATA: fakeCodex.localAppData,
+        MARTIN_LIVE: "true",
+        MARTIN_RUNS_DIR: governedRunsDir,
+        MARTIN_GROUNDING_DIR: governedGroundingDir,
+        MARTIN_INTEGRITY_KEY_DIR: governedIntegrityDir,
+        PATH: withPrependedPath(filterRealCodexPath(process.env.PATH ?? ""), fakeCodex.binDir),
+      };
 
-    const noopVerifier = process.platform === "win32" ? "cmd /c exit 0" : "true";
-    await runCommand(
-      [
+      await runCommand(
+        [
         "npx",
         "martin-loop",
         "--json",
@@ -161,9 +162,9 @@ export async function runPublicFacadeSmoke(options = {}) {
     await runCommand(
       [
         "npx",
-        "martin-loop",
-        "estimate",
-        "Fix the bug",
+          "martin-loop",
+          "estimate",
+          "FixBug",
         "--engine",
         "codex",
         "--cwd",
@@ -187,8 +188,8 @@ export async function runPublicFacadeSmoke(options = {}) {
         governedWorkspace,
         "--runs-dir",
         governedRunsDir,
-        "--objective",
-        "Fix the bug",
+          "--objective",
+          "FixBug",
         "--verify",
         noopVerifier,
         "--max-iterations",
@@ -214,8 +215,8 @@ export async function runPublicFacadeSmoke(options = {}) {
         governedWorkspace,
         "--runs-dir",
         governedRunsDir,
-        "--objective",
-        "Fix the bug",
+          "--objective",
+          "FixBug",
         "--verify",
         noopVerifier,
         "--max-iterations",
@@ -242,8 +243,8 @@ export async function runPublicFacadeSmoke(options = {}) {
         governedWorkspace,
         "--runs-dir",
         path.join(appDir, ".martin-runs-bypass"),
-        "--objective",
-        "Fix the bug",
+          "--objective",
+          "FixBug",
         "--verify",
         noopVerifier,
         "--max-iterations",
@@ -385,8 +386,10 @@ function buildLifecycleSafeEnv(sourceEnv = process.env) {
 
 async function createFakeCodexCli(tempRoot) {
   const binDir = path.join(tempRoot, "fake-codex-bin");
+  const appData = path.join(tempRoot, "appdata");
   const localAppData = path.join(tempRoot, "localappdata");
   await mkdir(binDir, { recursive: true });
+  await mkdir(appData, { recursive: true });
   await mkdir(localAppData, { recursive: true });
 
   const implementation = path.join(binDir, "fake-codex.mjs");
@@ -410,7 +413,6 @@ async function createFakeCodexCli(tempRoot) {
     "  console.log('  --json');",
     "  console.log('  --color <WHEN> [possible values: always, never, auto]');",
     "  console.log('  [PROMPT]');",
-    "  console.log(\"Read prompt from stdin when '-' is supplied.\");",
     "  process.exit(0);",
     "}",
     "",
@@ -419,7 +421,7 @@ async function createFakeCodexCli(tempRoot) {
     "  process.exit(2);",
     "}",
     "",
-    "const prompt = args.at(-1) === '-' ? readFileSync(0, 'utf8') : (args.at(-1) ?? '');",
+    "const prompt = args.at(-1) === '-' ? readFileSync(0, 'utf8') : args.join(' ');",
     "const marker = prompt.match(/\\.martin-codex-write-probe-[A-Za-z0-9.-]+\\.tmp/u)?.[0];",
     "if (marker) {",
     "  writeFileSync(marker, 'MARTIN_CODEX_WRITE_OK', 'utf8');",
@@ -436,7 +438,7 @@ async function createFakeCodexCli(tempRoot) {
   if (process.platform === "win32") {
     const script = [
       "@echo off",
-      `\"${process.execPath}\" \"%~dp0fake-codex.mjs\" %*`,
+      `\"${process.execPath}\" \"%~dp0\\fake-codex.mjs\" %*`,
       "exit /b %errorlevel%",
       "",
     ].join("\r\n");
@@ -454,8 +456,20 @@ async function createFakeCodexCli(tempRoot) {
 
   return {
     binDir,
+    appData,
     localAppData,
   };
+}
+
+async function createNoopVerifier(tempRoot) {
+  const verifierPath = path.join(tempRoot, process.platform === "win32" ? "verify.cmd" : "verify.sh");
+  if (process.platform === "win32") {
+    await writeFile(verifierPath, "@echo off\r\nexit /b 0\r\n", "utf8");
+  } else {
+    await writeFile(verifierPath, "#!/usr/bin/env sh\nexit 0\n", "utf8");
+    await chmod(verifierPath, 0o755);
+  }
+  return verifierPath;
 }
 
 async function initializeGitRepo(directory) {
@@ -469,6 +483,17 @@ function withPrependedPath(originalPath, directory) {
   return originalPath.length > 0
     ? `${directory}${process.platform === "win32" ? ";" : ":"}${originalPath}`
     : directory;
+}
+
+function filterRealCodexPath(originalPath) {
+  const delimiter = process.platform === "win32" ? ";" : ":";
+  return originalPath
+    .split(delimiter)
+    .filter((entry) => {
+      const normalized = entry.replace(/\\/g, "/").toLowerCase();
+      return !normalized.includes("/openai/codex/bin") && !normalized.includes("/appdata/roaming/npm");
+    })
+    .join(delimiter);
 }
 
 async function main() {

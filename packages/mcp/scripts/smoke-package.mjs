@@ -10,6 +10,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
 import { buildStandaloneMcpPackage } from "./build-package-lib.mjs";
+import { resolveSmokeWorkspaceRoot } from "./smoke-paths.mjs";
 
 const REQUIRED_TOOLS = [
   "martin_doctor",
@@ -25,6 +26,7 @@ const REQUIRED_TOOLS = [
   "martin_run_dossier",
 ];
 export const PUBLISHED_PACKAGE_SPEC = "@martinloop/mcp";
+
 const REQUIRED_TARBALL_FILES = [
   "README.md",
   "dist/server.d.ts",
@@ -68,6 +70,7 @@ const SMOKE_LOOP_RECORD = {
 export async function runStandaloneMcpSmoke(options = {}) {
   const packageDir = path.resolve(options.packageDir ?? fileURLToPath(new URL("..", import.meta.url)));
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), "martin-mcp-smoke-"));
+  const workspaceRoot = await resolveSmokeWorkspaceRoot(tempRoot);
   const packDir = path.join(tempRoot, "pack");
   const installRoot = path.join(tempRoot, "install");
   const npmCacheDir = path.join(tempRoot, ".npm-cache");
@@ -122,7 +125,7 @@ export async function runStandaloneMcpSmoke(options = {}) {
     transport = new StdioClientTransport({
       command: launch.command,
       args: launch.args,
-      cwd: tempRoot,
+      cwd: workspaceRoot,
       env: {
         ...sanitizePackageManagerEnv(process.env),
         MARTIN_LIVE: "false",
@@ -176,7 +179,7 @@ export async function runStandaloneMcpSmoke(options = {}) {
       name: "martin_preflight",
       arguments: {
         objective: "Verify packaged MCP human proof surface",
-        workingDirectory: tempRoot,
+        workingDirectory: workspaceRoot,
         engine: "codex",
         verificationPlan: ["node --version"],
         maxUsd: 1,
@@ -184,6 +187,9 @@ export async function runStandaloneMcpSmoke(options = {}) {
       },
     });
     const preflightPayload = readStructuredContent(preflightResult, "martin_preflight");
+    if (preflightPayload.receiptScope?.workingDirectory !== workspaceRoot) {
+      throw new Error("Packaged martin_preflight did not preserve the canonical workspace root.");
+    }
     const preflightPresentation = assertHumanFirstCompatibilityResponse(
       preflightResult,
       "martin_preflight",

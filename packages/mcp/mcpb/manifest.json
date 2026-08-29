@@ -3,22 +3,41 @@
   "manifest_version": "0.3",
   "name": "martinloop",
   "display_name": "MartinLoop",
-  "version": "0.5.6",
-  "description": "One system around coding agents for taking software work from intent to a production-quality handoff without stitching together separate tools.",
-  "long_description": "MartinLoop connects the work around coding agents so people can define what should ship, run the agent, verify the result, recover when something goes wrong, and understand the handoff in one workflow. It runs locally so it can work inside user-approved repositories without uploading source code to a hosted MartinLoop service.",
-  "author": {"name":"MartinLoop","email":"keesan@martinloop.com","url":"https://martinloop.com"},
-  "repository": {"type":"git","url":"https://github.com/Keesan12/martin-loop.git"},
+  "version": "0.5.7",
+  "description": "Govern AI coding-agent work with budgets, stop limits, and verifier-backed evidence.",
+  "long_description": "MartinLoop adds budgets, stop conditions, controlled execution, rollback evidence, and auditable run records to AI coding-agent workflows. The MCPB runs locally and operates only on the workspace and run-storage directories selected during installation.",
+  "author": {
+    "name": "MartinLoop",
+    "email": "keesan@martinloop.com",
+    "url": "https://martinloop.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Keesan12/martin-loop.git"
+  },
   "homepage": "https://martinloop.com",
   "documentation": "https://github.com/Keesan12/martin-loop#readme",
   "support": "https://github.com/Keesan12/martin-loop/issues",
   "license": "Apache-2.0",
-  "keywords": ["ai-agents","agent-governance","coding-agents","budgets","verification","rollback","audit","receipts","mcp"],
+  "keywords": [
+    "ai-agents",
+    "agent-governance",
+    "coding-agents",
+    "budgets",
+    "verification",
+    "rollback",
+    "audit",
+    "receipts",
+    "mcp"
+  ],
   "server": {
     "type": "node",
     "entry_point": "server/dist/server.js",
     "mcp_config": {
       "command": "node",
-      "args": ["${__dirname}/server/dist/server.js"],
+      "args": [
+        "${__dirname}/server/dist/server.js"
+      ],
       "env": {
         "MARTIN_MCP_WORKSPACE_ROOT": "${user_config.workspace_root}",
         "MARTIN_RUNS_DIR": "${user_config.runs_root}",
@@ -27,11 +46,36 @@
     }
   },
   "user_config": {
-    "workspace_root": {"type":"directory","title":"Workspace repository","description":"The repository or workspace MartinLoop is allowed to inspect and govern.","required":true},
-    "runs_root": {"type":"directory","title":"MartinLoop run storage","description":"Local directory used for MartinLoop receipts, evidence, and run records.","required":true},
-    "live_mode": {"type":"boolean","title":"Enable live execution","description":"Allow tools that can start or control live agent execution. Leave disabled for inspection-only use.","default":false,"required":true}
+    "workspace_root": {
+      "type": "directory",
+      "title": "Workspace repository",
+      "description": "The repository or workspace MartinLoop is allowed to inspect and govern.",
+      "required": true
+    },
+    "runs_root": {
+      "type": "directory",
+      "title": "MartinLoop run storage",
+      "description": "Local directory used for MartinLoop receipts, evidence, and run records.",
+      "required": true
+    },
+    "live_mode": {
+      "type": "boolean",
+      "title": "Enable live execution",
+      "description": "Allow tools that can start or control live agent execution. Leave disabled for inspection-only use.",
+      "default": false,
+      "required": true
+    }
   },
-  "compatibility": {"platforms":["darwin","win32","linux"],"runtimes":{"node":">=20.0.0"}},
+  "compatibility": {
+    "platforms": [
+      "darwin",
+      "win32",
+      "linux"
+    ],
+    "runtimes": {
+      "node": ">=20.0.0"
+    }
+  },
   "tools_generated": true,
   "prompts_generated": true
 }

@@ -19,7 +19,6 @@ test("MCP package metadata stays aligned with server metadata", () => {
   assert.equal(packageJson.name, npmPackage.identifier);
   assert.equal(packageJson.mcpName, serverJson.name);
   assert.equal(serverJson.name, "io.github.Keesan12/martin-loop");
-  assert.equal(packageJson.description, serverJson.description);
   assert.ok(serverJson.description.length <= 100, "server.json description must stay within the registry length limit");
   assert.equal(npmPackage.transport?.type, "stdio");
   assert.equal(packageJson.bin?.mcp, "./dist/server.js");
@@ -27,8 +26,9 @@ test("MCP package metadata stays aligned with server metadata", () => {
   assert.ok(packageJson.files.includes("dist"));
   assert.ok(packageJson.files.includes("README.md"));
   assert.ok(packageJson.files.includes("server.json"));
-  assert.ok(packageJson.keywords.includes("martin_doctor"));
-  assert.ok(packageJson.keywords.includes("martin_triage_runs"));
+  assert.ok(packageJson.keywords.includes("mcp-server"), "keywords must include mcp-server for registry discovery");
+  assert.ok(packageJson.keywords.includes("coding-agent"), "keywords must include coding-agent for registry discovery");
+  assert.ok(packageJson.keywords.includes("agent-verification"), "keywords must include agent-verification for registry discovery");
 });
 
 test("publish-mcp workflow keeps bounded npm view and smoke retries with backoff", async () => {

@@ -14,7 +14,7 @@ export function compileExecutionPolicy(input: ExecutionPolicyCompileInput): Exec
     maxUsd: resolveBudgetField("maxUsd", input, provenance),
     softLimitUsd: resolveBudgetField("softLimitUsd", input, provenance),
     maxIterations: resolveBudgetField("maxIterations", input, provenance),
-    maxTokens: resolveBudgetField("maxTokens", input, provenance)
+    ...resolveOptionalTokenBudget(input, provenance)
   };
 
   if (budget.softLimitUsd >= budget.maxUsd) {
@@ -118,8 +118,28 @@ export function compileExecutionPolicy(input: ExecutionPolicyCompileInput): Exec
   });
 }
 
+function resolveOptionalTokenBudget(
+  input: ExecutionPolicyCompileInput,
+  provenance: ExecutionPolicy["provenance"]
+): Pick<ExecutionPolicy["budget"], "maxTokens"> {
+  if (input.request.budgetOverrides?.maxTokens && input.request.budget.maxTokens !== undefined) {
+    provenance.push({ field: "budget.maxTokens", source: "request", value: String(input.request.budget.maxTokens) });
+    return { maxTokens: input.request.budget.maxTokens };
+  }
+  const configValue = input.config?.budget?.maxTokens;
+  if (typeof configValue === "number" && Number.isFinite(configValue)) {
+    provenance.push({ field: "budget.maxTokens", source: "config", value: String(configValue) });
+    return { maxTokens: configValue };
+  }
+  if (input.defaults.budget.maxTokens !== undefined) {
+    provenance.push({ field: "budget.maxTokens", source: "default", value: String(input.defaults.budget.maxTokens) });
+    return { maxTokens: input.defaults.budget.maxTokens };
+  }
+  return {};
+}
+
 function resolveBudgetField(
-  field: keyof ExecutionPolicy["budget"],
+  field: Exclude<keyof ExecutionPolicy["budget"], "maxTokens">,
   input: ExecutionPolicyCompileInput,
   provenance: ExecutionPolicy["provenance"]
 ): number {

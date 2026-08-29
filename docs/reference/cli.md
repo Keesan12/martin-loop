@@ -52,6 +52,7 @@ npx -y martin-loop@latest share --latest
 --soft-limit-usd <n>    Soft budget threshold in USD
 --verify <cmd>          Verifier command after each attempt
 --proof                 Explicitly opt into a no-spend proof adapter lane
+--verify-only           Explicitly skip the coding adapter and run verifier-only
 --unsafe-allow-unguarded-run
                         Bypass the local governance gate for this one run
 --max-iterations <n>    Maximum number of attempts

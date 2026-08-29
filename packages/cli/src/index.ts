@@ -258,8 +258,7 @@ type ResolvedGuardrails = {
 const DEFAULT_BUDGET: LoopBudget = {
   maxUsd: 10,
   softLimitUsd: 7,
-  maxIterations: 3,
-  maxTokens: 20_000
+  maxIterations: 3
 };
 
 type InspectCommand = {
@@ -277,7 +276,7 @@ type DoctorCommand = {
   command: "doctor";
   cwd?: string;
   runsDir?: string;
-  engine?: "claude" | "codex" | "gemini" | "openai";
+  engine?: "auto" | "claude" | "codex" | "gemini" | "openai";
   configPath?: string;
 };
 
@@ -292,7 +291,7 @@ type EnableCommand = {
   cwd?: string;
   runsDir?: string;
   configPath?: string;
-  engine?: "claude" | "codex" | "gemini" | "openai";
+  engine?: "auto" | "claude" | "codex" | "gemini" | "openai";
   verifier?: string;
   budgetUsd?: number;
   maxIterations?: number;
@@ -403,6 +402,7 @@ type EstimateCommand = {
   fileScope: string[];
   cwd?: string;
   runsDir?: string;
+  budget?: LoopBudget;
 };
 
 type GateCommand = {
@@ -819,6 +819,7 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
       ...(readOption(rest, "--cwd") ? { cwd: readOption(rest, "--cwd") } : {}),
       ...(readOption(rest, "--runs-dir") ? { runsDir: readOption(rest, "--runs-dir") } : {}),
       ...(readOption(rest, "--config") ? { configPath: readOption(rest, "--config") } : {}),
+      ...(readOption(rest, "--engine") === "auto" ? { engine: "auto" as const } : {}),
       ...(readOption(rest, "--engine") === "codex" ? { engine: "codex" as const } : {}),
       ...(readOption(rest, "--engine") === "claude" ? { engine: "claude" as const } : {}),
       ...(readOption(rest, "--engine") === "gemini" ? { engine: "gemini" as const } : {}),
@@ -872,7 +873,7 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
     return {
       command: "estimate",
       objective,
-      engine: readOption(rest, "--engine") ?? "claude",
+      engine: readOption(rest, "--engine") ?? "auto",
       budgetUsd: toFiniteNumber(readOption(rest, "--budget-usd") ?? readOption(rest, "--budget") ?? "5") || 5,
       fileScope,
       ...(readOption(rest, "--cwd") ? { cwd: readOption(rest, "--cwd") } : {}),
@@ -894,6 +895,7 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
       ...(readOption(rest, "--cwd") ? { cwd: readOption(rest, "--cwd") } : {}),
       ...(readOption(rest, "--runs-dir") ? { runsDir: readOption(rest, "--runs-dir") } : {}),
       ...(readOption(rest, "--config") ? { configPath: readOption(rest, "--config") } : {}),
+      ...(readOption(rest, "--engine") === "auto" ? { engine: "auto" as const } : {}),
       ...(readOption(rest, "--engine") === "codex" ? { engine: "codex" as const } : {}),
       ...(readOption(rest, "--engine") === "claude" ? { engine: "claude" as const } : {}),
       ...(readOption(rest, "--engine") === "gemini" ? { engine: "gemini" as const } : {}),
@@ -1298,7 +1300,7 @@ export function renderCliHelp(): string {
     "  --platform <name>        windows, macos, or linux recipe shaping.",
     "",
     "Run options:",
-    "  --engine <name>          Adapter: claude (default), codex, gemini, or openai.",
+    "  --engine <name>          Adapter: auto (default), claude, codex, gemini, or openai. auto detects your available coding agent.",
     "                           openai routes to any OpenAI-compatible endpoint.",
     "                           Set MARTIN_OPENAI_BASE_URL, MARTIN_OPENAI_API_KEY,",
     "                           MARTIN_OPENAI_MODEL. Works with Ollama, OpenRouter,",
@@ -1390,11 +1392,48 @@ async function executeRunCommand(
     );
   }
 
+  // Hoisted outside if (engineRequired) so runtimeTruth can read it after the block closes.
+  let selectionReason: string | undefined;
+
   if (engineRequired) {
-    // Governance gate fires first — receipts must exist before we check whether
-    // the engine CLI is installed. "Run estimate first" is higher priority feedback
-    // than "install the engine CLI", and this keeps gate behavior consistent across
-    // human and JSON surfaces.
+    const preflightOutput = await executePreflightCommand(resolvedRequest, "json");
+    const preflight = JSON.parse(preflightOutput.stdout) as {
+      ready?: boolean;
+      blockingIssues?: string[];
+    };
+    if (!preflight.ready) {
+      const blockingIssues = preflight.blockingIssues ?? ["Preflight did not report ready."];
+      throw new CliCommandError(
+        "policy_blocked",
+        "Governed run preflight blocked execution. Resolve the blocking issues and retry.",
+        {
+          suggestion: buildPreflightSuggestion(resolvedRequest.objective, resolvedRequest.verificationPlan),
+          details: {
+            blockingIssues
+          }
+        }
+      );
+    }
+
+    await recordCliWorkflowStep({
+      runsRoot: cliEnvironment.runsRoot,
+      step: "doctor",
+      workingDirectory: cliEnvironment.workingDirectory,
+      engine: cliEnvironment.engine,
+      receiptScope
+    }).catch(() => {});
+
+    await executeEstimateCommand({
+      command: "estimate",
+      objective: resolvedRequest.objective,
+      engine: cliEnvironment.engine,
+      budgetUsd: resolvedRequest.budget.maxUsd,
+      fileScope: resolvedRequest.allowedPaths ?? [],
+      cwd: resolvedRequest.cwd,
+      runsDir: resolvedRequest.runsDir,
+      budget: resolvedRequest.budget
+    }, "json");
+
     const gate = await evaluateCliRunGate({
       runsRoot: cliEnvironment.runsRoot,
       workingDirectory: cliEnvironment.workingDirectory,
@@ -1418,39 +1457,32 @@ async function executeRunCommand(
       });
     }
 
-    const blockingIssues: string[] = [];
-    const workingDirectoryExists = await stat(cliEnvironment.workingDirectory).then(() => true).catch(() => false);
-    if (!workingDirectoryExists) {
-      blockingIssues.push("Working directory does not exist.");
-    }
-    if (cliEnvironment.engine === "claude" && !isCommandAvailable("claude")) {
-      blockingIssues.push("Claude CLI is not available on PATH.");
-    }
-    if (cliEnvironment.engine === "codex" && !resolveCodexAvailabilityForCli().available) {
-      blockingIssues.push("Codex CLI is not available on PATH.");
-    }
-    if (cliEnvironment.engine === "gemini" && !resolveCliCommandAvailability("gemini").available) {
-      blockingIssues.push("Gemini CLI is not available on PATH.");
-    }
-
-    if (blockingIssues.length > 0) {
-      throw new CliCommandError(
-        "policy_blocked",
-        "Governed run preflight blocked execution. Resolve the blocking issues and retry.",
-        {
-          suggestion: buildPreflightSuggestion(resolvedRequest.objective, resolvedRequest.verificationPlan),
-          details: {
-            blockingIssues
-          }
-        }
-      );
+    // --- Execution boundary: resolve requestedEngine -> concrete runtime ---
+    // Prerequisite receipts and policy admission are provider-neutral for auto.
+    // A concrete coding-agent runtime is selected only when execution is imminent.
+    if (!runAdapterOverrideForTests && (!resolvedRequest.engine || resolvedRequest.engine === "auto")) {
+      const savedEnginePref = await getPreference(cliEnvironment.runsRoot, "engine.preference").catch(() => undefined);
+      if (
+        savedEnginePref &&
+        typeof savedEnginePref.value === "string" &&
+        savedEnginePref.value !== "auto"
+      ) {
+        resolvedRequest.engine = savedEnginePref.value;
+        selectionReason = "configured_preference";
+      } else {
+        const resolved = resolveAutoEngine();
+        resolvedRequest.engine = resolved.engine;
+        selectionReason = resolved.selectionReason;
+      }
+    } else if (resolvedRequest.engine && resolvedRequest.engine !== "auto") {
+      selectionReason = "explicit";
     }
   }
 
   let result: Awaited<ReturnType<typeof runMartin>>;
   let codexProbeOverride: CodexProbeForTests | undefined;
 
-  if (engineRequired && cliEnvironment.engine === "codex") {
+  if (engineRequired && resolvedRequest.engine === "codex") {
     const sandboxPreflight = checkCodexSandboxPreflight({
       requestedSandbox: "workspace-write",
       workingDirectory: cliEnvironment.workingDirectory
@@ -1516,10 +1548,22 @@ async function executeRunCommand(
           adapter.adapterId === "direct:proof:no-mutation"
         ? "simulated"
         : "governed";
+  // Capture execution runtime truth — only present for real governed executions where
+  // the engine was resolved to a concrete runtime. Stored in run metadata, NOT in
+  // receipt-integrity HMAC scope, so signing semantics remain frozen.
+  const runtimeTruth = (engineRequired && !runAdapterOverrideForTests && resolvedRequest.engine && resolvedRequest.engine !== "auto")
+    ? {
+        requestedEngine: cliEnvironment.engine,
+        resolvedEngine: resolvedRequest.engine,
+        ...(selectionReason ? { selectionReason } : {}),
+      }
+    : undefined;
+
   const executionMetadata = {
     ...resolvedRequest.metadata,
     executionMode,
     governanceClaimEligible: executionMode === "governed" ? "true" : "false",
+    ...(runtimeTruth ?? {}),
   };
   // Load telemetry state before the governed run.
   const { readTelemetryConfig, isTelemetrySendingEnabled, initializeTelemetryIfNeeded,
@@ -2372,7 +2416,7 @@ type StartEnvironmentSnapshot = {
     command: string;
     detected: boolean;
   };
-  recommendedEngine: "claude" | "codex" | "gemini" | "openai";
+  recommendedEngine: "auto" | "claude" | "codex" | "gemini" | "openai";
   git: {
     detected: boolean;
     clean?: boolean;
@@ -2597,18 +2641,21 @@ async function executeEnableCommand(
     ? Number(command.maxIterations)
     : 1;
   const softLimit = Number(Math.max(0.1, budgetUsd * 0.8).toFixed(2));
-  const maxTokens = 20_000;
   const configContents = renderMartinConfigYaml({
     policyProfile: "strict_local",
     verifier,
     budgetUsd,
     softLimitUsd: softLimit,
     maxIterations,
-    maxTokens,
-    telemetryDestination: "local"
+    telemetryDestination: "local",
+    engine
   });
 
   await writeFile(configPath, configContents, "utf8");
+  // Persist the engine preference so future auto-selection runs resolve without --engine.
+  if (engine && engine !== "auto") {
+    await recordPreference(environment.runsRoot, "engine.preference", engine, "explicit").catch(() => {});
+  }
 
   return renderCliSuccess(outputMode, {
     data: {
@@ -2618,8 +2665,7 @@ async function executeEnableCommand(
         engine,
         verifier,
         budgetUsd,
-        maxIterations,
-        maxTokens
+        maxIterations
       },
       next: {
         doctor: "martin doctor",
@@ -2760,11 +2806,10 @@ async function collectStartEnvironmentSnapshot(
   const codexAvailability = resolveCodexAvailabilityForCli();
   const geminiAvailability = resolveCliCommandAvailability("gemini");
   const verifier = await detectVerifierCommand(workingDirectory);
-  const recommendedEngine = selectRecommendedEngine({
-    claudeAvailable,
-    codexAvailable: codexAvailability.available,
-    geminiAvailable: geminiAvailability.available
-  });
+  // recommendedEngine is always "auto" — pre-execution advisory surfaces must not
+  // resolve a concrete provider. Runtime selection happens only at the execution
+  // boundary inside executeRunCommand, after the governance gate.
+  const recommendedEngine: "auto" | "claude" | "codex" | "gemini" | "openai" = "auto";
   const git = inspectGitRepository(workingDirectory);
 
   return {
@@ -2867,8 +2912,8 @@ function detectHostIDE(): DetectedHostIDE {
 
   return {
     host: "generic",
-    mcpInstallCommand: "martin mcp install --host claude --scope user",
-    governanceHint: "Install MartinLoop MCP for your IDE to enable proactive governance."
+    mcpInstallCommand: "martin mcp install",
+    governanceHint: "Install MartinLoop MCP for your IDE to enable proactive governance. Run `martin doctor` to identify the right --host flag for your environment."
   };
 }
 
@@ -2892,21 +2937,104 @@ function inspectGitRepository(workingDirectory: string): { detected: boolean; cl
   return { detected: true, clean: status.stdout.trim().length === 0 };
 }
 
-function selectRecommendedEngine(input: {
-  claudeAvailable: boolean;
-  codexAvailable: boolean;
-  geminiAvailable: boolean;
-}): "claude" | "codex" | "gemini" | "openai" {
-  if (input.claudeAvailable) {
+/**
+ * Resolves the "auto" engine to a concrete runtime using a deterministic
+ * precedence model:
+ *   1. Host IDE hint (env-detected IDE's native agent, if available)
+ *   2. Only available runtime (unambiguous when exactly one is installed)
+ *   3. Neutral ambiguity error when multiple are present (never silently picks a vendor)
+ *   4. Neutral no-runtime error when none are present
+ *
+ * OpenAI-compatible endpoints are counted as available when MARTIN_OPENAI_BASE_URL
+ * and MARTIN_OPENAI_MODEL are configured.
+ *
+ * Saved engine preferences are handled by callers (e.g. executeRunCommand) before
+ * calling this function, so saved preferences take priority at the call site.
+ */
+/**
+ * Returns the engine name indicated by a trustworthy current-session signal
+ * from the active coding-agent runtime, or null if no such signal is present.
+ *
+ * Only runtime-injected, session-scoped environment variables qualify.
+ * Ambient credentials (e.g. GEMINI_API_KEY) and configuration paths
+ * (e.g. CODEX_HOME) are intentionally excluded — they do not prove that
+ * MartinLoop is currently executing inside the corresponding agent runtime.
+ *
+ * This function is separate from detectHostIDE(), which is used for
+ * informational/onboarding display and may use broader signals.
+ */
+function detectTrustedRuntimeHint(): string | null {
+  const env = process.env;
+
+  // Claude Code injects these into every child process it spawns.
+  if (env.CLAUDE_CODE === "1" || env.CLAUDE_CODE_SIMPLE === "1" || env.TERM_PROGRAM === "claude") {
     return "claude";
   }
-  if (input.codexAvailable) {
+
+  // Codex sets CODEX_SANDBOX_MODE in the active sandboxed session.
+  // CODEX_HOME alone is a configuration/installation path and does not qualify.
+  if (env.CODEX_SANDBOX_MODE) {
     return "codex";
   }
-  if (input.geminiAvailable) {
-    return "gemini";
+
+  // Gemini: no trusted current-session signal is available in this codebase.
+  // GEMINI_API_KEY is an ambient credential, not a runtime injection signal.
+
+  return null;
+}
+
+function resolveAutoEngine(): { engine: string; selectionReason: string } {
+  // Step 1: Check for a trusted current-session runtime hint.
+  // Only runtime-injected signals qualify; see detectTrustedRuntimeHint().
+  const hintedEngine = detectTrustedRuntimeHint();
+
+  // Step 2: Probe all supported runtimes, including OpenAI-compatible endpoints.
+  const openAiConfig = resolveOpenAiCompatibleRuntimeConfig();
+  const candidates: Array<{ id: string; available: boolean }> = [
+    { id: "claude", available: isCommandAvailable("claude") },
+    { id: "codex", available: resolveCodexAvailabilityForCli().available },
+    { id: "gemini", available: resolveCliCommandAvailability("gemini").available },
+    { id: "openai", available: Boolean(openAiConfig.baseUrl && openAiConfig.model) },
+  ];
+
+  // Step 3: If the trusted runtime hint maps to an available engine, use it.
+  if (hintedEngine) {
+    const hinted = candidates.find((c) => c.id === hintedEngine && c.available);
+    if (hinted) {
+      return { engine: hinted.id, selectionReason: "trusted_host_hint" };
+    }
   }
-  return "openai";
+
+  // Step 4: Collect all available runtimes.
+  const available = candidates.filter((c) => c.available);
+
+  if (available.length === 0) {
+    throw new CliCommandError(
+      "environment",
+      "No supported coding-agent runtime was detected. MartinLoop requires a coding agent to execute governed runs.",
+      {
+        suggestion:
+          "Install a supported runtime (Claude Code, Codex, or Gemini CLI), or configure an OpenAI-compatible provider and use --engine openai.",
+      }
+    );
+  }
+
+  // Step 5: Exactly one runtime — unambiguous selection.
+  if (available.length === 1) {
+    // Non-null safe: length check above guarantees the element exists.
+    return { engine: available[0]!.id, selectionReason: "only_available_runtime" };
+  }
+
+  // Step 6: Multiple runtimes detected — fail closed rather than silently preferring a vendor.
+  // Callers that know a saved preference should apply it before calling this function.
+  throw new CliCommandError(
+    "environment",
+    `Multiple coding-agent runtimes detected (${available.map((c) => c.id).join(", ")}). MartinLoop cannot auto-select between them without a saved preference.`,
+    {
+      suggestion:
+        "Save a preference with `martin enable --engine <name>`, or pass `--engine <name>` explicitly to choose a runtime for this run.",
+    }
+  );
 }
 
 function renderMartinConfigYaml(input: {
@@ -2915,17 +3043,23 @@ function renderMartinConfigYaml(input: {
   budgetUsd: number;
   softLimitUsd: number;
   maxIterations: number;
-  maxTokens: number;
+  maxTokens?: number;
   telemetryDestination: string;
+  engine?: string;
 }): string {
   const escapedVerifier = input.verifier.replaceAll('"', '\\"');
   return [
     `policyProfile: ${input.policyProfile}`,
+    // Persist a concrete engine preference so future runs resolve deterministically.
+    // "auto" is omitted — it is the default and does not need to be written.
+    ...(input.engine && input.engine !== "auto" ? [`engine: ${input.engine}`] : []),
     "budget:",
     `  maxUsd: ${input.budgetUsd}`,
     `  softLimitUsd: ${input.softLimitUsd}`,
     `  maxIterations: ${input.maxIterations}`,
-    `  maxTokens: ${input.maxTokens}`,
+    // Only write maxTokens when explicitly configured — omitting it avoids a
+    // false token-budget hard limit on runs that have no configured token cap.
+    ...(input.maxTokens !== undefined ? [`  maxTokens: ${input.maxTokens}`] : []),
     "governance:",
     "  destructiveActionPolicy: approval",
     `  telemetryDestination: ${input.telemetryDestination}`,
@@ -3037,7 +3171,7 @@ async function executeNativePhaseCommand(
       step: "preflight",
       workingDirectory: environment.workingDirectory,
       objective: request.objective,
-      engine: "claude",
+      engine: environment.engine ?? "auto",
       verificationPlan: request.verificationPlan,
       receiptScope: buildCliReceiptScope(environment)
     }).catch(() => {});
@@ -3695,7 +3829,12 @@ async function executeEstimateCommand(
     step: "estimate",
     workingDirectory: environment.workingDirectory,
     objective: command.objective,
-    receiptScope: buildCliReceiptScope(environment)
+    receiptScope: buildCliReceiptScope(environment),
+    budget: command.budget ?? {
+      maxUsd: command.budgetUsd,
+      softLimitUsd: command.budgetUsd,
+      maxIterations: 1
+    }
   }).catch(() => {});
 
   return renderCliSuccess(outputMode, {
@@ -4478,7 +4617,11 @@ async function resolveGuardrails(
     maxUsd: config?.budget?.maxUsd ?? request.budget.maxUsd,
     softLimitUsd: config?.budget?.softLimitUsd ?? request.budget.softLimitUsd,
     maxIterations: config?.budget?.maxIterations ?? request.budget.maxIterations,
-    maxTokens: config?.budget?.maxTokens ?? request.budget.maxTokens
+    ...(config?.budget?.maxTokens !== undefined
+      ? { maxTokens: config.budget.maxTokens }
+      : request.budget.maxTokens !== undefined
+        ? { maxTokens: request.budget.maxTokens }
+        : {})
   };
 
   if (request.budgetOverrides?.maxUsd) {
@@ -4718,7 +4861,19 @@ function selectAdapter(
     });
   }
 
-  if (engine === "codex") {
+  // By this point the execution boundary inside executeRunCommand has already resolved
+  // "auto" to a concrete runtime. Receiving "auto" or undefined here is an internal
+  // contract violation — surface it clearly rather than silently re-resolving.
+  if (!engine || engine === "auto") {
+    throw new CliCommandError(
+      "environment",
+      "Internal error: engine must be resolved to a concrete runtime before adapter selection.",
+      { suggestion: "This is a MartinLoop bug. Please report it." }
+    );
+  }
+  const resolvedEngine = engine;
+
+  if (resolvedEngine === "codex") {
     return createCodexCliAdapter({
       workingDirectory,
       ...(verifyTimeoutMs !== undefined ? { verifyTimeoutMs } : {}),
@@ -4734,7 +4889,7 @@ function selectAdapter(
     });
   }
 
-  if (engine === "gemini") {
+  if (resolvedEngine === "gemini") {
     return createGeminiCliAdapter({
       workingDirectory,
       ...(verifyTimeoutMs !== undefined ? { verifyTimeoutMs } : {}),
@@ -4743,7 +4898,7 @@ function selectAdapter(
     });
   }
 
-  if (engine === "openai") {
+  if (resolvedEngine === "openai") {
     const openAiConfig = resolveOpenAiCompatibleRuntimeConfig();
     const baseUrl = openAiConfig.baseUrl;
     const apiKey = openAiConfig.apiKey;
@@ -4757,12 +4912,23 @@ function selectAdapter(
     });
   }
 
-  return createClaudeCliAdapter({
-    workingDirectory,
-    ...(verifyTimeoutMs !== undefined ? { verifyTimeoutMs } : {}),
-    ...(providerExecutionTimeoutMs !== undefined ? { providerExecutionTimeoutMs } : {}),
-    ...(effectiveModel ? { model: effectiveModel } : {})
-  });
+  if (resolvedEngine === "claude") {
+    return createClaudeCliAdapter({
+      workingDirectory,
+      ...(verifyTimeoutMs !== undefined ? { verifyTimeoutMs } : {}),
+      ...(providerExecutionTimeoutMs !== undefined ? { providerExecutionTimeoutMs } : {}),
+      ...(effectiveModel ? { model: effectiveModel } : {})
+    });
+  }
+
+  // Exhaustive — unknown engines are rejected rather than silently falling back to any vendor.
+  throw new CliCommandError(
+    "environment",
+    `Unsupported engine: "${resolvedEngine}". Supported values: auto, claude, codex, gemini, openai.`,
+    {
+      suggestion: "Use --engine with a supported value, or omit --engine to auto-detect your available coding agent.",
+    }
+  );
 }
 
 function buildDoctorRecommendations(input: {
@@ -4792,7 +4958,7 @@ function buildDoctorRecommendations(input: {
   }
 
   if (input.liveMode === "live" && input.engine === "claude" && !input.claudeAvailable) {
-    recommendations.push("Install or expose the Claude CLI on PATH, or switch to `--engine codex` or `--engine openai`.");
+    recommendations.push("Install or expose the Claude CLI on PATH, or omit --engine to auto-detect an available coding agent.");
   }
 
   if (input.liveMode === "live" && input.engine === "codex" && !input.codexAvailable) {

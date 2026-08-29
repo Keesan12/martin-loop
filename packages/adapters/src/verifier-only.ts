@@ -47,7 +47,7 @@ export function createVerifierOnlyAdapter(
         {
           runId: request.loopId,
           workspaceId: request.workspaceId,
-          cwd: workingDirectory
+          cwd: workingDirectory,
         }
       );
       const changedFiles = shouldTrackVerifierWrites

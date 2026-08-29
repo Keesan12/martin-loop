@@ -28,6 +28,17 @@ test("public-surface workflow skips ordinary internal PRs and runs public-stagin
   assert.match(workflow, /pnpm public:portability-guard/);
 });
 
+test("promotion workflow requires public-staging or manual dispatch", async () => {
+  const workflow = await readWorkflow(".github/workflows/public-promotion-guard.yml");
+
+  assert.match(
+    workflow,
+    /if:\s+github\.event_name == 'workflow_dispatch' \|\| startsWith\(github\.head_ref, 'public-staging\/'\)/,
+  );
+  assert.match(workflow, /workflow_dispatch:/);
+  assert.match(workflow, /node scripts\/verify-public-promotion\.mjs/);
+});
+
 test("private repo references still fail inside an explicit public payload", async () => {
   const rootDir = await mkdtemp(path.join(os.tmpdir(), "martin-public-payload-"));
   await mkdir(path.join(rootDir, "dist"), { recursive: true });

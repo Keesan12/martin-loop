@@ -24,6 +24,22 @@ async function withEnv<T>(key: string, value: string, fn: () => Promise<T>): Pro
   }
 }
 
+async function withoutAgentCliOnPath<T>(fn: () => Promise<T>): Promise<T> {
+  const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === "path") ?? "PATH";
+  const original = process.env[pathKey];
+  process.env[pathKey] = "";
+
+  try {
+    return await fn();
+  } finally {
+    if (original === undefined) {
+      delete process.env[pathKey];
+    } else {
+      process.env[pathKey] = original;
+    }
+  }
+}
+
 function makeLoopRecord(): LoopRecord {
   const loop = createLoopRecord({
     workspaceId: deriveWorkspaceId(process.cwd()),
@@ -205,25 +221,33 @@ describe("operator commands", () => {
     });
   });
 
-  it("blocks live run execution before spend when the governed receipt chain is missing", async () => {
-    await withRunsRoot(async () => {
-      const result = await executeCli([
+  it("does not block live run execution on missing manual receipt choreography", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const result = await withoutAgentCliOnPath(() => executeCli([
         "run",
         "--objective",
         "Repair the failing MCP lane",
-        "--engine",
-        "codex",
         "--verify",
         "pnpm --filter @martinloop/mcp test",
         "--budget-usd",
         "2",
         "--max-iterations",
         "1"
-      ]);
+      ]));
 
-      expect(result.exitCode).toBe(8);
-      expect(result.stderr).toContain("Governed run blocked until MartinLoop receipts exist");
-      expect(result.stderr).toContain("martin-loop doctor");
+      const workspaceKey = deriveWorkspaceId(process.cwd()).replace(/^ws_/u, "");
+      const workflowState = JSON.parse(
+        await readFile(join(runsRoot, "_martin", "workspaces", workspaceKey, "workflow-state.json"), "utf8")
+      );
+
+      expect(result.exitCode).toBe(3);
+      expect(result.stderr).toContain("Error [environment]");
+      expect(result.stderr).toContain("coding-agent runtime");
+      expect(result.stderr).not.toContain("Governed run blocked until MartinLoop receipts exist");
+      expect(result.stderr).not.toContain("martin-loop doctor");
+      expect(workflowState.cli.doctor).toBeDefined();
+      expect(workflowState.cli.estimate).toBeDefined();
+      expect(workflowState.cli.preflight).toBeDefined();
     });
   });
 
@@ -558,10 +582,7 @@ describe("operator commands", () => {
     expect(claudeLocal.scope).toBe("local");
     expect(claudeLocal.installMethod).toBe("command");
     expect(claudeLocal.targetPath).toContain("Claude Code local scope");
-    const claudeCommand = process.platform === "win32" ? "claude.cmd" : "claude";
-    expect(claudeLocal.content).toContain(
-      `${claudeCommand} mcp add --transport http --scope local`
-    );
+    expect(claudeLocal.content).toContain("claude.cmd mcp add --transport http --scope local");
   });
 
   it("rejects invalid MCP host and scope values instead of silently falling back", async () => {
@@ -662,7 +683,9 @@ describe("operator commands", () => {
           budgetUsd: 3,
           maxIterations: 2
         });
-        await expect(readFile(enable.configPath, "utf8")).resolves.toContain("policyProfile: strict_local");
+        const config = await readFile(enable.configPath, "utf8");
+        expect(config).toContain("policyProfile: strict_local");
+        expect(config).not.toContain("maxTokens:");
         expect(review.command).toBe("review");
         expect(review.status).toBe("no_runs");
       } finally {

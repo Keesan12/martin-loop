@@ -43,7 +43,7 @@ describe("martin estimate command", () => {
     expect(parsed).toEqual({
       command: "estimate",
       objective: "Fix the auth bug",
-      engine: "claude",
+      engine: "auto",
       budgetUsd: 5,
       fileScope: []
     });
@@ -96,7 +96,7 @@ describe("martin estimate command", () => {
     expect(parsed).toEqual({
       command: "estimate",
       objective: "Fix typo",
-      engine: "claude",
+      engine: "auto",
       budgetUsd: 5,
       fileScope: [],
       cwd: "/repo",

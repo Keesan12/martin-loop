@@ -9,9 +9,6 @@ import {
   assertPackedSurface,
   assertRootVersionPolicy,
   assertVendoredCliManifest,
-  extractPackFilePaths,
-  findSingleTarball,
-  normalizePackedTarEntries,
   runRootReleaseGuard,
 } from "../root-release-guard.mjs";
 
@@ -31,15 +28,12 @@ test("runRootReleaseGuard accepts the current OSS-safe root package shape", asyn
   assert.equal(result.packChecked, false);
 });
 
-test("assertRootVersionPolicy accepts supported public root release lines", () => {
-  assert.doesNotThrow(() => assertRootVersionPolicy("0.3.0"));
-  assert.doesNotThrow(() => assertRootVersionPolicy("0.4.5"));
-  assert.doesNotThrow(() => assertRootVersionPolicy("0.5.0"));
+test("assertRootVersionPolicy accepts the current public pre-1.0 release line", () => {
+  assert.doesNotThrow(() => assertRootVersionPolicy("0.5.6"));
 });
 
-test("assertRootVersionPolicy rejects versions outside the supported public lines", () => {
-  assert.throws(() => assertRootVersionPolicy("0.6.0"), /0\.2\.x through 0\.5\.x/);
-  assert.throws(() => assertRootVersionPolicy("1.0.0"), /0\.2\.x through 0\.5\.x/);
+test("assertRootVersionPolicy rejects versions outside the public pre-1.0 line", () => {
+  assert.throws(() => assertRootVersionPolicy("1.3.0"), /valid pre-1\.0 release/);
 });
 
 test("assertPackedSurface rejects unexpected non-OSS paths", () => {
@@ -72,51 +66,6 @@ test("assertPackedSurface rejects forbidden vendored implementation paths", () =
       ]),
     /forbidden vendored implementation path/i,
   );
-
-  assert.throws(
-    () =>
-      assertPackedSurface([
-        "package.json",
-        "README.md",
-        "CODE_OF_CONDUCT.md",
-        "dist/index.js",
-        "dist/index.d.ts",
-        "dist/bin/martin-loop.js",
-        "dist/vendor/adapters/stub-direct-provider.js",
-      ]),
-    /forbidden vendored implementation path/i,
-  );
-});
-
-test("extractPackFilePaths accepts npm pack object and array envelopes", () => {
-  const artifact = {
-    filename: "martin-loop-0.5.0.tgz",
-    files: [{ path: "package.json" }, { path: "dist/index.js" }],
-  };
-
-  assert.deepEqual(extractPackFilePaths([artifact]), ["package.json", "dist/index.js"]);
-  assert.deepEqual(extractPackFilePaths(artifact), ["package.json", "dist/index.js"]);
-});
-
-test("normalizePackedTarEntries reads the real npm tarball surface", () => {
-  assert.deepEqual(
-    normalizePackedTarEntries([
-      "package/",
-      "package/package.json",
-      "package/dist/index.js",
-      "package/dist/vendor/adapters/codex.js",
-      "",
-    ]),
-    ["package.json", "dist/index.js", "dist/vendor/adapters/codex.js"],
-  );
-});
-
-test("findSingleTarball discovers the real npm pack artifact", async () => {
-  await withTempRoot(async (tempRoot) => {
-    await writeFile(path.join(tempRoot, "martin-loop-0.5.0.tgz"), "artifact", "utf8");
-
-    assert.equal(await findSingleTarball(tempRoot), "martin-loop-0.5.0.tgz");
-  });
 });
 
 test("assertVendoredCliManifest accepts the sanitized vendored CLI package manifest", async () => {

@@ -130,6 +130,18 @@ describe("evaluateExitPolicy — individual exit triggers", () => {
     expect(ev.matched).toContain("budget_cap");
   });
 
+  it("does not create a token budget exit when no token cap is configured", () => {
+    const policy = createDefaultExitPolicy({
+      maxIterations: 3,
+      maxUsd: 10,
+      softLimitUsd: 7
+    });
+    const ev = evaluateExitPolicy(policy, makeSnapshot({ tokensUsed: 50_000_000 }));
+
+    expect(policy.budget.maxTokens).toBeUndefined();
+    expect(ev.matched).not.toContain("budget_cap");
+  });
+
   it("fires turn_cap when turnsUsed reaches max", () => {
     const policy = makePolicy({ turns: { max: 5 } });
     const snap = makeSnapshot({ turnsUsed: 5 });

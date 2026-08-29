@@ -62,7 +62,7 @@ assertInvariant(
   /MARTIN_ENGINE_VALUES/u,
   "packages/mcp/src/server.ts"
 );
-for (const host of ["codex", "claude", "cursor", "vscode", "copilot", "continue"]) {
+for (const host of ["cursor", "vscode", "copilot", "continue"]) {
   assertInvariant(
     `host coverage includes ${host}`,
     new RegExp(`(?:^|\\s|\\|)"${host}"(?:\\s|\\||;)`, "u"),

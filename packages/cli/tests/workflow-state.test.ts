@@ -57,7 +57,8 @@ describe("workflow state gate", () => {
         step: "estimate",
         workingDirectory,
         objective,
-        receiptScope
+        receiptScope,
+        budget
       });
       await recordCliWorkflowStep({
         runsRoot,
@@ -82,6 +83,37 @@ describe("workflow state gate", () => {
 
       expect(gate.allowed).toBe(true);
       expect(gate.missingSteps).toEqual([]);
+    } finally {
+      await rm(runsRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("invalidates an estimate when the objective or dollar budget changes", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-estimate-scope-"));
+    const workingDirectory = join(runsRoot, "workspace");
+    const receiptScope = { invocationRoot: workingDirectory, workingDirectory, repoRoot: workingDirectory, runsRoot };
+    const verificationPlan = ["npm test"];
+    const budget = { maxUsd: 2, softLimitUsd: 1.5, maxIterations: 2 };
+
+    try {
+      await recordCliWorkflowStep({ runsRoot, step: "doctor", workingDirectory, receiptScope });
+      await recordCliWorkflowStep({ runsRoot, step: "estimate", workingDirectory, objective: "Fix alpha", receiptScope, budget });
+      await recordCliWorkflowStep({ runsRoot, step: "preflight", workingDirectory, objective: "Fix alpha", verificationPlan, receiptScope });
+
+      const changedObjective = await evaluateCliRunGate({
+        runsRoot, workingDirectory, objective: "Fix beta", verificationPlan, receiptScope, budget
+      });
+      expect(changedObjective.missingSteps).toContain("estimate");
+
+      const changedBudget = await evaluateCliRunGate({
+        runsRoot,
+        workingDirectory,
+        objective: "Fix alpha",
+        verificationPlan,
+        receiptScope,
+        budget: { ...budget, maxUsd: 3 }
+      });
+      expect(changedBudget.missingSteps).toContain("estimate");
     } finally {
       await rm(runsRoot, { recursive: true, force: true });
     }
@@ -241,7 +273,8 @@ describe("workflow state gate", () => {
         step: "estimate",
         workingDirectory,
         objective,
-        receiptScope
+        receiptScope,
+        budget
       });
       await recordCliWorkflowStep({
         runsRoot,
@@ -304,7 +337,8 @@ describe("workflow state gate", () => {
         step: "estimate",
         workingDirectory,
         objective,
-        receiptScope
+        receiptScope,
+        budget
       });
       await recordCliWorkflowStep({
         runsRoot,
@@ -572,11 +606,18 @@ describe("preflight scope — execution params excluded", () => {
       runsRoot
     };
     const preflightBudget = { maxUsd: 2, softLimitUsd: 2, maxIterations: 5, maxTokens: 10_000 };
-    const runBudget = { maxUsd: 10, softLimitUsd: 8, maxIterations: 20, maxTokens: 50_000 };
+    const runBudget = { maxUsd: 2, softLimitUsd: 1.5, maxIterations: 20, maxTokens: 50_000 };
 
     try {
       await recordCliWorkflowStep({ runsRoot, step: "doctor", workingDirectory, receiptScope });
-      await recordCliWorkflowStep({ runsRoot, step: "estimate", workingDirectory, objective, receiptScope });
+      await recordCliWorkflowStep({
+        runsRoot,
+        step: "estimate",
+        workingDirectory,
+        objective,
+        receiptScope,
+        budget: runBudget
+      });
       // Record preflight with one budget
       await recordCliWorkflowStep({
         runsRoot,

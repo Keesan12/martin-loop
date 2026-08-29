@@ -1,0 +1,43 @@
+name: Public Promotion Guard
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-public-promotion:
+    name: verify-public-promotion
+    # Only enforce promotion requirements on public-staging/* PRs.
+    # Ordinary internal feature PRs do not carry a promotion manifest and must not be blocked.
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'public-staging/')
+    runs-on: ubuntu-latest
+    # Only enforce promotion requirements on public-staging/* PRs.
+    # Ordinary internal feature PRs do not carry a promotion manifest and must not be blocked.
+    if: startsWith(github.head_ref, 'public-staging/') || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Reject conflict markers
+        shell: bash
+        run: |
+          if git grep -n -E '^(<<<<<<<|=======|>>>>>>>)' -- .; then
+            echo "Merge-conflict markers found."
+            exit 1
+          fi
+
+      - name: Verify promotion manifest
+        run: node scripts/verify-public-promotion.mjs

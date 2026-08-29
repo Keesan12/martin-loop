@@ -32,6 +32,7 @@ vitest-results.json
 *.sqlite
 
 # Runtime artifacts
+.martin/
 artifacts/
 output/
 /cm*.md

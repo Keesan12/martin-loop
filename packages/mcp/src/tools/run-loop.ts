@@ -61,7 +61,7 @@ export interface RunLoopOutput {
   shouldStop: boolean;
   remainingBudgetUsd: number;
   remainingIterations: number;
-  remainingTokens: number;
+  remainingTokens?: number;
   engine: MartinEngine;
   workingDirectory: string;
   budget: LoopBudget;
@@ -258,7 +258,9 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
     shouldStop: costState.shouldStop,
     remainingBudgetUsd: costState.remainingBudgetUsd,
     remainingIterations: costState.remainingIterations,
-    remainingTokens: costState.remainingTokens,
+    ...(costState.remainingTokens !== undefined
+      ? { remainingTokens: costState.remainingTokens }
+      : {}),
     engine,
     workingDirectory,
     budget,

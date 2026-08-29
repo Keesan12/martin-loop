@@ -21,7 +21,7 @@ export function compileMcpExecutionPolicy(
       input.maxUsd ?? DEFAULT_BUDGET.maxUsd
     ),
     maxIterations: input.maxIterations ?? DEFAULT_BUDGET.maxIterations,
-    maxTokens: input.maxTokens ?? DEFAULT_BUDGET.maxTokens
+    ...(input.maxTokens !== undefined ? { maxTokens: input.maxTokens } : {})
   };
 
   const policy = compileExecutionPolicy({

@@ -2,9 +2,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-import { mkdirSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
+import { homedir } from "node:os";
 
 /**
  * Returns an absolute path under ~/.martin/<filename>.
@@ -22,11 +21,4 @@ export function resolveMartinHome(
     ? env["USERPROFILE"]?.trim() || env["HOME"]?.trim()
     : env["HOME"]?.trim() || env["USERPROFILE"]?.trim();
   return configuredHome || homedir();
-}
-
-/**
- * Ensures ~/.martin exists. Safe to call multiple times (mkdir recursive).
- */
-export function ensureMartinDir(): void {
-  mkdirSync(join(homedir(), ".martin"), { recursive: true });
 }
