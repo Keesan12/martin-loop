@@ -81,9 +81,9 @@ test("internal git commit is allowed", () => {
   );
 });
 
-test("internal git push to non-public origin branch is allowed", () => {
+test("internal git push to an explicit non-public remote is allowed", () => {
   assert.strictEqual(
-    invoke({ command: "git push origin feat/my-internal-feature" }),
+    invoke({ command: "git push https://github.com/martin-Loop/ML_Core_OSS_Internal.git feat/my-internal-feature" }),
     ALLOW
   );
 });
