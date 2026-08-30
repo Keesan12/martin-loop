@@ -67,9 +67,14 @@ describe("package manifest", () => {
     });
   });
 
-  it("ships server metadata and does not advertise a root import surface", () => {
+  it("ships server metadata and exposes the server module through package exports", () => {
     expect(packageJson.files).toContain("server.json");
     expect(packageJson.exports).toEqual({
+      ".": {
+        types: "./dist/server.d.ts",
+        import: "./dist/server.js",
+        default: "./dist/server.js",
+      },
       "./server.json": "./server.json",
       "./package.json": "./package.json",
     });

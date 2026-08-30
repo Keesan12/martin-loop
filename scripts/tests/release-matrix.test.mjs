@@ -17,6 +17,22 @@ test("createReleaseMatrixPlan keeps install first in every platform lane", () =>
   }
 });
 
+test("createReleaseMatrixPlan checks root package boundaries before the full test lane", () => {
+  const plan = createReleaseMatrixPlan({ rootDir: "C:/repo" });
+
+  for (const lane of plan.lanes) {
+    const commands = lane.steps.map((step) => step.command.join(" "));
+    assert.ok(
+      commands.indexOf("pnpm build") < commands.indexOf("pnpm release:root:guard"),
+      "root package guard should run after build output exists",
+    );
+    assert.ok(
+      commands.indexOf("pnpm release:root:guard") < commands.indexOf("pnpm test"),
+      "root package guard should run before the broader test lane",
+    );
+  }
+});
+
 test("resolveReleaseMatrixLane selects the correct local platform lane", () => {
   const plan = createReleaseMatrixPlan({ rootDir: "C:/repo" });
 

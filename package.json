@@ -118,12 +118,12 @@
   },
   "dependencies": {
     "@open-policy-agent/opa-wasm": "^1.10.0",
-    "@opentelemetry/api-logs": "^0.214.0",
-    "@opentelemetry/exporter-logs-otlp-http": "^0.214.0",
-    "@opentelemetry/resources": "^2.6.1",
-    "@opentelemetry/sdk-logs": "^0.214.0",
-    "@opentelemetry/semantic-conventions": "^1.38.0",
-    "ts-morph": "^21.0.0"
+    "@opentelemetry/api-logs": "^0.221.0",
+    "@opentelemetry/exporter-logs-otlp-http": "^0.221.0",
+    "@opentelemetry/resources": "^2.10.0",
+    "@opentelemetry/sdk-logs": "^0.221.0",
+    "@opentelemetry/semantic-conventions": "^1.43.0",
+    "ts-morph": "^21.0.1"
   },
   "workspaces": [
     "packages/*",
@@ -131,11 +131,13 @@
   ],
   "pnpm": {
     "overrides": {
-      "@hono/node-server": "^1.19.13",
+      "@hono/node-server": "^1.19.15",
       "ajv": "^8.20.0",
-      "fast-uri": "^3.1.2",
-      "hono": "^4.12.21",
-      "ip-address": "^10.1.1",
+      "body-parser": "^2.3.0",
+      "brace-expansion": "^2.1.4",
+      "fast-uri": "^3.1.4",
+      "hono": "^4.12.34",
+      "ip-address": "^10.3.1",
       "postcss": "^8.5.15",
       "qs": "^6.15.2",
       "vite": "^7.3.2"

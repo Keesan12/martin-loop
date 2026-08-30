@@ -31,6 +31,11 @@ test("public-surface workflow skips ordinary internal PRs and runs public-stagin
 test("promotion workflow requires public-staging or manual dispatch", async () => {
   const workflow = await readWorkflow(".github/workflows/public-promotion-guard.yml");
 
+  assert.match(workflow, /skip-non-promotion:/);
+  assert.match(
+    workflow,
+    /if:\s+github\.event_name == 'pull_request' && !startsWith\(github\.head_ref, 'public-staging\/'\)/,
+  );
   assert.match(
     workflow,
     /if:\s+github\.event_name == 'workflow_dispatch' \|\| startsWith\(github\.head_ref, 'public-staging\/'\)/,
