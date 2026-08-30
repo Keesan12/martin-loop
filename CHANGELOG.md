@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [0.5.7] - 2026-08-30
+
+### Fixed
+
+- Tightened governed-run prerequisite handling so fresh `martin run` invocations can prepare required local evidence without extra manual choreography.
+- Corrected optional token-budget reporting so configurations without a hard token cap remain valid across CLI and MCP surfaces.
+- Hardened release packaging validation against npm pack metadata differences while keeping the published package allowlist strict.
+
+### Changed
+
+- Refreshed public release validation, promotion, and package smoke checks for the 0.5.7 release lane.
+
 ## [0.5.6] - 2026-08-22
 
 - Added a read-only Arcade MCP App surface for run inspection without creating another execution authority.
