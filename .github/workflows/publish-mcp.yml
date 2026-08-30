@@ -66,6 +66,11 @@ jobs:
           pnpm public:git-surface
           pnpm public:portability-guard
 
+      - name: Build workspace packages needed by MCP validation
+        run: |
+          pnpm --filter @martin/contracts build
+          pnpm --filter @martin/presentation build
+
       - name: Verify MCP package
         run: |
           pnpm --filter @martinloop/mcp lint

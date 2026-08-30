@@ -33,6 +33,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build workspace packages needed by validation
+        run: |
+          pnpm --filter @martin/contracts build
+          pnpm --filter @martin/presentation build
+
       - name: Validate OSS release surface
         run: |
           pnpm release:clean-check
