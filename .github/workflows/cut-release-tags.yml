@@ -142,3 +142,30 @@ jobs:
           echo "Publishing immutable release commit ${{ steps.existing.outputs.release_sha }}"
           gh workflow run release.yml --ref main -f tag="${{ steps.existing.outputs.root_tag }}"
           gh workflow run publish-mcp.yml --ref main -f tag="${{ steps.existing.outputs.mcp_tag }}"
+
+  publish-root-repair:
+    name: Publish root release from repaired main
+    if: contains(github.event.head_commit.message, '[publish-root-repair]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Resolve root release tag
+        id: root
+        shell: bash
+        run: |
+          ROOT_VERSION="$(node -p "require('./package.json').version")"
+          ROOT_TAG="v${ROOT_VERSION}"
+          git fetch --tags --force
+          git rev-parse -q --verify "refs/tags/${ROOT_TAG}" >/dev/null
+          TAG_ROOT_VERSION="$(git show "${ROOT_TAG}:package.json" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).version))")"
+          test "$TAG_ROOT_VERSION" = "$ROOT_VERSION"
+          echo "root_tag=${ROOT_TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch trusted root publisher from repaired main
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run release.yml --ref main -f tag="${{ steps.root.outputs.root_tag }}"
