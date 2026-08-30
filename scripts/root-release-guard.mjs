@@ -1,14 +1,13 @@
 #!/usr/bin/env node
 
 import { spawn } from "node:child_process";
-import { access, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
-import os from "node:os";
+import { access, readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { resolveRcCommandExecution } from "./rc-validation.mjs";
 
-const ROOT_VERSION_PATTERN = /^0\.(?:2|3|4|5)\.\d+$/;
+const ROOT_VERSION_PATTERN = /^0\.\d+\.\d+$/;
 const ALLOWED_FILES = [
   "benchmarks/fixtures",
   "CODE_OF_CONDUCT.md",
@@ -35,7 +34,6 @@ const ALLOWED_PACKED_PREFIXES = [
 const FORBIDDEN_PACKED_PATH_PATTERNS = [
   /^dist\/vendor\/cli\/bin\//u,
   /^dist\/vendor\/adapters\/stub-agent-cli\.(?:js|d\.ts)$/u,
-  /^dist\/vendor\/adapters\/stub-direct-provider\.(?:js|d\.ts)$/u,
 ];
 
 export async function runRootReleaseGuard(options = {}) {
@@ -78,7 +76,7 @@ export async function runRootReleaseGuard(options = {}) {
 
 export function assertRootVersionPolicy(version) {
   if (!ROOT_VERSION_PATTERN.test(version)) {
-    throw new Error(`Root martin-loop version must stay on the 0.2.x through 0.5.x lines. Received ${version}.`);
+    throw new Error(`Root martin-loop version must remain a valid pre-1.0 release. Received ${version}.`);
   }
 }
 
@@ -105,30 +103,24 @@ export function assertPackedSurface(packedFiles) {
 export async function inspectPackedFiles(options = {}) {
   const rootDir = options.rootDir ?? process.cwd();
   const ignoreScripts = options.ignoreScripts ?? true;
-  const packDestination = await mkdtemp(path.join(os.tmpdir(), "martin-root-pack-"));
-
-  try {
-    const command = ["npm", "pack", "--pack-destination", packDestination];
-    if (ignoreScripts) {
-      command.push("--ignore-scripts");
-    }
-    await runCommand(command, { cwd: rootDir });
-
-    const tarballName = await findSingleTarball(packDestination);
-
-    const tarRun = await runCommand(
-      ["tar", "-tf", path.join(packDestination, tarballName)],
-      { cwd: rootDir },
-    );
-    const files = normalizePackedTarEntries(tarRun.stdout.split(/\r?\n/u));
-    if (files.length === 0) {
-      throw new Error("Packed tarball did not contain any files.");
-    }
-
-    return files;
-  } finally {
-    await rm(packDestination, { force: true, recursive: true });
+  const command = ["npm", "pack", "--dry-run", "--json"];
+  if (ignoreScripts) {
+    command.push("--ignore-scripts");
   }
+  const packRun = await runCommand(
+    command,
+    { cwd: rootDir },
+  );
+  const packArtifacts = extractPackJsonPayload(packRun.stdout);
+  const files = Array.isArray(packArtifacts)
+    ? packArtifacts[0]?.files?.map((entry) => entry.path).filter((entry) => typeof entry === "string")
+    : [];
+
+  if (files.length === 0) {
+    throw new Error("npm pack --dry-run did not report any packaged files.");
+  }
+
+  return files;
 }
 
 export async function findSingleTarball(directory) {
@@ -139,24 +131,11 @@ export async function findSingleTarball(directory) {
   return tarballs[0];
 }
 
-export function normalizePackedTarEntries(entries) {
-  return entries
-    .map((entry) => entry.trim().replace(/^package\//u, ""))
-    .filter((entry) => entry.length > 0 && !entry.endsWith("/"));
-}
-
 export function extractPackJsonPayload(stdout) {
   const trimmed = stdout.trim();
   const trailingJsonMatch = trimmed.match(/(\[\s*\{[\s\S]*\}\s*\])$/);
   const jsonPayload = trailingJsonMatch?.[1] ?? trimmed;
   return JSON.parse(jsonPayload);
-}
-
-export function extractPackFilePaths(packArtifacts) {
-  const artifact = Array.isArray(packArtifacts) ? packArtifacts[0] : packArtifacts;
-  return Array.isArray(artifact?.files)
-    ? artifact.files.map((entry) => entry.path).filter((entry) => typeof entry === "string")
-    : [];
 }
 
 export async function assertVendoredCliManifest(rootDir) {

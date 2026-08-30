@@ -1,22 +1,14 @@
 # MartinLoop MCPB
 
-This packages the local `@martinloop/mcp` server as an MCP Bundle (`.mcpb`) for clients that support bundle-based installation.
+Packages the existing `@martinloop/mcp` local stdio server as an MCP Bundle (`.mcpb`). This is an additional distribution format; it does not replace npm or the official MCP Registry package.
 
-The distribution format is different; the product is the same.
+## Install and build
 
-**MartinLoop is one system around coding agents so people can go from intent to a production-quality software handoff without stitching together separate tools around the agent.**
+From the repository root, install the reviewed workspace lockfile. Then build and
+validate the bundle from `packages/mcp`:
 
-The coding agent still does the software work. MartinLoop connects the workflow around it: defining what should ship, running the work, checking the result, recovering when needed, and leaving a handoff that another person or agent can understand.
-
-The MCPB carries the same governed outcomes and evidence rules as the standalone MCP package. Packaging must not create a different meaning for `VERIFIED`, `STOPPED`, `NEEDS REVIEW`, cost provenance, verification-only execution, or receipt integrity.
-
-The product version is aligned with `@martinloop/mcp`; the current manifest schema remains `0.3`.
-
-For agent-readable product context see [`../../../llms.txt`](../../../llms.txt), [`../../../llms-full.txt`](../../../llms-full.txt), and [`../../../docs/for-agents.md`](../../../docs/for-agents.md).
-
-## Build the bundle
-
-From the repository root:
+Commit or stash any uncommitted changes under `packages/mcp` before building;
+the release builder intentionally requires that package tree to be clean.
 
 ```bash
 pnpm install --frozen-lockfile
@@ -24,8 +16,6 @@ cd packages/mcp
 pnpm mcpb:build
 pnpm mcpb:validate
 ```
-
-The release builder intentionally requires the `packages/mcp` tree to be clean.
 
 Outputs:
 
@@ -36,41 +26,36 @@ dist-mcpb/martinloop-<version>.mcpb.sha256
 
 ## Import and launch
 
-In an MCP client that supports bundles, choose its bundle import/install action and select:
+Open a client that supports MCP Bundles, choose its bundle import or install
+command, and select `dist-mcpb/martinloop-<version>.mcpb`. Review the requested
+configuration, finish the import, and launch MartinLoop from the client's MCP
+server controls.
 
-```text
-dist-mcpb/martinloop-<version>.mcpb
-```
+The exact import label varies by client. Keep the `.mcpb` file intact; do not
+extract it and launch files from inside the archive.
 
-Review the requested configuration, finish the import, and start MartinLoop from the client's MCP server controls.
-
-Keep the `.mcpb` file intact. Do not extract it and manually launch files from inside the archive.
-
-## Configure MartinLoop
+## Configure the server
 
 | Setting | Environment variable | Purpose |
 |---|---|---|
-| `workspace_root` | `MARTIN_MCP_WORKSPACE_ROOT` | Repository or workspace MartinLoop may access |
-| `runs_root` | `MARTIN_RUNS_DIR` | Local directory for run records and handoff evidence |
-| `live_mode` | `MARTIN_LIVE` | Enables or disables live coding-agent execution |
+| `workspace_root` | `MARTIN_MCP_WORKSPACE_ROOT` | Approved repository boundary |
+| `runs_root` | `MARTIN_RUNS_DIR` | Local receipts and evidence root |
+| `live_mode` | `MARTIN_LIVE` | Enables or disables live execution |
 
-`live_mode` defaults to `false`.
+`live_mode` defaults to `false`. MartinLoop must reject workspace escapes, avoid stdout contamination, and never package credentials, `.env` files, source repositories, or existing receipts.
 
-Set `workspace_root` to the repository MartinLoop may access and `runs_root` to the local directory where run records should be written. Leave live execution disabled until you intentionally want the client to start or control coding-agent work.
-
-MartinLoop must reject workspace escapes and must not package credentials, `.env` files, source repositories, or existing run records into the bundle.
+Set `workspace_root` to the repository MartinLoop may access. Set `runs_root` to
+the directory where run receipts should be written. Leave `live_mode` disabled
+until you intentionally want governed execution.
 
 ## Verify the installation
 
-After launch:
-
-1. Confirm the client reports MartinLoop as connected.
-2. Confirm its MCP tools are discoverable.
-3. Run a doctor/status/inspection path first while `MARTIN_LIVE=false`.
-4. Confirm a live execution request remains blocked while live mode is disabled.
-
-A live-disabled call is inspection or verification evidence only. It is not proof that a coding agent edited the repository.
+After launch, confirm that the client reports the MartinLoop server as connected
+and that its tools are listed. Run the doctor or status tool first, with
+`live_mode` still `false`, and verify that the response is structured MCP output
+without terminal text mixed into the protocol stream. A live execution request
+must remain blocked while `MARTIN_LIVE=false`.
 
 ## Release gate
 
-Do not publish a bundle until the release lanes have validated the package build, MCPB schema, archive contents, checksum, initialization, live-disabled blocking, and workspace-boundary behavior on the supported platforms.
+Do not publish until Linux, macOS, and Windows CI lanes pass lint, tests, standalone build, npm package smoke tests, MCPB build and validation, archive inspection, checksum verification, runtime initialization, live-disabled blocking, and path-escape rejection.

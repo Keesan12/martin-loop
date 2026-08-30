@@ -1,10 +1,10 @@
 {
   "name": "@martinloop/mcp",
-  "version": "0.5.6",
+  "version": "0.5.7",
   "mcpName": "io.github.Keesan12/martin-loop",
   "private": false,
   "type": "module",
-  "description": "MCP server for MartinLoop, one system around coding agents so people can go from intent to production-quality software without stitching together separate tools.",
+  "description": "MCP server for AI coding agents \u00e2\u20ac\u201d verifier gates, stop limits, and Verified Handoffs.",
   "license": "Apache-2.0",
   "author": "MartinLoop contributors",
   "homepage": "https://martinloop.com/",
@@ -57,6 +57,8 @@
   },
   "scripts": {
     "build": "node ./scripts/build-package.mjs",
+    "version:sync": "node ./scripts/version-sync.mjs",
+    "version:check": "node ./scripts/verify-version-consistency.mjs",
     "prepack": "pnpm build",
     "smoke:pack": "node ./scripts/smoke-package.mjs",
     "smoke:published": "node ./scripts/smoke-published-package.mjs",

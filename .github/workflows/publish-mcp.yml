@@ -14,7 +14,6 @@ on:
 permissions:
   contents: write
   id-token: write
-  actions: write
 
 jobs:
   publish-mcp:
@@ -61,19 +60,22 @@ jobs:
 
       - name: Guard public git surface
         run: |
+          pnpm release:clean-check
+          pnpm release:authority:check
+          pnpm --filter @martinloop/mcp version:check
           pnpm public:git-surface
           pnpm public:portability-guard
 
       - name: Verify MCP package
         run: |
-          pnpm --filter @martin/contracts build
-          pnpm --filter @martin/presentation build
           pnpm --filter @martinloop/mcp lint
           pnpm --filter @martinloop/mcp test
           pnpm --filter @martinloop/mcp build
           pnpm --filter @martinloop/mcp smoke:pack
           pnpm --filter @martinloop/mcp smoke:published:pack
           pnpm --filter @martinloop/mcp verify:release
+          pnpm release:authority:check:built
+          pnpm release:clean-check
 
       - name: Read MCP package metadata
         id: mcp-metadata
@@ -159,10 +161,3 @@ jobs:
           tag_name: ${{ steps.release-vars.outputs.tag }}
           name: "@martinloop/mcp ${{ steps.mcp-metadata.outputs.package_version }}"
           body_path: "docs/release/MCP-${{ steps.mcp-metadata.outputs.package_version }}-RELEASE-NOTES.md"
-
-      - name: Register published MCP release
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ steps.release-vars.outputs.tag }}
-        run: gh workflow run register-current-mcp.yml --ref main -f tag="$RELEASE_TAG"

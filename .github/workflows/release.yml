@@ -1,12 +1,6 @@
 name: Release
 
 on:
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: Existing vX.Y.Z tag to publish
-        required: true
-        type: string
   push:
     tags:
       - "v*.*.*"
@@ -20,27 +14,8 @@ jobs:
     name: Publish to npm
     runs-on: ubuntu-latest
     steps:
-      - name: Resolve release coordinates
-        id: release-vars
-        shell: bash
-        env:
-          INPUT_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || '' }}
-        run: |
-          RELEASE_TAG="${INPUT_TAG:-$GITHUB_REF_NAME}"
-          if [[ -z "$RELEASE_TAG" ]]; then
-            echo "Missing release tag."
-            exit 1
-          fi
-          if [[ "$RELEASE_TAG" != v* ]]; then
-            echo "Expected a vX.Y.Z tag"
-            exit 1
-          fi
-          echo "tag=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
-          echo "version=${RELEASE_TAG#v}" >> "$GITHUB_OUTPUT"
-
       - uses: actions/checkout@v6
         with:
-          ref: ${{ steps.release-vars.outputs.tag }}
           fetch-depth: 0
 
       - uses: pnpm/action-setup@b0f76dfb45f55f8421693e4803ac7bb65143bd34
@@ -60,12 +35,15 @@ jobs:
 
       - name: Validate OSS release surface
         run: |
-          pnpm build
+          pnpm release:clean-check
+          pnpm release:authority:check
           pnpm lint
           pnpm public:copy-scan
           pnpm public:portability-guard
           pnpm public:git-surface
           pnpm test
+          pnpm build
+          pnpm release:authority:check:built
           pnpm oss:validate
           pnpm public:smoke
           pnpm --filter @martinloop/mcp lint
@@ -74,13 +52,8 @@ jobs:
           pnpm --filter @martinloop/mcp smoke:pack
           pnpm --filter @martinloop/mcp smoke:published:pack
           pnpm --filter @martinloop/mcp verify:release
-          node ./scripts/root-release-guard.mjs --tag "${{ steps.release-vars.outputs.tag }}" --pack
-
-      - name: Build, validate, and smoke-test MCPB
-        run: |
-          pnpm --filter @martinloop/mcp mcpb:build
-          pnpm --filter @martinloop/mcp mcpb:validate
-          pnpm --filter @martinloop/mcp mcpb:smoke
+          node ./scripts/root-release-guard.mjs --tag "${GITHUB_REF_NAME}" --pack
+          pnpm release:clean-check
 
       - name: Pack root tarball
         id: root-pack
@@ -94,10 +67,6 @@ jobs:
         id: package-version
         run: |
           VERSION="$(node -p "require('./package.json').version")"
-          if [ "$VERSION" != "${{ steps.release-vars.outputs.version }}" ]; then
-            echo "Tag ${{ steps.release-vars.outputs.tag }} does not match package.json version ${VERSION}."
-            exit 1
-          fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Extract changelog entry
@@ -141,9 +110,5 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b
         with:
-          tag_name: ${{ steps.release-vars.outputs.tag }}
-          files: |
-            ${{ steps.root-pack.outputs.tarball }}
-            packages/mcp/dist-mcpb/martinloop-*.mcpb
-            packages/mcp/dist-mcpb/martinloop-*.mcpb.sha256
+          files: ${{ steps.root-pack.outputs.tarball }}
           body: ${{ steps.changelog.outputs.body }}

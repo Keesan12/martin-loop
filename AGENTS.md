@@ -1,3 +1,66 @@
+# MartinLoop Agent Operating Rules
+
+These rules are mandatory for every AI agent, automation, contributor, and coding session working on MartinLoop.
+
+## Repository authority
+
+ is the sole development authority.
+
+ is a public distribution repository. It is never the primary development repository.
+
+## Mandatory internal-first sequence
+
+Every code change must follow this sequence:
+
+1. Start from the latest .
+2. Create a private feature branch.
+3. Implement and test the change privately.
+4. Commit and push the private branch.
+5. Open a private PR into .
+6. Pass all required internal checks.
+7. Fix all regressions.
+8. Prove the real MartinLoop workflow works.
+9. Merge the private PR only after explicit approval.
+10. Record the private merge commit SHA.
+11. Verify fresh  is clean and healthy.
+12. Create a clean public-staging branch from the latest public .
+13. Transfer only the reviewed public-safe diff from the private merge.
+14. Run public tests and public-surface guards.
+15. Push the public-staging branch.
+16. Open a public PR.
+17. Merge publicly only after hosted checks pass and explicit approval is given.
+
+## Prohibited actions
+
+Agents must never:
+
+- develop directly in ;
+- use public  as the implementation authority;
+- push unmerged private feature commits to the public repository;
+- create public staging before the private PR is merged;
+- resolve implementation conflicts only in a public-staging branch;
+- bypass or weaken the public-write hook;
+- ask the user to bypass the hook for unfinished work;
+- push directly to public ;
+- merge a stale public branch wholesale;
+- declare public readiness while private  is broken;
+- promote code without a recorded private merge SHA;
+- publish npm, tags, native assets, or GitHub Releases before public merge approval.
+
+## Required internal health proof
+
+Before public staging, a fresh worktree of private  must prove all packages build and test clean, portability and copy-scan pass, git diff --check passes, no conflict markers exist, martin doctor works, preflight and governed run succeed, receipt is created and readable, verification succeeds, status survives restart, and separate workspaces remain isolated.
+
+## Public promotion evidence
+
+Every public-staging branch must include a promotion manifest at  containing privateRepository, privateMergeSha, privateMainShaValidated, publicBaseSha, promotedBy, validatedAt (ISO-8601), and internalHealthPassed: true. Public promotion is blocked when this manifest is absent, malformed, or reports failed internal health.
+
+## Stop condition
+
+When any required step is missing, stop. Do not improvise around repository boundaries. Do not treat the hook as an inconvenience. Report the missing prerequisite and remain in the private repository.
+
+---
+
 # AGENTS.md
 
 ## Purpose
@@ -129,3 +192,61 @@ pnpm test;  echo TEST_EXIT:$?
 The actual exit code must appear in the governed receipt. Timeouts must be rerun or recovered from persisted governed command evidence before continuing.
 
 UNKNOWN has the same release authority as FAILED. Neither may be overridden without rerunning verification and observing exit code 0.
+
+## Release blocker inventory — INC-002 / Issue #86
+
+During the 0.5.1 RC, the release process fell into a serial blocker loop: run one gate, stop at the first failure, patch it immediately, rerun, then discover the next blocker. This caused avoidable context switching, token/tool burn, and regression risk.
+
+This workflow is prohibited for all future release-closing work.
+
+For any RC, public promotion, package release, or multi-surface ship, agents must use these phases:
+
+### Phase 1 — Audit only
+
+- Freeze source changes.
+- Run the complete applicable release matrix.
+- Record every gate as PASS, FAIL, UNKNOWN, or N/A.
+- Continue through independent gates after failures instead of stopping on the first failure.
+- Group failures by root cause.
+- Produce one complete blocker inventory before editing source.
+- Do not patch during this phase.
+
+Required audit output:
+
+```text
+AUDIT_COMPLETE=YES
+TOTAL_BLOCKERS=<n>
+BLOCKERS_GROUPED_BY_ROOT_CAUSE=YES
+```
+
+### Phase 2 — Repair by root-cause cluster
+
+Only after the blocker inventory is complete, repair grouped causes in this order unless dependency order requires otherwise:
+
+1. product/runtime correctness
+2. package/facade correctness
+3. MCP/MCPB correctness
+4. release metadata/version consistency
+5. stale tests/guards/docs
+
+Commit and push each coherent repair slice. Do not add features, redesign architecture, or perform unrelated cleanup during release closure.
+
+### Phase 3 — Clean RC
+
+After repairs, run the entire applicable release matrix again from the top with no source edits during the run.
+
+If anything fails, first produce the remaining blocker inventory again. Do not return to first-failure patching.
+
+A release may advance only when:
+
+```text
+CLEAN_RC=PASS
+```
+
+### Phase 4 — Ship and verify
+
+Only after the clean RC is green may the release proceed to version alignment, artifact packing, publication, tags/releases, and fresh-install verification.
+
+If an agent begins fixing failures before the full blocker inventory is complete, stop the repair work and return to audit-only mode.
+
+This rule is internal engineering process. Do not copy incident history, private repository details, or internal release-management notes into public user-facing documentation.

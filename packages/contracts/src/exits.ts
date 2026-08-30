@@ -68,7 +68,7 @@ export interface ExitPolicyV1 {
   };
   budget: {
     maxUsd: number;
-    maxTokens: number;
+    maxTokens?: number;
   };
   wallClock: {
     maxElapsedMs: number;

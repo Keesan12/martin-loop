@@ -7,8 +7,7 @@ export const MARTIN_ERROR_CATEGORIES = [
   "verification_failed",
   "policy_blocked",
   "budget_exit",
-  "transient",
-  "install_failed"
+  "transient"
 ] as const;
 
 export type MartinErrorCategory = (typeof MARTIN_ERROR_CATEGORIES)[number];

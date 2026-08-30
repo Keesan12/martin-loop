@@ -44,7 +44,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: MCP lint and tests
-        run: pnpm --filter @martinloop/mcp lint && pnpm --filter @martinloop/mcp test
+        run: pnpm --filter @martin/contracts build && pnpm --filter @martin/presentation build && pnpm --filter @martinloop/mcp lint && pnpm --filter @martinloop/mcp test
 
       - name: Standalone and npm package smoke tests
         run: pnpm --filter @martinloop/mcp build && pnpm --filter @martinloop/mcp smoke:pack && pnpm --filter @martinloop/mcp smoke:published:pack

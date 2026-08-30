@@ -32,9 +32,9 @@ import {
 
 const NOOP_VERIFIER = process.platform === "win32" ? "cmd /c exit 0" : "true";
 const codexAvailable = resolveCliCommandAvailability("codex").available;
-const codexLaunchReady = detectCodexLaunchReadiness();
-const itIfCodexLaunchReady = codexLaunchReady ? it : it.skip;
 const codexGovernedRunOptIn = process.env["MARTIN_TEST_ENABLE_LIVE_CODEX"] === "1";
+const codexLaunchReady = codexGovernedRunOptIn ? detectCodexLaunchReadiness() : false;
+const itIfCodexLaunchReady = codexLaunchReady ? it : it.skip;
 const itIfCodexLiveHostOptIn = codexLaunchReady && codexGovernedRunOptIn ? it : it.skip;
 
 afterEach(() => {
@@ -370,7 +370,7 @@ describe("--engine flag", () => {
     expect(payload.engineProbe.launchReady).toBe(true);
   });
 
-  it("blocks live run execution before spend when the governed receipt chain is missing", { timeout: 15000 }, async () => {
+  it("does not use policy_blocked for missing manual prerequisites", { timeout: 15000 }, async () => {
     await withTempDir(async (workspace) => {
       const runsDir = join(workspace, ".martin-runs");
       const result = await withoutAgentCliOnPath(() =>
@@ -391,17 +391,70 @@ describe("--engine flag", () => {
         ])
       );
 
-      expect(result.exitCode).toBe(8);
-      // Governance gate fires before engine-availability check — message reflects
-      // missing receipt chain, not missing engine CLI.
-      expect(result.stderr).toContain("Governed run blocked until MartinLoop receipts exist");
-      expect(result.stderr).toContain("martin-loop doctor");
+      expect(result.exitCode).toBe(3);
+      expect(result.stderr).toContain("Error [environment]");
+      expect(result.stderr).toContain("coding-agent runtime");
+      expect(result.stderr).not.toContain("Governed run blocked until MartinLoop receipts exist");
+      expect(result.stderr).not.toContain("Governed run preflight blocked execution");
 
       const workflowState = await readWorkflowState(runsDir);
       const cliState = (workflowState?.cli ?? {}) as Record<string, unknown>;
       expect(cliState.doctor).toBeUndefined();
-      expect(cliState["session-start"]).toBeUndefined();
+      expect(cliState.estimate).toBeUndefined();
       expect(cliState.preflight).toBeUndefined();
+      const workspaceState = await readWorkflowState(runsDir, workspace);
+      const workspaceCliState = (workspaceState?.cli ?? {}) as Record<string, unknown>;
+      expect(workspaceCliState.doctor).toBeDefined();
+      expect(workspaceCliState.estimate).toBeDefined();
+      expect(workspaceCliState.preflight).toBeDefined();
+    });
+  });
+
+  it("keeps real policy denial blocking execution", { timeout: 15000 }, async () => {
+    await withTempDir(async (workspace) => {
+      const runsDir = join(workspace, ".martin-runs");
+      const result = await executeCli([
+        "run",
+        "--cwd",
+        workspace,
+        "--runs-dir",
+        runsDir,
+        "--objective",
+        "Fix the bug",
+        "--verify",
+        NOOP_VERIFIER,
+        "--max-iterations",
+        "1",
+        "--budget-usd",
+        "2",
+        "--unsafe-allow-unguarded-run"
+      ]);
+
+      expect(result.exitCode).toBe(8);
+      expect(result.stderr).toContain("--unsafe-allow-unguarded-run is blocked for live governed coding runs.");
+    });
+  });
+
+  it("ensures estimate and preflight for a fresh one-command run", { timeout: 45000 }, async () => {
+    await withTempDir(async (workspace) => {
+      initializeGitRepo(workspace);
+      installDeterministicCodexHost();
+      const runsDir = join(workspace, ".martin-runs");
+
+      const result = await executeCli([
+        "--json", "run", "--engine", "codex", "--cwd", workspace,
+        "--runs-dir", runsDir, "--objective", "Fix the fresh run",
+        "--verify", NOOP_VERIFIER, "--max-iterations", "1", "--budget-usd", "2"
+      ]);
+
+      expect(result.exitCode).toBe(7);
+      const payload = JSON.parse(result.stdout);
+      expect(payload.command).toBe("run");
+      const state = await readWorkflowState(runsDir, workspace);
+      const cliState = (state?.cli ?? {}) as Record<string, unknown>;
+      expect(cliState.doctor).toBeDefined();
+      expect(cliState.estimate).toBeDefined();
+      expect(cliState.preflight).toBeDefined();
     });
   });
 

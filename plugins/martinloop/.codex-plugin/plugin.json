@@ -1,7 +1,7 @@
 {
   "name": "martinloop",
-  "version": "0.5.6",
-  "description": "One system around coding agents for moving from intent to a production-quality software handoff without stitching together separate tools.",
+  "version": "0.5.7",
+  "description": "Govern coding-agent work with budgets, stop conditions, and verifier-backed evidence.",
   "author": {
     "name": "MartinLoop contributors",
     "url": "https://martinloop.com/"
@@ -9,20 +9,27 @@
   "homepage": "https://martinloop.com/",
   "repository": "https://github.com/Keesan12/martin-loop",
   "license": "Apache-2.0",
-  "keywords": ["coding-agents", "mcp", "software-delivery", "agent-workflows"],
+  "keywords": [
+    "agent-governance",
+    "coding-agents",
+    "mcp",
+    "verification"
+  ],
   "skills": "./skills/",
   "interface": {
     "displayName": "MartinLoop",
-    "shortDescription": "Take coding-agent work from intent to a trustworthy handoff.",
-    "longDescription": "MartinLoop connects the workflow around coding agents so people can define what should ship, let the agent work, check the result, recover when needed, and understand the handoff without stitching together separate tools.",
+    "shortDescription": "Make coding agents prove completion.",
+    "longDescription": "MartinLoop adds controlled execution, budget limits, recovery, and verifier-backed handoffs to coding-agent workflows.",
     "developerName": "MartinLoop contributors",
     "category": "Productivity",
-    "capabilities": ["Interactive"],
+    "capabilities": [
+      "Interactive"
+    ],
     "websiteURL": "https://martinloop.com/",
     "defaultPrompt": [
-      "Use MartinLoop to take this task from intent to a verified handoff.",
-      "Use MartinLoop to define what done means before the coding agent starts.",
-      "Show me what happened in the latest MartinLoop run and what still needs attention."
+      "Use MartinLoop to govern this task and verify completion.",
+      "Run MartinLoop preflight before making changes.",
+      "Show the MartinLoop dossier for the latest governed run."
     ]
   },
   "mcpServers": "./.mcp.json"

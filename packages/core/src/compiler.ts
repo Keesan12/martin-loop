@@ -24,7 +24,7 @@ export interface CompilerAdapterRequest {
     focus: string;
     remainingBudgetUsd: number;
     remainingIterations: number;
-    remainingTokens: number;
+    remainingTokens?: number;
   };
   previousAttempts: LoopAttempt[];
 }
@@ -48,7 +48,7 @@ export interface PromptPacket {
   budgetEnvelope: {
     remainingBudgetUsd: number;
     remainingIterations: number;
-    remainingTokens: number;
+    remainingTokens?: number;
   };
 }
 
@@ -107,7 +107,9 @@ export function compilePromptPacket(request: CompilerAdapterRequest): PromptPack
     budgetEnvelope: {
       remainingBudgetUsd: request.context.remainingBudgetUsd,
       remainingIterations: request.context.remainingIterations,
-      remainingTokens: request.context.remainingTokens
+      ...(request.context.remainingTokens !== undefined
+        ? { remainingTokens: request.context.remainingTokens }
+        : {})
     }
   };
 }

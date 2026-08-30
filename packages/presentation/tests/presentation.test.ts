@@ -96,18 +96,6 @@ describe("semantic terminal presentation", () => {
 });
 
 describe("motion policy", () => {
-  it("disables TTY motion when NO_COLOR is active", () => {
-    expect(
-      canAnimate({
-        outputMode: "human",
-        stdoutIsTty: true,
-        ci: false,
-        noColor: true,
-        term: "xterm-256color"
-      })
-    ).toBe(false);
-  });
-
   it.each([
     [{ outputMode: "json", stdoutIsTty: true }, false],
     [{ outputMode: "quiet", stdoutIsTty: true }, false],

@@ -1,9 +1,4 @@
-import type {
-  CostProvenance,
-  MartinErrorCategory,
-  MartinOutputMode,
-  VerifiedHandoffOutcome
-} from "@martin/contracts";
+import type { MartinErrorCategory, MartinOutputMode, VerifiedHandoffOutcome } from "@martin/contracts";
 
 const EXIT_CODES: Record<MartinErrorCategory, number> = {
   invalid_input: 2,
@@ -14,8 +9,7 @@ const EXIT_CODES: Record<MartinErrorCategory, number> = {
   verification_failed: 7,
   policy_blocked: 8,
   budget_exit: 9,
-  transient: 10,
-  install_failed: 11
+  transient: 10
 };
 
 export function exitCodeForGovernedOutcome(outcome: VerifiedHandoffOutcome): number {
@@ -281,17 +275,6 @@ export function buildRankHeader(rank: RankName, termWidth: number): string {
 
 export type RunOutcome = "success" | "awaiting_signoff" | "approval_blocked" | "failure";
 
-function formatRunCost(actualUsd: number, provenance: CostProvenance): string {
-  if (provenance === "unavailable") return "cost unavailable";
-  if (provenance === "actual") {
-    return `$${actualUsd.toFixed(2)} provider-settled actual`;
-  }
-  if (provenance === "calculated") {
-    return `$${actualUsd.toFixed(2)} calculated from observed usage`;
-  }
-  return `$${actualUsd.toFixed(2)} estimated`;
-}
-
 export function renderRunHeader(
   rank: RankName,
   outcome: RunOutcome,
@@ -300,8 +283,7 @@ export function renderRunHeader(
   savedThisRun: number,
   lifetimeSaved: number,
   savingsConfidence: "confirmed" | "estimated" | "unavailable",
-  receiptPersisted: boolean,
-  costProvenance: CostProvenance = "unavailable"
+  receiptPersisted: boolean
 ): string {
   const termWidth = process.stdout.columns ?? 80;
   const lines: string[] = [
@@ -318,7 +300,7 @@ export function renderRunHeader(
   const attemptStr = `${attempts} attempt${attempts === 1 ? "" : "s"}`;
 
   if (outcome === "success" || outcome === "awaiting_signoff") {
-    lines.push(`  ${checkMark} · ${attemptStr} · ${formatRunCost(actualUsd, costProvenance)}`);
+    lines.push(`  ${checkMark} · ${attemptStr} · $${actualUsd.toFixed(2)} spent`);
 
     if (outcome === "awaiting_signoff") {
       lines.push("    verification passed; a receipt was recorded. review and accept when ready.");
@@ -384,7 +366,7 @@ export async function renderMilestonePrompt(
 ): Promise<void> {
   const { rank, prevRank, totalSavedUsd, successfulRunCount, starShownCount } = ctx;
   const { onStarConfirmed, onWaitlistJoined, onWaitlistDeclined, onFeedback } = callbacks;
-  if (!prompt || !process.stdout.isTTY) return;
+  if (!prompt || !process.stdout.isTTY || !process.stdin.isTTY) return;
 
   if (prompt.kind === "loop_milestone") {
     process.stdout.write(renderLoopMilestoneBox(prompt.count, rank, prevRank));

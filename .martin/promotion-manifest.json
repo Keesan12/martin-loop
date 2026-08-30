@@ -1,0 +1,9 @@
+{
+  "schemaVersion": "martin.public-promotion.v1",
+  "privateRepository": "martin-Loop/ML_Core_OSS_Internal",
+  "privateMergeSha": "c0c5b618a30dd453c6955966a88aa9c3e8c26db2",
+  "privateMainShaValidated": "c0c5b618a30dd453c6955966a88aa9c3e8c26db2",
+  "publicBaseSha": "1560565ab23239a0fbde2f48c58a9db445c6d43b",
+  "internalHealthPassed": true,
+  "validatedAt": "2026-08-29T18:23:16.000Z"
+}

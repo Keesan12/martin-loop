@@ -6,7 +6,7 @@ export type GovernanceSnapshot = {
   policyProfile: PolicyProfile;
   maxUsd: number;
   softLimitUsd: number;
-  maxTokens: number;
+  maxTokens?: number;
   maxIterations: number;
   allowedAdapters: string[];
   allowedModels: string[];

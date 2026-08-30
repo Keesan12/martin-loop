@@ -31,7 +31,8 @@ export interface InspectableLoopAttempt extends LoopAttemptRecord {
   summary?: string;
 }
 
-export interface InspectableLoopRecord extends Omit<LoopRunRecord, "attempts" | "task"> {
+export interface InspectableLoopRecord extends Omit<LoopRunRecord, "attempts" | "task" | "budget"> {
+  budget: LoopBudget;
   attempts: InspectableLoopAttempt[];
   task?: LoopTask;
   artifacts?: LoopArtifact[];
@@ -59,7 +60,7 @@ export interface LoopPreview {
   shouldStop: boolean;
   remainingBudgetUsd: number;
   remainingIterations: number;
-  remainingTokens: number;
+  remainingTokens?: number;
   lastAttempt?: AttemptSummary;
   routingEconomics?: Record<string, unknown>;
 }
@@ -320,7 +321,9 @@ export function buildLoopPreview(loop: InspectableLoopRecord): LoopPreview {
     shouldStop: costState.shouldStop,
     remainingBudgetUsd: costState.remainingBudgetUsd,
     remainingIterations: costState.remainingIterations,
-    remainingTokens: costState.remainingTokens,
+    ...(costState.remainingTokens !== undefined
+      ? { remainingTokens: costState.remainingTokens }
+      : {}),
     ...(lastAttempt ? { lastAttempt: buildAttemptSummary(lastAttempt) } : {}),
     ...(loop.routingEconomics ? { routingEconomics: buildRoutingEconomicsSummary(loop.routingEconomics) } : {})
   };
@@ -458,7 +461,12 @@ export function buildCostSnapshot(
 }
 
 export function buildBudgetSnapshot(budget: LoopBudget): LoopBudget {
-  return { maxUsd: budget.maxUsd, softLimitUsd: budget.softLimitUsd, maxIterations: budget.maxIterations, maxTokens: budget.maxTokens };
+  return {
+    maxUsd: budget.maxUsd,
+    softLimitUsd: budget.softLimitUsd,
+    maxIterations: budget.maxIterations,
+    ...(budget.maxTokens !== undefined ? { maxTokens: budget.maxTokens } : {})
+  };
 }
 
 export function buildSuggestedResourceUris(loopId: string): string[] {

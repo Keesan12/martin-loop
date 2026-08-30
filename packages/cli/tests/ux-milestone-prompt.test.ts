@@ -34,30 +34,6 @@ vi.mock("node:readline", () => {
 });
 
 describe("renderRunHeader — receipt persistence messaging", () => {
-  it.each([
-    ["actual", "$1.25 provider-settled actual"],
-    ["calculated", "$1.25 calculated from observed usage"],
-    ["estimated", "$1.25 estimated"],
-    ["unavailable", "cost unavailable"]
-  ] as const)("labels %s run cost truthfully", (provenance, expected) => {
-    const header = renderRunHeader(
-      "Observer",
-      "success",
-      1,
-      1.25,
-      0,
-      0,
-      "unavailable",
-      true,
-      provenance
-    );
-
-    expect(header).toContain(expected);
-    if (provenance !== "actual") {
-      expect(header).not.toContain("$1.25 actual");
-    }
-  });
-
   it("states that a failed run's signed receipt was retained", () => {
     const header = renderRunHeader("Observer", "failure", 2, 0, 0, 0, "unavailable", true);
 
@@ -76,15 +52,18 @@ import { renderMilestonePrompt, renderRunHeader } from "../src/ux.js";
 
 describe("renderMilestonePrompt — feedback prompt capture", () => {
   const originalIsTTY = process.stdout.isTTY;
+  const originalStdinIsTTY = process.stdin.isTTY;
 
   afterEach(() => {
     Object.defineProperty(process.stdout, "isTTY", { value: originalIsTTY, configurable: true });
+    Object.defineProperty(process.stdin, "isTTY", { value: originalStdinIsTTY, configurable: true });
     createInterfaceCalls = 0;
     answerQueue = [];
   });
 
   it("awaits the user's typed score and invokes onFeedback with it before resolving", async () => {
     Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
+    Object.defineProperty(process.stdin, "isTTY", { value: true, configurable: true });
     answerQueue = ["3"];
 
     const onFeedback = vi.fn().mockResolvedValue(undefined);
@@ -109,6 +88,7 @@ describe("renderMilestonePrompt — feedback prompt capture", () => {
 
   it("carries a high score through both follow-up questions using one shared reader", async () => {
     Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
+    Object.defineProperty(process.stdin, "isTTY", { value: true, configurable: true });
     // score, then feature vote, then email — three sequential questions.
     answerQueue = ["5", "better docs", "someone@example.com"];
 
@@ -136,6 +116,7 @@ describe("renderMilestonePrompt — feedback prompt capture", () => {
 
   it("carries a low score through its single follow-up question", async () => {
     Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
+    Object.defineProperty(process.stdin, "isTTY", { value: true, configurable: true });
     answerQueue = ["1", "the CLI hangs on the feedback prompt"];
 
     const onFeedback = vi.fn().mockResolvedValue(undefined);

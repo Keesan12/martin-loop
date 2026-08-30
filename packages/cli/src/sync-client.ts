@@ -38,12 +38,13 @@
  *   FLUSH_MAX_ATTEMPTS is a lifetime cap enforced across separate invocations.
  */
 
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
 import type { LoopRecord } from "@martin/contracts";
+import { buildPrivacySafeCoreReceiptBundle, redactHostedSyncValue } from "./sync-privacy.js";
 
 /** Portable basename — handles both forward and backslash separators on all platforms. @internal */
 export function queueFileName(filePath: string): string {
@@ -104,15 +105,38 @@ interface HostedRunEventDraft {
   payload?: Record<string, unknown>;
 }
 
+interface CoreReceiptIntegrityMaterial {
+  schemaVersion: "martin.receipt-integrity.v1";
+  runId: string;
+  keyId: string;
+  signedAt: string;
+  scope?: Record<string, unknown>;
+  loopRecordSha256: string;
+  ledgerSha256: string;
+  ledgerHeadHash: string;
+  entryCount: number;
+  chain: Array<Record<string, unknown>>;
+  signatureHmacSha256: string;
+}
+
+interface CoreReceiptBundle {
+  loopRecord: Record<string, unknown>;
+  ledgerEntries: Array<Record<string, unknown>>;
+  integrity: CoreReceiptIntegrityMaterial;
+}
+
 interface HostedRunSyncDraft {
   loopId: string;
   workspaceId?: string;
   projectId?: string;
   task: { title: string; objective: string };
   status?: string;
-  budget?: { spentUsd?: number };
+  budget?: { spentUsd?: number; avoidedUsd?: number };
+  receiptScope?: Record<string, unknown>;
+  receiptIntegrity?: CoreReceiptIntegrityMaterial;
   events: HostedRunEventDraft[];
   syncedAt?: string;
+  coreReceipt?: CoreReceiptBundle;
 }
 
 interface SyncQueueItem {
@@ -131,10 +155,159 @@ type UploadResult =
   | { ok: false; permanent: boolean; retryAfterMs?: number };
 
 // ---------------------------------------------------------------------------
+// Receipt transport
+// ---------------------------------------------------------------------------
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function finiteNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function stringField(record: Record<string, unknown> | undefined, key: string): string | undefined {
+  const value = record?.[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+function resolveRunsRootForReceipt(loop: LoopRecord): string {
+  const receiptRunsRoot = loop.receiptScope?.runsRoot?.trim();
+  if (receiptRunsRoot) return receiptRunsRoot;
+
+  const configuredRunsRoot = process.env["MARTIN_RUNS_DIR"]?.trim();
+  if (configuredRunsRoot) return configuredRunsRoot;
+
+  return join(homedir(), ".martin", "runs");
+}
+
+async function readPersistedCoreReceiptBundle(loop: LoopRecord): Promise<CoreReceiptBundle | undefined> {
+  const runsRoot = resolveRunsRootForReceipt(loop);
+  const runRoot = join(runsRoot, loop.loopId);
+  try {
+    const [loopRecordRaw, ledgerRaw, integrityRaw] = await Promise.all([
+      readFile(join(runRoot, "loop.json"), "utf8"),
+      readFile(join(runRoot, "events.jsonl"), "utf8"),
+      readFile(join(runRoot, "receipt-integrity.json"), "utf8"),
+    ]);
+
+    const loopRecord = JSON.parse(loopRecordRaw) as unknown;
+    const integrity = JSON.parse(integrityRaw) as unknown;
+    const ledgerEntries = ledgerRaw
+      .split(/\r?\n/u)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as unknown);
+
+    if (
+      !isPlainRecord(loopRecord) ||
+      !isPlainRecord(integrity) ||
+      integrity["schemaVersion"] !== "martin.receipt-integrity.v1" ||
+      integrity["runId"] !== loop.loopId ||
+      ledgerEntries.some((entry) => !isPlainRecord(entry))
+    ) {
+      return undefined;
+    }
+
+    return await buildPrivacySafeCoreReceiptBundle({
+      runsRoot,
+      loopRecord,
+      ledgerEntries: ledgerEntries as Array<Record<string, unknown>>,
+      integrity: integrity as unknown as CoreReceiptIntegrityMaterial,
+    });
+  } catch {
+    return undefined;
+  }
+}
+
+function buildReceiptBoundEvents(coreReceipt: CoreReceiptBundle): HostedRunEventDraft[] {
+  return coreReceipt.ledgerEntries.flatMap((entry, index) => {
+    const eventId = stringField(entry, "eventId");
+    const eventType = stringField(entry, "type") ?? stringField(entry, "kind");
+    const occurredAt = stringField(entry, "timestamp");
+    if (!eventId || !eventType || !occurredAt) return [];
+
+    const attemptId = stringField(entry, "attemptId");
+    const payload = isPlainRecord(entry["payload"]) ? entry["payload"] : undefined;
+    return [{
+      eventId,
+      eventType,
+      occurredAt,
+      sequence: index,
+      ...(attemptId ? { attemptId } : {}),
+      ...(payload ? { payload } : {}),
+    }];
+  });
+}
+
+function receiptCanBindHostedDraft(coreReceipt: CoreReceiptBundle, events: HostedRunEventDraft[]): boolean {
+  const task = isPlainRecord(coreReceipt.loopRecord["task"])
+    ? coreReceipt.loopRecord["task"]
+    : undefined;
+  return events.length > 0 &&
+    typeof coreReceipt.loopRecord["updatedAt"] === "string" &&
+    typeof coreReceipt.loopRecord["status"] === "string" &&
+    typeof task?.["title"] === "string" &&
+    typeof task?.["objective"] === "string";
+}
+
+// ---------------------------------------------------------------------------
 // Payload builder
 // ---------------------------------------------------------------------------
 
-function buildIngestBody(loop: LoopRecord, _runtimeVersion: string): HostedRunSyncDraft {
+function buildIngestBody(
+  loop: LoopRecord,
+  _runtimeVersion: string,
+  persistedReceipt?: CoreReceiptBundle
+): HostedRunSyncDraft {
+  const receiptEvents = persistedReceipt ? buildReceiptBoundEvents(persistedReceipt) : [];
+  const coreReceipt = persistedReceipt && receiptCanBindHostedDraft(persistedReceipt, receiptEvents)
+    ? persistedReceipt
+    : undefined;
+
+  if (coreReceipt) {
+    const signedTask = coreReceipt.loopRecord["task"] as Record<string, unknown>;
+    const signedCost = isPlainRecord(coreReceipt.loopRecord["cost"])
+      ? coreReceipt.loopRecord["cost"]
+      : undefined;
+    const spentUsd = finiteNumber(signedCost?.["actualUsd"]);
+    const avoidedUsd = finiteNumber(signedCost?.["avoidedUsd"]);
+    const workspaceId = stringField(coreReceipt.loopRecord, "workspaceId");
+    const projectId = stringField(coreReceipt.loopRecord, "projectId");
+    const status = stringField(coreReceipt.loopRecord, "status");
+    const syncedAt = stringField(coreReceipt.loopRecord, "updatedAt")!;
+    const receiptScope = isPlainRecord(coreReceipt.loopRecord["receiptScope"])
+      ? coreReceipt.loopRecord["receiptScope"]
+      : undefined;
+    const budget = spentUsd !== undefined || avoidedUsd !== undefined
+      ? {
+          ...(spentUsd !== undefined ? { spentUsd } : {}),
+          ...(avoidedUsd !== undefined ? { avoidedUsd } : {}),
+        }
+      : undefined;
+
+    return {
+      loopId: loop.loopId,
+      ...(workspaceId ? { workspaceId } : {}),
+      ...(projectId ? { projectId } : {}),
+      task: {
+        title: signedTask["title"] as string,
+        objective: signedTask["objective"] as string,
+      },
+      ...(status ? { status } : {}),
+      ...(budget ? { budget } : {}),
+      ...(receiptScope ? { receiptScope } : {}),
+      receiptIntegrity: coreReceipt.integrity,
+      events: receiptEvents,
+      syncedAt,
+      coreReceipt,
+    };
+  }
+
+  const runCompletedEvent = loop.events?.find((event) => event.type === "run.completed");
+  const runStartedEvent = loop.events?.find((event) => event.type === "run.started");
+  const runCompletedPayload = isPlainRecord(runCompletedEvent?.payload) ? runCompletedEvent.payload : undefined;
+  const runStartedPayload = isPlainRecord(runStartedEvent?.payload) ? runStartedEvent.payload : undefined;
   const events: HostedRunEventDraft[] = [];
 
   // Always-present lifecycle snapshot — guarantees events[] is never empty.
@@ -143,8 +316,25 @@ function buildIngestBody(loop: LoopRecord, _runtimeVersion: string): HostedRunSy
     eventType: "run.synced",
     occurredAt: loop.updatedAt ?? loop.createdAt,
     sequence: 0,
-    payload: { lifecycleState: loop.lifecycleState, status: loop.status },
+    payload: {
+      lifecycleState: loop.lifecycleState,
+      status: loop.status,
+      ...(typeof runCompletedPayload?.["failureClass"] === "string" && {
+        failureClass: runCompletedPayload["failureClass"],
+      }),
+      ...(typeof runCompletedPayload?.["reason"] === "string" && {
+        failureReason: runCompletedPayload["reason"],
+      }),
+      ...(typeof runCompletedPayload?.["reasonCode"] === "string" && {
+        reasonCode: runCompletedPayload["reasonCode"],
+      }),
+      ...(typeof runStartedPayload?.["adapterId"] === "string" && {
+        adapterId: runStartedPayload["adapterId"],
+      }),
+    },
   });
+
+  const settledModel = loop.cost?.providerSettlement?.model;
 
   // One event per attempt — taxonomy locked 2026-08-21.
   for (const attempt of loop.attempts) {
@@ -158,35 +348,37 @@ function buildIngestBody(loop: LoopRecord, _runtimeVersion: string): HostedRunSy
       payload: {
         ...(attempt.failureClass != null && { failureClass: attempt.failureClass }),
         ...(attempt.summary != null && { summary: attempt.summary }),
-        ...(attempt.model != null && { model: attempt.model }),
+        // Provider settlement is run-level evidence; this does not claim per-attempt model accuracy.
+        ...(settledModel != null && { model: settledModel }),
+        ...(attempt.adapterId != null && { adapterId: attempt.adapterId }),
       },
     });
   }
 
-  return {
+  const spentUsd = finiteNumber(loop.cost?.actualUsd);
+  const avoidedUsd = finiteNumber(loop.cost?.avoidedUsd);
+  const budget = spentUsd !== undefined || avoidedUsd !== undefined
+    ? {
+        ...(spentUsd !== undefined ? { spentUsd } : {}),
+        ...(avoidedUsd !== undefined ? { avoidedUsd } : {}),
+      }
+    : undefined;
+  const rawDraft: HostedRunSyncDraft = {
     loopId: loop.loopId,
     workspaceId: loop.workspaceId,
     projectId: loop.projectId,
     task: {
-      title: loop.task.title ?? loop.task.objective ?? "",
-      objective: loop.task.objective ?? loop.task.title ?? "",
+      title: loop.task.title || loop.task.objective || "(untitled)",
+      objective: loop.task.objective || loop.task.title || "(untitled)",
     },
     status: loop.status,
-    budget: {
-      spentUsd: loop.cost?.actualUsd ?? loop.cost?.estimatedUsd,
-    },
+    ...(budget ? { budget } : {}),
+    ...(loop.receiptScope ? { receiptScope: loop.receiptScope as unknown as Record<string, unknown> } : {}),
     events,
     syncedAt: new Date().toISOString(),
   };
-}
 
-/**
- * @internal Exported for targeted tests only. Server deduplicates by (tenantId, loopId).
- */
-export function computeIdempotencyKey(loopId: string, body: HostedRunSyncDraft): string {
-  return createHash("sha256")
-    .update(loopId + JSON.stringify(body))
-    .digest("hex");
+  return redactHostedSyncValue(rawDraft) as HostedRunSyncDraft;
 }
 
 // ---------------------------------------------------------------------------
@@ -630,7 +822,8 @@ async function buildAndEnqueue(
   if (!endpoint || !token) return undefined; // opt-in — silent no-op
 
   const queueDir = resolveQueueDir();
-  const payload = buildIngestBody(loop, opts.runtimeVersion);
+  const persistedReceipt = await readPersistedCoreReceiptBundle(loop);
+  const payload = buildIngestBody(loop, opts.runtimeVersion, persistedReceipt);
 
   const payloadBytes = Buffer.byteLength(JSON.stringify(payload), "utf8");
   if (payloadBytes > MAX_PAYLOAD_BYTES) {

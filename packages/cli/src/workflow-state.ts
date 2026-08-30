@@ -154,7 +154,9 @@ export async function recordCliWorkflowStep(input: CliWorkflowStepInput): Promis
     ...(input.receiptScope ? { scopeKey: hashReceiptScope(input.receiptScope) } : {}),
     ...(input.receiptScope ? { canonicalScopeKey: hashCanonicalReceiptScope(input.receiptScope) } : {}),
     pathScopeKey: hashPathScope(input.allowedPaths ?? [], input.deniedPaths ?? []),
-    ...(input.budget ? { budgetKey: hashBudget(input.budget) } : {})
+    ...(input.budget
+      ? { budgetKey: input.step === "estimate" ? hashEstimateBudget(input.budget) : hashBudget(input.budget) }
+      : {})
   };
 
   state.cli ??= {};
@@ -163,17 +165,6 @@ export async function recordCliWorkflowStep(input: CliWorkflowStepInput): Promis
 }
 
 export async function evaluateCliRunGate(input: CliRunGateInput): Promise<CliRunGateResult> {
-  return evaluateCliWorkflowGate(input, false);
-}
-
-export async function evaluateCliPreflightGate(input: CliRunGateInput): Promise<CliRunGateResult> {
-  return evaluateCliWorkflowGate(input, true);
-}
-
-async function evaluateCliWorkflowGate(
-  input: CliRunGateInput,
-  candidatePreflight: boolean
-): Promise<CliRunGateResult> {
   const state = await readWorkflowState(input.runsRoot, input.workingDirectory);
   const cliState = state.cli ?? {};
   const workingDirectory = normalizeWorkingDirectory(input.workingDirectory);
@@ -212,7 +203,10 @@ async function evaluateCliWorkflowGate(
   // saw the cost estimate and budget recommendation before spending.
   // This is the root enforcement: no estimate receipt = no run.
   const estimateReady = isFresh(cliState["estimate"], PREFLIGHT_TTL_MS, (receipt) =>
-    receipt.workingDirectory === workingDirectory
+    receipt.workingDirectory === workingDirectory &&
+    receipt.objectiveKey === normalizeObjective(input.objective) &&
+    matchesCanonicalScope(receipt, canonicalScopeKey, scopeKey) &&
+    (!input.budget || receipt.budgetKey === hashEstimateBudget(input.budget))
   );
   if (!estimateReady) {
     missingSteps.push("estimate");
@@ -243,12 +237,11 @@ async function evaluateCliWorkflowGate(
   // Engine, budget, max-iterations, and token limits are runtime execution controls —
   // not safety identity. Changing them does NOT require a fresh preflight.
   // Only a changed verifier command or path scope invalidates the receipt.
-  const preflightReady = candidatePreflight ||
-    isFresh(cliState["preflight"], PREFLIGHT_TTL_MS, (receipt) =>
-      receipt.workingDirectory === workingDirectory &&
-      receipt.verificationPlanKey === verificationPlanKey &&
-      receipt.pathScopeKey === pathScopeKey
-    );
+  const preflightReady = isFresh(cliState["preflight"], PREFLIGHT_TTL_MS, (receipt) =>
+    receipt.workingDirectory === workingDirectory &&
+    receipt.verificationPlanKey === verificationPlanKey &&
+    receipt.pathScopeKey === pathScopeKey
+  );
   if (!preflightReady) {
     missingSteps.push("preflight");
   }
@@ -436,7 +429,14 @@ function hashBudget(budget: LoopBudget): string {
     maxUsd: Number(budget.maxUsd.toFixed(4)),
     softLimitUsd: Number(budget.softLimitUsd.toFixed(4)),
     maxIterations: budget.maxIterations,
-    maxTokens: budget.maxTokens
+    ...(budget.maxTokens !== undefined ? { maxTokens: budget.maxTokens } : {})
   };
   return createHash("sha256").update(JSON.stringify(normalized)).digest("hex").slice(0, 12);
+}
+
+function hashEstimateBudget(budget: Pick<LoopBudget, "maxUsd">): string {
+  return createHash("sha256")
+    .update(JSON.stringify({ maxUsd: Number(budget.maxUsd.toFixed(4)) }))
+    .digest("hex")
+    .slice(0, 12);
 }

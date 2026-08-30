@@ -74,7 +74,7 @@ export interface MartinPlanBudget {
   maxUsd: number;
   softLimitUsd: number;
   maxIterations: number;
-  maxTokens: number;
+  maxTokens?: number;
   maxMinutes: number;
   maxFilesChanged: number;
   maxCommands: number;
@@ -469,7 +469,7 @@ export function normalizeLoopBudget(overrides: LoopBudgetOverrides = {}): LoopBu
     maxUsd,
     softLimitUsd,
     maxIterations: overrides.maxIterations ?? DEFAULT_BUDGET.maxIterations,
-    maxTokens: overrides.maxTokens ?? DEFAULT_BUDGET.maxTokens
+    ...(overrides.maxTokens !== undefined ? { maxTokens: overrides.maxTokens } : {})
   };
 }
 

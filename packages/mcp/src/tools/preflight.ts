@@ -88,7 +88,7 @@ export interface MartinPreflightOutput {
       maxUsd: number;
       softLimitUsd: number;
       maxIterations: number;
-      maxTokens: number;
+      maxTokens?: number;
     };
     verificationPlan: string[];
     allowedPaths?: string[];

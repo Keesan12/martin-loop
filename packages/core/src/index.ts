@@ -338,7 +338,7 @@ export interface MartinAdapterRequest {
     focus: string;
     remainingBudgetUsd: number;
     remainingIterations: number;
-    remainingTokens: number;
+    remainingTokens?: number;
   };
   previousAttempts: LoopAttempt[];
   /** Abort signal propagated from the harness — adapters should honour it. */
@@ -433,7 +433,7 @@ export interface DistilledContext {
   constraints: {
     remainingBudgetUsd: number;
     remainingIterations: number;
-    remainingTokens: number;
+    remainingTokens?: number;
   };
 }
 
@@ -609,10 +609,9 @@ export function distillContext(
     constraints: {
       remainingBudgetUsd: roundUsd(loop.budget.maxUsd - loop.cost.actualUsd),
       remainingIterations: Math.max(loop.budget.maxIterations - loop.attempts.length, 0),
-      remainingTokens: Math.max(
-        loop.budget.maxTokens - loop.cost.tokensIn - loop.cost.tokensOut,
-        0
-      )
+      ...(loop.budget.maxTokens !== undefined
+        ? { remainingTokens: Math.max(loop.budget.maxTokens - loop.cost.tokensIn - loop.cost.tokensOut, 0) }
+        : {})
     }
   };
 }

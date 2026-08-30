@@ -66,7 +66,10 @@ export function createDefaultExitPolicy(
     schemaVersion: "exit-policy/1",
     goal: { verifierRequired: true, minimumScore: 1 },
     turns: { max: budget.maxIterations },
-    budget: { maxUsd: budget.maxUsd, maxTokens: budget.maxTokens },
+    budget: {
+      maxUsd: budget.maxUsd,
+      ...(budget.maxTokens !== undefined ? { maxTokens: budget.maxTokens } : {})
+    },
     wallClock: { maxElapsedMs: 30 * 60 * 1000 },
     progress: { windowSize: 3, unchangedStateLimit: 3 },
     errors: { maxConsecutive: 3 },
@@ -91,7 +94,9 @@ export function createDefaultExitPolicy(
 export function validateExitPolicy(policy: ExitPolicyV1): void {
   assertFinitePositive("turns.max", policy.turns.max);
   assertFinitePositive("budget.maxUsd", policy.budget.maxUsd);
-  assertFinitePositive("budget.maxTokens", policy.budget.maxTokens);
+  if (policy.budget.maxTokens !== undefined) {
+    assertFinitePositive("budget.maxTokens", policy.budget.maxTokens);
+  }
   assertFinitePositive("wallClock.maxElapsedMs", policy.wallClock.maxElapsedMs);
   assertFinitePositive("progress.windowSize", policy.progress.windowSize);
   assertFinitePositive("progress.unchangedStateLimit", policy.progress.unchangedStateLimit);
@@ -180,13 +185,14 @@ export function evaluateExitPolicy(
 
   // 5. Budget cap
   const usdExceeded = snapshot.actualUsd >= policy.budget.maxUsd;
-  const tokensExceeded = snapshot.tokensUsed >= policy.budget.maxTokens;
+  const tokensExceeded =
+    policy.budget.maxTokens !== undefined && snapshot.tokensUsed >= policy.budget.maxTokens;
   if (usdExceeded || tokensExceeded) {
     push("budget_cap", "Run token or dollar budget reached.", {
       actualUsd: snapshot.actualUsd,
       maxUsd: policy.budget.maxUsd,
       tokensUsed: snapshot.tokensUsed,
-      maxTokens: policy.budget.maxTokens,
+      ...(policy.budget.maxTokens !== undefined ? { maxTokens: policy.budget.maxTokens } : {}),
       usdExceeded,
       tokensExceeded
     });

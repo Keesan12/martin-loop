@@ -1,7 +1,11 @@
 import { createHash } from "node:crypto";
+import { execFile } from "node:child_process";
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { extname, join, relative } from "node:path";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
 
 export interface RepoGroundingFile {
   path: string;
@@ -15,6 +19,7 @@ export interface RepoGroundingIndex {
   createdAt: string;
   fileCount: number;
   files: RepoGroundingFile[];
+  trackedPaths?: string[];
   repositoryFingerprint?: string;
 }
 
@@ -76,12 +81,14 @@ export async function buildRepoGroundingIndex(
 ): Promise<RepoGroundingIndex> {
   const files: RepoGroundingFile[] = [];
   const discovered = await walk(repoRoot, repoRoot, files, { count: 0 });
+  const trackedPaths = await loadTrackedPaths(repoRoot);
   return {
     schemaVersion: "martin.grounding.v1",
     repoRoot,
     createdAt: new Date().toISOString(),
     fileCount: discovered.count,
     files,
+    ...(trackedPaths.length > 0 ? { trackedPaths } : {}),
     repositoryFingerprint: repositoryFingerprint ?? await computeRepositoryFingerprint(repoRoot)
   };
 }
@@ -89,8 +96,27 @@ export async function buildRepoGroundingIndex(
 async function computeRepositoryFingerprint(repoRoot: string): Promise<string> {
   const entries: string[] = [];
   await collectFingerprintEntries(repoRoot, repoRoot, entries, { count: 0 });
+  for (const trackedPath of await loadTrackedPaths(repoRoot)) {
+    entries.push(`tracked:${trackedPath}`);
+  }
   entries.sort();
   return createHash("sha256").update(entries.join("\n")).digest("hex");
+}
+
+async function loadTrackedPaths(repoRoot: string): Promise<string[]> {
+  try {
+    const { stdout } = await execFileAsync("git", ["-C", repoRoot, "ls-files", "-z"], {
+      encoding: "utf8",
+      windowsHide: true
+    });
+    return stdout
+      .split("\0")
+      .map((filePath: string) => filePath.trim().replace(/\\/g, "/"))
+      .filter(Boolean)
+      .sort();
+  } catch {
+    return [];
+  }
 }
 
 async function collectFingerprintEntries(
@@ -279,7 +305,10 @@ export function scanPatchForGroundingViolations(
 ): GroundingScanResult {
   const violations: GroundingViolation[] = [];
   const resolvedFiles: string[] = [];
-  const indexedPaths = new Set(index.files.map((file) => file.path));
+  const indexedPaths = new Set([
+    ...index.files.map((file) => file.path),
+    ...(index.trackedPaths ?? [])
+  ]);
   const indexedSymbols = new Set(
     index.files.flatMap((file) => file.symbols.map((symbol) => symbol.toLowerCase()))
   );

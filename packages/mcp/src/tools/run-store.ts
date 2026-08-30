@@ -882,7 +882,7 @@ function validateInspectableLoopRecord(value: unknown): InspectableLoopRecord {
     !isFiniteNumber(budget["maxUsd"]) ||
     !isFiniteNumber(budget["softLimitUsd"]) ||
     !Number.isInteger(budget["maxIterations"]) ||
-    !Number.isInteger(budget["maxTokens"]) ||
+    (budget["maxTokens"] !== undefined && !Number.isInteger(budget["maxTokens"])) ||
     !isRecord(cost) ||
     !isFiniteNumber(cost["actualUsd"]) ||
     !isFiniteNumber(cost["tokensIn"]) ||

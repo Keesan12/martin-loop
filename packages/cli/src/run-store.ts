@@ -208,7 +208,7 @@ export interface CliEnvironment {
   invocationRoot: string;
   workingDirectory: string;
   runsRoot: string;
-  engine: "claude" | "codex" | "gemini" | "openai";
+  engine: "auto" | "claude" | "codex" | "gemini" | "openai";
   liveMode: "live" | "proof";
 }
 
@@ -320,7 +320,9 @@ export function resolveCliEnvironment(input: {
         ? "gemini"
         : input.engine === "openai"
           ? "openai"
-          : "claude";
+          : input.engine === "claude"
+            ? "claude"
+            : "auto";
 
   return {
     invocationRoot,

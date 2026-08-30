@@ -5,14 +5,8 @@ This folder shows how MartinLoop can govern an OpenCode-style coding workflow wi
 The idea is simple:
 
 - OpenCode is the coding runtime you want to drive.
-- MartinLoop is the execution-control layer around it.
+- MartinLoop is the governance layer around it.
 - the MartinLoop contract still owns budget, verifier rules, stop reasons, and the JSONL evidence trail.
-
-This follows the same larger lifecycle used by the built-in coding-agent paths:
-
-```text
-DEFINE -> PREFLIGHT -> CONTROL -> VERIFY -> RECOVER -> PROVE -> ANALYZE
-```
 
 ## What is in this example
 
@@ -21,11 +15,9 @@ DEFINE -> PREFLIGHT -> CONTROL -> VERIFY -> RECOVER -> PROVE -> ANALYZE
 
 ## Why this example does not require credentials
 
-The runnable path in this folder uses `MARTIN_LIVE=false` so you can validate config loading, verifier behavior, and record shape without needing a live provider or OpenCode account.
+The runnable path in this folder uses `MARTIN_LIVE=false` so you can validate the governance flow, config loading, verifier gate, and run-record shape without needing a live provider or OpenCode account.
 
-That means the checked-in command is a verification-only integration proof. It does **not** prove that an OpenCode agent executed or edited files, and it cannot claim governed `VERIFIED` completion for a coding-agent run.
-
-A future native adapter can replace the no-live execution path with a real runtime without changing the budget, verifier, receipt, or outcome-truth expectations.
+That means this example proves the MartinLoop side of the integration contract first. A future native adapter can replace the proof-mode execution path with a live runtime without changing the budget, verifier, or record-keeping expectations.
 
 ## Example config
 
@@ -71,8 +63,7 @@ What this demonstrates:
 - MartinLoop loads the budget defaults from the example config
 - the verifier gate is explicit and reviewable
 - the run record keeps the OpenCode context in metadata
-- the workflow stays credentials-free while you validate the control-layer contract
-- execution provenance remains explicit instead of pretending a live agent ran
+- the workflow stays credentials-free while you validate the governance layer
 
 ## How this maps to a future live adapter
 
@@ -82,7 +73,6 @@ When a real OpenCode adapter exists, the contract should stay mostly the same:
 - keep the same verifier discipline
 - keep the same workspace and project identifiers
 - keep `agentRuntime=opencode` metadata so the JSONL records are queryable later
-- preserve `VERIFIED`, `STOPPED`, and `NEEDS REVIEW` as evidence-backed outcomes
 
 The thing that changes is the execution layer, not the governance expectations.
 
@@ -107,5 +97,3 @@ This example expects a record with fields shaped like:
 - `updatedAt`
 
 See [`expected-run-record.jsonl`](./expected-run-record.jsonl) for a concrete one-line example.
-
-For canonical product and agent-facing definitions see [`../../README.md`](../../README.md), [`../../llms.txt`](../../llms.txt), and [`../../docs/for-agents.md`](../../docs/for-agents.md).

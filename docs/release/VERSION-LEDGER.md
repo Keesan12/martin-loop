@@ -4,10 +4,10 @@ This file is the release source of truth for package/version mapping in this rep
 
 ## Root package: `martin-loop`
 
-- live npm dist-tag `latest`: `0.5.3`
-- live public GitHub release: `v0.5.3`
-- live public baseline in this train: `0.5.3`
-- root public baseline: `0.5.3`
+- live npm dist-tag `latest`: `0.5.5`
+- live public GitHub release: `v0.5.5`
+- live public baseline in this train: `0.5.5`
+- root public baseline: `0.5.5`
 - releases consumed since the original `0.2.8` launch:
   - `0.2.9` fixed proof-run classification, Windows `.cmd` resolution, and public provider defaults
   - `0.2.10` tightened verifier evidence, `--runs-dir` consistency, and public help output
@@ -25,41 +25,34 @@ This file is the release source of truth for package/version mapping in this rep
   - `0.3.14` Electron/IDE Node conflict fix — resolveSystemNode() finds system node.exe, not Electron's bundled Node
   - `0.3.15` martin mode, martin clean, preflight gate objective-hash removed, session-start optional when estimate present
   - `0.3.16` governance hooks on re-install, gate fires before engine check, estimate persistence, OpenAI 429/5xx retry
-  - `0.3.18` root release smoke and release-surface fixes
-  - `0.3.19` governed workspace-root config resolution, public Codex integration truth, OSS surface hygiene
-  - `0.4.0` receipt-first share ledgers, receipt-default sharing, MCP discovery updates, and release-surface guards
-  - `0.4.1` CI preflight receipt consistency and receipt-first trust surfaces
-  - `0.4.2` error normalization and Codex launch diagnostics
-  - `0.4.3` start-budget consistency and execution-bound preflight reuse
-  - `0.4.4` model-specific pricing, cache-aware accounting, and streaming budget enforcement
-  - `0.4.5` MartinLoop Arcade for interactive governed runs
-  - `0.5.0` fail-closed verification authority, workspace-bound evidence, native install, execution-surface hardening, and MCP lifecycle expansion
+  - `0.5.0` fail-closed verification authority, workspace-bound evidence, native install, and MCP lifecycle expansion
   - `0.5.1` Governed Run Plan, Verified Handoff, cost provenance, grounding truth, presentation hardening, and MCPB distribution
   - `0.5.2` aligned preflight readiness with the immediately following run admission gate
-  - `0.5.3` added capability-driven Codex execution across host variants, aligned root/MCP/MCPB public versions, refreshed agent-discovery surfaces, and made release publication/registry handoff verifiable end to end
-  - `0.5.4` prepared provider-neutral governed autonomy, exact-binary Codex negotiation, configurable provider timeouts, workspace-bound safety probes, and human-first MCP proof surfaces
-  - `0.5.5` delivers that governed-autonomy release with aligned deterministic install metadata
-- current in-repo root release target: `0.5.5` (pending publication)
+  - `0.5.3` capability-driven Codex execution and aligned public package metadata
+  - `0.5.4` provider-neutral governed autonomy and exact-binary Codex negotiation
+  - `0.5.5` governed-autonomous execution with deterministic install metadata
+  - `0.5.6` portable MCP package validation, read-only Arcade resources, hosted sync contract alignment, and permanent release-authority gates
+- current in-repo root release target: `0.5.7` (pending publication)
 - next planned root follow-on: not scheduled
 
 ## Standalone package: `@martinloop/mcp`
 
-- live npm dist-tag `latest`: `0.5.3`
-- live public GitHub release: `mcp-v0.5.3`
-- live public baseline in this train: `0.5.3`
-- standalone MCP public baseline: `0.5.3`
-- current in-repo standalone release target: `0.5.5` (pending publication)
-- official MCP Registry version: `0.5.3` (verified)
-- live MCPB baseline: `0.5.3`
-- current in-repo MCPB release target: `0.5.5` with manifest schema `0.3` (pending publication)
-- MCPB SHA-256: `913e7a9707b82b66012214f2780b44d2cb6eaa6112a875a264f50bb52e9fb907`
-- MCPB size: `8,102,303` bytes
+- live npm dist-tag `latest`: `0.5.5`
+- live public GitHub release: `mcp-v0.5.5`
+- live public baseline in this train: `0.5.5`
+- standalone MCP public baseline: `0.5.5`
+- official MCP Registry version: `0.5.5` (verified)
+- live MCPB baseline: `0.5.5`
+- live MCPB SHA-256: `6f3da0e77978a47bbc7ffec8db6b3a42bff2cb7e8642372523eab53af79c05d2`
+- live MCPB size: `8,113,133` bytes
+- current in-repo standalone release target: `0.5.7` (pending publication)
+- current in-repo MCPB release target: `0.5.7` with manifest schema `0.3` (pending publication)
 - next planned standalone release: not scheduled
 
 ## Release rules
 
-- Live public baselines describe artifacts that actually exist. In-repo targets may advance before publication and must remain clearly marked pending until trusted publishing succeeds.
-- The `0.5.5` train intends to align the root package, standalone MCP package, plugin metadata, and MCPB product version at `0.5.5`. MCPB manifest schema remains `0.3`.
+- Live public baselines describe artifacts that actually exist. In-repo targets may advance before publication and must remain marked pending until trusted publishing succeeds.
+- The `0.5.6` train aligns the root package, standalone MCP package, plugin metadata, and MCPB product version at `0.5.6`. MCPB manifest schema remains `0.3`.
 - Do not infer standalone MCP release state from the root package, or the other way around.
 - Public release notes must be written for customers and evaluators, not for internal operators.
 - Public-facing examples, screenshots, README copy, and changelog entries must stay free of internal repo names, absolute system paths, private branch names, or process noise.

@@ -1,5 +1,4 @@
 import { evaluateCostGovernor } from "@martin/core";
-import type { CostProvenance } from "@martin/contracts";
 
 import { loadLoopRecordForStatus } from "./run-store.js";
 import { buildLoopPreview, type LoopPreview } from "./tool-support.js";
@@ -25,18 +24,17 @@ export interface GetStatusOutput {
   lifecycleState: string;
   attempts: number;
   costUsd: number;
-  costProvenance: CostProvenance;
   avoidedUsd: number;
   pressure: string;
   shouldStop: boolean;
   remainingBudgetUsd: number;
   remainingIterations: number;
-  remainingTokens: number;
+  remainingTokens?: number;
   budget: {
     maxUsd: number;
     softLimitUsd: number;
     maxIterations: number;
-    maxTokens: number;
+    maxTokens?: number;
   };
   inspection: {
     loop: LoopPreview;
@@ -83,18 +81,21 @@ export async function getStatusTool(input: GetStatusInput): Promise<GetStatusOut
     lifecycleState: loop.lifecycleState,
     attempts: loop.attempts.length,
     costUsd: loop.cost.actualUsd,
-    costProvenance: loop.cost.provenance ?? "unavailable",
     avoidedUsd: loop.cost.avoidedUsd ?? 0,
     pressure: costState.pressure,
     shouldStop: costState.shouldStop,
     remainingBudgetUsd: costState.remainingBudgetUsd,
     remainingIterations: costState.remainingIterations,
-    remainingTokens: costState.remainingTokens,
+    ...(costState.remainingTokens !== undefined
+      ? { remainingTokens: costState.remainingTokens }
+      : {}),
     budget: {
       maxUsd: loop.budget.maxUsd,
       softLimitUsd: loop.budget.softLimitUsd,
       maxIterations: loop.budget.maxIterations,
-      maxTokens: loop.budget.maxTokens
+      ...(loop.budget.maxTokens !== undefined
+        ? { maxTokens: loop.budget.maxTokens }
+        : {})
     },
     inspection: {
       loop: buildLoopPreview(loop)

@@ -1,4 +1,4 @@
 interface:
   display_name: "Govern with MartinLoop"
-  short_description: "Control coding-agent work end to end and require evidence-backed completion."
-  default_prompt: "Use MartinLoop as the execution-control layer for this coding task. Define the finish line, preflight before spend, govern the run, verify the result, preserve recovery evidence, and return the final dossier or Verified Handoff."
+  short_description: "Control a coding-agent run and require verifier-backed evidence."
+  default_prompt: "Use MartinLoop to preflight, govern, verify, and produce a dossier for this task."

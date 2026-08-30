@@ -1,9 +1,13 @@
-﻿import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { EventEmitter } from "node:events";
+import type { ChildProcess, SpawnOptions } from "node:child_process";
+import { PassThrough } from "node:stream";
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { writeReceiptIntegrityMaterial, type RunStore } from "@martin/core";
-import { createLoopRecord, type CostProvenance } from "@martin/contracts";
+import { createLoopRecord } from "@martin/contracts";
+import type { SpawnLike } from "@martin/adapters";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { getStatusTool } from "../src/tools/get-status.js";
@@ -14,20 +18,18 @@ import { martinGetVerificationResultsTool } from "../src/tools/get-verification-
 import { martinListRunsTool } from "../src/tools/list-runs.js";
 import { martinPreflightTool } from "../src/tools/preflight.js";
 import { martinRunDossierTool } from "../src/tools/run-dossier.js";
-import { __setRunStoreOverrideForTests, runLoopTool } from "../src/tools/run-loop.js";
+import {
+  __setProofModeVerifierSpawnImplForTests,
+  __setRunStoreOverrideForTests,
+  runLoopTool
+} from "../src/tools/run-loop.js";
 import { martinTriageRunsTool } from "../src/tools/triage-runs.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeLoopRecord(
-  overrides: {
-    costUsd?: number;
-    avoidedUsd?: number;
-    provenance?: CostProvenance;
-  } = {}
-) {
+function makeLoopRecord(overrides: { costUsd?: number; avoidedUsd?: number } = {}) {
   const loop = createLoopRecord({
     workspaceId: "ws_test",
     projectId: "proj_test",
@@ -46,8 +48,7 @@ function makeLoopRecord(
       actualUsd: overrides.costUsd ?? 1.5,
       avoidedUsd: overrides.avoidedUsd ?? 0,
       tokensIn: 400,
-      tokensOut: 200,
-      ...(overrides.provenance ? { provenance: overrides.provenance } : {})
+      tokensOut: 200
     }
   });
 
@@ -132,7 +133,25 @@ async function installFakeCliProbe(directory: string, command: string, markerPat
   await chmod(commandPath, 0o755);
 }
 
+function createImmediateSpawn(calls: Array<{ command: string; args: readonly string[]; options?: SpawnOptions }>): SpawnLike {
+  return (command, args = [], options) => {
+    calls.push({ command, args, options });
+    const child = new EventEmitter() as Partial<ChildProcess> & {
+      stdout: PassThrough;
+      stderr: PassThrough;
+      stdin: PassThrough;
+    };
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    child.stdin = new PassThrough();
+    child.kill = () => true;
+    process.nextTick(() => child.emit("close", 0));
+    return child as ChildProcess;
+  };
+}
+
 afterEach(() => {
+  __setProofModeVerifierSpawnImplForTests(undefined);
   __setRunStoreOverrideForTests(undefined);
 });
 
@@ -152,15 +171,6 @@ function createMemoryRunStore(runsRoot: string): RunStore {
 // ---------------------------------------------------------------------------
 
 describe("getStatusTool", () => {
-  it("carries cost provenance through status and loop-preview DTOs", async () => {
-    const loop = makeLoopRecord({ costUsd: 3, provenance: "estimated" });
-
-    const result = await getStatusTool({ loopJson: JSON.stringify(loop) });
-
-    expect(result.costProvenance).toBe("estimated");
-    expect(result.inspection.loop.costProvenance).toBe("estimated");
-  });
-
   it("returns correct loop metadata and cost state from inline JSON", async () => {
     const loop = makeLoopRecord({ costUsd: 3 });
     const result = await getStatusTool({ loopJson: JSON.stringify(loop) });
@@ -357,6 +367,31 @@ describe("inspectLoopTool", () => {
     });
   });
 
+  it("omits token-cap fields for a legacy loop with no maxTokens", async () => {
+    const loop = makeLoopRecord({ costUsd: 3 });
+    delete loop.budget.maxTokens;
+
+    const result = await getStatusTool({ loopJson: JSON.stringify(loop) });
+
+    expect(result.budget).not.toHaveProperty("maxTokens");
+    expect(result).not.toHaveProperty("remainingTokens");
+    expect(result.inspection.loop).not.toHaveProperty("remainingTokens");
+  });
+
+  it("reads a legacy loop budget with no maxTokens field", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const loop = makeLoopRecord({ costUsd: 1 });
+      delete loop.budget.maxTokens;
+      const file = join(runsRoot, "legacy-no-token-cap.jsonl");
+      await writeFile(file, `${JSON.stringify(loop)}\n`, "utf8");
+
+      const result = await inspectLoopTool({ file });
+
+      expect(result.loopCount).toBe(1);
+      expect(result.warnings).toEqual([]);
+    });
+  });
+
   it("defaults to the Martin run store when no selector is provided", async () => {
     await withRunsRoot(async (runsRoot) => {
       const loop = makeLoopRecord({ costUsd: 2.5, avoidedUsd: 0.5 });
@@ -531,6 +566,7 @@ describe("martinPreflightTool", () => {
       expect(result.normalized.budget.maxUsd).toBe(3);
       expect(result.normalized.budget.softLimitUsd).toBe(3);
       expect(result.normalized.budget.maxIterations).toBe(2);
+      expect(result.normalized.budget).not.toHaveProperty("maxTokens");
       expect(result.normalized.allowedPaths).toEqual(["src/**", "tests/**"]);
       expect(result.receiptScope).toEqual(result.scope);
       expect(result.scope.repoRoot).toBe(result.normalized.workingDirectory);
@@ -821,6 +857,9 @@ describe("martinTriageRunsTool", () => {
       await withRunsRoot(async (runsRoot) => {
         const originalEnv = process.env.MARTIN_LIVE;
         process.env.MARTIN_LIVE = "false";
+        const verifierCalls: Array<{ command: string; args: readonly string[]; options?: SpawnOptions }> = [];
+        __setProofModeVerifierSpawnImplForTests(createImmediateSpawn(verifierCalls));
+
         try {
           const result = await runLoopTool({
             objective: "Create a canonical run, then tamper with the persisted loop record.",
@@ -841,6 +880,10 @@ describe("martinTriageRunsTool", () => {
           const baselineRun = await martinGetRunTool({ loopId: result.loopId });
           expect(baselineRun.receiptIntegrity.state).toBe("verified");
           expect(baselineRun.receiptScope).toMatchObject(expectedReceiptScope);
+          expect(verifierCalls).toHaveLength(1);
+          expect(verifierCalls[0]?.command).toBe("node");
+          expect(verifierCalls[0]?.args).toEqual(["--version"]);
+
           const persisted = JSON.parse(await readFile(loopRecordPath, "utf8"));
           persisted.task.title = "Tampered after receipt material was created.";
           await writeFile(loopRecordPath, JSON.stringify(persisted, null, 2), "utf8");
@@ -1208,25 +1251,30 @@ describe("martinTriageRunsTool", () => {
 // ---------------------------------------------------------------------------
 
 describe("runLoopTool", () => {
-  it("runs real verification without granting a governed claim in verification-only mode", async () => {
+  it("uses the injected proof-mode verifier spawn for verification-only contract tests", async () => {
     await withRunsRoot(async () => {
       const originalEnv = process.env.MARTIN_LIVE;
       process.env.MARTIN_LIVE = "false";
+      const calls: Array<{ command: string; args: readonly string[]; options?: SpawnOptions }> = [];
+      __setProofModeVerifierSpawnImplForTests(createImmediateSpawn(calls));
+
       try {
         await withMemoryRunStore(async (store) => {
           __setRunStoreOverrideForTests(store);
 
           const result = await runLoopTool({
-            objective: "Validate verification-only execution",
+            objective: "Validate proof-mode verifier seams",
             verificationPlan: ["node --version"],
             maxIterations: 1,
             maxUsd: 1
           });
 
           expect(result.loopId).toMatch(/^loop_/u);
-          expect(result.verificationPassed).toBe(true);
-          expect(result.executionMode).toBe("verification_only");
-          expect(result.governanceClaimEligible).toBe(false);
+          expect(result.budget).not.toHaveProperty("maxTokens");
+          expect(result).not.toHaveProperty("remainingTokens");
+          expect(calls).toHaveLength(1);
+          expect(calls[0]?.command).toBe("node");
+          expect(calls[0]?.args).toEqual(["--version"]);
         });
       } finally {
         if (originalEnv === undefined) {

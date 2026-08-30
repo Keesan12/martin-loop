@@ -9,7 +9,6 @@ import { fileURLToPath } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
-import { findSingleTarball } from "../../../scripts/root-release-guard.mjs";
 import { buildStandaloneMcpPackage, createCommandLaunch } from "./build-package-lib.mjs";
 import {
   PUBLISHED_PACKAGE_SPEC,
@@ -587,12 +586,17 @@ async function installPublishedPackage({ installRoot, npmCacheDir, packageSpec }
 
 async function buildLocalFallbackTarballSpec({ packageDir, tempPackDir }) {
   await buildStandaloneMcpPackage({ packageDir });
-  await runCommand(
+  const packRun = await runCommand(
     npmCommand(),
-    ["pack", "--ignore-scripts", "--pack-destination", tempPackDir],
+    ["pack", "--ignore-scripts", "--json", "--pack-destination", tempPackDir],
     { cwd: packageDir },
   );
-  return path.join(tempPackDir, await findSingleTarball(tempPackDir));
+  const packEntry = JSON.parse(packRun.stdout)?.[0];
+  if (!packEntry?.filename) {
+    throw new Error("Unable to create fallback MCP tarball for smoke verification.");
+  }
+
+  return path.join(tempPackDir, packEntry.filename);
 }
 
 function createInstalledPackageLaunch(installedPackageDir) {

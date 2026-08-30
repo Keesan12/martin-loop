@@ -197,7 +197,8 @@ export async function createNativePhaseCommandCenterSnapshot(
     collectRunStore(runsRoot, { scanLimit: options.runScanLimit ?? DEFAULT_RUN_SCAN_LIMIT })
   ]);
   const contract = await buildPhaseContract(rootDir, phaseWorkspace);
-  const hostDiagnostics = buildSessionStartHostDiagnostics(options.host ?? "claude", receiptScope);
+  const resolvedHost = options.host ?? "generic";
+  const hostDiagnostics = buildSessionStartHostDiagnostics(resolvedHost, receiptScope);
 
   return {
     ok: true,
@@ -223,9 +224,9 @@ export async function createNativePhaseCommandCenterSnapshot(
     runStore,
     contract,
     sessionStart: {
-      host: options.host ?? "claude",
+      host: resolvedHost,
       recommendedNextAction: recommendedNextAction(phaseWorkspace, runStore, contract, hostDiagnostics),
-      commands: buildSessionStartCommands(options.host ?? "claude", receiptScope),
+      commands: buildSessionStartCommands(resolvedHost, receiptScope),
       receiptScope,
       hostDiagnostics
     }
@@ -250,8 +251,7 @@ export function buildNativePhaseRunRequest(
     budget: {
       maxUsd: contract.budget.maxUsd,
       softLimitUsd: Math.max(0, Math.round(contract.budget.maxUsd * 0.75 * 100) / 100),
-      maxIterations: contract.budget.maxIterations,
-      maxTokens: 20_000
+      maxIterations: contract.budget.maxIterations
     },
     ...(options.cwd ? { cwd: options.cwd } : {}),
     ...(options.runsDir ? { runsDir: options.runsDir } : {}),
