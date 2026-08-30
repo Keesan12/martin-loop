@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish from the selected workflow ref"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -13,6 +19,8 @@ jobs:
   publish-npm:
     name: Publish to npm
     runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -56,7 +64,7 @@ jobs:
           pnpm --filter @martinloop/mcp smoke:pack
           pnpm --filter @martinloop/mcp smoke:published:pack
           pnpm --filter @martinloop/mcp verify:release
-          node ./scripts/root-release-guard.mjs --tag "${GITHUB_REF_NAME}" --pack
+          node ./scripts/root-release-guard.mjs --tag "${RELEASE_TAG}" --pack
           pnpm release:clean-check
 
       - name: Pack root tarball
@@ -114,5 +122,6 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b
         with:
+          tag_name: ${{ env.RELEASE_TAG }}
           files: ${{ steps.root-pack.outputs.tarball }}
           body: ${{ steps.changelog.outputs.body }}
