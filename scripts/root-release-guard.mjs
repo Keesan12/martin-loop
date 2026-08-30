@@ -155,9 +155,13 @@ export function extractPackJsonPayload(stdout) {
 }
 
 export function extractPackedFilePaths(packArtifacts) {
-  return Array.isArray(packArtifacts)
-    ? packArtifacts[0]?.files?.map((entry) => entry.path).filter((entry) => typeof entry === "string") ?? []
-    : [];
+  const artifact = Array.isArray(packArtifacts)
+    ? packArtifacts[0]
+    : packArtifacts && typeof packArtifacts === "object"
+      ? Object.values(packArtifacts)[0]
+      : undefined;
+
+  return artifact?.files?.map((entry) => entry.path).filter((entry) => typeof entry === "string") ?? [];
 }
 
 export async function assertVendoredCliManifest(rootDir) {
