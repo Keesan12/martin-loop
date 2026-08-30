@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   assertPackedSurface,
+  extractPackedFilePaths,
   assertRootVersionPolicy,
   assertVendoredCliManifest,
   runRootReleaseGuard,
@@ -65,6 +66,34 @@ test("assertPackedSurface rejects forbidden vendored implementation paths", () =
         "dist/vendor/cli/bin/martin.js",
       ]),
     /forbidden vendored implementation path/i,
+  );
+});
+
+test("extractPackedFilePaths tolerates npm dry-run payloads without file details", () => {
+  assert.deepEqual(
+    extractPackedFilePaths([
+      {
+        filename: "martin-loop-0.5.7.tgz",
+      },
+    ]),
+    [],
+  );
+});
+
+test("extractPackedFilePaths reads file paths from npm pack JSON", () => {
+  assert.deepEqual(
+    extractPackedFilePaths([
+      {
+        filename: "martin-loop-0.5.7.tgz",
+        files: [
+          { path: "package.json" },
+          { path: "dist/index.js" },
+          { path: 42 },
+          {},
+        ],
+      },
+    ]),
+    ["package.json", "dist/index.js"],
   );
 });
 

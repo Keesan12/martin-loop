@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
 import { spawn } from "node:child_process";
-import { access, readFile, readdir } from "node:fs/promises";
+import { access, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -112,15 +113,30 @@ export async function inspectPackedFiles(options = {}) {
     { cwd: rootDir },
   );
   const packArtifacts = extractPackJsonPayload(packRun.stdout);
-  const files = Array.isArray(packArtifacts)
-    ? packArtifacts[0]?.files?.map((entry) => entry.path).filter((entry) => typeof entry === "string")
-    : [];
+  const files = extractPackedFilePaths(packArtifacts);
 
-  if (files.length === 0) {
-    throw new Error("npm pack --dry-run did not report any packaged files.");
+  if (files.length > 0) {
+    return files;
   }
 
-  return files;
+  const tempPackDir = await mkdtemp(path.join(os.tmpdir(), "martin-root-pack-inspect-"));
+  try {
+    const fallbackCommand = ["npm", "pack", "--json", "--pack-destination", tempPackDir];
+    if (ignoreScripts) {
+      fallbackCommand.push("--ignore-scripts");
+    }
+    const fallbackPackRun = await runCommand(fallbackCommand, { cwd: rootDir });
+    const fallbackPackArtifacts = extractPackJsonPayload(fallbackPackRun.stdout);
+    const fallbackFiles = extractPackedFilePaths(fallbackPackArtifacts);
+
+    if (fallbackFiles.length === 0) {
+      throw new Error("npm pack did not report any packaged files.");
+    }
+
+    return fallbackFiles;
+  } finally {
+    await rm(tempPackDir, { force: true, recursive: true });
+  }
 }
 
 export async function findSingleTarball(directory) {
@@ -136,6 +152,12 @@ export function extractPackJsonPayload(stdout) {
   const trailingJsonMatch = trimmed.match(/(\[\s*\{[\s\S]*\}\s*\])$/);
   const jsonPayload = trailingJsonMatch?.[1] ?? trimmed;
   return JSON.parse(jsonPayload);
+}
+
+export function extractPackedFilePaths(packArtifacts) {
+  return Array.isArray(packArtifacts)
+    ? packArtifacts[0]?.files?.map((entry) => entry.path).filter((entry) => typeof entry === "string") ?? []
+    : [];
 }
 
 export async function assertVendoredCliManifest(rootDir) {
