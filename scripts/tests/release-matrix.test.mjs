@@ -22,12 +22,19 @@ test("createReleaseMatrixPlan checks root package boundaries before the full tes
 
   for (const lane of plan.lanes) {
     const commands = lane.steps.map((step) => step.command.join(" "));
+    const buildIndex = commands.indexOf("pnpm build");
+    const rootGuardIndex = commands.indexOf("pnpm release:root:guard");
+    const testIndex = commands.indexOf("pnpm test");
+
+    assert.ok(buildIndex >= 0, "release matrix should include the build step");
+    assert.ok(rootGuardIndex >= 0, "release matrix should include the root package guard");
+    assert.ok(testIndex >= 0, "release matrix should include the broader test lane");
     assert.ok(
-      commands.indexOf("pnpm build") < commands.indexOf("pnpm release:root:guard"),
+      buildIndex < rootGuardIndex,
       "root package guard should run after build output exists",
     );
     assert.ok(
-      commands.indexOf("pnpm release:root:guard") < commands.indexOf("pnpm test"),
+      rootGuardIndex < testIndex,
       "root package guard should run before the broader test lane",
     );
   }
