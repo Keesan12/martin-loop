@@ -6,9 +6,6 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-
 import { buildStandaloneMcpPackage, createCommandLaunch } from "./build-package-lib.mjs";
 import {
   PUBLISHED_PACKAGE_SPEC,
@@ -167,6 +164,7 @@ export async function runPublishedMcpSmoke(options = {}) {
     );
 
     const launch = createInstalledPackageLaunch(installedPackageDir);
+    const { Client, StdioClientTransport } = await importMcpSdk();
     transport = new StdioClientTransport({
       ...launch,
       cwd: workspaceRoot,
@@ -606,6 +604,15 @@ function createInstalledPackageLaunch(installedPackageDir) {
     : path.join(binDirectory, "mcp");
 
   return createCommandLaunch(executable, []);
+}
+
+async function importMcpSdk() {
+  const [{ Client }, { StdioClientTransport }] = await Promise.all([
+    import("@modelcontextprotocol/sdk/client/index.js"),
+    import("@modelcontextprotocol/sdk/client/stdio.js"),
+  ]);
+
+  return { Client, StdioClientTransport };
 }
 
 function readTextContent(result) {

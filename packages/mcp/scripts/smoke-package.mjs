@@ -6,9 +6,6 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-
 import { buildStandaloneMcpPackage } from "./build-package-lib.mjs";
 import { resolveSmokeWorkspaceRoot } from "./smoke-paths.mjs";
 
@@ -114,6 +111,7 @@ export async function runStandaloneMcpSmoke(options = {}) {
     const packedManifest = JSON.parse(packedManifestOutput.stdout);
     const packedServerMetadata = JSON.parse(packedServerOutput.stdout);
     assertPackedManifest(packedManifest, packedServerMetadata);
+    assertExportTargetsArePacked(packedManifest, tarballFiles);
 
     const stderrChunks = [];
     const installedPackageDir = await installPackagedTarball({
@@ -121,7 +119,9 @@ export async function runStandaloneMcpSmoke(options = {}) {
       npmCacheDir,
       tarballPath,
     });
+    await assertInstalledRootImport(installRoot);
     const launch = createPackagedLaunch(installedPackageDir);
+    const { Client, StdioClientTransport } = await importMcpSdk();
     transport = new StdioClientTransport({
       command: launch.command,
       args: launch.args,
@@ -302,6 +302,25 @@ export function assertMcpPackageMetadataParity(manifest, serverMetadata) {
     );
   }
 
+  const rootExport = manifest.exports?.["."];
+  if (
+    rootExport?.types !== expectedBinPath.replace(/\.js$/u, ".d.ts") ||
+    rootExport?.import !== expectedBinPath ||
+    rootExport?.default !== expectedBinPath
+  ) {
+    throw new Error(
+      `package.json exports["."] must expose types/import/default at ${expectedBinPath}.`,
+    );
+  }
+
+  if (manifest.exports?.["./server.json"] !== "./server.json") {
+    throw new Error('package.json exports["./server.json"] must expose ./server.json.');
+  }
+
+  if (manifest.exports?.["./package.json"] !== "./package.json") {
+    throw new Error('package.json exports["./package.json"] must expose ./package.json.');
+  }
+
   const shippedFiles = Array.isArray(manifest.files) ? manifest.files : [];
   for (const requiredFile of ["dist", "README.md", "server.json"]) {
     if (!shippedFiles.includes(requiredFile)) {
@@ -324,6 +343,58 @@ function assertPackedManifest(manifest, serverMetadata) {
       `Packed package still depends on internal workspace packages: ${internalDependencies.join(", ")}`,
     );
   }
+}
+
+function assertExportTargetsArePacked(manifest, tarballFiles) {
+  const exportTargets = new Set();
+  collectExportTargets(manifest.exports, exportTargets);
+
+  const missing = [...exportTargets]
+    .map((target) => target.replace(/^\.\//u, ""))
+    .filter((target) => !tarballFiles.includes(target));
+
+  if (missing.length > 0) {
+    throw new Error(`Tarball is missing package export targets: ${missing.join(", ")}`);
+  }
+}
+
+function collectExportTargets(value, targets) {
+  if (typeof value === "string") {
+    targets.add(value);
+    return;
+  }
+
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return;
+  }
+
+  for (const nested of Object.values(value)) {
+    collectExportTargets(nested, targets);
+  }
+}
+
+async function assertInstalledRootImport(installRoot) {
+  const scriptPath = path.join(installRoot, "root-import-smoke.mjs");
+  await writeFile(
+    scriptPath,
+    [
+      "const mod = await import('@martinloop/mcp');",
+      "if (typeof mod.createMartinMcpServer !== 'function') throw new Error('missing createMartinMcpServer');",
+      "if (typeof mod.connectMartinMcpStdioServer !== 'function') throw new Error('missing connectMartinMcpStdioServer');",
+      "console.log('MCP_ROOT_IMPORT_OK');",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+
+  await runCommand(
+    process.execPath,
+    [scriptPath],
+    {
+      cwd: installRoot,
+      env: sanitizePackageManagerEnv(process.env),
+    },
+  );
 }
 
 function readStructuredContent(result, label) {
@@ -398,6 +469,15 @@ function createPackagedLaunch(installedPackageDir) {
     command: process.execPath,
     args: [path.join(installedPackageDir, "dist", "server.js")],
   };
+}
+
+async function importMcpSdk() {
+  const [{ Client }, { StdioClientTransport }] = await Promise.all([
+    import("@modelcontextprotocol/sdk/client/index.js"),
+    import("@modelcontextprotocol/sdk/client/stdio.js"),
+  ]);
+
+  return { Client, StdioClientTransport };
 }
 
 async function installPackagedTarball({ installRoot, npmCacheDir, tarballPath }) {

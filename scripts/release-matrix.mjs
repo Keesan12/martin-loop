@@ -11,6 +11,7 @@ import { resolveRcCommandExecution } from "./rc-validation.mjs";
 const RELEASE_MATRIX_STEPS = [
   ["pnpm", "install", "--frozen-lockfile"],
   ["pnpm", "build"],
+  ["pnpm", "release:root:guard"],
   ["pnpm", "test"],
   ["pnpm", "oss:validate"],
   ["pnpm", "public:smoke"],

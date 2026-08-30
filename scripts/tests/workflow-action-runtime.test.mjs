@@ -11,6 +11,8 @@ test("release-facing workflows avoid deprecated Node 20 action wrappers", async 
     ".github/workflows/release.yml",
     ".github/workflows/publish-mcp.yml",
     ".github/workflows/martinloop-budget-gate.yml",
+    ".github/workflows/platform-release-validation.yml",
+    ".github/workflows/public-promotion-guard.yml",
   ];
 
   for (const relativePath of workflowFiles) {
