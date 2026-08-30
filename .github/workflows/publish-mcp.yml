@@ -68,8 +68,7 @@ jobs:
 
       - name: Build workspace packages needed by MCP validation
         run: |
-          pnpm --filter @martin/contracts build
-          pnpm --filter @martin/presentation build
+          pnpm build
 
       - name: Verify MCP package
         run: |

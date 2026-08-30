@@ -35,8 +35,7 @@ jobs:
 
       - name: Build workspace packages needed by validation
         run: |
-          pnpm --filter @martin/contracts build
-          pnpm --filter @martin/presentation build
+          pnpm build
 
       - name: Validate OSS release surface
         run: |
