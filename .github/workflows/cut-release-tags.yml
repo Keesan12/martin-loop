@@ -169,3 +169,37 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh workflow run release.yml --ref main -f tag="${{ steps.root.outputs.root_tag }}"
+
+  publish-release-repair:
+    name: Publish root and MCP repair lanes
+    if: contains(github.event.head_commit.message, '[publish-release-repair]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Resolve existing 0.5.7 release tags
+        id: repair
+        shell: bash
+        run: |
+          ROOT_VERSION="$(node -p "require('./package.json').version")"
+          MCP_VERSION="$(node -p "require('./packages/mcp/package.json').version")"
+          ROOT_TAG="v${ROOT_VERSION}"
+          MCP_TAG="mcp-v${MCP_VERSION}"
+          git fetch --tags --force
+          git rev-parse -q --verify "refs/tags/${ROOT_TAG}" >/dev/null
+          git rev-parse -q --verify "refs/tags/${MCP_TAG}" >/dev/null
+          test "$(git show "${ROOT_TAG}:package.json" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).version))")" = "$ROOT_VERSION"
+          test "$(git show "${MCP_TAG}:packages/mcp/package.json" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).version))")" = "$MCP_VERSION"
+          test "$(git show "${MCP_TAG}:packages/mcp/mcpb/manifest.json" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).version))")" = "$MCP_VERSION"
+          echo "root_tag=${ROOT_TAG}" >> "$GITHUB_OUTPUT"
+          echo "mcp_tag=${MCP_TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch repaired trusted publishers
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run release.yml --ref main -f tag="${{ steps.repair.outputs.root_tag }}"
+          gh workflow run publish-mcp.yml --ref main -f tag="${{ steps.repair.outputs.mcp_tag }}"
