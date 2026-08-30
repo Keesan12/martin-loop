@@ -1958,6 +1958,110 @@ const store: import("../src/index").RunStore = {
     expect(patchScore.reasonCodes).toContain("verifier_passed");
   });
 
+  it("keeps an allowed verifier-passing artifact created during the attempt", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-patch-new-artifact-"));
+    const repoRoot = join(runsRoot, "repo");
+    await mkdir(repoRoot, { recursive: true });
+    initializeGitRepo(repoRoot);
+    const store = createFileRunStore({ runsRoot });
+
+    const adapter: MartinAdapter = {
+      adapterId: "direct:patch-new-artifact",
+      kind: "direct-provider",
+      label: "Patch new artifact adapter",
+      metadata: {
+        providerId: "openai",
+        model: "gpt-5-mini"
+      },
+      async execute(request) {
+        await writeFile(join(repoRoot, "RESULT.txt"), "MARTINLOOP_057_FINAL_E2E_OK\n", "utf8");
+        return {
+          status: "completed",
+          summary: "Created the requested result artifact and passed verification.",
+          usage: {
+            actualUsd: 0.18,
+            tokensIn: 75,
+            tokensOut: 32
+          },
+          verification: {
+            passed: true,
+            summary: "node verify.mjs passed",
+            binding: {
+              runId: request.loopId,
+              workspaceId: request.workspaceId,
+              cwd: request.context.repoRoot ?? process.cwd(),
+              commands: request.context.verificationPlan,
+            },
+            steps: request.context.verificationPlan.map((command) => ({
+              command,
+              launched: true,
+              completed: true,
+              crashed: false,
+              exitCode: 0,
+              timedOut: false
+            })),
+          },
+          execution: {
+            changedFiles: ["RESULT.txt"],
+            diffStats: {
+              filesChanged: 1,
+              addedLines: 1,
+              deletedLines: 0
+            }
+          }
+        };
+      }
+    };
+
+    const result = await runMartin({
+      workspaceId: "ws_patch",
+      projectId: "proj_patch",
+      task: {
+        title: "Keep an allowed result artifact",
+        objective: "Create RESULT.txt as the release E2E acceptance artifact.",
+        verificationPlan: ["node verify.mjs"],
+        repoRoot,
+        allowedPaths: ["RESULT.txt"]
+      },
+      budget: {
+        maxUsd: 10,
+        softLimitUsd: 8,
+        maxIterations: 2
+      },
+      adapter,
+      store,
+      now: createTimestampSource([
+        "2026-04-03T11:05:00.000Z",
+        "2026-04-03T11:05:01.000Z",
+        "2026-04-03T11:05:02.000Z",
+        "2026-04-03T11:05:03.000Z",
+        "2026-04-03T11:05:04.000Z",
+        "2026-04-03T11:05:05.000Z",
+        "2026-04-03T11:05:06.000Z"
+      ]),
+      idFactory: createIdFactory()
+    });
+
+    const ledger = await readLedger(runsRoot, result.loop.loopId);
+    const keptEvent = ledger.find((entry) => entry.kind === "attempt.kept");
+    const discardedEvent = ledger.find((entry) => entry.kind === "attempt.discarded");
+    const patchDecision = JSON.parse(
+      await readFile(
+        join(runsRoot, result.loop.loopId, "artifacts", "attempt-001", "patch-decision.json"),
+        "utf8"
+      )
+    );
+
+    expect(result.decision.lifecycleState).toBe("completed");
+    expect(keptEvent?.payload).toMatchObject({
+      decision: "KEEP"
+    });
+    expect(discardedEvent).toBeUndefined();
+    expect(patchDecision.decision).toBe("KEEP");
+    expect(patchDecision.reasonCodes).toContain("verifier_passed");
+    expect(patchDecision.reasonCodes).not.toContain("grounding_failure");
+  });
+
   it("discards grounding-failure patches and persists patch decision artifacts", async () => {
     const runsRoot = await mkdtemp(join(tmpdir(), "martin-patch-discard-"));
     const repoRoot = join(runsRoot, "repo");
