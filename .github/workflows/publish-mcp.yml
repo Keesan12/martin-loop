@@ -88,6 +88,25 @@ jobs:
         run: |
           node ../../scripts/read-mcp-package-metadata.mjs >> "$GITHUB_OUTPUT"
 
+      - name: Build, validate, and smoke MCPB
+        run: |
+          pnpm --filter @martinloop/mcp mcpb:build
+          pnpm --filter @martinloop/mcp mcpb:validate
+          pnpm --filter @martinloop/mcp mcpb:smoke
+
+      - name: Verify MCPB release assets
+        shell: bash
+        env:
+          MCPB_PATH: packages/mcp/dist-mcpb/martinloop-${{ steps.mcp-metadata.outputs.package_version }}.mcpb
+          CHECKSUM_PATH: packages/mcp/dist-mcpb/martinloop-${{ steps.mcp-metadata.outputs.package_version }}.mcpb.sha256
+        run: |
+          test -f "${MCPB_PATH}"
+          test -f "${CHECKSUM_PATH}"
+          (
+            cd "$(dirname "${MCPB_PATH}")"
+            sha256sum --check "$(basename "${CHECKSUM_PATH}")"
+          )
+
       - name: Verify MCP tag/version parity
         shell: bash
         env:
@@ -165,3 +184,7 @@ jobs:
           tag_name: ${{ steps.release-vars.outputs.tag }}
           name: "@martinloop/mcp ${{ steps.mcp-metadata.outputs.package_version }}"
           body_path: "docs/release/MCP-${{ steps.mcp-metadata.outputs.package_version }}-RELEASE-NOTES.md"
+          files: |
+            packages/mcp/dist-mcpb/martinloop-${{ steps.mcp-metadata.outputs.package_version }}.mcpb
+            packages/mcp/dist-mcpb/martinloop-${{ steps.mcp-metadata.outputs.package_version }}.mcpb.sha256
+          fail_on_unmatched_files: true
