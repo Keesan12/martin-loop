@@ -35,9 +35,6 @@ jobs:
           node-version: 24
           cache: pnpm
 
-      - name: Use latest npm for trusted publishing
-        run: npm install -g npm@latest
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -99,6 +96,9 @@ jobs:
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Use latest npm for trusted publishing
+        run: npm install -g npm@latest
 
       - name: Publish to npm
         if: steps.npm-version.outputs.exists != 'true'
