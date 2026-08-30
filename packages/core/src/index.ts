@@ -1808,7 +1808,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     // VERIFY: Run grounding scan on patch diff if available
     // Uses the task's repoRoot to build/load the grounding index, then scans any diff
     let groundingScanResult: GroundingScanResult | undefined;
-    const patchDiff = buildPatchDiff(result, changedFiles);
+    const patchDiff = buildPatchDiff(result, changedFiles, input.task.repoRoot);
     if (patchDiff && input.task.repoRoot) {
       try {
         const groundingIndex = await loadOrBuildRepoGroundingIndex(input.task.repoRoot);
@@ -2360,20 +2360,43 @@ function resolveChangedFiles(
   return listAttemptChangedFilesSinceBoundary({ repoRoot, boundary: rollbackBoundary });
 }
 
-function buildPatchDiff(result: MartinAdapterResult, changedFiles: string[]): string | undefined {
+function buildPatchDiff(
+  result: MartinAdapterResult,
+  changedFiles: string[],
+  repoRoot?: string
+): string | undefined {
   // Use structured diff stats to build a minimal diff header if no raw diff is available
-  if (result.execution?.changedFiles?.length) {
-    // Build a synthetic diff header from changed file list
-    return result.execution.changedFiles
-      .map((file) => `--- a/${file}\n+++ b/${file}\n@@ -0,0 +1 @@\n+`)
-      .join("\n");
-  }
-  if (changedFiles.length > 0) {
-    return changedFiles
-      .map((file) => `--- a/${file}\n+++ b/${file}\n@@ -0,0 +1 @@\n+`)
+  const files = result.execution?.changedFiles?.length ? result.execution.changedFiles : changedFiles;
+  if (files.length > 0) {
+    return files
+      .map((file) => buildSyntheticDiffHeader(file, repoRoot))
       .join("\n");
   }
   return undefined;
+}
+
+function buildSyntheticDiffHeader(file: string, repoRoot?: string): string {
+  const normalizedFile = file.replace(/\\/gu, "/");
+  const isNewWorkspaceFile = repoRoot ? isUntrackedWorkspaceFile(repoRoot, normalizedFile) : false;
+  const before = isNewWorkspaceFile ? "/dev/null" : `a/${normalizedFile}`;
+
+  return `--- ${before}\n+++ b/${normalizedFile}\n@@ -0,0 +1 @@\n+`;
+}
+
+function isUntrackedWorkspaceFile(repoRoot: string, file: string): boolean {
+  const result = spawnSync("git", ["ls-files", "--others", "--exclude-standard", "--", file], {
+    cwd: repoRoot,
+    encoding: "utf8"
+  });
+
+  if (result.status !== 0 || typeof result.stdout !== "string") {
+    return false;
+  }
+
+  return result.stdout
+    .split(/\r?\n/u)
+    .map((line) => line.trim().replace(/\\/gu, "/"))
+    .includes(file);
 }
 
 function createBudgetSettlement(input: {
