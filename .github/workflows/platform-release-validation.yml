@@ -40,7 +40,7 @@ jobs:
 
       - name: Run multi-platform release validation
         env:
-          MARTIN_RELEASE_MATRIX_OUTDIR: .artifacts/release-matrix/${{ matrix.os }}
+          MARTIN_RELEASE_MATRIX_OUTDIR: ${{ runner.temp }}/release-matrix/${{ matrix.os }}
         run: |
           pnpm release:clean-check
           node ./scripts/fleet-release-authority-check.mjs --source
@@ -54,4 +54,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: platform-release-validation-${{ matrix.os }}
-          path: .artifacts/release-matrix/${{ matrix.os }}
+          path: ${{ runner.temp }}/release-matrix/${{ matrix.os }}
