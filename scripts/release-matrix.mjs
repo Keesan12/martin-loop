@@ -17,6 +17,7 @@ const RELEASE_MATRIX_STEPS = [
   ["pnpm", "public:smoke"],
   ["pnpm", "--filter", "@martinloop/mcp", "smoke:pack"],
   ["pnpm", "mcp:published:smoke:pack"],
+  ["node", "./scripts/published-artifact-e2e.mjs", "--package-spec=pack"],
 ];
 
 const RELEASE_MATRIX_LANES = [

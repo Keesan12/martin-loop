@@ -13,6 +13,7 @@ const RC_VALIDATION_STEPS = [
   ["pnpm", "public:smoke"],
   ["pnpm", "--filter", "@martinloop/mcp", "smoke:pack"],
   ["pnpm", "mcp:published:smoke:pack"],
+  ["node", "./scripts/published-artifact-e2e.mjs", "--package-spec=pack"],
 ];
 
 export function createRcValidationPlan(options = {}) {
@@ -122,10 +123,18 @@ export function resolveRcCommandExecution(
   comSpec = process.env.ComSpec ?? "cmd.exe",
 ) {
   if (platform === "win32") {
-    const commandLine = command.map(quoteForWindowsShell).join(" ");
+    const executable = resolveWindowsExecutable(command[0]);
+    if (requiresWindowsCommandShim(executable)) {
+      return {
+        command: comSpec,
+        args: ["/d", "/c", executable, ...command.slice(1)],
+        shell: false,
+      };
+    }
+
     return {
-      command: comSpec,
-      args: ["/d", "/s", "/c", commandLine],
+      command: executable,
+      args: command.slice(1),
       shell: false,
     };
   }
@@ -137,20 +146,29 @@ export function resolveRcCommandExecution(
   };
 }
 
+function resolveWindowsExecutable(command) {
+  if (path.extname(command).length > 0) {
+    return command;
+  }
+
+  if (command === "npm" || command === "pnpm" || command === "npx") {
+    return `${command}.cmd`;
+  }
+
+  return command;
+}
+
+function requiresWindowsCommandShim(command) {
+  const extension = path.extname(command).toLowerCase();
+  return extension === ".cmd" || extension === ".bat";
+}
+
 function slugify(value) {
   return value
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 80);
-}
-
-function quoteForWindowsShell(value) {
-  if (!/[\s"&|<>^]/.test(value)) {
-    return value;
-  }
-
-  return `"${value.replace(/"/g, '\\"')}"`;
 }
 
 async function main() {

@@ -17,7 +17,7 @@ import {
   resolveCliCommandAvailability,
   createVerifierOnlyAdapter,
 } from "@martin/adapters";
-import { runMartin, classifyRoute, getHistoricalDirectSuccessRate, getPreference, recordPreference, writeExitSignal, type MartinAdapter } from "@martin/core";
+import { runMartin, classifyRoute, createFileRunStore, getHistoricalDirectSuccessRate, getPreference, recordPreference, writeExitSignal, type MartinAdapter } from "@martin/core";
 import {
   fetchSelectedMessage,
   getCliInstalledVersion,
@@ -1628,6 +1628,7 @@ async function executeRunCommand(
       budget: resolvedRequest.budget,
       metadata: executionMetadata,
       adapter,
+      store: createFileRunStore({ runsRoot: cliEnvironment.runsRoot }),
     });
     result = await offerArcadeWhileWaiting(governedTask, {
       outputMode,

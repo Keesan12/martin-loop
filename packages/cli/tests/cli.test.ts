@@ -132,6 +132,58 @@ function installChangingRunAdapter(changedFiles: string[]): void {
   __setRunAdapterOverrideForTests(adapter);
 }
 
+function installWritingRunAdapter(filePath: string, contents: string): void {
+  const adapter: NonNullable<Parameters<typeof __setRunAdapterOverrideForTests>[0]> = {
+    adapterId: "agent-cli:cli-artifact-test",
+    kind: "agent-cli",
+    label: "CLI artifact persistence test adapter",
+    metadata: { providerId: "codex", model: "test-artifact-producer" },
+    async execute(request) {
+      await mkdir(join(request.context.repoRoot ?? process.cwd(), filePath.split("/").slice(0, -1).join("/")), {
+        recursive: true
+      });
+      await writeFile(join(request.context.repoRoot ?? process.cwd(), filePath), contents, "utf8");
+      return {
+        status: "completed",
+        summary: "Created a controlled CLI test artifact.",
+        usage: {
+          actualUsd: 0,
+          tokensIn: 0,
+          tokensOut: 0,
+          provenance: "actual"
+        },
+        verification: {
+          passed: true,
+          summary: "Verification completed in CLI artifact persistence test.",
+          binding: {
+            runId: request.loopId,
+            workspaceId: request.workspaceId,
+            cwd: request.context.repoRoot ?? process.cwd(),
+            commands: request.context.verificationPlan,
+          },
+          steps: request.context.verificationPlan.map((command) => ({
+            command,
+            launched: true,
+            completed: true,
+            crashed: false,
+            exitCode: 0,
+            timedOut: false,
+          })),
+        },
+        execution: {
+          changedFiles: [filePath],
+          diffStats: {
+            filesChanged: 1,
+            addedLines: 1,
+            deletedLines: 0
+          }
+        }
+      };
+    }
+  };
+  __setRunAdapterOverrideForTests(adapter);
+}
+
 afterEach(() => {
   __setRunAdapterOverrideForTests(undefined);
 });
@@ -962,6 +1014,71 @@ describe("executeCli", () => {
       expect(payload.loop.task.providerExecutionTimeoutMs).toBe(900000);
       expect(payload.loop.receiptScope.providerExecutionTimeoutMs).toBe(900000);
       expect(payload.loop.task.agentExecutionIntent).toBe("governed-autonomous");
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("persists patch decision artifacts for real CLI governed runs", { timeout: 30_000 }, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-patch-decision-"));
+
+    try {
+      installWritingRunAdapter("src/cli-artifact.ts", "export const cliArtifact = true;\n");
+      await writeFile(join(directory, "README.md"), "# CLI patch decision fixture\n", "utf8");
+      initializeCommittedGitRepository(directory);
+      const previousMartinLive = process.env.MARTIN_LIVE;
+      process.env.MARTIN_LIVE = "false";
+      const result = await withIsolatedRunsEnv(directory, () =>
+        executeCli([
+          "--json",
+          "run",
+          "--objective",
+          "Create a source artifact through the CLI",
+          "--engine",
+          "codex",
+          "--verify",
+          `"${process.execPath}" -e "process.exit(0)"`,
+          "--cwd",
+          directory,
+          "--allow-path",
+          "src/cli-artifact.ts"
+        ])
+      );
+      if (previousMartinLive === undefined) {
+        delete process.env.MARTIN_LIVE;
+      } else {
+        process.env.MARTIN_LIVE = previousMartinLive;
+      }
+
+      expect([0, 7]).toContain(result.exitCode);
+      const payload = JSON.parse(result.stdout);
+      expect(payload.loop.lifecycleState).toBe("completed");
+      expect(payload.loop.events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: "verification.completed",
+            payload: expect.objectContaining({
+              passed: true,
+              changedFiles: ["src/cli-artifact.ts"]
+            })
+          })
+        ])
+      );
+
+      const patchDecision = JSON.parse(
+        await readFile(
+          join(
+            payload.environment.runsRoot,
+            payload.loop.loopId,
+            "artifacts",
+            "attempt-001",
+            "patch-decision.json"
+          ),
+          "utf8"
+        )
+      );
+      expect(patchDecision.decision).toBe("KEEP");
+      expect(patchDecision.reasonCodes).toContain("verifier_passed");
     } finally {
       await rm(directory, { force: true, recursive: true });
     }
