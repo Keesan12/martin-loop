@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import packageJson from "../package.json";
 import serverJson from "../server.json";
 
-import { rewritePackageSpecifiers, workspaceBuildCommandArgs } from "../scripts/build-package-lib.mjs";
+import {
+  createCommandLaunch,
+  rewritePackageSpecifiers,
+  workspaceBuildCommandArgs,
+} from "../scripts/build-package-lib.mjs";
 
 describe("rewritePackageSpecifiers", () => {
   it("rewrites nested internal package subpaths without truncating them", () => {
@@ -55,6 +59,37 @@ describe("workspaceBuildCommandArgs", () => {
       "--filter",
       "@martin/contracts",
       "build"
+    ]);
+  });
+});
+
+describe("createCommandLaunch", () => {
+  it("spawns native Windows executables directly so paths with spaces are not reparsed by cmd", () => {
+    const launch = createCommandLaunch(
+      "C:\\Program Files\\nodejs\\node.exe",
+      ["C:\\Users\\Example\\smoke.mjs"],
+      "win32",
+    );
+
+    expect(launch).toEqual({
+      command: "C:\\Program Files\\nodejs\\node.exe",
+      args: ["C:\\Users\\Example\\smoke.mjs"],
+    });
+  });
+
+  it("keeps Windows command shims behind cmd.exe", () => {
+    const launch = createCommandLaunch(
+      "pnpm.cmd",
+      ["--filter", "@martinloop/mcp", "build"],
+      "win32",
+    );
+
+    expect(launch.command.toLowerCase()).toContain("cmd");
+    expect(launch.args).toEqual([
+      "/d",
+      "/s",
+      "/c",
+      "pnpm.cmd --filter @martinloop/mcp build",
     ]);
   });
 });
