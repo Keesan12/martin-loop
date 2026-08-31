@@ -179,7 +179,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Resolve existing 0.5.7 release tags
+      - name: Resolve existing release tags
         id: repair
         shell: bash
         run: |

@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.5.8] - 2026-08-30
+
+### Fixed
+
+- Correctly keeps verifier-passing artifacts created during a governed attempt when the path is explicitly allowed, while preserving grounding rejection for changed-file claims that are not backed by actual workspace state.
+
 ## [0.5.7] - 2026-08-30
 
 ### Fixed

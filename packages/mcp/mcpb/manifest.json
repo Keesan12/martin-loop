@@ -3,7 +3,7 @@
   "manifest_version": "0.3",
   "name": "martinloop",
   "display_name": "MartinLoop",
-  "version": "0.5.7",
+  "version": "0.5.8",
   "description": "Govern AI coding-agent work with budgets, stop limits, and verifier-backed evidence.",
   "long_description": "MartinLoop adds budgets, stop conditions, controlled execution, rollback evidence, and auditable run records to AI coding-agent workflows. The MCPB runs locally and operates only on the workspace and run-storage directories selected during installation.",
   "author": {
