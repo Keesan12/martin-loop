@@ -557,10 +557,19 @@ function createCommandLaunch(command, args) {
     return { command, args };
   }
 
+  if (!requiresWindowsCommandShim(command)) {
+    return { command, args };
+  }
+
   return {
     command: process.env.ComSpec ?? "cmd.exe",
     args: ["/d", "/s", "/c", toCmdCommand(command, args)],
   };
+}
+
+function requiresWindowsCommandShim(command) {
+  const extension = path.extname(command).toLowerCase();
+  return extension === ".cmd" || extension === ".bat";
 }
 
 function toCmdCommand(command, args) {
