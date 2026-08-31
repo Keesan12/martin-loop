@@ -1,6 +1,6 @@
 {
   "name": "martinloop",
-  "version": "0.5.7",
+  "version": "0.5.8",
   "description": "Govern coding-agent work with budgets, stop conditions, and verifier-backed evidence.",
   "author": {
     "name": "MartinLoop contributors"

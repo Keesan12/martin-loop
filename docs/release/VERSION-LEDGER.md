@@ -32,7 +32,8 @@ This file is the release source of truth for package/version mapping in this rep
   - `0.5.4` provider-neutral governed autonomy and exact-binary Codex negotiation
   - `0.5.5` governed-autonomous execution with deterministic install metadata
   - `0.5.6` portable MCP package validation, read-only Arcade resources, hosted sync contract alignment, and permanent release-authority gates
-- current in-repo root release target: `0.5.7` (pending publication)
+  - `0.5.7` release tooling, OSS boundary, and packaged MCP hardening
+- current in-repo root release target: `0.5.8` (pending publication)
 - next planned root follow-on: not scheduled
 
 ## Standalone package: `@martinloop/mcp`
@@ -45,8 +46,8 @@ This file is the release source of truth for package/version mapping in this rep
 - live MCPB baseline: `0.5.5`
 - live MCPB SHA-256: `6f3da0e77978a47bbc7ffec8db6b3a42bff2cb7e8642372523eab53af79c05d2`
 - live MCPB size: `8,113,133` bytes
-- current in-repo standalone release target: `0.5.7` (pending publication)
-- current in-repo MCPB release target: `0.5.7` with manifest schema `0.3` (pending publication)
+- current in-repo standalone release target: `0.5.8` (pending publication)
+- current in-repo MCPB release target: `0.5.8` with manifest schema `0.3` (pending publication)
 - next planned standalone release: not scheduled
 
 ## Release rules
