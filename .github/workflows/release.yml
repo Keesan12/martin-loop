@@ -119,6 +119,9 @@ jobs:
           echo "martin-loop@${{ steps.package-version.outputs.version }} did not become visible on npm in time."
           exit 1
 
+      - name: Verify published root artifact E2E
+        run: node ./scripts/published-artifact-e2e.mjs --package-spec "martin-loop@${{ steps.package-version.outputs.version }}"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b
         with:

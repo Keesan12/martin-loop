@@ -18,7 +18,8 @@ test("createRcValidationPlan omits install by default and includes the OSS-safe 
   assert.ok(commands.includes("pnpm oss:validate"));
   assert.ok(commands.includes("pnpm public:smoke"));
   assert.ok(commands.includes("pnpm --filter @martinloop/mcp smoke:pack"));
-  assert.equal(commands.at(-1), "pnpm mcp:published:smoke:pack");
+  assert.ok(commands.includes("node ./scripts/published-artifact-e2e.mjs --package-spec=pack"));
+  assert.equal(commands.at(-1), "node ./scripts/published-artifact-e2e.mjs --package-spec=pack");
   assert.ok(!commands.includes("pnpm install --frozen-lockfile"));
 });
 
@@ -46,7 +47,7 @@ test("createRcValidationEnvironment points HOME-style state at an isolated direc
   assert.notEqual(env.HOME, "C:\\Users\\ExampleUser");
 });
 
-test("resolveRcCommandExecution avoids shell mode on Windows by invoking cmd.exe explicitly", () => {
+test("resolveRcCommandExecution keeps Windows command shims behind cmd.exe without joining argv", () => {
   const execution = resolveRcCommandExecution(
     ["pnpm", "--filter", "@martin/core", "test"],
     "win32",
@@ -54,6 +55,18 @@ test("resolveRcCommandExecution avoids shell mode on Windows by invoking cmd.exe
   );
 
   assert.equal(execution.command, "C:\\Windows\\System32\\cmd.exe");
-  assert.deepEqual(execution.args, ["/d", "/s", "/c", "pnpm --filter @martin/core test"]);
+  assert.deepEqual(execution.args, ["/d", "/c", "pnpm.cmd", "--filter", "@martin/core", "test"]);
+  assert.equal(execution.shell, false);
+});
+
+test("resolveRcCommandExecution runs native Windows executables directly", () => {
+  const execution = resolveRcCommandExecution(
+    ["node", "./scripts/published-artifact-e2e.mjs", "--package-spec=pack"],
+    "win32",
+    "C:\\Windows\\System32\\cmd.exe",
+  );
+
+  assert.equal(execution.command, "node");
+  assert.deepEqual(execution.args, ["./scripts/published-artifact-e2e.mjs", "--package-spec=pack"]);
   assert.equal(execution.shell, false);
 });

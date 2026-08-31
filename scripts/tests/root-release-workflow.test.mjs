@@ -17,6 +17,10 @@ test("root release workflow uses GitHub Actions trusted publishing without npm t
   assert.match(workflow, /npm install -g npm@latest/);
   assert.match(workflow, /npm publish "\$\{\{ steps\.root-pack\.outputs\.tarball \}\}" --access public --provenance/);
   assert.match(workflow, /npm view "martin-loop@\$\{\{ steps\.package-version\.outputs\.version \}\}" version/);
+  assert.match(
+    workflow,
+    /node \.\/scripts\/published-artifact-e2e\.mjs --package-spec "martin-loop@\$\{\{ steps\.package-version\.outputs\.version \}\}"/,
+  );
   assert.match(workflow, /actions\/checkout@v6/);
   assert.match(workflow, /pnpm\/action-setup@b0f76dfb45f55f8421693e4803ac7bb65143bd34/);
   assert.match(workflow, /actions\/setup-node@v6/);

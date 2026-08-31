@@ -40,6 +40,24 @@ test("createReleaseMatrixPlan checks root package boundaries before the full tes
   }
 });
 
+test("createReleaseMatrixPlan runs a packaged root artifact E2E before declaring the lane green", () => {
+  const plan = createReleaseMatrixPlan({ rootDir: "C:/repo" });
+
+  for (const lane of plan.lanes) {
+    const commands = lane.steps.map((step) => step.command.join(" "));
+
+    assert.ok(
+      commands.includes("node ./scripts/published-artifact-e2e.mjs --package-spec=pack"),
+      `${lane.id} lane should exercise the packed root artifact E2E`,
+    );
+    assert.equal(
+      commands.at(-1),
+      "node ./scripts/published-artifact-e2e.mjs --package-spec=pack",
+      `${lane.id} lane should finish on the packaged root artifact E2E`,
+    );
+  }
+});
+
 test("resolveReleaseMatrixLane selects the correct local platform lane", () => {
   const plan = createReleaseMatrixPlan({ rootDir: "C:/repo" });
 
