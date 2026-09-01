@@ -174,6 +174,300 @@ describe("mcp config helpers", () => {
     }
   });
 
+  it("installs project-scope Codex governance into AGENTS.md when explicitly requested", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "martin-cli-codex-governance-"));
+
+    try {
+      const agentsPath = join(cwd, "AGENTS.md");
+      await writeFile(
+        agentsPath,
+        [
+          "# Project Instructions",
+          "",
+          "Preserve this unrelated guidance.",
+          ""
+        ].join("\n"),
+        "utf8"
+      );
+
+      await installMcpConfig(
+        {
+          host: "codex",
+          scope: "project",
+          cwd,
+          runsRoot: join(cwd, ".runs")
+        },
+        { installGovernance: true, stateRoot: join(cwd, ".state") }
+      );
+
+      const installed = await readFile(agentsPath, "utf8");
+      expect(installed).toContain("Preserve this unrelated guidance.");
+      expect(installed).toContain("BEGIN MARTINLOOP GOVERNANCE");
+      expect(installed).toContain("MartinLoop is available");
+      expect(installed).toContain("martin_doctor");
+      expect(installed).toContain("martin_run");
+      expect(installed).toContain("END MARTINLOOP GOVERNANCE");
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps Codex governance installation idempotent", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "martin-cli-codex-governance-idempotent-"));
+
+    try {
+      await installMcpConfig(
+        {
+          host: "codex",
+          scope: "project",
+          cwd,
+          runsRoot: join(cwd, ".runs")
+        },
+        { installGovernance: true, stateRoot: join(cwd, ".state") }
+      );
+      await installMcpConfig(
+        {
+          host: "codex",
+          scope: "project",
+          cwd,
+          runsRoot: join(cwd, ".runs")
+        },
+        { installGovernance: true, stateRoot: join(cwd, ".state") }
+      );
+
+      const installed = await readFile(join(cwd, "AGENTS.md"), "utf8");
+      expect(installed.match(/BEGIN MARTINLOOP GOVERNANCE/gu)).toHaveLength(1);
+      expect(installed.match(/END MARTINLOOP GOVERNANCE/gu)).toHaveLength(1);
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it("replaces an existing Martin-managed Codex governance section without duplicating user instructions", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "martin-cli-codex-governance-replace-"));
+
+    try {
+      const agentsPath = join(cwd, "AGENTS.md");
+      await writeFile(
+        agentsPath,
+        [
+          "# Existing Instructions",
+          "",
+          "<!-- BEGIN MARTINLOOP GOVERNANCE -->",
+          "old Martin section",
+          "<!-- END MARTINLOOP GOVERNANCE -->",
+          "",
+          "Keep this project-specific rule.",
+          ""
+        ].join("\n"),
+        "utf8"
+      );
+
+      await installMcpConfig(
+        {
+          host: "codex",
+          scope: "project",
+          cwd,
+          runsRoot: join(cwd, ".runs")
+        },
+        { installGovernance: true, stateRoot: join(cwd, ".state") }
+      );
+
+      const installed = await readFile(agentsPath, "utf8");
+      expect(installed).not.toContain("old Martin section");
+      expect(installed).toContain("Keep this project-specific rule.");
+      expect(installed.match(/BEGIN MARTINLOOP GOVERNANCE/gu)).toHaveLength(1);
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it("preserves non-Martin Codex instruction bytes exactly when replacing a managed section", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "martin-cli-codex-governance-preserve-"));
+
+    try {
+      const agentsPath = join(cwd, "AGENTS.md");
+      const prefix = [
+        "# Existing Instructions",
+        "",
+        "",
+        "Keep   unusual   spacing.",
+        "  - preserve leading indentation",
+        ""
+      ].join("\n");
+      const suffix = [
+        "",
+        "",
+        "Trailing project rule:",
+        "",
+        "",
+        "  leave these blank lines alone",
+        ""
+      ].join("\n");
+      await writeFile(
+        agentsPath,
+        `${prefix}<!-- BEGIN MARTINLOOP GOVERNANCE -->\nold Martin section\n<!-- END MARTINLOOP GOVERNANCE -->${suffix}`,
+        "utf8"
+      );
+
+      await installMcpConfig(
+        {
+          host: "codex",
+          scope: "project",
+          cwd,
+          runsRoot: join(cwd, ".runs")
+        },
+        { installGovernance: true, stateRoot: join(cwd, ".state") }
+      );
+
+      const installed = await readFile(agentsPath, "utf8");
+      const beginIndex = installed.indexOf("<!-- BEGIN MARTINLOOP GOVERNANCE -->");
+      const endIndex = installed.indexOf("<!-- END MARTINLOOP GOVERNANCE -->");
+      expect(beginIndex).toBe(prefix.length);
+      expect(installed.slice(0, beginIndex)).toBe(prefix);
+      expect(installed.slice(endIndex + "<!-- END MARTINLOOP GOVERNANCE -->".length)).toBe(suffix);
+      expect(installed).not.toContain("old Martin section");
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it("preserves an existing CRLF AGENTS.md convention around the managed Codex section", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "martin-cli-codex-governance-crlf-"));
+
+    try {
+      const agentsPath = join(cwd, "AGENTS.md");
+      const prefix = "# Existing Instructions\r\n\r\nKeep CRLF.\r\n";
+      const suffix = "\r\n\r\nAfter section stays CRLF.\r\n";
+      await writeFile(
+        agentsPath,
+        `${prefix}<!-- BEGIN MARTINLOOP GOVERNANCE -->\r\nold Martin section\r\n<!-- END MARTINLOOP GOVERNANCE -->${suffix}`,
+        "utf8"
+      );
+
+      await installMcpConfig(
+        {
+          host: "codex",
+          scope: "project",
+          cwd,
+          runsRoot: join(cwd, ".runs")
+        },
+        { installGovernance: true, stateRoot: join(cwd, ".state") }
+      );
+
+      const installed = await readFile(agentsPath, "utf8");
+      expect(installed.slice(0, prefix.length)).toBe(prefix);
+      expect(installed.endsWith(suffix)).toBe(true);
+      expect(installed).toContain("<!-- BEGIN MARTINLOOP GOVERNANCE -->\r\n## MartinLoop Governance\r\n");
+      expect(installed).not.toMatch(/(?<!\r)\n/u);
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses to install Codex governance over a malformed managed section", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "martin-cli-codex-governance-malformed-"));
+
+    try {
+      const agentsPath = join(cwd, "AGENTS.md");
+      await writeFile(
+        agentsPath,
+        [
+          "# Existing Instructions",
+          "",
+          "<!-- BEGIN MARTINLOOP GOVERNANCE -->",
+          "partial Martin section without an end sentinel",
+          ""
+        ].join("\n"),
+        "utf8"
+      );
+
+      await expect(
+        installMcpConfig(
+          {
+            host: "codex",
+            scope: "project",
+            cwd,
+            runsRoot: join(cwd, ".runs")
+          },
+          { installGovernance: true, stateRoot: join(cwd, ".state") }
+        )
+      ).rejects.toThrow(/managed section is malformed/u);
+
+      expect(await readFile(agentsPath, "utf8")).toContain("partial Martin section");
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses to install Codex governance when duplicate managed sections are present", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "martin-cli-codex-governance-duplicate-"));
+
+    try {
+      const agentsPath = join(cwd, "AGENTS.md");
+      const existing = [
+        "# Existing Instructions",
+        "",
+        "<!-- BEGIN MARTINLOOP GOVERNANCE -->",
+        "first Martin section",
+        "<!-- END MARTINLOOP GOVERNANCE -->",
+        "",
+        "<!-- BEGIN MARTINLOOP GOVERNANCE -->",
+        "second Martin section",
+        "<!-- END MARTINLOOP GOVERNANCE -->",
+        ""
+      ].join("\n");
+      await writeFile(agentsPath, existing, "utf8");
+
+      await expect(
+        installMcpConfig(
+          {
+            host: "codex",
+            scope: "project",
+            cwd,
+            runsRoot: join(cwd, ".runs")
+          },
+          { installGovernance: true, stateRoot: join(cwd, ".state") }
+        )
+      ).rejects.toThrow(/managed section is malformed/u);
+
+      expect(await readFile(agentsPath, "utf8")).toBe(existing);
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  it("installs user-scope Codex governance into CODEX_HOME AGENTS.md when explicitly requested", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "martin-cli-codex-user-governance-"));
+    const codexHome = join(cwd, ".codex-home");
+    const previousCodexHome = process.env.CODEX_HOME;
+
+    try {
+      process.env.CODEX_HOME = codexHome;
+
+      await installMcpConfig(
+        {
+          host: "codex",
+          scope: "user",
+          cwd,
+          runsRoot: join(cwd, ".runs")
+        },
+        { installGovernance: true, stateRoot: join(cwd, ".state") }
+      );
+
+      const installed = await readFile(join(codexHome, "AGENTS.md"), "utf8");
+      expect(installed).toContain("BEGIN MARTINLOOP GOVERNANCE");
+      expect(installed).toContain("Use MartinLoop proactively for non-trivial software implementation");
+    } finally {
+      if (previousCodexHome === undefined) {
+        delete process.env.CODEX_HOME;
+      } else {
+        process.env.CODEX_HOME = previousCodexHome;
+      }
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
   it("treats existing Claude configs with a martin-loop block as idempotent", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "martin-cli-claude-config-"));
 

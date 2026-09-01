@@ -229,6 +229,9 @@ async function maybeInstallGovernance(
   if (options.installGovernance && plan.host === "claude") {
     await installClaudeGovernanceHooks();
   }
+  if (options.installGovernance && plan.host === "codex") {
+    await installCodexGovernanceInstructions(plan, options);
+  }
 }
 
 /**
@@ -300,6 +303,123 @@ async function installClaudeGovernanceHooks(): Promise<void> {
   settings.hooks = { ...hooks, PreToolUse: preToolUse, Stop: stop };
   await mkdir(path.join(homedir(), ".claude"), { recursive: true });
   await writeFileAtomically(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+}
+
+const MARTIN_CODEX_GOVERNANCE_BEGIN = "<!-- BEGIN MARTINLOOP GOVERNANCE -->";
+const MARTIN_CODEX_GOVERNANCE_END = "<!-- END MARTINLOOP GOVERNANCE -->";
+
+async function installCodexGovernanceInstructions(
+  plan: MartinMcpInstallPlan,
+  options: MartinMcpInstallOptions
+): Promise<void> {
+  const targetPath = plan.governanceHooks.targetPath;
+  if (!targetPath) {
+    throw new CliCommandError(
+      "environment",
+      "Codex governance installation needs an explicit instruction target.",
+      {
+        suggestion: plan.governanceHooks.instructions
+      }
+    );
+  }
+  const resolvedTargetPath = isAbsoluteAnyPlatform(targetPath)
+    ? targetPath
+    : joinTargetPath(plan.cwd, targetPath);
+
+  const existing = await readFile(resolvedTargetPath, "utf8").catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT") return undefined;
+    throw error;
+  });
+  const merged = mergeMartinCodexGovernanceSection(existing ?? "", plan.governanceHooks.content);
+
+  if (existing === merged) {
+    return;
+  }
+
+  await recordMartinMcpInstall({
+    host: plan.host,
+    scope: plan.scope,
+    targetPath: resolvedTargetPath,
+    content: merged,
+    ...(existing !== undefined ? { previousContent: existing } : {}),
+    stateRoot: options.stateRoot
+  });
+}
+
+function mergeMartinCodexGovernanceSection(existing: string, content: string): string {
+  const eol = detectDominantEol(existing);
+  const managedSection = renderMartinCodexGovernanceSection(content, eol);
+  const beginIndexes = findAllIndexes(existing, MARTIN_CODEX_GOVERNANCE_BEGIN);
+  const endIndexes = findAllIndexes(existing, MARTIN_CODEX_GOVERNANCE_END);
+  const beginIndex = beginIndexes[0] ?? -1;
+  const endIndex = endIndexes[0] ?? -1;
+
+  if (
+    beginIndexes.length > 1 ||
+    endIndexes.length > 1 ||
+    beginIndexes.length !== endIndexes.length ||
+    (beginIndex !== -1 && endIndex < beginIndex)
+  ) {
+    throw new CliCommandError(
+      "environment",
+      "Refusing to modify Codex instructions because the MartinLoop managed section is malformed.",
+      {
+        suggestion:
+          "Fix or remove the partial MartinLoop governance section, then rerun `martin mcp install --install-governance`."
+      }
+    );
+  }
+
+  if (beginIndex !== -1) {
+    return [
+      existing.slice(0, beginIndex),
+      managedSection,
+      existing.slice(endIndex + MARTIN_CODEX_GOVERNANCE_END.length)
+    ].join("");
+  }
+
+  if (existing.length === 0) {
+    return `${managedSection}${eol}`;
+  }
+
+  return `${existing}${buildAppendSeparator(existing, eol)}${managedSection}${eol}`;
+}
+
+function renderMartinCodexGovernanceSection(content: string, eol: string): string {
+  return [
+    MARTIN_CODEX_GOVERNANCE_BEGIN,
+    content.trimEnd().replace(/\r\n|\n|\r/gu, eol),
+    MARTIN_CODEX_GOVERNANCE_END
+  ].join(eol);
+}
+
+function buildAppendSeparator(existing: string, eol: string): string {
+  if (existing.endsWith(`${eol}${eol}`)) {
+    return "";
+  }
+  if (existing.endsWith(eol)) {
+    return eol;
+  }
+  return `${eol}${eol}`;
+}
+
+function detectDominantEol(content: string): "\r\n" | "\n" {
+  const crlfCount = content.match(/\r\n/gu)?.length ?? 0;
+  const lfCount = content.match(/\n/gu)?.length ?? 0;
+  const lfOnlyCount = lfCount - crlfCount;
+  return crlfCount > lfOnlyCount ? "\r\n" : "\n";
+}
+
+function findAllIndexes(haystack: string, needle: string): number[] {
+  const indexes: number[] = [];
+  let offset = 0;
+  while (offset < haystack.length) {
+    const index = haystack.indexOf(needle, offset);
+    if (index === -1) break;
+    indexes.push(index);
+    offset = index + needle.length;
+  }
+  return indexes;
 }
 
 function normalizeInput(input: MartinMcpConfigInput): Required<Omit<MartinMcpConfigInput, "remoteUrl">> & {
@@ -595,6 +715,10 @@ function joinTargetPath(basePath: string, ...segments: string[]): string {
   return usesWindowsSeparators(basePath)
     ? path.win32.join(basePath, ...segments)
     : path.join(basePath, ...segments);
+}
+
+function isAbsoluteAnyPlatform(value: string): boolean {
+  return path.isAbsolute(value) || path.win32.isAbsolute(value);
 }
 
 // ---------------------------------------------------------------------------
@@ -937,22 +1061,27 @@ function buildGovernanceHooks(host: MartinMcpHost, scope: MartinMcpScope): Gover
         host,
         supported: true,
         mechanism: "Codex AGENTS.md governance instructions",
-        targetPath: scope === "user" ? null : "AGENTS.md",
+        targetPath: scope === "user" ? joinTargetPath(resolveCodexHome(), "AGENTS.md") : "AGENTS.md",
         content: [
           "## MartinLoop Governance",
           "",
-          "Before executing any coding task:",
-          "1. Call `martin_doctor` to confirm environment readiness",
-          "2. Call `martin_estimate` to preview cost and route",
-          "3. Call `martin_plan` to scope the bounded approach",
-          "4. Call `martin_preflight` to validate the run contract",
-          "5. Only then call `martin_run`",
-          "6. After completion, call `martin_dossier` to generate the receipt",
+          "MartinLoop is available in this Codex environment.",
           "",
+          "Use MartinLoop proactively for non-trivial software implementation, debugging, risky changes, failed prior attempts, and release-readiness questions.",
+          "For read-only diagnosis, prefer `martin_doctor`, `martin_estimate`, `martin_plan`, `martin_preflight`, `martin_triage_runs`, and evidence/dossier reads before recommending next steps.",
+          "When the user has authorized code changes, use the appropriate governed sequence through `martin_run`, then surface verifier-backed evidence with `martin_dossier`.",
+          "Reuse valid prior Martin context when continuing a session instead of blindly repeating every setup step.",
+          "",
+          "Do not use MartinLoop for unrelated conversation, trivial text edits, or non-software tasks.",
+          "Do not mutate code when the user only asked for diagnosis or explanation.",
+          "Stop and ask when policy, budget, credentials, scope, or destructive risk requires explicit consent.",
           "Never claim success without verifier-backed completion evidence from MartinLoop.",
           ""
         ].join("\n"),
-        instructions: "Add the governance section to your project's AGENTS.md or ~/.codex/instructions.md."
+        instructions:
+          scope === "user"
+            ? "Install the Martin-managed governance section into CODEX_HOME/AGENTS.md."
+            : "Install the Martin-managed governance section into the project AGENTS.md."
       };
 
     case "gemini":

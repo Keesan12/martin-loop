@@ -611,6 +611,42 @@ describe("server validation", () => {
     expect(normalizedServerSource).toMatch(/attemptIndex:\s*\{\s*type:\s*"integer",\s*minimum:\s*1,/m);
   });
 
+  it("keeps starter tool descriptions aligned with proactive selection and MCP runtime admission", async () => {
+    const server = createMartinMcpServer() as unknown as ServerWithRequestHandlers;
+    const listTools = server._requestHandlers.get("tools/list");
+    if (!listTools) {
+      throw new Error("Expected tools/list request handler.");
+    }
+
+    const result = await listTools({ method: "tools/list" }, {}) as {
+      tools: Array<{ name: string; description?: string }>;
+    };
+    const descriptions = new Map(
+      result.tools.map((tool) => [tool.name, tool.description ?? ""])
+    );
+
+    for (const toolName of [
+      "martin_doctor",
+      "martin_estimate",
+      "martin_plan",
+      "martin_preflight",
+      "martin_run",
+      "martin_triage_runs",
+      "martin_dossier"
+    ]) {
+      const description = descriptions.get(toolName) ?? "";
+      expect(description, `${toolName} should tell the host when to use it`).toMatch(/\bUse\b/u);
+      expect(description, `${toolName} should tell the host when not to use it`).toMatch(/\bDo not use\b/u);
+      expect(description, `${toolName} should tell the host the likely next action`).toMatch(/\bNext:/u);
+    }
+
+    const runDescription = descriptions.get("martin_run") ?? "";
+    expect(runDescription).toContain("MCP workflow admission");
+    expect(runDescription).toContain("doctor/estimate/plan/preflight receipts");
+    expect(runDescription).not.toContain("hard-blocks until");
+    expect(runDescription).not.toContain("caller forgot");
+  });
+
   it("blocks martin_run before spend when the MCP receipt chain is missing", async () => {
     await withValidationRunsRoot(async () => {
       await withValidationWorkspaceRoot(async () => {

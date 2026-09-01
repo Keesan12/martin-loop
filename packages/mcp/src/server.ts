@@ -918,7 +918,7 @@ export function createMartinMcpServer(serverInfo?: {
     {
       name: "martin_run",
       description:
-        "Execute a governed Martin Loop run on a coding task and return the run summary, spend, artifact rollup, and verification state. This hard-blocks until martin_doctor, martin_estimate, martin_plan, and martin_preflight receipts exist for the same task.",
+        "Execute a governed MartinLoop coding run after MCP workflow admission is satisfied. Use when the user has authorized implementation, bug fixing, tests, or refactoring and doctor/estimate/plan/preflight receipts match this task. Do not use for question-only diagnosis or when policy, budget, credentials, or scope still need consent. Next: read martin_dossier and verifier evidence.",
       annotations: {
         destructiveHint: true,
         idempotentHint: false,
@@ -1068,7 +1068,7 @@ export function createMartinMcpServer(serverInfo?: {
     {
       name: "martin_doctor",
       description:
-        "Read-only environment and run-store diagnostics for the Martin MCP server. This is the expected first call before governed work begins.",
+        "Read-only environment, engine, workspace, and run-store diagnostics for MartinLoop. Use first for software work, fresh installs, suspicious state, or before retries. Do not use as proof that a task is complete. Next: call martin_estimate or martin_triage_runs depending on whether this is new work or failed prior work.",
       annotations: {
         readOnlyHint: true,
         idempotentHint: true
@@ -1097,7 +1097,7 @@ export function createMartinMcpServer(serverInfo?: {
     {
       name: "martin_plan",
       description:
-        "Read-only planning step that turns an objective into a scoped implementation plan, verifier proposal, policy pack, and risk recommendation. Use before preflight and before any real coding run.",
+        "Read-only planning step that turns an objective into bounded scope, verifier proposal, policy pack, and risk recommendation. Use for authorized software changes before preflight/run. Do not use to mutate files or replace the verifier. Next: call martin_preflight with the chosen scope, budget, and verifier.",
       annotations: {
         readOnlyHint: true,
         idempotentHint: true
@@ -1133,7 +1133,7 @@ export function createMartinMcpServer(serverInfo?: {
     {
       name: "martin_preflight",
       description:
-        "Read-only validation of a planned Martin run before any execution or spend. This is the last required step before martin_run.",
+        "Read-only validation of the exact run contract before execution or spend. Use after planning and before martin_run to check engine, verifier, path scope, and budget. Do not use as execution or completion proof. Next: call martin_run if allowed, otherwise resolve the reported blocker.",
       annotations: {
         readOnlyHint: true,
         idempotentHint: true
@@ -1349,7 +1349,7 @@ export function createMartinMcpServer(serverInfo?: {
     {
       name: "martin_triage_runs",
       description:
-        "Prioritize Martin runs that need operator or agent attention based on verification, lifecycle, and budget pressure.",
+        "Read-only prioritization of saved Martin runs that need attention. Use when the user says a prior attempt failed, asks what to fix next, or resumes an interrupted session. Do not use for a brand-new objective with no relevant run history. Next: inspect the selected run or dossier before retrying.",
       annotations: {
         readOnlyHint: true,
         idempotentHint: true
@@ -1505,7 +1505,7 @@ export function createMartinMcpServer(serverInfo?: {
     {
       name: "martin_dossier",
       description:
-        "Alias for martin_run_dossier with support for JSON, Markdown, or GitHub PR formatting. Use after martin_run to understand what happened and whether the result is actually safe to trust.",
+        "Read-only evidence summary for a Martin run, with JSON, Markdown, or GitHub PR formatting. Use after martin_run, before merge/release claims, or when sharing what happened. Do not use as a substitute for missing verifier evidence. Next: review verification results, retry, or hand off the receipt.",
       annotations: {
         readOnlyHint: true,
         idempotentHint: true
@@ -1639,7 +1639,7 @@ export function createMartinMcpServer(serverInfo?: {
     {
       name: "martin_estimate",
       description:
-        "Estimate the cost, recommended route, and Pre Work Burn for an objective without spending anything. Use before martin_run to understand what a task will cost.",
+        "Read-only cost, route, and pre-work burn estimate for a software objective. Use before planning/preflight when a change may spend agent time or exceed budget. Do not use for casual questions or as permission to execute. Next: call martin_plan if the estimate is acceptable, or ask for consent if budget/risk is high.",
       annotations: {
         readOnlyHint: true,
         idempotentHint: true
