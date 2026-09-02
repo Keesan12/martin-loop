@@ -39,6 +39,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 
 import { MARTIN_MCP_PACKAGE_VERSION } from "./package-version.js";
+import { MARTIN_DIRECTORY_TOOL_NAMES } from "./discovery-metadata.js";
 import {
   MARTIN_ARCADE_FALLBACK_TEXT,
   MARTIN_ARCADE_MIME_TYPE,
@@ -84,6 +85,14 @@ const stringArraySchema = {
   type: "array",
   items: { type: "string" }
 } as const;
+
+export type MartinMcpToolProfile = "full" | "directory";
+
+const martinDirectoryToolNames = new Set<string>(MARTIN_DIRECTORY_TOOL_NAMES);
+
+export function shouldExposeMartinTool(name: string, profile: MartinMcpToolProfile): boolean {
+  return profile === "full" || martinDirectoryToolNames.has(name);
+}
 
 const loopPreviewSchema = {
   type: "object",
@@ -895,7 +904,9 @@ const prReviewOutputSchema = {
 export function createMartinMcpServer(serverInfo?: {
   name?: string;
   version?: string;
+  toolProfile?: MartinMcpToolProfile;
 }) {
+  const toolProfile = serverInfo?.toolProfile ?? "full";
   const server = new Server(
     {
       name: serverInfo?.name ?? "martin-loop",
@@ -1028,7 +1039,7 @@ export function createMartinMcpServer(serverInfo?: {
     {
       name: "martin_status",
       description:
-        "Return the current budget and cost state of a Martin loop record.",
+        "Read the current budget, cost, remaining limits, and stop pressure for one MartinLoop run. Provide exactly one selector: loopJson for an inline record, file for a saved record, loopId for a run-store ID, or latest for the newest run; runsDir only changes the run-store root. Use for a compact budget check. Do not use for full events or artifacts; use martin_get_run or martin_run_dossier instead.",
       annotations: {
         readOnlyHint: true,
         idempotentHint: true
@@ -1041,11 +1052,11 @@ export function createMartinMcpServer(serverInfo?: {
           file: {
             type: "string",
             description:
-              "Optional path under the Martin runs root to a loop-record.json file, a legacy .jsonl file, or a run-store directory."
+              "Path under the Martin runs root to a loop-record.json file, a legacy .jsonl file, or a run-store directory. Mutually exclusive with loopJson, loopId, and latest."
           },
           loopId: {
             type: "string",
-            description: "Loop ID resolved as <runsDir>/<loopId>/loop-record.json."
+            description: "Loop ID resolved as <runsDir>/<loopId>/loop-record.json. Mutually exclusive with loopJson, file, and latest."
           },
           runsDir: {
             type: "string",
@@ -1053,7 +1064,7 @@ export function createMartinMcpServer(serverInfo?: {
           },
           latest: {
             const: true,
-            description: "When true, loads the most recently updated loop record in the runs directory."
+            description: "When true, loads the most recently updated loop record. Mutually exclusive with loopJson, file, and loopId."
           }
         },
         oneOf: [
@@ -1250,7 +1261,7 @@ export function createMartinMcpServer(serverInfo?: {
     {
       name: "martin_pause",
       description:
-        "Record a durable pause request for a Martin run so humans and runtimes can see that execution should pause before risky follow-up work.",
+        "Write a durable pause receipt for one canonical MartinLoop run. Provide exactly one selector: file, loopId, or latest; runsDir changes the run-store root, while reason and requestedBy add audit context. Use for a temporary hold before risky follow-up work. This records a request and does not kill a process; use martin_cancel to abandon work or martin_continue to resume.",
       annotations: {
         destructiveHint: true,
         idempotentHint: false
@@ -1259,12 +1270,12 @@ export function createMartinMcpServer(serverInfo?: {
         type: "object",
         additionalProperties: false,
         properties: {
-          file: { type: "string" },
-          loopId: { type: "string" },
-          runsDir: { type: "string" },
-          latest: { const: true },
-          reason: { type: "string" },
-          requestedBy: { type: "string" }
+          file: { type: "string", description: "Path to one canonical run record or directory. Mutually exclusive with loopId and latest." },
+          loopId: { type: "string", description: "Canonical MartinLoop run identifier. Mutually exclusive with file and latest." },
+          runsDir: { type: "string", description: "Optional run-store root override used to resolve loopId or latest." },
+          latest: { const: true, description: "When true, targets the latest canonical run. Mutually exclusive with file and loopId." },
+          reason: { type: "string", description: "Optional non-empty reason recorded in the pause receipt." },
+          requestedBy: { type: "string", description: "Optional human or runtime identity label recorded for audit context." }
         },
         oneOf: [{ required: ["file"] }, { required: ["loopId"] }, { required: ["latest"] }]
       },
@@ -1273,7 +1284,7 @@ export function createMartinMcpServer(serverInfo?: {
     {
       name: "martin_cancel",
       description:
-        "Record a durable cancellation request for a Martin run. This writes a control receipt; it does not silently kill a process without evidence.",
+        "Write a durable cancellation receipt for one canonical MartinLoop run. Provide exactly one selector: file, loopId, or latest; runsDir changes the run-store root, while reason and requestedBy add audit context. Use when work must be abandoned, not temporarily held. This records a request and does not kill a process; use martin_pause for a reversible hold.",
       annotations: {
         destructiveHint: true,
         idempotentHint: false
@@ -1282,12 +1293,12 @@ export function createMartinMcpServer(serverInfo?: {
         type: "object",
         additionalProperties: false,
         properties: {
-          file: { type: "string" },
-          loopId: { type: "string" },
-          runsDir: { type: "string" },
-          latest: { const: true },
-          reason: { type: "string" },
-          requestedBy: { type: "string" }
+          file: { type: "string", description: "Path to one canonical run record or directory. Mutually exclusive with loopId and latest." },
+          loopId: { type: "string", description: "Canonical MartinLoop run identifier. Mutually exclusive with file and latest." },
+          runsDir: { type: "string", description: "Optional run-store root override used to resolve loopId or latest." },
+          latest: { const: true, description: "When true, targets the latest canonical run. Mutually exclusive with file and loopId." },
+          reason: { type: "string", description: "Optional non-empty reason recorded in the cancellation receipt." },
+          requestedBy: { type: "string", description: "Optional human or runtime identity label recorded for audit context." }
         },
         oneOf: [{ required: ["file"] }, { required: ["loopId"] }, { required: ["latest"] }]
       },
@@ -1474,7 +1485,7 @@ export function createMartinMcpServer(serverInfo?: {
     {
       name: "martin_run_dossier",
       description:
-        "Return the full governed execution dossier for one Martin run, including attempts, events, artifacts, and related discovery surfaces.",
+        "Read the full structured execution dossier for one MartinLoop run, including attempts, events, artifacts, verification, integrity, cost, and related discovery surfaces. Provide exactly one selector: file, loopId, or latest; runsDir changes the run-store root. Use for comprehensive evidence review. Do not use for a compact state check; use martin_get_run, or use martin_dossier when formatted sharing output is required.",
       annotations: {
         readOnlyHint: true,
         idempotentHint: true
@@ -1485,13 +1496,13 @@ export function createMartinMcpServer(serverInfo?: {
         properties: {
           file: {
             type: "string",
-            description: "Path to a canonical loop-record.json, legacy file, or run-store directory."
+            description: "Path to a canonical loop-record.json, legacy file, or run-store directory. Mutually exclusive with loopId and latest."
           },
-          loopId: { type: "string", description: "Loop ID under the run store." },
-          runsDir: { type: "string", description: "Optional runs-root override." },
+          loopId: { type: "string", description: "Loop ID under the run store. Mutually exclusive with file and latest." },
+          runsDir: { type: "string", description: "Optional run-store root override used to resolve loopId or latest." },
           latest: {
             const: true,
-            description: "When true, loads the most recently updated loop record in the run store."
+            description: "When true, loads the most recently updated loop record. Mutually exclusive with file and loopId."
           }
         },
         oneOf: [
@@ -1505,7 +1516,7 @@ export function createMartinMcpServer(serverInfo?: {
     {
       name: "martin_dossier",
       description:
-        "Read-only evidence summary for a Martin run, with JSON, Markdown, or GitHub PR formatting. Use after martin_run, before merge/release claims, or when sharing what happened. Do not use as a substitute for missing verifier evidence. Next: review verification results, retry, or hand off the receipt.",
+        "Read a formatted evidence summary for one MartinLoop run. Provide exactly one selector: file, loopId, or latest; runsDir changes the run-store root. Set format to json, md, or github-pr; json is the default. Use after martin_run, before merge or release claims, or when sharing what happened. Do not use as a substitute for missing verifier evidence; use martin_run_dossier for the full structured record. Next: review verification results, retry, or hand off the receipt.",
       annotations: {
         readOnlyHint: true,
         idempotentHint: true
@@ -1514,11 +1525,11 @@ export function createMartinMcpServer(serverInfo?: {
         type: "object",
         additionalProperties: false,
         properties: {
-          file: { type: "string" },
-          loopId: { type: "string" },
-          runsDir: { type: "string" },
-          latest: { const: true },
-          format: { type: "string", enum: ["json", "md", "github-pr"] }
+          file: { type: "string", description: "Path to one run record or directory. Mutually exclusive with loopId and latest." },
+          loopId: { type: "string", description: "MartinLoop run identifier. Mutually exclusive with file and latest." },
+          runsDir: { type: "string", description: "Optional run-store root override used to resolve loopId or latest." },
+          latest: { const: true, description: "When true, loads the latest run. Mutually exclusive with file and loopId." },
+          format: { type: "string", enum: ["json", "md", "github-pr"], description: "Output format. Defaults to json." }
         },
         oneOf: [{ required: ["file"] }, { required: ["loopId"] }, { required: ["latest"] }]
       },
@@ -1695,7 +1706,7 @@ export function createMartinMcpServer(serverInfo?: {
       }
     },
     ...buildArcadeToolDefinitions(server.getClientCapabilities())
-  ]
+  ].filter((tool) => shouldExposeMartinTool(tool.name, toolProfile))
   }));
 
   server.setRequestHandler(ListResourcesRequestSchema, () => {
@@ -2113,8 +2124,10 @@ function normalizeRunBudget(input: Parameters<typeof runLoopTool>[0]): LoopBudge
   });
 }
 
-export async function connectMartinMcpStdioServer() {
-  const server = createMartinMcpServer();
+export async function connectMartinMcpStdioServer(options: { toolProfile?: MartinMcpToolProfile } = {}) {
+  const server = createMartinMcpServer({
+    ...(options.toolProfile ? { toolProfile: options.toolProfile } : {})
+  });
   const transport = new StdioServerTransport();
   await server.connect(transport);
   return server;
@@ -2124,6 +2137,7 @@ export interface MartinMcpHttpServerOptions {
   host?: string;
   port?: number;
   path?: string;
+  toolProfile?: MartinMcpToolProfile;
 }
 
 export interface MartinMcpHttpServerHandle {
@@ -2135,21 +2149,32 @@ export interface MartinMcpHttpServerHandle {
   close: () => Promise<void>;
 }
 
-export function parseMartinMcpServerArgs(argv: string[]): { transport: "stdio" } | {
+export function parseMartinMcpServerArgs(argv: string[]): { transport: "stdio"; toolProfile?: MartinMcpToolProfile } | {
   transport: "http";
   host: string;
   port: number;
   path: string;
+  toolProfile?: MartinMcpToolProfile;
 } {
   let transport: "stdio" | "http" = "stdio";
   let host = "127.0.0.1";
   let port = 3033;
   let path = "/mcp";
+  let toolProfile: MartinMcpToolProfile | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
     if (token === "--http") {
       transport = "http";
+      continue;
+    }
+    if (token === "--tool-profile") {
+      const next = argv[index + 1];
+      if (next !== "full" && next !== "directory") {
+        throw new Error(`Invalid --tool-profile value '${next ?? ""}'.`);
+      }
+      toolProfile = next;
+      index += 1;
       continue;
     }
     if (token === "--port") {
@@ -2182,8 +2207,8 @@ export function parseMartinMcpServerArgs(argv: string[]): { transport: "stdio" }
   }
 
   return transport === "http"
-    ? { transport, host, port, path }
-    : { transport };
+    ? { transport, host, port, path, ...(toolProfile ? { toolProfile } : {}) }
+    : { transport, ...(toolProfile ? { toolProfile } : {}) };
 }
 
 export async function connectMartinMcpHttpServer(
@@ -2193,7 +2218,9 @@ export async function connectMartinMcpHttpServer(
   const port = options.port ?? 3033;
   const path = options.path ?? "/mcp";
 
-  const mcpServer = createMartinMcpServer();
+  const mcpServer = createMartinMcpServer({
+    ...(options.toolProfile ? { toolProfile: options.toolProfile } : {})
+  });
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined
   });
@@ -2291,7 +2318,7 @@ if (isDirectExecution()) {
   if (startup.transport === "http") {
     await connectMartinMcpHttpServer(startup);
   } else {
-    await connectMartinMcpStdioServer();
+    await connectMartinMcpStdioServer({ toolProfile: startup.toolProfile });
   }
 }
 

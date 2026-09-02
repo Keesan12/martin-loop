@@ -28,7 +28,8 @@ import {
 import {
   connectMartinMcpHttpServer,
   createMartinMcpServer,
-  parseMartinMcpServerArgs
+  parseMartinMcpServerArgs,
+  shouldExposeMartinTool
 } from "../src/server.js";
 
 type ServerRequestHandler = (request: unknown, extra: unknown) => Promise<unknown>;
@@ -517,6 +518,37 @@ describe("server validation", () => {
       path: "/bridge"
     });
     expect(() => parseMartinMcpServerArgs(["--http", "--port", "NaN"])).toThrow("Invalid --port value");
+    expect(parseMartinMcpServerArgs(["--tool-profile", "directory"])).toEqual({
+      transport: "stdio",
+      toolProfile: "directory"
+    });
+    expect(() => parseMartinMcpServerArgs(["--tool-profile", "unknown"])).toThrow(
+      "Invalid --tool-profile value"
+    );
+  });
+
+  it("offers a focused directory profile without changing the full tool surface", async () => {
+    const fullServer = createMartinMcpServer() as unknown as ServerWithRequestHandlers;
+    const directoryServer = createMartinMcpServer({ toolProfile: "directory" }) as unknown as ServerWithRequestHandlers;
+    const fullListTools = fullServer._requestHandlers.get("tools/list");
+    const directoryListTools = directoryServer._requestHandlers.get("tools/list");
+    if (!fullListTools || !directoryListTools) {
+      throw new Error("Expected tools/list request handlers.");
+    }
+
+    const fullResult = await fullListTools({ method: "tools/list" }, {}) as { tools: Array<{ name: string }> };
+    const directoryResult = await directoryListTools({ method: "tools/list" }, {}) as { tools: Array<{ name: string }> };
+    const directoryNames = directoryResult.tools.map((tool) => tool.name);
+
+    expect(fullResult.tools).toHaveLength(24);
+    expect(directoryResult.tools).toHaveLength(16);
+    expect(directoryNames).toContain("martin_arcade_status");
+    expect(directoryNames).toContain("martin_cancel");
+    expect(directoryNames).not.toContain("martin_status");
+    expect(directoryNames).not.toContain("martin_inspect");
+    expect(directoryNames).not.toContain("martin_run_dossier");
+    expect(shouldExposeMartinTool("martin_status", "full")).toBe(true);
+    expect(shouldExposeMartinTool("martin_status", "directory")).toBe(false);
   });
 
   it("serves the MCP endpoint over streamable HTTP", async () => {
@@ -645,6 +677,46 @@ describe("server validation", () => {
     expect(runDescription).toContain("doctor/estimate/plan/preflight receipts");
     expect(runDescription).not.toContain("hard-blocks until");
     expect(runDescription).not.toContain("caller forgot");
+  });
+
+  it("keeps Glama-sensitive tool definitions explicit and disambiguated", async () => {
+    const server = createMartinMcpServer() as unknown as ServerWithRequestHandlers;
+    const listTools = server._requestHandlers.get("tools/list");
+    if (!listTools) {
+      throw new Error("Expected tools/list request handler.");
+    }
+
+    const result = await listTools({ method: "tools/list" }, {}) as {
+      tools: Array<{
+        name: string;
+        description?: string;
+        inputSchema?: { properties?: Record<string, { description?: string }> };
+      }>;
+    };
+    const tools = new Map(result.tools.map((tool) => [tool.name, tool]));
+
+    for (const toolName of [
+      "martin_arcade_status",
+      "martin_cancel",
+      "martin_dossier",
+      "martin_pause",
+      "martin_run_dossier",
+      "martin_status"
+    ]) {
+      const description = tools.get(toolName)?.description ?? "";
+      expect(description, `${toolName} should tell agents when to use it`).toMatch(/\bUse\b/u);
+      expect(description, `${toolName} should route agents to a sibling when appropriate`).toMatch(/\buse martin_/u);
+    }
+
+    for (const toolName of ["martin_cancel", "martin_dossier", "martin_pause"]) {
+      const properties = tools.get(toolName)?.inputSchema?.properties ?? {};
+      for (const propertyName of Object.keys(properties)) {
+        expect(
+          properties[propertyName]?.description,
+          `${toolName}.${propertyName} should explain its selector or audit role`
+        ).toBeTruthy();
+      }
+    }
   });
 
   it("blocks martin_run before spend when the MCP receipt chain is missing", async () => {
