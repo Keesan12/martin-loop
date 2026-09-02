@@ -70,7 +70,23 @@ describe("Arcade MCP App capability contract", () => {
     expect(tools.find((tool) => tool.name === "martin_arcade_status")?.inputSchema).toEqual({
       type: "object",
       additionalProperties: false,
-      properties: { loopId: { type: "string" } }
+      properties: {
+        loopId: {
+          type: "string",
+          description: "Optional MartinLoop run identifier. Omit it to read the latest persisted run."
+        }
+      }
+    });
+    expect(tools.find((tool) => tool.name === "martin_arcade_status")?.annotations).toEqual({
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false
+    });
+    expect(tools.find((tool) => tool.name === "martin_arcade_status")?.outputSchema).toMatchObject({
+      type: "object",
+      additionalProperties: false,
+      required: expect.arrayContaining(["loopId", "displayOutcome", "verification", "receiptIntegrity"])
     });
   });
 

@@ -85,6 +85,25 @@ export const MARTIN_PAID_REMOTE_TOOL_NAMES = [
   "martin_eval"
 ] as const;
 
+export const MARTIN_DIRECTORY_TOOL_NAMES = [
+  "martin_doctor",
+  "martin_estimate",
+  "martin_plan",
+  "martin_preflight",
+  "martin_run",
+  "martin_pause",
+  "martin_cancel",
+  "martin_continue",
+  "martin_list_runs",
+  "martin_triage_runs",
+  "martin_get_run",
+  "martin_get_verification_results",
+  "martin_dossier",
+  "martin_logs",
+  "martin_arcade",
+  "martin_arcade_status"
+] as const;
+
 export const MARTIN_RESOURCE_URIS = [
   "martin://server/health",
   "martin://runs/recent",
@@ -158,6 +177,7 @@ export function buildMartinDiscoveryMetadata(serverVersion: string): MartinDisco
     profiles: {
       minimal: [...MARTIN_MINIMAL_TOOL_NAMES],
       diagnostic: [...MARTIN_DIAGNOSTIC_TOOL_NAMES],
+      directory: [...MARTIN_DIRECTORY_TOOL_NAMES],
       "github-review": [...MARTIN_GITHUB_REVIEW_TOOL_NAMES],
       "full-local": [...MARTIN_TOOL_NAMES],
       starter: [...MARTIN_STARTER_TOOL_NAMES],
