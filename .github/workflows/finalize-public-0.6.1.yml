@@ -31,6 +31,13 @@ jobs:
           PUBLIC_BASE_SHA: 5e1e2f2494cae02a850cbf6162cf738863edc5e0
         shell: bash
         run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('scripts/prepare-public-0.6.1.mjs')
+          s = p.read_text()
+          s = s.replace('\\\\`', '\\`')
+          p.write_text(s)
+          PY
           export VALIDATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           node scripts/prepare-public-0.6.1.mjs
       - name: Build
