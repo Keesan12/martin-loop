@@ -279,7 +279,7 @@ jobs:
                "Next steps:",
                `  cd ${targetDirectory}`,
           PATCH
-          git apply --3way /tmp/promotion.patch
+          git apply --3way --recount /tmp/promotion.patch
           git diff --check
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
