@@ -1,0 +1,34 @@
+name: Fix 0.6.0 Package Files
+on:
+  push:
+    branches: [public-staging/0.6.0-20260906]
+permissions:
+  contents: write
+jobs:
+  fix:
+    if: ${{ contains(github.event.head_commit.message, '[apply-package-fix]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: public-staging/0.6.0-20260906
+      - name: Align package files entry
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('package.json')
+          s=p.read_text()
+          old='"examples/github-actions-budget-gate/.github/workflows/martinloop-budget-gate.yml"'
+          new='"examples/github-actions-budget-gate"'
+          if old not in s:
+              raise SystemExit('expected package files entry missing')
+          p.write_text(s.replace(old,new,1))
+          PY
+          git diff --check
+          git rm .github/workflows/fix-0.6.0-package-files.yml
+          git add package.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "fix(release): align root package files allowlist [package-fix-applied]"
+          git push origin HEAD:public-staging/0.6.0-20260906
