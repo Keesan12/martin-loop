@@ -4,10 +4,10 @@ This file is the release source of truth for package/version mapping in this rep
 
 ## Root package: `martin-loop`
 
-- live npm dist-tag `latest`: `0.5.8`
-- live public GitHub release: `v0.5.8`
-- live public baseline in this train: `0.5.8`
-- root public baseline: `0.5.8`
+- live npm dist-tag `latest`: `0.6.0`
+- live public GitHub release: `v0.6.0`
+- live public baseline in this train: `0.6.0`
+- root public baseline: `0.6.0`
 - releases consumed since the original `0.2.8` launch:
   - `0.2.9` fixed proof-run classification, Windows `.cmd` resolution, and public provider defaults
   - `0.2.10` tightened verifier evidence, `--runs-dir` consistency, and public help output
@@ -32,21 +32,22 @@ This file is the release source of truth for package/version mapping in this rep
   - `0.5.4` provider-neutral governed autonomy and exact-binary Codex negotiation
   - `0.5.5` governed-autonomous execution with deterministic install metadata
   - `0.5.6` portable MCP package validation, read-only Arcade resources, hosted sync contract alignment, and permanent release-authority gates
-- current in-repo root release target: `0.6.0` (pending publication)
+  - `0.6.0` hardened verifier evidence, stale MCP host refresh, empty-objective rejection, demo Git readiness, and non-blocking version upgrade notices
+- current in-repo root release: `0.6.0` (published)
 - next planned root follow-on: not scheduled
 
 ## Standalone package: `@martinloop/mcp`
 
-- live npm dist-tag `latest`: `0.5.8`
-- live public GitHub release: `mcp-v0.5.8`
-- live public baseline in this train: `0.5.8`
-- standalone MCP public baseline: `0.5.8`
+- live npm dist-tag `latest`: `0.6.0`
+- live public GitHub release: `mcp-v0.6.0`
+- live public baseline in this train: `0.6.0`
+- standalone MCP public baseline: `0.6.0`
 - official MCP Registry version: `0.5.5` (verified)
-- live MCPB baseline: `0.5.5`
-- live MCPB SHA-256: `6f3da0e77978a47bbc7ffec8db6b3a42bff2cb7e8642372523eab53af79c05d2`
-- live MCPB size: `8,113,133` bytes
-- current in-repo standalone release target: `0.6.0` (pending publication)
-- current in-repo MCPB release target: `0.6.0` with manifest schema `0.3` (pending publication)
+- live MCPB baseline: `0.6.0`
+- live MCPB SHA-256: `142acf1ce5a7b837c75b9c21327c4d008e6f6d55f295abc8ecc48a834cbf0be0`
+- live MCPB size: `7,302,987` bytes
+- current in-repo standalone release: `0.6.0` (published)
+- current in-repo MCPB release: `0.6.0` with manifest schema `0.3` (published)
 - next planned standalone release: not scheduled
 
 ## Release rules
