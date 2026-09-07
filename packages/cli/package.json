@@ -1,6 +1,6 @@
 {
   "name": "@martin/cli",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "private": true,
   "type": "module",
   "description": "Open-source execution control for coding agents with verifier-gated completion, stop limits, rollback evidence, and Verified Handoffs.",

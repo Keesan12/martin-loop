@@ -33,7 +33,7 @@ This file is the release source of truth for package/version mapping in this rep
   - `0.5.5` governed-autonomous execution with deterministic install metadata
   - `0.5.6` portable MCP package validation, read-only Arcade resources, hosted sync contract alignment, and permanent release-authority gates
   - `0.6.0` hardened verifier evidence, stale MCP host refresh, empty-objective rejection, demo Git readiness, and non-blocking version upgrade notices
-- current in-repo root release: `0.6.0` (published)
+- current in-repo root release target: `0.6.1` (pending publication)
 - next planned root follow-on: not scheduled
 
 ## Standalone package: `@martinloop/mcp`
@@ -46,14 +46,14 @@ This file is the release source of truth for package/version mapping in this rep
 - live MCPB baseline: `0.6.0`
 - live MCPB SHA-256: `142acf1ce5a7b837c75b9c21327c4d008e6f6d55f295abc8ecc48a834cbf0be0`
 - live MCPB size: `7,302,987` bytes
-- current in-repo standalone release: `0.6.0` (published)
-- current in-repo MCPB release: `0.6.0` with manifest schema `0.3` (published)
+- current in-repo standalone release target: `0.6.1` (pending publication)
+- current in-repo MCPB release target: `0.6.1` with manifest schema `0.3` (pending publication)
 - next planned standalone release: not scheduled
 
 ## Release rules
 
 - Live public baselines describe artifacts that actually exist. In-repo targets may advance before publication and must remain marked pending until trusted publishing succeeds.
-- The `0.6.0` train aligns the root package, standalone MCP package, plugin metadata, and MCPB product version at `0.6.0`. MCPB manifest schema remains `0.3`.
+- The `0.6.1` train aligns the root package, standalone MCP package, plugin metadata, and MCPB product version at `0.6.1`. MCPB manifest schema remains `0.3`.
 - Do not infer standalone MCP release state from the root package, or the other way around.
 - Public release notes must be written for customers and evaluators, not for internal operators.
 - Public-facing examples, screenshots, README copy, and changelog entries must stay free of internal repo names, absolute system paths, private branch names, or process noise.
