@@ -1,0 +1,46 @@
+name: Wire OpenAI model runtime
+
+on:
+  push:
+    branches:
+      - public-staging/0.6.1-model-agnostic
+
+permissions:
+  contents: write
+
+jobs:
+  wire:
+    if: contains(github.event.head_commit.message, '[wire-openai-runtime]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: public-staging/0.6.1-model-agnostic
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Apply governed runtime patch
+        run: |
+          git apply --check scripts/openai-0.6.1.patch
+          git apply scripts/openai-0.6.1.patch
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Validate governed model execution
+        run: |
+          pnpm build
+          pnpm --filter @martin/adapters exec vitest run tests/openai-compatible.test.ts tests/openai-compatible-workspace-edit.test.ts
+          pnpm --filter @martin/adapters lint
+      - name: Commit validated runtime wiring
+        shell: bash
+        run: |
+          rm scripts/openai-0.6.1.patch
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packages/adapters/src/openai-compatible.ts scripts/openai-0.6.1.patch
+          git diff --cached --check
+          git commit -m "feat(adapters): make OpenAI-compatible models governed coding workers"
+          git push origin HEAD:public-staging/0.6.1-model-agnostic
