@@ -26,17 +26,21 @@ test("current MCP metadata stays aligned for the release cut", async () => {
   await access(releaseNotesPath);
 });
 
-test("version ledger separates live public truth from the pending release target", async () => {
+test("version ledger records the published release as live public truth", async () => {
   const ledger = await readRepoFile(path.join("docs", "release", "VERSION-LEDGER.md"));
 
-  assert.match(ledger, new RegExp(escapeRegex("live npm dist-tag `latest`: `0.6.0`")));
-  assert.match(ledger, new RegExp(escapeRegex("live public GitHub release: `v0.6.0`")));
-  assert.match(ledger, new RegExp(escapeRegex("live public GitHub release: `mcp-v0.6.0`")));
-  assert.match(ledger, new RegExp(escapeRegex("root public baseline: `0.6.0`")));
-  assert.match(ledger, new RegExp(escapeRegex("standalone MCP public baseline: `0.6.0`")));
-  assert.match(ledger, new RegExp(escapeRegex("current in-repo root release target: `0.6.1` (pending publication)")));
-  assert.match(ledger, new RegExp(escapeRegex("current in-repo standalone release target: `0.6.1` (pending publication)")));
-  assert.match(ledger, new RegExp(escapeRegex("current in-repo MCPB release target: `0.6.1` with manifest schema `0.3` (pending publication)")));
+  assert.match(ledger, new RegExp(escapeRegex(`live npm dist-tag \`latest\`: \`${rootPackageJson.version}\``)));
+  assert.match(ledger, new RegExp(escapeRegex(`live public GitHub release: \`v${rootPackageJson.version}\``)));
+  assert.match(ledger, new RegExp(escapeRegex(`live public GitHub release: \`mcp-v${packageJson.version}\``)));
+  assert.match(ledger, new RegExp(escapeRegex(`root public baseline: \`${rootPackageJson.version}\``)));
+  assert.match(ledger, new RegExp(escapeRegex(`standalone MCP public baseline: \`${packageJson.version}\``)));
+  assert.match(ledger, new RegExp(escapeRegex(`current in-repo root release: \`${rootPackageJson.version}\` (published)`)));
+  assert.match(ledger, new RegExp(escapeRegex(`current in-repo standalone release: \`${packageJson.version}\` (published)`)));
+  assert.match(ledger, new RegExp(escapeRegex(`current in-repo MCPB release: \`${packageJson.version}\` with manifest schema \`0.3\` (published)`)));
+  assert.match(ledger, new RegExp(escapeRegex(`official MCP Registry version: \`${packageJson.version}\` (verified)`)));
+  assert.doesNotMatch(ledger, /current in-repo .*pending publication/);
+  assert.match(ledger, /next planned root follow-on: not scheduled/);
+  assert.match(ledger, /next planned standalone release: not scheduled/);
 });
 
 test("MCP slice map defines the 0.3.x train without private-hosted bleed", async () => {
