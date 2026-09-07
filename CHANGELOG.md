@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-06
+
+### Fixed
+- Preserved successful verifier evidence in Verified Handoffs even when a budget boundary determines the final run outcome.
+- Refreshed stale canonical MCP host configuration while preserving unrelated settings.
+- Rejected empty governed-run objectives before engine discovery or agent spend.
+- Made `martin-loop demo` create a ready-to-run Git workspace automatically.
+
+### Changed
+- Added a non-blocking upgrade notice for outdated installs; execution continues and JSON stdout remains machine-readable.
+- Included the runnable GitHub Actions budget-gate workflow in the published package.
+
+
 ## [0.5.8] - 2026-08-30
 
 ### Fixed

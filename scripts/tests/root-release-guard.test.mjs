@@ -17,6 +17,10 @@ const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../
 
 test("runRootReleaseGuard accepts the current OSS-safe root package shape", async () => {
   const manifest = JSON.parse(await readFile(path.join(ROOT_DIR, "package.json"), "utf8"));
+  assert.ok(
+    manifest.files.includes("examples/github-actions-budget-gate"),
+    "the documented GitHub Actions budget-gate example must ship in the root package",
+  );
   const expectedTag = `v${manifest.version}`;
   const result = await runRootReleaseGuard({
     rootDir: ROOT_DIR,
@@ -47,6 +51,7 @@ test("assertPackedSurface rejects unexpected non-OSS paths", () => {
         "dist/index.js",
         "dist/index.d.ts",
         "dist/bin/martin-loop.js",
+        "examples/github-actions-budget-gate/.github/workflows/martinloop-budget-gate.yml",
         "server/secrets.json",
       ]),
     /unexpected path/i,
@@ -63,6 +68,7 @@ test("assertPackedSurface rejects forbidden vendored implementation paths", () =
         "dist/index.js",
         "dist/index.d.ts",
         "dist/bin/martin-loop.js",
+        "examples/github-actions-budget-gate/.github/workflows/martinloop-budget-gate.yml",
         "dist/vendor/cli/bin/martin.js",
       ]),
     /forbidden vendored implementation path/i,
