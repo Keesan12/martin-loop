@@ -1,0 +1,58 @@
+name: MartinLoop Budget Gate
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  budget-gate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build workspace
+        run: pnpm --filter @martin/core build
+
+      - name: Run MartinLoop with budget gate
+        env:
+          # MARTIN_LIVE=false keeps this safe: the run goes through all governance
+          # checks and produces a real persisted JSONL record, but the coding agent
+          # does not execute. Remove this line (and add agent credentials below)
+          # when you are ready for live autonomous runs in CI.
+          MARTIN_LIVE: "false"
+        run: |
+          npx -y martin-loop run \
+            "Summarize the workspace and confirm the verifier is green" \
+            --config examples/github-actions-budget-gate/martin.config.yaml \
+            --verify "pnpm --filter @martin/core test" \
+            --budget-usd 1.25 \
+            --max-iterations 2
+
+      - name: Inspect run record
+        if: always()
+        run: npx martin-loop triage
+
+      - name: Upload run record
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: martinloop-run-record
+          path: ~/.martin/runs/
+          retention-days: 14
