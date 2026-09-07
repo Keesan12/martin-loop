@@ -43,7 +43,7 @@ This file is the release source of truth for package/version mapping in this rep
 - live public GitHub release: `mcp-v0.6.1`
 - live public baseline in this train: `0.6.1`
 - standalone MCP public baseline: `0.6.1`
-- official MCP Registry version: `0.5.5` (verified)
+- official MCP Registry version: `0.6.1` (verified)
 - live MCPB baseline: `0.6.1`
 - live MCPB SHA-256: `90d7c0f32fb99da49eee3a13ef1827def3cba9d0bd0477dfea5f90ec9fbc5977`
 - live MCPB size: `7,306,815` bytes
@@ -59,7 +59,7 @@ This file is the release source of truth for package/version mapping in this rep
 - Public release notes must be written for customers and evaluators, not for internal operators.
 - Public-facing examples, screenshots, README copy, and changelog entries must stay free of internal repo names, absolute system paths, private branch names, or process noise.
 - Publish only through GitHub Actions trusted publishing / OIDC.
-- A release is not complete until npm packages, GitHub releases, release assets, checksums, and applicable registry listings have been verified live.
+- A release is not complete until npm packages, GitHub releases, release assets, checksums, and applicable authoritative registry listings have been verified live.
 
 ## Validation baseline before any public prep branch
 
