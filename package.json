@@ -68,7 +68,7 @@
     "CODE_OF_CONDUCT.md",
     "demo/seeded-workspace",
     "benchmarks/fixtures",
-    "examples/github-actions-budget-gate/.github/workflows/martinloop-budget-gate.yml"
+    "examples/github-actions-budget-gate"
   ],
   "publishConfig": {
     "access": "public"
