@@ -179,14 +179,10 @@ export async function installMcpConfig(
 
   if (targetExists) {
     const existing = await readFile(plan.targetPath, "utf8");
-    if (existingConfigAlreadyContainsMartin(plan.host, plan.serverId, existing)) {
-      // Config already present — still ensure governance hooks are installed.
-      // On first installs of older versions the hooks were never written; re-running
-      // install must be idempotent and always leave hooks in place.
-      await maybeInstallGovernance(plan, options);
-      return plan;
-    }
-
+    // F7 fix: always merge/overwrite the martin-loop key, even if a stale entry
+    // already exists (e.g. @keean12/mcp from a prior version). The merge function
+    // spreads existingServers then overwrites with generatedServers, so unrelated
+    // server entries are preserved while the martin-loop key is always correct.
     const merged = mergeHostConfig(plan.host, plan.serverId, existing, plan.content);
     if (merged) {
       await recordMartinMcpInstall({
@@ -257,9 +253,6 @@ async function installClaudeGovernanceHooks(): Promise<void> {
     hooks: [
       {
         type: "command",
-        // Use npx so this works on any machine regardless of global install.
-        // npx resolves the locally installed martin-loop first, then falls
-        // back to downloading from npm. Works on macOS, Linux, and Windows.
         command: "npx martin-loop gate --quiet",
         timeout: 10
       }
@@ -279,8 +272,6 @@ async function installClaudeGovernanceHooks(): Promise<void> {
   };
 
   const hooks = (settings.hooks as Record<string, unknown[]> | undefined) ?? {};
-
-  // Add PreToolUse hook if not already present
   const preToolUse = (hooks.PreToolUse as unknown[] | undefined) ?? [];
   const alreadyHasGate = preToolUse.some(
     (h) => typeof h === "object" && h !== null &&
@@ -290,7 +281,6 @@ async function installClaudeGovernanceHooks(): Promise<void> {
     preToolUse.unshift(martinPreToolHook);
   }
 
-  // Add Stop hook if not already present
   const stop = (hooks.Stop as unknown[] | undefined) ?? [];
   const alreadyHasDossier = stop.some(
     (h) => typeof h === "object" && h !== null &&
@@ -721,12 +711,6 @@ function isAbsoluteAnyPlatform(value: string): boolean {
   return path.isAbsolute(value) || path.win32.isAbsolute(value);
 }
 
-// ---------------------------------------------------------------------------
-// Cursor IDE config builder
-// Writes to .cursor/mcp.json (project) or ~/.cursor/mcp.json (user)
-// https://cursor.com/docs — Settings > Tools & MCP
-// ---------------------------------------------------------------------------
-
 function buildCursorConfigSnippet(
   input: Required<Omit<MartinMcpConfigInput, "remoteUrl">> & { remoteUrl?: string }
 ): string {
@@ -759,10 +743,6 @@ function buildCursorConfigSnippet(
     ) + "\n"
   );
 }
-
-// ---------------------------------------------------------------------------
-// VS Code MCP config builder. "copilot" remains a compatibility alias.
-// ---------------------------------------------------------------------------
 
 function buildCopilotConfigSnippet(
   input: Required<Omit<MartinMcpConfigInput, "remoteUrl">> & { remoteUrl?: string }
@@ -797,12 +777,6 @@ function buildCopilotConfigSnippet(
     ) + "\n"
   );
 }
-
-// ---------------------------------------------------------------------------
-// Continue.dev config builder
-// Appends MCP context provider to .continue/config.json
-// https://docs.continue.dev/customize/model-providers/overview
-// ---------------------------------------------------------------------------
 
 function buildContinueConfigSnippet(
   input: Required<Omit<MartinMcpConfigInput, "remoteUrl">> & { remoteUrl?: string }
@@ -934,7 +908,11 @@ function mergeHostConfig(
   existing: string,
   generated: string
 ): string | undefined {
-  if (host === "codex" || host === "claude" && generated.startsWith("claude mcp add")) {
+  if (host === "codex") {
+    return mergeCodexConfig(serverId, existing, generated);
+  }
+
+  if (host === "claude" && generated.startsWith("claude mcp add")) {
     return undefined;
   }
 
@@ -949,6 +927,38 @@ function mergeHostConfig(
   } catch {
     return undefined;
   }
+}
+
+function mergeCodexConfig(serverId: string, existing: string, generated: string): string {
+  const newline = existing.includes("\r\n") ? "\r\n" : "\n";
+  const legacyServerId = serverId.replace(/-/gu, "_");
+  const escapedServerId = serverId.replace(/[\/\\^$*+?.()|[\]{}]/gu, "\\$&");
+  const escapedLegacyServerId = legacyServerId.replace(/[\/\\^$*+?.()|[\]{}]/gu, "\\$&");
+  const targetHeader = new RegExp(
+    String.raw`^\s*\[mcp_servers\.(?:"${escapedServerId}"|${escapedLegacyServerId})\]\s*$`,
+    "u"
+  );
+  const existingLines = existing.split(/\r?\n/u);
+  const sectionStart = existingLines.findIndex((line) => targetHeader.test(line));
+  const generatedLines = generated.trimEnd().split(/\r?\n/u);
+
+  if (sectionStart === -1) {
+    return `${existing.trimEnd()}${newline}${newline}${generatedLines.join(newline)}${newline}`;
+  }
+
+  const nextSectionOffset = existingLines
+    .slice(sectionStart + 1)
+    .findIndex((line) => /^\s*\[[^\]\r\n]+\]\s*$/u.test(line));
+  const sectionEnd = nextSectionOffset === -1
+    ? existingLines.length
+    : sectionStart + 1 + nextSectionOffset;
+  const mergedLines = [
+    ...existingLines.slice(0, sectionStart),
+    ...generatedLines,
+    ...existingLines.slice(sectionEnd),
+  ];
+
+  return `${mergedLines.join(newline).trimEnd()}${newline}`;
 }
 
 function mergeHostParsedConfig(
