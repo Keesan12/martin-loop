@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-09-07
+
+### Fixed
+- Made OpenAI-compatible models perform real governed workspace edits before verification instead of behaving as inference-only transports.
+- Rejected malformed, no-op, path-traversal, duplicate-path, denied-path, and symlink-escape edit plans before accepted work.
+
+### Changed
+- Added an explicit model-support contract for native Codex, Claude Code, Gemini CLI, and compatible hosted or local model endpoints.
+- Kept MartinLoop's budget, scope, verifier, receipt, and integrity contract independent of the coding worker.
+
 ## [0.6.0] - 2026-09-06
 
 ### Fixed
