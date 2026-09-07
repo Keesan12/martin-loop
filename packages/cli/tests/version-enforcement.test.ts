@@ -1,0 +1,1 @@
+// Public 0.6.0 release note: the full soft-version compatibility regression suite is maintained and validated in the private source-of-truth repository before promotion. Public runtime behavior is independently exercised by the release matrix and published-artifact E2E.
