@@ -7,6 +7,7 @@ on:
         description: Existing mcp-vX.Y.Z tag to register
         required: true
         type: string
+  # A workflow-file update merged to main intentionally registers the current aligned MCP release.
   push:
     branches:
       - main
