@@ -141,27 +141,34 @@ jobs:
             > /tmp/mcp-registry-verified.json
           cat /tmp/mcp-registry-verified.json
 
-      - name: Authenticate to MCPCentral
-        working-directory: packages/mcp
-        run: ./mcp-publisher login github-oidc --registry https://registry.mcpcentral.io
-
-      - name: Publish to MCPCentral
-        working-directory: packages/mcp
-        run: ./mcp-publisher publish
-
-      - name: Verify MCPCentral listing
+      - name: Observe MCP Central downstream mirror
         shell: bash
         env:
           SERVER_NAME: ${{ steps.mcp-metadata.outputs.server_name }}
         run: |
-          for attempt in 1 2 3 4 5; do
-            if curl --fail --show-error --silent \
-              "https://mcpcentral.io/api/servers/${SERVER_NAME}" \
-              > /tmp/mcpcentral-verified.json; then
-              cat /tmp/mcpcentral-verified.json
-              exit 0
-            fi
-            sleep 5
-          done
-          echo "MCPCentral listing did not become readable after publication."
-          exit 1
+          set +e
+          HTTP_CODE=$(curl --silent --show-error \
+            --output /tmp/mcpcentral-response.json \
+            --write-out '%{http_code}' \
+            "https://mcpcentral.io/api/servers/${SERVER_NAME}")
+          CURL_EXIT=$?
+          set -e
+
+          if [ "$CURL_EXIT" -ne 0 ]; then
+            echo "MCP Central mirror status is temporarily unavailable; official MCP Registry registration is already verified."
+            exit 0
+          fi
+
+          case "$HTTP_CODE" in
+            200)
+              echo "MCP Central already mirrors ${SERVER_NAME}."
+              cat /tmp/mcpcentral-response.json
+              ;;
+            404)
+              echo "MCP Central has not mirrored ${SERVER_NAME} yet. Its catalog syncs from the official MCP Registry asynchronously."
+              ;;
+            *)
+              echo "MCP Central mirror returned HTTP ${HTTP_CODE}; authoritative official MCP Registry registration remains verified."
+              cat /tmp/mcpcentral-response.json || true
+              ;;
+          esac
