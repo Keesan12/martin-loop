@@ -38,6 +38,7 @@ import type {
 
 import { readGitChangedFiles, runVerification } from "./cli-bridge.js";
 import { createAdapterCapabilities, normalizeUsage } from "./runtime-support.js";
+import { applyWorkspaceEdits, buildWorkspaceSnapshot } from "./workspace-edit-protocol.js";
 
 // ---------------------------------------------------------------------------
 // OpenRouter/OpenAI-compatible model pricing ($/1K tokens)
@@ -187,11 +188,12 @@ export interface OpenAiCompatibleAdapterOptions {
 
 const DEFAULT_SYSTEM_PROMPT = `You are an expert software engineer executing a governed coding task.
 Follow these rules exactly:
-- Read the task description carefully and implement only what is asked.
-- Do not add features, refactors, or improvements beyond the stated task.
-- If the task asks you to write or modify code, output the complete file content with changes applied.
-- Be precise, minimal, and test-backed in all changes.
-- State what you changed and why at the end of your response.`;
+- Read the task description and repository snapshot carefully and implement only what is asked.
+- Do not add unrelated features, refactors, or improvements.
+- Respect every allowed-path and denied-path boundary in the task contract.
+- For governed coding runs, return ONLY the structured JSON edit plan requested in the user message.
+- Every edit must contain the complete replacement content for one repository-relative text file.
+- Do not claim success unless your proposed edits satisfy the acceptance criteria and verifier.`;
 
 export const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com";
 export function resolveOpenAiCompatibleRuntimeConfig(
@@ -213,7 +215,7 @@ export function resolveOpenAiCompatibleRuntimeConfig(
   };
 }
 
-function buildPrompt(request: MartinAdapterRequest): string {
+function buildPrompt(request: MartinAdapterRequest, workspaceSnapshot = ""): string {
   const lines: string[] = [
     `TASK: ${request.context.taskTitle}`,
     ``,
@@ -224,6 +226,21 @@ function buildPrompt(request: MartinAdapterRequest): string {
 
   if (request.context.focus) {
     lines.push(`FOCUS: ${request.context.focus}`, ``);
+  }
+
+  if ((request.context.acceptanceCriteria?.length ?? 0) > 0) {
+    lines.push(
+      `ACCEPTANCE CRITERIA:`,
+      ...(request.context.acceptanceCriteria ?? []).map((criterion) => `  - ${criterion}`),
+      ``
+    );
+  }
+
+  if ((request.context.allowedPaths?.length ?? 0) > 0) {
+    lines.push(`ALLOWED EDIT PATHS:`, ...(request.context.allowedPaths ?? []).map((path) => `  - ${path}`), ``);
+  }
+  if ((request.context.deniedPaths?.length ?? 0) > 0) {
+    lines.push(`DENIED EDIT PATHS:`, ...(request.context.deniedPaths ?? []).map((path) => `  - ${path}`), ``);
   }
 
   if (request.context.verificationPlan.length > 0) {
@@ -248,6 +265,20 @@ function buildPrompt(request: MartinAdapterRequest): string {
   lines.push(
     `BUDGET REMAINING: $${request.context.remainingBudgetUsd.toFixed(4)} | Iterations left: ${request.context.remainingIterations}`
   );
+
+  if (workspaceSnapshot) {
+    lines.push(
+      ``,
+      `WORKSPACE SNAPSHOT (read-only context; paths are repository-relative):`,
+      workspaceSnapshot,
+      ``,
+      `RESPONSE CONTRACT:`,
+      `Return ONLY JSON with this shape:`,
+      `{"summary":"short description","edits":[{"path":"src/file.ts","content":"complete replacement file content"}],"deletions":[]}`,
+      `Use only repository-relative paths. Every proposed path is validated by MartinLoop before any file is written.`,
+      `If a file should not change, omit it. Do not wrap the JSON in explanatory prose.`
+    );
+  }
 
   return lines.join("\n");
 }
@@ -296,11 +327,23 @@ export function createOpenAiCompatibleAdapter(
     },
 
     async execute(request: MartinAdapterRequest): Promise<MartinAdapterResult> {
-      const prompt = buildPrompt(request);
-      const estimated = estimateCost(model, prompt.length, 2000);
       const hasVerificationSteps =
         request.context.verificationPlan.length > 0 ||
         (request.context.verificationStack?.length ?? 0) > 0;
+      const governedCodingRun =
+        request.context.mutationMode === "edit" ||
+        hasVerificationSteps ||
+        (request.context.allowedPaths?.length ?? 0) > 0 ||
+        (request.context.deniedPaths?.length ?? 0) > 0;
+      const workspaceSnapshot = governedCodingRun
+        ? await buildWorkspaceSnapshot({
+            workingDirectory,
+            allowedPaths: request.context.allowedPaths,
+            deniedPaths: request.context.deniedPaths
+          })
+        : "";
+      const prompt = buildPrompt(request, workspaceSnapshot);
+      const estimated = estimateCost(model, prompt.length, 2000);
       const baselineChangedFiles = hasVerificationSteps
         ? new Set(await readGitChangedFiles(workingDirectory, 5_000))
         : new Set<string>();
@@ -459,6 +502,33 @@ export function createOpenAiCompatibleAdapter(
           verification: { passed: false, summary: "Empty response — nothing to verify." },
           failure: { message: "empty_response" }
         };
+      }
+
+      if (governedCodingRun) {
+        try {
+          await applyWorkspaceEdits({
+            workingDirectory,
+            responseText,
+            allowedPaths: request.context.allowedPaths,
+            deniedPaths: request.context.deniedPaths
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          return {
+            status: "failed",
+            summary: `${model} did not produce an admissible governed workspace edit: ${message}`,
+            usage: normalizeOpenAiCompatibleUsage({
+              model,
+              tokensIn,
+              tokensOut,
+              usageWasFullyProviderReported,
+              modelSource,
+              billingMode
+            }),
+            verification: { passed: false, summary: "Workspace edit protocol failed before verifier execution." },
+            failure: { message }
+          };
+        }
       }
 
       // Run verification
