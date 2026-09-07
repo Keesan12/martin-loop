@@ -145,7 +145,7 @@ describe("mcp config helpers", () => {
     expect(plan.content).not.toContain('"martin_get_attempt"');
   });
 
-  it("treats existing Codex configs with old or new Martin sections as idempotent", async () => {
+  it("replaces a stale Codex Martin section while preserving unrelated TOML", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "martin-cli-codex-config-"));
 
     try {
@@ -153,9 +153,12 @@ describe("mcp config helpers", () => {
       await mkdir(codexDir, { recursive: true });
       const configPath = join(codexDir, "config.toml");
       const existing = [
+        "[features]",
+        "shell_snapshot = true",
+        "",
         '[mcp_servers.martin_loop]',
         'command = "npx"',
-        'args = ["-y", "@martinloop/mcp"]',
+        'args = ["-y", "@keean12/mcp"]',
         ""
       ].join("\n");
       await writeFile(configPath, existing, "utf8");
@@ -168,7 +171,13 @@ describe("mcp config helpers", () => {
       });
 
       expect(plan.targetPath).toBe(configPath);
-      expect(await readFile(configPath, "utf8")).toBe(existing);
+      const installed = await readFile(configPath, "utf8");
+      expect(installed).toContain("[features]");
+      expect(installed).toContain("shell_snapshot = true");
+      expect(installed).toContain('[mcp_servers."martin-loop"]');
+      expect(installed).toContain('"@martinloop/mcp"');
+      expect(installed).not.toContain("@keean12/mcp");
+      expect(installed).not.toContain("[mcp_servers.martin_loop]");
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }
@@ -468,7 +477,7 @@ describe("mcp config helpers", () => {
     }
   });
 
-  it("treats existing Claude configs with a martin-loop block as idempotent", async () => {
+  it("refreshes an existing Claude martin-loop block to the canonical package", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "martin-cli-claude-config-"));
 
     try {
@@ -478,7 +487,7 @@ describe("mcp config helpers", () => {
           mcpServers: {
             "martin-loop": {
               command: "npx",
-              args: ["-y", "@martinloop/mcp"]
+              args: ["-y", "@keean12/mcp"]
             }
           }
         },
@@ -495,13 +504,15 @@ describe("mcp config helpers", () => {
       });
 
       expect(plan.targetPath).toBe(configPath);
-      expect(await readFile(configPath, "utf8")).toBe(`${existing}\n`);
+      const installed = JSON.parse(await readFile(configPath, "utf8"));
+      expect(installed.mcpServers["martin-loop"].args).toContain("@martinloop/mcp");
+      expect(JSON.stringify(installed)).not.toContain("@keean12/mcp");
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }
   });
 
-  it("treats existing Gemini configs with a martin-loop block as idempotent", async () => {
+  it("refreshes an existing Gemini martin-loop block", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "martin-cli-gemini-config-"));
 
     try {
@@ -530,7 +541,9 @@ describe("mcp config helpers", () => {
       });
 
       expect(plan.targetPath).toBe(configPath);
-      expect(await readFile(configPath, "utf8")).toBe(`${existing}\n`);
+      const installed = JSON.parse(await readFile(configPath, "utf8"));
+      expect(installed.mcpServers["martin-loop"].args).toContain("@martinloop/mcp");
+      expect(installed.mcpServers["martin-loop"].includeTools).toContain("martin_doctor");
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }
@@ -581,7 +594,7 @@ describe("mcp config helpers", () => {
     }
   });
 
-  it("treats existing native VS Code configs with martin-loop as idempotent", async () => {
+  it("refreshes an existing native VS Code martin-loop config", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "martin-cli-copilot-idempotent-"));
 
     try {
@@ -609,13 +622,15 @@ describe("mcp config helpers", () => {
         runsRoot: join(cwd, ".runs")
       });
 
-      expect(await readFile(configPath, "utf8")).toBe(`${existing}\n`);
+      const installed = JSON.parse(await readFile(configPath, "utf8"));
+      expect(installed.servers["martin-loop"].args).toContain("@martinloop/mcp");
+      expect(installed.servers["martin-loop"].env.MARTIN_RUNS_DIR).toBe(join(cwd, ".runs"));
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }
   });
 
-  it("treats existing Continue array configs with martin-loop as idempotent", async () => {
+  it("refreshes an existing Continue array martin-loop config", async () => {
     const cwd = await mkdtemp(join(tmpdir(), "martin-cli-continue-idempotent-"));
 
     try {
@@ -647,7 +662,10 @@ describe("mcp config helpers", () => {
         { stateRoot: join(cwd, ".state") }
       );
 
-      expect(await readFile(configPath, "utf8")).toBe(`${existing}\n`);
+      const installed = JSON.parse(await readFile(configPath, "utf8"));
+      expect(installed.mcpServers).toHaveLength(1);
+      expect(installed.mcpServers[0].args).toContain("@martinloop/mcp");
+      expect(installed.mcpServers[0].includeTools).toContain("martin_doctor");
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }

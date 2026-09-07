@@ -712,6 +712,8 @@ export function buildVerifiedHandoffFromPersistedLoop(
       steps: verification.steps.map((step) => ({
         command: step.command,
         launched: step.launched,
+        completed: step.completed,
+        crashed: step.crashed,
         exitCode: step.exitCode,
         timedOut: step.timedOut,
         detail: step.detail,

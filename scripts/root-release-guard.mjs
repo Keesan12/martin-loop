@@ -14,6 +14,7 @@ const ALLOWED_FILES = [
   "CODE_OF_CONDUCT.md",
   "README.md",
   "demo/seeded-workspace",
+  "examples/github-actions-budget-gate",
   "dist",
 ];
 const REQUIRED_DIST_FILES = [
@@ -29,6 +30,8 @@ const ALLOWED_PACKED_PREFIXES = [
   "README.md",
   "demo/README.md",
   "demo/seeded-workspace/",
+  "examples/README.md",
+  "examples/github-actions-budget-gate/",
   "dist/",
   "package.json",
 ];
@@ -84,7 +87,11 @@ export function assertRootVersionPolicy(version) {
 export function assertPackedSurface(packedFiles) {
   const uniqueFiles = [...new Set(packedFiles)].sort();
 
-  for (const requiredFile of ["package.json", ...REQUIRED_DIST_FILES]) {
+  for (const requiredFile of [
+    "package.json",
+    ...REQUIRED_DIST_FILES,
+    "examples/github-actions-budget-gate/.github/workflows/martinloop-budget-gate.yml",
+  ]) {
     if (!uniqueFiles.includes(requiredFile)) {
       throw new Error(`Packed tarball is missing required file ${requiredFile}.`);
     }

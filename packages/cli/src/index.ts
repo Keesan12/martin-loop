@@ -230,6 +230,7 @@ export type RunCommandRequest = {
   liveMode?: "live" | "proof";
   mutationMode?: MutationMode;
   unsafeAllowUnguardedRun?: boolean;
+  allowOutdated?: boolean;
   allowedPaths?: string[];
   deniedPaths?: string[];
   acceptanceCriteria?: string[];
@@ -559,12 +560,23 @@ export type ParsedCliArguments =
       action: "status" | "explain" | "on" | "off";
     };
 
+/** Prepend a version notice to the stderr field without altering exitCode or stdout. */
+function prependStderr(
+  result: { exitCode: number; stdout: string; stderr: string },
+  notice: string
+): { exitCode: number; stdout: string; stderr: string } {
+  if (!notice) return result;
+  const sep = result.stderr ? notice + result.stderr : notice.replace(/\n+$/u, "");
+  return { ...result, stderr: sep };
+}
+
 export async function executeCli(args: string[]): Promise<{
   exitCode: number;
   stdout: string;
   stderr: string;
 }> {
   let outputMode: MartinOutputMode = "human";
+  let executionVersionNotice = "";
 
   try {
     const global = stripGlobalOptions(args);
@@ -626,8 +638,16 @@ export async function executeCli(args: string[]): Promise<{
           quiet: targetDirectory
         });
       }
-      case "run":
-        return await executeRunCommand(parsed.request, outputMode, startupPromptShown);
+      case "run": {
+        executionVersionNotice = await computeVersionNotice(
+          rootPackageVersion,
+          Boolean(parsed.request.allowOutdated)
+        );
+        return prependStderr(
+          await executeRunCommand(parsed.request, outputMode, startupPromptShown),
+          executionVersionNotice
+        );
+      }
       case "inspect":
         return await executeInspectCommand(parsed, outputMode);
       case "resume":
@@ -644,8 +664,15 @@ export async function executeCli(args: string[]): Promise<{
         return await executeReviewCommand(parsed, outputMode);
       case "receipts_explain":
         return await executeReceiptsExplainCommand(parsed.selector, outputMode);
-      case "native_phase":
-        return await executeNativePhaseCommand(parsed, outputMode);
+      case "native_phase": {
+        if (parsed.subcommand === "run" && parsed.execute) {
+          executionVersionNotice = await computeVersionNotice(rootPackageVersion, false);
+        }
+        return prependStderr(
+          await executeNativePhaseCommand(parsed, outputMode),
+          executionVersionNotice
+        );
+      }
       case "preflight":
         return await executePreflightCommand(parsed.request, outputMode);
       case "triage":
@@ -700,7 +727,7 @@ export async function executeCli(args: string[]): Promise<{
       }
     }
   } catch (error) {
-    return renderCliError(outputMode, error);
+    return prependStderr(renderCliError(outputMode, error), executionVersionNotice);
   }
 }
 
@@ -1337,6 +1364,86 @@ export function renderCliHelp(): string {
   ].join("\n");
 }
 
+type VersionCheckCache = { checkedAt: string; latestVersion: string };
+
+let _versionGateOverrideForTests:
+  | (() => Promise<{ outdated: boolean; latestVersion?: string }>)
+  | undefined;
+
+export function __setVersionGateOverrideForTests(
+  override: (() => Promise<{ outdated: boolean; latestVersion?: string }>) | undefined
+): void {
+  _versionGateOverrideForTests = override;
+}
+
+async function computeVersionNotice(
+  currentVersion: string,
+  suppress: boolean
+): Promise<string> {
+  if (suppress || process.env["MARTIN_ALLOW_OUTDATED"] === "1") return "";
+  try {
+    const gate = await checkVersionGate(currentVersion);
+    if (gate.outdated && gate.latestVersion) {
+      return (
+        `Notice: martin-loop ${currentVersion} is below the current version (${gate.latestVersion}).\n` +
+        `This release includes fixes to onboarding, MCP integration, and governed-run verification.\n` +
+        `Upgrade: npm install -g martin-loop@latest\n\n`
+      );
+    }
+  } catch {
+    // fail open — never block a run due to version check failure
+  }
+  return "";
+}
+
+function versionMeetsMinimum(current: string, minimum: string): boolean {
+  const parse = (v: string): number[] => v.replace(/^v/, "").split(".").map(Number);
+  const [cMaj = 0, cMin = 0, cPat = 0] = parse(current);
+  const [mMaj = 0, mMin = 0, mPat = 0] = parse(minimum);
+  if (cMaj !== mMaj) return cMaj > mMaj;
+  if (cMin !== mMin) return cMin > mMin;
+  return cPat >= mPat;
+}
+
+async function checkVersionGate(
+  currentVersion: string
+): Promise<{ outdated: boolean; latestVersion?: string }> {
+  if (_versionGateOverrideForTests) {
+    return _versionGateOverrideForTests();
+  }
+  const cacheFile = join(homedir(), ".martin", "version-check.json");
+  try {
+    const cached = JSON.parse(await readFile(cacheFile, "utf8")) as VersionCheckCache;
+    if (Date.now() - new Date(cached.checkedAt).getTime() < 86_400_000) {
+      const outdated = !versionMeetsMinimum(currentVersion, cached.latestVersion);
+      return { outdated, latestVersion: cached.latestVersion };
+    }
+  } catch {
+    // Cache miss or corrupt — fetch live
+  }
+  try {
+    const result = spawnSync(
+      "npm",
+      ["info", "martin-loop", "dist-tags", "--json", "--prefer-online"],
+      { encoding: "utf8", timeout: 6_000 }
+    );
+    if (result.status !== 0 || result.error || !result.stdout) {
+      return { outdated: false };
+    }
+    const tags = JSON.parse(result.stdout) as Record<string, string>;
+    const latestVersion = tags["latest"];
+    if (!latestVersion) return { outdated: false };
+    await mkdir(join(homedir(), ".martin"), { recursive: true });
+    await writeFile(
+      cacheFile,
+      JSON.stringify({ checkedAt: new Date().toISOString(), latestVersion }, null, 2)
+    );
+    return { outdated: !versionMeetsMinimum(currentVersion, latestVersion), latestVersion };
+  } catch {
+    return { outdated: false };
+  }
+}
+
 async function executeRunCommand(
   request: RunCommandRequest,
   outputMode: MartinOutputMode,
@@ -1377,6 +1484,10 @@ async function executeRunCommand(
     { clientVersion: rootPackageVersion, clientKind: "cli", trigger: "version_check" },
     { timeoutMs: 3_000 }
   ).catch(() => null);
+
+  // Version notice is computed at dispatch level (see executeCli) and prepended to
+  // the returned stderr field so it never contaminates stdout or JSON payloads.
+  // No versionOverride written to receipt — nothing is blocked in 0.6.0.
 
   if (engineRequired && resolvedRequest.unsafeAllowUnguardedRun) {
     throw new CliCommandError(
@@ -4109,6 +4220,15 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
   };
 
   const firstPositional = rest[0] && !rest[0].startsWith("--") ? rest[0] : undefined;
+
+  if (rest[0] !== undefined && !rest[0].startsWith("--") && rest[0].trim() === "") {
+    throw new CliCommandError(
+      "invalid_input",
+      "Objective cannot be empty. Provide a non-empty task description.",
+      { suggestion: 'Example: martin-loop run "Fix the failing auth tests" --verify "pnpm test"' }
+    );
+  }
+
   if (firstPositional) {
     request.objective = firstPositional;
     request.title ??= firstPositional;
@@ -4257,9 +4377,21 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
       case "--approve-config-changes":
         request.approvalPolicy = { ...request.approvalPolicy, configChanges: true };
         break;
+      case "--allow-outdated":
+        request.allowOutdated = true;
+        break;
       default:
         break;
     }
+  }
+
+  const resolvedObjective = (request.objective ?? request.title ?? "").trim();
+  if (!resolvedObjective) {
+    throw new CliCommandError(
+      "invalid_input",
+      "Objective cannot be empty. Provide a non-empty task description.",
+      { suggestion: 'Example: martin-loop run "Fix the failing auth tests" --verify "pnpm test"' }
+    );
   }
 
   return {
@@ -4283,6 +4415,7 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
     ...(request.liveMode ? { liveMode: request.liveMode } : {}),
     ...(request.mutationMode ? { mutationMode: request.mutationMode } : {}),
     ...(request.unsafeAllowUnguardedRun ? { unsafeAllowUnguardedRun: true } : {}),
+    ...(request.allowOutdated ? { allowOutdated: true } : {}),
     ...(request.allowedPaths?.length ? { allowedPaths: request.allowedPaths } : {}),
     ...(request.deniedPaths?.length ? { deniedPaths: request.deniedPaths } : {}),
     ...(request.acceptanceCriteria?.length ? { acceptanceCriteria: request.acceptanceCriteria } : {}),
@@ -4536,6 +4669,18 @@ async function createDemoWorkspace(input: {
   await mkdir(dirname(targetDirectory), { recursive: true });
   await cp(sourceDirectory, targetDirectory, { recursive: true });
 
+  const gitEnv = {
+    ...process.env,
+    GIT_AUTHOR_NAME: process.env.GIT_AUTHOR_NAME ?? "Martin Loop Demo",
+    GIT_AUTHOR_EMAIL: process.env.GIT_AUTHOR_EMAIL ?? "demo@martin-loop",
+    GIT_COMMITTER_NAME: process.env.GIT_COMMITTER_NAME ?? "Martin Loop Demo",
+    GIT_COMMITTER_EMAIL: process.env.GIT_COMMITTER_EMAIL ?? "demo@martin-loop"
+  };
+  const gitOpts = { cwd: targetDirectory, env: gitEnv };
+  spawnSync("git", ["init"], gitOpts);
+  spawnSync("git", ["add", "-A"], gitOpts);
+  spawnSync("git", ["commit", "-m", "init"], gitOpts);
+
   return targetDirectory;
 }
 
@@ -4589,6 +4734,7 @@ async function loadBenchmarkFixture<T>(fileName: string): Promise<T> {
 function renderDemoInstructions(targetDirectory: string): string {
   return [
     `Martin Loop demo sandbox created at ${targetDirectory}`,
+    "(git initialized — workspace is ready for a governed run)",
     "",
     "Next steps:",
     `  cd ${targetDirectory}`,

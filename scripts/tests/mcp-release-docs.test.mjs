@@ -29,14 +29,14 @@ test("current MCP metadata stays aligned for the release cut", async () => {
 test("version ledger separates live public truth from the pending release target", async () => {
   const ledger = await readRepoFile(path.join("docs", "release", "VERSION-LEDGER.md"));
 
-  assert.match(ledger, new RegExp(escapeRegex("live npm dist-tag `latest`: `0.5.5`")));
-  assert.match(ledger, new RegExp(escapeRegex("live public GitHub release: `v0.5.5`")));
-  assert.match(ledger, new RegExp(escapeRegex("live public GitHub release: `mcp-v0.5.5`")));
+  assert.match(ledger, new RegExp(escapeRegex("live npm dist-tag `latest`: `0.5.8`")));
+  assert.match(ledger, new RegExp(escapeRegex("live public GitHub release: `v0.5.8`")));
+  assert.match(ledger, new RegExp(escapeRegex("live public GitHub release: `mcp-v0.5.8`")));
   assert.match(ledger, /root public baseline: `\d+\.\d+\.\d+`/);
   assert.match(ledger, /live public GitHub release: `v\d+\.\d+\.\d+`/);
   assert.match(
     ledger,
-    new RegExp(escapeRegex("standalone MCP public baseline: `0.5.5`")),
+    new RegExp(escapeRegex("standalone MCP public baseline: `0.5.8`")),
   );
   assert.match(
     ledger,
