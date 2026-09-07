@@ -1,10 +1,10 @@
 {
   "name": "@martinloop/mcp",
-  "version": "0.5.8",
+  "version": "0.6.0",
   "mcpName": "io.github.Keesan12/martin-loop",
   "private": false,
   "type": "module",
-  "description": "MCP server for AI coding agents \u00e2\u20ac\u201d verifier gates, stop limits, and Verified Handoffs.",
+  "description": "MCP server for AI coding agents — verifier gates, stop limits, and Verified Handoffs.",
   "license": "Apache-2.0",
   "author": "MartinLoop contributors",
   "homepage": "https://martinloop.com/",
