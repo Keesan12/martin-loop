@@ -37,7 +37,7 @@ test("version ledger records the published release as live public truth", async 
   assert.match(ledger, new RegExp(escapeRegex(`current in-repo root release: \`${rootPackageJson.version}\` (published)`)));
   assert.match(ledger, new RegExp(escapeRegex(`current in-repo standalone release: \`${packageJson.version}\` (published)`)));
   assert.match(ledger, new RegExp(escapeRegex(`current in-repo MCPB release: \`${packageJson.version}\` with manifest schema \`0.3\` (published)`)));
-  assert.match(ledger, /official MCP Registry version: `0\.5\.5` \(verified\)/);
+  assert.match(ledger, new RegExp(escapeRegex(`official MCP Registry version: \`${packageJson.version}\` (verified)`)));
   assert.doesNotMatch(ledger, /current in-repo .*pending publication/);
   assert.match(ledger, /next planned root follow-on: not scheduled/);
   assert.match(ledger, /next planned standalone release: not scheduled/);
