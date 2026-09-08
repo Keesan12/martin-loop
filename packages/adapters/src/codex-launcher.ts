@@ -1,8 +1,13 @@
 import {
   buildCodexExecArgs as buildCapabilityDrivenCodexExecArgs,
+  markCodexAutonomyResolutionVerifiedByLaunchProbe,
   type CodexCapabilityProfile,
   type CodexExecArgsOptions
 } from "./codex-capabilities.js";
+import {
+  probeCodexLaunch as probeCodexLaunchHost,
+  type CodexLaunchProbeResult
+} from "./codex-host.js";
 
 /**
  * Compatibility facade for callers that still populate the original
@@ -27,11 +32,27 @@ export function buildCodexExecArgs(options: CodexExecArgsOptions): string[] {
   });
 }
 
+/**
+ * Public launch-probe facade. Only a successful probe may brand an autonomy
+ * resolution as safe for adapter execution; structurally similar objects
+ * supplied directly by callers remain untrusted.
+ */
+export function probeCodexLaunch(
+  input: Parameters<typeof probeCodexLaunchHost>[0]
+): CodexLaunchProbeResult {
+  const result = probeCodexLaunchHost(input);
+  if (result.ok && result.autonomyResolution) {
+    markCodexAutonomyResolutionVerifiedByLaunchProbe(result.autonomyResolution);
+  }
+  return result;
+}
+
 export {
   buildCodexStdin,
   cacheCodexCapabilityProfile,
   clearCodexCapabilityCacheForTests,
   codexWriteStrategies,
+  isCodexAutonomyResolutionVerifiedByLaunchProbe,
   probeCodexCapabilities,
   resolveCodexAutonomyCandidates,
   type CodexAutonomyResolution,
@@ -49,7 +70,6 @@ export {
   checkCodexSandboxPreflight,
   detectCodexHostPlatform,
   diagnoseCodexHost,
-  probeCodexLaunch,
   probeFilesystemWriteCapability,
   resolveCliCommandAvailability,
   type CliCommandAvailability,
