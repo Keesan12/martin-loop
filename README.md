@@ -1,15 +1,17 @@
 # MartinLoop
 
-Your coding agent says it's done. MartinLoop makes it prove it.
+**Give coding agents more work. Watch them less. Ship more.**
 
-One system to control, verify and understand coding-agent work.
+One system around coding-agent work so you can ship more production-ready software without babysitting every run.
+
+The coding agent still writes the code. MartinLoop is the system around the job.
 
 <div align="center">
   <img src="./docs/assets/martinloop-logo.png" alt="MartinLoop" width="260">
 
-  **MartinLoop gives AI coding agents budgets, stop conditions, rollback rules, and receipts.**
+  **MartinLoop helps coding agents stay focused, stay within budget, and finish work you can actually use.**
 
-  Built from thousands of agent runs where the problem was not intelligence -- it was uncontrolled execution.
+  Built from thousands of real agent runs where the problem was not just intelligence — it was unmanaged work, false completion, wasted spend, and too much review overhead.
 
   **Get started:** `npx -y martin-loop@latest start`  
   **Try the demo:** `npx -y martin-loop@latest demo`
@@ -32,13 +34,13 @@ One system to control, verify and understand coding-agent work.
 
 **Install** — run `npx -y martin-loop@latest start`, or install it globally with `npm install -g martin-loop@latest`.
 
-**Governed run** — define an objective, verifier, budget, and iteration cap with `martin run`.
+**Governed run** — define the objective, set a verifier, add a budget, and cap the number of attempts with `martin run`.
 
 **Verifier** — completion requires fresh verifier evidence bound to the active run and workspace. A configured verifier proves only the checks it runs; `VERIFIED` is not a claim that the code is bug-free or automatically safe to merge.
 
 **Budget** — set a hard spend ceiling with `--budget-usd` and an attempt ceiling with `--max-iterations`.
 
-**Receipts** — inspect the latest result with `martin dossier --latest` and validate stored integrity with `martin runs verify --latest`.
+**Outcome and evidence** — inspect the latest result with `martin dossier --latest` and validate stored integrity with `martin runs verify --latest`.
 
 **MCP** — install `@martinloop/mcp@latest` in a supported host or generate host configuration with `martin mcp print-config`.
 
@@ -48,7 +50,7 @@ When `--model` is provided, MartinLoop passes it through unchanged. Without `--m
 
 ## For AI Agents
 
-MartinLoop is the execution-control system around coding agents. The coding agent still writes the code. MartinLoop governs the run and makes completion prove itself.
+MartinLoop is the system around the coding job. The coding agent still writes the code. MartinLoop keeps the work focused, bounded, checked, recoverable, and inspectable.
 
 Use MartinLoop when a coding task needs one or more of these controls:
 
@@ -59,57 +61,66 @@ Use MartinLoop when a coding task needs one or more of these controls:
 - independent verifier commands
 - recovery and rollback evidence
 - a finite completion decision
-- run receipts, dossiers, history, failure classification, and post-run analysis
-- one control layer across Codex, Claude Code, and other coding-agent environments
+- run history, failure classification, and post-run analysis
+- one workflow across native coding agents and supported model runtimes
 
 Canonical lifecycle:
 
 ```text
 DEFINE
-  -> PREFLIGHT
-  -> CONTROL
-  -> VERIFY
+  -> FOCUS
+  -> GUARD
+  -> CHECK
   -> RECOVER
-  -> PROVE
-  -> ANALYZE
+  -> OUTCOME
+  -> LEARN
 ```
 
-The product-level flow is **Definition of Done -> Controlled Run -> Verified Handoff**.
+The product-level flow is **Define the job -> Bound the work -> Check the result -> Decide what happens next**.
 
 For machine-readable context start with [`llms.txt`](./llms.txt), [`llms-full.txt`](./llms-full.txt), and [MartinLoop for AI Agents](./docs/for-agents.md).
 
 ## One System Around the Run
 
-Teams should not need to stitch together a separate script or point tool for every part of coding-agent execution. MartinLoop connects the control path around the agent from preflight through post-run evidence.
+Teams should not need to stitch together a separate script or point tool for every part of coding-agent execution. MartinLoop connects the workflow around the agent from setup through outcome and post-run learning.
 
 | Stage | MartinLoop role |
 | --- | --- |
-| Define | Capture the objective, verifier, budget, scope, and finish line. |
+| Define | Capture the objective, verifier, budget, scope, acceptance criteria, and finish line. |
 | Preflight | Check readiness and required workflow evidence before agent spend. |
-| Control | Enforce budgets, attempts, path boundaries, policy, and stop conditions while the coding agent works. |
-| Verify | Run configured checks and bind the evidence to the active run and workspace. |
+| Guard | Enforce budgets, attempts, path boundaries, policy, and stop conditions while the coding agent works. |
+| Check | Run configured verification and bind the evidence to the active run and workspace. |
 | Recover | Preserve recovery and rollback state when another attempt or human review is required. |
-| Prove | Produce the authoritative `VERIFIED`, `STOPPED`, or `NEEDS REVIEW` handoff plus receipts. |
-| Analyze | Inspect run history, cost provenance, failure classes, dossiers, and shareable evidence after execution. |
+| Outcome | Produce the authoritative `VERIFIED`, `STOPPED`, or `NEEDS REVIEW` handoff. |
+| Learn | Inspect run history, cost provenance, failure classes, dossiers, and shareable evidence after execution. |
 
-MartinLoop does not replace Git, GitHub, CI, dedicated security scanners, observability platforms, code review, or the coding agent itself. It gives those workflows one governed execution record to inspect.
+MartinLoop does not replace Git, GitHub, CI, dedicated security scanners, observability platforms, code review, or the coding agent itself. It gives those workflows one consistent execution record to inspect.
+
+Model-agnostic by design. MartinLoop keeps the job, limits, verification, recovery, and outcome consistent even when the agent or model underneath changes.
 
 ## Why MartinLoop
 
-AI coding agents are useful, but unbounded retry loops are expensive.
+AI made it much easier to create software work. It did not make it easier to know what to trust, what to merge, what to retry, or when to stop.
 
-A task that looked like a small fix can become dozens of attempts, a blown token budget, and a diff nobody trusts. MartinLoop gives every run an explicit contract: objective, verifier, budget, scope, receipts, and a clear stop condition.
+That is the real bottleneck.
 
-Use it when AI coding work needs to stay bounded, inspectable, and safe to review before it becomes expensive or destructive.
+A task that looked like a quick fix can turn into dozens of attempts, wasted budget, scope drift, and a diff nobody wants to approve. MartinLoop gives every run an explicit contract: objective, verifier, budget, scope, and a clear next decision.
+
+Use it when coding work needs to stay bounded, inspectable, and safe enough to hand off without babysitting every step.
 
 ## Why Teams Adopt MartinLoop
 
-- It turns agent behavior into inspectable run receipts you can actually review.
-- It enforces hard stop conditions before runaway retries spend more money.
-- It adds rollback-aware rules so failed attempts do not silently leave unsafe changes behind.
-- It helps teams compare outcomes across agents under one governed flow.
+It helps you ship more without becoming the full-time manager of your agents.
 
-Teams use MartinLoop when they need governed agent execution that can be reviewed and trusted.
+It stops wasted retries before cost, context, and review debt spiral.
+
+It adds verification before unfinished work gets rounded into “done.”
+
+It preserves a clean handoff when work needs review, another attempt, or rollback.
+
+It keeps one workflow across supported coding agents instead of a patchwork of scripts and point tools.
+
+Teams use MartinLoop when they want faster software output without giving up control of cost, quality, or accountability.
 
 ## 2-Minute Install Path
 
@@ -157,15 +168,15 @@ npx -y martin-loop@latest preflight "Summarize the demo workspace and prove test
 
 `share --latest` writes three files into the selected run directory under `share/`: `run-receipt.json`, `run-receipt.md`, and `proof-card.svg`.
 
-Release notes for MartinLoop 0.6.1: [MartinLoop 0.6.1](./docs/release/OSS-0.6.1-RELEASE-NOTES.md).
+The current public package line is `0.6.0`. Use `@latest` for normal installs and pin `0.6.0` only when you need a deterministic audit lane.
 
 ## Model and Engine Support
 
 MartinLoop governs the job independently of the coding worker.
 
-- Native agent CLIs: Codex, Claude Code, Gemini CLI
-- OpenAI-compatible endpoints: Kimi K2, NVIDIA Nemotron, DeepSeek, Qwen/Qwen Coder, Mistral/Codestral, OpenRouter/Together/Fireworks routes, Ollama, LM Studio, llama.cpp, and other compatible endpoints
-- Use `--engine openai` for OpenAI-compatible model endpoints.
+- Native coding-agent CLIs: Codex, Claude Code, and Gemini CLI.
+- OpenAI-compatible endpoints: use `--engine openai` for supported model/runtime adapters.
+- Broader model-specific coding execution is promoted only after its governed mutation path is release-tested.
 
 The worker changes; MartinLoop's budget, scope, verifier, receipt, and integrity contract does not.
 
@@ -211,7 +222,7 @@ Use `--arcade` to offer Arcade immediately for a supported interactive run, or `
 
 ## Proof Receipts
 
-Proof receipts are local share bundles for governed AI coding runs. They show the task, spend, budget, verifier result, receipt integrity, and any evidence boundary that should not be rounded into confidence.
+Proof receipts are local share bundles for governed AI coding runs. They show the task, spend, budget, verifier result, receipt integrity, and any evidence boundary that should not be rounded into confidence. If you need to hand the run to another person, this is the clean summary artifact.
 
 This real governed run spent `$0.51` against a `$3.00` budget. The verifier passed and the receipt integrity was signed, but the proof stayed at `EVIDENCE_BOUNDARY` because rollback evidence was not recorded.
 
@@ -234,17 +245,17 @@ Example receipt files: [Markdown](./docs/examples/proof-receipts/live-governed-r
 Use this lane from a clean temp directory to verify the public CLI flow exactly as shipped:
 
 ```sh
-npx -y martin-loop@0.6.1 --version
-npx -y martin-loop@0.6.1 start
-npx -y martin-loop@0.6.1 demo
+npx -y martin-loop@0.6.0 --version
+npx -y martin-loop@0.6.0 start
+npx -y martin-loop@0.6.0 demo
 cd martin-loop-demo
 npm install
-npx -y martin-loop@0.6.1 run "Summarize the demo workspace and prove tests still pass" --verify "npm test" --budget-usd 2 --max-iterations 1 --json
-npx -y martin-loop@0.6.1 dossier --latest --json
-npx -y martin-loop@0.6.1 share --latest --json
+npx -y martin-loop@0.6.0 run "Summarize the demo workspace and prove tests still pass" --verify "npm test" --budget-usd 2 --max-iterations 1 --json
+npx -y martin-loop@0.6.0 dossier --latest --json
+npx -y martin-loop@0.6.0 share --latest --json
 ```
 
-For deterministic installs, pin the package line (`martin-loop@0.6.1`) or use `martin-loop@latest`. Plain `npx martin-loop` can resolve a stale local cache on some machines.
+For deterministic installs, pin the package line (`martin-loop@0.6.0`) or use `martin-loop@latest`. Plain `npx martin-loop` can resolve a stale local cache on some machines.
 
 Expected share bundle outputs:
 
@@ -277,7 +288,31 @@ MartinLoop keeps the useful part of the loop, then adds brakes:
 
 Public governed runs use one canonical taxonomy: the 13 runtime `FailureClass` values from `@martin/contracts`.
 
+<div align="center">
+  <img src="./docs/assets/failure-taxonomy-13-classes.png"
+       alt="MartinLoop failure taxonomy showing the 13 runtime failure classes and why classification matters"
+       width="900">
+</div>
+
 See the canonical table: [Failure Taxonomy (13 Runtime Classes)](./docs/oss/FAILURE-TAXONOMY-13.md).
+
+The current classes are:
+
+- `logic_error` — incorrect or incomplete logic
+- `hallucination` — unsupported repo or runtime facts
+- `syntax_error` — syntax validation failed
+- `type_error` — static type checks failed
+- `test_regression` — changes broke passing tests
+- `scope_creep` — changed outside the objective boundary
+- `no_progress` — retries with no meaningful progress
+- `repo_grounding_failure` — edits not grounded to repo state
+- `verification_failure` — verifier gate failed
+- `environment_mismatch` — host, runtime, or tooling mismatch
+- `budget_pressure` — budget or iteration pressure
+- `safety_leash_blocked` — safety policy blocked the action
+- `sandbox_write_blocked` — patch could not be persisted in the allowed workspace
+
+Classification matters because it gives runs shared failure language, an explicit next safe action, reusable failure intelligence, and better future runs.
 
 ## What It Does
 
@@ -295,7 +330,7 @@ See the canonical table: [Failure Taxonomy (13 Runtime Classes)](./docs/oss/FAIL
 | --- | --- |
 | Task contract | Objective, verifier plan, repo root, allowed paths, denied paths, acceptance criteria, workspace, project, and budget. |
 | Policy and budget | Defaults come from `martin.config.yaml`; CLI flags can override them. Budget preflight blocks attempts that would exceed policy. |
-| Agent adapters | Claude CLI, Codex CLI, Gemini CLI, and direct-provider adapters normalize execution results. |
+| Agent adapters | Claude Code, Codex CLI, Gemini CLI, direct-provider, and OpenAI-compatible adapters keep execution behind the same MartinLoop job contract. Broader model-specific coding execution is promoted only after its governed mutation path is release-tested. |
 | Safety and verification | Scope checks, verifier command checks, prompt integrity, and grounding decide whether work can continue. |
 | Persistence | JSONL run records, evidence summaries, and repo-backed artifacts make every run inspectable later. Each loop record is locally signed (HMAC, per-runs-root key) and `dossier`/`runs get`/`runs verify`/`challenge`/`badge` report an `integrity` verdict (`verified` / `tamper_detected` / `unsigned`) so post-hoc edits to a record are detectable, not just inspectable. |
 
@@ -329,10 +364,10 @@ martin-loop badge [--format svg|json] [--runs-dir <path>]
 ```
 
 <!-- Generated by scripts/generate-install-links.mjs. -->
-<!-- MCP package: @martinloop/mcp@0.6.1 -->
+<!-- MCP package: @martinloop/mcp@0.6.0 -->
 
-[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_MartinLoop-007ACC?logo=visualstudiocode&logoColor=white)](vscode:mcp/install?%7B%22name%22%3A%22martin-loop%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40martinloop%2Fmcp%400.6.1%22%5D%7D)
-[![Add to Cursor](https://img.shields.io/badge/Cursor-Add_MartinLoop-111111)](cursor://anysphere.cursor-deeplink/mcp/install?name=martin-loop&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIkBtYXJ0aW5sb29wL21jcEAwLjYuMSJdfQ%3D%3D)
+[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_MartinLoop-007ACC?logo=visualstudiocode&logoColor=white)](vscode:mcp/install?%7B%22name%22%3A%22martin-loop%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40martinloop%2Fmcp%40latest%22%5D%7D)
+[![Add to Cursor](https://img.shields.io/badge/Cursor-Add_MartinLoop-111111)](cursor://anysphere.cursor-deeplink/mcp/install?name=martin-loop&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIkBtYXJ0aW5sb29wL21jcEBsYXRlc3QiXX0%3D)
 
 
 Common options:
@@ -398,15 +433,15 @@ The installed-package command reads the shipped public fixtures. The repo-clone 
 Run the standalone MCP package directly:
 
 ```sh
-npx -y @martinloop/mcp
+npx -y @martinloop/mcp@latest
 ```
 
 Add it to common hosts:
 
 ```sh
-codex mcp add martin-loop -- npx -y @martinloop/mcp
-claude mcp add --transport stdio --scope user martin-loop -- npx -y @martinloop/mcp
-claude mcp add --transport stdio --scope user martin-loop -- cmd /c npx -y @martinloop/mcp
+codex mcp add martin-loop -- npx -y @martinloop/mcp@latest
+claude mcp add --transport stdio --scope user martin-loop -- npx -y @martinloop/mcp@latest
+claude mcp add --transport stdio --scope user martin-loop -- cmd /c npx -y @martinloop/mcp@latest
 ```
 
 Generate host config from the root CLI:
@@ -418,19 +453,9 @@ npx martin-loop mcp print-config --host gemini --transport stdio --profile full-
 npx martin-loop mcp print-config --host generic --transport stdio --profile github-review
 ```
 
-The root `martin-loop` package, standalone `@martinloop/mcp` package, plugin metadata, and MCPB product version are aligned at `0.6.1`. The MCPB manifest schema remains `0.3`.
+The root `martin-loop` package, standalone `@martinloop/mcp` package, plugin metadata, and MCPB product version are aligned at `0.6.0`. The MCPB manifest schema remains `0.3`.
 
-The public MCP release train labels are:
-
-- `0.1.4` operator foundation
-- `0.2.0` cockpit expansion
-- `0.2.5` public MCP package line
-- `0.2.7` usability and review release
-- `0.3.0` host adoption and onboarding release
-- `0.3.1` review and handoff release
-- `0.5.3` execution-control and host-compatibility release
-- `0.5.5` governed-autonomous execution and proof-surface release
-- `0.5.6` hosted run sync, fail-closed rollback, and verified-completion hardening
+The public MCP release train continues to evolve, but the current aligned public package line is `0.6.0` across the root CLI and standalone MCP package.
 
 The standalone MCP registry/server identifier is `io.github.Keesan12/martin-loop`.
 
@@ -471,7 +496,7 @@ const result = await loop.run({
 console.log(result.decision.status);
 ```
 
-The root SDK also exports `createCodexCliAdapter`, `createGeminiCliAdapter`, `createDirectProviderAdapter`, and `createOpenAiCompatibleAdapter`.
+The root SDK also exports `createCodexCliAdapter`, `createGeminiCliAdapter`, `createDirectProviderAdapter`, and `createOpenAiCompatibleAdapter`, so teams can keep one MartinLoop workflow while swapping the worker underneath.
 
 More detail: [SDK reference](./docs/reference/sdk.md) and [package map](./docs/reference/packages.md).
 
@@ -537,7 +562,7 @@ git push -u origin feat/your-feature
 ```
 
 <p align="center">
-  <strong>Star this repo</strong> if you think AI coding needs budgets, brakes, and receipts.
+  <strong>Star this repo</strong> if MartinLoop helps you give coding agents more real work without babysitting every step.
 </p>
 <p align="center">
   <a href="https://martinloop.com">martinloop.com</a> · <a href="mailto:support@martinloop.com">support@martinloop.com</a>
