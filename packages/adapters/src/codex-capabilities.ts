@@ -309,6 +309,22 @@ export function resolveCodexAutonomyCandidates(
   intent: AgentExecutionIntent = DEFAULT_AGENT_EXECUTION_INTENT
 ): CodexAutonomyResolution[] {
   const candidates: CodexAutonomyResolution[] = [];
+
+  // Prefer the least-privileged advertised workspace-write mode. The launch
+  // probe still has final authority: it must prove an in-workspace write and
+  // prove the paired outside-workspace marker was denied before this
+  // resolution can be selected for a governed run.
+  if (profile.sandbox?.values.includes("workspace-write")) {
+    candidates.push({
+      binaryPath: profile.binaryPath,
+      intent,
+      strategy: "sandbox+approval",
+      sandboxValue: "workspace-write"
+    });
+  }
+
+  // Keep provider automation as a compatibility fallback. It is never trusted
+  // merely because it is advertised; the same boundary probe must prove it.
   if (profile.automation) {
     candidates.push({
       binaryPath: profile.binaryPath,
