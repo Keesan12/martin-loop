@@ -10,6 +10,7 @@ import {
   type CodexCapabilityProfile,
   type SpawnLike
 } from "../src/index.js";
+import { markCodexAutonomyResolutionVerifiedByLaunchProbe } from "../src/codex-capabilities.js";
 
 interface SpawnCall {
   command: string;
@@ -93,7 +94,7 @@ function negotiatedProfile(overrides: Partial<CodexCapabilityProfile> = {}): Cod
   };
 }
 
-function negotiatedAutonomy(
+function rawAutonomy(
   overrides: Partial<CodexAutonomyResolution> = {}
 ): CodexAutonomyResolution {
   return {
@@ -106,7 +107,20 @@ function negotiatedAutonomy(
   };
 }
 
+function negotiatedAutonomy(
+  overrides: Partial<CodexAutonomyResolution> = {}
+): CodexAutonomyResolution {
+  return markCodexAutonomyResolutionVerifiedByLaunchProbe(rawAutonomy(overrides));
+}
+
 describe("capability-driven Codex adapter", () => {
+  it("rejects a structurally valid autonomy resolution that did not pass the launch probe", () => {
+    expect(() => createCodexCliAdapter({
+      capabilityProfile: negotiatedProfile(),
+      autonomyResolution: rawAutonomy()
+    })).toThrow(/not verified by the launch probe/iu);
+  });
+
   it("routes provider execution to the exact selected binary while preserving Codex identity", async () => {
     const calls: SpawnCall[] = [];
     const selectedBinary = "C:\\Program Files\\OpenAI\\Codex\\codex.exe";
