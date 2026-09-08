@@ -15,8 +15,8 @@ import {
   resolveCodexAutonomyCandidates,
   probeFilesystemWriteCapability,
   resolveCliCommandAvailability,
-  type CodexCapabilityProfile
-  , type CodexAutonomyResolution
+  type CodexCapabilityProfile,
+  type CodexAutonomyResolution
 } from "../src/codex-launcher.js";
 
 function profile(overrides: Partial<CodexCapabilityProfile> = {}): CodexCapabilityProfile {
@@ -132,6 +132,7 @@ describe("probeCodexCapabilities", () => {
     ]);
     expect(result).not.toHaveProperty("selectedWriteStrategy");
   });
+
   it("parses global and exec flags separately", () => {
     clearCodexCapabilityCacheForTests();
     const spawnSyncImpl = vi.fn((_command: string, args: string[]) => {
@@ -266,6 +267,7 @@ describe("buildCodexExecArgs", () => {
       extraArgs: ["--sandbox", "danger-full-access"]
     })).toThrow(/permission.*extraArgs/iu);
   });
+
   it("works with zero optional flags and makes no flag assumptions", () => {
     const args = buildCodexExecArgs({
       workingDirectory: "/repo",
@@ -345,6 +347,11 @@ describe("buildCodexExecArgs", () => {
           flag: "--full-auto",
           scope: "global",
           semantics: "automation-mode"
+        },
+        automation: {
+          flag: "--full-auto",
+          scope: "global",
+          semantics: "automation-mode"
         }
       }),
       autonomyResolution: autonomy()
@@ -414,7 +421,7 @@ describe("buildCodexExecArgs", () => {
 });
 
 describe("resolveCodexAutonomyCandidates", () => {
-  it("keeps capability detection separate from governed-autonomous policy resolution", () => {
+  it("prefers least-privileged workspace-write before automation fallback", () => {
     const candidates = resolveCodexAutonomyCandidates(profile({
       automation: { flag: "--approve-for-me", scope: "exec", semantics: "automation-mode" },
       sandbox: { flag: "--sandbox", scope: "exec", values: ["workspace-write", "danger-full-access"] },
@@ -427,8 +434,13 @@ describe("resolveCodexAutonomyCandidates", () => {
     }));
 
     expect(candidates.map((candidate) => candidate.strategy)).toEqual([
+      "sandbox+approval",
       "automation"
     ]);
+    expect(candidates[0]).toEqual(expect.objectContaining({
+      strategy: "sandbox+approval",
+      sandboxValue: "workspace-write"
+    }));
     expect(candidates).not.toEqual(expect.arrayContaining([
       expect.objectContaining({ approvalValue: "on-request" }),
       expect.objectContaining({ approvalValue: "never" })
@@ -436,9 +448,19 @@ describe("resolveCodexAutonomyCandidates", () => {
     expect(candidates.flatMap((candidate) => Object.values(candidate))).not.toContain("danger-full-access");
   });
 
+  it("allows an advertised workspace-write sandbox without requiring automation", () => {
+    expect(resolveCodexAutonomyCandidates(profile({
+      sandbox: { flag: "--sandbox", scope: "exec", values: ["workspace-write"] }
+    }))).toEqual([
+      expect.objectContaining({
+        strategy: "sandbox+approval",
+        sandboxValue: "workspace-write"
+      })
+    ]);
+  });
+
   it.each([
     profile(),
-    profile({ sandbox: { flag: "--sandbox", scope: "exec", values: ["workspace-write"] } }),
     profile({
       approvalPolicy: {
         flag: "--ask-for-approval",
@@ -448,13 +470,13 @@ describe("resolveCodexAutonomyCandidates", () => {
       }
     }),
     profile({ sandbox: { flag: "--sandbox", scope: "exec", values: ["danger-full-access"] } })
-  ])("does not downgrade to default, sandbox-only, approval-only, or danger", (detected) => {
+  ])("does not downgrade to default, approval-only, or danger", (detected) => {
     expect(resolveCodexAutonomyCandidates(detected)).toEqual([]);
   });
 });
 
 describe("probeCodexLaunch", () => {
-  it("proves actual workspace-write ability with the dynamically built invocation", () => {
+  it("proves actual workspace-write ability with the least-privileged dynamically built invocation", () => {
     clearCodexCapabilityCacheForTests();
     const workingDirectory = process.cwd();
     let simulateOutsideEscape = false;
@@ -511,7 +533,9 @@ describe("probeCodexLaunch", () => {
 
     expect(result.ok, JSON.stringify(result, null, 2)).toBe(true);
     expect(result.capabilityProfile?.sandbox?.values).toContain("workspace-write");
-    expect(result.args).toContain("--full-auto");
+    expect(result.args).toContain("--sandbox");
+    expect(result.args).toContain("workspace-write");
+    expect(result.args).not.toContain("--full-auto");
     expect(result.args).not.toContain("--ask-for-approval");
     expect(result.summary).toContain("workspace-write probe passed");
     expect(observedTimeout).toBe(300_000);
