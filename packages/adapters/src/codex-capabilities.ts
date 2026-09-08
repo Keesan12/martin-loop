@@ -70,6 +70,20 @@ export interface CodexExecArgsOptions {
 
 type SpawnSyncLike = typeof spawnSync;
 const capabilityCache = new Map<string, CodexCapabilityProfile>();
+const launchProbeVerifiedAutonomyResolutions = new WeakSet<CodexAutonomyResolution>();
+
+export function markCodexAutonomyResolutionVerifiedByLaunchProbe(
+  resolution: CodexAutonomyResolution
+): CodexAutonomyResolution {
+  launchProbeVerifiedAutonomyResolutions.add(resolution);
+  return resolution;
+}
+
+export function isCodexAutonomyResolutionVerifiedByLaunchProbe(
+  resolution: CodexAutonomyResolution
+): boolean {
+  return launchProbeVerifiedAutonomyResolutions.has(resolution);
+}
 
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
