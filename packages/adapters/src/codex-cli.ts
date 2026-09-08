@@ -7,6 +7,7 @@ import {
 import {
   buildCodexExecArgs,
   buildCodexStdin,
+  isCodexAutonomyResolutionVerifiedByLaunchProbe,
   probeCodexCapabilities,
   type CodexAutonomyResolution,
   type CodexCapabilityProfile
@@ -67,6 +68,9 @@ export function createCodexCliAdapter(options: CodexCliAdapterOptions = {}) {
   }
   if (autonomyResolution && autonomyResolution.binaryPath !== selectedBinary) {
     throw new Error("Codex exact binary autonomy resolution mismatch.");
+  }
+  if (autonomyResolution && !isCodexAutonomyResolutionVerifiedByLaunchProbe(autonomyResolution)) {
+    throw new Error("Codex autonomy resolution was not verified by the launch probe.");
   }
   const sandbox = options.sandbox ?? "workspace-write";
   const extraArgs = options.extraArgs ?? [];
