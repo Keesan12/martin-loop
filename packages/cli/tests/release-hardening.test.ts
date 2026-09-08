@@ -35,6 +35,7 @@ import {
   type CodexCapabilityProfile
 } from "../../adapters/src/index.js";
 import { buildCodexExecArgs } from "../../adapters/src/codex-launcher.js";
+import { markCodexAutonomyResolutionVerifiedByLaunchProbe } from "../../adapters/src/codex-capabilities.js";
 
 const noFlagCodexProfile: CodexCapabilityProfile = {
   binaryPath: "codex-test-bin",
@@ -87,16 +88,17 @@ describe("Codex adapter configuration", () => {
       ...noFlagCodexProfile,
       automation: { flag: "--approve-for-me", scope: "exec", semantics: "automation-mode" }
     };
+    const autonomyResolution = markCodexAutonomyResolutionVerifiedByLaunchProbe({
+      binaryPath: capabilityProfile.binaryPath,
+      intent: "governed-autonomous",
+      strategy: "automation"
+    });
     const args = buildCodexExecArgs({
       workingDirectory: process.cwd(),
       mode: "prompt",
       prompt: "test objective",
       capabilityProfile,
-      autonomyResolution: {
-        binaryPath: capabilityProfile.binaryPath,
-        intent: "governed-autonomous",
-        strategy: "automation"
-      }
+      autonomyResolution
     });
     expect(args).toEqual(["exec", "--approve-for-me", "test objective"]);
     expect(args).not.toContain("--model");
@@ -104,11 +106,7 @@ describe("Codex adapter configuration", () => {
 
     const adapter = createCodexCliAdapter({
       capabilityProfile,
-      autonomyResolution: {
-        binaryPath: capabilityProfile.binaryPath,
-        intent: "governed-autonomous",
-        strategy: "automation"
-      }
+      autonomyResolution
     });
     expect(adapter.adapterId).toContain("codex");
   });

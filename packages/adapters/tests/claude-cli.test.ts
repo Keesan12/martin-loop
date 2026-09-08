@@ -23,6 +23,7 @@ import {
   type CodexAutonomyResolution,
   type SpawnLike
 } from "../src/index.js";
+import { markCodexAutonomyResolutionVerifiedByLaunchProbe } from "../src/codex-capabilities.js";
 import { containsShellOperator, readGitChangedFiles, readGitExecutionArtifacts, runSubprocess, splitCommand } from "../src/cli-bridge.js";
 
 // ---------------------------------------------------------------------------
@@ -1284,13 +1285,13 @@ function negotiatedCodexProfile(
 }
 
 function negotiatedCodexAutonomy(): CodexAutonomyResolution {
-  return {
+  return markCodexAutonomyResolutionVerifiedByLaunchProbe({
     binaryPath: "codex",
     intent: "governed-autonomous",
     strategy: "sandbox+approval",
     sandboxValue: "workspace-write",
     approvalValue: "never"
-  };
+  });
 }
 
 describe("createCodexCliAdapter", () => {
