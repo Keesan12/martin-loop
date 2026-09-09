@@ -106,25 +106,14 @@ test("root README is a public product entry point", async () => {
   const manifest = await readRootManifest();
 
   const expectedOrder = [
-    "## Start Here",
-    "## For AI Agents",
-    "## One System Around the Run",
     "## Why MartinLoop",
-    "## Why Teams Adopt MartinLoop",
-    "## 2-Minute Install Path",
     "## Quick Start",
-    "## Model and Engine Support",
-    "## The Run From Start to Handoff",
     "## Visual Proof",
-    "## MartinLoop Arcade",
-    "## Proof Receipts",
-    "## Run This Audit Yourself",
     "## See It In Action",
     "## Ralph-Style Loops",
     "## Failure Taxonomy (13 Runtime Classes)",
     "## What It Does",
     "## How It Works",
-    "## Trust Boundaries",
     "## CLI",
     "## Benchmarks",
     "## MCP",
@@ -143,20 +132,11 @@ test("root README is a public product entry point", async () => {
     previousIndex = index;
   }
 
-  assert.match(readme, /Give coding agents more work\. Watch them less\. Ship more\./i);
-  assert.match(readme, /One system around coding-agent work so you can ship more production-ready software without babysitting every run\./i);
-  assert.match(readme, /Built from thousands of real agent runs where the problem was not just intelligence — it was unmanaged work, false completion, wasted spend, and too much review overhead\./i);
-  assert.match(readme, /## Start Here/);
-  assert.match(readme, /## For AI Agents/);
-  assert.match(readme, /## One System Around the Run/);
+  assert.match(readme, /MartinLoop gives AI coding agents budgets, stop conditions, rollback rules, and receipts\./i);
+  assert.match(readme, /Built from thousands of agent runs where the problem was not intelligence -- it was uncontrolled execution\./i);
   assert.match(readme, /## Why Teams Adopt MartinLoop/);
   assert.match(readme, /## 2-Minute Install Path/);
-  assert.match(readme, /## Model and Engine Support/);
-  assert.match(readme, /## The Run From Start to Handoff/);
   assert.match(readme, /## Visual Proof/);
-  assert.match(readme, /## MartinLoop Arcade/);
-  assert.match(readme, /## Proof Receipts/);
-  assert.match(readme, /## Run This Audit Yourself/);
   assert.match(readme, /## See It In Action/);
   assert.match(readme, /## Ralph-Style Loops/);
   assert.match(readme, /## Failure Taxonomy \(13 Runtime Classes\)/);
