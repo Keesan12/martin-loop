@@ -2,46 +2,25 @@
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-09-08
+
+### Fixed
+- Kept Codex governed autonomy fixture coverage aligned with the launch-probe verification contract.
+- Restored the public README guard to the current product-facing README structure without reverting the improved public copy.
+- Pinned generated MCP install links to the deterministic `@martinloop/mcp@0.6.2` package line for the release.
+
+### Changed
+- Updated root CLI, standalone MCP, plugin, MCPB, release-truth, and generated runtime version authority to `0.6.2`.
+
 ## [0.6.1] - 2026-09-07
 
 ### Fixed
 - Made OpenAI-compatible models perform real governed workspace edits before verification instead of behaving as inference-only transports.
-- Rejected malformed, no-op, path-traversal, duplicate-path, denied-path, and symlink-escape edit plans before accepted work.
+- Blocked malformed, no-op, path-traversal, duplicate-path, denied-path, and symlink-escape edit plans before they can become accepted work.
 
 ### Changed
-- Added an explicit model-support contract for native Codex, Claude Code, Gemini CLI, and compatible hosted or local model endpoints.
-- Kept MartinLoop's budget, scope, verifier, receipt, and integrity contract independent of the coding worker.
-
-## [0.6.0] - 2026-09-06
-
-### Fixed
-- Preserved successful verifier evidence in Verified Handoffs even when a budget boundary determines the final run outcome.
-- Refreshed stale canonical MCP host configuration while preserving unrelated settings.
-- Rejected empty governed-run objectives before engine discovery or agent spend.
-- Made `martin-loop demo` create a ready-to-run Git workspace automatically.
-
-### Changed
-- Added a non-blocking upgrade notice for outdated installs; execution continues and JSON stdout remains machine-readable.
-- Included the runnable GitHub Actions budget-gate workflow in the published package.
-
-
-## [0.5.8] - 2026-08-30
-
-### Fixed
-
-- Correctly keeps verifier-passing artifacts created during a governed attempt when the path is explicitly allowed, while preserving grounding rejection for changed-file claims that are not backed by actual workspace state.
-
-## [0.5.7] - 2026-08-30
-
-### Fixed
-
-- Tightened governed-run prerequisite handling so fresh `martin run` invocations can prepare required local evidence without extra manual choreography.
-- Corrected optional token-budget reporting so configurations without a hard token cap remain valid across CLI and MCP surfaces.
-- Hardened release packaging validation against npm pack metadata differences while keeping the published package allowlist strict.
-
-### Changed
-
-- Refreshed public release validation, promotion, and package smoke checks for the 0.5.7 release lane.
+- Added an explicit model-support contract covering native Codex, Claude Code, Gemini CLI, and OpenAI-compatible models such as Kimi K2, Nemotron, DeepSeek, Qwen, Mistral/Codestral, OpenRouter routes, Ollama, LM Studio, and llama.cpp.
+- Preserved the same MartinLoop budget, scope, verifier, receipt, and integrity pipeline regardless of coding worker.
 
 ## [0.5.6] - 2026-08-22
 

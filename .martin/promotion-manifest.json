@@ -1,10 +1,10 @@
 {
   "schemaVersion": "martin.public-promotion.v1",
   "privateRepository": "martin-Loop/ML_Core_OSS_Internal",
-  "privateMergeSha": "40b555f44027bb62c56f2aa6ce54047bcc423c5b",
-  "privateMainShaValidated": "40b555f44027bb62c56f2aa6ce54047bcc423c5b",
-  "publicBaseSha": "5e1e2f2494cae02a850cbf6162cf738863edc5e0",
-  "promotedBy": "ChatGPT",
-  "validatedAt": "2026-09-07T21:52:31Z",
+  "privateMergeSha": "b86cacb1b4098d768e38632e6e224c3c17ba55e4",
+  "privateMainShaValidated": "b86cacb1b4098d768e38632e6e224c3c17ba55e4",
+  "publicBaseSha": "018bacff4f6a6843e6134f5061852a12e4af54b6",
+  "promotedBy": "Codex",
+  "validatedAt": "2026-09-09T02:05:00Z",
   "internalHealthPassed": true
 }

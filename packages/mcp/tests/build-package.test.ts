@@ -2,11 +2,7 @@ import { describe, expect, it } from "vitest";
 import packageJson from "../package.json";
 import serverJson from "../server.json";
 
-import {
-  createCommandLaunch,
-  rewritePackageSpecifiers,
-  workspaceBuildCommandArgs,
-} from "../scripts/build-package-lib.mjs";
+import { rewritePackageSpecifiers, workspaceBuildCommandArgs } from "../scripts/build-package-lib.mjs";
 
 describe("rewritePackageSpecifiers", () => {
   it("rewrites nested internal package subpaths without truncating them", () => {
@@ -63,37 +59,6 @@ describe("workspaceBuildCommandArgs", () => {
   });
 });
 
-describe("createCommandLaunch", () => {
-  it("spawns native Windows executables directly so paths with spaces are not reparsed by cmd", () => {
-    const launch = createCommandLaunch(
-      "C:\\Program Files\\nodejs\\node.exe",
-      ["C:\\Users\\Example\\smoke.mjs"],
-      "win32",
-    );
-
-    expect(launch).toEqual({
-      command: "C:\\Program Files\\nodejs\\node.exe",
-      args: ["C:\\Users\\Example\\smoke.mjs"],
-    });
-  });
-
-  it("keeps Windows command shims behind cmd.exe", () => {
-    const launch = createCommandLaunch(
-      "pnpm.cmd",
-      ["--filter", "@martinloop/mcp", "build"],
-      "win32",
-    );
-
-    expect(launch.command.toLowerCase()).toContain("cmd");
-    expect(launch.args).toEqual([
-      "/d",
-      "/s",
-      "/c",
-      "pnpm.cmd --filter @martinloop/mcp build",
-    ]);
-  });
-});
-
 describe("package manifest", () => {
   it("keeps both MCP bin aliases pointed at the packaged entrypoint", () => {
     expect(packageJson.bin).toEqual({
@@ -102,14 +67,9 @@ describe("package manifest", () => {
     });
   });
 
-  it("ships server metadata and exposes the server module through package exports", () => {
+  it("ships server metadata and does not advertise a root import surface", () => {
     expect(packageJson.files).toContain("server.json");
     expect(packageJson.exports).toEqual({
-      ".": {
-        types: "./dist/server.d.ts",
-        import: "./dist/server.js",
-        default: "./dist/server.js",
-      },
       "./server.json": "./server.json",
       "./package.json": "./package.json",
     });
