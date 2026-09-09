@@ -33,33 +33,33 @@ This file is the release source of truth for package/version mapping in this rep
   - `0.5.5` governed-autonomous execution with deterministic install metadata
   - `0.5.6` portable MCP package validation, read-only Arcade resources, hosted sync contract alignment, and permanent release-authority gates
   - `0.6.0` hardened verifier evidence, stale MCP host refresh, empty-objective rejection, demo Git readiness, and non-blocking version upgrade notices
-  - `0.6.1` made OpenAI-compatible model endpoints perform governed workspace edits with fail-closed path validation before independent verification
-- current in-repo root release: `0.6.1` (published)
+  - `0.6.1` model-agnostic OpenAI-compatible workspace edits, path-bound edit-plan validation, and public model-support documentation
+- current in-repo root release target: `0.6.2` (pending publication)
 - next planned root follow-on: not scheduled
 
 ## Standalone package: `@martinloop/mcp`
 
-- live npm dist-tag `latest`: `0.6.1`
+- live npm dist-tag `latest`: `0.5.8`
 - live public GitHub release: `mcp-v0.6.1`
 - live public baseline in this train: `0.6.1`
 - standalone MCP public baseline: `0.6.1`
-- official MCP Registry version: `0.6.1` (verified)
+- official MCP Registry version: `0.5.5` (verified)
 - live MCPB baseline: `0.6.1`
 - live MCPB SHA-256: `90d7c0f32fb99da49eee3a13ef1827def3cba9d0bd0477dfea5f90ec9fbc5977`
 - live MCPB size: `7,306,815` bytes
-- current in-repo standalone release: `0.6.1` (published)
-- current in-repo MCPB release: `0.6.1` with manifest schema `0.3` (published)
+- current in-repo standalone release target: `0.6.2` (pending publication)
+- current in-repo MCPB release target: `0.6.2` with manifest schema `0.3` (pending publication)
 - next planned standalone release: not scheduled
 
 ## Release rules
 
 - Live public baselines describe artifacts that actually exist. In-repo targets may advance before publication and must remain marked pending until trusted publishing succeeds.
-- The `0.6.1` train aligns the root package, standalone MCP package, plugin metadata, and MCPB product version at `0.6.1`. MCPB manifest schema remains `0.3`.
+- The `0.6.2` train aligns the root package, standalone MCP package, plugin metadata, and MCPB product version at `0.6.2`. MCPB manifest schema remains `0.3`.
 - Do not infer standalone MCP release state from the root package, or the other way around.
 - Public release notes must be written for customers and evaluators, not for internal operators.
 - Public-facing examples, screenshots, README copy, and changelog entries must stay free of internal repo names, absolute system paths, private branch names, or process noise.
 - Publish only through GitHub Actions trusted publishing / OIDC.
-- A release is not complete until npm packages, GitHub releases, release assets, checksums, and applicable authoritative registry listings have been verified live.
+- A release is not complete until npm packages, GitHub releases, release assets, checksums, and applicable registry listings have been verified live.
 
 ## Validation baseline before any public prep branch
 
