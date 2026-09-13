@@ -22,7 +22,7 @@ export function listSurfaceEntries(cwd, ref = "HEAD") {
   const selected = tree.toString("utf8").split("\0").filter(Boolean).map((record) => {
     const match = /^(\d+) (\w+) ([a-f0-9]+)\t([\s\S]+)$/u.exec(record);
     if (!match) throw new Error(`malformed git tree record: ${record}`);
-    return { type: match[2], object: match[3], path: match[4] };
+    return { mode: match[1], type: match[2], object: match[3], path: match[4] };
   }).filter((entry) => entry.type === "blob" && isReleaseSurfacePath(entry.path)).sort((a, b) => comparePath(a.path, b.path));
   if (selected.length === 0) return [];
   const batch = gitBuffer(cwd, ["cat-file", "--batch"], `${selected.map((entry) => entry.object).join("\n")}\n`);
@@ -38,13 +38,13 @@ export function listSurfaceEntries(cwd, ref = "HEAD") {
     const contentEnd = contentStart + size;
     if (batch[contentEnd] !== 0x0a) throw new Error(`malformed git cat-file payload for ${entry.path}`);
     offset = contentEnd + 1;
-    return { path: entry.path, sha256: sha256(batch.subarray(contentStart, contentEnd)) };
+    return { path: entry.path, mode: entry.mode, sha256: sha256(batch.subarray(contentStart, contentEnd)) };
   });
 }
 export function hashSurface(entries) { return sha256(JSON.stringify([...entries].sort((a, b) => comparePath(a.path, b.path)))); }
 
 export function validateReviewedDivergences(entries, divergences) {
-  const privateEntries = new Map(entries.map((entry) => [entry.path, entry.sha256]));
+  const privateEntries = new Map(entries.map((entry) => [entry.path, entry]));
   const seen = new Set();
   for (const item of divergences) {
     if (!item || typeof item.path !== "string" || !isReleaseSurfacePath(item.path)) throw new Error("reviewed divergence path must belong to the canonical release surface");
@@ -53,29 +53,45 @@ export function validateReviewedDivergences(entries, divergences) {
     if (!["content", "public-only", "private-only"].includes(item.kind)) throw new Error(`unsupported divergence kind for ${item.path}`);
     if (typeof item.reason !== "string" || item.reason.trim().length < 8) throw new Error(`reviewed divergence ${item.path} requires a substantive reason`);
     if (typeof item.reviewedBy !== "string" || item.reviewedBy.trim().length === 0) throw new Error(`reviewed divergence ${item.path} requires reviewedBy`);
-    const privateHash = privateEntries.get(item.path);
-    if (item.kind === "public-only" && privateHash) throw new Error(`${item.path} is not public-only`);
-    if ((item.kind === "content" || item.kind === "private-only") && !privateHash) throw new Error(`${item.path} is absent from the private surface`);
+    const privateEntry = privateEntries.get(item.path);
+    const privateHash = privateEntry?.sha256;
+    if (item.kind === "public-only" && privateEntry) throw new Error(`${item.path} is not public-only`);
+    if ((item.kind === "content" || item.kind === "private-only") && !privateEntry) throw new Error(`${item.path} is absent from the private surface`);
     if (item.privateSha256 !== (privateHash ?? null)) throw new Error(`private hash mismatch for reviewed divergence ${item.path}`);
+    if (item.privateMode !== undefined && item.privateMode !== (privateEntry?.mode ?? null)) throw new Error(`private mode mismatch for reviewed divergence ${item.path}`);
     const expectsPublic = item.kind !== "private-only";
     if (expectsPublic !== (typeof item.publicSha256 === "string" && /^[a-f0-9]{64}$/u.test(item.publicSha256))) throw new Error(`invalid public hash for reviewed divergence ${item.path}`);
+    if (item.publicMode !== undefined && (typeof item.publicMode !== "string" || !/^\d{6}$/u.test(item.publicMode))) throw new Error(`invalid public mode for reviewed divergence ${item.path}`);
   }
 }
 
 export function expectedPublicEntries(entries, divergences = []) {
   validateReviewedDivergences(entries, divergences);
-  const expected = new Map(entries.map((entry) => [entry.path, entry.sha256]));
+  const expected = new Map(entries.map((entry) => [entry.path, { ...entry }]));
   for (const item of divergences) {
-    if (item.kind === "private-only") expected.delete(item.path);
-    else expected.set(item.path, item.publicSha256);
+    if (item.kind === "private-only") {
+      expected.delete(item.path);
+      continue;
+    }
+    const previous = expected.get(item.path);
+    expected.set(item.path, {
+      path: item.path,
+      mode: item.publicMode ?? previous?.mode ?? "100644",
+      sha256: item.publicSha256
+    });
   }
-  return [...expected].map(([path, digest]) => ({ path, sha256: digest })).sort((a, b) => comparePath(a.path, b.path));
+  return [...expected.values()].sort((a, b) => comparePath(a.path, b.path));
 }
 export function compareSurface(expected, actual) {
-  const expectedMap = new Map(expected.map((entry) => [entry.path, entry.sha256]));
-  const actualMap = new Map(actual.map((entry) => [entry.path, entry.sha256]));
+  const expectedMap = new Map(expected.map((entry) => [entry.path, entry]));
+  const actualMap = new Map(actual.map((entry) => [entry.path, entry]));
   const missing = [...expectedMap.keys()].filter((path) => !actualMap.has(path));
   const extra = [...actualMap.keys()].filter((path) => !expectedMap.has(path));
-  const changed = [...expectedMap.keys()].filter((path) => actualMap.has(path) && actualMap.get(path) !== expectedMap.get(path));
+  const changed = [...expectedMap.keys()].filter((path) => {
+    if (!actualMap.has(path)) return false;
+    const expectedEntry = expectedMap.get(path);
+    const actualEntry = actualMap.get(path);
+    return expectedEntry.sha256 !== actualEntry.sha256 || expectedEntry.mode !== actualEntry.mode;
+  });
   return { missing, extra, changed, matches: missing.length === 0 && extra.length === 0 && changed.length === 0 };
 }
