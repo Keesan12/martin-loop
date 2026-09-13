@@ -187,7 +187,7 @@ async function readPersistedCoreReceiptBundle(loop: LoopRecord): Promise<CoreRec
   try {
     const [loopRecordRaw, ledgerRaw, integrityRaw] = await Promise.all([
       readFile(join(runRoot, "loop.json"), "utf8"),
-      readFile(join(runRoot, "events.jsonl"), "utf8"),
+      readFile(join(runRoot, "ledger.jsonl"), "utf8"),
       readFile(join(runRoot, "receipt-integrity.json"), "utf8"),
     ]);
 

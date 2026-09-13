@@ -1,10 +1,3026 @@
 {
-  "schemaVersion": "martin.public-promotion.v1",
-  "privateRepository": "martin-Loop/ML_Core_OSS_Internal",
-  "privateMergeSha": "b86cacb1b4098d768e38632e6e224c3c17ba55e4",
-  "privateMainShaValidated": "b86cacb1b4098d768e38632e6e224c3c17ba55e4",
-  "publicBaseSha": "018bacff4f6a6843e6134f5061852a12e4af54b6",
-  "promotedBy": "Codex",
-  "validatedAt": "2026-09-09T02:05:00Z",
-  "internalHealthPassed": true
+  "schemaVersion": "martin.public-promotion.v2",
+  "sourceAuthority": "validated-internal-release-source",
+  "sourceRepositoryFingerprint": "04aac733f3b08513fddcc72a9013b9f59cf7919f9a0a3893d0b3d953929826ec",
+  "privateMergeSha": "1bb761e3090b3530d795c48771d54761524f0b47",
+  "privateMainShaValidated": "1bb761e3090b3530d795c48771d54761524f0b47",
+  "publicBaseSha": "acfd20e796a4d0cbaa12fd3d46879b2e17ab9a54",
+  "promotedBy": "Torram",
+  "validatedAt": "2026-09-13T21:11:50.965Z",
+  "internalHealthPassed": true,
+  "internalHealthEvidenceSha256": "695c9048a951f87fb3b6f68f451afe5bc170a2d4c666c014a3dfdfeea0eb99a1",
+  "surfaceSpecHash": "a9c8d22be91bc0dd19238f7676aec62aacc77d8cc3a66327b46d71f16d65164a",
+  "surfaceHash": "2f26716cbd78a1a11bfa50d9004996694e0f1872c04da50324a93e82dc19e043",
+  "surfaceEntries": [
+    {
+      "path": ".agents/plugins/marketplace.json",
+      "sha256": "be09dac51fd3dde8d77cfe719e7d3d8d38cd7a3b5a9526bbcf2c22c1a6cc1527"
+    },
+    {
+      "path": ".claude/rules/martinloop-internal-first.md",
+      "sha256": "63b8c817c6250531fa75303076b53f3e5c533f8e3321d81692f40f426a2191a7"
+    },
+    {
+      "path": ".gitattributes",
+      "sha256": "0717a86ed1d89b589337e57d07dba8fce8c95a2ebe5a83838a5cccf8bdba352a"
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/bug_report.yml",
+      "sha256": "d619efcf993c00c27cfd4a8b3f861f9943e31d98bb45f146d15d24740de05b3f"
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/config.yml",
+      "sha256": "96b26d08886c23e1476c7b01990beda3900d7f5303fb70b196a0133d267dfbd9"
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/feature_request.yml",
+      "sha256": "e69e821290cd660019d24108c932d44629176f5cb1df29402c90a1aa818bdc18"
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/workflow_feedback.yml",
+      "sha256": "972127bcf53314b76b4dc6cf919fb1c87645591266ced6480cb3be5578585292"
+    },
+    {
+      "path": ".github/PULL_REQUEST_TEMPLATE.md",
+      "sha256": "5a5d04a1fa9c98087486dd9dffef6a71dc2cad5771a79f77d42d9741d1736383"
+    },
+    {
+      "path": ".github/workflows/cut-release-tags.yml",
+      "sha256": "eda2a5c8e968fdafe3e085ac3c692195613c89e5db6cda5394568f211acf5411"
+    },
+    {
+      "path": ".github/workflows/martinloop-budget-gate.yml",
+      "sha256": "10e01f159432acfde2f6a105b9437281ae021b4492597f9711d25c6c89685836"
+    },
+    {
+      "path": ".github/workflows/platform-release-validation.yml",
+      "sha256": "5bd3667c8a470f07d7313278efeb0efb4f1c054f21235c61c9c3193aafe251f2"
+    },
+    {
+      "path": ".github/workflows/public-promotion-guard.yml",
+      "sha256": "e1c45b75a6b13e95f0ce41a34afb50ef51fc24ee064b44d2394e9e7bc8c4642b"
+    },
+    {
+      "path": ".github/workflows/public-surface-guard.yml",
+      "sha256": "57c56fe8799c1599a17387408792bc0287386510517ab78448719947b70ceab7"
+    },
+    {
+      "path": ".github/workflows/publish-mcp.yml",
+      "sha256": "0a8297df125473bc303dfc7510652520a228ca65418db5a447c94c7a8dc2f30d"
+    },
+    {
+      "path": ".github/workflows/release.yml",
+      "sha256": "1764a7f1baf30f432ac188c459a3da3ff455c9ee252eb504fee751ccf4b6a427"
+    },
+    {
+      "path": ".github/workflows/test-mcpb.yml",
+      "sha256": "bdbcaeb718965d61b52d4e036b0723930339bb88912c8cbe0c9708355e76d733"
+    },
+    {
+      "path": ".gitignore",
+      "sha256": "a7dd8892f4ad0c8fe5ea747c1170d2c750dc82fccd19e3ef7d90de3d133fe606"
+    },
+    {
+      "path": "AGENTS.md",
+      "sha256": "81df453c509818e9f3d82c48b0436f3e9aa179344e81e094c2abb9ecded9924a"
+    },
+    {
+      "path": "CHANGELOG.md",
+      "sha256": "8da20d023906a23493ded69aa2f20952a820923ad66663a45fb7ca014651991d"
+    },
+    {
+      "path": "CLAUDE.md",
+      "sha256": "3563709254950c797ba92daf28fb6bdaae5a1be912fa128d3c4b30ad51d7abd0"
+    },
+    {
+      "path": "CODE_OF_CONDUCT.md",
+      "sha256": "7f39dfc92fe429bd72b014cd7915c30f373c399e71b99f1760749f36e2d1b16f"
+    },
+    {
+      "path": "CONTEXT.md",
+      "sha256": "4e693ae2244be5fd004bbdc2a6d20b519d743cfbaa313f5ad3d7ae05691d096c"
+    },
+    {
+      "path": "CONTRIBUTING.md",
+      "sha256": "9233097e9db3c099739df11a2841d832d122c6a158da77d443dce89d4662756c"
+    },
+    {
+      "path": "CTO_AUDIT.md",
+      "sha256": "aaaef215e9aef0e08fd5de610268b78c20eafd2b850f2d492e22d8bdaffdf270"
+    },
+    {
+      "path": "LICENSE",
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    {
+      "path": "NEXT_STEP.md",
+      "sha256": "356453e3dcfe012c33cc0da0e801322598297b1ae6774591740d6cea9670621f"
+    },
+    {
+      "path": "README.md",
+      "sha256": "1bc91a9e8b7a82f234da138651fdb2e72589503dd93a9789317bd782423e97c1"
+    },
+    {
+      "path": "SECURITY.md",
+      "sha256": "1b6d78eab449f125d7bd7b96f3ded366f027fda4d560a8846e0ff2a88422a184"
+    },
+    {
+      "path": "benchmarks/README.md",
+      "sha256": "3f61201fe0bbb55e70fc89c8be404f192a747ed5f84ef319e75313625698f65f"
+    },
+    {
+      "path": "benchmarks/fixtures/ralphy-engineering-50.json",
+      "sha256": "7b325ee7b170e6174b5c83dd664d525ec7dd3b2dbf63633737a1e19ace2224b3"
+    },
+    {
+      "path": "benchmarks/fixtures/under-3-challenge.json",
+      "sha256": "871cf7f53ab01fbeebb798a975e44a94453dddb14c32e72dc213dcf958749a06"
+    },
+    {
+      "path": "benchmarks/package.json",
+      "sha256": "9d532b193d017490aab721e69ce19b4568e6f9844ffcbca594cbf449e6927637"
+    },
+    {
+      "path": "benchmarks/src/challenge.ts",
+      "sha256": "fb8d06e19ddfdaf0ef0da0f3fc7c569e54e5320754563b924c341c33de05cc13"
+    },
+    {
+      "path": "benchmarks/src/comparison.ts",
+      "sha256": "fd0f660cad2d3a37931ea9e6bc9e9e5f6c02a1b1ad6af415b95610eb60588e70"
+    },
+    {
+      "path": "benchmarks/src/eval.ts",
+      "sha256": "82633cec542b13a6b65b497feba13903204c3e29aef1735f0d193ddbaa97f634"
+    },
+    {
+      "path": "benchmarks/src/fixtures.ts",
+      "sha256": "3594c7f4ac1b3f58a017f48e7e35590f83e8b07a0202421c0da1d3291606e5f7"
+    },
+    {
+      "path": "benchmarks/src/index.ts",
+      "sha256": "94253a8846362695a13e061b377e1a1d610f1e940c3b8894dba555546fc5dd4c"
+    },
+    {
+      "path": "benchmarks/src/ralphy-stress-report.ts",
+      "sha256": "2df12125c9ac4d8622a14fa1d4a25d0732e59876ea136b4687da1e0cec834b05"
+    },
+    {
+      "path": "benchmarks/src/ralphy-stress.ts",
+      "sha256": "8a455c6e4c53a3c31cf2e0a4e62c01b8bf3e586a703a4f30449a6fc8e3a7ce7f"
+    },
+    {
+      "path": "benchmarks/src/runner.ts",
+      "sha256": "3981f2ff2f48f01de81ffcafcb7aa4f677d0ff011c486fd22ea346adbb495e89"
+    },
+    {
+      "path": "benchmarks/src/scripted-runtime.ts",
+      "sha256": "3a97191ca55ffd6d42c87c0ac0a4b11b6e511f876e0b750c8535f888e9570841"
+    },
+    {
+      "path": "benchmarks/src/types.ts",
+      "sha256": "2ccbbefc93aa443f1a445ecfa1253962fb8cf08f188adbd562cf1619a39fdb99"
+    },
+    {
+      "path": "benchmarks/tests/challenge.test.ts",
+      "sha256": "8b880bd4f7b7485b2336a65861871eeed4214f220fe0a735541e2994fc758780"
+    },
+    {
+      "path": "benchmarks/tests/eval.test.ts",
+      "sha256": "3ef94be0da9f1bc3053a4da878ede55a82baa2664131770e2ecedf3bd831cda1"
+    },
+    {
+      "path": "benchmarks/tests/fixtures.test.ts",
+      "sha256": "74d77c586a4a424961c7375600a5bc308097e7679473a9516af8298bfa22484d"
+    },
+    {
+      "path": "benchmarks/tests/ralphy-stress.test.ts",
+      "sha256": "14ceceae7a3f9a4af7fa61d371fa00629306d532148de17a79136842f320cf2a"
+    },
+    {
+      "path": "benchmarks/tsconfig.build.json",
+      "sha256": "e8ac467d4487d47421c42cc30744b404f4fdc71ad2b999c5e54621abc045bfc9"
+    },
+    {
+      "path": "benchmarks/tsconfig.json",
+      "sha256": "2d48dee4930c1eed5fd9c93f6d5417430894d9572fbf43906014c7d666403fdb"
+    },
+    {
+      "path": "benchmarks/vitest.config.ts",
+      "sha256": "7386029599724c01eb0c080e9d1e70426f922af6773309105bebf7827369a07f"
+    },
+    {
+      "path": "demo/README.md",
+      "sha256": "4775714b1ba31e37a261bf17898c96ae29a4cf324da8d0cb3da5248b0fd08a16"
+    },
+    {
+      "path": "demo/seeded-workspace/README.md",
+      "sha256": "efe767a84232f060f4af9698cee8da5e92c18fd89a01025c47634de14b5ef09a"
+    },
+    {
+      "path": "demo/seeded-workspace/TASKS.md",
+      "sha256": "e51bd6ccd37abedd3d15a7bec054d20b729be7e4ddf9a4a5f368ed1a77ab67e8"
+    },
+    {
+      "path": "demo/seeded-workspace/martin.config.yaml",
+      "sha256": "f3982723e1a84343f7c739a1c25e52cc4ba90fd9a5593e11e201baf6c362390f"
+    },
+    {
+      "path": "demo/seeded-workspace/package.json",
+      "sha256": "f1b0a15c5e90bfda519a8bd9eabf59c3599a1938a2411156033e60b82fc72f4c"
+    },
+    {
+      "path": "demo/seeded-workspace/src/invoice-summary.js",
+      "sha256": "606874c5d2358f73ba5699d713f88b5b67b5850245ea8952e848493e36c7b47d"
+    },
+    {
+      "path": "demo/seeded-workspace/test/invoice-summary.test.js",
+      "sha256": "5ec9059897903807638c9bd179bd25d2ca70b4519694ce3d2d23fcab543ccd7a"
+    },
+    {
+      "path": "dist/vendor/cli/package.json",
+      "sha256": "06a238c476dc9cc5e5d73b6cd42d1100a7453ce22aadae59ce4b4f64998f761e"
+    },
+    {
+      "path": "docs/CLI_AUDIT_FINDINGS.md",
+      "sha256": "3a46e1cb72138185ac7b821a3594e757b3e26cac91d404590dc76426390fbb9b"
+    },
+    {
+      "path": "docs/INCIDENT_REPORT.md",
+      "sha256": "3077009f10d7f7489c15e2db1fa65513edb01689d07dba40a42ff1bb5b98b51d"
+    },
+    {
+      "path": "docs/README.md",
+      "sha256": "3133982926f5ed280f49c114c1214cad9ae81fccbad435882080dacf3ed26cda"
+    },
+    {
+      "path": "docs/agent-failure-atlas.md",
+      "sha256": "2c10f97e799345e2ed8df40a38c0ede73aad19c35bba8e00bbf7874d2f55813e"
+    },
+    {
+      "path": "docs/assets/budget-stop-receipt-screenshot.png",
+      "sha256": "da84259447228f7d5ceb6d1a2cce476eef10415997a09b479a5479c458dc5481"
+    },
+    {
+      "path": "docs/assets/cli-animated.svg",
+      "sha256": "61fbeaa2225fa7b3a87cd72923add76143c6fbb965fb8380c02d722c4c6e642a"
+    },
+    {
+      "path": "docs/assets/cli-static.svg",
+      "sha256": "c99fe09949a56759696c9a6c86ac7e9cd635fbc16e34a523fdae0007e6303783"
+    },
+    {
+      "path": "docs/assets/github-hero-v2.svg",
+      "sha256": "9a065eb638e1759fc1b5f4ffdc072d10087c63fb37a9b674bac3755ba3068f3c"
+    },
+    {
+      "path": "docs/assets/github-social-preview.svg",
+      "sha256": "f367ed238d5858be1d4be64feb17e2fdfd2171f490ad8ae0fc585ec5cce1aa06"
+    },
+    {
+      "path": "docs/assets/martin-ralph-loop.jpg",
+      "sha256": "42af73f89cdad482caf1772b0727a1881c6d1fa5e94d8d8f45ec4e182db707c1"
+    },
+    {
+      "path": "docs/assets/martin-raplph.png.jpg",
+      "sha256": "42af73f89cdad482caf1772b0727a1881c6d1fa5e94d8d8f45ec4e182db707c1"
+    },
+    {
+      "path": "docs/assets/martinloop-logo.png",
+      "sha256": "da02e95ccde3c3934e5fd743d088f8f107db31cd0c53b991ba212a3d15b7775a"
+    },
+    {
+      "path": "docs/assets/nvidia-inception-program-light.png",
+      "sha256": "883c39fa7fdd3a85bb4af33b9f29d0cbc3a7eee5a8f42e78c24c2895df9ae79f"
+    },
+    {
+      "path": "docs/assets/nvidia-inception-program.png",
+      "sha256": "254e7fde9c7eb699a290adf9dd509a2850fac1ef5143a641971dcb74e384f2e5"
+    },
+    {
+      "path": "docs/assets/proof-receipt-live-governed.png",
+      "sha256": "8bb7f69bd53d38b37c9490ade9bb7913822057311f7d6d477ae1a477c2a0570b"
+    },
+    {
+      "path": "docs/assets/side-by-side.svg",
+      "sha256": "b5ffa4311d48f585710d7339b32da47ba03fadf6aaaab4aa5b5987386a275257"
+    },
+    {
+      "path": "docs/concepts/budget-caps.md",
+      "sha256": "9ebba5a59f63216105d37e99f8bf35b858360212663f6e3871b5adaab3781497"
+    },
+    {
+      "path": "docs/concepts/governed-agent-loops.md",
+      "sha256": "5eda8f09227bf1b3c969631912ca7443c20d703ee0df22b0e220d8a3d01ea4b7"
+    },
+    {
+      "path": "docs/concepts/ralph-loop.md",
+      "sha256": "d95083f8156b729c979683d878cf6c34daafd98471a27c3d7117c6f06b6fa0d3"
+    },
+    {
+      "path": "docs/concepts/rollback-evidence.md",
+      "sha256": "1446a826c82129a5c24a5d174b8948e7b282a261d8bada772fbf62eeb90d22b3"
+    },
+    {
+      "path": "docs/concepts/under-3-challenge.md",
+      "sha256": "90c82330b1a93f46696917dc85705ab51d674ba7aea000353eb2f05816b009e4"
+    },
+    {
+      "path": "docs/concepts/verifier-gates.md",
+      "sha256": "d5d8b909cba8fd517b81e76c993b8bb55378659e235e9f107ee6b81beb3e4071"
+    },
+    {
+      "path": "docs/examples/proof-receipts/live-governed-run-receipt.json",
+      "sha256": "1d9d65f36d5ee8aa27654476714f0474db69801b7ab267b13c656763228d51a3"
+    },
+    {
+      "path": "docs/examples/proof-receipts/live-governed-run-receipt.md",
+      "sha256": "2baa21ebe6ce70e5e3a32086908065efe2e264475b5dff87f05d29a07cd67471"
+    },
+    {
+      "path": "docs/for-agents.md",
+      "sha256": "f4f00861b9d8a03ae8cdcde3286db82d75272e2eb5200aca71be4be96f2975c3"
+    },
+    {
+      "path": "docs/getting-started/claude-code.md",
+      "sha256": "c1c34aba1f6c2790239a11457ac79238cad842c69d1f6dbeae0a4bc911307ac8"
+    },
+    {
+      "path": "docs/getting-started/codex.md",
+      "sha256": "928c77703b6fcb681717555c55632e058c17f0e31c3c8ccd60db2b11d1149732"
+    },
+    {
+      "path": "docs/getting-started/examples.md",
+      "sha256": "6842e723cfdb8b506d9d973353154f54f72265b442c4662107780ca10889ab6c"
+    },
+    {
+      "path": "docs/getting-started/mcp.md",
+      "sha256": "920b28a1af4ebe3e03526df819b94aee4c428d928b2c42516e4c81a3190d9d72"
+    },
+    {
+      "path": "docs/getting-started/quickstart.md",
+      "sha256": "d0afc8f4efbaa56267e9a8c6381605ade8e454b92dcfe5e3ff35727bf1ffdeda"
+    },
+    {
+      "path": "docs/incidents/2026-08-release-0.5.5-0.5.7.md",
+      "sha256": "532f54b40380aab885f7b11a7ab9a3693764fe232808d52c700b31e7df72da73"
+    },
+    {
+      "path": "docs/incidents/2026-08-release-cross-repo-index.md",
+      "sha256": "a01cd365f06767fb3b6eb7625062d34df0aacd93aaaad0fedd939fe540df6562"
+    },
+    {
+      "path": "docs/incidents/2026-09-release-controls-119-121.md",
+      "sha256": "b6785d37e3d4655cff5c6cf84a5d5c67eaa2577965ad07493388b5127a2d798d"
+    },
+    {
+      "path": "docs/incidents/README.md",
+      "sha256": "86b7fd5ce53af0241706bbc1ea80c92b1b56be70846a3c98aee4ef4f4a18fb49"
+    },
+    {
+      "path": "docs/oss/AGENT-RUN-RECEIPTS.md",
+      "sha256": "dbc2c4cd68beee42ce4f64c294e4cf930ee03432fa47b1b2591c18d9e9c096ac"
+    },
+    {
+      "path": "docs/oss/AGENT-START-HERE.md",
+      "sha256": "0c23ea8f6a6864b9b419f156ff8335fede5b08e1f9ce17adeb7e97a5099b9e45"
+    },
+    {
+      "path": "docs/oss/BENCHMARK-RECEIPT-PAGE.md",
+      "sha256": "5e5421ce18d0959ceb8c417da8d21172967061a974836e79e96f1eaf0d429f4a"
+    },
+    {
+      "path": "docs/oss/CLAUDE-CODE-WALKTHROUGH.md",
+      "sha256": "974639abc3d9b917b7f30039819646d6f3c31b4f6ee7e549cbdbfef6cd6d91e2"
+    },
+    {
+      "path": "docs/oss/EXAMPLES.md",
+      "sha256": "3c65175e517d4e0db8c77f02de2241b27586a54e098596af53a74561c79f8baa"
+    },
+    {
+      "path": "docs/oss/FAILURE-TAXONOMY-13.md",
+      "sha256": "85060a21b8e074ae78f1c762750320a9af29b5cb1ca2478c1ce6c36046a126f2"
+    },
+    {
+      "path": "docs/oss/FAILURE-TAXONOMY-14.md",
+      "sha256": "6989a1527ecd01e3a2bfe591df83b7370bf35f90319816e17f8dbdd5d0b1e109"
+    },
+    {
+      "path": "docs/oss/FAILURE-TAXONOMY-ALIASES.md",
+      "sha256": "0d2c80970ebee76f827650ea486a4f2fca8a10a299bcfc69e9e3aa6b6388b1a5"
+    },
+    {
+      "path": "docs/oss/MCP-FOR-AI-AGENTS.md",
+      "sha256": "908092e1f792b5c55e0f0216cbbb196e35d2e17fb8728a8bd14a4987836bd766"
+    },
+    {
+      "path": "docs/oss/OSS-BOUNDARY-REPORT.json",
+      "sha256": "54461e8b1aa90fae0183beeaae9b44b50b8b29f3a0c117734c58b955ac90126a"
+    },
+    {
+      "path": "docs/oss/OSS-BOUNDARY-REPORT.md",
+      "sha256": "47cdec60ceb41131ca2d06e053d958ec982dec482b6f418a1ca9a1500381906d"
+    },
+    {
+      "path": "docs/oss/PRE-028-PUBLIC-SURFACE-DIFF.md",
+      "sha256": "929489ab801084195a8deb49bf6a2e5a83c41db7163fe5ee9f1db1f4110b8467"
+    },
+    {
+      "path": "docs/oss/QUICKSTART.md",
+      "sha256": "0fc693d0ee2d2cddcd86f99ccf2e7e59ea9168a13b5eedcbf989ec9b91480914"
+    },
+    {
+      "path": "docs/oss/RALPH-LOOP-SAFETY.md",
+      "sha256": "0286e9804858f4b8e676021e2f9c654144b461f4299c53d2c6bbdf6ce775e3dc"
+    },
+    {
+      "path": "docs/oss/README.md",
+      "sha256": "986e9957e38c53a62201a8a4bcbd6e2bf8c47f97ee9fd74602973ae3b2e55883"
+    },
+    {
+      "path": "docs/oss/WEBSITE-TAXONOMY-SYNC.md",
+      "sha256": "d0fd141f4542247447f8d10e54eb969a1ce42f458f0ff74878657f1d4f13f4a3"
+    },
+    {
+      "path": "docs/oss/failure-taxonomy.runtime.json",
+      "sha256": "54c1f66215f51bbb4d13d7ff02f936964e924d0969dc2642b596aa550039c5d7"
+    },
+    {
+      "path": "docs/product-truth/CLAIMS-REGISTRY.md",
+      "sha256": "390ac0e752e212a343f6a69e677701e463e750031267d2af4c077e64558e955c"
+    },
+    {
+      "path": "docs/product-truth/claims-registry.json",
+      "sha256": "6609a3be909523a45e7af1efa6b9d67810e31ec1315bc9fb53d71287aa29c5d3"
+    },
+    {
+      "path": "docs/product-truth/public-release-truth.json",
+      "sha256": "67d980f03270034ee0891d32ed7582dd03a43e4fc5a77148dd47f64e441ee7f5"
+    },
+    {
+      "path": "docs/reference/cli.md",
+      "sha256": "4a978dfe1a26f92446642ae569203216e81bf61378764c3be8769285dcac72b4"
+    },
+    {
+      "path": "docs/reference/config.md",
+      "sha256": "24aa27a53aaa421b189813b88a77c2c3ee8facb59027caa9ec24d8f27e0a4bf1"
+    },
+    {
+      "path": "docs/reference/mcp-compatibility.md",
+      "sha256": "2883fd83d66cf8718fb06218c9893d0a4bbcc553801fd25a2cd276d9effafd2d"
+    },
+    {
+      "path": "docs/reference/mcp-tools.md",
+      "sha256": "c7f5a4125d4f9d30b8c3ad5bb881addde494781c92db849b4b25edbb66ac9d73"
+    },
+    {
+      "path": "docs/reference/model-support.md",
+      "sha256": "50e7dca1df4af168616739e9f6e37b060abf0c775698dfaaf3fc2d0c82c48b93"
+    },
+    {
+      "path": "docs/reference/packages.md",
+      "sha256": "92a0ac3592479cde0b5b69d980b33d0d5da93745549c2d5e728310bd37fb87d1"
+    },
+    {
+      "path": "docs/reference/sdk.md",
+      "sha256": "bdb2d071213c7ee8625235b04890a495a044578f49ce48f512971280d9d6da5c"
+    },
+    {
+      "path": "docs/release/MCP-0.1.2-RELEASE-NOTES.md",
+      "sha256": "72e82cc261a13e8bb7feecab7944b7e898efc192f743e687de109db5db45f2d4"
+    },
+    {
+      "path": "docs/release/MCP-0.1.3-RELEASE-NOTES.md",
+      "sha256": "f573b36bcc7ccd90606362fb08bcb776bc88f3ac8ae8be0a2e071101741d15aa"
+    },
+    {
+      "path": "docs/release/MCP-0.1.4-RELEASE-NOTES.md",
+      "sha256": "f5a7efc96a814f2b5acf3ecc899538e379e6cb250be51247e5d46fae9cac5171"
+    },
+    {
+      "path": "docs/release/MCP-0.2.0-RELEASE-NOTES.md",
+      "sha256": "4e93bc77c17d93f600fe7f90a419298f5298479a4ef3f37dc130e9f412c87919"
+    },
+    {
+      "path": "docs/release/MCP-0.2.0-RELEASE-PACKET.md",
+      "sha256": "4dc202d408e69d1d9b295c7df43e271595b9b29f68915fe3f5d31627fc8899e9"
+    },
+    {
+      "path": "docs/release/MCP-0.2.5-RELEASE-NOTES.md",
+      "sha256": "e7488def694c45793e4996921e70e80a269032cf103befb61e764c504963c0da"
+    },
+    {
+      "path": "docs/release/MCP-0.2.5-RELEASE-PACKET.md",
+      "sha256": "5f7eb912c2c84f58b7303d82e1f8bec20defe85539aaa0137494b7c1130b942e"
+    },
+    {
+      "path": "docs/release/MCP-0.2.7-RELEASE-NOTES.md",
+      "sha256": "9462555b4acab7648f727c21596dc0a0fb36d8277b4a5da438b65550070d7dba"
+    },
+    {
+      "path": "docs/release/MCP-0.2.7-RELEASE-PACKET.md",
+      "sha256": "5edb39b0a4504fe43b1d1bb0973c264350ff0c77d894e90d3bfb3d8020604da8"
+    },
+    {
+      "path": "docs/release/MCP-0.3.0-RELEASE-NOTES.md",
+      "sha256": "fa4b7f0643198d789e3a909953146cdba3d0ceaf5fa9d79369a72ff898b73cb9"
+    },
+    {
+      "path": "docs/release/MCP-0.3.1-RELEASE-NOTES.md",
+      "sha256": "5f5fe9237e74a00a5faac459cfbccb5e01a83bdc333c6f2ba49f70b847024ff2"
+    },
+    {
+      "path": "docs/release/MCP-0.3.2-RELEASE-NOTES.md",
+      "sha256": "d48c6107ce2ff8ceb9799b6e3ff38851ff977d7ecb9b499ca8ce6bd3fa7c07f7"
+    },
+    {
+      "path": "docs/release/MCP-0.3.3-RELEASE-NOTES.md",
+      "sha256": "a42b75a64b0fb009876274137e0c4ca16df2eb372dcf8fc6305b9a0634b49228"
+    },
+    {
+      "path": "docs/release/MCP-0.3.4-RELEASE-NOTES.md",
+      "sha256": "c7f817cf429eb348aa6c1d0ba6539f6a569b53fce7eab55b36755e7f006aa76a"
+    },
+    {
+      "path": "docs/release/MCP-0.3.5-RELEASE-NOTES.md",
+      "sha256": "fbee440d234b7b2e75937fbaf823c8fc66dbd150c6d5271a98eed85e7027696a"
+    },
+    {
+      "path": "docs/release/MCP-0.5.6-RELEASE-NOTES.md",
+      "sha256": "9186af39ad29670208f6bf45ed4b2e2731d769ebbd1902c918e68e4faceef112"
+    },
+    {
+      "path": "docs/release/MCP-0.5.7-RELEASE-NOTES.md",
+      "sha256": "ab8ec0361830a83d4a021f285256e1f21e2bf90b2e52e308de905b3c02d7a13e"
+    },
+    {
+      "path": "docs/release/MCP-0.6.0-RELEASE-NOTES.md",
+      "sha256": "9feedb968594afb24d68ddec2ae634657086eea20490bcfb2471a24e43aeaaa6"
+    },
+    {
+      "path": "docs/release/MCP-0.6.1-RELEASE-NOTES.md",
+      "sha256": "301230003dbe0010245df1ce718a58d52ecf095140212bd8bf5ae5648ff61efb"
+    },
+    {
+      "path": "docs/release/MCP-0.6.2-RELEASE-NOTES.md",
+      "sha256": "32ae84b707c1e04de6db594d81d7933573910fc81d0acea2e0e6de59b3590996"
+    },
+    {
+      "path": "docs/release/MCP-0.6.3-RELEASE-NOTES.md",
+      "sha256": "dcc4030587f954597fd5217e76d4a639edc64a069b4c37802c7c524ce9438a5f"
+    },
+    {
+      "path": "docs/release/MCP-COMPATIBILITY.md",
+      "sha256": "0a6f5ab7102a617f377d61acaa339570cbfc3d140601bb1705237ba8d0287975"
+    },
+    {
+      "path": "docs/release/MCP-DELIVERY-SLICE-MAP.md",
+      "sha256": "098ae5dfcf742fa6defeeb937be0704b4ced939b5e52935cf3745e6c04871e05"
+    },
+    {
+      "path": "docs/release/MCP-PUBLISHING.md",
+      "sha256": "ab1b51588528adcd30cb7b0aae6690d5e899bf7eeb6f09e8e05469585fd7b812"
+    },
+    {
+      "path": "docs/release/MCP-RELEASE-CHECKLIST.md",
+      "sha256": "547b553f0e8baf2b835f8a0590e118a319cfc2ded87b727c9726fdb0b3f8f18c"
+    },
+    {
+      "path": "docs/release/OSS-0.2.10-RELEASE-NOTES.md",
+      "sha256": "1676e505187540670d22090ad2900f6f99e73d6cb6d0ae69e77b01c6226fcd05"
+    },
+    {
+      "path": "docs/release/OSS-0.2.11-RELEASE-NOTES.md",
+      "sha256": "832926d1af58750ba534c67563bd1853b7bb2ab20255c71bda7fba87bae73271"
+    },
+    {
+      "path": "docs/release/OSS-0.2.6-RELEASE-NOTES.md",
+      "sha256": "cddacbd12f2cdcbda782cb827f1f192580b8199fea8d9f98ca7b6fe0ce3ed1e9"
+    },
+    {
+      "path": "docs/release/OSS-0.2.7-RELEASE-NOTES.md",
+      "sha256": "5e2fafa032d82b2ea0d73235ae1217a27b19df3a24249fefbb90289f1f5134ad"
+    },
+    {
+      "path": "docs/release/OSS-0.2.8-RELEASE-NOTES.md",
+      "sha256": "5ce55ed6f0d7338df0088e4bb4c161a44cf0b91de8fb2add44c050c714aa4e55"
+    },
+    {
+      "path": "docs/release/OSS-0.2.9-RELEASE-NOTES.md",
+      "sha256": "dc41d0d47e3199eddabbbdceb8ae2d450931b22c2e821dbb6cb0081867803538"
+    },
+    {
+      "path": "docs/release/OSS-0.3.0-RELEASE-NOTES.md",
+      "sha256": "5e8530e65131e354f31a8b07b56cd7b33fc35bfd5421567bd5adbcecdaf3c80d"
+    },
+    {
+      "path": "docs/release/OSS-0.3.1-RELEASE-NOTES.md",
+      "sha256": "992939d732d7f40272b3626c523403fc683af1fe387f8476d471fc64384d3dd1"
+    },
+    {
+      "path": "docs/release/OSS-0.3.10-RELEASE-NOTES.md",
+      "sha256": "cba6c943d91f7c8203c8a92ad3ce5f5a266648f060cdf876b71e36dd0b650a84"
+    },
+    {
+      "path": "docs/release/OSS-0.3.11-RELEASE-NOTES.md",
+      "sha256": "84232db39b69e807a6294603e2568f1ae5bfee1c4ed84f8f073f6041824e9031"
+    },
+    {
+      "path": "docs/release/OSS-0.3.13-RELEASE-NOTES.md",
+      "sha256": "fbab6d2b98e3a2829cf96f3c34808aba8ad677bd85b92b63a79eb8dae88b5e52"
+    },
+    {
+      "path": "docs/release/OSS-0.3.14-RELEASE-NOTES.md",
+      "sha256": "318cfb56a6cc62fd47bd4a32b05b05b6334cab6f3a14a6ea9603b552c2319308"
+    },
+    {
+      "path": "docs/release/OSS-0.3.15-RELEASE-NOTES.md",
+      "sha256": "0478208c55e4b4d39ce53bf2269a6c42b2f1cb3f95138fb30480a9a34081a789"
+    },
+    {
+      "path": "docs/release/OSS-0.3.16-RELEASE-NOTES.md",
+      "sha256": "aa462a6f0b75b8911dff321ca5a64b3206ebea135d10632702d0aa426eb757ab"
+    },
+    {
+      "path": "docs/release/OSS-0.3.2-RELEASE-NOTES.md",
+      "sha256": "bbdeffe9b6aecea6a7d63253e78f0ab4e7b8106cae738a46244e82dc55aa479a"
+    },
+    {
+      "path": "docs/release/OSS-0.3.2-VALIDATION-EVIDENCE.md",
+      "sha256": "73ef141ac41a2a3e844a82930fe37aa81d84aa65d40915c393a1fd090679af37"
+    },
+    {
+      "path": "docs/release/OSS-0.3.3-RELEASE-NOTES.md",
+      "sha256": "0ed3b85e85d1dcbce544a63fb0d85eb5aecf0030dd5c89356725fc7af1299fba"
+    },
+    {
+      "path": "docs/release/OSS-0.3.4-RELEASE-NOTES.md",
+      "sha256": "7a51ef9565838ba2139e6c51c5d3b5e6e2a8542b20924fc5a17708c71719e651"
+    },
+    {
+      "path": "docs/release/OSS-0.3.5-RELEASE-NOTES.md",
+      "sha256": "8bffb22919871953a9ff463a7120a31ebe074c3b60a5f121bedd176fe457b309"
+    },
+    {
+      "path": "docs/release/OSS-0.3.6-RELEASE-NOTES.md",
+      "sha256": "08090f5c355550730067b8fb1b40f68949600bd2997a87283c4578d85b797612"
+    },
+    {
+      "path": "docs/release/OSS-0.3.7-RELEASE-NOTES.md",
+      "sha256": "4a2fcac0365d8d59642bea52b0dcf27a3401d7da84f442e0f8c4a02728f8ccda"
+    },
+    {
+      "path": "docs/release/OSS-0.3.8-RELEASE-NOTES.md",
+      "sha256": "e71af86ff58d18487ff7060a466a5f180a712542ee4c1af243af5539a3ccbfa7"
+    },
+    {
+      "path": "docs/release/OSS-0.3.9-RELEASE-NOTES.md",
+      "sha256": "4696a4fb82711528235c160ce0d671e25a5d4f8e10b5ca026853d431e95f7103"
+    },
+    {
+      "path": "docs/release/OSS-0.5.6-RELEASE-NOTES.md",
+      "sha256": "fd255a116f735c11c93b0484c5674dcda7005f98e4ceb5c80fa2cd7338cf20ea"
+    },
+    {
+      "path": "docs/release/OSS-0.5.7-RELEASE-NOTES.md",
+      "sha256": "2924d5a678ca1c0282943bbf7ed78cd0dfbac734c7f0f358c30a6af8e293abf4"
+    },
+    {
+      "path": "docs/release/OSS-0.6.0-RELEASE-NOTES.md",
+      "sha256": "db7683e4751b3396eae0726e37333b17d433a001972de1d5f740cce9c7ef0711"
+    },
+    {
+      "path": "docs/release/OSS-0.6.1-RELEASE-NOTES.md",
+      "sha256": "82567a853b8e813099d4aa76a75c06425b0651ca6b51d3294e7f98d6b220ad69"
+    },
+    {
+      "path": "docs/release/OSS-0.6.2-RELEASE-NOTES.md",
+      "sha256": "8caf6ea6d0e90f7134219b66f5ad1f43b56ea8a2e16852099fca36b8d7eeeb10"
+    },
+    {
+      "path": "docs/release/OSS-0.6.3-RELEASE-NOTES.md",
+      "sha256": "0f3d39f4b97fbb62f2ccae4b9e51ad8fc9b1b0abae088b1fdc50a6739bd8350b"
+    },
+    {
+      "path": "docs/release/ROOT-DELIVERY-SLICE-MAP.md",
+      "sha256": "6630b907658a938467fd04b8a2e9aecd25ab3102194baa15be13b561f2a7bbac"
+    },
+    {
+      "path": "docs/release/VERSION-LEDGER.md",
+      "sha256": "aeea3a651b0fefb22a5ecf8d09742b22f6705ea94db77dd54ce234ae1cb78752"
+    },
+    {
+      "path": "docs/release/reliability-hardening/BASELINE.md",
+      "sha256": "9943d2d1045b309a305d2768b849ca9c560b4c5bcc33fc8adb3817a4560e7232"
+    },
+    {
+      "path": "docs/release/reliability-hardening/REDTEAM-RESULTS.md",
+      "sha256": "9c8b8af827fc387db4814e2dcc4a7826a6e347aeed819e143de7dfc4c27e209f"
+    },
+    {
+      "path": "docs/release/reliability-hardening/STAGING-VERIFICATION.md",
+      "sha256": "a168b6756e563f6d28342d7fe9b773aae59e322107261b4b7b2235b144162a61"
+    },
+    {
+      "path": "docs/release/v0.2.6.md",
+      "sha256": "9bb718956b9722755979888b4969c3aacda33c9f1b1230fb995f29430500ae02"
+    },
+    {
+      "path": "docs/release/v0.2.7.md",
+      "sha256": "d8a4ceaddc7417fe7cf471354c641a2f3dde4babd1d025deb8f6a0990c2d6917"
+    },
+    {
+      "path": "docs/security/policy.md",
+      "sha256": "6f4fdf38c14b295da5e4633acc11d528bbdada46a86be3006b4490ece3bb570a"
+    },
+    {
+      "path": "docs/security/prompt-injection.md",
+      "sha256": "456b6d41aa8593f8544b0df97fccd1bb92b8309b30fc22a8b32f5097e7e3cd8e"
+    },
+    {
+      "path": "docs/security/verifier-safety.md",
+      "sha256": "82d89a17f43b92a9c7b12e41a191c8cf0f2e2df83fb85fe3e63598cea02195be"
+    },
+    {
+      "path": "examples/README.md",
+      "sha256": "a3a95ab859fe399572e0603a8ce65596ed893e0b453d2b8f3e66fc8623d660b2"
+    },
+    {
+      "path": "examples/github-actions-budget-gate/.github/workflows/martinloop-budget-gate.yml",
+      "sha256": "1967a194405c7ca32d6e181e8003943a9a64bbe5760f76e5de7047329d6eddb3"
+    },
+    {
+      "path": "examples/github-actions-budget-gate/README.md",
+      "sha256": "7f8ac205dd212f84a8792f1b103a938ae4e489a73dd0948128a666fc24a6b75c"
+    },
+    {
+      "path": "examples/github-actions-budget-gate/martin.config.yaml",
+      "sha256": "b12fffb22532f51ed9757a821b0eb8f9c9dc7f7aa604249b7491133a226e6d56"
+    },
+    {
+      "path": "examples/opencode-adapter/README.md",
+      "sha256": "749a5f45b08a64933a3ad928326550934995d2e11dde317d0bbb13316c15a075"
+    },
+    {
+      "path": "examples/opencode-adapter/expected-run-record.jsonl",
+      "sha256": "f73ee5e3c7944b95d9cfbbc467be108dcaeae14e08e8714a40b43c1d2ab516b1"
+    },
+    {
+      "path": "examples/opencode-adapter/martin.config.yaml",
+      "sha256": "3c884c26c14c7261da7311462eadd338e67ca6c5886baf9963c475b65937facb"
+    },
+    {
+      "path": "llms-full.txt",
+      "sha256": "3fbd243ced02510f300f8a71212e6c040a996a0dd3016b179d9f64a7dac1d60f"
+    },
+    {
+      "path": "llms.txt",
+      "sha256": "7b0ee2eba22c84126f9a65d8191a7f40d6de7caf63a4775d907d3bedac78523d"
+    },
+    {
+      "path": "martin.config.example.yaml",
+      "sha256": "5492ec01f6eb3a6244e7744ffecadaf9b97e832dd05aa4f3d553b29a6644ae3a"
+    },
+    {
+      "path": "package.json",
+      "sha256": "ff8e38e8b67e9df56cfb7daca66a4b3d6efdda757dfb8f5eb509a956ccd96d0f"
+    },
+    {
+      "path": "packages/README.md",
+      "sha256": "a61977db3bc21462e39067dc001705dcc06156a0f84e61390ac23b966cb139cd"
+    },
+    {
+      "path": "packages/adapters/package.json",
+      "sha256": "cf5a5290f7c4ec49d9b2c31a63aaee572221bcd29f4e32fd5cb14bab536eb118"
+    },
+    {
+      "path": "packages/adapters/scripts/run-test-lane.mjs",
+      "sha256": "cfe6daa0af2ffa4bf94506933834f0df5270e69e33651d801a40a16e02f99ab7"
+    },
+    {
+      "path": "packages/adapters/src/claude-cli.ts",
+      "sha256": "7b13dcdc3a78e34cfd663048de24b12b8d2362414be5f0d772e2347314140978"
+    },
+    {
+      "path": "packages/adapters/src/cli-bridge.ts",
+      "sha256": "867d53e5b7bf6e09938f792da1bb935f858d63ae4f95b7c0112a8cd4225eb904"
+    },
+    {
+      "path": "packages/adapters/src/codex-capabilities.ts",
+      "sha256": "aebf34f206715c8f43dc04846ba4eb3375a4b8fc1f4849cbda0c07752012d315"
+    },
+    {
+      "path": "packages/adapters/src/codex-cli.ts",
+      "sha256": "ada92f197b05aecf7433d33148ef2f5a4e0489cc3859bafce68e73551359f328"
+    },
+    {
+      "path": "packages/adapters/src/codex-host.ts",
+      "sha256": "b8ae67b78cf531e83e1deb6268aea6b608c0e9cd61ad8ecbcde3f522eb440af5"
+    },
+    {
+      "path": "packages/adapters/src/codex-launcher.ts",
+      "sha256": "f6fde0e7eff5b11bc7b906aa9be277c0079ddeef27072cd86f21960803beea74"
+    },
+    {
+      "path": "packages/adapters/src/direct-provider.ts",
+      "sha256": "30e84ddaaadbde46a33be6aea5825e8d42ef53e386710dc78c083b6cf9d59b82"
+    },
+    {
+      "path": "packages/adapters/src/index.ts",
+      "sha256": "7723a4d8813d8d94e0521cb97939911d88e4f412ac0495b0d0637b5a34e13130"
+    },
+    {
+      "path": "packages/adapters/src/openai-compatible.ts",
+      "sha256": "f8184d00ca2348dbf602a48e97fa31312265e3aa51818a4fd1981a7cabab9e6f"
+    },
+    {
+      "path": "packages/adapters/src/runtime-support.ts",
+      "sha256": "85e2df768a4e79ab2dc92080d9dbde8711fb650a5739ff74241d0de5cbbdf8af"
+    },
+    {
+      "path": "packages/adapters/src/stub-agent-cli.ts",
+      "sha256": "eb4f162d47851d11c29434624eaa751e90323ea6112c88bc50d4442fc546bffe"
+    },
+    {
+      "path": "packages/adapters/src/stub-direct-provider.ts",
+      "sha256": "8e2a54006d77590ef04f627801040ef38096f7320f5a196d299a857205d4b8a0"
+    },
+    {
+      "path": "packages/adapters/src/verifier-only.ts",
+      "sha256": "6bd27838274a5b84418575cbca6c30e6b7a9332ed3232653f3e8f9cb9d77410f"
+    },
+    {
+      "path": "packages/adapters/src/workspace-edit-protocol.ts",
+      "sha256": "b62af73841308f8116931eab12cb5b7bf5faa611a422224734eb36c5d82978c1"
+    },
+    {
+      "path": "packages/adapters/tests/claude-cli.test.ts",
+      "sha256": "aaa1c280bfe11bf3cb5079d87a2020ec5846c44aef9b40a4952667222f7aed08"
+    },
+    {
+      "path": "packages/adapters/tests/cli-bridge.test.ts",
+      "sha256": "9cfbb7443ef45fa209d50832cfed78141c8c1f0199f68faabfd5bbdb5a59749c"
+    },
+    {
+      "path": "packages/adapters/tests/codex-cli.test.ts",
+      "sha256": "fcfb21b019b79137c004029d21d91db321cf90f858fc646fd7bce3a614591382"
+    },
+    {
+      "path": "packages/adapters/tests/codex-launcher.test.ts",
+      "sha256": "4b0c328a1c0399bc4c38ae7ad9a29e82f192d1fe58ef6c9e7a9382643fba1573"
+    },
+    {
+      "path": "packages/adapters/tests/openai-compatible-workspace-edit.test.ts",
+      "sha256": "29fa770bd2af3e16fc2da8af630e4263dd594b4b156ff4aa4ad9239d83ffe73b"
+    },
+    {
+      "path": "packages/adapters/tests/openai-compatible.test.ts",
+      "sha256": "5e5ac44fc93b8bf550214d437301f1974ffcca5a78a04f5ff53d621e8c434a5f"
+    },
+    {
+      "path": "packages/adapters/tsconfig.build.json",
+      "sha256": "6dcc6c5442ed006d688ead4c66c0e35be7bef32b0286fee2f547614b74e1e471"
+    },
+    {
+      "path": "packages/adapters/tsconfig.json",
+      "sha256": "f9e4838f5afcd33342518d492e7d59e00c17d87ea901addc142ca08df15c9abc"
+    },
+    {
+      "path": "packages/adapters/vitest.config.ts",
+      "sha256": "dd1bbf236f2c1e27c6a13d349449cea931747453f041ff2610089da40e99c66b"
+    },
+    {
+      "path": "packages/cli/README.md",
+      "sha256": "da19b15a00c5aed419dfcb9a964ebda0b901f84939ca5f3c4da6542d209130d8"
+    },
+    {
+      "path": "packages/cli/package.json",
+      "sha256": "da7608f3db0c53f5e3306295e0690ec22e97f43e16796e67a0ad344749d053fc"
+    },
+    {
+      "path": "packages/cli/scripts/smoke-intake-live.mts",
+      "sha256": "1309b390eb9184286e033f499b7eddd5e3cf1ee7d7f7e60208ad6a891b6f2ad2"
+    },
+    {
+      "path": "packages/cli/scripts/verify-host-matrix-live.mjs",
+      "sha256": "d5307b36918c307802169d82f0c08cff123bba8092e0eb7043c4d6406f5d802f"
+    },
+    {
+      "path": "packages/cli/src/arcade/README.md",
+      "sha256": "ce8581a747a837a5460f4e079743279bff60f3d18bc4d664787e7579f0859ad0"
+    },
+    {
+      "path": "packages/cli/src/arcade/index.ts",
+      "sha256": "94701c5b900b70bcdba89ef930314832bf8d290197cefb44f95be1103b782555"
+    },
+    {
+      "path": "packages/cli/src/arcade/offer.ts",
+      "sha256": "9012b1cd1df2b7070a67100d36c155583ebe63c9a397c4975e4fa53dd85ec982"
+    },
+    {
+      "path": "packages/cli/src/arcade/space-invaders.ts",
+      "sha256": "5aa2ffe1dabfc176d3424c3c2b869f0008cfcf36076294ad3ef3507aa294532c"
+    },
+    {
+      "path": "packages/cli/src/bin/martin.ts",
+      "sha256": "4c42e9c5686d7b4b95a4c4dac3e59a42ab5d532d292994a670c90259a8e1ca99"
+    },
+    {
+      "path": "packages/cli/src/cli-milestone-state.ts",
+      "sha256": "ac80fd5dd9eb986686edc92e6f2894ac90993ab33e31a920a0a29f6adf553bd7"
+    },
+    {
+      "path": "packages/cli/src/governed-badge.ts",
+      "sha256": "de914f226fb42be1a01d4a44cdbe7775f22562476354f0be1ce373d6236ac09a"
+    },
+    {
+      "path": "packages/cli/src/home-dir.ts",
+      "sha256": "c1baa25cbd6ff1f27ffe5b767cbe02d2ce4652941e99099ac1dc4ce1f750ae7c"
+    },
+    {
+      "path": "packages/cli/src/index.ts",
+      "sha256": "afa04964bb6743b59aeaf7a9e321a03d2786cca351e2bc96b1e4ca781c9224e0"
+    },
+    {
+      "path": "packages/cli/src/mcp-config.ts",
+      "sha256": "49f42bdb71112510fafef07c1fb0bd182fde054ed303fb1b749933f538e4ff1f"
+    },
+    {
+      "path": "packages/cli/src/mcp-install-state.ts",
+      "sha256": "481b02a29161387980c59bbce78feebff96b9688781332a91bb597a5a3723ec5"
+    },
+    {
+      "path": "packages/cli/src/persistence.ts",
+      "sha256": "2017b4eca0d1a2935258f37b7981c7b38c03c13c84cb0b382ef306ac1531b90a"
+    },
+    {
+      "path": "packages/cli/src/phase-command-center.ts",
+      "sha256": "47f030a0438cf50658811f10d49275b2fab8c095d789b7ff7b970ec0370503fd"
+    },
+    {
+      "path": "packages/cli/src/post-run-experience/coordinator.ts",
+      "sha256": "61ccb68bbc1dfb958ddf3e624b200381cce282fca4b81341d5ff3ed410ebdd25"
+    },
+    {
+      "path": "packages/cli/src/post-run-experience/renderer.ts",
+      "sha256": "e6cffc356755ca63767883c7513e9f7fd39b0e2a52b30e0ef817fa4d5d4de92c"
+    },
+    {
+      "path": "packages/cli/src/post-run-experience/types.ts",
+      "sha256": "9082f9ebd10bde91c8bd6a5cf83a0be0fba0e712b96bc076361592996d426185"
+    },
+    {
+      "path": "packages/cli/src/proof-card.ts",
+      "sha256": "38c5211a9f3e6959220307e28d31b18980fcb23e30c3afcf1f0f147d4f2e176e"
+    },
+    {
+      "path": "packages/cli/src/reliability-score.ts",
+      "sha256": "43bc61c4fc91bc71d346acc533e5c7f3e6f0c52c16cbc0a9ed444507ba38d2e0"
+    },
+    {
+      "path": "packages/cli/src/remote-experience.ts",
+      "sha256": "043e679295c8670e6d3c527b1fe01ebaea13e2d06b78653eec232bbb46657098"
+    },
+    {
+      "path": "packages/cli/src/run-five-feedback.ts",
+      "sha256": "d124f1d3d75fa03d9eb24070b5117076f166d3ea041e9049b0284ea70dec136b"
+    },
+    {
+      "path": "packages/cli/src/run-store.ts",
+      "sha256": "9d4b6959464da55751649a19011c5dde652bb196315ebff96eb981e1a5ae2858"
+    },
+    {
+      "path": "packages/cli/src/sync-client.ts",
+      "sha256": "f7d9753f11c5f85bb5135a19e0b5b7780a006bdfbbffc071626fddcaf28a2829"
+    },
+    {
+      "path": "packages/cli/src/sync-privacy.ts",
+      "sha256": "83f377d4e58128c0fbbf5277d0c2a4f64a18553d3e7e4f3adabeb446778ad91c"
+    },
+    {
+      "path": "packages/cli/src/telemetry.ts",
+      "sha256": "225b41beeb6e12ae871c0264d1d4bb0f7ea598dfa30f0bd7724fee0df5bf530f"
+    },
+    {
+      "path": "packages/cli/src/update-prompt.ts",
+      "sha256": "347d197baac54ade52712964616364ea39d786cba34af119edd9f5f869bbe15f"
+    },
+    {
+      "path": "packages/cli/src/utils/platform.ts",
+      "sha256": "cc49f9d564e02814cddeaebffdb434cd258da60b5ad753e4fdcfa5a641d4f0a2"
+    },
+    {
+      "path": "packages/cli/src/ux.ts",
+      "sha256": "b1247832b0890bb2afafa007a8faa5c38d03b931b05bfabefe3c1ca092ae5952"
+    },
+    {
+      "path": "packages/cli/src/verified-handoff-renderer.ts",
+      "sha256": "6455ec434f125681dbfa3c190d41f4bccdca7a091c64ef0d65fa45f47d242c38"
+    },
+    {
+      "path": "packages/cli/src/workflow-state.ts",
+      "sha256": "605b3968b044fa33ecbf9eea1d06c5f75a144a53dae0683af566b55f212c2847"
+    },
+    {
+      "path": "packages/cli/tests/_intake-queue-writer.ts",
+      "sha256": "0fafbc3ff1f4a0e4b746394d16a5d4a7cb2b66cb62a1a8aa93e7493f42fcd562"
+    },
+    {
+      "path": "packages/cli/tests/arcade-offer.test.ts",
+      "sha256": "a09d580aaccb785f369154b63fd53580154c2b867b8adc7747b992943c8c6956"
+    },
+    {
+      "path": "packages/cli/tests/auto-governance.test.ts",
+      "sha256": "6a946e3d19754197607aa38aaf4641bb902b9bfd3781f915d297fb78d1a06697"
+    },
+    {
+      "path": "packages/cli/tests/cli-integration.test.ts",
+      "sha256": "9e3b9ad3341706043df055e9d1e52fd429d9814625882946b237e335c649cab8"
+    },
+    {
+      "path": "packages/cli/tests/cli-milestone-state-intake.test.ts",
+      "sha256": "e80b45e8f7a65554083c41629047095ba01f31ea2dbd3e2a86541e8c4756df13"
+    },
+    {
+      "path": "packages/cli/tests/cli-milestone-state.test.ts",
+      "sha256": "0e5125c4ab238bac149b928dce8f944342ae69acc7e8af809cc66999719e36f6"
+    },
+    {
+      "path": "packages/cli/tests/cli.test.ts",
+      "sha256": "93780277de1b43aa2860678066621818ec5a2958dd6340aff1a4befba6e66f70"
+    },
+    {
+      "path": "packages/cli/tests/corpus-intelligence.test.ts",
+      "sha256": "ecc604dcccf5b2014c9195bf6b15016eaddb8c3d06a7eb06aae7726331525d80"
+    },
+    {
+      "path": "packages/cli/tests/exit-signal-cli.test.ts",
+      "sha256": "85ac66503ee893eb30baa32da6171c0d8ade071d7bd0f1ac0d34907e631d72f9"
+    },
+    {
+      "path": "packages/cli/tests/governed-badge.test.ts",
+      "sha256": "6c1c3eb4528920e3dbb332de5eabfe6f7103b90f67667ae75f0359d7fc5ea488"
+    },
+    {
+      "path": "packages/cli/tests/home-dir.test.ts",
+      "sha256": "150624276d702cb56d0d6e07f0e8d821aeaea71b5e5e6dd4f23c728d97daba02"
+    },
+    {
+      "path": "packages/cli/tests/mcp-config.test.ts",
+      "sha256": "1e17747f635e3ea517dc92c15efdf125727b32b84646393a6331ae09a4ddb207"
+    },
+    {
+      "path": "packages/cli/tests/mcp-install-state.test.ts",
+      "sha256": "a906a53b9b9a427d4aa261e99464e184394a58d1b61b72ba4d0c97ff04d0225b"
+    },
+    {
+      "path": "packages/cli/tests/model-auto-selection.test.ts",
+      "sha256": "ad7f9f3ba471697d88442da1bd57260fb793394de10a946334f289a2e7eb4483"
+    },
+    {
+      "path": "packages/cli/tests/operator-commands.test.ts",
+      "sha256": "e34e50186e8d3b44bc23d7bc86c9fe9ee066a10cc996d383f7ddf3a9cbef3ee2"
+    },
+    {
+      "path": "packages/cli/tests/persistence.test.ts",
+      "sha256": "21d2aa8d47c2260c90d8dd224f701d0b1fc5b993aec131cff4fbfefac641516c"
+    },
+    {
+      "path": "packages/cli/tests/phase-command-center.test.ts",
+      "sha256": "3d62f67eb8b65ba2d94544a317a10f6f13d40b8934491c20edbdce2bc608eb56"
+    },
+    {
+      "path": "packages/cli/tests/post-run-experience.test.ts",
+      "sha256": "316158c1d6a503b22a64a78e968746229e20d5b693827fd455b360c45c1a0020"
+    },
+    {
+      "path": "packages/cli/tests/proof-card.test.ts",
+      "sha256": "36e86f9208f45ee75c34c44f6699252124581b2d947d1bbbee6abcbf25efd9d9"
+    },
+    {
+      "path": "packages/cli/tests/proof-surfaces-cli.test.ts",
+      "sha256": "8e90fccee53742e69d66c530e00e531fe5bab3a87e1dfba0af912f9aa09c388d"
+    },
+    {
+      "path": "packages/cli/tests/release-hardening.test.ts",
+      "sha256": "22ce00af52678020b27e11b70fa8b735d1e93b8dfcb22dfdeb0d31180f33ae37"
+    },
+    {
+      "path": "packages/cli/tests/reliability-score.test.ts",
+      "sha256": "4b9bcbae0ce21d2cc148ae75ba2865f6a8a1eb433aaa5a133e0126477ab645c0"
+    },
+    {
+      "path": "packages/cli/tests/remote-experience.test.ts",
+      "sha256": "505a54eb1a7f07775b13e440899de80d7856b0ec792bee48180496d6087f1ec7"
+    },
+    {
+      "path": "packages/cli/tests/run-history-intelligence.test.ts",
+      "sha256": "ce0daee3008d71cd69d3848fe5cad0483f04248dcb72c55b66ae767f421ea2b8"
+    },
+    {
+      "path": "packages/cli/tests/run-store.test.ts",
+      "sha256": "02a3a2cfe28cc137ce8385b1e2d5b3596b19cd7093150b18625f96a546cf40a7"
+    },
+    {
+      "path": "packages/cli/tests/streaming-budget-inspector.test.ts",
+      "sha256": "7bcaf12058f0b2ae25a2c07509609f39b48b5d3d897d4c4d4dedc8b108717cf9"
+    },
+    {
+      "path": "packages/cli/tests/sync-client.test.ts",
+      "sha256": "d6f5e3bebc92f531343242eac104bfee3065ab24c62f9ff0b5d0b4659cf3bf16"
+    },
+    {
+      "path": "packages/cli/tests/sync-receipt-transport.test.ts",
+      "sha256": "e7fe5fde1e18418c54cbb5f9330e45b12b67c71586c9d092d00d123758b786a0"
+    },
+    {
+      "path": "packages/cli/tests/telemetry.test.ts",
+      "sha256": "5e404f03763aebff8b4b7621f984d02cca2c2aa3416de1572e360b1f332bbc9d"
+    },
+    {
+      "path": "packages/cli/tests/trajectory-triage.test.ts",
+      "sha256": "871877acfd1417f2ed769e607d7ae6888843d1a81d09bd736b57e5279d8222cb"
+    },
+    {
+      "path": "packages/cli/tests/update-prompt.test.ts",
+      "sha256": "d5d3ad409bbac62da871339d9b0fda8968fba7c61c89cb31000f15f842cb920e"
+    },
+    {
+      "path": "packages/cli/tests/ux-milestone-prompt.test.ts",
+      "sha256": "bc4f53ee14bdfaba710176f32940b06e2c929239cc86e40e6f5dad73e89970ad"
+    },
+    {
+      "path": "packages/cli/tests/version-enforcement.test.ts",
+      "sha256": "87d0bb73e6b541b1a67845e5cf54d96adb24b27d757d9c76928908c80415cb7a"
+    },
+    {
+      "path": "packages/cli/tests/workflow-state.test.ts",
+      "sha256": "a987be39ef826cb20df6f77e47f9e64d18ab86cf2d770510cb861974bb5eafc1"
+    },
+    {
+      "path": "packages/cli/tsconfig.build.json",
+      "sha256": "59d8c86871a31ab5a28fa70a781ef7776d01f6808943366f304b8e3ac19a7247"
+    },
+    {
+      "path": "packages/cli/tsconfig.json",
+      "sha256": "70d609481d62c7a31b5dda8381c8fada3b05188e5828cec53c4c7d10139b1203"
+    },
+    {
+      "path": "packages/cli/vitest.config.ts",
+      "sha256": "4c8ab849e149c3c4e20a7511d27493659acdcb9b024f85898fe829986f6a54cd"
+    },
+    {
+      "path": "packages/contracts/package.json",
+      "sha256": "56b34ebdfe50c5853e9e73eab68b14d031407eb928e3856c5b60480603dbd0c7"
+    },
+    {
+      "path": "packages/contracts/src/adapter-capabilities.ts",
+      "sha256": "3a8221fb1f7533673e6b33f57d8de4f249fa7ebdc1ba55b60744c79532f7234e"
+    },
+    {
+      "path": "packages/contracts/src/agent-execution.ts",
+      "sha256": "fbb2641f242c3936750e06b0aa3fc64b139491a53f7ddcdc5fbbc18bba447220"
+    },
+    {
+      "path": "packages/contracts/src/context-graph.ts",
+      "sha256": "7c38c52ae6a88c1b082aa14ef3aa6e2ef86d4f80cc166c9397d3677c36e79991"
+    },
+    {
+      "path": "packages/contracts/src/context-handoff.ts",
+      "sha256": "c6fde9fbf0e3b9c05d706ce91ce683cfbdf231c8788320091cd73beafc5b38e7"
+    },
+    {
+      "path": "packages/contracts/src/context-manifest.ts",
+      "sha256": "4144e8a8bdff48fc5455c79a0fdfaf9039a05a877fa002b8fee0611c4060dcd4"
+    },
+    {
+      "path": "packages/contracts/src/context-shadow.ts",
+      "sha256": "a0d7bd65a76fdd53e302bb0f2d66ec7676dbb6c8e3fcd6a307cc9cd945b0cea9"
+    },
+    {
+      "path": "packages/contracts/src/delivery.ts",
+      "sha256": "08dbff62221fa21fef4b9f11ef3fec3ab2df56b8ee97ac1ebbce895fb4452693"
+    },
+    {
+      "path": "packages/contracts/src/execution-policy.ts",
+      "sha256": "c6b5a01c329d77cd7a783e9da4613eb2d415e951633278d72e45a20c44886ae7"
+    },
+    {
+      "path": "packages/contracts/src/exits.ts",
+      "sha256": "a3d5860dcabc78ee52cf635e4c244313e88809429233bebb121b413256b3b623"
+    },
+    {
+      "path": "packages/contracts/src/governance.ts",
+      "sha256": "829256860b61af7aa8d7be372359168a4c73df01aca5de07a2ca794a67ca7ed4"
+    },
+    {
+      "path": "packages/contracts/src/identity.ts",
+      "sha256": "6b718aa228074b3bf713527044c313299eec79baa5d561b482aa338ca22a2ebd"
+    },
+    {
+      "path": "packages/contracts/src/index.ts",
+      "sha256": "05f1e605ae040df45c512ce18187eac554145c5b3f5eb21e77c177ce5a4bfbad"
+    },
+    {
+      "path": "packages/contracts/src/mission.ts",
+      "sha256": "e6f4512ca82ac1450c063e954ed6240de60d11c503f88f62460eadcbc6c8553e"
+    },
+    {
+      "path": "packages/contracts/src/observation.ts",
+      "sha256": "1d8e4f5e41b7bb7842002643dba58b49482294f838ba58fc57ded703c2d511ee"
+    },
+    {
+      "path": "packages/contracts/src/operator.ts",
+      "sha256": "bf5e91ebc3129d4caf2ba29396b6717a55304c0293ddc6b6d9d626a8329dc040"
+    },
+    {
+      "path": "packages/contracts/src/trajectory.ts",
+      "sha256": "55d7d42d1f18bc6d6a43698e7e6d1d0ca529907708a1867d02fd3f93ab26f2fb"
+    },
+    {
+      "path": "packages/contracts/src/verification.ts",
+      "sha256": "4db4f43d22e44f35fe1eb897a29ae0102af4e2f3eeef513d69abff9b9bac0843"
+    },
+    {
+      "path": "packages/contracts/src/verified-handoff.ts",
+      "sha256": "d51c183432d24afec562198485099e6537c8e4dc90769834adfa6ad70974121c"
+    },
+    {
+      "path": "packages/contracts/tests/agent-execution.test.ts",
+      "sha256": "05e40b22996adb3a5397ce78bb9f7c2fbc077ed9570c4c8ebdbac312eab19dc0"
+    },
+    {
+      "path": "packages/contracts/tests/context-manifest.test.ts",
+      "sha256": "e7844ae40466551ebeb20f914cc850143a69eb441d772289755f2f256b921ab0"
+    },
+    {
+      "path": "packages/contracts/tests/fixtures/context-c5-v1.json",
+      "sha256": "f4fa95560fd50a4dd2803b8c265ca94ce55d695262a0629825ddae223e216326"
+    },
+    {
+      "path": "packages/contracts/tests/fixtures/context-ledger-v1.json",
+      "sha256": "06e0c6bb6e7fb05e6cbf8aafe0bc0a0bcef5cd4a181129a4041239378ae78b72"
+    },
+    {
+      "path": "packages/contracts/tests/fixtures/context-manifest-v1.json",
+      "sha256": "7aed5024c0b0212c812bc5442f650b7fff24a041f82ed5819c17e234b8a74b45"
+    },
+    {
+      "path": "packages/contracts/tests/fixtures/governance-policy.json",
+      "sha256": "1d49008bb0b7278a3b969961b23ade78dff0a04a421326aea7e0d49ee14dd264"
+    },
+    {
+      "path": "packages/contracts/tests/governance.test.ts",
+      "sha256": "bc8e785aa3ac73c0875b1bdf853cdf88633d396edf6a2be40f6327388de29e7e"
+    },
+    {
+      "path": "packages/contracts/tests/loop-contracts.test.ts",
+      "sha256": "ced80c313f981d0bbf3cf89d0239b511a02100c66c25170d7228eb5cbb5373d1"
+    },
+    {
+      "path": "packages/contracts/tests/portfolio-snapshot.test.ts",
+      "sha256": "a932017446ca2b2ff1e206636e50bb02f0f72b7dda9940fd77cc3be5134ce4b4"
+    },
+    {
+      "path": "packages/contracts/tests/telemetry-envelope.test.ts",
+      "sha256": "df499ba5cdd7b7705567956f3f4f24d5db9678ccaba8ea41d53ab66bcd348e1f"
+    },
+    {
+      "path": "packages/contracts/tests/verified-handoff.test.ts",
+      "sha256": "acd6b5be283bdb36d1a0fc4175a2c87c54925d37b563d947fda54a8fc764045a"
+    },
+    {
+      "path": "packages/contracts/tsconfig.build.json",
+      "sha256": "727041493e4c3be0c2f0bfd744a808f68378f4df1b319b52e641b02626c923c9"
+    },
+    {
+      "path": "packages/contracts/tsconfig.json",
+      "sha256": "b84e60975101779bdba8d29d2300cc0135d5346ccbddad1e5f256a02f6908639"
+    },
+    {
+      "path": "packages/contracts/vitest.config.ts",
+      "sha256": "74feb3a6ae3d61e98c904af55dce2d041863be3cc843ea4d7ee2ad783fd71cf3"
+    },
+    {
+      "path": "packages/core/package.json",
+      "sha256": "d48a90cbc76dba6e342197ad4b5564d24fd79a2d2e56c6f64c67da1b7dc03ea2"
+    },
+    {
+      "path": "packages/core/scripts/run-runtime-test-lane.mjs",
+      "sha256": "0b4eea39e7cceb48fee8d76e83ef44548cb9c8fa7dbce2aad4ea6be8977f6bfe"
+    },
+    {
+      "path": "packages/core/src/compiler.ts",
+      "sha256": "d4b79fae29cca30cd529f4c0d4f9df1ec626fda306ccbe7e8f52e630e5b987b8"
+    },
+    {
+      "path": "packages/core/src/context-chain-gate.ts",
+      "sha256": "9b95d128462f3e8addff98bd84862f42305efdd2bc26937e8d906424c7485ceb"
+    },
+    {
+      "path": "packages/core/src/context-compiler.ts",
+      "sha256": "b885505dacfd01126ff9a5ec2478ebe79892edf3d667556567f3e686a4f18f95"
+    },
+    {
+      "path": "packages/core/src/context-graph.ts",
+      "sha256": "3505cc565d60d15dcc1f71faed7122b2378026278272397072477b8fce832c13"
+    },
+    {
+      "path": "packages/core/src/context-handoff.ts",
+      "sha256": "d746e6afcfc421e3cb745a321b42f6ea7aad5993afe1d060ecd0d65ff3a10de9"
+    },
+    {
+      "path": "packages/core/src/context-integrity.ts",
+      "sha256": "bbd2df16bbd0f0bfe47d0871e539925992b3a45458f88fb59f38560bd0743e74"
+    },
+    {
+      "path": "packages/core/src/context-shadow.ts",
+      "sha256": "9240584abc051218fe920a83124471ad6af848a18b1192a6c9c5448adef2f44b"
+    },
+    {
+      "path": "packages/core/src/delivery/index.ts",
+      "sha256": "6645543be3219398aa47fb465d2c32baa4aeb86aacfa2a50aecfed4ff8f1d262"
+    },
+    {
+      "path": "packages/core/src/delivery/message-client.ts",
+      "sha256": "2f3376e2b9a6c9775a33a5c7721011844f1ba0433df3d651ce45d24ef780c70b"
+    },
+    {
+      "path": "packages/core/src/delivery/message-ledger.ts",
+      "sha256": "e0f6cd85a8efe253d2079b42aa43589ef7ada1ec4860729bc694314ace3ab00f"
+    },
+    {
+      "path": "packages/core/src/delivery/message-schema.ts",
+      "sha256": "99a925c1fe1036d2c0786247fdc4f7225afda2b20b6eb6a4f4b7e19ce3006fdd"
+    },
+    {
+      "path": "packages/core/src/delivery/update-check.ts",
+      "sha256": "4e4e2d79e356b17983d83a99c94f00e1a1244f870513e2cdb84ec5ed0725c036"
+    },
+    {
+      "path": "packages/core/src/exit-signal.ts",
+      "sha256": "2e4a4477d0244fe5a4b99388e613e82ca1e570a2b8520640e1ba1b02bdde602b"
+    },
+    {
+      "path": "packages/core/src/exits.ts",
+      "sha256": "0e937fd21c61c73a534cad07d5f79feaaba6a8f77e60081c9616e9f2338a99a1"
+    },
+    {
+      "path": "packages/core/src/grounding.ts",
+      "sha256": "f4144377f8195b495dbe70e6f619c649280e15700d84ac389ca885ddbbad944d"
+    },
+    {
+      "path": "packages/core/src/identity.ts",
+      "sha256": "a4eb71f42a22e2c0f74dca863b3d7afb94ad8c8069dd623b5515106435796819"
+    },
+    {
+      "path": "packages/core/src/index.ts",
+      "sha256": "6db1ee259f8e91a56007e4ff011066a9260217a731fdd1a5382c8ca8dbe66974"
+    },
+    {
+      "path": "packages/core/src/leash.ts",
+      "sha256": "491455d03aa573215bb2be35878cc98ceea6bcb39cb4744ef1114fea8870ebc9"
+    },
+    {
+      "path": "packages/core/src/mission/aggregate.ts",
+      "sha256": "c356f0d627f5e0289599460ce61439cac212a26830f1362accd56b51104d8e51"
+    },
+    {
+      "path": "packages/core/src/mission/index.ts",
+      "sha256": "7d6b50a2ac98052ed1b0c3b95e5901f8e74baecf98589ad8f6548e64578a2617"
+    },
+    {
+      "path": "packages/core/src/persistence/compiler.ts",
+      "sha256": "7d33adf4fee948dc577741fa97dea4d89929e6d45fbf36934da467887e2523bf"
+    },
+    {
+      "path": "packages/core/src/persistence/context-handoff-store.ts",
+      "sha256": "c4dc94d8baca2dd50258724e645eca6db687d185719d8eb57a6ba8608aeddf4f"
+    },
+    {
+      "path": "packages/core/src/persistence/index.ts",
+      "sha256": "e604639027b606fa730b8647d42e78ca4f02bbbfbabad834f74b2c21cad61371"
+    },
+    {
+      "path": "packages/core/src/persistence/integrity.ts",
+      "sha256": "308da3472a5a810560aa98709e76a4451206956f72eeb985eb9a9ca9cd8055cf"
+    },
+    {
+      "path": "packages/core/src/persistence/ledger.ts",
+      "sha256": "1ae051088ff2b2c26908e343ee2cccf6f8fb596b4c85aa44da9413dec25379b1"
+    },
+    {
+      "path": "packages/core/src/persistence/memory-store.ts",
+      "sha256": "040e7b48c4b1358c4e5ef772602453822858dc587fe17d86de37eb95768a95c5"
+    },
+    {
+      "path": "packages/core/src/persistence/mission-store.ts",
+      "sha256": "171a5e7f83a7cfd849cbefe8fecc25f1e0ff7427a72e936d998d9166ef9b6443"
+    },
+    {
+      "path": "packages/core/src/persistence/runs-reader.ts",
+      "sha256": "deea4f0d65b972df72e933ac47dffffdaecca288518b71b422dc73a284b194b4"
+    },
+    {
+      "path": "packages/core/src/persistence/store.ts",
+      "sha256": "57008f74dd61f46a404f7ddd19648646ad6a384e40cb8cdf41002cb578eb7d04"
+    },
+    {
+      "path": "packages/core/src/persistence/trace-store.ts",
+      "sha256": "243e60fb9cca9a9fc9a829b42540b6a1b6277b8fada51372da5e29f661923a59"
+    },
+    {
+      "path": "packages/core/src/policy-compiler.ts",
+      "sha256": "2ab9e1cafe3916011e8e0ebb853accbb92683bccb5274eaf6fc4fda2211e39cf"
+    },
+    {
+      "path": "packages/core/src/policy.ts",
+      "sha256": "cd07053789ad5a7de0971a322679f1abe3a72f280d5d5590e68f86c4361ab120"
+    },
+    {
+      "path": "packages/core/src/red-blue/red-phase.ts",
+      "sha256": "3473642be2b79c24ce33b90ae6d45f6e0108f6a3139ce7911b8bc2318d6f5c16"
+    },
+    {
+      "path": "packages/core/src/red-blue/risk-tiers.ts",
+      "sha256": "d00ddf044e80bd03310371335e212201e74128f7c42f8773c8d69d494ebe863f"
+    },
+    {
+      "path": "packages/core/src/repo-analyzer.ts",
+      "sha256": "9c7eac839aabd31a50f450856cda997aad7ac2a601136ba6d2d3f71db63e713c"
+    },
+    {
+      "path": "packages/core/src/rollback.ts",
+      "sha256": "5aacd758a7e5238c806308df4ed044fb67645b39f38174bd92d939a161c01d8c"
+    },
+    {
+      "path": "packages/core/src/routing.ts",
+      "sha256": "6a42c869b235f4cdf20557ea5f83776f96b2ea71f060c98cd135ed2fdb7c445b"
+    },
+    {
+      "path": "packages/core/src/savings.ts",
+      "sha256": "ce5ee58798e4cc3f82f18f08ae3539e9969eebfd9c851ae7ab1bb97b35c38801"
+    },
+    {
+      "path": "packages/core/src/termination-store.ts",
+      "sha256": "ad6530a5c94086ae563966d5e270cc5a9f9f3208f2fe024c7f8ba90a213c2365"
+    },
+    {
+      "path": "packages/core/src/test-integrity.ts",
+      "sha256": "3e4242c998e18c3966d6aa0dda3981b48ec227735838ce44caea4cf915130b53"
+    },
+    {
+      "path": "packages/core/src/trajectory.ts",
+      "sha256": "7f13ad3ee95bb7ed34930b7a9d229ddb4e2da051ab4d0a95a1aef632cc8f24bc"
+    },
+    {
+      "path": "packages/core/src/verified-handoff.ts",
+      "sha256": "4e2fe4d46aa1cb3ebaedee3d7078efd7401832346af450198050ad61eff91036"
+    },
+    {
+      "path": "packages/core/tests/attempt-started-persistence.test.ts",
+      "sha256": "d761b094011bb70049def64cda649e53c5835e17efbb6f71be343d92e7d33431"
+    },
+    {
+      "path": "packages/core/tests/context-chain-gate.test.ts",
+      "sha256": "1e391b503ec66bd7a75696e75ae630cccc5c73bd2d37bdf4c103910a50cd1588"
+    },
+    {
+      "path": "packages/core/tests/context-compiler.test.ts",
+      "sha256": "55a21b8d7298532fa7271af3e8de148574f8f4112c31f743247bfa73f568e31f"
+    },
+    {
+      "path": "packages/core/tests/context-graph.test.ts",
+      "sha256": "fc4cf53af9d87319829fcc2b498be67825e0aa595071632fccefbefe8299ded7"
+    },
+    {
+      "path": "packages/core/tests/context-handoff-integration.test.ts",
+      "sha256": "bc1d7b84b78c031cebfdab38d56fa12b1270ac4f1ac257d6da3694345f716ecc"
+    },
+    {
+      "path": "packages/core/tests/context-handoff.test.ts",
+      "sha256": "17abcf10dc4041fb502c4e92cb9d97caac28e43d9056f3eae22b52709ca4f296"
+    },
+    {
+      "path": "packages/core/tests/context-integrity.test.ts",
+      "sha256": "33409c404d16689a13c8878bfb2dbafee5c01849c837b064811ec16c07403c42"
+    },
+    {
+      "path": "packages/core/tests/context-shadow.test.ts",
+      "sha256": "7c74988475d35c051c70593a49d79a109b23f7c14e08d91ad749ca725d9351ba"
+    },
+    {
+      "path": "packages/core/tests/delivery.test.ts",
+      "sha256": "8c2afc78bf1746216dfcaba68c874a8fc3dc6159aa3e1c075c6a582ff1081f8e"
+    },
+    {
+      "path": "packages/core/tests/exit-runtime-integration.test.ts",
+      "sha256": "90e3d91cbec2a92f2825545051c328f508bcd1eba170315527c24575ff1da1e7"
+    },
+    {
+      "path": "packages/core/tests/exit-signal.test.ts",
+      "sha256": "bb3495da96bcb6c963ddfaf0d50ee0c4354f341b8c8153dcb0c2ecc108ecdabf"
+    },
+    {
+      "path": "packages/core/tests/exits.test.ts",
+      "sha256": "469464891b22c4a5942878fb9b27afac01f025747da669070e2fc7f4f5da726d"
+    },
+    {
+      "path": "packages/core/tests/grounding-cache.test.ts",
+      "sha256": "d47a03baa02ad1df9cd365da681c7667f0e6600ff3129f2e840fbc1967634853"
+    },
+    {
+      "path": "packages/core/tests/grounding.test.ts",
+      "sha256": "0699107714c6b4518c8186e50c6d4b3ac306db025a41e78c85fec891180ad95f"
+    },
+    {
+      "path": "packages/core/tests/identity.test.ts",
+      "sha256": "2a881ce9795bb21d40058a5401a6a478ae2b4053eeeeeb32530b6f26cb952dc1"
+    },
+    {
+      "path": "packages/core/tests/leash.test.ts",
+      "sha256": "a7fb60cf93aead55bcb3759df9c26c43b3eea41d4db58dad1ea58970a5c4edf2"
+    },
+    {
+      "path": "packages/core/tests/memory-store.test.ts",
+      "sha256": "184006dac7f62e1969ec8d0dc070ce44e5cdd190d3d19d6ecca3669dbfd4250b"
+    },
+    {
+      "path": "packages/core/tests/mission-store.test.ts",
+      "sha256": "b465257f10d853e19f3d98b0079170543f5b4d362478d93ad2b96c98d850b551"
+    },
+    {
+      "path": "packages/core/tests/persistence.test.ts",
+      "sha256": "523ec1cde955d9c9b2df8ecdf4ea369bb228c6e629e4777d3a0c91b21203d9b4"
+    },
+    {
+      "path": "packages/core/tests/policy-compiler.test.ts",
+      "sha256": "1ea6e8029ac0d31e676e3d3ee5101402367b04a9320ab24fb23cc52d4c9a683b"
+    },
+    {
+      "path": "packages/core/tests/policy.test.ts",
+      "sha256": "6a1419b885af9e2b7ba837ab29f25d4b46c88a629d0176a8f405d3e77f6d99fe"
+    },
+    {
+      "path": "packages/core/tests/red-blue.test.ts",
+      "sha256": "a434a512bae189d3a292684a66065425c2a510f46c9779c07b0341cfa1203048"
+    },
+    {
+      "path": "packages/core/tests/repo-analyzer.test.ts",
+      "sha256": "2bb2b5912a5cf13915d0683dfb51f1b86753a7f11b1f000e833667cbcad4fe17"
+    },
+    {
+      "path": "packages/core/tests/rollback-read-failure.test.ts",
+      "sha256": "6fc6587a00409e130c40d6de105eec9370e12f03ab07c3b85b89c59675ed0cf2"
+    },
+    {
+      "path": "packages/core/tests/rollback.test.ts",
+      "sha256": "8a540c8c07c90c3710d731539199d92d997cc72cae06f75fcbf4fdc55ea4ee8d"
+    },
+    {
+      "path": "packages/core/tests/routing.test.ts",
+      "sha256": "063ad06f4fba24238a331a89790f2a130a705ee42e7df5a6e7340a8c1bf33010"
+    },
+    {
+      "path": "packages/core/tests/runs-reader.test.ts",
+      "sha256": "aa8f2a9d2472062bdafdb58cbcf703ef10d7fe19ca8fa9e6bbfaf7a9ed420b8d"
+    },
+    {
+      "path": "packages/core/tests/runtime.test.ts",
+      "sha256": "77effc8505babd2874981dd736dca672e2cdc7a20b73e6ec95c51e0cc5e2583a"
+    },
+    {
+      "path": "packages/core/tests/savings.test.ts",
+      "sha256": "576c60e0c7b42f73846cb2690082b03f35822e164f61886321ec363ed5575645"
+    },
+    {
+      "path": "packages/core/tests/test-integrity.test.ts",
+      "sha256": "30f608ded8366a73c8983ae9ef3f224cdd34ee2f0986c23fd04be3a046651a00"
+    },
+    {
+      "path": "packages/core/tests/trace-store.test.ts",
+      "sha256": "8a687634be676e4e5cc51a36ad9ba24fff0f977236c23c6fad1bbcd755de6729"
+    },
+    {
+      "path": "packages/core/tests/trajectory.test.ts",
+      "sha256": "a167888716733d63be6d19b85ed271b4d09fe6d780ecc885d3ae274a6a0f1865"
+    },
+    {
+      "path": "packages/core/tests/verified-handoff.test.ts",
+      "sha256": "8a1f7ee7926e18aef84fdfff51ff0ebf3a35b7a2fdb697931beca7fc23d3e738"
+    },
+    {
+      "path": "packages/core/tsconfig.build.json",
+      "sha256": "0f57d32030be55f097fa3e28363be3f440d1d7e9c5944fffa77d79c53bd6a102"
+    },
+    {
+      "path": "packages/core/tsconfig.json",
+      "sha256": "4e0a5868ac2a128317f804712840b3a88a0ecf0c1b85b3fc562597ef04efade4"
+    },
+    {
+      "path": "packages/core/vitest.config.ts",
+      "sha256": "2889fcdbe40a71ff947d1f6849244a5cc1385482e4d4e648e292f62425025901"
+    },
+    {
+      "path": "packages/mcp/README.md",
+      "sha256": "e0484d1d24bb12bbeacc9f2dcedc3ecfcb1d8964c18d41f40385c209ffd12d7a"
+    },
+    {
+      "path": "packages/mcp/mcpb/.mcpbignore",
+      "sha256": "2b706cf5ce84953ad5eaf5d8f15fdc3f8bb41c81db473d22b8895a36bf06156e"
+    },
+    {
+      "path": "packages/mcp/mcpb/README.md",
+      "sha256": "3ed7d76740fa55a6e0b650d382f171209ba4eedfc3387c7dc73a47cf57442e96"
+    },
+    {
+      "path": "packages/mcp/mcpb/build-mcpb.mjs",
+      "sha256": "fd608ea69637c8e75791b9b3a934988b9d583b1fb805e314886ec72e6f8f7743"
+    },
+    {
+      "path": "packages/mcp/mcpb/manifest.json",
+      "sha256": "b73d460773ca9bb257f37ec58060acf6feba483caa926fa38d5a38cc59b52c43"
+    },
+    {
+      "path": "packages/mcp/mcpb/smoke-mcpb.mjs",
+      "sha256": "e2716efb84709053a3936752e2671de268ce7eb827795ff2f2309d9aa61d5c71"
+    },
+    {
+      "path": "packages/mcp/package.json",
+      "sha256": "5fc46682b33cf6d6d929179dec098401ad9f319d680358fefd16b9f6f8734c13"
+    },
+    {
+      "path": "packages/mcp/scripts/build-package-lib.mjs",
+      "sha256": "0353bf98706fc50cee4f6075f0ee976b769b99d16df5ddaa15a1a6e0e76c3aab"
+    },
+    {
+      "path": "packages/mcp/scripts/build-package.mjs",
+      "sha256": "4357e7b07526d3578dc5684c2dc575930dbc343c281a921347ab951ba25e68cc"
+    },
+    {
+      "path": "packages/mcp/scripts/inspect-live.mjs",
+      "sha256": "fde26b2363eadbe119549287b658706662ed94e5c23f7c0ede201254ed25b12b"
+    },
+    {
+      "path": "packages/mcp/scripts/run-test-lane.mjs",
+      "sha256": "24a2f8a6766cfff5a68ddfc68d8b4d6a972361cbeee470ac84077acc4a2f2058"
+    },
+    {
+      "path": "packages/mcp/scripts/smoke-package.mjs",
+      "sha256": "2824709c03cd47a3fc4e9ece2c261349b83fab7599ed80ecf1e0d3ab445dedc8"
+    },
+    {
+      "path": "packages/mcp/scripts/smoke-paths.mjs",
+      "sha256": "5ae96ad67f29114dc0e29c3b0b280a3b76b604440773adc3e565bbeccf410f61"
+    },
+    {
+      "path": "packages/mcp/scripts/smoke-published-package.mjs",
+      "sha256": "5c3af086937dfa2de1fe1e89d57fb384e4b3ea75cfe5b75eaf32b73f1f76326e"
+    },
+    {
+      "path": "packages/mcp/scripts/verify-version-consistency.mjs",
+      "sha256": "feabd544c42918a92769b4ed75841e47b455f1f5fb2fe4644978ca4b3719b5a7"
+    },
+    {
+      "path": "packages/mcp/scripts/version-authority.mjs",
+      "sha256": "115ce0f22165a018d9ced85a7ef7e41547760615234f35cb9f0c4e96bed38b4a"
+    },
+    {
+      "path": "packages/mcp/scripts/version-sync.mjs",
+      "sha256": "32fbe7aa78be6b4b30d38827b2ef93c9a6ec0f0fda5acee0a9ae1eb883688e9b"
+    },
+    {
+      "path": "packages/mcp/server.json",
+      "sha256": "566c50f8cf367790a8bd49c2f99efd812884de1688546c60674feda79f4d49e9"
+    },
+    {
+      "path": "packages/mcp/src/arcade/capabilities.ts",
+      "sha256": "b84a89e50ad4e0ae51cff2d35a6d224cef40605bf4c5e6041eef52951137f59a"
+    },
+    {
+      "path": "packages/mcp/src/arcade/resource.ts",
+      "sha256": "a20777110d2773210e548a98217c8f7a36bc9241491fc07cccbbf376bc8e4064"
+    },
+    {
+      "path": "packages/mcp/src/arcade/status.ts",
+      "sha256": "1863332fbb63d7a971d562a7fa6fd3d13ec991bb77e715360987ac300f1c43d9"
+    },
+    {
+      "path": "packages/mcp/src/discovery-metadata.ts",
+      "sha256": "bc72af1338e5edbe61c930a5caf047d162a4b89f6f6d326f2f51d970afe2024a"
+    },
+    {
+      "path": "packages/mcp/src/discovery-support.ts",
+      "sha256": "bbd16fb8d90610bf72d8f005c1df5fe612406b79a830032afabc39c6de13f744"
+    },
+    {
+      "path": "packages/mcp/src/package-version.ts",
+      "sha256": "b4a2d66abb636a8ecc6571851377b4ccd29e93dfee0c1d76e41d989bf5945bd8"
+    },
+    {
+      "path": "packages/mcp/src/prompts.ts",
+      "sha256": "3bcbc86e40712f2d50df7bad2669389421ee01b9db20448c49945e07a40d36bb"
+    },
+    {
+      "path": "packages/mcp/src/resources.ts",
+      "sha256": "57d33700e0b2a8a2e51b920c1ac724776cecf932aebb5fa17bda0f09ef8dcd4c"
+    },
+    {
+      "path": "packages/mcp/src/server-validation.ts",
+      "sha256": "41bbbcd3f40ac09f933ca4bbfa1766fcbe844d56ac92c92debff014cdeecc5dd"
+    },
+    {
+      "path": "packages/mcp/src/server.ts",
+      "sha256": "af1c9f36815881f26c7334ea03ec3476767b19c7f58625f281aba14669179027"
+    },
+    {
+      "path": "packages/mcp/src/tools/doctor.ts",
+      "sha256": "f0ea07ab0f6576f5ed7c692fab155c9ac4949dc61d198302ce2ca1c0fc30f16b"
+    },
+    {
+      "path": "packages/mcp/src/tools/eval.ts",
+      "sha256": "d6088b79f3a5ba02b201f2c7342585900f9d359ceb9cb37fb57942b063fc0c87"
+    },
+    {
+      "path": "packages/mcp/src/tools/execution-policy.ts",
+      "sha256": "72ea35f9e0329c93c286a7f756abb80c9f9a948337b6aae597ba03ca72c9b7ae"
+    },
+    {
+      "path": "packages/mcp/src/tools/get-attempt.ts",
+      "sha256": "dfe4210efedf26da8ef2c0f52bfd5d84637863f34b06f51f9f4e004bce79f39e"
+    },
+    {
+      "path": "packages/mcp/src/tools/get-run.ts",
+      "sha256": "3473a36d373dcdbf15965f9e0aedda29b704fbbf645cf18b70be4d8e7739c95d"
+    },
+    {
+      "path": "packages/mcp/src/tools/get-status.ts",
+      "sha256": "337b2fb9b243b7900597a2cb068fe37e147cd31f8a751a8d612ee645d8a076f4"
+    },
+    {
+      "path": "packages/mcp/src/tools/get-verification-results.ts",
+      "sha256": "e6b8e5f5cc1294102a3043956128b9b5dba5a9f1ef199d2c1db317b6bb6e029d"
+    },
+    {
+      "path": "packages/mcp/src/tools/inspect-loop.ts",
+      "sha256": "29c5d4eff5e2a2fec921fd887d00fb29bc9a81873edb038efb6631825efca2e9"
+    },
+    {
+      "path": "packages/mcp/src/tools/list-runs.ts",
+      "sha256": "2d51adb884ff0fc91ae3c78ae6e32b0c9860dfe140f84915932d0987618e4781"
+    },
+    {
+      "path": "packages/mcp/src/tools/logs.ts",
+      "sha256": "85c867064791ee2f2cd03aa3a32b5e08dae9f22b4423d5b21a7c4f3e12d1ddbf"
+    },
+    {
+      "path": "packages/mcp/src/tools/plan.ts",
+      "sha256": "da2f47cfa8c4639f8b7aa0c54f664202174d2b4f7541832f1355993dea7a4201"
+    },
+    {
+      "path": "packages/mcp/src/tools/pr-tools.ts",
+      "sha256": "bd488dde1786b2efdb47db85d8c1e24b0d2bd92f5b15e8aab6a78f19f0b4b240"
+    },
+    {
+      "path": "packages/mcp/src/tools/preflight.ts",
+      "sha256": "09acd966ea1076743081ad0f3bbce04a589b76a154ed35fbbbcac8861e24ce0d"
+    },
+    {
+      "path": "packages/mcp/src/tools/run-controls.ts",
+      "sha256": "8ee0aa533973e78afdfc316364e4212a274819c46c6b64a9ad8fb63c6ece5be8"
+    },
+    {
+      "path": "packages/mcp/src/tools/run-dossier.ts",
+      "sha256": "5727bbfe2805f14392af6506b9152f15202feb843fb334d6f9e35567b3a0ab5f"
+    },
+    {
+      "path": "packages/mcp/src/tools/run-loop.ts",
+      "sha256": "4aaaed1d58856f61064755540dd2b5a082f53381e0f84617e72ccfe250368e3e"
+    },
+    {
+      "path": "packages/mcp/src/tools/run-store.ts",
+      "sha256": "332bf873098305d9fa26e0b372b669799e96e7ea0949c530acf8c3950e0aad28"
+    },
+    {
+      "path": "packages/mcp/src/tools/tool-errors.ts",
+      "sha256": "a801c9aa4de82c49f16aa06de97e614733340240d09207630ddd1a5218ea66c2"
+    },
+    {
+      "path": "packages/mcp/src/tools/tool-response.ts",
+      "sha256": "63c8270a9b85d291bec4d2695d164a476b7714f5af17da06418c1fce7ecd5a11"
+    },
+    {
+      "path": "packages/mcp/src/tools/tool-support.ts",
+      "sha256": "f90e9355c0060ded94035f26321d9fdcf523cc96ac1946d78091dd6d3daa2330"
+    },
+    {
+      "path": "packages/mcp/src/tools/triage-runs.ts",
+      "sha256": "f1c28f0b6558d66993e2aee9125f6d27482b9c19a91a1c34676a2b6d6bf27818"
+    },
+    {
+      "path": "packages/mcp/src/tools/workflow-governance.ts",
+      "sha256": "b063e24a63c5b4c7a67916fafcdf549c376c4589ff80ee538b06415f77d426d6"
+    },
+    {
+      "path": "packages/mcp/src/workflow-state.d.ts",
+      "sha256": "0e71384de1e3ea76245f2a07b9fa8d2b46893d4d60121dc647923c773b6a7cee"
+    },
+    {
+      "path": "packages/mcp/src/workflow-state.js",
+      "sha256": "37bd9c4487d20643802e5e90f981a0bcefefe3ecc460543138a68122c5755602"
+    },
+    {
+      "path": "packages/mcp/src/workflow-state.js.map",
+      "sha256": "b59da02c82d85e7c88552355b806749012118aeb414c737f5993ba875ddbedd0"
+    },
+    {
+      "path": "packages/mcp/src/workflow-state.ts",
+      "sha256": "60be326a235f98e7cded2999991a6535518cac9068027180e92f3007619f8f12"
+    },
+    {
+      "path": "packages/mcp/tests/arcade-app.test.ts",
+      "sha256": "e7677bc94c1cfa757246dddf91b81400f63b85215658f1eac3e7b5c3e0e5a84a"
+    },
+    {
+      "path": "packages/mcp/tests/build-package.test.ts",
+      "sha256": "868997c5e0e79424dc6a828fe0f3aaa7d82236f40a2a88f23e73e3bc6bf11128"
+    },
+    {
+      "path": "packages/mcp/tests/eval.test.ts",
+      "sha256": "7da5d6140e4978c029f753e9d332ebf170ed077bba017eaaf36ad00031f31e62"
+    },
+    {
+      "path": "packages/mcp/tests/mcp-discovery.test.ts",
+      "sha256": "8dbeb5c117461360c166656c28b8e1a8146cca046115e1ceaa779c3db1f4f992"
+    },
+    {
+      "path": "packages/mcp/tests/mcp-tools.test.ts",
+      "sha256": "ec74b8d7b7841e049866487d559b4b1f593ff64d3254a3bbad8bb3c22de3fd0f"
+    },
+    {
+      "path": "packages/mcp/tests/run-dossier.test.ts",
+      "sha256": "d09f98ba0b1910a00816e5a568f6ae2d14ca9a62a0279c25436b7ebccc2820fb"
+    },
+    {
+      "path": "packages/mcp/tests/server-entry.test.ts",
+      "sha256": "554d58ee694273c41b8207edd44fdcf9051aa4855a6e57b1fbceedeb52c2cb9b"
+    },
+    {
+      "path": "packages/mcp/tests/server-live.test.ts",
+      "sha256": "90db7a622e9e0b914ac72a7784f8d07883cd64a3b3d575f24383b375598b1e34"
+    },
+    {
+      "path": "packages/mcp/tests/server-validation.test.ts",
+      "sha256": "abe2beed620953a5971f9a1810dc96504e300c2bc97e443fbdc960d06628c548"
+    },
+    {
+      "path": "packages/mcp/tests/tool-response.test.ts",
+      "sha256": "1fa01f20183e9780656801ca57f2a66a922aafbf7f2a5c039ca7d08615b4e982"
+    },
+    {
+      "path": "packages/mcp/tests/trajectory-triage.test.ts",
+      "sha256": "3b9dad0081cfcf57f29dfc51fae7df63068e0b1200f4a19f1427f4a171e91095"
+    },
+    {
+      "path": "packages/mcp/tsconfig.build.json",
+      "sha256": "65e6799b09910f68ccda8a7adb3156cb01d2483b67ee937f1fdbb645813cc40a"
+    },
+    {
+      "path": "packages/mcp/tsconfig.json",
+      "sha256": "8bcab222b049c31eceaacf553a375a130b3a4bc9da90034964e5d67916b25659"
+    },
+    {
+      "path": "packages/mcp/vitest.config.ts",
+      "sha256": "16230f55997000ef1581cdcc2c09b814c301b6c504553080d36f0d99344a606e"
+    },
+    {
+      "path": "packages/presentation/package.json",
+      "sha256": "9729526fbd20a271aa1e9fdc3af67ff10fe551779c7ce02e46da619bd6e345e8"
+    },
+    {
+      "path": "packages/presentation/src/governed-plan.ts",
+      "sha256": "c3e1c62dae2aaa8e79e4c0fde5ff0fb49b31ec0dc6543308656539e32a8c64e9"
+    },
+    {
+      "path": "packages/presentation/src/index.ts",
+      "sha256": "9c01d83e91478cbbabeae5a0a583e5cbbf1242de1903d7ab573d45bd9afb7a01"
+    },
+    {
+      "path": "packages/presentation/src/motion.ts",
+      "sha256": "4bc7d63a8f249ca6bfd72b727abaaeee872c2e7ce6d2731b20c17bc667fe44fc"
+    },
+    {
+      "path": "packages/presentation/src/status.ts",
+      "sha256": "652a4c9e1d60e9e204ceb775d8b6f357f6e95ae3f88a0308f1c36b7ec36f5ed2"
+    },
+    {
+      "path": "packages/presentation/src/table.ts",
+      "sha256": "a368d581858d11906fed8abdbac4fc5176669052c83f00ac91b0f4f95a482053"
+    },
+    {
+      "path": "packages/presentation/src/text.ts",
+      "sha256": "3ba166a0709496f22317fe72400c76a97252e9b78f0c95f827c201d4d2862e22"
+    },
+    {
+      "path": "packages/presentation/src/theme.ts",
+      "sha256": "ebbd941152a0758b065592822c3acad459e4dad365a1a5f50dd779119ea258e7"
+    },
+    {
+      "path": "packages/presentation/src/verified-handoff.ts",
+      "sha256": "3b122cbe7322ebad2ee194346bdff330a43fd193a40ce67e7312cdd639e72614"
+    },
+    {
+      "path": "packages/presentation/tests/presentation.test.ts",
+      "sha256": "c786c22eb38da95c080e32b8541f4ba9362eac865a8b9435008cbccccfc97c74"
+    },
+    {
+      "path": "packages/presentation/tests/proof-surfaces.test.ts",
+      "sha256": "bafacd4717a3162bef4e2d3c626f71150fd14a816f96831d29d5a90b5634d899"
+    },
+    {
+      "path": "packages/presentation/tsconfig.build.json",
+      "sha256": "727041493e4c3be0c2f0bfd744a808f68378f4df1b319b52e641b02626c923c9"
+    },
+    {
+      "path": "packages/presentation/tsconfig.json",
+      "sha256": "613f85d231267858d093958f5b6448f14337c3b11c9235bc7a32b9a097e51a00"
+    },
+    {
+      "path": "packages/presentation/vitest.config.ts",
+      "sha256": "d129048e0aa9b5a702ad2f578c7352e890086b4ef3fef9b54c70f004b9d14507"
+    },
+    {
+      "path": "plugins/martinloop/.claude-plugin/plugin.json",
+      "sha256": "da7be81f31793d8088ab3b369e4441181664543a460037fe590664bf41b0f19a"
+    },
+    {
+      "path": "plugins/martinloop/.codex-plugin/plugin.json",
+      "sha256": "346aa2df66866de2367dd2d52c4034e5f1074e050a3434bd6315e7334a08dd43"
+    },
+    {
+      "path": "plugins/martinloop/.mcp.json",
+      "sha256": "db825ec3f35617d35e50cc2049147c0a1a9c6cf5241f0bd042f340dcf7428b1f"
+    },
+    {
+      "path": "plugins/martinloop/plugin.json",
+      "sha256": "da7be81f31793d8088ab3b369e4441181664543a460037fe590664bf41b0f19a"
+    },
+    {
+      "path": "plugins/martinloop/skills/martinloop-govern/SKILL.md",
+      "sha256": "ab2b753f79bd191b6c0add6b372aa787e621af88f167a3a38868cfaf1ed3f428"
+    },
+    {
+      "path": "plugins/martinloop/skills/martinloop-govern/agents/openai.yaml",
+      "sha256": "a4820bacc8ae7ea5c81a65d6c4214c65e48288a5dd606f46825bfea457c30ea9"
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "sha256": "237e8a6d64c3357202f47215fbb0f69c266a796761074ad0c46d9d718ee3c257"
+    },
+    {
+      "path": "pnpm-workspace.yaml",
+      "sha256": "cb4c92bf2b6ae806e053d832946972861ae12262fb69d3d27d9050e538c99780"
+    },
+    {
+      "path": "scripts/README.md",
+      "sha256": "0289f157199aed9739c153f57db544a69747c0b7faa554f82920036c4e0156b9"
+    },
+    {
+      "path": "scripts/assert-clean-worktree.mjs",
+      "sha256": "23507fc67373ce4a0069f88404150d3fbe2fa6bca107814be3394e0a628850de"
+    },
+    {
+      "path": "scripts/build-public-facade.mjs",
+      "sha256": "39dbc2303c4b918448bc21fc6039cb69a758e879e5d4384c30c50c1d15a8a468"
+    },
+    {
+      "path": "scripts/cut-release-tags.mjs",
+      "sha256": "244217a0ca88a9fe99a236e1482271549edacd2ca45bb6076e5afb4a93b16260"
+    },
+    {
+      "path": "scripts/extract-changelog-entry.mjs",
+      "sha256": "16bd8cfb6cf03c99a57710345fee115b4e723ca970125f1346338515c2828a2f"
+    },
+    {
+      "path": "scripts/failure-taxonomy.mjs",
+      "sha256": "e67f62b6f61af23e0e059787b889652f5334ad2018fab774e3855d355090951a"
+    },
+    {
+      "path": "scripts/fixtures/npm-pack/keyed-object.json",
+      "sha256": "f74fcdd12bf25121a3c51573d6d197d24a7c92e72bd0277524b782a338050b2d"
+    },
+    {
+      "path": "scripts/fixtures/npm-pack/mixed-prepack-output.txt",
+      "sha256": "ef7e8c670cfcf108ecb7d92d06ad0db64e38a5082be3535d915190c0ff29e4ab"
+    },
+    {
+      "path": "scripts/fixtures/npm-pack/npm-v10-array.json",
+      "sha256": "9ae01119c2a2dbae1ec6da0f800b0ca88137d49ec5263859e6e6463810231213"
+    },
+    {
+      "path": "scripts/fixtures/npm-pack/npm-v9-array.json",
+      "sha256": "65b06caf45b1870647a3691f05dfcc00649a16d50a665116afdc98573bb5f06d"
+    },
+    {
+      "path": "scripts/fixtures/npm-pack/wrapped-object.json",
+      "sha256": "1b1f1c141d45986cbc31f027b88ae518231873bd15fe424d02878234b414080d"
+    },
+    {
+      "path": "scripts/fleet-release-authority-check.mjs",
+      "sha256": "a4ae9d33d141cff32fb5b73d193c69e478a7686cf880859a5aee04625d96dc1b"
+    },
+    {
+      "path": "scripts/generate-install-links.mjs",
+      "sha256": "89d596aa837f7297de007c3228ee93b7c6492a5b6773b4751080b941c0e11aa4"
+    },
+    {
+      "path": "scripts/generate-public-promotion-manifest.mjs",
+      "sha256": "8579bd842ff09723938db57a2793333f61ca78998db8f25bd457f2d47680b0b6"
+    },
+    {
+      "path": "scripts/hooks/block-public-oss-writes.js",
+      "sha256": "4000702834b0da798a4745d913308d1e5326471a69a9affef15e5bf1ff032445"
+    },
+    {
+      "path": "scripts/hooks/install-claude-public-write-hook.js",
+      "sha256": "9e7caac5346895dbfd08c55a84d86f9ef8fa820d845db7555ecb32c7e88b8f5c"
+    },
+    {
+      "path": "scripts/hooks/install-git-portability-hook.mjs",
+      "sha256": "c3bbfc85607d2b71af875ad3a62831cbab8871be9730d1ee8875bd1473bedec2"
+    },
+    {
+      "path": "scripts/hooks/package.json",
+      "sha256": "8005a3491db7d92f36ac66369861589f9c47123d3a7c71e643fc2c06168cd45a"
+    },
+    {
+      "path": "scripts/hooks/pre-commit-portability-scan.mjs",
+      "sha256": "6a1d5b45dd925eaa36960ad4a77611a245e5ed245a23a082e47ca42f761282fe"
+    },
+    {
+      "path": "scripts/hooks/pre-commit-portability.sh",
+      "sha256": "b61c1ab593ef8efee6ef356ec48243d84aeeaea8bdd185b27df26dfbc498a5ed"
+    },
+    {
+      "path": "scripts/lib/npm-pack.mjs",
+      "sha256": "e56a225aaec01ebb8a444643f3d754589b243dedcfd045ff11d944c1d301b82d"
+    },
+    {
+      "path": "scripts/lib/npm-pack.test.mjs",
+      "sha256": "a945b41d2b963f25ee6f47b98c04dde6ba43a755b87778b3b42599082a79af74"
+    },
+    {
+      "path": "scripts/lib/public-release-surface.mjs",
+      "sha256": "aea66cbed682526dd4167828162878e21b140219be8294e9b4e3e418faed6219"
+    },
+    {
+      "path": "scripts/lib/publisher-equivalent-commands.mjs",
+      "sha256": "e460e5eaf30bc739437fdb065cb36f796acf58cf39748e31b4847f38416d0bfc"
+    },
+    {
+      "path": "scripts/lib/release-recovery-state.mjs",
+      "sha256": "6679d0e2611e616046f03ad2c373623938b18e844b234b74a02fa3c9f846a721"
+    },
+    {
+      "path": "scripts/lib/release-retry-evidence.mjs",
+      "sha256": "6a54fd3d1c394a86aa3241d88dc3fc5815cde3dc2c868a6a170fcfec1b2ce333"
+    },
+    {
+      "path": "scripts/oss-boundary.mjs",
+      "sha256": "fc0a118f4f8c42674edf809fd3f21d8f37c1223e28b42dac850472005279a933"
+    },
+    {
+      "path": "scripts/pack-root-release.mjs",
+      "sha256": "ecd422cca2adec23396fbdef5f40c72647027c8b7052639f91426085165e29dc"
+    },
+    {
+      "path": "scripts/pre-tag-release-gate.mjs",
+      "sha256": "04e0b66108b9a38af5fd04718f80aa01d1f7bcf015d10e76b5f8f9f3c737aed5"
+    },
+    {
+      "path": "scripts/public-copy-scan.mjs",
+      "sha256": "26e84314c42d3706399e6c055434725582ab3af0952abfcb43d63606f94cd0a5"
+    },
+    {
+      "path": "scripts/public-facade-smoke.mjs",
+      "sha256": "3d0a27320769f498d4945e181f1e75da90bfd5d8d9a941804ce5536e74d757f5"
+    },
+    {
+      "path": "scripts/public-git-surface-guard.mjs",
+      "sha256": "b8a73f0f79af2eaec547f56b37ff7786e67d53428ae1cde5233b2e7f4b2d82bf"
+    },
+    {
+      "path": "scripts/public-portability-guard.mjs",
+      "sha256": "ebe1406a87a7d79f600e8d587e3196fefc0c8b51017539b5d26268d0024b5881"
+    },
+    {
+      "path": "scripts/public-release-truth.mjs",
+      "sha256": "516d24b1a2280bbeeede6af8e9afeaddc63809e46d165be83a3e68686e4908c2"
+    },
+    {
+      "path": "scripts/published-artifact-e2e.mjs",
+      "sha256": "6fb5392186086fb06c62750b2bf068e8c8e74c92473a16889105f5004fd47109"
+    },
+    {
+      "path": "scripts/query-release-publication-state.mjs",
+      "sha256": "613ef12d18a024f86e791488a3862809fe2a818043dcc400b423711aba711008"
+    },
+    {
+      "path": "scripts/rc-validation.mjs",
+      "sha256": "73aeecbd643c66f65f4a9008dcb0d901f43ee0aff95f4b33769a995922af38fb"
+    },
+    {
+      "path": "scripts/read-mcp-package-metadata.mjs",
+      "sha256": "d8740fef3df1b28ea13a697f1770d1e96f23caffc232bb42d6e1fe1042444ae3"
+    },
+    {
+      "path": "scripts/readme-cta-guard.mjs",
+      "sha256": "56cd74c09993253529ef465523627f8d2562dd3625f1ffea8611469ac1ed903f"
+    },
+    {
+      "path": "scripts/release-matrix.mjs",
+      "sha256": "33d4a1bb37911ad83525d0849f625b8da4b427afc73f5309bb5d09f4c26869bb"
+    },
+    {
+      "path": "scripts/release-recovery-state.mjs",
+      "sha256": "5426863d254a358ea5cb0cf8de9af05c6f3b0c00c43bc11f05274963cf4edd40"
+    },
+    {
+      "path": "scripts/release-truth-check.mjs",
+      "sha256": "e59b44cafb4e5128856a5bae7d24d5d7a2a4cf06aa218b22414d6eec67b0f8a0"
+    },
+    {
+      "path": "scripts/root-release-guard.mjs",
+      "sha256": "77a0038ea80d405c883d845817ee1908cfdbe666cbfd17c114e2c461624e0d1a"
+    },
+    {
+      "path": "scripts/tests/assert-clean-worktree.test.mjs",
+      "sha256": "0faadec01129899868d3f32efc836f7ed2ef594efb7c31832d2d2906d8c04512"
+    },
+    {
+      "path": "scripts/tests/benchmarks-workspace.test.mjs",
+      "sha256": "8ce2b41b9828adb30e3b33a157a4419c5d259006ebdb3429a29f58f51749fe04"
+    },
+    {
+      "path": "scripts/tests/block-public-oss-writes.test.mjs",
+      "sha256": "29cc82418c67d96db761ba4250be5817e5eff2596023ddf8c8a4b64671d30d0e"
+    },
+    {
+      "path": "scripts/tests/failure-taxonomy-sync.test.mjs",
+      "sha256": "dce40b7857ac93e98862c2075bee8aa6cd5ed70ffc8e74d81f4fcabf2f83e72b"
+    },
+    {
+      "path": "scripts/tests/fleet-release-authority-check.test.mjs",
+      "sha256": "5da887218e2c5fd4031e7409057159b256fa05fe7e3eef369f2417446a67f059"
+    },
+    {
+      "path": "scripts/tests/install-everywhere.test.mjs",
+      "sha256": "e161449951ef66b74bcae7e34a7e8277367da00f93b09dd7ebda904f3f2c4e78"
+    },
+    {
+      "path": "scripts/tests/mcp-publish-reliability.test.mjs",
+      "sha256": "36c87012747bdd81569d28d5e91229e33b713b7293b7033093696dce14a0353d"
+    },
+    {
+      "path": "scripts/tests/mcp-release-docs.test.mjs",
+      "sha256": "6111c8d5d6d1357390ff8dfc0bddd2d7084dfb921a0e19bfd053266e5746ffdb"
+    },
+    {
+      "path": "scripts/tests/mcp-smoke-portability.test.mjs",
+      "sha256": "e03b31cf29d6f40a84f5ae162dbeaddd24cb92a148993dae9c0b8e75cc5e393c"
+    },
+    {
+      "path": "scripts/tests/mcp-version-sync.test.mjs",
+      "sha256": "cdaff08ee7d57a6c790b22a83e5095601005c237a722d72b996340aec915eac0"
+    },
+    {
+      "path": "scripts/tests/mcpb-distribution.test.mjs",
+      "sha256": "887786499190d6f871189b5d0cc626141e3323ed0fa906ceb753148a7d9e13bb"
+    },
+    {
+      "path": "scripts/tests/oss-boundary.test.mjs",
+      "sha256": "b6c91b8deb241c4539b98c500645b11ab5b3c19b6d44dccc03b2ec5aaaa0c294"
+    },
+    {
+      "path": "scripts/tests/pre-commit-portability-hook.test.mjs",
+      "sha256": "ce6483458a54c5f3667d6c3e0fc73233d5541d951d3346e26a9e6b440a5f9ee4"
+    },
+    {
+      "path": "scripts/tests/production-stub-boundary.test.mjs",
+      "sha256": "ae9793c9b7e771917957adb8609fcb8b19435e674d7cd8b5df42182337427f99"
+    },
+    {
+      "path": "scripts/tests/public-copy-scan.test.mjs",
+      "sha256": "635b6e0e8998de7a404e62934ba87a66047ad0256bf3098f5dc531ef901a5b1f"
+    },
+    {
+      "path": "scripts/tests/public-facade.test.mjs",
+      "sha256": "494517b784ae94a7773461fc09bf670095c14cc630b4941361efe4814b942438"
+    },
+    {
+      "path": "scripts/tests/public-git-surface-guard.test.mjs",
+      "sha256": "f4511f14d820f7ad4746218d6bd2940fe2077181859b440b6c3358d557f07b64"
+    },
+    {
+      "path": "scripts/tests/public-portability-guard.test.mjs",
+      "sha256": "54f0db89137a50de040057cc57758952709f71b6dbc9bbd74c492d004d82dd2c"
+    },
+    {
+      "path": "scripts/tests/public-workflow-scope.test.mjs",
+      "sha256": "d4b0806a342a568b2eb7613011dd2e59206e0c8cde8e315f00c22fc0361b25f5"
+    },
+    {
+      "path": "scripts/tests/publish-mcp-workflow.test.mjs",
+      "sha256": "4e8b4f0e41d4d783c13e264cb023be748defa73b01c9e5873bbf5631e84b84cb"
+    },
+    {
+      "path": "scripts/tests/published-artifact-e2e.test.mjs",
+      "sha256": "eb91321e20160df9cf3f335bdac02f62c0f84ad6693f5287716ee08e7713c147"
+    },
+    {
+      "path": "scripts/tests/rc-validation.test.mjs",
+      "sha256": "c81474a681ec86dd5641741d5bbc8bbd2d1d68e2b7dd1fffdfe3f65385410150"
+    },
+    {
+      "path": "scripts/tests/readme-cta-guard.test.mjs",
+      "sha256": "4505bce1d91404302ea1bdddc11c4b6e3704e283149a93ea7792f14e83a479d8"
+    },
+    {
+      "path": "scripts/tests/readme-public-surface.test.mjs",
+      "sha256": "3c0d738c5f24a75557310fc8b968bbdb16f8959007a3f0714cf72c40728a8fd6"
+    },
+    {
+      "path": "scripts/tests/release-controls.test.mjs",
+      "sha256": "b62cb26c053f5c83e190a78075fd8435ed95eeff0a370bbbcd4c43ea545814ea"
+    },
+    {
+      "path": "scripts/tests/release-matrix.test.mjs",
+      "sha256": "b54192ad5e40b8b2d664c3d1454841b554543cd66831ad170196e802890cb94c"
+    },
+    {
+      "path": "scripts/tests/root-release-guard.test.mjs",
+      "sha256": "83e500a4f2093a1a5e3b233a7a8bb0ff16c11a581ec91920c44a3e74e01bc38e"
+    },
+    {
+      "path": "scripts/tests/root-release-workflow.test.mjs",
+      "sha256": "62cb0c996bfb899203e66b2d342295809fd652a13368c4d03db11c1937e9f02d"
+    },
+    {
+      "path": "scripts/tests/verify-public-promotion.test.mjs",
+      "sha256": "a9b7887a024bec63c8305ff3e1b2cec2deef8d9cafccc27073a758e6b1e4d77c"
+    },
+    {
+      "path": "scripts/tests/workflow-action-pinning.test.mjs",
+      "sha256": "509e1ade19b62435ee5988d4aa243eb2c88ad14a1f2130ae08f61db5e8aa1b57"
+    },
+    {
+      "path": "scripts/tests/workflow-action-runtime.test.mjs",
+      "sha256": "3ca391b8519c60463bf9ef38fd4dabc52d073cbba2d2958da12a1cd168d73841"
+    },
+    {
+      "path": "scripts/validate-product-truth.mjs",
+      "sha256": "879b07990f9db76c333d262c10ca469588e091a8e634e4b3166be8d6492561aa"
+    },
+    {
+      "path": "scripts/verify-infrastructure-retry.mjs",
+      "sha256": "08af9e4c006aaf325d8bec8dd49ac2eabfa2b6dfcf411bcda11c71aabce8f79e"
+    },
+    {
+      "path": "scripts/verify-public-promotion.mjs",
+      "sha256": "bbb71a92ff2340f68ee5e8f1e2e9db1b5ab7a8939f84ed71bd091872a3ea4405"
+    },
+    {
+      "path": "tsconfig.base.json",
+      "sha256": "63663b68cacaddbd0bf394814b5911908efc6b197d41f940088bb33f9c2e61a7"
+    },
+    {
+      "path": "vitest.config.ts",
+      "sha256": "9b56890f30734fe99fa86a5755a702da4e5e487c728c6a1dbd44b7f0e5a26538"
+    },
+    {
+      "path": "vitest.workspace.ts",
+      "sha256": "c1deb0e576c2efd2d49847b168c8c7aa69fb97405a8aa01d89a5da1cda400a3c"
+    }
+  ],
+  "reviewedDivergences": [
+    {
+      "path": ".claude-plugin/marketplace.json",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "bbaca7d9084b640308b2206bbdc2bb84a5e4061d1e0af30ba3d272e773090d0f"
+    },
+    {
+      "path": ".claude/rules/martinloop-internal-first.md",
+      "kind": "private-only",
+      "reason": "Internal-only file: not part of the public distribution surface",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": "63b8c817c6250531fa75303076b53f3e5c533f8e3321d81692f40f426a2191a7",
+      "publicSha256": null
+    },
+    {
+      "path": ".github/workflows/apply-mcp-tool-quality.yml",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "8115021d4c9b2ae3bbe79f5f060e85ee58cabf80c0bb1edf5c167d9bf3a7e610"
+    },
+    {
+      "path": ".github/workflows/platform-release-validation.yml",
+      "kind": "content",
+      "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": "5bd3667c8a470f07d7313278efeb0efb4f1c054f21235c61c9c3193aafe251f2",
+      "publicSha256": "094bf20d8a775095bffc1c7f8dc7b37dbae5a1eaa6e14d5aadbfc3b4a6975a7d"
+    },
+    {
+      "path": ".github/workflows/register-current-mcp.yml",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "72b62175a226ccbe2c39ae2544045c989d15129bfb47e41d9566641fe44c047b"
+    },
+    {
+      "path": "CTO_AUDIT.md",
+      "kind": "private-only",
+      "reason": "Internal-only file: not part of the public distribution surface",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": "aaaef215e9aef0e08fd5de610268b78c20eafd2b850f2d492e22d8bdaffdf270",
+      "publicSha256": null
+    },
+    {
+      "path": "LICENSES/Apache-2.0.txt",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    {
+      "path": "NEXT_STEP.md",
+      "kind": "private-only",
+      "reason": "Internal-only file: not part of the public distribution surface",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": "356453e3dcfe012c33cc0da0e801322598297b1ae6774591740d6cea9670621f",
+      "publicSha256": null
+    },
+    {
+      "path": "NOTICE",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "e663e29a74ff13674303e3e1a2740d49bd6b9d38e4c970de93859a4dd6dbc062"
+    },
+    {
+      "path": "REUSE.toml",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "207b743acd8782c43435aaeb25c38affccb277509d484fc4e80c79ea4ab7c183"
+    },
+    {
+      "path": "distribution/README.md",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "b1dc3d12faa671ce93a45de29e681b7c42379dac3aaa3d40772850fe06cb2cd6"
+    },
+    {
+      "path": "distribution/claude-plugin-submission.md",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "8351ff63b86f14121c68540ba90e51a004bb97e2748c496af10eb4b5eea90a22"
+    },
+    {
+      "path": "distribution/current-release-hooks.md",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "0e8f990d1d7e40ba803e66a635a8295727be55e27853ba6d931d0deb95d1f00b"
+    },
+    {
+      "path": "distribution/discovery-status.json",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "03090f67579fb9fced03ac3a9996ed85f2cbe499f1f902748881e2a8744e7a8b"
+    },
+    {
+      "path": "distribution/install-funnel.md",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "abf37630bcfa12d4e0be5f3664665a269f353cc7cc26b4f8cbe900a0ee8089d4"
+    },
+    {
+      "path": "distribution/release-truth.json",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "354595a1945cf9ca49fc496ae526745985f35828b5913d664d70dd2bc1e27cc5"
+    },
+    {
+      "path": "distribution/submission-copy.md",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "2ab2ca35f423f2b750e72fced7c2c8a8eccbc06dbacdfbc1481ba321d38d91b1"
+    },
+    {
+      "path": "distribution/targets.md",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "4c716277a80a6aa4811e05c40b5ad3d3bfa1b5f387b636eb6a1d41640f689372"
+    },
+    {
+      "path": "docs/assets/failure-taxonomy-13-classes.png",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "75bc805a6bee159831ab5e609d559c26e01a52df0eeb69d6677a4cc096939cf6"
+    },
+    {
+      "path": "docs/creator-lab/CLAIMS-AND-DISCLOSURES.md",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "b10a4c83aa4704a8c26aa2baf47a048d769d537e6ca44f3e5e06dc778fb59bc4"
+    },
+    {
+      "path": "docs/creator-lab/EXPERIMENTS.md",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "fd67744b885c0d4917b941684bb18de304f3d63baccd084c84fd2721bfd15ef4"
+    },
+    {
+      "path": "docs/creator-lab/README.md",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "e48c515c8bdf51cb87fb09f311d325651092141d815800c9c5b68306b9ef49b9"
+    },
+    {
+      "path": "docs/incidents/2026-08-release-0.5.5-0.5.7.md",
+      "kind": "private-only",
+      "reason": "Internal-only file: not part of the public distribution surface",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": "532f54b40380aab885f7b11a7ab9a3693764fe232808d52c700b31e7df72da73",
+      "publicSha256": null
+    },
+    {
+      "path": "docs/incidents/2026-08-release-cross-repo-index.md",
+      "kind": "private-only",
+      "reason": "Internal-only file: not part of the public distribution surface",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": "a01cd365f06767fb3b6eb7625062d34df0aacd93aaaad0fedd939fe540df6562",
+      "publicSha256": null
+    },
+    {
+      "path": "docs/incidents/2026-09-release-controls-119-121.md",
+      "kind": "private-only",
+      "reason": "Internal-only file: not part of the public distribution surface",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": "b6785d37e3d4655cff5c6cf84a5d5c67eaa2577965ad07493388b5127a2d798d",
+      "publicSha256": null
+    },
+    {
+      "path": "docs/incidents/README.md",
+      "kind": "private-only",
+      "reason": "Internal-only file: not part of the public distribution surface",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": "86b7fd5ce53af0241706bbc1ea80c92b1b56be70846a3c98aee4ef4f4a18fb49",
+      "publicSha256": null
+    },
+    {
+      "path": "docs/release/0.5.3-PUBLICATION-RECOVERY.md",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "08467b1560eb84f9d3f10208b5213d38d53ea65a81538332387930d2c534ec0f"
+    },
+    {
+      "path": "docs/release/0.6.0-PUBLIC-PROMOTION.md",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "ca512f5eb8e3c5bf39a599315da736c42381378e59aaa04d85dec2322c7f5879"
+    },
+    {
+      "path": "docs/release/0.6.1-PUBLIC-PROMOTION.md",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "f5103d6c4cb1bdb56fa154655004d84e024abf7b3bf6f537b8cdee82cf251018"
+    },
+    {
+      "path": "docs/release/MCP-0.3.6-RELEASE-NOTES.md",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "83fb2bfcd2157b9bf7edbd7a90a3421c3dc320d9a3d7fa8d4453012ab4c66e7d"
+    },
+    {
+      "path": "docs/release/MCP-0.3.7-RELEASE-NOTES.md",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "0879ac179c60da1e9e212c9abfe2ec5e2759646c27e7bc7f6ac7acd6a4ff6c22"
+    },
+    {
+      "path": "docs/release/MCP-0.3.8-RELEASE-NOTES.md",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "ae38bf4570e0e10111550d2cd1affa1eb0d78da05a235c416dc75418546841a7"
+    },
+    {
+      "path": "docs/release/MCP-0.3.9-RELEASE-NOTES.md",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "cc3b10c6c568318823c2888778da6da3e5d2e498fdeab5e676f357c50158bdd0"
+    },
+    {
+      "path": "docs/release/MCP-0.5.0-RELEASE-NOTES.md",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "067e083f5f561a7663800af2387e3b8773a4f0a32cfb9ac1544d63709246b098"
+    },
+    {
+      "path": "docs/release/MCP-0.5.1-RELEASE-NOTES.md",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "3041d919dd75f1f90cf9a3d6aaa2520502818bd6abd7abfbde568b20f5c5d95b"
+    },
+    {
+      "path": "docs/release/MCP-0.5.3-RELEASE-NOTES.md",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "70ac7a6fbb0cecfb04d45a851d9df84ed8a7d35c892da2a0a54291277726d983"
+    },
+    {
+      "path": "docs/release/MCP-0.5.4-RELEASE-NOTES.md",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "167cf9382d26df03af01c5a5fa313802db66b799e161d83fbc73ac100f826960"
+    },
+    {
+      "path": "docs/release/MCP-0.5.5-RELEASE-NOTES.md",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "1a8b3d6090ceb0bbfae4f716a278c38ebd31d6691921ef3110c94587c400d65a"
+    },
+    {
+      "path": "docs/release/MCP-0.5.8-RELEASE-NOTES.md",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "61d553222a14f28b8a96bc7d568e75b2263fcec2a11cce90d39c1904db373be8"
+    },
+    {
+      "path": "docs/release/MCP-0.6.1-RELEASE-NOTES.md",
+      "kind": "content",
+      "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": "301230003dbe0010245df1ce718a58d52ecf095140212bd8bf5ae5648ff61efb",
+      "publicSha256": "a5e061609e92a3057fff91ae713ad154518483294b870486fe6c29bf51ef533b"
+    },
+    {
+      "path": "docs/release/OSS-0.3.19-RELEASE-NOTES.md",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "083cf59771d9a00f0b285dd58d81fb9876ef60d2d32450e1c8d092a0830f69c0"
+    },
+    {
+      "path": "docs/release/OSS-0.4.0-RELEASE-NOTES.md",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "261856752967863be5f98869faf9b5e54b3bf1bcdb95218dc9f5bfa47ee7515a"
+    },
+    {
+      "path": "docs/release/OSS-0.4.1-RELEASE-NOTES.md",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "bb20551fa07a3bce624a8e29439ddbc37dd4f316a966e2b779cf6dda26684a35"
+    },
+    {
+      "path": "docs/release/OSS-0.4.2-RELEASE-NOTES.md",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "90469a64e76a300a92c09204124d4ac9bc5a6d25665da109b455004f78c5f66f"
+    },
+    {
+      "path": "docs/release/OSS-0.4.3-RELEASE-NOTES.md",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "fa8e9a54fa04747d2baa82a5dcbd91ea67887e6021487bd305afe3b3b7f2856c"
+    },
+    {
+      "path": "docs/release/OSS-0.4.4-RELEASE-NOTES.md",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "85d96b6734bb26baef9fcf1dd8ac23aa497448a81df8c2d13c3323f550dcf520"
+    },
+    {
+      "path": "docs/release/OSS-0.4.5-RELEASE-NOTES.md",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "a13146d4e7e1cb61c00efcf79c37ab0ecc627c21356023101560b0d30d4d8307"
+    },
+    {
+      "path": "docs/release/OSS-0.4.6-RELEASE-NOTES.md",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "7d15968ec2d31c62eb1ed1f286952033cc59d78919f2cdd71705e6cd88eef591"
+    },
+    {
+      "path": "docs/release/OSS-0.5.0-RELEASE-NOTES.md",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "6122bd0d313c06a572d81dad5e9d6c421170d87126167306fc3dd6198f522608"
+    },
+    {
+      "path": "docs/release/OSS-0.5.1-RELEASE-NOTES.md",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "12030607f716e4dca592ff827804cb6960017fd323f0593855d410db80b40385"
+    },
+    {
+      "path": "docs/release/OSS-0.5.2-RELEASE-NOTES.md",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "a7dad1b337dbec9c4381665b9073d5110531e0518940214e754636ff0a85d6ba"
+    },
+    {
+      "path": "docs/release/OSS-0.5.3-RELEASE-NOTES.md",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "5f78f1c7dfe210781331558dd92448768cbc86c33109f9613b59cdd8da297116"
+    },
+    {
+      "path": "docs/release/OSS-0.5.4-RELEASE-NOTES.md",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "a668a6cffe6eec6ccf30d6c71d378dbdcdd242349ad4760ef4bc65469554c538"
+    },
+    {
+      "path": "docs/release/OSS-0.5.5-RELEASE-NOTES.md",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "ae0a12ad74062ac383463c22fe2d88101aad48e904a475d3d624709b377e23d7"
+    },
+    {
+      "path": "docs/release/OSS-0.5.8-RELEASE-NOTES.md",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "496bd151cdadd88553b34ab9deb01507fd2b5b5f960eb7f33f2d262fbef4e717"
+    },
+    {
+      "path": "docs/release/OSS-0.6.1-RELEASE-NOTES.md",
+      "kind": "content",
+      "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": "82567a853b8e813099d4aa76a75c06425b0651ca6b51d3294e7f98d6b220ad69",
+      "publicSha256": "5ca3cf8eea0d465b535fa10d47f68e53efff666ff605f1f4afdcebb7bc4fc98c"
+    },
+    {
+      "path": "glama.json",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "d5be88e9cef3779d334884d7327c3dc9399d835ba45582a3b49e90170de40469"
+    },
+    {
+      "path": "install.ps1",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "1fa5f215d30c59fb8f3d807a331e85a50c3268cccf1d36cf3670dbf68b1d03ef"
+    },
+    {
+      "path": "install.sh",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "6dc96018b05c134a8b1dbfae7799e7eb009d8f5f46a1b46469d7670b9038abd1"
+    },
+    {
+      "path": "package.json",
+      "kind": "content",
+      "reason": "Root package.json: public version bumped to 0.6.3 from 0.6.2 base, public-only release scripts preserved, private-only scripts excluded per handoff spec",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": "ff8e38e8b67e9df56cfb7daca66a4b3d6efdda757dfb8f5eb509a956ccd96d0f",
+      "publicSha256": "ef11a47f517eba4273a1374946d5b1957a5f8572195368f2688bcaae33802878"
+    },
+    {
+      "path": "packages/cli/src/index.ts",
+      "kind": "content",
+      "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": "afa04964bb6743b59aeaf7a9e321a03d2786cca351e2bc96b1e4ca781c9224e0",
+      "publicSha256": "f281710e5bc5292815c7feacf218f8e9e7bff2b2606c3c939a4c97ec75957be1"
+    },
+    {
+      "path": "packages/cli/src/mcp-config.ts",
+      "kind": "content",
+      "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": "49f42bdb71112510fafef07c1fb0bd182fde054ed303fb1b749933f538e4ff1f",
+      "publicSha256": "6c203027924ff4c8b69f93fa4fae476c01860dfc7ba40690de424936587d5855"
+    },
+    {
+      "path": "packages/cli/tests/_test-adapter.ts",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "6719bce1b8caf5d4dac44f0231777ef896e67c3bb200b2a65b3bc0e6e3500339"
+    },
+    {
+      "path": "packages/cli/tests/mcp-config.test.ts",
+      "kind": "content",
+      "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": "1e17747f635e3ea517dc92c15efdf125727b32b84646393a6331ae09a4ddb207",
+      "publicSha256": "ba0b51eefd4fe1b0f24a8e8984c5aa63ff4eb2a51aabccb64ae1bedb89ad8686"
+    },
+    {
+      "path": "packages/cli/tests/run-store.test.ts",
+      "kind": "content",
+      "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": "02a3a2cfe28cc137ce8385b1e2d5b3596b19cd7093150b18625f96a546cf40a7",
+      "publicSha256": "18441805a6989bed6435fa7c50d6420ad4b5f037e94f7578cff11f384f0b3e20"
+    },
+    {
+      "path": "packages/cli/tests/version-enforcement.test.ts",
+      "kind": "private-only",
+      "reason": "Internal-only file: not part of the public distribution surface",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": "87d0bb73e6b541b1a67845e5cf54d96adb24b27d757d9c76928908c80415cb7a",
+      "publicSha256": null
+    },
+    {
+      "path": "packages/core/src/index.ts",
+      "kind": "content",
+      "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": "6db1ee259f8e91a56007e4ff011066a9260217a731fdd1a5382c8ca8dbe66974",
+      "publicSha256": "0cd5f35a42be471eb767c955436a8ec9cc93fcd5da62e2e7b80c5ae2f8d73a38"
+    },
+    {
+      "path": "packages/core/tests/attempt-started-persistence.test.ts",
+      "kind": "private-only",
+      "reason": "Internal-only file: not part of the public distribution surface",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": "d761b094011bb70049def64cda649e53c5835e17efbb6f71be343d92e7d33431",
+      "publicSha256": null
+    },
+    {
+      "path": "packages/core/tests/runtime.test.ts",
+      "kind": "content",
+      "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": "77effc8505babd2874981dd736dca672e2cdc7a20b73e6ec95c51e0cc5e2583a",
+      "publicSha256": "feb3f201a1cb77162da09c53b6fb39537bb22c41a34696a1084862d5aae98c92"
+    },
+    {
+      "path": "packages/mcp/scripts/build-package-lib.mjs",
+      "kind": "content",
+      "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": "0353bf98706fc50cee4f6075f0ee976b769b99d16df5ddaa15a1a6e0e76c3aab",
+      "publicSha256": "a952e8d8f10be32496179acb6f696cb004f8a181675b55130d0dfc9b7e540be3"
+    },
+    {
+      "path": "packages/mcp/scripts/smoke-published-package.mjs",
+      "kind": "content",
+      "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": "5c3af086937dfa2de1fe1e89d57fb384e4b3ea75cfe5b75eaf32b73f1f76326e",
+      "publicSha256": "a70ce6d1b37192ae9fcd650aa2ff8724ef717b2291a5c52fe9c68e955327209a"
+    },
+    {
+      "path": "packages/mcp/src/tools/tool-support.ts",
+      "kind": "content",
+      "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": "f90e9355c0060ded94035f26321d9fdcf523cc96ac1946d78091dd6d3daa2330",
+      "publicSha256": "78d5265e9e6ccaae8f93f647838ddf9e43e7af34a0882fb6b2fe31fb553b6400"
+    },
+    {
+      "path": "scripts/build-native.mjs",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "b6135a67b184cce3536e3b1ab6f4434690a266abc1a5ba661594c2761d72033d"
+    },
+    {
+      "path": "scripts/harden-mcp-tool-definitions.mjs",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "f471bcdc48072311e35ef6c7a8d9cddae41b6b2e3c99b8eb23d84e35a53d2c72"
+    },
+    {
+      "path": "scripts/hooks/install-git-portability-hook.mjs",
+      "kind": "private-only",
+      "reason": "Internal-only file: not part of the public distribution surface",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": "c3bbfc85607d2b71af875ad3a62831cbab8871be9730d1ee8875bd1473bedec2",
+      "publicSha256": null
+    },
+    {
+      "path": "scripts/hooks/pre-commit-portability-scan.mjs",
+      "kind": "private-only",
+      "reason": "Internal-only file: not part of the public distribution surface",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": "6a1d5b45dd925eaa36960ad4a77611a245e5ed245a23a082e47ca42f761282fe",
+      "publicSha256": null
+    },
+    {
+      "path": "scripts/hooks/pre-commit-portability.sh",
+      "kind": "private-only",
+      "reason": "Internal-only file: not part of the public distribution surface",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": "b61c1ab593ef8efee6ef356ec48243d84aeeaea8bdd185b27df26dfbc498a5ed",
+      "publicSha256": null
+    },
+    {
+      "path": "scripts/oss-boundary.mjs",
+      "kind": "content",
+      "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": "fc0a118f4f8c42674edf809fd3f21d8f37c1223e28b42dac850472005279a933",
+      "publicSha256": "4a1220f5ffc93dc1692a8d6cda25a66d99f6781abcf4b200960c23f79ee52bf4"
+    },
+    {
+      "path": "scripts/public-portability-guard.mjs",
+      "kind": "content",
+      "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": "ebe1406a87a7d79f600e8d587e3196fefc0c8b51017539b5d26268d0024b5881",
+      "publicSha256": "83c80edab1fde1c90e1a76f7d49540bd44f2cc85fff649049c278d58bfbb7bcb"
+    },
+    {
+      "path": "scripts/release-matrix.mjs",
+      "kind": "content",
+      "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": "33d4a1bb37911ad83525d0849f625b8da4b427afc73f5309bb5d09f4c26869bb",
+      "publicSha256": "34a529469c784949dd870462746907b1a0a0599cb2deedffb052b5b3530bcd96"
+    },
+    {
+      "path": "scripts/root-release-guard.mjs",
+      "kind": "content",
+      "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": "77a0038ea80d405c883d845817ee1908cfdbe666cbfd17c114e2c461624e0d1a",
+      "publicSha256": "5719aa648838d2f6e0afefde7cb02224516f82b712a24d1e42374d8b5fa3cace"
+    },
+    {
+      "path": "scripts/tests/block-public-oss-writes.test.mjs",
+      "kind": "content",
+      "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": "29cc82418c67d96db761ba4250be5817e5eff2596023ddf8c8a4b64671d30d0e",
+      "publicSha256": "f28ccb2969c48218b291b313cb8da64eb9691195793696b9c0ff8996cae8b535"
+    },
+    {
+      "path": "scripts/tests/pre-commit-portability-hook.test.mjs",
+      "kind": "private-only",
+      "reason": "Internal-only file: not part of the public distribution surface",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": "ce6483458a54c5f3667d6c3e0fc73233d5541d951d3346e26a9e6b440a5f9ee4",
+      "publicSha256": null
+    },
+    {
+      "path": "scripts/tests/public-workflow-scope.test.mjs",
+      "kind": "content",
+      "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": "d4b0806a342a568b2eb7613011dd2e59206e0c8cde8e315f00c22fc0361b25f5",
+      "publicSha256": "8bda04e67bde77d15352147a6c2aab30b3153a3b54852da04cd91f7340d0d5b9"
+    },
+    {
+      "path": "scripts/tests/register-current-mcp-workflow.test.mjs",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "236dcc0bb906d6209f54183c562b0da8b7dbefd604844ab003ad8801a440df85"
+    },
+    {
+      "path": "scripts/tests/release-matrix.test.mjs",
+      "kind": "content",
+      "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": "b54192ad5e40b8b2d664c3d1454841b554543cd66831ad170196e802890cb94c",
+      "publicSha256": "e20a81a02798552118e41736cfb3d3918f8f0eb16fa63242756f85ea7b40ac64"
+    },
+    {
+      "path": "scripts/tests/root-release-guard.test.mjs",
+      "kind": "content",
+      "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": "83e500a4f2093a1a5e3b233a7a8bb0ff16c11a581ec91920c44a3e74e01bc38e",
+      "publicSha256": "b61ab9ff57a238e6db18f6d2c078b2efb7cb9ecf96c783578c83dc457f38cb56"
+    },
+    {
+      "path": "scripts/tests/workflow-action-runtime.test.mjs",
+      "kind": "content",
+      "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": "3ca391b8519c60463bf9ef38fd4dabc52d073cbba2d2958da12a1cd168d73841",
+      "publicSha256": "ffa8411159591ead6b27c403639b4fc35a862411c7627e7d231ff4e4d3840a78"
+    },
+    {
+      "path": "scripts/verify-live-release.mjs",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "64e89307ea4f761d21ad7892927692c77eb83f8b9d6a888f97a7f5188c9ac2e2"
+    },
+    {
+      "path": "scripts/verify-native-release-assets.mjs",
+      "kind": "public-only",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": null,
+      "publicSha256": "6d3b96cb058160cd8ebf5a1174d1827e7e61984c362380415e816cfc22b60890"
+    }
+  ]
 }

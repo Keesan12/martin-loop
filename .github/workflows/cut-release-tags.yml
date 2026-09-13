@@ -1,205 +1,117 @@
-name: Cut Release Tags
+name: Validate and cut paired release tags
 
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: Full public commit SHA to validate and tag
+        required: true
+        type: string
+      version:
+        description: Root and MCP semantic version
+        required: true
+        type: string
+      retry_run_id:
+        description: Prior controller run ID; accepted only when GitHub proves an infrastructure-only failure
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: write
-  actions: write
+  actions: read
+  id-token: write
 
 jobs:
-  cut-release-tags:
-    name: Cut root and MCP release tags
-    if: contains(github.event.head_commit.message, '[cut-release]')
+  publisher-equivalent-validation:
+    if: github.repository == 'Keesan12/martin-loop'
     runs-on: ubuntu-latest
+    outputs:
+      validated_release_sha: ${{ steps.coordinates.outputs.sha }}
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ inputs.candidate_sha }}
           fetch-depth: 0
-
-      - name: Resolve release coordinates
-        id: versions
-        shell: bash
-        run: |
-          ROOT_VERSION="$(node -p "require('./package.json').version")"
-          MCP_VERSION="$(node -p "require('./packages/mcp/package.json').version")"
-          MCP_SERVER_VERSION="$(node -p "require('./packages/mcp/server.json').version")"
-          MCPB_VERSION="$(node -p "require('./packages/mcp/mcpb/manifest.json').version")"
-
-          if [ "$MCP_VERSION" != "$MCP_SERVER_VERSION" ]; then
-            echo "MCP package/server version mismatch: ${MCP_VERSION} != ${MCP_SERVER_VERSION}"
-            exit 1
-          fi
-          if [ "$MCP_VERSION" != "$MCPB_VERSION" ]; then
-            echo "MCP package/MCPB version mismatch: ${MCP_VERSION} != ${MCPB_VERSION}"
-            exit 1
-          fi
-
-          test -f "docs/release/OSS-${ROOT_VERSION}-RELEASE-NOTES.md"
-          test -f "docs/release/MCP-${MCP_VERSION}-RELEASE-NOTES.md"
-          node ./scripts/extract-changelog-entry.mjs --version "$ROOT_VERSION" >/dev/null
-
-          echo "root_version=${ROOT_VERSION}" >> "$GITHUB_OUTPUT"
-          echo "mcp_version=${MCP_VERSION}" >> "$GITHUB_OUTPUT"
-
-      - name: Refuse to move existing release tags
-        shell: bash
-        run: |
-          git fetch --tags --force
-          ROOT_TAG="v${{ steps.versions.outputs.root_version }}"
-          MCP_TAG="mcp-v${{ steps.versions.outputs.mcp_version }}"
-
-          if git rev-parse -q --verify "refs/tags/${ROOT_TAG}" >/dev/null; then
-            echo "Release tag ${ROOT_TAG} already exists. Refusing to move it."
-            exit 1
-          fi
-          if git rev-parse -q --verify "refs/tags/${MCP_TAG}" >/dev/null; then
-            echo "Release tag ${MCP_TAG} already exists. Refusing to move it."
-            exit 1
-          fi
-
-      - name: Create immutable release tags at this commit
-        shell: bash
-        run: |
-          ROOT_TAG="v${{ steps.versions.outputs.root_version }}"
-          MCP_TAG="mcp-v${{ steps.versions.outputs.mcp_version }}"
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          git tag -a "$ROOT_TAG" "$GITHUB_SHA" -m "MartinLoop ${{ steps.versions.outputs.root_version }}"
-          git tag -a "$MCP_TAG" "$GITHUB_SHA" -m "@martinloop/mcp ${{ steps.versions.outputs.mcp_version }}"
-          git push origin "$ROOT_TAG" "$MCP_TAG"
-
-      - name: Verify tag commit parity
-        shell: bash
-        run: |
-          ROOT_TAG="v${{ steps.versions.outputs.root_version }}"
-          MCP_TAG="mcp-v${{ steps.versions.outputs.mcp_version }}"
-          test "$(git rev-parse "${ROOT_TAG}^{commit}")" = "$GITHUB_SHA"
-          test "$(git rev-parse "${MCP_TAG}^{commit}")" = "$GITHUB_SHA"
-
-      - name: Dispatch trusted publishers
-        shell: bash
+      - uses: pnpm/action-setup@b0f76dfb45f55f8421693e4803ac7bb65143bd34
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Validate exact candidate SHA and full publisher matrix
         env:
-          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
         run: |
-          gh workflow run release.yml --ref main -f tag="v${{ steps.versions.outputs.root_version }}"
-          gh workflow run publish-mcp.yml --ref main -f tag="mcp-v${{ steps.versions.outputs.mcp_version }}"
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = "$CANDIDATE_SHA"
+          node scripts/pre-tag-release-gate.mjs --candidate-sha "$CANDIDATE_SHA" --output pre-tag-attestation.json
+      - name: Bind validated coordinate
+        id: coordinates
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        run: echo "sha=$CANDIDATE_SHA" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v6
+        with:
+          name: pre-tag-attestation
+          path: pre-tag-attestation.json
 
-  publish-existing-release-tags:
-    name: Publish existing immutable release tags
-    if: contains(github.event.head_commit.message, '[publish-existing-release]')
+  atomic-tag-coordinates:
+    needs: publisher-equivalent-validation
     runs-on: ubuntu-latest
+    outputs:
+      recovery_state: ${{ steps.tags.outputs.state }}
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ needs.publisher-equivalent-validation.outputs.validated_release_sha }}
           fetch-depth: 0
-
-      - name: Resolve and verify existing release tags
-        id: existing
+      - uses: actions/download-artifact@v7
+        with:
+          name: pre-tag-attestation
+      - name: Create or authorize paired coordinates
+        id: tags
         shell: bash
+        env:
+          CANDIDATE_SHA: ${{ needs.publisher-equivalent-validation.outputs.validated_release_sha }}
+          VERSION: ${{ inputs.version }}
+          RETRY_RUN_ID: ${{ inputs.retry_run_id }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          ROOT_VERSION="$(node -p "require('./package.json').version")"
-          MCP_VERSION="$(node -p "require('./packages/mcp/package.json').version")"
-          ROOT_TAG="v${ROOT_VERSION}"
-          MCP_TAG="mcp-v${MCP_VERSION}"
-
-          git fetch --tags --force
-          git rev-parse -q --verify "refs/tags/${ROOT_TAG}" >/dev/null
-          git rev-parse -q --verify "refs/tags/${MCP_TAG}" >/dev/null
-
-          ROOT_SHA="$(git rev-parse "${ROOT_TAG}^{commit}")"
-          MCP_SHA="$(git rev-parse "${MCP_TAG}^{commit}")"
-          if [ "$ROOT_SHA" != "$MCP_SHA" ]; then
-            echo "Root and MCP release tags do not resolve to the same commit: ${ROOT_SHA} != ${MCP_SHA}"
-            exit 1
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = "$CANDIDATE_SHA"
+          node scripts/query-release-publication-state.mjs --version "$VERSION" --output publication-state.json
+          FAILURE_KIND=initial
+          if [[ -n "$RETRY_RUN_ID" ]]; then
+            node scripts/verify-infrastructure-retry.mjs --run-id "$RETRY_RUN_ID" --candidate-sha "$CANDIDATE_SHA"
+            FAILURE_KIND=infrastructure
           fi
+          OUTPUT="$(node scripts/cut-release-tags.mjs \
+            --candidate-sha "$CANDIDATE_SHA" \
+            --version "$VERSION" \
+            --failure-kind "$FAILURE_KIND" \
+            --attestation pre-tag-attestation.json \
+            --publication-evidence publication-state.json)"
+          printf '%s\n' "$OUTPUT"
+          STATE="$(printf '%s\n' "$OUTPUT" | sed -n 's/^DISPATCH_STATE=//p')"
+          test -n "$STATE"
+          echo "state=$STATE" >> "$GITHUB_OUTPUT"
 
-          TAG_ROOT_VERSION="$(git show "${ROOT_TAG}:package.json" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).version))")"
-          TAG_MCP_VERSION="$(git show "${MCP_TAG}:packages/mcp/package.json" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).version))")"
-          TAG_MCP_SERVER_VERSION="$(git show "${MCP_TAG}:packages/mcp/server.json" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).version))")"
-          TAG_MCPB_VERSION="$(git show "${MCP_TAG}:packages/mcp/mcpb/manifest.json" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).version))")"
+  publish-root:
+    needs: [publisher-equivalent-validation, atomic-tag-coordinates]
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: v${{ inputs.version }}
+      validated_release_sha: ${{ needs.publisher-equivalent-validation.outputs.validated_release_sha }}
+      recovery_state: ${{ needs.atomic-tag-coordinates.outputs.recovery_state }}
+    secrets: inherit
 
-          test "$TAG_ROOT_VERSION" = "$ROOT_VERSION"
-          test "$TAG_MCP_VERSION" = "$MCP_VERSION"
-          test "$TAG_MCP_SERVER_VERSION" = "$MCP_VERSION"
-          test "$TAG_MCPB_VERSION" = "$MCP_VERSION"
-          git cat-file -e "${ROOT_TAG}:docs/release/OSS-${ROOT_VERSION}-RELEASE-NOTES.md"
-          git cat-file -e "${MCP_TAG}:docs/release/MCP-${MCP_VERSION}-RELEASE-NOTES.md"
-
-          echo "root_tag=${ROOT_TAG}" >> "$GITHUB_OUTPUT"
-          echo "mcp_tag=${MCP_TAG}" >> "$GITHUB_OUTPUT"
-          echo "release_sha=${ROOT_SHA}" >> "$GITHUB_OUTPUT"
-
-      - name: Dispatch trusted publishers for existing tags
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          echo "Publishing immutable release commit ${{ steps.existing.outputs.release_sha }}"
-          gh workflow run release.yml --ref main -f tag="${{ steps.existing.outputs.root_tag }}"
-          gh workflow run publish-mcp.yml --ref main -f tag="${{ steps.existing.outputs.mcp_tag }}"
-
-  publish-root-repair:
-    name: Publish root release from repaired main
-    if: contains(github.event.head_commit.message, '[publish-root-repair]')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - name: Resolve root release tag
-        id: root
-        shell: bash
-        run: |
-          ROOT_VERSION="$(node -p "require('./package.json').version")"
-          ROOT_TAG="v${ROOT_VERSION}"
-          git fetch --tags --force
-          git rev-parse -q --verify "refs/tags/${ROOT_TAG}" >/dev/null
-          TAG_ROOT_VERSION="$(git show "${ROOT_TAG}:package.json" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).version))")"
-          test "$TAG_ROOT_VERSION" = "$ROOT_VERSION"
-          echo "root_tag=${ROOT_TAG}" >> "$GITHUB_OUTPUT"
-
-      - name: Dispatch trusted root publisher from repaired main
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh workflow run release.yml --ref main -f tag="${{ steps.root.outputs.root_tag }}"
-
-  publish-release-repair:
-    name: Publish root and MCP repair lanes
-    if: contains(github.event.head_commit.message, '[publish-release-repair]')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - name: Resolve existing release tags
-        id: repair
-        shell: bash
-        run: |
-          ROOT_VERSION="$(node -p "require('./package.json').version")"
-          MCP_VERSION="$(node -p "require('./packages/mcp/package.json').version")"
-          ROOT_TAG="v${ROOT_VERSION}"
-          MCP_TAG="mcp-v${MCP_VERSION}"
-          git fetch --tags --force
-          git rev-parse -q --verify "refs/tags/${ROOT_TAG}" >/dev/null
-          git rev-parse -q --verify "refs/tags/${MCP_TAG}" >/dev/null
-          test "$(git show "${ROOT_TAG}:package.json" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).version))")" = "$ROOT_VERSION"
-          test "$(git show "${MCP_TAG}:packages/mcp/package.json" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).version))")" = "$MCP_VERSION"
-          test "$(git show "${MCP_TAG}:packages/mcp/mcpb/manifest.json" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).version))")" = "$MCP_VERSION"
-          echo "root_tag=${ROOT_TAG}" >> "$GITHUB_OUTPUT"
-          echo "mcp_tag=${MCP_TAG}" >> "$GITHUB_OUTPUT"
-
-      - name: Dispatch repaired trusted publishers
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh workflow run release.yml --ref main -f tag="${{ steps.repair.outputs.root_tag }}"
-          gh workflow run publish-mcp.yml --ref main -f tag="${{ steps.repair.outputs.mcp_tag }}"
+  publish-mcp:
+    needs: [publisher-equivalent-validation, atomic-tag-coordinates]
+    uses: ./.github/workflows/publish-mcp.yml
+    with:
+      tag: mcp-v${{ inputs.version }}
+      validated_release_sha: ${{ needs.publisher-equivalent-validation.outputs.validated_release_sha }}
+      recovery_state: ${{ needs.atomic-tag-coordinates.outputs.recovery_state }}
+    secrets: inherit

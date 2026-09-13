@@ -1,5 +1,5 @@
 import { createHash, createHmac } from "node:crypto";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -77,6 +77,26 @@ describe("receipt-bound hosted sync transport", () => {
         runsRoot,
       },
     } as unknown as Partial<LoopRecord>);
+    // Pre-populate ledger.jsonl — persistLoopArtifacts and sync-client both
+    // read this as the authoritative ledger source after the P1 fix.
+    const loopRoot = join(runsRoot, loop.loopId);
+    await mkdir(loopRoot, { recursive: true });
+    const ledgerEntry = {
+      eventId: "evt-core-complete",
+      type: "loop.completed",
+      lifecycleState: "completed",
+      timestamp: "2026-08-23T12:00:00.000Z",
+      payload: {
+        verified: true,
+        detail: `Verifier read ${sensitiveWindowsRoot}\\README.md`,
+      },
+    };
+    await writeFile(
+      join(loopRoot, "ledger.jsonl"),
+      JSON.stringify(ledgerEntry) + "\n",
+      "utf8"
+    );
+
     await persistLoopArtifacts(loop, { runsRoot });
 
     const localLoopPath = join(runsRoot, loop.loopId, "loop.json");
@@ -215,6 +235,17 @@ describe("receipt-bound hosted sync transport", () => {
 
   it("fails closed to the redacted unverified path instead of re-signing tampered persisted receipt bytes", async () => {
     const loop = makeLoop(runsRoot);
+
+    // Pre-populate ledger.jsonl so a valid receipt is sealed, then tamper with
+    // loop.json — the loopRecordSha256 mismatch must cause fail-closed behaviour.
+    const loopRoot = join(runsRoot, loop.loopId);
+    await mkdir(loopRoot, { recursive: true });
+    await writeFile(
+      join(loopRoot, "ledger.jsonl"),
+      JSON.stringify({ eventId: "evt-core-complete", type: "loop.completed", timestamp: loop.updatedAt }) + "\n",
+      "utf8"
+    );
+
     await persistLoopArtifacts(loop, { runsRoot });
 
     const loopPath = join(runsRoot, loop.loopId, "loop.json");
