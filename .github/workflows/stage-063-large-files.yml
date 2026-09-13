@@ -26,6 +26,10 @@ jobs:
           readme = Path('README.md')
           text = readme.read_text(encoding='utf-8')
           text = text.replace('0.6.2', '0.6.3')
+          text = text.replace(
+              'eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIkBtYXJ0aW5sb29wL21jcEAwLjYuMiJdfQ%3D%3D',
+              'eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIkBtYXJ0aW5sb29wL21jcEAwLjYuMyJdfQ%3D%3D',
+          )
           readme.write_text(text, encoding='utf-8', newline='\n')
 
           changelog = Path('CHANGELOG.md')
