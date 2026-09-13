@@ -102,7 +102,14 @@ export async function persistLoopArtifacts(
   // a ledgerSha256 that never matches ledger.jsonl, causing tamper_detected on
   // every legitimate run (P1: receipt-integrity-finalization-order).
   const ledgerFilePath = join(loopRoot, "ledger.jsonl");
-  const ledgerFileRaw = await readFile(ledgerFilePath, "utf8").catch(() => "");
+  let ledgerFileRaw = "";
+  try {
+    ledgerFileRaw = await readFile(ledgerFilePath, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw error;
+    }
+  }
   const ledgerEntries: unknown[] = ledgerFileRaw
     .split(/\r?\n/u)
     .map((line) => line.trim())
