@@ -6,7 +6,7 @@
   "privateMainShaValidated": "1bb761e3090b3530d795c48771d54761524f0b47",
   "publicBaseSha": "acfd20e796a4d0cbaa12fd3d46879b2e17ab9a54",
   "promotedBy": "Torram",
-  "validatedAt": "2026-09-13T20:40:42.505Z",
+  "validatedAt": "2026-09-13T21:11:50.965Z",
   "internalHealthPassed": true,
   "internalHealthEvidenceSha256": "695c9048a951f87fb3b6f68f451afe5bc170a2d4c666c014a3dfdfeea0eb99a1",
   "surfaceSpecHash": "a9c8d22be91bc0dd19238f7676aec62aacc77d8cc3a66327b46d71f16d65164a",
@@ -2775,6 +2775,14 @@
       "publicSha256": "6dc96018b05c134a8b1dbfae7799e7eb009d8f5f46a1b46469d7670b9038abd1"
     },
     {
+      "path": "package.json",
+      "kind": "content",
+      "reason": "Root package.json: public version bumped to 0.6.3 from 0.6.2 base, public-only release scripts preserved, private-only scripts excluded per handoff spec",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "privateSha256": "ff8e38e8b67e9df56cfb7daca66a4b3d6efdda757dfb8f5eb509a956ccd96d0f",
+      "publicSha256": "ef11a47f517eba4273a1374946d5b1957a5f8572195368f2688bcaae33802878"
+    },
+    {
       "path": "packages/cli/src/index.ts",
       "kind": "content",
       "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
@@ -2949,14 +2957,6 @@
       "reviewedBy": "Vakeesan Mahalingam",
       "privateSha256": "29cc82418c67d96db761ba4250be5817e5eff2596023ddf8c8a4b64671d30d0e",
       "publicSha256": "f28ccb2969c48218b291b313cb8da64eb9691195793696b9c0ff8996cae8b535"
-    },
-    {
-      "path": "scripts/tests/cut-release-tags-workflow.test.mjs",
-      "kind": "public-only",
-      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
-      "reviewedBy": "Vakeesan Mahalingam",
-      "privateSha256": null,
-      "publicSha256": "5313d187987174a775eb874fe42f30f9ce22128b34f00e36b9e6ac80c4133a5e"
     },
     {
       "path": "scripts/tests/pre-commit-portability-hook.test.mjs",
