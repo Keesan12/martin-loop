@@ -41,8 +41,12 @@ jobs:
       - name: Verify exact validated blobs
         shell: bash
         run: |
-          test "$(git hash-object README.md)" = "87cdde75c1cd75aa1c68250f9a1cb4b9941ba93b"
-          test "$(git hash-object CHANGELOG.md)" = "2ed32fdcb621390e28c71a894097b7251db05e3f"
+          README_SHA="$(git hash-object README.md)"
+          CHANGELOG_SHA="$(git hash-object CHANGELOG.md)"
+          echo "README_SHA=${README_SHA}"
+          echo "CHANGELOG_SHA=${CHANGELOG_SHA}"
+          test "$README_SHA" = "87cdde75c1cd75aa1c68250f9a1cb4b9941ba93b"
+          test "$CHANGELOG_SHA" = "2ed32fdcb621390e28c71a894097b7251db05e3f"
       - name: Commit only validated documents
         shell: bash
         run: |
