@@ -1,16 +1,16 @@
 name: Stage 0.6.3 large files
 
 on:
-  push:
+  pull_request:
     branches:
-      - public-staging/0.6.3-release
+      - main
 
 permissions:
   contents: write
 
 jobs:
   patch-large-release-files:
-    if: github.actor != 'github-actions[bot]'
+    if: github.actor != 'github-actions[bot]' && github.head_ref == 'public-staging/0.6.3-release'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
