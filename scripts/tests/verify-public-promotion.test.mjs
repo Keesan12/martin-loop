@@ -37,6 +37,14 @@ describe("complete public promotion surface", () => {
     for (const path of ["plugins/martinloop/plugin.json", ".github/workflows/martinloop-budget-gate.yml", "tsconfig.base.json", "packages/new-package/file.ts"]) assert.equal(isReleaseSurfacePath(path), true, path);
     assert.equal(isReleaseSurfacePath(".martin/promotion-manifest.json"), false);
   });
+  test("mode-only surface drift is blocked", () => {
+    const expected = manifest();
+    git(["update-index", "--chmod=+x", "packages/cli/src/index.ts"]);
+    const result = run(expected);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /packages\/cli\/src\/index\.ts/u);
+    reset();
+  });
   test("manifest generation refuses a non-authority repository even with passing health evidence", () => {
     write("health.json", `${JSON.stringify({ schemaVersion: "martin.internal-health.v1", status: "PASS", validatedReleaseSha: baseSha, commands: [{ command: "pnpm test", exitCode: 0 }] })}\n`);
     const output = join(repo, ".martin", "generated.json");
