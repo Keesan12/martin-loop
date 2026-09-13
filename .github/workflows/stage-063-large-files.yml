@@ -1,0 +1,54 @@
+name: Stage 0.6.3 large files
+
+on:
+  push:
+    branches:
+      - public-staging/0.6.3-release
+
+permissions:
+  contents: write
+
+jobs:
+  patch-large-release-files:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: public-staging/0.6.3-release
+          fetch-depth: 0
+      - name: Apply exact 0.6.3 document delta
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          readme = Path('README.md')
+          text = readme.read_text(encoding='utf-8')
+          text = text.replace('0.6.2', '0.6.3')
+          readme.write_text(text, encoding='utf-8', newline='\n')
+
+          changelog = Path('CHANGELOG.md')
+          text = changelog.read_text(encoding='utf-8')
+          marker = '## [Unreleased]\n\n'
+          block = '''## [0.6.3] - 2026-09-12\n\n### Fixed\n- Receipt integrity sealing now reads `ledger.jsonl` from disk instead of `loop.events`, matching the bytes that `verifyReceiptIntegrityFromFiles` reads. Every successful governed run was returning `tamper_detected` on 0.6.2; this hotfix closes that deterministic P1.\n- Hosted sync transport re-signing now reads `ledger.jsonl` for integrity verification, consistent with the persistence fix.\n\n### Changed\n- Updated root CLI, standalone MCP, plugin, MCPB, release-truth, and generated runtime version authority to `0.6.3`.\n\n'''
+          if '## [0.6.3] - 2026-09-12' not in text:
+              if marker not in text:
+                  raise SystemExit('CHANGELOG Unreleased marker missing')
+              text = text.replace(marker, marker + block, 1)
+          changelog.write_text(text, encoding='utf-8', newline='\n')
+          PY
+      - name: Verify exact validated blobs
+        shell: bash
+        run: |
+          test "$(git hash-object README.md)" = "87cdde75c1cd75aa1c68250f9a1cb4b9941ba93b"
+          test "$(git hash-object CHANGELOG.md)" = "2ed32fdcb621390e28c71a894097b7251db05e3f"
+      - name: Commit only validated documents
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md CHANGELOG.md
+          git diff --cached --quiet && exit 0
+          git commit -m "chore(release): sync 0.6.3 public documents"
+          git push origin HEAD:public-staging/0.6.3-release
