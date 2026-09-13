@@ -39,8 +39,11 @@ describe("complete public promotion surface", () => {
   });
   test("mode-only surface drift is blocked", () => {
     const expected = manifest();
+    write(".martin/promotion-manifest.json", `${JSON.stringify(expected)}\n`);
+    git(["add", "."]);
     git(["update-index", "--chmod=+x", "packages/cli/src/index.ts"]);
-    const result = run(expected);
+    git(["commit", "-m", "promotion candidate with mode drift"]);
+    const result = spawnSync("node", [SCRIPT], { cwd: repo, encoding: "utf8", env: { ...process.env, GITHUB_ACTIONS: "true" } });
     assert.equal(result.status, 1);
     assert.match(result.stderr, /packages\/cli\/src\/index\.ts/u);
     reset();
