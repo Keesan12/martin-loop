@@ -36,8 +36,13 @@ test("publish-mcp workflow covers trusted publishing, local-pack proof, and publ
   const workflowPath = path.join(ROOT_DIR, ".github", "workflows", "publish-mcp.yml");
   const workflow = await readFile(workflowPath, "utf8");
 
-  assert.match(workflow, /workflow_dispatch:/);
+  assert.match(workflow, /workflow_call:/);
+  assert.doesNotMatch(workflow, /workflow_dispatch:/);
   assert.match(workflow, /inputs:\s*[\s\S]*tag:/);
+  assert.match(workflow, /validated_release_sha:/);
+  assert.match(workflow, /recovery_state:/);
+  assert.match(workflow, /release-recovery-state\.mjs --publisher-coordinates/);
+  assert.doesNotMatch(workflow, /push:\s*[\s\S]*tags:/);
   assert.match(workflow, /permissions:\s*[\s\S]*id-token:\s*write/);
   assert.match(workflow, /permissions:\s*[\s\S]*contents:\s*write/);
   assert.match(workflow, /pnpm install --frozen-lockfile/);

@@ -97,11 +97,23 @@ export async function persistLoopArtifacts(
     "utf8"
   );
 
+  // Read ledger.jsonl from disk — this is the authoritative source that
+  // verifyReceiptIntegrityFromFiles reads. Using loop.events here would produce
+  // a ledgerSha256 that never matches ledger.jsonl, causing tamper_detected on
+  // every legitimate run (P1: receipt-integrity-finalization-order).
+  const ledgerFilePath = join(loopRoot, "ledger.jsonl");
+  const ledgerFileRaw = await readFile(ledgerFilePath, "utf8").catch(() => "");
+  const ledgerEntries: unknown[] = ledgerFileRaw
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as unknown);
+
   await writeReceiptIntegrityMaterial({
     runId: loop.loopId,
     runsRoot,
     loopRecord: loop,
-    ledgerEntries: persistedEvents,
+    ledgerEntries,
     scope:
       loop.receiptScope ??
       {

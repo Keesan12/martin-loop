@@ -10,7 +10,13 @@ test("root release workflow uses GitHub Actions trusted publishing without npm t
   const workflowPath = path.join(ROOT_DIR, ".github", "workflows", "release.yml");
   const workflow = await readFile(workflowPath, "utf8");
 
-  assert.match(workflow, /push:\s*[\s\S]*tags:\s*[\s\S]*"v\*\.\*\.\*"/);
+  assert.match(workflow, /workflow_call:/);
+  assert.doesNotMatch(workflow, /workflow_dispatch:/);
+  assert.match(workflow, /validated_release_sha:/);
+  assert.match(workflow, /recovery_state:/);
+  assert.match(workflow, /ref: \$\{\{ inputs\.tag \}\}/);
+  assert.match(workflow, /release-recovery-state\.mjs --publisher-coordinates/);
+  assert.doesNotMatch(workflow, /push:\s*[\s\S]*tags:/);
   assert.match(workflow, /permissions:\s*[\s\S]*contents:\s*write/);
   assert.match(workflow, /permissions:\s*[\s\S]*id-token:\s*write/);
   assert.match(workflow, /node-version:\s*24/);

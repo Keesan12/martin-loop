@@ -1,13 +1,18 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - "v*.*.*"
-  workflow_dispatch:
+  workflow_call:
     inputs:
       tag:
-        description: "Release tag to publish from the selected workflow ref"
+        description: Existing vX.Y.Z tag to publish
+        required: true
+        type: string
+      validated_release_sha:
+        description: SHA that passed the complete pre-tag gate
+        required: true
+        type: string
+      recovery_state:
+        description: Authorized release recovery state
         required: true
         type: string
 
@@ -19,12 +24,27 @@ jobs:
   publish-npm:
     name: Publish to npm
     runs-on: ubuntu-latest
-    env:
-      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ inputs.tag }}
           fetch-depth: 0
+
+      - name: Verify validated root and MCP source coordinates
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          VALIDATED_RELEASE_SHA: ${{ inputs.validated_release_sha }}
+          RECOVERY_STATE: ${{ inputs.recovery_state }}
+        run: |
+          [[ "$RELEASE_TAG" == v* ]] || { echo "Expected vX.Y.Z tag"; exit 1; }
+          VERSION="${RELEASE_TAG#v}"
+          git fetch --force origin "refs/tags/mcp-v${VERSION}:refs/tags/mcp-v${VERSION}"
+          TAG_SHA="$(git rev-list -n 1 "$RELEASE_TAG")"
+          MCP_TAG_SHA="$(git rev-list -n 1 "mcp-v${VERSION}")"
+          HEAD_SHA="$(git rev-parse HEAD)"
+          test "$HEAD_SHA" = "$TAG_SHA"
+          node scripts/release-recovery-state.mjs --publisher-coordinates --validated-sha "$VALIDATED_RELEASE_SHA" --tag-sha "$TAG_SHA" --paired-tag-sha "$MCP_TAG_SHA" --recovery-state "$RECOVERY_STATE"
 
       - uses: pnpm/action-setup@b0f76dfb45f55f8421693e4803ac7bb65143bd34
         with:
@@ -35,12 +55,11 @@ jobs:
           node-version: 24
           cache: pnpm
 
+      - name: Use latest npm for trusted publishing
+        run: npm install -g npm@latest
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-
-      - name: Build workspace packages needed by validation
-        run: |
-          pnpm build
 
       - name: Validate OSS release surface
         run: |
@@ -61,7 +80,7 @@ jobs:
           pnpm --filter @martinloop/mcp smoke:pack
           pnpm --filter @martinloop/mcp smoke:published:pack
           pnpm --filter @martinloop/mcp verify:release
-          node ./scripts/root-release-guard.mjs --tag "${RELEASE_TAG}" --pack
+          node ./scripts/root-release-guard.mjs --tag "${{ inputs.tag }}" --pack
           pnpm release:clean-check
 
       - name: Pack root tarball
@@ -97,9 +116,6 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Use latest npm for trusted publishing
-        run: npm install -g npm@latest
-
       - name: Publish to npm
         if: steps.npm-version.outputs.exists != 'true'
         run: npm publish "${{ steps.root-pack.outputs.tarball }}" --access public --provenance
@@ -125,6 +141,6 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b
         with:
-          tag_name: ${{ env.RELEASE_TAG }}
+          tag_name: ${{ inputs.tag }}
           files: ${{ steps.root-pack.outputs.tarball }}
           body: ${{ steps.changelog.outputs.body }}

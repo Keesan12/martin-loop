@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-09-12
+
+### Fixed
+- Receipt integrity sealing now reads `ledger.jsonl` from disk instead of `loop.events`, matching the bytes that `verifyReceiptIntegrityFromFiles` reads. Every successful governed run was returning `tamper_detected` on 0.6.2; this hotfix closes that deterministic P1.
+- Hosted sync transport re-signing now reads `ledger.jsonl` for integrity verification, consistent with the persistence fix.
+
+### Changed
+- Updated root CLI, standalone MCP, plugin, MCPB, release-truth, and generated runtime version authority to `0.6.3`.
+
 ## [0.6.2] - 2026-09-08
 
 ### Fixed

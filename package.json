@@ -1,7 +1,7 @@
 {
   "name": "martin-loop",
   "private": false,
-  "version": "0.6.2",
+  "version": "0.6.3",
   "type": "module",
   "description": "Open-source command center for governed AI coding agents with built-in onboarding, hard gates, MCP, and shareable run receipts.",
   "packageManager": "pnpm@10.33.0",
@@ -108,6 +108,7 @@
     "run:cli": "pnpm --filter @martin/cli dev",
     "public:promotion-guard": "node scripts/verify-public-promotion.mjs",
     "test:promotion-guard": "node --test scripts/tests/verify-public-promotion.test.mjs",
+    "test:release-controls": "node --test --test-concurrency=1 scripts/tests/verify-public-promotion.test.mjs scripts/tests/release-controls.test.mjs",
     "hooks:install:claude-public-write-guard": "node scripts/hooks/install-claude-public-write-hook.js"
   },
   "devDependencies": {
