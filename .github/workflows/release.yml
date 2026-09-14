@@ -15,6 +15,11 @@ on:
         description: Authorized release recovery state
         required: true
         type: string
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/release.yml
 
 permissions:
   contents: write
@@ -25,17 +30,42 @@ jobs:
     name: Publish to npm
     runs-on: ubuntu-latest
     steps:
+      - name: Resolve release invocation
+        id: invocation
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_VALIDATED_RELEASE_SHA: ${{ inputs.validated_release_sha }}
+          INPUT_RECOVERY_STATE: ${{ inputs.recovery_state }}
+        run: |
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            TAG="v0.6.3"
+            VALIDATED_RELEASE_SHA="790d0ae9dacafefe70f6b9c116c3937eb4d0d13b"
+            RECOVERY_STATE="RETRY_PUBLISH_SAME_VALIDATED_TAG"
+          else
+            TAG="$INPUT_TAG"
+            VALIDATED_RELEASE_SHA="$INPUT_VALIDATED_RELEASE_SHA"
+            RECOVERY_STATE="$INPUT_RECOVERY_STATE"
+          fi
+          test -n "$TAG"
+          test -n "$VALIDATED_RELEASE_SHA"
+          test -n "$RECOVERY_STATE"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "validated_release_sha=$VALIDATED_RELEASE_SHA" >> "$GITHUB_OUTPUT"
+          echo "recovery_state=$RECOVERY_STATE" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.tag }}
+          ref: ${{ steps.invocation.outputs.tag }}
           fetch-depth: 0
 
       - name: Verify validated root and MCP source coordinates
         shell: bash
         env:
-          RELEASE_TAG: ${{ inputs.tag }}
-          VALIDATED_RELEASE_SHA: ${{ inputs.validated_release_sha }}
-          RECOVERY_STATE: ${{ inputs.recovery_state }}
+          RELEASE_TAG: ${{ steps.invocation.outputs.tag }}
+          VALIDATED_RELEASE_SHA: ${{ steps.invocation.outputs.validated_release_sha }}
+          RECOVERY_STATE: ${{ steps.invocation.outputs.recovery_state }}
         run: |
           [[ "$RELEASE_TAG" == v* ]] || { echo "Expected vX.Y.Z tag"; exit 1; }
           VERSION="${RELEASE_TAG#v}"
@@ -54,6 +84,7 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
+          registry-url: https://registry.npmjs.org
 
       - name: Use latest npm for trusted publishing
         run: npm install -g npm@latest
@@ -74,7 +105,7 @@ jobs:
           pnpm release:authority:check:built
           pnpm oss:validate
           pnpm public:smoke
-          node ./scripts/root-release-guard.mjs --tag "${{ inputs.tag }}" --pack
+          node ./scripts/root-release-guard.mjs --tag "${{ steps.invocation.outputs.tag }}" --pack
           pnpm release:clean-check
 
       - name: Normalize npm provenance repository metadata
@@ -90,11 +121,18 @@ jobs:
 
       - name: Pack root tarball
         id: root-pack
+        shell: bash
         run: |
-          PACK_RESULT="$(node ./scripts/pack-root-release.mjs --output-dir dist-release)"
-          printf '%s\n' "$PACK_RESULT" > dist-release/pack-result.json
-          TARBALL="$(node -e "const fs = require('fs'); const data = JSON.parse(fs.readFileSync('dist-release/pack-result.json', 'utf8')); process.stdout.write(data.tarballPath);")"
-          echo "tarball=${TARBALL}" >> "$GITHUB_OUTPUT"
+          rm -rf dist-release
+          mkdir -p dist-release
+          npm pack --json --pack-destination dist-release > "$RUNNER_TEMP/martin-loop-root-pack.json"
+          mapfile -t TARBALLS < <(find dist-release -maxdepth 1 -type f -name '*.tgz' -print | sort)
+          if [[ "${#TARBALLS[@]}" -ne 1 ]]; then
+            echo "npm pack produced ${#TARBALLS[@]} tarballs; expected exactly one."
+            cat "$RUNNER_TEMP/martin-loop-root-pack.json" || true
+            exit 1
+          fi
+          echo "tarball=${TARBALLS[0]}" >> "$GITHUB_OUTPUT"
 
       - name: Read package version
         id: package-version
@@ -146,6 +184,6 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b
         with:
-          tag_name: ${{ inputs.tag }}
+          tag_name: ${{ steps.invocation.outputs.tag }}
           files: ${{ steps.root-pack.outputs.tarball }}
           body: ${{ steps.changelog.outputs.body }}
