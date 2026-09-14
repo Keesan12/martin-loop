@@ -65,11 +65,11 @@ jobs:
         run: |
           pnpm release:clean-check
           pnpm release:authority:check
+          pnpm build
           pnpm lint
           pnpm public:copy-scan
           pnpm public:portability-guard
           pnpm public:git-surface
-          pnpm build
           pnpm test
           pnpm release:authority:check:built
           pnpm oss:validate
