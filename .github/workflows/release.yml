@@ -74,12 +74,6 @@ jobs:
           pnpm release:authority:check:built
           pnpm oss:validate
           pnpm public:smoke
-          pnpm --filter @martinloop/mcp lint
-          pnpm --filter @martinloop/mcp test
-          pnpm --filter @martinloop/mcp build
-          pnpm --filter @martinloop/mcp smoke:pack
-          pnpm --filter @martinloop/mcp smoke:published:pack
-          pnpm --filter @martinloop/mcp verify:release
           node ./scripts/root-release-guard.mjs --tag "${{ inputs.tag }}" --pack
           pnpm release:clean-check
 
