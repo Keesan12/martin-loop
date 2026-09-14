@@ -12,13 +12,10 @@ test("root release workflow uses GitHub Actions trusted publishing without npm t
 
   assert.match(workflow, /workflow_call:/);
   assert.doesNotMatch(workflow, /workflow_dispatch:/);
-  assert.match(workflow, /push:\s*[\s\S]*branches:\s*[\s\S]*- main[\s\S]*paths:\s*[\s\S]*\.github\/workflows\/release\.yml/);
+  assert.doesNotMatch(workflow, /\n\s{2}push:/);
   assert.match(workflow, /validated_release_sha:/);
   assert.match(workflow, /recovery_state:/);
-  assert.match(workflow, /EVENT_NAME: \$\{\{ github\.event_name \}\}/);
-  assert.match(workflow, /TAG="v0\.6\.3"/);
-  assert.match(workflow, /VALIDATED_RELEASE_SHA="790d0ae9dacafefe70f6b9c116c3937eb4d0d13b"/);
-  assert.match(workflow, /RECOVERY_STATE="RETRY_PUBLISH_SAME_VALIDATED_TAG"/);
+  assert.doesNotMatch(workflow, /EVENT_NAME:|TAG="v0\.6\.3"|790d0ae9dacafefe70f6b9c116c3937eb4d0d13b/);
   assert.match(workflow, /ref: \$\{\{ steps\.invocation\.outputs\.tag \}\}/);
   assert.match(workflow, /release-recovery-state\.mjs --publisher-coordinates/);
   assert.doesNotMatch(workflow, /push:\s*[\s\S]*tags:/);
