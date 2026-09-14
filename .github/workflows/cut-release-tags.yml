@@ -85,6 +85,8 @@ jobs:
           RETRY_RUN_ID: ${{ inputs.retry_run_id }}
           GH_TOKEN: ${{ github.token }}
         run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
           git fetch origin main
           test "$(git rev-parse origin/main)" = "$CANDIDATE_SHA"
