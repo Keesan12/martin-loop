@@ -157,8 +157,11 @@ export async function findSingleTarball(directory) {
 export function extractPackJsonPayload(stdout) {
   const trimmed = stdout.trim();
   const trailingJsonMatch = trimmed.match(/(\[\s*\{[\s\S]*\}\s*\])$/);
-  const jsonPayload = trailingJsonMatch?.[1] ?? trimmed;
-  return JSON.parse(jsonPayload);
+  if (trailingJsonMatch?.[1]) return JSON.parse(trailingJsonMatch[1]);
+  const startIdx = trimmed.indexOf('[');
+  const endIdx = trimmed.lastIndexOf(']');
+  if (startIdx !== -1 && endIdx > startIdx) return JSON.parse(trimmed.slice(startIdx, endIdx + 1));
+  return JSON.parse(trimmed);
 }
 
 export function extractPackedFilePaths(packArtifacts) {
