@@ -29,6 +29,7 @@ test("root release workflow uses GitHub Actions trusted publishing without npm t
   assert.match(workflow, /npm install -g npm@latest/);
   assert.match(workflow, /npm pack --json --pack-destination dist-release/);
   assert.match(workflow, /find dist-release -maxdepth 1 -type f -name '\*\.tgz'/);
+  assert.match(workflow, /echo "tarball=\.\/\$\{TARBALLS\[0\]#\.\/\}" >> "\$GITHUB_OUTPUT"/);
   assert.match(workflow, /npm publish "\$\{\{ steps\.root-pack\.outputs\.tarball \}\}" --access public --provenance/);
   assert.match(workflow, /npm view "martin-loop@\$\{\{ steps\.package-version\.outputs\.version \}\}" version/);
   assert.match(
