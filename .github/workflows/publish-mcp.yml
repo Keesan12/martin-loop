@@ -15,12 +15,6 @@ on:
         description: Authorized release recovery state
         required: true
         type: string
-  push:
-    branches:
-      - main
-    paths:
-      - .github/workflows/publish-mcp.yml
-
 permissions:
   contents: write
   id-token: write
@@ -34,20 +28,13 @@ jobs:
         id: invocation
         shell: bash
         env:
-          EVENT_NAME: ${{ github.event_name }}
           INPUT_TAG: ${{ inputs.tag }}
           INPUT_VALIDATED_RELEASE_SHA: ${{ inputs.validated_release_sha }}
           INPUT_RECOVERY_STATE: ${{ inputs.recovery_state }}
         run: |
-          if [[ "$EVENT_NAME" == "push" ]]; then
-            TAG="mcp-v0.6.3"
-            VALIDATED_RELEASE_SHA="790d0ae9dacafefe70f6b9c116c3937eb4d0d13b"
-            RECOVERY_STATE="RETRY_PUBLISH_SAME_VALIDATED_TAG"
-          else
-            TAG="$INPUT_TAG"
-            VALIDATED_RELEASE_SHA="$INPUT_VALIDATED_RELEASE_SHA"
-            RECOVERY_STATE="$INPUT_RECOVERY_STATE"
-          fi
+          TAG="$INPUT_TAG"
+          VALIDATED_RELEASE_SHA="$INPUT_VALIDATED_RELEASE_SHA"
+          RECOVERY_STATE="$INPUT_RECOVERY_STATE"
           test -n "$TAG"
           test -n "$VALIDATED_RELEASE_SHA"
           test -n "$RECOVERY_STATE"
