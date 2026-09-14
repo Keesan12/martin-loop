@@ -18,21 +18,22 @@ on:
         type: string
 
 permissions:
-  contents: write
-  actions: read
-  id-token: write
+  contents: read
 
 jobs:
   publisher-equivalent-validation:
     if: github.repository == 'Keesan12/martin-loop'
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     outputs:
       validated_release_sha: ${{ steps.coordinates.outputs.sha }}
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.candidate_sha }}
+          ref: main
           fetch-depth: 0
+          persist-credentials: false
       - uses: pnpm/action-setup@b0f76dfb45f55f8421693e4803ac7bb65143bd34
         with:
           version: 10.33.0
@@ -40,10 +41,11 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-      - name: Validate exact candidate SHA and full publisher matrix
+      - name: Validate exact main candidate SHA and full publisher matrix
         env:
           CANDIDATE_SHA: ${{ inputs.candidate_sha }}
         run: |
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
           git fetch origin main
           test "$(git rev-parse origin/main)" = "$CANDIDATE_SHA"
           node scripts/pre-tag-release-gate.mjs --candidate-sha "$CANDIDATE_SHA" --output pre-tag-attestation.json
@@ -59,14 +61,18 @@ jobs:
 
   atomic-tag-coordinates:
     needs: publisher-equivalent-validation
+    permissions:
+      contents: write
+      actions: read
     runs-on: ubuntu-latest
     outputs:
       recovery_state: ${{ steps.tags.outputs.state }}
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ needs.publisher-equivalent-validation.outputs.validated_release_sha }}
+          ref: main
           fetch-depth: 0
+          persist-credentials: false
       - uses: actions/download-artifact@v7
         with:
           name: pre-tag-attestation
@@ -79,6 +85,7 @@ jobs:
           RETRY_RUN_ID: ${{ inputs.retry_run_id }}
           GH_TOKEN: ${{ github.token }}
         run: |
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
           git fetch origin main
           test "$(git rev-parse origin/main)" = "$CANDIDATE_SHA"
           node scripts/query-release-publication-state.mjs --version "$VERSION" --output publication-state.json
@@ -87,12 +94,14 @@ jobs:
             node scripts/verify-infrastructure-retry.mjs --run-id "$RETRY_RUN_ID" --candidate-sha "$CANDIDATE_SHA"
             FAILURE_KIND=infrastructure
           fi
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           OUTPUT="$(node scripts/cut-release-tags.mjs \
             --candidate-sha "$CANDIDATE_SHA" \
             --version "$VERSION" \
             --failure-kind "$FAILURE_KIND" \
             --attestation pre-tag-attestation.json \
             --publication-evidence publication-state.json)"
+          git remote set-url origin "https://github.com/${GITHUB_REPOSITORY}.git"
           printf '%s\n' "$OUTPUT"
           STATE="$(printf '%s\n' "$OUTPUT" | sed -n 's/^DISPATCH_STATE=//p')"
           test -n "$STATE"
@@ -100,6 +109,9 @@ jobs:
 
   publish-root:
     needs: [publisher-equivalent-validation, atomic-tag-coordinates]
+    permissions:
+      contents: write
+      id-token: write
     uses: ./.github/workflows/release.yml
     with:
       tag: v${{ inputs.version }}
@@ -109,6 +121,9 @@ jobs:
 
   publish-mcp:
     needs: [publisher-equivalent-validation, atomic-tag-coordinates]
+    permissions:
+      contents: write
+      id-token: write
     uses: ./.github/workflows/publish-mcp.yml
     with:
       tag: mcp-v${{ inputs.version }}

@@ -17,9 +17,16 @@ function commit(value, label) {
   return resolved;
 }
 function repositorySlug(remote) {
-  const match = /github\.com(?::|\/)([^/]+\/[^/]+?)(?:\.git)?$/iu.exec(remote.trim().replaceAll("\\", "/"));
-  if (!match) throw new Error("origin must be a canonical GitHub repository URL");
-  return match[1];
+  const normalized = remote.trim().replaceAll("\\", "/");
+  const scpLike = /^git@github\.com:([^/]+\/[^/]+?)(?:\.git)?$/iu.exec(normalized);
+  if (scpLike) return scpLike[1];
+  let parsed;
+  try { parsed = new URL(normalized); }
+  catch { throw new Error("origin must be a canonical GitHub repository URL"); }
+  if (parsed.hostname.toLowerCase() !== "github.com") throw new Error("origin must use the exact github.com host");
+  const slug = parsed.pathname.replace(/^\/+|\/+$/gu, "").replace(/\.git$/iu, "");
+  if (!/^[^/]+\/[^/]+$/u.test(slug)) throw new Error("origin must identify exactly one GitHub owner/repository pair");
+  return slug;
 }
 const privateMainShaValidated = commit(privateRef, "private-ref");
 const resolvedPrivateMergeSha = commit(privateMergeSha, "private-merge");
