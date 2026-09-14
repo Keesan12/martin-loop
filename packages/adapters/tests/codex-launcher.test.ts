@@ -1,6 +1,6 @@
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { tmpdir, userInfo } from "node:os";
+import { dirname, join, resolve } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
@@ -179,6 +179,49 @@ describe("probeCodexCapabilities", () => {
     expect(result.json).toEqual({ flag: "--json", scope: "exec" });
     expect(result.color).toEqual({ flag: "--color", scope: "global" });
     expect(result.promptTransport).toBe("stdin-dash");
+  });
+
+  it("parses Codex 0.147 sandbox values when help separates them with a blank line", () => {
+    clearCodexCapabilityCacheForTests();
+    const spawnSyncImpl = vi.fn((_command: string, args: string[]) => ({
+      status: 0,
+      stdout: args[0] === "exec"
+        ? [
+            "Usage: codex exec [OPTIONS] [PROMPT]",
+            "  -s, --sandbox <SANDBOX_MODE>",
+            "          Select the sandbox policy to use when executing model-generated shell commands",
+            "          ",
+            "          [possible values: read-only, workspace-write, danger-full-access]",
+            "  -a, --ask-for-approval <APPROVAL_POLICY>",
+            "          Configure when the model requires human approval",
+            "          Possible values:",
+            "          - untrusted: ask for untrusted commands",
+            "          - on-request: let the model decide",
+            "          - never: never ask for approval",
+            "      --approve-for-me",
+            "          Route approval requests through automatic review using the workspace-write sandbox"
+          ].join("\n")
+        : "Usage: codex [OPTIONS] <COMMAND> [ARGS]",
+      stderr: ""
+    }));
+
+    const result = probeCodexCapabilities("codex", {
+      platform: "win32",
+      spawnSyncImpl: spawnSyncImpl as never,
+      cache: false
+    });
+
+    expect(result.sandbox?.values).toEqual([
+      "read-only",
+      "workspace-write",
+      "danger-full-access"
+    ]);
+    expect(result.approvalPolicy?.values).toEqual(["untrusted", "on-request", "never"]);
+    expect(resolveCodexAutonomyCandidates(result)[0]).toMatchObject({
+      strategy: "sandbox+approval",
+      sandboxValue: "workspace-write",
+      approvalValue: "never"
+    });
   });
 
   it("caches a real profile once per exact binary", () => {
@@ -439,11 +482,11 @@ describe("resolveCodexAutonomyCandidates", () => {
     ]);
     expect(candidates[0]).toEqual(expect.objectContaining({
       strategy: "sandbox+approval",
-      sandboxValue: "workspace-write"
+      sandboxValue: "workspace-write",
+      approvalValue: "never"
     }));
     expect(candidates).not.toEqual(expect.arrayContaining([
-      expect.objectContaining({ approvalValue: "on-request" }),
-      expect.objectContaining({ approvalValue: "never" })
+      expect.objectContaining({ approvalValue: "on-request" })
     ]));
     expect(candidates.flatMap((candidate) => Object.values(candidate))).not.toContain("danger-full-access");
   });
@@ -481,6 +524,7 @@ describe("probeCodexLaunch", () => {
     const workingDirectory = process.cwd();
     let simulateOutsideEscape = false;
     let observedTimeout: number | undefined;
+    let observedOutsideMarker: string | undefined;
     const spawnSyncImpl = vi.fn((_command: string, args: string[], options?: { input?: string; timeout?: number }) => {
       if (args[0] === "codex-locator") {
         return { status: 0, stdout: "/usr/local/bin/codex\n", stderr: "" };
@@ -506,6 +550,7 @@ describe("probeCodexLaunch", () => {
       const promptText = options?.input ?? args.at(-1) ?? "";
       observedTimeout = options?.timeout;
       const outsideMarker = promptText.match(/"([^"]*\.martin-codex-outside-probe\.tmp)"/u)?.[1];
+      observedOutsideMarker = outsideMarker;
       if (simulateOutsideEscape && outsideMarker) {
         writeFileSync(outsideMarker, "MARTIN_CODEX_OUTSIDE_BAD", "utf8");
       }
@@ -536,9 +581,14 @@ describe("probeCodexLaunch", () => {
     expect(result.args).toContain("--sandbox");
     expect(result.args).toContain("workspace-write");
     expect(result.args).not.toContain("--full-auto");
-    expect(result.args).not.toContain("--ask-for-approval");
+    expect(result.args).toContain("--ask-for-approval");
+    expect(result.args).toContain("never");
     expect(result.summary).toContain("workspace-write probe passed");
     expect(observedTimeout).toBe(300_000);
+    expect(observedOutsideMarker).toBeDefined();
+    expect(dirname(dirname(resolve(observedOutsideMarker!)))).toBe(resolve(userInfo().homedir));
+    expect(resolve(observedOutsideMarker!)).not.toContain(resolve(tmpdir()));
+    expect(resolve(observedOutsideMarker!)).not.toContain(resolve(workingDirectory));
     const leftover = result.args.find((arg) => arg.includes(".martin-codex-write-probe-"));
     if (leftover) expect(existsSync(join(workingDirectory, leftover))).toBe(false);
 

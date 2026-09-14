@@ -63,6 +63,9 @@ export interface LoopPreview {
   remainingTokens?: number;
   lastAttempt?: AttemptSummary;
   routingEconomics?: Record<string, unknown>;
+  /** Present when an attempt is executing but not yet in the completed attempts list.
+   * Indicates the backend is actively running — callers must NOT start a concurrent recovery run. */
+  activeAttemptId?: string;
 }
 
 export interface AttemptArtifactFiles {
@@ -305,6 +308,22 @@ export function buildLoopPreview(loop: InspectableLoopRecord): LoopPreview {
     attemptsUsed: loop.attempts.length
   });
   const lastAttempt = loop.attempts.at(-1);
+
+  // Detect an in-flight attempt: an attempt.started event whose attemptId has
+  // no matching entry in loop.attempts (completed attempts only). This is the
+  // signal callers need to distinguish "backend actively executing" from
+  // "nothing has started yet" after a client transport timeout.
+  const completedAttemptIds = new Set(loop.attempts.map((a) => a.attemptId).filter(Boolean));
+  const activeAttemptEvent = (loop.events ?? [])
+    .filter((e) => e.type === "attempt.started")
+    .at(-1);
+  const activeAttemptId =
+    activeAttemptEvent !== undefined &&
+    typeof activeAttemptEvent.payload["attemptId"] === "string" &&
+    !completedAttemptIds.has(activeAttemptEvent.payload["attemptId"])
+      ? activeAttemptEvent.payload["attemptId"]
+      : undefined;
+
   return {
     loopId: loop.loopId,
     title: loop.task?.title ?? loop.loopId,
@@ -325,7 +344,8 @@ export function buildLoopPreview(loop: InspectableLoopRecord): LoopPreview {
       ? { remainingTokens: costState.remainingTokens }
       : {}),
     ...(lastAttempt ? { lastAttempt: buildAttemptSummary(lastAttempt) } : {}),
-    ...(loop.routingEconomics ? { routingEconomics: buildRoutingEconomicsSummary(loop.routingEconomics) } : {})
+    ...(loop.routingEconomics ? { routingEconomics: buildRoutingEconomicsSummary(loop.routingEconomics) } : {}),
+    ...(activeAttemptId !== undefined ? { activeAttemptId } : {})
   };
 }
 
