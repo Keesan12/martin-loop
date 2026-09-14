@@ -132,7 +132,7 @@ jobs:
             cat "$RUNNER_TEMP/martin-loop-root-pack.json" || true
             exit 1
           fi
-          echo "tarball=${TARBALLS[0]}" >> "$GITHUB_OUTPUT"
+          echo "tarball=./${TARBALLS[0]#./}" >> "$GITHUB_OUTPUT"
 
       - name: Read package version
         id: package-version
