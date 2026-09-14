@@ -157,6 +157,23 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Normalize npm provenance repository metadata
+        if: steps.npm-version.outputs.exists != 'true'
+        working-directory: packages/mcp
+        shell: bash
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const path = 'package.json';
+          const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
+          pkg.repository = {
+            type: 'git',
+            url: 'https://github.com/Keesan12/martin-loop',
+            directory: 'packages/mcp'
+          };
+          fs.writeFileSync(path, `${JSON.stringify(pkg, null, 2)}\n`);
+          NODE
+
       - name: Publish MCP to npm
         if: steps.npm-version.outputs.exists != 'true'
         working-directory: packages/mcp
