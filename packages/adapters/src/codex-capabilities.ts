@@ -111,23 +111,27 @@ function flagContext(help: string, flag: string): string {
   const lines = help.split(/\r?\n/u);
   const index = lines.findIndex((line) => line.includes(flag));
   if (index < 0) return "";
-  return lines.slice(Math.max(0, index - 1), Math.min(lines.length, index + 3)).join("\n");
+  let end = index + 1;
+  while (end < lines.length && end < index + 24) {
+    if (/^\s*(?:-\w,\s*)?--[a-z][\w-]*/iu.test(lines[end] ?? "")) break;
+    end += 1;
+  }
+  return lines.slice(Math.max(0, index - 1), end).join("\n");
 }
 
 function parseAdvertisedValues(help: string, flag: string): string[] {
   const flagIndex = help.indexOf(flag);
   if (flagIndex < 0) return [];
   const tail = help.slice(flagIndex);
-  const nextFlagOffset = tail.slice(flag.length).search(/\n\s*-/u);
+  const nextFlagOffset = tail.slice(flag.length).search(/\n\s*(?:-\w,\s*)?--[a-z][\w-]*/iu);
   const scoped = nextFlagOffset < 0
     ? tail
     : tail.slice(0, flag.length + nextFlagOffset);
-  const match = scoped.match(/possible values:\s*([^\]\n]+)/iu);
-  if (!match?.[1]) return [];
-  return match[1]
-    .split(",")
-    .map((value) => value.trim().replace(/[\].]$/u, ""))
-    .filter(Boolean);
+  const inline = scoped.match(/possible values:[ \t]*([^\]\r\n]+)/iu)?.[1];
+  if (inline?.trim()) {
+    return inline.split(",").map((value) => value.trim().replace(/[\].]$/u, "")).filter(Boolean);
+  }
+  return [...scoped.matchAll(/^\s*-\s+([a-z][a-z0-9-]*):/gimu)].map((match) => match[1]!).filter(Boolean);
 }
 
 function buildInjectedSpawnPlan(
@@ -333,7 +337,8 @@ export function resolveCodexAutonomyCandidates(
       binaryPath: profile.binaryPath,
       intent,
       strategy: "sandbox+approval",
-      sandboxValue: "workspace-write"
+      sandboxValue: "workspace-write",
+      ...(profile.approvalPolicy?.values?.includes("never") ? { approvalValue: "never" } : {})
     });
   }
 
