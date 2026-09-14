@@ -83,6 +83,17 @@ jobs:
           node ./scripts/root-release-guard.mjs --tag "${{ inputs.tag }}" --pack
           pnpm release:clean-check
 
+      - name: Normalize npm provenance repository metadata
+        shell: bash
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const path = 'package.json';
+          const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
+          pkg.repository = { type: 'git', url: 'https://github.com/Keesan12/martin-loop' };
+          fs.writeFileSync(path, `${JSON.stringify(pkg, null, 2)}\n`);
+          NODE
+
       - name: Pack root tarball
         id: root-pack
         run: |
