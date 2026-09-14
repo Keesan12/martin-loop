@@ -32,19 +32,25 @@ test("publish-mcp workflow enforces mcp tag parity against package and server me
   assert.match(workflow, /does not match server\.json version/);
 });
 
-test("publish-mcp workflow covers trusted publishing, local-pack proof, and published smoke", async () => {
+test("publish-mcp workflow covers trusted publishing, recovery coordinates, local-pack proof, and published smoke", async () => {
   const workflowPath = path.join(ROOT_DIR, ".github", "workflows", "publish-mcp.yml");
   const workflow = await readFile(workflowPath, "utf8");
 
   assert.match(workflow, /workflow_call:/);
   assert.doesNotMatch(workflow, /workflow_dispatch:/);
+  assert.match(workflow, /push:\s*[\s\S]*branches:\s*[\s\S]*- main[\s\S]*paths:\s*[\s\S]*\.github\/workflows\/publish-mcp\.yml/);
   assert.match(workflow, /inputs:\s*[\s\S]*tag:/);
   assert.match(workflow, /validated_release_sha:/);
   assert.match(workflow, /recovery_state:/);
+  assert.match(workflow, /EVENT_NAME: \$\{\{ github\.event_name \}\}/);
+  assert.match(workflow, /TAG="mcp-v0\.6\.3"/);
+  assert.match(workflow, /VALIDATED_RELEASE_SHA="790d0ae9dacafefe70f6b9c116c3937eb4d0d13b"/);
+  assert.match(workflow, /RECOVERY_STATE="RETRY_PUBLISH_SAME_VALIDATED_TAG"/);
   assert.match(workflow, /release-recovery-state\.mjs --publisher-coordinates/);
   assert.doesNotMatch(workflow, /push:\s*[\s\S]*tags:/);
   assert.match(workflow, /permissions:\s*[\s\S]*id-token:\s*write/);
   assert.match(workflow, /permissions:\s*[\s\S]*contents:\s*write/);
+  assert.match(workflow, /registry-url:\s*https:\/\/registry\.npmjs\.org/);
   assert.match(workflow, /pnpm install --frozen-lockfile/);
   assert.match(workflow, /pnpm --filter @martinloop\/mcp lint/);
   assert.match(workflow, /pnpm --filter @martinloop\/mcp test/);
@@ -65,9 +71,9 @@ test("publish-mcp workflow covers trusted publishing, local-pack proof, and publ
   assert.match(workflow, /softprops\/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b/);
   assert.match(workflow, /name:\s*"@martinloop\/mcp/);
   assert.match(workflow, /body_path:\s*"docs\/release\/MCP-\$\{\{\s*steps\.mcp-metadata\.outputs\.package_version\s*\}\}-RELEASE-NOTES\.md"/);
-  assert.doesNotMatch(workflow, /registry-url/);
   assert.doesNotMatch(workflow, /NODE_AUTH_TOKEN/);
   assert.doesNotMatch(workflow, /NPM_TOKEN/);
+  assert.doesNotMatch(workflow, /_authToken/);
   assert.doesNotMatch(workflow, /secrets\./);
 });
 

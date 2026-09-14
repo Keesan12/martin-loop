@@ -103,12 +103,15 @@ test("partial publication never redispatches both coordinated publishers", () =>
 
 test("cut workflow validates trusted main before the atomic tag job and dispatches coordinated publishers", () => {
   const workflow = readFileSync(resolve(import.meta.dirname, "..", "..", ".github", "workflows", "cut-release-tags.yml"), "utf8");
-  assert.match(workflow, /if: github\.repository == 'Keesan12\/martin-loop'/u);
+  assert.match(workflow, /if: github\.event_name == 'workflow_dispatch' && github\.repository == 'Keesan12\/martin-loop'/u);
+  assert.doesNotMatch(workflow, /push:\s*[\s\S]*branches:/u);
   assert.match(workflow, /publisher-equivalent-validation:[\s\S]*ref: main[\s\S]*persist-credentials: false[\s\S]*pre-tag-release-gate\.mjs/u);
   assert.match(workflow, /atomic-tag-coordinates:[\s\S]*needs: publisher-equivalent-validation[\s\S]*contents: write[\s\S]*persist-credentials: false/u);
   assert.match(workflow, /atomic-tag-coordinates:[\s\S]*git fetch origin main[\s\S]*git rev-parse origin\/main/u);
   assert.match(workflow, /publish-root:[\s\S]*id-token: write[\s\S]*uses: \.\/\.github\/workflows\/release\.yml/u);
   assert.match(workflow, /publish-mcp:[\s\S]*id-token: write[\s\S]*uses: \.\/\.github\/workflows\/publish-mcp\.yml/u);
+  assert.doesNotMatch(workflow, /recover-root-0-6-3/u);
+  assert.doesNotMatch(workflow, /recover-mcp-0-6-3/u);
   assert.doesNotMatch(workflow, /gh workflow run/u);
   assert.doesNotMatch(workflow, /--candidate-sha '\$\{\{/u);
 });

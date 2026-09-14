@@ -12,15 +12,23 @@ test("root release workflow uses GitHub Actions trusted publishing without npm t
 
   assert.match(workflow, /workflow_call:/);
   assert.doesNotMatch(workflow, /workflow_dispatch:/);
+  assert.match(workflow, /push:\s*[\s\S]*branches:\s*[\s\S]*- main[\s\S]*paths:\s*[\s\S]*\.github\/workflows\/release\.yml/);
   assert.match(workflow, /validated_release_sha:/);
   assert.match(workflow, /recovery_state:/);
-  assert.match(workflow, /ref: \$\{\{ inputs\.tag \}\}/);
+  assert.match(workflow, /EVENT_NAME: \$\{\{ github\.event_name \}\}/);
+  assert.match(workflow, /TAG="v0\.6\.3"/);
+  assert.match(workflow, /VALIDATED_RELEASE_SHA="790d0ae9dacafefe70f6b9c116c3937eb4d0d13b"/);
+  assert.match(workflow, /RECOVERY_STATE="RETRY_PUBLISH_SAME_VALIDATED_TAG"/);
+  assert.match(workflow, /ref: \$\{\{ steps\.invocation\.outputs\.tag \}\}/);
   assert.match(workflow, /release-recovery-state\.mjs --publisher-coordinates/);
   assert.doesNotMatch(workflow, /push:\s*[\s\S]*tags:/);
   assert.match(workflow, /permissions:\s*[\s\S]*contents:\s*write/);
   assert.match(workflow, /permissions:\s*[\s\S]*id-token:\s*write/);
   assert.match(workflow, /node-version:\s*24/);
+  assert.match(workflow, /registry-url:\s*https:\/\/registry\.npmjs\.org/);
   assert.match(workflow, /npm install -g npm@latest/);
+  assert.match(workflow, /npm pack --json --pack-destination dist-release/);
+  assert.match(workflow, /find dist-release -maxdepth 1 -type f -name '\*\.tgz'/);
   assert.match(workflow, /npm publish "\$\{\{ steps\.root-pack\.outputs\.tarball \}\}" --access public --provenance/);
   assert.match(workflow, /npm view "martin-loop@\$\{\{ steps\.package-version\.outputs\.version \}\}" version/);
   assert.match(
@@ -37,7 +45,7 @@ test("root release workflow uses GitHub Actions trusted publishing without npm t
 
   assert.doesNotMatch(workflow, /NODE_AUTH_TOKEN/);
   assert.doesNotMatch(workflow, /NPM_TOKEN/);
-  assert.doesNotMatch(workflow, /registry-url/);
+  assert.doesNotMatch(workflow, /_authToken/);
   assert.doesNotMatch(workflow, /secrets\./);
 });
 

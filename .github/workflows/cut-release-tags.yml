@@ -16,13 +16,6 @@ on:
         required: false
         default: ''
         type: string
-  push:
-    branches:
-      - main
-    paths:
-      - .github/workflows/cut-release-tags.yml
-      - .github/workflows/release.yml
-      - .github/workflows/publish-mcp.yml
 
 permissions:
   contents: read
@@ -141,28 +134,4 @@ jobs:
       tag: mcp-v${{ inputs.version }}
       validated_release_sha: ${{ needs.publisher-equivalent-validation.outputs.validated_release_sha }}
       recovery_state: ${{ needs.atomic-tag-coordinates.outputs.recovery_state }}
-    secrets: inherit
-
-  recover-root-0-6-3:
-    if: github.event_name == 'push' && github.repository == 'Keesan12/martin-loop'
-    permissions:
-      contents: write
-      id-token: write
-    uses: ./.github/workflows/release.yml
-    with:
-      tag: v0.6.3
-      validated_release_sha: 790d0ae9dacafefe70f6b9c116c3937eb4d0d13b
-      recovery_state: RETRY_PUBLISH_SAME_VALIDATED_TAG
-    secrets: inherit
-
-  recover-mcp-0-6-3:
-    if: github.event_name == 'push' && github.repository == 'Keesan12/martin-loop'
-    permissions:
-      contents: write
-      id-token: write
-    uses: ./.github/workflows/publish-mcp.yml
-    with:
-      tag: mcp-v0.6.3
-      validated_release_sha: 790d0ae9dacafefe70f6b9c116c3937eb4d0d13b
-      recovery_state: RETRY_PUBLISH_SAME_VALIDATED_TAG
     secrets: inherit
