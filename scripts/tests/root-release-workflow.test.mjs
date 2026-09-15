@@ -12,10 +12,13 @@ test("root release workflow uses GitHub Actions trusted publishing without npm t
 
   assert.match(workflow, /workflow_call:/);
   assert.doesNotMatch(workflow, /workflow_dispatch:/);
-  assert.doesNotMatch(workflow, /\n\s{2}push:/);
+  assert.match(workflow, /push:\s*[\s\S]*branches:\s*[\s\S]*- main[\s\S]*paths:\s*[\s\S]*\.github\/workflows\/release\.yml/);
   assert.match(workflow, /validated_release_sha:/);
   assert.match(workflow, /recovery_state:/);
-  assert.doesNotMatch(workflow, /EVENT_NAME:|TAG="v0\.6\.3"|790d0ae9dacafefe70f6b9c116c3937eb4d0d13b/);
+  assert.match(workflow, /EVENT_NAME: \$\{\{ github\.event_name \}\}/);
+  assert.match(workflow, /TAG="v0\.6\.4"/);
+  assert.match(workflow, /VALIDATED_RELEASE_SHA="29bd341fd6efb1ddd1e315579d2c9a5d8bd82ccf"/);
+  assert.match(workflow, /RECOVERY_STATE="RETRY_PUBLISH_SAME_VALIDATED_TAG"/);
   assert.match(workflow, /ref: \$\{\{ steps\.invocation\.outputs\.tag \}\}/);
   assert.match(workflow, /release-recovery-state\.mjs --publisher-coordinates/);
   assert.doesNotMatch(workflow, /push:\s*[\s\S]*tags:/);
@@ -24,6 +27,14 @@ test("root release workflow uses GitHub Actions trusted publishing without npm t
   assert.match(workflow, /node-version:\s*24/);
   assert.match(workflow, /registry-url:\s*https:\/\/registry\.npmjs\.org/);
   assert.match(workflow, /npm install -g npm@latest/);
+  assert.ok(
+    workflow.indexOf("Validate OSS release surface") < workflow.indexOf("Use latest npm for trusted publishing"),
+    "trusted-publishing npm upgrade must happen after immutable-tag validation",
+  );
+  assert.ok(
+    workflow.indexOf("Check npm for existing version") < workflow.indexOf("Use latest npm for trusted publishing"),
+    "trusted-publishing npm upgrade must happen only after the duplicate-publication guard",
+  );
   assert.match(workflow, /npm pack --json --pack-destination dist-release/);
   assert.match(workflow, /find dist-release -maxdepth 1 -type f -name '\*\.tgz'/);
   assert.match(workflow, /echo "tarball=\.\/\$\{TARBALLS\[0\]#\.\/\}" >> "\$GITHUB_OUTPUT"/);
