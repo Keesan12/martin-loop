@@ -38,11 +38,14 @@ test("publish-mcp workflow covers trusted publishing, recovery coordinates, loca
 
   assert.match(workflow, /workflow_call:/);
   assert.doesNotMatch(workflow, /workflow_dispatch:/);
-  assert.doesNotMatch(workflow, /\n\s{2}push:/);
+  assert.match(workflow, /push:\s*[\s\S]*branches:\s*[\s\S]*- main[\s\S]*paths:\s*[\s\S]*\.github\/workflows\/publish-mcp\.yml/);
   assert.match(workflow, /inputs:\s*[\s\S]*tag:/);
   assert.match(workflow, /validated_release_sha:/);
   assert.match(workflow, /recovery_state:/);
-  assert.doesNotMatch(workflow, /EVENT_NAME:|TAG="mcp-v0\.6\.3"|790d0ae9dacafefe70f6b9c116c3937eb4d0d13b/);
+  assert.match(workflow, /EVENT_NAME: \$\{\{ github\.event_name \}\}/);
+  assert.match(workflow, /TAG="mcp-v0\.6\.4"/);
+  assert.match(workflow, /VALIDATED_RELEASE_SHA="29bd341fd6efb1ddd1e315579d2c9a5d8bd82ccf"/);
+  assert.match(workflow, /RECOVERY_STATE="RETRY_PUBLISH_SAME_VALIDATED_TAG"/);
   assert.match(workflow, /release-recovery-state\.mjs --publisher-coordinates/);
   assert.doesNotMatch(workflow, /push:\s*[\s\S]*tags:/);
   assert.match(workflow, /permissions:\s*[\s\S]*id-token:\s*write/);
