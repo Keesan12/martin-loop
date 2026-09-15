@@ -42,7 +42,6 @@ const PATH_ALLOWLIST = [
   /^scripts\/public-portability-guard\.mjs$/,
   // INTERNAL ONLY — promotion tooling; intentionally checks internal repo name as a validation constraint
   /^scripts\/verify-public-promotion\.mjs$/,
-  /^\.martin\/promotion-manifest\.json$/,
   /^scripts\/tests\//,
   /(^|\/)tests\//,
   /\.test\.[cm]?[jt]sx?$/i,

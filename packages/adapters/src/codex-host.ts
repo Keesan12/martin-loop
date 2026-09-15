@@ -11,7 +11,7 @@ import {
   writeFileSync
 } from "node:fs";
 import { dirname, extname, join, resolve } from "node:path";
-import { tmpdir } from "node:os";
+import { userInfo } from "node:os";
 import { normalizeProviderExecutionTimeoutMs } from "@martin/contracts";
 
 import { createSpawnPlan, resolveNpmShimScript } from "./cli-bridge.js";
@@ -636,7 +636,10 @@ export function probeCodexLaunch(input: {
       for (const transport of transports) {
         const marker = `.martin-codex-write-probe-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.tmp`;
         const markerPath = join(input.workingDirectory, marker);
-        const outsideRoot = mkdtempSync(join(tmpdir(), "martin-codex-outside-probe-"));
+        // Codex workspace-write intentionally permits the host temp directory,
+        // and the repo can be nested inside a broader writable host workspace.
+        // Probe from the user-home boundary so the denial canary is outside both.
+        const outsideRoot = mkdtempSync(join(userInfo().homedir, ".martin-codex-outside-probe-"));
         const outsideMarkerPath = join(outsideRoot, ".martin-codex-outside-probe.tmp");
         const prompt = buildMarkerPrompt(marker, outsideMarkerPath);
         let args: string[];

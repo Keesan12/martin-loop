@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.6.4] - 2026-09-14
+
+### Fixed
+- Made the public portability hook fail closed and use the repository-managed scanner instead of silently passing when an ambient scanner is unavailable.
+- Persisted in-flight attempt identity before provider execution so status, wait, cancellation, and recovery paths cannot mistake a client timeout for a terminal run.
+- Hardened Codex 0.147 capability parsing and boundary probes while preserving fail-closed behavior on unsupported hosts.
+
+### Changed
+- Updated root CLI, standalone MCP, plugin, MCPB, release-truth, and generated runtime version authority to `0.6.4`.
+
 ## [0.6.3] - 2026-09-12
 
 ### Fixed
