@@ -60,6 +60,8 @@ const IGNORED_TOP_LEVEL_ENTRIES = [
   ".cache",
   ".git",
   ".martin",
+  ".release",
+  ".release",
   ".worktrees",
   ".npm-cache",
   ".planning",

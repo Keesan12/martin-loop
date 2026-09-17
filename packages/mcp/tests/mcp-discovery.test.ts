@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { createLoopRecord, type LoopEventDraft } from "@martin/contracts";
 import { describe, expect, it } from "vitest";
 
+import { __loopPreviewSchemaForTests } from "../src/server.js";
 import {
   listMartinPrompts,
   getMartinPrompt
@@ -549,5 +550,19 @@ describe("Martin MCP discovery prompts", () => {
       expect(prompt.messages[3]?.content.type).toBe("resource");
       expect((prompt.messages[4]?.content as { type: "text"; text: string }).text).toContain("verification failures");
     });
+  });
+});
+
+// P2-3: MCP activeAttemptId discovery schema
+describe("loopPreviewSchema", () => {
+  it("advertises activeAttemptId as an optional property", () => {
+    const props = __loopPreviewSchemaForTests.properties as Record<string, unknown>;
+    expect(props["activeAttemptId"]).toBeDefined();
+    expect((props["activeAttemptId"] as { type: string }).type).toBe("string");
+  });
+
+  it("does not include activeAttemptId in required fields", () => {
+    const required = __loopPreviewSchemaForTests.required as readonly string[];
+    expect(required).not.toContain("activeAttemptId");
   });
 });

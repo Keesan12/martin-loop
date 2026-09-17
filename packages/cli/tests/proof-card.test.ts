@@ -165,6 +165,43 @@ describe("Martin proof cards", () => {
     expect(renderMartinProofCardSvg(card)).toBe(renderMartinProofCardSvg(card));
   });
 
+  // P2-4: rollback-not-required proof semantics
+  it("allows VERIFIED verdict when rollback was not required for a clean success", () => {
+    const card = buildMartinProofCard({
+      ...completeInput(),
+      status: "completed",
+      lifecycle: "completed",
+      rollbackStatus: "not_required",
+      receiptIntegrityState: "verified"
+    });
+
+    expect(card.completeEvidence).toBe(true);
+    expect(card.proofVerdict).toBe("VERIFIED");
+    expect(renderMartinProofCardMarkdown(card)).toContain("Martin stopped Ralph here.");
+  });
+
+  it("produces EVIDENCE_BOUNDARY when rollback was expected but not captured", () => {
+    const card = buildMartinProofCard({
+      ...completeInput(),
+      rollbackStatus: "not-recorded",
+      receiptIntegrityState: "verified"
+    });
+
+    expect(card.completeEvidence).toBe(false);
+    expect(card.proofVerdict).toBe("EVIDENCE_BOUNDARY");
+  });
+
+  it("does not bypass receipt integrity even with not_required rollback", () => {
+    const card = buildMartinProofCard({
+      ...completeInput(),
+      rollbackStatus: "not_required",
+      receiptIntegrityState: "unsigned"
+    });
+
+    expect(card.completeEvidence).toBe(false);
+    expect(card.proofVerdict).toBe("EVIDENCE_BOUNDARY");
+  });
+
   it("escapes Markdown and SVG text", () => {
     const card = buildMartinProofCard({
       ...completeInput(),

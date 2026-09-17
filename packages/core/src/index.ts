@@ -85,6 +85,7 @@ import {
 } from "./exits.js";
 import {
   createFileExitSignalSource,
+  isTerminalExitSignal,
   startExitSignalMonitor,
   type ExitSignalSource
 } from "./exit-signal.js";
@@ -943,7 +944,11 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     pollIntervalMs: input.exitSignalPollIntervalMs,
     onSignal: (signals) => {
       observeSignals(signals);
-      activeAttemptController?.abort(signals);
+      // Only abort the active attempt for terminal signals.
+      // A satisfied external event is recorded but must not abort the provider.
+      if (signals.some(isTerminalExitSignal)) {
+        activeAttemptController?.abort(signals);
+      }
     },
     onDiagnostic: (diagnostics) => {
       queueControlDiagnostic(

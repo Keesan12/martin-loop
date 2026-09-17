@@ -3,7 +3,6 @@ budget:
   maxUsd: 2
   softLimitUsd: 1
   maxIterations: 2
-  maxTokens: 12000
 governance:
   destructiveActionPolicy: approval
   telemetryDestination: local-only

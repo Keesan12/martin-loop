@@ -295,6 +295,58 @@ function buildBlockedMessage(missingSteps: CliWorkflowStepName[], nextCommand: s
   return `Governed run blocked until MartinLoop receipts exist for ${labels.join(", ")}.${preflightReason} Next command: ${nextCommand}`;
 }
 
+/**
+ * Opaque governance receipt shape used by the gate — only recordedAt is required
+ * for the simple presence check performed by executeGateCommand.
+ */
+export interface WorkspaceGovernanceReceipt {
+  recordedAt?: string;
+}
+
+/**
+ * Combined CLI + MCP governance state for a single workspace.
+ * Both namespaces live in the same per-workspace file so that receipts
+ * recorded via either surface are visible to the gate.
+ */
+export interface WorkspaceGovernanceState {
+  cli: Partial<Record<string, WorkspaceGovernanceReceipt>>;
+  mcp: Partial<Record<string, WorkspaceGovernanceReceipt>>;
+}
+
+/**
+ * Read the combined CLI and MCP governance receipts for a specific workspace.
+ * Returns empty namespaces when no state file exists yet (fresh workspace).
+ * Used by executeGateCommand to enforce workspace-scoped governance.
+ */
+export async function readWorkspaceGovernanceReadiness(
+  runsRoot: string,
+  workingDirectory: string
+): Promise<WorkspaceGovernanceState> {
+  const workspaceKey = deriveWorkspaceKey(workingDirectory);
+  const statePath = join(
+    resolve(runsRoot),
+    WORKFLOW_STATE_DIRECTORY,
+    WORKSPACES_DIRECTORY,
+    workspaceKey,
+    WORKFLOW_STATE_FILENAME
+  );
+  try {
+    const raw = await readFile(statePath, "utf8");
+    const parsed = JSON.parse(raw) as {
+      version?: number;
+      cli?: Partial<Record<string, WorkspaceGovernanceReceipt>>;
+      mcp?: Partial<Record<string, WorkspaceGovernanceReceipt>>;
+    };
+    if (parsed.version === 1) {
+      return {
+        cli: parsed.cli ?? {},
+        mcp: parsed.mcp ?? {}
+      };
+    }
+  } catch { /* fresh workspace — no state file yet */ }
+  return { cli: {}, mcp: {} };
+}
+
 // Reads per-workspace state when workingDirectory is supplied; reads global state otherwise.
 // Global state is used only for flags like firstRunBannerShown that are not workspace-scoped.
 async function readWorkflowState(runsRoot: string, workingDirectory?: string): Promise<WorkflowState> {

@@ -1,5 +1,5 @@
-import type { LoopBudget, ReceiptScope } from "@martin/contracts";
-type McpWorkflowStepName = "doctor" | "plan" | "preflight";
+import type { LoopBudget, ReceiptScope } from "./vendor/contracts/index.js";
+type McpWorkflowStepName = "doctor" | "plan" | "preflight" | "estimate" | "start";
 interface McpWorkflowReceipt {
     step: McpWorkflowStepName;
     recordedAt: string;
@@ -13,6 +13,7 @@ interface McpWorkflowReceipt {
 }
 interface WorkflowState {
     version: 1;
+    cli?: unknown;
     mcp?: Partial<Record<McpWorkflowStepName, McpWorkflowReceipt>>;
 }
 export interface RecordMcpWorkflowStepInput {
@@ -46,5 +47,5 @@ export interface McpRunGateResult {
 }
 export declare function recordMcpWorkflowStep(input: RecordMcpWorkflowStepInput): Promise<void>;
 export declare function evaluateMcpRunGate(input: EvaluateMcpRunGateInput): Promise<McpRunGateResult>;
-export declare function readWorkflowState(runsRoot: string): Promise<WorkflowState>;
+export declare function readWorkflowState(runsRoot: string, workingDirectory?: string): Promise<WorkflowState>;
 export {};

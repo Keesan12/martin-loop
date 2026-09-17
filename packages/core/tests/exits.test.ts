@@ -535,3 +535,55 @@ describe("ML-003 exit precedence regressions", () => {
     expect(decision.status).not.toBe("completed");
   });
 });
+
+// ─── P1-SIGNAL regression: satisfied external event is non-terminal ──────────
+
+describe("P1-SIGNAL: satisfied external event does not exit", () => {
+  it("evaluateExitPolicy does not fire external_event for satisfied disposition", () => {
+    const policy = makePolicy();
+    const snapshot = makeSnapshot({
+      externalEvent: {
+        source: "github-ci",
+        event: "acceptance-midrun",
+        disposition: "satisfied",
+        observedAt: new Date(NOW_MS).toISOString()
+      } as ExternalExitEvent
+    });
+    const evaluation = evaluateExitPolicy(policy, snapshot);
+    expect(evaluation.primary).toBeUndefined();
+    expect(evaluation.shouldExit).toBe(false);
+    expect(evaluation.matched).not.toContain("external_event");
+  });
+
+  it("evaluateExitPolicy fires external_event for cancelled disposition", () => {
+    const policy = makePolicy();
+    const snapshot = makeSnapshot({
+      externalEvent: {
+        source: "github-ci",
+        event: "build-failed",
+        disposition: "cancelled",
+        observedAt: new Date(NOW_MS).toISOString()
+      } as ExternalExitEvent
+    });
+    const evaluation = evaluateExitPolicy(policy, snapshot);
+    expect(evaluation.primary).toBe("external_event");
+    expect(evaluation.shouldExit).toBe(true);
+  });
+
+  it("toLegacyExitDecision maps cancelled external_event to exited, not completed", () => {
+    const policy = makePolicy();
+    const snapshot = makeSnapshot({
+      externalEvent: {
+        source: "github-ci",
+        event: "build-failed",
+        disposition: "cancelled",
+        observedAt: new Date(NOW_MS).toISOString()
+      } as ExternalExitEvent
+    });
+    const evaluation = evaluateExitPolicy(policy, snapshot);
+    const decision = toLegacyExitDecision(evaluation);
+    expect(decision.lifecycleState).toBe("external_event");
+    expect(decision.status).toBe("exited");
+    expect(decision.status).not.toBe("completed");
+  });
+});

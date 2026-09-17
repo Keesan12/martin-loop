@@ -111,7 +111,7 @@ import {
   type IntegrityStatus
 } from "./run-store.js";
 import { CliCommandError, exitCodeForGovernedOutcome, renderCliError, renderCliSuccess, renderRunHeader, renderInlineMilestone, renderMilestonePrompt, renderLoopCard, type RunOutcome } from "./ux.js";
-import { deriveWorkspaceId, evaluateCliRunGate, recordCliWorkflowStep } from "./workflow-state.js";
+import { deriveWorkspaceId, evaluateCliRunGate, readWorkspaceGovernanceReadiness, recordCliWorkflowStep } from "./workflow-state.js";
 import {
   recordRunAndGetPrompt,
   retryQueuedIntake,
@@ -3728,29 +3728,23 @@ async function executeGateCommand(
     runsDir: command.runsDir
   });
 
-  // Read workflow state — merge both MCP (martin_doctor via MCP) and CLI
-  // (martin doctor via CLI) namespaces so the gate works regardless of how
-  // doctor/estimate were invoked.
-  let mcpState: Record<string, { recordedAt?: string } | undefined> = {};
-  try {
-    const statePath = join(resolve(environment.runsRoot), "_martin", "workflow-state.json");
-    const raw = await readFile(statePath, "utf8");
-    const parsed = JSON.parse(raw) as {
-      version?: number;
-      mcp?: Record<string, { recordedAt?: string }>;
-      cli?: Record<string, { recordedAt?: string }>;
-    };
-    if (parsed.version === 1) {
-      // Merge: cli namespace takes precedence for CLI-native steps (doctor, estimate)
-      // MCP namespace used for MCP-specific steps (plan, preflight, run)
-      mcpState = { ...(parsed.mcp ?? {}), ...(parsed.cli ?? {}) };
-    }
-  } catch {
-    // No workflow state file yet — everything is missing
-  }
-  const hasDoctor = Boolean(mcpState.doctor);
-  const hasEstimate = Boolean(mcpState.estimate);
-  const hasPreflight = Boolean(mcpState.preflight);
+  // Read per-workspace governance state — merges both CLI and MCP namespaces
+  // from the workspace-scoped file so the gate works regardless of whether
+  // doctor/estimate/preflight were invoked via CLI or MCP surface.
+  // Stale global receipts from other workspaces are never visible here.
+  const { cli: cliState, mcp: mcpState } = await readWorkspaceGovernanceReadiness(
+    environment.runsRoot,
+    environment.workingDirectory
+  );
+  // CLI namespace takes precedence for CLI-native steps; MCP provides receipts
+  // recorded via the MCP surface for the same workspace.
+  const merged: Record<string, { recordedAt?: string } | undefined> = {
+    ...mcpState,
+    ...cliState
+  };
+  const hasDoctor = Boolean(merged.doctor);
+  const hasEstimate = Boolean(merged.estimate);
+  const hasPreflight = Boolean(merged.preflight);
   // Estimate is required — it proves the agent understood the cost before starting.
   // Plan remains optional for lightweight work, but preflight is mandatory before
   // any surface can claim the repo is governance-ready.
@@ -3767,18 +3761,18 @@ async function executeGateCommand(
         command: "gate",
         governed: true,
         receipts: {
-          doctor: mcpState.doctor?.recordedAt,
-          estimate: mcpState.estimate?.recordedAt,
-          plan: mcpState.plan?.recordedAt,
-          preflight: mcpState.preflight?.recordedAt
+          doctor: merged.doctor?.recordedAt,
+          estimate: merged.estimate?.recordedAt,
+          plan: merged.plan?.recordedAt,
+          preflight: merged.preflight?.recordedAt
         }
       },
       human: [
         "MartinLoop governance: PASS",
-        `  Doctor:    ✓ ${mcpState.doctor?.recordedAt ?? ""}`,
-        `  Estimate:  ✓ ${mcpState.estimate?.recordedAt ?? ""}`,
-        ...(mcpState.plan ? [`  Plan:      ✓ ${mcpState.plan.recordedAt}`] : []),
-        ...(mcpState.preflight ? [`  Preflight: ✓ ${mcpState.preflight.recordedAt}`] : [])
+        `  Doctor:    ✓ ${merged.doctor?.recordedAt ?? ""}`,
+        `  Estimate:  ✓ ${merged.estimate?.recordedAt ?? ""}`,
+        ...(merged.plan ? [`  Plan:      ✓ ${merged.plan.recordedAt}`] : []),
+        ...(merged.preflight ? [`  Preflight: ✓ ${merged.preflight.recordedAt}`] : [])
       ],
       quiet: "PASS"
     });
@@ -3822,7 +3816,14 @@ async function executeModeCommand(
   } catch { /* fresh config */ }
 
   if (!command.mode) {
-    const current = (config.defaultMode as string | undefined) ?? "auto";
+    let current = (config.defaultMode as string | undefined) ?? "auto";
+    if (command.scope === "project") {
+      const rawCwd = command.cwd ?? process.cwd();
+      const canonicalCwd = process.platform === "win32" ? resolve(rawCwd).toLowerCase() : resolve(rawCwd);
+      const overrides = config.projectOverrides as Record<string, string> | undefined;
+      const projectMode = overrides?.[canonicalCwd] ?? overrides?.[rawCwd] ?? overrides?.[resolve(rawCwd)];
+      if (projectMode) current = projectMode;
+    }
     return renderCliSuccess(outputMode, {
       data: { command: "mode", currentMode: current, config },
       human: [
@@ -3843,14 +3844,15 @@ async function executeModeCommand(
   await mkdir(configDir, { recursive: true });
 
   if (command.scope === "project") {
-    const cwd = command.cwd ?? process.cwd();
+    const rawCwd = command.cwd ?? process.cwd();
+    const canonicalCwd = process.platform === "win32" ? resolve(rawCwd).toLowerCase() : resolve(rawCwd);
     let projectConfig: Record<string, unknown> = {};
     try {
-      projectConfig = JSON.parse(await readFile(join(cwd, "martin.config.yaml"), "utf8")) as Record<string, unknown>;
+      projectConfig = JSON.parse(await readFile(join(rawCwd, "martin.config.yaml"), "utf8")) as Record<string, unknown>;
     } catch { /* fresh */ }
     config.projectOverrides = {
       ...(config.projectOverrides as Record<string, unknown> ?? {}),
-      [cwd]: command.mode
+      [canonicalCwd]: command.mode
     };
   } else {
     config.defaultMode = command.mode;
@@ -5224,10 +5226,13 @@ async function executeChallengeCommand(
 
 function proofCardInputFromLoop(loop: LoopRecord): MartinProofCardInput {
   const verification = buildVerificationSummary(loop);
-  const rollbackStatus = loop.artifacts.some((artifact) =>
+  const rollbackArtifactPresent = loop.artifacts.some((artifact) =>
     artifact.kind.toLowerCase().includes("rollback")
-  )
+  );
+  const rollbackStatus = rollbackArtifactPresent
     ? "captured"
+    : loop.status === "completed" && loop.lifecycleState === "completed"
+    ? "not_required"
     : "not-recorded";
 
   return {
@@ -5630,12 +5635,12 @@ async function loadLatestLoopIntegrity(runsDir?: string): Promise<IntegrityStatu
 async function buildLocalReliabilityScoreInput(runsDir?: string): Promise<MartinReliabilityScoreInput> {
   const environment = resolveCliEnvironment({ ...(runsDir ? { runsDir } : {}) });
   const workspaceId = deriveWorkspaceId(environment.workingDirectory);
-  const shouldInspectRunStore = process.env["MARTIN_RUNS_DIR"] !== undefined;
+  const shouldInspectRunStore = runsDir !== undefined || process.env["MARTIN_RUNS_DIR"] !== undefined;
   const loops = shouldInspectRunStore
-    ? await listPersistedLoops({ limit: 20, workspaceId }).catch(() => ({ loops: [] as LoopRecord[] }))
+    ? await listPersistedLoops({ limit: 20, workspaceId, ...(runsDir ? { runsDir } : {}) }).catch(() => ({ loops: [] as LoopRecord[] }))
     : { loops: [] as LoopRecord[] };
   const latestPersisted = shouldInspectRunStore
-    ? await loadPersistedLoop({ latest: true, workspaceId }).catch(() => null)
+    ? await loadPersistedLoop({ latest: true, workspaceId, ...(runsDir ? { runsDir } : {}) }).catch(() => null)
     : null;
   const latestLoop = latestPersisted?.loop ?? loops.loops[0];
   const configPath = join(environment.workingDirectory, "martin.config.yaml");
