@@ -48,7 +48,7 @@ This file is the release source of truth for package/version mapping in this rep
 - standalone MCP public baseline: `0.6.4`
 - official MCP Registry version: `0.5.5` (verified)
 - live MCPB baseline: `0.6.4`
-- live MCPB SHA-256: (pending — regenerate after 0.6.5 pack)
+- pending `0.6.5` MCPB SHA-256: regenerate after pack
 - live MCPB size: (pending)
 - current in-repo standalone release target: `0.6.5` (pending publication)
 - current in-repo MCPB release target: `0.6.5` with manifest schema `0.3` (pending publication)
