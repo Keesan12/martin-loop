@@ -807,4 +807,90 @@ describe("P1-SIGNAL: satisfied external event lifecycle", () => {
     expect(result.decision.reason).toBeTruthy();
   });
 
+  it("S4: cancelled then satisfied in one poll preserves terminal cancellation", async () => {
+    const runsRoot = join(scratchRoot, "runs");
+    await mkdir(runsRoot, { recursive: true });
+    const store = createFileRunStore({ runsRoot });
+
+    let adapterStarted = false;
+    let providerAbortSignal: AbortSignal | undefined;
+
+    const source: ExitSignalSource = {
+      async poll(runId) {
+        if (!adapterStarted) return { signals: [], diagnostics: [] };
+        const observedAt = new Date().toISOString();
+        return {
+          signals: [
+            {
+              kind: "external_event" as const,
+              schemaVersion: "exit-signal/1",
+              runId,
+              reason: "operator cancelled",
+              requestedAt: observedAt,
+              requestedBy: "test-orchestrator",
+              externalEvent: {
+                source: "test-orchestrator",
+                event: "task.cancelled",
+                disposition: "cancelled" as const,
+                observedAt
+              }
+            },
+            {
+              kind: "external_event" as const,
+              schemaVersion: "exit-signal/1",
+              runId,
+              reason: "later observer reported satisfied",
+              requestedAt: observedAt,
+              requestedBy: "test-observer",
+              externalEvent: {
+                source: "test-observer",
+                event: "task.satisfied",
+                disposition: "satisfied" as const,
+                observedAt
+              }
+            }
+          ],
+          diagnostics: []
+        };
+      }
+    };
+
+    const adapter: MartinAdapter = {
+      adapterId: "direct:blocking-s4",
+      kind: "direct-provider",
+      label: "Blocking adapter for S4",
+      metadata: { providerId: "openai", model: "gpt-5-mini" },
+      async execute(request) {
+        adapterStarted = true;
+        providerAbortSignal = request.signal;
+        await new Promise<void>((resolve) => {
+          if (request.signal?.aborted) { resolve(); return; }
+          request.signal?.addEventListener("abort", () => resolve(), { once: true });
+        });
+        return {
+          status: "failed",
+          summary: "Cancelled.",
+          usage: { actualUsd: 0.01, tokensIn: 5, tokensOut: 5 },
+          verification: { passed: false, summary: "cancelled" }
+        };
+      }
+    };
+
+    const result = await runMartin({
+      workspaceId: "ws",
+      projectId: "proj",
+      task: baseTask(),
+      budget: baseBudget(),
+      adapter,
+      store,
+      exitSignalSource: source,
+      exitSignalPollIntervalMs: 10
+    });
+
+    expect(providerAbortSignal?.aborted).toBe(true);
+    expect(result.decision.shouldExit).toBe(true);
+    expect(result.decision.lifecycleState).toBe("external_event");
+    expect(result.decision.status).toBe("exited");
+  });
+
 });

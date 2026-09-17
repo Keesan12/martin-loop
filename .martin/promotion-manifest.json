@@ -2,15 +2,15 @@
   "schemaVersion": "martin.public-promotion.v2",
   "sourceAuthority": "validated-internal-release-source",
   "sourceRepositoryFingerprint": "04aac733f3b08513fddcc72a9013b9f59cf7919f9a0a3893d0b3d953929826ec",
-  "privateMergeSha": "df670312461b3564e278912a0ee2a8376ebeccfa",
-  "privateMainShaValidated": "df670312461b3564e278912a0ee2a8376ebeccfa",
+  "privateMergeSha": "b7d278bc5634259d08f6f53acc1d848b191be3a9",
+  "privateMainShaValidated": "b7d278bc5634259d08f6f53acc1d848b191be3a9",
   "publicBaseSha": "1dbd017457e1b556d7f6796b35aeaa870e8ff542",
   "promotedBy": "Torram",
-  "validatedAt": "2026-09-17T18:36:09.654Z",
+  "validatedAt": "2026-09-17T19:39:22.418Z",
   "internalHealthPassed": true,
-  "internalHealthEvidenceSha256": "8d6cdeaab1fca581ae6ea1f0abd6fbf4e63692b89495c0fa7934dd74db2a214b",
+  "internalHealthEvidenceSha256": "fbbe43edbf2264e3cf7dd93dbe930ee3be54c4c481c3fb1be0b1a5c723abf634",
   "surfaceSpecHash": "a9c8d22be91bc0dd19238f7676aec62aacc77d8cc3a66327b46d71f16d65164a",
-  "surfaceHash": "d6e724bb96520c0fb8f67f5219e4cc01ace86b17dfc50dd256854d98c73f16d6",
+  "surfaceHash": "844ade3adec0a673c2656de3942c3b8bd6d7688f00b854c26313ae5ab7507129",
   "surfaceEntries": [
     {
       "path": ".agents/plugins/marketplace.json",
@@ -1735,7 +1735,7 @@
     {
       "path": "packages/core/src/index.ts",
       "mode": "100644",
-      "sha256": "bf7207d37d5be6ce199a2e380bcbbeb00c43fe58d0e6a638dad073877eda58de"
+      "sha256": "60cc894d06333738d155a2babcbc301b5dfeb8b2cb1b3b90b367d88492a9fcfc"
     },
     {
       "path": "packages/core/src/leash.ts",
@@ -1910,7 +1910,7 @@
     {
       "path": "packages/core/tests/exit-runtime-integration.test.ts",
       "mode": "100644",
-      "sha256": "e8cbe14c9f1d371407b7f3a38093bd8b1b8a87bf1443737891f66c73cb319f5c"
+      "sha256": "bda007211481b49ef8713c4fbd2192b2731432000c8b4a075bed8ee4067bcad7"
     },
     {
       "path": "packages/core/tests/exit-signal.test.ts",

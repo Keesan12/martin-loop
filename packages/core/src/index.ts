@@ -908,8 +908,14 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
   function observeSignals(signals: readonly import("@martin/contracts").ExitSignalV1[]): void {
     for (const s of signals) {
       if (s.kind === "human_interrupt") observedHumanInterrupt = s;
-      else if (s.kind === "external_event" && s.externalEvent !== undefined)
+      else if (s.kind === "external_event" && s.externalEvent !== undefined) {
+        if (
+          observedExternalEvent !== undefined &&
+          observedExternalEvent.disposition !== "satisfied" &&
+          s.externalEvent.disposition === "satisfied"
+        ) continue;
         observedExternalEvent = s.externalEvent;
+      }
     }
   }
 
