@@ -6,7 +6,7 @@
   "privateMainShaValidated": "df670312461b3564e278912a0ee2a8376ebeccfa",
   "publicBaseSha": "1dbd017457e1b556d7f6796b35aeaa870e8ff542",
   "promotedBy": "Torram",
-  "validatedAt": "2026-09-17T18:06:39.001Z",
+  "validatedAt": "2026-09-17T18:24:22.571Z",
   "internalHealthPassed": true,
   "internalHealthEvidenceSha256": "8d6cdeaab1fca581ae6ea1f0abd6fbf4e63692b89495c0fa7934dd74db2a214b",
   "surfaceSpecHash": "a9c8d22be91bc0dd19238f7676aec62aacc77d8cc3a66327b46d71f16d65164a",
@@ -3580,7 +3580,7 @@
       "kind": "content",
       "privateSha256": "24ec97213b4cb01c812608a62957f9cad3dc4347ae42439cbbaab905303da8ca",
       "privateMode": "100644",
-      "publicSha256": "703ffdda5d5c49c762a7ebd8a4e3692fd50d59f2bacc194997679b8b8a6fc40c",
+      "publicSha256": "53fca5be40b3a8905d011f0d0c1b51925c12b4a0d401a5c24076809746a51972",
       "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
       "reviewedBy": "Vakeesan Mahalingam",
       "publicMode": "100644"
