@@ -1,13 +1,15 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 const WORKFLOW_STATE_DIRECTORY = "_martin";
 const WORKFLOW_STATE_FILENAME = "workflow-state.json";
+const WORKSPACES_DIRECTORY = "workspaces";
 const DOCTOR_TTL_MS = 24 * 60 * 60 * 1000;
+const ESTIMATE_TTL_MS = 6 * 60 * 60 * 1000; // Estimate expires after 6h — re-estimate if objective changes
 const PLAN_TTL_MS = 24 * 60 * 60 * 1000;
 const PREFLIGHT_TTL_MS = 6 * 60 * 60 * 1000;
 export async function recordMcpWorkflowStep(input) {
-    const state = await readWorkflowState(input.runsRoot);
+    const state = await readWorkflowState(input.runsRoot, input.workingDirectory);
     state.mcp ??= {};
     state.mcp[input.step] = {
         step: input.step,
@@ -20,10 +22,10 @@ export async function recordMcpWorkflowStep(input) {
         pathScopeKey: hashPathScope(input.allowedPaths ?? [], input.deniedPaths ?? []),
         ...(input.budget ? { budgetKey: hashBudget(input.budget) } : {})
     };
-    await writeWorkflowState(input.runsRoot, state);
+    await writeWorkflowState(input.runsRoot, state, input.workingDirectory);
 }
 export async function evaluateMcpRunGate(input) {
-    const state = await readWorkflowState(input.runsRoot);
+    const state = await readWorkflowState(input.runsRoot, input.workingDirectory);
     const mcpState = state.mcp ?? {};
     const workingDirectory = normalizeWorkingDirectory(input.workingDirectory);
     const objectiveKey = normalizeObjective(input.objective);
@@ -41,6 +43,11 @@ export async function evaluateMcpRunGate(input) {
     if (!isFresh(mcpState["doctor"], DOCTOR_TTL_MS, (receipt) => receipt.workingDirectory === workingDirectory &&
         receipt.scopeKey === scopeKey)) {
         missingSteps.push("doctor");
+    }
+    // Estimate is required before any run — it proves the agent assessed cost first.
+    // The estimate TTL is 6h; it doesn't need to match the exact objective key.
+    if (!isFresh(mcpState["estimate"], ESTIMATE_TTL_MS, (receipt) => receipt.workingDirectory === workingDirectory)) {
+        missingSteps.push("estimate");
     }
     if (!isFresh(mcpState["plan"], PLAN_TTL_MS, (receipt) => receipt.workingDirectory === workingDirectory &&
         receipt.scopeKey === scopeKey &&
@@ -65,10 +72,12 @@ export async function evaluateMcpRunGate(input) {
         };
     }
     const nextAction = missingSteps[0] === "doctor"
-        ? "Call martin_doctor for this workingDirectory before any real run."
-        : missingSteps[0] === "plan"
-            ? "Call martin_plan with the exact objective before martin_run."
-            : "Call martin_preflight with the exact objective, verifier plan, and engine before martin_run.";
+        ? "Call martin_doctor to confirm environment before any work."
+        : missingSteps[0] === "estimate"
+            ? "Call martin_estimate with the objective to get cost and route before spending."
+            : missingSteps[0] === "plan"
+                ? "Call martin_plan with the exact objective before martin_run."
+                : "Call martin_preflight with the exact objective, verifier plan, and engine before martin_run.";
     return {
         allowed: false,
         nextAction,
@@ -76,8 +85,8 @@ export async function evaluateMcpRunGate(input) {
         missingSteps
     };
 }
-export async function readWorkflowState(runsRoot) {
-    const statePath = resolveWorkflowStatePath(runsRoot);
+export async function readWorkflowState(runsRoot, workingDirectory) {
+    const statePath = resolveWorkflowStatePath(runsRoot, workingDirectory);
     try {
         const raw = await readFile(statePath, "utf8");
         const parsed = JSON.parse(raw);
@@ -87,13 +96,33 @@ export async function readWorkflowState(runsRoot) {
         return { version: 1 };
     }
 }
-async function writeWorkflowState(runsRoot, state) {
-    const statePath = resolveWorkflowStatePath(runsRoot);
-    await mkdir(join(resolve(runsRoot), WORKFLOW_STATE_DIRECTORY), { recursive: true });
-    await writeFile(statePath, JSON.stringify(state, null, 2), "utf8");
+async function writeWorkflowState(runsRoot, state, workingDirectory) {
+    const statePath = resolveWorkflowStatePath(runsRoot, workingDirectory);
+    const dir = workingDirectory
+        ? join(resolve(runsRoot), WORKFLOW_STATE_DIRECTORY, WORKSPACES_DIRECTORY, deriveWorkspaceKey(workingDirectory))
+        : join(resolve(runsRoot), WORKFLOW_STATE_DIRECTORY);
+    await mkdir(dir, { recursive: true });
+    // Atomic write: tmp then rename prevents partial reads on concurrent access
+    const tmpPath = `${statePath}.tmp`;
+    await writeFile(tmpPath, JSON.stringify(state, null, 2), "utf8");
+    await rename(tmpPath, statePath);
 }
-function resolveWorkflowStatePath(runsRoot) {
-    return join(resolve(runsRoot), WORKFLOW_STATE_DIRECTORY, WORKFLOW_STATE_FILENAME);
+// Per-workspace path: <runsRoot>/_martin/workspaces/<workspaceKey>/workflow-state.json
+// Global path:        <runsRoot>/_martin/workflow-state.json (not used for governance receipts)
+function resolveWorkflowStatePath(runsRoot, workingDirectory) {
+    const base = join(resolve(runsRoot), WORKFLOW_STATE_DIRECTORY);
+    if (workingDirectory) {
+        return join(base, WORKSPACES_DIRECTORY, deriveWorkspaceKey(workingDirectory), WORKFLOW_STATE_FILENAME);
+    }
+    return join(base, WORKFLOW_STATE_FILENAME);
+}
+// Derives the same per-workspace key as packages/cli/src/workflow-state.ts deriveWorkspaceKey.
+// Both must remain identical so CLI and MCP receipts land in the same workspace directory.
+function deriveWorkspaceKey(workingDirectory) {
+    return createHash("sha256")
+        .update(normalizeWorkingDirectory(workingDirectory))
+        .digest("hex")
+        .slice(0, 16);
 }
 function isFresh(receipt, ttlMs, predicate) {
     if (!receipt || !predicate(receipt)) {
@@ -137,8 +166,7 @@ function hashBudget(budget) {
         maxUsd: Number(budget.maxUsd.toFixed(4)),
         softLimitUsd: Number(budget.softLimitUsd.toFixed(4)),
         maxIterations: budget.maxIterations,
-        maxTokens: budget.maxTokens
+        ...(budget.maxTokens !== undefined ? { maxTokens: budget.maxTokens } : {})
     };
     return createHash("sha256").update(JSON.stringify(normalized)).digest("hex").slice(0, 12);
 }
-//# sourceMappingURL=workflow-state.js.map

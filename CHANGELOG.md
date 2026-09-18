@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [0.6.5] - 2026-09-16
+
+### Fixed
+- Project-mode config writes and reads now canonicalize the working directory path (resolve + lowercase on Windows) so `martin mode --scope project` round-trips correctly on case-insensitive file systems.
+- Badge reliability score propagates an explicit `--runs-dir` flag to `listPersistedLoops` and `loadPersistedLoop` so workspaces with a non-default runs directory are scored correctly.
+- MCP `loopPreviewSchema` advertises `activeAttemptId` as an optional string property so MCP hosts can surface the active attempt without inferring it.
+- `proofCardInputFromLoop` maps a cleanly completed run (`status=completed`, `lifecycleState=completed`) to `rollbackStatus="not_required"` so the proof card can reach a `VERIFIED` verdict for runs that needed no rollback; receipt-integrity gating is preserved.
+
+### Changed
+- Updated root CLI, standalone MCP, plugin, MCPB, release-truth, and generated runtime version authority to `0.6.5`.
+
 ## [0.6.4] - 2026-09-14
 
 ### Fixed

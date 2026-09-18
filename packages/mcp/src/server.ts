@@ -116,6 +116,10 @@ const loopPreviewSchema = {
     lastAttempt: {
       type: "object",
       additionalProperties: true
+    },
+    activeAttemptId: {
+      type: "string",
+      description: "ID of the currently active attempt, when a run is in progress."
     }
   },
   required: [
@@ -133,6 +137,9 @@ const loopPreviewSchema = {
     "remainingIterations"
   ]
 } as const;
+
+/** @internal Test-only export — validates discovery schema shape. */
+export const __loopPreviewSchemaForTests = loopPreviewSchema;
 
 const budgetSchema = {
   type: "object",

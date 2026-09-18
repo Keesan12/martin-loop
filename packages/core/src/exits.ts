@@ -141,8 +141,14 @@ export function evaluateExitPolicy(
     });
   }
 
-  // 2. External event
-  if (policy.externalEvent.enabled && snapshot.externalEvent !== undefined) {
+  // 2. External event — only terminal when disposition is not "satisfied".
+  // A satisfied disposition means the external observer confirmed the goal is
+  // met; the run must continue to verification rather than short-circuit here.
+  if (
+    policy.externalEvent.enabled &&
+    snapshot.externalEvent !== undefined &&
+    snapshot.externalEvent.disposition !== "satisfied"
+  ) {
     push("external_event", snapshot.externalEvent.reason ?? "External terminal event observed.", {
       source: snapshot.externalEvent.source,
       event: snapshot.externalEvent.event,
@@ -271,9 +277,8 @@ export function toLegacyExitDecision(
   if (primary === "goal_met") {
     return completed(reason, primary, evaluation);
   }
-  if (primary === "external_event" && externalDisposition === "satisfied") {
-    return completed(reason, primary, evaluation);
-  }
+  // Note: external_event with disposition "satisfied" never reaches here —
+  // evaluateExitPolicy skips it so the run continues to verification.
   if (primary === "human_interrupt") {
     return exited("human_escalation", reason, primary, evaluation);
   }

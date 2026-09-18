@@ -1,11 +1,12 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import type { LoopBudget, ReceiptScope } from "@martin/contracts";
 
 const WORKFLOW_STATE_DIRECTORY = "_martin";
 const WORKFLOW_STATE_FILENAME = "workflow-state.json";
+const WORKSPACES_DIRECTORY = "workspaces";
 const DOCTOR_TTL_MS = 24 * 60 * 60 * 1000;
 const ESTIMATE_TTL_MS = 6 * 60 * 60 * 1000; // Estimate expires after 6h — re-estimate if objective changes
 const PLAN_TTL_MS = 24 * 60 * 60 * 1000;
@@ -27,6 +28,8 @@ interface McpWorkflowReceipt {
 
 interface WorkflowState {
   version: 1;
+  // cli is preserved during MCP writes so CLI and MCP share one per-workspace file
+  cli?: unknown;
   mcp?: Partial<Record<McpWorkflowStepName, McpWorkflowReceipt>>;
 }
 
@@ -63,7 +66,7 @@ export interface McpRunGateResult {
 }
 
 export async function recordMcpWorkflowStep(input: RecordMcpWorkflowStepInput): Promise<void> {
-  const state = await readWorkflowState(input.runsRoot);
+  const state = await readWorkflowState(input.runsRoot, input.workingDirectory);
   state.mcp ??= {};
   state.mcp[input.step] = {
     step: input.step,
@@ -76,11 +79,11 @@ export async function recordMcpWorkflowStep(input: RecordMcpWorkflowStepInput): 
     pathScopeKey: hashPathScope(input.allowedPaths ?? [], input.deniedPaths ?? []),
     ...(input.budget ? { budgetKey: hashBudget(input.budget) } : {})
   };
-  await writeWorkflowState(input.runsRoot, state);
+  await writeWorkflowState(input.runsRoot, state, input.workingDirectory);
 }
 
 export async function evaluateMcpRunGate(input: EvaluateMcpRunGateInput): Promise<McpRunGateResult> {
-  const state = await readWorkflowState(input.runsRoot);
+  const state = await readWorkflowState(input.runsRoot, input.workingDirectory);
   const mcpState = state.mcp ?? {};
   const workingDirectory = normalizeWorkingDirectory(input.workingDirectory);
   const objectiveKey = normalizeObjective(input.objective);
@@ -159,8 +162,8 @@ export async function evaluateMcpRunGate(input: EvaluateMcpRunGateInput): Promis
   };
 }
 
-export async function readWorkflowState(runsRoot: string): Promise<WorkflowState> {
-  const statePath = resolveWorkflowStatePath(runsRoot);
+export async function readWorkflowState(runsRoot: string, workingDirectory?: string): Promise<WorkflowState> {
+  const statePath = resolveWorkflowStatePath(runsRoot, workingDirectory);
   try {
     const raw = await readFile(statePath, "utf8");
     const parsed = JSON.parse(raw) as WorkflowState;
@@ -170,14 +173,35 @@ export async function readWorkflowState(runsRoot: string): Promise<WorkflowState
   }
 }
 
-async function writeWorkflowState(runsRoot: string, state: WorkflowState): Promise<void> {
-  const statePath = resolveWorkflowStatePath(runsRoot);
-  await mkdir(join(resolve(runsRoot), WORKFLOW_STATE_DIRECTORY), { recursive: true });
-  await writeFile(statePath, JSON.stringify(state, null, 2), "utf8");
+async function writeWorkflowState(runsRoot: string, state: WorkflowState, workingDirectory?: string): Promise<void> {
+  const statePath = resolveWorkflowStatePath(runsRoot, workingDirectory);
+  const dir = workingDirectory
+    ? join(resolve(runsRoot), WORKFLOW_STATE_DIRECTORY, WORKSPACES_DIRECTORY, deriveWorkspaceKey(workingDirectory))
+    : join(resolve(runsRoot), WORKFLOW_STATE_DIRECTORY);
+  await mkdir(dir, { recursive: true });
+  // Atomic write: tmp then rename prevents partial reads on concurrent access
+  const tmpPath = `${statePath}.tmp`;
+  await writeFile(tmpPath, JSON.stringify(state, null, 2), "utf8");
+  await rename(tmpPath, statePath);
 }
 
-function resolveWorkflowStatePath(runsRoot: string): string {
-  return join(resolve(runsRoot), WORKFLOW_STATE_DIRECTORY, WORKFLOW_STATE_FILENAME);
+// Per-workspace path: <runsRoot>/_martin/workspaces/<workspaceKey>/workflow-state.json
+// Global path:        <runsRoot>/_martin/workflow-state.json (not used for governance receipts)
+function resolveWorkflowStatePath(runsRoot: string, workingDirectory?: string): string {
+  const base = join(resolve(runsRoot), WORKFLOW_STATE_DIRECTORY);
+  if (workingDirectory) {
+    return join(base, WORKSPACES_DIRECTORY, deriveWorkspaceKey(workingDirectory), WORKFLOW_STATE_FILENAME);
+  }
+  return join(base, WORKFLOW_STATE_FILENAME);
+}
+
+// Derives the same per-workspace key as packages/cli/src/workflow-state.ts deriveWorkspaceKey.
+// Both must remain identical so CLI and MCP receipts land in the same workspace directory.
+function deriveWorkspaceKey(workingDirectory: string): string {
+  return createHash("sha256")
+    .update(normalizeWorkingDirectory(workingDirectory))
+    .digest("hex")
+    .slice(0, 16);
 }
 
 function isFresh(

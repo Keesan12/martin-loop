@@ -16,6 +16,7 @@ import {
   SignalDiagnosticError,
   createFileExitSignalSource,
   exitSignalPath,
+  isTerminalExitSignal,
   readAllExitSignals,
   readExitSignal,
   startExitSignalMonitor,
@@ -497,5 +498,90 @@ describe("writeExitSignal — validates signal schema before writing", () => {
       }
     };
     await expect(writeExitSignal(runsRoot, bad)).rejects.toThrow(/disposition/i);
+  });
+});
+
+// ─── P1-SIGNAL regression: isTerminalExitSignal + monitor abort guard ────────
+
+describe("isTerminalExitSignal", () => {
+  it("returns true for human_interrupt", () => {
+    expect(isTerminalExitSignal(humanSignal("run-1"))).toBe(true);
+  });
+
+  it("returns false for external_event with satisfied disposition (continue)", () => {
+    const s: ExitSignalV1 = {
+      schemaVersion: "exit-signal/1",
+      runId: "run-2",
+      kind: "external_event",
+      requestedBy: "ci",
+      requestedAt: "2025-01-01T00:00:00.000Z",
+      externalEvent: {
+        source: "github-ci",
+        event: "acceptance-midrun",
+        disposition: "satisfied",
+        observedAt: "2025-01-01T00:00:00.000Z"
+      }
+    };
+    expect(isTerminalExitSignal(s)).toBe(false);
+  });
+
+  it("returns true for external_event with cancelled disposition", () => {
+    expect(isTerminalExitSignal(externalSignal("run-3"))).toBe(true); // cancelled
+  });
+
+  it("returns true for external_event with superseded disposition", () => {
+    const s: ExitSignalV1 = {
+      schemaVersion: "exit-signal/1",
+      runId: "run-4",
+      kind: "external_event",
+      requestedBy: "ci",
+      requestedAt: "2025-01-01T00:00:00.000Z",
+      externalEvent: {
+        source: "github-ci",
+        event: "superseded",
+        disposition: "superseded",
+        observedAt: "2025-01-01T00:00:00.000Z"
+      }
+    };
+    expect(isTerminalExitSignal(s)).toBe(true);
+  });
+});
+
+describe("startExitSignalMonitor satisfied-disposition non-abort", () => {
+  it("does not abort the run controller when the only signal is satisfied external event", async () => {
+    const runId = "run-satisfy-test";
+    const satisfiedSignal: ExitSignalV1 = {
+      schemaVersion: "exit-signal/1",
+      runId,
+      kind: "external_event",
+      requestedBy: "ci",
+      requestedAt: new Date().toISOString(),
+      externalEvent: {
+        source: "test",
+        event: "acceptance-pass",
+        disposition: "satisfied",
+        observedAt: new Date().toISOString()
+      }
+    };
+    await writeExitSignal(runsRoot, satisfiedSignal);
+
+    const controller = new AbortController();
+    let signalFired = false;
+
+    const dispose = startExitSignalMonitor({
+      source: createFileExitSignalSource(runsRoot),
+      runId,
+      controller,
+      pollIntervalMs: 10,
+      onSignal: () => { signalFired = true; },
+      onError: (e) => { throw e; }
+    });
+
+    // Wait two poll cycles
+    await new Promise<void>((r) => setTimeout(r, 50));
+    dispose();
+
+    expect(signalFired).toBe(true); // onSignal fires for observability
+    expect(controller.signal.aborted).toBe(false); // but controller NOT aborted
   });
 });

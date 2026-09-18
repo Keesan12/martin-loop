@@ -210,6 +210,21 @@ export function createFileExitSignalSource(runsRoot: string): ExitSignalSource {
 }
 
 /**
+ * Returns true when a signal should abort the active attempt and terminate the
+ * run.  external_event with disposition "satisfied" is non-terminal: the run
+ * observes the event (for durable audit) but continues to its natural
+ * goal/verification completion.  Only "superseded" and "cancelled" dispositions
+ * are terminal external events.
+ */
+export function isTerminalExitSignal(signal: ExitSignalV1): boolean {
+  if (signal.kind === "human_interrupt") return true;
+  if (signal.kind === "external_event") {
+    return signal.externalEvent?.disposition !== "satisfied";
+  }
+  return false;
+}
+
+/**
  * Polls for any exit signal and calls onSignal with the full set when any
  * new signal appears.  Returns a dispose function — MUST be called on every
  * return/throw path in the run harness (invariant: one interval per run).
@@ -252,7 +267,11 @@ export function startExitSignalMonitor(input: {
         if (signals.length > lastCount) {
           lastCount = signals.length;
           input.onSignal(signals);
-          input.controller.abort(signals);
+          // Only abort the run controller for terminal signals.
+          // A satisfied external event is observed but must not abort the run.
+          if (signals.some(isTerminalExitSignal)) {
+            input.controller.abort(signals);
+          }
         }
       })
       .catch((err: unknown) => {

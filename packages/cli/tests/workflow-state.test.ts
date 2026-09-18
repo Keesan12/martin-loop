@@ -9,7 +9,7 @@ import { join, resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { evaluateCliRunGate, recordCliWorkflowStep } from "../src/workflow-state.js";
+import { evaluateCliRunGate, readWorkspaceGovernanceReadiness, recordCliWorkflowStep } from "../src/workflow-state.js";
 
 // Mirror the internal deriveWorkspaceKey + normalizeWorkingDirectory logic so tests
 // can assert on filesystem paths without importing private symbols.
@@ -728,6 +728,97 @@ describe("preflight scope — execution params excluded", () => {
       expect(gate.allowed).toBe(false);
       expect(gate.missingSteps).toContain("preflight");
       expect(gate.message).toContain("verifier or path scope changed");
+    } finally {
+      await rm(runsRoot, { recursive: true, force: true });
+    }
+  });
+});
+
+// ─── P1-GATE regression: workspace-scoped governance state ───────────────────
+
+describe("P1-GATE: readWorkspaceGovernanceReadiness workspace isolation", () => {
+  it("returns empty state for a fresh workspace with no receipts", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-gate-fresh-"));
+    try {
+      const workingDirectory = join(runsRoot, "repo-a");
+      const state = await readWorkspaceGovernanceReadiness(runsRoot, workingDirectory);
+      expect(state.cli).toEqual({});
+      expect(state.mcp).toEqual({});
+    } finally {
+      await rm(runsRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("returns CLI receipts written by recordCliWorkflowStep for that workspace", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-gate-cli-"));
+    const workingDirectory = join(runsRoot, "repo-b");
+    try {
+      await recordCliWorkflowStep({ runsRoot, step: "doctor", workingDirectory });
+      await recordCliWorkflowStep({ runsRoot, step: "estimate", workingDirectory, objective: "task" });
+      const state = await readWorkspaceGovernanceReadiness(runsRoot, workingDirectory);
+      expect(state.cli.doctor).toBeDefined();
+      expect(state.cli.estimate).toBeDefined();
+    } finally {
+      await rm(runsRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("receipts from workspace-A are not visible when reading workspace-B", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-gate-isolation-"));
+    const workspaceA = join(runsRoot, "repo-a");
+    const workspaceB = join(runsRoot, "repo-b");
+    try {
+      // Write receipts for workspace-A
+      await recordCliWorkflowStep({ runsRoot, step: "doctor", workingDirectory: workspaceA });
+      await recordCliWorkflowStep({ runsRoot, step: "estimate", workingDirectory: workspaceA, objective: "task" });
+      await recordCliWorkflowStep({ runsRoot, step: "preflight", workingDirectory: workspaceA, objective: "task", verificationPlan: ["npm test"] });
+
+      // workspace-B must see empty state
+      const stateB = await readWorkspaceGovernanceReadiness(runsRoot, workspaceB);
+      expect(stateB.cli.doctor).toBeUndefined();
+      expect(stateB.cli.estimate).toBeUndefined();
+      expect(stateB.cli.preflight).toBeUndefined();
+    } finally {
+      await rm(runsRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("global _martin/workflow-state.json receipts from old workspaces do not make gate pass", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-gate-global-stale-"));
+    const freshWorkspace = join(runsRoot, "fresh-repo");
+    try {
+      // Simulate stale global state (pre-fix format)
+      const globalStatePath = join(resolve(runsRoot), "_martin", "workflow-state.json");
+      await mkdir(join(resolve(runsRoot), "_martin"), { recursive: true });
+      const staleState = {
+        version: 1,
+        cli: {
+          doctor: { step: "doctor", recordedAt: new Date().toISOString(), workingDirectory: join(runsRoot, "other-repo") },
+          estimate: { step: "estimate", recordedAt: new Date().toISOString(), workingDirectory: join(runsRoot, "other-repo") },
+          preflight: { step: "preflight", recordedAt: new Date().toISOString(), workingDirectory: join(runsRoot, "other-repo") }
+        }
+      };
+      await writeFile(globalStatePath, JSON.stringify(staleState, null, 2), "utf8");
+
+      // fresh-repo must still see no receipts
+      const state = await readWorkspaceGovernanceReadiness(runsRoot, freshWorkspace);
+      expect(state.cli.doctor).toBeUndefined();
+      expect(state.cli.estimate).toBeUndefined();
+      expect(state.cli.preflight).toBeUndefined();
+    } finally {
+      await rm(runsRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("receipts are stored in a workspace-keyed subdirectory", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-gate-path-"));
+    const workingDirectory = join(runsRoot, "repo-c");
+    try {
+      await recordCliWorkflowStep({ runsRoot, step: "doctor", workingDirectory });
+      const key = testWorkspaceKey(workingDirectory);
+      const expectedDir = join(resolve(runsRoot), "_martin", "workspaces", key);
+      const files = await readdir(expectedDir);
+      expect(files).toContain("workflow-state.json");
     } finally {
       await rm(runsRoot, { recursive: true, force: true });
     }

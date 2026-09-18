@@ -1,6 +1,7 @@
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 import { writeReceiptIntegrityMaterial } from "@martin/core";
 import { createLoopRecord, type LoopEventDraft, type LoopRecord } from "@martin/contracts";
@@ -8,6 +9,12 @@ import { describe, expect, it } from "vitest";
 
 import { executeCli } from "../src/index.js";
 import { deriveWorkspaceId } from "../src/workflow-state.js";
+
+function testWorkspaceKey(workingDirectory: string): string {
+  const normalized = resolve(workingDirectory);
+  const input = process.platform === "win32" ? normalized.toLowerCase() : normalized;
+  return createHash("sha256").update(input).digest("hex").slice(0, 16);
+}
 
 async function withEnv<T>(key: string, value: string, fn: () => Promise<T>): Promise<T> {
   const original = process.env[key];
@@ -253,9 +260,13 @@ describe("operator commands", () => {
 
   it("keeps martin gate blocked until preflight exists even when doctor and estimate receipts are present", async () => {
     await withRunsRoot(async (runsRoot) => {
-      await mkdir(join(runsRoot, "_martin"), { recursive: true });
+      // Gate reads per-workspace state — write to the workspace-scoped path
+      const workspaceKey = testWorkspaceKey(process.cwd());
+      const wsDir = join(runsRoot, "_martin", "workspaces", workspaceKey);
+      const wsStatePath = join(wsDir, "workflow-state.json");
+      await mkdir(wsDir, { recursive: true });
       await writeFile(
-        join(runsRoot, "_martin", "workflow-state.json"),
+        wsStatePath,
         JSON.stringify(
           {
             version: 1,
@@ -283,7 +294,7 @@ describe("operator commands", () => {
       expect(blocked.stdout).toContain("martin preflight");
 
       await writeFile(
-        join(runsRoot, "_martin", "workflow-state.json"),
+        wsStatePath,
         JSON.stringify(
           {
             version: 1,
@@ -837,5 +848,114 @@ describe("badge command", () => {
         "Verified run receipts present: Latest persisted run receipt integrity is material_missing."
       );
     });
+  });
+});
+
+describe("P1-GATE: workspace-isolated gate command", () => {
+  it("G1: stale global workflow-state receipts must not satisfy workspace gate", async () => {
+    const root = await mkdtemp(join(tmpdir(), "martin-gate-g1-"));
+    const runsRoot = join(root, "runs");
+    const workspaceA = join(root, "repo-a");
+    await mkdir(runsRoot, { recursive: true });
+    await mkdir(workspaceA, { recursive: true });
+
+    try {
+      // Seed ONLY the global path — not workspace-A's per-workspace path
+      const globalDir = join(runsRoot, "_martin");
+      await mkdir(globalDir, { recursive: true });
+      await writeFile(
+        join(globalDir, "workflow-state.json"),
+        JSON.stringify({
+          version: 1,
+          cli: {
+            doctor: { step: "doctor", recordedAt: new Date().toISOString(), workingDirectory: workspaceA },
+            estimate: { step: "estimate", recordedAt: new Date().toISOString(), workingDirectory: workspaceA },
+            preflight: { step: "preflight", recordedAt: new Date().toISOString(), workingDirectory: workspaceA }
+          },
+          mcp: {
+            doctor: { step: "doctor", recordedAt: new Date().toISOString(), workingDirectory: workspaceA },
+            estimate: { step: "estimate", recordedAt: new Date().toISOString(), workingDirectory: workspaceA },
+            preflight: { step: "preflight", recordedAt: new Date().toISOString(), workingDirectory: workspaceA }
+          }
+        }, null, 2),
+        "utf8"
+      );
+
+      // Gate for workspace A must be BLOCKED — stale global receipts must not satisfy it
+      const result = await executeCli(["gate", "--cwd", workspaceA, "--runs-dir", runsRoot]);
+      expect(result.exitCode).toBe(1);
+      expect(result.stdout).toContain("BLOCKED");
+    } finally {
+      await rm(root, { force: true, recursive: true }).catch(() => {});
+    }
+  });
+
+  it("G2: workspace A passes gate after writing workspace-A receipts", async () => {
+    const root = await mkdtemp(join(tmpdir(), "martin-gate-g2-"));
+    const runsRoot = join(root, "runs");
+    const workspaceA = join(root, "repo-a");
+    await mkdir(runsRoot, { recursive: true });
+    await mkdir(workspaceA, { recursive: true });
+
+    try {
+      // Write receipts to workspace-A's per-workspace path
+      const wsKey = testWorkspaceKey(workspaceA);
+      const wsDir = join(runsRoot, "_martin", "workspaces", wsKey);
+      await mkdir(wsDir, { recursive: true });
+      await writeFile(
+        join(wsDir, "workflow-state.json"),
+        JSON.stringify({
+          version: 1,
+          cli: {
+            doctor: { step: "doctor", recordedAt: new Date().toISOString(), workingDirectory: workspaceA },
+            estimate: { step: "estimate", recordedAt: new Date().toISOString(), workingDirectory: workspaceA },
+            preflight: { step: "preflight", recordedAt: new Date().toISOString(), workingDirectory: workspaceA }
+          }
+        }, null, 2),
+        "utf8"
+      );
+
+      const result = await executeCli(["gate", "--cwd", workspaceA, "--runs-dir", runsRoot]);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("PASS");
+    } finally {
+      await rm(root, { force: true, recursive: true }).catch(() => {});
+    }
+  });
+
+  it("G3: workspace B fails closed when only workspace A has receipts", async () => {
+    const root = await mkdtemp(join(tmpdir(), "martin-gate-g3-"));
+    const runsRoot = join(root, "runs");
+    const workspaceA = join(root, "repo-a");
+    const workspaceB = join(root, "repo-b");
+    await mkdir(runsRoot, { recursive: true });
+    await mkdir(workspaceA, { recursive: true });
+    await mkdir(workspaceB, { recursive: true });
+
+    try {
+      // Write receipts for workspace A only
+      const wsKeyA = testWorkspaceKey(workspaceA);
+      const wsDirA = join(runsRoot, "_martin", "workspaces", wsKeyA);
+      await mkdir(wsDirA, { recursive: true });
+      await writeFile(
+        join(wsDirA, "workflow-state.json"),
+        JSON.stringify({
+          version: 1,
+          cli: {
+            doctor: { step: "doctor", recordedAt: new Date().toISOString(), workingDirectory: workspaceA },
+            estimate: { step: "estimate", recordedAt: new Date().toISOString(), workingDirectory: workspaceA },
+            preflight: { step: "preflight", recordedAt: new Date().toISOString(), workingDirectory: workspaceA }
+          }
+        }, null, 2),
+        "utf8"
+      );
+
+      // Gate for workspace B must be BLOCKED — A's receipts must not satisfy B
+      const result = await executeCli(["gate", "--cwd", workspaceB, "--runs-dir", runsRoot]);
+      expect(result.exitCode).toBe(1);
+      expect(result.stdout).toContain("BLOCKED");
+    } finally {
+      await rm(root, { force: true, recursive: true }).catch(() => {});
+    }
   });
 });
