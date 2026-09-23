@@ -488,6 +488,11 @@ describe("runMartin", () => {
         maxIterations: 3,
         maxTokens: 2_000
       },
+      savingsBaseline: {
+        usd: 5.2,
+        source: "measured_control",
+        provenance: "actual"
+      },
       adapter,
       now: timestamps,
       idFactory: createIdFactory()
@@ -499,6 +504,12 @@ describe("runMartin", () => {
     expect(result.loop.lifecycleState).toBe("completed");
     expect(result.loop.attempts).toHaveLength(1);
     expect(result.loop.cost.actualUsd).toBe(1.2);
+    expect(result.loop.cost.savingsBaseline).toEqual({
+      usd: 5.2,
+      source: "measured_control",
+      provenance: "actual"
+    });
+    expect(result.loop.cost.avoidedUsd).toBe(4);
     expect(result.loop.events.map((event) => event.type)).toEqual(
       expect.arrayContaining([
         "run.started",
