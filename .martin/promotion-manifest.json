@@ -8,9 +8,9 @@
   "promotedBy": "Torram",
   "validatedAt": "2026-09-23T03:00:00.000Z",
   "internalHealthPassed": true,
-  "internalHealthEvidenceSha256": "fbbe43edbf2264e3cf7dd93dbe930ee3be54c4c481c3fb1be0b1a5c723abf634",
+  "internalHealthEvidenceSha256": "789743a5691dd497325b1b987a3f2133947c62e0f23eb3c7463e2f92ff043fc5",
   "surfaceSpecHash": "a9c8d22be91bc0dd19238f7676aec62aacc77d8cc3a66327b46d71f16d65164a",
-  "surfaceHash": "844ade3adec0a673c2656de3942c3b8bd6d7688f00b854c26313ae5ab7507129",
+  "surfaceHash": "82f15c14c61c6ee07063b1c893b163b56537a8843c19de81592ce75e5df76085",
   "surfaceEntries": [
     {
       "path": ".agents/plugins/marketplace.json",
@@ -103,46 +103,6 @@
       "sha256": "8a248532ebd6b2a200bd307ab195f9f495d2187ee77d5c26851f147d40dec712"
     },
     {
-      "path": "CHANGELOG.md",
-      "mode": "100644",
-      "sha256": "01ffd4a1f7c80ec7d1cafe04249bcacdb8faffa581c06474a873a8f9b3943781"
-    },
-    {
-      "path": "CLAUDE.md",
-      "mode": "100644",
-      "sha256": "52ee540ac82717f71b8aeed73c353c334114caab3710044f7a1f55d7e6cf33f2"
-    },
-    {
-      "path": "CODE_OF_CONDUCT.md",
-      "mode": "100644",
-      "sha256": "7f39dfc92fe429bd72b014cd7915c30f373c399e71b99f1760749f36e2d1b16f"
-    },
-    {
-      "path": "CONTRIBUTING.md",
-      "mode": "100644",
-      "sha256": "9233097e9db3c099739df11a2841d832d122c6a158da77d443dce89d4662756c"
-    },
-    {
-      "path": "LICENSE",
-      "mode": "100644",
-      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
-    },
-    {
-      "path": "README.md",
-      "mode": "100644",
-      "sha256": "eed5d2cab2329d501afb9fa2bc37c50ba1850f7cba0cd38831a572cabf7a9144"
-    },
-    {
-      "path": "SECURITY.md",
-      "mode": "100644",
-      "sha256": "1b6d78eab449f125d7bd7b96f3ded366f027fda4d560a8846e0ff2a88422a184"
-    },
-    {
-      "path": "benchmarks/README.md",
-      "mode": "100644",
-      "sha256": "3f61201fe0bbb55e70fc89c8be404f192a747ed5f84ef319e75313625698f65f"
-    },
-    {
       "path": "benchmarks/fixtures/ralphy-engineering-50.json",
       "mode": "100644",
       "sha256": "7b325ee7b170e6174b5c83dd664d525ec7dd3b2dbf63633737a1e19ace2224b3"
@@ -156,6 +116,11 @@
       "path": "benchmarks/package.json",
       "mode": "100644",
       "sha256": "9d532b193d017490aab721e69ce19b4568e6f9844ffcbca594cbf449e6927637"
+    },
+    {
+      "path": "benchmarks/README.md",
+      "mode": "100644",
+      "sha256": "3f61201fe0bbb55e70fc89c8be404f192a747ed5f84ef319e75313625698f65f"
     },
     {
       "path": "benchmarks/src/challenge.ts",
@@ -243,19 +208,29 @@
       "sha256": "7386029599724c01eb0c080e9d1e70426f922af6773309105bebf7827369a07f"
     },
     {
+      "path": "CHANGELOG.md",
+      "mode": "100644",
+      "sha256": "01ffd4a1f7c80ec7d1cafe04249bcacdb8faffa581c06474a873a8f9b3943781"
+    },
+    {
+      "path": "CLAUDE.md",
+      "mode": "100644",
+      "sha256": "52ee540ac82717f71b8aeed73c353c334114caab3710044f7a1f55d7e6cf33f2"
+    },
+    {
+      "path": "CODE_OF_CONDUCT.md",
+      "mode": "100644",
+      "sha256": "7f39dfc92fe429bd72b014cd7915c30f373c399e71b99f1760749f36e2d1b16f"
+    },
+    {
+      "path": "CONTRIBUTING.md",
+      "mode": "100644",
+      "sha256": "9233097e9db3c099739df11a2841d832d122c6a158da77d443dce89d4662756c"
+    },
+    {
       "path": "demo/README.md",
       "mode": "100644",
       "sha256": "4775714b1ba31e37a261bf17898c96ae29a4cf324da8d0cb3da5248b0fd08a16"
-    },
-    {
-      "path": "demo/seeded-workspace/README.md",
-      "mode": "100644",
-      "sha256": "efe767a84232f060f4af9698cee8da5e92c18fd89a01025c47634de14b5ef09a"
-    },
-    {
-      "path": "demo/seeded-workspace/TASKS.md",
-      "mode": "100644",
-      "sha256": "e51bd6ccd37abedd3d15a7bec054d20b729be7e4ddf9a4a5f368ed1a77ab67e8"
     },
     {
       "path": "demo/seeded-workspace/martin.config.yaml",
@@ -268,9 +243,19 @@
       "sha256": "f1b0a15c5e90bfda519a8bd9eabf59c3599a1938a2411156033e60b82fc72f4c"
     },
     {
+      "path": "demo/seeded-workspace/README.md",
+      "mode": "100644",
+      "sha256": "efe767a84232f060f4af9698cee8da5e92c18fd89a01025c47634de14b5ef09a"
+    },
+    {
       "path": "demo/seeded-workspace/src/invoice-summary.js",
       "mode": "100644",
       "sha256": "606874c5d2358f73ba5699d713f88b5b67b5850245ea8952e848493e36c7b47d"
+    },
+    {
+      "path": "demo/seeded-workspace/TASKS.md",
+      "mode": "100644",
+      "sha256": "e51bd6ccd37abedd3d15a7bec054d20b729be7e4ddf9a4a5f368ed1a77ab67e8"
     },
     {
       "path": "demo/seeded-workspace/test/invoice-summary.test.js",
@@ -281,21 +266,6 @@
       "path": "dist/vendor/cli/package.json",
       "mode": "100644",
       "sha256": "275c430e9d64a2def924ae23e3049f79f1632882bd7d14790b1949f49853f98c"
-    },
-    {
-      "path": "docs/CLI_AUDIT_FINDINGS.md",
-      "mode": "100644",
-      "sha256": "3a46e1cb72138185ac7b821a3594e757b3e26cac91d404590dc76426390fbb9b"
-    },
-    {
-      "path": "docs/INCIDENT_REPORT.md",
-      "mode": "100644",
-      "sha256": "3077009f10d7f7489c15e2db1fa65513edb01689d07dba40a42ff1bb5b98b51d"
-    },
-    {
-      "path": "docs/README.md",
-      "mode": "100644",
-      "sha256": "3133982926f5ed280f49c114c1214cad9ae81fccbad435882080dacf3ed26cda"
     },
     {
       "path": "docs/agent-failure-atlas.md",
@@ -361,6 +331,11 @@
       "path": "docs/assets/side-by-side.svg",
       "mode": "100644",
       "sha256": "b5ffa4311d48f585710d7339b32da47ba03fadf6aaaab4aa5b5987386a275257"
+    },
+    {
+      "path": "docs/CLI_AUDIT_FINDINGS.md",
+      "mode": "100644",
+      "sha256": "3a46e1cb72138185ac7b821a3594e757b3e26cac91d404590dc76426390fbb9b"
     },
     {
       "path": "docs/concepts/budget-caps.md",
@@ -433,6 +408,11 @@
       "sha256": "d0afc8f4efbaa56267e9a8c6381605ade8e454b92dcfe5e3ff35727bf1ffdeda"
     },
     {
+      "path": "docs/INCIDENT_REPORT.md",
+      "mode": "100644",
+      "sha256": "3077009f10d7f7489c15e2db1fa65513edb01689d07dba40a42ff1bb5b98b51d"
+    },
+    {
       "path": "docs/incidents/2026-08-release-0.5.5-0.5.7.md",
       "mode": "100644",
       "sha256": "1e51f43bc69c3a635d54003b30f923ef121869ab1edc21acb8a8b1b09208e2f7"
@@ -493,6 +473,11 @@
       "sha256": "0d2c80970ebee76f827650ea486a4f2fca8a10a299bcfc69e9e3aa6b6388b1a5"
     },
     {
+      "path": "docs/oss/failure-taxonomy.runtime.json",
+      "mode": "100644",
+      "sha256": "54c1f66215f51bbb4d13d7ff02f936964e924d0969dc2642b596aa550039c5d7"
+    },
+    {
       "path": "docs/oss/MCP-FOR-AI-AGENTS.md",
       "mode": "100644",
       "sha256": "908092e1f792b5c55e0f0216cbbb196e35d2e17fb8728a8bd14a4987836bd766"
@@ -533,9 +518,9 @@
       "sha256": "d0fd141f4542247447f8d10e54eb969a1ce42f458f0ff74878657f1d4f13f4a3"
     },
     {
-      "path": "docs/oss/failure-taxonomy.runtime.json",
+      "path": "docs/product-truth/claims-registry.json",
       "mode": "100644",
-      "sha256": "54c1f66215f51bbb4d13d7ff02f936964e924d0969dc2642b596aa550039c5d7"
+      "sha256": "6609a3be909523a45e7af1efa6b9d67810e31ec1315bc9fb53d71287aa29c5d3"
     },
     {
       "path": "docs/product-truth/CLAIMS-REGISTRY.md",
@@ -543,14 +528,14 @@
       "sha256": "390ac0e752e212a343f6a69e677701e463e750031267d2af4c077e64558e955c"
     },
     {
-      "path": "docs/product-truth/claims-registry.json",
-      "mode": "100644",
-      "sha256": "6609a3be909523a45e7af1efa6b9d67810e31ec1315bc9fb53d71287aa29c5d3"
-    },
-    {
       "path": "docs/product-truth/public-release-truth.json",
       "mode": "100644",
       "sha256": "fb8305a75da4e8ea4d660d8afb73c0ab95c4598329224f6606f2e1fefbcae429"
+    },
+    {
+      "path": "docs/README.md",
+      "mode": "100644",
+      "sha256": "3133982926f5ed280f49c114c1214cad9ae81fccbad435882080dacf3ed26cda"
     },
     {
       "path": "docs/reference/cli.md",
@@ -701,6 +686,11 @@
       "path": "docs/release/MCP-0.6.5-RELEASE-NOTES.md",
       "mode": "100644",
       "sha256": "f711a670f556ef6be04e42a36fa2fba5ee9408d1b57361f5c57fe1b8bd1e8107"
+    },
+    {
+      "path": "docs/release/MCP-0.6.6-RELEASE-NOTES.md",
+      "mode": "100644",
+      "sha256": "5dfadb2f9817ea6107e4767f820b06dbe26f29f38d52e5130fad3d44dbe5ac4a"
     },
     {
       "path": "docs/release/MCP-COMPATIBILITY.md",
@@ -878,14 +868,9 @@
       "sha256": "26c0ac2e33adb94f010e242e104b6ef986adb163788bf5da71929cc4386c1d52"
     },
     {
-      "path": "docs/release/ROOT-DELIVERY-SLICE-MAP.md",
+      "path": "docs/release/OSS-0.6.6-RELEASE-NOTES.md",
       "mode": "100644",
-      "sha256": "6630b907658a938467fd04b8a2e9aecd25ab3102194baa15be13b561f2a7bbac"
-    },
-    {
-      "path": "docs/release/VERSION-LEDGER.md",
-      "mode": "100644",
-      "sha256": "0609490d4fb17b7434d4f09e3edf36dab3955b015707ab72e3b1362a6b986ff0"
+      "sha256": "16b711606cf5c915f64bacb788912a171bd9ed7479a09c03e1467058b7d25db0"
     },
     {
       "path": "docs/release/reliability-hardening/BASELINE.md",
@@ -903,6 +888,11 @@
       "sha256": "a168b6756e563f6d28342d7fe9b773aae59e322107261b4b7b2235b144162a61"
     },
     {
+      "path": "docs/release/ROOT-DELIVERY-SLICE-MAP.md",
+      "mode": "100644",
+      "sha256": "6630b907658a938467fd04b8a2e9aecd25ab3102194baa15be13b561f2a7bbac"
+    },
+    {
       "path": "docs/release/v0.2.6.md",
       "mode": "100644",
       "sha256": "9bb718956b9722755979888b4969c3aacda33c9f1b1230fb995f29430500ae02"
@@ -911,6 +901,11 @@
       "path": "docs/release/v0.2.7.md",
       "mode": "100644",
       "sha256": "d8a4ceaddc7417fe7cf471354c641a2f3dde4babd1d025deb8f6a0990c2d6917"
+    },
+    {
+      "path": "docs/release/VERSION-LEDGER.md",
+      "mode": "100644",
+      "sha256": "0609490d4fb17b7434d4f09e3edf36dab3955b015707ab72e3b1362a6b986ff0"
     },
     {
       "path": "docs/security/policy.md",
@@ -928,19 +923,9 @@
       "sha256": "82d89a17f43b92a9c7b12e41a191c8cf0f2e2df83fb85fe3e63598cea02195be"
     },
     {
-      "path": "examples/README.md",
-      "mode": "100644",
-      "sha256": "a3a95ab859fe399572e0603a8ce65596ed893e0b453d2b8f3e66fc8623d660b2"
-    },
-    {
       "path": "examples/github-actions-budget-gate/.github/workflows/martinloop-budget-gate.yml",
       "mode": "100644",
       "sha256": "1967a194405c7ca32d6e181e8003943a9a64bbe5760f76e5de7047329d6eddb3"
-    },
-    {
-      "path": "examples/github-actions-budget-gate/README.md",
-      "mode": "100644",
-      "sha256": "7f8ac205dd212f84a8792f1b103a938ae4e489a73dd0948128a666fc24a6b75c"
     },
     {
       "path": "examples/github-actions-budget-gate/martin.config.yaml",
@@ -948,9 +933,9 @@
       "sha256": "b12fffb22532f51ed9757a821b0eb8f9c9dc7f7aa604249b7491133a226e6d56"
     },
     {
-      "path": "examples/opencode-adapter/README.md",
+      "path": "examples/github-actions-budget-gate/README.md",
       "mode": "100644",
-      "sha256": "749a5f45b08a64933a3ad928326550934995d2e11dde317d0bbb13316c15a075"
+      "sha256": "7f8ac205dd212f84a8792f1b103a938ae4e489a73dd0948128a666fc24a6b75c"
     },
     {
       "path": "examples/opencode-adapter/expected-run-record.jsonl",
@@ -961,6 +946,21 @@
       "path": "examples/opencode-adapter/martin.config.yaml",
       "mode": "100644",
       "sha256": "3c884c26c14c7261da7311462eadd338e67ca6c5886baf9963c475b65937facb"
+    },
+    {
+      "path": "examples/opencode-adapter/README.md",
+      "mode": "100644",
+      "sha256": "749a5f45b08a64933a3ad928326550934995d2e11dde317d0bbb13316c15a075"
+    },
+    {
+      "path": "examples/README.md",
+      "mode": "100644",
+      "sha256": "a3a95ab859fe399572e0603a8ce65596ed893e0b453d2b8f3e66fc8623d660b2"
+    },
+    {
+      "path": "LICENSE",
+      "mode": "100644",
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
     },
     {
       "path": "llms-full.txt",
@@ -981,11 +981,6 @@
       "path": "package.json",
       "mode": "100644",
       "sha256": "46a0ee54e121f6a8da3ca98ea55bc51d982603f8937ba95b11d6198de919db12"
-    },
-    {
-      "path": "packages/README.md",
-      "mode": "100644",
-      "sha256": "a61977db3bc21462e39067dc001705dcc06156a0f84e61390ac23b966cb139cd"
     },
     {
       "path": "packages/adapters/package.json",
@@ -1113,14 +1108,14 @@
       "sha256": "dd1bbf236f2c1e27c6a13d349449cea931747453f041ff2610089da40e99c66b"
     },
     {
-      "path": "packages/cli/README.md",
-      "mode": "100644",
-      "sha256": "da19b15a00c5aed419dfcb9a964ebda0b901f84939ca5f3c4da6542d209130d8"
-    },
-    {
       "path": "packages/cli/package.json",
       "mode": "100644",
       "sha256": "9918d22662b2fced834ef20b5f3b9a87219da22500d25c3bd72824f738315dd1"
+    },
+    {
+      "path": "packages/cli/README.md",
+      "mode": "100644",
+      "sha256": "da19b15a00c5aed419dfcb9a964ebda0b901f84939ca5f3c4da6542d209130d8"
     },
     {
       "path": "packages/cli/scripts/smoke-intake-live.mts",
@@ -1133,11 +1128,6 @@
       "sha256": "d5307b36918c307802169d82f0c08cff123bba8092e0eb7043c4d6406f5d802f"
     },
     {
-      "path": "packages/cli/src/arcade/README.md",
-      "mode": "100644",
-      "sha256": "ce8581a747a837a5460f4e079743279bff60f3d18bc4d664787e7579f0859ad0"
-    },
-    {
       "path": "packages/cli/src/arcade/index.ts",
       "mode": "100644",
       "sha256": "94701c5b900b70bcdba89ef930314832bf8d290197cefb44f95be1103b782555"
@@ -1146,6 +1136,11 @@
       "path": "packages/cli/src/arcade/offer.ts",
       "mode": "100644",
       "sha256": "9012b1cd1df2b7070a67100d36c155583ebe63c9a397c4975e4fa53dd85ec982"
+    },
+    {
+      "path": "packages/cli/src/arcade/README.md",
+      "mode": "100644",
+      "sha256": "ce8581a747a837a5460f4e079743279bff60f3d18bc4d664787e7579f0859ad0"
     },
     {
       "path": "packages/cli/src/arcade/space-invaders.ts",
@@ -2028,19 +2023,9 @@
       "sha256": "2889fcdbe40a71ff947d1f6849244a5cc1385482e4d4e648e292f62425025901"
     },
     {
-      "path": "packages/mcp/README.md",
-      "mode": "100644",
-      "sha256": "e0484d1d24bb12bbeacc9f2dcedc3ecfcb1d8964c18d41f40385c209ffd12d7a"
-    },
-    {
       "path": "packages/mcp/mcpb/.mcpbignore",
       "mode": "100644",
       "sha256": "2b706cf5ce84953ad5eaf5d8f15fdc3f8bb41c81db473d22b8895a36bf06156e"
-    },
-    {
-      "path": "packages/mcp/mcpb/README.md",
-      "mode": "100644",
-      "sha256": "3ed7d76740fa55a6e0b650d382f171209ba4eedfc3387c7dc73a47cf57442e96"
     },
     {
       "path": "packages/mcp/mcpb/build-mcpb.mjs",
@@ -2053,6 +2038,11 @@
       "sha256": "ef30089728e1d47f650ef0b1810c553f8fe947af30598ed383c4310ba8b0e2d9"
     },
     {
+      "path": "packages/mcp/mcpb/README.md",
+      "mode": "100644",
+      "sha256": "3ed7d76740fa55a6e0b650d382f171209ba4eedfc3387c7dc73a47cf57442e96"
+    },
+    {
       "path": "packages/mcp/mcpb/smoke-mcpb.mjs",
       "mode": "100644",
       "sha256": "e2716efb84709053a3936752e2671de268ce7eb827795ff2f2309d9aa61d5c71"
@@ -2061,6 +2051,11 @@
       "path": "packages/mcp/package.json",
       "mode": "100644",
       "sha256": "9177b181c7894124d63fd94903a88f501b55a2605abf1a7729e64a35a8789ced"
+    },
+    {
+      "path": "packages/mcp/README.md",
+      "mode": "100644",
+      "sha256": "e0484d1d24bb12bbeacc9f2dcedc3ecfcb1d8964c18d41f40385c209ffd12d7a"
     },
     {
       "path": "packages/mcp/scripts/build-package-lib.mjs",
@@ -2443,6 +2438,11 @@
       "sha256": "d129048e0aa9b5a702ad2f578c7352e890086b4ef3fef9b54c70f004b9d14507"
     },
     {
+      "path": "packages/README.md",
+      "mode": "100644",
+      "sha256": "a61977db3bc21462e39067dc001705dcc06156a0f84e61390ac23b966cb139cd"
+    },
+    {
       "path": "plugins/martinloop/.claude-plugin/plugin.json",
       "mode": "100644",
       "sha256": "bf8136756d11ce801d83a0304ca6f430c909e42218da5dfd7ab883adabfa6d50"
@@ -2463,14 +2463,14 @@
       "sha256": "bf8136756d11ce801d83a0304ca6f430c909e42218da5dfd7ab883adabfa6d50"
     },
     {
-      "path": "plugins/martinloop/skills/martinloop-govern/SKILL.md",
-      "mode": "100644",
-      "sha256": "ab2b753f79bd191b6c0add6b372aa787e621af88f167a3a38868cfaf1ed3f428"
-    },
-    {
       "path": "plugins/martinloop/skills/martinloop-govern/agents/openai.yaml",
       "mode": "100644",
       "sha256": "a4820bacc8ae7ea5c81a65d6c4214c65e48288a5dd606f46825bfea457c30ea9"
+    },
+    {
+      "path": "plugins/martinloop/skills/martinloop-govern/SKILL.md",
+      "mode": "100644",
+      "sha256": "ab2b753f79bd191b6c0add6b372aa787e621af88f167a3a38868cfaf1ed3f428"
     },
     {
       "path": "pnpm-lock.yaml",
@@ -2483,9 +2483,9 @@
       "sha256": "cb4c92bf2b6ae806e053d832946972861ae12262fb69d3d27d9050e538c99780"
     },
     {
-      "path": "scripts/README.md",
+      "path": "README.md",
       "mode": "100644",
-      "sha256": "0289f157199aed9739c153f57db544a69747c0b7faa554f82920036c4e0156b9"
+      "sha256": "eed5d2cab2329d501afb9fa2bc37c50ba1850f7cba0cd38831a572cabf7a9144"
     },
     {
       "path": "scripts/assert-clean-worktree.mjs",
@@ -2678,6 +2678,11 @@
       "sha256": "56cd74c09993253529ef465523627f8d2562dd3625f1ffea8611469ac1ed903f"
     },
     {
+      "path": "scripts/README.md",
+      "mode": "100644",
+      "sha256": "0289f157199aed9739c153f57db544a69747c0b7faa554f82920036c4e0156b9"
+    },
+    {
       "path": "scripts/release-matrix.mjs",
       "mode": "100644",
       "sha256": "33d4a1bb37911ad83525d0849f625b8da4b427afc73f5309bb5d09f4c26869bb"
@@ -2868,6 +2873,11 @@
       "sha256": "bbb71a92ff2340f68ee5e8f1e2e9db1b5ab7a8939f84ed71bd091872a3ea4405"
     },
     {
+      "path": "SECURITY.md",
+      "mode": "100644",
+      "sha256": "1b6d78eab449f125d7bd7b96f3ded366f027fda4d560a8846e0ff2a88422a184"
+    },
+    {
       "path": "tsconfig.base.json",
       "mode": "100644",
       "sha256": "63663b68cacaddbd0bf394814b5911908efc6b197d41f940088bb33f9c2e61a7"
@@ -2881,16 +2891,6 @@
       "path": "vitest.workspace.ts",
       "mode": "100644",
       "sha256": "c1deb0e576c2efd2d49847b168c8c7aa69fb97405a8aa01d89a5da1cda400a3c"
-    },
-    {
-      "path": "docs/release/MCP-0.6.6-RELEASE-NOTES.md",
-      "mode": "100644",
-      "sha256": "5dfadb2f9817ea6107e4767f820b06dbe26f29f38d52e5130fad3d44dbe5ac4a"
-    },
-    {
-      "path": "docs/release/OSS-0.6.6-RELEASE-NOTES.md",
-      "mode": "100644",
-      "sha256": "16b711606cf5c915f64bacb788912a171bd9ed7479a09c03e1467058b7d25db0"
     }
   ],
   "reviewedDivergences": [
@@ -2907,7 +2907,7 @@
     {
       "path": ".claude/rules/martinloop-internal-first.md",
       "kind": "private-only",
-      "privateSha256": "63b8c817c6250531fa75303076b53f3e5c533f8e3321d81692f40f426a2191a7",
+      "privateSha256": "0501c6d94b5e0d1043f993c17aea8a5ec89f96fc7ae7321b301908a176f27c84",
       "privateMode": "100644",
       "publicSha256": null,
       "reason": "Internal-only file: not part of the public distribution surface",
@@ -2954,12 +2954,13 @@
       "publicMode": "100644"
     },
     {
-      "path": "CTO_AUDIT.md",
-      "kind": "private-only",
-      "privateSha256": "aaaef215e9aef0e08fd5de610268b78c20eafd2b850f2d492e22d8bdaffdf270",
+      "path": "AGENTS.md",
+      "kind": "content",
+      "privateSha256": "8a248532ebd6b2a200bd307ab195f9f495d2187ee77d5c26851f147d40dec712",
       "privateMode": "100644",
-      "publicSha256": null,
-      "reason": "Internal-only file: not part of the public distribution surface",
+      "publicSha256": "51c3a6248f68362b4e023b565f1005580db0059eac929d20bd033f964633f7a1",
+      "publicMode": "100644",
+      "reason": "Public copy replaces one internal-only phrase with public-safe machine-neutral wording while preserving the durable operating guidance",
       "reviewedBy": "Vakeesan Mahalingam"
     },
     {
@@ -3393,16 +3394,6 @@
       "publicMode": "100644"
     },
     {
-      "path": "docs/release/VERSION-LEDGER.md",
-      "kind": "content",
-      "privateSha256": "eeb5a6bd93d873d17577f79e86e3e0482b5da9fdf3624b0af13caa2c09b692b2",
-      "privateMode": "100644",
-      "publicSha256": "7f32b6ccbf464d6a842b271590973406b77202427ff519e8c680f4e6e49dbf01",
-      "reason": "Public pre-publication ledger labels the unreleased 0.6.5 MCPB checksum as pending rather than live",
-      "reviewedBy": "Vakeesan Mahalingam",
-      "publicMode": "100644"
-    },
-    {
       "path": "glama.json",
       "kind": "public-only",
       "privateSha256": null,
@@ -3443,15 +3434,6 @@
       "publicMode": "100644"
     },
     {
-      "path": "NEXT_STEP.md",
-      "kind": "private-only",
-      "privateSha256": "356453e3dcfe012c33cc0da0e801322598297b1ae6774591740d6cea9670621f",
-      "privateMode": "100644",
-      "publicSha256": null,
-      "reason": "Internal-only file: not part of the public distribution surface",
-      "reviewedBy": "Vakeesan Mahalingam"
-    },
-    {
       "path": "NOTICE",
       "kind": "public-only",
       "privateSha256": null,
@@ -3462,21 +3444,11 @@
       "publicMode": "100644"
     },
     {
-      "path": "package.json",
-      "kind": "content",
-      "privateSha256": "896c23a463074138fe532a99fd806b2ed00dbe78b9ebfadab53046b8f3df5b95",
-      "privateMode": "100644",
-      "publicSha256": "896c23a463074138fe532a99fd806b2ed00dbe78b9ebfadab53046b8f3df5b95",
-      "reason": "Root package.json: public version bumped to 0.6.3 from 0.6.2 base, public-only release scripts preserved, private-only scripts excluded per handoff spec",
-      "reviewedBy": "Vakeesan Mahalingam",
-      "publicMode": "100644"
-    },
-    {
       "path": "packages/cli/src/index.ts",
       "kind": "content",
-      "privateSha256": "d5928ffd08736a9930f976dce456064d609f0e19c589c7ed272efa6b7ff121c5",
+      "privateSha256": "36a1360aaaba39dabe819c4a4ea87a87a4bfe2ad8ec48a088b2e62d35b001228",
       "privateMode": "100644",
-      "publicSha256": "d641afdfdfbfe1232743a4933acabf5dca09859be0cb136c82b823a43f637d48",
+      "publicSha256": "8b8e1f0ed4ce0d766da3241e2783005245f3c71b329b4bd8f8bc47f54c2a03f1",
       "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
       "reviewedBy": "Vakeesan Mahalingam",
       "publicMode": "100644"
@@ -3484,9 +3456,9 @@
     {
       "path": "packages/cli/src/mcp-config.ts",
       "kind": "content",
-      "privateSha256": "49f42bdb71112510fafef07c1fb0bd182fde054ed303fb1b749933f538e4ff1f",
+      "privateSha256": "269440423d7360a999d0108287fe8ebf7d0a87d604559377ac6d6fdbf1b07731",
       "privateMode": "100644",
-      "publicSha256": "6c203027924ff4c8b69f93fa4fae476c01860dfc7ba40690de424936587d5855",
+      "publicSha256": "6493d9b20cf1f9ac400069947e645d46785c9f8e8dff6de1fb6092462892790a",
       "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
       "reviewedBy": "Vakeesan Mahalingam",
       "publicMode": "100644"
