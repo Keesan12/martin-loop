@@ -6,6 +6,11 @@ on:
       - "Validate and cut paired release tags"
     types:
       - completed
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/release.yml
 
 permissions:
   contents: write
@@ -14,19 +19,19 @@ permissions:
 jobs:
   publish-npm:
     name: Publish to npm
-    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'workflow_dispatch' && github.repository == 'Keesan12/martin-loop'
+    if: (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'workflow_dispatch' || github.event_name == 'push') && github.repository == 'Keesan12/martin-loop'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.event_name == 'push' && 'v0.6.6' || github.event.workflow_run.head_sha }}
           fetch-depth: 0
 
       - name: Resolve release coordinates
         id: release-vars
         shell: bash
         env:
-          VALIDATED_RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+          VALIDATED_RELEASE_SHA: ${{ github.event_name == 'push' && '56a57fd823b4815a0774e9436a74e16dd97e4494' || github.event.workflow_run.head_sha }}
         run: |
           VERSION="$(node -p "require('./package.json').version")"
           RELEASE_TAG="v${VERSION}"
@@ -38,17 +43,27 @@ jobs:
         shell: bash
         env:
           RELEASE_TAG: ${{ steps.release-vars.outputs.tag }}
+          EVENT_NAME: ${{ github.event_name }}
+          VALIDATED_RELEASE_SHA: ${{ github.event_name == 'push' && '56a57fd823b4815a0774e9436a74e16dd97e4494' || github.event.workflow_run.head_sha }}
         run: |
           VERSION="${RELEASE_TAG#v}"
-          git fetch origin main
           git fetch --force origin "refs/tags/mcp-v${VERSION}:refs/tags/mcp-v${VERSION}"
           TAG_SHA="$(git rev-list -n 1 "$RELEASE_TAG")"
           MCP_TAG_SHA="$(git rev-list -n 1 "mcp-v${VERSION}")"
-          MAIN_SHA="$(git rev-parse origin/main)"
           HEAD_SHA="$(git rev-parse HEAD)"
           test "$HEAD_SHA" = "$TAG_SHA"
           test "$TAG_SHA" = "$MCP_TAG_SHA"
-          test "$TAG_SHA" = "$MAIN_SHA"
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            node scripts/release-recovery-state.mjs --publisher-coordinates \
+              --validated-sha "$VALIDATED_RELEASE_SHA" \
+              --tag-sha "$TAG_SHA" \
+              --paired-tag-sha "$MCP_TAG_SHA" \
+              --recovery-state RETRY_PUBLISH_SAME_VALIDATED_TAG
+          else
+            git fetch origin main
+            MAIN_SHA="$(git rev-parse origin/main)"
+            test "$TAG_SHA" = "$MAIN_SHA"
+          fi
 
       - uses: pnpm/action-setup@b0f76dfb45f55f8421693e4803ac7bb65143bd34
         with:
@@ -114,7 +129,9 @@ jobs:
       - name: Extract changelog entry
         id: changelog
         run: |
-          BODY="$(node ./scripts/extract-changelog-entry.mjs --version "${{ steps.package-version.outputs.version }}")"
+          if ! BODY="$(node ./scripts/extract-changelog-entry.mjs --version "${{ steps.package-version.outputs.version }}")"; then
+            BODY="$(cat "docs/release/OSS-${{ steps.package-version.outputs.version }}-RELEASE-NOTES.md")"
+          fi
           {
             echo "body<<EOF_CHANGELOG"
             printf '%s\n' "$BODY"
