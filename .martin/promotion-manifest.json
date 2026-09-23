@@ -2,11 +2,11 @@
   "schemaVersion": "martin.public-promotion.v2",
   "sourceAuthority": "validated-internal-release-source",
   "sourceRepositoryFingerprint": "04aac733f3b08513fddcc72a9013b9f59cf7919f9a0a3893d0b3d953929826ec",
-  "privateMergeSha": "b7d278bc5634259d08f6f53acc1d848b191be3a9",
-  "privateMainShaValidated": "b7d278bc5634259d08f6f53acc1d848b191be3a9",
-  "publicBaseSha": "1dbd017457e1b556d7f6796b35aeaa870e8ff542",
+  "privateMergeSha": "20e15d13803ec3a902e209b6e41de1cf8928480b",
+  "privateMainShaValidated": "20e15d13803ec3a902e209b6e41de1cf8928480b",
+  "publicBaseSha": "f7fdf993d7680835e6a4caedf0fdf7b1a2e1c7cf",
   "promotedBy": "Torram",
-  "validatedAt": "2026-09-17T19:39:22.418Z",
+  "validatedAt": "2026-09-23T03:00:00.000Z",
   "internalHealthPassed": true,
   "internalHealthEvidenceSha256": "fbbe43edbf2264e3cf7dd93dbe930ee3be54c4c481c3fb1be0b1a5c723abf634",
   "surfaceSpecHash": "a9c8d22be91bc0dd19238f7676aec62aacc77d8cc3a66327b46d71f16d65164a",
@@ -20,7 +20,7 @@
     {
       "path": ".claude/rules/martinloop-internal-first.md",
       "mode": "100644",
-      "sha256": "63b8c817c6250531fa75303076b53f3e5c533f8e3321d81692f40f426a2191a7"
+      "sha256": "0501c6d94b5e0d1043f993c17aea8a5ec89f96fc7ae7321b301908a176f27c84"
     },
     {
       "path": ".gitattributes",
@@ -100,7 +100,7 @@
     {
       "path": "AGENTS.md",
       "mode": "100644",
-      "sha256": "81df453c509818e9f3d82c48b0436f3e9aa179344e81e094c2abb9ecded9924a"
+      "sha256": "8a248532ebd6b2a200bd307ab195f9f495d2187ee77d5c26851f147d40dec712"
     },
     {
       "path": "CHANGELOG.md",
@@ -110,7 +110,7 @@
     {
       "path": "CLAUDE.md",
       "mode": "100644",
-      "sha256": "3563709254950c797ba92daf28fb6bdaae5a1be912fa128d3c4b30ad51d7abd0"
+      "sha256": "52ee540ac82717f71b8aeed73c353c334114caab3710044f7a1f55d7e6cf33f2"
     },
     {
       "path": "CODE_OF_CONDUCT.md",
@@ -118,19 +118,9 @@
       "sha256": "7f39dfc92fe429bd72b014cd7915c30f373c399e71b99f1760749f36e2d1b16f"
     },
     {
-      "path": "CONTEXT.md",
-      "mode": "100644",
-      "sha256": "4e693ae2244be5fd004bbdc2a6d20b519d743cfbaa313f5ad3d7ae05691d096c"
-    },
-    {
       "path": "CONTRIBUTING.md",
       "mode": "100644",
       "sha256": "9233097e9db3c099739df11a2841d832d122c6a158da77d443dce89d4662756c"
-    },
-    {
-      "path": "CTO_AUDIT.md",
-      "mode": "100644",
-      "sha256": "aaaef215e9aef0e08fd5de610268b78c20eafd2b850f2d492e22d8bdaffdf270"
     },
     {
       "path": "LICENSE",
@@ -138,14 +128,9 @@
       "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
     },
     {
-      "path": "NEXT_STEP.md",
-      "mode": "100644",
-      "sha256": "356453e3dcfe012c33cc0da0e801322598297b1ae6774591740d6cea9670621f"
-    },
-    {
       "path": "README.md",
       "mode": "100644",
-      "sha256": "dcd211d13b835cdc83bcd282993b3401093da796b5800d1f3eb23c755a6adc8d"
+      "sha256": "eed5d2cab2329d501afb9fa2bc37c50ba1850f7cba0cd38831a572cabf7a9144"
     },
     {
       "path": "SECURITY.md",
@@ -295,7 +280,7 @@
     {
       "path": "dist/vendor/cli/package.json",
       "mode": "100644",
-      "sha256": "d84c1a23bd5b4eed74b1260b49d7deaec1dd4e951ab5eae41677dc7d2ee95173"
+      "sha256": "275c430e9d64a2def924ae23e3049f79f1632882bd7d14790b1949f49853f98c"
     },
     {
       "path": "docs/CLI_AUDIT_FINDINGS.md",
@@ -565,7 +550,7 @@
     {
       "path": "docs/product-truth/public-release-truth.json",
       "mode": "100644",
-      "sha256": "b775b9f7d26a0b543bcdebb12d5c7102f475fe26e1f5a2736c15d2e52822c89e"
+      "sha256": "fb8305a75da4e8ea4d660d8afb73c0ab95c4598329224f6606f2e1fefbcae429"
     },
     {
       "path": "docs/reference/cli.md",
@@ -900,7 +885,7 @@
     {
       "path": "docs/release/VERSION-LEDGER.md",
       "mode": "100644",
-      "sha256": "eeb5a6bd93d873d17577f79e86e3e0482b5da9fdf3624b0af13caa2c09b692b2"
+      "sha256": "0609490d4fb17b7434d4f09e3edf36dab3955b015707ab72e3b1362a6b986ff0"
     },
     {
       "path": "docs/release/reliability-hardening/BASELINE.md",
@@ -995,7 +980,7 @@
     {
       "path": "package.json",
       "mode": "100644",
-      "sha256": "896c23a463074138fe532a99fd806b2ed00dbe78b9ebfadab53046b8f3df5b95"
+      "sha256": "46a0ee54e121f6a8da3ca98ea55bc51d982603f8937ba95b11d6198de919db12"
     },
     {
       "path": "packages/README.md",
@@ -1035,7 +1020,7 @@
     {
       "path": "packages/adapters/src/codex-host.ts",
       "mode": "100644",
-      "sha256": "cb5152f329d9438c80c512fcaa65f4c4d4abaf84356abae63b80a766978ed7f9"
+      "sha256": "a8aa62c1240dfa2fad54aae5946bb4cb556b6129b39ed2bea5443a1011d5db89"
     },
     {
       "path": "packages/adapters/src/codex-launcher.ts",
@@ -1100,7 +1085,7 @@
     {
       "path": "packages/adapters/tests/codex-launcher.test.ts",
       "mode": "100644",
-      "sha256": "93b8395e953d9b46ca7348cf3a04bc21422991c78d4d84c69728096803397953"
+      "sha256": "f965cb7c1a2cc6e1c5d7b1f508e2a08efee08314e2c50101c46597fa1e702773"
     },
     {
       "path": "packages/adapters/tests/openai-compatible-workspace-edit.test.ts",
@@ -2896,6 +2881,16 @@
       "path": "vitest.workspace.ts",
       "mode": "100644",
       "sha256": "c1deb0e576c2efd2d49847b168c8c7aa69fb97405a8aa01d89a5da1cda400a3c"
+    },
+    {
+      "path": "docs/release/MCP-0.6.6-RELEASE-NOTES.md",
+      "mode": "100644",
+      "sha256": "5dfadb2f9817ea6107e4767f820b06dbe26f29f38d52e5130fad3d44dbe5ac4a"
+    },
+    {
+      "path": "docs/release/OSS-0.6.6-RELEASE-NOTES.md",
+      "mode": "100644",
+      "sha256": "16b711606cf5c915f64bacb788912a171bd9ed7479a09c03e1467058b7d25db0"
     }
   ],
   "reviewedDivergences": [
