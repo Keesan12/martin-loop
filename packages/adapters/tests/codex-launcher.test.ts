@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
@@ -79,6 +79,51 @@ describe("resolveCliCommandAvailability", () => {
       "C:\\Tools\\npm\\codex.cmd",
       "C:\\Program Files\\OpenAI\\Codex\\codex.exe"
     ]);
+  });
+
+  it("discovers Claude Code from the native Windows installer directory", () => {
+    const userProfile = mkdtempSync(join(tmpdir(), "martin-claude-native-"));
+    const nativeBin = join(userProfile, ".local", "bin");
+    mkdirSync(nativeBin, { recursive: true });
+    const claudeExe = join(nativeBin, "claude.exe");
+    writeFileSync(claudeExe, "", "utf8");
+
+    try {
+      const availability = resolveCliCommandAvailability("claude", {
+        platform: "win32",
+        env: {
+          USERPROFILE: userProfile,
+          PATHEXT: ".EXE"
+        },
+        spawnSyncImpl: vi.fn(() => ({
+          status: 1,
+          stdout: "",
+          stderr: ""
+        })) as never
+      });
+
+      expect(availability.available).toBe(true);
+      expect(availability.locator).toBe("off-path-discovery");
+      expect(availability.resolvedPath).toBe(claudeExe);
+    } finally {
+      rmSync(userProfile, { recursive: true, force: true });
+    }
+  });
+
+  it("recommends the native Claude installer instead of the deprecated npm package", () => {
+    const availability = resolveCliCommandAvailability("claude", {
+      platform: "win32",
+      env: {},
+      spawnSyncImpl: vi.fn(() => ({
+        status: 1,
+        stdout: "",
+        stderr: ""
+      })) as never
+    });
+
+    expect(availability.available).toBe(false);
+    expect(availability.detail).toContain("irm https://claude.ai/install.ps1 | iex");
+    expect(availability.detail).not.toContain("@anthropic-ai/claude-code");
   });
 });
 
