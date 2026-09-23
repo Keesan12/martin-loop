@@ -154,7 +154,7 @@ Do not promote:
 - private incident notes;
 - customer-sensitive material;
 - secrets or credentials;
-- absolute local machine paths;
+- absolute machine-specific paths;
 - internal repository coordination text;
 - stale handoff/session files;
 - fabricated publication or verification claims.
