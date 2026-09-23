@@ -35,6 +35,7 @@ import {
   EXIT_SIGNAL_VERSION,
   type ExitSignalV1,
   type LoopBudget,
+  type LoopCost,
   type LoopRecord,
   type MartinOutputMode,
   type MartinRunListFilters,
@@ -221,6 +222,7 @@ export type RunCommandRequest = {
   providerExecutionTimeoutMs?: number;
   metadata: Record<string, string>;
   budget: LoopBudget;
+  savingsBaseline?: NonNullable<LoopCost["savingsBaseline"]>;
   budgetOverrides?: Partial<Record<keyof LoopBudget, true>>;
   configPath?: string;
   cwd?: string;
@@ -1335,6 +1337,9 @@ export function renderCliHelp(): string {
     "  --model <name>           Override the model.",
     "  --cwd <path>             Set the repo root used for repo-backed runs.",
     "  --budget-usd <n>         Set the hard cost cap in USD.",
+    "  --baseline-usd <n>       Comparable ungoverned task cost for RoTS-Cost.",
+    "  --baseline-source <name> measured_control or operator_supplied.",
+    "  --baseline-provenance <name> actual, calculated, or estimated.",
     "  --soft-limit-usd <n>     Soft budget warning threshold in USD.",
     "  --max-iterations <n>     Set the maximum number of attempts.",
     "  --max-tokens <n>         Set the maximum total token budget.",
@@ -1737,6 +1742,7 @@ async function executeRunCommand(
         ...(resolvedRequest.approvalPolicy ? { approvalPolicy: resolvedRequest.approvalPolicy } : {})
       },
       budget: resolvedRequest.budget,
+      ...(resolvedRequest.savingsBaseline ? { savingsBaseline: resolvedRequest.savingsBaseline } : {}),
       metadata: executionMetadata,
       adapter,
       store: createFileRunStore({ runsRoot: cliEnvironment.runsRoot }),
@@ -4214,6 +4220,9 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
   const verificationPlan: string[] = [];
   const metadata: Record<string, string> = {};
   const budgetOverrides: Partial<Record<keyof LoopBudget, true>> = {};
+  let baselineUsd: number | undefined;
+  let baselineSource: NonNullable<LoopCost["savingsBaseline"]>["source"] | undefined;
+  let baselineProvenance: NonNullable<LoopCost["savingsBaseline"]>["provenance"] | undefined;
   const request: Partial<RunCommandRequest> = {
     verificationPlan,
     metadata,
@@ -4296,6 +4305,20 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
           softLimitUsd: Number(next)
         } as LoopBudget;
         budgetOverrides.softLimitUsd = true;
+        index += 1;
+        break;
+      case "--baseline-usd":
+        baselineUsd = Number(next);
+        index += 1;
+        break;
+      case "--baseline-source":
+        if (next === "measured_control" || next === "operator_supplied") baselineSource = next;
+        else throw new CliCommandError("invalid_input", "Baseline source must be measured_control or operator_supplied.");
+        index += 1;
+        break;
+      case "--baseline-provenance":
+        if (next === "actual" || next === "calculated" || next === "estimated") baselineProvenance = next;
+        else throw new CliCommandError("invalid_input", "Baseline provenance must be actual, calculated, or estimated.");
         index += 1;
         break;
       case "--max-iterations":
@@ -4396,6 +4419,14 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
     );
   }
 
+  const baselineFields = [baselineUsd, baselineSource, baselineProvenance].filter((value) => value !== undefined).length;
+  if (baselineFields > 0 && baselineFields < 3) {
+    throw new CliCommandError("invalid_input", "RoTS-Cost baseline requires --baseline-usd, --baseline-source, and --baseline-provenance together.");
+  }
+  if (baselineUsd !== undefined && (!Number.isFinite(baselineUsd) || baselineUsd < 0)) {
+    throw new CliCommandError("invalid_input", "Baseline USD must be a finite non-negative number.");
+  }
+
   return {
     workspaceId: request.workspaceId ?? "ws_default",
     projectId: request.projectId ?? "proj_default",
@@ -4408,6 +4439,9 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
       : {}),
     metadata,
     budget: request.budget as LoopBudget,
+    ...(baselineUsd !== undefined && baselineSource && baselineProvenance
+      ? { savingsBaseline: { usd: baselineUsd, source: baselineSource, provenance: baselineProvenance } }
+      : {}),
     ...(Object.keys(budgetOverrides).length > 0 ? { budgetOverrides } : {}),
     ...(request.configPath ? { configPath: request.configPath } : {}),
     ...(request.cwd ? { cwd: request.cwd } : {}),
