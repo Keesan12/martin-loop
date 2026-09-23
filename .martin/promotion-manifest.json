@@ -1175,12 +1175,12 @@
     {
       "path": "packages/cli/src/index.ts",
       "mode": "100644",
-      "sha256": "d5928ffd08736a9930f976dce456064d609f0e19c589c7ed272efa6b7ff121c5"
+      "sha256": "36a1360aaaba39dabe819c4a4ea87a87a4bfe2ad8ec48a088b2e62d35b001228"
     },
     {
       "path": "packages/cli/src/mcp-config.ts",
       "mode": "100644",
-      "sha256": "49f42bdb71112510fafef07c1fb0bd182fde054ed303fb1b749933f538e4ff1f"
+      "sha256": "269440423d7360a999d0108287fe8ebf7d0a87d604559377ac6d6fdbf1b07731"
     },
     {
       "path": "packages/cli/src/mcp-install-state.ts",
@@ -1240,12 +1240,12 @@
     {
       "path": "packages/cli/src/sync-client.ts",
       "mode": "100644",
-      "sha256": "f7d9753f11c5f85bb5135a19e0b5b7780a006bdfbbffc071626fddcaf28a2829"
+      "sha256": "977aa96ab078c92f2240369bbdd4d8b024763acd4e55ad96bd324f2bde002096"
     },
     {
       "path": "packages/cli/src/sync-privacy.ts",
       "mode": "100644",
-      "sha256": "83f377d4e58128c0fbbf5277d0c2a4f64a18553d3e7e4f3adabeb446778ad91c"
+      "sha256": "c2fccd66bf7ed5cfc3c3545373dd12b120125addc73903dc6b1f834818ab524c"
     },
     {
       "path": "packages/cli/src/telemetry.ts",
@@ -1310,7 +1310,7 @@
     {
       "path": "packages/cli/tests/cli.test.ts",
       "mode": "100644",
-      "sha256": "93780277de1b43aa2860678066621818ec5a2958dd6340aff1a4befba6e66f70"
+      "sha256": "2a634f19b828cf32f8e11ad7aaf2018afb25aa3aae516916f76f5cd3c2a9fbe2"
     },
     {
       "path": "packages/cli/tests/corpus-intelligence.test.ts",
@@ -1415,7 +1415,7 @@
     {
       "path": "packages/cli/tests/sync-receipt-transport.test.ts",
       "mode": "100644",
-      "sha256": "e7fe5fde1e18418c54cbb5f9330e45b12b67c71586c9d092d00d123758b786a0"
+      "sha256": "050ed7e99bb425aca62f30f6ad0b8bf07c826f5913f7c24b46d3079d82dd6046"
     },
     {
       "path": "packages/cli/tests/telemetry.test.ts",
@@ -1720,7 +1720,7 @@
     {
       "path": "packages/core/src/index.ts",
       "mode": "100644",
-      "sha256": "60cc894d06333738d155a2babcbc301b5dfeb8b2cb1b3b90b367d88492a9fcfc"
+      "sha256": "b6227296fe6f6333a76481e1a6a68206e45c482ceca29ab5561284559166e697"
     },
     {
       "path": "packages/core/src/leash.ts",
@@ -1985,7 +1985,7 @@
     {
       "path": "packages/core/tests/runtime.test.ts",
       "mode": "100644",
-      "sha256": "77effc8505babd2874981dd736dca672e2cdc7a20b73e6ec95c51e0cc5e2583a"
+      "sha256": "86490879c2a9178caffdd89e74b3a025213bb8376f7e40c34423c05e9b579ab8"
     },
     {
       "path": "packages/core/tests/savings.test.ts",
@@ -2050,7 +2050,7 @@
     {
       "path": "packages/mcp/mcpb/manifest.json",
       "mode": "100644",
-      "sha256": "de576ed315df5f1dbe1126fc8a300c24bcda485a7946907efbcabd3c64d72b94"
+      "sha256": "ef30089728e1d47f650ef0b1810c553f8fe947af30598ed383c4310ba8b0e2d9"
     },
     {
       "path": "packages/mcp/mcpb/smoke-mcpb.mjs",
@@ -2060,7 +2060,7 @@
     {
       "path": "packages/mcp/package.json",
       "mode": "100644",
-      "sha256": "969157ea9a96f13daef3be48b816bea40572633e1d0d8afbca8cdc85d6d1a5bd"
+      "sha256": "9177b181c7894124d63fd94903a88f501b55a2605abf1a7729e64a35a8789ced"
     },
     {
       "path": "packages/mcp/scripts/build-package-lib.mjs",
@@ -2115,7 +2115,7 @@
     {
       "path": "packages/mcp/server.json",
       "mode": "100644",
-      "sha256": "3718c40833c8adc8624afd0bc6346aad3456851e98f332ca4a33b1cfb72f20e0"
+      "sha256": "39bdb26fc9503443c445a372049b5cb5d580e08767b490f895178c05bd51850d"
     },
     {
       "path": "packages/mcp/src/arcade/capabilities.ts",
@@ -2145,7 +2145,7 @@
     {
       "path": "packages/mcp/src/package-version.ts",
       "mode": "100644",
-      "sha256": "7a7aa6cfd704a801b237ee8c2243878d8a12e6fa83df0f1d736423b4c372eadc"
+      "sha256": "4973abb11e50ff04f7700d00709b41820ef28e12aa4641e5ec8a19777f9ef27e"
     },
     {
       "path": "packages/mcp/src/prompts.ts",
