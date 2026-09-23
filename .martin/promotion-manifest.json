@@ -2165,7 +2165,7 @@
     {
       "path": "packages/mcp/src/server.ts",
       "mode": "100644",
-      "sha256": "52b6cd13d83e9d0ea3190b9877c4e7107a097141e0f27de4811fa7bd749a2327"
+      "sha256": "b813c78d4af3865597345162052ea2a93b2cd16daf2ba4a524c5b7ff14198cde"
     },
     {
       "path": "packages/mcp/src/tools/doctor.ts",
@@ -2265,7 +2265,7 @@
     {
       "path": "packages/mcp/src/tools/tool-support.ts",
       "mode": "100644",
-      "sha256": "f90e9355c0060ded94035f26321d9fdcf523cc96ac1946d78091dd6d3daa2330"
+      "sha256": "f3914b6c0698a6b33f8b89759f1cb53e2d4b60a81874a61430b9e553c0c688b3"
     },
     {
       "path": "packages/mcp/src/tools/triage-runs.ts",
@@ -2445,22 +2445,22 @@
     {
       "path": "plugins/martinloop/.claude-plugin/plugin.json",
       "mode": "100644",
-      "sha256": "80d1630e14f4812b98f317db530949724fb587785256224375f48e9ad855c052"
+      "sha256": "bf8136756d11ce801d83a0304ca6f430c909e42218da5dfd7ab883adabfa6d50"
     },
     {
       "path": "plugins/martinloop/.codex-plugin/plugin.json",
       "mode": "100644",
-      "sha256": "5585a49dbb6d1aca54ccb8dd6bea002b815471d44fbce1bd2e855c01d70c9011"
+      "sha256": "b38a9b839b770b7e26ebf23f2b21ca9e0dc1a2825e0a242091ad3a13170883d6"
     },
     {
       "path": "plugins/martinloop/.mcp.json",
       "mode": "100644",
-      "sha256": "50481f63ca4fc5668d8f0320609dca91536d582fa79b477f4a93dc54622b8992"
+      "sha256": "c01ecc3412c606e4bfc4aedd112824ca0ffd24a11c19fd8a6497a31b5e7275cf"
     },
     {
       "path": "plugins/martinloop/plugin.json",
       "mode": "100644",
-      "sha256": "80d1630e14f4812b98f317db530949724fb587785256224375f48e9ad855c052"
+      "sha256": "bf8136756d11ce801d83a0304ca6f430c909e42218da5dfd7ab883adabfa6d50"
     },
     {
       "path": "plugins/martinloop/skills/martinloop-govern/SKILL.md",
@@ -2735,7 +2735,7 @@
     {
       "path": "scripts/tests/mcp-release-docs.test.mjs",
       "mode": "100644",
-      "sha256": "613121bcf1ed1eda67d5420d681f2be577e55bf2c6cb29d8bb04ca29a953936d"
+      "sha256": "66313ef83fd11cc93ab610223f1c890ba5e3a96750c912692c46d7f17acacf0e"
     },
     {
       "path": "scripts/tests/mcp-smoke-portability.test.mjs",
