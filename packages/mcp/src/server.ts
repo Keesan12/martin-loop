@@ -1073,13 +1073,7 @@ export function createMartinMcpServer(serverInfo?: {
             const: true,
             description: "When true, loads the most recently updated loop record. Mutually exclusive with loopJson, file, and loopId."
           }
-        },
-        oneOf: [
-          { required: ["loopJson"] },
-          { required: ["file"] },
-          { required: ["loopId"] },
-          { required: ["latest"] }
-        ]
+        }
       },
       outputSchema: statusOutputSchema
     },
@@ -1260,8 +1254,7 @@ export function createMartinMcpServer(serverInfo?: {
           runsDir: { type: "string", description: "Override the default run-store root directory. Optional; defaults to the MartinLoop runs directory." },
           latest: { const: true, description: "When true, loads the most recently updated run in the run store. Mutually exclusive with file and loopId." },
           limit: { type: "integer", minimum: 1, description: "Maximum number of log entries to return, sorted by timestamp descending. Defaults to 20." }
-        },
-        oneOf: [{ required: ["file"] }, { required: ["loopId"] }, { required: ["latest"] }]
+        }
       },
       outputSchema: logsOutputSchema
     },
@@ -1283,8 +1276,7 @@ export function createMartinMcpServer(serverInfo?: {
           latest: { const: true, description: "When true, targets the latest canonical run. Mutually exclusive with file and loopId." },
           reason: { type: "string", description: "Optional non-empty reason recorded in the pause receipt." },
           requestedBy: { type: "string", description: "Optional human or runtime identity label recorded for audit context." }
-        },
-        oneOf: [{ required: ["file"] }, { required: ["loopId"] }, { required: ["latest"] }]
+        }
       },
       outputSchema: controlOutputSchema
     },
@@ -1306,8 +1298,7 @@ export function createMartinMcpServer(serverInfo?: {
           latest: { const: true, description: "When true, targets the latest canonical run. Mutually exclusive with file and loopId." },
           reason: { type: "string", description: "Optional non-empty reason recorded in the cancellation receipt." },
           requestedBy: { type: "string", description: "Optional human or runtime identity label recorded for audit context." }
-        },
-        oneOf: [{ required: ["file"] }, { required: ["loopId"] }, { required: ["latest"] }]
+        }
       },
       outputSchema: controlOutputSchema
     },
@@ -1329,8 +1320,7 @@ export function createMartinMcpServer(serverInfo?: {
           latest: { const: true },
           reason: { type: "string" },
           requestedBy: { type: "string" }
-        },
-        oneOf: [{ required: ["file"] }, { required: ["loopId"] }, { required: ["latest"] }]
+        }
       },
       outputSchema: controlOutputSchema
     },
@@ -1423,12 +1413,7 @@ export function createMartinMcpServer(serverInfo?: {
             const: true,
             description: "When true, loads the most recently updated loop record in the run store."
           }
-        },
-        oneOf: [
-          { required: ["file"] },
-          { required: ["loopId"] },
-          { required: ["latest"] }
-        ]
+        }
       },
       outputSchema: getRunOutputSchema
     },
@@ -1455,8 +1440,7 @@ export function createMartinMcpServer(serverInfo?: {
             minimum: 1,
             description: "Attempt index to inspect. Defaults to the latest attempt."
           }
-        },
-        oneOf: [{ required: ["file"] }, { required: ["loopId"] }]
+        }
       },
       outputSchema: getAttemptOutputSchema
     },
@@ -1484,8 +1468,7 @@ export function createMartinMcpServer(serverInfo?: {
           },
           loopId: { type: "string", description: "MartinLoop run identifier from the run store. Mutually exclusive with file." },
           runsDir: { type: "string", description: "Override the default run-store root directory. Optional." }
-        },
-        oneOf: [{ required: ["file"] }, { required: ["loopId"] }]
+        }
       },
       outputSchema: verificationResultsOutputSchema
     },
@@ -1511,12 +1494,7 @@ export function createMartinMcpServer(serverInfo?: {
             const: true,
             description: "When true, loads the most recently updated loop record. Mutually exclusive with file and loopId."
           }
-        },
-        oneOf: [
-          { required: ["file"] },
-          { required: ["loopId"] },
-          { required: ["latest"] }
-        ]
+        }
       },
       outputSchema: dossierOutputSchema
     },
@@ -1537,8 +1515,7 @@ export function createMartinMcpServer(serverInfo?: {
           runsDir: { type: "string", description: "Optional run-store root override used to resolve loopId or latest." },
           latest: { const: true, description: "When true, loads the latest run. Mutually exclusive with file and loopId." },
           format: { type: "string", enum: ["json", "md", "github-pr"], description: "Output format. Defaults to json." }
-        },
-        oneOf: [{ required: ["file"] }, { required: ["loopId"] }, { required: ["latest"] }]
+        }
       },
       outputSchema: dossierOutputSchema
     },
@@ -1565,8 +1542,7 @@ export function createMartinMcpServer(serverInfo?: {
           loopId: { type: "string", description: "MartinLoop run identifier from the run store. Mutually exclusive with file and latest." },
           runsDir: { type: "string", description: "Override the default run-store root directory. Optional." },
           latest: { const: true, description: "When true, evaluates the most recently updated run in the run store. Mutually exclusive with file and loopId." }
-        },
-        oneOf: [{ required: ["file"] }, { required: ["loopId"] }, { required: ["latest"] }]
+        }
       },
       outputSchema: evalOutputSchema
     },
@@ -1594,8 +1570,7 @@ export function createMartinMcpServer(serverInfo?: {
           runsDir: { type: "string", description: "Override the default run-store root directory. Optional." },
           latest: { const: true, description: "When true, generates the summary for the most recently updated run. Mutually exclusive with file and loopId." },
           format: { type: "string", enum: ["json", "md", "github-pr"], description: "Dossier rendering format. Defaults to github-pr for PR body generation. Use md for plain Markdown or json for structured output." }
-        },
-        oneOf: [{ required: ["file"] }, { required: ["loopId"] }, { required: ["latest"] }]
+        }
       },
       outputSchema: prSummaryOutputSchema
     },
@@ -1619,8 +1594,7 @@ export function createMartinMcpServer(serverInfo?: {
           title: { type: "string" },
           base: { type: "string" },
           execute: { type: "boolean" }
-        },
-        oneOf: [{ required: ["file"] }, { required: ["loopId"] }, { required: ["latest"] }]
+        }
       },
       outputSchema: prSummaryOutputSchema
     },
@@ -1649,8 +1623,7 @@ export function createMartinMcpServer(serverInfo?: {
           latest: { const: true, description: "When true, reviews against the most recently updated run. Mutually exclusive with file and loopId." },
           format: { type: "string", enum: ["json", "md", "github-pr"], description: "Dossier format used when generating the reference body for comparison. Defaults to github-pr." },
           prBody: { type: "string", description: "The PR body text to review. If omitted, the auto-generated dossier body is evaluated instead." }
-        },
-        oneOf: [{ required: ["file"] }, { required: ["loopId"] }, { required: ["latest"] }]
+        }
       },
       outputSchema: prReviewOutputSchema
     },
