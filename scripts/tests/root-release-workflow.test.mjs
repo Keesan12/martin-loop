@@ -12,19 +12,16 @@ test("root release workflow uses GitHub Actions trusted publishing without npm t
 
   assert.doesNotMatch(workflow, /workflow_call:/);
   assert.doesNotMatch(workflow, /workflow_dispatch:/);
-  assert.match(workflow, /push:\s*[\s\S]*branches:\s*[\s\S]*- main\s*[\s\S]*paths:\s*[\s\S]*- \.github\/workflows\/release\.yml/);
   assert.match(workflow, /workflow_run:\s*[\s\S]*Validate and cut paired release tags[\s\S]*completed/);
   assert.match(workflow, /github\.event\.workflow_run\.conclusion == 'success'/);
-  assert.match(workflow, /ref: \$\{\{ github\.event_name == 'push' && 'v0\.6\.6' \|\| github\.event\.workflow_run\.head_sha \}\}/);
-  assert.match(workflow, /56a57fd823b4815a0774e9436a74e16dd97e4494/);
-  assert.match(workflow, /RETRY_PUBLISH_SAME_VALIDATED_TAG/);
-  assert.match(workflow, /release-recovery-state\.mjs --publisher-coordinates/);
+  assert.match(workflow, /ref: \$\{\{ github\.event\.workflow_run\.head_sha \}\}/);
+  assert.match(workflow, /VALIDATED_RELEASE_SHA: \$\{\{ github\.event\.workflow_run\.head_sha \}\}/);
   assert.match(workflow, /git fetch origin main/);
   assert.match(workflow, /test "\$TAG_SHA" = "\$MCP_TAG_SHA"/);
   assert.match(workflow, /test "\$TAG_SHA" = "\$MAIN_SHA"/);
   assert.doesNotMatch(workflow, /validated_release_sha:/);
   assert.doesNotMatch(workflow, /recovery_state:/);
-  assert.match(workflow, /docs\/release\/OSS-\$\{\{ steps\.package-version\.outputs\.version \}\}-RELEASE-NOTES\.md/);
+  assert.doesNotMatch(workflow, /release-recovery-state\.mjs --publisher-coordinates/);
   assert.match(workflow, /permissions:\s*[\s\S]*contents:\s*write/);
   assert.match(workflow, /permissions:\s*[\s\S]*id-token:\s*write/);
   assert.match(workflow, /node-version:\s*24/);
