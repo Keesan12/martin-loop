@@ -566,6 +566,8 @@ export interface RunMartinInput {
   teamId?: string;
   task: LoopTask;
   budget: LoopBudget;
+  /** Comparable ungoverned spend for this task. Stored with provenance for RoTS-Cost. */
+  savingsBaseline?: NonNullable<LoopRecord["cost"]["savingsBaseline"]>;
   metadata?: Record<string, string>;
   adapter: MartinAdapter;
   now?: () => string;
@@ -631,6 +633,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       projectId: input.projectId,
       task: { ...input.task, agentExecutionIntent, providerExecutionTimeoutMs },
       budget: input.budget,
+      ...(input.savingsBaseline ? { cost: { savingsBaseline: input.savingsBaseline } } : {}),
       ...(input.receiptScope
         ? { receiptScope: { ...input.receiptScope, agentExecutionIntent, providerExecutionTimeoutMs } }
         : {}),
@@ -1454,6 +1457,9 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         provenance: mergeCostProvenance(loop.cost.provenance, getUsageProvenance(result.usage)),
         ...(result.usage.providerSettlement
           ? { providerSettlement: result.usage.providerSettlement }
+          : {}),
+        ...(loop.cost.savingsBaseline
+          ? { savingsBaseline: loop.cost.savingsBaseline }
           : {})
       },
       updatedAt: attemptCompletedAt
@@ -2234,7 +2240,11 @@ function finalizeLoop(
     ? buildRoutingEconomics(finalized, routingEconomicsInput, decision)
     : undefined;
 
-  const avoidedUsd = calculateLoopAvoidedUsd({ loop: finalized, decision });
+  const avoidedUsd = calculateLoopAvoidedUsd({
+    loop: finalized,
+    decision,
+    uncontrolledBaselineUsd: finalized.cost.savingsBaseline?.usd
+  });
 
   return {
     ...finalized,

@@ -248,6 +248,12 @@ describe("parseCliArguments", () => {
       "lane=nightly",
       "--budget-usd",
       "18",
+      "--baseline-usd",
+      "30.7",
+      "--baseline-source",
+      "measured_control",
+      "--baseline-provenance",
+      "actual",
       "--soft-limit-usd",
       "9.5",
       "--max-iterations",
@@ -288,6 +294,11 @@ describe("parseCliArguments", () => {
           maxUsd: 18,
           softLimitUsd: 9.5
         },
+        savingsBaseline: {
+          usd: 30.7,
+          source: "measured_control",
+          provenance: "actual"
+        },
         budgetOverrides: {
           maxIterations: true,
           maxTokens: true,
@@ -298,6 +309,16 @@ describe("parseCliArguments", () => {
         unsafeAllowUnguardedRun: true
       }
     });
+  });
+
+  it("rejects an incomplete RoTS-Cost baseline", () => {
+    expect(() => parseCliArguments([
+      "run",
+      "--objective",
+      "Repair the flaky CI gate",
+      "--baseline-usd",
+      "5.2"
+    ])).toThrow(/requires --baseline-usd, --baseline-source, and --baseline-provenance together/u);
   });
 
   it("maps approval flags to the typed approval policy fields", () => {

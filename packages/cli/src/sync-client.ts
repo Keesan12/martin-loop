@@ -45,6 +45,7 @@ import { join } from "node:path";
 
 import type { LoopRecord } from "@martin/contracts";
 import { buildPrivacySafeCoreReceiptBundle, redactHostedSyncValue } from "./sync-privacy.js";
+import { buildVerifiedHandoffFromPersistedLoop, loadPersistedLoop } from "./run-store.js";
 
 /** Portable basename — handles both forward and backslash separators on all platforms. @internal */
 export function queueFileName(filePath: string): string {
@@ -116,6 +117,7 @@ interface CoreReceiptIntegrityMaterial {
   ledgerHeadHash: string;
   entryCount: number;
   chain: Array<Record<string, unknown>>;
+  verifiedHandoffSha256?: string;
   signatureHmacSha256: string;
 }
 
@@ -123,6 +125,7 @@ interface CoreReceiptBundle {
   loopRecord: Record<string, unknown>;
   ledgerEntries: Array<Record<string, unknown>>;
   integrity: CoreReceiptIntegrityMaterial;
+  verifiedHandoff?: Record<string, unknown>;
 }
 
 interface HostedRunSyncDraft {
@@ -209,11 +212,15 @@ async function readPersistedCoreReceiptBundle(loop: LoopRecord): Promise<CoreRec
       return undefined;
     }
 
+    const detail = await loadPersistedLoop({ loopId: loop.loopId, runsDir: runsRoot });
+    if (detail.integrity.state !== "verified") return undefined;
+    const verifiedHandoff = buildVerifiedHandoffFromPersistedLoop(detail) as unknown as Record<string, unknown>;
     return await buildPrivacySafeCoreReceiptBundle({
       runsRoot,
       loopRecord,
       ledgerEntries: ledgerEntries as Array<Record<string, unknown>>,
       integrity: integrity as unknown as CoreReceiptIntegrityMaterial,
+      verifiedHandoff,
     });
   } catch {
     return undefined;
