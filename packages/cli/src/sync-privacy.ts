@@ -14,6 +14,7 @@ export interface CoreReceiptIntegrityMaterial {
   ledgerHeadHash: string;
   entryCount: number;
   chain: Array<Record<string, unknown>>;
+  verifiedHandoffSha256?: string;
   signatureHmacSha256: string;
 }
 
@@ -21,6 +22,7 @@ export interface CoreReceiptBundle {
   loopRecord: Record<string, unknown>;
   ledgerEntries: Array<Record<string, unknown>>;
   integrity: CoreReceiptIntegrityMaterial;
+  verifiedHandoff?: Record<string, unknown>;
 }
 
 /**
@@ -57,8 +59,9 @@ export async function buildPrivacySafeCoreReceiptBundle(input: {
   loopRecord: Record<string, unknown>;
   ledgerEntries: Array<Record<string, unknown>>;
   integrity: CoreReceiptIntegrityMaterial;
+  verifiedHandoff?: Record<string, unknown>;
 }): Promise<CoreReceiptBundle | undefined> {
-  const { runsRoot, loopRecord, ledgerEntries, integrity } = input;
+  const { runsRoot, loopRecord, ledgerEntries, integrity, verifiedHandoff } = input;
   const key = await readReceiptIntegrityKey(runsRoot, integrity.runId).catch(() => undefined);
   if (!key) return undefined;
 
@@ -71,6 +74,9 @@ export async function buildPrivacySafeCoreReceiptBundle(input: {
   const sanitizedScope = integrity.scope === undefined
     ? undefined
     : redactHostedSyncValue(integrity.scope);
+  const sanitizedHandoff = verifiedHandoff === undefined
+    ? undefined
+    : redactHostedSyncValue(verifiedHandoff);
 
   if (!isPlainRecord(sanitizedLoopRecord) || !Array.isArray(sanitizedLedgerEntries)) {
     return undefined;
@@ -81,6 +87,7 @@ export async function buildPrivacySafeCoreReceiptBundle(input: {
   if (sanitizedScope !== undefined && !isPlainRecord(sanitizedScope)) {
     return undefined;
   }
+  if (sanitizedHandoff !== undefined && !isPlainRecord(sanitizedHandoff)) return undefined;
 
   const safeLedger = sanitizedLedgerEntries as Array<Record<string, unknown>>;
   const chain = buildReceiptIntegrityChain(safeLedger);
@@ -95,11 +102,15 @@ export async function buildPrivacySafeCoreReceiptBundle(input: {
     ledgerHeadHash: chain.at(-1)?.entryHash ?? "root",
     entryCount: chain.length,
     chain,
+    ...(sanitizedHandoff
+      ? { verifiedHandoffSha256: sha256(serializeStoredJson(sanitizedHandoff)) }
+      : {}),
   } satisfies Omit<CoreReceiptIntegrityMaterial, "signatureHmacSha256">;
 
   return {
     loopRecord: sanitizedLoopRecord,
     ledgerEntries: safeLedger,
+    ...(sanitizedHandoff ? { verifiedHandoff: sanitizedHandoff } : {}),
     integrity: {
       ...materialBase,
       signatureHmacSha256: createHmac("sha256", key)
