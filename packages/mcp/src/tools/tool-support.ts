@@ -243,6 +243,9 @@ function discoverCommonInstallDirectories(command: string): string[] {
     if (appData) dirs.push(join(appData, "npm"));
     const localAppData = process.env.LOCALAPPDATA;
     if (localAppData) dirs.push(join(localAppData, "OpenAI", "Codex", "bin"));
+    // Claude Code's native Windows installer uses %USERPROFILE%\.local\bin.
+    const userProfile = process.env.USERPROFILE ?? process.env.HOMEPATH;
+    if (userProfile) dirs.push(join(userProfile, ".local", "bin"));
     if (home) dirs.push(join(home, "scoop", "shims"));
   } else {
     dirs.push("/usr/local/bin", "/opt/homebrew/bin");
@@ -272,8 +275,14 @@ function isOnPathDirectly(_command: string, resolvedPath: string): boolean {
 }
 
 function suggestInstallCommand(command: string): string {
+  if (command === "claude") {
+    const installCmd = process.platform === "win32"
+      ? "irm https://claude.ai/install.ps1 | iex"
+      : "curl -fsSL https://claude.ai/install.sh | bash";
+    return `Install with: ${installCmd}`;
+  }
+
   const npmInstalls: Record<string, string> = {
-    claude: "npm install -g @anthropic-ai/claude-code",
     codex: "npm install -g @openai/codex",
     gemini: "npm install -g @google/gemini-cli"
   };
