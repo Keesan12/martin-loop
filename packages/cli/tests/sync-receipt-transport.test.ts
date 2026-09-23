@@ -113,6 +113,7 @@ describe("receipt-bound hosted sync transport", () => {
       loopRecord: Record<string, unknown>;
       ledgerEntries: Array<Record<string, unknown>>;
       integrity: Record<string, unknown>;
+      verifiedHandoff: Record<string, unknown>;
     };
     const integrity = coreReceipt.integrity;
     const events = payload.events as Array<Record<string, unknown>>;
@@ -126,6 +127,7 @@ describe("receipt-bound hosted sync transport", () => {
     expect(payload.receiptScope).toBeDefined();
     expect(payload.receiptIntegrity).toEqual(integrity);
     expect(coreReceipt.integrity.runId).toBe(loop.loopId);
+    expect(coreReceipt.verifiedHandoff.outcome).toBeDefined();
     expect(coreReceipt.loopRecord.updatedAt).toBe(loop.updatedAt);
     expect(coreReceipt.loopRecord.workspaceId).toBe(loop.workspaceId);
     expect(coreReceipt.ledgerEntries.map((entry) => entry.eventId)).toEqual(["evt-core-complete"]);
@@ -137,6 +139,9 @@ describe("receipt-bound hosted sync transport", () => {
     const serializedLedger = `${coreReceipt.ledgerEntries.map((entry) => JSON.stringify(entry)).join("\n")}\n`;
     expect(integrity.loopRecordSha256).toBe(sha256(serializedLoop));
     expect(integrity.ledgerSha256).toBe(sha256(serializedLedger));
+    expect(integrity.verifiedHandoffSha256).toBe(
+      sha256(`${JSON.stringify(coreReceipt.verifiedHandoff, null, 2)}\n`)
+    );
 
     const key = await readIntegrityKey(integrityRoot, runsRoot, loop.loopId);
     expect(integrity.keyId).toBe(sha256(key).slice(0, 16));
