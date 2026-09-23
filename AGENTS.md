@@ -1,252 +1,174 @@
 # MartinLoop Agent Operating Rules
 
-These rules are mandatory for every AI agent, automation, contributor, and coding session working on MartinLoop.
+This file is the sole durable operating guide for AI agents and automation working on MartinLoop.
+
+Do not treat historical release notes, old audits, old handoff files, previous branches, terminal history, or prior session summaries as current instructions.
 
 ## Repository authority
 
- is the sole development authority.
+Development authority:
 
- is a public distribution repository. It is never the primary development repository.
+`martin-Loop/ML_Core_OSS_Internal`
 
-## Mandatory internal-first sequence
+Public distribution repository:
 
-Every code change must follow this sequence:
+`Keesan12/martin-loop`
 
-1. Start from the latest .
-2. Create a private feature branch.
-3. Implement and test the change privately.
-4. Commit and push the private branch.
-5. Open a private PR into .
-6. Pass all required internal checks.
-7. Fix all regressions.
-8. Prove the real MartinLoop workflow works.
-9. Merge the private PR only after explicit approval.
-10. Record the private merge commit SHA.
-11. Verify fresh  is clean and healthy.
-12. Create a clean public-staging branch from the latest public .
-13. Transfer only the reviewed public-safe diff from the private merge.
-14. Run public tests and public-surface guards.
-15. Push the public-staging branch.
-16. Open a public PR.
-17. Merge publicly only after hosted checks pass and explicit approval is given.
+All implementation starts, is reviewed, and is health-proven in the private development authority before public promotion begins.
 
-## Prohibited actions
+The public repository is a distribution surface, not a development workspace.
 
-Agents must never:
+## Current-state authority
 
-- develop directly in ;
-- use public  as the implementation authority;
-- push unmerged private feature commits to the public repository;
-- create public staging before the private PR is merged;
-- resolve implementation conflicts only in a public-staging branch;
-- bypass or weaken the public-write hook;
-- ask the user to bypass the hook for unfinished work;
-- push directly to public ;
-- merge a stale public branch wholesale;
-- declare public readiness while private  is broken;
-- promote code without a recorded private merge SHA;
-- publish npm, tags, native assets, or GitHub Releases before public merge approval.
+For current release/version state, use only:
 
-## Required internal health proof
+1. current Git branch / commit state;
+2. `package.json`;
+3. `packages/mcp/package.json`;
+4. `docs/release/VERSION-LEDGER.md`;
+5. current required release checks and current open PRs.
 
-Before public staging, a fresh worktree of private  must prove all packages build and test clean, portability and copy-scan pass, git diff --check passes, no conflict markers exist, martin doctor works, preflight and governed run succeed, receipt is created and readable, verification succeeds, status survives restart, and separate workspaces remain isolated.
+Do not infer current status from dates or claims embedded in old documentation.
 
-## Public promotion evidence
+## Required development sequence
 
-Every public-staging branch must include a promotion manifest at  containing privateRepository, privateMergeSha, privateMainShaValidated, publicBaseSha, promotedBy, validatedAt (ISO-8601), and internalHealthPassed: true. Public promotion is blocked when this manifest is absent, malformed, or reports failed internal health.
+For product changes:
 
-## Stop condition
+1. start from current private `main`;
+2. create a private feature/fix branch;
+3. implement privately;
+4. run the required targeted and repo health checks;
+5. open a private PR;
+6. merge only after the change is reviewed and green;
+7. sync fresh private `main`;
+8. run the required private-main health proof;
+9. record the validated private release SHA;
+10. only then begin public promotion.
 
-When any required step is missing, stop. Do not improvise around repository boundaries. Do not treat the hook as an inconvenience. Report the missing prerequisite and remain in the private repository.
+Never implement the real fix directly in the public repository.
 
----
+## Required release sequence
 
-# AGENTS.md
+Use this order:
 
-## Purpose
+private authority → private health proof → clean public staging → promotion guard → public tests → public PR → public merge → publish → fresh-install proof → production E2E.
 
-This repository uses AI coding assistants for maintenance tasks.
-Agents must treat this repository as a public open-source project.
+Do not reorder the sequence unless an existing release controller explicitly requires it.
 
-## Public Surface Rule
+Do not create an additional release phase merely because another agent used one previously.
 
-Everything committed to this repo must be appropriate for public users, contributors, package consumers, and external reviewers.
+## Public promotion
 
-Do not commit:
+Public promotion must be derived from the validated private release authority and the exact current public base.
 
-- secrets, credentials, tokens, private URLs, or machine-specific paths
-- internal planning notes or non-public roadmap language
-- customer-sensitive details or unpublished commercial strategy
-- copied private conversation content
-- release-process notes not useful to public contributors
+The promotion manifest and promotion guard are authoritative for the reviewed private/public boundary.
 
-## Setup
+When the promotion guard reports a mismatch, resolve only the exact missing, extra, or changed paths it reports.
 
-Use pnpm.
+Do not weaken the guard, downgrade its schema, fabricate divergence entries, or hand-select a smaller release surface merely to make the guard pass.
 
-```sh
-pnpm install --frozen-lockfile
-pnpm test
-pnpm lint
-pnpm build
-```
+Historical private/public differences may remain only when they are explicit reviewed divergences.
 
-## Contribution Standard
+## Public-write protection
 
-Prefer small, auditable changes. Keep docs concise, user-centered, and accurate.
+Never bypass repository-owned public-write controls.
 
-## Before Opening a PR
+If local policy blocks the final authorized public push/PR step after the candidate is fully validated, stop at that boundary and return the exact candidate SHA and validation results for an authorized GitHub write channel.
 
-```sh
-pnpm test
-pnpm lint
-```
+A public-write block is not permission to redesign the release process.
 
-## Documentation Style
+## Persistent workspaces only
 
-Write for developers discovering MartinLoop for the first time.
-Explain what the tool does, how to install it, how to run it,
-and how to verify results.
+MartinLoop release, acceptance, and handoff work must use persistent repo-owned locations.
 
-## Proof Receipt Design Lock
+Preferred locations:
 
-MartinLoop proof-card SVGs must stay in the CLI receipt style:
+- `.release/<version>/`
+- `_worktrees/<purpose>/`
 
-- dark terminal canvas
-- line-based layout
-- monospaced evidence rows
-- semantic green for verified/pass states
-- semantic red for failed, missing, or boundary states
+Do not place release authority, evidence, manifests, patches, acceptance results, or agent handoff state in:
 
-Do not change proof receipts into rounded cards, blue palettes, gradients,
-certificate layouts, dashboard cards, or decorative marketing graphics unless
-the maintainer explicitly asks for that change and receives side-by-side
-visual renders before approval.
+- `C:\\tmp`
+- OS temp directories
+- disposable scratch directories
+- unnamed ad-hoc folders outside the repository
 
-## Release/version editing barrier
+Temporary directories created internally by automated tests are fine; operator/release state is not.
 
-Agents must not update release versions, release notes, README release links, version ledgers, package manifests, or public-facing release docs by ad-hoc search/replace.
+## Verification rules
 
-Before changing any release/version file, the agent must produce and follow a release matrix containing:
+A gate is PASS only when its command completes successfully with an observed exit code of `0`.
 
-- root package version
-- standalone MCP package version
-- previous public root version
-- previous public MCP version
-- intended release branch
-- intended target branch
-- expected tag names
-- expected npm package names
-- files expected to change
-- files explicitly not expected to change
-- source of truth for each value
+Timeout, interrupted output, missing exit code, or truncated execution is UNKNOWN, not PASS.
 
-The release matrix must be derived from existing package manifests, release plan docs, git tags, current branch, and npm/package metadata where applicable. If any value conflicts, the agent must stop and report the conflict instead of guessing.
+On clean workspaces, build generated workspace dependencies before lint when package type declarations are emitted into `dist`.
 
-Agents must not blindly replace old versions with new versions. Every changed occurrence must be classified as one of:
+Use the repository's existing scripts and dependency order. Do not edit source merely to compensate for an unbuilt clean checkout.
 
-- current release version
-- previous/live public baseline
-- next planned version
-- historical changelog entry
-- example command
-- URL/link target
-- package manifest value
+## Failure handling
 
-Historical entries must not be rewritten unless the task explicitly says to correct history.
+When a required gate fails:
 
-"Current version" and "next planned version" are different fields. Updating one does not automatically update the other.
+1. identify whether the failure is a product defect, stale test/guard, environment/bootstrap issue, or external infrastructure issue;
+2. investigate only the exact failure;
+3. make the smallest coherent correction;
+4. rerun only invalidated gates plus any mandatory final release matrix.
 
-Before staging release/version changes, the agent must show the release matrix, a diff of changed release files, and a per-file explanation of why each changed line is correct. The agent must then run the release/version consistency check if present, or manually grep all old and new version strings and explain every remaining occurrence.
+Do not respond to one failing gate by starting a broad audit.
 
-No release/version commit may be made if it contains placeholder release claims, fabricated publication status, private repository paths, duplicated or contradictory version statements, mechanically-replaced "next planned" values, or test claims without exact commands and exit codes.
+Do not reopen previously closed issues without a new deterministic reproduction.
 
-If context is running low before validation is complete, the agent must push a clearly named remote recovery branch and stop. It must not rush an incomplete release commit onto the source branch.
+Only a new deterministic P0 or launch-blocking P1 should interrupt a locked final-ship sequence.
 
-## Public repo hygiene — pre-commit scan
+## Stale tests and superseded controls
 
-Before committing staged content to any public-facing repo, scan for:
+When a release controller or workflow is intentionally replaced, old tests that assert the retired protocol must be removed or replaced by the current controller's canonical regression suite.
 
-- local absolute filesystem paths
-- internal repo names, handoff notes, session state, or planning docs
-- fabricated publication status or unpublished release claims
-- local-only worktree references or machine-specific dependencies
-- screenshots, logs, or transcripts that reference private systems
+Do not keep two executable test suites that assert mutually exclusive release protocols.
 
-If any are found, stop and sanitize the staged content before committing.
+Historical release documentation may remain when clearly historical, but it must never be referenced as current operating guidance.
 
-## Verification completion — INC-001
+## Release/version edits
 
-A lint, build, test, smoke, or release command may only be reported as **passed** when its operating-system exit code was **observed** and equals `0`.
+Do not blindly replace version strings.
 
-A terminal timeout, stream timeout, truncated log, missing exit code, or agent-session interruption is **UNKNOWN**, never PASS.
+Before release/version changes, distinguish:
 
-**Required reporting pattern:**
+- current package version;
+- live public baseline;
+- pending release target;
+- historical changelog entry;
+- example command;
+- link target;
+- package metadata.
 
-```bash
-pnpm lint;  echo LINT_EXIT:$?
-pnpm build; echo BUILD_EXIT:$?
-pnpm test;  echo TEST_EXIT:$?
-```
+Historical release records must not be rewritten merely to align with the current release.
 
-The actual exit code must appear in the governed receipt. Timeouts must be rerun or recovered from persisted governed command evidence before continuing.
+## Public hygiene
 
-UNKNOWN has the same release authority as FAILED. Neither may be overridden without rerunning verification and observing exit code 0.
+Anything promoted publicly must be appropriate for external users and contributors.
 
-## Release blocker inventory — INC-002 / Issue #86
+Do not promote:
 
-During the 0.5.1 RC, the release process fell into a serial blocker loop: run one gate, stop at the first failure, patch it immediately, rerun, then discover the next blocker. This caused avoidable context switching, token/tool burn, and regression risk.
+- internal planning notes;
+- private incident notes;
+- customer-sensitive material;
+- secrets or credentials;
+- absolute local machine paths;
+- internal repository coordination text;
+- stale handoff/session files;
+- fabricated publication or verification claims.
 
-This workflow is prohibited for all future release-closing work.
+## Security and tenancy
 
-For any RC, public promotion, package release, or multi-surface ship, agents must use these phases:
+Never weaken entitlement, authentication, token, workspace, tenant-isolation, receipt-integrity, or verifier behavior merely to make an acceptance test pass.
 
-### Phase 1 — Audit only
+Any reproducible cross-tenant access is a P0.
 
-- Freeze source changes.
-- Run the complete applicable release matrix.
-- Record every gate as PASS, FAIL, UNKNOWN, or N/A.
-- Continue through independent gates after failures instead of stopping on the first failure.
-- Group failures by root cause.
-- Produce one complete blocker inventory before editing source.
-- Do not patch during this phase.
+Any deterministic false-success or broken receipt-integrity path that affects the release contract is launch-blocking until fixed.
 
-Required audit output:
+## Completion rule
 
-```text
-AUDIT_COMPLETE=YES
-TOTAL_BLOCKERS=<n>
-BLOCKERS_GROUPED_BY_ROOT_CAUSE=YES
-```
+Once the locked release acceptance criteria are all green, stop testing and ship.
 
-### Phase 2 — Repair by root-cause cluster
-
-Only after the blocker inventory is complete, repair grouped causes in this order unless dependency order requires otherwise:
-
-1. product/runtime correctness
-2. package/facade correctness
-3. MCP/MCPB correctness
-4. release metadata/version consistency
-5. stale tests/guards/docs
-
-Commit and push each coherent repair slice. Do not add features, redesign architecture, or perform unrelated cleanup during release closure.
-
-### Phase 3 — Clean RC
-
-After repairs, run the entire applicable release matrix again from the top with no source edits during the run.
-
-If anything fails, first produce the remaining blocker inventory again. Do not return to first-failure patching.
-
-A release may advance only when:
-
-```text
-CLEAN_RC=PASS
-```
-
-### Phase 4 — Ship and verify
-
-Only after the clean RC is green may the release proceed to version alignment, artifact packing, publication, tags/releases, and fresh-install verification.
-
-If an agent begins fixing failures before the full blocker inventory is complete, stop the repair work and return to audit-only mode.
-
-This rule is internal engineering process. Do not copy incident history, private repository details, or internal release-management notes into public user-facing documentation.
+Do not invent additional gates after the defined acceptance matrix is satisfied.
