@@ -1,20 +1,12 @@
 name: publish-mcp
 
 on:
-  workflow_call:
-    inputs:
-      tag:
-        description: Existing mcp-vX.Y.Z tag to publish
-        required: true
-        type: string
-      validated_release_sha:
-        description: SHA that passed the complete pre-tag gate
-        required: true
-        type: string
-      recovery_state:
-        description: Authorized release recovery state
-        required: true
-        type: string
+  workflow_run:
+    workflows:
+      - "Validate and cut paired release tags"
+    types:
+      - completed
+
 permissions:
   contents: write
   id-token: write
@@ -22,64 +14,42 @@ permissions:
 jobs:
   publish-mcp:
     name: Publish @martinloop/mcp
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'workflow_dispatch' && github.repository == 'Keesan12/martin-loop'
     runs-on: ubuntu-latest
     steps:
-      - name: Resolve release invocation
-        id: invocation
-        shell: bash
-        env:
-          INPUT_TAG: ${{ inputs.tag }}
-          INPUT_VALIDATED_RELEASE_SHA: ${{ inputs.validated_release_sha }}
-          INPUT_RECOVERY_STATE: ${{ inputs.recovery_state }}
-        run: |
-          TAG="$INPUT_TAG"
-          VALIDATED_RELEASE_SHA="$INPUT_VALIDATED_RELEASE_SHA"
-          RECOVERY_STATE="$INPUT_RECOVERY_STATE"
-          test -n "$TAG"
-          test -n "$VALIDATED_RELEASE_SHA"
-          test -n "$RECOVERY_STATE"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "validated_release_sha=$VALIDATED_RELEASE_SHA" >> "$GITHUB_OUTPUT"
-          echo "recovery_state=$RECOVERY_STATE" >> "$GITHUB_OUTPUT"
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
 
       - name: Resolve release coordinates
         id: release-vars
         shell: bash
         env:
-          INPUT_TAG: ${{ steps.invocation.outputs.tag }}
+          VALIDATED_RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          RELEASE_TAG="$INPUT_TAG"
-          if [[ -z "$RELEASE_TAG" ]]; then
-            echo "Missing release tag."
-            exit 1
-          fi
-          if [[ "$RELEASE_TAG" != mcp-v* ]]; then
-            echo "Expected an mcp-vX.Y.Z tag"
-            exit 1
-          fi
+          VERSION="$(node -p "require('./packages/mcp/package.json').version")"
+          RELEASE_TAG="mcp-v${VERSION}"
+          test "$(git rev-parse HEAD)" = "$VALIDATED_RELEASE_SHA"
           echo "tag=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
-          echo "version=${RELEASE_TAG#mcp-v}" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Check out repository
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ steps.release-vars.outputs.tag }}
-          fetch-depth: 0
-
-      - name: Verify validated MCP and root source coordinates
+      - name: Verify paired tags resolve to current public main
         shell: bash
         env:
           RELEASE_TAG: ${{ steps.release-vars.outputs.tag }}
-          VALIDATED_RELEASE_SHA: ${{ steps.invocation.outputs.validated_release_sha }}
-          RECOVERY_STATE: ${{ steps.invocation.outputs.recovery_state }}
         run: |
           VERSION="${RELEASE_TAG#mcp-v}"
+          git fetch origin main
           git fetch --force origin "refs/tags/v${VERSION}:refs/tags/v${VERSION}"
           TAG_SHA="$(git rev-list -n 1 "$RELEASE_TAG")"
           ROOT_TAG_SHA="$(git rev-list -n 1 "v${VERSION}")"
+          MAIN_SHA="$(git rev-parse origin/main)"
           HEAD_SHA="$(git rev-parse HEAD)"
           test "$HEAD_SHA" = "$TAG_SHA"
-          node scripts/release-recovery-state.mjs --publisher-coordinates --validated-sha "$VALIDATED_RELEASE_SHA" --tag-sha "$TAG_SHA" --paired-tag-sha "$ROOT_TAG_SHA" --recovery-state "$RECOVERY_STATE"
+          test "$TAG_SHA" = "$ROOT_TAG_SHA"
+          test "$TAG_SHA" = "$MAIN_SHA"
 
       - name: Set up pnpm
         uses: pnpm/action-setup@b0f76dfb45f55f8421693e4803ac7bb65143bd34

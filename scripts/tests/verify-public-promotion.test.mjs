@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { after, before, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { SURFACE_SCHEMA, hashSurface, isReleaseSurfacePath, listSurfaceEntries, sha256, surfaceSpecHash } from "../lib/public-release-surface.mjs";
+import { internalHealthCommandSetSha256 } from "../lib/internal-health-commands.mjs";
 
 const SCRIPT = resolve(import.meta.dirname, "..", "verify-public-promotion.mjs");
 const GENERATOR = resolve(import.meta.dirname, "..", "generate-public-promotion-manifest.mjs");
+const PREPARE = resolve(import.meta.dirname, "..", "prepare-public-promotion.mjs");
 const TMP = join(tmpdir(), `promo-guard-test-${process.pid}-${Date.now()}`);
 let repo;
 let baseSha;
@@ -57,6 +59,17 @@ describe("complete public promotion surface", () => {
     rmSync(join(repo, "health.json"), { force: true });
     rmSync(output, { force: true });
     reset();
+  });
+  test("canonical health command set has a stable digest", () => {
+    assert.match(internalHealthCommandSetSha256(), /^[a-f0-9]{64}$/u);
+  });
+  test("promotion preparer derives coordinates and three-way merges reviewed content divergences", () => {
+    const source = readFileSync(PREPARE, "utf8");
+    assert.match(source, /resolveCommit\(PRIVATE_ROOT, "HEAD", "private HEAD"\)/u);
+    assert.match(source, /resolveCommit\(PUBLIC_ROOT, `\$\{remote\}\/main`, "public base"\)/u);
+    assert.match(source, /git merge-file/u);
+    assert.match(source, /health evidence is stale, manually edited, incomplete/u);
+    assert.match(source, /must start exactly at current public main/u);
   });
   test("scenario A: stale lockfile is blocked", () => { const expected = manifest(); write("pnpm-lock.yaml", "lockfileVersion: stale\n"); const result = run(expected); assert.equal(result.status, 1); assert.match(result.stderr, /pnpm-lock\.yaml/u); reset(); });
   test("scenario B: stale test or package-smoke file is blocked", () => { const expected = manifest(); write("packages/mcp/scripts/smoke.mjs", "throw new Error('stale');\n"); const result = run(expected); assert.equal(result.status, 1); assert.match(result.stderr, /packages\/mcp\/scripts\/smoke\.mjs/u); reset(); });

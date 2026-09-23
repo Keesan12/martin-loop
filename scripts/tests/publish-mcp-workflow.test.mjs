@@ -21,7 +21,7 @@ test("publish-mcp workflow enforces mcp tag parity against package and server me
   assert.match(workflow, /read-mcp-package-metadata\.mjs/);
   assert.match(metadataScript, /server\.json is missing an npm package entry/);
   assert.match(workflow, /Resolve release coordinates/);
-  assert.match(workflow, /INPUT_TAG:/);
+  assert.match(workflow, /VALIDATED_RELEASE_SHA: \$\{\{ github\.event\.workflow_run\.head_sha \}\}/);
   assert.match(workflow, /echo "tag=\$\{RELEASE_TAG\}" >> "\$GITHUB_OUTPUT"/);
   assert.match(workflow, /Verify MCP tag\/version parity/);
   assert.match(workflow, /TAG_VERSION="\$\{RELEASE_TAG#mcp-v\}"/);
@@ -32,22 +32,22 @@ test("publish-mcp workflow enforces mcp tag parity against package and server me
   assert.match(workflow, /does not match server\.json version/);
 });
 
-test("publish-mcp workflow covers trusted publishing, recovery coordinates, local-pack proof, and published smoke", async () => {
+test("publish-mcp workflow covers direct trusted publishing, paired tag coordinates, local-pack proof, and published smoke", async () => {
   const workflowPath = path.join(ROOT_DIR, ".github", "workflows", "publish-mcp.yml");
   const workflow = await readFile(workflowPath, "utf8");
 
-  assert.match(workflow, /workflow_call:/);
+  assert.doesNotMatch(workflow, /workflow_call:/);
   assert.doesNotMatch(workflow, /workflow_dispatch:/);
-  assert.doesNotMatch(workflow, /\n\s{2}push:/);
-  assert.match(workflow, /inputs:\s*[\s\S]*tag:/);
-  assert.match(workflow, /validated_release_sha:/);
-  assert.match(workflow, /recovery_state:/);
-  assert.doesNotMatch(
-    workflow,
-    /EVENT_NAME:|TAG="mcp-v\d+\.\d+\.\d+"|VALIDATED_RELEASE_SHA="[0-9a-f]{40}"|RECOVERY_STATE="RETRY_PUBLISH_SAME_VALIDATED_TAG"/,
-  );
-  assert.match(workflow, /release-recovery-state\.mjs --publisher-coordinates/);
-  assert.doesNotMatch(workflow, /push:\s*[\s\S]*tags:/);
+  assert.match(workflow, /workflow_run:\s*[\s\S]*Validate and cut paired release tags[\s\S]*completed/);
+  assert.match(workflow, /github\.event\.workflow_run\.conclusion == 'success'/);
+  assert.match(workflow, /ref: \$\{\{ github\.event\.workflow_run\.head_sha \}\}/);
+  assert.match(workflow, /VALIDATED_RELEASE_SHA: \$\{\{ github\.event\.workflow_run\.head_sha \}\}/);
+  assert.match(workflow, /git fetch origin main/);
+  assert.match(workflow, /test "\$TAG_SHA" = "\$ROOT_TAG_SHA"/);
+  assert.match(workflow, /test "\$TAG_SHA" = "\$MAIN_SHA"/);
+  assert.doesNotMatch(workflow, /validated_release_sha:/);
+  assert.doesNotMatch(workflow, /recovery_state:/);
+  assert.doesNotMatch(workflow, /release-recovery-state\.mjs --publisher-coordinates/);
   assert.match(workflow, /permissions:\s*[\s\S]*id-token:\s*write/);
   assert.match(workflow, /permissions:\s*[\s\S]*contents:\s*write/);
   assert.match(workflow, /registry-url:\s*https:\/\/registry\.npmjs\.org/);

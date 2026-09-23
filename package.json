@@ -1,7 +1,7 @@
 {
   "name": "martin-loop",
   "private": false,
-  "version": "0.6.5",
+  "version": "0.6.6",
   "type": "module",
   "description": "Open-source command center for governed AI coding agents with built-in onboarding, hard gates, MCP, and shareable run receipts.",
   "packageManager": "pnpm@10.33.0",
@@ -110,7 +110,9 @@
     "test:promotion-guard": "node --test scripts/tests/verify-public-promotion.test.mjs",
     "test:release-controls": "node --test --test-concurrency=1 scripts/tests/verify-public-promotion.test.mjs scripts/tests/release-controls.test.mjs",
     "hooks:install:claude-public-write-guard": "node scripts/hooks/install-claude-public-write-hook.js",
-    "hooks:install:git-portability-guard": "node scripts/hooks/install-git-portability-hook.mjs"
+    "hooks:install:git-portability-guard": "node scripts/hooks/install-git-portability-hook.mjs",
+    "release:health:evidence": "node scripts/generate-internal-health-evidence.mjs",
+    "release:promotion:prepare": "node scripts/prepare-public-promotion.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.13.10",
