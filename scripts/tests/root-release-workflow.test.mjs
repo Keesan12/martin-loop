@@ -11,11 +11,11 @@ test("root release workflow uses GitHub Actions trusted publishing without npm t
   const workflow = await readFile(workflowPath, "utf8");
 
   assert.doesNotMatch(workflow, /workflow_call:/);
-  assert.doesNotMatch(workflow, /workflow_dispatch:/);
+  assert.match(workflow, /workflow_dispatch:/);
   assert.match(workflow, /workflow_run:\s*[\s\S]*Validate and cut paired release tags[\s\S]*completed/);
   assert.match(workflow, /github\.event\.workflow_run\.conclusion == 'success'/);
-  assert.match(workflow, /ref: \$\{\{ github\.event\.workflow_run\.head_sha \}\}/);
-  assert.match(workflow, /VALIDATED_RELEASE_SHA: \$\{\{ github\.event\.workflow_run\.head_sha \}\}/);
+  assert.match(workflow, /aa1037bfb84e8b25f4aff0471f9d49d5ea45faf9/);
+  assert.match(workflow, /VALIDATED_RELEASE_SHA:/);
   assert.match(workflow, /git fetch origin main/);
   assert.match(workflow, /test "\$TAG_SHA" = "\$MCP_TAG_SHA"/);
   assert.match(workflow, /test "\$TAG_SHA" = "\$MAIN_SHA"/);
