@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { PUBLISHER_EQUIVALENT_COMMANDS } from "../lib/publisher-equivalent-commands.mjs";
+import { extractChangelogEntry } from "../extract-changelog-entry.mjs";
 import { RELEASE_STATES, assertPublisherCoordinates, evaluateReleaseRecovery } from "../lib/release-recovery-state.mjs";
 import { assertInfrastructureRetryEvidence } from "../lib/release-retry-evidence.mjs";
 
@@ -39,8 +40,21 @@ test("pre-tag gate contains the complete root, MCP, and MCPB publisher-equivalen
   assert.ok(!commands.includes("pnpm public:promotion-guard"), "promotion verification belongs to the public-staging PR boundary, not the post-merge tag gate");
   assert.ok(commands.indexOf("pnpm build") < commands.indexOf("pnpm test"), "clean-checkout build artifacts must exist before the full test lane");
   const gate = readFileSync(resolve(import.meta.dirname, "..", "pre-tag-release-gate.mjs"), "utf8");
+  assert.match(gate, /extract-changelog-entry\.mjs[\s\S]*--version[\s\S]*version/u);
   assert.match(gate, /root-release-guard\.mjs[\s\S]*--pack/u);
   assert.equal(gate.match(/release:clean-check/g)?.length, 1, "gate must append a final clean check in addition to the matrix pre-check");
+});
+
+test("pre-tag changelog contract accepts the package version and rejects a missing version before tag creation", async () => {
+  const root = mkdtempSync(join(tmpdir(), "release-changelog-"));
+  const changelog = join(root, "CHANGELOG.md");
+  try {
+    writeFileSync(changelog, "# Changelog\n\n## [1.2.3] - 2026-09-24\n\n### Fixed\n- Release evidence.\n");
+    assert.match(await extractChangelogEntry("1.2.3", { changelogPath: changelog }), /Release evidence/u);
+    await assert.rejects(extractChangelogEntry("1.2.4", { changelogPath: changelog }), /No changelog entry found/u);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("tag cutter uses one atomic remote operation", () => {

@@ -2,6 +2,28 @@
 
 ## [Unreleased]
 
+## [0.6.7] - 2026-09-24
+
+### Fixed
+- `martin sync flush` now fails clearly when hosted sync configuration is missing instead of returning a successful exit, while preserving queued evidence for retry.
+- Queued evidence can be uploaded later using the same run ID after hosted credentials become available; another provider run is not required.
+- Hosted event transport now stays bound to identifiers already present in signed run evidence rather than synthesizing receipt-bound identifiers.
+
+### Changed
+- Hosted sync carries the Core receipt, receipt integrity, and Verified Handoff together for dashboard ingestion.
+- Existing 0.6.6 run evidence remains compatible and can be synced after upgrading.
+
+## [0.6.6] - 2026-09-23
+
+### Fixed
+- Removed root-level JSON Schema combinators from MCP tool input schemas so Claude and Codex hosts can accept the tools while runtime selector validation remains strict.
+- Added Windows discovery for the Claude native installer and platform-appropriate install guidance.
+
+### Changed
+- Added explicit optional paired cost baselines and provenance for finance evidence, while keeping runs without a legitimate baseline benchmark-only.
+- Transported the canonical Verified Handoff with its digest bound into receipt integrity.
+- Added proactive governed-routing guidance for Codex agents without changing the read-only diagnosis path.
+
 ## [0.6.5] - 2026-09-16
 
 ### Fixed

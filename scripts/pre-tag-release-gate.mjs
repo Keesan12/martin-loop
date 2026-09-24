@@ -11,6 +11,7 @@ const head = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).tr
 if (head !== candidate) { console.error(`candidate mismatch: HEAD=${head} requested=${candidate}`); process.exit(1); }
 const version = JSON.parse(readFileSync("package.json", "utf8")).version;
 const commands = [
+  ["node", ["./scripts/extract-changelog-entry.mjs", "--version", version]],
   ...PUBLISHER_EQUIVALENT_COMMANDS,
   ["node", ["./scripts/root-release-guard.mjs", "--tag", `v${version}`, "--pack"]],
   ["pnpm", ["release:clean-check"]],
