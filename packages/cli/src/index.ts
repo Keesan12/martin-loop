@@ -717,7 +717,15 @@ export async function executeCli(args: string[]): Promise<{
         return await executeSignalCommand(parsed, outputMode);
       case "sync":
         if (parsed.sub === "flush") {
-          await flushSyncQueue();
+          const result = await flushSyncQueue();
+          const exitCode = result.ok
+            ? 0
+            : result.reason === "missing_endpoint"
+              ? 3
+              : result.reason === "missing_token" || result.reason === "missing_both"
+                ? 4
+                : 1;
+          return { exitCode, stdout: "", stderr: "" };
         } else {
           await syncQueueStatus();
         }

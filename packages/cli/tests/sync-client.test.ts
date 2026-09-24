@@ -30,7 +30,7 @@ import {
   syncLoopToHosted,
   syncQueueStatus,
 } from "../src/sync-client.js";
-import { parseCliArguments } from "../src/index.js";
+import { executeCli, parseCliArguments } from "../src/index.js";
 import type { LoopRecord } from "@martin/contracts";
 
 // ---------------------------------------------------------------------------
@@ -226,6 +226,18 @@ describe("opt-in behavior", () => {
     process.env["MARTIN_TELEMETRY_ENDPOINT"] = "http://127.0.0.1:1";
     const loop = makeLoop();
     await syncLoopToHosted(loop, { runtimeVersion: "0.1.0" });
+    expect(await queueFiles()).toHaveLength(0);
+  });
+
+  it("keeps normal run completion independent when hosted sync is unconfigured", async () => {
+    const loop = makeLoop({ loopId: "loop-local-only-success" });
+
+    await expect(
+      enqueueLoopForHostedSync(loop, { runtimeVersion: "0.1.0" })
+    ).resolves.toBeUndefined();
+
+    expect(loop.status).toBe("completed");
+    expect(loop.lifecycleState).toBe("completed");
     expect(await queueFiles()).toHaveLength(0);
   });
 });
@@ -793,6 +805,121 @@ describe("flushSyncQueue", () => {
     vi.spyOn(process.stderr, "write").mockImplementation((s) => { err.push(String(s)); return true; });
     await flushSyncQueue();
     expect(err.join("")).toContain("must be set");
+  });
+
+  it("returns a nonzero CLI exit when MARTIN_API_TOKEN is missing", async () => {
+    process.env["MARTIN_TELEMETRY_ENDPOINT"] = "http://127.0.0.1:1";
+    const err: string[] = [];
+    vi.spyOn(process.stderr, "write").mockImplementation((s) => { err.push(String(s)); return true; });
+
+    const result = await executeCli(["sync", "flush"]);
+
+    expect(result.exitCode).not.toBe(0);
+    expect(err.join("")).toContain("MARTIN_API_TOKEN");
+  });
+
+  it("returns a nonzero CLI exit when MARTIN_TELEMETRY_ENDPOINT is missing", async () => {
+    process.env["MARTIN_API_TOKEN"] = "test-token";
+    const err: string[] = [];
+    vi.spyOn(process.stderr, "write").mockImplementation((s) => { err.push(String(s)); return true; });
+
+    const result = await executeCli(["sync", "flush"]);
+
+    expect(result.exitCode).not.toBe(0);
+    expect(err.join("")).toContain("MARTIN_TELEMETRY_ENDPOINT");
+    expect(err.join("")).not.toContain("test-token");
+  });
+
+  it("returns a nonzero CLI exit when both hosted sync credentials are missing", async () => {
+    const err: string[] = [];
+    vi.spyOn(process.stderr, "write").mockImplementation((s) => { err.push(String(s)); return true; });
+
+    const result = await executeCli(["sync", "flush"]);
+
+    expect(result.exitCode).not.toBe(0);
+    expect(err.join("")).toContain("Hosted sync is not configured");
+  });
+
+  it("returns zero after configured transport uploads the queued run", async () => {
+    await mkdir(qDir(), { recursive: true });
+    const item = makeItem({ loopId: "loop-configured-success" });
+    item.payload.loopId = item.loopId;
+    await writeFile(join(qDir(), `${item.queueId}.json`), JSON.stringify(item), "utf8");
+
+    const { url, close } = await startServer((_req, res) => { res.writeHead(200); res.end("{}"); });
+    process.env["MARTIN_TELEMETRY_ENDPOINT"] = url;
+    process.env["MARTIN_API_TOKEN"] = "configured-secret-sentinel";
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    vi.spyOn(process.stdout, "write").mockImplementation((s) => { stdout.push(String(s)); return true; });
+    vi.spyOn(process.stderr, "write").mockImplementation((s) => { stderr.push(String(s)); return true; });
+
+    try {
+      const result = await executeCli(["sync", "flush"]);
+      expect(result.exitCode).toBe(0);
+      expect(await queueFiles()).toHaveLength(0);
+      expect(`${stdout.join("")}\n${stderr.join("")}`).not.toContain("configured-secret-sentinel");
+    } finally {
+      await close();
+    }
+  });
+
+  it("preserves a queued run byte-for-byte when credentials are missing", async () => {
+    await mkdir(qDir(), { recursive: true });
+    const item = makeItem({ loopId: "loop-missing-creds-preserved" });
+    item.payload.loopId = item.loopId;
+    const itemPath = join(qDir(), `${item.queueId}.json`);
+    const before = JSON.stringify(item);
+    await writeFile(itemPath, before, "utf8");
+    vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+
+    const result = await executeCli(["sync", "flush"]);
+
+    expect(result.exitCode).not.toBe(0);
+    expect(await readFile(itemPath, "utf8")).toBe(before);
+  });
+
+  it("preserves the same run ID across a transient failure and later recovery", async () => {
+    await mkdir(qDir(), { recursive: true });
+    const item = makeItem({ loopId: "loop-same-id-recovery" });
+    item.payload.loopId = item.loopId;
+    const itemPath = join(qDir(), `${item.queueId}.json`);
+    await writeFile(itemPath, JSON.stringify(item), "utf8");
+    process.env["MARTIN_TELEMETRY_ENDPOINT"] = "http://127.0.0.1:1";
+    process.env["MARTIN_API_TOKEN"] = "recovery-secret-sentinel";
+    const output: string[] = [];
+    vi.spyOn(process.stdout, "write").mockImplementation((s) => { output.push(String(s)); return true; });
+    vi.spyOn(process.stderr, "write").mockImplementation((s) => { output.push(String(s)); return true; });
+
+    const failed = await executeCli(["sync", "flush"]);
+    expect(failed.exitCode).not.toBe(0);
+    const queuedFiles = await queueFiles();
+    expect(queuedFiles).toHaveLength(1);
+    const queued = JSON.parse(await readFile(join(qDir(), queuedFiles[0]!), "utf8")) as TestItem;
+    expect(queued.loopId).toBe("loop-same-id-recovery");
+
+    queued.nextRetryNotBefore = new Date(Date.now() - 1_000).toISOString();
+    await writeFile(join(qDir(), queuedFiles[0]!), JSON.stringify(queued), "utf8");
+    const receivedLoopIds: string[] = [];
+    const { url, close } = await startServer((req, res) => {
+      let body = "";
+      req.on("data", (chunk) => { body += String(chunk); });
+      req.on("end", () => {
+        receivedLoopIds.push((JSON.parse(body) as { loopId: string }).loopId);
+        res.writeHead(200); res.end("{}");
+      });
+    });
+    process.env["MARTIN_TELEMETRY_ENDPOINT"] = url;
+
+    try {
+      const recovered = await executeCli(["sync", "flush"]);
+      expect(recovered.exitCode).toBe(0);
+      expect(receivedLoopIds).toEqual(["loop-same-id-recovery"]);
+      expect(await queueFiles()).toHaveLength(0);
+      expect(output.join("")).not.toContain("recovery-secret-sentinel");
+    } finally {
+      await close();
+    }
   });
 
   it("uploads queued item and removes it on 200", async () => {

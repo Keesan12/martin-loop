@@ -68,6 +68,7 @@ describe("complete public promotion surface", () => {
     assert.match(source, /resolveCommit\(PRIVATE_ROOT, "HEAD", "private HEAD"\)/u);
     assert.match(source, /resolveCommit\(PUBLIC_ROOT, `\$\{remote\}\/main`, "public base"\)/u);
     assert.match(source, /git merge-file/u);
+    assert.match(source, /maxBuffer:\s*GIT_MAX_BUFFER_BYTES/u);
     assert.match(source, /health evidence is stale, manually edited, incomplete/u);
     assert.match(source, /must start exactly at current public main/u);
   });

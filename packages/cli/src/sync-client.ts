@@ -227,8 +227,10 @@ async function readPersistedCoreReceiptBundle(loop: LoopRecord): Promise<CoreRec
   }
 }
 
-function buildReceiptBoundEvents(coreReceipt: CoreReceiptBundle): HostedRunEventDraft[] {
-  return coreReceipt.ledgerEntries.flatMap((entry, index) => {
+function projectReceiptEvents(entries: unknown[]): HostedRunEventDraft[] {
+  return entries.flatMap((candidate, index) => {
+    if (!isPlainRecord(candidate)) return [];
+    const entry = candidate;
     const eventId = stringField(entry, "eventId");
     const eventType = stringField(entry, "type") ?? stringField(entry, "kind");
     const occurredAt = stringField(entry, "timestamp");
@@ -245,6 +247,18 @@ function buildReceiptBoundEvents(coreReceipt: CoreReceiptBundle): HostedRunEvent
       ...(payload ? { payload } : {}),
     }];
   });
+}
+
+function buildReceiptBoundEvents(coreReceipt: CoreReceiptBundle): HostedRunEventDraft[] {
+  const signedLoopEvents = Array.isArray(coreReceipt.loopRecord["events"])
+    ? projectReceiptEvents(coreReceipt.loopRecord["events"])
+    : [];
+  if (signedLoopEvents.length > 0) return signedLoopEvents;
+
+  // Older signed receipts may carry event identifiers in their ledger. Keep
+  // that compatibility path, but never invent identifiers for canonical
+  // ledgers whose schema intentionally omits them.
+  return projectReceiptEvents(coreReceipt.ledgerEntries);
 }
 
 function receiptCanBindHostedDraft(coreReceipt: CoreReceiptBundle, events: HostedRunEventDraft[]): boolean {
@@ -962,14 +976,32 @@ export async function syncLoopToHosted(
  * May throw on unrecoverable filesystem errors (permission denied, disk full, etc.).
  * Called by `martin sync flush`.
  */
-export async function flushSyncQueue(): Promise<void> {
+export interface SyncFlushResult {
+  ok: boolean;
+  uploaded: number;
+  quarantined: number;
+  pending: number;
+  reason?: "missing_token" | "missing_endpoint" | "missing_both" | "incomplete";
+}
+
+export async function flushSyncQueue(): Promise<SyncFlushResult> {
   const endpoint = process.env["MARTIN_TELEMETRY_ENDPOINT"]?.trim();
   const token = process.env["MARTIN_API_TOKEN"]?.trim();
   if (!endpoint || !token) {
+    const missing = [
+      ...(!endpoint ? ["MARTIN_TELEMETRY_ENDPOINT"] : []),
+      ...(!token ? ["MARTIN_API_TOKEN"] : []),
+    ];
     process.stderr.write(
-      "[martin sync] MARTIN_TELEMETRY_ENDPOINT and MARTIN_API_TOKEN must be set to flush the queue.\n"
+      `[martin sync] Hosted sync is not configured. ${missing.join(" and ")} must be set; then retry \`martin sync flush\`.\n`
     );
-    return;
+    return {
+      ok: false,
+      uploaded: 0,
+      quarantined: 0,
+      pending: 0,
+      reason: !endpoint && !token ? "missing_both" : !endpoint ? "missing_endpoint" : "missing_token",
+    };
   }
 
   const queueDir = resolveQueueDir();
@@ -981,16 +1013,26 @@ export async function flushSyncQueue(): Promise<void> {
   const allFiles = await safeListQueue(queueDir);
   const parseable = await listQueueOldestFirst(queueDir);
   const parseableSet = new Set(parseable.map((x) => x.file));
+  let quarantinedCount = 0;
+  let stillPending = 0;
   for (const f of allFiles) {
     if (!parseableSet.has(f)) {
       process.stderr.write(`[martin sync] Corrupt queue file ${f} — quarantining.\n`);
-      await quarantine(join(queueDir, f), queueDir, "corrupt");
+      const moved = await quarantine(join(queueDir, f), queueDir, "corrupt");
+      if (moved) quarantinedCount++;
+      else stillPending++;
     }
   }
 
   if (parseable.length === 0) {
     process.stdout.write("[martin sync] Queue is empty.\n");
-    return;
+    return {
+      ok: quarantinedCount === 0 && stillPending === 0,
+      uploaded: 0,
+      quarantined: quarantinedCount,
+      pending: stillPending,
+      ...(quarantinedCount > 0 || stillPending > 0 ? { reason: "incomplete" as const } : {}),
+    };
   }
 
   const now = Date.now();
@@ -1004,12 +1046,12 @@ export async function flushSyncQueue(): Promise<void> {
   );
 
   let succeeded = 0;
-  let quarantinedCount = 0;
-  let stillPending = 0;
-
   for (const { file } of eligible) {
     const inflightPath = await claimItem(file, queueDir);
-    if (!inflightPath) continue; // another process claimed it
+    if (!inflightPath) {
+      stillPending++;
+      continue; // another process claimed it
+    }
 
     let currentItem: SyncQueueItem;
     try {
@@ -1017,6 +1059,7 @@ export async function flushSyncQueue(): Promise<void> {
     } catch {
       process.stderr.write(`[martin sync] Cannot read claimed item ${file} — releasing.\n`);
       await releaseItem(inflightPath, queueDir, "requeue");
+      stillPending++;
       continue;
     }
 
@@ -1027,7 +1070,10 @@ export async function flushSyncQueue(): Promise<void> {
       );
       const moved = await quarantine(inflightPath, queueDir, "max_attempts");
       if (moved) quarantinedCount++;
-      else await releaseItem(inflightPath, queueDir, "requeue");
+      else {
+        await releaseItem(inflightPath, queueDir, "requeue");
+        stillPending++;
+      }
       continue;
     }
 
@@ -1042,7 +1088,10 @@ export async function flushSyncQueue(): Promise<void> {
       );
       const moved = await quarantine(inflightPath, queueDir, "permanent_4xx");
       if (moved) quarantinedCount++;
-      else await releaseItem(inflightPath, queueDir, "requeue");
+      else {
+        await releaseItem(inflightPath, queueDir, "requeue");
+        stillPending++;
+      }
     } else {
       // Persist incremented attempt count and backoff window
       const delay = backoffDelay(currentItem.attempts, result.retryAfterMs);
@@ -1061,6 +1110,16 @@ export async function flushSyncQueue(): Promise<void> {
   process.stdout.write(
     `[martin sync] Done — ${succeeded} uploaded, ${quarantinedCount} quarantined, ${stillPending} still pending.\n`
   );
+
+  const pending = deferred + stillPending;
+  const ok = quarantinedCount === 0 && pending === 0;
+  return {
+    ok,
+    uploaded: succeeded,
+    quarantined: quarantinedCount,
+    pending,
+    ...(!ok ? { reason: "incomplete" as const } : {}),
+  };
 }
 
 // ---------------------------------------------------------------------------

@@ -10,13 +10,19 @@ import { internalHealthCommandSetSha256 } from "./lib/internal-health-commands.m
 const PRIVATE_ROOT = process.cwd();
 const EXPECTED_PRIVATE_REPOSITORY_FINGERPRINT = "04aac733f3b08513fddcc72a9013b9f59cf7919f9a0a3893d0b3d953929826ec";
 const EXPECTED_PUBLIC_SLUG = "Keesan12/martin-loop";
+const GIT_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
 
 function arg(name, fallback) {
   const index = process.argv.indexOf(name);
   return index === -1 ? fallback : process.argv[index + 1];
 }
 function git(cwd, args, encoding = "utf8") {
-  return execFileSync("git", args, { cwd, encoding, stdio: ["ignore", "pipe", "pipe"] });
+  return execFileSync("git", args, {
+    cwd,
+    encoding,
+    maxBuffer: GIT_MAX_BUFFER_BYTES,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
 }
 function gitText(cwd, args) { return git(cwd, args, "utf8").trim(); }
 function repositorySlug(cwd) {
@@ -67,9 +73,30 @@ function sameHash(buffer, expected) { return sha256(buffer) === expected; }
 
 const publicRepoArg = arg("--public-repo");
 if (!publicRepoArg) {
-  console.error("Usage: node scripts/prepare-public-promotion.mjs --public-repo <path> [--health-evidence <path>] [--public-remote origin]");
+  console.error("Usage: node scripts/prepare-public-promotion.mjs --public-repo <path> [--health-evidence <path>] [--public-remote origin] [--resolutions <json>]");
   process.exit(2);
 }
+const resolutionsPath = arg("--resolutions");
+const manualResolutions = resolutionsPath
+  ? JSON.parse(readFileSync(resolve(PRIVATE_ROOT, resolutionsPath), "utf8"))
+  : [];
+if (!Array.isArray(manualResolutions)) throw new Error("promotion resolutions must be a JSON array");
+const resolutionByPath = new Map();
+for (const item of manualResolutions) {
+  if (!item || typeof item.path !== "string" || !["private", "public"].includes(item.resolution)) {
+    throw new Error("each promotion resolution requires path and resolution=private|public");
+  }
+  if (typeof item.reason !== "string" || item.reason.trim().length < 8) {
+    throw new Error(`promotion resolution ${item.path} requires a substantive reason`);
+  }
+  if (typeof item.reviewedBy !== "string" || item.reviewedBy.trim().length === 0) {
+    throw new Error(`promotion resolution ${item.path} requires reviewedBy`);
+  }
+  if (resolutionByPath.has(item.path)) throw new Error(`duplicate promotion resolution: ${item.path}`);
+  resolutionByPath.set(item.path, item);
+}
+const usedResolutions = new Set();
+
 const PUBLIC_ROOT = resolve(publicRepoArg);
 if (fingerprint(repositorySlug(PRIVATE_ROOT)) !== EXPECTED_PRIVATE_REPOSITORY_FINGERPRINT) {
   throw new Error("prepare-public-promotion must run from the private release authority repository");
@@ -154,6 +181,7 @@ const contentDivergent = new Set(oldDivergences.filter((entry) => entry.kind ===
 const target = new Map();
 const refreshedDivergences = [];
 const autoMerged = [];
+const manuallyResolved = [];
 
 for (const entry of privateEntries) {
   const path = entry.path;
@@ -179,9 +207,25 @@ for (const entry of privateEntries) {
     if (!sameHash(oldPrivate, previous.privateSha256)) throw new Error(`stale private divergence hash for ${path}; previous manifest is inconsistent`);
     const currentPrivate = readBlob(PRIVATE_ROOT, privateSha, path);
     const publicBase = readBlob(PUBLIC_ROOT, publicBaseSha, path);
-    const merged = entry.sha256 === previous.privateSha256
-      ? publicBase
-      : mergeContent({ publicBase, oldPrivate, newPrivate: currentPrivate, path });
+    let merged;
+    if (entry.sha256 === previous.privateSha256) {
+      merged = publicBase;
+    } else {
+      try {
+        merged = mergeContent({ publicBase, oldPrivate, newPrivate: currentPrivate, path });
+      } catch (error) {
+        const resolution = resolutionByPath.get(path);
+        if (!resolution || !String(error?.message ?? error).startsWith("content divergence requires manual reconciliation:")) throw error;
+        merged = resolution.resolution === "private" ? currentPrivate : publicBase;
+        usedResolutions.add(path);
+        manuallyResolved.push({
+          path,
+          resolution: resolution.resolution,
+          reason: resolution.reason,
+          reviewedBy: resolution.reviewedBy,
+        });
+      }
+    }
     const mergedHash = sha256(merged);
     target.set(path, { content: merged, mode: basePublicEntry.mode });
     if (mergedHash !== entry.sha256 || basePublicEntry.mode !== entry.mode) {
@@ -221,6 +265,11 @@ for (const previous of oldDivergences) {
   }
 }
 
+const unusedResolutions = [...resolutionByPath.keys()].filter((path) => !usedResolutions.has(path));
+if (unusedResolutions.length) {
+  throw new Error(`unused promotion resolutions: ${unusedResolutions.join(", ")}`);
+}
+
 const targetPaths = new Set(target.keys());
 for (const baseEntry of publicBaseEntries) {
   if (!targetPaths.has(baseEntry.path)) removeTarget(PUBLIC_ROOT, baseEntry.path);
@@ -256,4 +305,8 @@ try {
 console.log(`[public-promotion-prepare] READY version=${version} private=${privateSha} publicBase=${publicBaseSha}`);
 console.log(`[public-promotion-prepare] AUTO_MERGED_CONTENT_DIVERGENCES=${autoMerged.length}`);
 if (autoMerged.length) console.log(autoMerged.join("\n"));
+console.log(`[public-promotion-prepare] MANUALLY_RESOLVED_CONTENT_DIVERGENCES=${manuallyResolved.length}`);
+for (const item of manuallyResolved) {
+  console.log(`${item.path}\t${item.resolution}\t${item.reviewedBy}\t${item.reason}`);
+}
 console.log(`[public-promotion-prepare] NEXT: review staged diff in ${PUBLIC_ROOT}, commit, then run pnpm public:promotion-guard`);
