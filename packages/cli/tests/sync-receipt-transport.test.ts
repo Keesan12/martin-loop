@@ -154,6 +154,85 @@ describe("receipt-bound hosted sync transport", () => {
     expect(await readFile(localIntegrityPath, "utf8")).toBe(localIntegrityBefore);
   });
 
+  it("binds hosted events to signed loop events when canonical ledger entries have no event ids", async () => {
+    const loop = makeLoop(runsRoot, {
+      events: [
+        {
+          eventId: "evt-signed-started",
+          type: "run.started",
+          lifecycleState: "running",
+          timestamp: "2026-08-23T11:59:00.000Z",
+          payload: { adapterId: "agent-cli:claude" },
+        },
+        {
+          eventId: "evt-signed-completed",
+          type: "run.completed",
+          lifecycleState: "completed",
+          timestamp: "2026-08-23T12:00:00.000Z",
+          payload: { verified: true },
+        },
+      ],
+    } as unknown as Partial<LoopRecord>);
+    const loopRoot = join(runsRoot, loop.loopId);
+    await mkdir(loopRoot, { recursive: true });
+    await writeFile(
+      join(loopRoot, "ledger.jsonl"),
+      [
+        {
+          kind: "run.started",
+          runId: loop.loopId,
+          timestamp: "2026-08-23T11:59:00.000Z",
+          payload: { adapterId: "agent-cli:claude" },
+        },
+        {
+          kind: "run.completed",
+          runId: loop.loopId,
+          timestamp: "2026-08-23T12:00:00.000Z",
+          payload: { verified: true },
+        },
+      ].map((entry) => JSON.stringify(entry)).join("\n") + "\n",
+      "utf8"
+    );
+
+    await persistLoopArtifacts(loop, { runsRoot });
+
+    // This event was never persisted or signed and must not enter a receipt-bound payload.
+    loop.events.push({
+      eventId: "evt-unsigned-injection",
+      type: "run.completed",
+      lifecycleState: "completed",
+      timestamp: "2026-08-23T12:01:00.000Z",
+      payload: { verified: false },
+    });
+
+    await enqueueLoopForHostedSync(loop, { runtimeVersion: "0.6.6" });
+
+    const { item } = await readOnlyQueuedItem(queueRoot);
+    const payload = item.payload as Record<string, unknown>;
+    const coreReceipt = payload.coreReceipt as {
+      loopRecord: Record<string, unknown>;
+      ledgerEntries: Array<Record<string, unknown>>;
+      integrity: Record<string, unknown>;
+      verifiedHandoff: Record<string, unknown>;
+    };
+    const events = payload.events as Array<Record<string, unknown>>;
+
+    expect(coreReceipt).toBeDefined();
+    expect(payload.receiptIntegrity).toEqual(coreReceipt.integrity);
+    expect(coreReceipt.verifiedHandoff).toBeDefined();
+    expect(coreReceipt.integrity.verifiedHandoffSha256).toBeTypeOf("string");
+    expect(coreReceipt.ledgerEntries.every((entry) => entry.eventId === undefined)).toBe(true);
+    expect(events.map((event) => event.eventId)).toEqual([
+      "evt-signed-started",
+      "evt-signed-completed",
+    ]);
+    expect(events.map((event) => event.eventType)).toEqual([
+      "run.started",
+      "run.completed",
+    ]);
+    expect(events.some((event) => event.eventId === "evt-unsigned-injection")).toBe(false);
+  });
+
   it("enriches and redacts the legacy unverified snapshot path when no persisted receipt exists", async () => {
     const sensitiveWindowsRoot = "C:\\Users\\Gobi\\Desktop\\private-repo";
     const loop = makeLoop(runsRoot, {

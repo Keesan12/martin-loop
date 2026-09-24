@@ -76,6 +76,8 @@ If exact-SHA health evidence is stale, regenerate it by rerunning the canonical 
 
 If a reviewed content divergence cannot be three-way merged cleanly, stop on that exact path and reconcile the conflict explicitly. Do not bless the unchanged public file with a refreshed private hash.
 
+For a true conflict, use a release-local reviewed resolution file and pass it with `--resolutions <json>`. Each entry must name the path, choose `private` or `public`, give a substantive reason, and record `reviewedBy`. The preparer rejects unused/stale resolution entries and computes the resulting hashes itself.
+
 The promotion manifest and promotion guard are authoritative for the reviewed private/public boundary.
 
 When the promotion guard reports a mismatch, resolve only the exact missing, extra, or changed paths it reports.
