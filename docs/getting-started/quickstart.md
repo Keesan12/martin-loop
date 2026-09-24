@@ -83,6 +83,21 @@ To print exact artifact paths from your latest run:
 npx -y martin-loop@latest share --latest --json
 ```
 
+## Optional Hosted Dashboard Sync
+
+Governed work and its receipt are local-first. Dashboard sync is optional and can happen after the run without another provider call.
+
+Provide both values through your shell or secret manager; never paste a real token into source files, documentation, or logs:
+
+```sh
+MARTIN_API_TOKEN=<workspace-token>
+MARTIN_TELEMETRY_ENDPOINT=https://<your-hosted-endpoint>
+martin sync status
+martin sync flush
+```
+
+If either value is missing, `martin sync flush` exits nonzero and leaves the queued evidence intact. After configuration is available, a later flush uploads the same run ID. Missing hosted configuration does not invalidate the local governed run, verifier evidence, or receipt.
+
 ## Repository Development
 
 ```sh

@@ -132,6 +132,16 @@ Do not claim:
 
 Use precise language about what the available evidence actually established.
 
+## Optional hosted sync
+
+Treat governed execution as local-first. Hosted sync is a separate, optional delivery step.
+
+- Inspect queued state with `martin sync status`.
+- Run `martin sync flush` only when both `MARTIN_API_TOKEN` and `MARTIN_TELEMETRY_ENDPOINT` are configured.
+- Never print, log, commit, or paste the token into instructions or evidence.
+- If configuration is missing, preserve the queue and report the nonzero flush result; do not reinterpret the governed run as failed.
+- After credentials become available, flush the preserved evidence under the same run ID. Do not rerun the provider merely to populate a dashboard.
+
 ## Public entry points
 
 CLI:

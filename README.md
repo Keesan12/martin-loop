@@ -40,6 +40,8 @@ One system to control, verify and understand coding-agent work.
 
 **Receipts** — inspect the latest result with `martin dossier --latest` and validate stored integrity with `martin runs verify --latest`.
 
+**Hosted sync (optional)** — governed work is local-first. Configure `MARTIN_API_TOKEN` and `MARTIN_TELEMETRY_ENDPOINT`, then use `martin sync status` and `martin sync flush` to send preserved evidence to a dashboard later. See the [quickstart](./docs/getting-started/quickstart.md#optional-hosted-dashboard-sync).
+
 **MCP** — install `@martinloop/mcp@latest` in a supported host or generate host configuration with `martin mcp print-config`.
 
 **Documentation** — continue with the [quickstart](./docs/getting-started/quickstart.md), [CLI reference](./docs/reference/cli.md), or [MCP setup](./docs/getting-started/mcp.md).
