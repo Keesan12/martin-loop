@@ -23,6 +23,8 @@ martin-loop challenge [--loop-id <id> | --file <path> | --latest] [--format mark
 martin-loop share (--loop-id <id> | --file <path> | --latest) [--out-dir <path>]
 martin-loop badge [--format svg|json] [--runs-dir <path>]
 martin-loop runs list|get|attempt|verify ...
+martin-loop sync status
+martin-loop sync flush
 martin-loop mcp print-config --host <codex|claude|gemini|generic>
 martin-loop mcp install --host <codex|claude|gemini|generic>
 ```
@@ -102,6 +104,17 @@ pnpm --filter @martin/benchmarks report:ralphy
 --runs-dir <path>       Override the Martin runs root for guided flow receipts, persisted evidence views, and badge generation
 --out-dir <path>        Override where `martin share` writes the local share bundle
 ```
+
+## Hosted sync
+
+`sync status` reports queued hosted evidence. `sync flush` attempts to upload eligible queued records using:
+
+```text
+MARTIN_API_TOKEN             Workspace-scoped hosted API token
+MARTIN_TELEMETRY_ENDPOINT    Hosted telemetry endpoint
+```
+
+Both settings are required for a flush. Missing configuration returns a nonzero exit and preserves the queue. A later configured flush uploads the same run ID; normal governed execution and local receipt verification remain independent of hosted availability. Keep tokens in environment or secret-management facilities and never print them.
 
 ## Evidence Commands
 
