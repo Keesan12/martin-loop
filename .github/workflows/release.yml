@@ -1,7 +1,6 @@
 name: Release
 
 on:
-  workflow_dispatch:
   workflow_run:
     workflows:
       - "Validate and cut paired release tags"
@@ -15,32 +14,29 @@ permissions:
 jobs:
   publish-npm:
     name: Publish to npm
-    if: github.repository == 'Keesan12/martin-loop' && (github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'workflow_dispatch'))
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'workflow_dispatch' && github.repository == 'Keesan12/martin-loop'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && 'aa1037bfb84e8b25f4aff0471f9d49d5ea45faf9' || github.event.workflow_run.head_sha }}
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
 
       - name: Resolve release coordinates
         id: release-vars
         shell: bash
         env:
-          EXPECTED_VERSION: ${{ github.event_name == 'workflow_dispatch' && '0.6.7' || '' }}
-          VALIDATED_RELEASE_SHA: ${{ github.event_name == 'workflow_dispatch' && 'aa1037bfb84e8b25f4aff0471f9d49d5ea45faf9' || github.event.workflow_run.head_sha }}
+          VALIDATED_RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           VERSION="$(node -p "require('./package.json').version")"
           RELEASE_TAG="v${VERSION}"
           test "$(git rev-parse HEAD)" = "$VALIDATED_RELEASE_SHA"
-          if [[ -n "$EXPECTED_VERSION" ]]; then test "$VERSION" = "$EXPECTED_VERSION"; fi
           echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Verify paired tags resolve to current public main
         shell: bash
         env:
-          IS_RECOVERY: ${{ github.event_name == 'workflow_dispatch' }}
           RELEASE_TAG: ${{ steps.release-vars.outputs.tag }}
         run: |
           VERSION="${RELEASE_TAG#v}"
@@ -52,11 +48,7 @@ jobs:
           HEAD_SHA="$(git rev-parse HEAD)"
           test "$HEAD_SHA" = "$TAG_SHA"
           test "$TAG_SHA" = "$MCP_TAG_SHA"
-          if [[ "$IS_RECOVERY" == "true" ]]; then
-            test "$TAG_SHA" = "aa1037bfb84e8b25f4aff0471f9d49d5ea45faf9"
-          else
-            test "$TAG_SHA" = "$MAIN_SHA"
-          fi
+          test "$TAG_SHA" = "$MAIN_SHA"
 
       - uses: pnpm/action-setup@b0f76dfb45f55f8421693e4803ac7bb65143bd34
         with:
@@ -121,14 +113,8 @@ jobs:
 
       - name: Extract changelog entry
         id: changelog
-        shell: bash
         run: |
-          VERSION="${{ steps.package-version.outputs.version }}"
-          if ! BODY="$(node ./scripts/extract-changelog-entry.mjs --version "$VERSION" 2>/dev/null)"; then
-            RELEASE_NOTES="docs/release/OSS-${VERSION}-RELEASE-NOTES.md"
-            test -f "$RELEASE_NOTES"
-            BODY="$(cat "$RELEASE_NOTES")"
-          fi
+          BODY="$(node ./scripts/extract-changelog-entry.mjs --version "${{ steps.package-version.outputs.version }}")"
           {
             echo "body<<EOF_CHANGELOG"
             printf '%s\n' "$BODY"
