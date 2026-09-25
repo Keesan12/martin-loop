@@ -416,7 +416,7 @@ describe("attemptUpload — HTTP status codes", () => {
     await close();
   });
 
-  it("does not upload when receipt-key registration is forbidden", async () => {
+  it("preserves a signed run for retry when the hosted token lacks receipt-key scope", async () => {
     const signingSecret = "b".repeat(64);
     const keyId = createHash("sha256").update(signingSecret).digest("hex").slice(0, 16);
     const runsRootHash = "fedcba9876543210";
@@ -438,7 +438,7 @@ describe("attemptUpload — HTTP status codes", () => {
 
     const result = await attemptUpload(item as unknown as Parameters<typeof attemptUpload>[0], url, "tok");
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.permanent).toBe(true);
+    if (!result.ok) expect(result.permanent).toBe(false);
     expect(paths).toEqual(["/register-receipt-key"]);
     await close();
   });
