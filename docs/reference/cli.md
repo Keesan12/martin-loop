@@ -114,7 +114,7 @@ MARTIN_API_TOKEN             Workspace-scoped hosted API token
 MARTIN_TELEMETRY_ENDPOINT    Hosted telemetry endpoint
 ```
 
-Both settings are required for a flush. Missing configuration returns a nonzero exit and preserves the queue. A later configured flush uploads the same run ID; normal governed execution and local receipt verification remain independent of hosted availability. Keep tokens in environment or secret-management facilities and never print them.
+Both settings are required for a flush. The hosted token must carry `runs:write`, `telemetry:write`, and `receipt_keys:write` (`runs:read` is recommended for hosted readback). For signed receipts, `sync flush` re-reads the local per-run key, verifies its key ID, registers it to the token-derived workspace, then uploads the unchanged signed payload. The signing secret is never persisted in the queue. Missing configuration returns a nonzero exit and preserves the queue. A later configured flush uploads the same run ID; normal governed execution and local receipt verification remain independent of hosted availability. Keep tokens in environment or secret-management facilities and never print them.
 
 ## Evidence Commands
 
