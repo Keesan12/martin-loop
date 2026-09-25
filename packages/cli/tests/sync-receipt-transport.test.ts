@@ -145,6 +145,12 @@ describe("receipt-bound hosted sync transport", () => {
 
     const key = await readIntegrityKey(integrityRoot, runsRoot, loop.loopId);
     expect(integrity.keyId).toBe(sha256(key).slice(0, 16));
+    expect(item.receiptKey).toEqual({
+      keyId: integrity.keyId,
+      runsRootHash: sha256(runsRoot).slice(0, 16),
+    });
+    expect(raw).not.toContain(key);
+    expect(raw).not.toContain("signingSecret");
     const { signatureHmacSha256, ...signatureBase } = integrity as { signatureHmacSha256: string } & Record<string, unknown>;
     expect(signatureHmacSha256).toBe(
       createHmac("sha256", key).update(JSON.stringify(signatureBase)).digest("hex")
@@ -355,7 +361,10 @@ async function readOnlyQueuedItem(queueRoot: string) {
   const raw = await readFile(join(queueRoot, files[0]!), "utf8");
   return {
     raw,
-    item: JSON.parse(raw) as { payload: unknown },
+    item: JSON.parse(raw) as {
+      payload: unknown;
+      receiptKey?: { keyId: string; runsRootHash: string };
+    },
   };
 }
 

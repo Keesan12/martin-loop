@@ -8,17 +8,18 @@
  *   flushSyncQueue   — may throw on unrecoverable filesystem errors (permission denied, etc.).
  *   syncQueueStatus  — may throw on unrecoverable filesystem errors.
  *
- * Verified server contract (POST /api/runs/sync):
- *   Auth:    Authorization: Bearer martin_cp_<token>  (CP-issued credential, "ingest" scope)
- *   Dedup:   Server deduplicates by (tenantId, loopId). Duplicate events within a run are
- *            deduplicated by eventId. Duplicate sync → 202 { ok: true, replayedEvents: N,
- *            acceptedEvents: 0 } — treated as success.
- *   401:     Bad/missing/revoked token — permanent, do not retry.
- *   403:     Missing "ingest" scope — permanent, do not retry.
- *   400:     Invalid payload (missing loopId, empty events, bad schema) — permanent.
- *   409:     Backdated syncedAt (earlier than existing lastSyncedAt) — permanent, do not retry.
- *   429:     Rate limit — transient; respect Retry-After if present.
- *   5xx:     Server error — transient, retry.
+ * Hosted server contract:
+ *   Signed receipts: POST /register-receipt-key first with the locally persisted
+ *                    per-run key. Requires receipt_keys:write. Workspace identity
+ *                    comes from the bearer token; the secret is never queued.
+ *   Run upload:       POST /api/runs/sync with runs:write or telemetry:write.
+ *   Dedup:            Server upserts by (workspace_id, loop_id); re-sync updates
+ *                    the same logical row and returns HTTP 200.
+ *   401:              Bad/missing/revoked token — permanent, do not retry.
+ *   403:              Missing required scope — permanent, do not retry.
+ *   409/422:          Trust/payload conflict — permanent.
+ *   429:              Rate limit — transient; respect Retry-After if present.
+ *   5xx/network:      Transient, retry.
  *
  * Failure modes:
  *   Transient (timeout, offline, 429, 5xx) → item stays in queue for flushSyncQueue().
@@ -38,7 +39,7 @@
  *   FLUSH_MAX_ATTEMPTS is a lifetime cap enforced across separate invocations.
  */
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -89,6 +90,15 @@ function resolveQuarantineDir(queueDir: string): string {
 
 function resolveInflightDir(queueDir: string): string {
   return join(queueDir, ".inflight");
+}
+
+function sha256Hex(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function resolveReceiptIntegrityRootForSync(): string {
+  return process.env["MARTIN_INTEGRITY_KEY_DIR"]?.trim() ??
+    join(homedir(), ".martin", "receipt-integrity");
 }
 
 // ---------------------------------------------------------------------------
@@ -146,6 +156,14 @@ interface SyncQueueItem {
   queueId: string;
   loopId: string;
   payload: HostedRunSyncDraft;
+  /**
+   * Non-secret locator for the local per-run receipt key.
+   * The signing secret itself is NEVER persisted in the sync queue.
+   */
+  receiptKey?: {
+    keyId: string;
+    runsRootHash: string;
+  };
   enqueuedAt: string;           // ISO 8601 — chronological sort key
   attempts: number;             // persisted across flush invocations
   lastAttemptAt?: string;
@@ -769,11 +787,84 @@ async function enqueue(item: SyncQueueItem, queueDir: string): Promise<void> {
 /**
  * @internal Exported for targeted HTTP behavior tests only.
  */
+async function ensureHostedReceiptKey(
+  item: SyncQueueItem,
+  endpoint: string,
+  token: string
+): Promise<UploadResult> {
+  const locator = item.receiptKey;
+  const receiptKeyId = item.payload.coreReceipt?.integrity.keyId;
+  if (!locator || !receiptKeyId) return { ok: true };
+
+  // Fail closed if the queue locator and signed receipt disagree.
+  if (locator.keyId !== receiptKeyId) return { ok: false, permanent: true };
+
+  let signingSecret: string;
+  try {
+    signingSecret = (
+      await readFile(
+        join(resolveReceiptIntegrityRootForSync(), locator.runsRootHash, `${item.loopId}.key`),
+        "utf8"
+      )
+    ).trim();
+  } catch {
+    // The operator may restore the local key or MARTIN_INTEGRITY_KEY_DIR and retry.
+    return { ok: false, permanent: false };
+  }
+
+  if (sha256Hex(signingSecret).slice(0, 16) !== locator.keyId) {
+    return { ok: false, permanent: true };
+  }
+
+  const url = `${endpoint.replace(/\/$/, "")}/register-receipt-key`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ keyId: locator.keyId, signingSecret }),
+    });
+
+    if (res.ok) return { ok: true };
+    if (res.status === 429) {
+      return {
+        ok: false,
+        permanent: false,
+        retryAfterMs: parseRetryAfterMs(res.headers.get("Retry-After")),
+      };
+    }
+    if (res.status >= 500) return { ok: false, permanent: false };
+    // Authentication/scope can be repaired by replacing or upgrading the
+    // workspace token. Preserve the queued receipt rather than quarantining it.
+    if (res.status === 401 || res.status === 403) return { ok: false, permanent: false };
+    return { ok: false, permanent: true };
+  } catch {
+    return { ok: false, permanent: false };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * @internal Exported for targeted HTTP behavior tests only.
+ */
 export async function attemptUpload(
   item: SyncQueueItem,
   endpoint: string,
   token: string
 ): Promise<UploadResult> {
+  // A receipt-bound run establishes workspace trust for its local signing key
+  // immediately before the immutable signed payload is uploaded. The secret is
+  // sent only to the authenticated registration endpoint and never enters the
+  // sync payload or durable queue.
+  const registration = await ensureHostedReceiptKey(item, endpoint, token);
+  if (!registration.ok) return registration;
+
   const url = `${endpoint.replace(/\/$/, "")}/api/runs/sync`;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
@@ -789,7 +880,6 @@ export async function attemptUpload(
       body: JSON.stringify(item.payload),
     });
 
-    // 202: accepted (new or duplicate events). Duplicate sync → replayedEvents>0, acceptedEvents===0.
     if (res.ok) return { ok: true };
 
     if (res.status === 429) {
@@ -799,7 +889,7 @@ export async function attemptUpload(
 
     if (res.status >= 500) return { ok: false, permanent: false };
 
-    // 4xx (exc. 429): permanent — includes 409 (backdated syncedAt), 401, 403, 400
+    // 4xx (exc. 429): permanent — bad token/scope/payload or conflicting sync.
     return { ok: false, permanent: true };
   } catch {
     return { ok: false, permanent: false }; // network error or AbortError (timeout)
@@ -843,8 +933,15 @@ async function buildAndEnqueue(
   if (!endpoint || !token) return undefined; // opt-in — silent no-op
 
   const queueDir = resolveQueueDir();
+  const runsRoot = resolveRunsRootForReceipt(loop);
   const persistedReceipt = await readPersistedCoreReceiptBundle(loop);
   const payload = buildIngestBody(loop, opts.runtimeVersion, persistedReceipt);
+  const receiptKey = payload.coreReceipt
+    ? {
+        keyId: payload.coreReceipt.integrity.keyId,
+        runsRootHash: sha256Hex(runsRoot).slice(0, 16),
+      }
+    : undefined;
 
   const payloadBytes = Buffer.byteLength(JSON.stringify(payload), "utf8");
   if (payloadBytes > MAX_PAYLOAD_BYTES) {
@@ -858,6 +955,7 @@ async function buildAndEnqueue(
     queueId: randomUUID(),
     loopId: loop.loopId,
     payload,
+    ...(receiptKey ? { receiptKey } : {}),
     enqueuedAt: new Date().toISOString(),
     attempts: 0,
     payloadBytes,

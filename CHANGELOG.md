@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [0.6.8] - 2026-09-25
+
+### Added
+- Hosted sync now automatically establishes workspace trust for a signed run's existing local per-run receipt key before uploading the run.
+- Customer API tokens use the explicit `receipt_keys:write` capability for receipt-key registration.
+
+### Security / behavior
+- The signing secret is never persisted in the sync queue or included in the receipt upload payload.
+- Core verifies locally that the persisted signing secret matches the run's key ID before registration.
+- Hosted `401` and `403` trust failures remain retryable, preserving queued evidence while a user replaces or upgrades a token.
+- Mismatched key material fails closed.
+- Hosted receipt-key registration is bound to the workspace authenticated by the API token.
+
 ## [0.6.7] - 2026-09-24
 
 ### Fixed
