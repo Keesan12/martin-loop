@@ -839,6 +839,9 @@ async function ensureHostedReceiptKey(
       };
     }
     if (res.status >= 500) return { ok: false, permanent: false };
+    // Authentication/scope can be repaired by replacing or upgrading the
+    // workspace token. Preserve the queued receipt rather than quarantining it.
+    if (res.status === 401 || res.status === 403) return { ok: false, permanent: false };
     return { ok: false, permanent: true };
   } catch {
     return { ok: false, permanent: false };
