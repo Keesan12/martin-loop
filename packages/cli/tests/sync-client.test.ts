@@ -19,7 +19,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -49,7 +49,9 @@ interface TestItem {
     budget?: { spentUsd?: number; avoidedUsd?: number };
     events: unknown[];
     syncedAt?: string;
+    coreReceipt?: { integrity: { keyId: string } };
   };
+  receiptKey?: { keyId: string; runsRootHash: string };
   enqueuedAt: string;
   attempts: number;
   lastAttemptAt?: string;
@@ -177,6 +179,7 @@ beforeEach(async () => {
   process.env["MARTIN_SYNC_QUEUE_DIR"] = qDir();
   delete process.env["MARTIN_TELEMETRY_ENDPOINT"];
   delete process.env["MARTIN_API_TOKEN"];
+  delete process.env["MARTIN_INTEGRITY_KEY_DIR"];
 });
 
 afterEach(async () => {
@@ -185,6 +188,7 @@ afterEach(async () => {
   delete process.env["MARTIN_SYNC_QUEUE_DIR"];
   delete process.env["MARTIN_TELEMETRY_ENDPOINT"];
   delete process.env["MARTIN_API_TOKEN"];
+  delete process.env["MARTIN_INTEGRITY_KEY_DIR"];
   await rm(tempDir, { recursive: true, force: true });
 });
 
@@ -363,6 +367,95 @@ describe("attemptUpload — HTTP status codes", () => {
     await attemptUpload(minItem(), url, "tok");
     expect(receivedPath).toBe("/api/runs/sync");
     await close();
+  });
+
+  it("registers a receipt key before syncing a signed receipt without putting the secret in the sync payload", async () => {
+    const signingSecret = "a".repeat(64);
+    const keyId = createHash("sha256").update(signingSecret).digest("hex").slice(0, 16);
+    const runsRootHash = "0123456789abcdef";
+    const integrityRoot = join(tempDir, "integrity");
+    process.env["MARTIN_INTEGRITY_KEY_DIR"] = integrityRoot;
+    await mkdir(join(integrityRoot, runsRootHash), { recursive: true });
+
+    const item = makeItem() as TestItem;
+    item.receiptKey = { keyId, runsRootHash };
+    item.payload.coreReceipt = { integrity: { keyId } };
+    await writeFile(
+      join(integrityRoot, runsRootHash, `${item.loopId}.key`),
+      `${signingSecret}\n`,
+      "utf8"
+    );
+
+    const paths: string[] = [];
+    let registrationBody = "";
+    let syncBody = "";
+    const { url, close } = await startServer((req, res) => {
+      let raw = "";
+      req.setEncoding("utf8");
+      req.on("data", (chunk) => { raw += chunk; });
+      req.on("end", () => {
+        paths.push(req.url ?? "");
+        if (req.url === "/register-receipt-key") {
+          registrationBody = raw;
+          res.writeHead(200);
+          res.end(JSON.stringify({ ok: true, keyId, proofOnly: false }));
+          return;
+        }
+        syncBody = raw;
+        res.writeHead(200);
+        res.end(JSON.stringify({ ok: true }));
+      });
+    });
+
+    const result = await attemptUpload(item as unknown as Parameters<typeof attemptUpload>[0], url, "tok");
+    expect(result.ok).toBe(true);
+    expect(paths).toEqual(["/register-receipt-key", "/api/runs/sync"]);
+    expect(JSON.parse(registrationBody)).toEqual({ keyId, signingSecret });
+    expect(syncBody).not.toContain(signingSecret);
+    expect(syncBody).not.toContain("signingSecret");
+    await close();
+  });
+
+  it("does not upload when receipt-key registration is forbidden", async () => {
+    const signingSecret = "b".repeat(64);
+    const keyId = createHash("sha256").update(signingSecret).digest("hex").slice(0, 16);
+    const runsRootHash = "fedcba9876543210";
+    const integrityRoot = join(tempDir, "integrity");
+    process.env["MARTIN_INTEGRITY_KEY_DIR"] = integrityRoot;
+    await mkdir(join(integrityRoot, runsRootHash), { recursive: true });
+
+    const item = makeItem() as TestItem;
+    item.receiptKey = { keyId, runsRootHash };
+    item.payload.coreReceipt = { integrity: { keyId } };
+    await writeFile(join(integrityRoot, runsRootHash, `${item.loopId}.key`), signingSecret, "utf8");
+
+    const paths: string[] = [];
+    const { url, close } = await startServer((req, res) => {
+      paths.push(req.url ?? "");
+      res.writeHead(403);
+      res.end();
+    });
+
+    const result = await attemptUpload(item as unknown as Parameters<typeof attemptUpload>[0], url, "tok");
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.permanent).toBe(true);
+    expect(paths).toEqual(["/register-receipt-key"]);
+    await close();
+  });
+
+  it("keeps a signed item retryable when its local receipt key is temporarily unavailable", async () => {
+    const item = makeItem() as TestItem;
+    item.receiptKey = { keyId: "0123456789abcdef", runsRootHash: "0123456789abcdef" };
+    item.payload.coreReceipt = { integrity: { keyId: "0123456789abcdef" } };
+    process.env["MARTIN_INTEGRITY_KEY_DIR"] = join(tempDir, "missing-integrity-root");
+
+    const result = await attemptUpload(
+      item as unknown as Parameters<typeof attemptUpload>[0],
+      "http://127.0.0.1:1",
+      "tok"
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.permanent).toBe(false);
   });
 
   it("returns ok:true on 202 (CP canonical success)", async () => {
