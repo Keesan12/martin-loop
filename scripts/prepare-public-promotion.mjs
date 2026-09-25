@@ -166,14 +166,95 @@ const previousChanged = [...previousExpectedByPath.keys()].filter((path) => {
   const expected = previousExpectedByPath.get(path);
   return actual && (actual.sha256 !== expected.sha256 || actual.mode !== expected.mode);
 });
-if (previousMissing.length || previousExtra.length || previousChanged.length) {
-  throw new Error(`public main drifted from its own promotion manifest; missing=${previousMissing.join(",")} extra=${previousExtra.join(",")} changed=${previousChanged.join(",")}`);
-}
 
 const privateEntries = listSurfaceEntries(PRIVATE_ROOT, privateSha);
 const privateByPath = new Map(privateEntries.map((entry) => [entry.path, entry]));
 const oldDivergences = previousManifest.reviewedDivergences ?? [];
 const oldByPath = new Map(oldDivergences.map((entry) => [entry.path, entry]));
+const previousPrivateSha = previousManifest.privateMainShaValidated;
+
+if (previousMissing.length || previousExtra.length) {
+  throw new Error(`public main drifted from its own promotion manifest; missing=${previousMissing.join(",")} extra=${previousExtra.join(",")}`);
+}
+
+const reconciledPublicDrift = [];
+const reviewedPublicDriftResolutions = [];
+const unreconciledPublicDrift = [];
+for (const path of previousChanged) {
+  const expected = previousExpectedByPath.get(path);
+  const actual = publicBaseByPath.get(path);
+  if (!expected || !actual) {
+    unreconciledPublicDrift.push(`${path}:missing-coordinates`);
+    continue;
+  }
+  if (oldByPath.has(path)) {
+    unreconciledPublicDrift.push(`${path}:reviewed-divergence-changed`);
+    continue;
+  }
+  const currentPrivateEntry = privateByPath.get(path);
+  if (!currentPrivateEntry) {
+    unreconciledPublicDrift.push(`${path}:missing-current-private`);
+    continue;
+  }
+
+  let oldPrivate;
+  let currentPrivate;
+  let publicBase;
+  try {
+    oldPrivate = readBlob(PRIVATE_ROOT, previousPrivateSha, path);
+    currentPrivate = readBlob(PRIVATE_ROOT, privateSha, path);
+    publicBase = readBlob(PUBLIC_ROOT, publicBaseSha, path);
+  } catch {
+    unreconciledPublicDrift.push(`${path}:unreadable-history`);
+    continue;
+  }
+
+  if (!sameHash(oldPrivate, expected.sha256)) {
+    unreconciledPublicDrift.push(`${path}:manifest-private-base-mismatch`);
+    continue;
+  }
+
+  let merged;
+  try {
+    merged = mergeContent({ publicBase, oldPrivate, newPrivate: currentPrivate, path });
+  } catch {
+    const resolution = resolutionByPath.get(path);
+    if (!resolution) {
+      unreconciledPublicDrift.push(`${path}:merge-conflict`);
+      continue;
+    }
+    if (resolution.resolution !== "private") {
+      unreconciledPublicDrift.push(`${path}:post-release-drift-requires-private-resolution`);
+      continue;
+    }
+    usedResolutions.add(path);
+    reviewedPublicDriftResolutions.push({
+      path,
+      resolution: resolution.resolution,
+      reason: resolution.reason,
+      reviewedBy: resolution.reviewedBy,
+    });
+    reconciledPublicDrift.push(path);
+    continue;
+  }
+
+  if (!sameHash(merged, currentPrivateEntry.sha256)) {
+    unreconciledPublicDrift.push(`${path}:public-change-not-incorporated-into-private`);
+    continue;
+  }
+
+  if (actual.mode !== expected.mode && actual.mode !== currentPrivateEntry.mode) {
+    unreconciledPublicDrift.push(`${path}:public-mode-not-incorporated-into-private`);
+    continue;
+  }
+
+  reconciledPublicDrift.push(path);
+}
+
+if (unreconciledPublicDrift.length) {
+  throw new Error(`public main drifted from its own promotion manifest and current private authority does not safely incorporate it; unreconciled=${unreconciledPublicDrift.join(",")}`);
+}
+
 const privateOnly = new Set(oldDivergences.filter((entry) => entry.kind === "private-only").map((entry) => entry.path));
 const publicOnly = new Set(oldDivergences.filter((entry) => entry.kind === "public-only").map((entry) => entry.path));
 const contentDivergent = new Set(oldDivergences.filter((entry) => entry.kind === "content").map((entry) => entry.path));
@@ -303,6 +384,12 @@ try {
 }
 
 console.log(`[public-promotion-prepare] READY version=${version} private=${privateSha} publicBase=${publicBaseSha}`);
+console.log(`[public-promotion-prepare] RECONCILED_POST_RELEASE_PUBLIC_DRIFT=${reconciledPublicDrift.length}`);
+if (reconciledPublicDrift.length) console.log(reconciledPublicDrift.join("\n"));
+console.log(`[public-promotion-prepare] REVIEWED_POST_RELEASE_DRIFT_RESOLUTIONS=${reviewedPublicDriftResolutions.length}`);
+for (const item of reviewedPublicDriftResolutions) {
+  console.log(`${item.path}\t${item.resolution}\t${item.reviewedBy}\t${item.reason}`);
+}
 console.log(`[public-promotion-prepare] AUTO_MERGED_CONTENT_DIVERGENCES=${autoMerged.length}`);
 if (autoMerged.length) console.log(autoMerged.join("\n"));
 console.log(`[public-promotion-prepare] MANUALLY_RESOLVED_CONTENT_DIVERGENCES=${manuallyResolved.length}`);
