@@ -8,17 +8,18 @@
  *   flushSyncQueue   — may throw on unrecoverable filesystem errors (permission denied, etc.).
  *   syncQueueStatus  — may throw on unrecoverable filesystem errors.
  *
- * Verified server contract (POST /api/runs/sync):
- *   Auth:    Authorization: Bearer martin_cp_<token>  (CP-issued credential, "ingest" scope)
- *   Dedup:   Server deduplicates by (tenantId, loopId). Duplicate events within a run are
- *            deduplicated by eventId. Duplicate sync → 202 { ok: true, replayedEvents: N,
- *            acceptedEvents: 0 } — treated as success.
- *   401:     Bad/missing/revoked token — permanent, do not retry.
- *   403:     Missing "ingest" scope — permanent, do not retry.
- *   400:     Invalid payload (missing loopId, empty events, bad schema) — permanent.
- *   409:     Backdated syncedAt (earlier than existing lastSyncedAt) — permanent, do not retry.
- *   429:     Rate limit — transient; respect Retry-After if present.
- *   5xx:     Server error — transient, retry.
+ * Hosted server contract:
+ *   Signed receipts: POST /register-receipt-key first with the locally persisted
+ *                    per-run key. Requires receipt_keys:write. Workspace identity
+ *                    comes from the bearer token; the secret is never queued.
+ *   Run upload:       POST /api/runs/sync with runs:write or telemetry:write.
+ *   Dedup:            Server upserts by (workspace_id, loop_id); re-sync updates
+ *                    the same logical row and returns HTTP 200.
+ *   401:              Bad/missing/revoked token — permanent, do not retry.
+ *   403:              Missing required scope — permanent, do not retry.
+ *   409/422:          Trust/payload conflict — permanent.
+ *   429:              Rate limit — transient; respect Retry-After if present.
+ *   5xx/network:      Transient, retry.
  *
  * Failure modes:
  *   Transient (timeout, offline, 429, 5xx) → item stays in queue for flushSyncQueue().
