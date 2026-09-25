@@ -40,7 +40,7 @@ One system to control, verify and understand coding-agent work.
 
 **Receipts** — inspect the latest result with `martin dossier --latest` and validate stored integrity with `martin runs verify --latest`.
 
-**Hosted sync (optional)** — governed work is local-first. Configure `MARTIN_API_TOKEN` and `MARTIN_TELEMETRY_ENDPOINT`, then use `martin sync status` and `martin sync flush` to send preserved evidence to a dashboard later. See the [quickstart](./docs/getting-started/quickstart.md#optional-hosted-dashboard-sync).
+**Hosted sync (optional)** — governed work is local-first. Configure `MARTIN_API_TOKEN` and `MARTIN_TELEMETRY_ENDPOINT`, then use `martin sync status` and `martin sync flush` to send preserved evidence to a dashboard later. For signed receipts, the CLI re-reads the local per-run receipt key, establishes workspace trust through the authenticated hosted endpoint, and only then uploads the unchanged signed receipt; the signing secret is never written to the sync queue or receipt payload. See the [quickstart](./docs/getting-started/quickstart.md#optional-hosted-dashboard-sync).
 
 **MCP** — install `@martinloop/mcp@latest` in a supported host or generate host configuration with `martin mcp print-config`.
 
