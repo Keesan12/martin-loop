@@ -96,7 +96,7 @@ martin sync status
 martin sync flush
 ```
 
-If either value is missing, `martin sync flush` exits nonzero and leaves the queued evidence intact. After configuration is available, a later flush uploads the same run ID. Missing hosted configuration does not invalidate the local governed run, verifier evidence, or receipt.
+If either value is missing, `martin sync flush` exits nonzero and leaves the queued evidence intact. After configuration is available, a later flush uploads the same run ID. For a signed receipt, the CLI validates the matching local receipt key, registers it to the token-derived workspace, and only then uploads the unchanged signed evidence. The signing secret is read at flush time and is never persisted in the sync queue or receipt payload. Missing hosted configuration does not invalidate the local governed run, verifier evidence, or receipt.
 
 ## Repository Development
 
