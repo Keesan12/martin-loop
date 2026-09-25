@@ -138,8 +138,10 @@ Treat governed execution as local-first. Hosted sync is a separate, optional del
 
 - Inspect queued state with `martin sync status`.
 - Run `martin sync flush` only when both `MARTIN_API_TOKEN` and `MARTIN_TELEMETRY_ENDPOINT` are configured.
-- Never print, log, commit, or paste the token into instructions or evidence.
-- If configuration is missing, preserve the queue and report the nonzero flush result; do not reinterpret the governed run as failed.
+- Hosted tokens for signed-run sync need `runs:write`, `telemetry:write`, and `receipt_keys:write`; use `runs:read` for hosted readback.
+- For signed receipts, the CLI establishes receipt trust automatically before upload. Never ask the user to paste or relay the local signing secret; it must stay out of chat, logs, GitHub, and the sync queue.
+- Never print, log, commit, or paste the API token into instructions or evidence.
+- If configuration or receipt-key access is missing, preserve the queue and report the nonzero flush result; do not reinterpret the governed run as failed.
 - After credentials become available, flush the preserved evidence under the same run ID. Do not rerun the provider merely to populate a dashboard.
 
 ## Public entry points
