@@ -304,6 +304,10 @@ When a coding agent fails, "something went wrong" is not useful enough.
 
 MartinLoop classifies runtime failures into 13 canonical classes so a failed run can tell you what happened, what needs attention, and what future runs can learn from.
 
+<div align="center">
+  <img src="./docs/assets/failure-taxonomy-13-classes.png" alt="MartinLoop failure taxonomy showing 13 runtime failure classes and why classification matters" width="900">
+</div>
+
 See the canonical table: [Failure Taxonomy (13 Runtime Classes)](./docs/oss/FAILURE-TAXONOMY-13.md).
 
 ## What It Does
