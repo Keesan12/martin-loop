@@ -1,15 +1,17 @@
 # MartinLoop
 
-Your coding agent says it's done. MartinLoop makes it prove it.
+**Give coding agents more work. Watch them less. Ship more.**
 
-One system to control, verify and understand coding-agent work.
+MartinLoop lets you give coding agents real software jobs without babysitting every step.
+
+Your coding agent still writes the code. MartinLoop keeps the job focused, bounded, and accountable — with limits, stop conditions, verification, recovery, and a clear outcome when the run ends.
 
 <div align="center">
   <img src="./docs/assets/martinloop-logo.png" alt="MartinLoop" width="260">
 
-  **MartinLoop gives AI coding agents budgets, stop conditions, rollback rules, and receipts.**
+  **Trust your coding agents with real work.**
 
-  Built from thousands of agent runs where the problem was not intelligence -- it was uncontrolled execution.
+  Built from thousands of agent runs where the problem was not just intelligence — it was whether you could give the agent a real job and confidently walk away.
 
   **Get started:** `npx -y martin-loop@latest start`  
   **Try the demo:** `npx -y martin-loop@latest demo`
@@ -50,10 +52,13 @@ When `--model` is provided, MartinLoop passes it through unchanged. Without `--m
 
 ## For AI Agents
 
-MartinLoop is the execution-control system around coding agents. The coding agent still writes the code. MartinLoop governs the run and makes completion prove itself.
+MartinLoop is the system around the coding job.
 
-Use MartinLoop when a coding task needs one or more of these controls:
+The coding agent still writes the code. MartinLoop keeps the job, limits, verification, recovery, outcome, and history consistent around the work.
 
+Use MartinLoop when a coding task needs:
+
+- clear job and success criteria
 - preflight readiness before agent spend
 - hard budget and iteration limits
 - allowed or denied edit scope
@@ -62,7 +67,7 @@ Use MartinLoop when a coding task needs one or more of these controls:
 - recovery and rollback evidence
 - a finite completion decision
 - run receipts, dossiers, history, failure classification, and post-run analysis
-- one control layer across Codex, Claude Code, and other coding-agent environments
+- one consistent workflow across supported coding-agent runtimes
 
 Canonical lifecycle:
 
@@ -96,22 +101,34 @@ Teams should not need to stitch together a separate script or point tool for eve
 
 MartinLoop does not replace Git, GitHub, CI, dedicated security scanners, observability platforms, code review, or the coding agent itself. It gives those workflows one governed execution record to inspect.
 
+### Change the worker. Keep the job.
+
+MartinLoop is model-agnostic by design. The job, limits, verification, recovery, and outcome are separate from the worker underneath.
+
+Native coding-agent CLIs and OpenAI-compatible model runtimes use different execution paths, so MartinLoop only describes a worker as fully supported when that execution path has been publicly released and validated.
+
 ## Why MartinLoop
 
-AI coding agents are useful, but unbounded retry loops are expensive.
+AI coding agents can create more software than ever. The problem is trusting them with bigger jobs without turning yourself into their full-time manager.
 
-A task that looked like a small fix can become dozens of attempts, a blown token budget, and a diff nobody trusts. MartinLoop gives every run an explicit contract: objective, verifier, budget, scope, receipts, and a clear stop condition.
+Agents drift. They retry. They break unrelated things. They say "done" too early. And a run that was supposed to save time can create even more work to review.
 
-Use it when AI coding work needs to stay bounded, inspectable, and safe to review before it becomes expensive or destructive.
+MartinLoop keeps the job accountable outside the agent itself: clear boundaries, hard limits, configured checks, recovery information, and an explicit outcome.
+
+The goal is simple:
+
+**Give the agent more responsibility without giving it unlimited freedom.**
 
 ## Why Teams Adopt MartinLoop
 
-- It turns agent behavior into inspectable run receipts you can actually review.
-- It enforces hard stop conditions before runaway retries spend more money.
-- It adds rollback-aware rules so failed attempts do not silently leave unsafe changes behind.
-- It helps teams compare outcomes across agents under one governed flow.
+- **Less babysitting** — give agents larger jobs without watching every step.
+- **Clear boundaries** — keep scope, attempts, and spend inside the limits you set.
+- **Checks before "done"** — configured verification decides whether the evidence passed.
+- **Understand failures** — know why the run stopped instead of digging through logs.
+- **Recover cleanly** — preserve enough evidence to retry, repair, roll back, or hand off.
+- **One workflow across agents** — keep the job consistent as the worker underneath changes.
 
-Teams use MartinLoop when they need governed agent execution that can be reviewed and trusted.
+**More software. Less supervision.**
 
 ## 2-Minute Install Path
 
@@ -283,7 +300,9 @@ MartinLoop keeps the useful part of the loop, then adds brakes:
 
 ## Failure Taxonomy (13 Runtime Classes)
 
-Public governed runs use one canonical taxonomy: the 13 runtime `FailureClass` values from `@martin/contracts`.
+When a coding agent fails, "something went wrong" is not useful enough.
+
+MartinLoop classifies runtime failures into 13 canonical classes so a failed run can tell you what happened, what needs attention, and what future runs can learn from.
 
 See the canonical table: [Failure Taxonomy (13 Runtime Classes)](./docs/oss/FAILURE-TAXONOMY-13.md).
 
@@ -544,7 +563,7 @@ git push -u origin feat/your-feature
 ```
 
 <p align="center">
-  <strong>Star this repo</strong> if you think AI coding needs budgets, brakes, and receipts.
+  <strong>Star this repo</strong> if you want to give coding agents more real work without babysitting every step.
 </p>
 <p align="center">
   <a href="https://martinloop.com">martinloop.com</a> · <a href="mailto:support@martinloop.com">support@martinloop.com</a>
