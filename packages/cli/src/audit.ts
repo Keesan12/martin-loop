@@ -395,7 +395,7 @@ function renderHuman(summary: Summary, top: Score[]): string {
 }
 
 function writeShare(summary: Summary): void {
-  const esc = (value: unknown): string => String(value).replace(/[&<>]/gu, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[char] ?? char);
+  const esc = (value: unknown): string => String(value).replace(/[&<>]/gu, (char) => char === "&" ? "&amp;" : char === "<" ? "&lt;" : "&gt;");
   const svg =
     '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">' +
     '<rect width="1200" height="630" fill="#17132A"/><rect width="12" height="630" fill="#6552D0"/>' +
