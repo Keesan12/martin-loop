@@ -41,7 +41,7 @@ async function fixtureRoot(): Promise<string> {
     const id = "t" + index;
     assistant([{ type: "tool_use", id, name: "Bash", input: { command: "npm test" } }]);
     result(id, outcomes[index] ?? false);
-    if (index < outcomes.length - 1) assistant([{ type: "tool_use", id: "e" + (index + 1), name: "Edit", input: {} }]);
+    assistant([{ type: "tool_use", id: "e" + (index + 1), name: "Edit", input: {} }]);
   }
   await writeFile(join(project, "s1.jsonl"), lines.join("\n") + "\n", "utf8");
   return scratch;
