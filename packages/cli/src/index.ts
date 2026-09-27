@@ -1873,7 +1873,7 @@ async function executeRunCommand(
 
   const costProvenance = readCostProvenance(result.loop);
   let verifiedHandoffHuman: string | undefined;
-  if (persistenceFinalized && outputMode === "human" && resolvedRequest.liveMode !== "proof") {
+  if (persistenceFinalized && outputMode === "human" && request.liveMode !== "proof") {
     try {
       const persistedDetail = await loadPersistedLoop({
         loopId: result.loop.loopId,
@@ -1913,7 +1913,7 @@ async function executeRunCommand(
   const isInteractiveTty = outputMode === "human" && process.stdout.isTTY === true && process.stdin.isTTY === true;
   const runCompleted = result.loop.status === "completed" && result.loop.lifecycleState === "completed";
   const runVerified = buildVerificationSummary(result.loop).status === "passed";
-  const isProofLane = resolvedRequest.liveMode === "proof";
+  const isProofLane = request.liveMode === "proof";
   const proofOutcome = isProofLane
     ? runCompleted && runVerified
       ? "PROOF_PASSED" as const
