@@ -31,6 +31,7 @@ import {
 // ---------------------------------------------------------------------------
 
 const NOOP_VERIFIER = process.platform === "win32" ? "cmd /c exit 0" : "true";
+const FAILING_VERIFIER = process.platform === "win32" ? "cmd /c exit 1" : "false";
 const codexAvailable = resolveCliCommandAvailability("codex").available;
 const codexGovernedRunOptIn = process.env["MARTIN_TEST_ENABLE_LIVE_CODEX"] === "1";
 const codexLaunchReady = codexGovernedRunOptIn ? detectCodexLaunchReadiness() : false;
@@ -278,11 +279,62 @@ describe("--proof mode", () => {
       ])
     );
 
-    expect(result.exitCode).toBe(7);
+    expect(result.exitCode).toBe(0);
     const payload = JSON.parse(result.stdout);
     expect(payload.command).toBe("run");
+    expect(payload.proofOutcome).toBe("PROOF_PASSED");
     expect(payload.loop.loopId).toMatch(/^loop_/u);
     expect(typeof payload.loop.attempts).toBe("object");
+    expect(payload.loop.metadata.executionMode).toBe("verification_only");
+    expect(payload.loop.metadata.governanceClaimEligible).toBe("false");
+  });
+
+
+  it("returns proof failure when the verifier fails", async () => {
+    const result = await withRunsRoot(() =>
+      executeCli([
+        "--json",
+        "run",
+        "--objective",
+        "Check a failing verifier",
+        "--proof",
+        "--verify",
+        FAILING_VERIFIER,
+        "--max-iterations",
+        "1",
+        "--budget-usd",
+        "5"
+      ])
+    );
+
+    expect(result.exitCode).toBe(7);
+    const payload = JSON.parse(result.stdout);
+    expect(payload.proofOutcome).toBe("PROOF_FAILED");
+    expect(payload.loop.metadata.executionMode).toBe("verification_only");
+    expect(payload.loop.metadata.governanceClaimEligible).toBe("false");
+  });
+
+  it("renders a passing proof as proof evidence, not governed VERIFIED", async () => {
+    const result = await withRunsRoot(() =>
+      executeCli([
+        "run",
+        "--objective",
+        "Check proof-mode human output",
+        "--proof",
+        "--verify",
+        NOOP_VERIFIER,
+        "--max-iterations",
+        "1",
+        "--budget-usd",
+        "5"
+      ])
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("proof passed");
+    expect(result.stdout).not.toContain("run failed");
+    expect(result.stdout).not.toContain("MARTINLOOP VERIFIED HANDOFF");
+    expect(result.stdout).toContain("no governed VERIFIED claim");
   });
 
   it("returns a valid verification-only loop record structure", async () => {
