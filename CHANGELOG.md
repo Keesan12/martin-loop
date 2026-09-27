@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [0.6.9] - 2026-10-01
+
+### Added
+- Added `martin audit`, a local-first Claude Code history audit that estimates API-equivalent agent spend inside fix-and-retry loops, verifier failure counts, longest retry chains, stuck loops, sessions ending red, and edited sessions with no verifier run.
+- Added `martin audit --share` for a screenshot-ready SVG and Markdown summary, plus `--offline` for zero-network analysis.
+
+### Fixed
+- Verification-only `--proof` runs now return success when the configured verifier passes and verification failure when it fails, instead of inheriting the governed `NEEDS_REVIEW` exit solely because proof mode is not governance-claim eligible.
+- Proof-mode output now says `proof passed` or `proof failed` and does not render a governed `VERIFIED` handoff.
+
+### Trust boundary
+- Proof mode remains `verification_only` with `governanceClaimEligible=false`; a passing proof is verifier evidence, not a governed `VERIFIED` claim.
+- Existing safety and policy blocks retain precedence over proof success.
+
 ## [0.6.8] - 2026-09-25
 
 ### Added
