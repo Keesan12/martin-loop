@@ -56,7 +56,7 @@ describe("CLI V2 proof-surface wiring", () => {
     expect(result.stdout).not.toContain("GOVERNED RUN PLAN");
   });
 
-  it("renders the canonical Verified Handoff and preserves the governed exit code", async () => {
+  it("renders proof-specific success without a governed Verified Handoff", async () => {
     const result = await executeCli([
       "run",
       "--objective",
@@ -72,10 +72,11 @@ describe("CLI V2 proof-surface wiring", () => {
       runsRoot
     ]);
 
-    expect(result.exitCode).toBe(7);
-    expect(result.stdout).toContain("MARTINLOOP VERIFIED HANDOFF");
-    expect(result.stdout).toContain("NEEDS REVIEW");
-    expect(result.stdout).toContain("Receipt Integrity");
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("proof passed");
+    expect(result.stdout).toContain("no governed VERIFIED claim");
+    expect(result.stdout).not.toContain("MARTINLOOP VERIFIED HANDOFF");
+    expect(result.stdout).not.toContain("run failed");
   });
 
   it("keeps quiet governed output presentation-free", async () => {
@@ -95,7 +96,7 @@ describe("CLI V2 proof-surface wiring", () => {
       runsRoot
     ]);
 
-    expect(result.exitCode).toBe(7);
+    expect(result.exitCode).toBe(0);
     expect(result.stdout).toMatch(/^loop_/u);
     expect(result.stdout).not.toContain("VERIFIED HANDOFF");
     expect(result.stdout).not.toContain("\u001b[");
