@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+RUNS_DIR="${RUNNER_TEMP:-/tmp}/martin-runs"
+mkdir -p "$RUNS_DIR"
+PKG="martin-loop@${ML_VERSION:-0.6.9}"
+OUT="$RUNS_DIR/run.json"
+
+args=(run "$ML_OBJECTIVE" --verify "$ML_VERIFY" --runs-dir "$RUNS_DIR" --json)
+if [ "${ML_MODE:-proof}" = "proof" ]; then
+  args+=(--proof)
+else
+  args+=(--budget-usd "$ML_BUDGET" --max-iterations "$ML_ITERS" --engine "$ML_ENGINE")
+  [ -n "${ML_MODEL:-}" ] && args+=(--model "$ML_MODEL")
+  while IFS= read -r g; do [ -n "$g" ] && args+=(--allow-path "$g"); done <<< "${ML_ALLOW:-}"
+  while IFS= read -r g; do [ -n "$g" ] && args+=(--deny-path "$g"); done <<< "${ML_DENY:-}"
+fi
+
+echo "::group::martin-loop ${args[*]}"
+npx -y "$PKG" "${args[@]}" > "$OUT"
+CODE=$?
+echo "::endgroup::"
+
+read -r STATUS REASON LOOP COST < <(node -e '
+  const fs=require("fs");
+  let d={}; try{ d=JSON.parse(fs.readFileSync(process.argv[1],"utf8")) }catch(e){}
+  const rc=(d.decision&&(d.decision.reasonCode||d.decision.lifecycleState))||"unknown";
+  const loop=(d.loop&&d.loop.loopId)||"none";
+  const cost=((d.loop&&d.loop.cost&&d.loop.cost.actualUsd)||0).toFixed(2);
+  const mode=process.env.ML_MODE||"proof";
+  const proofOutcome=d.proofOutcome;
+  const stopped=["budget_exit","budget_cap","turn_cap","policy_blocked","stuck_exit","human_interrupt","external_event","wall_clock"];
+  let status;
+  if(mode==="proof") status = proofOutcome==="PROOF_PASSED" ? "proof_passed" : "proof_failed";
+  else status = rc==="goal_met" ? "verified" : (stopped.includes(rc) ? "stopped" : "needs_review");
+  console.log(status, rc, loop, cost);
+' "$OUT")
+
+RECEIPT_DIR=""
+if [ "$LOOP" != "none" ]; then
+  npx -y "$PKG" share --loop-id "$LOOP" --runs-dir "$RUNS_DIR" --json > "$RUNS_DIR/share.json" 2>/dev/null || true
+  RECEIPT_DIR=$(node -e 'try{console.log(require(process.argv[1]).outputDir||"")}catch(e){console.log("")}' "$RUNS_DIR/share.json")
+fi
+
+{
+  echo "status=$STATUS"
+  echo "reason-code=$REASON"
+  echo "loop-id=$LOOP"
+  echo "cost-usd=$COST"
+  echo "exit-code=$CODE"
+  echo "receipt-dir=$RECEIPT_DIR"
+} >> "$GITHUB_OUTPUT"
+
+ICON="✅"
+[ "$STATUS" = "proof_failed" ] && ICON="❌"
+[ "$STATUS" = "stopped" ] && ICON="⛔"
+[ "$STATUS" = "needs_review" ] && ICON="⚠️"
+{
+  echo "## $ICON MartinLoop: `${STATUS^^}`"
+  echo ""
+  echo "| Field | Value |"
+  echo "| --- | --- |"
+  echo "| Mode | `${ML_MODE}` |"
+  echo "| Objective | ${ML_OBJECTIVE} |"
+  echo "| Verifier | `${ML_VERIFY}` |"
+  echo "| Reason | `${REASON}` |"
+  echo "| Spend | \\$${COST} |"
+  echo "| Loop | `${LOOP}` |"
+  echo ""
+  if [ -n "$RECEIPT_DIR" ] && [ -f "$RECEIPT_DIR/run-receipt.md" ]; then
+    echo "<details><summary>Run receipt</summary>"
+    echo ""
+    cat "$RECEIPT_DIR/run-receipt.md"
+    echo ""
+    echo "</details>"
+  fi
+  echo ""
+  echo "<sub>Governed by [MartinLoop](https://github.com/Keesan12/martin-loop)</sub>"
+} >> "$GITHUB_STEP_SUMMARY"
+
+exit 0
