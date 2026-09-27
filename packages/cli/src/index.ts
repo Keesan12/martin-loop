@@ -470,6 +470,16 @@ type SyncCommand = {
   sub: "flush" | "status";
 };
 
+type AuditCommand = {
+  command: "audit";
+  days?: number;
+  project?: string;
+  directory?: string;
+  share: boolean;
+  offline: boolean;
+  help?: boolean;
+};
+
 type Under3BenchFixture = {
   suiteId: string;
   label: string;
@@ -557,6 +567,7 @@ export type ParsedCliArguments =
   | CancelCommand
   | SignalCommand
   | SyncCommand
+  | AuditCommand
   | {
       command: "telemetry";
       action: "status" | "explain" | "on" | "off";
@@ -625,6 +636,10 @@ export async function executeCli(args: string[]): Promise<{
         };
       case "bench":
         return await executeBenchCommand(parsed.suiteId, outputMode);
+      case "audit": {
+        const { executeAuditCommand } = await import("./audit.js");
+        return await executeAuditCommand(parsed, outputMode);
+      }
       case "demo": {
         const targetDirectory = await createDemoWorkspace({
           targetDirectory: parsed.directory,
@@ -801,6 +816,19 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
     return {
       command: "bench",
       suiteId: readOption(rest, "--suite") ?? "ralphy-smoke"
+    };
+  }
+
+  if (command === "audit") {
+    const days = readOption(rest, "--days");
+    return {
+      command: "audit",
+      ...(days !== undefined ? { days: Number(days) } : {}),
+      ...(readOption(rest, "--project") ? { project: readOption(rest, "--project") } : {}),
+      ...(readOption(rest, "--dir") ? { directory: readOption(rest, "--dir") } : {}),
+      share: hasFlag(rest, "--share"),
+      offline: hasFlag(rest, "--offline"),
+      help: hasFlag(rest, "--help") || hasFlag(rest, "-h")
     };
   }
 
@@ -1268,6 +1296,7 @@ export function renderCliHelp(): string {
     "  martin badge --governed",
     "",
     "Operator commands:",
+    "  audit        Measure fix-and-retry loop tax in local Claude Code history.",
     "  start        Guided first-run summary: repo detection, verifier suggestion, provider readiness, and safe next steps.",
     "  enable       Write repo-local Martin defaults to martin.config.yaml (engine, verifier, budget).",
     "  env          Print compact environment truth for provider/auth/verifier/readiness.",
@@ -1844,7 +1873,7 @@ async function executeRunCommand(
 
   const costProvenance = readCostProvenance(result.loop);
   let verifiedHandoffHuman: string | undefined;
-  if (persistenceFinalized && outputMode === "human") {
+  if (persistenceFinalized && outputMode === "human" && resolvedRequest.liveMode !== "proof") {
     try {
       const persistedDetail = await loadPersistedLoop({
         loopId: result.loop.loopId,
@@ -1884,6 +1913,12 @@ async function executeRunCommand(
   const isInteractiveTty = outputMode === "human" && process.stdout.isTTY === true && process.stdin.isTTY === true;
   const runCompleted = result.loop.status === "completed" && result.loop.lifecycleState === "completed";
   const runVerified = buildVerificationSummary(result.loop).status === "passed";
+  const isProofLane = resolvedRequest.liveMode === "proof";
+  const proofOutcome = isProofLane
+    ? runCompleted && runVerified
+      ? "PROOF_PASSED" as const
+      : "PROOF_FAILED" as const
+    : undefined;
   const governanceClaimEligible = deriveLoopExecutionBoundary(
     result.loop
   ).governanceClaimEligible;
@@ -1924,20 +1959,32 @@ async function executeRunCommand(
     (result.decision.reasonCode === "dependency_approval_required" ||
       result.decision.reasonCode === "migration_approval_required" ||
       result.decision.reasonCode === "config_change_approval_required");
+  const isPolicyBlocked = result.decision.failureClass === "safety_leash_blocked";
 
   const runOutcome: RunOutcome =
-    result.loop.status === "completed" &&
-    result.loop.lifecycleState === "completed" &&
-    governanceClaimEligible
-      ? "success"
-      : result.loop.lifecycleState === "human_escalation" &&
-          verificationPassed &&
+    isProofLane
+      ? proofOutcome === "PROOF_PASSED"
+        ? "proof_passed"
+        : "proof_failed"
+      : result.loop.status === "completed" &&
+          result.loop.lifecycleState === "completed" &&
           governanceClaimEligible
-        ? "awaiting_signoff"
-        : isApprovalBlocked
-          ? "approval_blocked"
-          : "failure";
-  const runSucceeded = runOutcome === "success" || runOutcome === "awaiting_signoff";
+        ? "success"
+        : result.loop.lifecycleState === "human_escalation" &&
+            verificationPassed &&
+            governanceClaimEligible
+          ? "awaiting_signoff"
+          : isApprovalBlocked
+            ? "approval_blocked"
+            : "failure";
+  const runSucceeded = !isProofLane && (runOutcome === "success" || runOutcome === "awaiting_signoff");
+  const runExitCode = isApprovalBlocked
+    ? 2
+    : isPolicyBlocked
+      ? 8
+      : isProofLane
+        ? proofOutcome === "PROOF_PASSED" ? 0 : 7
+        : exitCodeForGovernedOutcome(governedOutcome);
   const runHeader = renderRunHeader(
     currentRank,
     runOutcome,
@@ -1997,11 +2044,11 @@ async function executeRunCommand(
 
     const preExperience = selectPostRunExperience({
       run: {
-        completed: runCompleted,
-        verified: runVerified,
+        completed: runCompleted && !isProofLane,
+        verified: runVerified && !isProofLane,
         receiptFinalized: persistenceFinalized,
         persistenceFinalized,
-        exitCode: isApprovalBlocked ? 2 : exitCodeForGovernedOutcome(governedOutcome),
+        exitCode: runExitCode,
       },
       environment: {
         interactiveTty: isInteractiveTty,
@@ -2095,6 +2142,7 @@ async function executeRunCommand(
         liveMode: cliEnvironment.liveMode
       },
       receiptScope,
+      ...(proofOutcome ? { proofOutcome } : {}),
       ...(successCallToAction ? { successCallToAction } : {})
     },
     human: [
@@ -2119,7 +2167,7 @@ async function executeRunCommand(
     ],
     quiet: result.loop.loopId,
     warnings,
-    exitCode: isApprovalBlocked ? 2 : exitCodeForGovernedOutcome(governedOutcome)
+    exitCode: runExitCode
   });
 
   await renderMilestonePrompt(
@@ -2148,9 +2196,8 @@ async function executeRunCommand(
   // Settle the delivery fetch (already done or within 3s timeout) and
   // surface a notification if one is due. Never throws — primary run is unaffected.
   const updateNotification = await resolveDeliveryNotification(deliveryFetchPromise, rootPackageVersion);
-  // Approval-blocked runs exit with code 2 (distinct from 1=failure, 0=success)
-  // so callers and CI can detect the approval requirement without parsing output.
-  const finalOutput = isApprovalBlocked ? { ...output, exitCode: 2 } : output;
+  // runExitCode already preserves approval/policy/proof/governed semantics.
+  const finalOutput = output;
   if (updateNotification !== null) {
     return appendDeliveryNotification(finalOutput, updateNotification, outputMode);
   }
