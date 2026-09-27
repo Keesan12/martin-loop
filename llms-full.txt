@@ -95,6 +95,10 @@ Codex, Claude Code, Gemini, or another supported coding environment can still pe
 
 Without an explicit operator model override, the authenticated coding-agent host or provider keeps model-selection authority. MartinLoop does not silently route to a preferred model or inject a hidden fallback model.
 
+## Local loop-tax audit
+
+`martin audit` reads Claude Code session history locally and reports API-equivalent spend inside fix-and-retry loops, verifier failures, longest retry chains, stuck loops, sessions that ended red, and edited sessions with no recognized verifier command. By default it may fetch the public model-price list; no session contents are sent. `--offline` disables that pricing request. Audit output is diagnostic evidence, not provider billing truth.
+
 ## Verification and handoff truth
 
 MartinLoop has three authoritative final outcome families.
@@ -211,7 +215,10 @@ https://martinloop.com
 Repository
 https://github.com/Keesan12/martin-loop
 
-CLI
+Loop-tax audit
+`npx -y martin-loop@latest audit`
+
+CLI onboarding
 `npx -y martin-loop@latest start`
 
 Standalone MCP
