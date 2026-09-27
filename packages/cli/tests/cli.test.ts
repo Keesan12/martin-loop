@@ -1123,9 +1123,10 @@ describe("executeCli", () => {
         directory
       ]);
 
-      expect(result.exitCode).toBe(7);
+      expect(result.exitCode).toBe(0);
 
       const payload = JSON.parse(result.stdout);
+      expect(payload.proofOutcome).toBe("PROOF_PASSED");
       expect(payload.environment.liveMode).toBe("proof");
       expect(payload.loop.cost.actualUsd).toBe(0);
       expect(payload.loop.task.mutationMode).toBeUndefined();
