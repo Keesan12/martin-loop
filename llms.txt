@@ -49,7 +49,10 @@ MartinLoop does not choose a hidden model. Without an explicit operator override
 
 ## Primary public entry points
 
-Root package
+Measure coding-agent loop tax
+`npx -y martin-loop@latest audit`
+
+Start a governed workflow
 `npx -y martin-loop@latest start`
 
 Standalone MCP
@@ -70,4 +73,4 @@ https://martinloop.com
 - docs/reference/cli.md
 - docs/getting-started/mcp.md
 - docs/oss/FAILURE-TAXONOMY-13.md
-- docs/release/OSS-0.5.3-RELEASE-NOTES.md
+- docs/release/OSS-0.6.9-RELEASE-NOTES.md
