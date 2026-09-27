@@ -273,7 +273,7 @@ export function buildRankHeader(rank: RankName, termWidth: number): string {
   return left + " ".repeat(pad) + right;
 }
 
-export type RunOutcome = "success" | "awaiting_signoff" | "approval_blocked" | "failure";
+export type RunOutcome = "success" | "awaiting_signoff" | "approval_blocked" | "proof_passed" | "proof_failed" | "failure";
 
 export function renderRunHeader(
   rank: RankName,
@@ -295,15 +295,20 @@ export function renderRunHeader(
   const checkMark =
     outcome === "success" ? "✓ verified" :
     outcome === "awaiting_signoff" ? "✓ verified — awaiting sign-off" :
+    outcome === "proof_passed" ? "✓ proof passed" :
+    outcome === "proof_failed" ? "✗ proof failed" :
     outcome === "approval_blocked" ? "✗ approval required" :
     "✗ run failed";
   const attemptStr = `${attempts} attempt${attempts === 1 ? "" : "s"}`;
 
-  if (outcome === "success" || outcome === "awaiting_signoff") {
-    lines.push(`  ${checkMark} · ${attemptStr} · $${actualUsd.toFixed(2)} spent`);
+  if (outcome === "success" || outcome === "awaiting_signoff" || outcome === "proof_passed") {
+    lines.push(`  ${checkMark} · ${attemptStr} · ${actualUsd.toFixed(2)} spent`);
 
     if (outcome === "awaiting_signoff") {
       lines.push("    verification passed; a receipt was recorded. review and accept when ready.");
+    }
+    if (outcome === "proof_passed") {
+      lines.push("    verifier passed; verification-only evidence was recorded. no governed VERIFIED claim.");
     }
 
     if (savingsConfidence === "confirmed" && savedThisRun > 0) {
@@ -320,11 +325,19 @@ export function renderRunHeader(
     // Tier 3: no dollar figure, loop count shown at end via run output
   } else {
     lines.push(`  ${checkMark} · ${attemptStr}`);
-    lines.push(
-      receiptPersisted
-        ? "    failure evidence and a signed receipt were saved for inspection."
-        : "    run evidence could not be persisted; no receipt is available."
-    );
+    if (outcome === "proof_failed") {
+      lines.push(
+        receiptPersisted
+          ? "    verifier failed; verification-only evidence was saved for inspection."
+          : "    verifier failed; run evidence could not be persisted."
+      );
+    } else {
+      lines.push(
+        receiptPersisted
+          ? "    failure evidence and a signed receipt were saved for inspection."
+          : "    run evidence could not be persisted; no receipt is available."
+      );
+    }
   }
 
   lines.push(SEPARATOR);
