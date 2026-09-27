@@ -1,0 +1,115 @@
+name: "MartinLoop — Verified Handoff for AI coding agents"
+description: "Budget caps, verifier gates and signed run receipts for AI coding agents in CI."
+author: "MartinLoop"
+branding:
+  icon: "shield"
+  color: "purple"
+
+inputs:
+  mode:
+    description: "proof = keyless verifier-only receipt. run = governed agent run."
+    required: false
+    default: "proof"
+  objective:
+    description: "What the run must achieve. In proof mode this labels the receipt."
+    required: false
+    default: "Prove this change passes its verifier"
+  verify:
+    description: "Verifier command (for example: npm test)."
+    required: true
+  budget-usd:
+    description: "Hard spend ceiling in USD (run mode)."
+    required: false
+    default: "2"
+  max-iterations:
+    description: "Maximum attempts (run mode)."
+    required: false
+    default: "3"
+  engine:
+    description: "auto, claude, codex, gemini or openai (run mode)."
+    required: false
+    default: "auto"
+  model:
+    description: "Optional model override."
+    required: false
+    default: ""
+  allow-path:
+    description: "Newline-separated globs the agent may write to (run mode)."
+    required: false
+    default: ""
+  deny-path:
+    description: "Newline-separated globs the agent may not touch (run mode)."
+    required: false
+    default: ""
+  version:
+    description: "martin-loop version to use."
+    required: false
+    default: "0.6.9"
+  working-directory:
+    description: "Repo root for the run."
+    required: false
+    default: "."
+  upload-receipt:
+    description: "Upload the share bundle as a workflow artifact."
+    required: false
+    default: "true"
+  fail-on-unverified:
+    description: "Fail unless governed execution is verified or proof mode passes its verifier."
+    required: false
+    default: "true"
+
+outputs:
+  status:
+    description: "proof_passed | proof_failed | verified | stopped | needs_review"
+    value: ${{ steps.martin.outputs.status }}
+  reason-code:
+    description: "MartinLoop decision reason code."
+    value: ${{ steps.martin.outputs.reason-code }}
+  loop-id:
+    description: "Loop ID emitted by MartinLoop."
+    value: ${{ steps.martin.outputs.loop-id }}
+  cost-usd:
+    description: "Actual spend in USD."
+    value: ${{ steps.martin.outputs.cost-usd }}
+  exit-code:
+    description: "Raw martin-loop exit code."
+    value: ${{ steps.martin.outputs.exit-code }}
+  receipt-dir:
+    description: "Directory containing the share bundle."
+    value: ${{ steps.martin.outputs.receipt-dir }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Run MartinLoop
+      id: martin
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        ML_MODE: ${{ inputs.mode }}
+        ML_OBJECTIVE: ${{ inputs.objective }}
+        ML_VERIFY: ${{ inputs.verify }}
+        ML_BUDGET: ${{ inputs.budget-usd }}
+        ML_ITERS: ${{ inputs.max-iterations }}
+        ML_ENGINE: ${{ inputs.engine }}
+        ML_MODEL: ${{ inputs.model }}
+        ML_ALLOW: ${{ inputs.allow-path }}
+        ML_DENY: ${{ inputs.deny-path }}
+        ML_VERSION: ${{ inputs.version }}
+        MARTIN_TELEMETRY_DISABLED: "1"
+      run: bash "${{ github.action_path }}/run.sh"
+
+    - name: Upload receipt
+      if: always() && inputs.upload-receipt == 'true' && steps.martin.outputs.receipt-dir != ''
+      uses: actions/upload-artifact@v4
+      with:
+        name: martinloop-receipt-${{ steps.martin.outputs.loop-id }}
+        path: ${{ steps.martin.outputs.receipt-dir }}
+        if-no-files-found: ignore
+
+    - name: Enforce MartinLoop result
+      if: inputs.fail-on-unverified == 'true' && steps.martin.outputs.status != 'verified' && steps.martin.outputs.status != 'proof_passed'
+      shell: bash
+      run: |
+        echo "::error title=MartinLoop::Run closed as '${{ steps.martin.outputs.status }}' (${{ steps.martin.outputs.reason-code }})."
+        exit 1
