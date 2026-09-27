@@ -13,8 +13,8 @@ Your coding agent still writes the code. MartinLoop keeps the job focused, bound
 
   Built from thousands of agent runs where the problem was not just intelligence — it was whether you could give the agent a real job and confidently walk away.
 
-  **Get started:** `npx -y martin-loop@latest start`  
-  **Try the demo:** `npx -y martin-loop@latest demo`
+  **Measure your loop tax:** `npx -y martin-loop@latest audit`  
+  **Start a governed workflow:** `npx -y martin-loop@latest start`
 
   [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square&logo=apache)](./LICENSE)
   [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&logo=typescript&logoColor=white)](./tsconfig.base.json)
@@ -32,7 +32,9 @@ Your coding agent still writes the code. MartinLoop keeps the job focused, bound
 
 ## Start Here
 
-**Install** — run `npx -y martin-loop@latest start`, or install it globally with `npm install -g martin-loop@latest`.
+**Audit first** — run `npx -y martin-loop@latest audit` to see how much API-equivalent Claude Code spend went into fix-and-retry loops. Add `--offline` for zero network access or `--share` for a shareable summary.
+
+**Install / onboard** — run `npx -y martin-loop@latest start`, or install it globally with `npm install -g martin-loop@latest`.
 
 **Governed run** — define an objective, verifier, budget, and iteration cap with `martin run`.
 
