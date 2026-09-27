@@ -388,8 +388,9 @@ describe("--engine flag", () => {
       ])
     );
 
-    expect(result.exitCode).toBe(7);
+    expect(result.exitCode).toBe(0);
     const payload = JSON.parse(result.stdout);
+    expect(payload.proofOutcome).toBe("PROOF_PASSED");
     // The adapter id should contain "claude" (it will be in the loop attempt if any ran)
     expect(payload.loop.loopId).toMatch(/^loop_/u);
   });
@@ -947,7 +948,8 @@ describe("--cwd flag", () => {
         ])
       );
 
-      expect(result.exitCode).toBe(7);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("proof passed");
     });
   });
 });
