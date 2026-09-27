@@ -130,6 +130,22 @@ The goal is simple:
 
 **More software. Less supervision.**
 
+## See Your Loop Tax
+
+Before changing your workflow, measure it:
+
+```sh
+npx -y martin-loop@0.6.9 audit
+```
+
+MartinLoop reads Claude Code session history locally and reports how much API-equivalent agent spend happened inside fix-and-retry loops, how often verifier commands failed, the longest retry chain, and sessions that ended red. Session contents stay local. Use `--offline` to disable even the public pricing lookup, and `--share` to create a screenshot-ready SVG plus Markdown summary.
+
+Then put limits around the next run:
+
+```sh
+npx -y martin-loop@0.6.9 run "<task>" --verify "npm test" --budget-usd 2 --max-iterations 3
+```
+
 ## 2-Minute Install Path
 
 ```sh
@@ -183,6 +199,8 @@ Release notes for MartinLoop 0.6.6: [MartinLoop 0.6.6](./docs/release/OSS-0.6.6-
 Release notes for MartinLoop 0.6.7: [MartinLoop 0.6.7](./docs/release/OSS-0.6.7-RELEASE-NOTES.md).
 
 Release notes for MartinLoop 0.6.8: [MartinLoop 0.6.8](./docs/release/OSS-0.6.8-RELEASE-NOTES.md).
+
+Release notes for MartinLoop 0.6.9: [MartinLoop 0.6.9](./docs/release/OSS-0.6.9-RELEASE-NOTES.md).
 
 ## Model and Engine Support
 
@@ -254,22 +272,22 @@ npx -y martin-loop@latest share --latest
 
 Example receipt files: [Markdown](./docs/examples/proof-receipts/live-governed-run-receipt.md) and [JSON](./docs/examples/proof-receipts/live-governed-run-receipt.json).
 
-## Run This Audit Yourself
+## Verify the Public Release Yourself
 
 Use this lane from a clean temp directory to verify the public CLI flow exactly as shipped:
 
 ```sh
-npx -y martin-loop@0.6.8 --version
-npx -y martin-loop@0.6.8 start
-npx -y martin-loop@0.6.8 demo
+npx -y martin-loop@0.6.9 --version
+npx -y martin-loop@0.6.9 start
+npx -y martin-loop@0.6.9 demo
 cd martin-loop-demo
 npm install
-npx -y martin-loop@0.6.8 run "Summarize the demo workspace and prove tests still pass" --verify "npm test" --budget-usd 2 --max-iterations 1 --json
-npx -y martin-loop@0.6.8 dossier --latest --json
-npx -y martin-loop@0.6.8 share --latest --json
+npx -y martin-loop@0.6.9 run "Summarize the demo workspace and prove tests still pass" --verify "npm test" --budget-usd 2 --max-iterations 1 --json
+npx -y martin-loop@0.6.9 dossier --latest --json
+npx -y martin-loop@0.6.9 share --latest --json
 ```
 
-For deterministic installs, pin the package line (`martin-loop@0.6.8`) or use `martin-loop@latest`. Plain `npx martin-loop` can resolve a stale local cache on some machines.
+For deterministic installs, pin the package line (`martin-loop@0.6.9`) or use `martin-loop@latest`. Plain `npx martin-loop` can resolve a stale local cache on some machines.
 
 Expected share bundle outputs:
 
@@ -448,7 +466,7 @@ npx martin-loop mcp print-config --host gemini --transport stdio --profile full-
 npx martin-loop mcp print-config --host generic --transport stdio --profile github-review
 ```
 
-The root `martin-loop` package, standalone `@martinloop/mcp` package, plugin metadata, and MCPB product version are aligned at `0.6.8`. The MCPB manifest schema remains `0.3`.
+The root `martin-loop` package, standalone `@martinloop/mcp` package, plugin metadata, and MCPB product version are aligned at `0.6.9`. The MCPB manifest schema remains `0.3`.
 
 The public MCP release train labels are:
 
