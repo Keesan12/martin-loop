@@ -7,14 +7,22 @@ PKG="martin-loop@${ML_VERSION:-0.6.9}"
 OUT="$RUNS_DIR/run.json"
 
 args=(run "$ML_OBJECTIVE" --verify "$ML_VERIFY" --runs-dir "$RUNS_DIR" --json)
-if [ "${ML_MODE:-proof}" = "proof" ]; then
-  args+=(--proof)
-else
-  args+=(--budget-usd "$ML_BUDGET" --max-iterations "$ML_ITERS" --engine "$ML_ENGINE")
-  [ -n "${ML_MODEL:-}" ] && args+=(--model "$ML_MODEL")
-  while IFS= read -r g; do [ -n "$g" ] && args+=(--allow-path "$g"); done <<< "${ML_ALLOW:-}"
-  while IFS= read -r g; do [ -n "$g" ] && args+=(--deny-path "$g"); done <<< "${ML_DENY:-}"
-fi
+MODE="${ML_MODE:-proof}"
+case "$MODE" in
+  proof)
+    args+=(--proof)
+    ;;
+  run)
+    args+=(--budget-usd "$ML_BUDGET" --max-iterations "$ML_ITERS" --engine "$ML_ENGINE")
+    [ -n "${ML_MODEL:-}" ] && args+=(--model "$ML_MODEL")
+    while IFS= read -r g; do [ -n "$g" ] && args+=(--allow-path "$g"); done <<< "${ML_ALLOW:-}"
+    while IFS= read -r g; do [ -n "$g" ] && args+=(--deny-path "$g"); done <<< "${ML_DENY:-}"
+    ;;
+  *)
+    echo "::error title=MartinLoop::Invalid mode '$MODE'. Expected 'proof' or 'run'." >&2
+    exit 2
+    ;;
+esac
 
 echo "::group::martin-loop ${args[*]}"
 npx -y "$PKG" "${args[@]}" > "$OUT"
@@ -56,17 +64,15 @@ ICON="✅"
 [ "$STATUS" = "stopped" ] && ICON="⛔"
 [ "$STATUS" = "needs_review" ] && ICON="⚠️"
 {
-  echo "## $ICON MartinLoop: `${STATUS^^}`"
-  echo ""
-  echo "| Field | Value |"
-  echo "| --- | --- |"
-  echo "| Mode | `${ML_MODE}` |"
-  echo "| Objective | ${ML_OBJECTIVE} |"
-  echo "| Verifier | `${ML_VERIFY}` |"
-  echo "| Reason | `${REASON}` |"
-  echo "| Spend | \\$${COST} |"
-  echo "| Loop | `${LOOP}` |"
-  echo ""
+  printf '## %s MartinLoop: `%s`\n\n' "$ICON" "${STATUS^^}"
+  printf '| Field | Value |\n'
+  printf '| --- | --- |\n'
+  printf '| Mode | `%s` |\n' "$MODE"
+  printf '| Objective | %s |\n' "$ML_OBJECTIVE"
+  printf '| Verifier | `%s` |\n' "$ML_VERIFY"
+  printf '| Reason | `%s` |\n' "$REASON"
+  printf '| Spend | $%s |\n' "$COST"
+  printf '| Loop | `%s` |\n\n' "$LOOP"
   if [ -n "$RECEIPT_DIR" ] && [ -f "$RECEIPT_DIR/run-receipt.md" ]; then
     echo "<details><summary>Run receipt</summary>"
     echo ""
