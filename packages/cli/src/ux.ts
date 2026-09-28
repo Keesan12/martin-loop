@@ -273,7 +273,7 @@ export function buildRankHeader(rank: RankName, termWidth: number): string {
   return left + " ".repeat(pad) + right;
 }
 
-export type RunOutcome = "success" | "awaiting_signoff" | "approval_blocked" | "proof_passed" | "proof_failed" | "failure";
+export type RunOutcome = "success" | "awaiting_signoff" | "approval_blocked" | "policy_blocked" | "proof_passed" | "proof_failed" | "failure";
 
 export function renderRunHeader(
   rank: RankName,
@@ -298,6 +298,7 @@ export function renderRunHeader(
     outcome === "proof_passed" ? "✓ proof passed" :
     outcome === "proof_failed" ? "✗ proof failed" :
     outcome === "approval_blocked" ? "✗ approval required" :
+    outcome === "policy_blocked" ? "✗ policy blocked" :
     "✗ run failed";
   const attemptStr = `${attempts} attempt${attempts === 1 ? "" : "s"}`;
 
@@ -308,7 +309,11 @@ export function renderRunHeader(
       lines.push("    verification passed; a receipt was recorded. review and accept when ready.");
     }
     if (outcome === "proof_passed") {
-      lines.push("    verifier passed; verification-only evidence was recorded. no governed VERIFIED claim.");
+      lines.push(
+        receiptPersisted
+          ? "    verifier passed; verification-only evidence was recorded. no governed VERIFIED claim."
+          : "    verifier passed; verification-only evidence could not be persisted. no governed VERIFIED claim."
+      );
     }
 
     if (savingsConfidence === "confirmed" && savedThisRun > 0) {
@@ -330,6 +335,12 @@ export function renderRunHeader(
         receiptPersisted
           ? "    verifier failed; verification-only evidence was saved for inspection."
           : "    verifier failed; run evidence could not be persisted."
+      );
+    } else if (outcome === "policy_blocked") {
+      lines.push(
+        receiptPersisted
+          ? "    policy blocked the run before proof could complete; evidence was saved for inspection."
+          : "    policy blocked the run before proof could complete; run evidence could not be persisted."
       );
     } else {
       lines.push(
