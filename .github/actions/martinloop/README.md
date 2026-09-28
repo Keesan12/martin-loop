@@ -54,6 +54,17 @@ Governed runs invoke a configured coding agent within a budget cap and verifier 
 
 `proof_passed` and `verified` are distinct results. Proof mode confirms the verifier passes without agent intervention and is not governance-claim eligible. `verified` confirms a governed agent run met the acceptance criteria.
 
+## Outputs
+
+| Output | Description |
+| --- | --- |
+| `status` | `proof_passed | proof_failed | verified | stopped | needs_review` |
+| `reason-code` | MartinLoop decision or Action validation reason code. |
+| `loop-id` | Loop ID emitted by MartinLoop. |
+| `cost-usd` | Actual spend in USD. |
+| `exit-code` | Raw MartinLoop CLI exit code. |
+| `receipt-dir` | Directory containing the share bundle. |
+
 ## Inputs
 
 | Input | Default | Description |
