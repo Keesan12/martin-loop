@@ -63,7 +63,7 @@ outputs:
     description: "proof_passed | proof_failed | verified | stopped | needs_review"
     value: ${{ steps.martin.outputs.status }}
   reason-code:
-    description: "MartinLoop decision reason code."
+    description: "MartinLoop decision or Action validation reason code."
     value: ${{ steps.martin.outputs.reason-code }}
   loop-id:
     description: "Loop ID emitted by MartinLoop."
