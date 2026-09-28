@@ -303,7 +303,7 @@ export function renderRunHeader(
   const attemptStr = `${attempts} attempt${attempts === 1 ? "" : "s"}`;
 
   if (outcome === "success" || outcome === "awaiting_signoff" || outcome === "proof_passed") {
-    lines.push(`  ${checkMark} · ${attemptStr} · ${actualUsd.toFixed(2)} spent`);
+    lines.push(`  ${checkMark} · ${attemptStr} · ` + "$" + actualUsd.toFixed(2) + " spent");
 
     if (outcome === "awaiting_signoff") {
       lines.push("    verification passed; a receipt was recorded. review and accept when ready.");
