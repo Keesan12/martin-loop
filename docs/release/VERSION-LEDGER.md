@@ -48,7 +48,7 @@ This file is the release source of truth for package/version mapping in this rep
 
 - live npm dist-tag `latest`: `0.6.8`
 - live public GitHub release: `mcp-v0.6.8`
-- live public baseline in this train: `0.6.7`
+- live public baseline in this train: `0.6.8`
 - standalone MCP public baseline: `0.6.8`
 - official MCP Registry version: `0.5.5` (verified)
 - live MCPB baseline: `0.6.8`
