@@ -31,7 +31,6 @@ type Session = {
   first: number | null;
   last: number | null;
   turns: Turn[];
-  seen: Set<string>;
   calls: Map<string, string>;
   events: AuditEvent[];
   reportedCost: number | null;
@@ -171,7 +170,13 @@ function filesUnder(root: string, out: string[] = []): string[] {
   return out;
 }
 
-function parseFile(file: string, since: number | null, prices: Record<string, PriceRecord>): Session[] {
+function parseFile(
+  file: string,
+  since: number | null,
+  prices: Record<string, PriceRecord>,
+  seenTurnKeys: Set<string>,
+  seenVerifierKeys: Set<string>,
+): Session[] {
   const sessions = new Map<string, Session>();
   const getSession = (id: string, row: Record<string, unknown>): Session => {
     const current = sessions.get(id);
@@ -182,7 +187,6 @@ function parseFile(file: string, since: number | null, prices: Record<string, Pr
       first: null,
       last: null,
       turns: [],
-      seen: new Set(),
       calls: new Map(),
       events: [],
       reportedCost: null,
@@ -223,8 +227,8 @@ function parseFile(file: string, since: number | null, prices: Record<string, Pr
       const rawUsage = message["usage"];
       if (rawUsage !== null && typeof rawUsage === "object") {
         const key = String(message["id"] ?? "unknown") + ":" + String(row["requestId"] ?? "unknown");
-        if (!session.seen.has(key)) {
-          session.seen.add(key);
+        if (!seenTurnKeys.has(key)) {
+          seenTurnKeys.add(key);
           const turn = usageCost(typeof message["model"] === "string" ? message["model"] : "", rawUsage as Record<string, unknown>, prices);
           session.turns.push(turn);
           session.events.push({ kind: "turn", usd: turn.usd });
@@ -255,6 +259,9 @@ function parseFile(file: string, since: number | null, prices: Record<string, Pr
         if (!cmd || !VERIFY_RE.test(cmd)) continue;
         const raw = block["content"];
         const text = typeof raw === "string" ? raw : JSON.stringify(raw ?? "");
+        const verifierKey = String(block["tool_use_id"]) + ":" + cmd + ":" + text;
+        if (seenVerifierKeys.has(verifierKey)) continue;
+        seenVerifierKeys.add(verifierKey);
         const failed = block["is_error"] === true || /(?:^|\n)Exit code [1-9]\d*/u.test(text);
         session.events.push({ kind: "verify", cmd, failed });
       }
@@ -433,8 +440,12 @@ export async function executeAuditCommand(options: AuditOptions, outputMode: Out
   const prices = await loadPrices(options.offline);
   const since = options.days === undefined ? null : Date.now() - options.days * 86_400_000;
   const sessions: Session[] = [];
+  const seenTurnKeys = new Set<string>();
+  const seenVerifierKeys = new Set<string>();
   for (const root of configured) {
-    for (const file of filesUnder(root)) sessions.push(...parseFile(file, since, prices));
+    for (const file of filesUnder(root)) {
+      sessions.push(...parseFile(file, since, prices, seenTurnKeys, seenVerifierKeys));
+    }
   }
   const merged = new Map<string, Session>();
   for (const session of sessions) {
