@@ -64,7 +64,7 @@ jobs:
           mode: invalid_mode
           verify: echo ok
           upload-receipt: 'false'
-      - name: Assert rejected with no status output
+      - name: Assert invalid-mode guard
         run: |
           test "${{ steps.martin.outcome }}" = "failure" || {
             echo "expected step failure for invalid mode, got: ${{ steps.martin.outcome }}"
@@ -72,6 +72,14 @@ jobs:
           }
           test -z "${{ steps.martin.outputs.status }}" || {
             echo "expected no status for invalid mode, got: ${{ steps.martin.outputs.status }}"
+            exit 1
+          }
+          test "${{ steps.martin.outputs.reason-code }}" = "invalid_mode" || {
+            echo "expected reason-code=invalid_mode, got: ${{ steps.martin.outputs.reason-code }}"
+            exit 1
+          }
+          test "${{ steps.martin.outputs.exit-code }}" = "2" || {
+            echo "expected exit-code=2, got: ${{ steps.martin.outputs.exit-code }}"
             exit 1
           }
 
