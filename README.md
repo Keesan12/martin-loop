@@ -14,7 +14,8 @@ Your coding agent still writes the code. MartinLoop keeps the job focused, bound
   Built from thousands of agent runs where the problem was not just intelligence — it was whether you could give the agent a real job and confidently walk away.
 
   **Measure your loop tax:** `npx -y martin-loop@latest audit`  
-  **Start a governed workflow:** `npx -y martin-loop@latest start`
+  **Get started:** `npx -y martin-loop@latest start`  
+  **Try the demo:** `npx -y martin-loop@latest demo`
 
   [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square&logo=apache)](./LICENSE)
   [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?style=flat-square&logo=typescript&logoColor=white)](./tsconfig.base.json)
@@ -383,7 +384,7 @@ martin-loop badge [--format svg|json] [--runs-dir <path>]
 <!-- MCP package: @martinloop/mcp@0.6.9 -->
 
 [![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_MartinLoop-007ACC?logo=visualstudiocode&logoColor=white)](vscode:mcp/install?%7B%22name%22%3A%22martin-loop%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40martinloop%2Fmcp%400.6.9%22%5D%7D)
-[![Add to Cursor](https://img.shields.io/badge/Cursor-Add_MartinLoop-111111)](cursor://anysphere.cursor-deeplink/mcp/install?name=martin-loop&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIkBtYXJ0aW5sb29wL21jcEAwLjYuOCJdfQ%3D%3D)
+[![Add to Cursor](https://img.shields.io/badge/Cursor-Add_MartinLoop-111111)](cursor://anysphere.cursor-deeplink/mcp/install?name=martin-loop&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIkBtYXJ0aW5sb29wL21jcEAwLjYuOSJdfQ%3D%3D)
 
 Common options:
 
