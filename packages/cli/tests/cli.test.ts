@@ -1123,9 +1123,10 @@ describe("executeCli", () => {
         directory
       ]);
 
-      expect(result.exitCode).toBe(7);
+      expect(result.exitCode).toBe(0);
 
       const payload = JSON.parse(result.stdout);
+      expect(payload.proofOutcome).toBe("PROOF_PASSED");
       expect(payload.environment.liveMode).toBe("proof");
       expect(payload.loop.cost.actualUsd).toBe(0);
       expect(payload.loop.task.mutationMode).toBeUndefined();
@@ -1437,9 +1438,10 @@ describe("executeCli", () => {
         ])
       );
 
-      expect(result.exitCode).toBe(7);
+      expect(result.exitCode).toBe(0);
 
       const payload = JSON.parse(result.stdout);
+      expect(payload.proofOutcome).toBe("PROOF_PASSED");
       expect(payload.decision.status).toBe("completed");
       expect(payload.successCallToAction).toBeUndefined();
     } finally {
@@ -1463,7 +1465,8 @@ describe("executeCli", () => {
         ])
       );
 
-      expect(result.exitCode).toBe(7);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("proof passed");
       expect(result.stdout).not.toContain(STAR_CTA_HEADLINE);
       expect(result.stdout).not.toContain(`Star the repo: ${STAR_CTA_REPO}`);
     } finally {
@@ -1490,9 +1493,10 @@ describe("executeCli", () => {
         ])
       );
 
-      expect(result.exitCode).toBe(9);
+      expect(result.exitCode).toBe(7);
 
       const payload = JSON.parse(result.stdout);
+      expect(payload.proofOutcome).toBe("PROOF_FAILED");
       expect(payload.decision.status).toBe("exited");
       expect(payload.decision.lifecycleState).toBe("budget_exit");
       expect(payload.successCallToAction).toBeUndefined();
@@ -1519,7 +1523,7 @@ describe("executeCli", () => {
         ])
       );
 
-      expect(result.exitCode).toBe(9);
+      expect(result.exitCode).toBe(8);
 
       const payload = JSON.parse(result.stdout);
       expect(payload.decision.status).toBe("exited");

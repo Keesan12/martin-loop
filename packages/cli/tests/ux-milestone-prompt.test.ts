@@ -46,6 +46,22 @@ describe("renderRunHeader — receipt persistence messaging", () => {
 
     expect(header).toContain("no receipt is available");
   });
+
+  it("renders proof success with currency and accurate persistence copy", () => {
+    const persisted = renderRunHeader("Observer", "proof_passed", 1, 2, 0, 0, "unavailable", true);
+    const notPersisted = renderRunHeader("Observer", "proof_passed", 1, 2, 0, 0, "unavailable", false);
+
+    expect(persisted).toContain("$2.00 spent");
+    expect(persisted).toContain("verification-only evidence was recorded");
+    expect(notPersisted).toContain("verification-only evidence could not be persisted");
+  });
+
+  it("renders policy blocks without claiming the verifier failed", () => {
+    const header = renderRunHeader("Observer", "policy_blocked", 0, 0, 0, 0, "unavailable", true);
+
+    expect(header).toContain("policy blocked");
+    expect(header).not.toContain("verifier failed");
+  });
 });
 
 import { renderMilestonePrompt, renderRunHeader } from "../src/ux.js";

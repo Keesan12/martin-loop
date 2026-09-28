@@ -10,6 +10,7 @@ martin-loop start
 martin-loop tour
 martin-loop doctor
 martin-loop demo
+martin-loop audit [--days <n>] [--project <text>] [--dir <path>] [--share] [--offline]
 martin-loop session-start [--host <claude|codex|gemini|generic>]
 martin-loop phase status|contract|session-start|preflight|run [--execute]
 martin-loop preflight <objective> [options]
@@ -28,6 +29,17 @@ martin-loop sync flush
 martin-loop mcp print-config --host <codex|claude|gemini|generic>
 martin-loop mcp install --host <codex|claude|gemini|generic>
 ```
+
+## Audit Claude Code Loop Tax
+
+```sh
+npx -y martin-loop@latest audit
+npx -y martin-loop@latest audit --days 30 --json
+npx -y martin-loop@latest audit --share
+npx -y martin-loop@latest audit --offline
+```
+
+The audit reads Claude Code session history locally. It estimates API-equivalent spend inside fix-and-retry loops and reports verifier failures, retry depth, stuck loops, red-ending sessions, and edited sessions with no recognized verifier command. By default it may fetch the public LiteLLM model-price list; no session contents are sent. Use `--offline` for zero network access.
 
 ## Onboarding Flow
 

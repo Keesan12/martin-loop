@@ -218,12 +218,14 @@ describe("martin estimate command", () => {
         process.platform === "win32" ? "cmd /c exit 0" : "true"
       ]);
 
-      expect(result.exitCode).toBe(7);
+      expect(result.exitCode).toBe(0);
       const payload = JSON.parse(result.stdout) as {
+        proofOutcome: string;
         effectivePolicy: { configPath: string; budget: { maxUsd: number; softLimitUsd: number; maxIterations: number; maxTokens: number } };
         loop: { budget: { maxUsd: number; softLimitUsd: number; maxIterations: number; maxTokens: number } };
       };
 
+      expect(payload.proofOutcome).toBe("PROOF_PASSED");
       expect(payload.effectivePolicy.configPath).toBe(join(workspaceRoot, "martin.config.yaml"));
       expect(payload.effectivePolicy.budget).toEqual({
         maxUsd: 2,
