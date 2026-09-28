@@ -1,0 +1,106 @@
+name: test-action
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/actions/martinloop/**
+      - .github/workflows/test-action.yml
+  pull_request:
+    paths:
+      - .github/actions/martinloop/**
+      - .github/workflows/test-action.yml
+  workflow_dispatch:
+
+jobs:
+  proof-pass:
+    name: proof pass → proof_passed
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: martin
+        uses: ./.github/actions/martinloop
+        with:
+          verify: echo ok
+          upload-receipt: 'false'
+      - name: Assert proof_passed
+        run: |
+          test "${{ steps.martin.outputs.status }}" = "proof_passed" || {
+            echo "expected proof_passed, got: ${{ steps.martin.outputs.status }}"
+            exit 1
+          }
+
+  proof-fail:
+    name: proof fail → proof_failed, enforce blocks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: martin
+        uses: ./.github/actions/martinloop
+        continue-on-error: true
+        with:
+          verify: exit 1
+          upload-receipt: 'false'
+      - name: Assert proof_failed and enforce fired
+        run: |
+          test "${{ steps.martin.outputs.status }}" = "proof_failed" || {
+            echo "expected proof_failed, got: ${{ steps.martin.outputs.status }}"
+            exit 1
+          }
+          test "${{ steps.martin.outcome }}" = "failure" || {
+            echo "expected step outcome=failure (fail-on-unverified=true), got: ${{ steps.martin.outcome }}"
+            exit 1
+          }
+
+  invalid-mode:
+    name: invalid mode rejected before MartinLoop
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: martin
+        uses: ./.github/actions/martinloop
+        continue-on-error: true
+        with:
+          mode: invalid_mode
+          verify: echo ok
+          upload-receipt: 'false'
+      - name: Assert invalid-mode guard
+        run: |
+          test "${{ steps.martin.outcome }}" = "failure" || {
+            echo "expected step failure for invalid mode, got: ${{ steps.martin.outcome }}"
+            exit 1
+          }
+          test -z "${{ steps.martin.outputs.status }}" || {
+            echo "expected no status for invalid mode, got: ${{ steps.martin.outputs.status }}"
+            exit 1
+          }
+          test "${{ steps.martin.outputs.reason-code }}" = "invalid_mode" || {
+            echo "expected reason-code=invalid_mode, got: ${{ steps.martin.outputs.reason-code }}"
+            exit 1
+          }
+          test "${{ steps.martin.outputs.exit-code }}" = "2" || {
+            echo "expected exit-code=2, got: ${{ steps.martin.outputs.exit-code }}"
+            exit 1
+          }
+
+  proof-not-governed:
+    name: proof_passed ≠ governed verified
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: martin
+        uses: ./.github/actions/martinloop
+        with:
+          verify: echo ok
+          upload-receipt: 'false'
+      - name: Assert proof_passed is not verified
+        run: |
+          STATUS="${{ steps.martin.outputs.status }}"
+          test "$STATUS" = "proof_passed" || {
+            echo "expected proof_passed, got: $STATUS"
+            exit 1
+          }
+          test "$STATUS" != "verified" || {
+            echo "proof mode must not claim governed VERIFIED"
+            exit 1
+          }

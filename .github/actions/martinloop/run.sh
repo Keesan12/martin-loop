@@ -6,28 +6,71 @@ mkdir -p "$RUNS_DIR"
 PKG="martin-loop@${ML_VERSION:-0.6.9}"
 OUT="$RUNS_DIR/run.json"
 
-args=(run "$ML_OBJECTIVE" --verify "$ML_VERIFY" --runs-dir "$RUNS_DIR" --json)
 MODE="${ML_MODE:-proof}"
 case "$MODE" in
-  proof)
-    args+=(--proof)
-    ;;
-  run)
-    args+=(--budget-usd "$ML_BUDGET" --max-iterations "$ML_ITERS" --engine "$ML_ENGINE")
-    [ -n "${ML_MODEL:-}" ] && args+=(--model "$ML_MODEL")
-    while IFS= read -r g; do [ -n "$g" ] && args+=(--allow-path "$g"); done <<< "${ML_ALLOW:-}"
-    while IFS= read -r g; do [ -n "$g" ] && args+=(--deny-path "$g"); done <<< "${ML_DENY:-}"
+  proof|run)
     ;;
   *)
+    {
+      echo "reason-code=invalid_mode"
+      echo "exit-code=2"
+    } >> "$GITHUB_OUTPUT"
     echo "::error title=MartinLoop::Invalid mode '$MODE'. Expected 'proof' or 'run'." >&2
     exit 2
     ;;
 esac
 
+TOOL_DIR="${RUNNER_TEMP:-/tmp}/martinloop-tool-${ML_VERSION:-0.6.9}"
+CLI_JS="$TOOL_DIR/node_modules/martin-loop/dist/bin/martin-loop.js"
+
+if [ ! -f "$CLI_JS" ]; then
+  mkdir -p "$TOOL_DIR"
+  if ! npm install --prefix "$TOOL_DIR" --no-save --package-lock=false "$PKG"; then
+    echo "::error title=MartinLoop::Failed to install $PKG for the Action runner." >&2
+    exit 1
+  fi
+fi
+
+run_martin() {
+  node "$CLI_JS" "$@"
+}
+
+args=(run "$ML_OBJECTIVE" --verify "$ML_VERIFY" --runs-dir "$RUNS_DIR" --json)
+if [ "$MODE" = "proof" ]; then
+  args+=(--proof)
+else
+  args+=(--budget-usd "$ML_BUDGET" --max-iterations "$ML_ITERS" --engine "$ML_ENGINE")
+  [ -n "${ML_MODEL:-}" ] && args+=(--model "$ML_MODEL")
+  while IFS= read -r g; do [ -n "$g" ] && args+=(--allow-path "$g"); done <<< "${ML_ALLOW:-}"
+  while IFS= read -r g; do [ -n "$g" ] && args+=(--deny-path "$g"); done <<< "${ML_DENY:-}"
+fi
+
 echo "::group::martin-loop ${args[*]}"
-npx -y "$PKG" "${args[@]}" > "$OUT"
+run_martin "${args[@]}" > "$OUT"
 CODE=$?
 echo "::endgroup::"
+
+if ! node -e '
+  const fs=require("fs");
+  try {
+    const d=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));
+    if (!d || d.command !== "run") process.exit(1);
+  } catch {
+    process.exit(1);
+  }
+' "$OUT"; then
+  {
+    echo "status=needs_review"
+    echo "reason-code=cli_execution_failed"
+    echo "loop-id=none"
+    echo "cost-usd=0.00"
+    echo "exit-code=$CODE"
+    echo "receipt-dir="
+  } >> "$GITHUB_OUTPUT"
+  echo "::error title=MartinLoop::CLI execution failed before a valid run result was produced (exit $CODE)." >&2
+  [ "$CODE" -ne 0 ] && exit "$CODE"
+  exit 1
+fi
 
 read -r STATUS REASON LOOP COST < <(node -e '
   const fs=require("fs");
@@ -46,7 +89,7 @@ read -r STATUS REASON LOOP COST < <(node -e '
 
 RECEIPT_DIR=""
 if [ "$LOOP" != "none" ]; then
-  npx -y "$PKG" share --loop-id "$LOOP" --runs-dir "$RUNS_DIR" --json > "$RUNS_DIR/share.json" 2>/dev/null || true
+  run_martin share --loop-id "$LOOP" --runs-dir "$RUNS_DIR" --json > "$RUNS_DIR/share.json" 2>/dev/null || true
   RECEIPT_DIR=$(node -e 'try{console.log(require(process.argv[1]).outputDir||"")}catch(e){console.log("")}' "$RUNS_DIR/share.json")
 fi
 
