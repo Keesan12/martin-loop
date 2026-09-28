@@ -1962,21 +1962,23 @@ async function executeRunCommand(
   const isPolicyBlocked = result.decision.failureClass === "safety_leash_blocked";
 
   const runOutcome: RunOutcome =
-    isProofLane
-      ? proofOutcome === "PROOF_PASSED"
-        ? "proof_passed"
-        : "proof_failed"
-      : result.loop.status === "completed" &&
-          result.loop.lifecycleState === "completed" &&
-          governanceClaimEligible
-        ? "success"
-        : result.loop.lifecycleState === "human_escalation" &&
-            verificationPassed &&
-            governanceClaimEligible
-          ? "awaiting_signoff"
-          : isApprovalBlocked
-            ? "approval_blocked"
-            : "failure";
+    isApprovalBlocked
+      ? "approval_blocked"
+      : isProofLane && isPolicyBlocked
+        ? "policy_blocked"
+        : isProofLane
+          ? proofOutcome === "PROOF_PASSED"
+            ? "proof_passed"
+            : "proof_failed"
+          : result.loop.status === "completed" &&
+              result.loop.lifecycleState === "completed" &&
+              governanceClaimEligible
+            ? "success"
+            : result.loop.lifecycleState === "human_escalation" &&
+                verificationPassed &&
+                governanceClaimEligible
+              ? "awaiting_signoff"
+              : "failure";
   const runSucceeded = !isProofLane && (runOutcome === "success" || runOutcome === "awaiting_signoff");
   const runExitCode = isApprovalBlocked
     ? 2
