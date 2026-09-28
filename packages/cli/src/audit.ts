@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -225,15 +226,19 @@ function parseFile(
     const message = rawMessage !== null && typeof rawMessage === "object" ? rawMessage as Record<string, unknown> : undefined;
     if (row["type"] === "assistant" && message) {
       const rawUsage = message["usage"];
+      let duplicateTurn = false;
       if (rawUsage !== null && typeof rawUsage === "object") {
         const key = String(message["id"] ?? "unknown") + ":" + String(row["requestId"] ?? "unknown");
-        if (!seenTurnKeys.has(key)) {
+        if (seenTurnKeys.has(key)) {
+          duplicateTurn = true;
+        } else {
           seenTurnKeys.add(key);
           const turn = usageCost(typeof message["model"] === "string" ? message["model"] : "", rawUsage as Record<string, unknown>, prices);
           session.turns.push(turn);
           session.events.push({ kind: "turn", usd: turn.usd });
         }
       }
+      if (duplicateTurn) continue;
       const content = Array.isArray(message["content"]) ? message["content"] : [];
       for (const rawBlock of content) {
         if (rawBlock === null || typeof rawBlock !== "object") continue;
@@ -259,7 +264,8 @@ function parseFile(
         if (!cmd || !VERIFY_RE.test(cmd)) continue;
         const raw = block["content"];
         const text = typeof raw === "string" ? raw : JSON.stringify(raw ?? "");
-        const verifierKey = String(block["tool_use_id"]) + ":" + cmd + ":" + text;
+        const verifierDigest = createHash("sha256").update(text).digest("hex");
+        const verifierKey = String(block["tool_use_id"]) + ":" + cmd + ":" + verifierDigest;
         if (seenVerifierKeys.has(verifierKey)) continue;
         seenVerifierKeys.add(verifierKey);
         const failed = block["is_error"] === true || /(?:^|\n)Exit code [1-9]\d*/u.test(text);
