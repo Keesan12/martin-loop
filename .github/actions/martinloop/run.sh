@@ -6,6 +6,20 @@ mkdir -p "$RUNS_DIR"
 PKG="martin-loop@${ML_VERSION:-0.6.9}"
 OUT="$RUNS_DIR/run.json"
 
+MODE="${ML_MODE:-proof}"
+case "$MODE" in
+  proof|run)
+    ;;
+  *)
+    {
+      echo "reason-code=invalid_mode"
+      echo "exit-code=2"
+    } >> "$GITHUB_OUTPUT"
+    echo "::error title=MartinLoop::Invalid mode '$MODE'. Expected 'proof' or 'run'." >&2
+    exit 2
+    ;;
+esac
+
 TOOL_DIR="${RUNNER_TEMP:-/tmp}/martinloop-tool-${ML_VERSION:-0.6.9}"
 CLI_JS="$TOOL_DIR/node_modules/martin-loop/dist/bin/martin-loop.js"
 
@@ -22,22 +36,14 @@ run_martin() {
 }
 
 args=(run "$ML_OBJECTIVE" --verify "$ML_VERIFY" --runs-dir "$RUNS_DIR" --json)
-MODE="${ML_MODE:-proof}"
-case "$MODE" in
-  proof)
-    args+=(--proof)
-    ;;
-  run)
-    args+=(--budget-usd "$ML_BUDGET" --max-iterations "$ML_ITERS" --engine "$ML_ENGINE")
-    [ -n "${ML_MODEL:-}" ] && args+=(--model "$ML_MODEL")
-    while IFS= read -r g; do [ -n "$g" ] && args+=(--allow-path "$g"); done <<< "${ML_ALLOW:-}"
-    while IFS= read -r g; do [ -n "$g" ] && args+=(--deny-path "$g"); done <<< "${ML_DENY:-}"
-    ;;
-  *)
-    echo "::error title=MartinLoop::Invalid mode '$MODE'. Expected 'proof' or 'run'." >&2
-    exit 2
-    ;;
-esac
+if [ "$MODE" = "proof" ]; then
+  args+=(--proof)
+else
+  args+=(--budget-usd "$ML_BUDGET" --max-iterations "$ML_ITERS" --engine "$ML_ENGINE")
+  [ -n "${ML_MODEL:-}" ] && args+=(--model "$ML_MODEL")
+  while IFS= read -r g; do [ -n "$g" ] && args+=(--allow-path "$g"); done <<< "${ML_ALLOW:-}"
+  while IFS= read -r g; do [ -n "$g" ] && args+=(--deny-path "$g"); done <<< "${ML_DENY:-}"
+fi
 
 echo "::group::martin-loop ${args[*]}"
 run_martin "${args[@]}" > "$OUT"
