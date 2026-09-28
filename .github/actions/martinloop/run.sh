@@ -6,8 +6,19 @@ mkdir -p "$RUNS_DIR"
 PKG="martin-loop@${ML_VERSION:-0.6.9}"
 OUT="$RUNS_DIR/run.json"
 
+TOOL_DIR="${RUNNER_TEMP:-/tmp}/martinloop-tool-${ML_VERSION:-0.6.9}"
+CLI_JS="$TOOL_DIR/node_modules/martin-loop/dist/bin/martin-loop.js"
+
+if [ ! -f "$CLI_JS" ]; then
+  mkdir -p "$TOOL_DIR"
+  if ! npm install --prefix "$TOOL_DIR" --no-save --package-lock=false "$PKG"; then
+    echo "::error title=MartinLoop::Failed to install $PKG for the Action runner." >&2
+    exit 1
+  fi
+fi
+
 run_martin() {
-  npm exec --yes --package="$PKG" -- martin-loop "$@"
+  node "$CLI_JS" "$@"
 }
 
 args=(run "$ML_OBJECTIVE" --verify "$ML_VERIFY" --runs-dir "$RUNS_DIR" --json)
@@ -72,7 +83,7 @@ read -r STATUS REASON LOOP COST < <(node -e '
 
 RECEIPT_DIR=""
 if [ "$LOOP" != "none" ]; then
-  npm exec --yes --package="$PKG" -- martin-loop share --loop-id "$LOOP" --runs-dir "$RUNS_DIR" --json > "$RUNS_DIR/share.json" 2>/dev/null || true
+  run_martin share --loop-id "$LOOP" --runs-dir "$RUNS_DIR" --json > "$RUNS_DIR/share.json" 2>/dev/null || true
   RECEIPT_DIR=$(node -e 'try{console.log(require(process.argv[1]).outputDir||"")}catch(e){console.log("")}' "$RUNS_DIR/share.json")
 fi
 
