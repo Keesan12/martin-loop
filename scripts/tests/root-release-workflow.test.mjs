@@ -27,7 +27,8 @@ test("root release workflow uses GitHub Actions trusted publishing without npm t
   assert.match(workflow, /permissions:\s*[\s\S]*id-token:\s*write/);
   assert.match(workflow, /node-version:\s*24/);
   assert.match(workflow, /registry-url:\s*https:\/\/registry\.npmjs\.org/);
-  assert.match(workflow, /npm install -g npm@latest/);
+  assert.match(workflow, /npm install -g npm@11\.5\.1/);
+  assert.doesNotMatch(workflow, /npm install -g npm@latest/);
   assert.match(workflow, /npm pack --json --pack-destination dist-release/);
   assert.match(workflow, /find dist-release -maxdepth 1 -type f -name '\*\.tgz'/);
   assert.match(workflow, /echo "tarball=\.\/\$\{TARBALLS\[0\]#\.\/\}" >> "\$GITHUB_OUTPUT"/);

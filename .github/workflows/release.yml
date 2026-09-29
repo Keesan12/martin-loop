@@ -57,8 +57,8 @@ jobs:
           cache: pnpm
           registry-url: https://registry.npmjs.org
 
-      - name: Use latest npm for trusted publishing
-        run: npm install -g npm@latest
+      - name: Use npm 11.5.1 for trusted publishing
+        run: npm install -g npm@11.5.1
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

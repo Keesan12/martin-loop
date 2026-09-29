@@ -13,7 +13,7 @@ test("all third-party actions are pinned by immutable commit SHA", async () => {
   for (const workflowName of workflowNames) {
     const workflowPath = path.join(WORKFLOWS_DIR, workflowName);
     const workflow = await readFile(workflowPath, "utf8");
-    const matches = [...workflow.matchAll(/^\s*-?\s*uses:\s+([^\s#]+)(?:\s+#.*)?$/gm)];
+    const matches = [...workflow.matchAll(/^\s*-?\s*uses:\s+["']?([^\s#"']+)["']?\s*(?:#.*)?$/gm)];
 
     for (const match of matches) {
       const action = match[1];
