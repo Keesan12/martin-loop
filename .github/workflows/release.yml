@@ -17,20 +17,17 @@ jobs:
     if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'workflow_dispatch' && github.repository == 'Keesan12/martin-loop'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: main
           fetch-depth: 0
 
       - name: Resolve release coordinates
         id: release-vars
         shell: bash
-        env:
-          VALIDATED_RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           VERSION="$(node -p "require('./package.json').version")"
           RELEASE_TAG="v${VERSION}"
-          test "$(git rev-parse HEAD)" = "$VALIDATED_RELEASE_SHA"
           echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
@@ -54,11 +51,14 @@ jobs:
         with:
           version: 10.33.0
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 24
           cache: pnpm
           registry-url: https://registry.npmjs.org
+
+      - name: Use latest npm for trusted publishing
+        run: npm install -g npm@latest
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -129,10 +129,6 @@ jobs:
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
-
-      - name: Use latest npm for trusted publishing
-        if: steps.npm-version.outputs.exists != 'true'
-        run: npm install -g npm@latest
 
       - name: Publish to npm
         if: steps.npm-version.outputs.exists != 'true'

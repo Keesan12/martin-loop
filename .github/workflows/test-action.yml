@@ -17,7 +17,7 @@ jobs:
     name: proof pass → proof_passed
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - id: martin
         uses: ./.github/actions/martinloop
         with:
@@ -34,7 +34,7 @@ jobs:
     name: proof fail → proof_failed, enforce blocks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - id: martin
         uses: ./.github/actions/martinloop
         continue-on-error: true
@@ -56,7 +56,7 @@ jobs:
     name: invalid mode rejected before MartinLoop
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - id: martin
         uses: ./.github/actions/martinloop
         continue-on-error: true
@@ -87,7 +87,7 @@ jobs:
     name: proof_passed ≠ governed verified
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - id: martin
         uses: ./.github/actions/martinloop
         with:
