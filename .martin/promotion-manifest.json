@@ -3043,7 +3043,7 @@
       "kind": "content",
       "privateSha256": "fed261d7c3cbf913fadd53a11fccfb4c956a6960e747878e1fbed570d16adcf7",
       "privateMode": "100644",
-      "publicSha256": "3763959f67a27f79d842967abdba9e26e7e5332f59d0aaa497b64cafc5679efc",
+      "publicSha256": "7adb13ef486fdf3aba75876a53b8c918be55f318e3160f36e8082c2278cdcc4b",
       "publicMode": "100644",
       "reason": "Public promotion guard evaluates canonical release-surface policy from the trusted base commit so PR-controlled policy cannot weaken admission.",
       "reviewedBy": "Vakeesan Mahalingam"
@@ -3053,7 +3053,7 @@
       "kind": "public-only",
       "privateSha256": null,
       "privateMode": null,
-      "publicSha256": "ff438a4311f791eebeaf53ec2f17f4160032312f810a5ea5a4d93a97b3a32607",
+      "publicSha256": "93469aff4492909827c63f50225723aa0b2b4f1fae8805229d700992c6d1aefc",
       "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
       "reviewedBy": "Vakeesan Mahalingam",
       "publicMode": "100644"
@@ -3063,7 +3063,7 @@
       "kind": "content",
       "privateSha256": "d99ef5e3542f6970e28bcd900a58502361ae0bf67424bfeeba492b8bfb72cd66",
       "privateMode": "100644",
-      "publicSha256": "f29e511e1b7befba89ce56f9820e323859e48f9ce8dd59c214d1fb79eb196a24",
+      "publicSha256": "5d87da6530033b3035ae00906e4c1531e7da056585bac925d75bcacbb07218d5",
       "publicMode": "100644",
       "reason": "Public release notes narrow the telemetry privacy statement to guarantees enforced by the validator; runtime behavior is unchanged.",
       "reviewedBy": "Vakeesan Mahalingam"
