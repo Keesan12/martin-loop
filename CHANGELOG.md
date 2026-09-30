@@ -22,7 +22,7 @@
 
 ### Privacy / safety
 - Telemetry payloads are fail-closed to allowlisted event keys, finite command / experience / failure enums, bounded scalar values, and the hosted experience-ID slug contract.
-- Source code, prompts, task text, repository names or URLs, file names or paths, environment variables, secrets, receipt contents, workspace/project/org identifiers, emails, and raw exception text are rejected from accepted telemetry payloads.
+- Unapproved payload keys, arbitrary command/task/path strings, environment variables, secrets, receipt contents, emails, and raw exception text are rejected. `experienceId` is accepted only when it matches the bounded slug contract; remote IDs matching that syntax can still resemble repository names or other identifiers, so syntax validation alone does not establish provenance or non-identifying semantics.
 - `DO_NOT_TRACK`, `MARTIN_TELEMETRY_DISABLED`, and `CI` continue to disable telemetry. `MARTIN_TELEMETRY_DEBUG=1` prints the envelope locally and performs no network transmission.
 
 ## [0.6.8] - 2026-09-25
