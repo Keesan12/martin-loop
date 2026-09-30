@@ -32,3 +32,76 @@ test("post-release drift conflicts require an explicit reviewed private resoluti
   assert.match(source, /usedResolutions\.add\(path\)/);
   assert.match(source, /REVIEWED_POST_RELEASE_DRIFT_RESOLUTIONS/);
 });
+
+test("post-manifest extra public file identical to private auto-reconciles", () => {
+  const source = readFileSync(resolve("scripts/prepare-public-promotion.mjs"), "utf8");
+  assert.match(source, /for \(const path of previousExtra\)/);
+  assert.match(source, /reconciledExactExtra/);
+  assert.match(source, /post-manifest public file/);
+});
+
+test("post-manifest extra public file absent from private is blocked", () => {
+  const source = readFileSync(resolve("scripts/prepare-public-promotion.mjs"), "utf8");
+  assert.match(source, /absent-from-private/);
+  assert.match(source, /extra-unreconciled=/);
+});
+
+test("post-manifest extra public file differing without resolution is blocked", () => {
+  const source = readFileSync(resolve("scripts/prepare-public-promotion.mjs"), "utf8");
+  assert.match(source, /differs-from-private/);
+  assert.match(source, /publicEntry\.sha256 === privateEntry\.sha256/);
+});
+
+test("post-manifest extra public file differing with reviewed private resolution passes", () => {
+  const source = readFileSync(resolve("scripts/prepare-public-promotion.mjs"), "utf8");
+  assert.match(source, /reviewedExtraResolutions/);
+  assert.match(source, /post-release-extra-requires-private-resolution/);
+  assert.match(source, /resolution\.resolution !== "private"/);
+});
+
+test("post-manifest extra public file differing with public resolution is blocked", () => {
+  const source = readFileSync(resolve("scripts/prepare-public-promotion.mjs"), "utf8");
+  assert.match(source, /post-release-extra-requires-private-resolution/);
+});
+
+
+test("changed reviewed content divergence can collapse to private only through explicit reviewed private resolution", () => {
+  const source = readFileSync(resolve("scripts/prepare-public-promotion.mjs"), "utf8");
+  assert.match(source, /previousDivergence\.kind === "content"/);
+  assert.match(source, /resolution\?\.resolution === "private"/);
+  assert.match(source, /stale public divergence hash/);
+  assert.match(source, /target\.set\(path, \{ content: currentPrivate, mode: entry\.mode \}\)/);
+  assert.match(source, /manuallyResolved\.push/);
+});
+
+test("changed reviewed content divergence remains fail-closed without a private resolution", () => {
+  const source = readFileSync(resolve("scripts/prepare-public-promotion.mjs"), "utf8");
+  assert.match(source, /reviewed-divergence-changed/);
+  assert.match(source, /resolution\?\.resolution !== "private"/);
+});
+
+
+test("public promotion guard blocks canonical surface changes on non-staging PRs", () => {
+  const workflow = readFileSync(resolve(".github/workflows/public-promotion-guard.yml"), "utf8");
+  assert.match(workflow, /reject-non-promotion-surface-drift/);
+  assert.match(workflow, /Reject canonical surface drift outside governed promotion/);
+  assert.match(workflow, /isReleaseSurfacePath/);
+  assert.match(workflow, /public-staging\/\*/);
+  assert.doesNotMatch(workflow, /No public promotion manifest required/);
+});
+
+
+test("public promotion workflow is scoped to the public repository", () => {
+  const workflow = readFileSync(resolve(".github/workflows/public-promotion-guard.yml"), "utf8");
+  assert.match(workflow, /github\.repository == 'Keesan12\/martin-loop'/);
+  assert.match(workflow, /reject-non-promotion-surface-drift/);
+  assert.match(workflow, /verify-public-promotion/);
+});
+
+
+test("merge-file conflict counts from 1 through 127 are treated as manual reconciliation", () => {
+  const source = readFileSync(resolve("scripts/prepare-public-promotion.mjs"), "utf8");
+  assert.match(source, /result\.status > 0 && result\.status <= 127/);
+  assert.match(source, /content divergence requires manual reconciliation/);
+  assert.match(source, /git merge-file failed/);
+});

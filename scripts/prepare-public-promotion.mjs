@@ -62,7 +62,9 @@ function mergeContent({ publicBase, oldPrivate, newPrivate, path }) {
     writeFileSync(base, oldPrivate);
     writeFileSync(theirs, newPrivate);
     const result = spawnSync("git", ["merge-file", "-p", ours, base, theirs], { encoding: null });
-    if (result.status === 1) throw new Error(`content divergence requires manual reconciliation: ${path}`);
+    if (result.status !== null && result.status > 0 && result.status <= 127) {
+      throw new Error(`content divergence requires manual reconciliation: ${path}`);
+    }
     if (result.status !== 0) throw new Error(`git merge-file failed for ${path}: ${result.stderr?.toString() ?? ""}`);
     return result.stdout;
   } finally {
@@ -173,8 +175,47 @@ const oldDivergences = previousManifest.reviewedDivergences ?? [];
 const oldByPath = new Map(oldDivergences.map((entry) => [entry.path, entry]));
 const previousPrivateSha = previousManifest.privateMainShaValidated;
 
-if (previousMissing.length || previousExtra.length) {
-  throw new Error(`public main drifted from its own promotion manifest; missing=${previousMissing.join(",")} extra=${previousExtra.join(",")}`);
+// Post-manifest extra files on public main require explicit handling:
+//   absent from private           → BLOCK (content would be silently lost)
+//   identical to private          → auto-reconcile
+//   differs, no resolution        → BLOCK (differs-from-private)
+//   differs, resolution="private" → accepted as reviewed post-release extra resolution
+//   differs, resolution="public"  → BLOCK (public authority cannot win here)
+const unreconciledExtra = [];
+const reconciledExactExtra = [];
+const reviewedExtraResolutions = [];
+for (const path of previousExtra) {
+  const publicEntry = publicBaseByPath.get(path);
+  const privateEntry = privateByPath.get(path);
+  if (!privateEntry) {
+    unreconciledExtra.push(`${path}:absent-from-private`);
+    continue;
+  }
+  if (publicEntry.sha256 === privateEntry.sha256 && publicEntry.mode === privateEntry.mode) {
+    reconciledExactExtra.push(path);
+    continue;
+  }
+  // Differs — require an explicit reviewed resolution with resolution="private".
+  const resolution = resolutionByPath.get(path);
+  if (!resolution) {
+    unreconciledExtra.push(`${path}:differs-from-private`);
+    continue;
+  }
+  if (resolution.resolution !== "private") {
+    unreconciledExtra.push(`${path}:post-release-extra-requires-private-resolution`);
+    continue;
+  }
+  usedResolutions.add(path);
+  reviewedExtraResolutions.push({ path, resolution: resolution.resolution, reason: resolution.reason, reviewedBy: resolution.reviewedBy });
+}
+if (previousMissing.length || unreconciledExtra.length) {
+  throw new Error(`public main drifted from its own promotion manifest; missing=${previousMissing.join(",")} extra-unreconciled=${unreconciledExtra.join(",")}`);
+}
+if (reconciledExactExtra.length) {
+  console.log(`[prepare] ${reconciledExactExtra.length} post-manifest public file(s) identical to private authority: ${reconciledExactExtra.join(", ")}`);
+}
+if (reviewedExtraResolutions.length) {
+  console.log(`[prepare] ${reviewedExtraResolutions.length} post-manifest extra public file(s) accepted via reviewed private resolution: ${reviewedExtraResolutions.map((r) => r.path).join(", ")}`);
 }
 
 const reconciledPublicDrift = [];
@@ -187,7 +228,20 @@ for (const path of previousChanged) {
     unreconciledPublicDrift.push(`${path}:missing-coordinates`);
     continue;
   }
-  if (oldByPath.has(path)) {
+  const previousDivergence = oldByPath.get(path);
+  if (previousDivergence) {
+    const resolution = resolutionByPath.get(path);
+    if (previousDivergence.kind === "content" && resolution?.resolution === "private") {
+      usedResolutions.add(path);
+      reviewedPublicDriftResolutions.push({
+        path,
+        resolution: resolution.resolution,
+        reason: resolution.reason,
+        reviewedBy: resolution.reviewedBy,
+      });
+      reconciledPublicDrift.push(path);
+      continue;
+    }
     unreconciledPublicDrift.push(`${path}:reviewed-divergence-changed`);
     continue;
   }
@@ -282,7 +336,22 @@ for (const entry of privateEntries) {
   if (previous?.kind === "content") {
     const basePublicEntry = publicBaseByPath.get(path);
     if (!basePublicEntry) throw new Error(`content-divergent public path disappeared: ${path}`);
-    if (basePublicEntry.sha256 !== previous.publicSha256) throw new Error(`stale public divergence hash for ${path}; public main no longer matches reviewed content`);
+    if (basePublicEntry.sha256 !== previous.publicSha256) {
+      const resolution = resolutionByPath.get(path);
+      if (resolution?.resolution !== "private") {
+        throw new Error(`stale public divergence hash for ${path}; public main no longer matches reviewed content`);
+      }
+      const currentPrivate = readBlob(PRIVATE_ROOT, privateSha, path);
+      target.set(path, { content: currentPrivate, mode: entry.mode });
+      usedResolutions.add(path);
+      manuallyResolved.push({
+        path,
+        resolution: resolution.resolution,
+        reason: resolution.reason,
+        reviewedBy: resolution.reviewedBy,
+      });
+      continue;
+    }
     const previousPrivateSha = previousManifest.privateMainShaValidated;
     const oldPrivate = readBlob(PRIVATE_ROOT, previousPrivateSha, path);
     if (!sameHash(oldPrivate, previous.privateSha256)) throw new Error(`stale private divergence hash for ${path}; previous manifest is inconsistent`);

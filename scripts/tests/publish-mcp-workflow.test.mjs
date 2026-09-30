@@ -21,7 +21,7 @@ test("publish-mcp workflow enforces mcp tag parity against package and server me
   assert.match(workflow, /read-mcp-package-metadata\.mjs/);
   assert.match(metadataScript, /server\.json is missing an npm package entry/);
   assert.match(workflow, /Resolve release coordinates/);
-  assert.match(workflow, /VALIDATED_RELEASE_SHA: \$\{\{ github\.event\.workflow_run\.head_sha \}\}/);
+  assert.doesNotMatch(workflow, /github\.event\.workflow_run\.head_sha/);
   assert.match(workflow, /echo "tag=\$\{RELEASE_TAG\}" >> "\$GITHUB_OUTPUT"/);
   assert.match(workflow, /Verify MCP tag\/version parity/);
   assert.match(workflow, /TAG_VERSION="\$\{RELEASE_TAG#mcp-v\}"/);
@@ -40,9 +40,10 @@ test("publish-mcp workflow covers direct trusted publishing, paired tag coordina
   assert.doesNotMatch(workflow, /workflow_dispatch:/);
   assert.match(workflow, /workflow_run:\s*[\s\S]*Validate and cut paired release tags[\s\S]*completed/);
   assert.match(workflow, /github\.event\.workflow_run\.conclusion == 'success'/);
-  assert.match(workflow, /ref: \$\{\{ github\.event\.workflow_run\.head_sha \}\}/);
-  assert.match(workflow, /VALIDATED_RELEASE_SHA: \$\{\{ github\.event\.workflow_run\.head_sha \}\}/);
+  assert.match(workflow, /ref: main/);
+  assert.doesNotMatch(workflow, /github\.event\.workflow_run\.head_sha/);
   assert.match(workflow, /git fetch origin main/);
+  assert.match(workflow, /test "\$HEAD_SHA" = "\$TAG_SHA"/);
   assert.match(workflow, /test "\$TAG_SHA" = "\$ROOT_TAG_SHA"/);
   assert.match(workflow, /test "\$TAG_SHA" = "\$MAIN_SHA"/);
   assert.doesNotMatch(workflow, /validated_release_sha:/);
@@ -65,9 +66,9 @@ test("publish-mcp workflow covers direct trusted publishing, paired tag coordina
   assert.match(workflow, /npm publish --access public --provenance/);
   assert.match(workflow, /npm view "@martinloop\/mcp@\$\{\{ steps\.mcp-metadata\.outputs\.package_version \}\}" version/);
   assert.match(workflow, /pnpm --filter @martinloop\/mcp smoke:published/);
-  assert.match(workflow, /actions\/checkout@v6/);
+  assert.match(workflow, /actions\/checkout@d23441a48e516b6c34aea4fa41551a30e30af803/);
   assert.match(workflow, /pnpm\/action-setup@b0f76dfb45f55f8421693e4803ac7bb65143bd34/);
-  assert.match(workflow, /actions\/setup-node@v6/);
+  assert.match(workflow, /actions\/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38/);
   assert.match(workflow, /softprops\/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b/);
   assert.match(workflow, /name:\s*"@martinloop\/mcp/);
   assert.match(workflow, /body_path:\s*"docs\/release\/MCP-\$\{\{\s*steps\.mcp-metadata\.outputs\.package_version\s*\}\}-RELEASE-NOTES\.md"/);

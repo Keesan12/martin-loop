@@ -28,17 +28,12 @@ test("public-surface workflow skips ordinary internal PRs and runs public-stagin
   assert.match(workflow, /pnpm public:portability-guard/);
 });
 
-test("promotion workflow requires public-staging or manual dispatch", async () => {
+test("promotion workflow is public-repo scoped and requires public-staging or manual dispatch", async () => {
   const workflow = await readWorkflow(".github/workflows/public-promotion-guard.yml");
 
-  assert.match(workflow, /skip-non-promotion:/);
   assert.match(
     workflow,
-    /if:\s+github\.event_name == 'pull_request' && !startsWith\(github\.head_ref, 'public-staging\/'\)/,
-  );
-  assert.match(
-    workflow,
-    /if:\s+github\.event_name == 'workflow_dispatch' \|\| startsWith\(github\.head_ref, 'public-staging\/'\)/,
+    /if:\s+github\.repository == 'Keesan12\/martin-loop' && \(github\.event_name == 'workflow_dispatch' \|\| startsWith\(github\.head_ref, 'public-staging\/'\)\)/,
   );
   assert.match(workflow, /workflow_dispatch:/);
   assert.match(workflow, /node scripts\/verify-public-promotion\.mjs/);

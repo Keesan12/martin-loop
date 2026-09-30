@@ -18,20 +18,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: main
           fetch-depth: 0
 
       - name: Resolve release coordinates
         id: release-vars
         shell: bash
-        env:
-          VALIDATED_RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           VERSION="$(node -p "require('./packages/mcp/package.json').version")"
           RELEASE_TAG="mcp-v${VERSION}"
-          test "$(git rev-parse HEAD)" = "$VALIDATED_RELEASE_SHA"
           echo "tag=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
@@ -57,7 +54,7 @@ jobs:
           version: 10.33.0
 
       - name: Set up Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '24'
           cache: pnpm

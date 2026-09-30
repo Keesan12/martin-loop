@@ -10,28 +10,63 @@ permissions:
   contents: read
 
 jobs:
-  skip-non-promotion:
-    name: skip-non-promotion
-    if: github.event_name == 'pull_request' && !startsWith(github.head_ref, 'public-staging/')
+  reject-non-promotion-surface-drift:
+    name: reject-non-promotion-surface-drift
+    if: github.repository == 'Keesan12/martin-loop' && github.event_name == 'pull_request' && !startsWith(github.head_ref, 'public-staging/')
     runs-on: ubuntu-latest
-    steps:
-      - name: No public promotion manifest required
-        run: echo "Public promotion guard skipped for non-public-staging PR."
-
-  verify-public-promotion:
-    name: verify-public-promotion
-    # Only enforce promotion requirements on public-staging/* PRs or explicit manual dispatch.
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'public-staging/')
-    runs-on: ubuntu-latest
-
     steps:
       - name: Checkout full history
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
 
       - name: Set up Node
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 24
+
+      - name: Reject canonical surface drift outside governed promotion
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          node --input-type=module -e '
+            import { execFileSync } from "node:child_process";
+            import { writeFileSync } from "node:fs";
+            import { tmpdir } from "node:os";
+            import { join } from "node:path";
+            import { pathToFileURL } from "node:url";
+            const trustedPolicy = execFileSync("git", ["show", process.env.BASE_SHA + ":scripts/lib/public-release-surface.mjs"], { encoding: "utf8" });
+            const trustedPolicyPath = join(tmpdir(), "martin-public-release-surface-base.mjs");
+            writeFileSync(trustedPolicyPath, trustedPolicy);
+            const { isReleaseSurfacePath } = await import(pathToFileURL(trustedPolicyPath).href);
+            const changed = execFileSync("git", ["diff", "--name-only", process.env.BASE_SHA, process.env.HEAD_SHA], { encoding: "utf8" })
+              .split("\\n")
+              .map((value) => value.trim())
+              .filter(Boolean);
+            const blocked = changed.filter((path) => path === ".martin/promotion-manifest.json" || isReleaseSurfacePath(path));
+            if (blocked.length) {
+              console.error("Public release-surface changes must come through a governed public-staging/* promotion:");
+              for (const path of blocked) console.error(" - " + path);
+              process.exit(1);
+            }
+            console.log("No canonical release-surface changes detected.");
+          '
+
+  verify-public-promotion:
+    name: verify-public-promotion
+    # Only enforce promotion requirements on public-staging/* PRs or explicit manual dispatch.
+    if: github.repository == 'Keesan12/martin-loop' && (github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'public-staging/'))
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24
 
