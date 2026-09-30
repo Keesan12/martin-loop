@@ -153,7 +153,7 @@ jobs:
         run: node ./scripts/published-artifact-e2e.mjs --package-spec "martin-loop@${{ steps.package-version.outputs.version }}"
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64
         with:
           tag_name: ${{ steps.release-vars.outputs.tag }}
           files: ${{ steps.root-pack.outputs.tarball }}
