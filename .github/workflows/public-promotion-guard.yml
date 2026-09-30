@@ -32,7 +32,14 @@ jobs:
         run: |
           node --input-type=module -e '
             import { execFileSync } from "node:child_process";
-            import { isReleaseSurfacePath } from "./scripts/lib/public-release-surface.mjs";
+            import { writeFileSync } from "node:fs";
+            import { tmpdir } from "node:os";
+            import { join } from "node:path";
+            import { pathToFileURL } from "node:url";
+            const trustedPolicy = execFileSync("git", ["show", process.env.BASE_SHA + ":scripts/lib/public-release-surface.mjs"], { encoding: "utf8" });
+            const trustedPolicyPath = join(tmpdir(), "martin-public-release-surface-base.mjs");
+            writeFileSync(trustedPolicyPath, trustedPolicy);
+            const { isReleaseSurfacePath } = await import(pathToFileURL(trustedPolicyPath).href);
             const changed = execFileSync("git", ["diff", "--name-only", process.env.BASE_SHA, process.env.HEAD_SHA], { encoding: "utf8" })
               .split("\\n")
               .map((value) => value.trim())
