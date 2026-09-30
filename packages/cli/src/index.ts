@@ -1723,6 +1723,17 @@ async function executeRunCommand(
           sendProductEvent, resolveProductEventsEndpoint, shouldShowTelemetryNotice,
           toTelemetryFailureReason, renderTelemetryNotice } = await import("./telemetry.js");
   let telemetryConfig = await readTelemetryConfig();
+  // Show the one-time opt-out disclosure on interactive terminals before
+  // computing the send gate — ensures no event is transmitted before the
+  // user has been informed, even with the opt-out default.
+  if (shouldShowTelemetryNotice({
+    config: telemetryConfig,
+    interactiveTty: outputMode === "human" && process.stdout.isTTY === true && process.stdin.isTTY === true,
+    humanOutput: outputMode === "human",
+    env: process.env,
+  })) {
+    telemetryConfig = await renderTelemetryNotice(telemetryConfig);
+  }
   const telemetryWasActiveAtRunStart = isTelemetrySendingEnabled(telemetryConfig);
   if (telemetryWasActiveAtRunStart) {
     telemetryConfig = await initializeTelemetryIfNeeded({

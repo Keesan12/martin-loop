@@ -40,7 +40,7 @@ This file is the release source of truth for package/version mapping in this rep
   - `0.6.5` signal continue/satisfied non-terminal, terminal event precedence, workspace gate isolation, project mode roundtrip, and badge explicit --runs-dir
   - `0.6.6` MCP host schema compatibility, CFO evidence transport, and Windows Claude native-installer support
   - `0.6.7` recoverable dashboard linking and receipt-bound hosted event transport
-  - `0.6.8` automatic workspace receipt-key trust bootstrap before signed-run hosted sync
+  - `0.6.8` automatic workspace receipt-key trust bootstrap and recoverable signed-run hosted sync
 - current in-repo root release target: `0.6.9` (pending publication)
 - next planned root follow-on: not scheduled
 
@@ -61,7 +61,8 @@ This file is the release source of truth for package/version mapping in this rep
 ## Release rules
 
 - Live public baselines describe artifacts that actually exist. In-repo targets may advance before publication and must remain marked pending until trusted publishing succeeds.
-- The `0.6.8` train aligns the root package, standalone MCP package, plugin metadata, and MCPB product version at `0.6.8`. MCPB manifest schema remains `0.3`.
+- The `0.6.7` train aligns the root package, standalone MCP package, plugin metadata, and MCPB product version at `0.6.7`. MCPB manifest schema remains `0.3`.
+- The `0.6.8` train aligned the root package, standalone MCP package, plugin metadata, and MCPB product version at `0.6.8`. MCPB manifest schema remains `0.3`.
 - The `0.6.9` train advances the root package, standalone MCP package, plugin metadata, and MCPB product version to `0.6.9` (pending publication). MCPB manifest schema remains `0.3`.
 - Do not infer standalone MCP release state from the root package, or the other way around.
 - Public release notes must be written for customers and evaluators, not for internal operators.

@@ -15,17 +15,20 @@ export interface TelemetryConfigV1 {
   noticeShown: boolean;
   installId: string | null;
   initializedEventSent: boolean;
+  /** Whether the user has made an explicit preference choice (on/off command). */
+  userChoseExplicitly: boolean;
 }
 
-// Telemetry is OFF by default. The user must explicitly opt in via the
-// interactive notice (Y) or `martin telemetry on`. No event is sent before
-// explicit acceptance.
+// Telemetry is ON by default (opt-out model). No event is sent until the
+// one-time disclosure has been shown on an interactive terminal. The user
+// may disable at any time via `martin telemetry off` or the kill-switch env vars.
 export const DEFAULT_TELEMETRY_CONFIG: TelemetryConfigV1 = {
   schemaVersion: 1,
-  enabled: false,
+  enabled: true,
   noticeShown: false,
   installId: null,
   initializedEventSent: false,
+  userChoseExplicitly: false,
 };
 
 function telemetryConfigPath(): string {
@@ -37,15 +40,22 @@ export async function readTelemetryConfig(): Promise<TelemetryConfigV1> {
     const raw = await fs.readFile(telemetryConfigPath(), "utf8");
     const parsed = JSON.parse(raw) as Partial<TelemetryConfigV1>;
     if (parsed.schemaVersion !== 1) return { ...DEFAULT_TELEMETRY_CONFIG };
+    // If userChoseExplicitly is already present the config was written by this
+    // version — preserve it exactly. Otherwise this is a legacy config: any
+    // existing file was written after a user action (Y/N prompt, telemetry on,
+    // telemetry off, or opt-in initialization), so treat it as an explicit
+    // preference and preserve the existing enabled value.
+    const userChoseExplicitly =
+      typeof parsed.userChoseExplicitly === "boolean"
+        ? parsed.userChoseExplicitly
+        : true; // legacy file → treat as explicit preference
     return {
       schemaVersion: 1,
-      // Honour persisted preference. If the field is absent (upgrading from
-      // an old config written before the field existed), default to false so
-      // existing installs remain in a known-off state until they re-consent.
       enabled: parsed.enabled === true,
       noticeShown: parsed.noticeShown === true,
       installId: typeof parsed.installId === "string" ? parsed.installId : null,
       initializedEventSent: parsed.initializedEventSent === true,
+      userChoseExplicitly,
     };
   } catch {
     return { ...DEFAULT_TELEMETRY_CONFIG };
@@ -80,19 +90,19 @@ export function isTelemetrySendingEnabled(
   config: TelemetryConfigV1,
   env: NodeJS.ProcessEnv = process.env
 ): boolean {
-  return (
-    config.enabled &&
-    config.noticeShown &&
-    !telemetryEnvironmentDisabled(env) &&
-    !envTruthy(env["MARTIN_TELEMETRY_DEBUG"])
-  );
+  if (!config.enabled) return false;
+  // Disclosure is required before sending — unless the user made an explicit
+  // preference choice, in which case that intent is honoured immediately.
+  if (!config.noticeShown && !config.userChoseExplicitly) return false;
+  if (telemetryEnvironmentDisabled(env)) return false;
+  if (envTruthy(env["MARTIN_TELEMETRY_DEBUG"])) return false;
+  return true;
 }
 
 // ─── Notice ───────────────────────────────────────────────────────────────────
 
-// The notice is shown whenever the user has not yet been asked — regardless
-// of whether telemetry is currently enabled. This allows the notice to act as
-// the explicit opt-in invitation even on a fresh install (where enabled=false).
+// The notice is shown whenever the user has not yet been disclosed to —
+// regardless of whether telemetry is currently enabled.
 export function shouldShowTelemetryNotice(input: {
   config: TelemetryConfigV1;
   interactiveTty: boolean;
@@ -110,54 +120,34 @@ export function shouldShowTelemetryNotice(input: {
 export const TELEMETRY_NOTICE = [
   "MartinLoop anonymous usage analytics",
   "",
-  "Help improve MartinLoop by sharing minimal anonymous usage data?",
-  "It never sends code, prompts, repository contents, file paths,",
-  "environment variables, secrets, or receipt contents.",
+  "Anonymous product telemetry is enabled by default to help improve MartinLoop.",
   "",
-  "Inspect exactly what would be sent:",
-  "  martin telemetry explain",
+  "Sent:",
+  "  anonymous installation/session identifiers, CLI/runtime/platform information,",
+  "  coarse command category, run duration, success/failure category,",
+  "  whether a receipt was generated, whether recovery occurred,",
+  "  opaque remote-experience ID/type after you click an experience",
+  "",
+  "Never sent:",
+  "  source code, prompts or task text, repository names or URLs,",
+  "  file names or paths, environment variables, API keys or secrets,",
+  "  receipt contents, email addresses",
+  "",
+  "Disable anytime:  martin telemetry off",
+  "  or set:         DO_NOT_TRACK=1  |  MARTIN_TELEMETRY_DISABLED=1",
+  "",
+  "Inspect the exact telemetry contract:  martin telemetry explain",
 ].join("\n");
 
-// Reads a single Y/N keypress to obtain explicit consent.
-// Returns true if the user pressed Y (opt in), false for N or timeout.
-async function readTelemetryConsentKey(
-  input: NodeJS.ReadStream = process.stdin
-): Promise<boolean> {
-  return new Promise((resolve) => {
-    if (!input.isTTY) { resolve(false); return; }
-    const prev = input.isRaw;
-    input.setRawMode(true);
-    input.resume();
-    input.setEncoding("utf-8");
-    const timeout = setTimeout(() => { cleanup(); resolve(false); }, 30_000);
-    const onData = (key: string) => {
-      if (key === "\u0003") { cleanup(); process.exit(0); }
-      cleanup();
-      resolve(key.toLowerCase() === "y");
-    };
-    const cleanup = () => {
-      clearTimeout(timeout);
-      input.removeListener("data", onData);
-      try { input.setRawMode(prev ?? false); } catch { /* ignore */ }
-      input.pause();
-    };
-    input.on("data", onData);
-  });
-}
-
-// Displays the opt-in notice and prompts Y/N. Marks noticeShown regardless
-// of the user's choice; only sets enabled=true on Y. An informational notice
-// alone is not consent — the user must press Y.
+// Displays the one-time opt-out disclosure. Non-blocking — does not prompt
+// for input. Marks noticeShown=true and persists the config so the notice
+// is shown only once. Preserves existing enabled and userChoseExplicitly.
 export async function renderTelemetryNotice(
   config: TelemetryConfigV1,
   output: NodeJS.WriteStream = process.stdout,
-  inputStream: NodeJS.ReadStream = process.stdin
 ): Promise<TelemetryConfigV1> {
   output.write(`\n${TELEMETRY_NOTICE}\n\n`);
-  output.write(`  Enable analytics? [Y/n]  > `);
-  const accepted = await readTelemetryConsentKey(inputStream);
-  output.write(`${accepted ? "Y" : "N"}\n\n`);
-  const next: TelemetryConfigV1 = { ...config, noticeShown: true, enabled: accepted };
+  const next: TelemetryConfigV1 = { ...config, noticeShown: true };
   await writeTelemetryConfig(next);
   return next;
 }
@@ -202,12 +192,45 @@ export interface ProductEventEnvelopeV1 {
   payload: Readonly<Record<string, unknown>>;
 }
 
+// Finite set of safe command categories. Only these values may appear in the
+// command payload field — arbitrary command strings, task text, and file paths
+// are rejected by assertAllowedTelemetryPayload.
+export type TelemetryCommandCategory = "run";
+const ALLOWED_COMMAND_CATEGORIES: ReadonlySet<string> = new Set<TelemetryCommandCategory>(["run"]);
+
+// Mirrors RemoteExperienceV1.type — only these type strings may appear in the
+// remote_experience_clicked payload.
+const ALLOWED_EXPERIENCE_TYPES: ReadonlySet<string> = new Set([
+  "security_notice",
+  "migration_notice",
+  "update_notice",
+  "announcement",
+  "beta_invite",
+  "dashboard_invite",
+  "design_partner_invite",
+]);
+
+// Server-authored remote-experience IDs use the same finite slug format as the
+// hosted product-events boundary. Keep the producer and ingestion contracts exact.
+const EXPERIENCE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+
+// Mirrors TelemetryFailureReason — prevents raw exception strings from leaking
+// through the reason field on run_failed.
+const ALLOWED_FAILURE_REASONS: ReadonlySet<string> = new Set([
+  "provider_unavailable",
+  "verification_failed",
+  "budget_exit",
+  "policy_blocked",
+  "persistence_failed",
+  "unknown",
+]);
+
 const EVENT_PAYLOAD_KEYS: Record<ProductEventName, ReadonlySet<string>> = {
   install_initialized: new Set(),
   run_started: new Set(["command"]),
   run_completed: new Set(["durationMs", "command", "receiptGenerated", "recoveryOccurred"]),
   run_failed: new Set(["durationMs", "command", "reason"]),
-  telemetry_changed: new Set(["enabled", "source"]),
+  telemetry_changed: new Set(["enabled"]),
   control_plane_connected: new Set(["connected"]),
   remote_experience_clicked: new Set(["experienceId", "experienceType"]),
 };
@@ -219,6 +242,51 @@ export function assertAllowedTelemetryPayload(
   const allowed = EVENT_PAYLOAD_KEYS[event];
   for (const key of Object.keys(payload)) {
     if (!allowed.has(key)) throw new Error(`Unsupported telemetry payload key: ${key}`);
+  }
+  // Validate command value — only a finite enum of safe categories is permitted.
+  // This prevents arbitrary command strings, task text, or file paths from leaking.
+  if ("command" in payload) {
+    if (!ALLOWED_COMMAND_CATEGORIES.has(String(payload["command"]))) {
+      throw new Error(`Unsupported telemetry command category: ${String(payload["command"])}`);
+    }
+  }
+  // Validate scalar payload types.
+  if ("durationMs" in payload) {
+    const v = payload["durationMs"];
+    if (typeof v !== "number" || !isFinite(v) || v < 0 || v > 86_400_000) {
+      throw new Error(`Invalid durationMs value`);
+    }
+  }
+  if ("receiptGenerated" in payload && typeof payload["receiptGenerated"] !== "boolean") {
+    throw new Error(`receiptGenerated must be boolean`);
+  }
+  if ("recoveryOccurred" in payload && typeof payload["recoveryOccurred"] !== "boolean") {
+    throw new Error(`recoveryOccurred must be boolean`);
+  }
+  if ("enabled" in payload && typeof payload["enabled"] !== "boolean") {
+    throw new Error(`enabled must be boolean`);
+  }
+  if ("connected" in payload && typeof payload["connected"] !== "boolean") {
+    throw new Error(`connected must be boolean`);
+  }
+  // Validate remote_experience_clicked string fields.
+  if ("experienceType" in payload) {
+    if (typeof payload["experienceType"] !== "string" || !ALLOWED_EXPERIENCE_TYPES.has(String(payload["experienceType"]))) {
+      throw new Error(`Unsupported experienceType value`);
+    }
+  }
+  if ("experienceId" in payload) {
+    const id = payload["experienceId"];
+    if (typeof id !== "string" || !EXPERIENCE_ID_PATTERN.test(id)) {
+      throw new Error(`Invalid experienceId value`);
+    }
+  }
+  // Validate run_failed.reason — must match the finite TelemetryFailureReason enum
+  // to prevent arbitrary exception strings from reaching the telemetry backend.
+  if ("reason" in payload) {
+    if (!ALLOWED_FAILURE_REASONS.has(String(payload["reason"]))) {
+      throw new Error(`Unsupported failure reason value`);
+    }
   }
 }
 
@@ -378,9 +446,11 @@ export async function executeTelemetryCommand(
     case "status": {
       const effective = isTelemetrySendingEnabled(config);
       const envDisabled = telemetryEnvironmentDisabled();
+      const preferenceType = config.userChoseExplicitly ? "explicit" : "default";
       process.stdout.write(`Telemetry\n`);
       process.stdout.write(`  Stored enabled:   ${config.enabled}\n`);
       process.stdout.write(`  Notice shown:     ${config.noticeShown}\n`);
+      process.stdout.write(`  Preference:       ${preferenceType}\n`);
       process.stdout.write(`  Env disabled:     ${envDisabled}\n`);
       process.stdout.write(`  Effective:        ${effective ? "sending" : "not sending"}\n`);
       return 0;
@@ -389,11 +459,11 @@ export async function executeTelemetryCommand(
       process.stdout.write(`${TELEMETRY_MANIFEST}\n`);
       return 0;
     case "on":
-      await writeTelemetryConfig({ ...config, enabled: true });
-      process.stdout.write(`Telemetry enabled. A first-run notice will appear if not already shown.\n`);
+      await writeTelemetryConfig({ ...config, enabled: true, userChoseExplicitly: true, noticeShown: true });
+      process.stdout.write(`Telemetry enabled.\n`);
       return 0;
     case "off":
-      await writeTelemetryConfig({ ...config, enabled: false });
+      await writeTelemetryConfig({ ...config, enabled: false, userChoseExplicitly: true, noticeShown: true });
       process.stdout.write(`Telemetry disabled.\n`);
       return 0;
   }

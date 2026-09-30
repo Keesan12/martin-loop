@@ -132,6 +132,7 @@ test("root README is a public product entry point", async () => {
     previousIndex = index;
   }
 
+  assert.match(readme, /Give coding agents more work\. Watch them less\. Ship more\./i);
   assert.match(readme, /MartinLoop lets you give coding agents real software jobs without babysitting every step\./i);
   assert.match(readme, /Built from thousands of agent runs where the problem was not just intelligence/i);
   assert.match(readme, /\*\*Measure your loop tax:\*\* `npx -y martin-loop@latest audit`/);

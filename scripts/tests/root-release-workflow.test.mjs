@@ -14,9 +14,10 @@ test("root release workflow uses GitHub Actions trusted publishing without npm t
   assert.doesNotMatch(workflow, /workflow_dispatch:/);
   assert.match(workflow, /workflow_run:\s*[\s\S]*Validate and cut paired release tags[\s\S]*completed/);
   assert.match(workflow, /github\.event\.workflow_run\.conclusion == 'success'/);
-  assert.match(workflow, /ref: \$\{\{ github\.event\.workflow_run\.head_sha \}\}/);
-  assert.match(workflow, /VALIDATED_RELEASE_SHA: \$\{\{ github\.event\.workflow_run\.head_sha \}\}/);
+  assert.match(workflow, /ref: main/);
+  assert.doesNotMatch(workflow, /github\.event\.workflow_run\.head_sha/);
   assert.match(workflow, /git fetch origin main/);
+  assert.match(workflow, /test "\$HEAD_SHA" = "\$TAG_SHA"/);
   assert.match(workflow, /test "\$TAG_SHA" = "\$MCP_TAG_SHA"/);
   assert.match(workflow, /test "\$TAG_SHA" = "\$MAIN_SHA"/);
   assert.doesNotMatch(workflow, /validated_release_sha:/);
@@ -26,15 +27,8 @@ test("root release workflow uses GitHub Actions trusted publishing without npm t
   assert.match(workflow, /permissions:\s*[\s\S]*id-token:\s*write/);
   assert.match(workflow, /node-version:\s*24/);
   assert.match(workflow, /registry-url:\s*https:\/\/registry\.npmjs\.org/);
-  assert.match(workflow, /npm install -g npm@latest/);
-  assert.ok(
-    workflow.indexOf("Validate OSS release surface") < workflow.indexOf("Use latest npm for trusted publishing"),
-    "trusted-publishing npm upgrade must happen after immutable-tag validation",
-  );
-  assert.ok(
-    workflow.indexOf("Check npm for existing version") < workflow.indexOf("Use latest npm for trusted publishing"),
-    "trusted-publishing npm upgrade must happen only after the duplicate-publication guard",
-  );
+  assert.match(workflow, /npm install -g npm@11\.5\.1/);
+  assert.doesNotMatch(workflow, /npm install -g npm@latest/);
   assert.match(workflow, /npm pack --json --pack-destination dist-release/);
   assert.match(workflow, /find dist-release -maxdepth 1 -type f -name '\*\.tgz'/);
   assert.match(workflow, /echo "tarball=\.\/\$\{TARBALLS\[0\]#\.\/\}" >> "\$GITHUB_OUTPUT"/);
@@ -44,9 +38,9 @@ test("root release workflow uses GitHub Actions trusted publishing without npm t
     workflow,
     /node \.\/scripts\/published-artifact-e2e\.mjs --package-spec "martin-loop@\$\{\{ steps\.package-version\.outputs\.version \}\}"/,
   );
-  assert.match(workflow, /actions\/checkout@v6/);
+  assert.match(workflow, /actions\/checkout@d23441a48e516b6c34aea4fa41551a30e30af803/);
   assert.match(workflow, /pnpm\/action-setup@b0f76dfb45f55f8421693e4803ac7bb65143bd34/);
-  assert.match(workflow, /actions\/setup-node@v6/);
+  assert.match(workflow, /actions\/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38/);
   assert.match(workflow, /softprops\/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b/);
   assert.match(workflow, /pnpm release:authority:check/);
   assert.match(workflow, /pnpm release:authority:check:built/);

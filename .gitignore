@@ -35,10 +35,12 @@ vitest-results.json
 .martin/
 artifacts/
 output/
+.release/
 /cm*.md
 /cmp*.md
 worktrees/
 .worktrees/
+_worktrees/
 
 # OS files
 .DS_Store

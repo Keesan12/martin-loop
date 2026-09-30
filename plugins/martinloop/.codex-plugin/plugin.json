@@ -26,6 +26,13 @@
       "Interactive"
     ],
     "websiteURL": "https://martinloop.com/",
+    "privacyPolicyURL": "https://martinloop.com/privacy",
+    "termsOfServiceURL": "https://martinloop.com/terms",
+    "composerIcon": "./assets/github-hero-v2.svg",
+    "logo": "./assets/github-hero-v2.svg",
+    "screenshots": [
+      "./assets/cli-static.svg"
+    ],
     "defaultPrompt": [
       "Use MartinLoop to govern this task and verify completion.",
       "Run MartinLoop preflight before making changes.",

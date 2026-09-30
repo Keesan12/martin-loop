@@ -605,7 +605,7 @@ git push -u origin feat/your-feature
 
 ## Telemetry & Privacy
 
-MartinLoop sends minimal anonymous usage data to help improve reliability and prioritize development. A first-run notice appears before any data is transmitted. No data is sent on that first run.
+MartinLoop sends minimal anonymous usage data to help improve reliability and prioritize development. On a fresh interactive install, telemetry is enabled by default but remains blocked until the one-time disclosure is shown. After the disclosure, the same run may send the allowlisted anonymous events unless you opt out.
 
 **What is sent:**
 - Random installation ID (generated locally, never linked to your identity)
@@ -640,6 +640,8 @@ martin telemetry explain
 ```
 
 **Environment variables that disable telemetry:** `MARTIN_TELEMETRY_DISABLED=1`, `DO_NOT_TRACK=1`, `CI=1`
+
+Set `MARTIN_TELEMETRY_DEBUG=1` to print the telemetry envelope to stderr without transmitting it.
 
 MartinLoop continues to work normally with telemetry disabled. No features are gated on telemetry consent.
 

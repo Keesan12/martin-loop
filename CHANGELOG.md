@@ -16,6 +16,15 @@
 - Proof mode remains `verification_only` with `governanceClaimEligible=false`; a passing proof is verifier evidence, not a governed `VERIFIED` claim.
 - Existing safety and policy blocks retain precedence over proof success.
 
+### Changed
+- Anonymous product telemetry now uses an opt-out default on fresh interactive installs, with a one-time non-blocking disclosure shown before the first eligible event can be transmitted.
+- Existing telemetry preferences are preserved during migration, and explicit `martin telemetry on` / `martin telemetry off` choices remain authoritative.
+
+### Privacy / safety
+- Telemetry payloads are fail-closed to allowlisted event keys, finite command / experience / failure enums, bounded scalar values, and the hosted experience-ID slug contract.
+- Source code, prompts, task text, repository names or URLs, file names or paths, environment variables, secrets, receipt contents, workspace/project/org identifiers, emails, and raw exception text are rejected from accepted telemetry payloads.
+- `DO_NOT_TRACK`, `MARTIN_TELEMETRY_DISABLED`, and `CI` continue to disable telemetry. `MARTIN_TELEMETRY_DEBUG=1` prints the envelope locally and performs no network transmission.
+
 ## [0.6.8] - 2026-09-25
 
 ### Added
