@@ -80,7 +80,7 @@
     "@opentelemetry/exporter-logs-otlp-http": "^0.214.0",
     "@opentelemetry/resources": "^2.6.1",
     "@opentelemetry/sdk-logs": "^0.214.0",
-    "ts-morph": "^21.0.0"
+    "ts-morph": "^28.0.0"
   },
   "devDependencies": {
     "@anthropic-ai/mcpb": "2.1.2",
