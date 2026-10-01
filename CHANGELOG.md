@@ -2,7 +2,15 @@
 
 ## [Unreleased]
 
-## [0.6.9] - 2026-10-01
+## [0.7.0] - 2026-10-01
+
+### Fixed
+- Claude Code audits now retain tool calls when an assistant message is split across text and tool-use log entries. Turn costs remain deduplicated by message and request, while tool calls and edits are counted once per tool-use ID across copied or forked history.
+- Hosted sync claim handling preserves the queued upload when concurrent work changes its claim.
+- Run finalization stops signal polling before signing the receipt, preventing late diagnostic writes from invalidating ledger integrity.
+- Live release verification checks the MCPB asset on the standalone MCP release.
+
+## [0.6.9] - 2026-09-28
 
 ### Added
 - Added `martin audit`, a local-first Claude Code history audit that estimates API-equivalent agent spend inside fix-and-retry loops, verifier failure counts, longest retry chains, stuck loops, sessions ending red, and edited sessions with no verifier run.

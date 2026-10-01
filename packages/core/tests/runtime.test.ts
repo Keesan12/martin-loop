@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createLoopRecord, type LoopAttempt } from "@martin/contracts";
 
@@ -2524,6 +2524,61 @@ const store: import("../src/index").RunStore = {
     // Exit must NOT be goal_met — the discarded patch never satisfied the goal
     expect(result.decision.reason).not.toMatch(/goal.?met/i);
     expect(result.decision.lifecycleState).not.toBe("completed");
+  });
+
+  it("stops signal polling before the terminal receipt is signed", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-receipt-finalization-"));
+    const store = createFileRunStore({ runsRoot });
+    const writeLoopRecord = store.writeLoopRecord!;
+    let terminalWrites = 0;
+    let polls = 0;
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    try {
+      store.writeLoopRecord = async (runId, loop) => {
+        await writeLoopRecord(runId, loop);
+        if (loop.status === "exited") {
+          terminalWrites += 1;
+          // Force the background poll into the exact post-signing window.
+          await vi.advanceTimersByTimeAsync(250);
+        }
+      };
+      const result = await runMartin({
+        workspaceId: "ws_ops",
+        projectId: "proj_runtime",
+        task: {
+          title: "Terminal receipt lifecycle regression",
+          objective: "Stop monitoring before signing the terminal ledger.",
+          verificationPlan: ["echo ok"]
+        },
+        budget: { maxUsd: 10, softLimitUsd: 6, maxIterations: 1, maxTokens: 2_000 },
+        adapter: {
+          adapterId: "direct:test", kind: "direct-provider", label: "Test adapter",
+          metadata: { providerId: "openai", model: "gpt-5-mini" },
+          async execute() { throw new Error("adapter must not execute for pre-run exit"); }
+        },
+        store,
+        exitSignalSource: {
+          async poll(runId) {
+            polls += 1;
+            return {
+              signals: [{ kind: "human_interrupt", schemaVersion: "exit-signal/1", runId,
+                reason: "paused before execution", requestedAt: "2026-06-06T10:00:00.500Z", requestedBy: "test" }],
+              diagnostics: [{ kind: "human_interrupt", error: "synthetic diagnostic" }]
+            };
+          }
+        }
+      });
+      const integrity = await verifyReceiptIntegrityFromFiles({
+        runId: result.loop.loopId, runsRoot,
+        loopRecordPath: join(runsRoot, result.loop.loopId, "loop-record.json"),
+        ledgerPath: join(runsRoot, result.loop.loopId, "ledger.jsonl")
+      });
+      expect(integrity.state, integrity.reason).toBe("verified");
+      expect(terminalWrites).toBe(1);
+      expect(polls).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("drains queued control diagnostics before receipt integrity signing", async () => {

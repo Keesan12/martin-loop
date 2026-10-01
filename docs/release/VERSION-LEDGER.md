@@ -41,7 +41,7 @@ This file is the release source of truth for package/version mapping in this rep
   - `0.6.6` MCP host schema compatibility, CFO evidence transport, and Windows Claude native-installer support
   - `0.6.7` recoverable dashboard linking and receipt-bound hosted event transport
   - `0.6.8` automatic workspace receipt-key trust bootstrap and recoverable signed-run hosted sync
-- current in-repo root release target: `0.6.9`
+- current in-repo root release target: `0.7.0` (pending publication)
 - next planned root follow-on: not scheduled
 
 ## Standalone package: `@martinloop/mcp`
@@ -54,8 +54,8 @@ This file is the release source of truth for package/version mapping in this rep
 - live MCPB baseline: `0.6.9`
 - live MCPB SHA-256: see the `mcp-v0.6.9` GitHub release checksum asset
 - live MCPB size: see the `mcp-v0.6.9` GitHub release asset
-- current in-repo standalone release target: `0.6.9`
-- current in-repo MCPB release target: `0.6.9` with manifest schema `0.3`
+- current in-repo standalone release target: `0.7.0` (pending publication)
+- current in-repo MCPB release target: `0.7.0` with manifest schema `0.3` (pending publication)
 - next planned standalone release: not scheduled
 
 ## Release rules
@@ -64,6 +64,7 @@ This file is the release source of truth for package/version mapping in this rep
 - The `0.6.7` train aligns the root package, standalone MCP package, plugin metadata, and MCPB product version at `0.6.7`. MCPB manifest schema remains `0.3`.
 - The `0.6.8` train aligned the root package, standalone MCP package, plugin metadata, and MCPB product version at `0.6.8`. MCPB manifest schema remains `0.3`.
 - The `0.6.9` train aligns the root package, standalone MCP package, plugin metadata, and MCPB product version at `0.6.9`. MCPB manifest schema remains `0.3`.
+- The `0.7.0` candidate aligns the root package, standalone MCP package, plugin metadata, and MCPB product version at `0.7.0`. MCPB manifest schema remains `0.3`.
 - Do not infer standalone MCP release state from the root package, or the other way around.
 - Public release notes must be written for customers and evaluators, not for internal operators.
 - Public-facing examples, screenshots, README copy, and changelog entries must stay free of internal repo names, absolute system paths, private branch names, or process noise.

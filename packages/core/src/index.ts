@@ -971,6 +971,14 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     }
   });
 
+  async function stopSignalMonitorAndDrainDiagnostics(): Promise<void> {
+    // Fence future polls and in-flight callbacks before taking the final ledger
+    // snapshot. Draining alone leaves a window for new writes during signing.
+    disposeSignalMonitor();
+    runController.abort();
+    await Promise.all(pendingControlWrites.splice(0));
+  }
+
   // Snapshot of the current run state for eight-exit evaluation
   function currentExitSnapshot(
     phase: import("@martin/contracts").ExitEvaluationPhase,
@@ -1086,9 +1094,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     // Drain all pending diagnostic ledger writes BEFORE signing the receipt.
     // persistLoopRecordIfSupported reads ledger.jsonl to compute the integrity hash;
     // any write that lands after that read produces a false ledger_hash_mismatch on verify.
-    if (pendingControlWrites.length > 0) {
-      await Promise.all(pendingControlWrites.splice(0));
-    }
+    await stopSignalMonitorAndDrainDiagnostics();
     const finalizedLoop = finalizeLoop(loop, exitDecision, now(), idFactory, routingInput);
     const finalizedWithEnvelope: LoopRecord = { ...finalizedLoop, terminationEnvelope: envelope };
     await persistLoopRecordIfSupported(input.store, finalizedWithEnvelope);
@@ -1150,9 +1156,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
           })
         );
       }
-      if (pendingControlWrites.length > 0) {
-        await Promise.all(pendingControlWrites.splice(0));
-      }
+      await stopSignalMonitorAndDrainDiagnostics();
       const finalizedLoop = finalizeLoop(loop, preflightExitDecision, now(), idFactory);
       await persistLoopRecordIfSupported(input.store, finalizedLoop);
       return {
@@ -1215,9 +1219,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
           })
         );
       }
-      if (pendingControlWrites.length > 0) {
-        await Promise.all(pendingControlWrites.splice(0));
-      }
+      await stopSignalMonitorAndDrainDiagnostics();
       const finalizedLoop = finalizeLoop(loop, poisoningExitDecision, now(), idFactory);
       await persistLoopRecordIfSupported(input.store, finalizedLoop);
       return {
@@ -1290,9 +1292,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
           })
         );
       }
-      if (pendingControlWrites.length > 0) {
-        await Promise.all(pendingControlWrites.splice(0));
-      }
+      await stopSignalMonitorAndDrainDiagnostics();
       const finalizedLoop = finalizeLoop(loop, exitDecision, now(), idFactory);
       await persistLoopRecordIfSupported(input.store, finalizedLoop);
       return {
@@ -1724,9 +1724,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         );
       }
 
-      if (pendingControlWrites.length > 0) {
-        await Promise.all(pendingControlWrites.splice(0));
-      }
+      await stopSignalMonitorAndDrainDiagnostics();
       const finalizedLoop = finalizeLoop(loop, filesystemExitDecision, now(), idFactory);
       await persistLoopRecordIfSupported(input.store, finalizedLoop);
       return {
@@ -1818,9 +1816,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         );
       }
 
-      if (pendingControlWrites.length > 0) {
-        await Promise.all(pendingControlWrites.splice(0));
-      }
+      await stopSignalMonitorAndDrainDiagnostics();
       const finalizedLoop = finalizeLoop(loop, approvalExitDecision, now(), idFactory);
       await persistLoopRecordIfSupported(input.store, finalizedLoop);
       return {
@@ -1995,9 +1991,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         );
       }
 
-      if (pendingControlWrites.length > 0) {
-        await Promise.all(pendingControlWrites.splice(0));
-      }
+      await stopSignalMonitorAndDrainDiagnostics();
       const finalizedLoop = finalizeLoop(loop, patchExitDecision, now(), idFactory);
       await persistLoopRecordIfSupported(input.store, finalizedLoop);
       return {
@@ -2107,9 +2101,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         );
       }
       // Drain pending diagnostic ledger writes before receipt signing.
-      if (pendingControlWrites.length > 0) {
-        await Promise.all(pendingControlWrites.splice(0));
-      }
+      await stopSignalMonitorAndDrainDiagnostics();
       const routingInput = { runStartMs, firstDeltaDetected, firstDeltaTimestampMs, firstDeltaFilePath, firstDeltaChangeType, preDeltaCostUsd };
       const finalizedLoop = finalizeLoop(loop, decision, now(), idFactory, routingInput);
       await persistLoopRecordIfSupported(input.store, finalizedLoop);
@@ -2139,9 +2131,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
   }
 
   // Drain pending diagnostic ledger writes before receipt signing.
-  if (pendingControlWrites.length > 0) {
-    await Promise.all(pendingControlWrites.splice(0));
-  }
+  await stopSignalMonitorAndDrainDiagnostics();
   const routingInput = { runStartMs, firstDeltaDetected, firstDeltaTimestampMs, firstDeltaFilePath, firstDeltaChangeType, preDeltaCostUsd };
   const finalizedLoop = finalizeLoop(loop, decision, now(), idFactory, routingInput);
   await persistLoopRecordIfSupported(input.store, finalizedLoop);
