@@ -11,6 +11,19 @@ test("promotion preparer supports explicit reviewed conflict resolutions", () =>
   assert.match(source, /MANUALLY_RESOLVED_CONTENT_DIVERGENCES/);
 });
 
+test("reviewed resolutions can make a private file private-only", () => {
+  const source = readFileSync(resolve("scripts/prepare-public-promotion.mjs"), "utf8");
+  assert.match(source, /divergenceKind/);
+  assert.match(source, /private-only/);
+  assert.match(source, /NEW_PRIVATE_ONLY_DIVERGENCES/);
+});
+
+test("reviewed private resolutions can collapse or remove old public-only divergences", () => {
+  const source = readFileSync(resolve("scripts/prepare-public-promotion.mjs"), "utf8");
+  assert.match(source, /COLLAPSED_PUBLIC_ONLY_DIVERGENCES/);
+  assert.match(source, /REMOVED_PUBLIC_ONLY_DIVERGENCES/);
+});
+
 
 test("post-release public drift is accepted only when current private authority already incorporates it", () => {
   const source = readFileSync(resolve("scripts/prepare-public-promotion.mjs"), "utf8");
@@ -104,4 +117,13 @@ test("merge-file conflict counts from 1 through 127 are treated as manual reconc
   assert.match(source, /result\.status > 0 && result\.status <= 127/);
   assert.match(source, /content divergence requires manual reconciliation/);
   assert.match(source, /git merge-file failed/);
+});
+
+
+test("promotion preparer force-stages the ignored generated promotion manifest", () => {
+  const source = readFileSync(resolve("scripts/prepare-public-promotion.mjs"), "utf8");
+  assert.match(
+    source,
+    /git\(PUBLIC_ROOT, \["add", "-f", "\.martin\/promotion-manifest\.json"\], "utf8"\)/,
+  );
 });

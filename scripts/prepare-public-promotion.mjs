@@ -88,6 +88,12 @@ for (const item of manualResolutions) {
   if (!item || typeof item.path !== "string" || !["private", "public"].includes(item.resolution)) {
     throw new Error("each promotion resolution requires path and resolution=private|public");
   }
+  if (item.divergenceKind !== undefined && item.divergenceKind !== "private-only") {
+    throw new Error(`promotion resolution ${item.path} has unsupported divergenceKind`);
+  }
+  if (item.divergenceKind === "private-only" && item.resolution !== "private") {
+    throw new Error(`promotion resolution ${item.path} requires resolution=private for divergenceKind=private-only`);
+  }
   if (typeof item.reason !== "string" || item.reason.trim().length < 8) {
     throw new Error(`promotion resolution ${item.path} requires a substantive reason`);
   }
@@ -317,10 +323,31 @@ const target = new Map();
 const refreshedDivergences = [];
 const autoMerged = [];
 const manuallyResolved = [];
+const newPrivateOnly = [];
+const collapsedPublicOnly = [];
+const removedPublicOnly = [];
 
 for (const entry of privateEntries) {
   const path = entry.path;
   const previous = oldByPath.get(path);
+  const resolution = resolutionByPath.get(path);
+  if (resolution?.divergenceKind === "private-only") {
+    if (previous && previous.kind !== "private-only") {
+      throw new Error(`cannot reclassify ${path} from ${previous.kind} to private-only`);
+    }
+    usedResolutions.add(path);
+    newPrivateOnly.push(path);
+    refreshedDivergences.push({
+      path,
+      kind: "private-only",
+      privateSha256: entry.sha256,
+      privateMode: entry.mode,
+      publicSha256: null,
+      reason: resolution.reason,
+      reviewedBy: resolution.reviewedBy,
+    });
+    continue;
+  }
   if (previous?.kind === "private-only") {
     refreshedDivergences.push({
       ...previous,
@@ -331,7 +358,13 @@ for (const entry of privateEntries) {
     continue;
   }
   if (previous?.kind === "public-only") {
-    throw new Error(`divergence classification conflict: ${path} is now present privately but was public-only`);
+    if (resolution?.resolution !== "private") {
+      throw new Error(`divergence classification conflict: ${path} is now present privately but was public-only`);
+    }
+    usedResolutions.add(path);
+    collapsedPublicOnly.push(path);
+    target.set(path, { content: readBlob(PRIVATE_ROOT, privateSha, path), mode: entry.mode });
+    continue;
   }
   if (previous?.kind === "content") {
     const basePublicEntry = publicBaseByPath.get(path);
@@ -399,6 +432,12 @@ for (const previous of oldDivergences) {
   }
   if (previous.kind === "public-only") {
     if (privateByPath.has(previous.path)) continue;
+    const resolution = resolutionByPath.get(previous.path);
+    if (resolution?.resolution === "private") {
+      usedResolutions.add(previous.path);
+      removedPublicOnly.push(previous.path);
+      continue;
+    }
     const base = publicBaseByPath.get(previous.path);
     if (!base) continue;
     if (base.sha256 !== previous.publicSha256) throw new Error(`stale public-only divergence hash for ${previous.path}`);
@@ -447,7 +486,7 @@ try {
     "--divergences", divergencePath,
     "--output", manifestPath,
   ], { cwd: PRIVATE_ROOT, stdio: "inherit" });
-  git(PUBLIC_ROOT, ["add", ".martin/promotion-manifest.json"], "utf8");
+  git(PUBLIC_ROOT, ["add", "-f", ".martin/promotion-manifest.json"], "utf8");
 } finally {
   rmSync(temp, { recursive: true, force: true });
 }
@@ -465,4 +504,10 @@ console.log(`[public-promotion-prepare] MANUALLY_RESOLVED_CONTENT_DIVERGENCES=${
 for (const item of manuallyResolved) {
   console.log(`${item.path}\t${item.resolution}\t${item.reviewedBy}\t${item.reason}`);
 }
+console.log(`[public-promotion-prepare] NEW_PRIVATE_ONLY_DIVERGENCES=${newPrivateOnly.length}`);
+if (newPrivateOnly.length) console.log(newPrivateOnly.join("\n"));
+console.log(`[public-promotion-prepare] COLLAPSED_PUBLIC_ONLY_DIVERGENCES=${collapsedPublicOnly.length}`);
+if (collapsedPublicOnly.length) console.log(collapsedPublicOnly.join("\n"));
+console.log(`[public-promotion-prepare] REMOVED_PUBLIC_ONLY_DIVERGENCES=${removedPublicOnly.length}`);
+if (removedPublicOnly.length) console.log(removedPublicOnly.join("\n"));
 console.log(`[public-promotion-prepare] NEXT: review staged diff in ${PUBLIC_ROOT}, commit, then run pnpm public:promotion-guard`);
