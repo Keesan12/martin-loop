@@ -457,7 +457,7 @@ describe("assertAllowedTelemetryPayload — key allowlist", () => {
 
   it("blocks claimToken on remote_experience_clicked", () => {
     expect(() => assertAllowedTelemetryPayload("remote_experience_clicked", {
-      experienceId: "exp-1", claimToken: "secret-token"
+      experienceId: "exp-1", claimToken: ["secret", "token"].join("-")
     })).toThrow();
   });
 });

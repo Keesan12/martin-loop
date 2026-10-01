@@ -30,8 +30,8 @@
  *   Oversized payload (> 256 KB)           → rejected before enqueue; logged to stderr.
  *
  * Concurrent process safety:
- *   Items are claimed via atomic rename to .inflight/ before upload.
- *   Only the process that wins the rename proceeds to upload.
+ *   Items are claimed via an exclusive per-item directory in .inflight/ before upload.
+ *   Only the process that creates that directory proceeds to upload.
  *   Stale .inflight items (from crashed processes) are recovered at flush start.
  *
  * Attempt persistence:
@@ -42,7 +42,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 import type { LoopRecord } from "@martin/contracts";
 import { buildPrivacySafeCoreReceiptBundle, redactHostedSyncValue } from "./sync-privacy.js";
@@ -444,6 +444,16 @@ async function atomicWriteJson(filePath: string, data: unknown): Promise<void> {
  * Legacy inflight filenames (<queueId>.json) are handled separately and conservatively.
  */
 const INFLIGHT_RE = /^(\d+)\.([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.json$/i;
+/**
+ * Claim directories are generation-aware:
+ *   <queueId>.<claimId>.claim  current owned claim
+ *   <queueId>.claim            acquisition reservation and legacy claim
+ *
+ * The stable reservation path serializes the Windows rename, while every owner
+ * receives a unique terminal path. A recovered owner can therefore never delete,
+ * requeue, quarantine, or rewrite a later owner's replacement claim.
+ */
+const CLAIM_DIR_RE = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\.([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}))?\.claim$/i;
 
 interface InflightMeta {
   claimedAtMs: number;
@@ -459,6 +469,11 @@ function parseInflightName(name: string): InflightMeta | null {
     claimId: m[2]!,
     queueId: m[3]!,
   };
+}
+
+function queueIdFromClaimPath(filePath: string): string | undefined {
+  if (basename(filePath) !== "item.json") return undefined;
+  return CLAIM_DIR_RE.exec(basename(dirname(filePath)))?.[1];
 }
 
 // ---------------------------------------------------------------------------
@@ -527,7 +542,7 @@ function parseRetryAfterMs(headerValue: string | null): number | undefined {
 /**
  * In-process serialization for concurrent claim attempts.
  *
- * Cross-process ownership is guaranteed by the atomic OS rename in claimItem.
+ * Cross-process ownership is guaranteed by exclusive creation of a stable claim directory.
  * This Set provides additional in-process serialization: it is checked and updated
  * synchronously (no await before the check-and-add), so it is atomic within the JS
  * event loop and prevents two coroutines in the same process from both submitting
@@ -539,12 +554,12 @@ function parseRetryAfterMs(headerValue: string | null): number | undefined {
 const activeClaimPaths = new Set<string>();
 
 /**
- * Atomically claims a queue item by renaming it to a structured inflight filename:
- *   queue/<queueId>.json  →  .inflight/<claimedAtEpochMs>.<claimUuid>.<queueId>.json
- *
- * The claim timestamp and identity are encoded in the rename destination, so they are
- * established by the same atomic OS operation that acquires ownership. Nothing is
- * written after the rename — the filename is the claim record.
+ * Atomically claims a queue item by exclusively creating .inflight/<queueId>.claim,
+ * moving the item inside it, then renaming that reservation to the generation-specific
+ * .inflight/<queueId>.<claimId>.claim path. The stable reservation is required on
+ * Windows: competing renames of one source to different destinations can both report
+ * success. The unique owned path fences every later terminal operation from replacement
+ * claims for the same queueId.
  *
  * Returns the inflight path on success; undefined if another worker won the race
  * (ENOENT from OS rename, or in-process serialization lock already held).
@@ -568,16 +583,32 @@ async function claimItem(file: string, queueDir: string): Promise<string | undef
     const inflightDir = resolveInflightDir(queueDir);
     await mkdir(inflightDir, { recursive: true });
 
-    // Claim timestamp and UUID encoded in destination filename — atomically established.
-    const claimedAtMs = Date.now();
-    const claimUuid = randomUUID();
-    const dest = join(inflightDir, `${claimedAtMs}.${claimUuid}.${queueId}.json`);
+    const reservationDir = join(inflightDir, `${queueId}.claim`);
+    try {
+      await mkdir(reservationDir);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "EEXIST") return undefined;
+      throw err;
+    }
+    const reservedItemPath = join(reservationDir, "item.json");
 
     try {
-      await rename(src, dest);
-      return dest;
+      await rename(src, reservedItemPath);
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") return undefined; // lost the race
+      await rm(reservationDir, { recursive: true, force: true });
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+      throw err;
+    }
+
+    const claimId = randomUUID();
+    const ownedClaimDir = join(inflightDir, `${queueId}.${claimId}.claim`);
+    try {
+      await rename(reservationDir, ownedClaimDir);
+      return join(ownedClaimDir, "item.json");
+    } catch (err) {
+      // The queue item is already inside our reservation. Put it back before
+      // propagating an ownership-publication failure so it is never stranded.
+      await releaseItem(reservedItemPath, queueDir, "requeue");
       throw err;
     }
   } finally {
@@ -595,20 +626,27 @@ async function releaseItem(
   outcome: "requeue" | "done"
 ): Promise<void> {
   if (outcome === "done") {
-    await rm(inflightPath, { force: true }); // force handles ENOENT safely
+    const claimQueueId = queueIdFromClaimPath(inflightPath);
+    if (claimQueueId) await rm(dirname(inflightPath), { recursive: true, force: true });
+    else await rm(inflightPath, { force: true });
     return;
   }
   // Extract the original <queueId>.json name from the inflight filename.
   // New format: <epochMs>.<claimUuid>.<queueId>.json → requeue as <queueId>.json
   // Legacy format: <queueId>.json → requeue as-is
+  const claimQueueId = queueIdFromClaimPath(inflightPath);
   const base = queueFileName(inflightPath);
   const meta = parseInflightName(base);
-  const queueFile = meta ? `${meta.queueId}.json` : base;
+  const queueFile = claimQueueId ? `${claimQueueId}.json` : meta ? `${meta.queueId}.json` : base;
   const dest = join(queueDir, queueFile);
   try {
     await rename(inflightPath, dest);
+    if (claimQueueId) await rm(dirname(inflightPath), { recursive: true, force: true });
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return; // already swept — safe race
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      if (claimQueueId) await rm(dirname(inflightPath), { recursive: true, force: true });
+      return;
+    }
     process.stderr.write(
       `[martin sync] Failed to requeue ${queueFile}: ${err instanceof Error ? err.message : String(err)}\n`
     );
@@ -639,6 +677,26 @@ async function recoverStaleInflight(queueDir: string): Promise<void> {
     throw err;
   }
   for (const entry of entries) {
+    const claimMatch = CLAIM_DIR_RE.exec(entry);
+    if (claimMatch) {
+      const claimDir = join(inflightDir, entry);
+      try {
+        const s = await stat(claimDir);
+        if (Date.now() - s.mtimeMs > CLAIM_STALE_MS) {
+          const itemPath = join(claimDir, "item.json");
+          try {
+            await releaseItem(itemPath, queueDir, "requeue");
+          } catch (err) {
+            if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+            await rm(claimDir, { recursive: true, force: true });
+          }
+          process.stderr.write(`[martin sync] Recovered stale claim directory: ${entry}\n`);
+        }
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+      }
+      continue;
+    }
     if (!entry.endsWith(".json")) continue;
     const p = join(inflightDir, entry);
     try {
@@ -720,13 +778,15 @@ async function quarantine(filePath: string, queueDir: string, reason: string): P
 
   // Normalize quarantine filename: strip inflight metadata so quarantine entries are
   // named <queueId>.json regardless of whether the source was a queue or inflight file.
+  const claimQueueId = queueIdFromClaimPath(filePath);
   const rawName = queueFileName(filePath);
   const meta = parseInflightName(rawName);
-  const name = meta ? `${meta.queueId}.json` : rawName;
+  const name = claimQueueId ? `${claimQueueId}.json` : meta ? `${meta.queueId}.json` : rawName;
   const dest = join(dir, name);
 
   try {
     await rename(filePath, dest);
+    if (claimQueueId) await rm(dirname(filePath), { recursive: true, force: true });
   } catch (err) {
     process.stderr.write(
       `[martin sync] Cannot quarantine ${name}: ${err instanceof Error ? err.message : String(err)}. Record left in place.\n`

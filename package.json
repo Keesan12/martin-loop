@@ -105,6 +105,7 @@
     "release:validate:platforms": "node ./scripts/release-matrix.mjs",
     "release:matrix:local": "node ./scripts/release-matrix.mjs",
     "release:truth-check": "node ./scripts/release-truth-check.mjs --allow-divergence-marker=[sync-parity]",
+    "release:verify-live": "node ./scripts/verify-live-release.mjs",
     "run:cli": "pnpm --filter @martin/cli dev",
     "public:promotion-guard": "node scripts/verify-public-promotion.mjs",
     "test:promotion-guard": "node --test scripts/tests/verify-public-promotion.test.mjs",

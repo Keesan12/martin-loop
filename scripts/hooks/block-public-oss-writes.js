@@ -2,6 +2,7 @@
 "use strict";
 
 const { spawnSync } = require("node:child_process");
+const path = require("node:path");
 
 const PUBLIC_LOCAL_PATH = "martin-loop_PUBLIC_OSS";
 const PUBLIC_REPOS = new Set([
@@ -11,6 +12,8 @@ const PUBLIC_REPOS = new Set([
 
 const READ_ONLY_GH_COMMANDS = new Set(["view", "list", "status", "checks"]);
 const READ_ONLY_GIT_COMMANDS = new Set(["fetch", "status", "log", "show", "diff", "remote"]);
+const GUARDED_GIT_COMMANDS = new Set(["add", "commit", "push", "tag"]);
+const ALLOWED_PUBLIC_PUSH_OPTIONS = new Set(["-u", "--set-upstream"]);
 
 function normalizeSlashes(value) {
   return String(value ?? "").replace(/\\/g, "/");
@@ -136,12 +139,119 @@ function tokenize(segment) {
   return tokens;
 }
 
-function extractLeadingCd(command) {
-  const match =
-    command.match(/^\s*cd\s+"([^"]+)"\s*(?:&&|;)/) ||
-    command.match(/^\s*cd\s+'([^']+)'\s*(?:&&|;)/) ||
-    command.match(/^\s*cd\s+([^\s&;]+)\s*(?:&&|;)/);
-  return match ? match[1] : undefined;
+function isPublicCheckout(cwd) {
+  return Boolean(cwd && normalizeSlashes(cwd).toLowerCase().includes(PUBLIC_LOCAL_PATH.toLowerCase()));
+}
+
+function resolveCommandCwd(candidate, baseCwd) {
+  if (!candidate) return baseCwd;
+  return path.resolve(baseCwd || process.cwd(), candidate);
+}
+
+function parseGitInvocation(tokens, inheritedCwd) {
+  let index = 1;
+  let cwd = inheritedCwd;
+  const configOverrides = [];
+
+  while (index < tokens.length) {
+    const token = tokens[index];
+    const normalized = token.toLowerCase();
+
+    if (token === "-C") {
+      cwd = resolveCommandCwd(tokens[index + 1], cwd);
+      index += 2;
+      continue;
+    }
+    if (token === "-c") {
+      if (tokens[index + 1]) configOverrides.push(tokens[index + 1]);
+      index += 2;
+      continue;
+    }
+    if (normalized.startsWith("-c") && token.length > 2) {
+      configOverrides.push(token.slice(2));
+      index += 1;
+      continue;
+    }
+    if (["--no-pager", "--paginate", "--no-replace-objects", "--literal-pathspecs"].includes(normalized)) {
+      index += 1;
+      continue;
+    }
+    break;
+  }
+
+  return {
+    sub: tokens[index]?.toLowerCase() ?? "",
+    args: tokens.slice(index + 1),
+    cwd,
+    configOverrides,
+  };
+}
+
+function parsePushArgs(args) {
+  const options = [];
+  const positional = [];
+  let positionalOnly = false;
+
+  for (const arg of args) {
+    if (!positionalOnly && arg === "--") {
+      positionalOnly = true;
+    } else if (!positionalOnly && arg.startsWith("-")) {
+      options.push(arg.toLowerCase());
+    } else {
+      positional.push(arg);
+    }
+  }
+
+  return { options, positional };
+}
+
+function isTruthyGitBoolean(value) {
+  return ["1", "true", "yes", "on"].includes(String(value ?? "").trim().toLowerCase());
+}
+
+function widensPushFollowTags(configOverrides) {
+  return configOverrides.some((entry) => {
+    const separator = entry.indexOf("=");
+    if (separator < 0) return false;
+    const key = entry.slice(0, separator).trim().toLowerCase();
+    return key === "push.followtags" && isTruthyGitBoolean(entry.slice(separator + 1));
+  });
+}
+
+function configuredPushFollowTags(cwd) {
+  if (!cwd) return false;
+  const result = spawnSync("git", ["-C", cwd, "config", "--bool", "--get", "push.followTags"], {
+    encoding: "utf8",
+    timeout: 5_000,
+  });
+  return result.status === 0 && result.stdout.trim().toLowerCase() === "true";
+}
+
+function configWidensPushFollowTags(args) {
+  const keyIndex = args.findIndex((arg) => arg.toLowerCase() === "push.followtags");
+  if (keyIndex < 0) return false;
+  return isTruthyGitBoolean(args[keyIndex + 1]);
+}
+
+function currentGitBranch(cwd) {
+  if (!cwd) return "";
+  const result = spawnSync("git", ["-C", cwd, "branch", "--show-current"], { encoding: "utf8", timeout: 5_000 });
+  return result.status === 0 ? result.stdout.trim() : "";
+}
+
+function governedPublicStagingBranch(cwd) {
+  if (!cwd || !normalizeSlashes(cwd).includes(PUBLIC_LOCAL_PATH)) return "";
+  const branch = currentGitBranch(cwd);
+  return /^public-staging\/[A-Za-z0-9._/-]+$/.test(branch) ? branch : "";
+}
+
+function isExplicitPushOfBranch(refspecs, branch) {
+  if (!branch) return false;
+  if (refspecs.length !== 1) return false;
+  return refspecs.every((refspec) =>
+    refspec === `HEAD:refs/heads/${branch}` ||
+    refspec === `refs/heads/${branch}:refs/heads/${branch}`
+  );
 }
 
 function resolveGitRemote(remote, cwd) {
@@ -193,16 +303,22 @@ function unwrapShellCommand(tokens) {
 
 function isPublicMutation(command, depth = 0) {
   if (depth > 3) return { blocked: false };
-  const cwd = extractLeadingCd(command);
-  const segments = splitShellSegments(command).flatMap((segment) => {
-    const tokens = tokenize(segment);
-    if (tokens[0] && tokens[0].toLowerCase() === "cd") return [];
-    return [tokens];
-  });
+  const segments = splitShellSegments(command).map(tokenize);
+  let cwd;
+  let cwdChangeCount = 0;
+  let branchContextChanged = false;
 
   for (const tokens of segments) {
     if (tokens.length === 0) continue;
-    const [exe, sub, action] = tokens.map((token) => token.toLowerCase());
+    const [exe, rawSub, action] = tokens.map((token) => token.toLowerCase());
+
+    if (exe === "cd") {
+      const candidate = tokens[1]?.toLowerCase() === "/d" ? tokens[2] : tokens[1];
+      cwd = resolveCommandCwd(candidate, cwd);
+      cwdChangeCount += 1;
+      continue;
+    }
+
     const wrappedCommand = unwrapShellCommand(tokens);
     if (wrappedCommand) {
       const wrappedMutation = isPublicMutation(wrappedCommand, depth + 1);
@@ -210,12 +326,30 @@ function isPublicMutation(command, depth = 0) {
       continue;
     }
 
-    if (exe === "npm" && sub === "publish") return { blocked: true, reason: "npm publish" };
+    if (exe === "npm" && rawSub === "publish") return { blocked: true, reason: "npm publish" };
 
     if (exe === "git") {
+      const git = parseGitInvocation(tokens, cwd);
+      const { sub } = git;
       if (READ_ONLY_GIT_COMMANDS.has(sub)) continue;
-      if (cwd && normalizeSlashes(cwd).includes(PUBLIC_LOCAL_PATH) && ["add", "commit", "push", "tag"].includes(sub)) {
+      const publicCwd = isPublicCheckout(git.cwd);
+      const stagingBranch = publicCwd ? governedPublicStagingBranch(git.cwd) : "";
+      const unstableContext = cwdChangeCount > 1 || branchContextChanged;
+
+      if (publicCwd && GUARDED_GIT_COMMANDS.has(sub) && unstableContext) {
+        return { blocked: true, reason: "public repo context changed before mutation" };
+      }
+
+      if (publicCwd && sub === "config" && configWidensPushFollowTags(git.args)) {
+        return { blocked: true, reason: "public push.followTags widening" };
+      }
+
+      if (publicCwd && (sub === "add" || sub === "commit") && !stagingBranch) {
         return { blocked: true, reason: "public repo path mutation" };
+      }
+
+      if (publicCwd && sub === "tag") {
+        return { blocked: true, reason: "public tag mutation" };
       }
 
       if (sub === "tag" && tokens.some((token) => /^v\d+\.\d+\.\d+(?:[-+][0-9a-z.-]+)?$/i.test(token))) {
@@ -223,24 +357,53 @@ function isPublicMutation(command, depth = 0) {
       }
 
       if (sub === "push") {
-        const remote = tokens.slice(2).find((token) => !token.startsWith("-"));
-        const resolved = resolveGitRemote(remote, cwd);
-        if (isPublicRepoUrl(resolved)) return { blocked: true, reason: "public git push" };
+        const push = parsePushArgs(git.args);
+        const [remote, ...refspecs] = push.positional;
+        const resolved = resolveGitRemote(remote, git.cwd);
+
+        if (publicCwd && push.positional.length < 2) {
+          return { blocked: true, reason: "public git push without explicit remote" };
+        }
+
+        if (publicCwd && (push.options.includes("--tags") || push.options.includes("--follow-tags"))) {
+          return { blocked: true, reason: "public git push tag widening" };
+        }
+
+        if (publicCwd && widensPushFollowTags(git.configOverrides)) {
+          return { blocked: true, reason: "public push.followTags widening" };
+        }
+
+        if (isPublicRepoUrl(resolved)) {
+          const optionsAreSafe = push.options.every((option) => ALLOWED_PUBLIC_PUSH_OPTIONS.has(option));
+          const followTagsDisabled = !configuredPushFollowTags(git.cwd);
+          if (
+            publicCwd &&
+            stagingBranch &&
+            optionsAreSafe &&
+            followTagsDisabled &&
+            isExplicitPushOfBranch(refspecs, stagingBranch)
+          ) {
+            continue;
+          }
+          return { blocked: true, reason: "public git push" };
+        }
       }
 
       if ((sub === "add" || sub === "commit") && tokens.some((token) => normalizeSlashes(token).includes(PUBLIC_LOCAL_PATH))) {
         return { blocked: true, reason: "public repo path mutation" };
       }
+
+      if (sub === "switch" || sub === "checkout") branchContextChanged = true;
     }
 
     if (exe === "gh") {
       const repo = repoFromGhArgs(tokens);
       if (!isPublicRepo(repo)) continue;
 
-      if (sub === "pr" && !READ_ONLY_GH_COMMANDS.has(action)) {
+      if (rawSub === "pr" && !READ_ONLY_GH_COMMANDS.has(action)) {
         return { blocked: true, reason: "public PR mutation" };
       }
-      if (sub === "release" && !READ_ONLY_GH_COMMANDS.has(action)) {
+      if (rawSub === "release" && !READ_ONLY_GH_COMMANDS.has(action)) {
         return { blocked: true, reason: "public release mutation" };
       }
     }

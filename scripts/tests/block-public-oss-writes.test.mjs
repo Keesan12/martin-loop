@@ -46,6 +46,14 @@ function makeRemoteRepoWithPushUrl(remoteName, fetchUrl, pushUrl) {
   return dir;
 }
 
+function makePublicCheckout(branch = "public-staging/0.6.9") {
+  const dir = mkdtempSync(join(tmpdir(), "martin-loop_PUBLIC_OSS-"));
+  execFileSync("git", ["init", "-b", branch], { cwd: dir, stdio: "ignore" });
+  execFileSync("git", ["remote", "add", "origin", "https://github.com/Keesan12/martin-loop.git"], { cwd: dir, stdio: "ignore" });
+  return dir;
+}
+
+
 const ALLOW = 0;
 const BLOCK = 2;
 
@@ -100,6 +108,173 @@ test("internal git push to private origin URL is allowed", () => {
 test("internal git fetch is allowed", () => {
   assert.strictEqual(invoke({ command: "git fetch origin" }), ALLOW);
 });
+
+test("governed public-staging git add and commit are allowed", () => {
+  const dir = makePublicCheckout();
+  try {
+    assert.strictEqual(invoke({ command: `cd "${dir}" && git add -f .martin/promotion-manifest.json` }), ALLOW);
+    assert.strictEqual(invoke({ command: `cd "${dir}" && git commit -m "chore: governed promotion candidate"` }), ALLOW);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("governed public-staging explicit push is allowed", () => {
+  const dir = makePublicCheckout();
+  try {
+    assert.strictEqual(
+      invoke({ command: `cd "${dir}" && git push -u origin HEAD:refs/heads/public-staging/0.6.9` }),
+      ALLOW
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("governed public-staging push requires a fully qualified destination ref", () => {
+  const dir = makePublicCheckout();
+  try {
+    assert.strictEqual(
+      invoke({ command: `cd "${dir}" && git push origin public-staging/0.6.9` }),
+      BLOCK
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("public checkout push without an explicit remote is blocked", () => {
+  const dir = makePublicCheckout();
+  try {
+    assert.strictEqual(
+      invoke({ command: `cd "${dir}" && git push HEAD:refs/heads/public-staging/0.6.9` }),
+      BLOCK
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("public checkout rejects branch changes before a guarded mutation", () => {
+  const dir = makePublicCheckout();
+  try {
+    assert.strictEqual(
+      invoke({ command: `cd "${dir}" && git switch main && git add README.md` }),
+      BLOCK
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("public checkout rejects compound cwd changes before a guarded mutation", () => {
+  const internalDir = makeRemoteRepo("origin", "https://github.com/martin-Loop/ML_Core_OSS_Internal.git");
+  const publicDir = makePublicCheckout();
+  try {
+    assert.strictEqual(
+      invoke({ command: `cd "${internalDir}" && cd "${publicDir}" && git add README.md` }),
+      BLOCK
+    );
+  } finally {
+    rmSync(internalDir, { recursive: true, force: true });
+    rmSync(publicDir, { recursive: true, force: true });
+  }
+});
+
+test("git -C cannot bypass public checkout mutation protection", () => {
+  const dir = makePublicCheckout("main");
+  try {
+    assert.strictEqual(invoke({ command: `git -C "${dir}" add README.md` }), BLOCK);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("governed public-staging push rejects --tags widening", () => {
+  const dir = makePublicCheckout();
+  try {
+    assert.strictEqual(
+      invoke({ command: `cd "${dir}" && git push --tags origin HEAD:refs/heads/public-staging/0.6.9` }),
+      BLOCK
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("governed public-staging push rejects --follow-tags widening", () => {
+  const dir = makePublicCheckout();
+  try {
+    assert.strictEqual(
+      invoke({ command: `cd "${dir}" && git push --follow-tags origin HEAD:refs/heads/public-staging/0.6.9` }),
+      BLOCK
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("governed public-staging push rejects command-scoped push.followTags widening", () => {
+  const dir = makePublicCheckout();
+  try {
+    assert.strictEqual(
+      invoke({ command: `cd "${dir}" && git -c push.followTags=true push origin HEAD:refs/heads/public-staging/0.6.9` }),
+      BLOCK
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("public checkout rejects persistent push.followTags widening", () => {
+  const dir = makePublicCheckout();
+  try {
+    assert.strictEqual(
+      invoke({ command: `cd "${dir}" && git config push.followTags true` }),
+      BLOCK
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("governed public-staging push rejects an already-enabled push.followTags config", () => {
+  const dir = makePublicCheckout();
+  try {
+    execFileSync("git", ["config", "push.followTags", "true"], { cwd: dir, stdio: "ignore" });
+    assert.strictEqual(
+      invoke({ command: `cd "${dir}" && git push origin HEAD:refs/heads/public-staging/0.6.9` }),
+      BLOCK
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("governed public-staging cannot push main", () => {
+  const dir = makePublicCheckout();
+  try {
+    assert.strictEqual(
+      invoke({ command: `cd "${dir}" && git push origin main` }),
+      BLOCK
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("public main checkout remains blocked from git add", () => {
+  const dir = makePublicCheckout("main");
+  try {
+    assert.strictEqual(
+      invoke({ command: `cd "${dir}" && git add README.md` }),
+      BLOCK
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 
 test("read-only gh pr view on any repo is allowed", () => {
   // gh pr view is not a mutating command — read-only operations are exempt.

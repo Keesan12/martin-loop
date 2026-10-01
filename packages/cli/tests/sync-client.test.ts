@@ -170,7 +170,7 @@ async function quarantineFiles(): Promise<string[]> {
   catch { return []; }
 }
 async function inflightFiles(): Promise<string[]> {
-  try { return (await readdir(inflightDir())).filter((f) => f.endsWith(".json")).sort(); }
+  try { return (await readdir(inflightDir())).sort(); }
   catch { return []; }
 }
 
@@ -1179,6 +1179,86 @@ describe("flushSyncQueue", () => {
 // ---------------------------------------------------------------------------
 
 describe("stale inflight recovery", () => {
+  it("recovers an abandoned exclusive claim directory", async () => {
+    const item = makeItem();
+    const claimDir = join(inflightDir(), `${item.queueId}.claim`);
+    await mkdir(claimDir, { recursive: true });
+    await writeFile(join(claimDir, "item.json"), JSON.stringify(item), "utf8");
+    await setMtimeAgo(claimDir, 6 * 60 * 1000);
+
+    process.env["MARTIN_TELEMETRY_ENDPOINT"] = "http://127.0.0.1:1";
+    process.env["MARTIN_API_TOKEN"] = "tok";
+    await flushSyncQueue();
+
+    expect(await inflightFiles()).toHaveLength(0);
+    expect(await queueFiles()).toHaveLength(1);
+  });
+
+  it("removes an abandoned empty claim directory", async () => {
+    const claimDir = join(inflightDir(), `${randomUUID()}.claim`);
+    await mkdir(claimDir, { recursive: true });
+    await setMtimeAgo(claimDir, 6 * 60 * 1000);
+
+    process.env["MARTIN_TELEMETRY_ENDPOINT"] = "http://127.0.0.1:1";
+    process.env["MARTIN_API_TOKEN"] = "tok";
+    await flushSyncQueue();
+
+    expect(await inflightFiles()).toHaveLength(0);
+  });
+
+  it("an old owner cannot release a replacement claim after stale recovery", async () => {
+    await mkdir(qDir(), { recursive: true });
+    const item = makeItem();
+    await writeFile(join(qDir(), `${item.queueId}.json`), JSON.stringify(item), "utf8");
+
+    const responses: import("node:http").ServerResponse[] = [];
+    let notifyRequest: (() => void) | undefined;
+    const requestArrived = () => new Promise<void>((resolve) => { notifyRequest = resolve; });
+    let nextRequest = requestArrived();
+    const { url, close } = await startServer((_req, res) => {
+      responses.push(res);
+      notifyRequest?.();
+      nextRequest = requestArrived();
+    });
+    process.env["MARTIN_TELEMETRY_ENDPOINT"] = url;
+    process.env["MARTIN_API_TOKEN"] = "tok";
+
+    try {
+      const originalFlush = flushSyncQueue();
+      await nextRequest;
+
+      const [originalClaim] = await inflightFiles();
+      expect(originalClaim).toBeDefined();
+      await setMtimeAgo(join(inflightDir(), originalClaim!), 6 * 60 * 1000);
+
+      const replacementFlush = flushSyncQueue();
+      await nextRequest;
+      expect(responses).toHaveLength(2);
+
+      responses[0]!.writeHead(200);
+      responses[0]!.end("{}");
+      await originalFlush;
+
+      // The original owner lost its stale generation. Its successful HTTP response
+      // must not remove the replacement generation that now owns this queueId.
+      const claimsAfterOriginalRelease = await inflightFiles();
+      expect(claimsAfterOriginalRelease).toHaveLength(1);
+      expect(await stat(join(inflightDir(), claimsAfterOriginalRelease[0]!))).toBeDefined();
+
+      responses[1]!.writeHead(200);
+      responses[1]!.end("{}");
+      await replacementFlush;
+
+      expect(await queueFiles()).toHaveLength(0);
+      expect(await inflightFiles()).toHaveLength(0);
+    } finally {
+      for (const response of responses) {
+        if (!response.writableEnded) response.end();
+      }
+      await close();
+    }
+  }, 15_000);
+
   it("old queue-file mtime does not cause freshly-claimed item to appear stale under concurrent flush", async () => {
     // Regression: before the atomic-filename claim protocol, claimItem renamed
     // queue/<id>.json → .inflight/<id>.json preserving the old mtime. A second
