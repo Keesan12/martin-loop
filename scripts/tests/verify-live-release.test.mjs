@@ -51,10 +51,10 @@ function successfulFetch(version = "9.8.7", registryResponses = [{ ok: true }]) 
 test("current metadata derives the release version instead of pinning an old release", async () => {
   const current = await readReleaseMetadata();
   const coordinates = validateReleaseMetadata(current);
-  assert.equal(coordinates.rootVersion, "0.6.9");
-  assert.equal(coordinates.mcpVersion, "0.6.9");
-  assert.equal(coordinates.rootTag, "v0.6.9");
-  assert.equal(coordinates.mcpTag, "mcp-v0.6.9");
+  assert.equal(coordinates.rootVersion, current.root.version);
+  assert.equal(coordinates.mcpVersion, current.mcp.version);
+  assert.equal(coordinates.rootTag, `v${current.root.version}`);
+  assert.equal(coordinates.mcpTag, `mcp-v${current.mcp.version}`);
 });
 
 test("metadata coordinate mismatches fail closed", () => {

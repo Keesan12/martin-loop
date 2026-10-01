@@ -176,6 +176,7 @@ function parseFile(
   since: number | null,
   prices: Record<string, PriceRecord>,
   seenTurnKeys: Set<string>,
+  seenToolUseIds: Set<string>,
   seenVerifierKeys: Set<string>,
 ): Session[] {
   const sessions = new Map<string, Session>();
@@ -226,32 +227,35 @@ function parseFile(
     const message = rawMessage !== null && typeof rawMessage === "object" ? rawMessage as Record<string, unknown> : undefined;
     if (row["type"] === "assistant" && message) {
       const rawUsage = message["usage"];
-      let duplicateTurn = false;
       if (rawUsage !== null && typeof rawUsage === "object") {
         const key = String(message["id"] ?? "unknown") + ":" + String(row["requestId"] ?? "unknown");
-        if (seenTurnKeys.has(key)) {
-          duplicateTurn = true;
-        } else {
+        if (!seenTurnKeys.has(key)) {
           seenTurnKeys.add(key);
           const turn = usageCost(typeof message["model"] === "string" ? message["model"] : "", rawUsage as Record<string, unknown>, prices);
           session.turns.push(turn);
           session.events.push({ kind: "turn", usd: turn.usd });
         }
       }
-      if (duplicateTurn) continue;
       const content = Array.isArray(message["content"]) ? message["content"] : [];
       for (const rawBlock of content) {
         if (rawBlock === null || typeof rawBlock !== "object") continue;
         const block = rawBlock as Record<string, unknown>;
         if (block["type"] !== "tool_use") continue;
         const name = block["name"];
-        if (typeof name === "string" && EDIT_TOOLS.has(name)) session.edits += 1;
-        if (name !== "Bash") continue;
-        const rawInput = block["input"];
-        const input = rawInput !== null && typeof rawInput === "object" ? rawInput as Record<string, unknown> : undefined;
-        if (typeof block["id"] === "string" && typeof input?.["command"] === "string") {
-          session.calls.set(block["id"], input["command"].replace(/\s+/gu, " ").trim().slice(0, 200));
+        const toolId = block["id"];
+        // Copied calls still need a local lookup for new results in resumed/forked files.
+        if (name === "Bash") {
+          const rawInput = block["input"];
+          const input = rawInput !== null && typeof rawInput === "object" ? rawInput as Record<string, unknown> : undefined;
+          if (typeof toolId === "string" && typeof input?.["command"] === "string" && !session.calls.has(toolId)) {
+            session.calls.set(toolId, input["command"].replace(/\s+/gu, " ").trim().slice(0, 200));
+          }
         }
+        if (typeof toolId === "string") {
+          if (seenToolUseIds.has(toolId)) continue;
+          seenToolUseIds.add(toolId);
+        }
+        if (typeof name === "string" && EDIT_TOOLS.has(name)) session.edits += 1;
       }
     }
 
@@ -447,10 +451,11 @@ export async function executeAuditCommand(options: AuditOptions, outputMode: Out
   const since = options.days === undefined ? null : Date.now() - options.days * 86_400_000;
   const sessions: Session[] = [];
   const seenTurnKeys = new Set<string>();
+  const seenToolUseIds = new Set<string>();
   const seenVerifierKeys = new Set<string>();
   for (const root of configured) {
     for (const file of filesUnder(root)) {
-      sessions.push(...parseFile(file, since, prices, seenTurnKeys, seenVerifierKeys));
+      sessions.push(...parseFile(file, since, prices, seenTurnKeys, seenToolUseIds, seenVerifierKeys));
     }
   }
   const merged = new Map<string, Session>();
