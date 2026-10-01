@@ -46,6 +46,14 @@ function makeRemoteRepoWithPushUrl(remoteName, fetchUrl, pushUrl) {
   return dir;
 }
 
+function makePublicCheckout(branch = "public-staging/0.6.9") {
+  const dir = mkdtempSync(join(tmpdir(), "martin-loop_PUBLIC_OSS-"));
+  execFileSync("git", ["init", "-b", branch], { cwd: dir, stdio: "ignore" });
+  execFileSync("git", ["remote", "add", "origin", "https://github.com/Keesan12/martin-loop.git"], { cwd: dir, stdio: "ignore" });
+  return dir;
+}
+
+
 const ALLOW = 0;
 const BLOCK = 2;
 
@@ -100,6 +108,53 @@ test("internal git push to private origin URL is allowed", () => {
 test("internal git fetch is allowed", () => {
   assert.strictEqual(invoke({ command: "git fetch origin" }), ALLOW);
 });
+
+test("governed public-staging git add and commit are allowed", () => {
+  const dir = makePublicCheckout();
+  try {
+    assert.strictEqual(invoke({ command: `cd "${dir}" && git add -f .martin/promotion-manifest.json` }), ALLOW);
+    assert.strictEqual(invoke({ command: `cd "${dir}" && git commit -m "chore: governed promotion candidate"` }), ALLOW);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("governed public-staging explicit push is allowed", () => {
+  const dir = makePublicCheckout();
+  try {
+    assert.strictEqual(
+      invoke({ command: `cd "${dir}" && git push -u origin public-staging/0.6.9` }),
+      ALLOW
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("governed public-staging cannot push main", () => {
+  const dir = makePublicCheckout();
+  try {
+    assert.strictEqual(
+      invoke({ command: `cd "${dir}" && git push origin main` }),
+      BLOCK
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("public main checkout remains blocked from git add", () => {
+  const dir = makePublicCheckout("main");
+  try {
+    assert.strictEqual(
+      invoke({ command: `cd "${dir}" && git add README.md` }),
+      BLOCK
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 
 test("read-only gh pr view on any repo is allowed", () => {
   // gh pr view is not a mutating command — read-only operations are exempt.

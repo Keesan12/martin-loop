@@ -170,7 +170,7 @@ async function quarantineFiles(): Promise<string[]> {
   catch { return []; }
 }
 async function inflightFiles(): Promise<string[]> {
-  try { return (await readdir(inflightDir())).filter((f) => f.endsWith(".json")).sort(); }
+  try { return (await readdir(inflightDir())).sort(); }
   catch { return []; }
 }
 
@@ -1179,6 +1179,33 @@ describe("flushSyncQueue", () => {
 // ---------------------------------------------------------------------------
 
 describe("stale inflight recovery", () => {
+  it("recovers an abandoned exclusive claim directory", async () => {
+    const item = makeItem();
+    const claimDir = join(inflightDir(), `${item.queueId}.claim`);
+    await mkdir(claimDir, { recursive: true });
+    await writeFile(join(claimDir, "item.json"), JSON.stringify(item), "utf8");
+    await setMtimeAgo(claimDir, 6 * 60 * 1000);
+
+    process.env["MARTIN_TELEMETRY_ENDPOINT"] = "http://127.0.0.1:1";
+    process.env["MARTIN_API_TOKEN"] = "tok";
+    await flushSyncQueue();
+
+    expect(await inflightFiles()).toHaveLength(0);
+    expect(await queueFiles()).toHaveLength(1);
+  });
+
+  it("removes an abandoned empty claim directory", async () => {
+    const claimDir = join(inflightDir(), `${randomUUID()}.claim`);
+    await mkdir(claimDir, { recursive: true });
+    await setMtimeAgo(claimDir, 6 * 60 * 1000);
+
+    process.env["MARTIN_TELEMETRY_ENDPOINT"] = "http://127.0.0.1:1";
+    process.env["MARTIN_API_TOKEN"] = "tok";
+    await flushSyncQueue();
+
+    expect(await inflightFiles()).toHaveLength(0);
+  });
+
   it("old queue-file mtime does not cause freshly-claimed item to appear stale under concurrent flush", async () => {
     // Regression: before the atomic-filename claim protocol, claimItem renamed
     // queue/<id>.json → .inflight/<id>.json preserving the old mtime. A second

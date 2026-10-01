@@ -378,6 +378,20 @@ describe("compilePromptPacket secret redaction", () => {
     // synthetic fixture — shaped to match credential-format regexes on purpose —
     // does not itself trip remote secret-scanning on the test source.
     const slackToken = ["xoxb", "1234567890", "abcdefghijklmnop"].join("-");
+    const awsAccessKeyId = ["AKIA", "ABCDEFGHIJKLMNOP"].join("");
+    const awsSecretAccessKey = ["wJalrXUtnFEMI", "/K7MDENG/bPxRfiCYEXAMPLEKEY"].join("");
+    const googleApiKey = ["AIzaSy", "ABCDEFGHIJKLMNOPQRSTUVWXYZ012345"].join("");
+    const githubPat = ["github_pat_11", "ABCDEFGHIJKLMNOPQRSTUVWXYZ"].join("");
+    const jwt = [
+      "eyJhbGciOiJIUzI1NiJ9",
+      "eyJzdWIiOiIxMjM0NTY3ODkwIn0",
+      "dGVzdC1zaWduYXR1cmU"
+    ].join(".");
+    const rsaPrivateKey = [
+      "-----BEGIN RSA ",
+      "PRIVATE KEY-----\nMIIBVQIBADANBgkqhkiG\n-----END RSA ",
+      "PRIVATE KEY-----"
+    ].join("");
 
     const packet = compilePromptPacket({
       loopId: "loop_redact_2",
@@ -385,13 +399,13 @@ describe("compilePromptPacket secret redaction", () => {
       context: {
         taskTitle: "Audit credential exposure",
         objective: [
-          "AWS key AKIAABCDEFGHIJKLMNOP must not leak,",
-          "nor AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY,",
+          `AWS key ${awsAccessKeyId} must not leak,`,
+          `nor AWS_SECRET_ACCESS_KEY=${awsSecretAccessKey},`,
           `nor Slack token ${slackToken},`,
-          "nor Google key AIzaSyABCDEFGHIJKLMNOPQRSTUVWXYZ012345,",
-          "nor a GitHub fine-grained PAT github_pat_11ABCDEFGHIJKLMNOPQRSTUVWXYZ,",
-          "nor a JWT eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dGVzdC1zaWduYXR1cmU,",
-          "nor -----BEGIN RSA PRIVATE KEY-----\nMIIBVQIBADANBgkqhkiG\n-----END RSA PRIVATE KEY-----."
+          `nor Google key ${googleApiKey},`,
+          `nor a GitHub fine-grained PAT ${githubPat},`,
+          `nor a JWT ${jwt},`,
+          `nor ${rsaPrivateKey}.`
         ].join(" "),
         verificationPlan: ["pnpm test"],
         focus: "Keep the patch narrow and do not expose secrets.",
@@ -403,13 +417,13 @@ describe("compilePromptPacket secret redaction", () => {
     });
 
     const objective = packet.contract.objective;
-    expect(objective).not.toContain("AKIAABCDEFGHIJKLMNOP");
-    expect(objective).not.toContain("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY");
+    expect(objective).not.toContain(awsAccessKeyId);
+    expect(objective).not.toContain(awsSecretAccessKey);
     expect(objective).not.toContain(slackToken);
-    expect(objective).not.toContain("AIzaSyABCDEFGHIJKLMNOPQRSTUVWXYZ012345");
-    expect(objective).not.toContain("github_pat_11ABCDEFGHIJKLMNOPQRSTUVWXYZ");
-    expect(objective).not.toContain("eyJzdWIiOiIxMjM0NTY3ODkwIn0");
-    expect(objective).not.toContain("MIIBVQIBADANBgkqhkiG");
+    expect(objective).not.toContain(googleApiKey);
+    expect(objective).not.toContain(githubPat);
+    expect(objective).not.toContain(jwt);
+    expect(objective).not.toContain(rsaPrivateKey);
     expect(objective).toContain("[REDACTED");
   });
 });

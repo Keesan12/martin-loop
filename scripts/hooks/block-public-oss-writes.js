@@ -144,6 +144,31 @@ function extractLeadingCd(command) {
   return match ? match[1] : undefined;
 }
 
+function currentGitBranch(cwd) {
+  if (!cwd) return "";
+  const result = spawnSync("git", ["-C", cwd, "branch", "--show-current"], { encoding: "utf8", timeout: 5_000 });
+  return result.status === 0 ? result.stdout.trim() : "";
+}
+
+function governedPublicStagingBranch(cwd) {
+  if (!cwd || !normalizeSlashes(cwd).includes(PUBLIC_LOCAL_PATH)) return "";
+  const branch = currentGitBranch(cwd);
+  return /^public-staging\/[A-Za-z0-9._/-]+$/.test(branch) ? branch : "";
+}
+
+function isExplicitPushOfBranch(tokens, branch) {
+  if (!branch) return false;
+  const positional = tokens.slice(2).filter((token) => !token.startsWith("-"));
+  const refspecs = positional.slice(1);
+  if (refspecs.length === 0) return false;
+  return refspecs.every((refspec) =>
+    refspec === branch ||
+    refspec === `HEAD:${branch}` ||
+    refspec === `refs/heads/${branch}` ||
+    refspec === `HEAD:refs/heads/${branch}`
+  );
+}
+
 function resolveGitRemote(remote, cwd) {
   if (!remote || remote.includes("://") || remote.includes("@") || remote.includes("github.com")) {
     return remote;
@@ -214,8 +239,15 @@ function isPublicMutation(command, depth = 0) {
 
     if (exe === "git") {
       if (READ_ONLY_GIT_COMMANDS.has(sub)) continue;
-      if (cwd && normalizeSlashes(cwd).includes(PUBLIC_LOCAL_PATH) && ["add", "commit", "push", "tag"].includes(sub)) {
+      const publicCwd = Boolean(cwd && normalizeSlashes(cwd).includes(PUBLIC_LOCAL_PATH));
+      const stagingBranch = publicCwd ? governedPublicStagingBranch(cwd) : "";
+
+      if (publicCwd && (sub === "add" || sub === "commit") && !stagingBranch) {
         return { blocked: true, reason: "public repo path mutation" };
+      }
+
+      if (publicCwd && sub === "tag") {
+        return { blocked: true, reason: "public tag mutation" };
       }
 
       if (sub === "tag" && tokens.some((token) => /^v\d+\.\d+\.\d+(?:[-+][0-9a-z.-]+)?$/i.test(token))) {
@@ -225,7 +257,10 @@ function isPublicMutation(command, depth = 0) {
       if (sub === "push") {
         const remote = tokens.slice(2).find((token) => !token.startsWith("-"));
         const resolved = resolveGitRemote(remote, cwd);
-        if (isPublicRepoUrl(resolved)) return { blocked: true, reason: "public git push" };
+        if (isPublicRepoUrl(resolved)) {
+          if (publicCwd && stagingBranch && isExplicitPushOfBranch(tokens, stagingBranch)) continue;
+          return { blocked: true, reason: "public git push" };
+        }
       }
 
       if ((sub === "add" || sub === "commit") && tokens.some((token) => normalizeSlashes(token).includes(PUBLIC_LOCAL_PATH))) {

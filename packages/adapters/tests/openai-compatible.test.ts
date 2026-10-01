@@ -238,7 +238,7 @@ describe("createOpenAiCompatibleAdapter", () => {
     const adapter = createOpenAiCompatibleAdapter({
       baseUrl: `${url}/openrouter`,
       model: "deepseek/deepseek-chat",
-      apiKey: "sk-or-test"
+      apiKey: ["sk", "or", "test"].join("-")
     });
 
     const result = await adapter.execute(makeRequest() as any);

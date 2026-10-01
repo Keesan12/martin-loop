@@ -2,15 +2,15 @@
   "schemaVersion": "martin.public-promotion.v2",
   "sourceAuthority": "validated-internal-release-source",
   "sourceRepositoryFingerprint": "04aac733f3b08513fddcc72a9013b9f59cf7919f9a0a3893d0b3d953929826ec",
-  "privateMergeSha": "a98c12ee980f03bde280cd9b6d3442ea5eeb41e6",
-  "privateMainShaValidated": "a98c12ee980f03bde280cd9b6d3442ea5eeb41e6",
-  "publicBaseSha": "73ba27b104ae53de8e15ad5e0cfe673194cf0146",
-  "promotedBy": "Keesan12",
-  "validatedAt": "2026-09-30T13:56:00.000Z",
+  "privateMergeSha": "1e14e00e0af3426bae2cb45c3bdec6d05b0dd610",
+  "privateMainShaValidated": "1e14e00e0af3426bae2cb45c3bdec6d05b0dd610",
+  "publicBaseSha": "6fbc314d28be8bbf84b574f01ca5340bfb8288ac",
+  "promotedBy": "Torram",
+  "validatedAt": "2026-10-01T04:42:55.872Z",
   "internalHealthPassed": true,
-  "internalHealthEvidenceSha256": "2cddc300a71ff3483cc2cd847e4933a11b69433e78f379f685f811e4d167c1a2",
+  "internalHealthEvidenceSha256": "1f918495eb0bbc8b509c5a94ef50adfd02c291176039709c0ff7018003834d56",
   "surfaceSpecHash": "a9c8d22be91bc0dd19238f7676aec62aacc77d8cc3a66327b46d71f16d65164a",
-  "surfaceHash": "20a7cd6d412509a49123e06cb6d176f189d6a108ac9994171032b572fbc80a3b",
+  "surfaceHash": "b1007263565962bc509a7a9be7636e7cf06ed6be8d0047cd7d645897f7a4ec0e",
   "surfaceEntries": [
     {
       "path": ".agents/plugins/marketplace.json",
@@ -70,7 +70,7 @@
     {
       "path": ".github/dependabot.yml",
       "mode": "100644",
-      "sha256": "e6714156ceca913ca03c2235c80c76c735ebc9312279ad69ffb86457efd7670c"
+      "sha256": "b3b4ba94809b67ed8cb64ea0c0cc036df3192c0242ad4f4cacaf0cc965c29836"
     },
     {
       "path": ".github/workflows/cut-release-tags.yml",
@@ -90,7 +90,7 @@
     {
       "path": ".github/workflows/public-promotion-guard.yml",
       "mode": "100644",
-      "sha256": "fed261d7c3cbf913fadd53a11fccfb4c956a6960e747878e1fbed570d16adcf7"
+      "sha256": "7adb13ef486fdf3aba75876a53b8c918be55f318e3160f36e8082c2278cdcc4b"
     },
     {
       "path": ".github/workflows/public-surface-guard.yml",
@@ -130,7 +130,7 @@
     {
       "path": "CHANGELOG.md",
       "mode": "100644",
-      "sha256": "d99ef5e3542f6970e28bcd900a58502361ae0bf67424bfeeba492b8bfb72cd66"
+      "sha256": "5d87da6530033b3035ae00906e4c1531e7da056585bac925d75bcacbb07218d5"
     },
     {
       "path": "CLAUDE.md",
@@ -950,7 +950,7 @@
     {
       "path": "docs/release/VERSION-LEDGER.md",
       "mode": "100644",
-      "sha256": "13f06840c3a6d04f6329595be5826d196feba7f8fdd39d5e6ccedfb48e9eab9d"
+      "sha256": "b2a69d61ba84c1edd112cba0a110c971b27a0de7a9e90bb1678b865ef01f09f4"
     },
     {
       "path": "docs/release/reliability-hardening/BASELINE.md",
@@ -1045,7 +1045,7 @@
     {
       "path": "package.json",
       "mode": "100644",
-      "sha256": "c4cc7ec304391c8586f891a330c2d8d91464d317bb4f4f0e9ecafae4fe01994c"
+      "sha256": "dfe86063c7667ee440b7e147dff95fadeefc05e4d65a1f16ef76f49ce3116cdd"
     },
     {
       "path": "packages/README.md",
@@ -1160,7 +1160,7 @@
     {
       "path": "packages/adapters/tests/openai-compatible.test.ts",
       "mode": "100644",
-      "sha256": "5e5ac44fc93b8bf550214d437301f1974ffcca5a78a04f5ff53d621e8c434a5f"
+      "sha256": "3f1844f2154ace42bcb935f17578df9278dd5ac56fea4ea818140797db255bd4"
     },
     {
       "path": "packages/adapters/tsconfig.build.json",
@@ -1310,7 +1310,7 @@
     {
       "path": "packages/cli/src/sync-client.ts",
       "mode": "100644",
-      "sha256": "c96e9261cabb319bd1bd934420dd577f95ca11e07e6e2a62df6a37f737e1fd2e"
+      "sha256": "3e7b090cabc98bdbbb62aa439f4c2f7b170e8ecf4a502a1591604bc8f2198ba4"
     },
     {
       "path": "packages/cli/src/sync-privacy.ts",
@@ -1485,7 +1485,7 @@
     {
       "path": "packages/cli/tests/sync-client.test.ts",
       "mode": "100644",
-      "sha256": "a5c282e69d7b736ffa1ca35d9806af34103d9246f6f5d96b63706371c7d0eb58"
+      "sha256": "e606e6938f7eba5924f9934cdc00c6bdae0f7a2350821ae90d18c05207e6f286"
     },
     {
       "path": "packages/cli/tests/sync-receipt-transport.test.ts",
@@ -1495,7 +1495,7 @@
     {
       "path": "packages/cli/tests/telemetry.test.ts",
       "mode": "100644",
-      "sha256": "a8deee0cbdfd3826ab7dc667e5dab461f9dd075ac74b056d3969414977cd35eb"
+      "sha256": "5a8bb2396fa61a06afa995bbf6762f6afd1bfaf764f8414c69ccf02a6f334c5c"
     },
     {
       "path": "packages/cli/tests/trajectory-triage.test.ts",
@@ -2000,7 +2000,7 @@
     {
       "path": "packages/core/tests/leash.test.ts",
       "mode": "100644",
-      "sha256": "a7fb60cf93aead55bcb3759df9c26c43b3eea41d4db58dad1ea58970a5c4edf2"
+      "sha256": "168edf6cb18fb435454f4138b7ca1200075ef5090674e9db8d7913e2c60416ca"
     },
     {
       "path": "packages/core/tests/memory-store.test.ts",
@@ -2665,7 +2665,7 @@
     {
       "path": "scripts/hooks/block-public-oss-writes.js",
       "mode": "100644",
-      "sha256": "4000702834b0da798a4745d913308d1e5326471a69a9affef15e5bf1ff032445"
+      "sha256": "592e159313423b8bc6ea4e9ae5b436c339499cf6fe28ee63eb9b0cf6c8b1d5f2"
     },
     {
       "path": "scripts/hooks/install-claude-public-write-hook.js",
@@ -2745,7 +2745,7 @@
     {
       "path": "scripts/prepare-public-promotion.mjs",
       "mode": "100644",
-      "sha256": "c73a811816cb6d8141c031a8bfad0381747bb88ea915eac20d583f6ee8f76f4d"
+      "sha256": "b1ba9d7d712e9f983f4c68ed00fe5fc5016ea1e464543e9626e0d0792239c7fe"
     },
     {
       "path": "scripts/public-copy-scan.mjs",
@@ -2803,11 +2803,6 @@
       "sha256": "33d4a1bb37911ad83525d0849f625b8da4b427afc73f5309bb5d09f4c26869bb"
     },
     {
-      "path": "scripts/release-recovery-state.mjs",
-      "mode": "100644",
-      "sha256": "5426863d254a358ea5cb0cf8de9af05c6f3b0c00c43bc11f05274963cf4edd40"
-    },
-    {
       "path": "scripts/release-truth-check.mjs",
       "mode": "100644",
       "sha256": "e59b44cafb4e5128856a5bae7d24d5d7a2a4cf06aa218b22414d6eec67b0f8a0"
@@ -2830,7 +2825,12 @@
     {
       "path": "scripts/tests/block-public-oss-writes.test.mjs",
       "mode": "100644",
-      "sha256": "29cc82418c67d96db761ba4250be5817e5eff2596023ddf8c8a4b64671d30d0e"
+      "sha256": "0d0b19fed6044b0fc4595e80ca7f5bb91e198836e07774e5197aaba9561c9565"
+    },
+    {
+      "path": "scripts/tests/dependabot-policy.test.mjs",
+      "mode": "100644",
+      "sha256": "a7d84c2ced062cccedb892befe3e64a4eef176f760d47effe671f77f2db4070b"
     },
     {
       "path": "scripts/tests/failure-taxonomy-sync.test.mjs",
@@ -2855,7 +2855,7 @@
     {
       "path": "scripts/tests/mcp-release-docs.test.mjs",
       "mode": "100644",
-      "sha256": "8fe77dcea8102dca89bf616d60b2376e8d30ab297d3849865f9bb8879b3fe6a8"
+      "sha256": "13526437162770f29d52e7df8a16c56c69a17c1e2c5e44bce559481f3c4a329d"
     },
     {
       "path": "scripts/tests/mcp-smoke-portability.test.mjs",
@@ -2890,7 +2890,7 @@
     {
       "path": "scripts/tests/promotion-resolution.test.mjs",
       "mode": "100644",
-      "sha256": "e01a43eb6b66a06c0a7db9494fddc92a306bfc4b338018454d7644feaf16f0e0"
+      "sha256": "d477130e512c4e8036d24fd5fe2bc9faee11425027614b7111acb73e10598a40"
     },
     {
       "path": "scripts/tests/public-copy-scan.test.mjs",
@@ -2963,6 +2963,11 @@
       "sha256": "f0227d5153debda3d1f3b9113159fef9bfe3cbce66901132701926bd3f41b0e0"
     },
     {
+      "path": "scripts/tests/verify-live-release.test.mjs",
+      "mode": "100644",
+      "sha256": "2fe4652e2e6111960c93d4f076645b0a9f8ed4afc2ceb3734f119afba4e91ea7"
+    },
+    {
       "path": "scripts/tests/verify-public-promotion.test.mjs",
       "mode": "100644",
       "sha256": "0649a76e8bff233305727f8d24d8caf7fafe9a133ca6bf0d229f15ef994efdb7"
@@ -2988,6 +2993,11 @@
       "sha256": "08af9e4c006aaf325d8bec8dd49ac2eabfa2b6dfcf411bcda11c71aabce8f79e"
     },
     {
+      "path": "scripts/verify-live-release.mjs",
+      "mode": "100644",
+      "sha256": "16b5dc4f9f0e7c663e5846370b6b1f9998dfeba4fc645634015da0d992e31e38"
+    },
+    {
       "path": "scripts/verify-public-promotion.mjs",
       "mode": "100644",
       "sha256": "bbb71a92ff2340f68ee5e8f1e2e9db1b5ab7a8939f84ed71bd091872a3ea4405"
@@ -3010,16 +3020,6 @@
   ],
   "reviewedDivergences": [
     {
-      "path": ".claude-plugin/marketplace.json",
-      "kind": "public-only",
-      "privateSha256": null,
-      "privateMode": null,
-      "publicSha256": "bbaca7d9084b640308b2206bbdc2bb84a5e4061d1e0af30ba3d272e773090d0f",
-      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
-      "reviewedBy": "Vakeesan Mahalingam",
-      "publicMode": "100644"
-    },
-    {
       "path": ".claude/rules/martinloop-internal-first.md",
       "kind": "private-only",
       "privateSha256": "0501c6d94b5e0d1043f993c17aea8a5ec89f96fc7ae7321b301908a176f27c84",
@@ -3027,6 +3027,184 @@
       "publicSha256": null,
       "reason": "Internal-only file: not part of the public distribution surface",
       "reviewedBy": "Vakeesan Mahalingam"
+    },
+    {
+      "path": ".github/dependabot.yml",
+      "kind": "private-only",
+      "privateSha256": "b3b4ba94809b67ed8cb64ea0c0cc036df3192c0242ad4f4cacaf0cc965c29836",
+      "privateMode": "100644",
+      "publicSha256": null,
+      "reason": "Dependency automation originates from private release authority and reaches public only through governed promotion; the public distribution repository must not create independent dependency-update PRs.",
+      "reviewedBy": "Vakeesan Mahalingam"
+    },
+    {
+      "path": "CLAUDE.md",
+      "kind": "content",
+      "privateSha256": "52ee540ac82717f71b8aeed73c353c334114caab3710044f7a1f55d7e6cf33f2",
+      "privateMode": "100644",
+      "publicSha256": "16e1efda5d329bdbe06a512b1e8da9962c3860ff76cc612618440899fc473594",
+      "reason": "Public compatibility guidance names only the public distribution and describes the private maintainer authority generically",
+      "reviewedBy": "Keesan",
+      "publicMode": "100644"
+    },
+    {
+      "path": "docs/incidents/2026-08-release-0.5.5-0.5.7.md",
+      "kind": "content",
+      "privateSha256": "1e51f43bc69c3a635d54003b30f923ef121869ab1edc21acb8a8b1b09208e2f7",
+      "privateMode": "100644",
+      "publicSha256": "b2fd424ea98d7728f10fae600ac33e78875c5fe650a74f7f6a4bff0d01a57dd2",
+      "reason": "Public copy normalizes Markdown hard-break whitespace so the promoted learning ledger passes the public diff hygiene gate",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "publicMode": "100644"
+    },
+    {
+      "path": "docs/release/MCP-0.6.1-RELEASE-NOTES.md",
+      "kind": "content",
+      "privateSha256": "301230003dbe0010245df1ce718a58d52ecf095140212bd8bf5ae5648ff61efb",
+      "privateMode": "100644",
+      "publicSha256": "a5e061609e92a3057fff91ae713ad154518483294b870486fe6c29bf51ef533b",
+      "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "publicMode": "100644"
+    },
+    {
+      "path": "docs/release/OSS-0.6.1-RELEASE-NOTES.md",
+      "kind": "content",
+      "privateSha256": "82567a853b8e813099d4aa76a75c06425b0651ca6b51d3294e7f98d6b220ad69",
+      "privateMode": "100644",
+      "publicSha256": "5ca3cf8eea0d465b535fa10d47f68e53efff666ff605f1f4afdcebb7bc4fc98c",
+      "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "publicMode": "100644"
+    },
+    {
+      "path": "packages/cli/src/mcp-config.ts",
+      "kind": "content",
+      "privateSha256": "269440423d7360a999d0108287fe8ebf7d0a87d604559377ac6d6fdbf1b07731",
+      "privateMode": "100644",
+      "publicSha256": "6493d9b20cf1f9ac400069947e645d46785c9f8e8dff6de1fb6092462892790a",
+      "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "publicMode": "100644"
+    },
+    {
+      "path": "packages/cli/tests/mcp-config.test.ts",
+      "kind": "content",
+      "privateSha256": "1e17747f635e3ea517dc92c15efdf125727b32b84646393a6331ae09a4ddb207",
+      "privateMode": "100644",
+      "publicSha256": "ba0b51eefd4fe1b0f24a8e8984c5aa63ff4eb2a51aabccb64ae1bedb89ad8686",
+      "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "publicMode": "100644"
+    },
+    {
+      "path": "packages/cli/tests/run-store.test.ts",
+      "kind": "content",
+      "privateSha256": "02a3a2cfe28cc137ce8385b1e2d5b3596b19cd7093150b18625f96a546cf40a7",
+      "privateMode": "100644",
+      "publicSha256": "18441805a6989bed6435fa7c50d6420ad4b5f037e94f7578cff11f384f0b3e20",
+      "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "publicMode": "100644"
+    },
+    {
+      "path": "packages/cli/tests/version-enforcement.test.ts",
+      "kind": "private-only",
+      "privateSha256": "9560bcc34ce1eeb88dce85a486400ad3595cd1979db0ffa2e054b633634b30c9",
+      "privateMode": "100644",
+      "publicSha256": null,
+      "reason": "Internal-only file: not part of the public distribution surface",
+      "reviewedBy": "Vakeesan Mahalingam"
+    },
+    {
+      "path": "packages/mcp/scripts/build-package-lib.mjs",
+      "kind": "content",
+      "privateSha256": "0353bf98706fc50cee4f6075f0ee976b769b99d16df5ddaa15a1a6e0e76c3aab",
+      "privateMode": "100644",
+      "publicSha256": "a952e8d8f10be32496179acb6f696cb004f8a181675b55130d0dfc9b7e540be3",
+      "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "publicMode": "100644"
+    },
+    {
+      "path": "packages/mcp/scripts/smoke-published-package.mjs",
+      "kind": "content",
+      "privateSha256": "5c3af086937dfa2de1fe1e89d57fb384e4b3ea75cfe5b75eaf32b73f1f76326e",
+      "privateMode": "100644",
+      "publicSha256": "a70ce6d1b37192ae9fcd650aa2ff8724ef717b2291a5c52fe9c68e955327209a",
+      "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "publicMode": "100644"
+    },
+    {
+      "path": "scripts/oss-boundary.mjs",
+      "kind": "content",
+      "privateSha256": "24ec97213b4cb01c812608a62957f9cad3dc4347ae42439cbbaab905303da8ca",
+      "privateMode": "100644",
+      "publicSha256": "53fca5be40b3a8905d011f0d0c1b51925c12b4a0d401a5c24076809746a51972",
+      "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "publicMode": "100644"
+    },
+    {
+      "path": "scripts/release-matrix.mjs",
+      "kind": "content",
+      "privateSha256": "33d4a1bb37911ad83525d0849f625b8da4b427afc73f5309bb5d09f4c26869bb",
+      "privateMode": "100644",
+      "publicSha256": "34a529469c784949dd870462746907b1a0a0599cb2deedffb052b5b3530bcd96",
+      "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "publicMode": "100644"
+    },
+    {
+      "path": "scripts/tests/block-public-oss-writes.test.mjs",
+      "kind": "content",
+      "privateSha256": "0d0b19fed6044b0fc4595e80ca7f5bb91e198836e07774e5197aaba9561c9565",
+      "privateMode": "100644",
+      "publicSha256": "9a86d041e54a557b06dacaa34176728e0300a2f9c04045a1cefc7da7241b5650",
+      "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "publicMode": "100644"
+    },
+    {
+      "path": "scripts/tests/release-matrix.test.mjs",
+      "kind": "content",
+      "privateSha256": "b54192ad5e40b8b2d664c3d1454841b554543cd66831ad170196e802890cb94c",
+      "privateMode": "100644",
+      "publicSha256": "e20a81a02798552118e41736cfb3d3918f8f0eb16fa63242756f85ea7b40ac64",
+      "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "publicMode": "100644"
+    },
+    {
+      "path": "scripts/tests/verify-public-promotion.test.mjs",
+      "kind": "content",
+      "privateSha256": "0649a76e8bff233305727f8d24d8caf7fafe9a133ca6bf0d229f15ef994efdb7",
+      "privateMode": "100644",
+      "publicSha256": "45e7da98b87d89e151fda0ac9878191edaa676cd2c4988176e38b9ec27ef4ee0",
+      "reason": "Public copy omits the private-authority identity fixture while retaining the release-surface and health-evidence guard coverage",
+      "reviewedBy": "Keesan",
+      "publicMode": "100644"
+    },
+    {
+      "path": "scripts/tests/workflow-action-runtime.test.mjs",
+      "kind": "content",
+      "privateSha256": "3ca391b8519c60463bf9ef38fd4dabc52d073cbba2d2958da12a1cd168d73841",
+      "privateMode": "100644",
+      "publicSha256": "ffa8411159591ead6b27c403639b4fc35a862411c7627e7d231ff4e4d3840a78",
+      "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "publicMode": "100644"
+    },
+    {
+      "path": ".claude-plugin/marketplace.json",
+      "kind": "public-only",
+      "privateSha256": null,
+      "privateMode": null,
+      "publicSha256": "ff021766672e8d75170714b358e3401404eda892ad0c462f83f0accb4cebf9e5",
+      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
+      "reviewedBy": "Vakeesan Mahalingam",
+      "publicMode": "100644"
     },
     {
       "path": ".github/workflows/apply-mcp-tool-quality.yml",
@@ -3039,16 +3217,6 @@
       "publicMode": "100644"
     },
     {
-      "path": ".github/workflows/public-promotion-guard.yml",
-      "kind": "content",
-      "privateSha256": "fed261d7c3cbf913fadd53a11fccfb4c956a6960e747878e1fbed570d16adcf7",
-      "privateMode": "100644",
-      "publicSha256": "7adb13ef486fdf3aba75876a53b8c918be55f318e3160f36e8082c2278cdcc4b",
-      "publicMode": "100644",
-      "reason": "Public promotion guard evaluates canonical release-surface policy from the trusted base commit so PR-controlled policy cannot weaken admission.",
-      "reviewedBy": "Vakeesan Mahalingam"
-    },
-    {
       "path": ".github/workflows/register-current-mcp.yml",
       "kind": "public-only",
       "privateSha256": null,
@@ -3056,26 +3224,6 @@
       "publicSha256": "75bc3aa0ca3c6de2b83a45100f2a628a49017014e2c4de032527f7ad4f1c521e",
       "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
       "reviewedBy": "Vakeesan Mahalingam",
-      "publicMode": "100644"
-    },
-    {
-      "path": "CHANGELOG.md",
-      "kind": "content",
-      "privateSha256": "d99ef5e3542f6970e28bcd900a58502361ae0bf67424bfeeba492b8bfb72cd66",
-      "privateMode": "100644",
-      "publicSha256": "5d87da6530033b3035ae00906e4c1531e7da056585bac925d75bcacbb07218d5",
-      "publicMode": "100644",
-      "reason": "Public release notes narrow the telemetry privacy statement to guarantees enforced by the validator; runtime behavior is unchanged.",
-      "reviewedBy": "Vakeesan Mahalingam"
-    },
-    {
-      "path": "CLAUDE.md",
-      "kind": "content",
-      "privateSha256": "52ee540ac82717f71b8aeed73c353c334114caab3710044f7a1f55d7e6cf33f2",
-      "privateMode": "100644",
-      "publicSha256": "16e1efda5d329bdbe06a512b1e8da9962c3860ff76cc612618440899fc473594",
-      "reason": "Public compatibility guidance names only the public distribution and describes the private maintainer authority generically",
-      "reviewedBy": "Keesan",
       "publicMode": "100644"
     },
     {
@@ -3195,16 +3343,6 @@
       "privateMode": null,
       "publicSha256": "e48c515c8bdf51cb87fb09f311d325651092141d815800c9c5b68306b9ef49b9",
       "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
-      "reviewedBy": "Vakeesan Mahalingam",
-      "publicMode": "100644"
-    },
-    {
-      "path": "docs/incidents/2026-08-release-0.5.5-0.5.7.md",
-      "kind": "content",
-      "privateSha256": "1e51f43bc69c3a635d54003b30f923ef121869ab1edc21acb8a8b1b09208e2f7",
-      "privateMode": "100644",
-      "publicSha256": "b2fd424ea98d7728f10fae600ac33e78875c5fe650a74f7f6a4bff0d01a57dd2",
-      "reason": "Public copy normalizes Markdown hard-break whitespace so the promoted learning ledger passes the public diff hygiene gate",
       "reviewedBy": "Vakeesan Mahalingam",
       "publicMode": "100644"
     },
@@ -3335,16 +3473,6 @@
       "privateMode": null,
       "publicSha256": "61d553222a14f28b8a96bc7d568e75b2263fcec2a11cce90d39c1904db373be8",
       "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
-      "reviewedBy": "Vakeesan Mahalingam",
-      "publicMode": "100644"
-    },
-    {
-      "path": "docs/release/MCP-0.6.1-RELEASE-NOTES.md",
-      "kind": "content",
-      "privateSha256": "301230003dbe0010245df1ce718a58d52ecf095140212bd8bf5ae5648ff61efb",
-      "privateMode": "100644",
-      "publicSha256": "a5e061609e92a3057fff91ae713ad154518483294b870486fe6c29bf51ef533b",
-      "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
       "reviewedBy": "Vakeesan Mahalingam",
       "publicMode": "100644"
     },
@@ -3499,16 +3627,6 @@
       "publicMode": "100644"
     },
     {
-      "path": "docs/release/OSS-0.6.1-RELEASE-NOTES.md",
-      "kind": "content",
-      "privateSha256": "82567a853b8e813099d4aa76a75c06425b0651ca6b51d3294e7f98d6b220ad69",
-      "privateMode": "100644",
-      "publicSha256": "5ca3cf8eea0d465b535fa10d47f68e53efff666ff605f1f4afdcebb7bc4fc98c",
-      "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
-      "reviewedBy": "Vakeesan Mahalingam",
-      "publicMode": "100644"
-    },
-    {
       "path": "glama.json",
       "kind": "public-only",
       "privateSha256": null,
@@ -3559,71 +3677,12 @@
       "publicMode": "100644"
     },
     {
-      "path": "packages/cli/src/mcp-config.ts",
-      "kind": "content",
-      "privateSha256": "269440423d7360a999d0108287fe8ebf7d0a87d604559377ac6d6fdbf1b07731",
-      "privateMode": "100644",
-      "publicSha256": "6493d9b20cf1f9ac400069947e645d46785c9f8e8dff6de1fb6092462892790a",
-      "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
-      "reviewedBy": "Vakeesan Mahalingam",
-      "publicMode": "100644"
-    },
-    {
       "path": "packages/cli/tests/_test-adapter.ts",
       "kind": "public-only",
       "privateSha256": null,
       "privateMode": null,
       "publicSha256": "6719bce1b8caf5d4dac44f0231777ef896e67c3bb200b2a65b3bc0e6e3500339",
       "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
-      "reviewedBy": "Vakeesan Mahalingam",
-      "publicMode": "100644"
-    },
-    {
-      "path": "packages/cli/tests/mcp-config.test.ts",
-      "kind": "content",
-      "privateSha256": "1e17747f635e3ea517dc92c15efdf125727b32b84646393a6331ae09a4ddb207",
-      "privateMode": "100644",
-      "publicSha256": "ba0b51eefd4fe1b0f24a8e8984c5aa63ff4eb2a51aabccb64ae1bedb89ad8686",
-      "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
-      "reviewedBy": "Vakeesan Mahalingam",
-      "publicMode": "100644"
-    },
-    {
-      "path": "packages/cli/tests/run-store.test.ts",
-      "kind": "content",
-      "privateSha256": "02a3a2cfe28cc137ce8385b1e2d5b3596b19cd7093150b18625f96a546cf40a7",
-      "privateMode": "100644",
-      "publicSha256": "18441805a6989bed6435fa7c50d6420ad4b5f037e94f7578cff11f384f0b3e20",
-      "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
-      "reviewedBy": "Vakeesan Mahalingam",
-      "publicMode": "100644"
-    },
-    {
-      "path": "packages/cli/tests/version-enforcement.test.ts",
-      "kind": "private-only",
-      "privateSha256": "9560bcc34ce1eeb88dce85a486400ad3595cd1979db0ffa2e054b633634b30c9",
-      "privateMode": "100644",
-      "publicSha256": null,
-      "reason": "Internal-only file: not part of the public distribution surface",
-      "reviewedBy": "Vakeesan Mahalingam"
-    },
-    {
-      "path": "packages/mcp/scripts/build-package-lib.mjs",
-      "kind": "content",
-      "privateSha256": "0353bf98706fc50cee4f6075f0ee976b769b99d16df5ddaa15a1a6e0e76c3aab",
-      "privateMode": "100644",
-      "publicSha256": "a952e8d8f10be32496179acb6f696cb004f8a181675b55130d0dfc9b7e540be3",
-      "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
-      "reviewedBy": "Vakeesan Mahalingam",
-      "publicMode": "100644"
-    },
-    {
-      "path": "packages/mcp/scripts/smoke-published-package.mjs",
-      "kind": "content",
-      "privateSha256": "5c3af086937dfa2de1fe1e89d57fb384e4b3ea75cfe5b75eaf32b73f1f76326e",
-      "privateMode": "100644",
-      "publicSha256": "a70ce6d1b37192ae9fcd650aa2ff8724ef717b2291a5c52fe9c68e955327209a",
-      "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
       "reviewedBy": "Vakeesan Mahalingam",
       "publicMode": "100644"
     },
@@ -3658,91 +3717,11 @@
       "publicMode": "100644"
     },
     {
-      "path": "scripts/oss-boundary.mjs",
-      "kind": "content",
-      "privateSha256": "24ec97213b4cb01c812608a62957f9cad3dc4347ae42439cbbaab905303da8ca",
-      "privateMode": "100644",
-      "publicSha256": "53fca5be40b3a8905d011f0d0c1b51925c12b4a0d401a5c24076809746a51972",
-      "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
-      "reviewedBy": "Vakeesan Mahalingam",
-      "publicMode": "100644"
-    },
-    {
-      "path": "scripts/release-matrix.mjs",
-      "kind": "content",
-      "privateSha256": "33d4a1bb37911ad83525d0849f625b8da4b427afc73f5309bb5d09f4c26869bb",
-      "privateMode": "100644",
-      "publicSha256": "34a529469c784949dd870462746907b1a0a0599cb2deedffb052b5b3530bcd96",
-      "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
-      "reviewedBy": "Vakeesan Mahalingam",
-      "publicMode": "100644"
-    },
-    {
-      "path": "scripts/tests/block-public-oss-writes.test.mjs",
-      "kind": "content",
-      "privateSha256": "29cc82418c67d96db761ba4250be5817e5eff2596023ddf8c8a4b64671d30d0e",
-      "privateMode": "100644",
-      "publicSha256": "f28ccb2969c48218b291b313cb8da64eb9691195793696b9c0ff8996cae8b535",
-      "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
-      "reviewedBy": "Vakeesan Mahalingam",
-      "publicMode": "100644"
-    },
-    {
       "path": "scripts/tests/register-current-mcp-workflow.test.mjs",
       "kind": "public-only",
       "privateSha256": null,
       "privateMode": null,
       "publicSha256": "236dcc0bb906d6209f54183c562b0da8b7dbefd604844ab003ad8801a440df85",
-      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
-      "reviewedBy": "Vakeesan Mahalingam",
-      "publicMode": "100644"
-    },
-    {
-      "path": "scripts/tests/release-matrix.test.mjs",
-      "kind": "content",
-      "privateSha256": "b54192ad5e40b8b2d664c3d1454841b554543cd66831ad170196e802890cb94c",
-      "privateMode": "100644",
-      "publicSha256": "e20a81a02798552118e41736cfb3d3918f8f0eb16fa63242756f85ea7b40ac64",
-      "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
-      "reviewedBy": "Vakeesan Mahalingam",
-      "publicMode": "100644"
-    },
-    {
-      "path": "scripts/tests/verify-public-promotion.test.mjs",
-      "kind": "content",
-      "privateSha256": "0649a76e8bff233305727f8d24d8caf7fafe9a133ca6bf0d229f15ef994efdb7",
-      "privateMode": "100644",
-      "publicSha256": "45e7da98b87d89e151fda0ac9878191edaa676cd2c4988176e38b9ec27ef4ee0",
-      "reason": "Public copy omits the private-authority identity fixture while retaining the release-surface and health-evidence guard coverage",
-      "reviewedBy": "Keesan",
-      "publicMode": "100644"
-    },
-    {
-      "path": "scripts/tests/workflow-action-runtime.test.mjs",
-      "kind": "content",
-      "privateSha256": "3ca391b8519c60463bf9ef38fd4dabc52d073cbba2d2958da12a1cd168d73841",
-      "privateMode": "100644",
-      "publicSha256": "ffa8411159591ead6b27c403639b4fc35a862411c7627e7d231ff4e4d3840a78",
-      "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
-      "reviewedBy": "Vakeesan Mahalingam",
-      "publicMode": "100644"
-    },
-    {
-      "path": "scripts/verify-live-release.mjs",
-      "kind": "public-only",
-      "privateSha256": null,
-      "privateMode": null,
-      "publicSha256": "64e89307ea4f761d21ad7892927692c77eb83f8b9d6a888f97a7f5188c9ac2e2",
-      "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
-      "reviewedBy": "Vakeesan Mahalingam",
-      "publicMode": "100644"
-    },
-    {
-      "path": "scripts/verify-native-release-assets.mjs",
-      "kind": "public-only",
-      "privateSha256": null,
-      "privateMode": null,
-      "publicSha256": "6d3b96cb058160cd8ebf5a1174d1827e7e61984c362380415e816cfc22b60890",
       "reason": "Public-only distribution artifact: present in public repo, no private counterpart",
       "reviewedBy": "Vakeesan Mahalingam",
       "publicMode": "100644"

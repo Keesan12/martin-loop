@@ -4,6 +4,7 @@
     "name": "MartinLoop",
     "email": "keesan@martinloop.com"
   },
+  "strict": true,
   "plugins": [
     {
       "name": "martinloop",
