@@ -19,8 +19,6 @@ function response(body, status = 200) {
 function successfulFetch(version = "9.8.7", registryResponses = [{ ok: true }]) {
   const bytes = Buffer.from("verified-mcpb");
   const sha = createHash("sha256").update(bytes).digest("hex");
-  const assetUrl = "https://downloads.example/martinloop.mcpb";
-  const checksumUrl = "https://downloads.example/martinloop.mcpb.sha256";
   const standaloneAssetUrl = "https://downloads.example/standalone/martinloop.mcpb";
   const standaloneChecksumUrl = "https://downloads.example/standalone/martinloop.mcpb.sha256";
   const seen = [];
@@ -33,15 +31,13 @@ function successfulFetch(version = "9.8.7", registryResponses = [{ ok: true }]) 
     if (url === "https://registry.npmjs.org/%40martinloop%2Fmcp") return response({ "dist-tags": { latest: version } });
     if (url.endsWith(`/releases/tags/v${version}`)) return response({ tag_name: `v${version}`, draft: false, prerelease: false, html_url: "https://example/root", assets: [
       { name: `martin-loop-${version}.tgz`, browser_download_url: "https://downloads.example/root.tgz" },
-      { name: `martinloop-${version}.mcpb`, browser_download_url: assetUrl },
-      { name: `martinloop-${version}.mcpb.sha256`, browser_download_url: checksumUrl },
     ] });
     if (url.endsWith(`/releases/tags/mcp-v${version}`)) return response({ tag_name: `mcp-v${version}`, draft: false, prerelease: false, html_url: "https://example/mcp", assets: [
       { name: `martinloop-${version}.mcpb`, browser_download_url: standaloneAssetUrl },
       { name: `martinloop-${version}.mcpb.sha256`, browser_download_url: standaloneChecksumUrl },
     ] });
-    if (url === checksumUrl || url === standaloneChecksumUrl) return response(`${sha}  martinloop-${version}.mcpb\n`);
-    if (url === assetUrl || url === standaloneAssetUrl) return response(bytes);
+    if (url === standaloneChecksumUrl) return response(`${sha}  martinloop-${version}.mcpb\n`);
+    if (url === standaloneAssetUrl) return response(bytes);
     if (url.startsWith("https://registry.modelcontextprotocol.io/")) {
       const item = registryResponses[Math.min(registryIndex, registryResponses.length - 1)];
       registryIndex += 1;

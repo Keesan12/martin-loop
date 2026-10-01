@@ -893,6 +893,61 @@ describe("flushSyncQueue", () => {
     expect(out.join("")).toContain("empty");
   });
 
+  it("treats ENOENT while persisting retry state as a lost claim and continues", async () => {
+    await mkdir(qDir(), { recursive: true });
+    const lost = makeItem({
+      queueId: "00000000-0000-4000-8000-000000000001",
+      loopId: "loop-lost-claim",
+    });
+    lost.payload.loopId = lost.loopId;
+    const next = makeItem({
+      queueId: "00000000-0000-4000-8000-000000000002",
+      loopId: "loop-after-lost-claim",
+    });
+    next.payload.loopId = next.loopId;
+    await writeFile(join(qDir(), `${lost.queueId}.json`), JSON.stringify(lost), "utf8");
+    await writeFile(join(qDir(), `${next.queueId}.json`), JSON.stringify(next), "utf8");
+
+    let firstResponse: import("node:http").ServerResponse | undefined;
+    let notifyFirst: (() => void) | undefined;
+    const firstArrived = new Promise<void>((resolve) => { notifyFirst = resolve; });
+    let requests = 0;
+    const { url, close } = await startServer((_req, res) => {
+      requests += 1;
+      if (requests === 1) {
+        firstResponse = res;
+        notifyFirst?.();
+        return;
+      }
+      res.writeHead(200);
+      res.end("{}");
+    });
+    process.env["MARTIN_TELEMETRY_ENDPOINT"] = url;
+    process.env["MARTIN_API_TOKEN"] = "tok";
+
+    try {
+      const flush = flushSyncQueue();
+      await firstArrived;
+      const [oldClaim] = await inflightFiles();
+      expect(oldClaim).toBeDefined();
+      await rm(join(inflightDir(), oldClaim!), { recursive: true, force: true });
+      const replacement = join(inflightDir(), `${lost.queueId}.${randomUUID()}.claim`);
+      await mkdir(replacement, { recursive: true });
+      await writeFile(join(replacement, "item.json"), JSON.stringify(lost), "utf8");
+      firstResponse!.writeHead(500);
+      firstResponse!.end();
+
+      const result = await flush;
+      expect(result.uploaded).toBe(1);
+      expect(result.pending).toBe(1);
+      expect(requests).toBe(2);
+      expect(await inflightFiles()).toHaveLength(1);
+    } finally {
+      if (firstResponse && !firstResponse.writableEnded) firstResponse.end();
+      await close();
+    }
+  });
+
   it("requires env vars — reports missing and returns", async () => {
     const err: string[] = [];
     vi.spyOn(process.stderr, "write").mockImplementation((s) => { err.push(String(s)); return true; });

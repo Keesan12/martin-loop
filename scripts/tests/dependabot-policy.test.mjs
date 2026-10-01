@@ -7,15 +7,27 @@ import { resolve } from "node:path";
 const PUBLIC_REPOSITORY = "Keesan12/martin-loop";
 const dependabotPath = resolve(".github/dependabot.yml");
 
+function normalizeRepositoryIdentity(value) {
+  return String(value ?? "")
+    .trim()
+    .replaceAll("\\", "/")
+    .toLowerCase()
+    .replace(/^https?:\/\/github\.com\//u, "")
+    .replace(/^ssh:\/\/git@github\.com\//u, "")
+    .replace(/^git@github\.com:/u, "")
+    .replace(/^\/+|\/+$/gu, "")
+    .replace(/\.git$/u, "");
+}
+
 export function repositoryIdentity({
   env = process.env,
   readOrigin = () => execFileSync("git", ["config", "--get", "remote.origin.url"], {
     encoding: "utf8",
   }),
 } = {}) {
-  if (env.GITHUB_REPOSITORY) return env.GITHUB_REPOSITORY;
+  if (env.GITHUB_REPOSITORY) return normalizeRepositoryIdentity(env.GITHUB_REPOSITORY);
   try {
-    return readOrigin().trim();
+    return normalizeRepositoryIdentity(readOrigin());
   } catch {
     return "";
   }
@@ -34,7 +46,7 @@ function ecosystemBlock(config, ecosystem) {
 test("dependency automation is grouped at its source and disabled in public distribution", () => {
   const repository = repositoryIdentity();
 
-  if (repository.includes(PUBLIC_REPOSITORY)) {
+  if (repository === PUBLIC_REPOSITORY.toLowerCase()) {
     assert.throws(
       () => readFileSync(dependabotPath, "utf8"),
       { code: "ENOENT" },
@@ -61,4 +73,10 @@ test("repository identity is unknown rather than fatal when origin is absent", (
       throw error;
     },
   }), "");
+});
+
+test("repository identity matches only the exact public owner and repository", () => {
+  assert.equal(repositoryIdentity({ env: { GITHUB_REPOSITORY: "Keesan12/MARTIN-LOOP" } }), "keesan12/martin-loop");
+  assert.equal(repositoryIdentity({ env: { GITHUB_REPOSITORY: "Keesan12/martin-loop-fork" } }), "keesan12/martin-loop-fork");
+  assert.equal(repositoryIdentity({ env: {}, readOrigin: () => "git@github.com:Keesan12/martin-loop.git\n" }), "keesan12/martin-loop");
 });

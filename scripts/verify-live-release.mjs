@@ -130,8 +130,7 @@ export async function verifyLiveRelease({
 
   const rootAssets = new Map(rootRelease.assets.map((asset) => [asset.name, asset]));
   assert.ok(rootAssets.has(expectedRootTarball), `root release must include ${expectedRootTarball}`);
-  const rootMcpb = await verifyMcpbAssets(rootRelease, "root release");
-  await verifyMcpbAssets(mcpRelease, "standalone MCP release");
+  const mcpbProof = await verifyMcpbAssets(mcpRelease, "standalone MCP release");
 
   const encodedServer = encodeURIComponent(server.name);
   const registry = await getJsonWith404Retries(
@@ -142,7 +141,7 @@ export async function verifyLiveRelease({
     verified: true,
     root: { package: root.name, version: rootVersion, latest: rootNpmIndex["dist-tags"].latest, tag: rootTag, releaseUrl: rootRelease.html_url, tarball: expectedRootTarball },
     mcp: { package: mcp.name, version: mcpVersion, latest: mcpNpmIndex["dist-tags"].latest, tag: mcpTag, releaseUrl: mcpRelease.html_url, registryName: server.name, registryVerified: Boolean(registry) },
-    mcpb: { version: mcpVersion, manifestSchema: mcpb.manifest_version, asset: expectedMcpb, releaseUrl: rootMcpb.mcpbAsset.browser_download_url, sha256: rootMcpb.actualSha, size: rootMcpb.size },
+    mcpb: { version: mcpVersion, manifestSchema: mcpb.manifest_version, asset: expectedMcpb, releaseUrl: mcpbProof.mcpbAsset.browser_download_url, sha256: mcpbProof.actualSha, size: mcpbProof.size },
   };
 }
 

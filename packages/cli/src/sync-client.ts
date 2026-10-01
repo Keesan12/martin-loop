@@ -1259,7 +1259,17 @@ export async function flushSyncQueue(): Promise<SyncFlushResult> {
         lastAttemptAt: new Date().toISOString(),
         nextRetryNotBefore: new Date(Date.now() + delay).toISOString(),
       };
-      await atomicWriteJson(inflightPath, updated);
+      try {
+        await atomicWriteJson(inflightPath, updated);
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+          // Stale recovery may have fenced this owner while the upload was in
+          // flight. The replacement generation owns the durable item now.
+          stillPending++;
+          continue;
+        }
+        throw err;
+      }
       await releaseItem(inflightPath, queueDir, "requeue");
       stillPending++;
     }

@@ -139,6 +139,27 @@ function tokenize(segment) {
   return tokens;
 }
 
+function normalizeExecutableTokens(tokens) {
+  let index = 0;
+  let gitConfigInjected = false;
+  const consumeAssignments = () => {
+    while (index < tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=.*/u.test(tokens[index])) {
+      const name = tokens[index].slice(0, tokens[index].indexOf("=")).toUpperCase();
+      if (name.startsWith("GIT_CONFIG")) gitConfigInjected = true;
+      index += 1;
+    }
+  };
+
+  consumeAssignments();
+  if (tokens[index]?.toLowerCase() === "env") {
+    index += 1;
+    while (tokens[index]?.startsWith("-")) index += 1;
+    consumeAssignments();
+  }
+
+  return { tokens: tokens.slice(index), gitConfigInjected };
+}
+
 function isPublicCheckout(cwd) {
   return Boolean(cwd && normalizeSlashes(cwd).toLowerCase().includes(PUBLIC_LOCAL_PATH.toLowerCase()));
 }
@@ -308,7 +329,10 @@ function isPublicMutation(command, depth = 0) {
   let cwdChangeCount = 0;
   let branchContextChanged = false;
 
-  for (const tokens of segments) {
+  for (const rawTokens of segments) {
+    if (rawTokens.length === 0) continue;
+    const normalized = normalizeExecutableTokens(rawTokens);
+    const tokens = normalized.tokens;
     if (tokens.length === 0) continue;
     const [exe, rawSub, action] = tokens.map((token) => token.toLowerCase());
 
@@ -335,6 +359,10 @@ function isPublicMutation(command, depth = 0) {
       const publicCwd = isPublicCheckout(git.cwd);
       const stagingBranch = publicCwd ? governedPublicStagingBranch(git.cwd) : "";
       const unstableContext = cwdChangeCount > 1 || branchContextChanged;
+
+      if (publicCwd && GUARDED_GIT_COMMANDS.has(sub) && normalized.gitConfigInjected) {
+        return { blocked: true, reason: "public git configuration injection" };
+      }
 
       if (publicCwd && GUARDED_GIT_COMMANDS.has(sub) && unstableContext) {
         return { blocked: true, reason: "public repo context changed before mutation" };

@@ -190,6 +190,30 @@ test("git -C cannot bypass public checkout mutation protection", () => {
   }
 });
 
+test("environment assignments and env wrappers cannot hide public mutations", () => {
+  const dir = makePublicCheckout("main");
+  try {
+    assert.strictEqual(
+      invoke({ command: `TRACE=1 env MODE=test git -C "${dir}" add README.md` }),
+      BLOCK
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("public mutations reject injected GIT_CONFIG environment", () => {
+  const dir = makePublicCheckout();
+  try {
+    assert.strictEqual(
+      invoke({ command: `env GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=push.followTags GIT_CONFIG_VALUE_0=true git -C "${dir}" commit -m governed` }),
+      BLOCK
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("governed public-staging push rejects --tags widening", () => {
   const dir = makePublicCheckout();
   try {

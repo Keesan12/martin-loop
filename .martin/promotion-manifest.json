@@ -2,15 +2,15 @@
   "schemaVersion": "martin.public-promotion.v2",
   "sourceAuthority": "validated-internal-release-source",
   "sourceRepositoryFingerprint": "04aac733f3b08513fddcc72a9013b9f59cf7919f9a0a3893d0b3d953929826ec",
-  "privateMergeSha": "370bb046677fa5f1f5fd5421db7f6ab2e6b70fb3",
-  "privateMainShaValidated": "370bb046677fa5f1f5fd5421db7f6ab2e6b70fb3",
+  "privateMergeSha": "07858b6d0282171fa6b03813069b88810f240b87",
+  "privateMainShaValidated": "07858b6d0282171fa6b03813069b88810f240b87",
   "publicBaseSha": "6fbc314d28be8bbf84b574f01ca5340bfb8288ac",
   "promotedBy": "Torram",
-  "validatedAt": "2026-10-01T16:54:13.123Z",
+  "validatedAt": "2026-10-01T18:25:54.223Z",
   "internalHealthPassed": true,
-  "internalHealthEvidenceSha256": "4e49f4bb103b5b123998ac2ffc666a82da205615fb05b6ced01f7542f6260048",
+  "internalHealthEvidenceSha256": "ab882c61fe6a2904d4fb4d162663d9bff545b7e65e771891fa8f5bbe58998f25",
   "surfaceSpecHash": "a9c8d22be91bc0dd19238f7676aec62aacc77d8cc3a66327b46d71f16d65164a",
-  "surfaceHash": "4a0c210bf7fb380dd8339fa1b71b263ad303ff8fcaf63eff248996787f17ca26",
+  "surfaceHash": "91f7fb00074928ab0ef7edc9680e210ca1c310ba4ee8969793b765dfd868f22d",
   "surfaceEntries": [
     {
       "path": ".agents/plugins/marketplace.json",
@@ -1310,7 +1310,7 @@
     {
       "path": "packages/cli/src/sync-client.ts",
       "mode": "100644",
-      "sha256": "ffbfef2962850fff39384f7e51c0fd93161f194560e0210883cbf4a463f46ccd"
+      "sha256": "936ebf15d9e59de01f23ab791bb6c603edb56877a60d85e058c18f7c407c016e"
     },
     {
       "path": "packages/cli/src/sync-privacy.ts",
@@ -1485,7 +1485,7 @@
     {
       "path": "packages/cli/tests/sync-client.test.ts",
       "mode": "100644",
-      "sha256": "abd7accc848e5e80b68f820948ad01732870a6dce3834cbc3982e3f9babf9560"
+      "sha256": "4e513f3bc25a6fda3e1570179068f221836538e07effa364a150d8791ef4e951"
     },
     {
       "path": "packages/cli/tests/sync-receipt-transport.test.ts",
@@ -2665,7 +2665,7 @@
     {
       "path": "scripts/hooks/block-public-oss-writes.js",
       "mode": "100644",
-      "sha256": "35f3210895025d3dde7b79e48d4f4b4b056b9fc4387e24d0f9e1ddc011dcb920"
+      "sha256": "795abd2e499f66475e3e7fde2d011c566111ad9ae022754a66a56c4ebb232cc2"
     },
     {
       "path": "scripts/hooks/install-claude-public-write-hook.js",
@@ -2825,12 +2825,12 @@
     {
       "path": "scripts/tests/block-public-oss-writes.test.mjs",
       "mode": "100644",
-      "sha256": "e3ad5e2eba202b1661d5caf349118bc82431af54881fa8aa2bf495cbbd9fd4b8"
+      "sha256": "63b4e3428f99012ccb91fadec43394874320705ee0d191162c918cab4523d1cf"
     },
     {
       "path": "scripts/tests/dependabot-policy.test.mjs",
       "mode": "100644",
-      "sha256": "8ffbe123ce6404e72e60e1e10b3bc3c59ae9c3899a91457cf4e2f0e392705167"
+      "sha256": "f55734301af0a513235016c7a6f663ad86e0185dd9bcfe9f414326f58034e7ec"
     },
     {
       "path": "scripts/tests/failure-taxonomy-sync.test.mjs",
@@ -2965,7 +2965,7 @@
     {
       "path": "scripts/tests/verify-live-release.test.mjs",
       "mode": "100644",
-      "sha256": "6af4fdca6d04edac6fe0f67e81d90a6b14d046c14e8b1f2d0a042ab4fec7791a"
+      "sha256": "f194519782263ad8d0a86ff35f9979fc9135c1d6d096042a6b2ce381bb5f81d0"
     },
     {
       "path": "scripts/tests/verify-public-promotion.test.mjs",
@@ -2995,7 +2995,7 @@
     {
       "path": "scripts/verify-live-release.mjs",
       "mode": "100644",
-      "sha256": "47f6d559cbd7d159e1ea402ae693e79d7d906e1b1404e249fd18eb1d1c6e06e3"
+      "sha256": "8adf6e7dc152445dc78990d4a4b342995b726b2d3419295104691d7dfae1c27d"
     },
     {
       "path": "scripts/verify-public-promotion.mjs",
@@ -3159,9 +3159,9 @@
     {
       "path": "scripts/tests/block-public-oss-writes.test.mjs",
       "kind": "content",
-      "privateSha256": "e3ad5e2eba202b1661d5caf349118bc82431af54881fa8aa2bf495cbbd9fd4b8",
+      "privateSha256": "63b4e3428f99012ccb91fadec43394874320705ee0d191162c918cab4523d1cf",
       "privateMode": "100644",
-      "publicSha256": "dbf38f7f62b0c7f124598f558cd58be948d75813c42e5d22105492fcf262a79b",
+      "publicSha256": "16e2f0b3e0f106175b77116e813b861e94a8a7200f9c4d283e3e77330184d1eb",
       "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
       "reviewedBy": "Vakeesan Mahalingam",
       "publicMode": "100644"
