@@ -294,19 +294,19 @@ describe("attemptUpload — HTTP status codes", () => {
     await close();
   });
 
-  it("returns permanent:true on 401", async () => {
+  it("returns permanent:false on repairable 401", async () => {
     const { url, close } = await startServer((_req, res) => { res.writeHead(401); res.end(); });
     const r = await attemptUpload(minItem(), url, "tok");
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.permanent).toBe(true);
+    if (!r.ok) expect(r.permanent).toBe(false);
     await close();
   });
 
-  it("returns permanent:true on 403", async () => {
+  it("returns permanent:false on repairable 403", async () => {
     const { url, close } = await startServer((_req, res) => { res.writeHead(403); res.end(); });
     const r = await attemptUpload(minItem(), url, "tok");
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.permanent).toBe(true);
+    if (!r.ok) expect(r.permanent).toBe(false);
     await close();
   });
 
@@ -573,23 +573,23 @@ describe("syncLoopToHosted", () => {
     expect(saved.loopId).toBe(loop.loopId);
   });
 
-  it("quarantines on permanent 401", async () => {
+  it("preserves the queue on repairable 401", async () => {
     const { url, close } = await startServer((_req, res) => { res.writeHead(401); res.end(); });
     process.env["MARTIN_TELEMETRY_ENDPOINT"] = url;
     process.env["MARTIN_API_TOKEN"] = "bad-tok";
     await syncLoopToHosted(makeLoop(), { runtimeVersion: "0.1.0" });
-    expect(await queueFiles()).toHaveLength(0);
-    expect(await quarantineFiles()).toHaveLength(1);
+    expect(await queueFiles()).toHaveLength(1);
+    expect(await quarantineFiles()).toHaveLength(0);
     await close();
   });
 
-  it("quarantines on permanent 403", async () => {
+  it("preserves the queue on repairable 403", async () => {
     const { url, close } = await startServer((_req, res) => { res.writeHead(403); res.end(); });
     process.env["MARTIN_TELEMETRY_ENDPOINT"] = url;
     process.env["MARTIN_API_TOKEN"] = "tok";
     await syncLoopToHosted(makeLoop(), { runtimeVersion: "0.1.0" });
-    expect(await queueFiles()).toHaveLength(0);
-    expect(await quarantineFiles()).toHaveLength(1);
+    expect(await queueFiles()).toHaveLength(1);
+    expect(await quarantineFiles()).toHaveLength(0);
     await close();
   });
 
@@ -1085,7 +1085,7 @@ describe("flushSyncQueue", () => {
     await close();
   });
 
-  it("quarantines item on permanent 401 during flush", async () => {
+  it("preserves item on repairable 401 during flush", async () => {
     // Write item directly — no backoff state that would defer it
     await mkdir(qDir(), { recursive: true });
     const item = makeItem();
@@ -1096,8 +1096,8 @@ describe("flushSyncQueue", () => {
     process.env["MARTIN_TELEMETRY_ENDPOINT"] = url;
     process.env["MARTIN_API_TOKEN"] = "tok";
     await flushSyncQueue();
-    expect(await queueFiles()).toHaveLength(0);
-    expect(await quarantineFiles()).toHaveLength(1);
+    expect(await queueFiles()).toHaveLength(1);
+    expect(await quarantineFiles()).toHaveLength(0);
     await close();
   });
 
@@ -1658,6 +1658,252 @@ describe("enqueueLoopForHostedSync", () => {
   it("is a no-op when env vars are not set", async () => {
     await enqueueLoopForHostedSync(makeLoop(), { runtimeVersion: "0.1.0" });
     expect(await queueFiles()).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Hosted rejection UX: actionable errors without sacrificing queue durability
+// ---------------------------------------------------------------------------
+
+describe("sync flush hosted rejection UX", () => {
+  async function writeQueuedItem(item: TestItem): Promise<string> {
+    await mkdir(qDir(), { recursive: true });
+    item.payload.loopId = item.loopId;
+    const filePath = join(qDir(), `${item.queueId}.json`);
+    await writeFile(filePath, JSON.stringify(item), "utf8");
+    return filePath;
+  }
+
+  async function writeSignedQueuedItem(loopId: string): Promise<{
+    item: TestItem;
+    signingSecret: string;
+  }> {
+    const signingSecret = "receipt-secret-sentinel-".padEnd(64, "s");
+    const keyId = createHash("sha256").update(signingSecret).digest("hex").slice(0, 16);
+    const runsRootHash = "0123456789abcdef";
+    const integrityRoot = join(tempDir, "integrity");
+    process.env["MARTIN_INTEGRITY_KEY_DIR"] = integrityRoot;
+    await mkdir(join(integrityRoot, runsRootHash), { recursive: true });
+    await writeFile(join(integrityRoot, runsRootHash, `${loopId}.key`), signingSecret, "utf8");
+
+    const item = makeItem({ loopId });
+    item.receiptKey = { keyId, runsRootHash };
+    item.payload.coreReceipt = { integrity: { keyId } };
+    await writeQueuedItem(item);
+    return { item, signingSecret };
+  }
+
+  function captureSyncOutput(): { stdout: string[]; stderr: string[] } {
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    vi.spyOn(process.stdout, "write").mockImplementation((value) => {
+      stdout.push(String(value));
+      return true;
+    });
+    vi.spyOn(process.stderr, "write").mockImplementation((value) => {
+      stderr.push(String(value));
+      return true;
+    });
+    return { stdout, stderr };
+  }
+
+  it("surfaces missing receipt-key scope, preserves the queued run, exits nonzero, and redacts secrets", async () => {
+    const { signingSecret } = await writeSignedQueuedItem("loop-missing-receipt-scope");
+    const token = "api-token-secret-sentinel";
+    const { url, close } = await startServer((_req, res) => {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        error: "forbidden",
+        reason: "missing scope (receipt_keys:write)",
+        signingSecret,
+        token,
+      }));
+    });
+    process.env["MARTIN_TELEMETRY_ENDPOINT"] = url;
+    process.env["MARTIN_API_TOKEN"] = token;
+    const output = captureSyncOutput();
+
+    try {
+      const result = await executeCli(["sync", "flush"]);
+      const combined = `${output.stdout.join("")}\n${output.stderr.join("")}`;
+      expect(result.exitCode).not.toBe(0);
+      expect(combined).toContain("missing scope (receipt_keys:write)");
+      expect(combined).toContain("remains queued");
+      expect(combined).not.toContain(signingSecret);
+      expect(combined).not.toContain(token);
+      expect(await queueFiles()).toHaveLength(1);
+      expect(await quarantineFiles()).toHaveLength(0);
+    } finally {
+      await close();
+    }
+  });
+
+  it.each([
+    {
+      status: 401,
+      body: { error: "unauthorized", reason: "token expired" },
+      expected: ["unauthorized", "token expired"],
+    },
+    {
+      status: 402,
+      body: {
+        error: "upgrade_required",
+        reason: "Free sync limit reached",
+        upgradeUrl: "https://martinloop.com/pricing",
+      },
+      expected: ["upgrade_required", "Free sync limit reached", "https://martinloop.com/pricing"],
+    },
+  ])("surfaces $status rejection details and preserves the queue", async ({ status, body, expected }) => {
+    await writeQueuedItem(makeItem({ loopId: `loop-rejection-${status}` }));
+    const { url, close } = await startServer((_req, res) => {
+      res.writeHead(status, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(body));
+    });
+    process.env["MARTIN_TELEMETRY_ENDPOINT"] = url;
+    process.env["MARTIN_API_TOKEN"] = "token-not-for-output";
+    const output = captureSyncOutput();
+
+    try {
+      const result = await executeCli(["sync", "flush"]);
+      const combined = `${output.stdout.join("")}\n${output.stderr.join("")}`;
+      expect(result.exitCode).not.toBe(0);
+      for (const fragment of expected) expect(combined).toContain(fragment);
+      expect(await queueFiles()).toHaveLength(1);
+      expect(await quarantineFiles()).toHaveLength(0);
+    } finally {
+      await close();
+    }
+  });
+
+  it("surfaces a permanent 409 conflict reason without leaking arbitrary response fields", async () => {
+    await writeQueuedItem(makeItem({ loopId: "loop-conflict" }));
+    const { url, close } = await startServer((_req, res) => {
+      res.writeHead(409, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        error: "conflict",
+        reason: "signed run conflicts with the stored observation",
+        internalDebug: "private-debug-sentinel",
+      }));
+    });
+    process.env["MARTIN_TELEMETRY_ENDPOINT"] = url;
+    process.env["MARTIN_API_TOKEN"] = "tok";
+    const output = captureSyncOutput();
+
+    try {
+      const result = await executeCli(["sync", "flush"]);
+      const combined = `${output.stdout.join("")}\n${output.stderr.join("")}`;
+      expect(result.exitCode).not.toBe(0);
+      expect(combined).toContain("conflict");
+      expect(combined).toContain("signed run conflicts with the stored observation");
+      expect(combined).not.toContain("private-debug-sentinel");
+      expect(await quarantineFiles()).toHaveLength(1);
+    } finally {
+      await close();
+    }
+  });
+
+  it("surfaces rate-limit detail and Retry-After while preserving the queue", async () => {
+    await writeQueuedItem(makeItem({ loopId: "loop-rate-limited" }));
+    const { url, close } = await startServer((_req, res) => {
+      res.writeHead(429, { "Content-Type": "application/json", "Retry-After": "7" });
+      res.end(JSON.stringify({ error: "rate_limited", reason: "slow down" }));
+    });
+    process.env["MARTIN_TELEMETRY_ENDPOINT"] = url;
+    process.env["MARTIN_API_TOKEN"] = "tok";
+    const output = captureSyncOutput();
+
+    try {
+      const result = await executeCli(["sync", "flush"]);
+      const combined = `${output.stdout.join("")}\n${output.stderr.join("")}`;
+      expect(result.exitCode).not.toBe(0);
+      expect(combined).toContain("rate_limited");
+      expect(combined).toContain("slow down");
+      expect(combined).toMatch(/retry after 7s/i);
+      expect(await queueFiles()).toHaveLength(1);
+    } finally {
+      await close();
+    }
+  });
+
+  it.each([
+    { label: "5xx", endpoint: "server" },
+    { label: "network", endpoint: "unreachable" },
+  ])("reports a temporary $label failure and preserves the queue", async ({ endpoint }) => {
+    await writeQueuedItem(makeItem({ loopId: `loop-temporary-${endpoint}` }));
+    const server = endpoint === "server"
+      ? await startServer((_req, res) => {
+          res.writeHead(503, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "unavailable", reason: "maintenance" }));
+        })
+      : undefined;
+    process.env["MARTIN_TELEMETRY_ENDPOINT"] = server?.url ?? "http://127.0.0.1:1";
+    process.env["MARTIN_API_TOKEN"] = "tok";
+    const output = captureSyncOutput();
+
+    try {
+      const result = await executeCli(["sync", "flush"]);
+      const combined = `${output.stdout.join("")}\n${output.stderr.join("")}`;
+      expect(result.exitCode).not.toBe(0);
+      expect(combined).toMatch(/temporarily failed/i);
+      expect(combined).toContain("remains queued");
+      if (endpoint === "server") expect(combined).toContain("maintenance");
+      expect(await queueFiles()).toHaveLength(1);
+    } finally {
+      await server?.close();
+    }
+  });
+
+  it("uploads the same signed queued run after credentials are fixed", async () => {
+    const { item } = await writeSignedQueuedItem("loop-retry-same-signed-run");
+    let rejectRegistration = true;
+    const paths: string[] = [];
+    const uploadedLoopIds: string[] = [];
+    const { url, close } = await startServer((req, res) => {
+      let raw = "";
+      req.on("data", (chunk) => { raw += String(chunk); });
+      req.on("end", () => {
+        paths.push(req.url ?? "");
+        if (req.url === "/register-receipt-key" && rejectRegistration) {
+          res.writeHead(403, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "forbidden", reason: "missing scope (receipt_keys:write)" }));
+          return;
+        }
+        if (req.url === "/register-receipt-key") {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true }));
+          return;
+        }
+        uploadedLoopIds.push((JSON.parse(raw) as { loopId: string }).loopId);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true }));
+      });
+    });
+    process.env["MARTIN_TELEMETRY_ENDPOINT"] = url;
+    process.env["MARTIN_API_TOKEN"] = "tok";
+    captureSyncOutput();
+
+    try {
+      const rejected = await executeCli(["sync", "flush"]);
+      expect(rejected.exitCode).not.toBe(0);
+      const [queuedFile] = await queueFiles();
+      expect(queuedFile).toBe(`${item.queueId}.json`);
+      const queued = JSON.parse(await readFile(join(qDir(), queuedFile!), "utf8")) as TestItem;
+      queued.nextRetryNotBefore = new Date(Date.now() - 1_000).toISOString();
+      await writeFile(join(qDir(), queuedFile!), JSON.stringify(queued), "utf8");
+
+      rejectRegistration = false;
+      const recovered = await executeCli(["sync", "flush"]);
+      expect(recovered.exitCode).toBe(0);
+      expect(paths).toEqual([
+        "/register-receipt-key",
+        "/register-receipt-key",
+        "/api/runs/sync",
+      ]);
+      expect(uploadedLoopIds).toEqual([item.loopId]);
+      expect(await queueFiles()).toHaveLength(0);
+    } finally {
+      await close();
+    }
   });
 });
 
