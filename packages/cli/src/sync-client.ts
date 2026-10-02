@@ -15,15 +15,15 @@
  *   Run upload:       POST /api/runs/sync with runs:write or telemetry:write.
  *   Dedup:            Server upserts by (workspace_id, loop_id); re-sync updates
  *                    the same logical row and returns HTTP 200.
- *   401:              Bad/missing/revoked token — permanent, do not retry.
- *   403:              Missing required scope — permanent, do not retry.
+ *   401/402/403:      Repairable auth, entitlement, or scope rejection — preserve for retry.
  *   409/422:          Trust/payload conflict — permanent.
  *   429:              Rate limit — transient; respect Retry-After if present.
  *   5xx/network:      Transient, retry.
  *
  * Failure modes:
  *   Transient (timeout, offline, 429, 5xx) → item stays in queue for flushSyncQueue().
- *   Permanent (4xx exc. 429)               → item moved to quarantine dir with reason.
+ *   Permanent trust/payload 4xx             → item moved to quarantine dir with reason.
+ *   Repairable auth/entitlement/scope 4xx   → item stays in queue for flushSyncQueue().
  *   Queue full (200 items)                 → oldest by enqueuedAt quarantined; if quarantine
  *                                           fails, new item is NOT enqueued (error logged).
  *   Corrupt queue file                     → quarantined; skipped if quarantine fails.
@@ -171,9 +171,24 @@ interface SyncQueueItem {
   payloadBytes: number;         // pre-validated at enqueue
 }
 
+interface SafeHostedSyncError {
+  status?: number;
+  error?: string;
+  reason?: string;
+  upgradeUrl?: string;
+  retryAfter?: string;
+  kind: "rejected" | "rate_limited" | "temporary" | "network";
+  stage: "receipt-key registration" | "run upload";
+}
+
 type UploadResult =
   | { ok: true }
-  | { ok: false; permanent: boolean; retryAfterMs?: number };
+  | {
+      ok: false;
+      permanent: boolean;
+      retryAfterMs?: number;
+      failure: SafeHostedSyncError;
+    };
 
 // ---------------------------------------------------------------------------
 // Receipt transport
@@ -844,6 +859,117 @@ async function enqueue(item: SyncQueueItem, queueDir: string): Promise<void> {
 // HTTP upload
 // ---------------------------------------------------------------------------
 
+function safeHostedErrorText(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.replace(/[\u0000-\u001f\u007f]+/gu, " ").trim();
+  return normalized.length > 0 ? normalized.slice(0, 512) : undefined;
+}
+
+async function readSafeHostedError(response: Response): Promise<{
+  error?: string;
+  reason?: string;
+  upgradeUrl?: string;
+  retryAfter?: string;
+}> {
+  try {
+    const parsed = JSON.parse(await response.text()) as unknown;
+    if (!isPlainRecord(parsed)) return {};
+    const error = safeHostedErrorText(parsed["error"]);
+    const reason = safeHostedErrorText(parsed["reason"]);
+    const upgradeCandidate = safeHostedErrorText(parsed["upgradeUrl"]);
+    let upgradeUrl: string | undefined;
+    if (upgradeCandidate) {
+      try {
+        const url = new URL(upgradeCandidate);
+        if (url.protocol === "https:" || url.protocol === "http:") upgradeUrl = url.toString();
+      } catch {
+        // Ignore malformed or non-URL upgrade hints.
+      }
+    }
+    const retryAfterValue = parsed["retryAfter"];
+    const retryAfter = safeHostedErrorText(
+      typeof retryAfterValue === "number" && Number.isFinite(retryAfterValue)
+        ? String(retryAfterValue)
+        : retryAfterValue
+    );
+    return {
+      ...(error ? { error } : {}),
+      ...(reason ? { reason } : {}),
+      ...(upgradeUrl ? { upgradeUrl } : {}),
+      ...(retryAfter ? { retryAfter } : {}),
+    };
+  } catch {
+    return {};
+  }
+}
+
+async function classifyHostedFailure(
+  response: Response,
+  stage: SafeHostedSyncError["stage"]
+): Promise<Exclude<UploadResult, { ok: true }>> {
+  const safe = await readSafeHostedError(response);
+  const retryAfterHeader = safeHostedErrorText(response.headers.get("Retry-After"));
+  const retryAfterMs = response.status === 429
+    ? parseRetryAfterMs(response.headers.get("Retry-After"))
+    : undefined;
+  const kind: SafeHostedSyncError["kind"] = response.status === 429
+    ? "rate_limited"
+    : response.status >= 500
+      ? "temporary"
+      : "rejected";
+  // Authentication, entitlement, and scope failures can be repaired without
+  // rerunning the provider. Preserve their signed evidence for a later retry.
+  const permanent = !(
+    response.status === 401 ||
+    response.status === 402 ||
+    response.status === 403 ||
+    response.status === 429 ||
+    response.status >= 500
+  );
+  return {
+    ok: false,
+    permanent,
+    ...(retryAfterMs !== undefined ? { retryAfterMs } : {}),
+    failure: {
+      status: response.status,
+      kind,
+      stage,
+      ...safe,
+      ...(retryAfterHeader ? { retryAfter: retryAfterHeader } : {}),
+    },
+  };
+}
+
+function localUploadFailure(
+  stage: SafeHostedSyncError["stage"],
+  kind: SafeHostedSyncError["kind"],
+  reason: string,
+  permanent = false
+): Exclude<UploadResult, { ok: true }> {
+  return { ok: false, permanent, failure: { kind, stage, reason } };
+}
+
+function writeUploadFailure(result: Exclude<UploadResult, { ok: true }>): void {
+  const { failure } = result;
+  const details = [failure.error, failure.reason]
+    .filter((value, index, values): value is string => Boolean(value) && values.indexOf(value) === index)
+    .join(": ");
+  const fallback = failure.status ? `HTTP ${failure.status}` : "hosted sync request failed";
+  const label = failure.kind === "rate_limited"
+    ? "Sync rate limited"
+    : failure.kind === "temporary" || failure.kind === "network"
+      ? "Sync temporarily failed"
+      : `Sync rejected during ${failure.stage}`;
+  const upgrade = failure.upgradeUrl ? ` Upgrade: ${failure.upgradeUrl}` : "";
+  const retryAfter = failure.retryAfter ? ` Retry after ${failure.retryAfter}s.` : "";
+  process.stderr.write(`[martin sync] ${label}: ${details || fallback}.${upgrade}${retryAfter}\n`);
+  process.stderr.write(
+    result.permanent
+      ? "[martin sync] Queued evidence will be quarantined for inspection.\n"
+      : "[martin sync] 1 run remains queued for retry.\n"
+  );
+}
+
 /**
  * @internal Exported for targeted HTTP behavior tests only.
  */
@@ -857,7 +983,14 @@ async function ensureHostedReceiptKey(
   if (!locator || !receiptKeyId) return { ok: true };
 
   // Fail closed if the queue locator and signed receipt disagree.
-  if (locator.keyId !== receiptKeyId) return { ok: false, permanent: true };
+  if (locator.keyId !== receiptKeyId) {
+    return localUploadFailure(
+      "receipt-key registration",
+      "rejected",
+      "queued receipt key does not match the signed receipt",
+      true
+    );
+  }
 
   let signingSecret: string;
   try {
@@ -869,11 +1002,20 @@ async function ensureHostedReceiptKey(
     ).trim();
   } catch {
     // The operator may restore the local key or MARTIN_INTEGRITY_KEY_DIR and retry.
-    return { ok: false, permanent: false };
+    return localUploadFailure(
+      "receipt-key registration",
+      "temporary",
+      "local receipt signing key is unavailable"
+    );
   }
 
   if (sha256Hex(signingSecret).slice(0, 16) !== locator.keyId) {
-    return { ok: false, permanent: true };
+    return localUploadFailure(
+      "receipt-key registration",
+      "rejected",
+      "local receipt signing key does not match the signed receipt",
+      true
+    );
   }
 
   const url = `${endpoint.replace(/\/$/, "")}/register-receipt-key`;
@@ -891,20 +1033,13 @@ async function ensureHostedReceiptKey(
     });
 
     if (res.ok) return { ok: true };
-    if (res.status === 429) {
-      return {
-        ok: false,
-        permanent: false,
-        retryAfterMs: parseRetryAfterMs(res.headers.get("Retry-After")),
-      };
-    }
-    if (res.status >= 500) return { ok: false, permanent: false };
-    // Authentication/scope can be repaired by replacing or upgrading the
-    // workspace token. Preserve the queued receipt rather than quarantining it.
-    if (res.status === 401 || res.status === 403) return { ok: false, permanent: false };
-    return { ok: false, permanent: true };
+    return await classifyHostedFailure(res, "receipt-key registration");
   } catch {
-    return { ok: false, permanent: false };
+    return localUploadFailure(
+      "receipt-key registration",
+      "network",
+      "could not reach the hosted service"
+    );
   } finally {
     clearTimeout(timer);
   }
@@ -941,18 +1076,13 @@ export async function attemptUpload(
     });
 
     if (res.ok) return { ok: true };
-
-    if (res.status === 429) {
-      const retryAfterMs = parseRetryAfterMs(res.headers.get("Retry-After"));
-      return { ok: false, permanent: false, retryAfterMs };
-    }
-
-    if (res.status >= 500) return { ok: false, permanent: false };
-
-    // 4xx (exc. 429): permanent — bad token/scope/payload or conflicting sync.
-    return { ok: false, permanent: true };
+    return await classifyHostedFailure(res, "run upload");
   } catch {
-    return { ok: false, permanent: false }; // network error or AbortError (timeout)
+    return localUploadFailure(
+      "run upload",
+      "network",
+      "could not reach the hosted service"
+    );
   } finally {
     clearTimeout(timer);
   }
@@ -1090,10 +1220,9 @@ export async function syncLoopToHosted(
       return;
     }
 
+    writeUploadFailure(result);
+
     if (result.permanent) {
-      process.stderr.write(
-        `[martin sync] Permanent upload failure for loop ${loop.loopId} — quarantining. Check MARTIN_API_TOKEN and MARTIN_TELEMETRY_ENDPOINT.\n`
-      );
       const moved = await quarantine(inflightPath, queueDir, "permanent_4xx");
       if (!moved) await releaseItem(inflightPath, queueDir, "requeue");
       return;
@@ -1109,9 +1238,6 @@ export async function syncLoopToHosted(
     };
     await atomicWriteJson(inflightPath, updated);
     await releaseItem(inflightPath, queueDir, "requeue");
-    process.stderr.write(
-      `[martin sync] Upload deferred for loop ${loop.loopId} — will retry with \`martin sync flush\`.\n`
-    );
   } catch (err) {
     // Catch-all: filesystem failures, queue-full errors, etc.
     process.stderr.write(
@@ -1241,9 +1367,7 @@ export async function flushSyncQueue(): Promise<SyncFlushResult> {
       await releaseItem(inflightPath, queueDir, "done");
       succeeded++;
     } else if (result.permanent) {
-      process.stderr.write(
-        `[martin sync] Permanent failure for loop ${currentItem.loopId} — quarantining.\n`
-      );
+      writeUploadFailure(result);
       const moved = await quarantine(inflightPath, queueDir, "permanent_4xx");
       if (moved) quarantinedCount++;
       else {
@@ -1251,6 +1375,7 @@ export async function flushSyncQueue(): Promise<SyncFlushResult> {
         stillPending++;
       }
     } else {
+      writeUploadFailure(result);
       // Persist incremented attempt count and backoff window
       const delay = backoffDelay(currentItem.attempts, result.retryAfterMs);
       const updated: SyncQueueItem = {

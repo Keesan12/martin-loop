@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-10-01
+
+### Fixed
+- `martin sync flush` now surfaces safe hosted rejection details for authentication, Free-plan quota, scope, conflict, rate-limit, and temporary failures while preserving repairable queued runs for retry.
+- Signed runs rejected during receipt-key registration can be retried from the same queue entry after credentials or scopes are corrected, without rerunning the provider.
+
 ## [0.7.0] - 2026-10-01
 
 ### Fixed
