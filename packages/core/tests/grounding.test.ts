@@ -97,7 +97,7 @@ describe("scanPatchForGroundingViolations", () => {
       allowedPaths: ["RESULT.txt"]
     });
 
-    expect(index.files.map((file) => file.path)).not.toContain("RESULT.txt");
+    expect(index.files.map((file) => file.path)).toContain("RESULT.txt");
     expect(index.trackedPaths).toContain("RESULT.txt");
     expect(result.violations).toEqual([]);
     expect(result.resolvedFiles).toContain("RESULT.txt");
@@ -121,6 +121,29 @@ describe("scanPatchForGroundingViolations", () => {
     expect(result.violations).not.toEqual(expect.arrayContaining([
       expect.objectContaining({ kind: "patch_outside_allowed_paths" })
     ]));
+  });
+
+  it("grounds a present allowed text file from a synthetic changed-files diff", async () => {
+    const root = await mkdtemp(join(tmpdir(), "martin-scan-present-new-text-"));
+    await mkdir(join(root, "live-qualification", "three"), { recursive: true });
+    await writeFile(
+      join(root, "live-qualification", "three", "agent-01.txt"),
+      "swarm live qualification three agent 01\n",
+      "utf8"
+    );
+
+    const index = await buildRepoGroundingIndex(root);
+    const diff = `--- a/live-qualification/three/agent-01.txt
++++ b/live-qualification/three/agent-01.txt
+@@ -0,0 +1 @@
++`;
+
+    const result = scanPatchForGroundingViolations(diff, index, {
+      allowedPaths: ["live-qualification/three/agent-01.txt"]
+    });
+
+    expect(result.violations).toEqual([]);
+    expect(result.resolvedFiles).toContain("live-qualification/three/agent-01.txt");
   });
 
   it("accepts an allowed new file and symbols declared by that patch", async () => {

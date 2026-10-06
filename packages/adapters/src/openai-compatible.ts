@@ -228,6 +228,14 @@ function buildPrompt(request: MartinAdapterRequest, workspaceSnapshot = ""): str
     lines.push(`FOCUS: ${request.context.focus}`, ``);
   }
 
+  if (request.context.mutationMode === "read_only") {
+    lines.push(
+      "READ-ONLY EXECUTION. Do not propose file edits or deletions.",
+      "Inspect the supplied workspace context and report factual findings only.",
+      ""
+    );
+  }
+
   if ((request.context.acceptanceCriteria?.length ?? 0) > 0) {
     lines.push(
       `ACCEPTANCE CRITERIA:`,
@@ -267,20 +275,61 @@ function buildPrompt(request: MartinAdapterRequest, workspaceSnapshot = ""): str
   );
 
   if (workspaceSnapshot) {
-    lines.push(
-      ``,
-      `WORKSPACE SNAPSHOT (read-only context; paths are repository-relative):`,
-      workspaceSnapshot,
-      ``,
-      `RESPONSE CONTRACT:`,
-      `Return ONLY JSON with this shape:`,
-      `{"summary":"short description","edits":[{"path":"src/file.ts","content":"complete replacement file content"}],"deletions":[]}`,
-      `Use only repository-relative paths. Every proposed path is validated by MartinLoop before any file is written.`,
-      `If a file should not change, omit it. Do not wrap the JSON in explanatory prose.`
-    );
+    if (request.context.mutationMode === "read_only") {
+      lines.push(
+        ``,
+        `WORKSPACE SNAPSHOT (read-only context; paths are repository-relative):`,
+        workspaceSnapshot,
+        ``,
+        `RESPONSE CONTRACT:`,
+        `Return a concise factual inspection summary. Do not propose edits, deletions, patches, or write commands.`
+      );
+    } else {
+      lines.push(
+        ``,
+        `WORKSPACE SNAPSHOT (read-only context; paths are repository-relative):`,
+        workspaceSnapshot,
+        ``,
+        `RESPONSE CONTRACT:`,
+        `Return ONLY JSON with this shape:`,
+        `{"summary":"short description","edits":[{"path":"src/file.ts","content":"complete replacement file content"}],"deletions":[]}`,
+        `Use only repository-relative paths. Every proposed path is validated by MartinLoop before any file is written.`,
+        `If a file should not change, omit it. Do not wrap the JSON in explanatory prose.`
+      );
+    }
   }
 
   return lines.join("\n");
+}
+
+function abortError(message: string): Error {
+  const error = new Error(message);
+  error.name = "AbortError";
+  return error;
+}
+
+function waitForRetryDelay(delayMs: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) {
+    return Promise.reject(abortError("OpenAI-compatible retry cancelled by parent."));
+  }
+  return new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const onAbort = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+      reject(abortError("OpenAI-compatible retry cancelled by parent."));
+    };
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, delayMs);
+    signal?.addEventListener("abort", onAbort, { once: true });
+    if (signal?.aborted) onAbort();
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -330,6 +379,7 @@ export function createOpenAiCompatibleAdapter(
       const hasVerificationSteps =
         request.context.verificationPlan.length > 0 ||
         (request.context.verificationStack?.length ?? 0) > 0;
+      const mutationMode = request.context.mutationMode ?? "edit";
       const governedCodingRun =
         request.context.mutationMode === "edit" ||
         hasVerificationSteps ||
@@ -347,6 +397,15 @@ export function createOpenAiCompatibleAdapter(
       const baselineChangedFiles = hasVerificationSteps
         ? new Set(await readGitChangedFiles(workingDirectory, 5_000))
         : new Set<string>();
+      const cancelledResult = (): MartinAdapterResult => ({
+        status: "failed",
+        summary: `${model} request cancelled by parent.`,
+        usage: normalizeUsage({ actualUsd: 0, tokensIn: 0, tokensOut: 0, provenance: "unavailable" }),
+        verification: { passed: false, summary: "Request cancelled before verifier." },
+        failure: { message: "parent_cancelled", classHint: "infrastructure_error" as FailureClass }
+      });
+
+      if (request.signal?.aborted) return cancelledResult();
 
       // Preflight: bail if projected cost exceeds remaining budget
       if (
@@ -402,7 +461,17 @@ export function createOpenAiCompatibleAdapter(
 
       for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        let timedOut = false;
+        const abortFromParent = () => controller.abort(request.signal?.reason);
+        if (request.signal?.aborted) abortFromParent();
+        else if (request.signal) {
+          request.signal.addEventListener("abort", abortFromParent, { once: true });
+          if (request.signal.aborted) abortFromParent();
+        }
+        const timer = setTimeout(() => {
+          timedOut = true;
+          controller.abort(abortError(`${model} request timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
         try {
           const res = await fetchFn(endpoint, {
             method: "POST",
@@ -429,7 +498,12 @@ export function createOpenAiCompatibleAdapter(
             if (RETRYABLE_STATUS.has(res.status) && attempt < MAX_RETRIES - 1) {
               lastError = errMsg;
               // Exponential backoff: 1s, 2s, 4s
-              await new Promise((resolve) => setTimeout(resolve, 1000 * Math.pow(2, attempt)));
+              try {
+                await waitForRetryDelay(1000 * Math.pow(2, attempt), request.signal);
+              } catch (error) {
+                if (error instanceof Error && error.name === "AbortError") return cancelledResult();
+                throw error;
+              }
               continue;
             }
             return {
@@ -457,6 +531,7 @@ export function createOpenAiCompatibleAdapter(
           break;
         } catch (error: unknown) {
           const isAbort = error instanceof Error && error.name === "AbortError";
+          if (request.signal?.aborted && !timedOut) return cancelledResult();
           if (isAbort || attempt === MAX_RETRIES - 1) {
             const message = isAbort
               ? `${model} request timed out after ${timeoutMs}ms`
@@ -471,9 +546,15 @@ export function createOpenAiCompatibleAdapter(
           }
           // Transient network error — retry with backoff
           lastError = String(error);
-          await new Promise((resolve) => setTimeout(resolve, 1000 * Math.pow(2, attempt)));
+          try {
+            await waitForRetryDelay(1000 * Math.pow(2, attempt), request.signal);
+          } catch (delayError) {
+            if (delayError instanceof Error && delayError.name === "AbortError") return cancelledResult();
+            throw delayError;
+          }
         } finally {
           clearTimeout(timer);
+          request.signal?.removeEventListener("abort", abortFromParent);
         }
       }
 
@@ -504,7 +585,7 @@ export function createOpenAiCompatibleAdapter(
         };
       }
 
-      if (governedCodingRun) {
+      if (governedCodingRun && mutationMode === "edit") {
         try {
           await applyWorkspaceEdits({
             workingDirectory,
@@ -541,8 +622,13 @@ export function createOpenAiCompatibleAdapter(
         {
           runId: request.loopId,
           workspaceId: request.workspaceId,
+          attemptId: request.attemptId,
           cwd: workingDirectory,
-        }
+          ...(request.context.runsRoot ? { runsRoot: request.context.runsRoot } : {}),
+          ...(request.context.executionProfile ? { executionProfile: request.context.executionProfile } : {}),
+          ...(request.context.allowedNetworkDomains?.length ? { allowedNetworkDomains: [...request.context.allowedNetworkDomains] } : {}),
+        },
+        request.signal
       );
 
       const execution = {

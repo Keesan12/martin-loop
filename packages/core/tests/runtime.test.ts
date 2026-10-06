@@ -457,6 +457,14 @@ describe("runMartin", () => {
             summary: "pnpm --filter @martin/core test passed",
             binding: {
               runId: request.loopId,
+
+              attemptId: request.attemptId,
+
+              ...(request.context.runsRoot ? { runsRoot: request.context.runsRoot } : {}),
+
+              ...(request.context.executionProfile ? { executionProfile: request.context.executionProfile } : {}),
+
+              ...(request.context.allowedNetworkDomains?.length ? { allowedNetworkDomains: request.context.allowedNetworkDomains } : {}),
               workspaceId: request.workspaceId,
               cwd: process.cwd(),
               commands: request.context.verificationPlan,
@@ -539,6 +547,14 @@ describe("runMartin", () => {
             summary: "Configured stack passed.",
             binding: {
               runId: request.loopId,
+
+              attemptId: request.attemptId,
+
+              ...(request.context.runsRoot ? { runsRoot: request.context.runsRoot } : {}),
+
+              ...(request.context.executionProfile ? { executionProfile: request.context.executionProfile } : {}),
+
+              ...(request.context.allowedNetworkDomains?.length ? { allowedNetworkDomains: request.context.allowedNetworkDomains } : {}),
               workspaceId: request.workspaceId,
               cwd: process.cwd(),
               commands: [command],
@@ -867,6 +883,14 @@ describe("runMartin", () => {
             summary: "Verification passed without changes.",
             binding: {
               runId: request.loopId,
+
+              attemptId: request.attemptId,
+
+              ...(request.context.runsRoot ? { runsRoot: request.context.runsRoot } : {}),
+
+              ...(request.context.executionProfile ? { executionProfile: request.context.executionProfile } : {}),
+
+              ...(request.context.allowedNetworkDomains?.length ? { allowedNetworkDomains: request.context.allowedNetworkDomains } : {}),
               workspaceId: request.workspaceId,
               cwd: request.context.repoRoot ?? process.cwd(),
               commands: request.context.verificationPlan,
@@ -943,6 +967,14 @@ describe("runMartin", () => {
             summary: "Verification passed without changes.",
             binding: {
               runId: request.loopId,
+
+              attemptId: request.attemptId,
+
+              ...(request.context.runsRoot ? { runsRoot: request.context.runsRoot } : {}),
+
+              ...(request.context.executionProfile ? { executionProfile: request.context.executionProfile } : {}),
+
+              ...(request.context.allowedNetworkDomains?.length ? { allowedNetworkDomains: request.context.allowedNetworkDomains } : {}),
               workspaceId: request.workspaceId,
               cwd: request.context.repoRoot ?? process.cwd(),
               commands: request.context.verificationPlan,
@@ -1699,6 +1731,14 @@ describe("runMartin", () => {
             summary: "pnpm --filter @martin/core test passed",
             binding: {
               runId: request.loopId,
+
+              attemptId: request.attemptId,
+
+              ...(request.context.runsRoot ? { runsRoot: request.context.runsRoot } : {}),
+
+              ...(request.context.executionProfile ? { executionProfile: request.context.executionProfile } : {}),
+
+              ...(request.context.allowedNetworkDomains?.length ? { allowedNetworkDomains: request.context.allowedNetworkDomains } : {}),
               workspaceId: request.workspaceId,
               cwd: request.context.repoRoot ?? process.cwd(),
               commands: request.context.verificationPlan,
@@ -1805,6 +1845,69 @@ const store: import("../src/index").RunStore = {
     expect((groundingEvent?.payload as Record<string, unknown>)?.violationCount).toBeGreaterThan(0);
   });
 
+  it("persists and grounds the real adapter patch instead of a synthetic filename-only diff", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), "martin-runtime-real-patch-"));
+    await mkdir(join(repoRoot, "src"), { recursive: true });
+    await writeFile(join(repoRoot, "src", "real.ts"), "export const real = 1;\n", "utf8");
+    initializeGitRepo(repoRoot);
+    const realPatch = [
+      "diff --git a/src/new.ts b/src/new.ts",
+      "new file mode 100644",
+      "index 0000000..1111111",
+      "--- /dev/null",
+      "+++ b/src/new.ts",
+      "@@ -0,0 +1 @@",
+      "+export const captured = \"real content\";",
+      ""
+    ].join("\n");
+    let persistedDiff: string | undefined;
+    const ledgerEvents: import("../src/index").LedgerEvent[] = [];
+    const store: import("../src/index").RunStore = {
+      initRun: async () => {},
+      updateState: async () => {},
+      appendLedger: async (_, event) => { ledgerEvents.push(event); },
+      writeAttemptArtifacts: async (_, __, artifacts) => { persistedDiff = artifacts.diff; }
+    };
+
+    try {
+      await runMartin({
+        workspaceId: "ws-real-patch",
+        projectId: "proj-real-patch",
+        task: {
+          title: "Persist the real patch",
+          objective: "Carry exact adapter patch content through verification",
+          verificationPlan: ["echo ok"],
+          repoRoot,
+          allowedPaths: ["src/**"]
+        },
+        budget: { maxUsd: 10, softLimitUsd: 8, maxIterations: 1, maxTokens: 100_000 },
+        adapter: {
+          adapterId: "stub-real-patch",
+          kind: "direct-provider",
+          label: "Stub real patch",
+          metadata: { providerId: "stub", model: "stub" },
+          execute: async () => ({
+            status: "completed",
+            summary: "created new file",
+            usage: { actualUsd: 0.01, tokensIn: 100, tokensOut: 50 },
+            verification: { passed: true, summary: "tests pass" },
+            execution: {
+              changedFiles: ["src/new.ts"],
+              patch: realPatch,
+              diffStats: { filesChanged: 1, addedLines: 1, deletedLines: 0 }
+            }
+          })
+        },
+        store
+      });
+
+      expect(persistedDiff).toBe(realPatch);
+      expect(ledgerEvents.some((event) => event.kind === "grounding.violations_found")).toBe(false);
+    } finally {
+      await rm(repoRoot, { recursive: true, force: true });
+    }
+  });
+
   it("completes an edit task with no changes only when definition-of-done is explicitly pre-satisfied", async () => {
     const repoRoot = await mkdtemp(join(tmpdir(), "martin-pre-satisfied-"));
     initializeGitRepo(repoRoot);
@@ -1827,6 +1930,14 @@ const store: import("../src/index").RunStore = {
             summary: "Verifier passed.",
             binding: {
               runId: request.loopId,
+
+              attemptId: request.attemptId,
+
+              ...(request.context.runsRoot ? { runsRoot: request.context.runsRoot } : {}),
+
+              ...(request.context.executionProfile ? { executionProfile: request.context.executionProfile } : {}),
+
+              ...(request.context.allowedNetworkDomains?.length ? { allowedNetworkDomains: request.context.allowedNetworkDomains } : {}),
               workspaceId: request.workspaceId,
               cwd: repoRoot,
               commands: request.context.verificationPlan,
@@ -1897,6 +2008,14 @@ const store: import("../src/index").RunStore = {
             summary: "pnpm --filter @martin/core test passed",
             binding: {
               runId: request.loopId,
+
+              attemptId: request.attemptId,
+
+              ...(request.context.runsRoot ? { runsRoot: request.context.runsRoot } : {}),
+
+              ...(request.context.executionProfile ? { executionProfile: request.context.executionProfile } : {}),
+
+              ...(request.context.allowedNetworkDomains?.length ? { allowedNetworkDomains: request.context.allowedNetworkDomains } : {}),
               workspaceId: request.workspaceId,
               cwd: request.context.repoRoot ?? process.cwd(),
               commands: request.context.verificationPlan,

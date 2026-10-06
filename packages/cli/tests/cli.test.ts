@@ -12,6 +12,40 @@ import { __setRunAdapterOverrideForTests, executeCli, parseCliArguments } from "
 const STAR_CTA_HEADLINE = "⭐ MartinLoop produced a verified handoff.";
 const STAR_CTA_REPO = "github.com/Keesan12/martin-loop";
 
+describe("swarm demo argument parsing", () => {
+  it("preserves the exact legacy demo command shape", () => {
+    expect(parseCliArguments(["demo", "--dir", "legacy-demo", "--force"])).toEqual({
+      command: "demo",
+      directory: join(process.cwd(), "legacy-demo"),
+      force: true,
+    });
+  });
+
+  it("adds swarm fields only for the deterministic swarm path", () => {
+    expect(parseCliArguments(["demo", "--swarm", "--scenario", "launch-board", "--dir", "swarm-demo"])).toEqual({
+      command: "demo",
+      directory: join(process.cwd(), "swarm-demo"),
+      force: false,
+      swarm: true,
+      scenario: "launch-board",
+    });
+  });
+
+  it("rejects unknown scenarios, live mode, and unsupported swarm flags", () => {
+    expect(() => parseCliArguments(["demo", "--swarm", "--scenario", "unknown"])).toThrow(/unknown.*scenario/iu);
+    expect(() => parseCliArguments(["demo", "--swarm", "--live"])).toThrow(/live workers are not part/iu);
+    expect(() => parseCliArguments(["demo", "--swarm", "--surprise"])).toThrow(/unsupported/iu);
+  });
+
+  it("keeps legacy single-run share routing distinct from local swarm share", () => {
+    expect(parseCliArguments(["share", "--loop-id", "loop-a"])).toMatchObject({
+      command: "share", selector: { loopId: "loop-a" },
+    });
+    expect(parseCliArguments(["swarm", "share", "--id", "swarm-a", "--out-dir", "bundle"]))
+      .toEqual({ command: "swarm_share", request: { swarmId: "swarm-a", outputDir: "bundle" } });
+  });
+});
+
 function initializeCommittedGitRepository(directory: string): void {
   expect(spawnSync("git", ["init"], { cwd: directory }).status).toBe(0);
   expect(spawnSync("git", ["config", "user.email", "cli@test.invalid"], { cwd: directory }).status).toBe(0);
@@ -39,6 +73,11 @@ function installFastRunAdapter(): void {
           summary: "Verification completed in config-focused CLI tests.",
           binding: {
             runId: request.loopId,
+
+            attemptId: request.attemptId,
+            ...(request.context.runsRoot ? { runsRoot: request.context.runsRoot } : {}),
+            ...(request.context.executionProfile ? { executionProfile: request.context.executionProfile } : {}),
+            ...(request.context.allowedNetworkDomains?.length ? { allowedNetworkDomains: request.context.allowedNetworkDomains } : {}),
             workspaceId: request.workspaceId,
             cwd: request.context.repoRoot ?? process.cwd(),
             commands: request.context.verificationPlan,
@@ -105,6 +144,11 @@ function installChangingRunAdapter(changedFiles: string[]): void {
           summary: "Verification completed in approval-policy CLI tests.",
           binding: {
             runId: request.loopId,
+
+            attemptId: request.attemptId,
+            ...(request.context.runsRoot ? { runsRoot: request.context.runsRoot } : {}),
+            ...(request.context.executionProfile ? { executionProfile: request.context.executionProfile } : {}),
+            ...(request.context.allowedNetworkDomains?.length ? { allowedNetworkDomains: request.context.allowedNetworkDomains } : {}),
             workspaceId: request.workspaceId,
             cwd: request.context.repoRoot ?? process.cwd(),
             commands: request.context.verificationPlan,
@@ -157,6 +201,11 @@ function installWritingRunAdapter(filePath: string, contents: string): void {
           summary: "Verification completed in CLI artifact persistence test.",
           binding: {
             runId: request.loopId,
+
+            attemptId: request.attemptId,
+            ...(request.context.runsRoot ? { runsRoot: request.context.runsRoot } : {}),
+            ...(request.context.executionProfile ? { executionProfile: request.context.executionProfile } : {}),
+            ...(request.context.allowedNetworkDomains?.length ? { allowedNetworkDomains: request.context.allowedNetworkDomains } : {}),
             workspaceId: request.workspaceId,
             cwd: request.context.repoRoot ?? process.cwd(),
             commands: request.context.verificationPlan,
@@ -227,6 +276,35 @@ describe("parseCliArguments", () => {
   it("parses start onboarding and tour shorthand", () => {
     expect(parseCliArguments(["start"])).toEqual({ command: "start" });
     expect(parseCliArguments(["tour"])).toEqual({ command: "start" });
+  });
+
+  it("binds estimate receipts to an explicit token-capped budget", () => {
+    expect(parseCliArguments([
+      "estimate",
+      "Qualify the live three-agent swarm",
+      "--engine",
+      "codex",
+      "--budget-usd",
+      "5",
+      "--soft-limit-usd",
+      "3.75",
+      "--max-iterations",
+      "1",
+      "--max-tokens",
+      "30000",
+    ])).toEqual({
+      command: "estimate",
+      objective: "Qualify the live three-agent swarm",
+      engine: "codex",
+      budgetUsd: 5,
+      fileScope: [],
+      budget: {
+        maxUsd: 5,
+        softLimitUsd: 3.75,
+        maxIterations: 1,
+        maxTokens: 30000,
+      },
+    });
   });
 
   it("parses a run command into a typed request", () => {

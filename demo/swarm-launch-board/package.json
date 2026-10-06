@@ -1,0 +1,8 @@
+{
+  "name": "martinloop-swarm-launch-board-demo",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  }
+}

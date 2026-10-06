@@ -14,6 +14,7 @@ const ALLOWED_FILES = [
   "CODE_OF_CONDUCT.md",
   "README.md",
   "demo/seeded-workspace",
+  "demo/swarm-launch-board",
   "examples/github-actions-budget-gate",
   "dist",
 ];
@@ -30,6 +31,7 @@ const ALLOWED_PACKED_PREFIXES = [
   "README.md",
   "demo/README.md",
   "demo/seeded-workspace/",
+  "demo/swarm-launch-board/",
   "examples/README.md",
   "examples/github-actions-budget-gate/",
   "dist/",

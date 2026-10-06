@@ -102,6 +102,11 @@ function commandContainsDestructiveRemoval(command: string): boolean {
 const SECRET_PATTERNS: Array<{ kind: SafetyViolationKind; pattern: RegExp; replacement: string }> = [
   {
     kind: "secret_value",
+    pattern: /\bBearer\s+[A-Za-z0-9._~+/=-]{12,}\b/giu,
+    replacement: "Bearer [REDACTED_SECRET]"
+  },
+  {
+    kind: "secret_value",
     pattern: /\bOPENAI_API_KEY\s*=\s*[^\s"'`]+/giu,
     replacement: "OPENAI_API_KEY=[REDACTED_SECRET]"
   },
@@ -250,6 +255,7 @@ export function evaluateFilesystemLeash(input: {
   changedFiles: string[];
   allowedPaths?: string[];
   deniedPaths?: string[];
+  mutationMode?: "edit" | "read_only" | "verify_only";
 }): SafetyLeashDecision {
   const violations: SafetyViolation[] = [];
 
@@ -267,6 +273,15 @@ export function evaluateFilesystemLeash(input: {
 
     const file = normalized.file;
     if (!file) {
+      continue;
+    }
+
+    if (input.mutationMode === "read_only") {
+      violations.push({
+        kind: "path_not_allowed",
+        file,
+        message: `Read-only execution changed a file: ${file}`
+      });
       continue;
     }
 

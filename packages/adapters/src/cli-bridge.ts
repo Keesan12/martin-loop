@@ -1,9 +1,14 @@
-import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
+import type { ChildProcess, SpawnOptions } from "node:child_process";
 import { basename, delimiter, dirname, extname, isAbsolute, join, resolve } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 
 import { diffStatsFromNumstat } from "./runtime-support.js";
 import type { VerifierExecutionBinding } from "@martin/core";
+import type { ExternalOutcomeEvidenceReference } from "@martin/contracts";
+import {
+  spawnSupervisedProcess,
+  type ProcessTreeCleanupResult
+} from "./process-supervisor.js";
 
 export type SpawnLike = (
   command: string,
@@ -36,10 +41,12 @@ export interface SubprocessResult {
    */
   terminationReason?: string;
   launched: boolean;
+  cleanup: ProcessTreeCleanupResult;
 }
 
 export interface VerificationOutcome {
   passed: boolean;
+  processCloseState: "closed" | "not_required" | "failed";
   summary: string;
   steps: VerificationStepOutcome[];
   warnings?: string[];
@@ -55,6 +62,7 @@ export interface VerificationStepOutcome {
   timedOut: boolean;
   fastFail: boolean;
   detail?: string;
+  evidence?: ExternalOutcomeEvidenceReference;
 }
 
 const gitRepositoryRootCache = new Map<string, string | null>();
@@ -65,6 +73,7 @@ export async function runSubprocess(
   options: {
     cwd: string;
     timeoutMs: number;
+    env?: NodeJS.ProcessEnv;
     spawnImpl?: SpawnLike;
     stdinData?: string;
     /**
@@ -85,154 +94,21 @@ export async function runSubprocess(
     onStdoutChunk?: (chunk: Buffer, terminate: (reason: string) => void) => void;
     /** Optional abort signal — kills the subprocess when aborted. */
     signal?: AbortSignal;
+    /** Require an owned process-tree sweep before successful completion. */
+    requireTreeClosureOnSuccess?: boolean;
   }
 ): Promise<SubprocessResult> {
-  return new Promise((resolve) => {
-    let timedOut = false;
-    let outputCapped = false;
-    let terminationReason: string | undefined;
-    let settled = false;
-    let exited = false;
-    let outputBytes = 0;
-    const stdoutChunks: Buffer[] = [];
-    const stderrChunks: Buffer[] = [];
-
-    const stdinMode = options.stdinData !== undefined ? "pipe" : "ignore";
-
-    const resolveOnce = (result: Omit<SubprocessResult, "timedOut" | "outputCapped" | "terminationReason">) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      resolve({ ...result, timedOut, outputCapped, ...(terminationReason ? { terminationReason } : {}) });
-    };
-
-    let proc: ChildProcess;
-    try {
-      const spawnPlan = createSpawnPlan(command, args, options.cwd, options.spawnImpl !== undefined);
-      proc = (options.spawnImpl ?? spawn)(spawnPlan.command, spawnPlan.args, {
-        cwd: options.cwd,
-        stdio: [stdinMode, "pipe", "pipe"],
-        env: process.env
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      resolveOnce({ exitCode: 1, stdout: "", stderr: message, launched: false, completed: false, crashed: true });
-      return;
-    }
-
-    const trackOutput = (chunks: Buffer[], chunk: Buffer) => {
-      if (outputCapped || timedOut || terminationReason) {
-        return;
-      }
-      chunks.push(chunk);
-      outputBytes += chunk.byteLength;
-      if (options.maxOutputBytes !== undefined && outputBytes > options.maxOutputBytes) {
-        outputCapped = true;
-        proc.kill("SIGTERM");
-      }
-    };
-
-    const terminateEarly = (reason: string) => {
-      if (terminationReason || timedOut || outputCapped) {
-        return;
-      }
-      terminationReason = reason;
-      proc.kill("SIGTERM");
-    };
-
-    // Honour the harness abort signal — kill the subprocess immediately
-    if (options.signal !== undefined) {
-      const sig = options.signal;
-      if (sig.aborted) {
-        proc.kill("SIGTERM");
-      } else {
-        const onAbort = () => { proc.kill("SIGTERM"); };
-        sig.addEventListener("abort", onAbort, { once: true });
-        proc.on("close", () => { sig.removeEventListener("abort", onAbort); });
-      }
-    }
-
-    proc.stdout?.on("data", (chunk: Buffer) => {
-      if (outputCapped || timedOut || terminationReason) {
-        return;
-      }
-      trackOutput(stdoutChunks, chunk);
-      if (options.onStdoutChunk) {
-        try {
-          options.onStdoutChunk(chunk, terminateEarly);
-        } catch (error) {
-          terminateEarly(
-            `stdout inspector error: ${error instanceof Error ? error.message : String(error)}`
-          );
-        }
-      }
-    });
-
-    proc.stderr?.on("data", (chunk: Buffer) => {
-      if (outputCapped || timedOut || terminationReason) {
-        return;
-      }
-      trackOutput(stderrChunks, chunk);
-    });
-
-    proc.stdin?.on("error", (error: NodeJS.ErrnoException) => {
-      // Some CLIs exit before consuming stdin in tests and on fast-fail paths.
-      // Treat the closed pipe as a handled subprocess lifecycle condition.
-      if (error.code === "EPIPE") {
-        return;
-      }
-      stderrChunks.push(Buffer.from(`${error.message}\n`, "utf8"));
-    });
-
-    const timer = setTimeout(() => {
-      if (settled || exited || proc.exitCode !== null) {
-        return;
-      }
-      timedOut = true;
-      proc.kill("SIGTERM");
-    }, options.timeoutMs);
-
-    proc.on("exit", () => {
-      exited = true;
-    });
-
-    proc.on("error", (error) => {
-      clearTimeout(timer);
-      resolveOnce({ exitCode: 1, stdout: "", stderr: error.message, launched: false, completed: false, crashed: true });
-    });
-
-    proc.on("close", (code) => {
-      clearTimeout(timer);
-      const completed = code !== null && !timedOut && !outputCapped && !terminationReason;
-      resolveOnce({
-        exitCode: code ?? 1,
-        stdout: Buffer.concat(stdoutChunks).toString("utf8"),
-        stderr: Buffer.concat(stderrChunks).toString("utf8"),
-        launched: true,
-        completed,
-        crashed: !completed && !timedOut && !outputCapped && !terminationReason,
-      });
-    });
-
-    if (options.stdinData !== undefined && proc.stdin) {
-      try {
-        proc.stdin.end(options.stdinData, "utf8");
-      } catch (error) {
-        const stdinError = error as NodeJS.ErrnoException;
-        if (stdinError.code !== "EPIPE") {
-          clearTimeout(timer);
-          resolveOnce({
-            exitCode: 1,
-            stdout: Buffer.concat(stdoutChunks).toString("utf8"),
-            stderr: stdinError.message,
-            launched: false,
-            completed: false,
-            crashed: true,
-          });
-        }
-      }
-    }
+  const spawnPlan = createSpawnPlan(command, args, options.cwd, options.spawnImpl !== undefined);
+  return spawnSupervisedProcess(spawnPlan.command, spawnPlan.args, {
+    cwd: options.cwd,
+    timeoutMs: options.timeoutMs,
+    ...(options.env ? { env: options.env } : {}),
+    ...(options.spawnImpl ? { spawnImpl: options.spawnImpl } : {}),
+    ...(options.stdinData !== undefined ? { stdinData: options.stdinData } : {}),
+    ...(options.maxOutputBytes !== undefined ? { maxOutputBytes: options.maxOutputBytes } : {}),
+    ...(options.onStdoutChunk ? { onStdoutChunk: options.onStdoutChunk } : {}),
+    ...(options.signal ? { signal: options.signal } : {}),
+    ...(options.requireTreeClosureOnSuccess ? { requireTreeClosureOnSuccess: true } : {})
   });
 }
 
@@ -242,7 +118,8 @@ export async function runVerification(
   timeoutMs: number,
   verificationStack?: Array<{ command: string; type: string; fastFail?: boolean }>,
   spawnImpl?: SpawnLike,
-  binding?: Omit<VerifierExecutionBinding, "commands">
+  binding?: Omit<VerifierExecutionBinding, "commands">,
+  signal?: AbortSignal
 ): Promise<VerificationOutcome> {
   const steps = verificationStack && verificationStack.length > 0
     ? verificationStack.map((step) => ({
@@ -254,13 +131,31 @@ export async function runVerification(
   const executionBinding: VerifierExecutionBinding = {
     runId: binding?.runId ?? "unbound",
     workspaceId: binding?.workspaceId ?? "unbound",
+    ...(binding?.attemptId ? { attemptId: binding.attemptId } : {}),
     cwd: binding?.cwd ?? cwd,
+    ...(binding?.runsRoot ? { runsRoot: binding.runsRoot } : {}),
+    ...(binding?.executionProfile ? { executionProfile: binding.executionProfile } : {}),
+    ...(binding?.allowedNetworkDomains?.length ? { allowedNetworkDomains: [...binding.allowedNetworkDomains] } : {}),
     commands: steps.map((step) => step.command),
+  };
+
+  const verifierEnv: NodeJS.ProcessEnv = {
+    ...process.env,
+    MARTIN_RUN_ID: executionBinding.runId,
+    MARTIN_WORKSPACE_ID: executionBinding.workspaceId,
+    ...(executionBinding.attemptId ? { MARTIN_ATTEMPT_ID: executionBinding.attemptId } : {}),
+    MARTIN_VERIFIER_CWD: executionBinding.cwd,
+    ...(executionBinding.runsRoot ? { MARTIN_RUNS_DIR: executionBinding.runsRoot } : {}),
+    ...(executionBinding.executionProfile ? { MARTIN_EXECUTION_PROFILE: executionBinding.executionProfile } : {}),
+    ...(executionBinding.allowedNetworkDomains?.length
+      ? { MARTIN_ALLOWED_NETWORK_DOMAINS: JSON.stringify(executionBinding.allowedNetworkDomains) }
+      : {}),
   };
 
   if (steps.length === 0) {
     return {
       passed: false,
+      processCloseState: "not_required",
       summary: "No verification commands specified; execution is not VERIFIED.",
       steps: [],
       warnings: ["Execution completed without verifier evidence."],
@@ -271,6 +166,7 @@ export async function runVerification(
   const failedSteps: string[] = [];
   const stepOutcomes: VerificationStepOutcome[] = [];
   const warnings: string[] = [];
+  let processCloseState: VerificationOutcome["processCloseState"] = "not_required";
 
   for (const step of steps) {
     let bin: string;
@@ -301,9 +197,18 @@ export async function runVerification(
       continue;
     }
 
-    const result = await runSubprocess(bin, args, { cwd, timeoutMs, spawnImpl });
+    const result = await runSubprocess(bin, args, {
+      cwd,
+      timeoutMs,
+      env: verifierEnv,
+      spawnImpl,
+      ...(signal ? { signal } : {}),
+      requireTreeClosureOnSuccess: true
+    });
     const detail = truncate(result.stderr.trim() || result.stdout.trim(), 500);
+    processCloseState = combineProcessCloseState(processCloseState, result.cleanup.state);
 
+    const evidence = parseExternalOutcomeEvidenceReference(result.stdout);
     stepOutcomes.push({
       command: step.command,
       launched: result.launched,
@@ -312,12 +217,25 @@ export async function runVerification(
       exitCode: result.exitCode,
       timedOut: result.timedOut,
       fastFail: step.fastFail,
-      ...(detail ? { detail } : {})
+      ...(detail ? { detail } : {}),
+      ...(evidence ? { evidence } : {})
     });
+
+    if (result.cleanup.state === "failed") {
+      return {
+        passed: false,
+        processCloseState,
+        summary: `Verifier process-tree closure failed: ${step.command}`,
+        steps: stepOutcomes,
+        binding: executionBinding,
+        warnings: [result.cleanup.message]
+      };
+    }
 
     if (result.timedOut) {
       return {
         passed: false,
+        processCloseState,
         summary: `Verification timed out: ${step.command}`,
         steps: stepOutcomes,
         binding: executionBinding,
@@ -331,7 +249,7 @@ export async function runVerification(
         warnings.push(`Verifier never launched: ${step.command}`);
       }
       if (step.fastFail) {
-        return { passed: false, summary, steps: stepOutcomes, binding: executionBinding, ...(warnings.length ? { warnings } : {}) };
+        return { passed: false, processCloseState, summary, steps: stepOutcomes, binding: executionBinding, ...(warnings.length ? { warnings } : {}) };
       }
       failedSteps.push(step.command);
     }
@@ -340,6 +258,7 @@ export async function runVerification(
   if (failedSteps.length > 0) {
     return {
       passed: false,
+      processCloseState,
       summary: `Failed steps: ${failedSteps.join(", ")}`,
       steps: stepOutcomes,
       binding: executionBinding,
@@ -349,6 +268,7 @@ export async function runVerification(
 
   return {
     passed: true,
+    processCloseState,
     summary: `All ${String(steps.length)} verification step(s) passed.`,
     steps: stepOutcomes,
     binding: executionBinding,
@@ -356,43 +276,121 @@ export async function runVerification(
   };
 }
 
+function parseExternalOutcomeEvidenceReference(stdout: string): ExternalOutcomeEvidenceReference | undefined {
+  const trimmed = stdout.trim();
+  if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return undefined;
+  try {
+    const parsed = JSON.parse(trimmed) as { evidence?: Partial<ExternalOutcomeEvidenceReference> };
+    const evidence = parsed.evidence;
+    if (
+      evidence?.kind !== "external_outcome"
+      || typeof evidence.contractId !== "string"
+      || typeof evidence.path !== "string"
+      || typeof evidence.sha256 !== "string"
+      || !/^[a-f0-9]{64}$/u.test(evidence.sha256)
+    ) return undefined;
+    return {
+      kind: "external_outcome",
+      contractId: evidence.contractId,
+      path: evidence.path,
+      sha256: evidence.sha256,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function combineProcessCloseState(
+  current: VerificationOutcome["processCloseState"],
+  next: ProcessTreeCleanupResult["state"]
+): VerificationOutcome["processCloseState"] {
+  if (current === "failed" || next === "failed") return "failed";
+  if (current === "closed" || next === "closed") return "closed";
+  return "not_required";
+}
+
 export async function readGitExecutionArtifacts(
   repoRoot: string,
   timeoutMs: number,
-  spawnImpl?: SpawnLike
+  spawnImpl?: SpawnLike,
+  requestedChangedFiles?: readonly string[]
 ): Promise<{
   changedFiles?: string[];
+  patch?: string;
   diffStats?: ReturnType<typeof diffStatsFromNumstat>;
 }> {
   if (!resolveGitRepositoryRoot(repoRoot)) {
     return {};
   }
 
-  const changedFilesResult = await runSubprocess(
-    "git",
-    ["diff", "--name-only", "HEAD"],
-    { cwd: repoRoot, timeoutMs, spawnImpl }
-  );
-  const numstatResult = await runSubprocess(
-    "git",
-    ["diff", "--numstat", "HEAD"],
-    { cwd: repoRoot, timeoutMs, spawnImpl }
-  );
+  const observedChangedFiles = requestedChangedFiles
+    ? [...requestedChangedFiles]
+    : await readGitChangedFiles(repoRoot, timeoutMs, spawnImpl);
+  const changedFiles = observedChangedFiles.filter(isSafeRepoRelativeGitPath);
+  const patchParts: string[] = [];
+  const numstatParts: string[] = [];
+  const nullDevice = process.platform === "win32" ? "NUL" : "/dev/null";
 
-  const changedFiles =
-    changedFilesResult.exitCode === 0
-      ? changedFilesResult.stdout
-          .split(/\r?\n/u)
-          .map((entry) => entry.trim())
-          .filter(Boolean)
-      : [];
-  const diffStats =
-    numstatResult.exitCode === 0 ? diffStatsFromNumstat(numstatResult.stdout) : undefined;
+  for (const file of changedFiles) {
+    const trackedPatch = await runSubprocess(
+      "git",
+      ["diff", "--binary", "--no-ext-diff", "HEAD", "--", file],
+      { cwd: repoRoot, timeoutMs, spawnImpl }
+    );
+    const trackedNumstat = await runSubprocess(
+      "git",
+      ["diff", "--numstat", "HEAD", "--", file],
+      { cwd: repoRoot, timeoutMs, spawnImpl }
+    );
+
+    if (trackedPatch.exitCode === 0 && trackedPatch.stdout.length > 0) {
+      patchParts.push(trackedPatch.stdout);
+      if (trackedNumstat.exitCode === 0 && trackedNumstat.stdout.length > 0) {
+        numstatParts.push(trackedNumstat.stdout);
+      }
+      continue;
+    }
+
+    // Git does not include untracked files in `git diff HEAD`. Diff each such
+    // path against the null tree so the parent runtime receives its content,
+    // not merely a synthetic filename-only patch.
+    const untrackedPatch = await runSubprocess(
+      "git",
+      ["diff", "--binary", "--no-ext-diff", "--no-index", "--", nullDevice, file],
+      { cwd: repoRoot, timeoutMs, spawnImpl }
+    );
+    if ((untrackedPatch.exitCode === 0 || untrackedPatch.exitCode === 1) && untrackedPatch.stdout.length > 0) {
+      patchParts.push(untrackedPatch.stdout);
+    }
+
+    const untrackedNumstat = await runSubprocess(
+      "git",
+      ["diff", "--numstat", "--no-index", "--", nullDevice, file],
+      { cwd: repoRoot, timeoutMs, spawnImpl }
+    );
+    if ((untrackedNumstat.exitCode === 0 || untrackedNumstat.exitCode === 1) && untrackedNumstat.stdout.length > 0) {
+      numstatParts.push(untrackedNumstat.stdout);
+    }
+  }
+
+  const patch = patchParts.join("\n");
+  const numstat = numstatParts.join("\n");
+  const diffStats = numstat.length > 0 ? diffStatsFromNumstat(numstat) : undefined;
 
   return {
     ...(changedFiles.length > 0 ? { changedFiles } : {}),
+    ...(patch.length > 0 ? { patch } : {}),
     ...(diffStats ? { diffStats } : {})
   };
+}
+
+function isSafeRepoRelativeGitPath(file: string): boolean {
+  if (file.length === 0 || file.includes("\u0000") || isAbsolute(file)) {
+    return false;
+  }
+
+  const segments = file.replace(/\\/gu, "/").split("/");
+  return segments.every((segment) => segment.length > 0 && segment !== "." && segment !== "..");
 }
 
 export async function readGitChangedFiles(

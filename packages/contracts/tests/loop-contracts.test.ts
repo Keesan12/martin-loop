@@ -34,6 +34,43 @@ describe("createLoopRecord", () => {
     expect(loop.events).toHaveLength(0);
     expect(loop.attempts).toHaveLength(0);
   });
+
+  it("keeps legacy receipt scopes valid without swarm lineage", () => {
+    const loop = createLoopRecord({
+      workspaceId: "ws_legacy",
+      projectId: "proj_legacy",
+      task: {
+        title: "Legacy task",
+        objective: "Remain readable without migration.",
+        verificationPlan: ["pnpm test"]
+      },
+      receiptScope: { repoRoot: "C:/repo", workingDirectory: "C:/repo" }
+    });
+
+    expect(loop.receiptScope).toEqual({ repoRoot: "C:/repo", workingDirectory: "C:/repo" });
+    expect(loop.receiptScope).not.toHaveProperty("swarmChild");
+  });
+
+  it("round-trips exact swarm child lineage when present", () => {
+    const swarmChild = {
+      parentSwarmId: "swarm-live-001",
+      agentId: "agent-builder",
+      attemptId: "attempt-task-a-001",
+      taskIds: ["task-a", "task-b"]
+    };
+    const loop = createLoopRecord({
+      workspaceId: "ws_swarm",
+      projectId: "proj_swarm",
+      task: {
+        title: "Linked child task",
+        objective: "Persist exact swarm lineage.",
+        verificationPlan: ["pnpm test"]
+      },
+      receiptScope: { repoRoot: "C:/repo", swarmChild }
+    });
+
+    expect(loop.receiptScope?.swarmChild).toEqual(swarmChild);
+  });
 });
 
 describe("appendLoopEvent", () => {

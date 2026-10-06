@@ -5,9 +5,9 @@ This file is the release source of truth for package/version mapping in this rep
 ## Root package: `martin-loop`
 
 - live npm dist-tag `latest`: verify live with `npm view martin-loop version`
-- live public GitHub release: `v0.7.0`
-- live public baseline in this train: `0.7.0`
-- root public baseline: `0.7.0`
+- live public GitHub release: `v0.7.1`
+- live public baseline in this train: `0.7.1`
+- root public baseline: `0.7.1`
 - releases consumed since the original `0.2.8` launch:
   - `0.2.9` fixed proof-run classification, Windows `.cmd` resolution, and public provider defaults
   - `0.2.10` tightened verifier evidence, `--runs-dir` consistency, and public help output
@@ -42,21 +42,22 @@ This file is the release source of truth for package/version mapping in this rep
   - `0.6.7` recoverable dashboard linking and receipt-bound hosted event transport
   - `0.6.8` automatic workspace receipt-key trust bootstrap and recoverable signed-run hosted sync
   - `0.7.0` corrected Claude Code split-message audit parsing and finalized receipt integrity before terminal signing
-- current in-repo root release target: `0.7.1` (pending publication)
+  - `0.7.1` added actionable hosted-sync failure reporting and repairable queue retry behavior
+- current in-repo root release target: `0.8.0` (pending publication)
 - next planned root follow-on: not scheduled
 
 ## Standalone package: `@martinloop/mcp`
 
 - live npm dist-tag `latest`: verify live with `npm view @martinloop/mcp version`
-- live public GitHub release: `mcp-v0.7.0`
-- live public baseline in this train: `0.7.0`
-- standalone MCP public baseline: `0.7.0`
+- live public GitHub release: `mcp-v0.7.1`
+- live public baseline in this train: `0.7.1`
+- standalone MCP public baseline: `0.7.1`
 - official MCP Registry version: verify live during release close; do not cache the mutable registry version here
-- live MCPB baseline: `0.7.0`
-- live MCPB SHA-256: see the `mcp-v0.7.0` GitHub release checksum asset
-- live MCPB size: see the `mcp-v0.7.0` GitHub release asset
-- current in-repo standalone release target: `0.7.1` (pending publication)
-- current in-repo MCPB release target: `0.7.1` with manifest schema `0.3` (pending publication)
+- live MCPB baseline: `0.7.1`
+- live MCPB SHA-256: see the `mcp-v0.7.1` GitHub release checksum asset
+- live MCPB size: see the `mcp-v0.7.1` GitHub release asset
+- current in-repo standalone release target: `0.8.0` (pending publication)
+- current in-repo MCPB release target: `0.8.0` with manifest schema `0.3` (pending publication)
 - next planned standalone release: not scheduled
 
 ## Release rules
@@ -66,7 +67,8 @@ This file is the release source of truth for package/version mapping in this rep
 - The `0.6.8` train aligned the root package, standalone MCP package, plugin metadata, and MCPB product version at `0.6.8`. MCPB manifest schema remains `0.3`.
 - The `0.6.9` train aligns the root package, standalone MCP package, plugin metadata, and MCPB product version at `0.6.9`. MCPB manifest schema remains `0.3`.
 - The `0.7.0` train aligned the root package, standalone MCP package, plugin metadata, and MCPB product version at `0.7.0`. MCPB manifest schema remains `0.3`.
-- The `0.7.1` candidate aligns the root package, standalone MCP package, plugin metadata, and MCPB product version at `0.7.1`. MCPB manifest schema remains `0.3`.
+- The `0.7.1` train aligned the root package, standalone MCP package, plugin metadata, and MCPB product version at `0.7.1`. MCPB manifest schema remains `0.3`.
+- The `0.8.0` candidate aligns the root package, standalone MCP package, plugin metadata, and MCPB product version at `0.8.0`. MCPB manifest schema remains `0.3`.
 - Do not infer standalone MCP release state from the root package, or the other way around.
 - Public release notes must be written for customers and evaluators, not for internal operators.
 - Public-facing examples, screenshots, README copy, and changelog entries must stay free of internal repo names, absolute system paths, private branch names, or process noise.

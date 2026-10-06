@@ -159,7 +159,9 @@ const adapter = {
         binding: {
           runId: request.loopId,
           workspaceId: request.workspaceId,
+          attemptId: request.attemptId,
           cwd: request.context.repoRoot ?? workspaceDir,
+          runsRoot: request.context.runsRoot,
           commands: request.context.verificationPlan
         },
         steps: request.context.verificationPlan.map((command) => ({

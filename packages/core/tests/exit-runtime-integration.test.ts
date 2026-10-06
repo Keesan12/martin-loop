@@ -129,6 +129,136 @@ beforeEach(async () => {
   process.env.MARTIN_INTEGRITY_KEY_DIR = join(scratchRoot, "receipt-integrity");
 });
 
+describe("parent AbortSignal integration", () => {
+  it("closes the abort race between the initial check and listener registration", async () => {
+    const controller = new AbortController();
+    const originalAddEventListener = controller.signal.addEventListener.bind(controller.signal);
+    const registration = vi.spyOn(controller.signal, "addEventListener").mockImplementation((
+      type: string,
+      listener: EventListenerOrEventListenerObject,
+      options?: boolean | AddEventListenerOptions
+    ) => {
+      if (type === "abort" && !controller.signal.aborted) {
+        controller.abort(new Error("parent cancelled during listener registration"));
+      }
+      originalAddEventListener(type, listener, options);
+    });
+    const execute = vi.fn<MartinAdapter["execute"]>();
+
+    try {
+      const result = await runMartin({
+        workspaceId: "ws",
+        projectId: "proj",
+        task: baseTask(),
+        budget: baseBudget(),
+        adapter: okAdapter({ execute }),
+        exitSignalSource: emptySource(),
+        signal: controller.signal
+      });
+
+      expect(execute).not.toHaveBeenCalled();
+      expect(result.decision.shouldExit).toBe(true);
+      expect(result.decision.reason).toMatch(/human_interrupt|cancel/i);
+    } finally {
+      registration.mockRestore();
+    }
+  });
+
+  it("stops before launching an adapter when the parent is already aborted", async () => {
+    const controller = new AbortController();
+    controller.abort(new Error("parent cancelled before launch"));
+    const execute = vi.fn<MartinAdapter["execute"]>();
+
+    const result = await runMartin({
+      workspaceId: "ws",
+      projectId: "proj",
+      task: baseTask(),
+      budget: baseBudget(),
+      adapter: okAdapter({ execute }),
+      exitSignalSource: emptySource(),
+      signal: controller.signal
+    });
+
+    expect(execute).not.toHaveBeenCalled();
+    expect(result.decision.shouldExit).toBe(true);
+    expect(result.decision.reason).toMatch(/human_interrupt|cancel/i);
+  });
+
+  it("relays parent cancellation into the active adapter attempt", async () => {
+    const controller = new AbortController();
+    let started!: () => void;
+    const adapterStarted = new Promise<void>((resolve) => { started = resolve; });
+    let observedSignal: AbortSignal | undefined;
+    const adapter = okAdapter({
+      execute: async (request) => {
+        observedSignal = request.signal;
+        started();
+        await new Promise<void>((resolve) => {
+          if (request.signal?.aborted) resolve();
+          else request.signal?.addEventListener("abort", () => resolve(), { once: true });
+        });
+        return {
+          status: "failed",
+          summary: "cancelled",
+          usage: { actualUsd: 0, tokensIn: 0, tokensOut: 0 },
+          verification: { passed: false, summary: "cancelled" }
+        };
+      }
+    });
+
+    const run = runMartin({
+      workspaceId: "ws",
+      projectId: "proj",
+      task: baseTask(),
+      budget: baseBudget(),
+      adapter,
+      exitSignalSource: emptySource(),
+      signal: controller.signal
+    });
+    await adapterStarted;
+    controller.abort(new Error("parent cancelled active child"));
+    const result = await run;
+
+    expect(observedSignal?.aborted).toBe(true);
+    expect(result.decision.shouldExit).toBe(true);
+    expect(result.decision.reason).toMatch(/human_interrupt|cancel/i);
+  });
+
+  it("does not retroactively cancel an adapter completion that already settled", async () => {
+    const controller = new AbortController();
+    let finish!: () => void;
+    const mayFinish = new Promise<void>((resolve) => { finish = resolve; });
+    let observedSignal: AbortSignal | undefined;
+    const execute = vi.fn<MartinAdapter["execute"]>(async (request) => {
+      observedSignal = request.signal;
+      await mayFinish;
+      return {
+        status: "completed",
+        summary: "done",
+        usage: { actualUsd: 0.01, tokensIn: 1, tokensOut: 1 },
+        verification: { passed: true, summary: "pass" }
+      };
+    });
+
+    const run = runMartin({
+      workspaceId: "ws",
+      projectId: "proj",
+      task: baseTask(),
+      budget: baseBudget(),
+      adapter: okAdapter({ execute }),
+      exitSignalSource: emptySource(),
+      signal: controller.signal
+    });
+    finish();
+    const result = await run;
+    controller.abort(new Error("late parent cancellation"));
+
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(result.decision.lifecycleState).toBe("completed");
+    expect(observedSignal?.aborted).toBe(false);
+  });
+});
+
 afterEach(async () => {
   if (previousRunsDir === undefined) delete process.env.MARTIN_RUNS_DIR;
   else process.env.MARTIN_RUNS_DIR = previousRunsDir;

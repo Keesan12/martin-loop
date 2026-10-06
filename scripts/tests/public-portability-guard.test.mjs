@@ -29,6 +29,7 @@ test("shouldScanPath skips known fixture and guard files", () => {
   assert.equal(shouldScanPath("packages/core/tests/runtime.test.ts"), false);
   assert.equal(shouldScanPath("scripts/public-copy-scan.mjs"), false);
   assert.equal(shouldScanPath("scripts/public-portability-guard.mjs"), false);
+  assert.equal(shouldScanPath("scripts/run-swarm-live-qualification.ts"), false);
   assert.equal(shouldScanPath("packages/core/src/index.ts"), true);
 });
 

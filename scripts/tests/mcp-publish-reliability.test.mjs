@@ -7,8 +7,19 @@ import { fileURLToPath } from "node:url";
 
 import packageJson from "../../packages/mcp/package.json" with { type: "json" };
 import serverJson from "../../packages/mcp/server.json" with { type: "json" };
+import { rewriteWorkspacePackageSpecifiers } from "../../packages/mcp/scripts/build-package-lib.mjs";
 
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+
+test("MCP package builder keeps sibling workspace imports inside its vendored topology", () => {
+  const distDir = path.join(ROOT_DIR, "packages", "mcp", "dist");
+  const targetPath = path.join(distDir, "vendor", "core", "swarm", "hosted-export.js");
+  const source = 'export { value } from "../../../contracts/dist/swarm-hosted.js";';
+
+  const rewritten = rewriteWorkspacePackageSpecifiers(source, { distDir, targetPath });
+
+  assert.equal(rewritten, 'export { value } from "../../contracts/swarm-hosted.js";');
+});
 
 test("MCP package metadata stays aligned with server metadata", () => {
   const npmPackage = serverJson.packages.find((entry) => entry?.registryType === "npm");

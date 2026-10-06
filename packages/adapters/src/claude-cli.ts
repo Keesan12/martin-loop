@@ -16,7 +16,8 @@ import type {
   FailureClass,
   MartinAdapter,
   MartinAdapterRequest,
-  MartinAdapterResult
+  MartinAdapterResult,
+  MartinObservedUsageGovernor
 } from "@martin/core";
 import {
   DEFAULT_AGENT_EXECUTION_INTENT,
@@ -55,6 +56,14 @@ interface ModelPricing {
   cachedInputPer1K?: number;
   cacheCreationInputPer1K?: number;
   outputPer1K: number;
+  pricingVersion?: string;
+  longContext?: {
+    thresholdInputTokens: number;
+    inputPer1K: number;
+    cachedInputPer1K?: number;
+    cacheCreationInputPer1K?: number;
+    outputPer1K: number;
+  };
 }
 
 interface ModelPricingResolution {
@@ -63,25 +72,80 @@ interface ModelPricingResolution {
   pricing?: ModelPricing;
 }
 
-// USD per 1K tokens. Claude cache creation uses the documented default
-// five-minute rate; cache reads are priced independently from fresh input.
+const PRICING_SNAPSHOT_2026_10_04 = "official-provider-pricing@2026-10-04";
+
+// USD per 1K tokens. Rates are standard/on-demand text-token prices from
+// official provider pricing pages as of 2026-10-04. Long-context tiers are
+// selected from the estimated/observed input-token count where providers
+// publish a threshold.
 const MODEL_PRICING: Record<string, ModelPricing> = {
-  "claude-opus-4-6":   { inputPer1K: 0.005, cachedInputPer1K: 0.0005, cacheCreationInputPer1K: 0.00625, outputPer1K: 0.025 },
-  "claude-sonnet-4-6": { inputPer1K: 0.003, cachedInputPer1K: 0.0003, cacheCreationInputPer1K: 0.00375, outputPer1K: 0.015 },
-  "claude-haiku-4-5":  { inputPer1K: 0.001, cachedInputPer1K: 0.0001, cacheCreationInputPer1K: 0.00125, outputPer1K: 0.005 },
-  // OpenAI coding models
-  "codex":             { inputPer1K: 0.00125, cachedInputPer1K: 0.000125, outputPer1K: 0.01 },
-  "gpt-5-codex":       { inputPer1K: 0.00125, cachedInputPer1K: 0.000125, outputPer1K: 0.01 },
-  "gpt-5.1-codex":     { inputPer1K: 0.00125, cachedInputPer1K: 0.000125, outputPer1K: 0.01 },
-  "gpt-5.1-codex-max": { inputPer1K: 0.00125, cachedInputPer1K: 0.000125, outputPer1K: 0.01 },
+  // Anthropic current + supported legacy models.
+  "claude-fable-5-1":  { inputPer1K: 0.010, cachedInputPer1K: 0.00025, cacheCreationInputPer1K: 0.0125, outputPer1K: 0.050, pricingVersion: PRICING_SNAPSHOT_2026_10_04 },
+  "claude-opus-5-5":   { inputPer1K: 0.004, cachedInputPer1K: 0.0002, cacheCreationInputPer1K: 0.005, outputPer1K: 0.020, pricingVersion: PRICING_SNAPSHOT_2026_10_04 },
+  "claude-sonnet-5-5": { inputPer1K: 0.002, cachedInputPer1K: 0.0002, cacheCreationInputPer1K: 0.0025, outputPer1K: 0.010, pricingVersion: PRICING_SNAPSHOT_2026_10_04 },
+  "claude-opus-4-6":   { inputPer1K: 0.005, cachedInputPer1K: 0.0005, cacheCreationInputPer1K: 0.00625, outputPer1K: 0.025, pricingVersion: PRICING_SNAPSHOT_2026_10_04 },
+  "claude-sonnet-4-6": { inputPer1K: 0.003, cachedInputPer1K: 0.0003, cacheCreationInputPer1K: 0.00375, outputPer1K: 0.015, pricingVersion: PRICING_SNAPSHOT_2026_10_04 },
+  "claude-haiku-4-5":  { inputPer1K: 0.001, cachedInputPer1K: 0.0001, cacheCreationInputPer1K: 0.00125, outputPer1K: 0.005, pricingVersion: PRICING_SNAPSHOT_2026_10_04 },
+
+  // OpenAI / Codex. GPT-6-family long-context pricing applies above 272K input tokens.
+  "gpt-6-astra": {
+    inputPer1K: 0.010, cachedInputPer1K: 0.001, cacheCreationInputPer1K: 0.0125, outputPer1K: 0.050,
+    pricingVersion: PRICING_SNAPSHOT_2026_10_04,
+    longContext: { thresholdInputTokens: 272_000, inputPer1K: 0.020, cachedInputPer1K: 0.002, cacheCreationInputPer1K: 0.025, outputPer1K: 0.075 }
+  },
+  "gpt-6.1-sol": {
+    inputPer1K: 0.002, cachedInputPer1K: 0.0001, cacheCreationInputPer1K: 0.0025, outputPer1K: 0.010,
+    pricingVersion: PRICING_SNAPSHOT_2026_10_04,
+    longContext: { thresholdInputTokens: 272_000, inputPer1K: 0.004, cachedInputPer1K: 0.0002, cacheCreationInputPer1K: 0.005, outputPer1K: 0.015 }
+  },
+  "gpt-6-sol": {
+    inputPer1K: 0.002, cachedInputPer1K: 0.0002, cacheCreationInputPer1K: 0.0025, outputPer1K: 0.010,
+    pricingVersion: PRICING_SNAPSHOT_2026_10_04,
+    longContext: { thresholdInputTokens: 272_000, inputPer1K: 0.004, cachedInputPer1K: 0.0004, cacheCreationInputPer1K: 0.005, outputPer1K: 0.015 }
+  },
+  "gpt-6-luna": {
+    inputPer1K: 0.0001, cachedInputPer1K: 0.00001, cacheCreationInputPer1K: 0.000125, outputPer1K: 0.0005,
+    pricingVersion: PRICING_SNAPSHOT_2026_10_04,
+    longContext: { thresholdInputTokens: 272_000, inputPer1K: 0.0002, cachedInputPer1K: 0.00002, cacheCreationInputPer1K: 0.00025, outputPer1K: 0.00075 }
+  },
+  "gpt-5.6-sol": {
+    inputPer1K: 0.004, cachedInputPer1K: 0.0004, cacheCreationInputPer1K: 0.005, outputPer1K: 0.020,
+    pricingVersion: PRICING_SNAPSHOT_2026_10_04,
+    longContext: { thresholdInputTokens: 272_000, inputPer1K: 0.008, cachedInputPer1K: 0.0008, cacheCreationInputPer1K: 0.010, outputPer1K: 0.030 }
+  },
+  "gpt-5.3-codex":     { inputPer1K: 0.00175, cachedInputPer1K: 0.000175, outputPer1K: 0.014, pricingVersion: PRICING_SNAPSHOT_2026_10_04 },
+  "codex":             { inputPer1K: 0.00125, cachedInputPer1K: 0.000125, outputPer1K: 0.010 },
+  "gpt-5-codex":       { inputPer1K: 0.00125, cachedInputPer1K: 0.000125, outputPer1K: 0.010 },
+  "gpt-5.1-codex":     { inputPer1K: 0.00125, cachedInputPer1K: 0.000125, outputPer1K: 0.010 },
+  "gpt-5.1-codex-max": { inputPer1K: 0.00125, cachedInputPer1K: 0.000125, outputPer1K: 0.010 },
   "gpt-5.2-codex":     { inputPer1K: 0.00175, cachedInputPer1K: 0.000175, outputPer1K: 0.014 },
-  "codex-mini-latest": { inputPer1K: 0.0015, cachedInputPer1K: 0.000375, outputPer1K: 0.006 }
+  "codex-mini-latest": { inputPer1K: 0.0015, cachedInputPer1K: 0.000375, outputPer1K: 0.006 },
+
+  // Google Gemini current + common supported models.
+  "gemini-3.8-flash":       { inputPer1K: 0.00075, cachedInputPer1K: 0.000075, outputPer1K: 0.00375, pricingVersion: PRICING_SNAPSHOT_2026_10_04 },
+  "gemini-3.7-flash":       { inputPer1K: 0.00075, cachedInputPer1K: 0.000075, outputPer1K: 0.00375, pricingVersion: PRICING_SNAPSHOT_2026_10_04 },
+  "gemini-3.5-flash-lite":  { inputPer1K: 0.0003, cachedInputPer1K: 0.00003, outputPer1K: 0.0025, pricingVersion: PRICING_SNAPSHOT_2026_10_04 },
+  "gemini-3.1-flash-lite":  { inputPer1K: 0.00025, cachedInputPer1K: 0.000025, outputPer1K: 0.0015, pricingVersion: PRICING_SNAPSHOT_2026_10_04 },
+  "gemini-3.1-pro-preview": {
+    inputPer1K: 0.002, cachedInputPer1K: 0.0002, outputPer1K: 0.012, pricingVersion: PRICING_SNAPSHOT_2026_10_04,
+    longContext: { thresholdInputTokens: 200_000, inputPer1K: 0.004, cachedInputPer1K: 0.0004, outputPer1K: 0.018 }
+  },
+  "gemini-3-flash-preview": { inputPer1K: 0.0005, cachedInputPer1K: 0.00005, outputPer1K: 0.003, pricingVersion: PRICING_SNAPSHOT_2026_10_04 },
+  "gemini-2.5-pro": {
+    inputPer1K: 0.00125, cachedInputPer1K: 0.000125, outputPer1K: 0.010, pricingVersion: PRICING_SNAPSHOT_2026_10_04,
+    longContext: { thresholdInputTokens: 200_000, inputPer1K: 0.0025, cachedInputPer1K: 0.00025, outputPer1K: 0.015 }
+  },
+  "gemini-2.5-flash":      { inputPer1K: 0.0003, cachedInputPer1K: 0.00003, outputPer1K: 0.0025, pricingVersion: PRICING_SNAPSHOT_2026_10_04 },
+  "gemini-2.5-flash-lite": { inputPer1K: 0.0001, cachedInputPer1K: 0.00001, outputPer1K: 0.0004, pricingVersion: PRICING_SNAPSHOT_2026_10_04 }
 };
 
 const CLAUDE_MODEL_ALIASES = [
-  { canonicalModelId: "claude-opus-4-6", aliases: [/^claude-opus-4-6-\d{8}$/u, /^claude-opus$/u] },
-  { canonicalModelId: "claude-sonnet-4-6", aliases: [/^claude-sonnet-4-6-\d{8}$/u, /^claude-sonnet$/u] },
-  { canonicalModelId: "claude-haiku-4-5", aliases: [/^claude-haiku-4-5-\d{8}$/u, /^claude-haiku$/u] }
+  { canonicalModelId: "claude-fable-5-1", aliases: [/^claude-fable-5-1-\d{8}$/u, /^claude-fable$/u, /^fable$/u] },
+  { canonicalModelId: "claude-opus-5-5", aliases: [/^claude-opus-5-5-\d{8}$/u, /^claude-opus$/u, /^opus$/u] },
+  { canonicalModelId: "claude-sonnet-5-5", aliases: [/^claude-sonnet-5-5-\d{8}$/u, /^claude-sonnet$/u, /^sonnet$/u] },
+  { canonicalModelId: "claude-opus-4-6", aliases: [/^claude-opus-4-6-\d{8}$/u] },
+  { canonicalModelId: "claude-sonnet-4-6", aliases: [/^claude-sonnet-4-6-\d{8}$/u] },
+  { canonicalModelId: "claude-haiku-4-5", aliases: [/^claude-haiku-4-5-\d{8}$/u, /^claude-haiku$/u, /^haiku$/u] }
 ] as const;
 
 function resolveModelPricing(modelLabel: string | undefined): ModelPricingResolution {
@@ -108,6 +172,20 @@ function resolveModelPricing(modelLabel: string | undefined): ModelPricingResolu
   return { status: "unknown" };
 }
 
+function effectivePricingForInput(pricing: ModelPricing, inputTokens: number): ModelPricing {
+  const long = pricing.longContext;
+  if (!long || inputTokens <= long.thresholdInputTokens) {
+    return pricing;
+  }
+  return {
+    inputPer1K: long.inputPer1K,
+    cachedInputPer1K: long.cachedInputPer1K,
+    cacheCreationInputPer1K: long.cacheCreationInputPer1K,
+    outputPer1K: long.outputPer1K,
+    pricingVersion: pricing.pricingVersion
+  };
+}
+
 function calculateUsageCost(
   usage: {
     inputTokens: number;
@@ -115,13 +193,15 @@ function calculateUsageCost(
     cacheCreationInputTokens: number;
     outputTokens: number;
   },
-  pricing: ModelPricing
+  pricing: ModelPricing,
+  contextInputTokens = usage.inputTokens + usage.cachedInputTokens + usage.cacheCreationInputTokens
 ): number {
+  const effective = effectivePricingForInput(pricing, contextInputTokens);
   return (
-    (usage.inputTokens / 1000) * pricing.inputPer1K +
-    (usage.cachedInputTokens / 1000) * (pricing.cachedInputPer1K ?? pricing.inputPer1K) +
-    (usage.cacheCreationInputTokens / 1000) * (pricing.cacheCreationInputPer1K ?? pricing.inputPer1K) +
-    (usage.outputTokens / 1000) * pricing.outputPer1K
+    (usage.inputTokens / 1000) * effective.inputPer1K +
+    (usage.cachedInputTokens / 1000) * (effective.cachedInputPer1K ?? effective.inputPer1K) +
+    (usage.cacheCreationInputTokens / 1000) * (effective.cacheCreationInputPer1K ?? effective.inputPer1K) +
+    (usage.outputTokens / 1000) * effective.outputPer1K
   );
 }
 
@@ -184,6 +264,7 @@ interface GeminiJsonOutput {
 }
 
 const EMBEDDED_PRICING_VERSION = "embedded-v1";
+// Source snapshot: https://developers.openai.com/api/docs/models/gpt-6.1-sol
 
 function extractClaudeObservedModel(stdout: string): string | undefined {
   for (const line of stdout.split(/\r?\n/u)) {
@@ -260,7 +341,9 @@ function extractUsage(
         : pricingResolution.pricing
           ? "static_catalog"
           : "none",
-      ...(pricingResolution.pricing ? { pricingVersion: EMBEDDED_PRICING_VERSION } : {}),
+      ...(pricingResolution.pricing
+        ? { pricingVersion: pricingResolution.pricing.pricingVersion ?? EMBEDDED_PRICING_VERSION }
+        : {}),
       rawUsageAvailable: true,
       settledAt: new Date().toISOString()
     }
@@ -326,16 +409,21 @@ function extractCodexJsonlResult(
   const cachedInputTokens = latestTurnCompleted.usage.cached_input_tokens ?? 0;
   const outputTokens = latestTurnCompleted.usage.output_tokens ?? 0;
   const reasoningOutputTokens = latestTurnCompleted.usage.reasoning_output_tokens ?? 0;
-  const tokensIn = promptTokens + cachedInputTokens;
-  const tokensOut = outputTokens + reasoningOutputTokens;
-  const exactPricing = modelLabel ? MODEL_PRICING[modelLabel] : undefined;
+  // Codex exposes cached/reasoning token detail fields as subsets of the
+  // corresponding input/output totals. Do not add those details twice.
+  const tokensIn = promptTokens;
+  const tokensOut = outputTokens;
+  const pricingResolution = resolveModelPricing(modelLabel);
+  const exactPricing = pricingResolution.pricing;
   const pricing =
     exactPricing ?? MODEL_PRICING["codex"] ??
     { inputPer1K: BLENDED_INPUT_COST_PER_1K, outputPer1K: BLENDED_OUTPUT_COST_PER_1K };
-  const actualUsd =
-    (promptTokens / 1000) * pricing.inputPer1K +
-    (cachedInputTokens / 1000) * (pricing.cachedInputPer1K ?? pricing.inputPer1K) +
-    (tokensOut / 1000) * pricing.outputPer1K;
+  const actualUsd = calculateUsageCost({
+    inputTokens: Math.max(promptTokens - cachedInputTokens, 0),
+    cachedInputTokens,
+    cacheCreationInputTokens: 0,
+    outputTokens
+  }, pricing, promptTokens);
 
   return {
     summary,
@@ -358,7 +446,7 @@ function extractCodexJsonlResult(
         billingMode: "unknown",
         modelSource: modelLabel ? "explicit_override" : "agent_default",
         pricingSource: exactPricing ? "static_catalog" : "blended_fallback",
-        pricingVersion: EMBEDDED_PRICING_VERSION,
+        pricingVersion: exactPricing?.pricingVersion ?? EMBEDDED_PRICING_VERSION,
         rawUsageAvailable: true,
         settledAt: new Date().toISOString()
       }
@@ -416,13 +504,17 @@ function extractGeminiJsonResult(
 
   const tokensIn = promptTokens + cachedInputTokens;
   const tokensOut = outputTokens + reasoningOutputTokens;
+  const pricingResolution = resolveModelPricing(modelLabel);
+  const exactPricing = pricingResolution.pricing;
   const pricing =
-    (modelLabel ? MODEL_PRICING[modelLabel] : undefined) ??
+    exactPricing ??
     { inputPer1K: BLENDED_INPUT_COST_PER_1K, outputPer1K: BLENDED_OUTPUT_COST_PER_1K };
-  const actualUsd =
-    (promptTokens / 1000) * pricing.inputPer1K +
-    (cachedInputTokens / 1000) * (pricing.cachedInputPer1K ?? pricing.inputPer1K) +
-    (tokensOut / 1000) * pricing.outputPer1K;
+  const actualUsd = calculateUsageCost({
+    inputTokens: promptTokens,
+    cachedInputTokens,
+    cacheCreationInputTokens: 0,
+    outputTokens: tokensOut
+  }, pricing, promptTokens + cachedInputTokens);
 
   return {
     summary,
@@ -444,8 +536,8 @@ function extractGeminiJsonResult(
         reasoningOutputTokens,
         billingMode: "unknown",
         modelSource: modelLabel ? "explicit_override" : "agent_default",
-        pricingSource: "blended_fallback",
-        pricingVersion: EMBEDDED_PRICING_VERSION,
+        pricingSource: exactPricing ? "static_catalog" : "blended_fallback",
+        pricingVersion: exactPricing?.pricingVersion ?? EMBEDDED_PRICING_VERSION,
         rawUsageAvailable: true,
         settledAt: new Date().toISOString()
       }
@@ -478,7 +570,10 @@ interface StreamingUsageSnapshot {
 function createStreamingUsageInspector(
   capUsd: number,
   modelLabel: string | undefined,
-  promptTokenEstimate: number
+  promptTokenEstimate: number,
+  capTokens?: number,
+  detailTokensIncludedInTotals = false,
+  observedUsageGovernor?: MartinObservedUsageGovernor
 ): {
   onChunk: (chunk: Buffer, terminate: (reason: string) => void) => void;
   snapshot: () => StreamingUsageSnapshot;
@@ -516,8 +611,31 @@ function createStreamingUsageInspector(
   let usageEventSeen = false;
   let firstChunkAt: number | undefined;
   let finalResult: ClaudeJsonOutput | undefined;
+  let finalObservationPublished = false;
+  const observedEventIdentities = new Set<string>();
 
-  const checkBudgetExceeded = (terminate: (reason: string) => void) => {
+  const checkBudgetExceeded = (terminate: (reason: string) => void, final = false) => {
+    const cumulativeTokens = tokensIn + tokensOut;
+    if (observedUsageGovernor) {
+      if (final && finalObservationPublished) return;
+      if (final) finalObservationPublished = true;
+      try {
+        const decision = observedUsageGovernor({ cumulativeUsd, cumulativeTokens, turns, final });
+        if (decision.action === "terminate") {
+          terminate(`Parent observed-usage governor terminated the subprocess: ${decision.reason}.`);
+        }
+      } catch (error) {
+        terminate(`Parent observed-usage governor failed closed: ${error instanceof Error ? error.message : String(error)}.`);
+      }
+      return;
+    }
+    if (capTokens !== undefined && capTokens > 0 && cumulativeTokens > capTokens) {
+      terminate(
+        `Streaming token lease exceeded after ${String(turns)} turn(s): observed ${String(cumulativeTokens)} tokens ` +
+          `surpassed the per-attempt token cap ${String(capTokens)}. Subprocess terminated to prevent additional token usage.`
+      );
+      return;
+    }
     if (capUsd > 0 && cumulativeUsd > effectiveCapUsd) {
       terminate(
         `Streaming usage cap exceeded after ${String(turns)} turn(s): cumulative cost ~$${cumulativeUsd.toFixed(4)} ` +
@@ -529,50 +647,71 @@ function createStreamingUsageInspector(
 
   const extractUsageFromEvent = (
     event: Record<string, unknown>,
-    terminate: (reason: string) => void
+    terminate: (reason: string) => void,
+    final = false
   ) => {
+    const nestedMessage = event.message && typeof event.message === "object"
+      ? event.message as Record<string, unknown>
+      : undefined;
+    const providerEventId = typeof event.id === "string"
+      ? event.id
+      : typeof nestedMessage?.id === "string" ? nestedMessage.id : undefined;
+    if (providerEventId) {
+      const identity = `${String(event.type ?? "event")}:${providerEventId}`;
+      if (observedEventIdentities.has(identity)) return;
+      observedEventIdentities.add(identity);
+    }
     if (event.type === "system" && event.subtype === "init" && typeof event.model === "string") {
       pricingResolution = resolveModelPricing(event.model);
     }
 
     // Check for authoritative total_cost_usd on ANY event — if Claude reports
     // cost exceeding cap, terminate immediately regardless of event type.
-    if (typeof event.total_cost_usd === "number" && event.total_cost_usd > 0) {
-      cumulativeUsd = event.total_cost_usd;
-      checkBudgetExceeded(terminate);
-      return;
-    }
+    const authoritativeCost = typeof event.total_cost_usd === "number" && event.total_cost_usd >= 0;
+    if (authoritativeCost) cumulativeUsd = Math.max(cumulativeUsd, event.total_cost_usd as number);
 
     // Extract usage from any event shape that carries it:
     //   - { type: "assistant", message: { usage: { ... } } }  (original format)
     //   - { usage: { input_tokens, output_tokens, ... } }      (top-level usage)
     //   - { message: { usage: { ... } } }                      (nested without type check)
     const usage =
-      (event.message && typeof event.message === "object" && "usage" in event.message
-        ? (event.message as Record<string, unknown>).usage
+      (nestedMessage && "usage" in nestedMessage
+        ? nestedMessage.usage
         : undefined) ??
       (event.usage && typeof event.usage === "object" ? event.usage : undefined);
 
     if (!usage || typeof usage !== "object") {
+      if (authoritativeCost || final) checkBudgetExceeded(terminate, final);
       return;
     }
 
     const usageRecord = usage as Record<string, number>;
     const turnInputTokens = usageRecord.input_tokens ?? usageRecord.inputTokens ?? 0;
     const turnCachedInputTokens =
+      usageRecord.cached_input_tokens ?? usageRecord.cachedInputTokens ??
       usageRecord.cache_read_input_tokens ?? usageRecord.cacheReadInputTokens ?? 0;
     const turnCacheCreationInputTokens =
       usageRecord.cache_creation_input_tokens ?? usageRecord.cacheCreationInputTokens ?? 0;
-    const turnTokensIn = turnInputTokens + turnCachedInputTokens + turnCacheCreationInputTokens;
-    const turnTokensOut = usageRecord.output_tokens ?? usageRecord.outputTokens ?? 0;
+    const turnTokensIn = detailTokensIncludedInTotals
+      ? turnInputTokens
+      : turnInputTokens + turnCachedInputTokens + turnCacheCreationInputTokens;
+    const turnOutputTokens = usageRecord.output_tokens ?? usageRecord.outputTokens ?? 0;
+    const turnReasoningOutputTokens =
+      usageRecord.reasoning_output_tokens ?? usageRecord.reasoningOutputTokens ?? 0;
+    const turnTokensOut = detailTokensIncludedInTotals
+      ? turnOutputTokens
+      : turnOutputTokens + turnReasoningOutputTokens;
 
     if (turnTokensIn === 0 && turnTokensOut === 0) {
+      if (authoritativeCost || final) checkBudgetExceeded(terminate, final);
       return;
     }
 
     const turnUsd = pricingResolution.pricing
       ? calculateUsageCost({
-          inputTokens: turnInputTokens,
+          inputTokens: detailTokensIncludedInTotals
+            ? Math.max(turnInputTokens - turnCachedInputTokens - turnCacheCreationInputTokens, 0)
+            : turnInputTokens,
           cachedInputTokens: turnCachedInputTokens,
           cacheCreationInputTokens: turnCacheCreationInputTokens,
           outputTokens: turnTokensOut
@@ -581,7 +720,7 @@ function createStreamingUsageInspector(
     const remainingBudgetBeforeTurn = Math.max(capUsd - cumulativeUsd, 0);
 
     if (
-      turnUsd !== undefined &&
+      !observedUsageGovernor && !final && !authoritativeCost && turnUsd !== undefined &&
       capUsd > 0 &&
       remainingBudgetBeforeTurn > 0 &&
       turnUsd > remainingBudgetBeforeTurn * 0.5
@@ -602,11 +741,11 @@ function createStreamingUsageInspector(
     tokensOut += turnTokensOut;
     turns += 1;
     usageEventSeen = true;
-    if (turnUsd !== undefined) {
+    if (!authoritativeCost && turnUsd !== undefined) {
       cumulativeUsd += turnUsd;
     }
 
-    checkBudgetExceeded(terminate);
+    checkBudgetExceeded(terminate, final);
   };
 
   const ingestLine = (line: string, terminate: (reason: string) => void) => {
@@ -622,11 +761,23 @@ function createStreamingUsageInspector(
       return;
     }
 
-    extractUsageFromEvent(event, terminate);
-
     if (event.type === "result") {
       finalResult = event as unknown as ClaudeJsonOutput;
+      // Claude's final result usage is an aggregate repeat of usage already
+      // emitted on assistant events. Count it only when no incremental usage
+      // was observed, otherwise token leases are falsely doubled.
+      if (!usageEventSeen) {
+        extractUsageFromEvent(event, terminate, true);
+      } else {
+        if (typeof event.total_cost_usd === "number" && event.total_cost_usd >= 0) {
+          cumulativeUsd = Math.max(cumulativeUsd, event.total_cost_usd);
+        }
+        checkBudgetExceeded(terminate, true);
+      }
+      return;
     }
+
+    extractUsageFromEvent(event, terminate);
   };
 
   return {
@@ -757,8 +908,10 @@ export type CliArgsBuilder = (prompt: string, request: MartinAdapterRequest) => 
 export type CliStdinBuilder = (prompt: string) => string | undefined;
 
 export interface AgentCliAdapterOptions {
-  /** The executable to spawn (e.g. "claude", "codex"). */
+  /** Stable provider identity (e.g. "claude", "codex"). */
   command: string;
+  /** Exact executable to spawn when it differs from the provider identity. */
+  executionCommand?: string;
   /** Converts a prompt string into the argv array passed to spawn(). */
   argsBuilder: CliArgsBuilder;
   /** Optional stdin payload for CLIs that accept prompt input via stdin or `-`. */
@@ -792,6 +945,10 @@ export interface AgentCliAdapterOptions {
    * rather than only learning about an overspend after the process exits.
    */
   streamingUsageCap?: boolean;
+  /** Terminate after streamed provider usage reports request.context.remainingTokens was exceeded. */
+  streamingTokenCap?: boolean;
+  /** Provider detail-token fields are already included in input/output token totals. */
+  streamingUsageDetailsIncludedInTotals?: boolean;
   /** Test-only override for subprocess spawning. */
   spawnImpl?: SpawnLike;
 }
@@ -805,6 +962,8 @@ export interface ClaudeCliAdapterOptions {
   label?: string;
   /** Override the model passed via --model flag. */
   model?: string;
+  /** Enforce Claude Code's non-mutating plan permission mode. */
+  readOnly?: boolean;
   /** Extra args appended after core args (before prompt). */
   extraArgs?: string[];
   spawnImpl?: SpawnLike;
@@ -845,6 +1004,8 @@ export interface GeminiCliAdapterOptions {
   label?: string;
   /** Explicit model override passed via --model. Omitted to preserve Gemini Auto. */
   model?: string;
+  /** Enforce Gemini's non-mutating plan approval mode. */
+  readOnly?: boolean;
   /** Approval mode for headless Gemini runs. Defaults to yolo for autonomous execution. */
   approvalMode?: "default" | "auto_edit" | "yolo" | "plan";
   /** Enable Gemini sandbox mode when the host is configured for it. Disabled by default. */
@@ -934,15 +1095,20 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
       // instant projected spend crosses what remains — bounding the worst case
       // to roughly one turn's overshoot rather than the entire runaway session.
       const streamingUsage =
-        options.streamingUsageCap && request.context.remainingBudgetUsd > 0
+        options.streamingUsageCap &&
+          (request.context.remainingBudgetUsd > 0 ||
+            (options.streamingTokenCap && (request.context.remainingTokens ?? 0) > 0))
           ? createStreamingUsageInspector(
             request.context.remainingBudgetUsd,
             options.model ?? options.command,
-            estimatedUsage.tokensIn
+            estimatedUsage.tokensIn,
+            options.streamingTokenCap ? request.context.remainingTokens : undefined,
+            options.streamingUsageDetailsIncludedInTotals,
+            request.observedUsageGovernor
           )
           : undefined;
 
-      const agentResult = await runSubprocess(options.command, args, {
+      const agentResult = await runSubprocess(options.executionCommand ?? options.command, args, {
         cwd: workingDirectory,
         timeoutMs: executionTimeoutMs,
         spawnImpl: options.spawnImpl,
@@ -1128,8 +1294,13 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
         {
           runId: request.loopId,
           workspaceId: request.workspaceId,
+          attemptId: request.attemptId,
           cwd: workingDirectory,
-        }
+          ...(request.context.runsRoot ? { runsRoot: request.context.runsRoot } : {}),
+          ...(request.context.executionProfile ? { executionProfile: request.context.executionProfile } : {}),
+          ...(request.context.allowedNetworkDomains?.length ? { allowedNetworkDomains: [...request.context.allowedNetworkDomains] } : {}),
+        },
+        request.signal
       );
       const verificationConfigured = verification.binding.commands.length > 0;
 
@@ -1147,11 +1318,12 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
         extractStructuredErrors(agentResult.stderr, agentResult.stdout)
       );
       const rawExecutionArtifacts = gitRepoRoot
-        ? await readGitExecutionArtifacts(gitRepoRoot, 5000, options.spawnImpl)
+        ? await readGitExecutionArtifacts(gitRepoRoot, 5000, options.spawnImpl, agentChangedFiles)
         : undefined;
       const executionArtifacts = rawExecutionArtifacts
         ? {
             ...(agentChangedFiles.length > 0 ? { changedFiles: agentChangedFiles } : {}),
+            ...(rawExecutionArtifacts.patch ? { patch: rawExecutionArtifacts.patch } : {}),
             ...(baselineChangedFiles.size === 0 && rawExecutionArtifacts.diffStats
               ? { diffStats: rawExecutionArtifacts.diffStats }
               : {})
@@ -1222,8 +1394,11 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
         ? `\n  Scope violations: ${scopeViolations.join(", ")}`
         : "";
 
-      // Write PROGRESS.md to help the next attempt re-anchor on the original objective
-      if (repoRoot) {
+      // PROGRESS.md is legacy adapter-local retry state. Never create it in a
+      // scope-constrained workspace: doing so manufactures an undeclared
+      // product change and causes the Core leash to hide the provider's real
+      // failure behind surface_write_not_allowed.
+      if (repoRoot && (request.context.allowedPaths?.length ?? 0) === 0) {
         try {
           const { writeFile, readFile, appendFile: appendFs } = await import("node:fs/promises");
           const progressPath = `${repoRoot}/PROGRESS.md`;
@@ -1285,6 +1460,41 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
 // Pre-configured: Claude CLI
 // ---------------------------------------------------------------------------
 
+const CLAUDE_PERMISSION_CONTROL_ARGS = new Set([
+  "--allow-dangerously-skip-permissions",
+  "--allowed-tools",
+  "--allowedTools",
+  "--dangerously-skip-permissions",
+  "--permission-mode"
+]);
+
+function assertClaudePermissionControlsAreGoverned(extraArgs: readonly string[]): void {
+  const overridesPermissionControl = extraArgs.some((arg) => {
+    const [flag] = arg.split("=", 1);
+    return flag !== undefined && CLAUDE_PERMISSION_CONTROL_ARGS.has(flag);
+  });
+
+  if (overridesPermissionControl) {
+    throw new Error("Claude permission controls cannot be overridden via extraArgs.");
+  }
+}
+
+function hostOwnsVerification(request: MartinAdapterRequest): boolean {
+  return request.context.verificationExecutionOwner === "host_only";
+}
+
+function buildClaudeVerifierAllowedTools(request: MartinAdapterRequest): string[] {
+  if (hostOwnsVerification(request)) return [];
+
+  const commands = [...new Set(
+    request.context.verificationPlan.filter((command) => command.trim().length > 0)
+  )];
+
+  return commands.length > 0
+    ? ["--allowedTools", ...commands.map((command) => `Bash(${command})`)]
+    : [];
+}
+
 /**
  * Spawns `claude --output-format stream-json --verbose --print "<prompt>" [extraArgs]`.
  *
@@ -1303,6 +1513,7 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
 export function createClaudeCliAdapter(options: ClaudeCliAdapterOptions = {}): MartinAdapter {
   const modelArgs: string[] = options.model ? ["--model", options.model] : [];
   const extraArgs = options.extraArgs ?? [];
+  assertClaudePermissionControlsAreGoverned(extraArgs);
 
   return createAgentCliAdapter({
     command: "claude",
@@ -1316,20 +1527,26 @@ export function createClaudeCliAdapter(options: ClaudeCliAdapterOptions = {}): M
     verifyTimeoutMs: options.verifyTimeoutMs,
     supportsJsonOutput: true,
     streamingUsageCap: true,
+    streamingTokenCap: true,
     spawnImpl: options.spawnImpl,
     argsBuilder: (_prompt, request) => [
       "--output-format",
       "stream-json",
       "--verbose",
       "--print",
-      "--dangerously-skip-permissions",
+      ...(options.readOnly
+        ? ["--permission-mode", "plan"]
+        : ["--permission-mode", "acceptEdits"]),
+      ...buildClaudeVerifierAllowedTools(request),
       // Subprocess isolation strategy:
       // --bare: skips hooks (prevents SessionEnd/hook failures causing non-zero exits),
       //   MCP server loading, LSP, CLAUDE.md discovery, and background prefetches.
       //   Requires ANTHROPIC_API_KEY (OAuth/keychain auth not available in bare mode).
       // --strict-mcp-config: fallback when ANTHROPIC_API_KEY is not set — still
       //   prevents parent MCP servers from being inherited by the subprocess.
-      ...(process.env["ANTHROPIC_API_KEY"] ? ["--bare"] : ["--strict-mcp-config"]),
+      ...(process.env["ANTHROPIC_API_KEY"]
+        ? ["--bare"]
+        : ["--strict-mcp-config", "--setting-sources", "project", "--disable-slash-commands"]),
       // NOTE: --max-tokens does not exist in the claude CLI. Token cap enforcement
       // is handled at the MartinLoop layer via streamingUsageCap, not via subprocess flags.
       ...modelArgs,
@@ -1398,9 +1615,12 @@ export function createCodexCliAdapter(options: CodexCliAdapterOptions = {}): Mar
  *   npm install -g @google/gemini-cli
  */
 export function createGeminiCliAdapter(options: GeminiCliAdapterOptions = {}): MartinAdapter {
-  const approvalMode = options.approvalMode ?? "yolo";
-  if (approvalMode !== "yolo") {
+  const approvalMode = options.readOnly ? "plan" : options.approvalMode ?? "yolo";
+  if (!options.readOnly && approvalMode !== "yolo") {
     throw new Error("governed-autonomous Gemini execution requires yolo approval mode; interactive downgrade rejected.");
+  }
+  if (options.readOnly && options.approvalMode !== undefined && options.approvalMode !== "plan") {
+    throw new Error("read-only Gemini execution requires plan approval mode.");
   }
   const extraArgs = options.extraArgs ?? [];
   if (extraArgs.some((arg) => arg === "--approval-mode" || arg.startsWith("--approval-mode="))) {
@@ -1447,18 +1667,33 @@ export function createGeminiCliAdapter(options: GeminiCliAdapterOptions = {}): M
 function buildPrompt(request: MartinAdapterRequest): string {
   const lines: string[] = [];
   const mutationMode = request.context.mutationMode ?? "edit";
+  const verificationIsHostOwned = hostOwnsVerification(request);
 
   lines.push("You are running in autonomous agentic mode.");
-  lines.push("MAKE ALL REQUIRED FILE EDITS NOW. Do not ask for confirmation. Do not ask clarifying questions.");
-  lines.push("Do not explain what you found without also making the changes. Edit the files and complete the task.");
+  if (mutationMode === "read_only") {
+    lines.push("READ-ONLY EXECUTION. Do not create, edit, delete, rename, or move files.");
+    lines.push("Inspect and verify only; report evidence without changing the workspace.");
+  } else {
+    lines.push("MAKE ALL REQUIRED FILE EDITS NOW. Do not ask for confirmation. Do not ask clarifying questions.");
+    lines.push("Do not explain what you found without also making the changes. Edit the files and complete the task.");
+  }
   lines.push("");
 
-  lines.push("If PROGRESS.md exists in your working directory, read it first for context from prior attempts.");
-  lines.push("If it does not exist, proceed with the objective below.");
-  lines.push("");
+  if ((request.context.allowedPaths?.length ?? 0) === 0) {
+    lines.push("If PROGRESS.md exists in your working directory, read it first for context from prior attempts.");
+    lines.push("If it does not exist, proceed with the objective below.");
+    lines.push("");
+  }
 
-  lines.push("Complete the following coding task. Make all necessary file changes.");
-  lines.push("When you are done, the verification commands listed below must pass.");
+  lines.push(mutationMode === "read_only"
+    ? "Complete the following inspection task without making file changes."
+    : "Complete the following coding task. Make all necessary file changes.");
+  if (verificationIsHostOwned) {
+    lines.push("MartinLoop owns verification and runs it after provider completion.");
+    lines.push("Do not execute these verifier commands yourself.");
+  } else {
+    lines.push("When you are done, the verification commands listed below must pass.");
+  }
   lines.push("");
 
   lines.push("OBJECTIVE:");
@@ -1488,7 +1723,9 @@ function buildPrompt(request: MartinAdapterRequest): string {
   }
 
   if (request.context.verificationPlan.length > 0) {
-    lines.push("VERIFICATION (all commands must exit with code 0):");
+    lines.push(verificationIsHostOwned
+      ? "HOST-OWNED VERIFICATION (success conditions only; do not execute):"
+      : "VERIFICATION (all commands must exit with code 0):");
     for (const cmd of request.context.verificationPlan) {
       lines.push(`  ${cmd}`);
     }
@@ -1540,6 +1777,9 @@ function buildPrompt(request: MartinAdapterRequest): string {
   }
 
   lines.push(`FOCUS: ${sanitizeForPrompt(request.context.focus)}`);
+  if (verificationIsHostOwned && request.context.verificationPlan.length > 0) {
+    lines.push("FINAL BOUNDARY: stop after the scoped work and report it; MartinLoop will execute verification.");
+  }
   return lines.join("\n");
 }
 
@@ -1599,7 +1839,12 @@ function estimatePromptCost(
   if (!pricing) {
     return undefined;
   }
-  return (inputTokens / 1000) * pricing.inputPer1K + (outputTokens / 1000) * pricing.outputPer1K;
+  return calculateUsageCost({
+    inputTokens,
+    cachedInputTokens: 0,
+    cacheCreationInputTokens: 0,
+    outputTokens
+  }, pricing, inputTokens);
 }
 
 function estimateUsage(

@@ -71,6 +71,14 @@ function completeAdapter(): MartinAdapter {
           summary: "Stub verifier passed.",
           binding: {
             runId: request.loopId,
+
+            attemptId: request.attemptId,
+
+            ...(request.context.runsRoot ? { runsRoot: request.context.runsRoot } : {}),
+
+            ...(request.context.executionProfile ? { executionProfile: request.context.executionProfile } : {}),
+
+            ...(request.context.allowedNetworkDomains?.length ? { allowedNetworkDomains: request.context.allowedNetworkDomains } : {}),
             workspaceId: request.workspaceId,
             cwd: request.context.repoRoot ?? process.cwd(),
             commands: request.context.verificationPlan,

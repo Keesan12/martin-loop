@@ -21,7 +21,9 @@ export {
   type OpenAiCompatibleAdapterOptions
 } from "./openai-compatible.js";
 export {
+  createSwarmVerifierExecutor,
   createVerifierOnlyAdapter,
+  type SwarmVerifierExecutorOptions,
   type VerifierOnlyAdapterOptions
 } from "./verifier-only.js";
 /** @internal Test-only compatibility export. Public package builders strip this surface. */
@@ -59,3 +61,11 @@ export {
   type SubprocessResult,
   type VerificationOutcome
 } from "./cli-bridge.js";
+export {
+  spawnSupervisedProcess,
+  type ProcessSpawnLike,
+  type ProcessTreeCleanupFailureCode,
+  type ProcessTreeCleanupResult,
+  type SpawnSupervisedProcessOptions,
+  type SupervisedProcessResult
+} from "./process-supervisor.js";
