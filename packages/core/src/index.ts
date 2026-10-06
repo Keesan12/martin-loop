@@ -11,6 +11,7 @@ import {
   type ContextHandoffReceipt,
   type CostProvenance,
   type ExecutionProfile,
+  type ExternalOutcomeEvidenceReference,
   type FailureClass,
   type InterventionType,
   type LoopArtifact,
@@ -178,6 +179,18 @@ export type {
 } from "./grounding.js";
 export { buildContextGraphSnapshot, queryContextGraph } from "./context-graph.js";
 export {
+  ExternalOutcomeContractError,
+  ExternalOutcomePolicyError,
+  hashExternalOutcomeContract,
+  verifyExternalOutcomes,
+  writeExternalOutcomeEvidence,
+} from "./external-outcome.js";
+export type {
+  ExternalOutcomeEvidenceWrite,
+  VerifyExternalOutcomesOptions,
+  WriteExternalOutcomeEvidenceOptions,
+} from "./external-outcome.js";
+export {
   createLocalIdentityAuthority,
   hasIdentityScope,
   issueIdentityToken,
@@ -325,6 +338,8 @@ export interface MartinAdapterRequest {
     definitionOfDonePreSatisfied?: boolean;
     /** Absolute path to the repository root. */
     repoRoot?: string;
+    /** Authoritative persistence root for this governed run when available. */
+    runsRoot?: string;
     /** Glob patterns for files the agent may modify. Empty = no restriction. */
     allowedPaths?: string[];
     /** Glob patterns for files the agent must never modify. */
@@ -340,11 +355,32 @@ export interface MartinAdapterRequest {
     remainingBudgetUsd: number;
     remainingIterations: number;
     remainingTokens?: number;
+    /** Who executes verifier commands. Defaults to provider_and_host for standalone compatibility. */
+    verificationExecutionOwner?: "provider_and_host" | "host_only";
   };
   previousAttempts: LoopAttempt[];
+  /** Non-persisted synchronous parent authority for cumulative live usage. */
+  observedUsageGovernor?: MartinObservedUsageGovernor;
   /** Abort signal propagated from the harness — adapters should honour it. */
   signal?: AbortSignal;
 }
+
+export interface MartinObservedUsage {
+  /** Provider-observed cumulative cost for this child process. */
+  cumulativeUsd: number;
+  /** Provider-observed cumulative tokens, including cache read/creation tokens. */
+  cumulativeTokens: number;
+  turns: number;
+  final: boolean;
+}
+
+export type MartinObservedUsageDecision =
+  | { action: "continue"; grantedUsd: number; grantedTokens: number }
+  | { action: "terminate"; grantedUsd: number; grantedTokens: number; reason: string };
+
+export type MartinObservedUsageGovernor = (
+  observation: MartinObservedUsage
+) => MartinObservedUsageDecision;
 
 export interface MartinVerificationStep {
   command: string;
@@ -355,6 +391,7 @@ export interface MartinVerificationStep {
   timedOut: boolean;
   fastFail?: boolean;
   detail?: string;
+  evidence?: ExternalOutcomeEvidenceReference;
 }
 
 export interface MartinVerificationOutcome {
@@ -387,6 +424,8 @@ export interface MartinAdapterResult {
   };
   execution?: {
     changedFiles?: string[];
+    /** Complete git patch for the files changed by this execution. */
+    patch?: string;
     diffStats?: {
       filesChanged: number;
       addedLines: number;
@@ -592,6 +631,12 @@ export interface RunMartinInput {
   producerReceiptVerified?: boolean;
   /** Map of sha256 → true for every artifact available to the verifier. */
   availableArtifacts?: ReadonlyMap<string, true>;
+  /** Keep standalone behavior by default; Swarm children use host_only. */
+  verificationExecutionOwner?: "provider_and_host" | "host_only";
+  /** Live-only parent budget authority; never written into durable loop state. */
+  observedUsageGovernor?: MartinObservedUsageGovernor;
+  /** Optional parent cancellation signal. Relayed into the active governed attempt. */
+  signal?: AbortSignal;
 }
 
 export interface RunMartinResult {
@@ -922,6 +967,33 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     }
   }
 
+  let parentAbortObserved = false;
+  function observeParentAbort(): void {
+    if (parentAbortObserved || input.signal === undefined) return;
+    parentAbortObserved = true;
+    const reason = input.signal.reason instanceof Error
+      ? input.signal.reason.message
+      : typeof input.signal.reason === "string"
+        ? input.signal.reason
+        : "parent cancelled governed child run";
+    const parentSignal: import("@martin/contracts").ExitSignalV1 = {
+      kind: "human_interrupt",
+      schemaVersion: "exit-signal/1",
+      runId: loop.loopId,
+      reason: `Parent cancellation: ${reason}`,
+      requestedAt: now(),
+      requestedBy: "parent_swarm"
+    };
+    observeSignals([parentSignal]);
+    activeAttemptController?.abort(input.signal.reason ?? parentSignal);
+  }
+
+  if (input.signal?.aborted) observeParentAbort();
+  else if (input.signal) {
+    input.signal.addEventListener("abort", observeParentAbort, { once: true });
+    if (input.signal.aborted) observeParentAbort();
+  }
+
   function queueControlDiagnostic(code: string, details: unknown): void {
     if (!input.store) return;
     pendingControlWrites.push(
@@ -976,6 +1048,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     // snapshot. Draining alone leaves a window for new writes during signing.
     disposeSignalMonitor();
     runController.abort();
+    input.signal?.removeEventListener("abort", observeParentAbort);
     await Promise.all(pendingControlWrites.splice(0));
   }
 
@@ -1351,6 +1424,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
           ? { definitionOfDonePreSatisfied: loop.task.definitionOfDonePreSatisfied }
           : {}),
         ...(loop.task.repoRoot ? { repoRoot: loop.task.repoRoot } : {}),
+        ...(input.store?.runsRoot ? { runsRoot: input.store.runsRoot } : {}),
         ...(loop.task.allowedPaths ? { allowedPaths: loop.task.allowedPaths } : {}),
         ...(loop.task.deniedPaths ? { deniedPaths: loop.task.deniedPaths } : {}),
         ...(loop.task.acceptanceCriteria ? { acceptanceCriteria: loop.task.acceptanceCriteria } : {}),
@@ -1364,9 +1438,13 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         focus: distilled.focus,
         remainingBudgetUsd: distilled.constraints.remainingBudgetUsd,
         remainingIterations: distilled.constraints.remainingIterations,
-        remainingTokens: distilled.constraints.remainingTokens
+        remainingTokens: distilled.constraints.remainingTokens,
+        ...(input.verificationExecutionOwner
+          ? { verificationExecutionOwner: input.verificationExecutionOwner }
+          : {})
       },
-      previousAttempts: loop.attempts
+      previousAttempts: loop.attempts,
+      ...(input.observedUsageGovernor ? { observedUsageGovernor: input.observedUsageGovernor } : {})
     };
 
     const tracksWorkspaceMutations =
@@ -1648,7 +1726,8 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       repoRoot: request.context.repoRoot,
       changedFiles,
       allowedPaths: request.context.allowedPaths,
-      deniedPaths: request.context.deniedPaths
+      deniedPaths: request.context.deniedPaths,
+      mutationMode: request.context.mutationMode
     });
 
     if (!filesystemDecision.allowed) {
@@ -2143,6 +2222,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     if (wallTimer !== undefined) clearTimeout(wallTimer);
     disposeSignalMonitor();
     runController.abort();
+    input.signal?.removeEventListener("abort", observeParentAbort);
     activeAttemptController?.abort();
     // Flush any diagnostic ledger writes queued from signal callbacks
     await Promise.all(pendingControlWrites);
@@ -2379,6 +2459,10 @@ function resolveChangedFiles(
 }
 
 function buildPatchDiff(result: MartinAdapterResult, changedFiles: string[]): string | undefined {
+  if (result.execution?.patch) {
+    return result.execution.patch;
+  }
+
   // Use structured diff stats to build a minimal diff header if no raw diff is available
   if (result.execution?.changedFiles?.length) {
     // Build a synthetic diff header from changed file list
@@ -2490,7 +2574,11 @@ function resolveExpectedVerifierBinding(request: MartinAdapterRequest): Verifier
   return {
     runId: request.loopId,
     workspaceId: request.workspaceId,
+    attemptId: request.attemptId,
     cwd: request.context.repoRoot ?? process.cwd(),
+    ...(request.context.runsRoot ? { runsRoot: request.context.runsRoot } : {}),
+    ...(request.context.executionProfile ? { executionProfile: request.context.executionProfile } : {}),
+    ...(request.context.allowedNetworkDomains?.length ? { allowedNetworkDomains: [...request.context.allowedNetworkDomains] } : {}),
     commands,
   };
 }
@@ -2711,3 +2799,55 @@ export type {
   ParseResult,
   ValidationError,
 } from "./delivery/index.js";
+
+export {
+  completeDeterministicDemoSwarmRun,
+  createSwarmBudgetLedger,
+  extendSwarmBudgetLease,
+  releaseSwarmBudgetLease,
+  reserveSwarmBudgetLease,
+  selectNextSwarmBatch,
+  settleSwarmBudgetLease,
+  tasksHaveScopeCollision,
+  validateSwarmTaskGraph,
+  runParentSwarmPipeline
+} from "./swarm/index.js";
+export { readSwarmOperationalState } from "./swarm/operational-reader.js";
+export {
+  readSwarmReceiptProjection,
+  verifySwarmReceiptProjection,
+} from "./swarm/receipt-projection.js";
+export {
+  buildSwarmShareProjection,
+  readSwarmDossier,
+  verifySwarmEvidence,
+} from "./swarm/evidence-projection.js";
+export { buildSwarmHostedEnvelope } from "./swarm/hosted-export.js";
+export { assertSwarmPathIdentifier } from "./swarm/workspaces.js";
+export type {
+  CompleteDeterministicDemoSwarmRunInput,
+  CompleteDeterministicDemoSwarmRunResult,
+  DeterministicDemoVerifierExecutionFacts,
+  ParentSwarmPipelineEvidenceStore,
+  PersistedSwarmChildCompletionEvidence,
+  SwarmPipelineWorkspaceFailureEvidence,
+  RunParentSwarmPipelineInput,
+  RunParentSwarmPipelineResult,
+  SwarmBatchResult,
+  SwarmBudgetProtectedUsage,
+  SwarmBudgetTransitionResult,
+  SwarmGraphValidationResult,
+  SwarmSchedulerError
+} from "./swarm/index.js";
+export type {
+  SwarmOperationalSelector,
+  SwarmOperationalState,
+} from "./swarm/operational-reader.js";
+export type { SwarmReceiptProjection } from "./swarm/receipt-projection.js";
+export type {
+  SwarmDossierProjection,
+  SwarmEvidenceSelector,
+  SwarmEvidenceVerification,
+  SwarmShareProjection,
+  SwarmStatusCounts,
+} from "./swarm/evidence-projection.js";

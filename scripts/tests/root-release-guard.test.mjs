@@ -58,6 +58,22 @@ test("assertPackedSurface rejects unexpected non-OSS paths", () => {
   );
 });
 
+test("assertPackedSurface accepts the shipped deterministic swarm demo", () => {
+  assert.doesNotThrow(() =>
+    assertPackedSurface([
+      "package.json",
+      "README.md",
+      "CODE_OF_CONDUCT.md",
+      "dist/index.js",
+      "dist/index.d.ts",
+      "dist/bin/martin-loop.js",
+      "examples/github-actions-budget-gate/.github/workflows/martinloop-budget-gate.yml",
+      "demo/swarm-launch-board/package.json",
+      "demo/swarm-launch-board/src/state.js",
+    ]),
+  );
+});
+
 test("assertPackedSurface rejects forbidden vendored implementation paths", () => {
   assert.throws(
     () =>

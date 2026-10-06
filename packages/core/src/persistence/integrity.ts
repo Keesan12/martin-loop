@@ -1,5 +1,5 @@
 import { createHash, createHmac, randomBytes } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -277,11 +277,22 @@ function createReceiptIntegritySignature(
   key: string,
   material: Omit<StoredReceiptIntegrityMaterial, "signatureHmacSha256">
 ): string {
-  return createHmac("sha256", key).update(JSON.stringify(material)).digest("hex");
+  return createPrivateIntegrityHmac(key, material);
 }
 
 async function ensureReceiptIntegrityKey(runsRoot: string, runId: string): Promise<[string, string] | undefined> {
-  const keyPath = resolveReceiptIntegrityKeyPath(runsRoot, runId);
+  return ensurePrivateIntegrityKey(runsRoot, `${runId}.key`);
+}
+
+export async function ensurePrivateIntegrityKey(
+  runsRoot: string,
+  keyFileName: string
+): Promise<[string, string] | undefined> {
+  const keyPath = resolvePrivateIntegrityKeyPath(runsRoot, keyFileName);
+  const existingStat = await lstat(keyPath).catch(() => undefined);
+  if (existingStat?.isSymbolicLink() || (existingStat && !existingStat.isFile())) {
+    return undefined;
+  }
   const existing = await readFile(keyPath, "utf8").catch(() => null);
   if (existing) {
     const trimmed = existing.trim();
@@ -302,13 +313,21 @@ async function ensureReceiptIntegrityKey(runsRoot: string, runId: string): Promi
 }
 
 async function readReceiptIntegrityKey(runsRoot: string, runId: string): Promise<string> {
-  const raw = await readFile(resolveReceiptIntegrityKeyPath(runsRoot, runId), "utf8");
+  return readPrivateIntegrityKey(runsRoot, `${runId}.key`);
+}
+
+export async function readPrivateIntegrityKey(runsRoot: string, keyFileName: string): Promise<string> {
+  const raw = await readFile(resolvePrivateIntegrityKeyPath(runsRoot, keyFileName), "utf8");
   return raw.trim();
 }
 
-function resolveReceiptIntegrityKeyPath(runsRoot: string, runId: string): string {
+export function resolvePrivateIntegrityKeyPath(runsRoot: string, keyFileName: string): string {
   const rootHash = sha256(runsRoot).slice(0, 16);
-  return join(resolveReceiptIntegrityRoot(), rootHash, `${runId}.key`);
+  return join(resolveReceiptIntegrityRoot(), rootHash, keyFileName);
+}
+
+export function createPrivateIntegrityHmac(key: string, material: unknown): string {
+  return createHmac("sha256", key).update(JSON.stringify(material)).digest("hex");
 }
 
 function serializeStoredJson(value: unknown): string {

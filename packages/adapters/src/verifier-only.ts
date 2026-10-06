@@ -1,4 +1,4 @@
-import type { MartinAdapter } from "@martin/core";
+import type { MartinAdapter, RunParentSwarmPipelineInput } from "@martin/core";
 
 import { readGitChangedFiles, runVerification, type SpawnLike } from "./cli-bridge.js";
 import { createAdapterCapabilities, normalizeUsage } from "./runtime-support.js";
@@ -8,6 +8,63 @@ export interface VerifierOnlyAdapterOptions {
   verifyTimeoutMs?: number;
   label?: string;
   spawnImpl?: SpawnLike;
+}
+
+export interface SwarmVerifierExecutorOptions {
+  verifyTimeoutMs?: number;
+  spawnImpl?: SpawnLike;
+  now?: () => string;
+}
+
+type ParentSwarmVerifierExecutor = RunParentSwarmPipelineInput["verifierExecutor"];
+
+/** Adapter-side executor for Core's injected, full-binding parent verifier boundary. */
+export function createSwarmVerifierExecutor(
+  options: SwarmVerifierExecutorOptions = {}
+): ParentSwarmVerifierExecutor {
+  const verifyTimeoutMs = options.verifyTimeoutMs ?? 120_000;
+  const now = options.now ?? (() => new Date().toISOString());
+  return {
+    async execute(request) {
+      const startedAt = now();
+      const verification = await runVerification(
+        request.commands.map((step) => step.command),
+        request.cwd,
+        verifyTimeoutMs,
+        request.commands.map((step) => ({ ...step })),
+        options.spawnImpl,
+        {
+          runId: request.swarmId,
+          workspaceId: request.workspaceId,
+          cwd: request.cwd
+        },
+        request.signal
+      );
+      const completedAt = now();
+      return {
+        passed: verification.passed,
+        processCloseState: verification.processCloseState,
+        binding: {
+          swarmId: request.swarmId,
+          workspaceId: request.workspaceId,
+          cwd: request.cwd,
+          parentPolicyVersion: request.parentPolicyVersion,
+          baselineCommit: request.baselineCommit,
+          integratedTreeHash: request.integratedTreeHash,
+          commands: request.commands.map((step) => step.command)
+        },
+        subprocessResults: verification.steps.map((step) => ({
+          command: step.command,
+          launched: step.launched,
+          completed: step.completed,
+          timedOut: step.timedOut,
+          exitCode: step.exitCode ?? null,
+          startedAt,
+          ...(step.completed ? { completedAt } : {})
+        }))
+      };
+    }
+  };
 }
 
 export function createVerifierOnlyAdapter(
@@ -47,8 +104,13 @@ export function createVerifierOnlyAdapter(
         {
           runId: request.loopId,
           workspaceId: request.workspaceId,
+          attemptId: request.attemptId,
           cwd: workingDirectory,
-        }
+          ...(request.context.runsRoot ? { runsRoot: request.context.runsRoot } : {}),
+          ...(request.context.executionProfile ? { executionProfile: request.context.executionProfile } : {}),
+          ...(request.context.allowedNetworkDomains?.length ? { allowedNetworkDomains: [...request.context.allowedNetworkDomains] } : {}),
+        },
+        request.signal
       );
       const changedFiles = shouldTrackVerifierWrites
         ? (await readGitChangedFiles(workingDirectory, 5_000)).filter(

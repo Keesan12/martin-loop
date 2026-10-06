@@ -32,7 +32,7 @@ export interface RepoGroundingHit {
 
 const TEXT_EXTENSIONS = new Set([
   ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs",
-  ".json", ".md", ".yaml", ".yml", ".py", ".go",
+  ".json", ".md", ".txt", ".yaml", ".yml", ".py", ".go",
   ".rs", ".java", ".sh"
 ]);
 

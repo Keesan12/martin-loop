@@ -1,6 +1,9 @@
+import type { ChildProcess } from "node:child_process";
+import { EventEmitter } from "node:events";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { PassThrough } from "node:stream";
 
 import { describe, expect, it, vi } from "vitest";
 
@@ -18,6 +21,9 @@ import {
   type CodexCapabilityProfile,
   type CodexAutonomyResolution
 } from "../src/codex-launcher.js";
+import { markCodexAutonomyResolutionVerifiedByLaunchProbe } from "../src/codex-capabilities.js";
+import { createCodexCliAdapter } from "../src/codex-cli.js";
+import type { SpawnLike } from "../src/cli-bridge.js";
 
 function profile(overrides: Partial<CodexCapabilityProfile> = {}): CodexCapabilityProfile {
   return {
@@ -508,6 +514,141 @@ describe("buildCodexExecArgs", () => {
   });
 });
 
+describe("createCodexCliAdapter live token enforcement", () => {
+  it("terminates a streaming Codex child after a turn reports a token-lease breach", async () => {
+    let killed = false;
+    const adapter = createCodexCliAdapter({
+      capabilityProfile: profile({
+        binaryPath: "codex",
+        sandbox: { flag: "--sandbox", scope: "exec", values: ["workspace-write"] },
+        approvalPolicy: {
+          flag: "--ask-for-approval",
+          scope: "exec",
+          semantics: "approval-policy",
+          values: ["never"]
+        },
+        json: { flag: "--json", scope: "exec" },
+        promptTransport: "stdin-dash"
+      }),
+      autonomyResolution: markCodexAutonomyResolutionVerifiedByLaunchProbe({
+        binaryPath: "codex",
+        intent: "governed-autonomous",
+        strategy: "sandbox+approval",
+        sandboxValue: "workspace-write",
+        approvalValue: "never"
+      }),
+      spawnImpl: createStreamingCodexSpawn([
+        JSON.stringify({
+          type: "turn.completed",
+          usage: {
+            input_tokens: 1_300,
+            cached_input_tokens: 500,
+            output_tokens: 900,
+            reasoning_output_tokens: 500
+          }
+        }),
+        JSON.stringify({
+          type: "item.completed",
+          item: { type: "agent_message", text: "completed after exceeding the lease" }
+        })
+      ], () => { killed = true; })
+    });
+
+    const result = await adapter.execute({
+      loopId: "loop-codex-token-lease",
+      workspaceId: "workspace-codex-token-lease",
+      attemptId: "attempt-codex-token-lease",
+      context: {
+        taskTitle: "bounded child",
+        objective: "respect the child token lease",
+        verificationPlan: [],
+        focus: "bounded execution",
+        remainingBudgetUsd: 100,
+        remainingIterations: 1,
+        remainingTokens: 2_000
+      },
+      previousAttempts: []
+    });
+
+    expect(killed).toBe(true);
+    expect(result.status).toBe("failed");
+    expect(result.failure?.classHint).toBe("budget_pressure");
+    expect(result.failure?.message).toMatch(/token.*(?:cap|lease)|(?:cap|lease).*token/iu);
+    expect(result.summary).not.toContain("completed after exceeding the lease");
+    expect(result.usage.tokensIn).toBe(1_300);
+    expect(result.usage.tokensOut).toBe(900);
+    expect(result.verification.passed).toBe(false);
+  });
+
+  it("allows an owned Codex child to complete below its token lease without double-counting detail fields", async () => {
+    let killed = false;
+    const adapter = createCodexCliAdapter({
+      model: "gpt-6.1-sol",
+      capabilityProfile: profile({
+        binaryPath: "codex",
+        sandbox: { flag: "--sandbox", scope: "exec", values: ["workspace-write"] },
+        approvalPolicy: {
+          flag: "--ask-for-approval",
+          scope: "exec",
+          semantics: "approval-policy",
+          values: ["never"]
+        },
+        json: { flag: "--json", scope: "exec" },
+        model: { flag: "--model", scope: "exec" },
+        promptTransport: "stdin-dash"
+      }),
+      autonomyResolution: markCodexAutonomyResolutionVerifiedByLaunchProbe({
+        binaryPath: "codex",
+        intent: "governed-autonomous",
+        strategy: "sandbox+approval",
+        sandboxValue: "workspace-write",
+        approvalValue: "never"
+      }),
+      spawnImpl: createStreamingCodexSpawn([
+        JSON.stringify({
+          type: "item.completed",
+          item: { type: "agent_message", text: "completed inside the lease" }
+        }),
+        JSON.stringify({
+          type: "turn.completed",
+          usage: {
+            input_tokens: 1_300,
+            cached_input_tokens: 500,
+            output_tokens: 600,
+            reasoning_output_tokens: 400
+          }
+        })
+      ], () => { killed = true; })
+    });
+
+    const result = await adapter.execute({
+      loopId: "loop-codex-token-lease-under",
+      workspaceId: "workspace-codex-token-lease-under",
+      attemptId: "attempt-codex-token-lease-under",
+      context: {
+        taskTitle: "bounded child",
+        objective: "complete inside the child token lease",
+        verificationPlan: [],
+        focus: "bounded execution",
+        remainingBudgetUsd: 100,
+        remainingIterations: 1,
+        remainingTokens: 2_000
+      },
+      previousAttempts: []
+    });
+
+    expect(killed).toBe(false);
+    expect(result.status).toBe("completed");
+    expect(result.summary).toContain("completed inside the lease");
+    expect(result.usage).toMatchObject({
+      tokensIn: 1_300,
+      cachedInputTokens: 500,
+      tokensOut: 600,
+      reasoningTokensOut: 400
+    });
+  });
+});
+
 describe("resolveCodexAutonomyCandidates", () => {
   it("prefers least-privileged workspace-write before automation fallback", () => {
     const candidates = resolveCodexAutonomyCandidates(profile({
@@ -564,12 +705,72 @@ describe("resolveCodexAutonomyCandidates", () => {
 });
 
 describe("probeCodexLaunch", () => {
-  it("proves actual workspace-write ability with the least-privileged dynamically built invocation", () => {
+  it("respects PATH candidate order before desktop fallbacks on Windows", () => {
+    clearCodexCapabilityCacheForTests();
+    const workingDirectory = process.cwd();
+    const candidateRoot = mkdtempSync(join(tmpdir(), "martin-codex-candidates-"));
+    const pathCodex = join(candidateRoot, "AppData", "Roaming", "npm", "codex");
+    const desktopCodex = join(candidateRoot, "desktop", "codex.exe");
+    mkdirSync(dirname(pathCodex), { recursive: true });
+    mkdirSync(dirname(desktopCodex), { recursive: true });
+    writeFileSync(pathCodex, "", "utf8");
+    writeFileSync(desktopCodex, "", "utf8");
+    const observedCommands: string[] = [];
+    const spawnSyncImpl = vi.fn((command: string, args: string[]) => {
+      observedCommands.push(command);
+      if (args.length === 1 && args[0] === "--help") {
+        return { status: 0, stdout: "Usage: codex [COMMAND]", stderr: "" };
+      }
+      if (args[0] === "exec" && args[1] === "--help") {
+        return {
+          status: 0,
+          stdout: [
+            "Usage: codex exec [OPTIONS] [PROMPT]",
+            "--sandbox <MODE> [possible values: read-only, workspace-write]",
+            "--ask-for-approval <POLICY> [possible values: on-request, never]",
+            "--cd <DIR>",
+            "Read prompt from stdin when '-' is supplied."
+          ].join("\n"),
+          stderr: ""
+        };
+      }
+      const markerPath = args.at(-2);
+      if (markerPath) writeFileSync(markerPath, "MARTIN_CODEX_WRITE_OK", "utf8");
+      return { status: 0, stdout: "READY\n", stderr: "" };
+    });
+
+    try {
+      const result = probeCodexLaunch({
+        workingDirectory,
+        platform: "win32",
+        env: {},
+        availability: {
+          command: "codex",
+          available: true,
+          locator: "where.exe",
+          detail: "test",
+          resolvedPath: pathCodex,
+          candidatePaths: [pathCodex, desktopCodex]
+        },
+        spawnSyncImpl: spawnSyncImpl as never
+      });
+
+      expect(result.ok, JSON.stringify(result, null, 2)).toBe(true);
+      expect(result.command).toBe(pathCodex);
+      expect(observedCommands).not.toContain(desktopCodex);
+    } finally {
+      rmSync(candidateRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("proves workspace-write and outside-deny with the local Codex sandbox without provider execution", () => {
     clearCodexCapabilityCacheForTests();
     const workingDirectory = process.cwd();
     let simulateOutsideEscape = false;
     let observedTimeout: number | undefined;
     let observedOutsideMarker: string | undefined;
+    let providerExecCalls = 0;
+    let sandboxCalls = 0;
     const spawnSyncImpl = vi.fn((_command: string, args: string[], options?: { input?: string; timeout?: number }) => {
       if (args[0] === "codex-locator") {
         return { status: 0, stdout: "/usr/local/bin/codex\n", stderr: "" };
@@ -592,16 +793,22 @@ describe("probeCodexLaunch", () => {
         };
       }
 
-      const promptText = options?.input ?? args.at(-1) ?? "";
+      if (args[0] === "exec") {
+        providerExecCalls += 1;
+        throw new Error("readiness must not invoke codex exec");
+      }
+
+      expect(args[0]).toBe("sandbox");
+      sandboxCalls += 1;
       observedTimeout = options?.timeout;
-      const outsideMarker = promptText.match(/"([^"]*\.martin-codex-outside-probe\.tmp)"/u)?.[1];
+      const markerPath = args.at(-2);
+      const outsideMarker = args.at(-1);
       observedOutsideMarker = outsideMarker;
       if (simulateOutsideEscape && outsideMarker) {
         writeFileSync(outsideMarker, "MARTIN_CODEX_OUTSIDE_BAD", "utf8");
       }
-      const marker = promptText.match(/\.martin-codex-write-probe-[A-Za-z0-9.-]+\.tmp/u)?.[0];
-      if (marker) {
-        writeFileSync(join(workingDirectory, marker), "MARTIN_CODEX_WRITE_OK", "utf8");
+      if (markerPath) {
+        writeFileSync(markerPath, "MARTIN_CODEX_WRITE_OK", "utf8");
       }
       return { status: 0, stdout: "READY\n", stderr: "" };
     });
@@ -623,12 +830,18 @@ describe("probeCodexLaunch", () => {
 
     expect(result.ok, JSON.stringify(result, null, 2)).toBe(true);
     expect(result.capabilityProfile?.sandbox?.values).toContain("workspace-write");
-    expect(result.args).toContain("--sandbox");
-    expect(result.args).toContain("workspace-write");
-    expect(result.args).not.toContain("--full-auto");
-    expect(result.args).toContain("--ask-for-approval");
-    expect(result.args).toContain("never");
-    expect(result.summary).toContain("workspace-write probe passed");
+    expect(result.args.slice(0, 6)).toEqual([
+      "sandbox",
+      "--permission-profile",
+      ":workspace",
+      "-C",
+      workingDirectory,
+      "--"
+    ]);
+    expect(result.args).not.toContain("exec");
+    expect(result.summary).toContain("local sandbox probe passed");
+    expect(providerExecCalls).toBe(0);
+    expect(sandboxCalls).toBe(1);
     expect(observedTimeout).toBe(300_000);
     expect(observedOutsideMarker).toBeDefined();
     expect(dirname(dirname(resolve(observedOutsideMarker!)))).toBe(resolve(userInfo().homedir));
@@ -655,7 +868,9 @@ describe("probeCodexLaunch", () => {
     });
     expect(escaped.ok).toBe(false);
     expect(escaped.summary).toMatch(/escaped|outside|boundary/iu);
-    expect(observedTimeout).toBe(900_000);
+    expect(providerExecCalls).toBe(0);
+    expect(sandboxCalls).toBe(2);
+    expect(observedTimeout).toBe(300_000);
   });
 });
 
@@ -673,3 +888,48 @@ describe("filesystem sandbox preflight", () => {
     }
   });
 });
+
+function createStreamingCodexSpawn(lines: string[], onKill: () => void): SpawnLike {
+  return (_command, _args = [], _options) => {
+    const child = new EventEmitter() as Partial<ChildProcess> & {
+      stdout: PassThrough;
+      stderr: PassThrough;
+      stdin: PassThrough;
+    };
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    child.stdin = new PassThrough();
+    let killed = false;
+    let closed = false;
+    const close = (code: number) => {
+      if (closed) return;
+      closed = true;
+      child.emit("close", code);
+    };
+    child.kill = () => {
+      if (!killed) {
+        killed = true;
+        onKill();
+        child.stdout.end();
+        child.stderr.end();
+        setImmediate(() => close(143));
+      }
+      return true;
+    };
+
+    void (async () => {
+      for (const line of lines) {
+        if (killed) return;
+        child.stdout.write(`${line}\n`);
+        await new Promise((resolveLine) => setImmediate(resolveLine));
+      }
+      if (!killed) {
+        child.stdout.end();
+        child.stderr.end();
+        close(0);
+      }
+    })();
+
+    return child as ChildProcess;
+  };
+}

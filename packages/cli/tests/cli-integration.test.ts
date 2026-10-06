@@ -4,7 +4,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -224,6 +224,11 @@ function installDeterministicCodexHost(): void {
           summary: "Verification completed in deterministic CLI contract coverage.",
           binding: {
             runId: request.loopId,
+
+            attemptId: request.attemptId,
+            ...(request.context.runsRoot ? { runsRoot: request.context.runsRoot } : {}),
+            ...(request.context.executionProfile ? { executionProfile: request.context.executionProfile } : {}),
+            ...(request.context.allowedNetworkDomains?.length ? { allowedNetworkDomains: request.context.allowedNetworkDomains } : {}),
             workspaceId: request.workspaceId,
             cwd: request.context.repoRoot ?? process.cwd(),
             commands: request.context.verificationPlan,
@@ -1028,6 +1033,96 @@ describe("demo command", () => {
       expect(result.stdout).toContain(targetDirectory);
       expect(result.stdout).toContain("npm test");
       expect(result.stdout).toContain("Task ideas live in");
+    });
+  });
+
+  it("renders the full deterministic 15-role swarm transcript", async () => {
+    await withTempDir(async (dir) => {
+      const targetDirectory = join(dir, "swarm demo");
+      const result = await executeCli(["demo", "--swarm", "--dir", targetDirectory]);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).toBe("");
+      expect(result.stdout).toContain("DEMO SWARM · deterministic local workers · $0 provider spend");
+      expect(result.stdout).toContain("GOVERNED BY MARTINLOOP");
+      for (const phase of ["CREATE", "PLAN", "FAN OUT", "REVIEW", "RECOVER", "INTEGRATE", "VERIFY", "COMPLETE"]) {
+        expect(result.stdout).toContain(phase);
+      }
+      for (const role of ["Planner", "Data", "API", "Validation", "UI", "State", "Unit Tests", "Integration Tests", "Accessibility", "Error Handling", "Docs", "Scope Reviewer", "Test Reviewer", "Integrator", "Final Verifier"]) {
+        expect(result.stdout).toContain(role);
+      }
+      expect(result.stdout).toContain("BLOCKED BY MARTINLOOP");
+      expect(result.stdout).toContain("Task reassigned");
+      expect(result.stdout).toContain("Swarm continued");
+      expect(result.stdout).toContain("ONE JOB · 15 AGENTS · ONE ACCOUNTABLE OUTCOME");
+      expect(result.stdout).toContain("14 completed · 1 stopped · 1 reassigned task");
+      expect(result.stdout).toContain("0 denied changes admitted");
+      expect(result.stdout).toContain("Parent verifier: PASS");
+      expect(result.stdout).toContain("SWARM VERIFIED");
+    });
+  });
+
+  it("emits stable JSON and quiet output without motion controls", async () => {
+    await withTempDir(async (dir) => {
+      const jsonTarget = join(dir, "json-target");
+      const jsonResult = await withEnv("CI", "1", () => executeCli([
+        "demo", "--swarm", "--scenario", "launch-board", "--dir", jsonTarget, "--json",
+      ]));
+      const payload = JSON.parse(jsonResult.stdout) as Record<string, unknown>;
+
+      expect(jsonResult.exitCode).toBe(0);
+      expect(jsonResult.stdout).not.toMatch(/[\u001B\r]/u);
+      expect(payload).toMatchObject({
+        swarmId: "swarm-demo-launch-board",
+        status: "verified",
+        agents: 15,
+        completed: 14,
+        stopped: 1,
+        reassignedTasks: 1,
+        deniedChangesAdmitted: 0,
+        providerMode: "deterministic_local",
+        providerSpendUsd: 0,
+      });
+      expect(Array.isArray(payload["events"])).toBe(true);
+      expect(payload).not.toHaveProperty("record");
+
+      const quietTarget = join(dir, "quiet-target");
+      const quietResult = await executeCli(["demo", "--swarm", "--dir", quietTarget, "--quiet"]);
+      expect(quietResult).toEqual({ exitCode: 0, stdout: "swarm-demo-launch-board", stderr: "" });
+    });
+  });
+
+  it("fails unsupported modes before mutating the requested target", async () => {
+    await withTempDir(async (dir) => {
+      const unknownTarget = join(dir, "unknown-target");
+      const unknown = await executeCli(["demo", "--swarm", "--scenario", "unknown", "--dir", unknownTarget]);
+      expect(unknown.exitCode).toBe(2);
+      expect(unknown.stderr).toMatch(/unknown.*scenario/iu);
+      await expect(access(unknownTarget)).rejects.toThrow();
+
+      const liveTarget = join(dir, "live-target");
+      const live = await executeCli(["demo", "--swarm", "--live", "--dir", liveTarget]);
+      expect(live.exitCode).toBe(2);
+      expect(live.stderr).toMatch(/live workers are not part/iu);
+      await expect(access(liveTarget)).rejects.toThrow();
+    });
+  });
+
+  it("preserves refusal and explicit force replacement for swarm targets", async () => {
+    await withTempDir(async (dir) => {
+      const targetDirectory = join(dir, "existing-swarm");
+      await mkdir(targetDirectory, { recursive: true });
+      await writeFile(join(targetDirectory, "keep.txt"), "keep", "utf8");
+
+      const refused = await executeCli(["demo", "--swarm", "--dir", targetDirectory]);
+      expect(refused.exitCode).toBe(2);
+      expect(refused.stderr).toContain("already exists and is not empty");
+      expect(await readFile(join(targetDirectory, "keep.txt"), "utf8")).toBe("keep");
+
+      const replaced = await executeCli(["demo", "--swarm", "--dir", targetDirectory, "--force"]);
+      expect(replaced.exitCode).toBe(0);
+      await expect(access(join(targetDirectory, "keep.txt"))).rejects.toThrow();
+      expect(await readFile(join(targetDirectory, "src", "state.js"), "utf8")).toContain("createLaunchState");
     });
   });
 });

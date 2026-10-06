@@ -327,8 +327,23 @@ export function rewritePackageSpecifiers(contents, input) {
   );
 }
 
+export function rewriteWorkspacePackageSpecifiers(contents, input) {
+  return contents.replace(
+    /(['"])(?:\.\.\/){2,}(contracts|core|policy|headlessos-core|audit-exporter|adapters|presentation)\/dist\/([^'"\r\n]+)\1/gu,
+    (_match, quote, packageDir, packagePath) => {
+      const targetFile = path.join(input.distDir, "vendor", packageDir, packagePath);
+      const specifier = toImportSpecifier(path.dirname(input.targetPath), targetFile);
+
+      return `${quote}${specifier}${quote}`;
+    },
+  );
+}
+
 function rewriteBuiltFileContents(fileName, contents, input) {
-  const rewritten = rewritePackageSpecifiers(contents, input);
+  const rewritten = rewriteWorkspacePackageSpecifiers(
+    rewritePackageSpecifiers(contents, input),
+    input,
+  );
   return fileName.endsWith(".js") || fileName.endsWith(".d.ts")
     ? stripSourceMapDirectives(rewritten)
     : rewritten;

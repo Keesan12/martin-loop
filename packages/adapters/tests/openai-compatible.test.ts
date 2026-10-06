@@ -199,6 +199,190 @@ describe("createOpenAiCompatibleAdapter", () => {
     }
   });
 
+  it("forwards request cancellation to verifier execution", async () => {
+    const workingDirectory = await mkdtemp(join(tmpdir(), "martin-openai-verifier-abort-"));
+    const controller = new AbortController();
+    const fetchImpl: typeof fetch = async () => {
+      controller.abort("cancelled-before-verifier");
+      return new Response(JSON.stringify({
+        choices: [{
+          message: {
+            role: "assistant",
+            content: JSON.stringify({
+              summary: "prepared change",
+              edits: [{ path: "result.txt", content: "done\n" }],
+              deletions: []
+            })
+          },
+          finish_reason: "stop"
+        }],
+        usage: { prompt_tokens: 10, completion_tokens: 5 }
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+    };
+
+    try {
+      const adapter = createOpenAiCompatibleAdapter({
+        baseUrl: "http://127.0.0.1:1",
+        model: "test-model",
+        workingDirectory,
+        fetchImpl
+      });
+      const request = makeRequest({
+        task: {
+          title: "Apply then verify",
+          objective: "Create result.txt and verify it.",
+          verificationPlan: ["tool verify"]
+        }
+      }) as any;
+      request.workspaceId = "ws_test";
+      request.signal = controller.signal;
+
+      const result = await adapter.execute(request);
+
+      expect(result.status).toBe("failed");
+      expect(result.verification.steps).toEqual([
+        expect.objectContaining({ launched: false, completed: false })
+      ]);
+    } finally {
+      await rm(workingDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it("aborts an in-flight provider request when the parent signal fires", async () => {
+    const controller = new AbortController();
+    let observedFetchSignal: AbortSignal | undefined;
+    const fetchStarted = Promise.withResolvers<void>();
+    const fetchImpl: typeof fetch = async (_input, init) => {
+      observedFetchSignal = init?.signal ?? undefined;
+      fetchStarted.resolve();
+      await new Promise<void>((resolve) => {
+        if (observedFetchSignal?.aborted) resolve();
+        else observedFetchSignal?.addEventListener("abort", () => resolve(), { once: true });
+      });
+      throw new DOMException("parent cancelled", "AbortError");
+    };
+    const adapter = createOpenAiCompatibleAdapter({
+      baseUrl: "http://127.0.0.1:1",
+      model: "test-model",
+      fetchImpl
+    });
+    const request = makeRequest() as any;
+    request.signal = controller.signal;
+
+    const execution = adapter.execute(request);
+    await fetchStarted.promise;
+    controller.abort(new Error("parent cancelled"));
+    const result = await execution;
+
+    expect(observedFetchSignal?.aborted).toBe(true);
+    expect(result.status).toBe("failed");
+    expect(result.summary).toMatch(/cancel/i);
+  });
+
+  it("aborts a retry delay immediately instead of launching another request", async () => {
+    const controller = new AbortController();
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({
+      error: { message: "rate limited" }
+    }), {
+      status: 429,
+      headers: { "Content-Type": "application/json" }
+    }));
+    const adapter = createOpenAiCompatibleAdapter({
+      baseUrl: "http://127.0.0.1:1",
+      model: "test-model",
+      fetchImpl
+    });
+    const request = makeRequest() as any;
+    request.signal = controller.signal;
+
+    const execution = adapter.execute(request);
+    await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(1));
+    controller.abort(new Error("parent cancelled retry"));
+    const result = await execution;
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(result.status).toBe("failed");
+    expect(result.summary).toMatch(/cancel/i);
+  });
+
+  it("closes the parent-abort race while registering a provider request listener", async () => {
+    const controller = new AbortController();
+    const originalAddEventListener = controller.signal.addEventListener.bind(controller.signal);
+    const registration = vi.spyOn(controller.signal, "addEventListener").mockImplementation((
+      type: string,
+      listener: EventListenerOrEventListenerObject,
+      options?: boolean | AddEventListenerOptions
+    ) => {
+      if (type === "abort" && !controller.signal.aborted) {
+        controller.abort(new Error("cancelled while registering provider listener"));
+      }
+      originalAddEventListener(type, listener, options);
+    });
+    const fetchImpl = vi.fn<typeof fetch>(async (_input, init) => {
+      if (init?.signal?.aborted) throw new DOMException("parent cancelled", "AbortError");
+      return new Response(JSON.stringify({
+        choices: [{ message: { role: "assistant", content: "done" }, finish_reason: "stop" }]
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+    const adapter = createOpenAiCompatibleAdapter({
+      baseUrl: "http://127.0.0.1:1",
+      model: "test-model",
+      fetchImpl
+    });
+    const request = makeRequest() as any;
+    request.signal = controller.signal;
+
+    try {
+      const result = await adapter.execute(request);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      expect(result.status).toBe("failed");
+      expect(result.summary).toMatch(/cancel/i);
+    } finally {
+      registration.mockRestore();
+    }
+  });
+
+  it("closes the parent-abort race while registering a retry-delay listener", async () => {
+    const controller = new AbortController();
+    const originalAddEventListener = controller.signal.addEventListener.bind(controller.signal);
+    let abortRegistrations = 0;
+    const registration = vi.spyOn(controller.signal, "addEventListener").mockImplementation((
+      type: string,
+      listener: EventListenerOrEventListenerObject,
+      options?: boolean | AddEventListenerOptions
+    ) => {
+      if (type === "abort") {
+        abortRegistrations += 1;
+        if (abortRegistrations === 2 && !controller.signal.aborted) {
+          controller.abort(new Error("cancelled while registering retry listener"));
+        }
+      }
+      originalAddEventListener(type, listener, options);
+    });
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({
+      error: { message: "rate limited" }
+    }), { status: 429, headers: { "Content-Type": "application/json" } }));
+    const adapter = createOpenAiCompatibleAdapter({
+      baseUrl: "http://127.0.0.1:1",
+      model: "test-model",
+      fetchImpl
+    });
+    const request = makeRequest() as any;
+    request.signal = controller.signal;
+
+    try {
+      const result = await adapter.execute(request);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      expect(result.status).toBe("failed");
+      expect(result.summary).toMatch(/cancel/i);
+    } finally {
+      registration.mockRestore();
+    }
+  });
+
   it("blocks on budget preflight when projected cost exceeds remaining budget", async () => {
     const { url, close } = await startMockServer(() => ({ body: {} }));
     mockClose = close;

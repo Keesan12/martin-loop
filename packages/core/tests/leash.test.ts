@@ -193,6 +193,24 @@ describe("evaluateFilesystemLeash", () => {
     expect(decision.allowed).toBe(true);
     expect(decision.violations).toEqual([]);
   });
+
+  it("blocks every changed file for read-only execution even inside inspectable scope", () => {
+    const decision = evaluateFilesystemLeash({
+      repoRoot: "/repo",
+      changedFiles: ["/repo/src/report.ts"],
+      allowedPaths: ["src/**"],
+      mutationMode: "read_only"
+    });
+
+    expect(decision.allowed).toBe(false);
+    expect(decision.violations).toEqual([
+      expect.objectContaining({
+        file: "src/report.ts",
+        kind: "path_not_allowed",
+        message: "Read-only execution changed a file: src/report.ts"
+      })
+    ]);
+  });
 });
 
 describe("resolveExecutionProfile", () => {

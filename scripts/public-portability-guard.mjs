@@ -42,6 +42,8 @@ const PATH_ALLOWLIST = [
   /^scripts\/public-portability-guard\.mjs$/,
   // INTERNAL ONLY — promotion tooling; intentionally checks internal repo name as a validation constraint
   /^scripts\/verify-public-promotion\.mjs$/,
+  // INTERNAL ONLY — exact-SHA paid qualification launcher; never promoted
+  /^scripts\/run-swarm-live-qualification\.ts$/,
   /^scripts\/tests\//,
   /(^|\/)tests\//,
   /\.test\.[cm]?[jt]sx?$/i,
