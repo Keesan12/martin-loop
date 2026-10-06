@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { lstat, mkdir, open, readFile, realpath } from "node:fs/promises";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import {
   createSwarmRunRecord,
@@ -263,7 +263,8 @@ async function resolveProductionRuntimePaths(input: RunProductionLiveSwarmInput)
 }> {
   const runsRoot = await realpath(resolve(input.runsRoot));
   const requestedStoreRoot = resolve(input.storeRoot);
-  assertContainedOrSame(runsRoot, requestedStoreRoot, "Live swarm store root escaped the caller runs root.");
+  const canonicalRequestedStoreRoot = await resolveForContainment(requestedStoreRoot);
+  assertContainedOrSame(runsRoot, canonicalRequestedStoreRoot, "Live swarm store root escaped the caller runs root.");
   await mkdir(requestedStoreRoot, { recursive: true });
   const storeRoot = await realpath(requestedStoreRoot);
   assertContainedOrSame(runsRoot, storeRoot, "Live swarm store root escaped the real caller runs root.");
@@ -370,6 +371,23 @@ async function resolveOrCreateStrictlyContained(parent: string, requested: strin
   }
   assertStrictlyContained(parent, resolved, "Live swarm runtime realpath escaped its governed ancestor.");
   return resolved;
+}
+
+async function resolveForContainment(requested: string): Promise<string> {
+  let cursor = resolve(requested);
+  const suffix: string[] = [];
+  while (true) {
+    try {
+      const canonical = await realpath(cursor);
+      return resolve(canonical, ...suffix);
+    } catch (error) {
+      if (!isNodeError(error, "ENOENT")) throw error;
+      const parent = dirname(cursor);
+      if (parent === cursor) throw error;
+      suffix.unshift(basename(cursor));
+      cursor = parent;
+    }
+  }
 }
 
 function assertContainedOrSame(parent: string, candidate: string, message: string): void {
