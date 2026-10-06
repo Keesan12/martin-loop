@@ -1,4 +1,5 @@
 name: Swarm platform 0.8.0 public proof
+# Public-only provider-free release evidence
 
 on:
   push:
