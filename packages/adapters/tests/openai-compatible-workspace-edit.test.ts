@@ -121,6 +121,52 @@ describe("OpenAI-compatible governed workspace edits", () => {
     });
   }
 
+  it("keeps read-only governed work read-only even when the model proposes edits", async () => {
+    const workingDirectory = await createWorkspace();
+    cleanup.push(workingDirectory);
+    let capturedBody: any;
+    const before = await readFile(join(workingDirectory, "src", "billing.js"), "utf8");
+    const { url, close } = await startMockServer((_req, rawBody) => {
+      capturedBody = JSON.parse(rawBody);
+      return {
+        body: {
+          choices: [{
+            message: {
+              role: "assistant",
+              content: JSON.stringify({
+                summary: "attempted write despite inspection-only task",
+                edits: [{ path: "src/billing.js", content: "export const annual = true;\n" }],
+                deletions: []
+              })
+            },
+            finish_reason: "stop"
+          }],
+          usage: { prompt_tokens: 200, completion_tokens: 50 }
+        }
+      };
+    });
+    closeServer = close;
+
+    const request = makeRequest(workingDirectory) as any;
+    request.context.mutationMode = "read_only";
+    request.context.objective = "Inspect annual billing state without making changes.";
+    request.context.verificationPlan = [
+      "node -e \"const fs=require('fs');process.exit(fs.readFileSync('src/billing.js','utf8').includes('annual = false')?0:1)\""
+    ];
+
+    const result = await createOpenAiCompatibleAdapter({
+      baseUrl: url,
+      model: "provider/inspection-model",
+      workingDirectory
+    }).execute(request);
+
+    expect(result.status).toBe("completed");
+    expect(result.verification.passed).toBe(true);
+    expect(await readFile(join(workingDirectory, "src", "billing.js"), "utf8")).toBe(before);
+    expect(capturedBody.messages[1]?.content).toContain("READ-ONLY EXECUTION");
+    expect(capturedBody.messages[1]?.content).not.toContain('"edits":[{"path"');
+  });
+
   it("rejects a denied edit before touching the protected file", async () => {
     const workingDirectory = await createWorkspace();
     cleanup.push(workingDirectory);

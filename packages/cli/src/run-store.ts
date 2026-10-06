@@ -14,6 +14,7 @@ import {
 } from "@martin/core";
 import type {
   CostProvenance,
+  ExternalOutcomeEvidenceReference,
   LoopArtifact,
   LoopEvent,
   LoopRecord,
@@ -245,6 +246,7 @@ export interface VerificationStepSummary {
   timedOut?: boolean;
   fastFail?: boolean;
   detail?: string;
+  evidence?: ExternalOutcomeEvidenceReference;
 }
 
 export interface ArtifactSummary {
@@ -578,11 +580,18 @@ export function buildVerificationSummary(loop: LoopRecord): VerificationSummary 
   const steps = readVerificationSteps(payload);
   const binding = readVerifierBinding(payload);
   const changedFiles = readStringArray(payload?.["changedFiles"]);
+  const expectedAttemptId = latestAttemptIndex !== undefined
+    ? loop.attempts.find((attempt) => attempt.index === latestAttemptIndex)?.attemptId
+    : loop.attempts.at(-1)?.attemptId;
   const expectedBinding: VerifierExecutionBinding | undefined = binding
     ? {
         runId: loop.loopId,
         workspaceId: loop.workspaceId,
+        ...(expectedAttemptId ? { attemptId: expectedAttemptId } : {}),
         cwd: loop.receiptScope?.workingDirectory ?? loop.task.repoRoot ?? binding.cwd,
+        ...(loop.receiptScope?.runsRoot ? { runsRoot: loop.receiptScope.runsRoot } : {}),
+        ...(loop.task.executionProfile ? { executionProfile: loop.task.executionProfile } : {}),
+        ...(loop.task.allowedNetworkDomains?.length ? { allowedNetworkDomains: [...loop.task.allowedNetworkDomains] } : {}),
         commands: loop.task.verificationPlan,
       }
     : undefined;
@@ -770,7 +779,18 @@ function readVerifierBinding(payload: Record<string, unknown> | undefined): Veri
     ? {
         runId: value["runId"],
         workspaceId: value["workspaceId"],
+        ...(typeof value["attemptId"] === "string" ? { attemptId: value["attemptId"] } : {}),
         cwd: value["cwd"],
+        ...(typeof value["runsRoot"] === "string" ? { runsRoot: value["runsRoot"] } : {}),
+        ...(value["executionProfile"] === "strict_local"
+          || value["executionProfile"] === "ci_safe"
+          || value["executionProfile"] === "staging_controlled"
+          || value["executionProfile"] === "research_untrusted"
+          ? { executionProfile: value["executionProfile"] as "strict_local" | "ci_safe" | "staging_controlled" | "research_untrusted" }
+          : {}),
+        ...(Array.isArray(value["allowedNetworkDomains"])
+          ? { allowedNetworkDomains: readStringArray(value["allowedNetworkDomains"]) }
+          : {}),
         commands,
       }
     : undefined;
@@ -1572,7 +1592,27 @@ function normalizeVerificationStep(candidate: unknown): VerificationStepSummary 
     ...(typeof candidate["exitCode"] === "number" ? { exitCode: candidate["exitCode"] } : {}),
     ...(typeof candidate["timedOut"] === "boolean" ? { timedOut: candidate["timedOut"] } : {}),
     ...(typeof candidate["fastFail"] === "boolean" ? { fastFail: candidate["fastFail"] } : {}),
-    ...(typeof candidate["detail"] === "string" ? { detail: candidate["detail"] } : {})
+    ...(typeof candidate["detail"] === "string" ? { detail: candidate["detail"] } : {}),
+    ...(normalizeExternalOutcomeEvidence(candidate["evidence"])
+      ? { evidence: normalizeExternalOutcomeEvidence(candidate["evidence"])! }
+      : {})
+  };
+}
+
+function normalizeExternalOutcomeEvidence(value: unknown): ExternalOutcomeEvidenceReference | undefined {
+  if (!isRecord(value)) return undefined;
+  if (
+    value["kind"] !== "external_outcome"
+    || typeof value["contractId"] !== "string"
+    || typeof value["path"] !== "string"
+    || typeof value["sha256"] !== "string"
+    || !/^[a-f0-9]{64}$/u.test(value["sha256"])
+  ) return undefined;
+  return {
+    kind: "external_outcome",
+    contractId: value["contractId"],
+    path: value["path"],
+    sha256: value["sha256"],
   };
 }
 

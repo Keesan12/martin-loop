@@ -67,6 +67,9 @@ importers:
 
   packages/adapters:
     dependencies:
+      '@martin/contracts':
+        specifier: workspace:*
+        version: link:../contracts
       '@martin/core':
         specifier: workspace:*
         version: link:../core

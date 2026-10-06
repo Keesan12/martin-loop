@@ -137,10 +137,16 @@ async function copyDirectory(input) {
     if (entry.name.endsWith(".js") || entry.name.endsWith(".d.ts")) {
       const contents = await readFile(sourcePath, "utf8");
       let rewritten = rewritePackageJsonSpecifier(
-        rewritePackageSpecifiers(contents, {
-          targetPath,
-          distDir: input.distDir,
-        }),
+        rewriteWorkspacePackageSpecifiers(
+          rewritePackageSpecifiers(contents, {
+            targetPath,
+            distDir: input.distDir,
+          }),
+          {
+            targetPath,
+            distDir: input.distDir,
+          },
+        ),
         {
           targetPath,
           packageJsonTarget: input.packageJsonTarget,
@@ -190,6 +196,20 @@ function rewritePackageSpecifiers(contents, input) {
       const specifier = toImportSpecifier(
         path.dirname(input.targetPath),
         path.join(input.distDir, "vendor", mapped, "index.js"),
+      );
+
+      return `${quote}${specifier}${quote}`;
+    },
+  );
+}
+
+function rewriteWorkspacePackageSpecifiers(contents, input) {
+  return contents.replace(
+    /(['"])(?:\.\.\/){2,}(contracts|core|adapters|presentation|cli)\/dist\/([^'"\r\n]+)\1/gu,
+    (_match, quote, packageDir, packagePath) => {
+      const specifier = toImportSpecifier(
+        path.dirname(input.targetPath),
+        path.join(input.distDir, "vendor", packageDir, packagePath),
       );
 
       return `${quote}${specifier}${quote}`;

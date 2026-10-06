@@ -2,7 +2,7 @@ import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promi
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
@@ -17,7 +17,7 @@ import {
   resolveCliCommandAvailability,
   createVerifierOnlyAdapter,
 } from "@martin/adapters";
-import { runMartin, classifyRoute, createFileRunStore, getHistoricalDirectSuccessRate, getPreference, recordPreference, writeExitSignal, type MartinAdapter } from "@martin/core";
+import { runMartin, classifyRoute, createFileRunStore, getHistoricalDirectSuccessRate, getPreference, hashExternalOutcomeContract, recordPreference, writeExitSignal, type MartinAdapter } from "@martin/core";
 import {
   fetchSelectedMessage,
   getCliInstalledVersion,
@@ -34,6 +34,7 @@ import {
   createLoopRecord,
   EXIT_SIGNAL_VERSION,
   type ExitSignalV1,
+  type ExecutionProfile,
   type LoopBudget,
   type LoopCost,
   type LoopRecord,
@@ -41,7 +42,9 @@ import {
   type MartinRunListFilters,
   type MartinRunSelector,
   type MutationMode,
-  type ReceiptScope
+  type ReceiptScope,
+  type ExternalOutcomeContract,
+  validateExternalOutcomeContract
 } from "@martin/contracts";
 import {
   buildGovernedPlanStages,
@@ -114,6 +117,11 @@ import {
 import { CliCommandError, exitCodeForGovernedOutcome, renderCliError, renderCliSuccess, renderRunHeader, renderInlineMilestone, renderMilestonePrompt, renderLoopCard, type RunOutcome } from "./ux.js";
 import { deriveWorkspaceId, evaluateCliRunGate, readWorkspaceGovernanceReadiness, recordCliWorkflowStep } from "./workflow-state.js";
 import {
+  executeOutcomesVerifyCommand,
+  parseOutcomesVerifyArguments,
+  type OutcomesVerifyRequest,
+} from "./outcomes-command.js";
+import {
   recordRunAndGetPrompt,
   retryQueuedIntake,
   readMilestoneState,
@@ -131,6 +139,22 @@ import {
 import { offerArcadeWhileWaiting } from "./arcade/offer.js";
 import { MARTINLOOP_BADGE_CTA, MARTINLOOP_BADGE_MARKDOWN } from "./governed-badge.js";
 import { enqueueLoopForHostedSync, flushSyncQueue, syncQueueStatus } from "./sync-client.js";
+import {
+  executeSwarmDossierCommand,
+  executeSwarmInspectCommand,
+  executeSwarmShareCommand,
+  executeSwarmVerifyCommand,
+} from "./swarm-command.js";
+import {
+  executeSwarmCancelCommand,
+  executeSwarmPlanCommand,
+  executeSwarmRunCommand,
+  executeSwarmStatusCommand,
+  parseSwarmCommandArguments,
+  type ParsedSwarmCommand,
+} from "./swarm-command-private.js";
+
+type DefaultCliSwarmCommand = ParsedSwarmCommand;
 
 const require = createRequire(import.meta.url);
 const packageJson = require("../package.json") as { version: string };
@@ -237,6 +261,8 @@ export type RunCommandRequest = {
   deniedPaths?: string[];
   acceptanceCriteria?: string[];
   approvalPolicy?: import("@martin/contracts").ApprovalPolicy;
+  executionProfile?: ExecutionProfile;
+  allowedNetworkDomains?: string[];
 };
 
 type GuardrailsConfig = {
@@ -315,6 +341,11 @@ type ReviewCommand = {
 type ReceiptsExplainCommand = {
   command: "receipts_explain";
   selector: MartinRunSelector;
+};
+
+type OutcomesVerifyCommand = {
+  command: "outcomes_verify";
+  request: OutcomesVerifyRequest;
 };
 
 type NativePhaseCommand = {
@@ -543,6 +574,13 @@ export type ParsedCliArguments =
       directory: string;
       force: boolean;
     }
+  | {
+      command: "demo";
+      directory: string;
+      force: boolean;
+      swarm: true;
+      scenario: "launch-board";
+    }
   | InspectCommand
   | ResumeCommand
   | DoctorCommand
@@ -551,6 +589,7 @@ export type ParsedCliArguments =
   | EnvCommand
   | ReviewCommand
   | ReceiptsExplainCommand
+  | OutcomesVerifyCommand
   | NativePhaseCommand
   | PreflightCommand
   | TriageCommand
@@ -568,6 +607,7 @@ export type ParsedCliArguments =
   | SignalCommand
   | SyncCommand
   | AuditCommand
+  | DefaultCliSwarmCommand
   | {
       command: "telemetry";
       action: "status" | "explain" | "on" | "off";
@@ -641,6 +681,39 @@ export async function executeCli(args: string[]): Promise<{
         return await executeAuditCommand(parsed, outputMode);
       }
       case "demo": {
+        if ("swarm" in parsed && parsed.swarm) {
+          const {
+            getDeterministicSwarmDemoExitCode,
+            renderDeterministicSwarmDemoHuman,
+            runDeterministicSwarmDemo,
+          } = await import("./swarm-demo.js");
+          let result;
+          try {
+            result = await runDeterministicSwarmDemo({
+              targetDirectory: parsed.directory,
+              force: parsed.force,
+            });
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            if (message.includes("already exists and is not empty")) {
+              throw new CliCommandError("invalid_input", message, {
+                suggestion: "Choose an empty target or pass --force to replace it.",
+              });
+            }
+            throw error;
+          }
+          const rendered = renderCliSuccess(outputMode, {
+            data: Object.fromEntries(Object.entries(result).filter(([key]) => key !== "record")),
+            human: renderDeterministicSwarmDemoHuman(result),
+            quiet: result.swarmId,
+          });
+          const exitCode = getDeterministicSwarmDemoExitCode(result);
+          return {
+            ...rendered,
+            exitCode,
+            stderr: exitCode === 0 ? rendered.stderr : "Parent/global verifier did not verify the integrated swarm result.",
+          };
+        }
         const targetDirectory = await createDemoWorkspace({
           targetDirectory: parsed.directory,
           force: parsed.force
@@ -665,6 +738,22 @@ export async function executeCli(args: string[]): Promise<{
           executionVersionNotice
         );
       }
+      case "swarm_plan":
+        return await executeSwarmPlanCommand(parsed.request, outputMode);
+      case "swarm_run":
+        return await executeSwarmRunCommand(parsed.request, outputMode);
+      case "swarm_status":
+        return await executeSwarmStatusCommand(parsed.request, outputMode);
+      case "swarm_inspect":
+        return await executeSwarmInspectCommand(parsed.request, outputMode);
+      case "swarm_cancel":
+        return await executeSwarmCancelCommand(parsed.request, outputMode);
+      case "swarm_dossier":
+        return await executeSwarmDossierCommand(parsed.request, outputMode);
+      case "swarm_verify":
+        return await executeSwarmVerifyCommand(parsed.request, outputMode);
+      case "swarm_share":
+        return await executeSwarmShareCommand(parsed.request, outputMode);
       case "inspect":
         return await executeInspectCommand(parsed, outputMode);
       case "resume":
@@ -681,6 +770,8 @@ export async function executeCli(args: string[]): Promise<{
         return await executeReviewCommand(parsed, outputMode);
       case "receipts_explain":
         return await executeReceiptsExplainCommand(parsed.selector, outputMode);
+      case "outcomes_verify":
+        return await executeOutcomesVerifyCommand(parsed.request, outputMode);
       case "native_phase": {
         if (parsed.subcommand === "run" && parsed.execute) {
           executionVersionNotice = await computeVersionNotice(rootPackageVersion, false);
@@ -802,6 +893,18 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
     return { command: "help" };
   }
 
+  if (command === "swarm") {
+    if (
+      (rest.length === 1 && (rest[0] === "--help" || rest[0] === "-h"))
+      || (
+        rest.length === 2
+        && (["plan", "run", "status", "inspect", "cancel", "dossier", "verify", "share"].includes(rest[0] ?? ""))
+        && (rest[1] === "--help" || rest[1] === "-h")
+      )
+    ) return { command: "help" };
+    return parseSwarmCommandArguments(rest);
+  }
+
   if (command === "run" || command === "preflight") {
     if (rest[0] === "--help" || rest[0] === "-h") {
       return { command: "help" };
@@ -852,6 +955,43 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
   }
 
   if (command === "demo") {
+    if (hasFlag(rest, "--swarm")) {
+      for (let index = 0; index < rest.length; index += 1) {
+        const token = rest[index]!;
+        if (token === "--swarm" || token === "--force" || token === "--live") continue;
+        if (token === "--dir" || token === "--scenario") {
+          const value = rest[index + 1];
+          if (!value || value.startsWith("--")) {
+            throw new CliCommandError("invalid_input", `${token} requires a value.`);
+          }
+          index += 1;
+          continue;
+        }
+        throw new CliCommandError("invalid_input", `Unsupported swarm demo argument: ${token}.`);
+      }
+      if (hasFlag(rest, "--live")) {
+        throw new CliCommandError(
+          "invalid_input",
+          "Live workers are not part of deterministic demo mode.",
+          { suggestion: "Run demo --swarm without --live. Live swarm execution is delivered separately." },
+        );
+      }
+      const scenario = readOption(rest, "--scenario") ?? "launch-board";
+      if (scenario !== "launch-board") {
+        throw new CliCommandError(
+          "invalid_input",
+          `Unknown swarm demo scenario: ${scenario}.`,
+          { suggestion: "Use --scenario launch-board." },
+        );
+      }
+      return {
+        command: "demo",
+        directory: resolve(readOption(rest, "--dir") ?? join(process.cwd(), "martin-loop-demo")),
+        force: hasFlag(rest, "--force"),
+        swarm: true,
+        scenario: "launch-board",
+      };
+    }
     return {
       command: "demo",
       directory: resolve(readOption(rest, "--dir") ?? join(process.cwd(), "martin-loop-demo")),
@@ -927,6 +1067,14 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
     if (!objective) {
       return { command: "help" };
     }
+    const budgetUsd = toFiniteNumber(readOption(rest, "--budget-usd") ?? readOption(rest, "--budget") ?? "5") || 5;
+    const softLimitOption = readOption(rest, "--soft-limit-usd");
+    const maxIterationsOption = readOption(rest, "--max-iterations");
+    const maxTokensOption = readOption(rest, "--max-tokens");
+    const softLimitUsd = softLimitOption === undefined ? budgetUsd : (toFiniteNumber(softLimitOption) ?? budgetUsd);
+    const maxIterations = maxIterationsOption === undefined ? 1 : (toFiniteNumber(maxIterationsOption) ?? 1);
+    const maxTokens = maxTokensOption === undefined ? undefined : toFiniteNumber(maxTokensOption);
+    const hasExactBudget = softLimitOption !== undefined || maxIterationsOption !== undefined || maxTokensOption !== undefined;
     const fileScope: string[] = [];
     for (let i = 0; i < rest.length; i++) {
       const nextArg = rest[i + 1];
@@ -939,8 +1087,16 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
       command: "estimate",
       objective,
       engine: readOption(rest, "--engine") ?? "auto",
-      budgetUsd: toFiniteNumber(readOption(rest, "--budget-usd") ?? readOption(rest, "--budget") ?? "5") || 5,
+      budgetUsd,
       fileScope,
+      ...(hasExactBudget ? {
+        budget: {
+          maxUsd: budgetUsd,
+          softLimitUsd,
+          maxIterations,
+          ...(maxTokens === undefined ? {} : { maxTokens }),
+        },
+      } : {}),
       ...(readOption(rest, "--cwd") ? { cwd: readOption(rest, "--cwd") } : {}),
       ...(readOption(rest, "--runs-dir") ? { runsDir: readOption(rest, "--runs-dir") } : {})
     };
@@ -999,6 +1155,17 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
       return {
         command: "receipts_explain",
         selector: selector ?? { latest: true, ...(runsDir ? { runsDir } : {}) }
+      };
+    }
+    return { command: "help" };
+  }
+
+  if (command === "outcomes") {
+    const [subcommand, ...subcommandArgs] = rest;
+    if (subcommand === "verify") {
+      return {
+        command: "outcomes_verify",
+        request: parseOutcomesVerifyArguments(subcommandArgs),
       };
     }
     return { command: "help" };
@@ -1268,6 +1435,7 @@ export function renderCliHelp(): string {
     "  martin env [options]",
     "  martin review [--loop-id <id> | --file <path> | --latest] [options]",
     "  martin receipts explain [--loop-id <id> | --file <path> | --latest] [options]",
+    "  martin outcomes verify --contract <path> [--runs-dir <path>] [--allow-local]",
     "  martin doctor [options]",
     "  martin session-start [--host <claude|codex|generic>] [options]",
     "  martin phase status|contract|preflight|run [--execute] [options]",
@@ -1285,6 +1453,15 @@ export function renderCliHelp(): string {
     "  martin mcp uninstall --host <name> [--scope <user|project|local>]",
     "  martin demo [--dir <path>] [--force]",
     "  martin-loop demo [--dir <path>] [--force] (published alias)",
+    "  martin-loop demo --swarm [--scenario launch-board] [--dir <path>] [--force]",
+    "  martin swarm plan --file <plan.json> [--cwd <path>] [--runs-dir <path>]",
+    "  martin swarm run --file <plan.json> [--cwd <path>] [--runs-dir <path>]",
+    "  martin swarm status (--swarm-id <id> | --latest) [--watch] [--runs-dir <path>]",
+    "  martin swarm inspect (--swarm-id <id> | --latest) [--runs-dir <path>]",
+    "  martin swarm cancel (--swarm-id <id> | --latest) [--reason <text>] [--runs-dir <path>]",
+    "  martin swarm dossier (--id <id> | --latest) [--runs-dir <path>]",
+    "  martin swarm verify (--id <id> | --latest) [--runs-dir <path>]",
+    "  martin swarm share (--id <id> | --latest) --out-dir <path> [--runs-dir <path>]",
     "  martin inspect --file <path>",
     "  martin-loop inspect --file <path>        (published alias)",
     "  martin resume <loopId>",
@@ -1302,6 +1479,7 @@ export function renderCliHelp(): string {
     "  env          Print compact environment truth for provider/auth/verifier/readiness.",
     "  review       Print a human-friendly summary for the latest governed run.",
     "  receipts explain  Explain receipt trust state and what to do next.",
+    "  outcomes verify  Read external JSON state and verify claimed outcomes without performing writes.",
     "  doctor       Check CLI, engine, working directory, and run-store readiness.",
     "  session-start Show latest local run state, phase state, and command hints.",
     "  phase status    Read local phase state and run-store posture.",
@@ -1309,6 +1487,14 @@ export function renderCliHelp(): string {
     "  phase preflight Convert the phase contract into a MartinLoop preflight invocation; dry-run by default.",
     "  phase run       Convert the phase contract into a MartinLoop run invocation; dry-run by default.",
     "  preflight    Validate a governed run request before spend.",
+    "  swarm plan    Validate and persist a live swarm plan after all provider-free readiness gates pass.",
+    "  swarm run     Execute a previously approved live swarm plan with bounded concurrency and budget controls.",
+    "  swarm status  Read or watch the authoritative operational state for a live swarm.",
+    "  swarm inspect Read the authoritative plan, snapshot, and complete event history.",
+    "  swarm cancel  Request idempotent process-tree cancellation for a live swarm.",
+    "  swarm dossier Inspect the sealed local parent receipt with integrity and task truth kept separate.",
+    "  swarm verify  Independently verify the selected sealed local swarm evidence.",
+    "  swarm share   Write exactly three deterministic local proof artifacts for a fully verified swarm.",
     "  triage       Rank persisted runs that need attention first.",
     "  dossier      Produce a structured dossier for one persisted run.",
     "  runs list    List persisted loops with shared filters.",
@@ -1347,6 +1533,8 @@ export function renderCliHelp(): string {
     "  --latest                 Select the most recently updated loop.",
     "  --attempt-index <n>      Select a specific attempt for attempt inspection.",
     "  --out-dir <path>         Override where `martin share` writes the local bundle.",
+    "  --contract <path>        External outcome contract for `martin outcomes verify`.",
+    "  --allow-local            Explicitly allow HTTP/private local or staging read-back targets.",
     "  --install-governance     Install supported host governance hooks with MCP config.",
     "",
     "Phase command-center options:",
@@ -1390,6 +1578,9 @@ export function renderCliHelp(): string {
     "  --allow-path <glob>      Restrict agent writes to this path pattern (repeatable).",
     "  --deny-path <glob>       Block agent from this path pattern (repeatable).",
     "  --accept <criterion>     Add an acceptance criterion to the prompt (repeatable).",
+    "  --execution-profile <name> strict_local, ci_safe, staging_controlled, or research_untrusted.",
+    "  --allow-network-domain <host> Allow one verifier/provider network hostname (repeatable).",
+    "  --approve-external-writes Explicitly approve a staging task that may write to an external system.",
     "  --config <path>          Path to martin.config.yaml.",
     "",
     "Exit codes:",
@@ -1513,6 +1704,40 @@ async function executeRunCommand(
     engine: resolvedRequest.engine,
     liveMode: resolvedRequest.liveMode
   });
+  const hasExternalOutcomeVerifier = resolvedRequest.verificationPlan.some((command) =>
+    /(?:^|\s)(?:martin|martin-loop)\s+outcomes\s+verify(?:\s|$)/iu.test(command)
+  );
+  if (hasExternalOutcomeVerifier) {
+    const violations: string[] = [];
+    if (resolvedRequest.executionProfile !== "staging_controlled") violations.push("--execution-profile staging_controlled");
+    if ((resolvedRequest.allowedNetworkDomains?.length ?? 0) === 0) violations.push("at least one --allow-network-domain");
+    if (resolvedRequest.liveMode !== "proof") {
+      if (resolvedRequest.approvalPolicy?.externalWrites !== true) violations.push("--approve-external-writes");
+      if (resolvedRequest.budget.maxIterations !== 1) violations.push("--max-iterations 1");
+    }
+    if (violations.length > 0) {
+      throw new CliCommandError(
+        "policy_blocked",
+        `External outcome verification requires ${violations.join(", ")}.`,
+        { suggestion: "Use one external-write attempt and bounded read-only outcome verification; do not auto-resubmit external actions." }
+      );
+    }
+  }
+  if (hasExternalOutcomeVerifier) {
+    const prepared = await prepareExternalOutcomeVerifierCommands(
+      resolvedRequest.verificationPlan,
+      cliEnvironment.workingDirectory,
+      resolvedRequest.allowedNetworkDomains ?? [],
+      cliEnvironment.runsRoot,
+    );
+    resolvedRequest.verificationPlan = prepared.commands;
+    if (prepared.repoRelativeContractPath) {
+      resolvedRequest.deniedPaths = Array.from(new Set([
+        ...(resolvedRequest.deniedPaths ?? []),
+        prepared.repoRelativeContractPath,
+      ]));
+    }
+  }
   if (resolvedRequest.workspaceId === "ws_default") {
     resolvedRequest.workspaceId = deriveWorkspaceId(cliEnvironment.workingDirectory);
   }
@@ -1787,6 +2012,8 @@ async function executeRunCommand(
         ...(resolvedRequest.acceptanceCriteria?.length
           ? { acceptanceCriteria: resolvedRequest.acceptanceCriteria }
           : {}),
+        ...(resolvedRequest.executionProfile ? { executionProfile: resolvedRequest.executionProfile } : {}),
+        ...(resolvedRequest.allowedNetworkDomains?.length ? { allowedNetworkDomains: resolvedRequest.allowedNetworkDomains } : {}),
         ...(resolvedRequest.approvalPolicy ? { approvalPolicy: resolvedRequest.approvalPolicy } : {})
       },
       budget: resolvedRequest.budget,
@@ -3452,6 +3679,33 @@ async function executePreflightCommand(
     warnings.push("No verification plan is configured for this run.");
   }
 
+  const hasExternalOutcomeVerifier = verificationPlan.some((command) =>
+    /(?:^|\s)(?:martin|martin-loop)\s+outcomes\s+verify(?:\s|$)/iu.test(command)
+  );
+  if (hasExternalOutcomeVerifier) {
+    if (request.executionProfile !== "staging_controlled") {
+      blockingIssues.push("External outcome verification in a governed run requires --execution-profile staging_controlled.");
+    }
+    if ((request.allowedNetworkDomains?.length ?? 0) === 0) {
+      blockingIssues.push("External outcome verification requires at least one --allow-network-domain.");
+    }
+    if (request.liveMode !== "proof") {
+      if (request.approvalPolicy?.externalWrites !== true) {
+        blockingIssues.push("External outcome verification for side-effecting work requires --approve-external-writes.");
+      }
+      if (resolvedGuardrails.budget.maxIterations !== 1) {
+        blockingIssues.push("External side-effect verification requires --max-iterations 1 so failed verification cannot resubmit the action.");
+      }
+    }
+  }
+  if (hasExternalOutcomeVerifier && blockingIssues.length === 0) {
+    await prepareExternalOutcomeVerifierCommands(
+      verificationPlan,
+      environment.workingDirectory,
+      request.allowedNetworkDomains ?? [],
+    );
+  }
+
   const overlappingPaths = (request.allowedPaths ?? []).filter((allowedPath) =>
     (request.deniedPaths ?? []).includes(allowedPath)
   );
@@ -4284,6 +4538,94 @@ function stripGlobalOptions(args: string[]): {
   };
 }
 
+async function prepareExternalOutcomeVerifierCommands(
+  commands: string[],
+  workingDirectory: string,
+  allowedNetworkDomains: string[],
+  trustedRunsRoot?: string,
+): Promise<{ commands: string[]; repoRelativeContractPath?: string }> {
+  const indexes = commands
+    .map((command, index) => /(?:^|\s)(?:martin|martin-loop)\s+outcomes\s+verify(?:\s|$)/iu.test(command) ? index : -1)
+    .filter((index) => index >= 0);
+  if (indexes.length === 0) return { commands: [...commands] };
+  if (indexes.length > 1) {
+    throw new CliCommandError("invalid_input", "One governed run may bind only one external outcome contract.");
+  }
+
+  const index = indexes[0]!;
+  const command = commands[index]!;
+  if (/--expected-contract-sha256(?:\s|=)/iu.test(command)) {
+    throw new CliCommandError("invalid_input", "--expected-contract-sha256 is reserved for MartinLoop's trusted pre-execution snapshot.");
+  }
+  const match = /(?:^|\s)--contract(?:\s+|=)(?:"([^"]+)"|'([^']+)'|([^\s]+))/iu.exec(command);
+  const contractArg = match?.[1] ?? match?.[2] ?? match?.[3];
+  if (!contractArg) {
+    throw new CliCommandError("invalid_input", "External outcome verifier requires --contract <path>.");
+  }
+  const contractPath = resolve(workingDirectory, contractArg);
+  let contract: ExternalOutcomeContract;
+  try {
+    contract = JSON.parse(await readFile(contractPath, "utf8")) as ExternalOutcomeContract;
+  } catch (error) {
+    throw new CliCommandError("invalid_input", `Unable to snapshot external outcome contract: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  const errors = validateExternalOutcomeContract(contract);
+  if (errors.length > 0) {
+    throw new CliCommandError("invalid_input", "External outcome contract is invalid.", { details: { errors } });
+  }
+
+  const allowed = allowedNetworkDomains.map((domain) => domain.toLowerCase());
+  for (const action of contract.actions) {
+    const hostname = new URL(action.source.url).hostname.toLowerCase();
+    if (!allowed.some((domain) => hostname === domain || hostname.endsWith(`.${domain}`))) {
+      throw new CliCommandError(
+        "policy_blocked",
+        `External outcome contract host is outside --allow-network-domain: ${hostname}`,
+      );
+    }
+  }
+
+  const sha256 = hashExternalOutcomeContract(contract);
+  let verifierContractPath = contractPath;
+  if (trustedRunsRoot) {
+    const snapshotRoot = join(resolve(trustedRunsRoot), "_external-outcome-contracts");
+    await mkdir(snapshotRoot, { recursive: true, mode: 0o700 });
+    const snapshotPath = join(snapshotRoot, `${sha256}.json`);
+    const snapshotBytes = `${JSON.stringify(contract, null, 2)}\n`;
+    try {
+      await writeFile(snapshotPath, snapshotBytes, { encoding: "utf8", flag: "wx", mode: 0o600 });
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "EEXIST") throw error;
+      const existing = JSON.parse(await readFile(snapshotPath, "utf8")) as ExternalOutcomeContract;
+      if (hashExternalOutcomeContract(existing) !== sha256) {
+        throw new CliCommandError("policy_blocked", "Trusted external outcome contract snapshot does not match the pre-execution hash.");
+      }
+    }
+    verifierContractPath = snapshotPath;
+  }
+
+  const rewritten = [...commands];
+  const replacement = `--contract ${JSON.stringify(verifierContractPath)}`;
+  const contractToken = match![0]!;
+  const leadingWhitespace = /^\s/u.test(contractToken) ? " " : "";
+  rewritten[index] = `${command.replace(contractToken, `${leadingWhitespace}${replacement}`)} --expected-contract-sha256 ${sha256}`;
+
+  const repoRelative = relative(workingDirectory, contractPath).replaceAll("\\", "/");
+  const repoRelativeContractPath =
+    repoRelative !== ""
+    && repoRelative !== ".."
+    && !repoRelative.startsWith("../")
+    && !isAbsolute(repoRelative)
+      ? repoRelative
+      : undefined;
+
+  return {
+    commands: rewritten,
+    ...(repoRelativeContractPath ? { repoRelativeContractPath } : {}),
+  };
+}
+
 function parseRunRequest(rest: string[]): RunCommandRequest {
   const verificationPlan: string[] = [];
   const metadata: Record<string, string> = {};
@@ -4453,6 +4795,20 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
         }
         index += 1;
         break;
+      case "--execution-profile":
+        if (!next || !["strict_local", "ci_safe", "staging_controlled", "research_untrusted"].includes(next)) {
+          throw new CliCommandError("invalid_input", "--execution-profile must be strict_local, ci_safe, staging_controlled, or research_untrusted.");
+        }
+        request.executionProfile = next as ExecutionProfile;
+        index += 1;
+        break;
+      case "--allow-network-domain":
+        if (!next || next.startsWith("--")) {
+          throw new CliCommandError("invalid_input", "--allow-network-domain requires a hostname.");
+        }
+        request.allowedNetworkDomains = [...(request.allowedNetworkDomains ?? []), next.toLowerCase()];
+        index += 1;
+        break;
       case "--model":
         request.model = next;
         index += 1;
@@ -4469,6 +4825,9 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
         break;
       case "--approve-config-changes":
         request.approvalPolicy = { ...request.approvalPolicy, configChanges: true };
+        break;
+      case "--approve-external-writes":
+        request.approvalPolicy = { ...request.approvalPolicy, externalWrites: true };
         break;
       case "--allow-outdated":
         request.allowOutdated = true;
@@ -4523,6 +4882,8 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
     ...(request.allowedPaths?.length ? { allowedPaths: request.allowedPaths } : {}),
     ...(request.deniedPaths?.length ? { deniedPaths: request.deniedPaths } : {}),
     ...(request.acceptanceCriteria?.length ? { acceptanceCriteria: request.acceptanceCriteria } : {}),
+    ...(request.executionProfile ? { executionProfile: request.executionProfile } : {}),
+    ...(request.allowedNetworkDomains?.length ? { allowedNetworkDomains: request.allowedNetworkDomains } : {}),
     ...(request.approvalPolicy ? { approvalPolicy: request.approvalPolicy } : {})
   };
 }

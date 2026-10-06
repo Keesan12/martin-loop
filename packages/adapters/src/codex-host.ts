@@ -12,12 +12,8 @@ import {
 } from "node:fs";
 import { dirname, extname, join, resolve } from "node:path";
 import { userInfo } from "node:os";
-import { normalizeProviderExecutionTimeoutMs } from "@martin/contracts";
-
 import { createSpawnPlan, resolveNpmShimScript } from "./cli-bridge.js";
 import {
-  buildCodexExecArgs,
-  buildCodexStdin,
   cacheCodexCapabilityProfile,
   probeCodexCapabilities,
   resolveCodexAutonomyCandidates,
@@ -401,14 +397,7 @@ export function diagnoseCodexHost(
 interface OrderedCandidate {
   path: string;
   diagnosis: CodexHostDiagnosis;
-  preference: number;
   discoveryIndex: number;
-}
-
-function candidatePreference(path: string, diagnosis: CodexHostDiagnosis, platform: NodeJS.Platform): number {
-  const base = diagnosis.installKind === "native" ? 0 : diagnosis.installKind === "windows_shim" ? 20 : 30;
-  if (platform !== "win32" || diagnosis.installKind !== "windows_shim") return base;
-  return base + (/\.(cmd|bat|ps1)$/iu.test(path) ? 0 : 1);
 }
 
 function buildCandidates(input: {
@@ -432,11 +421,9 @@ function buildCandidates(input: {
       return {
         path,
         diagnosis,
-        preference: candidatePreference(path, diagnosis, input.platform),
         discoveryIndex
       };
-    })
-    .sort((a, b) => a.preference === b.preference ? a.discoveryIndex - b.discoveryIndex : a.preference - b.preference);
+    });
 }
 
 function isInsideGitRepository(workingDirectory: string): boolean {
@@ -475,19 +462,37 @@ function buildInjectedSpawnPlan(
   return { command: binaryPath, args, invocationMode: "direct" };
 }
 
-function buildMarkerPrompt(marker: string, outsideMarkerPath: string): string {
-  const command = `node -e "require('node:fs').writeFileSync(process.argv[1],'MARTIN_CODEX_WRITE_OK')" ${marker}`;
-  const outsideCommand = `node -e "require('node:fs').writeFileSync(process.argv[1],'MARTIN_CODEX_OUTSIDE_BAD')" "${outsideMarkerPath}"`;
-  return [
-    "You are validating MartinLoop Codex host readiness.",
-    "Do not modify tracked files.",
-    "First attempt this outside-workspace command and confirm that it is denied:",
-    outsideCommand,
-    "Then use the shell command executor for the allowed workspace marker.",
-    `Run exactly: ${command}`,
-    "Do not use MCP tools or alternate tools.",
-    "After it succeeds, reply READY."
+function buildLocalSandboxProbeArgs(input: {
+  workingDirectory: string;
+  markerPath: string;
+  outsideMarkerPath: string;
+}): string[] {
+  const script = [
+    "const fs = require('node:fs');",
+    "const inside = process.argv[1];",
+    "const outside = process.argv[2];",
+    "fs.writeFileSync(inside, 'MARTIN_CODEX_WRITE_OK', 'utf8');",
+    "try {",
+    "  fs.writeFileSync(outside, 'MARTIN_CODEX_OUTSIDE_BAD', 'utf8');",
+    "  process.exitCode = 42;",
+    "} catch (error) {",
+    "  if (!error || !['EACCES', 'EPERM', 'EROFS'].includes(error.code)) throw error;",
+    "}"
   ].join("\n");
+
+  return [
+    "sandbox",
+    "--permission-profile",
+    ":workspace",
+    "-C",
+    input.workingDirectory,
+    "--",
+    process.execPath,
+    "-e",
+    script,
+    input.markerPath,
+    input.outsideMarkerPath
+  ];
 }
 
 function classifyFailure(stderr: string, stdout: string, diagnosis: CodexHostDiagnosis): CodexHostDiagnosis {
@@ -564,7 +569,6 @@ export function probeCodexLaunch(input: {
   const platform = input.platform ?? process.platform;
   const env = input.env ?? process.env;
   const spawnSyncImpl = input.spawnSyncImpl ?? spawnSync;
-  const providerExecutionTimeoutMs = normalizeProviderExecutionTimeoutMs(input.providerExecutionTimeoutMs);
   const candidates = buildCandidates({
     availability,
     env,
@@ -641,117 +645,110 @@ export function probeCodexLaunch(input: {
       continue;
     }
 
-    const transports = profile.promptTransports?.length ? profile.promptTransports : [profile.promptTransport];
-    const resolutions = resolveCodexAutonomyCandidates(profile);
-    let candidateSummary = "No advertised Codex invocation strategy proved writable execution.";
+    const transport = profile.promptTransports?.[0] ?? profile.promptTransport;
+    const resolution = resolveCodexAutonomyCandidates(profile)[0];
+    let candidateSummary = "No advertised Codex invocation strategy supports governed workspace writes.";
 
-    for (const resolution of resolutions) {
-      for (const transport of transports) {
-        const marker = `.martin-codex-write-probe-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.tmp`;
-        const markerPath = join(input.workingDirectory, marker);
-        // Codex workspace-write intentionally permits the host temp directory,
-        // and the repo can be nested inside a broader writable host workspace.
-        // Probe from the user-home boundary so the denial canary is outside both.
-        const outsideRoot = mkdtempSync(join(userInfo().homedir, ".martin-codex-outside-probe-"));
-        const outsideMarkerPath = join(outsideRoot, ".martin-codex-outside-probe.tmp");
-        const prompt = buildMarkerPrompt(marker, outsideMarkerPath);
-        let args: string[];
-        try {
-          args = buildCodexExecArgs({
-            command: candidate.path,
-            workingDirectory: input.workingDirectory,
-            sandbox: "workspace-write",
-            ...(input.model ? { model: input.model } : {}),
-            mode: "probe",
-            prompt,
-            capabilityProfile: profile,
-            promptTransport: transport,
-            writeStrategy: resolution.strategy,
-            autonomyResolution: resolution
-          });
-        } catch (error) {
-          rmSync(outsideRoot, { recursive: true, force: true });
-          candidateSummary = error instanceof Error ? error.message : String(error);
-          lastFailure = { candidate, profile, args: [], summary: candidateSummary };
-          continue;
-        }
-
-        const plan = input.spawnSyncImpl
-          ? buildInjectedSpawnPlan(candidate.path, args, platform)
-          : { ...createSpawnPlan(candidate.path, args, input.workingDirectory, false), invocationMode: "direct" as const };
-        const stdin = buildCodexStdin(profile, prompt, transport);
-        const result = spawnSyncImpl(plan.command, plan.args, {
-          cwd: input.workingDirectory,
-          encoding: "utf8",
-          stdio: [stdin === undefined ? "ignore" : "pipe", "pipe", "pipe"],
-          ...(stdin !== undefined ? { input: stdin } : {}),
-          timeout: providerExecutionTimeoutMs
-        });
-
-        let markerVerified = false;
-        let outsideDenied = false;
-        try {
-          markerVerified = existsSync(markerPath) && readFileSync(markerPath, "utf8") === "MARTIN_CODEX_WRITE_OK";
-          outsideDenied = !existsSync(outsideMarkerPath);
-        } finally {
-          try {
-            unlinkSync(markerPath);
-          } catch {
-            // best effort cleanup
-          }
-          rmSync(outsideRoot, { recursive: true, force: true });
-        }
-
-        if (!result.error && result.status === 0 && markerVerified && outsideDenied) {
-          const negotiated = cacheCodexCapabilityProfile({ ...profile, promptTransport: transport }, platform);
-          selected = {
-            candidate: {
-              ...candidate,
-              diagnosis: { ...candidate.diagnosis, invocationMode: plan.invocationMode }
-            },
-            profile: negotiated,
-            args,
-            resolution,
-            transport,
-            ...(result.status === null ? {} : { exitCode: result.status }),
-            stdout: result.stdout ?? "",
-            stderr: result.stderr ?? ""
-          };
-          candidateResults.push({
-            path: candidate.path,
-            installKind: candidate.diagnosis.installKind,
-            invocationMode: plan.invocationMode,
-            nativeInstallValid: true,
-            sandboxCompatible: true,
-            launchReady: true,
-            summary: `Codex capability negotiation passed with ${resolution.strategy} / ${transport}.`,
-            capabilityProfile: negotiated,
-            writeStrategy: resolution.strategy,
-            autonomyResolution: resolution,
-            promptTransport: transport
-          });
-          break candidateLoop;
-        }
-
-        const failureDiagnosis = classifyFailure(result.stderr ?? "", result.stdout ?? "", candidate.diagnosis);
-        candidateSummary = result.error
-          ? `Codex launch probe failed: ${result.error.message}`
-          : result.status !== 0
-            ? `Codex launch probe exited non-zero: ${(result.stderr ?? result.stdout ?? "").trim() || String(result.status)}`
-            : !outsideDenied
-              ? `Codex ${resolution.strategy} / ${transport} escaped the workspace boundary.`
-              : `Codex ${resolution.strategy} / ${transport} invocation did not prove workspace writes.`;
-        lastFailure = {
-          candidate: { ...candidate, diagnosis: failureDiagnosis },
-          profile,
-          args,
-          summary: candidateSummary,
-          ...(result.status === null ? {} : { exitCode: result.status }),
-          stdout: result.stdout ?? "",
-          stderr: result.stderr ?? ""
-        };
-      }
+    if (!resolution) {
+      lastFailure = { candidate, profile, args: [], summary: candidateSummary };
+      candidateResults.push({
+        path: candidate.path,
+        installKind: candidate.diagnosis.installKind,
+        invocationMode: candidate.diagnosis.invocationMode,
+        nativeInstallValid: candidate.diagnosis.nativeInstallValid,
+        sandboxCompatible: false,
+        launchReady: false,
+        summary: candidateSummary,
+        capabilityProfile: profile,
+        ...(candidate.diagnosis.remediation ? { remediation: candidate.diagnosis.remediation } : {})
+      });
+      continue;
     }
+
+    const marker = `.martin-codex-write-probe-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.tmp`;
+    const markerPath = join(input.workingDirectory, marker);
+    // The outside canary is created under the user-home boundary because Codex
+    // intentionally grants temp writes and the repository may be nested inside
+    // a broader writable host workspace.
+    const outsideRoot = mkdtempSync(join(userInfo().homedir, ".martin-codex-outside-probe-"));
+    const outsideMarkerPath = join(outsideRoot, ".martin-codex-outside-probe.tmp");
+    const args = buildLocalSandboxProbeArgs({
+      workingDirectory: input.workingDirectory,
+      markerPath,
+      outsideMarkerPath
+    });
+    const plan = input.spawnSyncImpl
+      ? buildInjectedSpawnPlan(candidate.path, args, platform)
+      : { ...createSpawnPlan(candidate.path, args, input.workingDirectory, false), invocationMode: "direct" as const };
+    const result = spawnSyncImpl(plan.command, plan.args, {
+      cwd: input.workingDirectory,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 300_000
+    });
+
+    let markerVerified = false;
+    let outsideDenied = false;
+    try {
+      markerVerified = existsSync(markerPath) && readFileSync(markerPath, "utf8") === "MARTIN_CODEX_WRITE_OK";
+      outsideDenied = !existsSync(outsideMarkerPath);
+    } finally {
+      try {
+        unlinkSync(markerPath);
+      } catch {
+        // best effort cleanup
+      }
+      rmSync(outsideRoot, { recursive: true, force: true });
+    }
+
+    if (!result.error && result.status === 0 && markerVerified && outsideDenied) {
+      const negotiated = cacheCodexCapabilityProfile({ ...profile, promptTransport: transport }, platform);
+      selected = {
+        candidate: {
+          ...candidate,
+          diagnosis: { ...candidate.diagnosis, invocationMode: plan.invocationMode }
+        },
+        profile: negotiated,
+        args,
+        resolution,
+        transport,
+        ...(result.status === null ? {} : { exitCode: result.status }),
+        stdout: result.stdout ?? "",
+        stderr: result.stderr ?? ""
+      };
+      candidateResults.push({
+        path: candidate.path,
+        installKind: candidate.diagnosis.installKind,
+        invocationMode: plan.invocationMode,
+        nativeInstallValid: true,
+        sandboxCompatible: true,
+        launchReady: true,
+        summary: `Codex local sandbox capability probe passed with ${resolution.strategy} / ${transport}.`,
+        capabilityProfile: negotiated,
+        writeStrategy: resolution.strategy,
+        autonomyResolution: resolution,
+        promptTransport: transport
+      });
+      break candidateLoop;
+    }
+
+    const failureDiagnosis = classifyFailure(result.stderr ?? "", result.stdout ?? "", candidate.diagnosis);
+    candidateSummary = result.error
+      ? `Codex local sandbox probe failed: ${result.error.message}`
+      : result.status !== 0
+        ? `Codex local sandbox probe exited non-zero: ${(result.stderr ?? result.stdout ?? "").trim() || String(result.status)}`
+        : !outsideDenied
+          ? "Codex local sandbox probe escaped the workspace boundary."
+          : "Codex local sandbox probe did not prove workspace writes.";
+    lastFailure = {
+      candidate: { ...candidate, diagnosis: failureDiagnosis },
+      profile,
+      args,
+      summary: candidateSummary,
+      ...(result.status === null ? {} : { exitCode: result.status }),
+      stdout: result.stdout ?? "",
+      stderr: result.stderr ?? ""
+    };
 
     candidateResults.push({
       path: candidate.path,
@@ -769,7 +766,7 @@ export function probeCodexLaunch(input: {
   if (selected) {
     const result: CodexLaunchProbeResult = {
       ok: true,
-      summary: `Codex capability-driven workspace-write probe passed using ${selected.resolution.strategy} / ${selected.transport}.`,
+      summary: `Codex capability-driven local sandbox probe passed using ${selected.resolution.strategy} / ${selected.transport}.`,
       availability: { ...availability, resolvedPath: selected.candidate.path, candidatePaths },
       diagnosis: { ...selected.candidate.diagnosis, resolvedPath: selected.candidate.path },
       command: selected.candidate.path,

@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-04
+
+### Added
+- Added `martin-loop demo --swarm`, a deterministic 15-agent launch-board demonstration with bounded concurrency, parent-controlled integration, reassignment and recovery, inspectable evidence, and parent/global verification.
+- Added provider-free Swarm contracts, scheduling, isolation, evidence, receipt, dossier, verification, and packed-artifact primitives required by the demo.
+
+### Release boundary
+- The demo performs no provider execution and reports `$0` provider spend.
+- Provider-backed live Swarm plan, run, status, and cancel commands are not exposed by the default 0.8.0 CLI and remain deferred pending separate qualification.
+
 ## [0.7.1] - 2026-10-01
 
 ### Fixed

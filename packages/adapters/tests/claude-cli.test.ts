@@ -4,7 +4,7 @@ import type { ChildProcess, SpawnOptions } from "node:child_process";
 
 import { describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -117,7 +117,26 @@ function createScriptedSpawn(
  * early termination via `child.kill()`.
  */
 function createStreamingSpawn(calls: SpawnCall[], lines: string[]): SpawnLike {
+  let activeMainClose: ((code: number) => void) | undefined;
+
   return (command, args = [], options) => {
+    if (command.toLowerCase().endsWith("taskkill.exe")) {
+      const taskkill = new EventEmitter() as Partial<ChildProcess> & {
+        stdout: PassThrough;
+        stderr: PassThrough;
+        stdin: PassThrough;
+      };
+      taskkill.stdout = new PassThrough();
+      taskkill.stderr = new PassThrough();
+      taskkill.stdin = new PassThrough();
+      calls.push({ command, args: [...args], options, stdin: "" });
+      process.nextTick(() => {
+        activeMainClose?.(143);
+        taskkill.emit("close", 0);
+      });
+      return taskkill as ChildProcess;
+    }
+
     const child = new EventEmitter() as Partial<ChildProcess> & {
       stdout: PassThrough;
       stderr: PassThrough;
@@ -126,6 +145,7 @@ function createStreamingSpawn(calls: SpawnCall[], lines: string[]): SpawnLike {
     child.stdout = new PassThrough();
     child.stderr = new PassThrough();
     child.stdin = new PassThrough();
+    Object.defineProperty(child, "pid", { value: 4600 + calls.length });
 
     let killed = false;
     let closed = false;
@@ -136,6 +156,7 @@ function createStreamingSpawn(calls: SpawnCall[], lines: string[]): SpawnLike {
       closed = true;
       child.emit("close", code);
     };
+    activeMainClose = emitClose;
 
     child.kill = () => {
       if (!killed) {
@@ -326,10 +347,54 @@ describe("createAgentCliAdapter", () => {
     ]);
     expect(result.verification.binding).toEqual({
       runId: request.loopId,
+      attemptId: request.attemptId,
       workspaceId: request.workspaceId,
       cwd: process.cwd(),
       commands: request.context.verificationPlan,
     });
+  });
+
+  it("forwards request cancellation to verification after agent execution", async () => {
+    const controller = new AbortController();
+    let spawnCalls = 0;
+    const spawnImpl: SpawnLike = () => {
+      spawnCalls += 1;
+      const child = new EventEmitter() as Partial<ChildProcess> & {
+        stdout: PassThrough;
+        stderr: PassThrough;
+        stdin: Writable;
+        exitCode: number | null;
+      };
+      child.stdout = new PassThrough();
+      child.stderr = new PassThrough();
+      child.stdin = new Writable({ write(_chunk, _encoding, callback) { callback(); } });
+      child.exitCode = null;
+      Object.defineProperty(child, "pid", { value: 4555 });
+      process.nextTick(() => {
+        child.stdout.write("done\n");
+        child.exitCode = 0;
+        child.emit("exit", 0, null);
+        child.stdout.end();
+        child.stderr.end();
+        child.emit("close", 0, null);
+        controller.abort("cancelled-before-verifier");
+      });
+      return child as ChildProcess;
+    };
+    const adapter = createAgentCliAdapter({
+      command: "agent",
+      argsBuilder: () => ["run"],
+      supportsJsonOutput: false,
+      spawnImpl
+    });
+
+    const result = await adapter.execute(makeRequest({ signal: controller.signal }));
+
+    expect(spawnCalls).toBe(1);
+    expect(result.status).toBe("failed");
+    expect(result.verification.steps).toEqual([
+      expect.objectContaining({ launched: false, completed: false })
+    ]);
   });
 
   it("returns failed when verification command exits non-zero", async () => {
@@ -684,6 +749,59 @@ describe("createVerifierOnlyAdapter", () => {
     }
   });
 
+  it("captures real tracked and untracked patch content for execution artifacts", { timeout: 15000 }, async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-real-patch-"));
+
+    try {
+      spawnSync("git", ["init"], { cwd: directory, stdio: "ignore" });
+      await writeFile(join(directory, "tracked.txt"), "before\n", "utf8");
+      spawnSync("git", ["add", "tracked.txt"], { cwd: directory, stdio: "ignore" });
+      spawnSync(
+        "git",
+        ["-c", "user.email=martin@example.com", "-c", "user.name=Martin Test", "commit", "-m", "seed"],
+        { cwd: directory, stdio: "ignore" }
+      );
+      await writeFile(join(directory, "tracked.txt"), "after\n", "utf8");
+      await writeFile(join(directory, "untracked.txt"), "brand new content\n", "utf8");
+
+      const artifacts = await readGitExecutionArtifacts(directory, 5_000);
+
+      expect(artifacts.changedFiles).toEqual(["tracked.txt", "untracked.txt"]);
+      expect(artifacts.patch).toContain("-before");
+      expect(artifacts.patch).toContain("+after");
+      expect(artifacts.patch).toContain("--- /dev/null");
+      expect(artifacts.patch).toContain("+++ b/untracked.txt");
+      expect(artifacts.patch).toContain("+brand new content");
+
+      const fanInDirectory = await mkdtemp(join(tmpdir(), "martin-real-patch-fanin-"));
+      try {
+        spawnSync("git", ["init"], { cwd: fanInDirectory, stdio: "ignore" });
+        await writeFile(join(fanInDirectory, "tracked.txt"), "before\n", "utf8");
+        spawnSync("git", ["add", "tracked.txt"], { cwd: fanInDirectory, stdio: "ignore" });
+        spawnSync(
+          "git",
+          ["-c", "user.email=martin@example.com", "-c", "user.name=Martin Test", "commit", "-m", "seed"],
+          { cwd: fanInDirectory, stdio: "ignore" }
+        );
+        const patchPath = join(fanInDirectory, "captured.patch");
+        await writeFile(patchPath, artifacts.patch ?? "", "utf8");
+
+        const applyResult = spawnSync("git", ["apply", "--whitespace=nowarn", patchPath], {
+          cwd: fanInDirectory,
+          encoding: "utf8"
+        });
+
+        expect(applyResult.status, applyResult.stderr).toBe(0);
+        expect((await readFile(join(fanInDirectory, "tracked.txt"), "utf8")).replace(/\r\n/gu, "\n")).toBe("after\n");
+        expect((await readFile(join(fanInDirectory, "untracked.txt"), "utf8")).replace(/\r\n/gu, "\n")).toBe("brand new content\n");
+      } finally {
+        await rm(fanInDirectory, { recursive: true, force: true });
+      }
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("skips baseline diff scans when verify-only has no verification steps", async () => {
     const directory = await mkdtemp(join(tmpdir(), "martin-verify-empty-"));
 
@@ -709,6 +827,45 @@ describe("createVerifierOnlyAdapter", () => {
       expect(result.verification.passed).toBe(false);
       expect(result.verification.steps).toEqual([]);
       expect(result.execution?.changedFiles).toEqual([]);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("forwards request cancellation to verifier-only execution", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-verify-abort-"));
+    const controller = new AbortController();
+    controller.abort("cancelled");
+    let spawnCalls = 0;
+
+    try {
+      const adapter = createVerifierOnlyAdapter({
+        workingDirectory: directory,
+        spawnImpl: () => {
+          spawnCalls += 1;
+          return createScriptedSpawn([])("tool", []);
+        }
+      });
+      const result = await adapter.execute(makeRequest({
+        signal: controller.signal,
+        context: {
+          taskTitle: "verify only",
+          objective: "Run verification only",
+          verificationPlan: ["tool verify"],
+          verificationStack: [],
+          mutationMode: "verify_only",
+          focus: "verify only",
+          remainingBudgetUsd: 8,
+          remainingIterations: 1,
+          remainingTokens: 10_000
+        }
+      }));
+
+      expect(spawnCalls).toBe(0);
+      expect(result.status).toBe("failed");
+      expect(result.verification.steps).toEqual([
+        expect.objectContaining({ launched: false, completed: false })
+      ]);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
@@ -862,11 +1019,156 @@ describe("createClaudeCliAdapter", () => {
     expect(calls[0]?.args).toEqual(
       expect.arrayContaining(["--output-format", "stream-json", "--verbose"])
     );
-    expect(calls[0]?.args).toContain("--dangerously-skip-permissions");
+    expect(calls[0]?.args).toEqual(expect.arrayContaining(["--permission-mode", "acceptEdits"]));
+    expect(calls[0]?.args).not.toContain("--dangerously-skip-permissions");
+    if (!process.env["ANTHROPIC_API_KEY"]) {
+      expect(calls[0]?.args).toEqual(expect.arrayContaining([
+        "--strict-mcp-config",
+        "--setting-sources",
+        "project",
+        "--disable-slash-commands"
+      ]));
+    }
     // Prefers Claude's own authoritative total_cost_usd over a pricing-table estimate.
     expect(result.usage?.actualUsd).toBeCloseTo(0.0042, 6);
     expect(result.usage?.provenance).toBe("actual");
     expect(result.summary).toContain("done");
+  });
+
+  it("pre-approves only the exact governed verification commands for standalone Claude Bash", async () => {
+    const calls: SpawnCall[] = [];
+    const verificationPlan = [
+      'node -e "process.exit(0)"',
+      "pnpm test -- counter"
+    ];
+    const adapter = createClaudeCliAdapter({
+      spawnImpl: createScriptedSpawn(calls, [
+        { stdout: '{"type":"result","subtype":"success","result":"done"}\n' },
+        { stdout: "ok\n" },
+        { stdout: "ok\n" }
+      ])
+    });
+
+    await adapter.execute(makeRequest({
+      context: {
+        taskTitle: "test",
+        objective: "patch then verify",
+        verificationPlan,
+        focus: "test",
+        remainingBudgetUsd: 8,
+        remainingIterations: 1,
+        remainingTokens: 10_000
+      }
+    }));
+
+    const args = calls[0]?.args ?? [];
+    const allowedToolsIndex = args.indexOf("--allowedTools");
+    expect(allowedToolsIndex).toBeGreaterThan(-1);
+    expect(args.slice(allowedToolsIndex, allowedToolsIndex + 3)).toEqual([
+      "--allowedTools",
+      'Bash(node -e "process.exit(0)")',
+      "Bash(pnpm test -- counter)"
+    ]);
+    expect(args).not.toContain("Bash(*)");
+    expect(args).not.toContain("--dangerously-skip-permissions");
+    expect(args).not.toContain("bypassPermissions");
+    expect(calls[0]?.stdin).toContain("When you are done, the verification commands listed below must pass.");
+    expect(calls[0]?.stdin).toContain("VERIFICATION (all commands must exit with code 0):");
+  });
+
+  it("keeps live child verification host-owned when explicitly requested", async () => {
+    const calls: SpawnCall[] = [];
+    const adapter = createClaudeCliAdapter({
+      spawnImpl: createScriptedSpawn(calls, [
+        { stdout: '{"type":"result","subtype":"success","result":"done"}\n' },
+        { stdout: "ok\n" }
+      ])
+    });
+
+    const result = await adapter.execute(makeRequest({
+      context: {
+        taskTitle: "live child",
+        objective: "make the scoped mutation",
+        verificationPlan: ['node -e "process.exit(0)"'],
+        verificationExecutionOwner: "host_only",
+        focus: "test",
+        remainingBudgetUsd: 8,
+        remainingIterations: 1,
+        remainingTokens: 10_000
+      }
+    }));
+
+    const args = calls[0]?.args ?? [];
+    expect(args).not.toContain("--allowedTools");
+    expect(args).not.toContain('Bash(node -e "process.exit(0)")');
+    expect(calls[0]?.stdin).toContain("MartinLoop owns verification and runs it after provider completion.");
+    expect(calls[0]?.stdin).toContain("Do not execute these verifier commands yourself.");
+    expect(calls[0]?.stdin).toContain("HOST-OWNED VERIFICATION");
+    expect(result.verification.passed).toBe(true);
+    expect(calls.filter((call) => call.command === "node")).toHaveLength(1);
+  });
+
+  it.each([
+    ["dangerous bypass", ["--dangerously-skip-permissions"]],
+    ["bypass enablement", ["--allow-dangerously-skip-permissions"]],
+    ["permission mode pair", ["--permission-mode", "bypassPermissions"]],
+    ["permission mode assignment", ["--permission-mode=bypassPermissions"]],
+    ["caller-defined allowlist", ["--allowedTools", "Bash(*)"]],
+    ["caller-defined allowlist alias", ["--allowed-tools=Bash(*)"]]
+  ])("rejects Claude %s overrides in extraArgs", (_label, extraArgs) => {
+    expect(() => createClaudeCliAdapter({ extraArgs })).toThrow(/permission.*cannot be overridden/iu);
+  });
+
+  it("uses Claude plan permissions and a no-edit prompt for read-only swarm work", async () => {
+    const calls: SpawnCall[] = [];
+    const adapter = createClaudeCliAdapter({
+      readOnly: true,
+      spawnImpl: createScriptedSpawn(calls, [{ stdout: '{"type":"result","subtype":"success","result":"inspected"}\n' }])
+    });
+    const request = makeRequest();
+    (request.context as any).mutationMode = "read_only";
+
+    await adapter.execute(request);
+
+    expect(calls[0]?.args).toEqual(expect.arrayContaining(["--permission-mode", "plan"]));
+    expect(calls[0]?.args).not.toContain("--dangerously-skip-permissions");
+    expect(calls[0]?.stdin).toContain("READ-ONLY EXECUTION");
+    expect(calls[0]?.stdin).not.toContain("MAKE ALL REQUIRED FILE EDITS NOW");
+  });
+
+  it("does not create adapter retry files inside a scope-constrained child workspace", async () => {
+    const repoRoot = await mkdtemp(join(tmpdir(), "martin-claude-scoped-"));
+    const calls: SpawnCall[] = [];
+    const adapter = createClaudeCliAdapter({
+      workingDirectory: repoRoot,
+      spawnImpl: createScriptedSpawn(calls, [
+        { stdout: '{"type":"result","subtype":"success","result":"write permission refused","usage":{"input_tokens":10,"output_tokens":5}}\n' },
+        { stdout: "", exitCode: 1 }
+      ])
+    });
+
+    try {
+      const result = await adapter.execute(makeRequest({
+        context: {
+          taskTitle: "scoped child",
+          objective: "write only declared.txt",
+          verificationPlan: ["verify-declared"],
+          mutationMode: "edit",
+          focus: "scoped",
+          remainingBudgetUsd: 8,
+          remainingIterations: 1,
+          remainingTokens: 10_000,
+          repoRoot,
+          allowedPaths: ["declared.txt"]
+        }
+      }));
+
+      expect(result.status).toBe("failed");
+      await expect(access(join(repoRoot, "PROGRESS.md"))).rejects.toMatchObject({ code: "ENOENT" });
+      expect(calls[0]?.stdin).not.toContain("PROGRESS.md");
+    } finally {
+      await rm(repoRoot, { recursive: true, force: true });
+    }
   });
 
   describe("streaming usage circuit breaker", () => {
@@ -915,7 +1217,7 @@ describe("createClaudeCliAdapter", () => {
             focus: "stay small",
             remainingBudgetUsd: 0.05,
             remainingIterations: 1,
-            remainingTokens: 50_000
+            remainingTokens: 1_000_000
           }
         })
       );
@@ -972,6 +1274,160 @@ describe("createClaudeCliAdapter", () => {
       expect(result.usage?.actualUsd).toBeCloseTo(0.0009, 6);
     });
 
+    it("lets the parent governor extend beyond the initial child reservation and publishes final once", async () => {
+      const calls: SpawnCall[] = [];
+      const observations: Array<{ cumulativeUsd: number; cumulativeTokens: number; turns: number; final: boolean }> = [];
+      const lines = [
+        streamingTurn(60_000, 5_000),
+        streamingTurn(60_000, 5_000),
+        JSON.stringify({
+          type: "result",
+          subtype: "success",
+          result: "elastic completion",
+          total_cost_usd: 0.01,
+          usage: { input_tokens: 120_000, output_tokens: 10_000 }
+        })
+      ];
+      const adapter = createClaudeCliAdapter({ spawnImpl: createStreamingSpawn(calls, lines) });
+
+      const result = await adapter.execute(makeRequest({
+        context: {
+          taskTitle: "elastic child",
+          objective: "finish within the parent cap",
+          verificationPlan: [],
+          focus: "bounded",
+          remainingBudgetUsd: 5,
+          remainingIterations: 1,
+          remainingTokens: 100_000
+        },
+        observedUsageGovernor(observation) {
+          observations.push(observation);
+          return { action: "continue", grantedUsd: 5, grantedTokens: 600_000 };
+        }
+      }));
+
+      expect(result.status).toBe("completed");
+      expect(result.summary).toContain("elastic completion");
+      expect(observations.map(({ cumulativeTokens, final }) => ({ cumulativeTokens, final }))).toEqual([
+        { cumulativeTokens: 65_000, final: false },
+        { cumulativeTokens: 130_000, final: false },
+        { cumulativeTokens: 130_000, final: true }
+      ]);
+    });
+
+    it("fails closed when the parent governor terminates streamed usage", async () => {
+      const calls: SpawnCall[] = [];
+      const adapter = createClaudeCliAdapter({
+        spawnImpl: createStreamingSpawn(calls, [
+          streamingTurn(60_000, 5_000),
+          JSON.stringify({ type: "result", result: "not admitted", usage: { input_tokens: 60_000, output_tokens: 5_000 } })
+        ])
+      });
+
+      const result = await adapter.execute(makeRequest({
+        observedUsageGovernor() {
+          return { action: "terminate", grantedUsd: 1, grantedTokens: 50_000, reason: "GLOBAL_BUDGET_EXCEEDED" };
+        }
+      }));
+
+      expect(result.status).toBe("failed");
+      expect(result.failure?.message).toContain("GLOBAL_BUDGET_EXCEEDED");
+      expect(result.failure?.classHint).toBe("budget_pressure");
+    });
+
+    it("publishes final-only cost and cached token usage atomically", async () => {
+      const calls: SpawnCall[] = [];
+      const observations: unknown[] = [];
+      const adapter = createClaudeCliAdapter({
+        spawnImpl: createStreamingSpawn(calls, [JSON.stringify({
+          type: "result",
+          subtype: "success",
+          result: "done",
+          total_cost_usd: 0.25,
+          usage: {
+            input_tokens: 100,
+            cache_read_input_tokens: 300,
+            cache_creation_input_tokens: 50,
+            output_tokens: 25
+          }
+        })])
+      });
+
+      const result = await adapter.execute(makeRequest({
+        observedUsageGovernor(observation) {
+          observations.push(observation);
+          return { action: "continue", grantedUsd: 5, grantedTokens: 1_000 };
+        }
+      }));
+
+      expect(result.status).toBe("completed");
+      expect(observations).toEqual([{ cumulativeUsd: 0.25, cumulativeTokens: 475, turns: 1, final: true }]);
+    });
+
+    it("deduplicates repeated provider usage events by stable event identity", async () => {
+      const calls: SpawnCall[] = [];
+      const observations: Array<{ cumulativeTokens: number; final: boolean }> = [];
+      const repeated = JSON.stringify({
+        type: "assistant",
+        message: { id: "msg-stable-1", usage: { input_tokens: 100, output_tokens: 25 } }
+      });
+      const adapter = createClaudeCliAdapter({
+        spawnImpl: createStreamingSpawn(calls, [
+          repeated,
+          repeated,
+          JSON.stringify({ type: "result", result: "done", usage: { input_tokens: 100, output_tokens: 25 } })
+        ])
+      });
+
+      const result = await adapter.execute(makeRequest({
+        observedUsageGovernor(observation) {
+          observations.push({ cumulativeTokens: observation.cumulativeTokens, final: observation.final });
+          return { action: "continue", grantedUsd: 5, grantedTokens: 1_000 };
+        }
+      }));
+
+      expect(result.status).toBe("completed");
+      expect(observations).toEqual([
+        { cumulativeTokens: 125, final: false },
+        { cumulativeTokens: 125, final: true }
+      ]);
+    });
+
+    it("terminates a Claude child when streamed observed tokens exceed its reserved lease", async () => {
+      const calls: SpawnCall[] = [];
+      const lines = [
+        streamingTurn(60_000, 5_000),
+        streamingTurn(60_000, 5_000),
+        JSON.stringify({
+          type: "result",
+          subtype: "success",
+          result: "must not reach completion",
+          total_cost_usd: 0.01,
+          usage: { input_tokens: 120_000, output_tokens: 10_000 }
+        })
+      ];
+      const adapter = createClaudeCliAdapter({
+        spawnImpl: createStreamingSpawn(calls, lines)
+      });
+
+      const result = await adapter.execute(makeRequest({
+        context: {
+          taskTitle: "bounded token lease",
+          objective: "make one bounded edit",
+          verificationPlan: [],
+          focus: "bounded",
+          remainingBudgetUsd: 10,
+          remainingIterations: 1,
+          remainingTokens: 100_000
+        }
+      }));
+
+      expect(result.status).toBe("failed");
+      expect(result.failure?.classHint).toBe("budget_pressure");
+      expect(result.failure?.message).toContain("Streaming token lease exceeded");
+      expect(result.summary).not.toContain("must not reach completion");
+    });
+
     it("prices dated Haiku cache usage correctly and reaches verification", async () => {
       const calls: SpawnCall[] = [];
       const lines = [
@@ -1022,6 +1478,10 @@ describe("createClaudeCliAdapter", () => {
       expect(result.verification.passed).toBe(true);
       expect(result.usage.actualUsd).toBeCloseTo(0.07125, 6);
       expect(result.usage.provenance).toBe("calculated");
+      expect(result.usage.providerSettlement?.pricingSource).toBe("static_catalog");
+      expect(result.usage.providerSettlement?.pricingVersion).toBe(
+        "official-provider-pricing@2026-10-04"
+      );
       expect(calls).toHaveLength(2);
     });
 
@@ -1064,6 +1524,10 @@ describe("createClaudeCliAdapter", () => {
       expect(result.verification.passed).toBe(true);
       expect(result.usage.actualUsd).toBeCloseTo(0.25, 6);
       expect(result.usage.provenance).toBe("actual");
+      expect(result.usage.providerSettlement?.pricingSource).toBe(
+        "provider_reported_total"
+      );
+      expect(result.usage.providerSettlement?.pricingVersion).toBeUndefined();
       expect(calls).toHaveLength(2);
     });
 
@@ -1199,7 +1663,7 @@ describe("createClaudeCliAdapter", () => {
             focus: "tight",
             remainingBudgetUsd: 5,
             remainingIterations: 1,
-            remainingTokens: 50_000
+            remainingTokens: 1_000_000
           }
         })
       );
@@ -1538,12 +2002,94 @@ describe("createCodexCliAdapter", () => {
     expect(result.status).toBe("completed");
     expect(result.summary).toContain("Patched the failing test");
     expect(result.usage.provenance).toBe("calculated");
-    expect(result.usage.tokensIn).toBe(1500);
+    expect(result.usage.tokensIn).toBe(1200);
     expect(result.usage.cachedInputTokens).toBe(300);
-    expect(result.usage.tokensOut).toBe(250);
+    expect(result.usage.tokensOut).toBe(200);
     expect(result.usage.reasoningTokensOut).toBe(50);
     expect(result.usage.providerSettlement?.source).toBe("codex_jsonl");
-    expect(result.usage.actualUsd).toBeCloseTo(0.0040375, 6);
+    expect(result.usage.actualUsd).toBeCloseTo(0.0031625, 5);
+  });
+
+  it("applies the GPT-6 long-context tier above 272K input tokens", async () => {
+    const adapter = createCodexCliAdapter({
+      model: "gpt-6.1-sol",
+      capabilityProfile: negotiatedCodexProfile(),
+      autonomyResolution: negotiatedCodexAutonomy(),
+      spawnImpl: createScriptedSpawn([], [{
+        stdout: JSON.stringify({
+          type: "turn.completed",
+          usage: { input_tokens: 300_000, output_tokens: 1_000 }
+        })
+      }])
+    });
+
+    const result = await adapter.execute(makeRequest({
+      context: {
+        taskTitle: "test",
+        objective: "inspect a large context",
+        verificationPlan: [],
+        focus: "pricing",
+        remainingBudgetUsd: 8,
+        remainingIterations: 1,
+        remainingTokens: 400_000
+      }
+    }));
+
+    expect(result.usage.actualUsd).toBeCloseTo(1.215, 6);
+    expect(result.usage.provenance).toBe("calculated");
+    expect(result.usage.providerSettlement?.pricingSource).toBe("static_catalog");
+    expect(result.usage.providerSettlement?.pricingVersion).toBe(
+      "official-provider-pricing@2026-10-04"
+    );
+  });
+
+  it.each([
+    "gpt-6-astra",
+    "gpt-6.1-sol",
+    "gpt-6-sol",
+    "gpt-6-luna",
+    "gpt-5.6-sol",
+    "gpt-5.3-codex"
+  ])("uses the versioned static catalog for current Codex model %s", async (model) => {
+    const adapter = createCodexCliAdapter({
+      model,
+      capabilityProfile: negotiatedCodexProfile(),
+      autonomyResolution: negotiatedCodexAutonomy(),
+      spawnImpl: createScriptedSpawn([], [{
+        stdout: JSON.stringify({
+          type: "turn.completed",
+          usage: { input_tokens: 1_000, output_tokens: 100 }
+        })
+      }])
+    });
+
+    const result = await adapter.execute(makeRequest());
+
+    expect(result.usage.provenance).toBe("calculated");
+    expect(result.usage.providerSettlement?.pricingSource).toBe("static_catalog");
+    expect(result.usage.providerSettlement?.pricingVersion).toBe(
+      "official-provider-pricing@2026-10-04"
+    );
+  });
+
+  it("does not claim exact pricing when Codex uses its automatic model", async () => {
+    const adapter = createCodexCliAdapter({
+      capabilityProfile: negotiatedCodexProfile(),
+      autonomyResolution: negotiatedCodexAutonomy(),
+      spawnImpl: createScriptedSpawn([], [{
+        stdout: JSON.stringify({
+          type: "turn.completed",
+          usage: { input_tokens: 1_000, output_tokens: 100 }
+        })
+      }])
+    });
+
+    const result = await adapter.execute(makeRequest());
+
+    expect(result.usage.provenance).toBe("estimated");
+    expect(result.usage.providerSettlement?.modelSource).toBe("agent_default");
+    expect(result.usage.providerSettlement?.pricingSource).toBe("blended_fallback");
+    expect(result.usage.providerSettlement?.pricingSource).not.toBe("static_catalog");
   });
 
   it("reports pre-verifier Codex launch failures without running verifier commands", async () => {
@@ -1649,5 +2195,97 @@ describe("createGeminiCliAdapter", () => {
     expect(result.usage.cachedInputTokens).toBe(30);
     expect(result.usage.reasoningTokensOut).toBe(10);
     expect(result.usage.providerSettlement?.source).toBe("gemini_json");
+  });
+
+  it("applies the Gemini Pro long-context tier above 200K input tokens", async () => {
+    const adapter = createGeminiCliAdapter({
+      model: "gemini-2.5-pro",
+      spawnImpl: createScriptedSpawn([], [{
+        stdout: JSON.stringify({
+          response: "inspected",
+          stats: { inputTokens: 210_000, outputTokens: 1_000 }
+        })
+      }])
+    });
+
+    const result = await adapter.execute(makeRequest({
+      context: {
+        taskTitle: "test",
+        objective: "inspect a large context",
+        verificationPlan: [],
+        focus: "pricing",
+        remainingBudgetUsd: 8,
+        remainingIterations: 1,
+        remainingTokens: 300_000
+      }
+    }));
+
+    expect(result.usage.actualUsd).toBeCloseTo(0.54, 6);
+    expect(result.usage.providerSettlement?.pricingSource).toBe("static_catalog");
+    expect(result.usage.providerSettlement?.pricingVersion).toBe(
+      "official-provider-pricing@2026-10-04"
+    );
+  });
+
+  it.each([
+    "gemini-3.8-flash",
+    "gemini-3.7-flash",
+    "gemini-3.1-flash-lite",
+    "gemini-3.1-pro-preview",
+    "gemini-3-flash-preview",
+    "gemini-2.5-pro",
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite"
+  ])("uses the versioned static catalog for current Gemini model %s", async (model) => {
+    const adapter = createGeminiCliAdapter({
+      model,
+      spawnImpl: createScriptedSpawn([], [{
+        stdout: JSON.stringify({
+          response: "inspected",
+          stats: { inputTokens: 1_000, outputTokens: 100 }
+        })
+      }])
+    });
+
+    const result = await adapter.execute(makeRequest());
+
+    expect(result.usage.providerSettlement?.pricingSource).toBe("static_catalog");
+    expect(result.usage.providerSettlement?.pricingVersion).toBe(
+      "official-provider-pricing@2026-10-04"
+    );
+  });
+
+  it("does not claim exact pricing when Gemini uses Auto", async () => {
+    const adapter = createGeminiCliAdapter({
+      spawnImpl: createScriptedSpawn([], [{
+        stdout: JSON.stringify({
+          response: "inspected",
+          stats: { inputTokens: 1_000, outputTokens: 100 }
+        })
+      }])
+    });
+
+    const result = await adapter.execute(makeRequest());
+
+    expect(result.usage.providerSettlement?.modelSource).toBe("agent_default");
+    expect(result.usage.providerSettlement?.pricingSource).toBe("blended_fallback");
+    expect(result.usage.providerSettlement?.pricingSource).not.toBe("static_catalog");
+  });
+
+  it("uses Gemini plan approval and a no-edit prompt for read-only swarm work", async () => {
+    const calls: SpawnCall[] = [];
+    const adapter = createGeminiCliAdapter({
+      readOnly: true,
+      spawnImpl: createScriptedSpawn(calls, [{ stdout: JSON.stringify({ response: "inspected" }) }])
+    });
+    const request = makeRequest();
+    (request.context as any).mutationMode = "read_only";
+
+    await adapter.execute(request);
+
+    expect(calls[0]?.args).toEqual(expect.arrayContaining(["--approval-mode", "plan"]));
+    expect(calls[0]?.args).not.toContain("yolo");
+    expect(calls[0]?.stdin).toContain("READ-ONLY EXECUTION");
+    expect(calls[0]?.stdin).not.toContain("MAKE ALL REQUIRED FILE EDITS NOW");
   });
 });

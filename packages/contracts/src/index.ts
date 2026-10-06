@@ -10,6 +10,7 @@
 
 import type { TerminationEnvelopeV1 } from "./exits.js";
 import type { AgentExecutionIntent } from "./agent-execution.js";
+import type { SwarmChildReceiptLink } from "./swarm.js";
 
 export {
   DEFAULT_AGENT_EXECUTION_INTENT,
@@ -18,6 +19,28 @@ export {
   normalizeProviderExecutionTimeoutMs
 } from "./agent-execution.js";
 export type { AgentExecutionIntent } from "./agent-execution.js";
+
+export {
+  EXTERNAL_OUTCOME_LIMITS,
+  EXTERNAL_OUTCOME_RESULT_SCHEMA_VERSION,
+  EXTERNAL_OUTCOME_SCHEMA_VERSION,
+  externalOutcomeValuesEqual,
+  resolveExternalOutcomeJsonPointer,
+  validateExternalOutcomeContract,
+} from "./external-outcome.js";
+export type {
+  ExternalOutcomeActionContract,
+  ExternalOutcomeActionResult,
+  ExternalOutcomeAssertionResult,
+  ExternalOutcomeContract,
+  ExternalOutcomeEvidenceReference,
+  ExternalOutcomeFreshness,
+  ExternalOutcomeJsonScalar,
+  ExternalOutcomeReasonCode,
+  ExternalOutcomeResult,
+  ExternalOutcomeStatus,
+  ExternalOutcomeValidationError,
+} from "./external-outcome.js";
 
 export type LoopStatus =
   | "queued"
@@ -109,7 +132,7 @@ export type ExecutionProfile =
   | "staging_controlled"
   | "research_untrusted";
 
-export type MutationMode = "edit";
+export type MutationMode = "edit" | "read_only";
 
 export interface ApprovalPolicy {
   dependencyAdds?: boolean;
@@ -194,6 +217,8 @@ export interface ReceiptScope {
   providerExecutionTimeoutMs?: number;
   /** Enforced demo changes (DEMO.md-only enforcement output). */
   demoChangedFiles?: string[];
+  /** Optional lineage for a child launched by a governed swarm. */
+  swarmChild?: SwarmChildReceiptLink;
 }
 
 export type ReceiptIntegrityState =
@@ -1027,3 +1052,90 @@ export type {
   MissionRunLink, MissionRunRole, MissionApproval, MissionOutcome,
   MissionEvent, MissionEventKind, MissionRecord, MissionDraft
 } from './mission.js';
+
+export {
+  SWARM_LIVE_ENGINES,
+  SWARM_ORCHESTRATION_STRATEGIES,
+  SWARM_EVENT_TYPES,
+  SWARM_PARENT_RECEIPT_SCHEMA_VERSION,
+  SWARM_SCHEMA_VERSION,
+  computeSwarmLivePlanHash,
+  createSwarmLivePlan,
+  createSwarmRunRecord,
+  normalizeSwarmPathPattern,
+  swarmConcretePathMatchesPattern,
+  swarmPathPatternContains,
+  swarmPathPatternsOverlap,
+  validateSwarmConcretePath,
+  validateSwarmChildReceiptLink,
+  validateSwarmDeterministicDemoReceiptEvidence,
+  validateSwarmChildContract,
+  validateSwarmLiveEvent,
+  validateSwarmLivePlan,
+  validateSwarmLiveRevision,
+  validateSwarmParentContract,
+  validateSwarmRunRecord
+} from "./swarm.js";
+export type {
+  SwarmAgentRecord,
+  SwarmAgentStatus,
+  SwarmBudgetLedger,
+  SwarmBudgetLease,
+  SwarmBudgetUsage,
+  SwarmCandidate,
+  SwarmChildContract,
+  SwarmChildReceiptLink,
+  SwarmChildWorkspaceRecord,
+  SwarmCleanupRecord,
+  SwarmCleanupState,
+  SwarmConcretePathResult,
+  SwarmConflictRecord,
+  SwarmDependencyWaiver,
+  SwarmDemoReferentialBindingState,
+  SwarmDeterministicDemoReceiptEvidence,
+  SwarmEvent,
+  SwarmEventType,
+  SwarmGlobalVerification,
+  SwarmGlobalVerificationCommandState,
+  SwarmIntegrationWorkspaceRecord,
+  SwarmIntegrationStrategy,
+  SwarmLeaseStatus,
+  SwarmLiveEngine,
+  SwarmLiveEngineProfile,
+  SwarmLiveEvent,
+  SwarmLivePlan,
+  SwarmLivePlanDraft,
+  SwarmLiveRevision,
+  SwarmOrchestrationStrategy,
+  SwarmOutcome,
+  SwarmOutcomeState,
+  SwarmParentContract,
+  SwarmParentReceipt,
+  SwarmPatchAdmission,
+  SwarmPatchAdmissionReasonCode,
+  SwarmPatchAdmissionState,
+  SwarmPathPatternResult,
+  SwarmPermissions,
+  SwarmProcessCloseState,
+  SwarmRecoveryPolicy,
+  SwarmReceiptBlockedAction,
+  SwarmReceiptReassignment,
+  SwarmRunDraft,
+  SwarmRunRecord,
+  SwarmScope,
+  SwarmStopDisposition,
+  SwarmStopPolicy,
+  SwarmTaskNode,
+  SwarmTaskStatus,
+  SwarmValidationError,
+  SwarmValidationResult,
+  SwarmVerifierMutationState,
+  SwarmVerifierSubprocessResult,
+  SwarmVerificationRecord,
+  SwarmVerifierAuthority,
+  SwarmVerifierWorkspaceRecord,
+  SwarmWorkspaceKind,
+  SwarmWorkspaceRecord,
+  SwarmWorkspaceRemovalState,
+  SwarmWorkspaceState
+} from "./swarm.js";

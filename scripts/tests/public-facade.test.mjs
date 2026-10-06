@@ -1,14 +1,34 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { buildPublicFacade } from "../build-public-facade.mjs";
 import {
   createPublicFacadeSmokePlan,
   runPublicFacadeSmoke,
 } from "../public-facade-smoke.mjs";
 
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+
+test("buildPublicFacade keeps sibling workspace imports inside the vendored package topology", async () => {
+  await buildPublicFacade({ rootDir: ROOT_DIR });
+
+  const hostedExport = await readFile(
+    path.join(ROOT_DIR, "dist", "vendor", "core", "swarm", "hosted-export.js"),
+    "utf8",
+  );
+  const hostedProjection = await readFile(
+    path.join(ROOT_DIR, "dist", "vendor", "core", "swarm", "hosted-projection.js"),
+    "utf8",
+  );
+
+  assert.match(hostedExport, /\.\.\/\.\.\/contracts\/swarm-hosted\.js/u);
+  assert.match(hostedProjection, /\.\.\/\.\.\/contracts\/swarm-hosted\.js/u);
+  assert.doesNotMatch(hostedExport, /contracts\/dist\/swarm-hosted\.js/u);
+  assert.doesNotMatch(hostedProjection, /contracts\/dist\/swarm-hosted\.js/u);
+});
 
 test("createPublicFacadeSmokePlan targets the frozen public package surface", () => {
   const plan = createPublicFacadeSmokePlan({ rootDir: ROOT_DIR });

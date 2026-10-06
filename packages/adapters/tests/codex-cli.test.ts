@@ -172,12 +172,16 @@ describe("capability-driven Codex adapter", () => {
       autonomyResolution: negotiatedAutonomy(),
       spawnImpl: createScriptedSpawn(calls)
     });
-    const result = await adapter.execute(request());
+    const readOnlyRequest = request();
+    (readOnlyRequest.context as any).mutationMode = "read_only";
+    const result = await adapter.execute(readOnlyRequest);
 
     expect(result.status).toBe("completed");
     expect(calls[0]?.args).toEqual(expect.arrayContaining([
       "--sandbox", "read-only", "--model", "gpt-5.5", "--ignore-rules"
     ]));
+    expect(calls[0]?.stdin).toContain("READ-ONLY EXECUTION");
+    expect(calls[0]?.stdin).not.toContain("MAKE ALL REQUIRED FILE EDITS NOW");
   });
 
   it("runs MartinLoop verification after successful Codex execution", async () => {
@@ -220,7 +224,7 @@ describe("capability-driven Codex adapter", () => {
     const profile = negotiatedProfile({ model: { flag: "--model", scope: "exec" } });
     const adapter = createCodexCliAdapter({
       command: profile.binaryPath,
-      model: "gpt-5-codex",
+      model: "gpt-6.1-sol",
       capabilityProfile: profile,
       autonomyResolution: negotiatedAutonomy(),
       spawnImpl: createScriptedSpawn(calls, [
@@ -241,8 +245,14 @@ describe("capability-driven Codex adapter", () => {
     expect(result.summary).toContain("Patched and verified");
     expect(result.usage.providerSettlement?.source).toBe("codex_jsonl");
     expect(result.usage.provenance).toBe("calculated");
-    expect(result.usage.tokensIn).toBe(1500);
-    expect(result.usage.tokensOut).toBe(250);
+    expect(result.usage.tokensIn).toBe(1200);
+    expect(result.usage.tokensOut).toBe(200);
+    expect(result.usage.cachedInputTokens).toBe(300);
+    expect(result.usage.reasoningTokensOut).toBe(50);
+    expect(result.usage.actualUsd).toBeCloseTo(0.00383, 6);
+    expect(result.usage.providerSettlement?.pricingVersion).toBe(
+      "official-provider-pricing@2026-10-04"
+    );
     expect(calls[0]?.command).toBe(profile.binaryPath);
   });
 

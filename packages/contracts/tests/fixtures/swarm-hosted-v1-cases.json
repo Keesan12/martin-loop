@@ -1,0 +1,5178 @@
+{
+  "schemaVersion": "martin.swarm-hosted-fixtures.v1",
+  "provenance": {
+    "producer": "buildSwarmHostedEnvelope",
+    "source": "phase5-production-layout"
+  },
+  "validCases": [
+    {
+      "name": "verified-15-agent",
+      "provenance": "production-exporter",
+      "envelope": {
+        "schemaVersion": "martin.swarm-hosted.v1",
+        "envelopeId": "556b9a101307268448eb4efb977632923d1a97ef58bf28057ec837444da08a40",
+        "sourceSchemas": {
+          "swarm": "martin.swarm.v1",
+          "receipt": "martin.swarm-receipt.v1",
+          "evidenceIndex": "martin.swarm-evidence-index.v1"
+        },
+        "sourceIdentities": {
+          "receiptId": "swarm-receipt-2c3397c4daa64245",
+          "receiptSha256": "2c3397c4daa642456ec5bb19f36eaebc7c2c6b925a8f1958bb1e901e5dfeee4c",
+          "evidenceIndexSha256": "2c1cc5471be05ca74ad3c9c69b6127e3c99c479641bcd3e0bf500d510e713082",
+          "eventChainSha256": "06d61e71e9e0c776ce58612d0e3da229bc9730b3a05f7355dbe8f354262c5623"
+        },
+        "runtimeVersion": "0.8.0",
+        "createdAt": "2026-10-03T12:07:16.000Z",
+        "swarm": {
+          "swarmId": "swarm-verified-15-agent",
+          "workspaceId": "workspace-verified-15-agent",
+          "projectId": "project-verified-15-agent",
+          "planHash": "cf354a4212ef83353b83552fed97c2f54d422edc69cdf01b9b5d071ddcb90795",
+          "baselineCommit": "c35f6daacc9e7da66b265d23fc10b013e58dd0f5"
+        },
+        "topology": {
+          "tasks": [
+            {
+              "taskId": "task-1",
+              "required": true,
+              "dependsOn": [],
+              "plannedAgentId": "agent-1",
+              "effectiveAgentId": "agent-1",
+              "status": "accepted"
+            },
+            {
+              "taskId": "task-2",
+              "required": true,
+              "dependsOn": [
+                "task-1"
+              ],
+              "plannedAgentId": "agent-2",
+              "effectiveAgentId": "agent-2",
+              "status": "accepted"
+            },
+            {
+              "taskId": "task-3",
+              "required": true,
+              "dependsOn": [
+                "task-2"
+              ],
+              "plannedAgentId": "agent-3",
+              "effectiveAgentId": "agent-3",
+              "status": "accepted"
+            },
+            {
+              "taskId": "task-4",
+              "required": true,
+              "dependsOn": [
+                "task-3"
+              ],
+              "plannedAgentId": "agent-4",
+              "effectiveAgentId": "agent-4",
+              "status": "accepted"
+            },
+            {
+              "taskId": "task-5",
+              "required": true,
+              "dependsOn": [
+                "task-4"
+              ],
+              "plannedAgentId": "agent-5",
+              "effectiveAgentId": "agent-5",
+              "status": "accepted"
+            },
+            {
+              "taskId": "task-6",
+              "required": true,
+              "dependsOn": [
+                "task-5"
+              ],
+              "plannedAgentId": "agent-6",
+              "effectiveAgentId": "agent-6",
+              "status": "accepted"
+            },
+            {
+              "taskId": "task-7",
+              "required": true,
+              "dependsOn": [
+                "task-6"
+              ],
+              "plannedAgentId": "agent-7",
+              "effectiveAgentId": "agent-7",
+              "status": "accepted"
+            },
+            {
+              "taskId": "task-8",
+              "required": true,
+              "dependsOn": [
+                "task-7"
+              ],
+              "plannedAgentId": "agent-8",
+              "effectiveAgentId": "agent-8",
+              "status": "accepted"
+            },
+            {
+              "taskId": "task-9",
+              "required": true,
+              "dependsOn": [
+                "task-8"
+              ],
+              "plannedAgentId": "agent-9",
+              "effectiveAgentId": "agent-9",
+              "status": "accepted"
+            },
+            {
+              "taskId": "task-10",
+              "required": true,
+              "dependsOn": [
+                "task-9"
+              ],
+              "plannedAgentId": "agent-10",
+              "effectiveAgentId": "agent-10",
+              "status": "accepted"
+            },
+            {
+              "taskId": "task-11",
+              "required": true,
+              "dependsOn": [
+                "task-10"
+              ],
+              "plannedAgentId": "agent-11",
+              "effectiveAgentId": "agent-11",
+              "status": "accepted"
+            },
+            {
+              "taskId": "task-12",
+              "required": true,
+              "dependsOn": [
+                "task-11"
+              ],
+              "plannedAgentId": "agent-12",
+              "effectiveAgentId": "agent-12",
+              "status": "accepted"
+            },
+            {
+              "taskId": "task-13",
+              "required": true,
+              "dependsOn": [
+                "task-12"
+              ],
+              "plannedAgentId": "agent-13",
+              "effectiveAgentId": "agent-13",
+              "status": "accepted"
+            },
+            {
+              "taskId": "task-14",
+              "required": true,
+              "dependsOn": [
+                "task-13"
+              ],
+              "plannedAgentId": "agent-14",
+              "effectiveAgentId": "agent-14",
+              "status": "accepted"
+            },
+            {
+              "taskId": "task-15",
+              "required": true,
+              "dependsOn": [
+                "task-14"
+              ],
+              "plannedAgentId": "agent-15",
+              "effectiveAgentId": "agent-15",
+              "status": "accepted"
+            }
+          ],
+          "agents": [
+            {
+              "agentId": "agent-1",
+              "role": "worker",
+              "status": "verified",
+              "taskIds": [
+                "task-1"
+              ],
+              "childRunId": "child-run-000dfq9b"
+            },
+            {
+              "agentId": "agent-2",
+              "role": "worker",
+              "status": "verified",
+              "taskIds": [
+                "task-2"
+              ],
+              "childRunId": "child-run-0017o4c9"
+            },
+            {
+              "agentId": "agent-3",
+              "role": "worker",
+              "status": "verified",
+              "taskIds": [
+                "task-3"
+              ],
+              "childRunId": "child-run-0021wif7"
+            },
+            {
+              "agentId": "agent-4",
+              "role": "worker",
+              "status": "verified",
+              "taskIds": [
+                "task-4"
+              ],
+              "childRunId": "child-run-002w4wi6"
+            },
+            {
+              "agentId": "agent-5",
+              "role": "worker",
+              "status": "verified",
+              "taskIds": [
+                "task-5"
+              ],
+              "childRunId": "child-run-003qdal4"
+            },
+            {
+              "agentId": "agent-6",
+              "role": "worker",
+              "status": "verified",
+              "taskIds": [
+                "task-6"
+              ],
+              "childRunId": "child-run-004kloo2"
+            },
+            {
+              "agentId": "agent-7",
+              "role": "worker",
+              "status": "verified",
+              "taskIds": [
+                "task-7"
+              ],
+              "childRunId": "child-run-005eu2r1"
+            },
+            {
+              "agentId": "agent-8",
+              "role": "worker",
+              "status": "verified",
+              "taskIds": [
+                "task-8"
+              ],
+              "childRunId": "child-run-00692gtz"
+            },
+            {
+              "agentId": "agent-9",
+              "role": "worker",
+              "status": "verified",
+              "taskIds": [
+                "task-9"
+              ],
+              "childRunId": "child-run-0073auwx"
+            },
+            {
+              "agentId": "agent-10",
+              "role": "worker",
+              "status": "verified",
+              "taskIds": [
+                "task-10"
+              ],
+              "childRunId": "child-run-007xj8zw"
+            },
+            {
+              "agentId": "agent-11",
+              "role": "worker",
+              "status": "verified",
+              "taskIds": [
+                "task-11"
+              ],
+              "childRunId": "child-run-008rrn2u"
+            },
+            {
+              "agentId": "agent-12",
+              "role": "worker",
+              "status": "verified",
+              "taskIds": [
+                "task-12"
+              ],
+              "childRunId": "child-run-009m015s"
+            },
+            {
+              "agentId": "agent-13",
+              "role": "worker",
+              "status": "verified",
+              "taskIds": [
+                "task-13"
+              ],
+              "childRunId": "child-run-00ag8f8r"
+            },
+            {
+              "agentId": "agent-14",
+              "role": "worker",
+              "status": "verified",
+              "taskIds": [
+                "task-14"
+              ],
+              "childRunId": "child-run-00bagtbp"
+            },
+            {
+              "agentId": "agent-15",
+              "role": "worker",
+              "status": "verified",
+              "taskIds": [
+                "task-15"
+              ],
+              "childRunId": "child-run-00c4p7en"
+            }
+          ],
+          "children": [
+            {
+              "childRunId": "child-run-000dfq9b",
+              "agentId": "agent-1",
+              "attemptId": "attempt-000br9h5",
+              "taskIds": [
+                "task-1"
+              ],
+              "status": "verified",
+              "receiptIntegrityState": "verified",
+              "evidence": [
+                {
+                  "eventId": "child-run-000dfq9b:started",
+                  "sequence": 2
+                },
+                {
+                  "eventId": "child-run-000dfq9b:verified",
+                  "sequence": 3
+                }
+              ]
+            },
+            {
+              "childRunId": "child-run-0017o4c9",
+              "agentId": "agent-2",
+              "attemptId": "attempt-0015znk3",
+              "taskIds": [
+                "task-2"
+              ],
+              "status": "verified",
+              "receiptIntegrityState": "verified",
+              "evidence": [
+                {
+                  "eventId": "child-run-0017o4c9:started",
+                  "sequence": 4
+                },
+                {
+                  "eventId": "child-run-0017o4c9:verified",
+                  "sequence": 5
+                }
+              ]
+            },
+            {
+              "childRunId": "child-run-0021wif7",
+              "agentId": "agent-3",
+              "attemptId": "attempt-002081n2",
+              "taskIds": [
+                "task-3"
+              ],
+              "status": "verified",
+              "receiptIntegrityState": "verified",
+              "evidence": [
+                {
+                  "eventId": "child-run-0021wif7:started",
+                  "sequence": 6
+                },
+                {
+                  "eventId": "child-run-0021wif7:verified",
+                  "sequence": 7
+                }
+              ]
+            },
+            {
+              "childRunId": "child-run-002w4wi6",
+              "agentId": "agent-4",
+              "attemptId": "attempt-002ugfq0",
+              "taskIds": [
+                "task-4"
+              ],
+              "status": "verified",
+              "receiptIntegrityState": "verified",
+              "evidence": [
+                {
+                  "eventId": "child-run-002w4wi6:started",
+                  "sequence": 8
+                },
+                {
+                  "eventId": "child-run-002w4wi6:verified",
+                  "sequence": 9
+                }
+              ]
+            },
+            {
+              "childRunId": "child-run-003qdal4",
+              "agentId": "agent-5",
+              "attemptId": "attempt-003ootsy",
+              "taskIds": [
+                "task-5"
+              ],
+              "status": "verified",
+              "receiptIntegrityState": "verified",
+              "evidence": [
+                {
+                  "eventId": "child-run-003qdal4:started",
+                  "sequence": 10
+                },
+                {
+                  "eventId": "child-run-003qdal4:verified",
+                  "sequence": 11
+                }
+              ]
+            },
+            {
+              "childRunId": "child-run-004kloo2",
+              "agentId": "agent-6",
+              "attemptId": "attempt-004ix7vx",
+              "taskIds": [
+                "task-6"
+              ],
+              "status": "verified",
+              "receiptIntegrityState": "verified",
+              "evidence": [
+                {
+                  "eventId": "child-run-004kloo2:started",
+                  "sequence": 12
+                },
+                {
+                  "eventId": "child-run-004kloo2:verified",
+                  "sequence": 13
+                }
+              ]
+            },
+            {
+              "childRunId": "child-run-005eu2r1",
+              "agentId": "agent-7",
+              "attemptId": "attempt-005d5lyv",
+              "taskIds": [
+                "task-7"
+              ],
+              "status": "verified",
+              "receiptIntegrityState": "verified",
+              "evidence": [
+                {
+                  "eventId": "child-run-005eu2r1:started",
+                  "sequence": 14
+                },
+                {
+                  "eventId": "child-run-005eu2r1:verified",
+                  "sequence": 15
+                }
+              ]
+            },
+            {
+              "childRunId": "child-run-00692gtz",
+              "agentId": "agent-8",
+              "attemptId": "attempt-0067e01t",
+              "taskIds": [
+                "task-8"
+              ],
+              "status": "verified",
+              "receiptIntegrityState": "verified",
+              "evidence": [
+                {
+                  "eventId": "child-run-00692gtz:started",
+                  "sequence": 16
+                },
+                {
+                  "eventId": "child-run-00692gtz:verified",
+                  "sequence": 17
+                }
+              ]
+            },
+            {
+              "childRunId": "child-run-0073auwx",
+              "agentId": "agent-9",
+              "attemptId": "attempt-0071me4s",
+              "taskIds": [
+                "task-9"
+              ],
+              "status": "verified",
+              "receiptIntegrityState": "verified",
+              "evidence": [
+                {
+                  "eventId": "child-run-0073auwx:started",
+                  "sequence": 18
+                },
+                {
+                  "eventId": "child-run-0073auwx:verified",
+                  "sequence": 19
+                }
+              ]
+            },
+            {
+              "childRunId": "child-run-007xj8zw",
+              "agentId": "agent-10",
+              "attemptId": "attempt-007vus7q",
+              "taskIds": [
+                "task-10"
+              ],
+              "status": "verified",
+              "receiptIntegrityState": "verified",
+              "evidence": [
+                {
+                  "eventId": "child-run-007xj8zw:started",
+                  "sequence": 20
+                },
+                {
+                  "eventId": "child-run-007xj8zw:verified",
+                  "sequence": 21
+                }
+              ]
+            },
+            {
+              "childRunId": "child-run-008rrn2u",
+              "agentId": "agent-11",
+              "attemptId": "attempt-008q36ao",
+              "taskIds": [
+                "task-11"
+              ],
+              "status": "verified",
+              "receiptIntegrityState": "verified",
+              "evidence": [
+                {
+                  "eventId": "child-run-008rrn2u:started",
+                  "sequence": 22
+                },
+                {
+                  "eventId": "child-run-008rrn2u:verified",
+                  "sequence": 23
+                }
+              ]
+            },
+            {
+              "childRunId": "child-run-009m015s",
+              "agentId": "agent-12",
+              "attemptId": "attempt-009kbkdn",
+              "taskIds": [
+                "task-12"
+              ],
+              "status": "verified",
+              "receiptIntegrityState": "verified",
+              "evidence": [
+                {
+                  "eventId": "child-run-009m015s:started",
+                  "sequence": 24
+                },
+                {
+                  "eventId": "child-run-009m015s:verified",
+                  "sequence": 25
+                }
+              ]
+            },
+            {
+              "childRunId": "child-run-00ag8f8r",
+              "agentId": "agent-13",
+              "attemptId": "attempt-00aejygl",
+              "taskIds": [
+                "task-13"
+              ],
+              "status": "verified",
+              "receiptIntegrityState": "verified",
+              "evidence": [
+                {
+                  "eventId": "child-run-00ag8f8r:started",
+                  "sequence": 26
+                },
+                {
+                  "eventId": "child-run-00ag8f8r:verified",
+                  "sequence": 27
+                }
+              ]
+            },
+            {
+              "childRunId": "child-run-00bagtbp",
+              "agentId": "agent-14",
+              "attemptId": "attempt-00b8scjj",
+              "taskIds": [
+                "task-14"
+              ],
+              "status": "verified",
+              "receiptIntegrityState": "verified",
+              "evidence": [
+                {
+                  "eventId": "child-run-00bagtbp:started",
+                  "sequence": 28
+                },
+                {
+                  "eventId": "child-run-00bagtbp:verified",
+                  "sequence": 29
+                }
+              ]
+            },
+            {
+              "childRunId": "child-run-00c4p7en",
+              "agentId": "agent-15",
+              "attemptId": "attempt-00c30qmi",
+              "taskIds": [
+                "task-15"
+              ],
+              "status": "verified",
+              "receiptIntegrityState": "verified",
+              "evidence": [
+                {
+                  "eventId": "child-run-00c4p7en:started",
+                  "sequence": 30
+                },
+                {
+                  "eventId": "child-run-00c4p7en:verified",
+                  "sequence": 31
+                }
+              ]
+            }
+          ]
+        },
+        "budget": {
+          "capUsd": 17,
+          "capTokens": 1500,
+          "settledUsd": 0.15,
+          "settledTokens": 75
+        },
+        "interventions": {
+          "blockedActions": [],
+          "reassignments": []
+        },
+        "integration": {
+          "admissions": [],
+          "rejections": [],
+          "conflicts": [],
+          "integratedTreeHash": "528732cadbcdc09711fc2e71e251b48b4f6da2a0"
+        },
+        "events": [
+          {
+            "eventId": "cf354a4212ef83353b83552fed97c2f54d422edc69cdf01b9b5d071ddcb90795:created",
+            "sourceIdempotencyKey": "cf354a4212ef83353b83552fed97c2f54d422edc69cdf01b9b5d071ddcb90795:created",
+            "sequence": 1,
+            "type": "SWARM_CREATED",
+            "timestamp": "2026-10-03T12:00:04.000Z"
+          },
+          {
+            "eventId": "child-run-000dfq9b:started",
+            "sourceIdempotencyKey": "child-run-000dfq9b:started",
+            "sequence": 2,
+            "type": "CHILD_STARTED",
+            "timestamp": "2026-10-03T12:00:08.000Z",
+            "taskId": "task-1",
+            "agentId": "agent-1",
+            "childRunId": "child-run-000dfq9b",
+            "attemptId": "attempt-000br9h5"
+          },
+          {
+            "eventId": "child-run-000dfq9b:verified",
+            "sourceIdempotencyKey": "child-run-000dfq9b:verified",
+            "sequence": 3,
+            "type": "CHILD_VERIFIED",
+            "timestamp": "2026-10-03T12:00:32.000Z",
+            "taskId": "task-1",
+            "agentId": "agent-1",
+            "childRunId": "child-run-000dfq9b",
+            "attemptId": "attempt-000br9h5"
+          },
+          {
+            "eventId": "child-run-0017o4c9:started",
+            "sourceIdempotencyKey": "child-run-0017o4c9:started",
+            "sequence": 4,
+            "type": "CHILD_STARTED",
+            "timestamp": "2026-10-03T12:00:36.000Z",
+            "taskId": "task-2",
+            "agentId": "agent-2",
+            "childRunId": "child-run-0017o4c9",
+            "attemptId": "attempt-0015znk3"
+          },
+          {
+            "eventId": "child-run-0017o4c9:verified",
+            "sourceIdempotencyKey": "child-run-0017o4c9:verified",
+            "sequence": 5,
+            "type": "CHILD_VERIFIED",
+            "timestamp": "2026-10-03T12:01:00.000Z",
+            "taskId": "task-2",
+            "agentId": "agent-2",
+            "childRunId": "child-run-0017o4c9",
+            "attemptId": "attempt-0015znk3"
+          },
+          {
+            "eventId": "child-run-0021wif7:started",
+            "sourceIdempotencyKey": "child-run-0021wif7:started",
+            "sequence": 6,
+            "type": "CHILD_STARTED",
+            "timestamp": "2026-10-03T12:01:04.000Z",
+            "taskId": "task-3",
+            "agentId": "agent-3",
+            "childRunId": "child-run-0021wif7",
+            "attemptId": "attempt-002081n2"
+          },
+          {
+            "eventId": "child-run-0021wif7:verified",
+            "sourceIdempotencyKey": "child-run-0021wif7:verified",
+            "sequence": 7,
+            "type": "CHILD_VERIFIED",
+            "timestamp": "2026-10-03T12:01:28.000Z",
+            "taskId": "task-3",
+            "agentId": "agent-3",
+            "childRunId": "child-run-0021wif7",
+            "attemptId": "attempt-002081n2"
+          },
+          {
+            "eventId": "child-run-002w4wi6:started",
+            "sourceIdempotencyKey": "child-run-002w4wi6:started",
+            "sequence": 8,
+            "type": "CHILD_STARTED",
+            "timestamp": "2026-10-03T12:01:32.000Z",
+            "taskId": "task-4",
+            "agentId": "agent-4",
+            "childRunId": "child-run-002w4wi6",
+            "attemptId": "attempt-002ugfq0"
+          },
+          {
+            "eventId": "child-run-002w4wi6:verified",
+            "sourceIdempotencyKey": "child-run-002w4wi6:verified",
+            "sequence": 9,
+            "type": "CHILD_VERIFIED",
+            "timestamp": "2026-10-03T12:01:56.000Z",
+            "taskId": "task-4",
+            "agentId": "agent-4",
+            "childRunId": "child-run-002w4wi6",
+            "attemptId": "attempt-002ugfq0"
+          },
+          {
+            "eventId": "child-run-003qdal4:started",
+            "sourceIdempotencyKey": "child-run-003qdal4:started",
+            "sequence": 10,
+            "type": "CHILD_STARTED",
+            "timestamp": "2026-10-03T12:02:00.000Z",
+            "taskId": "task-5",
+            "agentId": "agent-5",
+            "childRunId": "child-run-003qdal4",
+            "attemptId": "attempt-003ootsy"
+          },
+          {
+            "eventId": "child-run-003qdal4:verified",
+            "sourceIdempotencyKey": "child-run-003qdal4:verified",
+            "sequence": 11,
+            "type": "CHILD_VERIFIED",
+            "timestamp": "2026-10-03T12:02:24.000Z",
+            "taskId": "task-5",
+            "agentId": "agent-5",
+            "childRunId": "child-run-003qdal4",
+            "attemptId": "attempt-003ootsy"
+          },
+          {
+            "eventId": "child-run-004kloo2:started",
+            "sourceIdempotencyKey": "child-run-004kloo2:started",
+            "sequence": 12,
+            "type": "CHILD_STARTED",
+            "timestamp": "2026-10-03T12:02:28.000Z",
+            "taskId": "task-6",
+            "agentId": "agent-6",
+            "childRunId": "child-run-004kloo2",
+            "attemptId": "attempt-004ix7vx"
+          },
+          {
+            "eventId": "child-run-004kloo2:verified",
+            "sourceIdempotencyKey": "child-run-004kloo2:verified",
+            "sequence": 13,
+            "type": "CHILD_VERIFIED",
+            "timestamp": "2026-10-03T12:02:52.000Z",
+            "taskId": "task-6",
+            "agentId": "agent-6",
+            "childRunId": "child-run-004kloo2",
+            "attemptId": "attempt-004ix7vx"
+          },
+          {
+            "eventId": "child-run-005eu2r1:started",
+            "sourceIdempotencyKey": "child-run-005eu2r1:started",
+            "sequence": 14,
+            "type": "CHILD_STARTED",
+            "timestamp": "2026-10-03T12:02:56.000Z",
+            "taskId": "task-7",
+            "agentId": "agent-7",
+            "childRunId": "child-run-005eu2r1",
+            "attemptId": "attempt-005d5lyv"
+          },
+          {
+            "eventId": "child-run-005eu2r1:verified",
+            "sourceIdempotencyKey": "child-run-005eu2r1:verified",
+            "sequence": 15,
+            "type": "CHILD_VERIFIED",
+            "timestamp": "2026-10-03T12:03:20.000Z",
+            "taskId": "task-7",
+            "agentId": "agent-7",
+            "childRunId": "child-run-005eu2r1",
+            "attemptId": "attempt-005d5lyv"
+          },
+          {
+            "eventId": "child-run-00692gtz:started",
+            "sourceIdempotencyKey": "child-run-00692gtz:started",
+            "sequence": 16,
+            "type": "CHILD_STARTED",
+            "timestamp": "2026-10-03T12:03:24.000Z",
+            "taskId": "task-8",
+            "agentId": "agent-8",
+            "childRunId": "child-run-00692gtz",
+            "attemptId": "attempt-0067e01t"
+          },
+          {
+            "eventId": "child-run-00692gtz:verified",
+            "sourceIdempotencyKey": "child-run-00692gtz:verified",
+            "sequence": 17,
+            "type": "CHILD_VERIFIED",
+            "timestamp": "2026-10-03T12:03:48.000Z",
+            "taskId": "task-8",
+            "agentId": "agent-8",
+            "childRunId": "child-run-00692gtz",
+            "attemptId": "attempt-0067e01t"
+          },
+          {
+            "eventId": "child-run-0073auwx:started",
+            "sourceIdempotencyKey": "child-run-0073auwx:started",
+            "sequence": 18,
+            "type": "CHILD_STARTED",
+            "timestamp": "2026-10-03T12:03:52.000Z",
+            "taskId": "task-9",
+            "agentId": "agent-9",
+            "childRunId": "child-run-0073auwx",
+            "attemptId": "attempt-0071me4s"
+          },
+          {
+            "eventId": "child-run-0073auwx:verified",
+            "sourceIdempotencyKey": "child-run-0073auwx:verified",
+            "sequence": 19,
+            "type": "CHILD_VERIFIED",
+            "timestamp": "2026-10-03T12:04:16.000Z",
+            "taskId": "task-9",
+            "agentId": "agent-9",
+            "childRunId": "child-run-0073auwx",
+            "attemptId": "attempt-0071me4s"
+          },
+          {
+            "eventId": "child-run-007xj8zw:started",
+            "sourceIdempotencyKey": "child-run-007xj8zw:started",
+            "sequence": 20,
+            "type": "CHILD_STARTED",
+            "timestamp": "2026-10-03T12:04:20.000Z",
+            "taskId": "task-10",
+            "agentId": "agent-10",
+            "childRunId": "child-run-007xj8zw",
+            "attemptId": "attempt-007vus7q"
+          },
+          {
+            "eventId": "child-run-007xj8zw:verified",
+            "sourceIdempotencyKey": "child-run-007xj8zw:verified",
+            "sequence": 21,
+            "type": "CHILD_VERIFIED",
+            "timestamp": "2026-10-03T12:04:44.000Z",
+            "taskId": "task-10",
+            "agentId": "agent-10",
+            "childRunId": "child-run-007xj8zw",
+            "attemptId": "attempt-007vus7q"
+          },
+          {
+            "eventId": "child-run-008rrn2u:started",
+            "sourceIdempotencyKey": "child-run-008rrn2u:started",
+            "sequence": 22,
+            "type": "CHILD_STARTED",
+            "timestamp": "2026-10-03T12:04:48.000Z",
+            "taskId": "task-11",
+            "agentId": "agent-11",
+            "childRunId": "child-run-008rrn2u",
+            "attemptId": "attempt-008q36ao"
+          },
+          {
+            "eventId": "child-run-008rrn2u:verified",
+            "sourceIdempotencyKey": "child-run-008rrn2u:verified",
+            "sequence": 23,
+            "type": "CHILD_VERIFIED",
+            "timestamp": "2026-10-03T12:05:12.000Z",
+            "taskId": "task-11",
+            "agentId": "agent-11",
+            "childRunId": "child-run-008rrn2u",
+            "attemptId": "attempt-008q36ao"
+          },
+          {
+            "eventId": "child-run-009m015s:started",
+            "sourceIdempotencyKey": "child-run-009m015s:started",
+            "sequence": 24,
+            "type": "CHILD_STARTED",
+            "timestamp": "2026-10-03T12:05:16.000Z",
+            "taskId": "task-12",
+            "agentId": "agent-12",
+            "childRunId": "child-run-009m015s",
+            "attemptId": "attempt-009kbkdn"
+          },
+          {
+            "eventId": "child-run-009m015s:verified",
+            "sourceIdempotencyKey": "child-run-009m015s:verified",
+            "sequence": 25,
+            "type": "CHILD_VERIFIED",
+            "timestamp": "2026-10-03T12:05:40.000Z",
+            "taskId": "task-12",
+            "agentId": "agent-12",
+            "childRunId": "child-run-009m015s",
+            "attemptId": "attempt-009kbkdn"
+          },
+          {
+            "eventId": "child-run-00ag8f8r:started",
+            "sourceIdempotencyKey": "child-run-00ag8f8r:started",
+            "sequence": 26,
+            "type": "CHILD_STARTED",
+            "timestamp": "2026-10-03T12:05:44.000Z",
+            "taskId": "task-13",
+            "agentId": "agent-13",
+            "childRunId": "child-run-00ag8f8r",
+            "attemptId": "attempt-00aejygl"
+          },
+          {
+            "eventId": "child-run-00ag8f8r:verified",
+            "sourceIdempotencyKey": "child-run-00ag8f8r:verified",
+            "sequence": 27,
+            "type": "CHILD_VERIFIED",
+            "timestamp": "2026-10-03T12:06:08.000Z",
+            "taskId": "task-13",
+            "agentId": "agent-13",
+            "childRunId": "child-run-00ag8f8r",
+            "attemptId": "attempt-00aejygl"
+          },
+          {
+            "eventId": "child-run-00bagtbp:started",
+            "sourceIdempotencyKey": "child-run-00bagtbp:started",
+            "sequence": 28,
+            "type": "CHILD_STARTED",
+            "timestamp": "2026-10-03T12:06:12.000Z",
+            "taskId": "task-14",
+            "agentId": "agent-14",
+            "childRunId": "child-run-00bagtbp",
+            "attemptId": "attempt-00b8scjj"
+          },
+          {
+            "eventId": "child-run-00bagtbp:verified",
+            "sourceIdempotencyKey": "child-run-00bagtbp:verified",
+            "sequence": 29,
+            "type": "CHILD_VERIFIED",
+            "timestamp": "2026-10-03T12:06:36.000Z",
+            "taskId": "task-14",
+            "agentId": "agent-14",
+            "childRunId": "child-run-00bagtbp",
+            "attemptId": "attempt-00b8scjj"
+          },
+          {
+            "eventId": "child-run-00c4p7en:started",
+            "sourceIdempotencyKey": "child-run-00c4p7en:started",
+            "sequence": 30,
+            "type": "CHILD_STARTED",
+            "timestamp": "2026-10-03T12:06:40.000Z",
+            "taskId": "task-15",
+            "agentId": "agent-15",
+            "childRunId": "child-run-00c4p7en",
+            "attemptId": "attempt-00c30qmi"
+          },
+          {
+            "eventId": "child-run-00c4p7en:verified",
+            "sourceIdempotencyKey": "child-run-00c4p7en:verified",
+            "sequence": 31,
+            "type": "CHILD_VERIFIED",
+            "timestamp": "2026-10-03T12:07:04.000Z",
+            "taskId": "task-15",
+            "agentId": "agent-15",
+            "childRunId": "child-run-00c4p7en",
+            "attemptId": "attempt-00c30qmi"
+          },
+          {
+            "eventId": "parent-global-verifier:swarm-verified-15-agent:f0bf011cb01b5ca4f13dd4465ecd0934e809ab3b306c14b0eb3c6ff8ddee9ee1",
+            "sourceIdempotencyKey": "parent-global-verifier:swarm-verified-15-agent:f0bf011cb01b5ca4f13dd4465ecd0934e809ab3b306c14b0eb3c6ff8ddee9ee1",
+            "sequence": 32,
+            "type": "GLOBAL_VERIFIER_PASSED",
+            "timestamp": "2026-10-03T12:07:11.000Z",
+            "verificationId": "global-verification-00cyxlhm"
+          },
+          {
+            "eventId": "parent-outcome:swarm-verified-15-agent:verified:f0bf011cb01b5ca4f13dd4465ecd0934e809ab3b306c14b0eb3c6ff8ddee9ee1",
+            "sourceIdempotencyKey": "parent-outcome:swarm-verified-15-agent:verified:f0bf011cb01b5ca4f13dd4465ecd0934e809ab3b306c14b0eb3c6ff8ddee9ee1",
+            "sequence": 33,
+            "type": "SWARM_VERIFIED",
+            "timestamp": "2026-10-03T12:07:16.000Z",
+            "verificationId": "global-verification-00cyxlhm"
+          }
+        ],
+        "globalVerification": {
+          "state": "passed",
+          "verificationId": "global-verification-00cyxlhm",
+          "integratedTreeHash": "528732cadbcdc09711fc2e71e251b48b4f6da2a0",
+          "evidence": [
+            {
+              "eventId": "parent-global-verifier:swarm-verified-15-agent:f0bf011cb01b5ca4f13dd4465ecd0934e809ab3b306c14b0eb3c6ff8ddee9ee1",
+              "sequence": 32
+            }
+          ]
+        },
+        "parentOutcome": {
+          "state": "verified",
+          "source": "sealed_parent_receipt",
+          "evidence": [
+            {
+              "eventId": "parent-outcome:swarm-verified-15-agent:verified:f0bf011cb01b5ca4f13dd4465ecd0934e809ab3b306c14b0eb3c6ff8ddee9ee1",
+              "sequence": 33
+            }
+          ]
+        },
+        "taskVerificationState": "passed",
+        "receiptIntegrityState": "verified",
+        "transportSignature": {
+          "algorithm": "hmac-sha256",
+          "keyId": "hosted-3d92c57743ba0c14",
+          "keyLocatorHash": "ad39e28164db50c2f4797c011836976ce8c7571b4ac0b2949c24a871d2acd22d",
+          "signatureHmacSha256": "183f75a48cbb75f06d58a8d43dbb2497fae88a4ee4283007112b8a25fc189ed1"
+        }
+      },
+      "atlas": {
+        "schemaVersion": "martin.swarm-atlas-view.v1",
+        "envelopeId": "556b9a101307268448eb4efb977632923d1a97ef58bf28057ec837444da08a40",
+        "sourceIdentities": {
+          "receiptId": "swarm-receipt-2c3397c4daa64245",
+          "receiptSha256": "2c3397c4daa642456ec5bb19f36eaebc7c2c6b925a8f1958bb1e901e5dfeee4c",
+          "evidenceIndexSha256": "2c1cc5471be05ca74ad3c9c69b6127e3c99c479641bcd3e0bf500d510e713082",
+          "eventChainSha256": "06d61e71e9e0c776ce58612d0e3da229bc9730b3a05f7355dbe8f354262c5623"
+        },
+        "swarm": {
+          "swarmId": "swarm-verified-15-agent",
+          "workspaceId": "workspace-verified-15-agent",
+          "projectId": "project-verified-15-agent",
+          "planHash": "cf354a4212ef83353b83552fed97c2f54d422edc69cdf01b9b5d071ddcb90795",
+          "baselineCommit": "c35f6daacc9e7da66b265d23fc10b013e58dd0f5"
+        },
+        "tasks": [
+          {
+            "taskId": "task-1",
+            "required": true,
+            "dependsOn": [],
+            "plannedAgentId": "agent-1",
+            "effectiveAgentId": "agent-1",
+            "status": "accepted"
+          },
+          {
+            "taskId": "task-2",
+            "required": true,
+            "dependsOn": [
+              "task-1"
+            ],
+            "plannedAgentId": "agent-2",
+            "effectiveAgentId": "agent-2",
+            "status": "accepted"
+          },
+          {
+            "taskId": "task-3",
+            "required": true,
+            "dependsOn": [
+              "task-2"
+            ],
+            "plannedAgentId": "agent-3",
+            "effectiveAgentId": "agent-3",
+            "status": "accepted"
+          },
+          {
+            "taskId": "task-4",
+            "required": true,
+            "dependsOn": [
+              "task-3"
+            ],
+            "plannedAgentId": "agent-4",
+            "effectiveAgentId": "agent-4",
+            "status": "accepted"
+          },
+          {
+            "taskId": "task-5",
+            "required": true,
+            "dependsOn": [
+              "task-4"
+            ],
+            "plannedAgentId": "agent-5",
+            "effectiveAgentId": "agent-5",
+            "status": "accepted"
+          },
+          {
+            "taskId": "task-6",
+            "required": true,
+            "dependsOn": [
+              "task-5"
+            ],
+            "plannedAgentId": "agent-6",
+            "effectiveAgentId": "agent-6",
+            "status": "accepted"
+          },
+          {
+            "taskId": "task-7",
+            "required": true,
+            "dependsOn": [
+              "task-6"
+            ],
+            "plannedAgentId": "agent-7",
+            "effectiveAgentId": "agent-7",
+            "status": "accepted"
+          },
+          {
+            "taskId": "task-8",
+            "required": true,
+            "dependsOn": [
+              "task-7"
+            ],
+            "plannedAgentId": "agent-8",
+            "effectiveAgentId": "agent-8",
+            "status": "accepted"
+          },
+          {
+            "taskId": "task-9",
+            "required": true,
+            "dependsOn": [
+              "task-8"
+            ],
+            "plannedAgentId": "agent-9",
+            "effectiveAgentId": "agent-9",
+            "status": "accepted"
+          },
+          {
+            "taskId": "task-10",
+            "required": true,
+            "dependsOn": [
+              "task-9"
+            ],
+            "plannedAgentId": "agent-10",
+            "effectiveAgentId": "agent-10",
+            "status": "accepted"
+          },
+          {
+            "taskId": "task-11",
+            "required": true,
+            "dependsOn": [
+              "task-10"
+            ],
+            "plannedAgentId": "agent-11",
+            "effectiveAgentId": "agent-11",
+            "status": "accepted"
+          },
+          {
+            "taskId": "task-12",
+            "required": true,
+            "dependsOn": [
+              "task-11"
+            ],
+            "plannedAgentId": "agent-12",
+            "effectiveAgentId": "agent-12",
+            "status": "accepted"
+          },
+          {
+            "taskId": "task-13",
+            "required": true,
+            "dependsOn": [
+              "task-12"
+            ],
+            "plannedAgentId": "agent-13",
+            "effectiveAgentId": "agent-13",
+            "status": "accepted"
+          },
+          {
+            "taskId": "task-14",
+            "required": true,
+            "dependsOn": [
+              "task-13"
+            ],
+            "plannedAgentId": "agent-14",
+            "effectiveAgentId": "agent-14",
+            "status": "accepted"
+          },
+          {
+            "taskId": "task-15",
+            "required": true,
+            "dependsOn": [
+              "task-14"
+            ],
+            "plannedAgentId": "agent-15",
+            "effectiveAgentId": "agent-15",
+            "status": "accepted"
+          }
+        ],
+        "dependencyEdges": [
+          {
+            "fromTaskId": "task-10",
+            "toTaskId": "task-9"
+          },
+          {
+            "fromTaskId": "task-11",
+            "toTaskId": "task-10"
+          },
+          {
+            "fromTaskId": "task-12",
+            "toTaskId": "task-11"
+          },
+          {
+            "fromTaskId": "task-13",
+            "toTaskId": "task-12"
+          },
+          {
+            "fromTaskId": "task-14",
+            "toTaskId": "task-13"
+          },
+          {
+            "fromTaskId": "task-15",
+            "toTaskId": "task-14"
+          },
+          {
+            "fromTaskId": "task-2",
+            "toTaskId": "task-1"
+          },
+          {
+            "fromTaskId": "task-3",
+            "toTaskId": "task-2"
+          },
+          {
+            "fromTaskId": "task-4",
+            "toTaskId": "task-3"
+          },
+          {
+            "fromTaskId": "task-5",
+            "toTaskId": "task-4"
+          },
+          {
+            "fromTaskId": "task-6",
+            "toTaskId": "task-5"
+          },
+          {
+            "fromTaskId": "task-7",
+            "toTaskId": "task-6"
+          },
+          {
+            "fromTaskId": "task-8",
+            "toTaskId": "task-7"
+          },
+          {
+            "fromTaskId": "task-9",
+            "toTaskId": "task-8"
+          }
+        ],
+        "agents": [
+          {
+            "agentId": "agent-1",
+            "role": "worker",
+            "status": "verified",
+            "taskIds": [
+              "task-1"
+            ],
+            "childRunId": "child-run-000dfq9b"
+          },
+          {
+            "agentId": "agent-2",
+            "role": "worker",
+            "status": "verified",
+            "taskIds": [
+              "task-2"
+            ],
+            "childRunId": "child-run-0017o4c9"
+          },
+          {
+            "agentId": "agent-3",
+            "role": "worker",
+            "status": "verified",
+            "taskIds": [
+              "task-3"
+            ],
+            "childRunId": "child-run-0021wif7"
+          },
+          {
+            "agentId": "agent-4",
+            "role": "worker",
+            "status": "verified",
+            "taskIds": [
+              "task-4"
+            ],
+            "childRunId": "child-run-002w4wi6"
+          },
+          {
+            "agentId": "agent-5",
+            "role": "worker",
+            "status": "verified",
+            "taskIds": [
+              "task-5"
+            ],
+            "childRunId": "child-run-003qdal4"
+          },
+          {
+            "agentId": "agent-6",
+            "role": "worker",
+            "status": "verified",
+            "taskIds": [
+              "task-6"
+            ],
+            "childRunId": "child-run-004kloo2"
+          },
+          {
+            "agentId": "agent-7",
+            "role": "worker",
+            "status": "verified",
+            "taskIds": [
+              "task-7"
+            ],
+            "childRunId": "child-run-005eu2r1"
+          },
+          {
+            "agentId": "agent-8",
+            "role": "worker",
+            "status": "verified",
+            "taskIds": [
+              "task-8"
+            ],
+            "childRunId": "child-run-00692gtz"
+          },
+          {
+            "agentId": "agent-9",
+            "role": "worker",
+            "status": "verified",
+            "taskIds": [
+              "task-9"
+            ],
+            "childRunId": "child-run-0073auwx"
+          },
+          {
+            "agentId": "agent-10",
+            "role": "worker",
+            "status": "verified",
+            "taskIds": [
+              "task-10"
+            ],
+            "childRunId": "child-run-007xj8zw"
+          },
+          {
+            "agentId": "agent-11",
+            "role": "worker",
+            "status": "verified",
+            "taskIds": [
+              "task-11"
+            ],
+            "childRunId": "child-run-008rrn2u"
+          },
+          {
+            "agentId": "agent-12",
+            "role": "worker",
+            "status": "verified",
+            "taskIds": [
+              "task-12"
+            ],
+            "childRunId": "child-run-009m015s"
+          },
+          {
+            "agentId": "agent-13",
+            "role": "worker",
+            "status": "verified",
+            "taskIds": [
+              "task-13"
+            ],
+            "childRunId": "child-run-00ag8f8r"
+          },
+          {
+            "agentId": "agent-14",
+            "role": "worker",
+            "status": "verified",
+            "taskIds": [
+              "task-14"
+            ],
+            "childRunId": "child-run-00bagtbp"
+          },
+          {
+            "agentId": "agent-15",
+            "role": "worker",
+            "status": "verified",
+            "taskIds": [
+              "task-15"
+            ],
+            "childRunId": "child-run-00c4p7en"
+          }
+        ],
+        "children": [
+          {
+            "childRunId": "child-run-000dfq9b",
+            "agentId": "agent-1",
+            "attemptId": "attempt-000br9h5",
+            "taskIds": [
+              "task-1"
+            ],
+            "status": "verified",
+            "receiptIntegrityState": "verified",
+            "evidence": [
+              {
+                "eventId": "child-run-000dfq9b:started",
+                "sequence": 2
+              },
+              {
+                "eventId": "child-run-000dfq9b:verified",
+                "sequence": 3
+              }
+            ]
+          },
+          {
+            "childRunId": "child-run-0017o4c9",
+            "agentId": "agent-2",
+            "attemptId": "attempt-0015znk3",
+            "taskIds": [
+              "task-2"
+            ],
+            "status": "verified",
+            "receiptIntegrityState": "verified",
+            "evidence": [
+              {
+                "eventId": "child-run-0017o4c9:started",
+                "sequence": 4
+              },
+              {
+                "eventId": "child-run-0017o4c9:verified",
+                "sequence": 5
+              }
+            ]
+          },
+          {
+            "childRunId": "child-run-0021wif7",
+            "agentId": "agent-3",
+            "attemptId": "attempt-002081n2",
+            "taskIds": [
+              "task-3"
+            ],
+            "status": "verified",
+            "receiptIntegrityState": "verified",
+            "evidence": [
+              {
+                "eventId": "child-run-0021wif7:started",
+                "sequence": 6
+              },
+              {
+                "eventId": "child-run-0021wif7:verified",
+                "sequence": 7
+              }
+            ]
+          },
+          {
+            "childRunId": "child-run-002w4wi6",
+            "agentId": "agent-4",
+            "attemptId": "attempt-002ugfq0",
+            "taskIds": [
+              "task-4"
+            ],
+            "status": "verified",
+            "receiptIntegrityState": "verified",
+            "evidence": [
+              {
+                "eventId": "child-run-002w4wi6:started",
+                "sequence": 8
+              },
+              {
+                "eventId": "child-run-002w4wi6:verified",
+                "sequence": 9
+              }
+            ]
+          },
+          {
+            "childRunId": "child-run-003qdal4",
+            "agentId": "agent-5",
+            "attemptId": "attempt-003ootsy",
+            "taskIds": [
+              "task-5"
+            ],
+            "status": "verified",
+            "receiptIntegrityState": "verified",
+            "evidence": [
+              {
+                "eventId": "child-run-003qdal4:started",
+                "sequence": 10
+              },
+              {
+                "eventId": "child-run-003qdal4:verified",
+                "sequence": 11
+              }
+            ]
+          },
+          {
+            "childRunId": "child-run-004kloo2",
+            "agentId": "agent-6",
+            "attemptId": "attempt-004ix7vx",
+            "taskIds": [
+              "task-6"
+            ],
+            "status": "verified",
+            "receiptIntegrityState": "verified",
+            "evidence": [
+              {
+                "eventId": "child-run-004kloo2:started",
+                "sequence": 12
+              },
+              {
+                "eventId": "child-run-004kloo2:verified",
+                "sequence": 13
+              }
+            ]
+          },
+          {
+            "childRunId": "child-run-005eu2r1",
+            "agentId": "agent-7",
+            "attemptId": "attempt-005d5lyv",
+            "taskIds": [
+              "task-7"
+            ],
+            "status": "verified",
+            "receiptIntegrityState": "verified",
+            "evidence": [
+              {
+                "eventId": "child-run-005eu2r1:started",
+                "sequence": 14
+              },
+              {
+                "eventId": "child-run-005eu2r1:verified",
+                "sequence": 15
+              }
+            ]
+          },
+          {
+            "childRunId": "child-run-00692gtz",
+            "agentId": "agent-8",
+            "attemptId": "attempt-0067e01t",
+            "taskIds": [
+              "task-8"
+            ],
+            "status": "verified",
+            "receiptIntegrityState": "verified",
+            "evidence": [
+              {
+                "eventId": "child-run-00692gtz:started",
+                "sequence": 16
+              },
+              {
+                "eventId": "child-run-00692gtz:verified",
+                "sequence": 17
+              }
+            ]
+          },
+          {
+            "childRunId": "child-run-0073auwx",
+            "agentId": "agent-9",
+            "attemptId": "attempt-0071me4s",
+            "taskIds": [
+              "task-9"
+            ],
+            "status": "verified",
+            "receiptIntegrityState": "verified",
+            "evidence": [
+              {
+                "eventId": "child-run-0073auwx:started",
+                "sequence": 18
+              },
+              {
+                "eventId": "child-run-0073auwx:verified",
+                "sequence": 19
+              }
+            ]
+          },
+          {
+            "childRunId": "child-run-007xj8zw",
+            "agentId": "agent-10",
+            "attemptId": "attempt-007vus7q",
+            "taskIds": [
+              "task-10"
+            ],
+            "status": "verified",
+            "receiptIntegrityState": "verified",
+            "evidence": [
+              {
+                "eventId": "child-run-007xj8zw:started",
+                "sequence": 20
+              },
+              {
+                "eventId": "child-run-007xj8zw:verified",
+                "sequence": 21
+              }
+            ]
+          },
+          {
+            "childRunId": "child-run-008rrn2u",
+            "agentId": "agent-11",
+            "attemptId": "attempt-008q36ao",
+            "taskIds": [
+              "task-11"
+            ],
+            "status": "verified",
+            "receiptIntegrityState": "verified",
+            "evidence": [
+              {
+                "eventId": "child-run-008rrn2u:started",
+                "sequence": 22
+              },
+              {
+                "eventId": "child-run-008rrn2u:verified",
+                "sequence": 23
+              }
+            ]
+          },
+          {
+            "childRunId": "child-run-009m015s",
+            "agentId": "agent-12",
+            "attemptId": "attempt-009kbkdn",
+            "taskIds": [
+              "task-12"
+            ],
+            "status": "verified",
+            "receiptIntegrityState": "verified",
+            "evidence": [
+              {
+                "eventId": "child-run-009m015s:started",
+                "sequence": 24
+              },
+              {
+                "eventId": "child-run-009m015s:verified",
+                "sequence": 25
+              }
+            ]
+          },
+          {
+            "childRunId": "child-run-00ag8f8r",
+            "agentId": "agent-13",
+            "attemptId": "attempt-00aejygl",
+            "taskIds": [
+              "task-13"
+            ],
+            "status": "verified",
+            "receiptIntegrityState": "verified",
+            "evidence": [
+              {
+                "eventId": "child-run-00ag8f8r:started",
+                "sequence": 26
+              },
+              {
+                "eventId": "child-run-00ag8f8r:verified",
+                "sequence": 27
+              }
+            ]
+          },
+          {
+            "childRunId": "child-run-00bagtbp",
+            "agentId": "agent-14",
+            "attemptId": "attempt-00b8scjj",
+            "taskIds": [
+              "task-14"
+            ],
+            "status": "verified",
+            "receiptIntegrityState": "verified",
+            "evidence": [
+              {
+                "eventId": "child-run-00bagtbp:started",
+                "sequence": 28
+              },
+              {
+                "eventId": "child-run-00bagtbp:verified",
+                "sequence": 29
+              }
+            ]
+          },
+          {
+            "childRunId": "child-run-00c4p7en",
+            "agentId": "agent-15",
+            "attemptId": "attempt-00c30qmi",
+            "taskIds": [
+              "task-15"
+            ],
+            "status": "verified",
+            "receiptIntegrityState": "verified",
+            "evidence": [
+              {
+                "eventId": "child-run-00c4p7en:started",
+                "sequence": 30
+              },
+              {
+                "eventId": "child-run-00c4p7en:verified",
+                "sequence": 31
+              }
+            ]
+          }
+        ],
+        "budget": {
+          "capUsd": 17,
+          "capTokens": 1500,
+          "settledUsd": 0.15,
+          "settledTokens": 75
+        },
+        "interventions": {
+          "blockedActions": [],
+          "reassignments": []
+        },
+        "integration": {
+          "admissions": [],
+          "rejections": [],
+          "conflicts": [],
+          "integratedTreeHash": "528732cadbcdc09711fc2e71e251b48b4f6da2a0"
+        },
+        "globalVerification": {
+          "state": "passed",
+          "verificationId": "global-verification-00cyxlhm",
+          "integratedTreeHash": "528732cadbcdc09711fc2e71e251b48b4f6da2a0",
+          "evidence": [
+            {
+              "eventId": "parent-global-verifier:swarm-verified-15-agent:f0bf011cb01b5ca4f13dd4465ecd0934e809ab3b306c14b0eb3c6ff8ddee9ee1",
+              "sequence": 32
+            }
+          ]
+        },
+        "parentOutcome": {
+          "state": "verified",
+          "source": "sealed_parent_receipt",
+          "evidence": [
+            {
+              "eventId": "parent-outcome:swarm-verified-15-agent:verified:f0bf011cb01b5ca4f13dd4465ecd0934e809ab3b306c14b0eb3c6ff8ddee9ee1",
+              "sequence": 33
+            }
+          ]
+        },
+        "taskVerificationState": "passed",
+        "receiptIntegrityState": "verified"
+      },
+      "sansa": {
+        "schemaVersion": "martin.swarm-sansa-view.v1",
+        "envelopeId": "556b9a101307268448eb4efb977632923d1a97ef58bf28057ec837444da08a40",
+        "sourceIdentities": {
+          "receiptId": "swarm-receipt-2c3397c4daa64245",
+          "receiptSha256": "2c3397c4daa642456ec5bb19f36eaebc7c2c6b925a8f1958bb1e901e5dfeee4c",
+          "evidenceIndexSha256": "2c1cc5471be05ca74ad3c9c69b6127e3c99c479641bcd3e0bf500d510e713082",
+          "eventChainSha256": "06d61e71e9e0c776ce58612d0e3da229bc9730b3a05f7355dbe8f354262c5623"
+        },
+        "facts": [
+          {
+            "factId": "observed:32:parent-global-verifier:swarm-verified-15-agent:f0bf011cb01b5ca4f13dd4465ecd0934e809ab3b306c14b0eb3c6ff8ddee9ee1",
+            "kind": "verification_boundary",
+            "derivationKind": "observed",
+            "taskIds": [],
+            "agentIds": [],
+            "childRunIds": [],
+            "attemptIds": [],
+            "verificationIds": [
+              "global-verification-00cyxlhm"
+            ],
+            "evidence": [
+              {
+                "eventId": "parent-global-verifier:swarm-verified-15-agent:f0bf011cb01b5ca4f13dd4465ecd0934e809ab3b306c14b0eb3c6ff8ddee9ee1",
+                "sequence": 32
+              }
+            ]
+          }
+        ],
+        "parentOutcome": {
+          "state": "verified",
+          "source": "sealed_parent_receipt",
+          "evidence": [
+            {
+              "eventId": "parent-outcome:swarm-verified-15-agent:verified:f0bf011cb01b5ca4f13dd4465ecd0934e809ab3b306c14b0eb3c6ff8ddee9ee1",
+              "sequence": 33
+            }
+          ]
+        },
+        "globalVerification": {
+          "state": "passed",
+          "verificationId": "global-verification-00cyxlhm",
+          "integratedTreeHash": "528732cadbcdc09711fc2e71e251b48b4f6da2a0",
+          "evidence": [
+            {
+              "eventId": "parent-global-verifier:swarm-verified-15-agent:f0bf011cb01b5ca4f13dd4465ecd0934e809ab3b306c14b0eb3c6ff8ddee9ee1",
+              "sequence": 32
+            }
+          ]
+        }
+      },
+      "dashboard": {
+        "schemaVersion": "martin.swarm-dashboard-view.v1",
+        "envelopeId": "556b9a101307268448eb4efb977632923d1a97ef58bf28057ec837444da08a40",
+        "sourceIdentities": {
+          "receiptId": "swarm-receipt-2c3397c4daa64245",
+          "receiptSha256": "2c3397c4daa642456ec5bb19f36eaebc7c2c6b925a8f1958bb1e901e5dfeee4c",
+          "evidenceIndexSha256": "2c1cc5471be05ca74ad3c9c69b6127e3c99c479641bcd3e0bf500d510e713082",
+          "eventChainSha256": "06d61e71e9e0c776ce58612d0e3da229bc9730b3a05f7355dbe8f354262c5623"
+        },
+        "swarmId": "swarm-verified-15-agent",
+        "children": [
+          {
+            "childRunId": "child-run-000dfq9b",
+            "agentId": "agent-1",
+            "attemptId": "attempt-000br9h5",
+            "taskIds": [
+              "task-1"
+            ],
+            "status": "verified",
+            "receiptIntegrityState": "verified",
+            "evidence": [
+              {
+                "eventId": "child-run-000dfq9b:started",
+                "sequence": 2
+              },
+              {
+                "eventId": "child-run-000dfq9b:verified",
+                "sequence": 3
+              }
+            ]
+          },
+          {
+            "childRunId": "child-run-0017o4c9",
+            "agentId": "agent-2",
+            "attemptId": "attempt-0015znk3",
+            "taskIds": [
+              "task-2"
+            ],
+            "status": "verified",
+            "receiptIntegrityState": "verified",
+            "evidence": [
+              {
+                "eventId": "child-run-0017o4c9:started",
+                "sequence": 4
+              },
+              {
+                "eventId": "child-run-0017o4c9:verified",
+                "sequence": 5
+              }
+            ]
+          },
+          {
+            "childRunId": "child-run-0021wif7",
+            "agentId": "agent-3",
+            "attemptId": "attempt-002081n2",
+            "taskIds": [
+              "task-3"
+            ],
+            "status": "verified",
+            "receiptIntegrityState": "verified",
+            "evidence": [
+              {
+                "eventId": "child-run-0021wif7:started",
+                "sequence": 6
+              },
+              {
+                "eventId": "child-run-0021wif7:verified",
+                "sequence": 7
+              }
+            ]
+          },
+          {
+            "childRunId": "child-run-002w4wi6",
+            "agentId": "agent-4",
+            "attemptId": "attempt-002ugfq0",
+            "taskIds": [
+              "task-4"
+            ],
+            "status": "verified",
+            "receiptIntegrityState": "verified",
+            "evidence": [
+              {
+                "eventId": "child-run-002w4wi6:started",
+                "sequence": 8
+              },
+              {
+                "eventId": "child-run-002w4wi6:verified",
+                "sequence": 9
+              }
+            ]
+          },
+          {
+            "childRunId": "child-run-003qdal4",
+            "agentId": "agent-5",
+            "attemptId": "attempt-003ootsy",
+            "taskIds": [
+              "task-5"
+            ],
+            "status": "verified",
+            "receiptIntegrityState": "verified",
+            "evidence": [
+              {
+                "eventId": "child-run-003qdal4:started",
+                "sequence": 10
+              },
+              {
+                "eventId": "child-run-003qdal4:verified",
+                "sequence": 11
+              }
+            ]
+          },
+          {
+            "childRunId": "child-run-004kloo2",
+            "agentId": "agent-6",
+            "attemptId": "attempt-004ix7vx",
+            "taskIds": [
+              "task-6"
+            ],
+            "status": "verified",
+            "receiptIntegrityState": "verified",
+            "evidence": [
+              {
+                "eventId": "child-run-004kloo2:started",
+                "sequence": 12
+              },
+              {
+                "eventId": "child-run-004kloo2:verified",
+                "sequence": 13
+              }
+            ]
+          },
+          {
+            "childRunId": "child-run-005eu2r1",
+            "agentId": "agent-7",
+            "attemptId": "attempt-005d5lyv",
+            "taskIds": [
+              "task-7"
+            ],
+            "status": "verified",
+            "receiptIntegrityState": "verified",
+            "evidence": [
+              {
+                "eventId": "child-run-005eu2r1:started",
+                "sequence": 14
+              },
+              {
+                "eventId": "child-run-005eu2r1:verified",
+                "sequence": 15
+              }
+            ]
+          },
+          {
+            "childRunId": "child-run-00692gtz",
+            "agentId": "agent-8",
+            "attemptId": "attempt-0067e01t",
+            "taskIds": [
+              "task-8"
+            ],
+            "status": "verified",
+            "receiptIntegrityState": "verified",
+            "evidence": [
+              {
+                "eventId": "child-run-00692gtz:started",
+                "sequence": 16
+              },
+              {
+                "eventId": "child-run-00692gtz:verified",
+                "sequence": 17
+              }
+            ]
+          },
+          {
+            "childRunId": "child-run-0073auwx",
+            "agentId": "agent-9",
+            "attemptId": "attempt-0071me4s",
+            "taskIds": [
+              "task-9"
+            ],
+            "status": "verified",
+            "receiptIntegrityState": "verified",
+            "evidence": [
+              {
+                "eventId": "child-run-0073auwx:started",
+                "sequence": 18
+              },
+              {
+                "eventId": "child-run-0073auwx:verified",
+                "sequence": 19
+              }
+            ]
+          },
+          {
+            "childRunId": "child-run-007xj8zw",
+            "agentId": "agent-10",
+            "attemptId": "attempt-007vus7q",
+            "taskIds": [
+              "task-10"
+            ],
+            "status": "verified",
+            "receiptIntegrityState": "verified",
+            "evidence": [
+              {
+                "eventId": "child-run-007xj8zw:started",
+                "sequence": 20
+              },
+              {
+                "eventId": "child-run-007xj8zw:verified",
+                "sequence": 21
+              }
+            ]
+          },
+          {
+            "childRunId": "child-run-008rrn2u",
+            "agentId": "agent-11",
+            "attemptId": "attempt-008q36ao",
+            "taskIds": [
+              "task-11"
+            ],
+            "status": "verified",
+            "receiptIntegrityState": "verified",
+            "evidence": [
+              {
+                "eventId": "child-run-008rrn2u:started",
+                "sequence": 22
+              },
+              {
+                "eventId": "child-run-008rrn2u:verified",
+                "sequence": 23
+              }
+            ]
+          },
+          {
+            "childRunId": "child-run-009m015s",
+            "agentId": "agent-12",
+            "attemptId": "attempt-009kbkdn",
+            "taskIds": [
+              "task-12"
+            ],
+            "status": "verified",
+            "receiptIntegrityState": "verified",
+            "evidence": [
+              {
+                "eventId": "child-run-009m015s:started",
+                "sequence": 24
+              },
+              {
+                "eventId": "child-run-009m015s:verified",
+                "sequence": 25
+              }
+            ]
+          },
+          {
+            "childRunId": "child-run-00ag8f8r",
+            "agentId": "agent-13",
+            "attemptId": "attempt-00aejygl",
+            "taskIds": [
+              "task-13"
+            ],
+            "status": "verified",
+            "receiptIntegrityState": "verified",
+            "evidence": [
+              {
+                "eventId": "child-run-00ag8f8r:started",
+                "sequence": 26
+              },
+              {
+                "eventId": "child-run-00ag8f8r:verified",
+                "sequence": 27
+              }
+            ]
+          },
+          {
+            "childRunId": "child-run-00bagtbp",
+            "agentId": "agent-14",
+            "attemptId": "attempt-00b8scjj",
+            "taskIds": [
+              "task-14"
+            ],
+            "status": "verified",
+            "receiptIntegrityState": "verified",
+            "evidence": [
+              {
+                "eventId": "child-run-00bagtbp:started",
+                "sequence": 28
+              },
+              {
+                "eventId": "child-run-00bagtbp:verified",
+                "sequence": 29
+              }
+            ]
+          },
+          {
+            "childRunId": "child-run-00c4p7en",
+            "agentId": "agent-15",
+            "attemptId": "attempt-00c30qmi",
+            "taskIds": [
+              "task-15"
+            ],
+            "status": "verified",
+            "receiptIntegrityState": "verified",
+            "evidence": [
+              {
+                "eventId": "child-run-00c4p7en:started",
+                "sequence": 30
+              },
+              {
+                "eventId": "child-run-00c4p7en:verified",
+                "sequence": 31
+              }
+            ]
+          }
+        ],
+        "parentOutcome": {
+          "state": "verified",
+          "source": "sealed_parent_receipt",
+          "evidence": [
+            {
+              "eventId": "parent-outcome:swarm-verified-15-agent:verified:f0bf011cb01b5ca4f13dd4465ecd0934e809ab3b306c14b0eb3c6ff8ddee9ee1",
+              "sequence": 33
+            }
+          ]
+        },
+        "globalVerification": {
+          "state": "passed",
+          "verificationId": "global-verification-00cyxlhm",
+          "integratedTreeHash": "528732cadbcdc09711fc2e71e251b48b4f6da2a0",
+          "evidence": [
+            {
+              "eventId": "parent-global-verifier:swarm-verified-15-agent:f0bf011cb01b5ca4f13dd4465ecd0934e809ab3b306c14b0eb3c6ff8ddee9ee1",
+              "sequence": 32
+            }
+          ]
+        },
+        "taskVerificationState": "passed",
+        "receiptIntegrityState": "verified",
+        "budget": {
+          "capUsd": 17,
+          "capTokens": 1500,
+          "settledUsd": 0.15,
+          "settledTokens": 75
+        }
+      }
+    },
+    {
+      "name": "stopped-blocking-dependency",
+      "provenance": "production-exporter",
+      "envelope": {
+        "schemaVersion": "martin.swarm-hosted.v1",
+        "envelopeId": "dd26ca7621f8c831fe0e904262f3bd6952c6a7e87b8073774b0b0e462c1889da",
+        "sourceSchemas": {
+          "swarm": "martin.swarm.v1",
+          "receipt": "martin.swarm-receipt.v1",
+          "evidenceIndex": "martin.swarm-evidence-index.v1"
+        },
+        "sourceIdentities": {
+          "receiptId": "swarm-receipt-dc5c5b90c9f867b7",
+          "receiptSha256": "dc5c5b90c9f867b736c2359b36ba9b0b2180403664944f5d63f55813029f2522",
+          "evidenceIndexSha256": "8cd783ecddbf82a15270aeb1485f4b51b687494ca123310fe801c4220a193e20",
+          "eventChainSha256": "cc6f71bd45f48245eb3c00221929d4b458b1cad90e60ec3fc2074fba26169918"
+        },
+        "runtimeVersion": "0.8.0",
+        "createdAt": "2026-10-03T12:00:35.000Z",
+        "swarm": {
+          "swarmId": "swarm-stopped-blocking-dependency",
+          "workspaceId": "workspace-stopped-blocking-dependency",
+          "projectId": "project-stopped-blocking-dependency",
+          "planHash": "a5ef5f3480fe628b13919c0631e27def4bfb91523a63255e1d5c1afcc8811280",
+          "baselineCommit": "e4521353b71ffdca49f3e037ff3513d29fc9295b"
+        },
+        "topology": {
+          "tasks": [
+            {
+              "taskId": "task-1",
+              "required": true,
+              "dependsOn": [],
+              "plannedAgentId": "agent-1",
+              "effectiveAgentId": "agent-1",
+              "status": "stopped"
+            },
+            {
+              "taskId": "task-2",
+              "required": true,
+              "dependsOn": [
+                "task-1"
+              ],
+              "plannedAgentId": "agent-2",
+              "effectiveAgentId": "agent-2",
+              "status": "queued"
+            }
+          ],
+          "agents": [
+            {
+              "agentId": "agent-1",
+              "role": "worker",
+              "status": "stopped",
+              "taskIds": [
+                "task-1"
+              ],
+              "childRunId": "child-run-000dfq9b"
+            },
+            {
+              "agentId": "agent-2",
+              "role": "worker",
+              "status": "queued",
+              "taskIds": [
+                "task-2"
+              ]
+            }
+          ],
+          "children": [
+            {
+              "childRunId": "child-run-000dfq9b",
+              "agentId": "agent-1",
+              "attemptId": "attempt-000br9h5",
+              "taskIds": [
+                "task-1"
+              ],
+              "status": "stopped",
+              "receiptIntegrityState": "verified",
+              "evidence": [
+                {
+                  "eventId": "child-run-000dfq9b:started",
+                  "sequence": 2
+                },
+                {
+                  "eventId": "child-run-000dfq9b:child_stopped",
+                  "sequence": 3
+                }
+              ]
+            }
+          ]
+        },
+        "budget": {
+          "capUsd": 10,
+          "capTokens": 1000,
+          "settledUsd": 0.01,
+          "settledTokens": 5
+        },
+        "interventions": {
+          "blockedActions": [],
+          "reassignments": []
+        },
+        "integration": {
+          "admissions": [],
+          "rejections": [],
+          "conflicts": []
+        },
+        "events": [
+          {
+            "eventId": "a5ef5f3480fe628b13919c0631e27def4bfb91523a63255e1d5c1afcc8811280:created",
+            "sourceIdempotencyKey": "a5ef5f3480fe628b13919c0631e27def4bfb91523a63255e1d5c1afcc8811280:created",
+            "sequence": 1,
+            "type": "SWARM_CREATED",
+            "timestamp": "2026-10-03T12:00:04.000Z"
+          },
+          {
+            "eventId": "child-run-000dfq9b:started",
+            "sourceIdempotencyKey": "child-run-000dfq9b:started",
+            "sequence": 2,
+            "type": "CHILD_STARTED",
+            "timestamp": "2026-10-03T12:00:08.000Z",
+            "taskId": "task-1",
+            "agentId": "agent-1",
+            "childRunId": "child-run-000dfq9b",
+            "attemptId": "attempt-000br9h5"
+          },
+          {
+            "eventId": "child-run-000dfq9b:child_stopped",
+            "sourceIdempotencyKey": "child-run-000dfq9b:child_stopped",
+            "sequence": 3,
+            "type": "CHILD_STOPPED",
+            "timestamp": "2026-10-03T12:00:33.000Z",
+            "taskId": "task-1",
+            "agentId": "agent-1",
+            "childRunId": "child-run-000dfq9b",
+            "attemptId": "attempt-000br9h5"
+          },
+          {
+            "eventId": "a5ef5f3480fe628b13919c0631e27def4bfb91523a63255e1d5c1afcc8811280:stopped:cancelled",
+            "sourceIdempotencyKey": "a5ef5f3480fe628b13919c0631e27def4bfb91523a63255e1d5c1afcc8811280:stopped:cancelled",
+            "sequence": 4,
+            "type": "SWARM_STOPPED",
+            "timestamp": "2026-10-03T12:00:35.000Z"
+          }
+        ],
+        "globalVerification": {
+          "state": "unknown",
+          "evidence": []
+        },
+        "parentOutcome": {
+          "state": "stopped",
+          "source": "sealed_parent_receipt",
+          "evidence": [
+            {
+              "eventId": "a5ef5f3480fe628b13919c0631e27def4bfb91523a63255e1d5c1afcc8811280:stopped:cancelled",
+              "sequence": 4
+            }
+          ]
+        },
+        "taskVerificationState": "unknown",
+        "receiptIntegrityState": "verified",
+        "transportSignature": {
+          "algorithm": "hmac-sha256",
+          "keyId": "hosted-54d3b9d7cc50aa8d",
+          "keyLocatorHash": "06f95ae37064fd8223b947c1d2391341bb3226510ae6df05b4f09b1e7450ccfd",
+          "signatureHmacSha256": "1505d4cde8a7561eca5f03cd72c105c3a23c2bc24fe17cfdcf15d34ebd970268"
+        }
+      },
+      "atlas": {
+        "schemaVersion": "martin.swarm-atlas-view.v1",
+        "envelopeId": "dd26ca7621f8c831fe0e904262f3bd6952c6a7e87b8073774b0b0e462c1889da",
+        "sourceIdentities": {
+          "receiptId": "swarm-receipt-dc5c5b90c9f867b7",
+          "receiptSha256": "dc5c5b90c9f867b736c2359b36ba9b0b2180403664944f5d63f55813029f2522",
+          "evidenceIndexSha256": "8cd783ecddbf82a15270aeb1485f4b51b687494ca123310fe801c4220a193e20",
+          "eventChainSha256": "cc6f71bd45f48245eb3c00221929d4b458b1cad90e60ec3fc2074fba26169918"
+        },
+        "swarm": {
+          "swarmId": "swarm-stopped-blocking-dependency",
+          "workspaceId": "workspace-stopped-blocking-dependency",
+          "projectId": "project-stopped-blocking-dependency",
+          "planHash": "a5ef5f3480fe628b13919c0631e27def4bfb91523a63255e1d5c1afcc8811280",
+          "baselineCommit": "e4521353b71ffdca49f3e037ff3513d29fc9295b"
+        },
+        "tasks": [
+          {
+            "taskId": "task-1",
+            "required": true,
+            "dependsOn": [],
+            "plannedAgentId": "agent-1",
+            "effectiveAgentId": "agent-1",
+            "status": "stopped"
+          },
+          {
+            "taskId": "task-2",
+            "required": true,
+            "dependsOn": [
+              "task-1"
+            ],
+            "plannedAgentId": "agent-2",
+            "effectiveAgentId": "agent-2",
+            "status": "queued"
+          }
+        ],
+        "dependencyEdges": [
+          {
+            "fromTaskId": "task-2",
+            "toTaskId": "task-1"
+          }
+        ],
+        "agents": [
+          {
+            "agentId": "agent-1",
+            "role": "worker",
+            "status": "stopped",
+            "taskIds": [
+              "task-1"
+            ],
+            "childRunId": "child-run-000dfq9b"
+          },
+          {
+            "agentId": "agent-2",
+            "role": "worker",
+            "status": "queued",
+            "taskIds": [
+              "task-2"
+            ]
+          }
+        ],
+        "children": [
+          {
+            "childRunId": "child-run-000dfq9b",
+            "agentId": "agent-1",
+            "attemptId": "attempt-000br9h5",
+            "taskIds": [
+              "task-1"
+            ],
+            "status": "stopped",
+            "receiptIntegrityState": "verified",
+            "evidence": [
+              {
+                "eventId": "child-run-000dfq9b:started",
+                "sequence": 2
+              },
+              {
+                "eventId": "child-run-000dfq9b:child_stopped",
+                "sequence": 3
+              }
+            ]
+          }
+        ],
+        "budget": {
+          "capUsd": 10,
+          "capTokens": 1000,
+          "settledUsd": 0.01,
+          "settledTokens": 5
+        },
+        "interventions": {
+          "blockedActions": [],
+          "reassignments": []
+        },
+        "integration": {
+          "admissions": [],
+          "rejections": [],
+          "conflicts": []
+        },
+        "globalVerification": {
+          "state": "unknown",
+          "evidence": []
+        },
+        "parentOutcome": {
+          "state": "stopped",
+          "source": "sealed_parent_receipt",
+          "evidence": [
+            {
+              "eventId": "a5ef5f3480fe628b13919c0631e27def4bfb91523a63255e1d5c1afcc8811280:stopped:cancelled",
+              "sequence": 4
+            }
+          ]
+        },
+        "taskVerificationState": "unknown",
+        "receiptIntegrityState": "verified"
+      },
+      "sansa": {
+        "schemaVersion": "martin.swarm-sansa-view.v1",
+        "envelopeId": "dd26ca7621f8c831fe0e904262f3bd6952c6a7e87b8073774b0b0e462c1889da",
+        "sourceIdentities": {
+          "receiptId": "swarm-receipt-dc5c5b90c9f867b7",
+          "receiptSha256": "dc5c5b90c9f867b736c2359b36ba9b0b2180403664944f5d63f55813029f2522",
+          "evidenceIndexSha256": "8cd783ecddbf82a15270aeb1485f4b51b687494ca123310fe801c4220a193e20",
+          "eventChainSha256": "cc6f71bd45f48245eb3c00221929d4b458b1cad90e60ec3fc2074fba26169918"
+        },
+        "facts": [
+          {
+            "factId": "observed:3:child-run-000dfq9b:child_stopped",
+            "kind": "failure",
+            "derivationKind": "observed",
+            "taskIds": [
+              "task-1"
+            ],
+            "agentIds": [
+              "agent-1"
+            ],
+            "childRunIds": [
+              "child-run-000dfq9b"
+            ],
+            "attemptIds": [
+              "attempt-000br9h5"
+            ],
+            "verificationIds": [],
+            "evidence": [
+              {
+                "eventId": "child-run-000dfq9b:child_stopped",
+                "sequence": 3
+              }
+            ]
+          },
+          {
+            "factId": "derived:blocking:task-2->task-1",
+            "kind": "blocking_dependency",
+            "derivationKind": "deterministic_graph_derivation",
+            "taskIds": [
+              "task-2",
+              "task-1"
+            ],
+            "agentIds": [
+              "agent-1"
+            ],
+            "childRunIds": [
+              "child-run-000dfq9b"
+            ],
+            "attemptIds": [
+              "attempt-000br9h5"
+            ],
+            "verificationIds": [],
+            "evidence": [
+              {
+                "eventId": "child-run-000dfq9b:child_stopped",
+                "sequence": 3
+              }
+            ]
+          }
+        ],
+        "parentOutcome": {
+          "state": "stopped",
+          "source": "sealed_parent_receipt",
+          "evidence": [
+            {
+              "eventId": "a5ef5f3480fe628b13919c0631e27def4bfb91523a63255e1d5c1afcc8811280:stopped:cancelled",
+              "sequence": 4
+            }
+          ]
+        },
+        "globalVerification": {
+          "state": "unknown",
+          "evidence": []
+        }
+      },
+      "dashboard": {
+        "schemaVersion": "martin.swarm-dashboard-view.v1",
+        "envelopeId": "dd26ca7621f8c831fe0e904262f3bd6952c6a7e87b8073774b0b0e462c1889da",
+        "sourceIdentities": {
+          "receiptId": "swarm-receipt-dc5c5b90c9f867b7",
+          "receiptSha256": "dc5c5b90c9f867b736c2359b36ba9b0b2180403664944f5d63f55813029f2522",
+          "evidenceIndexSha256": "8cd783ecddbf82a15270aeb1485f4b51b687494ca123310fe801c4220a193e20",
+          "eventChainSha256": "cc6f71bd45f48245eb3c00221929d4b458b1cad90e60ec3fc2074fba26169918"
+        },
+        "swarmId": "swarm-stopped-blocking-dependency",
+        "children": [
+          {
+            "childRunId": "child-run-000dfq9b",
+            "agentId": "agent-1",
+            "attemptId": "attempt-000br9h5",
+            "taskIds": [
+              "task-1"
+            ],
+            "status": "stopped",
+            "receiptIntegrityState": "verified",
+            "evidence": [
+              {
+                "eventId": "child-run-000dfq9b:started",
+                "sequence": 2
+              },
+              {
+                "eventId": "child-run-000dfq9b:child_stopped",
+                "sequence": 3
+              }
+            ]
+          }
+        ],
+        "parentOutcome": {
+          "state": "stopped",
+          "source": "sealed_parent_receipt",
+          "evidence": [
+            {
+              "eventId": "a5ef5f3480fe628b13919c0631e27def4bfb91523a63255e1d5c1afcc8811280:stopped:cancelled",
+              "sequence": 4
+            }
+          ]
+        },
+        "globalVerification": {
+          "state": "unknown",
+          "evidence": []
+        },
+        "taskVerificationState": "unknown",
+        "receiptIntegrityState": "verified",
+        "budget": {
+          "capUsd": 10,
+          "capTokens": 1000,
+          "settledUsd": 0.01,
+          "settledTokens": 5
+        }
+      }
+    },
+    {
+      "name": "needs-review-child-failure",
+      "provenance": "production-exporter",
+      "envelope": {
+        "schemaVersion": "martin.swarm-hosted.v1",
+        "envelopeId": "91e37adaa8e03eced5c0785f7aa5553b2a6a6f1a91f5bff3963243967e69880a",
+        "sourceSchemas": {
+          "swarm": "martin.swarm.v1",
+          "receipt": "martin.swarm-receipt.v1",
+          "evidenceIndex": "martin.swarm-evidence-index.v1"
+        },
+        "sourceIdentities": {
+          "receiptId": "swarm-receipt-40f1d1d8ec2691ff",
+          "receiptSha256": "40f1d1d8ec2691ff4940827eff47796d25e935f695993404c8ecc6eceaa2f142",
+          "evidenceIndexSha256": "7c89d313c5104ad525b8d609feb761edfb6ef6136d7292bd990bf62ed2910722",
+          "eventChainSha256": "54136cb6550202de44738d8b4479a143d82a0a999ee327f1720f6b8cd8faf4c4"
+        },
+        "runtimeVersion": "0.8.0",
+        "createdAt": "2026-10-03T12:00:34.000Z",
+        "swarm": {
+          "swarmId": "swarm-needs-review-child-failure",
+          "workspaceId": "workspace-needs-review-child-failure",
+          "projectId": "project-needs-review-child-failure",
+          "planHash": "6a0db980b1b6a8faa0774cb938d17c1eebbd105f83b6f068fa88a2572a0b03fe",
+          "baselineCommit": "0de8c05c8e9c63d7fc3c08710529bbe1b447e403"
+        },
+        "topology": {
+          "tasks": [
+            {
+              "taskId": "task-1",
+              "required": true,
+              "dependsOn": [],
+              "plannedAgentId": "agent-1",
+              "effectiveAgentId": "agent-1",
+              "status": "stopped"
+            },
+            {
+              "taskId": "task-2",
+              "required": true,
+              "dependsOn": [
+                "task-1"
+              ],
+              "plannedAgentId": "agent-2",
+              "effectiveAgentId": "agent-2",
+              "status": "queued"
+            }
+          ],
+          "agents": [
+            {
+              "agentId": "agent-1",
+              "role": "worker",
+              "status": "stopped",
+              "taskIds": [
+                "task-1"
+              ],
+              "childRunId": "child-run-000dfq9b"
+            },
+            {
+              "agentId": "agent-2",
+              "role": "worker",
+              "status": "queued",
+              "taskIds": [
+                "task-2"
+              ]
+            }
+          ],
+          "children": [
+            {
+              "childRunId": "child-run-000dfq9b",
+              "agentId": "agent-1",
+              "attemptId": "attempt-000br9h5",
+              "taskIds": [
+                "task-1"
+              ],
+              "status": "stopped",
+              "receiptIntegrityState": "verified",
+              "evidence": [
+                {
+                  "eventId": "child-run-000dfq9b:started",
+                  "sequence": 2
+                },
+                {
+                  "eventId": "child-run-000dfq9b:child_stopped",
+                  "sequence": 3
+                }
+              ]
+            }
+          ]
+        },
+        "budget": {
+          "capUsd": 10,
+          "capTokens": 1000,
+          "settledUsd": 0.01,
+          "settledTokens": 5
+        },
+        "interventions": {
+          "blockedActions": [],
+          "reassignments": []
+        },
+        "integration": {
+          "admissions": [],
+          "rejections": [],
+          "conflicts": []
+        },
+        "events": [
+          {
+            "eventId": "6a0db980b1b6a8faa0774cb938d17c1eebbd105f83b6f068fa88a2572a0b03fe:created",
+            "sourceIdempotencyKey": "6a0db980b1b6a8faa0774cb938d17c1eebbd105f83b6f068fa88a2572a0b03fe:created",
+            "sequence": 1,
+            "type": "SWARM_CREATED",
+            "timestamp": "2026-10-03T12:00:04.000Z"
+          },
+          {
+            "eventId": "child-run-000dfq9b:started",
+            "sourceIdempotencyKey": "child-run-000dfq9b:started",
+            "sequence": 2,
+            "type": "CHILD_STARTED",
+            "timestamp": "2026-10-03T12:00:08.000Z",
+            "taskId": "task-1",
+            "agentId": "agent-1",
+            "childRunId": "child-run-000dfq9b",
+            "attemptId": "attempt-000br9h5"
+          },
+          {
+            "eventId": "child-run-000dfq9b:child_stopped",
+            "sourceIdempotencyKey": "child-run-000dfq9b:child_stopped",
+            "sequence": 3,
+            "type": "CHILD_STOPPED",
+            "timestamp": "2026-10-03T12:00:32.000Z",
+            "taskId": "task-1",
+            "agentId": "agent-1",
+            "childRunId": "child-run-000dfq9b",
+            "attemptId": "attempt-000br9h5",
+            "failureClass": "environment_mismatch"
+          },
+          {
+            "eventId": "6a0db980b1b6a8faa0774cb938d17c1eebbd105f83b6f068fa88a2572a0b03fe:terminal:needs_review",
+            "sourceIdempotencyKey": "6a0db980b1b6a8faa0774cb938d17c1eebbd105f83b6f068fa88a2572a0b03fe:terminal:needs_review",
+            "sequence": 4,
+            "type": "SWARM_NEEDS_REVIEW",
+            "timestamp": "2026-10-03T12:00:34.000Z"
+          }
+        ],
+        "globalVerification": {
+          "state": "unknown",
+          "evidence": []
+        },
+        "parentOutcome": {
+          "state": "needs_review",
+          "source": "sealed_parent_receipt",
+          "evidence": [
+            {
+              "eventId": "6a0db980b1b6a8faa0774cb938d17c1eebbd105f83b6f068fa88a2572a0b03fe:terminal:needs_review",
+              "sequence": 4
+            }
+          ]
+        },
+        "taskVerificationState": "unknown",
+        "receiptIntegrityState": "verified",
+        "transportSignature": {
+          "algorithm": "hmac-sha256",
+          "keyId": "hosted-defe61a3c3ba30a1",
+          "keyLocatorHash": "38f4f27ff26737aa5e57b02e2413dc7a5ba1bbbf49c4fd05bb389505b0f52075",
+          "signatureHmacSha256": "3398565f5179ad4a9a17afc92358fda5aed6a99e91f35b6d12213c7415d067b3"
+        }
+      },
+      "atlas": {
+        "schemaVersion": "martin.swarm-atlas-view.v1",
+        "envelopeId": "91e37adaa8e03eced5c0785f7aa5553b2a6a6f1a91f5bff3963243967e69880a",
+        "sourceIdentities": {
+          "receiptId": "swarm-receipt-40f1d1d8ec2691ff",
+          "receiptSha256": "40f1d1d8ec2691ff4940827eff47796d25e935f695993404c8ecc6eceaa2f142",
+          "evidenceIndexSha256": "7c89d313c5104ad525b8d609feb761edfb6ef6136d7292bd990bf62ed2910722",
+          "eventChainSha256": "54136cb6550202de44738d8b4479a143d82a0a999ee327f1720f6b8cd8faf4c4"
+        },
+        "swarm": {
+          "swarmId": "swarm-needs-review-child-failure",
+          "workspaceId": "workspace-needs-review-child-failure",
+          "projectId": "project-needs-review-child-failure",
+          "planHash": "6a0db980b1b6a8faa0774cb938d17c1eebbd105f83b6f068fa88a2572a0b03fe",
+          "baselineCommit": "0de8c05c8e9c63d7fc3c08710529bbe1b447e403"
+        },
+        "tasks": [
+          {
+            "taskId": "task-1",
+            "required": true,
+            "dependsOn": [],
+            "plannedAgentId": "agent-1",
+            "effectiveAgentId": "agent-1",
+            "status": "stopped"
+          },
+          {
+            "taskId": "task-2",
+            "required": true,
+            "dependsOn": [
+              "task-1"
+            ],
+            "plannedAgentId": "agent-2",
+            "effectiveAgentId": "agent-2",
+            "status": "queued"
+          }
+        ],
+        "dependencyEdges": [
+          {
+            "fromTaskId": "task-2",
+            "toTaskId": "task-1"
+          }
+        ],
+        "agents": [
+          {
+            "agentId": "agent-1",
+            "role": "worker",
+            "status": "stopped",
+            "taskIds": [
+              "task-1"
+            ],
+            "childRunId": "child-run-000dfq9b"
+          },
+          {
+            "agentId": "agent-2",
+            "role": "worker",
+            "status": "queued",
+            "taskIds": [
+              "task-2"
+            ]
+          }
+        ],
+        "children": [
+          {
+            "childRunId": "child-run-000dfq9b",
+            "agentId": "agent-1",
+            "attemptId": "attempt-000br9h5",
+            "taskIds": [
+              "task-1"
+            ],
+            "status": "stopped",
+            "receiptIntegrityState": "verified",
+            "evidence": [
+              {
+                "eventId": "child-run-000dfq9b:started",
+                "sequence": 2
+              },
+              {
+                "eventId": "child-run-000dfq9b:child_stopped",
+                "sequence": 3
+              }
+            ]
+          }
+        ],
+        "budget": {
+          "capUsd": 10,
+          "capTokens": 1000,
+          "settledUsd": 0.01,
+          "settledTokens": 5
+        },
+        "interventions": {
+          "blockedActions": [],
+          "reassignments": []
+        },
+        "integration": {
+          "admissions": [],
+          "rejections": [],
+          "conflicts": []
+        },
+        "globalVerification": {
+          "state": "unknown",
+          "evidence": []
+        },
+        "parentOutcome": {
+          "state": "needs_review",
+          "source": "sealed_parent_receipt",
+          "evidence": [
+            {
+              "eventId": "6a0db980b1b6a8faa0774cb938d17c1eebbd105f83b6f068fa88a2572a0b03fe:terminal:needs_review",
+              "sequence": 4
+            }
+          ]
+        },
+        "taskVerificationState": "unknown",
+        "receiptIntegrityState": "verified"
+      },
+      "sansa": {
+        "schemaVersion": "martin.swarm-sansa-view.v1",
+        "envelopeId": "91e37adaa8e03eced5c0785f7aa5553b2a6a6f1a91f5bff3963243967e69880a",
+        "sourceIdentities": {
+          "receiptId": "swarm-receipt-40f1d1d8ec2691ff",
+          "receiptSha256": "40f1d1d8ec2691ff4940827eff47796d25e935f695993404c8ecc6eceaa2f142",
+          "evidenceIndexSha256": "7c89d313c5104ad525b8d609feb761edfb6ef6136d7292bd990bf62ed2910722",
+          "eventChainSha256": "54136cb6550202de44738d8b4479a143d82a0a999ee327f1720f6b8cd8faf4c4"
+        },
+        "facts": [
+          {
+            "factId": "observed:3:child-run-000dfq9b:child_stopped",
+            "kind": "failure",
+            "derivationKind": "observed",
+            "taskIds": [
+              "task-1"
+            ],
+            "agentIds": [
+              "agent-1"
+            ],
+            "childRunIds": [
+              "child-run-000dfq9b"
+            ],
+            "attemptIds": [
+              "attempt-000br9h5"
+            ],
+            "verificationIds": [],
+            "evidence": [
+              {
+                "eventId": "child-run-000dfq9b:child_stopped",
+                "sequence": 3
+              }
+            ]
+          },
+          {
+            "factId": "derived:blocking:task-2->task-1",
+            "kind": "blocking_dependency",
+            "derivationKind": "deterministic_graph_derivation",
+            "taskIds": [
+              "task-2",
+              "task-1"
+            ],
+            "agentIds": [
+              "agent-1"
+            ],
+            "childRunIds": [
+              "child-run-000dfq9b"
+            ],
+            "attemptIds": [
+              "attempt-000br9h5"
+            ],
+            "verificationIds": [],
+            "evidence": [
+              {
+                "eventId": "child-run-000dfq9b:child_stopped",
+                "sequence": 3
+              }
+            ]
+          }
+        ],
+        "parentOutcome": {
+          "state": "needs_review",
+          "source": "sealed_parent_receipt",
+          "evidence": [
+            {
+              "eventId": "6a0db980b1b6a8faa0774cb938d17c1eebbd105f83b6f068fa88a2572a0b03fe:terminal:needs_review",
+              "sequence": 4
+            }
+          ]
+        },
+        "globalVerification": {
+          "state": "unknown",
+          "evidence": []
+        }
+      },
+      "dashboard": {
+        "schemaVersion": "martin.swarm-dashboard-view.v1",
+        "envelopeId": "91e37adaa8e03eced5c0785f7aa5553b2a6a6f1a91f5bff3963243967e69880a",
+        "sourceIdentities": {
+          "receiptId": "swarm-receipt-40f1d1d8ec2691ff",
+          "receiptSha256": "40f1d1d8ec2691ff4940827eff47796d25e935f695993404c8ecc6eceaa2f142",
+          "evidenceIndexSha256": "7c89d313c5104ad525b8d609feb761edfb6ef6136d7292bd990bf62ed2910722",
+          "eventChainSha256": "54136cb6550202de44738d8b4479a143d82a0a999ee327f1720f6b8cd8faf4c4"
+        },
+        "swarmId": "swarm-needs-review-child-failure",
+        "children": [
+          {
+            "childRunId": "child-run-000dfq9b",
+            "agentId": "agent-1",
+            "attemptId": "attempt-000br9h5",
+            "taskIds": [
+              "task-1"
+            ],
+            "status": "stopped",
+            "receiptIntegrityState": "verified",
+            "evidence": [
+              {
+                "eventId": "child-run-000dfq9b:started",
+                "sequence": 2
+              },
+              {
+                "eventId": "child-run-000dfq9b:child_stopped",
+                "sequence": 3
+              }
+            ]
+          }
+        ],
+        "parentOutcome": {
+          "state": "needs_review",
+          "source": "sealed_parent_receipt",
+          "evidence": [
+            {
+              "eventId": "6a0db980b1b6a8faa0774cb938d17c1eebbd105f83b6f068fa88a2572a0b03fe:terminal:needs_review",
+              "sequence": 4
+            }
+          ]
+        },
+        "globalVerification": {
+          "state": "unknown",
+          "evidence": []
+        },
+        "taskVerificationState": "unknown",
+        "receiptIntegrityState": "verified",
+        "budget": {
+          "capUsd": 10,
+          "capTokens": 1000,
+          "settledUsd": 0.01,
+          "settledTokens": 5
+        }
+      }
+    },
+    {
+      "name": "failed-global-verifier",
+      "provenance": "production-exporter",
+      "envelope": {
+        "schemaVersion": "martin.swarm-hosted.v1",
+        "envelopeId": "8385ab042418021b140d4e12b05f8063f07ead975853a595bee1624d64b8bb65",
+        "sourceSchemas": {
+          "swarm": "martin.swarm.v1",
+          "receipt": "martin.swarm-receipt.v1",
+          "evidenceIndex": "martin.swarm-evidence-index.v1"
+        },
+        "sourceIdentities": {
+          "receiptId": "swarm-receipt-f36d5076cc53f1b7",
+          "receiptSha256": "f36d5076cc53f1b79a11540bc0147ee28bb320f3f632f8864baed35e13046248",
+          "evidenceIndexSha256": "97c2c020644c1f4f9229ecf56ec92e196bdd14ea7f26e3f4334ccad2f5f7b951",
+          "eventChainSha256": "cf17c0c97298adf810750752d1b2d053f8d80171543ffb37cc9e7cbba6336df8"
+        },
+        "runtimeVersion": "0.8.0",
+        "createdAt": "2026-10-03T12:00:44.000Z",
+        "swarm": {
+          "swarmId": "swarm-failed-global-verifier",
+          "workspaceId": "workspace-failed-global-verifier",
+          "projectId": "project-failed-global-verifier",
+          "planHash": "c2d87de6c1f5d926c799238b3aece34cf10c90da235e224566a626526eb38df0",
+          "baselineCommit": "1814ed997ca829855dff8abc6d80d66235ff5f73"
+        },
+        "topology": {
+          "tasks": [
+            {
+              "taskId": "task-1",
+              "required": true,
+              "dependsOn": [],
+              "plannedAgentId": "agent-1",
+              "effectiveAgentId": "agent-1",
+              "status": "accepted"
+            }
+          ],
+          "agents": [
+            {
+              "agentId": "agent-1",
+              "role": "worker",
+              "status": "verified",
+              "taskIds": [
+                "task-1"
+              ],
+              "childRunId": "child-run-000dfq9b"
+            }
+          ],
+          "children": [
+            {
+              "childRunId": "child-run-000dfq9b",
+              "agentId": "agent-1",
+              "attemptId": "attempt-000br9h5",
+              "taskIds": [
+                "task-1"
+              ],
+              "status": "verified",
+              "receiptIntegrityState": "verified",
+              "evidence": [
+                {
+                  "eventId": "child-run-000dfq9b:started",
+                  "sequence": 2
+                },
+                {
+                  "eventId": "child-run-000dfq9b:verified",
+                  "sequence": 3
+                }
+              ]
+            }
+          ]
+        },
+        "budget": {
+          "capUsd": 10,
+          "capTokens": 1000,
+          "settledUsd": 0.01,
+          "settledTokens": 5
+        },
+        "interventions": {
+          "blockedActions": [],
+          "reassignments": []
+        },
+        "integration": {
+          "admissions": [],
+          "rejections": [],
+          "conflicts": [],
+          "integratedTreeHash": "77ddbb288d41077bdb7567aa2019e11d031abed2"
+        },
+        "events": [
+          {
+            "eventId": "c2d87de6c1f5d926c799238b3aece34cf10c90da235e224566a626526eb38df0:created",
+            "sourceIdempotencyKey": "c2d87de6c1f5d926c799238b3aece34cf10c90da235e224566a626526eb38df0:created",
+            "sequence": 1,
+            "type": "SWARM_CREATED",
+            "timestamp": "2026-10-03T12:00:04.000Z"
+          },
+          {
+            "eventId": "child-run-000dfq9b:started",
+            "sourceIdempotencyKey": "child-run-000dfq9b:started",
+            "sequence": 2,
+            "type": "CHILD_STARTED",
+            "timestamp": "2026-10-03T12:00:08.000Z",
+            "taskId": "task-1",
+            "agentId": "agent-1",
+            "childRunId": "child-run-000dfq9b",
+            "attemptId": "attempt-000br9h5"
+          },
+          {
+            "eventId": "child-run-000dfq9b:verified",
+            "sourceIdempotencyKey": "child-run-000dfq9b:verified",
+            "sequence": 3,
+            "type": "CHILD_VERIFIED",
+            "timestamp": "2026-10-03T12:00:32.000Z",
+            "taskId": "task-1",
+            "agentId": "agent-1",
+            "childRunId": "child-run-000dfq9b",
+            "attemptId": "attempt-000br9h5"
+          },
+          {
+            "eventId": "parent-global-verifier:swarm-failed-global-verifier:555a288beb7295b11950bffadd91721e67dd66610d7b9083ed9e9b4701c36842",
+            "sourceIdempotencyKey": "parent-global-verifier:swarm-failed-global-verifier:555a288beb7295b11950bffadd91721e67dd66610d7b9083ed9e9b4701c36842",
+            "sequence": 4,
+            "type": "GLOBAL_VERIFIER_FAILED",
+            "timestamp": "2026-10-03T12:00:39.000Z",
+            "verificationId": "global-verification-0017o4c9"
+          },
+          {
+            "eventId": "parent-outcome:swarm-failed-global-verifier:needs_review:555a288beb7295b11950bffadd91721e67dd66610d7b9083ed9e9b4701c36842",
+            "sourceIdempotencyKey": "parent-outcome:swarm-failed-global-verifier:needs_review:555a288beb7295b11950bffadd91721e67dd66610d7b9083ed9e9b4701c36842",
+            "sequence": 5,
+            "type": "SWARM_NEEDS_REVIEW",
+            "timestamp": "2026-10-03T12:00:44.000Z",
+            "verificationId": "global-verification-0017o4c9"
+          }
+        ],
+        "globalVerification": {
+          "state": "failed",
+          "verificationId": "global-verification-0017o4c9",
+          "integratedTreeHash": "77ddbb288d41077bdb7567aa2019e11d031abed2",
+          "evidence": [
+            {
+              "eventId": "parent-global-verifier:swarm-failed-global-verifier:555a288beb7295b11950bffadd91721e67dd66610d7b9083ed9e9b4701c36842",
+              "sequence": 4
+            }
+          ]
+        },
+        "parentOutcome": {
+          "state": "needs_review",
+          "source": "sealed_parent_receipt",
+          "evidence": [
+            {
+              "eventId": "parent-outcome:swarm-failed-global-verifier:needs_review:555a288beb7295b11950bffadd91721e67dd66610d7b9083ed9e9b4701c36842",
+              "sequence": 5
+            }
+          ]
+        },
+        "taskVerificationState": "failed",
+        "receiptIntegrityState": "verified",
+        "transportSignature": {
+          "algorithm": "hmac-sha256",
+          "keyId": "hosted-d0fa45c1fd12faa1",
+          "keyLocatorHash": "543f6f103954a4aafa1dd1a926f55ee8083df5aa2600086ffafd0183ab40b337",
+          "signatureHmacSha256": "74c693be27915ae03154891213a6733ad6fbc12d2a3c96b965f27b4d8104392d"
+        }
+      },
+      "atlas": {
+        "schemaVersion": "martin.swarm-atlas-view.v1",
+        "envelopeId": "8385ab042418021b140d4e12b05f8063f07ead975853a595bee1624d64b8bb65",
+        "sourceIdentities": {
+          "receiptId": "swarm-receipt-f36d5076cc53f1b7",
+          "receiptSha256": "f36d5076cc53f1b79a11540bc0147ee28bb320f3f632f8864baed35e13046248",
+          "evidenceIndexSha256": "97c2c020644c1f4f9229ecf56ec92e196bdd14ea7f26e3f4334ccad2f5f7b951",
+          "eventChainSha256": "cf17c0c97298adf810750752d1b2d053f8d80171543ffb37cc9e7cbba6336df8"
+        },
+        "swarm": {
+          "swarmId": "swarm-failed-global-verifier",
+          "workspaceId": "workspace-failed-global-verifier",
+          "projectId": "project-failed-global-verifier",
+          "planHash": "c2d87de6c1f5d926c799238b3aece34cf10c90da235e224566a626526eb38df0",
+          "baselineCommit": "1814ed997ca829855dff8abc6d80d66235ff5f73"
+        },
+        "tasks": [
+          {
+            "taskId": "task-1",
+            "required": true,
+            "dependsOn": [],
+            "plannedAgentId": "agent-1",
+            "effectiveAgentId": "agent-1",
+            "status": "accepted"
+          }
+        ],
+        "dependencyEdges": [],
+        "agents": [
+          {
+            "agentId": "agent-1",
+            "role": "worker",
+            "status": "verified",
+            "taskIds": [
+              "task-1"
+            ],
+            "childRunId": "child-run-000dfq9b"
+          }
+        ],
+        "children": [
+          {
+            "childRunId": "child-run-000dfq9b",
+            "agentId": "agent-1",
+            "attemptId": "attempt-000br9h5",
+            "taskIds": [
+              "task-1"
+            ],
+            "status": "verified",
+            "receiptIntegrityState": "verified",
+            "evidence": [
+              {
+                "eventId": "child-run-000dfq9b:started",
+                "sequence": 2
+              },
+              {
+                "eventId": "child-run-000dfq9b:verified",
+                "sequence": 3
+              }
+            ]
+          }
+        ],
+        "budget": {
+          "capUsd": 10,
+          "capTokens": 1000,
+          "settledUsd": 0.01,
+          "settledTokens": 5
+        },
+        "interventions": {
+          "blockedActions": [],
+          "reassignments": []
+        },
+        "integration": {
+          "admissions": [],
+          "rejections": [],
+          "conflicts": [],
+          "integratedTreeHash": "77ddbb288d41077bdb7567aa2019e11d031abed2"
+        },
+        "globalVerification": {
+          "state": "failed",
+          "verificationId": "global-verification-0017o4c9",
+          "integratedTreeHash": "77ddbb288d41077bdb7567aa2019e11d031abed2",
+          "evidence": [
+            {
+              "eventId": "parent-global-verifier:swarm-failed-global-verifier:555a288beb7295b11950bffadd91721e67dd66610d7b9083ed9e9b4701c36842",
+              "sequence": 4
+            }
+          ]
+        },
+        "parentOutcome": {
+          "state": "needs_review",
+          "source": "sealed_parent_receipt",
+          "evidence": [
+            {
+              "eventId": "parent-outcome:swarm-failed-global-verifier:needs_review:555a288beb7295b11950bffadd91721e67dd66610d7b9083ed9e9b4701c36842",
+              "sequence": 5
+            }
+          ]
+        },
+        "taskVerificationState": "failed",
+        "receiptIntegrityState": "verified"
+      },
+      "sansa": {
+        "schemaVersion": "martin.swarm-sansa-view.v1",
+        "envelopeId": "8385ab042418021b140d4e12b05f8063f07ead975853a595bee1624d64b8bb65",
+        "sourceIdentities": {
+          "receiptId": "swarm-receipt-f36d5076cc53f1b7",
+          "receiptSha256": "f36d5076cc53f1b79a11540bc0147ee28bb320f3f632f8864baed35e13046248",
+          "evidenceIndexSha256": "97c2c020644c1f4f9229ecf56ec92e196bdd14ea7f26e3f4334ccad2f5f7b951",
+          "eventChainSha256": "cf17c0c97298adf810750752d1b2d053f8d80171543ffb37cc9e7cbba6336df8"
+        },
+        "facts": [
+          {
+            "factId": "observed:4:parent-global-verifier:swarm-failed-global-verifier:555a288beb7295b11950bffadd91721e67dd66610d7b9083ed9e9b4701c36842",
+            "kind": "verification_boundary",
+            "derivationKind": "observed",
+            "taskIds": [],
+            "agentIds": [],
+            "childRunIds": [],
+            "attemptIds": [],
+            "verificationIds": [
+              "global-verification-0017o4c9"
+            ],
+            "evidence": [
+              {
+                "eventId": "parent-global-verifier:swarm-failed-global-verifier:555a288beb7295b11950bffadd91721e67dd66610d7b9083ed9e9b4701c36842",
+                "sequence": 4
+              }
+            ]
+          }
+        ],
+        "parentOutcome": {
+          "state": "needs_review",
+          "source": "sealed_parent_receipt",
+          "evidence": [
+            {
+              "eventId": "parent-outcome:swarm-failed-global-verifier:needs_review:555a288beb7295b11950bffadd91721e67dd66610d7b9083ed9e9b4701c36842",
+              "sequence": 5
+            }
+          ]
+        },
+        "globalVerification": {
+          "state": "failed",
+          "verificationId": "global-verification-0017o4c9",
+          "integratedTreeHash": "77ddbb288d41077bdb7567aa2019e11d031abed2",
+          "evidence": [
+            {
+              "eventId": "parent-global-verifier:swarm-failed-global-verifier:555a288beb7295b11950bffadd91721e67dd66610d7b9083ed9e9b4701c36842",
+              "sequence": 4
+            }
+          ]
+        }
+      },
+      "dashboard": {
+        "schemaVersion": "martin.swarm-dashboard-view.v1",
+        "envelopeId": "8385ab042418021b140d4e12b05f8063f07ead975853a595bee1624d64b8bb65",
+        "sourceIdentities": {
+          "receiptId": "swarm-receipt-f36d5076cc53f1b7",
+          "receiptSha256": "f36d5076cc53f1b79a11540bc0147ee28bb320f3f632f8864baed35e13046248",
+          "evidenceIndexSha256": "97c2c020644c1f4f9229ecf56ec92e196bdd14ea7f26e3f4334ccad2f5f7b951",
+          "eventChainSha256": "cf17c0c97298adf810750752d1b2d053f8d80171543ffb37cc9e7cbba6336df8"
+        },
+        "swarmId": "swarm-failed-global-verifier",
+        "children": [
+          {
+            "childRunId": "child-run-000dfq9b",
+            "agentId": "agent-1",
+            "attemptId": "attempt-000br9h5",
+            "taskIds": [
+              "task-1"
+            ],
+            "status": "verified",
+            "receiptIntegrityState": "verified",
+            "evidence": [
+              {
+                "eventId": "child-run-000dfq9b:started",
+                "sequence": 2
+              },
+              {
+                "eventId": "child-run-000dfq9b:verified",
+                "sequence": 3
+              }
+            ]
+          }
+        ],
+        "parentOutcome": {
+          "state": "needs_review",
+          "source": "sealed_parent_receipt",
+          "evidence": [
+            {
+              "eventId": "parent-outcome:swarm-failed-global-verifier:needs_review:555a288beb7295b11950bffadd91721e67dd66610d7b9083ed9e9b4701c36842",
+              "sequence": 5
+            }
+          ]
+        },
+        "globalVerification": {
+          "state": "failed",
+          "verificationId": "global-verification-0017o4c9",
+          "integratedTreeHash": "77ddbb288d41077bdb7567aa2019e11d031abed2",
+          "evidence": [
+            {
+              "eventId": "parent-global-verifier:swarm-failed-global-verifier:555a288beb7295b11950bffadd91721e67dd66610d7b9083ed9e9b4701c36842",
+              "sequence": 4
+            }
+          ]
+        },
+        "taskVerificationState": "failed",
+        "receiptIntegrityState": "verified",
+        "budget": {
+          "capUsd": 10,
+          "capTokens": 1000,
+          "settledUsd": 0.01,
+          "settledTokens": 5
+        }
+      }
+    },
+    {
+      "name": "reassigned-recovered",
+      "provenance": "production-exporter",
+      "envelope": {
+        "schemaVersion": "martin.swarm-hosted.v1",
+        "envelopeId": "0db2c2645952936a4317237fc0dcdb84ee6291788dbd56f7d0662608c37693dd",
+        "sourceSchemas": {
+          "swarm": "martin.swarm.v1",
+          "receipt": "martin.swarm-receipt.v1",
+          "evidenceIndex": "martin.swarm-evidence-index.v1"
+        },
+        "sourceIdentities": {
+          "receiptId": "swarm-receipt-11e64caab21485ca",
+          "receiptSha256": "11e64caab21485ca55972f056923de01825349cb2d77c8a44445374666af75f4",
+          "evidenceIndexSha256": "4464cc7ff3bca15c82b76a57e8301fbdb7935903406a20c7b624193641ec04b1",
+          "eventChainSha256": "8da205936ff9ed0ee417d87f7fd3b577b0b531d8d0657487cd01750c468c8c3b"
+        },
+        "runtimeVersion": "0.8.0",
+        "createdAt": "2026-10-03T12:01:18.000Z",
+        "swarm": {
+          "swarmId": "swarm-reassigned-recovered",
+          "workspaceId": "workspace-reassigned-recovered",
+          "projectId": "project-reassigned-recovered",
+          "planHash": "c98a855e07aa96d3d168af586e7504ab698ead1e10865c8ee01df3342a714baa",
+          "baselineCommit": "56166234b1fdfe9b3bf041bdffb5e7b7c278f8c7"
+        },
+        "topology": {
+          "tasks": [
+            {
+              "taskId": "task-1",
+              "required": true,
+              "dependsOn": [],
+              "plannedAgentId": "agent-1",
+              "effectiveAgentId": "agent-recovery",
+              "status": "accepted"
+            }
+          ],
+          "agents": [
+            {
+              "agentId": "agent-1",
+              "role": "worker",
+              "status": "stopped",
+              "taskIds": [
+                "task-1"
+              ],
+              "childRunId": "child-run-000dfq9b"
+            },
+            {
+              "agentId": "agent-recovery",
+              "role": "worker",
+              "status": "verified",
+              "taskIds": [
+                "task-1"
+              ],
+              "childRunId": "child-run-001hqx19"
+            }
+          ],
+          "children": [
+            {
+              "childRunId": "child-run-000dfq9b",
+              "agentId": "agent-1",
+              "attemptId": "attempt-000br9h5",
+              "taskIds": [
+                "task-1"
+              ],
+              "status": "stopped",
+              "receiptIntegrityState": "verified",
+              "evidence": [
+                {
+                  "eventId": "child-run-000dfq9b:started",
+                  "sequence": 2
+                },
+                {
+                  "eventId": "child-run-000dfq9b:child_stopped",
+                  "sequence": 3
+                }
+              ]
+            },
+            {
+              "childRunId": "child-run-001hqx19",
+              "agentId": "agent-recovery",
+              "attemptId": "attempt-0019cl4f",
+              "taskIds": [
+                "task-1"
+              ],
+              "status": "verified",
+              "receiptIntegrityState": "verified",
+              "evidence": [
+                {
+                  "eventId": "child-run-001hqx19:started",
+                  "sequence": 5
+                },
+                {
+                  "eventId": "child-run-001hqx19:verified",
+                  "sequence": 6
+                },
+                {
+                  "eventId": "parent-integration:14c876bbec98cc28d086c2b64082bf042cb83ff15129058b68c999dfdd86ceab:000000",
+                  "sequence": 7
+                }
+              ]
+            }
+          ]
+        },
+        "budget": {
+          "capUsd": 10,
+          "capTokens": 1000,
+          "settledUsd": 0.02,
+          "settledTokens": 10
+        },
+        "interventions": {
+          "blockedActions": [],
+          "reassignments": [
+            {
+              "taskId": "task-1",
+              "fromAgentId": "agent-1",
+              "toAgentId": "agent-recovery",
+              "fromAttemptId": "attempt-000br9h5",
+              "toAttemptId": "attempt-0019cl4f",
+              "reasonCode": "child_terminal_failure",
+              "evidence": [
+                {
+                  "eventId": "task-1:reassigned:1",
+                  "sequence": 4
+                }
+              ]
+            }
+          ]
+        },
+        "integration": {
+          "admissions": [
+            {
+              "candidateId": "candidate-001msbdq",
+              "taskId": "task-1",
+              "agentId": "agent-recovery",
+              "childRunId": "child-run-001hqx19",
+              "state": "admitted",
+              "evidence": [
+                {
+                  "eventId": "parent-integration:14c876bbec98cc28d086c2b64082bf042cb83ff15129058b68c999dfdd86ceab:000000",
+                  "sequence": 7
+                }
+              ]
+            }
+          ],
+          "rejections": [],
+          "conflicts": [],
+          "integratedTreeHash": "fb73acaf9e5314dd1f931e435b5d793b6d5bbe90"
+        },
+        "events": [
+          {
+            "eventId": "c98a855e07aa96d3d168af586e7504ab698ead1e10865c8ee01df3342a714baa:created",
+            "sourceIdempotencyKey": "c98a855e07aa96d3d168af586e7504ab698ead1e10865c8ee01df3342a714baa:created",
+            "sequence": 1,
+            "type": "SWARM_CREATED",
+            "timestamp": "2026-10-03T12:00:04.000Z"
+          },
+          {
+            "eventId": "child-run-000dfq9b:started",
+            "sourceIdempotencyKey": "child-run-000dfq9b:started",
+            "sequence": 2,
+            "type": "CHILD_STARTED",
+            "timestamp": "2026-10-03T12:00:08.000Z",
+            "taskId": "task-1",
+            "agentId": "agent-1",
+            "childRunId": "child-run-000dfq9b",
+            "attemptId": "attempt-000br9h5"
+          },
+          {
+            "eventId": "child-run-000dfq9b:child_stopped",
+            "sourceIdempotencyKey": "child-run-000dfq9b:child_stopped",
+            "sequence": 3,
+            "type": "CHILD_STOPPED",
+            "timestamp": "2026-10-03T12:00:32.000Z",
+            "taskId": "task-1",
+            "agentId": "agent-1",
+            "childRunId": "child-run-000dfq9b",
+            "attemptId": "attempt-000br9h5",
+            "failureClass": "environment_mismatch"
+          },
+          {
+            "eventId": "task-1:reassigned:1",
+            "sourceIdempotencyKey": "task-1:reassigned:1",
+            "sequence": 4,
+            "type": "TASK_REASSIGNED",
+            "timestamp": "2026-10-03T12:00:34.000Z",
+            "taskId": "task-1",
+            "agentId": "agent-1",
+            "attemptId": "attempt-000br9h5",
+            "relatedAttemptId": "attempt-0019cl4f",
+            "toAgentId": "agent-recovery"
+          },
+          {
+            "eventId": "child-run-001hqx19:started",
+            "sourceIdempotencyKey": "child-run-001hqx19:started",
+            "sequence": 5,
+            "type": "CHILD_STARTED",
+            "timestamp": "2026-10-03T12:00:38.000Z",
+            "taskId": "task-1",
+            "agentId": "agent-recovery",
+            "childRunId": "child-run-001hqx19",
+            "attemptId": "attempt-0019cl4f"
+          },
+          {
+            "eventId": "child-run-001hqx19:verified",
+            "sourceIdempotencyKey": "child-run-001hqx19:verified",
+            "sequence": 6,
+            "type": "CHILD_VERIFIED",
+            "timestamp": "2026-10-03T12:01:05.000Z",
+            "taskId": "task-1",
+            "agentId": "agent-recovery",
+            "childRunId": "child-run-001hqx19",
+            "attemptId": "attempt-0019cl4f",
+            "candidateId": "candidate-001msbdq"
+          },
+          {
+            "eventId": "parent-integration:14c876bbec98cc28d086c2b64082bf042cb83ff15129058b68c999dfdd86ceab:000000",
+            "sourceIdempotencyKey": "parent-integration:14c876bbec98cc28d086c2b64082bf042cb83ff15129058b68c999dfdd86ceab:000000",
+            "sequence": 7,
+            "type": "CHILD_PATCH_ADMITTED",
+            "timestamp": "2026-10-03T12:01:07.000Z",
+            "taskId": "task-1",
+            "agentId": "agent-recovery",
+            "childRunId": "child-run-001hqx19",
+            "attemptId": "attempt-0019cl4f",
+            "candidateId": "candidate-001msbdq"
+          },
+          {
+            "eventId": "parent-global-verifier:swarm-reassigned-recovered:14c876bbec98cc28d086c2b64082bf042cb83ff15129058b68c999dfdd86ceab",
+            "sourceIdempotencyKey": "parent-global-verifier:swarm-reassigned-recovered:14c876bbec98cc28d086c2b64082bf042cb83ff15129058b68c999dfdd86ceab",
+            "sequence": 8,
+            "type": "GLOBAL_VERIFIER_PASSED",
+            "timestamp": "2026-10-03T12:01:13.000Z",
+            "verificationId": "global-verification-002h0pgp"
+          },
+          {
+            "eventId": "parent-outcome:swarm-reassigned-recovered:verified:14c876bbec98cc28d086c2b64082bf042cb83ff15129058b68c999dfdd86ceab",
+            "sourceIdempotencyKey": "parent-outcome:swarm-reassigned-recovered:verified:14c876bbec98cc28d086c2b64082bf042cb83ff15129058b68c999dfdd86ceab",
+            "sequence": 9,
+            "type": "SWARM_VERIFIED",
+            "timestamp": "2026-10-03T12:01:18.000Z",
+            "verificationId": "global-verification-002h0pgp"
+          }
+        ],
+        "globalVerification": {
+          "state": "passed",
+          "verificationId": "global-verification-002h0pgp",
+          "integratedTreeHash": "fb73acaf9e5314dd1f931e435b5d793b6d5bbe90",
+          "evidence": [
+            {
+              "eventId": "parent-global-verifier:swarm-reassigned-recovered:14c876bbec98cc28d086c2b64082bf042cb83ff15129058b68c999dfdd86ceab",
+              "sequence": 8
+            }
+          ]
+        },
+        "parentOutcome": {
+          "state": "verified",
+          "source": "sealed_parent_receipt",
+          "evidence": [
+            {
+              "eventId": "parent-outcome:swarm-reassigned-recovered:verified:14c876bbec98cc28d086c2b64082bf042cb83ff15129058b68c999dfdd86ceab",
+              "sequence": 9
+            }
+          ]
+        },
+        "taskVerificationState": "passed",
+        "receiptIntegrityState": "verified",
+        "transportSignature": {
+          "algorithm": "hmac-sha256",
+          "keyId": "hosted-a470ed3e5444f7d3",
+          "keyLocatorHash": "32cd8340ddce70c1daae172931d3bda51ad76dbb259d2a92df16eb4a79d589f5",
+          "signatureHmacSha256": "c9571f06318eb2be9f908b6ea86db5bf9d2794cb035a7da88c7fe608ddaad02b"
+        }
+      },
+      "atlas": {
+        "schemaVersion": "martin.swarm-atlas-view.v1",
+        "envelopeId": "0db2c2645952936a4317237fc0dcdb84ee6291788dbd56f7d0662608c37693dd",
+        "sourceIdentities": {
+          "receiptId": "swarm-receipt-11e64caab21485ca",
+          "receiptSha256": "11e64caab21485ca55972f056923de01825349cb2d77c8a44445374666af75f4",
+          "evidenceIndexSha256": "4464cc7ff3bca15c82b76a57e8301fbdb7935903406a20c7b624193641ec04b1",
+          "eventChainSha256": "8da205936ff9ed0ee417d87f7fd3b577b0b531d8d0657487cd01750c468c8c3b"
+        },
+        "swarm": {
+          "swarmId": "swarm-reassigned-recovered",
+          "workspaceId": "workspace-reassigned-recovered",
+          "projectId": "project-reassigned-recovered",
+          "planHash": "c98a855e07aa96d3d168af586e7504ab698ead1e10865c8ee01df3342a714baa",
+          "baselineCommit": "56166234b1fdfe9b3bf041bdffb5e7b7c278f8c7"
+        },
+        "tasks": [
+          {
+            "taskId": "task-1",
+            "required": true,
+            "dependsOn": [],
+            "plannedAgentId": "agent-1",
+            "effectiveAgentId": "agent-recovery",
+            "status": "accepted"
+          }
+        ],
+        "dependencyEdges": [],
+        "agents": [
+          {
+            "agentId": "agent-1",
+            "role": "worker",
+            "status": "stopped",
+            "taskIds": [
+              "task-1"
+            ],
+            "childRunId": "child-run-000dfq9b"
+          },
+          {
+            "agentId": "agent-recovery",
+            "role": "worker",
+            "status": "verified",
+            "taskIds": [
+              "task-1"
+            ],
+            "childRunId": "child-run-001hqx19"
+          }
+        ],
+        "children": [
+          {
+            "childRunId": "child-run-000dfq9b",
+            "agentId": "agent-1",
+            "attemptId": "attempt-000br9h5",
+            "taskIds": [
+              "task-1"
+            ],
+            "status": "stopped",
+            "receiptIntegrityState": "verified",
+            "evidence": [
+              {
+                "eventId": "child-run-000dfq9b:started",
+                "sequence": 2
+              },
+              {
+                "eventId": "child-run-000dfq9b:child_stopped",
+                "sequence": 3
+              }
+            ]
+          },
+          {
+            "childRunId": "child-run-001hqx19",
+            "agentId": "agent-recovery",
+            "attemptId": "attempt-0019cl4f",
+            "taskIds": [
+              "task-1"
+            ],
+            "status": "verified",
+            "receiptIntegrityState": "verified",
+            "evidence": [
+              {
+                "eventId": "child-run-001hqx19:started",
+                "sequence": 5
+              },
+              {
+                "eventId": "child-run-001hqx19:verified",
+                "sequence": 6
+              },
+              {
+                "eventId": "parent-integration:14c876bbec98cc28d086c2b64082bf042cb83ff15129058b68c999dfdd86ceab:000000",
+                "sequence": 7
+              }
+            ]
+          }
+        ],
+        "budget": {
+          "capUsd": 10,
+          "capTokens": 1000,
+          "settledUsd": 0.02,
+          "settledTokens": 10
+        },
+        "interventions": {
+          "blockedActions": [],
+          "reassignments": [
+            {
+              "taskId": "task-1",
+              "fromAgentId": "agent-1",
+              "toAgentId": "agent-recovery",
+              "fromAttemptId": "attempt-000br9h5",
+              "toAttemptId": "attempt-0019cl4f",
+              "reasonCode": "child_terminal_failure",
+              "evidence": [
+                {
+                  "eventId": "task-1:reassigned:1",
+                  "sequence": 4
+                }
+              ]
+            }
+          ]
+        },
+        "integration": {
+          "admissions": [
+            {
+              "candidateId": "candidate-001msbdq",
+              "taskId": "task-1",
+              "agentId": "agent-recovery",
+              "childRunId": "child-run-001hqx19",
+              "state": "admitted",
+              "evidence": [
+                {
+                  "eventId": "parent-integration:14c876bbec98cc28d086c2b64082bf042cb83ff15129058b68c999dfdd86ceab:000000",
+                  "sequence": 7
+                }
+              ]
+            }
+          ],
+          "rejections": [],
+          "conflicts": [],
+          "integratedTreeHash": "fb73acaf9e5314dd1f931e435b5d793b6d5bbe90"
+        },
+        "globalVerification": {
+          "state": "passed",
+          "verificationId": "global-verification-002h0pgp",
+          "integratedTreeHash": "fb73acaf9e5314dd1f931e435b5d793b6d5bbe90",
+          "evidence": [
+            {
+              "eventId": "parent-global-verifier:swarm-reassigned-recovered:14c876bbec98cc28d086c2b64082bf042cb83ff15129058b68c999dfdd86ceab",
+              "sequence": 8
+            }
+          ]
+        },
+        "parentOutcome": {
+          "state": "verified",
+          "source": "sealed_parent_receipt",
+          "evidence": [
+            {
+              "eventId": "parent-outcome:swarm-reassigned-recovered:verified:14c876bbec98cc28d086c2b64082bf042cb83ff15129058b68c999dfdd86ceab",
+              "sequence": 9
+            }
+          ]
+        },
+        "taskVerificationState": "passed",
+        "receiptIntegrityState": "verified"
+      },
+      "sansa": {
+        "schemaVersion": "martin.swarm-sansa-view.v1",
+        "envelopeId": "0db2c2645952936a4317237fc0dcdb84ee6291788dbd56f7d0662608c37693dd",
+        "sourceIdentities": {
+          "receiptId": "swarm-receipt-11e64caab21485ca",
+          "receiptSha256": "11e64caab21485ca55972f056923de01825349cb2d77c8a44445374666af75f4",
+          "evidenceIndexSha256": "4464cc7ff3bca15c82b76a57e8301fbdb7935903406a20c7b624193641ec04b1",
+          "eventChainSha256": "8da205936ff9ed0ee417d87f7fd3b577b0b531d8d0657487cd01750c468c8c3b"
+        },
+        "facts": [
+          {
+            "factId": "observed:3:child-run-000dfq9b:child_stopped",
+            "kind": "failure",
+            "derivationKind": "observed",
+            "taskIds": [
+              "task-1"
+            ],
+            "agentIds": [
+              "agent-1"
+            ],
+            "childRunIds": [
+              "child-run-000dfq9b"
+            ],
+            "attemptIds": [
+              "attempt-000br9h5"
+            ],
+            "verificationIds": [],
+            "evidence": [
+              {
+                "eventId": "child-run-000dfq9b:child_stopped",
+                "sequence": 3
+              }
+            ]
+          },
+          {
+            "factId": "observed:4:task-1:reassigned:1",
+            "kind": "reassignment",
+            "derivationKind": "observed",
+            "taskIds": [
+              "task-1"
+            ],
+            "agentIds": [
+              "agent-1",
+              "agent-recovery"
+            ],
+            "childRunIds": [],
+            "attemptIds": [
+              "attempt-000br9h5",
+              "attempt-0019cl4f"
+            ],
+            "verificationIds": [],
+            "evidence": [
+              {
+                "eventId": "task-1:reassigned:1",
+                "sequence": 4
+              }
+            ]
+          },
+          {
+            "factId": "derived:recovery:task-1:attempt-000br9h5:attempt-0019cl4f",
+            "kind": "recovery",
+            "derivationKind": "deterministic_graph_derivation",
+            "taskIds": [
+              "task-1"
+            ],
+            "agentIds": [
+              "agent-1",
+              "agent-recovery"
+            ],
+            "childRunIds": [
+              "child-run-000dfq9b",
+              "child-run-001hqx19"
+            ],
+            "attemptIds": [
+              "attempt-000br9h5",
+              "attempt-0019cl4f"
+            ],
+            "verificationIds": [],
+            "evidence": [
+              {
+                "eventId": "child-run-000dfq9b:child_stopped",
+                "sequence": 3
+              },
+              {
+                "eventId": "task-1:reassigned:1",
+                "sequence": 4
+              },
+              {
+                "eventId": "child-run-001hqx19:started",
+                "sequence": 5
+              },
+              {
+                "eventId": "child-run-001hqx19:verified",
+                "sequence": 6
+              },
+              {
+                "eventId": "parent-integration:14c876bbec98cc28d086c2b64082bf042cb83ff15129058b68c999dfdd86ceab:000000",
+                "sequence": 7
+              }
+            ]
+          },
+          {
+            "factId": "observed:8:parent-global-verifier:swarm-reassigned-recovered:14c876bbec98cc28d086c2b64082bf042cb83ff15129058b68c999dfdd86ceab",
+            "kind": "verification_boundary",
+            "derivationKind": "observed",
+            "taskIds": [],
+            "agentIds": [],
+            "childRunIds": [],
+            "attemptIds": [],
+            "verificationIds": [
+              "global-verification-002h0pgp"
+            ],
+            "evidence": [
+              {
+                "eventId": "parent-global-verifier:swarm-reassigned-recovered:14c876bbec98cc28d086c2b64082bf042cb83ff15129058b68c999dfdd86ceab",
+                "sequence": 8
+              }
+            ]
+          }
+        ],
+        "parentOutcome": {
+          "state": "verified",
+          "source": "sealed_parent_receipt",
+          "evidence": [
+            {
+              "eventId": "parent-outcome:swarm-reassigned-recovered:verified:14c876bbec98cc28d086c2b64082bf042cb83ff15129058b68c999dfdd86ceab",
+              "sequence": 9
+            }
+          ]
+        },
+        "globalVerification": {
+          "state": "passed",
+          "verificationId": "global-verification-002h0pgp",
+          "integratedTreeHash": "fb73acaf9e5314dd1f931e435b5d793b6d5bbe90",
+          "evidence": [
+            {
+              "eventId": "parent-global-verifier:swarm-reassigned-recovered:14c876bbec98cc28d086c2b64082bf042cb83ff15129058b68c999dfdd86ceab",
+              "sequence": 8
+            }
+          ]
+        }
+      },
+      "dashboard": {
+        "schemaVersion": "martin.swarm-dashboard-view.v1",
+        "envelopeId": "0db2c2645952936a4317237fc0dcdb84ee6291788dbd56f7d0662608c37693dd",
+        "sourceIdentities": {
+          "receiptId": "swarm-receipt-11e64caab21485ca",
+          "receiptSha256": "11e64caab21485ca55972f056923de01825349cb2d77c8a44445374666af75f4",
+          "evidenceIndexSha256": "4464cc7ff3bca15c82b76a57e8301fbdb7935903406a20c7b624193641ec04b1",
+          "eventChainSha256": "8da205936ff9ed0ee417d87f7fd3b577b0b531d8d0657487cd01750c468c8c3b"
+        },
+        "swarmId": "swarm-reassigned-recovered",
+        "children": [
+          {
+            "childRunId": "child-run-000dfq9b",
+            "agentId": "agent-1",
+            "attemptId": "attempt-000br9h5",
+            "taskIds": [
+              "task-1"
+            ],
+            "status": "stopped",
+            "receiptIntegrityState": "verified",
+            "evidence": [
+              {
+                "eventId": "child-run-000dfq9b:started",
+                "sequence": 2
+              },
+              {
+                "eventId": "child-run-000dfq9b:child_stopped",
+                "sequence": 3
+              }
+            ]
+          },
+          {
+            "childRunId": "child-run-001hqx19",
+            "agentId": "agent-recovery",
+            "attemptId": "attempt-0019cl4f",
+            "taskIds": [
+              "task-1"
+            ],
+            "status": "verified",
+            "receiptIntegrityState": "verified",
+            "evidence": [
+              {
+                "eventId": "child-run-001hqx19:started",
+                "sequence": 5
+              },
+              {
+                "eventId": "child-run-001hqx19:verified",
+                "sequence": 6
+              },
+              {
+                "eventId": "parent-integration:14c876bbec98cc28d086c2b64082bf042cb83ff15129058b68c999dfdd86ceab:000000",
+                "sequence": 7
+              }
+            ]
+          }
+        ],
+        "parentOutcome": {
+          "state": "verified",
+          "source": "sealed_parent_receipt",
+          "evidence": [
+            {
+              "eventId": "parent-outcome:swarm-reassigned-recovered:verified:14c876bbec98cc28d086c2b64082bf042cb83ff15129058b68c999dfdd86ceab",
+              "sequence": 9
+            }
+          ]
+        },
+        "globalVerification": {
+          "state": "passed",
+          "verificationId": "global-verification-002h0pgp",
+          "integratedTreeHash": "fb73acaf9e5314dd1f931e435b5d793b6d5bbe90",
+          "evidence": [
+            {
+              "eventId": "parent-global-verifier:swarm-reassigned-recovered:14c876bbec98cc28d086c2b64082bf042cb83ff15129058b68c999dfdd86ceab",
+              "sequence": 8
+            }
+          ]
+        },
+        "taskVerificationState": "passed",
+        "receiptIntegrityState": "verified",
+        "budget": {
+          "capUsd": 10,
+          "capTokens": 1000,
+          "settledUsd": 0.02,
+          "settledTokens": 10
+        }
+      }
+    }
+  ],
+  "invalidCases": [
+    {
+      "name": "tampered-envelope-identity",
+      "provenance": "tampered-copy",
+      "tamper": "envelope_identity",
+      "envelope": {
+        "schemaVersion": "martin.swarm-hosted.v1",
+        "envelopeId": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "sourceSchemas": {
+          "swarm": "martin.swarm.v1",
+          "receipt": "martin.swarm-receipt.v1",
+          "evidenceIndex": "martin.swarm-evidence-index.v1"
+        },
+        "sourceIdentities": {
+          "receiptId": "swarm-receipt-2c3397c4daa64245",
+          "receiptSha256": "2c3397c4daa642456ec5bb19f36eaebc7c2c6b925a8f1958bb1e901e5dfeee4c",
+          "evidenceIndexSha256": "2c1cc5471be05ca74ad3c9c69b6127e3c99c479641bcd3e0bf500d510e713082",
+          "eventChainSha256": "06d61e71e9e0c776ce58612d0e3da229bc9730b3a05f7355dbe8f354262c5623"
+        },
+        "runtimeVersion": "0.8.0",
+        "createdAt": "2026-10-03T12:07:16.000Z",
+        "swarm": {
+          "swarmId": "swarm-verified-15-agent",
+          "workspaceId": "workspace-verified-15-agent",
+          "projectId": "project-verified-15-agent",
+          "planHash": "cf354a4212ef83353b83552fed97c2f54d422edc69cdf01b9b5d071ddcb90795",
+          "baselineCommit": "c35f6daacc9e7da66b265d23fc10b013e58dd0f5"
+        },
+        "topology": {
+          "tasks": [
+            {
+              "taskId": "task-1",
+              "required": true,
+              "dependsOn": [],
+              "plannedAgentId": "agent-1",
+              "effectiveAgentId": "agent-1",
+              "status": "accepted"
+            },
+            {
+              "taskId": "task-2",
+              "required": true,
+              "dependsOn": [
+                "task-1"
+              ],
+              "plannedAgentId": "agent-2",
+              "effectiveAgentId": "agent-2",
+              "status": "accepted"
+            },
+            {
+              "taskId": "task-3",
+              "required": true,
+              "dependsOn": [
+                "task-2"
+              ],
+              "plannedAgentId": "agent-3",
+              "effectiveAgentId": "agent-3",
+              "status": "accepted"
+            },
+            {
+              "taskId": "task-4",
+              "required": true,
+              "dependsOn": [
+                "task-3"
+              ],
+              "plannedAgentId": "agent-4",
+              "effectiveAgentId": "agent-4",
+              "status": "accepted"
+            },
+            {
+              "taskId": "task-5",
+              "required": true,
+              "dependsOn": [
+                "task-4"
+              ],
+              "plannedAgentId": "agent-5",
+              "effectiveAgentId": "agent-5",
+              "status": "accepted"
+            },
+            {
+              "taskId": "task-6",
+              "required": true,
+              "dependsOn": [
+                "task-5"
+              ],
+              "plannedAgentId": "agent-6",
+              "effectiveAgentId": "agent-6",
+              "status": "accepted"
+            },
+            {
+              "taskId": "task-7",
+              "required": true,
+              "dependsOn": [
+                "task-6"
+              ],
+              "plannedAgentId": "agent-7",
+              "effectiveAgentId": "agent-7",
+              "status": "accepted"
+            },
+            {
+              "taskId": "task-8",
+              "required": true,
+              "dependsOn": [
+                "task-7"
+              ],
+              "plannedAgentId": "agent-8",
+              "effectiveAgentId": "agent-8",
+              "status": "accepted"
+            },
+            {
+              "taskId": "task-9",
+              "required": true,
+              "dependsOn": [
+                "task-8"
+              ],
+              "plannedAgentId": "agent-9",
+              "effectiveAgentId": "agent-9",
+              "status": "accepted"
+            },
+            {
+              "taskId": "task-10",
+              "required": true,
+              "dependsOn": [
+                "task-9"
+              ],
+              "plannedAgentId": "agent-10",
+              "effectiveAgentId": "agent-10",
+              "status": "accepted"
+            },
+            {
+              "taskId": "task-11",
+              "required": true,
+              "dependsOn": [
+                "task-10"
+              ],
+              "plannedAgentId": "agent-11",
+              "effectiveAgentId": "agent-11",
+              "status": "accepted"
+            },
+            {
+              "taskId": "task-12",
+              "required": true,
+              "dependsOn": [
+                "task-11"
+              ],
+              "plannedAgentId": "agent-12",
+              "effectiveAgentId": "agent-12",
+              "status": "accepted"
+            },
+            {
+              "taskId": "task-13",
+              "required": true,
+              "dependsOn": [
+                "task-12"
+              ],
+              "plannedAgentId": "agent-13",
+              "effectiveAgentId": "agent-13",
+              "status": "accepted"
+            },
+            {
+              "taskId": "task-14",
+              "required": true,
+              "dependsOn": [
+                "task-13"
+              ],
+              "plannedAgentId": "agent-14",
+              "effectiveAgentId": "agent-14",
+              "status": "accepted"
+            },
+            {
+              "taskId": "task-15",
+              "required": true,
+              "dependsOn": [
+                "task-14"
+              ],
+              "plannedAgentId": "agent-15",
+              "effectiveAgentId": "agent-15",
+              "status": "accepted"
+            }
+          ],
+          "agents": [
+            {
+              "agentId": "agent-1",
+              "role": "worker",
+              "status": "verified",
+              "taskIds": [
+                "task-1"
+              ],
+              "childRunId": "child-run-000dfq9b"
+            },
+            {
+              "agentId": "agent-2",
+              "role": "worker",
+              "status": "verified",
+              "taskIds": [
+                "task-2"
+              ],
+              "childRunId": "child-run-0017o4c9"
+            },
+            {
+              "agentId": "agent-3",
+              "role": "worker",
+              "status": "verified",
+              "taskIds": [
+                "task-3"
+              ],
+              "childRunId": "child-run-0021wif7"
+            },
+            {
+              "agentId": "agent-4",
+              "role": "worker",
+              "status": "verified",
+              "taskIds": [
+                "task-4"
+              ],
+              "childRunId": "child-run-002w4wi6"
+            },
+            {
+              "agentId": "agent-5",
+              "role": "worker",
+              "status": "verified",
+              "taskIds": [
+                "task-5"
+              ],
+              "childRunId": "child-run-003qdal4"
+            },
+            {
+              "agentId": "agent-6",
+              "role": "worker",
+              "status": "verified",
+              "taskIds": [
+                "task-6"
+              ],
+              "childRunId": "child-run-004kloo2"
+            },
+            {
+              "agentId": "agent-7",
+              "role": "worker",
+              "status": "verified",
+              "taskIds": [
+                "task-7"
+              ],
+              "childRunId": "child-run-005eu2r1"
+            },
+            {
+              "agentId": "agent-8",
+              "role": "worker",
+              "status": "verified",
+              "taskIds": [
+                "task-8"
+              ],
+              "childRunId": "child-run-00692gtz"
+            },
+            {
+              "agentId": "agent-9",
+              "role": "worker",
+              "status": "verified",
+              "taskIds": [
+                "task-9"
+              ],
+              "childRunId": "child-run-0073auwx"
+            },
+            {
+              "agentId": "agent-10",
+              "role": "worker",
+              "status": "verified",
+              "taskIds": [
+                "task-10"
+              ],
+              "childRunId": "child-run-007xj8zw"
+            },
+            {
+              "agentId": "agent-11",
+              "role": "worker",
+              "status": "verified",
+              "taskIds": [
+                "task-11"
+              ],
+              "childRunId": "child-run-008rrn2u"
+            },
+            {
+              "agentId": "agent-12",
+              "role": "worker",
+              "status": "verified",
+              "taskIds": [
+                "task-12"
+              ],
+              "childRunId": "child-run-009m015s"
+            },
+            {
+              "agentId": "agent-13",
+              "role": "worker",
+              "status": "verified",
+              "taskIds": [
+                "task-13"
+              ],
+              "childRunId": "child-run-00ag8f8r"
+            },
+            {
+              "agentId": "agent-14",
+              "role": "worker",
+              "status": "verified",
+              "taskIds": [
+                "task-14"
+              ],
+              "childRunId": "child-run-00bagtbp"
+            },
+            {
+              "agentId": "agent-15",
+              "role": "worker",
+              "status": "verified",
+              "taskIds": [
+                "task-15"
+              ],
+              "childRunId": "child-run-00c4p7en"
+            }
+          ],
+          "children": [
+            {
+              "childRunId": "child-run-000dfq9b",
+              "agentId": "agent-1",
+              "attemptId": "attempt-000br9h5",
+              "taskIds": [
+                "task-1"
+              ],
+              "status": "verified",
+              "receiptIntegrityState": "verified",
+              "evidence": [
+                {
+                  "eventId": "child-run-000dfq9b:started",
+                  "sequence": 2
+                },
+                {
+                  "eventId": "child-run-000dfq9b:verified",
+                  "sequence": 3
+                }
+              ]
+            },
+            {
+              "childRunId": "child-run-0017o4c9",
+              "agentId": "agent-2",
+              "attemptId": "attempt-0015znk3",
+              "taskIds": [
+                "task-2"
+              ],
+              "status": "verified",
+              "receiptIntegrityState": "verified",
+              "evidence": [
+                {
+                  "eventId": "child-run-0017o4c9:started",
+                  "sequence": 4
+                },
+                {
+                  "eventId": "child-run-0017o4c9:verified",
+                  "sequence": 5
+                }
+              ]
+            },
+            {
+              "childRunId": "child-run-0021wif7",
+              "agentId": "agent-3",
+              "attemptId": "attempt-002081n2",
+              "taskIds": [
+                "task-3"
+              ],
+              "status": "verified",
+              "receiptIntegrityState": "verified",
+              "evidence": [
+                {
+                  "eventId": "child-run-0021wif7:started",
+                  "sequence": 6
+                },
+                {
+                  "eventId": "child-run-0021wif7:verified",
+                  "sequence": 7
+                }
+              ]
+            },
+            {
+              "childRunId": "child-run-002w4wi6",
+              "agentId": "agent-4",
+              "attemptId": "attempt-002ugfq0",
+              "taskIds": [
+                "task-4"
+              ],
+              "status": "verified",
+              "receiptIntegrityState": "verified",
+              "evidence": [
+                {
+                  "eventId": "child-run-002w4wi6:started",
+                  "sequence": 8
+                },
+                {
+                  "eventId": "child-run-002w4wi6:verified",
+                  "sequence": 9
+                }
+              ]
+            },
+            {
+              "childRunId": "child-run-003qdal4",
+              "agentId": "agent-5",
+              "attemptId": "attempt-003ootsy",
+              "taskIds": [
+                "task-5"
+              ],
+              "status": "verified",
+              "receiptIntegrityState": "verified",
+              "evidence": [
+                {
+                  "eventId": "child-run-003qdal4:started",
+                  "sequence": 10
+                },
+                {
+                  "eventId": "child-run-003qdal4:verified",
+                  "sequence": 11
+                }
+              ]
+            },
+            {
+              "childRunId": "child-run-004kloo2",
+              "agentId": "agent-6",
+              "attemptId": "attempt-004ix7vx",
+              "taskIds": [
+                "task-6"
+              ],
+              "status": "verified",
+              "receiptIntegrityState": "verified",
+              "evidence": [
+                {
+                  "eventId": "child-run-004kloo2:started",
+                  "sequence": 12
+                },
+                {
+                  "eventId": "child-run-004kloo2:verified",
+                  "sequence": 13
+                }
+              ]
+            },
+            {
+              "childRunId": "child-run-005eu2r1",
+              "agentId": "agent-7",
+              "attemptId": "attempt-005d5lyv",
+              "taskIds": [
+                "task-7"
+              ],
+              "status": "verified",
+              "receiptIntegrityState": "verified",
+              "evidence": [
+                {
+                  "eventId": "child-run-005eu2r1:started",
+                  "sequence": 14
+                },
+                {
+                  "eventId": "child-run-005eu2r1:verified",
+                  "sequence": 15
+                }
+              ]
+            },
+            {
+              "childRunId": "child-run-00692gtz",
+              "agentId": "agent-8",
+              "attemptId": "attempt-0067e01t",
+              "taskIds": [
+                "task-8"
+              ],
+              "status": "verified",
+              "receiptIntegrityState": "verified",
+              "evidence": [
+                {
+                  "eventId": "child-run-00692gtz:started",
+                  "sequence": 16
+                },
+                {
+                  "eventId": "child-run-00692gtz:verified",
+                  "sequence": 17
+                }
+              ]
+            },
+            {
+              "childRunId": "child-run-0073auwx",
+              "agentId": "agent-9",
+              "attemptId": "attempt-0071me4s",
+              "taskIds": [
+                "task-9"
+              ],
+              "status": "verified",
+              "receiptIntegrityState": "verified",
+              "evidence": [
+                {
+                  "eventId": "child-run-0073auwx:started",
+                  "sequence": 18
+                },
+                {
+                  "eventId": "child-run-0073auwx:verified",
+                  "sequence": 19
+                }
+              ]
+            },
+            {
+              "childRunId": "child-run-007xj8zw",
+              "agentId": "agent-10",
+              "attemptId": "attempt-007vus7q",
+              "taskIds": [
+                "task-10"
+              ],
+              "status": "verified",
+              "receiptIntegrityState": "verified",
+              "evidence": [
+                {
+                  "eventId": "child-run-007xj8zw:started",
+                  "sequence": 20
+                },
+                {
+                  "eventId": "child-run-007xj8zw:verified",
+                  "sequence": 21
+                }
+              ]
+            },
+            {
+              "childRunId": "child-run-008rrn2u",
+              "agentId": "agent-11",
+              "attemptId": "attempt-008q36ao",
+              "taskIds": [
+                "task-11"
+              ],
+              "status": "verified",
+              "receiptIntegrityState": "verified",
+              "evidence": [
+                {
+                  "eventId": "child-run-008rrn2u:started",
+                  "sequence": 22
+                },
+                {
+                  "eventId": "child-run-008rrn2u:verified",
+                  "sequence": 23
+                }
+              ]
+            },
+            {
+              "childRunId": "child-run-009m015s",
+              "agentId": "agent-12",
+              "attemptId": "attempt-009kbkdn",
+              "taskIds": [
+                "task-12"
+              ],
+              "status": "verified",
+              "receiptIntegrityState": "verified",
+              "evidence": [
+                {
+                  "eventId": "child-run-009m015s:started",
+                  "sequence": 24
+                },
+                {
+                  "eventId": "child-run-009m015s:verified",
+                  "sequence": 25
+                }
+              ]
+            },
+            {
+              "childRunId": "child-run-00ag8f8r",
+              "agentId": "agent-13",
+              "attemptId": "attempt-00aejygl",
+              "taskIds": [
+                "task-13"
+              ],
+              "status": "verified",
+              "receiptIntegrityState": "verified",
+              "evidence": [
+                {
+                  "eventId": "child-run-00ag8f8r:started",
+                  "sequence": 26
+                },
+                {
+                  "eventId": "child-run-00ag8f8r:verified",
+                  "sequence": 27
+                }
+              ]
+            },
+            {
+              "childRunId": "child-run-00bagtbp",
+              "agentId": "agent-14",
+              "attemptId": "attempt-00b8scjj",
+              "taskIds": [
+                "task-14"
+              ],
+              "status": "verified",
+              "receiptIntegrityState": "verified",
+              "evidence": [
+                {
+                  "eventId": "child-run-00bagtbp:started",
+                  "sequence": 28
+                },
+                {
+                  "eventId": "child-run-00bagtbp:verified",
+                  "sequence": 29
+                }
+              ]
+            },
+            {
+              "childRunId": "child-run-00c4p7en",
+              "agentId": "agent-15",
+              "attemptId": "attempt-00c30qmi",
+              "taskIds": [
+                "task-15"
+              ],
+              "status": "verified",
+              "receiptIntegrityState": "verified",
+              "evidence": [
+                {
+                  "eventId": "child-run-00c4p7en:started",
+                  "sequence": 30
+                },
+                {
+                  "eventId": "child-run-00c4p7en:verified",
+                  "sequence": 31
+                }
+              ]
+            }
+          ]
+        },
+        "budget": {
+          "capUsd": 17,
+          "capTokens": 1500,
+          "settledUsd": 0.15,
+          "settledTokens": 75
+        },
+        "interventions": {
+          "blockedActions": [],
+          "reassignments": []
+        },
+        "integration": {
+          "admissions": [],
+          "rejections": [],
+          "conflicts": [],
+          "integratedTreeHash": "528732cadbcdc09711fc2e71e251b48b4f6da2a0"
+        },
+        "events": [
+          {
+            "eventId": "cf354a4212ef83353b83552fed97c2f54d422edc69cdf01b9b5d071ddcb90795:created",
+            "sourceIdempotencyKey": "cf354a4212ef83353b83552fed97c2f54d422edc69cdf01b9b5d071ddcb90795:created",
+            "sequence": 1,
+            "type": "SWARM_CREATED",
+            "timestamp": "2026-10-03T12:00:04.000Z"
+          },
+          {
+            "eventId": "child-run-000dfq9b:started",
+            "sourceIdempotencyKey": "child-run-000dfq9b:started",
+            "sequence": 2,
+            "type": "CHILD_STARTED",
+            "timestamp": "2026-10-03T12:00:08.000Z",
+            "taskId": "task-1",
+            "agentId": "agent-1",
+            "childRunId": "child-run-000dfq9b",
+            "attemptId": "attempt-000br9h5"
+          },
+          {
+            "eventId": "child-run-000dfq9b:verified",
+            "sourceIdempotencyKey": "child-run-000dfq9b:verified",
+            "sequence": 3,
+            "type": "CHILD_VERIFIED",
+            "timestamp": "2026-10-03T12:00:32.000Z",
+            "taskId": "task-1",
+            "agentId": "agent-1",
+            "childRunId": "child-run-000dfq9b",
+            "attemptId": "attempt-000br9h5"
+          },
+          {
+            "eventId": "child-run-0017o4c9:started",
+            "sourceIdempotencyKey": "child-run-0017o4c9:started",
+            "sequence": 4,
+            "type": "CHILD_STARTED",
+            "timestamp": "2026-10-03T12:00:36.000Z",
+            "taskId": "task-2",
+            "agentId": "agent-2",
+            "childRunId": "child-run-0017o4c9",
+            "attemptId": "attempt-0015znk3"
+          },
+          {
+            "eventId": "child-run-0017o4c9:verified",
+            "sourceIdempotencyKey": "child-run-0017o4c9:verified",
+            "sequence": 5,
+            "type": "CHILD_VERIFIED",
+            "timestamp": "2026-10-03T12:01:00.000Z",
+            "taskId": "task-2",
+            "agentId": "agent-2",
+            "childRunId": "child-run-0017o4c9",
+            "attemptId": "attempt-0015znk3"
+          },
+          {
+            "eventId": "child-run-0021wif7:started",
+            "sourceIdempotencyKey": "child-run-0021wif7:started",
+            "sequence": 6,
+            "type": "CHILD_STARTED",
+            "timestamp": "2026-10-03T12:01:04.000Z",
+            "taskId": "task-3",
+            "agentId": "agent-3",
+            "childRunId": "child-run-0021wif7",
+            "attemptId": "attempt-002081n2"
+          },
+          {
+            "eventId": "child-run-0021wif7:verified",
+            "sourceIdempotencyKey": "child-run-0021wif7:verified",
+            "sequence": 7,
+            "type": "CHILD_VERIFIED",
+            "timestamp": "2026-10-03T12:01:28.000Z",
+            "taskId": "task-3",
+            "agentId": "agent-3",
+            "childRunId": "child-run-0021wif7",
+            "attemptId": "attempt-002081n2"
+          },
+          {
+            "eventId": "child-run-002w4wi6:started",
+            "sourceIdempotencyKey": "child-run-002w4wi6:started",
+            "sequence": 8,
+            "type": "CHILD_STARTED",
+            "timestamp": "2026-10-03T12:01:32.000Z",
+            "taskId": "task-4",
+            "agentId": "agent-4",
+            "childRunId": "child-run-002w4wi6",
+            "attemptId": "attempt-002ugfq0"
+          },
+          {
+            "eventId": "child-run-002w4wi6:verified",
+            "sourceIdempotencyKey": "child-run-002w4wi6:verified",
+            "sequence": 9,
+            "type": "CHILD_VERIFIED",
+            "timestamp": "2026-10-03T12:01:56.000Z",
+            "taskId": "task-4",
+            "agentId": "agent-4",
+            "childRunId": "child-run-002w4wi6",
+            "attemptId": "attempt-002ugfq0"
+          },
+          {
+            "eventId": "child-run-003qdal4:started",
+            "sourceIdempotencyKey": "child-run-003qdal4:started",
+            "sequence": 10,
+            "type": "CHILD_STARTED",
+            "timestamp": "2026-10-03T12:02:00.000Z",
+            "taskId": "task-5",
+            "agentId": "agent-5",
+            "childRunId": "child-run-003qdal4",
+            "attemptId": "attempt-003ootsy"
+          },
+          {
+            "eventId": "child-run-003qdal4:verified",
+            "sourceIdempotencyKey": "child-run-003qdal4:verified",
+            "sequence": 11,
+            "type": "CHILD_VERIFIED",
+            "timestamp": "2026-10-03T12:02:24.000Z",
+            "taskId": "task-5",
+            "agentId": "agent-5",
+            "childRunId": "child-run-003qdal4",
+            "attemptId": "attempt-003ootsy"
+          },
+          {
+            "eventId": "child-run-004kloo2:started",
+            "sourceIdempotencyKey": "child-run-004kloo2:started",
+            "sequence": 12,
+            "type": "CHILD_STARTED",
+            "timestamp": "2026-10-03T12:02:28.000Z",
+            "taskId": "task-6",
+            "agentId": "agent-6",
+            "childRunId": "child-run-004kloo2",
+            "attemptId": "attempt-004ix7vx"
+          },
+          {
+            "eventId": "child-run-004kloo2:verified",
+            "sourceIdempotencyKey": "child-run-004kloo2:verified",
+            "sequence": 13,
+            "type": "CHILD_VERIFIED",
+            "timestamp": "2026-10-03T12:02:52.000Z",
+            "taskId": "task-6",
+            "agentId": "agent-6",
+            "childRunId": "child-run-004kloo2",
+            "attemptId": "attempt-004ix7vx"
+          },
+          {
+            "eventId": "child-run-005eu2r1:started",
+            "sourceIdempotencyKey": "child-run-005eu2r1:started",
+            "sequence": 14,
+            "type": "CHILD_STARTED",
+            "timestamp": "2026-10-03T12:02:56.000Z",
+            "taskId": "task-7",
+            "agentId": "agent-7",
+            "childRunId": "child-run-005eu2r1",
+            "attemptId": "attempt-005d5lyv"
+          },
+          {
+            "eventId": "child-run-005eu2r1:verified",
+            "sourceIdempotencyKey": "child-run-005eu2r1:verified",
+            "sequence": 15,
+            "type": "CHILD_VERIFIED",
+            "timestamp": "2026-10-03T12:03:20.000Z",
+            "taskId": "task-7",
+            "agentId": "agent-7",
+            "childRunId": "child-run-005eu2r1",
+            "attemptId": "attempt-005d5lyv"
+          },
+          {
+            "eventId": "child-run-00692gtz:started",
+            "sourceIdempotencyKey": "child-run-00692gtz:started",
+            "sequence": 16,
+            "type": "CHILD_STARTED",
+            "timestamp": "2026-10-03T12:03:24.000Z",
+            "taskId": "task-8",
+            "agentId": "agent-8",
+            "childRunId": "child-run-00692gtz",
+            "attemptId": "attempt-0067e01t"
+          },
+          {
+            "eventId": "child-run-00692gtz:verified",
+            "sourceIdempotencyKey": "child-run-00692gtz:verified",
+            "sequence": 17,
+            "type": "CHILD_VERIFIED",
+            "timestamp": "2026-10-03T12:03:48.000Z",
+            "taskId": "task-8",
+            "agentId": "agent-8",
+            "childRunId": "child-run-00692gtz",
+            "attemptId": "attempt-0067e01t"
+          },
+          {
+            "eventId": "child-run-0073auwx:started",
+            "sourceIdempotencyKey": "child-run-0073auwx:started",
+            "sequence": 18,
+            "type": "CHILD_STARTED",
+            "timestamp": "2026-10-03T12:03:52.000Z",
+            "taskId": "task-9",
+            "agentId": "agent-9",
+            "childRunId": "child-run-0073auwx",
+            "attemptId": "attempt-0071me4s"
+          },
+          {
+            "eventId": "child-run-0073auwx:verified",
+            "sourceIdempotencyKey": "child-run-0073auwx:verified",
+            "sequence": 19,
+            "type": "CHILD_VERIFIED",
+            "timestamp": "2026-10-03T12:04:16.000Z",
+            "taskId": "task-9",
+            "agentId": "agent-9",
+            "childRunId": "child-run-0073auwx",
+            "attemptId": "attempt-0071me4s"
+          },
+          {
+            "eventId": "child-run-007xj8zw:started",
+            "sourceIdempotencyKey": "child-run-007xj8zw:started",
+            "sequence": 20,
+            "type": "CHILD_STARTED",
+            "timestamp": "2026-10-03T12:04:20.000Z",
+            "taskId": "task-10",
+            "agentId": "agent-10",
+            "childRunId": "child-run-007xj8zw",
+            "attemptId": "attempt-007vus7q"
+          },
+          {
+            "eventId": "child-run-007xj8zw:verified",
+            "sourceIdempotencyKey": "child-run-007xj8zw:verified",
+            "sequence": 21,
+            "type": "CHILD_VERIFIED",
+            "timestamp": "2026-10-03T12:04:44.000Z",
+            "taskId": "task-10",
+            "agentId": "agent-10",
+            "childRunId": "child-run-007xj8zw",
+            "attemptId": "attempt-007vus7q"
+          },
+          {
+            "eventId": "child-run-008rrn2u:started",
+            "sourceIdempotencyKey": "child-run-008rrn2u:started",
+            "sequence": 22,
+            "type": "CHILD_STARTED",
+            "timestamp": "2026-10-03T12:04:48.000Z",
+            "taskId": "task-11",
+            "agentId": "agent-11",
+            "childRunId": "child-run-008rrn2u",
+            "attemptId": "attempt-008q36ao"
+          },
+          {
+            "eventId": "child-run-008rrn2u:verified",
+            "sourceIdempotencyKey": "child-run-008rrn2u:verified",
+            "sequence": 23,
+            "type": "CHILD_VERIFIED",
+            "timestamp": "2026-10-03T12:05:12.000Z",
+            "taskId": "task-11",
+            "agentId": "agent-11",
+            "childRunId": "child-run-008rrn2u",
+            "attemptId": "attempt-008q36ao"
+          },
+          {
+            "eventId": "child-run-009m015s:started",
+            "sourceIdempotencyKey": "child-run-009m015s:started",
+            "sequence": 24,
+            "type": "CHILD_STARTED",
+            "timestamp": "2026-10-03T12:05:16.000Z",
+            "taskId": "task-12",
+            "agentId": "agent-12",
+            "childRunId": "child-run-009m015s",
+            "attemptId": "attempt-009kbkdn"
+          },
+          {
+            "eventId": "child-run-009m015s:verified",
+            "sourceIdempotencyKey": "child-run-009m015s:verified",
+            "sequence": 25,
+            "type": "CHILD_VERIFIED",
+            "timestamp": "2026-10-03T12:05:40.000Z",
+            "taskId": "task-12",
+            "agentId": "agent-12",
+            "childRunId": "child-run-009m015s",
+            "attemptId": "attempt-009kbkdn"
+          },
+          {
+            "eventId": "child-run-00ag8f8r:started",
+            "sourceIdempotencyKey": "child-run-00ag8f8r:started",
+            "sequence": 26,
+            "type": "CHILD_STARTED",
+            "timestamp": "2026-10-03T12:05:44.000Z",
+            "taskId": "task-13",
+            "agentId": "agent-13",
+            "childRunId": "child-run-00ag8f8r",
+            "attemptId": "attempt-00aejygl"
+          },
+          {
+            "eventId": "child-run-00ag8f8r:verified",
+            "sourceIdempotencyKey": "child-run-00ag8f8r:verified",
+            "sequence": 27,
+            "type": "CHILD_VERIFIED",
+            "timestamp": "2026-10-03T12:06:08.000Z",
+            "taskId": "task-13",
+            "agentId": "agent-13",
+            "childRunId": "child-run-00ag8f8r",
+            "attemptId": "attempt-00aejygl"
+          },
+          {
+            "eventId": "child-run-00bagtbp:started",
+            "sourceIdempotencyKey": "child-run-00bagtbp:started",
+            "sequence": 28,
+            "type": "CHILD_STARTED",
+            "timestamp": "2026-10-03T12:06:12.000Z",
+            "taskId": "task-14",
+            "agentId": "agent-14",
+            "childRunId": "child-run-00bagtbp",
+            "attemptId": "attempt-00b8scjj"
+          },
+          {
+            "eventId": "child-run-00bagtbp:verified",
+            "sourceIdempotencyKey": "child-run-00bagtbp:verified",
+            "sequence": 29,
+            "type": "CHILD_VERIFIED",
+            "timestamp": "2026-10-03T12:06:36.000Z",
+            "taskId": "task-14",
+            "agentId": "agent-14",
+            "childRunId": "child-run-00bagtbp",
+            "attemptId": "attempt-00b8scjj"
+          },
+          {
+            "eventId": "child-run-00c4p7en:started",
+            "sourceIdempotencyKey": "child-run-00c4p7en:started",
+            "sequence": 30,
+            "type": "CHILD_STARTED",
+            "timestamp": "2026-10-03T12:06:40.000Z",
+            "taskId": "task-15",
+            "agentId": "agent-15",
+            "childRunId": "child-run-00c4p7en",
+            "attemptId": "attempt-00c30qmi"
+          },
+          {
+            "eventId": "child-run-00c4p7en:verified",
+            "sourceIdempotencyKey": "child-run-00c4p7en:verified",
+            "sequence": 31,
+            "type": "CHILD_VERIFIED",
+            "timestamp": "2026-10-03T12:07:04.000Z",
+            "taskId": "task-15",
+            "agentId": "agent-15",
+            "childRunId": "child-run-00c4p7en",
+            "attemptId": "attempt-00c30qmi"
+          },
+          {
+            "eventId": "parent-global-verifier:swarm-verified-15-agent:f0bf011cb01b5ca4f13dd4465ecd0934e809ab3b306c14b0eb3c6ff8ddee9ee1",
+            "sourceIdempotencyKey": "parent-global-verifier:swarm-verified-15-agent:f0bf011cb01b5ca4f13dd4465ecd0934e809ab3b306c14b0eb3c6ff8ddee9ee1",
+            "sequence": 32,
+            "type": "GLOBAL_VERIFIER_PASSED",
+            "timestamp": "2026-10-03T12:07:11.000Z",
+            "verificationId": "global-verification-00cyxlhm"
+          },
+          {
+            "eventId": "parent-outcome:swarm-verified-15-agent:verified:f0bf011cb01b5ca4f13dd4465ecd0934e809ab3b306c14b0eb3c6ff8ddee9ee1",
+            "sourceIdempotencyKey": "parent-outcome:swarm-verified-15-agent:verified:f0bf011cb01b5ca4f13dd4465ecd0934e809ab3b306c14b0eb3c6ff8ddee9ee1",
+            "sequence": 33,
+            "type": "SWARM_VERIFIED",
+            "timestamp": "2026-10-03T12:07:16.000Z",
+            "verificationId": "global-verification-00cyxlhm"
+          }
+        ],
+        "globalVerification": {
+          "state": "passed",
+          "verificationId": "global-verification-00cyxlhm",
+          "integratedTreeHash": "528732cadbcdc09711fc2e71e251b48b4f6da2a0",
+          "evidence": [
+            {
+              "eventId": "parent-global-verifier:swarm-verified-15-agent:f0bf011cb01b5ca4f13dd4465ecd0934e809ab3b306c14b0eb3c6ff8ddee9ee1",
+              "sequence": 32
+            }
+          ]
+        },
+        "parentOutcome": {
+          "state": "verified",
+          "source": "sealed_parent_receipt",
+          "evidence": [
+            {
+              "eventId": "parent-outcome:swarm-verified-15-agent:verified:f0bf011cb01b5ca4f13dd4465ecd0934e809ab3b306c14b0eb3c6ff8ddee9ee1",
+              "sequence": 33
+            }
+          ]
+        },
+        "taskVerificationState": "passed",
+        "receiptIntegrityState": "verified",
+        "transportSignature": {
+          "algorithm": "hmac-sha256",
+          "keyId": "hosted-3d92c57743ba0c14",
+          "keyLocatorHash": "ad39e28164db50c2f4797c011836976ce8c7571b4ac0b2949c24a871d2acd22d",
+          "signatureHmacSha256": "183f75a48cbb75f06d58a8d43dbb2497fae88a4ee4283007112b8a25fc189ed1"
+        }
+      }
+    },
+    {
+      "name": "tampered-parent-authority",
+      "provenance": "tampered-copy",
+      "tamper": "parent_authority",
+      "envelope": {
+        "schemaVersion": "martin.swarm-hosted.v1",
+        "envelopeId": "50fc6f84e22d95235529fcb1d38c370a7023545d79a4222cc47ff7ede782adcf",
+        "sourceSchemas": {
+          "swarm": "martin.swarm.v1",
+          "receipt": "martin.swarm-receipt.v1",
+          "evidenceIndex": "martin.swarm-evidence-index.v1"
+        },
+        "sourceIdentities": {
+          "receiptId": "swarm-receipt-f36d5076cc53f1b7",
+          "receiptSha256": "f36d5076cc53f1b79a11540bc0147ee28bb320f3f632f8864baed35e13046248",
+          "evidenceIndexSha256": "97c2c020644c1f4f9229ecf56ec92e196bdd14ea7f26e3f4334ccad2f5f7b951",
+          "eventChainSha256": "cf17c0c97298adf810750752d1b2d053f8d80171543ffb37cc9e7cbba6336df8"
+        },
+        "runtimeVersion": "0.8.0",
+        "createdAt": "2026-10-03T12:00:44.000Z",
+        "swarm": {
+          "swarmId": "swarm-failed-global-verifier",
+          "workspaceId": "workspace-failed-global-verifier",
+          "projectId": "project-failed-global-verifier",
+          "planHash": "c2d87de6c1f5d926c799238b3aece34cf10c90da235e224566a626526eb38df0",
+          "baselineCommit": "1814ed997ca829855dff8abc6d80d66235ff5f73"
+        },
+        "topology": {
+          "tasks": [
+            {
+              "taskId": "task-1",
+              "required": true,
+              "dependsOn": [],
+              "plannedAgentId": "agent-1",
+              "effectiveAgentId": "agent-1",
+              "status": "accepted"
+            }
+          ],
+          "agents": [
+            {
+              "agentId": "agent-1",
+              "role": "worker",
+              "status": "verified",
+              "taskIds": [
+                "task-1"
+              ],
+              "childRunId": "child-run-000dfq9b"
+            }
+          ],
+          "children": [
+            {
+              "childRunId": "child-run-000dfq9b",
+              "agentId": "agent-1",
+              "attemptId": "attempt-000br9h5",
+              "taskIds": [
+                "task-1"
+              ],
+              "status": "verified",
+              "receiptIntegrityState": "verified",
+              "evidence": [
+                {
+                  "eventId": "child-run-000dfq9b:started",
+                  "sequence": 2
+                },
+                {
+                  "eventId": "child-run-000dfq9b:verified",
+                  "sequence": 3
+                }
+              ]
+            }
+          ]
+        },
+        "budget": {
+          "capUsd": 10,
+          "capTokens": 1000,
+          "settledUsd": 0.01,
+          "settledTokens": 5
+        },
+        "interventions": {
+          "blockedActions": [],
+          "reassignments": []
+        },
+        "integration": {
+          "admissions": [],
+          "rejections": [],
+          "conflicts": [],
+          "integratedTreeHash": "77ddbb288d41077bdb7567aa2019e11d031abed2"
+        },
+        "events": [
+          {
+            "eventId": "c2d87de6c1f5d926c799238b3aece34cf10c90da235e224566a626526eb38df0:created",
+            "sourceIdempotencyKey": "c2d87de6c1f5d926c799238b3aece34cf10c90da235e224566a626526eb38df0:created",
+            "sequence": 1,
+            "type": "SWARM_CREATED",
+            "timestamp": "2026-10-03T12:00:04.000Z"
+          },
+          {
+            "eventId": "child-run-000dfq9b:started",
+            "sourceIdempotencyKey": "child-run-000dfq9b:started",
+            "sequence": 2,
+            "type": "CHILD_STARTED",
+            "timestamp": "2026-10-03T12:00:08.000Z",
+            "taskId": "task-1",
+            "agentId": "agent-1",
+            "childRunId": "child-run-000dfq9b",
+            "attemptId": "attempt-000br9h5"
+          },
+          {
+            "eventId": "child-run-000dfq9b:verified",
+            "sourceIdempotencyKey": "child-run-000dfq9b:verified",
+            "sequence": 3,
+            "type": "CHILD_VERIFIED",
+            "timestamp": "2026-10-03T12:00:32.000Z",
+            "taskId": "task-1",
+            "agentId": "agent-1",
+            "childRunId": "child-run-000dfq9b",
+            "attemptId": "attempt-000br9h5"
+          },
+          {
+            "eventId": "parent-global-verifier:swarm-failed-global-verifier:555a288beb7295b11950bffadd91721e67dd66610d7b9083ed9e9b4701c36842",
+            "sourceIdempotencyKey": "parent-global-verifier:swarm-failed-global-verifier:555a288beb7295b11950bffadd91721e67dd66610d7b9083ed9e9b4701c36842",
+            "sequence": 4,
+            "type": "GLOBAL_VERIFIER_FAILED",
+            "timestamp": "2026-10-03T12:00:39.000Z",
+            "verificationId": "global-verification-0017o4c9"
+          },
+          {
+            "eventId": "parent-outcome:swarm-failed-global-verifier:needs_review:555a288beb7295b11950bffadd91721e67dd66610d7b9083ed9e9b4701c36842",
+            "sourceIdempotencyKey": "parent-outcome:swarm-failed-global-verifier:needs_review:555a288beb7295b11950bffadd91721e67dd66610d7b9083ed9e9b4701c36842",
+            "sequence": 5,
+            "type": "SWARM_VERIFIED",
+            "timestamp": "2026-10-03T12:00:44.000Z",
+            "verificationId": "global-verification-0017o4c9"
+          }
+        ],
+        "globalVerification": {
+          "state": "failed",
+          "verificationId": "global-verification-0017o4c9",
+          "integratedTreeHash": "77ddbb288d41077bdb7567aa2019e11d031abed2",
+          "evidence": [
+            {
+              "eventId": "parent-global-verifier:swarm-failed-global-verifier:555a288beb7295b11950bffadd91721e67dd66610d7b9083ed9e9b4701c36842",
+              "sequence": 4
+            }
+          ]
+        },
+        "parentOutcome": {
+          "state": "verified",
+          "source": "sealed_parent_receipt",
+          "evidence": [
+            {
+              "eventId": "parent-outcome:swarm-failed-global-verifier:needs_review:555a288beb7295b11950bffadd91721e67dd66610d7b9083ed9e9b4701c36842",
+              "sequence": 5
+            }
+          ]
+        },
+        "taskVerificationState": "failed",
+        "receiptIntegrityState": "verified",
+        "transportSignature": {
+          "algorithm": "hmac-sha256",
+          "keyId": "hosted-d0fa45c1fd12faa1",
+          "keyLocatorHash": "543f6f103954a4aafa1dd1a926f55ee8083df5aa2600086ffafd0183ab40b337",
+          "signatureHmacSha256": "74c693be27915ae03154891213a6733ad6fbc12d2a3c96b965f27b4d8104392d"
+        }
+      }
+    }
+  ]
+}

@@ -3,3 +3,5 @@ dist/vendor/**/*.json text eol=lf
 docs/product-truth/public-release-truth.json text eol=lf
 packages/mcp/server.json text eol=lf
 packages/mcp/src/package-version.ts text eol=lf
+packages/contracts/tests/fixtures/swarm-hosted-v1-cases.json text eol=lf
+packages/contracts/tests/fixtures/swarm-hosted-v1-cases.sha256 text eol=lf

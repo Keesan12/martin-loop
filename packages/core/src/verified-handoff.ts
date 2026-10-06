@@ -58,7 +58,11 @@ const STOPPED_LIFECYCLE_STATES = new Set<LoopRecord["lifecycleState"]>([
 export interface VerifierExecutionBinding {
   runId: string;
   workspaceId: string;
+  attemptId?: string;
   cwd: string;
+  runsRoot?: string;
+  executionProfile?: "strict_local" | "ci_safe" | "staging_controlled" | "research_untrusted";
+  allowedNetworkDomains?: string[];
   commands: string[];
 }
 
@@ -90,7 +94,11 @@ export function verifierActuallyPassed(
   if (
     evidence.binding.runId !== expected.runId ||
     evidence.binding.workspaceId !== expected.workspaceId ||
+    (evidence.binding.attemptId ?? undefined) !== (expected.attemptId ?? undefined) ||
     evidence.binding.cwd !== expected.cwd ||
+    (evidence.binding.runsRoot ?? undefined) !== (expected.runsRoot ?? undefined) ||
+    (evidence.binding.executionProfile ?? undefined) !== (expected.executionProfile ?? undefined) ||
+    JSON.stringify(evidence.binding.allowedNetworkDomains ?? []) !== JSON.stringify(expected.allowedNetworkDomains ?? []) ||
     JSON.stringify(evidence.binding.commands) !== JSON.stringify(expected.commands)
   ) {
     return false;
