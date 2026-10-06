@@ -1,0 +1,93 @@
+name: Swarm platform 0.8.0 public proof
+
+on:
+  push:
+    branches:
+      - ci/public-swarm-platform-0.8.0
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  swarm-platform:
+    name: ${{ matrix.os }} / Node ${{ matrix.node }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: ['20', '24']
+
+    steps:
+      - name: Check out governed public staging
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: public-staging/0.8.0
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Record staging coordinate
+        id: coord
+        shell: bash
+        run: |
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "ref=$(git branch --show-current)" >> "$GITHUB_OUTPUT"
+          test -z "$(git status --porcelain=v1 --untracked-files=no)"
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@b0f76dfb45f55f8421693e4803ac7bb65143bd34
+        with:
+          version: 10.33.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build required packages
+        run: pnpm --filter @martin/contracts build && pnpm --filter @martin/core build && pnpm --filter @martin/adapters build
+
+      - name: Swarm worktree platform gate
+        run: pnpm --filter @martin/core exec vitest run --reporter=verbose tests/swarm-workspaces.test.ts
+
+      - name: Swarm process-tree platform gate
+        run: pnpm --filter @martin/adapters exec vitest run --reporter=verbose tests/process-supervisor.test.ts
+
+      - name: Seal lane coordinate
+        if: always()
+        shell: bash
+        env:
+          STAGING_SHA: ${{ steps.coord.outputs.sha }}
+          STAGING_REF: ${{ steps.coord.outputs.ref }}
+          MATRIX_OS: ${{ matrix.os }}
+          MATRIX_NODE: ${{ matrix.node }}
+        run: |
+          mkdir -p public-platform-proof
+          node - <<'NODE'
+          const fs = require('fs');
+          fs.writeFileSync('public-platform-proof/lane.json', JSON.stringify({
+            schemaVersion: 'martin.public-swarm-platform-proof.v1',
+            repository: 'Keesan12/martin-loop',
+            stagingSha: process.env.STAGING_SHA,
+            stagingRef: process.env.STAGING_REF || 'public-staging/0.8.0',
+            os: process.env.MATRIX_OS,
+            node: Number(process.env.MATRIX_NODE),
+            providerRuns: 0,
+            providerSpendUsd: 0,
+            githubRunId: process.env.GITHUB_RUN_ID,
+            githubRunAttempt: Number(process.env.GITHUB_RUN_ATTEMPT)
+          }, null, 2) + '\n');
+          NODE
+
+      - name: Upload lane coordinate
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: swarm-platform-0.8.0-${{ matrix.os }}-node-${{ matrix.node }}
+          path: public-platform-proof/lane.json
+          if-no-files-found: error
