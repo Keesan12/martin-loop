@@ -398,6 +398,43 @@ describe("parseCliArguments", () => {
     ])).toThrow(/Unknown run option: --definitely-not-a-real-option/u);
   });
 
+  it("rejects unsupported single-dash run options instead of treating them as positional noise", () => {
+    expect(() => parseCliArguments([
+      "run",
+      "--objective",
+      "Reject typoed proof mode",
+      "-proof"
+    ])).toThrow(/Unknown run option: -proof/u);
+  });
+
+  it.each([
+    ["missing", undefined],
+    ["zero", "0"],
+    ["negative", "-1"],
+    ["NaN", "NaN"],
+    ["infinite", "Infinity"]
+  ])("rejects a %s --max-tokens value", (_label, value) => {
+    const argv = ["run", "--objective", "Reject invalid token budgets", "--max-tokens"];
+    if (value !== undefined) argv.push(value);
+
+    expect(() => parseCliArguments(argv)).toThrow(/--max-tokens requires a finite number greater than zero/u);
+  });
+
+  it("accepts a finite positive --max-tokens value", () => {
+    expect(parseCliArguments([
+      "run",
+      "--objective",
+      "Accept a valid token budget",
+      "--max-tokens",
+      "128000"
+    ])).toEqual(expect.objectContaining({
+      command: "run",
+      request: expect.objectContaining({
+        budget: expect.objectContaining({ maxTokens: 128000 })
+      })
+    }));
+  });
+
   it("rejects --verify when its command is missing", () => {
     expect(() => parseCliArguments([
       "run",
@@ -561,6 +598,116 @@ describe("executeCli", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe("");
     expect(result.stdout).toBe(rootPackageVersion);
+  });
+
+  it("keeps proof preflight non-live when MARTIN_LIVE defaults to true", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-proof-preflight-"));
+    const previousMartinLive = process.env.MARTIN_LIVE;
+    process.env.MARTIN_LIVE = "true";
+
+    try {
+      const result = await withIsolatedRunsEnv(directory, () => executeCli([
+        "--json",
+        "preflight",
+        "--objective",
+        "Collect verification-only evidence",
+        "--proof",
+        "--engine",
+        "codex",
+        "--cwd",
+        directory,
+        "--verify",
+        process.platform === "win32" ? "cmd /c exit 0" : "true"
+      ]));
+      const payload = JSON.parse(result.stdout) as {
+        environment: { liveMode: string };
+        tokenBudgetPreflight?: unknown;
+      };
+
+      expect(result.exitCode).toBe(0);
+      expect(payload.environment.liveMode).toBe("proof");
+      expect(payload.tokenBudgetPreflight).toBeUndefined();
+    } finally {
+      if (previousMartinLive === undefined) {
+        delete process.env.MARTIN_LIVE;
+      } else {
+        process.env.MARTIN_LIVE = previousMartinLive;
+      }
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("rejects -proof before invoking an adapter or creating a run store", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-single-dash-proof-"));
+    let adapterInvoked = false;
+    __setRunAdapterOverrideForTests(
+      createStubDirectProviderAdapter({
+        providerId: "test",
+        model: "must-not-run",
+        responder: () => {
+          adapterInvoked = true;
+          throw new Error("-proof reached the provider adapter");
+        }
+      })
+    );
+
+    try {
+      const result = await withIsolatedRunsEnv(directory, () => executeCli([
+        "run",
+        "--objective",
+        "Do not accept a typoed proof flag",
+        "-proof",
+        "--cwd",
+        directory
+      ]));
+
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr).toContain("Unknown run option: -proof");
+      expect(adapterInvoked).toBe(false);
+      await expect(readdir(join(directory, ".martin-runs"))).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it.each([
+    ["missing", undefined],
+    ["zero", "0"],
+    ["negative", "-1"],
+    ["NaN", "NaN"],
+    ["infinite", "Infinity"]
+  ])("rejects a %s --max-tokens value before invoking an adapter or creating a run store", async (_label, value) => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-invalid-max-tokens-"));
+    let adapterInvoked = false;
+    __setRunAdapterOverrideForTests(
+      createStubDirectProviderAdapter({
+        providerId: "test",
+        model: "must-not-run",
+        responder: () => {
+          adapterInvoked = true;
+          throw new Error("invalid --max-tokens reached the provider adapter");
+        }
+      })
+    );
+
+    try {
+      const argv = [
+        "run",
+        "--objective",
+        "Reject an invalid token budget",
+        "--max-tokens"
+      ];
+      if (value !== undefined) argv.push(value);
+      argv.push("--cwd", directory);
+      const result = await withIsolatedRunsEnv(directory, () => executeCli(argv));
+
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr).toContain("--max-tokens requires a finite number greater than zero");
+      expect(adapterInvoked).toBe(false);
+      await expect(readdir(join(directory, ".martin-runs"))).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
   });
 
   it("rejects the retired --verify-only run flag instead of silently ignoring it", async () => {
