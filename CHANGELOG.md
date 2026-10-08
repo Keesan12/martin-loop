@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-10-08
+
+### Fixed
+- Proof-mode preflight now preserves the explicit non-live environment even when `MARTIN_LIVE=true`.
+- `--max-tokens` now rejects missing, non-finite, zero, and negative values before preflight or provider execution.
+- Unsupported single-dash run options such as `-proof` now fail closed as invalid input instead of being ignored.
+
 ## [0.8.1] - 2026-10-08
 
 ### Fixed

@@ -3621,7 +3621,8 @@ async function executePreflightCommand(
   const environment = resolveCliEnvironment({
     cwd: request.cwd,
     runsDir: request.runsDir,
-    engine: request.engine
+    engine: request.engine,
+    liveMode: request.liveMode
   });
   const warnings: string[] = [];
   const blockingIssues: string[] = [];
@@ -4768,14 +4769,22 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
         budgetOverrides.maxIterations = true;
         index += 1;
         break;
-      case "--max-tokens":
+      case "--max-tokens": {
+        const maxTokens = Number(next);
+        if (!Number.isFinite(maxTokens) || maxTokens <= 0) {
+          throw new CliCommandError(
+            "invalid_input",
+            "--max-tokens requires a finite number greater than zero."
+          );
+        }
         request.budget = {
           ...request.budget,
-          maxTokens: Number(next)
+          maxTokens
         } as LoopBudget;
         budgetOverrides.maxTokens = true;
         index += 1;
         break;
+      }
       case "--policy":
         if (next) {
           metadata.policyProfile = next;
@@ -4871,7 +4880,7 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
         request.allowOutdated = true;
         break;
       default:
-        if (token?.startsWith("--")) {
+        if (token?.startsWith("-")) {
           throw new CliCommandError(
             "invalid_input",
             `Unknown run option: ${token}`,
