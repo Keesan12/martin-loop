@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-10-08
+
+### Fixed
+- Retired `--verify-only` input now fails closed without launching a provider or creating a run store; `--proof` remains the supported verification-only path.
+- Unknown `run` flags, missing `--verify` commands, and malformed verifier input now return invalid input instead of falling through into execution.
+- Governed Codex runs on Windows now preserve writable workspace execution through capability-driven launch negotiation.
+- Live Codex preflight now rejects an explicitly configured token cap that cannot cover the minimum viable first turn, before provider launch or spend.
+- The deterministic Swarm demo now distinguishes local demo evidence from persisted Swarm run evidence.
+
+### Documentation
+- Added the explicit `martin enable --engine <engine>` step for multi-runtime machines.
+
 ## [0.8.0] - 2026-10-04
 
 ### Added

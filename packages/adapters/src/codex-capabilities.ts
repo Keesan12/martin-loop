@@ -7,7 +7,7 @@ import {
   type AgentExecutionIntent
 } from "@martin/contracts";
 
-export type CodexFlagScope = "global" | "exec";
+export type CodexFlagScope = "global" | "exec" | "sandbox";
 export type CodexPromptTransport = "stdin-dash" | "argv";
 export type CodexWriteStrategy =
   | "sandbox+approval"
@@ -40,6 +40,8 @@ export interface CodexCapabilityProfile {
   supportsExec: boolean;
   probeSucceeded: boolean;
   probeError?: string;
+  config?: CodexCapabilityFlag;
+  sandboxConfig?: CodexCapabilityFlag;
   model?: CodexCapabilityFlag;
   cwd?: CodexCapabilityFlag;
   sandbox?: CodexSandboxCapability;
@@ -57,6 +59,7 @@ export interface CodexCapabilityProfile {
 export interface CodexExecArgsOptions {
   command?: string;
   workingDirectory: string;
+  platform?: NodeJS.Platform;
   sandbox?: "read-only" | "workspace-write" | "danger-full-access";
   model?: string;
   extraArgs?: string[];
@@ -233,8 +236,18 @@ export function probeCodexCapabilities(
     spawnSyncImpl,
     injected
   });
+  const sandboxProbe = platform === "win32"
+    ? runHelpProbe({
+        binaryPath,
+        args: ["sandbox", "--help"],
+        platform,
+        spawnSyncImpl,
+        injected
+      })
+    : { text: "", status: null };
   const globalHelp = globalProbe.text;
   const execHelp = execProbe.text;
+  const sandboxCommandHelp = sandboxProbe.text;
   const supportsExec =
     execProbe.status === 0 &&
     !/(unknown command|unrecognized subcommand|unexpected argument ['"]?exec)/iu.test(execHelp);
@@ -266,7 +279,8 @@ export function probeCodexCapabilities(
     ? `${flagContext(globalHelp, colorFlag.flag)}\n${flagContext(execHelp, colorFlag.flag)}`
     : "";
   const promptTransports = parsePromptTransports(execHelp);
-  const probeError = globalProbe.error ?? execProbe.error;
+  const probeError = globalProbe.error ?? execProbe.error ?? sandboxProbe.error;
+  const sandboxConfigFlag = ["--config", "-c"].find((flag) => flagPattern(flag).test(sandboxCommandHelp));
 
   const profile: CodexCapabilityProfile = {
     binaryPath,
@@ -275,6 +289,12 @@ export function probeCodexCapabilities(
     ...(probeError ? { probeError } : {}),
     ...(locateFlag(globalHelp, execHelp, ["--model", "-m"])
       ? { model: locateFlag(globalHelp, execHelp, ["--model", "-m"]) }
+      : {}),
+    ...(locateFlag(globalHelp, execHelp, ["--config", "-c"])
+      ? { config: locateFlag(globalHelp, execHelp, ["--config", "-c"]) }
+      : {}),
+    ...(sandboxConfigFlag
+      ? { sandboxConfig: { flag: sandboxConfigFlag, scope: "sandbox" as const } }
       : {}),
     ...(locateFlag(globalHelp, execHelp, ["--cd", "--cwd", "--working-dir", "-C"])
       ? { cwd: locateFlag(globalHelp, execHelp, ["--cd", "--cwd", "--working-dir", "-C"]) }
@@ -364,21 +384,37 @@ export function buildCodexExecArgs(options: CodexExecArgsOptions): string[] {
   if (options.mode !== "probe" && !resolution) {
     throw new Error(`Resolved Codex binary ${profile.binaryPath} has no negotiated governed-autonomous execution resolution.`);
   }
-  const permissionFlags = [profile.sandbox?.flag, profile.automation?.flag, profile.approvalPolicy?.flag]
+  const controlledFlags = [
+    profile.sandbox?.flag,
+    profile.automation?.flag,
+    profile.approvalPolicy?.flag,
+    profile.config?.flag
+  ]
     .filter((value): value is string => Boolean(value));
-  if ((options.extraArgs ?? []).some((arg) =>
-    arg === "danger-full-access" || permissionFlags.some((flag) => arg === flag || arg.startsWith(`${flag}=`))
-  )) {
-    throw new Error("Permission and sandbox controls cannot be supplied through extraArgs.");
+  if ((options.extraArgs ?? []).some((arg) => {
+    const isReservedConfig =
+      arg === "--config" ||
+      arg.startsWith("--config=") ||
+      arg === "-c" ||
+      (arg.startsWith("-c") && arg.length > 2);
+    return arg === "danger-full-access" || isReservedConfig || controlledFlags.some((flag) =>
+      arg === flag || arg.startsWith(`${flag}=`)
+    );
+  })) {
+    throw new Error("Permission, sandbox, and configuration controls cannot be supplied through extraArgs.");
   }
 
   const globalArgs: string[] = [];
   const execArgs: string[] = [];
+  const platform = options.platform ?? process.platform;
   const requestedSandbox = options.sandbox ?? "workspace-write";
   const strategy = resolution?.strategy ?? options.writeStrategy;
   const promptTransport = options.promptTransport ?? profile.promptTransport;
 
   if (profile.userConfigIsolation) pushCapabilityArg(globalArgs, execArgs, profile.userConfigIsolation);
+  if (platform === "win32" && profile.userConfigIsolation && profile.config) {
+    pushCapabilityArg(globalArgs, execArgs, profile.config, 'windows.sandbox="elevated"');
+  }
   if (profile.cwd) pushCapabilityArg(globalArgs, execArgs, profile.cwd, options.workingDirectory);
 
   if (requestedSandbox === "workspace-write") {

@@ -11,6 +11,15 @@ import {
   type CodexCapabilityProfile
 } from "./codex-launcher.js";
 
+/**
+ * Conservative admission floor for one Codex CLI turn. Codex reports token
+ * usage in turn.completed, after the first turn has already consumed context,
+ * so smaller explicit caps cannot be enforced before spend.
+ */
+export const CODEX_MINIMUM_VIABLE_TOKEN_BUDGET = 128_000;
+export const CODEX_TOKEN_BUDGET_PREFLIGHT_BASIS =
+  "codex_first_turn_usage_reports_after_completion";
+
 export interface CodexCliAdapterOptions extends Omit<LegacyCodexCliAdapterOptions, "command"> {
   /** Exact resolved executable selected by the Codex launch probe. */
   command?: string;
@@ -68,6 +77,10 @@ export function createCodexCliAdapter(options: CodexCliAdapterOptions = {}) {
     streamingUsageCap: true,
     streamingTokenCap: true,
     streamingUsageDetailsIncludedInTotals: true,
+    budgetPreflight: {
+      minimumViableTokens: CODEX_MINIMUM_VIABLE_TOKEN_BUDGET,
+      basis: CODEX_TOKEN_BUDGET_PREFLIGHT_BASIS
+    },
     spawnImpl: options.spawnImpl,
     argsBuilder: (prompt) =>
       buildCodexExecArgs({

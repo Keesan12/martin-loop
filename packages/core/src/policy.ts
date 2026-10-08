@@ -547,6 +547,9 @@ export interface BudgetPreflightInput {
   promptCharCount: number;
   attemptCount: number;
   remainingBudgetUsd: number;
+  remainingTokens?: number;
+  /** Adapter-declared estimated floor required to admit a credible first turn. */
+  minimumViableTokens?: number;
   perAttemptCapUsd?: number;
   pricePerMTokenUsd?: number;
 }
@@ -563,6 +566,11 @@ export function evaluateBudgetPreflight(input: BudgetPreflightInput): BudgetPref
   const estimatedPromptTokens = Math.ceil(rawPromptTokens * 1.2);
   const estimatedToolOverheadTokens = 800 + input.attemptCount * 200;
   const estimatedOutputTokensMax = 4_000;
+  const estimatedMinimumViableTokens = Math.max(0, input.minimumViableTokens ?? 0);
+  const estimatedTotalTokens = Math.max(
+    estimatedPromptTokens + estimatedToolOverheadTokens + estimatedOutputTokensMax,
+    estimatedMinimumViableTokens
+  );
   const estimatedVerifierCostUsd = 0.01;
   const estimatedAttemptCostUsd =
     roundUsd(
@@ -575,10 +583,24 @@ export function evaluateBudgetPreflight(input: BudgetPreflightInput): BudgetPref
     estimatedPromptTokens,
     estimatedToolOverheadTokens,
     estimatedOutputTokensMax,
+    estimatedMinimumViableTokens,
+    estimatedTotalTokens,
     estimatedVerifierCostUsd,
     estimatedAttemptCostUsd,
     provenance
   };
+
+  if (
+    input.remainingTokens !== undefined
+    && estimatedMinimumViableTokens > 0
+    && estimatedTotalTokens > input.remainingTokens
+  ) {
+    return {
+      allowed: false,
+      reason: `Preflight: ${String(estimatedTotalTokens)} estimated tokens exceed ${String(input.remainingTokens)} remaining tokens.`,
+      estimate
+    };
+  }
 
   if (estimatedAttemptCostUsd > input.remainingBudgetUsd) {
     return {

@@ -454,6 +454,11 @@ export interface MartinAdapter {
     providerId: string;
     model?: string;
     transport?: "cli" | "http" | "routed_http";
+    budgetPreflight?: {
+      /** Estimated token floor required before the adapter can report first-turn usage. */
+      minimumViableTokens?: number;
+      basis?: string;
+    };
     capabilities?: {
       preflight?: boolean;
       usageSettlement?: boolean;
@@ -1200,6 +1205,8 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       promptCharCount: distilled.focus.length + loop.task.objective.length * 3,
       attemptCount: loop.attempts.length,
       remainingBudgetUsd: distilled.constraints.remainingBudgetUsd,
+      remainingTokens: distilled.constraints.remainingTokens,
+      minimumViableTokens: executingAdapter.metadata.budgetPreflight?.minimumViableTokens,
       perAttemptCapUsd: loop.budget.maxUsd * 0.25
     });
 

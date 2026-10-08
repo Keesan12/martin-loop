@@ -949,6 +949,11 @@ export interface AgentCliAdapterOptions {
   streamingTokenCap?: boolean;
   /** Provider detail-token fields are already included in input/output token totals. */
   streamingUsageDetailsIncludedInTotals?: boolean;
+  /** Estimated floor used by the host to reject impossible token caps before spawning. */
+  budgetPreflight?: {
+    minimumViableTokens: number;
+    basis: string;
+  };
   /** Test-only override for subprocess spawning. */
   spawnImpl?: SpawnLike;
 }
@@ -1041,6 +1046,7 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
       transport: "cli",
       agentExecutionIntent,
       providerExecutionTimeoutMs: timeoutMs,
+      ...(options.budgetPreflight ? { budgetPreflight: options.budgetPreflight } : {}),
       capabilities: createAdapterCapabilities({
         preflight: true,
         usageSettlement: supportsUsageSettlement,

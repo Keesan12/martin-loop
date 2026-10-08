@@ -194,6 +194,13 @@ describe("probeCodexCapabilities", () => {
           stderr: ""
         };
       }
+      if (args.join(" ") === "sandbox --help") {
+        return {
+          status: 0,
+          stdout: "Usage: codex sandbox [OPTIONS] -- <COMMAND>\n  --config <key=value>",
+          stderr: ""
+        };
+      }
       return {
         status: 0,
         stdout: [
@@ -208,8 +215,8 @@ describe("probeCodexCapabilities", () => {
       };
     });
 
-    const result = probeCodexCapabilities("/usr/local/bin/codex", {
-      platform: "linux",
+    const result = probeCodexCapabilities("C:\\tools\\codex.exe", {
+      platform: "win32",
       spawnSyncImpl: spawnSyncImpl as never,
       cache: false
     });
@@ -226,6 +233,7 @@ describe("probeCodexCapabilities", () => {
       values: ["read-only", "workspace-write", "danger-full-access"]
     });
     expect(result.model).toEqual({ flag: "--model", scope: "exec" });
+    expect(result.sandboxConfig).toEqual({ flag: "--config", scope: "sandbox" });
     expect(result.cwd).toEqual({ flag: "--cd", scope: "exec" });
     expect(result.json).toEqual({ flag: "--json", scope: "exec" });
     expect(result.color).toEqual({ flag: "--color", scope: "global" });
@@ -322,11 +330,13 @@ describe("probeCodexCapabilities", () => {
         cache: false
       });
 
-      expect(calls).toHaveLength(2);
+      expect(calls).toHaveLength(3);
       expect(calls[0]?.command).toBe(process.execPath);
       expect(calls[0]?.args[0]).toBe(scriptPath);
       expect(calls[1]?.command).toBe(process.execPath);
       expect(calls[1]?.args.slice(0, 3)).toEqual([scriptPath, "exec", "--help"]);
+      expect(calls[2]?.command).toBe(process.execPath);
+      expect(calls[2]?.args.slice(0, 3)).toEqual([scriptPath, "sandbox", "--help"]);
     } finally {
       rmSync(shimDir, { recursive: true, force: true });
     }
@@ -360,6 +370,22 @@ describe("buildCodexExecArgs", () => {
       autonomyResolution: autonomy(),
       extraArgs: ["--sandbox", "danger-full-access"]
     })).toThrow(/permission.*extraArgs/iu);
+
+    expect(() => buildCodexExecArgs({
+      workingDirectory: "/repo",
+      prompt: "do something",
+      capabilityProfile: profile({ config: { flag: "--config", scope: "exec" } }),
+      autonomyResolution: autonomy(),
+      extraArgs: ["--config", 'windows.sandbox="unelevated"']
+    })).toThrow(/configuration.*extraArgs/iu);
+
+    expect(() => buildCodexExecArgs({
+      workingDirectory: "/repo",
+      prompt: "do something",
+      capabilityProfile: profile({ config: { flag: "--config", scope: "exec" } }),
+      autonomyResolution: autonomy(),
+      extraArgs: ['-cwindows.sandbox="unelevated"']
+    })).toThrow(/configuration.*extraArgs/iu);
   });
 
   it("works with zero optional flags and makes no flag assumptions", () => {
@@ -474,6 +500,43 @@ describe("buildCodexExecArgs", () => {
       "--json",
       "--model",
       "operator-choice",
+      "do something"
+    ]);
+  });
+
+  it("keeps isolated native Windows execution writable with the advertised config override", () => {
+    const args = buildCodexExecArgs({
+      workingDirectory: "C:\\repo",
+      sandbox: "workspace-write",
+      prompt: "do something",
+      platform: "win32",
+      capabilityProfile: profile({
+        config: { flag: "--config", scope: "exec" },
+        userConfigIsolation: { flag: "--ignore-user-config", scope: "exec" },
+        sandbox: { flag: "--sandbox", scope: "exec", values: ["workspace-write"] },
+        approvalPolicy: {
+          flag: "--ask-for-approval",
+          scope: "global",
+          semantics: "approval-policy",
+          values: ["never"]
+        }
+      }),
+      autonomyResolution: autonomy("/usr/local/bin/codex", {
+        strategy: "sandbox+approval",
+        sandboxValue: "workspace-write",
+        approvalValue: "never"
+      })
+    });
+
+    expect(args).toEqual([
+      "--ask-for-approval",
+      "never",
+      "exec",
+      "--ignore-user-config",
+      "--config",
+      'windows.sandbox="elevated"',
+      "--sandbox",
+      "workspace-write",
       "do something"
     ]);
   });
@@ -726,11 +789,20 @@ describe("probeCodexLaunch", () => {
           status: 0,
           stdout: [
             "Usage: codex exec [OPTIONS] [PROMPT]",
+            "--config <key=value>",
+            "--ignore-user-config",
             "--sandbox <MODE> [possible values: read-only, workspace-write]",
             "--ask-for-approval <POLICY> [possible values: on-request, never]",
             "--cd <DIR>",
             "Read prompt from stdin when '-' is supplied."
           ].join("\n"),
+          stderr: ""
+        };
+      }
+      if (args[0] === "sandbox" && args[1] === "--help") {
+        return {
+          status: 0,
+          stdout: "Usage: codex sandbox [OPTIONS] -- <COMMAND>\n--config <key=value>",
           stderr: ""
         };
       }
@@ -757,7 +829,69 @@ describe("probeCodexLaunch", () => {
 
       expect(result.ok, JSON.stringify(result, null, 2)).toBe(true);
       expect(result.command).toBe(pathCodex);
+      expect(result.args.slice(0, 5)).toEqual([
+        "sandbox",
+        "--config",
+        'windows.sandbox="elevated"',
+        "--permission-profile",
+        ":workspace"
+      ]);
       expect(observedCommands).not.toContain(desktopCodex);
+    } finally {
+      rmSync(candidateRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("fails closed when isolated Windows exec and sandbox config support are not both advertised", () => {
+    clearCodexCapabilityCacheForTests();
+    const workingDirectory = process.cwd();
+    const candidateRoot = mkdtempSync(join(tmpdir(), "martin-codex-config-parity-"));
+    const codexPath = join(candidateRoot, "codex");
+    writeFileSync(codexPath, "", "utf8");
+    let sandboxExecutions = 0;
+    const spawnSyncImpl = vi.fn((_command: string, args: string[]) => {
+      if (args.length === 1 && args[0] === "--help") {
+        return { status: 0, stdout: "Usage: codex [COMMAND]", stderr: "" };
+      }
+      if (args[0] === "exec" && args[1] === "--help") {
+        return {
+          status: 0,
+          stdout: [
+            "Usage: codex exec [OPTIONS] [PROMPT]",
+            "--config <key=value>",
+            "--ignore-user-config",
+            "--sandbox <MODE> [possible values: read-only, workspace-write]",
+            "--ask-for-approval <POLICY> [possible values: never]"
+          ].join("\n"),
+          stderr: ""
+        };
+      }
+      if (args[0] === "sandbox" && args[1] === "--help") {
+        return { status: 0, stdout: "Usage: codex sandbox [OPTIONS] -- <COMMAND>", stderr: "" };
+      }
+      sandboxExecutions += 1;
+      return { status: 0, stdout: "READY\n", stderr: "" };
+    });
+
+    try {
+      const result = probeCodexLaunch({
+        workingDirectory,
+        platform: "win32",
+        env: {},
+        availability: {
+          command: "codex",
+          available: true,
+          locator: "where.exe",
+          detail: "test",
+          resolvedPath: codexPath,
+          candidatePaths: [codexPath]
+        },
+        spawnSyncImpl: spawnSyncImpl as never
+      });
+
+      expect(result.ok).toBe(false);
+      expect(result.summary).toMatch(/both exec and sandbox/iu);
+      expect(sandboxExecutions).toBe(0);
     } finally {
       rmSync(candidateRoot, { recursive: true, force: true });
     }
@@ -791,6 +925,9 @@ describe("probeCodexLaunch", () => {
           ].join("\n"),
           stderr: ""
         };
+      }
+      if (args[0] === "sandbox" && args[1] === "--help") {
+        return { status: 0, stdout: "Usage: codex sandbox [OPTIONS] -- <COMMAND>", stderr: "" };
       }
 
       if (args[0] === "exec") {
