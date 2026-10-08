@@ -466,6 +466,8 @@ function buildLocalSandboxProbeArgs(input: {
   workingDirectory: string;
   markerPath: string;
   outsideMarkerPath: string;
+  platform: NodeJS.Platform;
+  capabilityProfile: CodexCapabilityProfile;
 }): string[] {
   const script = [
     "const fs = require('node:fs');",
@@ -480,8 +482,16 @@ function buildLocalSandboxProbeArgs(input: {
     "}"
   ].join("\n");
 
+  const windowsSandboxConfig =
+    input.platform === "win32" &&
+    input.capabilityProfile.userConfigIsolation &&
+    input.capabilityProfile.sandboxConfig
+      ? [input.capabilityProfile.sandboxConfig.flag, 'windows.sandbox="elevated"']
+      : [];
+
   return [
     "sandbox",
+    ...windowsSandboxConfig,
     "--permission-profile",
     ":workspace",
     "-C",
@@ -644,6 +654,21 @@ export function probeCodexLaunch(input: {
       });
       continue;
     }
+    if (platform === "win32" && profile.userConfigIsolation && (!profile.config || !profile.sandboxConfig)) {
+      const summary = "Resolved Codex binary does not advertise configuration override support for both exec and sandbox; cannot prove isolated native Windows workspace writes.";
+      lastFailure = { candidate, profile, args: [], summary };
+      candidateResults.push({
+        path: candidate.path,
+        installKind: candidate.diagnosis.installKind,
+        invocationMode: candidate.diagnosis.invocationMode,
+        nativeInstallValid: true,
+        sandboxCompatible: false,
+        launchReady: false,
+        summary,
+        capabilityProfile: profile
+      });
+      continue;
+    }
 
     const transport = profile.promptTransports?.[0] ?? profile.promptTransport;
     const resolution = resolveCodexAutonomyCandidates(profile)[0];
@@ -675,7 +700,9 @@ export function probeCodexLaunch(input: {
     const args = buildLocalSandboxProbeArgs({
       workingDirectory: input.workingDirectory,
       markerPath,
-      outsideMarkerPath
+      outsideMarkerPath,
+      platform,
+      capabilityProfile: profile
     });
     const plan = input.spawnSyncImpl
       ? buildInjectedSpawnPlan(candidate.path, args, platform)

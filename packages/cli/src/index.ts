@@ -16,6 +16,8 @@ import {
   checkCodexSandboxPreflight,
   resolveCliCommandAvailability,
   createVerifierOnlyAdapter,
+  CODEX_MINIMUM_VIABLE_TOKEN_BUDGET,
+  CODEX_TOKEN_BUDGET_PREFLIGHT_BASIS,
 } from "@martin/adapters";
 import { runMartin, classifyRoute, createFileRunStore, getHistoricalDirectSuccessRate, getPreference, hashExternalOutcomeContract, recordPreference, writeExitSignal, type MartinAdapter } from "@martin/core";
 import {
@@ -3679,6 +3681,18 @@ async function executePreflightCommand(
     warnings.push("No verification plan is configured for this run.");
   }
 
+  const configuredMaxTokens = resolvedGuardrails.budget.maxTokens;
+  const codexTokenBudgetTooSmall =
+    engineRequired
+    && environment.engine === "codex"
+    && configuredMaxTokens !== undefined
+    && configuredMaxTokens < CODEX_MINIMUM_VIABLE_TOKEN_BUDGET;
+  if (codexTokenBudgetTooSmall) {
+    blockingIssues.push(
+      `Codex token budget is too small: ${String(configuredMaxTokens)} configured tokens cannot cover the ${String(CODEX_MINIMUM_VIABLE_TOKEN_BUDGET)}-token minimum viable first-turn reserve.`
+    );
+  }
+
   const hasExternalOutcomeVerifier = verificationPlan.some((command) =>
     /(?:^|\s)(?:martin|martin-loop)\s+outcomes\s+verify(?:\s|$)/iu.test(command)
   );
@@ -3775,6 +3789,16 @@ async function executePreflightCommand(
               available: geminiAvailability.available,
               ...(geminiAvailability.resolvedPath ? { resolvedPath: geminiAvailability.resolvedPath } : {})
             }
+        : undefined,
+    tokenBudgetPreflight:
+      engineRequired && environment.engine === "codex" && configuredMaxTokens !== undefined
+        ? {
+            providerId: "codex",
+            configuredMaxTokens,
+            minimumViableTokens: CODEX_MINIMUM_VIABLE_TOKEN_BUDGET,
+            provenance: "estimated",
+            basis: CODEX_TOKEN_BUDGET_PREFLIGHT_BASIS
+          }
         : undefined,
     corpus: {
       records: corpusRisk.corpusRecords,
@@ -4678,9 +4702,14 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
         index += 1;
         break;
       case "--verify":
-        if (next) {
-          verificationPlan.push(next);
+        if (!next || next.startsWith("--")) {
+          throw new CliCommandError(
+            "invalid_input",
+            "--verify requires a verifier command.",
+            { suggestion: 'Example: --verify "npm test"' }
+          );
         }
+        verificationPlan.push(next);
         index += 1;
         break;
       case "--verify-timeout-ms":
@@ -4771,6 +4800,15 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
         request.runsDir = next;
         index += 1;
         break;
+      case "--verify-only":
+        throw new CliCommandError(
+          "invalid_input",
+          "--verify-only was removed and is not a valid run option.",
+          {
+            suggestion:
+              "Use --proof for explicit non-governed verification-only evidence, or omit it for a governed coding run."
+          }
+        );
       case "--proof":
         request.liveMode = "proof";
         break;
@@ -4833,6 +4871,13 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
         request.allowOutdated = true;
         break;
       default:
+        if (token?.startsWith("--")) {
+          throw new CliCommandError(
+            "invalid_input",
+            `Unknown run option: ${token}`,
+            { suggestion: "Run `martin run --help` to see supported options." }
+          );
+        }
         break;
     }
   }

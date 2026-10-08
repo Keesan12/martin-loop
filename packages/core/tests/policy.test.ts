@@ -52,6 +52,23 @@ describe("evaluateBudgetPreflight", () => {
 
     expect(decision.estimate.provenance).toBe("estimated");
   });
+
+  it("rejects before execution when an adapter minimum viable token budget exceeds the remaining cap", () => {
+    const decision = evaluateBudgetPreflight({
+      promptCharCount: 2_000,
+      attemptCount: 0,
+      remainingBudgetUsd: 10,
+      remainingTokens: 6_000,
+      minimumViableTokens: 128_000
+    });
+
+    expect(decision.allowed).toBe(false);
+    expect(decision.reason).toContain("128000 estimated tokens");
+    expect(decision.reason).toContain("6000 remaining tokens");
+    expect(decision.estimate.estimatedMinimumViableTokens).toBe(128_000);
+    expect(decision.estimate.estimatedTotalTokens).toBe(128_000);
+    expect(decision.estimate.provenance).toBe("estimated");
+  });
 });
 
 describe("computeEvidenceVector", () => {

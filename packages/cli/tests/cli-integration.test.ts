@@ -428,6 +428,48 @@ describe("--engine flag", () => {
     expect(payload.engineProbe.launchReady).toBe(true);
   });
 
+  it("blocks Codex preflight before provider execution when the token cap cannot cover one viable turn", async () => {
+    await withTempDir(async (workspace) => {
+      installDeterministicCodexHost();
+      initializeGitRepo(workspace);
+
+      const result = await withEnv("MARTIN_LIVE", "true", () =>
+        executeCli([
+          "--json",
+          "preflight",
+          "--engine",
+          "codex",
+          "--cwd",
+          workspace,
+          "--objective",
+          "Make one small edit",
+          "--verify",
+          NOOP_VERIFIER,
+          "--max-tokens",
+          "6000",
+          "--max-iterations",
+          "1",
+          "--budget-usd",
+          "2"
+        ])
+      );
+
+      expect(result.exitCode).toBe(0);
+      const payload = JSON.parse(result.stdout);
+      expect(payload.ready).toBe(false);
+      expect(payload.blockingIssues).toContain(
+        "Codex token budget is too small: 6000 configured tokens cannot cover the 128000-token minimum viable first-turn reserve."
+      );
+      expect(payload.tokenBudgetPreflight).toEqual({
+        providerId: "codex",
+        configuredMaxTokens: 6000,
+        minimumViableTokens: 128000,
+        provenance: "estimated",
+        basis: "codex_first_turn_usage_reports_after_completion"
+      });
+    });
+  });
+
   it("does not use policy_blocked for missing manual prerequisites", { timeout: 15000 }, async () => {
     await withTempDir(async (workspace) => {
       const runsDir = join(workspace, ".martin-runs");
@@ -711,7 +753,7 @@ describe("--engine flag", () => {
               "  maxUsd: 2",
               "  softLimitUsd: 2",
               "  maxIterations: 1",
-              "  maxTokens: 1000",
+              "  maxTokens: 128000",
               ""
             ].join("\n"),
             "utf8"
@@ -790,7 +832,7 @@ describe("--engine flag", () => {
             maxUsd: 2,
             softLimitUsd: 1.5,
             maxIterations: 1,
-            maxTokens: 1000
+            maxTokens: 128000
           });
         }
       )
@@ -1058,7 +1100,10 @@ describe("demo command", () => {
       expect(result.stdout).toContain("14 completed · 1 stopped · 1 reassigned task");
       expect(result.stdout).toContain("0 denied changes admitted");
       expect(result.stdout).toContain("Parent verifier: PASS");
-      expect(result.stdout).toContain("SWARM VERIFIED");
+      expect(result.stdout).toContain(
+        "DEMO VERIFIED · deterministic local evidence only · not persisted to the swarm run store"
+      );
+      expect(result.stdout).not.toContain("SWARM VERIFIED");
     });
   });
 

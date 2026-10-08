@@ -79,6 +79,48 @@ describe("distillContext", () => {
   });
 });
 
+describe("adapter token-budget admission", () => {
+  it("does not invoke an adapter when its minimum viable token budget exceeds the run cap", async () => {
+    const execute = vi.fn();
+    const adapter: MartinAdapter = {
+      adapterId: "agent-cli:codex",
+      kind: "agent-cli",
+      label: "Codex CLI adapter",
+      metadata: {
+        providerId: "codex",
+        budgetPreflight: {
+          minimumViableTokens: 128_000,
+          basis: "codex_first_turn_usage_reports_after_completion"
+        }
+      },
+      execute
+    };
+
+    const result = await runMartin({
+      workspaceId: "ws_token_preflight",
+      projectId: "proj_runtime",
+      task: {
+        title: "Reject an undersized Codex run",
+        objective: "Make one small edit.",
+        verificationPlan: ["echo ok"]
+      },
+      budget: {
+        maxUsd: 10,
+        softLimitUsd: 8,
+        maxIterations: 1,
+        maxTokens: 6_000
+      },
+      adapter
+    });
+
+    expect(execute).not.toHaveBeenCalled();
+    expect(result.loop.attempts).toHaveLength(0);
+    expect(result.decision.status).toBe("exited");
+    expect(result.decision.lifecycleState).toBe("budget_exit");
+    expect(result.decision.reason).toContain("128000 estimated tokens");
+  });
+});
+
 describe("compilePromptPacket", () => {
   it("rebuilds a minimal deterministic packet from structured request state", () => {
     const packet = compilePromptPacket({

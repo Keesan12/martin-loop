@@ -228,7 +228,7 @@ describe("deterministic swarm demo intervention", () => {
     expect(result.events.some((event) => event.type === "SWARM_VERIFIED")).toBe(false);
     expect(result.parentOutcome.state).not.toBe("verified");
     expect(getDeterministicSwarmDemoExitCode(result)).toBe(1);
-    expect(renderDeterministicSwarmDemoHuman(result)).not.toContain("SWARM VERIFIED");
+    expect(renderDeterministicSwarmDemoHuman(result)).not.toContain("DEMO VERIFIED");
   });
 
   it("allows only the parent evaluator to append SWARM_VERIFIED after actual integrated verification", async () => {
@@ -245,5 +245,8 @@ describe("deterministic swarm demo intervention", () => {
       && receipt.referentialBinding === "passed"
       && receipt.signedIntegrity === "not_evaluated"
     ))).toBe(true);
+    expect(renderDeterministicSwarmDemoHuman(result)).toContain(
+      "DEMO VERIFIED · deterministic local evidence only · not persisted to the swarm run store"
+    );
   });
 });
