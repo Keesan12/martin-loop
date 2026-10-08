@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -389,6 +389,26 @@ describe("parseCliArguments", () => {
     });
   });
 
+  it("rejects unknown run flags instead of silently ignoring them", () => {
+    expect(() => parseCliArguments([
+      "run",
+      "--objective",
+      "Reject unknown flags",
+      "--definitely-not-a-real-option"
+    ])).toThrow(/Unknown run option: --definitely-not-a-real-option/u);
+  });
+
+  it("rejects --verify when its command is missing", () => {
+    expect(() => parseCliArguments([
+      "run",
+      "--objective",
+      "Require an explicit verifier command",
+      "--verify",
+      "--engine",
+      "codex"
+    ])).toThrow(/--verify requires a verifier command/u);
+  });
+
   it("rejects an incomplete RoTS-Cost baseline", () => {
     expect(() => parseCliArguments([
       "run",
@@ -541,6 +561,42 @@ describe("executeCli", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe("");
     expect(result.stdout).toBe(rootPackageVersion);
+  });
+
+  it("rejects the retired --verify-only run flag instead of silently ignoring it", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-retired-verify-only-"));
+    let adapterInvoked = false;
+    __setRunAdapterOverrideForTests(
+      createStubDirectProviderAdapter({
+        providerId: "test",
+        model: "must-not-run",
+        responder: () => {
+          adapterInvoked = true;
+          throw new Error("retired --verify-only reached the provider adapter");
+        }
+      })
+    );
+
+    try {
+      const result = await withIsolatedRunsEnv(directory, () => executeCli([
+        "run",
+        "--objective",
+        "Do not accept retired verifier-only semantics",
+        "--verify-only",
+        "--verify",
+        process.platform === "win32" ? "cmd /c exit 0" : "true",
+        "--cwd",
+        directory
+      ]));
+
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr).toContain("--verify-only");
+      expect(result.stderr).toContain("--proof");
+      expect(adapterInvoked).toBe(false);
+      await expect(readdir(join(directory, ".martin-runs"))).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
   });
 
   it("renders start onboarding guidance with governed defaults", { timeout: 30_000 }, async () => {
@@ -741,7 +797,6 @@ describe("executeCli", () => {
           "Verify the contracts package without edits",
           "--engine",
           "codex",
-          "--verify-only",
           "--verify",
           `"${process.execPath}" -e "process.exit(0)"`,
           "--cwd",
@@ -779,7 +834,6 @@ describe("executeCli", () => {
           "Verify the contracts package without edits",
           "--engine",
           "codex",
-          "--verify-only",
           "--verify",
           `"${process.execPath}" -e "process.exit(0)"`,
           "--cwd",
@@ -1089,7 +1143,6 @@ describe("executeCli", () => {
           "Verify timeout persistence",
           "--engine",
           "codex",
-          "--verify-only",
           "--verify",
           `"${process.execPath}" -e "process.exit(0)"`,
           "--verify-timeout-ms",

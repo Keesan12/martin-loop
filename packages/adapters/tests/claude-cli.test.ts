@@ -1767,6 +1767,10 @@ describe("createCodexCliAdapter", () => {
     expect(adapter.metadata.providerId).toBe("codex");
     expect(adapter.metadata.transport).toBe("cli");
     expect(adapter.metadata.agentExecutionIntent).toBe("governed-autonomous");
+    expect(adapter.metadata.budgetPreflight).toEqual({
+      minimumViableTokens: 128_000,
+      basis: "codex_first_turn_usage_reports_after_completion"
+    });
   });
 
   it.each(["default", "auto_edit", "plan"] as const)(

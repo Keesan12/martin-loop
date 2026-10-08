@@ -616,6 +616,8 @@ export function renderDeterministicSwarmDemoHuman(result: DeterministicSwarmDemo
     `Parent verifier: ${verifierState}`,
     "ONE JOB · 15 AGENTS · ONE ACCOUNTABLE OUTCOME",
   ];
-  if (result.status === "verified") lines.push("SWARM VERIFIED");
+  if (result.status === "verified") {
+    lines.push("DEMO VERIFIED · deterministic local evidence only · not persisted to the swarm run store");
+  }
   return lines.join("\n");
 }

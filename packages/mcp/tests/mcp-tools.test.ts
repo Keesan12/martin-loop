@@ -1290,6 +1290,8 @@ describe("runLoopTool", () => {
     await withRunsRoot(async () => {
       const originalEnv = process.env.MARTIN_LIVE;
       process.env.MARTIN_LIVE = "false";
+      const calls: Array<{ command: string; args: readonly string[]; options?: SpawnOptions }> = [];
+      __setProofModeVerifierSpawnImplForTests(createImmediateSpawn(calls));
 
       try {
         const result = await runLoopTool({
@@ -1307,6 +1309,7 @@ describe("runLoopTool", () => {
         };
 
         expect(loopRecord.task?.verificationTimeoutMs).toBe(240000);
+        expect(calls).toHaveLength(1);
       } finally {
         if (originalEnv === undefined) {
           delete process.env.MARTIN_LIVE;

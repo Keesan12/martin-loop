@@ -793,6 +793,10 @@ export interface BudgetPreflightEstimate {
   estimatedPromptTokens: number;
   estimatedToolOverheadTokens: number;
   estimatedOutputTokensMax: number;
+  /** Provider-specific minimum viable first-turn envelope, never actual usage. */
+  estimatedMinimumViableTokens: number;
+  /** Largest of the generic attempt estimate and provider minimum. */
+  estimatedTotalTokens: number;
   estimatedVerifierCostUsd: number;
   estimatedAttemptCostUsd: number;
   provenance: CostProvenance;
