@@ -1,13 +1,20 @@
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createStubDirectProviderAdapter } from "@martin/adapters";
+import { createStubDirectProviderAdapter, detectCodexHostPlatform } from "@martin/adapters";
+import { writeReceiptIntegrityMaterial } from "@martin/core";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createLoopRecord } from "../../contracts/src/index.js";
-import { __setRunAdapterOverrideForTests, executeCli, parseCliArguments } from "../src/index.js";
+import { createLoopRecord, type LoopRecord } from "../../contracts/src/index.js";
+import {
+  __setCodexHostOverridesForTests,
+  __setRunAdapterOverrideForTests,
+  executeCli,
+  parseCliArguments,
+} from "../src/index.js";
 
 const STAR_CTA_HEADLINE = "⭐ MartinLoop produced a verified handoff.";
 const STAR_CTA_REPO = "github.com/Keesan12/martin-loop";
@@ -177,6 +184,35 @@ function installChangingRunAdapter(changedFiles: string[]): void {
 }
 
 function installWritingRunAdapter(filePath: string, contents: string): void {
+  const availability = {
+    command: "codex",
+    available: true,
+    locator: "test-override",
+    detail: "Codex launch overridden for deterministic governed CLI artifact tests.",
+    resolvedPath: "codex",
+    candidatePaths: ["codex"]
+  };
+  __setCodexHostOverridesForTests({
+    availability,
+    probe: {
+      ok: true,
+      summary: "Codex launch overridden for deterministic governed CLI artifact tests.",
+      availability,
+      diagnosis: {
+        hostPlatform: detectCodexHostPlatform(),
+        nativeInstallValid: true,
+        installKind: "native",
+        invocationMode: "direct",
+        sandboxMode: "workspace-write",
+        sandboxCompatible: true,
+        resolvedPath: "codex",
+        warnings: []
+      },
+      command: "codex",
+      args: ["exec"]
+    }
+  });
+
   const adapter: NonNullable<Parameters<typeof __setRunAdapterOverrideForTests>[0]> = {
     adapterId: "agent-cli:cli-artifact-test",
     kind: "agent-cli",
@@ -235,6 +271,7 @@ function installWritingRunAdapter(filePath: string, contents: string): void {
 
 afterEach(() => {
   __setRunAdapterOverrideForTests(undefined);
+  __setCodexHostOverridesForTests(undefined);
 });
 
 async function withIsolatedRunsEnv<T>(directory: string, fn: () => Promise<T>): Promise<T> {
@@ -264,6 +301,132 @@ async function withIsolatedRunsEnv<T>(directory: string, fn: () => Promise<T>): 
       process.env.MARTIN_INTEGRITY_KEY_DIR = previousIntegrityKeyDir;
     }
   }
+}
+
+function makeCliLifecycleTruthRecord(directory: string): LoopRecord {
+  const loopId = "loop_cli_surface_agreement";
+  const workspaceId = "ws_cli_surface_agreement";
+  const attemptId = "attempt_cli_surface_agreement";
+  const runsRoot = join(directory, ".martin-runs");
+  const verificationPlan = ["npm test"];
+  const base = createLoopRecord({
+    workspaceId,
+    projectId: "proj_cli_surface_agreement",
+    task: {
+      title: "Reconcile CLI evidence surfaces",
+      objective: "Reconcile CLI evidence surfaces",
+      repoRoot: directory,
+      verificationPlan,
+      mutationMode: "edit",
+    },
+    budget: { maxUsd: 10, softLimitUsd: 6, maxIterations: 3, maxTokens: 10_000 },
+    cost: {
+      actualUsd: 1,
+      avoidedUsd: 0,
+      tokensIn: 100,
+      tokensOut: 50,
+      provenance: "actual",
+    },
+    receiptScope: { workingDirectory: directory, runsRoot },
+    terminationEnvelope: {
+      schemaVersion: "termination/1",
+      class: "operational_exit",
+      exit: {
+        schemaVersion: "exit-evaluation/1",
+        policyVersion: "exit-policy/1",
+        shouldExit: true,
+        primary: "goal_met",
+        matched: ["goal_met"],
+        phase: "post_attempt",
+        evaluatedAt: "2026-10-09T20:31:00.000Z",
+        matches: [{
+          kind: "goal_met",
+          reason: "Persisted goal evidence passed.",
+          evidence: { verifierScore: 1 },
+        }],
+      },
+    },
+  });
+  const fileEffects = {
+    observationStatus: "observed",
+    touchedDuringExecution: ["src/kept.ts", "src/reverted.ts"],
+    netChangedAtCompletion: ["src/kept.ts"],
+    revertedBeforeCompletion: ["src/reverted.ts"],
+  };
+
+  return {
+    ...base,
+    loopId,
+    status: "completed",
+    lifecycleState: "completed",
+    updatedAt: "2026-10-09T20:31:01.000Z",
+    attempts: [{
+      attemptId,
+      index: 1,
+      adapterId: "agent-cli:codex",
+      model: "gpt-5.4",
+      startedAt: "2026-10-09T20:30:00.000Z",
+      completedAt: "2026-10-09T20:31:00.000Z",
+    }],
+    events: [
+      {
+        eventId: "evt_cli_surface_verified",
+        timestamp: "2026-10-09T20:31:00.000Z",
+        type: "verification.completed",
+        lifecycleState: "verifying",
+        payload: {
+          passed: true,
+          attemptIndex: 1,
+          summary: "Verifier passed.",
+          changedFiles: ["src/kept.ts"],
+          binding: {
+            runId: loopId,
+            workspaceId,
+            attemptId,
+            cwd: directory,
+            runsRoot,
+            commands: verificationPlan,
+          },
+          steps: [{
+            command: "npm test",
+            launched: true,
+            completed: true,
+            crashed: false,
+            exitCode: 0,
+            timedOut: false,
+          }],
+        },
+      },
+      {
+        eventId: "evt_cli_surface_completed",
+        timestamp: "2026-10-09T20:31:01.000Z",
+        type: "run.completed",
+        lifecycleState: "completed",
+        payload: { reason: "goal_met", fileEffects },
+      },
+    ],
+  };
+}
+
+async function persistCanonicalLifecycleRecord(directory: string, loop: LoopRecord): Promise<void> {
+  const runsRoot = join(directory, ".martin-runs");
+  const loopDir = join(runsRoot, loop.loopId);
+  const ledgerEntries = loop.events;
+  await mkdir(loopDir, { recursive: true });
+  await writeFile(join(loopDir, "loop-record.json"), `${JSON.stringify(loop, null, 2)}\n`, "utf8");
+  await writeFile(
+    join(loopDir, "ledger.jsonl"),
+    `${ledgerEntries.map((entry) => JSON.stringify(entry)).join("\n")}\n`,
+    "utf8",
+  );
+  await writeReceiptIntegrityMaterial({
+    runId: loop.loopId,
+    runsRoot,
+    loopRecord: loop,
+    ledgerEntries,
+    scope: loop.receiptScope,
+    signedAt: loop.updatedAt,
+  });
 }
 
 describe("parseCliArguments", () => {
@@ -417,7 +580,7 @@ describe("parseCliArguments", () => {
     const argv = ["run", "--objective", "Reject invalid token budgets", "--max-tokens"];
     if (value !== undefined) argv.push(value);
 
-    expect(() => parseCliArguments(argv)).toThrow(/--max-tokens requires a finite number greater than zero/u);
+    expect(() => parseCliArguments(argv)).toThrow(/--max-tokens requires (?:a value|a finite positive integer)/u);
   });
 
   it("accepts a finite positive --max-tokens value", () => {
@@ -433,6 +596,183 @@ describe("parseCliArguments", () => {
         budget: expect.objectContaining({ maxTokens: 128000 })
       })
     }));
+  });
+
+  it.each(["run", "preflight"])("rejects malformed run and preflight values for %s", (command) => {
+    const invalidCases: Array<{ args: string[]; message: RegExp }> = [
+      { args: ["--budget-usd", "not-a-number"], message: /--budget-usd.*finite.*greater than zero/iu },
+      { args: ["--budget-usd", "NaN"], message: /--budget-usd.*finite.*greater than zero/iu },
+      { args: ["--budget-usd", "Infinity"], message: /--budget-usd.*finite.*greater than zero/iu },
+      { args: ["--budget-usd", "0"], message: /--budget-usd.*finite.*greater than zero/iu },
+      { args: ["--budget-usd", "-1"], message: /--budget-usd.*finite.*greater than zero/iu },
+      { args: ["--soft-limit-usd", "NaN"], message: /--soft-limit-usd.*finite.*non-negative/iu },
+      { args: ["--soft-limit-usd", "-1"], message: /--soft-limit-usd.*finite.*non-negative/iu },
+      { args: ["--max-iterations", "1.2"], message: /--max-iterations.*positive integer/iu },
+      { args: ["--max-tokens", "1.2"], message: /--max-tokens.*positive integer/iu },
+      { args: ["--verify-timeout-ms", "0"], message: /--verify-timeout-ms.*positive integer/iu },
+      { args: ["--provider-execution-timeout-ms", "Infinity"], message: /--provider-execution-timeout-ms.*positive integer/iu },
+      { args: ["--budget-usd"], message: /--budget-usd requires a value/iu },
+      { args: ["--budget-usd", ""], message: /--budget-usd requires a non-empty value/iu },
+      { args: ["--budget-usd", "--proof"], message: /--budget-usd requires a value/iu },
+      { args: ["--budget-usd", "1", "--budget", "2"], message: /budget.*only be provided once/iu },
+      { args: ["--max-iterations", "1", "--max-iterations", "2"], message: /--max-iterations.*only be provided once/iu },
+    ];
+
+    for (const invalid of invalidCases) {
+      expect(
+        () => parseCliArguments([command, "--objective", "Reject malformed limits", ...invalid.args]),
+        `${command} ${invalid.args.join(" ")}`,
+      ).toThrow(invalid.message);
+    }
+  });
+
+  it("preserves valid run and preflight scalar boundaries", () => {
+    for (const command of ["run", "preflight"] as const) {
+      const parsed = parseCliArguments([
+        command,
+        "--objective", "Keep valid limits",
+        "--budget-usd", "1",
+        "--soft-limit-usd", "0.99",
+        "--max-iterations", "1",
+        "--max-tokens", "1",
+        "--verify-timeout-ms", "1",
+        "--provider-execution-timeout-ms", "1",
+      ]);
+      expect(parsed).toMatchObject({
+        command,
+        request: {
+          budget: { maxUsd: 1, softLimitUsd: 0.99, maxIterations: 1, maxTokens: 1 },
+          verifyTimeoutMs: 1,
+          providerExecutionTimeoutMs: 1,
+        },
+      });
+    }
+  });
+
+  it("returns one invalid_input JSON document for the malformed run and preflight budget case", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-invalid-budget-json-"));
+    const runsDirectory = join(directory, "runs-must-not-exist");
+
+    try {
+      const result = await executeCli([
+        "preflight",
+        "Invalid budget should fail",
+        "--engine", "codex",
+        "--verify", "npm test",
+        "--budget-usd", "not-a-number",
+        "--json",
+        "--runs-dir", runsDirectory,
+      ]);
+
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr).toBe("");
+      const payload = JSON.parse(result.stdout) as Record<string, unknown>;
+      expect(payload).toMatchObject({ ok: false, category: "invalid_input" });
+      expect(payload).not.toHaveProperty("ready", true);
+      expect(result.stdout).not.toContain('"maxUsd": null');
+      await expect(readdir(runsDirectory)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it.each(["run", "preflight"])("rejects budget conflicts for %s", (command) => {
+    expect(() => parseCliArguments([
+      command,
+      "--objective", "Reject conflicting budgets",
+      "--soft-limit-usd", "1",
+      "--budget-usd", "1",
+    ])).toThrow(/--soft-limit-usd must be less than --budget-usd/iu);
+
+    expect(() => parseCliArguments([
+      command,
+      "--objective", "Keep the valid budget boundary",
+      "--soft-limit-usd", "0.99",
+      "--budget-usd", "1",
+    ])).not.toThrow();
+  });
+
+  it("preserves repeated verifier order, proof mode, and a literal Windows path", () => {
+    const windowsPath = "C:\\Program Files\\Example Tool\\verify.cmd";
+    const parsed = parseCliArguments([
+      "preflight",
+      "--objective", "Preserve supported argv",
+      "--proof",
+      "--verify", "pnpm test",
+      "--verify", windowsPath,
+      "--cwd", "C:\\Program Files\\Example Workspace",
+    ]);
+
+    expect(parsed).toMatchObject({
+      command: "preflight",
+      request: {
+        liveMode: "proof",
+        verificationPlan: ["pnpm test", windowsPath],
+        cwd: "C:\\Program Files\\Example Workspace",
+      },
+    });
+  });
+
+  it.each([
+    ["budget text", ["--budget-usd", "not-a-number"]],
+    ["budget NaN", ["--budget-usd", "NaN"]],
+    ["budget infinity", ["--budget-usd", "Infinity"]],
+    ["budget zero", ["--budget-usd", "0"]],
+    ["budget negative", ["--budget-usd", "-1"]],
+    ["fractional iterations", ["--max-iterations", "1.2"]],
+    ["fractional tokens", ["--max-tokens", "1.2"]],
+    ["missing value", ["--budget-usd"]],
+    ["flag as value", ["--budget-usd", "--engine", "codex"]],
+    ["duplicate alias", ["--budget", "1", "--budget-usd", "2"]],
+    ["budget conflict", ["--budget-usd", "1", "--soft-limit-usd", "1"]],
+  ])("rejects estimate invalid %s input", (_label, invalidArgs) => {
+    expect(() => parseCliArguments([
+      "estimate",
+      "Reject invalid estimate input",
+      ...invalidArgs,
+    ])).toThrow();
+  });
+
+  it("preserves estimate boundary values and absent-option defaults", () => {
+    expect(parseCliArguments(["estimate", "Use defaults"])).toMatchObject({
+      command: "estimate",
+      budgetUsd: 5,
+    });
+    expect(parseCliArguments([
+      "estimate", "Use exact boundaries",
+      "--budget-usd", "1",
+      "--soft-limit-usd", "0.99",
+      "--max-iterations", "1",
+      "--max-tokens", "1",
+    ])).toMatchObject({
+      command: "estimate",
+      budgetUsd: 1,
+      budget: { maxUsd: 1, softLimitUsd: 0.99, maxIterations: 1, maxTokens: 1 },
+    });
+  });
+
+  it("rejects enable invalid numeric input during parsing", () => {
+    for (const invalidArgs of [
+      ["--budget-usd", "not-a-number"],
+      ["--budget-usd", "0"],
+      ["--max-iterations", "1.2"],
+      ["--max-iterations", "Infinity"],
+      ["--budget-usd"],
+      ["--max-iterations", "--force"],
+      ["--budget-usd", "1", "--budget-usd", "2"],
+    ]) {
+      expect(() => parseCliArguments(["enable", ...invalidArgs])).toThrow();
+    }
+
+    expect(parseCliArguments([
+      "enable",
+      "--budget-usd", "2.5",
+      "--max-iterations", "2",
+    ])).toMatchObject({
+      command: "enable",
+      budgetUsd: 2.5,
+      maxIterations: 2,
+    });
   });
 
   it("rejects --verify when its command is missing", () => {
@@ -527,7 +867,8 @@ describe("parseCliArguments", () => {
       profile: "paid-remote",
       experimentalRemoteHosts: true,
       dryRun: false,
-      installGovernance: false
+      installGovernance: false,
+      runsRootSource: "default"
     });
   });
 
@@ -558,6 +899,135 @@ describe("parseCliArguments", () => {
 });
 
 describe("executeCli", () => {
+  it("keeps lifecycle truth share agreement across dossier, runs verify, receipt, and share", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-lifecycle-truth-"));
+
+    try {
+      await withIsolatedRunsEnv(directory, async () => {
+        const loop = makeCliLifecycleTruthRecord(directory);
+        await persistCanonicalLifecycleRecord(directory, loop);
+
+        const dossierResult = await executeCli(["--json", "dossier", "--loop-id", loop.loopId]);
+        const verifyResult = await executeCli(["--json", "runs", "verify", "--loop-id", loop.loopId]);
+        const shareResult = await executeCli(["--json", "share", "--loop-id", loop.loopId]);
+        expect([dossierResult.exitCode, verifyResult.exitCode, shareResult.exitCode]).toEqual([0, 0, 0]);
+
+        const dossier = JSON.parse(dossierResult.stdout);
+        const verify = JSON.parse(verifyResult.stdout);
+        const share = JSON.parse(shareResult.stdout);
+        const receipt = JSON.parse(await readFile(share.files.receiptJson, "utf8"));
+        const markdown = await readFile(share.files.receiptMarkdown, "utf8");
+        const selectAuthority = (handoff: Record<string, unknown>) => ({
+          outcome: handoff["outcome"],
+          verification: handoff["verification"],
+          receiptIntegrity: handoff["receiptIntegrity"],
+          lifecycleTruth: handoff["lifecycleTruth"],
+          fileEffects: handoff["fileEffects"],
+        });
+        const canonical = selectAuthority(dossier.verifiedHandoff);
+
+        expect(canonical).toMatchObject({
+          outcome: "VERIFIED",
+          verification: { status: "PASSED" },
+          receiptIntegrity: { state: "verified" },
+          lifecycleTruth: { reasonCode: "goal_met", exhaustedLimits: [] },
+          fileEffects: {
+            observationStatus: "observed",
+            touchedDuringExecution: ["src/kept.ts", "src/reverted.ts"],
+            netChangedAtCompletion: ["src/kept.ts"],
+            revertedBeforeCompletion: ["src/reverted.ts"],
+          },
+        });
+        expect(selectAuthority(verify.verifiedHandoff)).toEqual(canonical);
+        expect(selectAuthority(receipt.verifiedHandoff)).toEqual(canonical);
+        expect(receipt.receipt).toMatchObject({
+          outcome: canonical.outcome,
+          lifecycleTruth: canonical.lifecycleTruth,
+          fileEffects: canonical.fileEffects,
+        });
+        expect(markdown).toContain("- Outcome: VERIFIED");
+        expect(markdown).toContain("- Execution: completed / completed");
+        expect(markdown).toContain("- Verification: PASSED");
+        expect(markdown).toContain("- Receipt integrity: verified");
+        expect(markdown).toContain("- Termination: goal_met");
+        expect(markdown).toContain("- File effects: touched 2, net 1, reverted 1");
+        expect(markdown).not.toContain(directory);
+      });
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("renders turn-cap lifecycle truth without dollar or token pressure claims", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-turn-cap-truth-"));
+
+    try {
+      await withIsolatedRunsEnv(directory, async () => {
+        const base = makeCliLifecycleTruthRecord(directory);
+        const loop: LoopRecord = {
+          ...base,
+          loopId: "loop_cli_turn_cap_truth",
+          status: "exited",
+          lifecycleState: "budget_exit",
+          budget: { ...base.budget, maxIterations: 1 },
+          terminationEnvelope: {
+            schemaVersion: "termination/1",
+            class: "operational_exit",
+            exit: {
+              schemaVersion: "exit-evaluation/1",
+              policyVersion: "exit-policy/1",
+              shouldExit: true,
+              primary: "turn_cap",
+              matched: ["turn_cap"],
+              phase: "post_attempt",
+              evaluatedAt: "2026-10-09T20:31:00.000Z",
+              matches: [{
+                kind: "turn_cap",
+                reason: "Iteration limit reached.",
+                evidence: { turnsUsed: 1, maxTurns: 1 },
+              }],
+            },
+          },
+          events: base.events.map((event) =>
+            event.type === "verification.completed"
+              ? {
+                  ...event,
+                  payload: {
+                    ...event.payload,
+                    binding: {
+                      ...(event.payload["binding"] as Record<string, unknown>),
+                      runId: "loop_cli_turn_cap_truth",
+                    },
+                  },
+                }
+              : {
+                  ...event,
+                  lifecycleState: "budget_exit",
+                  payload: { ...event.payload, reason: "turn_cap" },
+                },
+          ),
+        };
+        await persistCanonicalLifecycleRecord(directory, loop);
+
+        const result = await executeCli(["--json", "share", "--loop-id", loop.loopId]);
+        const payload = JSON.parse(result.stdout);
+        const markdown = await readFile(payload.files.receiptMarkdown, "utf8");
+
+        expect(result.exitCode).toBe(0);
+        expect(payload.receipt.verifiedHandoff).toMatchObject({
+          outcome: "STOPPED",
+          lifecycleTruth: { reasonCode: "turn_cap", exhaustedLimits: ["iterations"] },
+        });
+        expect(markdown).toContain("- Termination: turn_cap");
+        expect(markdown).toContain("- Exhausted limits: iterations");
+        expect(markdown).toMatch(/iteration limit/iu);
+        expect(markdown).not.toMatch(/dollar pressure|token pressure|\$/iu);
+      });
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
   it("prints runs verify help with --latest selector support", async () => {
     const result = await executeCli(["--help"]);
 
@@ -600,6 +1070,93 @@ describe("executeCli", () => {
     expect(result.stdout).toBe(rootPackageVersion);
   });
 
+  it("returns invalid_input JSON for estimate invalid explicit values", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-invalid-estimate-"));
+    const runsDirectory = join(directory, "runs-must-not-exist");
+    try {
+      const result = await executeCli([
+        "--json", "estimate", "Reject invalid estimate",
+        "--budget-usd", "not-a-number",
+        "--runs-dir", runsDirectory,
+      ]);
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr).toBe("");
+      expect(JSON.parse(result.stdout)).toMatchObject({ ok: false, category: "invalid_input" });
+      await expect(readdir(runsDirectory)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("rejects enable invalid numeric input before writing config or run state", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-invalid-enable-"));
+    try {
+      const before = await readdir(directory);
+      const result = await executeCli([
+        "--json", "enable",
+        "--cwd", directory,
+        "--budget-usd", "not-a-number",
+      ]);
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr).toBe("");
+      expect(JSON.parse(result.stdout)).toMatchObject({ ok: false, category: "invalid_input" });
+      expect(await readdir(directory)).toEqual(before);
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("recovers an engine preference without rewriting an existing config", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-enable-engine-recovery-"));
+    const configPath = join(directory, "martin.config.yaml");
+    const runsDirectory = join(directory, "runs");
+    const original = "# operator-owned bytes\nengine: claude\n";
+    await writeFile(configPath, original, "utf8");
+    const originalDigest = createHash("sha256").update(original).digest("hex");
+
+    try {
+      const result = await executeCli([
+        "--json", "enable",
+        "--cwd", directory,
+        "--runs-dir", runsDirectory,
+        "--engine", "codex"
+      ]);
+      const after = await readFile(configPath, "utf8");
+
+      expect(result.exitCode).toBe(0);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        command: "enable",
+        defaults: { engine: "codex" }
+      });
+      expect(after).toBe(original);
+      expect(createHash("sha256").update(after).digest("hex")).toBe(originalDigest);
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("still refuses config-changing enable options without force", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-enable-config-refusal-"));
+    const configPath = join(directory, "martin.config.yaml");
+    const original = "# preserve me\nengine: claude\n";
+    await writeFile(configPath, original, "utf8");
+
+    try {
+      const result = await executeCli([
+        "enable",
+        "--cwd", directory,
+        "--engine", "codex",
+        "--budget-usd", "3"
+      ]);
+
+      expect(result.exitCode).toBe(2);
+      expect(result.stderr).toContain("Config already exists");
+      expect(await readFile(configPath, "utf8")).toBe(original);
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
   it("keeps proof preflight non-live when MARTIN_LIVE defaults to true", async () => {
     const directory = await mkdtemp(join(tmpdir(), "martin-cli-proof-preflight-"));
     const previousMartinLive = process.env.MARTIN_LIVE;
@@ -637,6 +1194,58 @@ describe("executeCli", () => {
     }
   });
 
+  it("rejects malformed input and budget conflicts before invoking adapters or Codex probes", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-invalid-before-effects-"));
+    let adapterCalls = 0;
+    let probeCalls = 0;
+    __setRunAdapterOverrideForTests(
+      createStubDirectProviderAdapter({
+        providerId: "test",
+        model: "must-not-run",
+        responder: () => {
+          adapterCalls += 1;
+          throw new Error("invalid argv reached the provider adapter");
+        },
+      }),
+    );
+    __setCodexHostOverridesForTests({
+      probe: () => {
+        probeCalls += 1;
+        throw new Error("invalid argv reached the Codex launch probe");
+      },
+    });
+
+    const cases = [
+      ["--budget-usd", "not-a-number"],
+      ["--max-iterations", "1.2"],
+      ["--verify-timeout-ms", "0"],
+      ["--budget-usd", "1", "--budget", "2"],
+      ["--soft-limit-usd", "1", "--budget-usd", "1"],
+    ];
+
+    try {
+      for (const [caseIndex, invalidArgs] of cases.entries()) {
+        const runsDirectory = join(directory, `runs-${caseIndex}`);
+        const result = await executeCli([
+          "--json",
+          caseIndex % 2 === 0 ? "run" : "preflight",
+          "--objective", "Reject before side effects",
+          "--engine", "codex",
+          ...invalidArgs,
+          "--runs-dir", runsDirectory,
+        ]);
+
+        expect(result.exitCode).toBe(2);
+        expect(JSON.parse(result.stdout)).toMatchObject({ ok: false, category: "invalid_input" });
+        await expect(readdir(runsDirectory)).rejects.toMatchObject({ code: "ENOENT" });
+      }
+      expect(adapterCalls).toBe(0);
+      expect(probeCalls).toBe(0);
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
   it("rejects -proof before invoking an adapter or creating a run store", async () => {
     const directory = await mkdtemp(join(tmpdir(), "martin-cli-single-dash-proof-"));
     let adapterInvoked = false;
@@ -665,6 +1274,40 @@ describe("executeCli", () => {
       expect(result.stderr).toContain("Unknown run option: -proof");
       expect(adapterInvoked).toBe(false);
       await expect(readdir(join(directory, ".martin-runs"))).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("rejects top-level proof before invoking an adapter or creating a run store", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-top-level-proof-"));
+    const runsDirectory = join(directory, "runs-must-not-exist");
+    let adapterInvoked = false;
+    __setRunAdapterOverrideForTests(
+      createStubDirectProviderAdapter({
+        providerId: "test",
+        model: "must-not-run",
+        responder: () => {
+          adapterInvoked = true;
+          throw new Error("top-level proof reached the provider adapter");
+        }
+      })
+    );
+
+    try {
+      const result = await executeCli([
+        "--json",
+        "proof",
+        "Collect evidence without a governed run",
+        "--runs-dir",
+        runsDirectory
+      ]);
+
+      expect(result.exitCode).toBe(2);
+      expect(JSON.parse(result.stdout)).toMatchObject({ ok: false, category: "invalid_input" });
+      expect(result.stdout).toContain("martin run <objective> --proof");
+      expect(adapterInvoked).toBe(false);
+      await expect(readdir(runsDirectory)).rejects.toMatchObject({ code: "ENOENT" });
     } finally {
       await rm(directory, { force: true, recursive: true });
     }
@@ -702,7 +1345,7 @@ describe("executeCli", () => {
       const result = await withIsolatedRunsEnv(directory, () => executeCli(argv));
 
       expect(result.exitCode).toBe(2);
-      expect(result.stderr).toContain("--max-tokens requires a finite number greater than zero");
+      expect(result.stderr).toMatch(/--max-tokens requires (?:a value|a finite positive integer)/u);
       expect(adapterInvoked).toBe(false);
       await expect(readdir(join(directory, ".martin-runs"))).rejects.toMatchObject({ code: "ENOENT" });
     } finally {
@@ -1320,14 +1963,17 @@ describe("executeCli", () => {
 
   it("persists patch decision artifacts for real CLI governed runs", { timeout: 30_000 }, async () => {
     const directory = await mkdtemp(join(tmpdir(), "martin-cli-patch-decision-"));
+    const stateDirectory = await mkdtemp(join(tmpdir(), "martin-cli-patch-state-"));
 
     try {
       installWritingRunAdapter("src/cli-artifact.ts", "export const cliArtifact = true;\n");
       await writeFile(join(directory, "README.md"), "# CLI patch decision fixture\n", "utf8");
       initializeCommittedGitRepository(directory);
       const previousMartinLive = process.env.MARTIN_LIVE;
-      process.env.MARTIN_LIVE = "false";
-      const result = await withIsolatedRunsEnv(directory, () =>
+      // The adapter override is deterministic and provider-free, while the
+      // command itself must exercise the governed (not proof-only) lifecycle.
+      process.env.MARTIN_LIVE = "true";
+      const result = await withIsolatedRunsEnv(stateDirectory, () =>
         executeCli([
           "--json",
           "run",
@@ -1380,6 +2026,7 @@ describe("executeCli", () => {
       expect(patchDecision.reasonCodes).toContain("verifier_passed");
     } finally {
       await rm(directory, { force: true, recursive: true });
+      await rm(stateDirectory, { force: true, recursive: true });
     }
   });
 

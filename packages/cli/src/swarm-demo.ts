@@ -104,6 +104,17 @@ export interface DeterministicSwarmDemoResult {
   record: SwarmRunRecord;
 }
 
+export interface DeterministicSwarmDemoData extends Omit<DeterministicSwarmDemoResult, "status" | "record"> {
+  command: "demo --swarm";
+  evidenceKind: "deterministic_demo";
+  executionMode: "local_simulation";
+  simulationCheck: "passed" | "failed" | "unknown";
+  governanceClaimEligible: false;
+  persistedToSwarmRunStore: false;
+  signedIntegrity: "not_evaluated";
+  inspectionPath: "demo --swarm";
+}
+
 interface InjectedParentVerifierResult {
   launched: boolean;
   completed: boolean;
@@ -553,6 +564,28 @@ export function getDeterministicSwarmDemoExitCode(result: DeterministicSwarmDemo
   return result.status === "verified" && result.globalVerifier.passed ? 0 : 1;
 }
 
+export function toDeterministicSwarmDemoData(result: DeterministicSwarmDemoResult): DeterministicSwarmDemoData {
+  const simulationCheck = !result.globalVerifier.launched
+    || !result.globalVerifier.completed
+    || result.globalVerifier.crashed
+    ? "unknown"
+    : result.globalVerifier.passed ? "passed" : "failed";
+  const details = JSON.parse(JSON.stringify(result)) as Partial<DeterministicSwarmDemoResult>;
+  delete details.status;
+  delete details.record;
+  return {
+    command: "demo --swarm",
+    evidenceKind: "deterministic_demo",
+    executionMode: "local_simulation",
+    simulationCheck,
+    governanceClaimEligible: false,
+    persistedToSwarmRunStore: false,
+    signedIntegrity: "not_evaluated",
+    inspectionPath: "demo --swarm",
+    ...details as Omit<DeterministicSwarmDemoResult, "status" | "record">,
+  };
+}
+
 export function assertSafeDeterministicSwarmDemoTarget(
   targetDirectory: string,
   force: boolean,
@@ -595,8 +628,7 @@ export function renderDeterministicSwarmDemoHuman(result: DeterministicSwarmDemo
   });
   const needsReviewSummary = result.needsReview > 0 ? ` · ${result.needsReview} needs review` : "";
   const lines = [
-    "DEMO SWARM · deterministic local workers · $0 provider spend",
-    "GOVERNED BY MARTINLOOP",
+    "LOCAL SIMULATION · NON-GOVERNED · deterministic local workers · $0 provider spend",
     "",
     "CREATE · Parent contract created; concurrency capped at 5.",
     "PLAN · Hybrid task DAG approved.",
@@ -617,7 +649,7 @@ export function renderDeterministicSwarmDemoHuman(result: DeterministicSwarmDemo
     "ONE JOB · 15 AGENTS · ONE ACCOUNTABLE OUTCOME",
   ];
   if (result.status === "verified") {
-    lines.push("DEMO VERIFIED · deterministic local evidence only · not persisted to the swarm run store");
+    lines.push("LOCAL SIMULATION CHECK PASSED · non-governed · not persisted · signed receipt integrity not evaluated");
   }
   return lines.join("\n");
 }

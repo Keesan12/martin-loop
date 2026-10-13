@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-10-13
+
+### Fixed
+- Invalid run and preflight options now fail closed before provider, probe, or run-store side effects.
+- Proof-only runs now report verification-only lifecycle, file effects, and evidence readiness consistently across CLI and MCP surfaces.
+- Swarm demo output is now explicitly local simulation and remains isolated from persisted run selectors and signed-evidence claims.
+- Multi-runtime engine selection and portable MCP configuration now preserve the user's explicit runtime and run-root intent.
+
 ## [0.8.2] - 2026-10-08
 
 ### Fixed

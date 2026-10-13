@@ -11,14 +11,17 @@ import type {
   LoopTask,
   ReceiptIntegritySummary,
   ReceiptScope,
-  TerminationEnvelopeV1
+  TerminationEnvelopeV1,
+  VerifiedHandoffFileEffectsV1
 } from "@martin/contracts";
 import {
   evaluateCostGovernor,
   resolveRunsRoot,
+  verifierActuallyPassed,
   type LedgerEvent,
   type LoopAttemptRecord,
-  type LoopRunRecord
+  type LoopRunRecord,
+  type VerifierExecutionBinding
 } from "@martin/core";
 
 import { readAllLoopRecordsSafely } from "./run-store.js";
@@ -32,6 +35,7 @@ export interface InspectableLoopAttempt extends LoopAttemptRecord {
 }
 
 export interface InspectableLoopRecord extends Omit<LoopRunRecord, "attempts" | "task" | "budget"> {
+  workspaceId?: string;
   budget: LoopBudget;
   attempts: InspectableLoopAttempt[];
   task?: LoopTask;
@@ -105,7 +109,20 @@ export interface VerificationSummary {
   latestAttemptIndex?: number;
   completedAt?: string;
   summary?: string;
+  steps: VerificationStepSummary[];
+  binding?: VerifierExecutionBinding;
+  changedFiles: string[];
   warnings: string[];
+}
+
+export interface VerificationStepSummary {
+  command: string;
+  launched: boolean;
+  completed?: boolean;
+  crashed?: boolean;
+  exitCode?: number;
+  timedOut?: boolean;
+  detail?: string;
 }
 
 interface NormalizedVerificationEvidence {
@@ -114,6 +131,9 @@ interface NormalizedVerificationEvidence {
   summary?: string;
   attemptId?: string;
   attemptIndex?: number;
+  steps: VerificationStepSummary[];
+  binding?: VerifierExecutionBinding;
+  changedFiles: string[];
 }
 
 export interface RunWarningEnvelope {
@@ -411,16 +431,98 @@ export function buildVerificationSummary(loop: InspectableLoopRecord, ledgerEven
   const selectedEvidence = selectLatestVerificationEvidence(loop, verificationEvents, verificationLedgerEvents);
   warnings.push(...selectedEvidence.warnings);
   const latestEvidence = selectedEvidence.evidence;
-  if (!latestEvidence) return { status: "not_run", eventCount: verificationEvents.length, ledgerEventCount: verificationLedgerEvents.length, warnings };
-  const contradicted = latestEvidence.passed === true && warnings.some((warning) => warning.toLowerCase().includes("conflicts for the latest attempt"));
+  if (!latestEvidence) return {
+    status: "not_run",
+    eventCount: verificationEvents.length,
+    ledgerEventCount: verificationLedgerEvents.length,
+    steps: [],
+    changedFiles: [],
+    warnings
+  };
+  const expectedAttemptId = latestEvidence.attemptIndex !== undefined
+    ? loop.attempts.find((attempt) => attempt.index === latestEvidence.attemptIndex)?.attemptId
+    : loop.attempts.at(-1)?.attemptId;
+  const expectedBinding: VerifierExecutionBinding | undefined = latestEvidence.binding && loop.workspaceId
+    ? {
+        runId: loop.loopId,
+        workspaceId: loop.workspaceId,
+        ...(expectedAttemptId ? { attemptId: expectedAttemptId } : {}),
+        cwd: loop.receiptScope?.workingDirectory ?? loop.task?.repoRoot ?? latestEvidence.binding.cwd,
+        ...(loop.receiptScope?.runsRoot ? { runsRoot: loop.receiptScope.runsRoot } : {}),
+        ...(loop.task?.executionProfile ? { executionProfile: loop.task.executionProfile } : {}),
+        ...(loop.task?.allowedNetworkDomains?.length
+          ? { allowedNetworkDomains: [...loop.task.allowedNetworkDomains] }
+          : {}),
+        commands: [...(loop.task?.verificationPlan ?? [])]
+      }
+    : undefined;
+  const executionPassed = expectedBinding
+    ? verifierActuallyPassed(
+        {
+          passed: latestEvidence.passed === true,
+          binding: latestEvidence.binding,
+          steps: latestEvidence.steps
+        },
+        expectedBinding
+      )
+    : false;
+  const contradicted = latestEvidence.passed === true && !executionPassed;
+  if (contradicted) {
+    warnings.push("Persisted verifier claimed success without complete bound execution evidence.");
+  }
   return {
-    status: contradicted ? "contradicted" : latestEvidence.passed === true ? "passed" : latestEvidence.passed === false ? "failed" : "not_run",
+    status: contradicted ? "contradicted" : executionPassed ? "passed" : latestEvidence.passed === false ? "failed" : "not_run",
     eventCount: verificationEvents.length,
     ledgerEventCount: verificationLedgerEvents.length,
     ...(latestEvidence.attemptIndex !== undefined ? { latestAttemptIndex: latestEvidence.attemptIndex } : {}),
     ...(latestEvidence.timestamp ? { completedAt: latestEvidence.timestamp } : {}),
     ...(typeof latestEvidence.summary === "string" && latestEvidence.summary.trim().length > 0 ? { summary: latestEvidence.summary.trim() } : {}),
+    steps: latestEvidence.steps,
+    ...(latestEvidence.binding ? { binding: latestEvidence.binding } : {}),
+    changedFiles: latestEvidence.changedFiles,
     warnings
+  };
+}
+
+export function buildFileEffectsSummary(loop: InspectableLoopRecord): VerifiedHandoffFileEffectsV1 {
+  const completedEvent = (loop.events ?? []).filter((event) => event.type === "run.completed").at(-1);
+  const payload = completedEvent && isRecord(completedEvent.payload) ? completedEvent.payload : undefined;
+  const candidate = payload && isRecord(payload["fileEffects"]) ? payload["fileEffects"] : undefined;
+  if (!candidate) {
+    return {
+      observationStatus: "unavailable",
+      touchedDuringExecution: [],
+      netChangedAtCompletion: [],
+      revertedBeforeCompletion: [],
+      observationReason: "File-effect evidence was not recorded for this run."
+    };
+  }
+  const observationStatus = candidate["observationStatus"];
+  const touchedDuringExecution = readStringArray(candidate["touchedDuringExecution"]);
+  const netChangedAtCompletion = readStringArray(candidate["netChangedAtCompletion"]);
+  const revertedBeforeCompletion = readStringArray(candidate["revertedBeforeCompletion"]);
+  if (
+    (observationStatus !== "observed" && observationStatus !== "unavailable")
+    || touchedDuringExecution === undefined
+    || netChangedAtCompletion === undefined
+    || revertedBeforeCompletion === undefined
+  ) {
+    return {
+      observationStatus: "unavailable",
+      touchedDuringExecution: [],
+      netChangedAtCompletion: [],
+      revertedBeforeCompletion: [],
+      observationReason: "Persisted file-effect evidence was malformed."
+    };
+  }
+  return {
+    observationStatus,
+    touchedDuringExecution,
+    netChangedAtCompletion,
+    revertedBeforeCompletion,
+    ...(typeof candidate["observationReason"] === "string"
+      ? { observationReason: candidate["observationReason"] }
+      : {})
   };
 }
 
@@ -549,7 +651,10 @@ function normalizeLoopVerificationEvidence(loop: InspectableLoopRecord, event: P
     ...(matchedAttempt.attemptId ? { attemptId: matchedAttempt.attemptId } : {}),
     attemptIndex: matchedAttempt.index,
     ...(typeof payload?.["passed"] === "boolean" ? { passed: payload["passed"] } : {}),
-    ...(typeof payload?.["summary"] === "string" ? { summary: payload["summary"] } : {})
+    ...(typeof payload?.["summary"] === "string" ? { summary: payload["summary"] } : {}),
+    steps: readVerificationSteps(payload?.["steps"]),
+    ...(readVerifierBinding(payload?.["binding"]) ? { binding: readVerifierBinding(payload?.["binding"]) } : {}),
+    changedFiles: readStringArray(payload?.["changedFiles"]) ?? []
   };
 }
 
@@ -564,8 +669,72 @@ function normalizeLedgerVerificationEvidence(loop: InspectableLoopRecord, event:
     ...(matchedAttempt.attemptId ? { attemptId: matchedAttempt.attemptId } : {}),
     attemptIndex: event.attemptIndex,
     ...(typeof payload?.["passed"] === "boolean" ? { passed: payload["passed"] } : {}),
-    ...(typeof payload?.["summary"] === "string" ? { summary: payload["summary"] } : {})
+    ...(typeof payload?.["summary"] === "string" ? { summary: payload["summary"] } : {}),
+    steps: readVerificationSteps(payload?.["steps"]),
+    ...(readVerifierBinding(payload?.["binding"]) ? { binding: readVerifierBinding(payload?.["binding"]) } : {}),
+    changedFiles: readStringArray(payload?.["changedFiles"]) ?? []
   };
+}
+
+function readVerificationSteps(value: unknown): VerificationStepSummary[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((candidate) => {
+      if (!isRecord(candidate) || typeof candidate["command"] !== "string" || typeof candidate["launched"] !== "boolean") {
+        return undefined;
+      }
+      return {
+        command: candidate["command"],
+        launched: candidate["launched"],
+        ...(typeof candidate["completed"] === "boolean" ? { completed: candidate["completed"] } : {}),
+        ...(typeof candidate["crashed"] === "boolean" ? { crashed: candidate["crashed"] } : {}),
+        ...(typeof candidate["exitCode"] === "number" ? { exitCode: candidate["exitCode"] } : {}),
+        ...(typeof candidate["timedOut"] === "boolean" ? { timedOut: candidate["timedOut"] } : {}),
+        ...(typeof candidate["detail"] === "string" ? { detail: candidate["detail"] } : {})
+      };
+    })
+    .filter((candidate): candidate is VerificationStepSummary => candidate !== undefined);
+}
+
+function readVerifierBinding(value: unknown): VerifierExecutionBinding | undefined {
+  if (
+    !isRecord(value)
+    || typeof value["runId"] !== "string"
+    || typeof value["workspaceId"] !== "string"
+    || typeof value["cwd"] !== "string"
+    || !Array.isArray(value["commands"])
+    || !value["commands"].every((command): command is string => typeof command === "string")
+  ) {
+    return undefined;
+  }
+  const executionProfile = value["executionProfile"];
+  if (
+    executionProfile !== undefined
+    && executionProfile !== "strict_local"
+    && executionProfile !== "ci_safe"
+    && executionProfile !== "staging_controlled"
+    && executionProfile !== "research_untrusted"
+  ) {
+    return undefined;
+  }
+  const allowedNetworkDomains = readStringArray(value["allowedNetworkDomains"]);
+  if (value["allowedNetworkDomains"] !== undefined && allowedNetworkDomains === undefined) return undefined;
+  return {
+    runId: value["runId"],
+    workspaceId: value["workspaceId"],
+    ...(typeof value["attemptId"] === "string" ? { attemptId: value["attemptId"] } : {}),
+    cwd: value["cwd"],
+    ...(typeof value["runsRoot"] === "string" ? { runsRoot: value["runsRoot"] } : {}),
+    ...(executionProfile !== undefined ? { executionProfile } : {}),
+    ...(allowedNetworkDomains !== undefined ? { allowedNetworkDomains } : {}),
+    commands: [...value["commands"]]
+  };
+}
+
+function readStringArray(value: unknown): string[] | undefined {
+  return Array.isArray(value) && value.every((item): item is string => typeof item === "string")
+    ? [...value]
+    : undefined;
 }
 
 function isTrustedVerificationTimestamp(value: string): boolean {

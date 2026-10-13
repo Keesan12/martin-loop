@@ -96,12 +96,14 @@ export type MartinMcpScope = "user" | "project" | "local";
 export type MartinMcpTransport = "stdio" | "remote";
 export type MartinMcpProfile = "minimal" | "diagnostic" | "github-review" | "full-local" | "paid-remote" | "starter" | "full";
 export type MartinMcpPlatform = "windows" | "macos" | "linux";
+export type MartinMcpRunsRootSource = "default" | "explicit";
 
 export interface MartinMcpConfigInput {
   host: MartinMcpHost;
   scope: MartinMcpScope;
   cwd: string;
   runsRoot: string;
+  runsRootSource?: MartinMcpRunsRootSource;
   transport?: MartinMcpTransport;
   profile?: MartinMcpProfile;
   remoteUrl?: string;
@@ -420,6 +422,7 @@ function normalizeInput(input: MartinMcpConfigInput): Required<Omit<MartinMcpCon
     scope: input.scope,
     cwd: input.cwd,
     runsRoot: input.runsRoot,
+    runsRootSource: input.runsRootSource ?? "explicit",
     transport: input.transport ?? "stdio",
     profile: input.profile ?? "minimal",
     remoteUrl: input.remoteUrl ?? DEFAULT_REMOTE_URL,
@@ -473,17 +476,24 @@ function buildCodexConfigSnippet(
   }
 
   const launcher = buildStdioLauncher(input.platform);
+  const runsRootEnv =
+    input.scope === "project" && input.runsRootSource === "default"
+      ? []
+      : [`env = { MARTIN_RUNS_DIR = "${escapeTomlString(input.runsRoot)}" }`];
+  const cwd = input.scope === "project"
+    ? []
+    : [`cwd = "${escapeTomlString(input.cwd)}"`];
   return [
     "# Martin Loop MCP",
     `# Codex ${input.profile} profile over local stdio.`,
     `[mcp_servers."${serverId}"]`,
     `command = "${escapeTomlString(launcher.command)}"`,
     `args = [${launcher.args.map((value) => `"${escapeTomlString(value)}"`).join(", ")}]`,
-    `cwd = "${escapeTomlString(input.cwd)}"`,
+    ...cwd,
     "startup_timeout_sec = 20",
     "tool_timeout_sec = 180",
     `enabled_tools = [${tools}]`,
-    `env = { MARTIN_RUNS_DIR = "${escapeTomlString(input.runsRoot)}" }`,
+    ...runsRootEnv,
     ""
   ].join("\n");
 }

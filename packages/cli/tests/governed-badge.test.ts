@@ -46,11 +46,34 @@ describe("badge --governed CLI command", () => {
     expect(result.stderr).toBe("");
   });
 
-  it("badge without --governed takes reliability path (not governed markdown)", async () => {
+  it.each([
+    ["explicit format", ["badge", "--governed", "--format", "json"]],
+    ["global before", ["--json", "badge", "--governed"]],
+    ["global after", ["badge", "--governed", "--json"]],
+  ])("returns one governed JSON document for %s", async (_label, argv) => {
+    const result = await executeCli(argv);
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(JSON.parse(result.stdout)).toEqual({
+      command: "badge",
+      governed: true,
+      markdown: MARTINLOOP_BADGE_MARKDOWN,
+    });
+  });
+
+  it("rejects governed SVG instead of labeling Markdown as SVG", async () => {
+    const result = await executeCli(["badge", "--governed", "--format", "svg"]);
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("invalid_input");
+    expect(result.stdout).not.toContain(MARTINLOOP_BADGE_MARKDOWN);
+  });
+
+  it("badge without --governed takes the evidence-readiness path (not governed markdown)", async () => {
     const result = await executeCli(["badge"]);
     expect(result.exitCode).toBe(0);
     expect(result.stdout).not.toBe(MARTINLOOP_BADGE_MARKDOWN);
-    // reliability badge is SVG by default
-    expect(result.stdout).toContain("agent reliability");
+    expect(result.stdout).toContain("Evidence readiness:");
+    expect(result.stdout).toMatch(/\d\/5 signals/u);
+    expect(result.stdout).not.toContain("agent reliability");
   });
 });

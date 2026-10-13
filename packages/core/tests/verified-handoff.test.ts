@@ -3,7 +3,12 @@
 
 import { describe, expect, it } from "vitest";
 import { createLoopRecord } from "@martin/contracts";
-import type { LoopRecord, ReceiptIntegritySummary } from "@martin/contracts";
+import type {
+  ExitKind,
+  LoopRecord,
+  ReceiptIntegritySummary,
+  TerminationEnvelopeV1,
+} from "@martin/contracts";
 import {
   buildVerifiedHandoff,
   resolveVerifiedHandoffOutcome,
@@ -12,22 +17,64 @@ import {
 } from "../src/verified-handoff.js";
 import type { BuildVerifiedHandoffInput } from "../src/verified-handoff.js";
 
+type OperationalTerminationEnvelope = Extract<
+  TerminationEnvelopeV1,
+  { class: "operational_exit" }
+>;
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+function makeTerminationEnvelope(
+  primary: ExitKind,
+  evidence: Record<string, unknown> = {},
+): OperationalTerminationEnvelope {
+  return {
+    schemaVersion: "termination/1",
+    class: "operational_exit",
+    exit: {
+      schemaVersion: "exit-evaluation/1",
+      policyVersion: "exit-policy/1",
+      shouldExit: true,
+      primary,
+      matched: [primary],
+      phase: "post_attempt",
+      evaluatedAt: "2026-08-18T00:00:01.000Z",
+      matches: [
+        {
+          kind: primary,
+          reason: `Persisted ${primary} reason.`,
+          evidence,
+        },
+      ],
+    },
+  };
+}
 
 function makeLoop(
   overrides: Partial<LoopRecord> = {}
 ): LoopRecord {
   const base = createLoopRecord({
+    loopId: "loop_current",
     workspaceId: "ws_test",
     projectId: "proj_test",
+    status: "completed",
+    lifecycleState: "completed",
     task: {
       title: "Test task",
       objective: "Verify something",
+      repoRoot: "/repo",
       verificationPlan: ["pnpm test"],
       acceptanceCriteria: ["All tests pass"],
     },
+    receiptScope: {
+      workingDirectory: "/repo",
+    },
+    terminationEnvelope: makeTerminationEnvelope("goal_met", {
+      verifierScore: 1,
+      minimumScore: 1,
+    }),
   });
   return {
     ...base,
@@ -53,8 +100,9 @@ function makeIntegrity(
 function makeInput(
   overrides: Partial<BuildVerifiedHandoffInput> = {}
 ): BuildVerifiedHandoffInput {
+  const loop = overrides.loop ?? makeLoop();
   return {
-    loop: makeLoop(),
+    loop,
     receiptIntegrity: makeIntegrity(),
     verification: {
       status: "passed",
@@ -70,6 +118,13 @@ function makeInput(
         },
       ],
       warnings: [],
+      binding: {
+        runId: loop.loopId,
+        workspaceId: loop.workspaceId,
+        attemptId: loop.attempts.at(-1)?.attemptId,
+        cwd: "/repo",
+        commands: ["pnpm test"],
+      },
     },
     nextAction: "Review and decide whether to merge.",
     ...overrides,
@@ -84,6 +139,9 @@ describe("resolveVerifiedHandoffOutcome", () => {
   it("returns VERIFIED when evidence passes and receipt is verified", () => {
     const outcome = resolveVerifiedHandoffOutcome({
       lifecycleState: "completed",
+      sourceStatus: "completed",
+      terminationClass: "operational_exit",
+      reasonCode: "goal_met",
       verificationStatus: "passed",
       receiptIntegrity: "verified",
       unresolvedWorkCount: 0,
@@ -95,6 +153,9 @@ describe("resolveVerifiedHandoffOutcome", () => {
     expect(
       resolveVerifiedHandoffOutcome({
         lifecycleState: "completed",
+        sourceStatus: "completed",
+        terminationClass: "operational_exit",
+        reasonCode: "goal_met",
         verificationStatus: "passed",
         receiptIntegrity: "verified",
         governanceClaimEligible: false,
@@ -171,6 +232,9 @@ describe("resolveVerifiedHandoffOutcome", () => {
     expect(
       resolveVerifiedHandoffOutcome({
         lifecycleState: "completed",
+        sourceStatus: "completed",
+        terminationClass: "operational_exit",
+        reasonCode: "goal_met",
         verificationStatus: "passed",
         receiptIntegrity: "tamper_detected",
         unresolvedWorkCount: 0,
@@ -216,6 +280,9 @@ describe("resolveVerifiedHandoffOutcome", () => {
     expect(
       resolveVerifiedHandoffOutcome({
         lifecycleState: "completed",
+        sourceStatus: "completed",
+        terminationClass: "operational_exit",
+        reasonCode: "goal_met",
         verificationStatus: "passed",
         receiptIntegrity: "verified",
         scopeStatus: "NOT_EVALUATED",
@@ -243,6 +310,9 @@ describe("resolveVerifiedHandoffOutcome", () => {
     expect(
       resolveVerifiedHandoffOutcome({
         lifecycleState: "completed",
+        sourceStatus: "completed",
+        terminationClass: "operational_exit",
+        reasonCode: "goal_met",
         executionStatus: "completed",
         verificationStatus: "passed",
         receiptIntegrity: "verified",
@@ -258,6 +328,9 @@ describe("resolveVerifiedHandoffOutcome", () => {
     expect(
       resolveVerifiedHandoffOutcome({
         lifecycleState: "completed",
+        sourceStatus: "completed",
+        terminationClass: "operational_exit",
+        reasonCode: "goal_met",
         executionStatus: "completed",
         verificationStatus: "passed",
         receiptIntegrity: "verified",
@@ -281,6 +354,36 @@ describe("resolveVerifiedHandoffOutcome", () => {
       })
     ).toBe("NEEDS_REVIEW");
   });
+
+  it("fails closed when persisted termination evidence is unavailable", () => {
+    expect(
+      resolveVerifiedHandoffOutcome({
+        lifecycleState: "completed",
+        sourceStatus: "completed",
+        terminationClass: "none",
+        verificationStatus: "passed",
+        receiptIntegrity: "verified",
+        unresolvedWorkCount: 0,
+      }),
+    ).toBe("NEEDS_REVIEW");
+  });
+
+  it.each(["wall_clock", "error_threshold", "external_event"] as const)(
+    "returns STOPPED on %s",
+    (lifecycleState) => {
+      expect(
+        resolveVerifiedHandoffOutcome({
+          lifecycleState,
+          sourceStatus: "exited",
+          terminationClass: "operational_exit",
+          reasonCode: lifecycleState,
+          verificationStatus: "passed",
+          receiptIntegrity: "verified",
+          unresolvedWorkCount: 0,
+        }),
+      ).toBe("STOPPED");
+    },
+  );
 });
 
 describe("verifierActuallyPassed", () => {
@@ -606,5 +709,192 @@ describe("buildVerifiedHandoff", () => {
   it("stopReason is present when provided", () => {
     const handoff = buildVerifiedHandoff(makeInput({ stopReason: "budget_exceeded" }));
     expect(handoff.stopReason).toBe("budget_exceeded");
+  });
+
+  describe("canonical lifecycle truth", () => {
+    it.each([
+      {
+        label: "goal_met",
+        lifecycleState: "completed" as const,
+        envelope: makeTerminationEnvelope("goal_met", { verifierScore: 1 }),
+        exhaustedLimits: [],
+      },
+      {
+        label: "turn_cap",
+        lifecycleState: "budget_exit" as const,
+        envelope: makeTerminationEnvelope("turn_cap", { turnsUsed: 3, maxTurns: 3 }),
+        exhaustedLimits: ["iterations"],
+      },
+      {
+        label: "USD-only budget_cap",
+        lifecycleState: "budget_exit" as const,
+        envelope: makeTerminationEnvelope("budget_cap", {
+          usdExceeded: true,
+          tokensExceeded: false,
+        }),
+        exhaustedLimits: ["usd"],
+      },
+      {
+        label: "token-only budget_cap",
+        lifecycleState: "budget_exit" as const,
+        envelope: makeTerminationEnvelope("budget_cap", {
+          usdExceeded: false,
+          tokensExceeded: true,
+        }),
+        exhaustedLimits: ["tokens"],
+      },
+      {
+        label: "both budget dimensions",
+        lifecycleState: "budget_exit" as const,
+        envelope: makeTerminationEnvelope("budget_cap", {
+          usdExceeded: true,
+          tokensExceeded: true,
+        }),
+        exhaustedLimits: ["usd", "tokens"],
+      },
+      {
+        label: "budget_cap without persisted exceeded flags",
+        lifecycleState: "budget_exit" as const,
+        envelope: makeTerminationEnvelope("budget_cap", {
+          actualUsd: 10,
+          tokensUsed: 100_000,
+        }),
+        exhaustedLimits: [],
+      },
+      {
+        label: "wall_clock",
+        lifecycleState: "wall_clock" as const,
+        envelope: makeTerminationEnvelope("wall_clock", {
+          elapsedMs: 60_000,
+          maxElapsedMs: 60_000,
+        }),
+        exhaustedLimits: ["wall_clock"],
+      },
+    ])("preserves $label without inferring another exhausted dimension", ({
+      lifecycleState,
+      envelope,
+      exhaustedLimits,
+    }) => {
+      const loop = makeLoop({
+        status: lifecycleState === "completed" ? "completed" : "exited",
+        lifecycleState,
+        terminationEnvelope: envelope,
+      });
+      const handoff = buildVerifiedHandoff(makeInput({ loop }));
+      const lifecycleTruth = (handoff as unknown as {
+        lifecycleTruth?: Record<string, unknown>;
+      }).lifecycleTruth;
+
+      expect(lifecycleTruth).toMatchObject({
+        executionStatus: loop.status,
+        lifecycleState,
+        terminationClass: "operational_exit",
+        reasonCode: envelope.exit.primary,
+        reason: `Persisted ${envelope.exit.primary} reason.`,
+        matchedReasons: [envelope.exit.primary],
+        exhaustedLimits,
+        evidenceAvailable: true,
+      });
+    });
+
+    it("keeps a legacy budget_exit dimension unknown without persisted termination evidence", () => {
+      const loop = makeLoop({
+        status: "exited",
+        lifecycleState: "budget_exit",
+        terminationEnvelope: undefined,
+      });
+      const handoff = buildVerifiedHandoff(makeInput({ loop }));
+
+      expect((handoff as unknown as { lifecycleTruth?: unknown }).lifecycleTruth).toEqual({
+        executionStatus: "exited",
+        lifecycleState: "budget_exit",
+        terminationClass: "none",
+        matchedReasons: [],
+        exhaustedLimits: [],
+        evidenceAvailable: false,
+      });
+    });
+
+    it("preserves guard-stop reason evidence without claiming resource exhaustion", () => {
+      const loop = makeLoop({
+        status: "exited",
+        lifecycleState: "human_escalation",
+        terminationEnvelope: {
+          schemaVersion: "termination/1",
+          class: "guard_stop",
+          guard: {
+            reasonCode: "approval_required",
+            reason: "Operator approval is required.",
+          },
+        },
+      });
+      const handoff = buildVerifiedHandoff(makeInput({ loop }));
+
+      expect((handoff as unknown as { lifecycleTruth?: unknown }).lifecycleTruth).toEqual({
+        executionStatus: "exited",
+        lifecycleState: "human_escalation",
+        terminationClass: "guard_stop",
+        reasonCode: "approval_required",
+        reason: "Operator approval is required.",
+        matchedReasons: [],
+        exhaustedLimits: [],
+        evidenceAvailable: true,
+      });
+    });
+  });
+
+  describe("fail-closed success authority", () => {
+    it.each([
+      ["failed source status", makeLoop({ status: "failed" })],
+      ["exited source status", makeLoop({ status: "exited" })],
+      [
+        "completed record without persisted goal evidence",
+        makeLoop({ terminationEnvelope: undefined }),
+      ],
+      [
+        "goal_met on a non-completed lifecycle",
+        makeLoop({ status: "running", lifecycleState: "running" }),
+      ],
+    ])("does not verify %s", (_label, loop) => {
+      expect(buildVerifiedHandoff(makeInput({ loop })).outcome).not.toBe("VERIFIED");
+    });
+
+    it("requires trustworthy bound verifier evidence for governed success", () => {
+      const input = makeInput();
+      delete input.verification.binding;
+
+      expect(buildVerifiedHandoff(input).outcome).not.toBe("VERIFIED");
+    });
+  });
+
+  describe("file-effect evidence", () => {
+    it("marks missing legacy observation evidence unavailable rather than observed-empty", () => {
+      const handoff = buildVerifiedHandoff(makeInput());
+
+      expect((handoff as unknown as { fileEffects?: unknown }).fileEffects).toEqual({
+        observationStatus: "unavailable",
+        touchedDuringExecution: [],
+        netChangedAtCompletion: [],
+        revertedBeforeCompletion: [],
+        observationReason: "File-effect evidence was not recorded for this run.",
+      });
+    });
+
+    it("preserves observed touched, net-changed, and reverted file sets independently", () => {
+      const input = makeInput() as BuildVerifiedHandoffInput & {
+        fileEffects?: Record<string, unknown>;
+      };
+      input.fileEffects = {
+        observationStatus: "observed",
+        touchedDuringExecution: ["src/a.ts", "src/reverted.ts"],
+        netChangedAtCompletion: ["src/a.ts"],
+        revertedBeforeCompletion: ["src/reverted.ts"],
+      };
+
+      const handoff = buildVerifiedHandoff(input);
+      expect((handoff as unknown as { fileEffects?: unknown }).fileEffects).toEqual(
+        input.fileEffects,
+      );
+    });
   });
 });

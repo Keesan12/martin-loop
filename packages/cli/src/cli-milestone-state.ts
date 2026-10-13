@@ -643,9 +643,13 @@ async function queueIntakeRetry(
 
 export async function submitToIntake(
   payload: IntakePayload,
-  options: { queueOnFailure?: boolean } = {}
+  options: { queueOnFailure?: boolean; timeoutMs?: number } = {}
 ): Promise<IntakeSubmissionResult> {
   const { queueOnFailure = true } = options;
+  const timeoutMs = options.timeoutMs ?? 3_000;
+  const timeoutLabel = timeoutMs % 1_000 === 0
+    ? `${timeoutMs / 1_000} seconds`
+    : `${timeoutMs} milliseconds`;
   const controller = new AbortController();
   // Abort does not guarantee that Windows fetch settles promptly, so race the
   // transport against an explicit deadline and let the queued retry handle it.
@@ -653,10 +657,10 @@ export async function submitToIntake(
   const timeout = new Promise<Response>((_, reject) => {
     timer = setTimeout(() => {
       controller.abort();
-      const error = new Error("Intake request timed out after 3 seconds.");
+      const error = new Error(`Intake request timed out after ${timeoutLabel}.`);
       error.name = "AbortError";
       reject(error);
-    }, 3_000);
+    }, timeoutMs);
   });
 
   try {
@@ -720,7 +724,7 @@ export async function submitToIntake(
     const timedOut = error instanceof Error && error.name === "AbortError";
     const reason: RetryEntry["_reason"] = timedOut ? "timeout" : "network_error";
     const result: IntakeSubmissionResult = timedOut
-      ? { ok: false, status: "timeout", retryable: true, message: "Intake request timed out after 3 seconds. Will retry on next run." }
+      ? { ok: false, status: "timeout", retryable: true, message: `Intake request timed out after ${timeoutLabel}. Will retry on next run.` }
       : { ok: false, status: "network_error", retryable: true, message: error instanceof Error ? error.message : String(error) };
 
     if (queueOnFailure) {

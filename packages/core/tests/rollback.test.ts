@@ -84,6 +84,10 @@ describe("rollback boundary safety", () => {
     await writeFile(join(directory, "tracked.txt"), "attempt edit\n", "utf8");
     await writeFile(join(directory, "attempt-created.txt"), "remove me\n", "utf8");
 
+    expect(
+      listAttemptChangedFilesSinceBoundary({ repoRoot: directory, boundary })
+    ).toEqual(["attempt-created.txt"]);
+
     const outcome = await restoreRollbackBoundary({
       repoRoot: directory,
       boundary,

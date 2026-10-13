@@ -41,6 +41,19 @@ test("findPublicCopyViolations detects internal repo names and local path leakag
   assert.ok(codexAttachmentLeak.length > 0);
 });
 
+test("findPublicCopyViolations detects representative credentials on public copy surfaces", () => {
+  const violations = findPublicCopyViolations(
+    "OPENAI_API_KEY=sk-proj-1234567890abcdefghijklmnop",
+    "README.md",
+  );
+
+  assert.deepEqual(
+    violations.map((violation) => violation.relativePath),
+    ["README.md"],
+  );
+  assert.match(String(violations[0]?.pattern), /sk-proj/iu);
+});
+
 test("findPublicCopyViolations ignores fenced command blocks and package scripts", () => {
   const readmeViolations = findPublicCopyViolations(
     "```sh\npnpm release:matrix:local\n```",

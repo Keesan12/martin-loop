@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { executeAuditCommand } from "../src/audit.js";
+import { parseCliArguments } from "../src/index.js";
 
 let scratch: string | undefined;
 
@@ -57,6 +58,19 @@ async function fixtureRoot(splitMessages = false): Promise<string> {
 }
 
 describe("martin audit", () => {
+  it("rejects invalid audit days during parsing and preserves valid boundaries", () => {
+    for (const value of [undefined, "", "--offline", "NaN", "Infinity", "0", "-1", "1.2"]) {
+      const argv = ["audit", "--days"];
+      if (value !== undefined) argv.push(value);
+      expect(() => parseCliArguments(argv)).toThrow(/--days.*positive integer|--days requires/iu);
+    }
+    expect(parseCliArguments(["audit", "--days", "1", "--offline"])).toMatchObject({
+      command: "audit",
+      days: 1,
+      offline: true,
+    });
+  });
+
   it("produces deterministic loop-tax metrics", async () => {
     const root = await fixtureRoot();
     const result = await executeAuditCommand({ directory: root, share: false, offline: true }, "json");

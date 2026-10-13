@@ -2,15 +2,48 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createLoopRecord, type LoopRecord } from "@martin/contracts";
+import {
+  createLoopRecord,
+  type ExitKind,
+  type LoopRecord,
+  type TerminationEnvelopeV1,
+} from "@martin/contracts";
 import { describe, expect, it } from "vitest";
 
 import {
+  buildRunDossier,
+  buildRunReceipt,
+  buildVerifiedHandoffFromPersistedLoop,
   buildVerificationSummary,
   deriveLoopExecutionBoundary,
   findPersistedLoopEvidence,
   resolveCliEnvironment,
 } from "../src/run-store.js";
+
+type OperationalTerminationEnvelope = Extract<
+  TerminationEnvelopeV1,
+  { class: "operational_exit" }
+>;
+
+function makeTerminationEnvelope(
+  primary: ExitKind,
+  evidence: Record<string, unknown> = {},
+): OperationalTerminationEnvelope {
+  return {
+    schemaVersion: "termination/1",
+    class: "operational_exit",
+    exit: {
+      schemaVersion: "exit-evaluation/1",
+      policyVersion: "exit-policy/1",
+      shouldExit: true,
+      primary,
+      matched: [primary],
+      phase: "post_attempt",
+      evaluatedAt: "2026-10-09T20:30:00.000Z",
+      matches: [{ kind: primary, reason: `Persisted ${primary} reason.`, evidence }],
+    },
+  };
+}
 
 function makeLoopRecord(overrides: Partial<LoopRecord> = {}): LoopRecord {
   const loop = createLoopRecord({
@@ -42,6 +75,97 @@ function makeLoopRecord(overrides: Partial<LoopRecord> = {}): LoopRecord {
     attempts: [],
     events: [],
     ...overrides,
+  };
+}
+
+function makeLifecycleTruthLoop(overrides: Partial<LoopRecord> = {}): LoopRecord {
+  const loopId = overrides.loopId ?? "loop_cli_lifecycle_truth";
+  const workspaceId = overrides.workspaceId ?? "ws_run_store";
+  const attemptId = "attempt_lifecycle_truth";
+  const verificationPlan = ["npm test"];
+  const fileEffects = {
+    observationStatus: "observed",
+    touchedDuringExecution: ["src/kept.ts", "src/reverted.ts"],
+    netChangedAtCompletion: ["src/kept.ts"],
+    revertedBeforeCompletion: ["src/reverted.ts"],
+  } as const;
+
+  return makeLoopRecord({
+    loopId,
+    workspaceId,
+    status: "completed",
+    lifecycleState: "completed",
+    task: {
+      title: "Reconcile lifecycle truth",
+      objective: "Reconcile lifecycle truth",
+      repoRoot: "C:\\repo",
+      verificationPlan,
+      mutationMode: "edit",
+    },
+    receiptScope: {
+      workingDirectory: "C:\\repo",
+      runsRoot: "C:\\runs",
+    },
+    terminationEnvelope: makeTerminationEnvelope("goal_met", { verifierScore: 1 }),
+    attempts: [{
+      attemptId,
+      index: 1,
+      adapterId: "agent-cli:codex",
+      model: "gpt-5.4",
+      startedAt: "2026-10-09T20:29:00.000Z",
+      completedAt: "2026-10-09T20:30:00.000Z",
+    }],
+    events: [
+      {
+        eventId: "evt_lifecycle_verified",
+        timestamp: "2026-10-09T20:30:00.000Z",
+        type: "verification.completed",
+        lifecycleState: "verifying",
+        payload: {
+          passed: true,
+          attemptIndex: 1,
+          summary: "Verifier passed.",
+          changedFiles: ["src/kept.ts"],
+          binding: {
+            runId: loopId,
+            workspaceId,
+            attemptId,
+            cwd: "C:\\repo",
+            runsRoot: "C:\\runs",
+            commands: verificationPlan,
+          },
+          steps: [{
+            command: "npm test",
+            launched: true,
+            completed: true,
+            crashed: false,
+            exitCode: 0,
+            timedOut: false,
+          }],
+        },
+      },
+      {
+        eventId: "evt_lifecycle_completed",
+        timestamp: "2026-10-09T20:30:01.000Z",
+        type: "run.completed",
+        lifecycleState: "completed",
+        payload: { reason: "goal_met", fileEffects },
+      },
+    ],
+    ...overrides,
+  });
+}
+
+function makePersistedDetail(
+  loop: LoopRecord,
+  integrity: { state: "verified" | "tamper_detected" } = { state: "verified" },
+) {
+  return {
+    source: "canonical",
+    runsRoot: "C:\\runs",
+    loop: { ...loop, receiptIntegrity: integrity },
+    warnings: [],
+    integrity,
   };
 }
 
@@ -88,6 +212,77 @@ describe("buildVerificationSummary", () => {
     });
   });
 
+  it("preserves external outcome evidence and the full verifier binding in persisted summaries", () => {
+    const evidence = {
+      kind: "external_outcome" as const,
+      contractId: "booking-save",
+      sha256: "a".repeat(64),
+      path: "external-outcomes/booking-save.json",
+    };
+    const loop = makeLoopRecord({
+      loopId: "loop_outcome_receipt",
+      workspaceId: "workspace_outcome_receipt",
+      task: {
+        title: "Submit staging form",
+        objective: "Submit staging form",
+        repoRoot: "C:\\repo",
+        verificationPlan: ["martin outcomes verify --contract trusted.json --json"],
+        executionProfile: "staging_controlled",
+        allowedNetworkDomains: ["staging.example.com"],
+      },
+      receiptScope: {
+        workingDirectory: "C:\\repo",
+        runsRoot: "C:\\runs",
+      },
+      attempts: [{
+        attemptId: "attempt_outcome_1",
+        index: 1,
+        adapterId: "agent-cli:claude",
+        model: "claude-sonnet-5-5",
+        startedAt: "2026-10-05T18:00:00.000Z",
+      }],
+      events: [{
+        eventId: "evt_outcome_verification",
+        timestamp: "2026-10-05T18:01:00.000Z",
+        type: "verification.completed",
+        lifecycleState: "verifying",
+        payload: {
+          passed: true,
+          attemptIndex: 1,
+          binding: {
+            runId: "loop_outcome_receipt",
+            workspaceId: "workspace_outcome_receipt",
+            attemptId: "attempt_outcome_1",
+            cwd: "C:\\repo",
+            runsRoot: "C:\\runs",
+            executionProfile: "staging_controlled",
+            allowedNetworkDomains: ["staging.example.com"],
+            commands: ["martin outcomes verify --contract trusted.json --json"],
+          },
+          steps: [{
+            command: "martin outcomes verify --contract trusted.json --json",
+            launched: true,
+            completed: true,
+            crashed: false,
+            exitCode: 0,
+            timedOut: false,
+            fastFail: true,
+            evidence,
+          }],
+        },
+      }],
+    });
+
+    const summary = buildVerificationSummary(loop);
+    expect(summary.status).toBe("passed");
+    expect(summary.binding).toMatchObject({
+      runsRoot: "C:\\runs",
+      executionProfile: "staging_controlled",
+      allowedNetworkDomains: ["staging.example.com"],
+    });
+    expect(summary.steps[0]?.evidence).toEqual(evidence);
+  });
+
   it("does not invent timedOut or fastFail fields when persisted evidence omits them", () => {
     const loop = makeLoopRecord({
       events: [
@@ -105,6 +300,325 @@ describe("buildVerificationSummary", () => {
     });
 
     expect(buildVerificationSummary(loop).steps).toEqual([{ command: "npm test", launched: true }]);
+  });
+});
+
+describe("buildVerifiedHandoffFromPersistedLoop", () => {
+  it("preserves successful verifier lifecycle evidence for a budget-stopped governed run", () => {
+    const loop = makeLoopRecord({
+      loopId: "loop_ntaopvdc_shape",
+      status: "exited",
+      lifecycleState: "budget_exit",
+      task: {
+        title: "Prove the governed handoff",
+        objective: "Prove the governed handoff",
+        repoRoot: "C:\\repo",
+        verificationPlan: ["npm test"],
+      },
+      metadata: {
+        executionMode: "governed",
+        governanceClaimEligible: "true",
+      },
+      attempts: [
+        {
+          attemptId: "attempt_real",
+          index: 1,
+          adapterId: "agent-cli:codex",
+          model: "gpt-5.4",
+          startedAt: "2026-09-06T11:59:00.000Z",
+        },
+      ],
+      events: [
+        {
+          eventId: "evt_verified",
+          timestamp: "2026-09-06T12:00:00.000Z",
+          type: "verification.completed",
+          lifecycleState: "verifying",
+          payload: {
+            passed: true,
+            summary: "Verifier passed.",
+            binding: {
+              runId: "loop_ntaopvdc_shape",
+              attemptId: "attempt_real",
+              workspaceId: "ws_run_store",
+              cwd: "C:\\repo",
+              commands: ["npm test"],
+            },
+            steps: [
+              {
+                command: "npm test",
+                launched: true,
+                completed: true,
+                crashed: false,
+                exitCode: 0,
+                output: "tests passed",
+              },
+            ],
+          },
+        },
+        {
+          eventId: "evt_exited",
+          timestamp: "2026-09-06T12:00:01.000Z",
+          type: "run.completed",
+          lifecycleState: "budget_exit",
+          payload: { reason: "budget_cap" },
+        },
+      ],
+    });
+
+    const handoff = buildVerifiedHandoffFromPersistedLoop({
+      source: "canonical",
+      runsRoot: "C:\\runs",
+      loop,
+      warnings: [],
+      integrity: { state: "verified" },
+    });
+
+    expect(handoff.outcome).toBe("STOPPED");
+    expect(handoff.governanceClaimEligible).toBe(true);
+    expect(handoff.verification.status).toBe("PASSED");
+    expect(handoff.verification.checks).toEqual([
+      expect.objectContaining({ command: "npm test", status: "PASSED", exitCode: 0 }),
+    ]);
+  });
+
+  it("exposes identical lifecycle truth and file effects through dossier and receipt", () => {
+    const loop = makeLifecycleTruthLoop();
+    const dossier = buildRunDossier(makePersistedDetail(loop));
+    const handoff = dossier["verifiedHandoff"] as ReturnType<
+      typeof buildVerifiedHandoffFromPersistedLoop
+    >;
+    const receipt = dossier["receipt"] as Record<string, unknown>;
+
+    expect(handoff).toMatchObject({
+      outcome: "VERIFIED",
+      verification: { status: "PASSED" },
+      receiptIntegrity: { state: "verified" },
+      lifecycleTruth: {
+        reasonCode: "goal_met",
+        exhaustedLimits: [],
+      },
+      fileEffects: {
+        observationStatus: "observed",
+        touchedDuringExecution: ["src/kept.ts", "src/reverted.ts"],
+        netChangedAtCompletion: ["src/kept.ts"],
+        revertedBeforeCompletion: ["src/reverted.ts"],
+      },
+    });
+    expect(receipt).toMatchObject({
+      outcome: handoff.outcome,
+      lifecycleTruth: handoff.lifecycleTruth,
+      fileEffects: handoff.fileEffects,
+    });
+  });
+
+  it("preserves reverted and observed no-edit file effects without conflating them", () => {
+    const reverted = buildVerifiedHandoffFromPersistedLoop(
+      makePersistedDetail(makeLifecycleTruthLoop()),
+    );
+    const noEditLoop = makeLifecycleTruthLoop({
+      loopId: "loop_cli_observed_no_edit",
+      task: {
+        title: "Observe a pre-satisfied task",
+        objective: "Observe a pre-satisfied task",
+        repoRoot: "C:\\repo",
+        verificationPlan: ["npm test"],
+        mutationMode: "edit",
+        definitionOfDonePreSatisfied: true,
+      },
+      events: makeLifecycleTruthLoop().events.map((event) =>
+        event.type === "run.completed"
+          ? {
+              ...event,
+              payload: {
+                ...event.payload,
+                fileEffects: {
+                  observationStatus: "observed",
+                  touchedDuringExecution: [],
+                  netChangedAtCompletion: [],
+                  revertedBeforeCompletion: [],
+                },
+              },
+            }
+          : {
+              ...event,
+              payload: {
+                ...event.payload,
+                binding: {
+                  ...(event.payload["binding"] as Record<string, unknown>),
+                  runId: "loop_cli_observed_no_edit",
+                },
+                changedFiles: [],
+              },
+            },
+      ),
+    });
+    const noEdit = buildVerifiedHandoffFromPersistedLoop(makePersistedDetail(noEditLoop));
+
+    expect(reverted.fileEffects).toMatchObject({
+      touchedDuringExecution: ["src/kept.ts", "src/reverted.ts"],
+      netChangedAtCompletion: ["src/kept.ts"],
+      revertedBeforeCompletion: ["src/reverted.ts"],
+    });
+    expect(noEdit.fileEffects).toEqual({
+      observationStatus: "observed",
+      touchedDuringExecution: [],
+      netChangedAtCompletion: [],
+      revertedBeforeCompletion: [],
+    });
+  });
+
+  it("describes turn-cap lifecycle truth only as iteration exhaustion", () => {
+    const base = makeLifecycleTruthLoop();
+    const loop = makeLifecycleTruthLoop({
+      status: "exited",
+      lifecycleState: "budget_exit",
+      budget: { ...base.budget, maxIterations: 1 },
+      terminationEnvelope: makeTerminationEnvelope("turn_cap", {
+        turnsUsed: 1,
+        maxTurns: 1,
+      }),
+      events: base.events.map((event) =>
+        event.type === "run.completed"
+          ? {
+              ...event,
+              lifecycleState: "budget_exit",
+              payload: { ...event.payload, reason: "turn_cap" },
+            }
+          : event,
+      ),
+    });
+    const handoff = buildVerifiedHandoffFromPersistedLoop(makePersistedDetail(loop));
+    const receipt = buildRunReceipt(loop, buildVerificationSummary(loop), loop.receiptScope, handoff);
+    const rendered = JSON.stringify(receipt);
+
+    expect(handoff).toMatchObject({
+      outcome: "STOPPED",
+      lifecycleTruth: {
+        reasonCode: "turn_cap",
+        exhaustedLimits: ["iterations"],
+      },
+    });
+    expect(rendered).toMatch(/iteration limit/iu);
+    expect(rendered).not.toMatch(/dollar pressure|token pressure|uneconomical/iu);
+  });
+
+  it.each([
+    {
+      label: "verifier-failed",
+      loop: () => {
+        const base = makeLifecycleTruthLoop();
+        return makeLifecycleTruthLoop({
+          events: base.events.map((event) =>
+            event.type === "verification.completed"
+              ? {
+                  ...event,
+                  payload: {
+                    ...event.payload,
+                    passed: false,
+                    summary: "Verifier failed.",
+                    steps: [{
+                      command: "npm test",
+                      launched: true,
+                      completed: true,
+                      crashed: false,
+                      exitCode: 1,
+                    }],
+                  },
+                }
+              : event,
+          ),
+        });
+      },
+      integrity: { state: "verified" as const },
+    },
+    {
+      label: "denied",
+      loop: () => makeLifecycleTruthLoop({
+        status: "exited",
+        lifecycleState: "human_escalation",
+        terminationEnvelope: {
+          schemaVersion: "termination/1",
+          class: "guard_stop",
+          guard: { reasonCode: "filesystem_policy_block", reason: "Denied path was restored." },
+        },
+      }),
+      integrity: { state: "verified" as const },
+    },
+    {
+      label: "proof-only",
+      loop: () => {
+        const base = makeLifecycleTruthLoop();
+        return makeLifecycleTruthLoop({
+          attempts: [{ ...base.attempts[0]!, adapterId: "direct:verifier:verify-only" }],
+        });
+      },
+      integrity: { state: "verified" as const },
+    },
+    {
+      label: "tampered",
+      loop: () => makeLifecycleTruthLoop(),
+      integrity: { state: "tamper_detected" as const },
+    },
+    {
+      label: "forged-success",
+      loop: () => makeLifecycleTruthLoop({ terminationEnvelope: undefined }),
+      integrity: { state: "verified" as const },
+    },
+  ])("fails closed for $label lifecycle truth", ({ loop, integrity }) => {
+    const dossier = buildRunDossier(makePersistedDetail(loop(), integrity));
+    const handoff = dossier["verifiedHandoff"] as ReturnType<
+      typeof buildVerifiedHandoffFromPersistedLoop
+    >;
+    const receipt = dossier["receipt"] as Record<string, unknown>;
+
+    expect(handoff.outcome).not.toBe("VERIFIED");
+    expect(receipt["outcome"]).toBe(handoff.outcome);
+    if (handoff.outcome !== "VERIFIED") {
+      expect(JSON.stringify({ handoff, receipt })).not.toContain('"outcome":"VERIFIED"');
+    }
+  });
+
+  it("keeps legacy missing lifecycle and file-effect evidence unavailable", () => {
+    const legacy = makeLoopRecord({
+      status: "completed",
+      lifecycleState: "completed",
+      terminationEnvelope: undefined,
+    });
+    const handoff = buildVerifiedHandoffFromPersistedLoop(makePersistedDetail(legacy));
+
+    expect(handoff.outcome).toBe("NEEDS_REVIEW");
+    expect(handoff.lifecycleTruth).toMatchObject({ evidenceAvailable: false, exhaustedLimits: [] });
+    expect(handoff.fileEffects).toMatchObject({ observationStatus: "unavailable" });
+  });
+
+  it("fails malformed observed file-effect evidence closed as unavailable", () => {
+    const base = makeLifecycleTruthLoop();
+    const malformed = makeLifecycleTruthLoop({
+      events: base.events.map((event) =>
+        event.type === "run.completed"
+          ? {
+              ...event,
+              payload: {
+                ...event.payload,
+                fileEffects: {
+                  observationStatus: "observed",
+                  touchedDuringExecution: ["src/a.ts"],
+                },
+              },
+            }
+          : event,
+      ),
+    });
+
+    expect(buildVerifiedHandoffFromPersistedLoop(makePersistedDetail(malformed)).fileEffects)
+      .toEqual({
+        observationStatus: "unavailable",
+        touchedDuringExecution: [],
+        netChangedAtCompletion: [],
+        revertedBeforeCompletion: [],
+        observationReason: "Persisted file-effect evidence was malformed or incomplete.",
+      });
   });
 });
 

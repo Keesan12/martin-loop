@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 
-import { spawn } from "node:child_process";
-import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { resolveRcCommandExecution } from "./rc-validation.mjs";
+import {
+  resolveReleaseStageTimeoutMs,
+  runReleaseCommand,
+} from "./lib/release-command-runner.mjs";
 
 const RELEASE_MATRIX_STEPS = [
   ["pnpm", "install", "--frozen-lockfile"],
@@ -52,7 +54,7 @@ export function resolveReleaseMatrixLane(plan, platform = process.platform) {
 }
 
 export async function runLocalReleaseMatrix(options = {}) {
-  const plan = createReleaseMatrixPlan({ rootDir: options.rootDir ?? process.cwd() });
+  const plan = options.plan ?? createReleaseMatrixPlan({ rootDir: options.rootDir ?? process.cwd() });
   const lane = resolveReleaseMatrixLane(plan, options.platform ?? process.platform);
   const tempRoot = await resolveReleaseMatrixOutputRoot(
     options.outputRoot ?? process.env.MARTIN_RELEASE_MATRIX_OUTDIR,
@@ -60,8 +62,24 @@ export async function runLocalReleaseMatrix(options = {}) {
   const logDir = path.join(tempRoot, "logs");
   await mkdir(logDir, { recursive: true });
   const cleanedRootTmpArtifacts = await cleanupRootTmpArtifacts(plan.rootDir);
-
+  const env = createReleaseMatrixEnvironment(options.baseEnv ?? process.env);
+  const timeoutMs = resolveReleaseStageTimeoutMs({ timeoutMs: options.timeoutMs, env });
+  const runner = options.runner ?? runReleaseCommand;
+  const startedAt = new Date().toISOString();
+  const startedMs = Date.now();
+  const summaryPath = path.join(logDir, "summary.json");
   const summary = {
+    schemaVersion: 1,
+    kind: "release-matrix",
+    status: "running",
+    failureKind: null,
+    failedStage: null,
+    activeStage: null,
+    startedAt,
+    completedAt: null,
+    elapsedMs: null,
+    platform: lane.platform,
+    toolchain: await resolveToolchainContext(plan.rootDir, env),
     rootDir: plan.rootDir,
     lane: {
       id: lane.id,
@@ -70,10 +88,13 @@ export async function runLocalReleaseMatrix(options = {}) {
     },
     logDir,
     cleanedRootTmpArtifacts,
-    steps: lane.steps.map((step) => step.label),
+    stageTimeoutMs: timeoutMs,
+    plannedSteps: lane.steps.map((step) => ({ label: step.label, command: [...step.command] })),
+    results: [],
+    externalHarnessTimedOut: false,
   };
 
-  await writeFile(path.join(logDir, "summary.json"), `${JSON.stringify(summary, null, 2)}\n`, "utf8");
+  await writeSummary(summaryPath, summary);
   process.stdout.write(`Release matrix logs: ${logDir}\n`);
   process.stdout.write(`Executing local ${lane.id} lane (${lane.platform}).\n`);
   if (cleanedRootTmpArtifacts.length > 0) {
@@ -84,23 +105,40 @@ export async function runLocalReleaseMatrix(options = {}) {
 
   for (const [index, step] of lane.steps.entries()) {
     process.stdout.write(`\n[${index + 1}/${lane.steps.length}] ${step.label}\n`);
-    await runCommand(step, {
+    summary.activeStage = {
+      index: index + 1,
+      label: step.label,
+      command: [...step.command],
+      startedAt: new Date().toISOString(),
+    };
+    await writeSummary(summaryPath, summary);
+    const result = await runner(step, {
       cwd: plan.rootDir,
+      env,
       logDir,
       index: index + 1,
+      timeoutMs,
+      platform: lane.platform,
     });
+    summary.results.push(result);
+    summary.activeStage = null;
+    if (result.status !== "passed") {
+      summary.status = "failed";
+      summary.failureKind = result.failureKind;
+      summary.failedStage = step.label;
+      summary.completedAt = new Date().toISOString();
+      summary.elapsedMs = Math.max(0, Date.now() - startedMs);
+      await writeSummary(summaryPath, summary);
+      throw new Error(formatReleaseStageFailure(result));
+    }
+    await writeSummary(summaryPath, summary);
   }
 
-  return {
-    lane: {
-      id: lane.id,
-      runner: lane.runner,
-      platform: lane.platform,
-    },
-    logDir,
-    cleanedRootTmpArtifacts,
-    steps: lane.steps.map((step) => step.label),
-  };
+  summary.status = "passed";
+  summary.completedAt = new Date().toISOString();
+  summary.elapsedMs = Math.max(0, Date.now() - startedMs);
+  await writeSummary(summaryPath, summary);
+  return summary;
 }
 
 export async function cleanupRootTmpArtifacts(rootDir) {
@@ -125,51 +163,6 @@ async function resolveReleaseMatrixOutputRoot(configuredOutputRoot) {
   }
 
   return mkdtemp(path.join(os.tmpdir(), "martin-release-matrix-"));
-}
-
-async function runCommand(step, options) {
-  const execution = resolveRcCommandExecution(step.command, process.platform);
-  const stepLogPath = path.join(logDirFor(options), `${String(options.index).padStart(2, "0")}-${slugify(step.label)}.log`);
-  const env = createReleaseMatrixEnvironment(process.env);
-
-  return new Promise((resolve, reject) => {
-    const child = spawn(execution.command, execution.args, {
-      cwd: options.cwd,
-      env,
-      stdio: ["ignore", "pipe", "pipe"],
-      shell: execution.shell,
-    });
-
-    let output = `> ${step.label}\n`;
-
-    child.stdout.on("data", (chunk) => {
-      const text = chunk.toString();
-      output += text;
-      process.stdout.write(text);
-    });
-
-    child.stderr.on("data", (chunk) => {
-      const text = chunk.toString();
-      output += text;
-      process.stderr.write(text);
-    });
-
-    child.on("error", async (error) => {
-      output += `\n[spawn-error] ${error instanceof Error ? error.message : String(error)}\n`;
-      await writeFile(stepLogPath, output, "utf8");
-      reject(error);
-    });
-
-    child.on("close", async (code) => {
-      await writeFile(stepLogPath, output, "utf8");
-      if (code === 0) {
-        resolve();
-        return;
-      }
-
-      reject(new Error(`Command failed (${code ?? "unknown"}): ${step.label}`));
-    });
-  });
 }
 
 export function createReleaseMatrixEnvironment(baseEnv = process.env) {
@@ -199,16 +192,33 @@ function readEnvValueCaseInsensitive(baseEnv, key) {
   return typeof matchedValue === "string" ? matchedValue : undefined;
 }
 
-function logDirFor(options) {
-  return options.logDir;
+async function resolveToolchainContext(cwd, env) {
+  let packageManager = "unknown";
+  try {
+    const packageJson = JSON.parse(await readFile(path.join(cwd, "package.json"), "utf8"));
+    if (typeof packageJson.packageManager === "string") packageManager = packageJson.packageManager;
+  } catch {}
+  const userAgent = env.npm_config_user_agent;
+  const pnpm = packageManager.startsWith("pnpm@")
+    ? packageManager.slice("pnpm@".length)
+    : typeof userAgent === "string" && userAgent.startsWith("pnpm/")
+      ? userAgent.split(" ")[0].slice("pnpm/".length)
+      : "unknown";
+  return { node: process.version, pnpm };
 }
 
-function slugify(value) {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 80);
+function formatReleaseStageFailure(result) {
+  if (result.failureKind === "repository_stage_timeout") {
+    return `Release stage failed: ${result.label} (repository stage timeout after ${result.timeoutMs}ms)`;
+  }
+  if (result.failureKind === "spawn_error") {
+    return `Release stage failed: ${result.label} (spawn error: ${result.spawnError ?? "unknown"})`;
+  }
+  return `Release stage failed: ${result.label} (exit ${result.exitCode ?? "unknown"}${result.signal ? `, signal ${result.signal}` : ""})`;
+}
+
+async function writeSummary(summaryPath, summary) {
+  await writeFile(summaryPath, `${JSON.stringify(summary, null, 2)}\n`, "utf8");
 }
 
 async function main() {

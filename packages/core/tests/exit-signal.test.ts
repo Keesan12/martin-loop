@@ -567,19 +567,32 @@ describe("startExitSignalMonitor satisfied-disposition non-abort", () => {
 
     const controller = new AbortController();
     let signalFired = false;
+    let resolveObservedSignal!: () => void;
+    let rejectObservedSignal!: (error: unknown) => void;
+    const observedSignal = new Promise<void>((resolve, reject) => {
+      resolveObservedSignal = resolve;
+      rejectObservedSignal = reject;
+    });
 
     const dispose = startExitSignalMonitor({
       source: createFileExitSignalSource(runsRoot),
       runId,
       controller,
       pollIntervalMs: 10,
-      onSignal: () => { signalFired = true; },
-      onError: (e) => { throw e; }
+      onSignal: () => {
+        signalFired = true;
+        resolveObservedSignal();
+      },
+      onError: (error) => {
+        rejectObservedSignal(error);
+      }
     });
 
-    // Wait two poll cycles
-    await new Promise<void>((r) => setTimeout(r, 50));
-    dispose();
+    try {
+      await observedSignal;
+    } finally {
+      dispose();
+    }
 
     expect(signalFired).toBe(true); // onSignal fires for observability
     expect(controller.signal.aborted).toBe(false); // but controller NOT aborted

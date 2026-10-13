@@ -57,6 +57,100 @@ describe("mcp config helpers", () => {
     expect(plan.content).toContain('enabled_tools = ["martin_doctor", "martin_plan", "martin_preflight", "martin_estimate", "martin_list_runs", "martin_triage_runs", "martin_dossier"]');
   });
 
+  it.each([
+    ["windows", "C:\\repo", "C:\\Users\\installer\\.martin-loop\\runs"],
+    ["linux", "/repo", "/home/installer/.martin-loop/runs"]
+  ] as const)("omits cwd and the default runs root from %s project Codex stdio config", (platform, cwd, runsRoot) => {
+    const plan = buildMcpInstallPlan({
+      host: "codex",
+      scope: "project",
+      cwd,
+      runsRoot,
+      runsRootSource: "default",
+      platform
+    });
+
+    expect(plan.runsRootSource).toBe("default");
+    expect(plan.content).not.toContain("cwd =");
+    expect(plan.content).not.toContain(cwd.replaceAll("\\", "\\\\"));
+    expect(plan.content).not.toContain("MARTIN_RUNS_DIR");
+    expect(plan.content).not.toContain("installer");
+  });
+
+  it.each([
+    ["windows", "C:\\Users\\operator\\chosen-runs", 'C:\\\\Users\\\\operator\\\\chosen-runs'],
+    ["linux", "/home/operator/chosen-runs", "/home/operator/chosen-runs"]
+  ] as const)("preserves an explicit %s runs root in project Codex stdio config", (platform, runsRoot, renderedRunsRoot) => {
+    const plan = buildMcpInstallPlan({
+      host: "codex",
+      scope: "project",
+      cwd: platform === "windows" ? "C:\\repo" : "/repo",
+      runsRoot,
+      runsRootSource: "explicit",
+      platform
+    });
+
+    expect(plan.runsRootSource).toBe("explicit");
+    expect(plan.content).not.toContain("cwd =");
+    expect(plan.content).toContain(`env = { MARTIN_RUNS_DIR = "${renderedRunsRoot}" }`);
+  });
+
+  it("keeps direct callers compatible by treating omitted provenance as explicit", () => {
+    const runsRoot = "C:\\runs";
+    const plan = buildMcpInstallPlan({
+      host: "codex",
+      scope: "project",
+      cwd: "C:\\repo",
+      runsRoot,
+      platform: "windows"
+    });
+
+    expect(plan.runsRootSource).toBe("explicit");
+    expect(plan.content).toContain('env = { MARTIN_RUNS_DIR = "C:\\\\runs" }');
+  });
+
+  it("keeps user-scope Codex runs-root serialization when provenance is default", () => {
+    const plan = buildMcpInstallPlan({
+      host: "codex",
+      scope: "user",
+      cwd: "C:\\repo",
+      runsRoot: "C:\\Users\\operator\\.martin-loop\\runs",
+      runsRootSource: "default",
+      platform: "windows"
+    });
+
+    expect(plan.content).toContain("MARTIN_RUNS_DIR");
+    expect(plan.content).toContain('cwd = "C:\\\\repo"');
+  });
+
+  it("keeps Codex remote config independent of the local runs root", () => {
+    const plan = buildMcpInstallPlan({
+      host: "codex",
+      scope: "project",
+      cwd: "/repo",
+      runsRoot: "/home/operator/.martin-loop/runs",
+      runsRootSource: "explicit",
+      transport: "remote",
+      platform: "linux"
+    });
+
+    expect(plan.content).not.toContain("MARTIN_RUNS_DIR");
+    expect(plan.content).not.toContain("/home/operator/.martin-loop/runs");
+  });
+
+  it("keeps non-Codex stdio serialization unchanged when provenance is default", () => {
+    const plan = buildMcpInstallPlan({
+      host: "generic",
+      scope: "project",
+      cwd: "/repo",
+      runsRoot: "/home/operator/.martin-loop/runs",
+      runsRootSource: "default",
+      platform: "linux"
+    });
+
+    expect(plan.content).toContain('"MARTIN_RUNS_DIR": "/home/operator/.martin-loop/runs"');
+  });
+
   it("respects CODEX_HOME for user-scope Codex installs", () => {
     const previousCodexHome = process.env.CODEX_HOME;
     process.env.CODEX_HOME = "D:\\martin-codex-home";

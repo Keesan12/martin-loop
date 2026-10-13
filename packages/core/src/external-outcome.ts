@@ -132,7 +132,12 @@ export async function verifyExternalOutcomes(
         return;
       }
       if (observation.kind === "transient") {
-        state.lastTransient = observation.reasonCode;
+        // A final request may inherit only the milliseconds left in the
+        // contract-wide deadline. Do not let that verifier-side timeout erase
+        // a concrete source failure observed by an earlier poll.
+        if (observation.reasonCode !== "deadline_exceeded" || state.observationCount === 1) {
+          state.lastTransient = observation.reasonCode;
+        }
         state.nextPollAt = performance.now() + contract.pollIntervalMs;
         return;
       }

@@ -182,7 +182,7 @@ describe("candidate admission", () => {
     expect(fixture.writer.candidates).toHaveLength(0);
   });
 
-  it("rejects missing and tampered canonical receipt material", async () => {
+  it("rejects missing canonical receipt material", async () => {
     const missing = await createCandidateFixture({ receipt: false });
     await writeFile(join(missing.child.path, "tracked.txt"), "changed\n", "utf8");
     const missingResult = await captureAndAdmitSwarmCandidate({
@@ -193,7 +193,9 @@ describe("candidate admission", () => {
       reasonCode: "receipt_not_verified",
       receiptIntegrity: "material_missing"
     });
+  });
 
+  it("rejects tampered canonical receipt material", async () => {
     const tampered = await createCandidateFixture();
     await writeFile(join(tampered.child.path, "tracked.txt"), "changed\n", "utf8");
     const loop = JSON.parse(await readFile(tampered.loopRecordPath, "utf8")) as LoopRecord;

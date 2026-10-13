@@ -209,6 +209,27 @@ describe("external outcome verification", () => {
     }
   }, 5_000);
 
+  it("preserves a source-unavailable observation when the closing retry reaches the overall deadline", async () => {
+    let reads = 0;
+    const { origin } = await server((_req, res) => {
+      reads += 1;
+      if (reads === 1) return json(res, 503, { error: "down" });
+      setTimeout(() => json(res, 503, { error: "still down" }), 200);
+    });
+    const contract = oneAction(origin, "/unavailable");
+    contract.deadlineMs = 100;
+    contract.pollIntervalMs = 25;
+    contract.requestTimeoutMs = 100;
+
+    const result = await verifyExternalOutcomes(contract, { allowLocal: true });
+
+    expect(reads).toBeGreaterThan(1);
+    expect(result.actions[0]).toMatchObject({
+      status: "unknown",
+      reasonCode: "source_unavailable",
+    });
+  });
+
   it("aborts outstanding reads on cancellation", async () => {
     const { origin } = await server((_req, res) => {
       setTimeout(() => json(res, 200, { records: [] }), 250);

@@ -55,6 +55,34 @@ function makeLoopRecord(overrides: { costUsd?: number; avoidedUsd?: number } = {
   return loop;
 }
 
+function boundVerificationPayload(loopId: string, attemptId: string, summary: string, runsRoot?: string) {
+  return {
+    attemptId,
+    attemptIndex: 1,
+    passed: true,
+    summary,
+    steps: [
+      {
+        command: "pnpm test",
+        launched: true,
+        completed: true,
+        crashed: false,
+        exitCode: 0,
+        timedOut: false
+      }
+    ],
+    binding: {
+      runId: loopId,
+      workspaceId: "ws_test",
+      attemptId,
+      cwd: process.cwd(),
+      ...(runsRoot ? { runsRoot } : {}),
+      commands: ["pnpm test"]
+    },
+    changedFiles: []
+  };
+}
+
 async function withRunsRoot<T>(fn: (runsRoot: string) => Promise<T>): Promise<T> {
   const previousRunsRoot = process.env.MARTIN_RUNS_DIR;
   const previousGroundingRoot = process.env.MARTIN_GROUNDING_DIR;
@@ -643,11 +671,7 @@ describe("martinTriageRunsTool", () => {
             timestamp: "2026-05-16T02:01:00.000Z",
             type: "verification.completed",
             lifecycleState: "verifying",
-            payload: {
-              attemptId: "att_ok",
-              passed: true,
-              summary: "All checks passed."
-            }
+            payload: boundVerificationPayload("loop_healthy", "att_ok", "All checks passed.")
           }
         ]
       };
@@ -688,11 +712,7 @@ describe("martinTriageRunsTool", () => {
             timestamp: "2026-05-16T01:01:00.000Z",
             type: "verification.completed",
             lifecycleState: "verifying",
-            payload: {
-              attemptId: "att_ok",
-              passed: true,
-              summary: "Healthy run."
-            }
+            payload: boundVerificationPayload("loop_healthy_triage", "att_ok", "Healthy run.")
           }
         ]
       };
@@ -780,11 +800,12 @@ describe("martinTriageRunsTool", () => {
             timestamp: "2026-05-16T04:00:00.000Z",
             type: "verification.completed",
             lifecycleState: "verifying",
-            payload: {
-              attemptId: "att_malformed_ledger",
-              passed: true,
-              summary: "Loop record verification passed."
-            }
+            payload: boundVerificationPayload(
+              "loop_malformed_ledger",
+              "att_malformed_ledger",
+              "Loop record verification passed.",
+              runsRoot
+            )
           }
         ]
       };
@@ -903,6 +924,9 @@ describe("martinTriageRunsTool", () => {
           expect(dossier.receiptIntegrity.state).toBe("tamper_detected");
           expect(dossier.receiptScope).toMatchObject(expectedReceiptScope);
           expect(dossier.warnings).toContain(tamperWarning);
+          expect(dossier.verifiedHandoff.outcome).toBe("NEEDS_REVIEW");
+          expect(dossier.review.outcome).toBe("needs_review");
+          expect(dossier.review.nextAction).toContain("receipt integrity");
         } finally {
           if (originalEnv === undefined) {
             delete process.env.MARTIN_LIVE;

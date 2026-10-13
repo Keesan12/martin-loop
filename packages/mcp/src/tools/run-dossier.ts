@@ -3,6 +3,7 @@ import {
   buildBudgetSnapshot,
   buildCostSnapshot,
   buildEventSummaries,
+  buildFileEffectsSummary,
   buildLoopPreview,
   resolveReceiptIntegrity,
   buildSuggestedPromptNames,
@@ -19,6 +20,7 @@ import { readRunControlState } from "./run-controls.js";
 import { martinEvalTool } from "./eval.js";
 import { assessRunRisk, inspectRepoSignals } from "./workflow-governance.js";
 import { buildVerifiedHandoff } from "@martin/core";
+import { renderVerifiedHandoffMarkdown } from "@martin/presentation";
 import type { ReceiptIntegritySummary, ReceiptScope, TerminationEnvelopeV1, VerifiedHandoffV1 } from "@martin/contracts";
 
 export interface MartinRunDossierInput {
@@ -108,24 +110,66 @@ export async function martinRunDossierTool(
       artifactFiles: await readAttemptArtifactFiles(detail, attempt.index)
     }))
   );
+  const fileEffects = buildFileEffectsSummary(detail.loop);
+  const verifiedHandoff = buildVerifiedHandoff({
+    loop: detail.loop as import("@martin/contracts").LoopRecord,
+    receiptIntegrity: resolveReceiptIntegrity(detail.loop),
+    verification: {
+      status: verification.status,
+      summary: verification.summary ?? "No verification summary recorded.",
+      steps: verification.steps,
+      warnings: verification.warnings,
+      ...(verification.binding ? { binding: verification.binding } : {})
+    },
+    fileEffects,
+    scope: {
+      status:
+        detail.loop.task?.allowedPaths?.length ||
+        detail.loop.task?.deniedPaths?.length
+          ? "WITHIN_SCOPE"
+          : "NOT_EVALUATED",
+      allowedPaths: detail.loop.task?.allowedPaths ?? [],
+      deniedPaths: detail.loop.task?.deniedPaths ?? [],
+      changedFiles: verification.changedFiles,
+      violations: []
+    },
+    testIntegrity: {
+      status: "NOT_EVALUATED",
+      verdict: "NOT_EVALUATED",
+      protectedPaths: [],
+      changedProtectedPaths: [],
+      findings: [],
+      summary: "Automatic test-integrity evidence was not recorded for this run."
+    },
+    unresolvedWork: verification.status === "passed"
+      ? []
+      : [verification.summary ?? "Verification did not pass."],
+    nextAction: "Review the canonical dossier evidence."
+  });
+  const receiptIntegrity = resolveReceiptIntegrity(detail.loop);
+  const reviewOutcome = verifiedHandoff.outcome === "VERIFIED"
+    ? "passed"
+    : verifiedHandoff.outcome === "STOPPED"
+      ? "failed"
+      : "needs_review";
+  const nextAction = receiptIntegrity.state !== "verified"
+    ? `Resolve receipt integrity (${receiptIntegrity.state}) before trusting or promoting this run.`
+    : verifiedHandoff.outcome === "VERIFIED"
+      ? "Review the dossier and evaluation, then decide whether to merge or promote."
+      : verifiedHandoff.outcome === "STOPPED"
+        ? `The run stopped${verifiedHandoff.lifecycleTruth.reasonCode ? ` (${verifiedHandoff.lifecycleTruth.reasonCode})` : ""}; review lifecycle evidence before retrying.`
+        : verification.status === "failed" || verification.status === "contradicted"
+          ? "Investigate the latest verifier failure before retrying or promoting."
+          : "Collect more evidence before claiming completion.";
+  verifiedHandoff.nextAction = nextAction;
   const review = {
     diffSummary:
       attempts.length > 0
         ? `Run touched ${attempts.length} attempt(s); latest summary: ${attempts.at(-1)?.summary ?? "No attempt summary recorded."}`
         : "No attempts were recorded for this run.",
     risk,
-    outcome:
-      verification.status === "passed"
-        ? "passed"
-        : verification.status === "failed" || verification.status === "contradicted"
-          ? "failed"
-          : "needs_review",
-    nextAction:
-      verification.status === "passed"
-        ? "Review the dossier and evaluation, then decide whether to merge or promote."
-        : verification.status === "failed" || verification.status === "contradicted"
-          ? "Investigate the latest verifier failure before retrying or promoting."
-          : "Collect more evidence before claiming completion."
+    outcome: reviewOutcome,
+    nextAction
   } as const;
 
   const output: MartinRunDossierOutput = {
@@ -134,7 +178,7 @@ export async function martinRunDossierTool(
     loop: buildLoopPreview(detail.loop),
     budget: buildBudgetSnapshot(detail.loop.budget),
     cost: buildCostSnapshot(detail.loop.cost),
-    receiptIntegrity: resolveReceiptIntegrity(detail.loop),
+    receiptIntegrity,
     ...(detail.loop.receiptScope ? { receiptScope: detail.loop.receiptScope } : {}),
     ...(detail.loop.terminationEnvelope ? { terminationEnvelope: detail.loop.terminationEnvelope } : {}),
     attempts,
@@ -156,37 +200,7 @@ export async function martinRunDossierTool(
       ...(detail.ledgerPath ? { ledgerPath: detail.ledgerPath } : {})
     },
     warnings: [...detail.warnings, ...verification.warnings],
-    verifiedHandoff: buildVerifiedHandoff({
-      loop: detail.loop as import("@martin/contracts").LoopRecord,
-      receiptIntegrity: resolveReceiptIntegrity(detail.loop),
-      verification: {
-        status: verification.status,
-        summary: verification.summary ?? "No verification summary recorded.",
-        steps: [],
-        warnings: verification.warnings,
-      },
-      scope: {
-        status:
-          detail.loop.task?.allowedPaths?.length ||
-          detail.loop.task?.deniedPaths?.length
-            ? "WITHIN_SCOPE"
-            : "NOT_EVALUATED",
-        allowedPaths: detail.loop.task?.allowedPaths ?? [],
-        deniedPaths: detail.loop.task?.deniedPaths ?? [],
-        changedFiles: [],
-        violations: [],
-      },
-      testIntegrity: {
-        status: "NOT_EVALUATED",
-        verdict: "NOT_EVALUATED",
-        protectedPaths: [],
-        changedProtectedPaths: [],
-        findings: [],
-        summary: "Automatic test-integrity evidence was not recorded for this run.",
-      },
-      unresolvedWork: verification.status === "passed" ? [] : [verification.summary ?? "Verification did not pass."],
-      nextAction: review.nextAction,
-    }),
+    verifiedHandoff,
   };
 
   if (output.format !== "json") {
@@ -198,14 +212,11 @@ export async function martinRunDossierTool(
 
 function renderDossier(output: MartinRunDossierOutput): string {
   const lines = [
-    output.format === "github-pr" ? "## MartinLoop Verified Handoff" : "# MartinLoop Verified Handoff",
+    renderVerifiedHandoffMarkdown(output.verifiedHandoff),
     "",
-    `Outcome: ${output.verifiedHandoff.outcome}`,
+    output.format === "github-pr" ? "### MCP Dossier Context" : "## MCP Dossier Context",
+    "",
     `Definition of Done: ${output.verifiedHandoff.definitionOfDone.acceptanceCriteria.length} acceptance criterion/criteria`,
-    `Verification: ${output.verifiedHandoff.verification.status}`,
-    `Scope: ${output.verifiedHandoff.scope.status}`,
-    `Test Integrity: ${output.verifiedHandoff.testIntegrity.verdict}`,
-    "",
     `Objective: ${output.loop.objective}`,
     `Run: ${output.loop.loopId}`,
     `Status: ${output.loop.status} / ${output.loop.lifecycleState}`,

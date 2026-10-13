@@ -2302,6 +2302,159 @@ const store: import("../src/index").RunStore = {
     expect(result.loop.attempts[0]?.failureClass).toBe("sandbox_write_blocked");
   });
 
+  it("persists allowed file effects relative to the original dirty run boundary", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-file-effects-kept-"));
+    const repoRoot = join(runsRoot, "repo");
+    await materializeCommittedRepo(repoRoot);
+    await writeFile(join(repoRoot, "src", "real.ts"), "export const operator = 2;\n", "utf8");
+    const store = createFileRunStore({ runsRoot });
+
+    const adapter: MartinAdapter = {
+      adapterId: "direct:file-effects-kept",
+      kind: "direct-provider",
+      label: "File effects kept adapter",
+      metadata: { providerId: "test", model: "deterministic" },
+      async execute() {
+        await writeFile(join(repoRoot, "src", "kept.ts"), "export const kept = true;\n", "utf8");
+        return {
+          status: "completed",
+          summary: "Persisted one allowed edit.",
+          usage: { actualUsd: 0, tokensIn: 0, tokensOut: 0 },
+          verification: { passed: true, summary: "deterministic fixture passed" }
+        };
+      }
+    };
+
+    const result = await runMartin({
+      workspaceId: "ws_file_effects",
+      projectId: "proj_file_effects",
+      task: {
+        title: "Persist an allowed edit",
+        objective: "Keep a run-owned edit while preserving operator state.",
+        verificationPlan: [],
+        repoRoot,
+        allowedPaths: ["src/**"]
+      },
+      budget: { maxUsd: 1, softLimitUsd: 0.8, maxIterations: 1, maxTokens: 2_000 },
+      adapter,
+      store,
+      idFactory: createIdFactory()
+    });
+
+    const expected = {
+      observationStatus: "observed",
+      touchedDuringExecution: ["src/kept.ts"],
+      netChangedAtCompletion: ["src/kept.ts"],
+      revertedBeforeCompletion: []
+    };
+    expect(readCompletedFileEffects(result.loop)).toEqual(expected);
+    expect(await readPersistedCompletedFileEffects(runsRoot, result.loop.loopId)).toEqual(expected);
+    await expect(readFile(join(repoRoot, "src", "real.ts"), "utf8")).resolves.toBe(
+      "export const operator = 2;\n"
+    );
+  });
+
+  it("persists observed empty file effects for a genuine no-edit execution", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-file-effects-empty-"));
+    const repoRoot = join(runsRoot, "repo");
+    await materializeCommittedRepo(repoRoot);
+    await writeFile(join(repoRoot, "src", "real.ts"), "export const operator = 2;\n", "utf8");
+    const store = createFileRunStore({ runsRoot });
+    const adapter: MartinAdapter = {
+      adapterId: "direct:file-effects-empty",
+      kind: "direct-provider",
+      label: "File effects empty adapter",
+      metadata: { providerId: "test", model: "deterministic" },
+      async execute() {
+        return {
+          status: "completed",
+          summary: "Observed the workspace without editing it.",
+          usage: { actualUsd: 0, tokensIn: 0, tokensOut: 0 },
+          verification: { passed: true, summary: "deterministic fixture passed" }
+        };
+      }
+    };
+
+    const result = await runMartin({
+      workspaceId: "ws_file_effects",
+      projectId: "proj_file_effects",
+      task: {
+        title: "Observe without editing",
+        objective: "Complete without creating run-owned file effects.",
+        verificationPlan: [],
+        repoRoot,
+        allowedPaths: ["src/**"]
+      },
+      budget: { maxUsd: 1, softLimitUsd: 0.8, maxIterations: 1, maxTokens: 2_000 },
+      adapter,
+      store,
+      idFactory: createIdFactory()
+    });
+
+    const expected = {
+      observationStatus: "observed",
+      touchedDuringExecution: [],
+      netChangedAtCompletion: [],
+      revertedBeforeCompletion: []
+    };
+    expect(readCompletedFileEffects(result.loop)).toEqual(expected);
+    expect(await readPersistedCompletedFileEffects(runsRoot, result.loop.loopId)).toEqual(expected);
+  });
+
+  it("preserves touched evidence when final Git observation becomes unavailable", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-file-effects-unavailable-"));
+    const repoRoot = join(runsRoot, "repo");
+    await materializeCommittedRepo(repoRoot);
+    const store = createFileRunStore({ runsRoot });
+    const adapter: MartinAdapter = {
+      adapterId: "direct:file-effects-unavailable",
+      kind: "direct-provider",
+      label: "Unavailable final observation adapter",
+      metadata: { providerId: "test", model: "deterministic" },
+      async execute() {
+        await writeFile(
+          join(repoRoot, "src", "touched-before-observation-failure.ts"),
+          "export const touched = true;\n",
+          "utf8"
+        );
+        await rm(join(repoRoot, ".git"), { recursive: true, force: true });
+        return {
+          status: "completed",
+          summary: "Touched a file before final Git observation became unavailable.",
+          usage: { actualUsd: 0, tokensIn: 0, tokensOut: 0 },
+          verification: { passed: true, summary: "deterministic fixture passed" },
+          execution: { changedFiles: ["src/touched-before-observation-failure.ts"] }
+        };
+      }
+    };
+
+    const result = await runMartin({
+      workspaceId: "ws_file_effects",
+      projectId: "proj_file_effects",
+      task: {
+        title: "Preserve touches when observation fails",
+        objective: "Do not erase touched evidence when final Git observation is unavailable.",
+        verificationPlan: [],
+        repoRoot,
+        allowedPaths: ["src/**"]
+      },
+      budget: { maxUsd: 1, softLimitUsd: 0.8, maxIterations: 1, maxTokens: 2_000 },
+      adapter,
+      store,
+      idFactory: createIdFactory()
+    });
+
+    const effects = readCompletedFileEffects(result.loop);
+    expect(effects).toMatchObject({
+      observationStatus: "unavailable",
+      touchedDuringExecution: ["src/touched-before-observation-failure.ts"],
+      netChangedAtCompletion: [],
+      revertedBeforeCompletion: []
+    });
+    expect(effects.observationReason).toMatch(/Final file-effect observation.*Git rollback state/iu);
+    expect(await readPersistedCompletedFileEffects(runsRoot, result.loop.loopId)).toEqual(effects);
+  });
+
   it("restores the pre-attempt repo boundary for discarded verifier regressions and preserves pre-existing dirty files", async () => {
     const runsRoot = await mkdtemp(join(tmpdir(), "martin-patch-rollback-"));
     const repoRoot = join(runsRoot, "repo");
@@ -2318,7 +2471,7 @@ const store: import("../src/index").RunStore = {
         model: "gpt-5-mini"
       },
       async execute() {
-        await writeFile(join(repoRoot, "src", "ghost-new-file.ts"), "export const ghost = 1;\n", "utf8");
+        await writeFile(join(repoRoot, "src", "reverted.ts"), "export const reverted = true;\n", "utf8");
 
         return {
           status: "completed",
@@ -2333,7 +2486,7 @@ const store: import("../src/index").RunStore = {
             summary: "pnpm --filter @martin/core test still failing"
           },
           execution: {
-            changedFiles: ["src/ghost-new-file.ts"],
+            changedFiles: ["src/reverted.ts"],
             diffStats: {
               filesChanged: 1,
               addedLines: 6,
@@ -2387,15 +2540,28 @@ const store: import("../src/index").RunStore = {
       )
     );
 
-    await expect(readFile(join(repoRoot, "src", "ghost-new-file.ts"), "utf8")).rejects.toThrow();
+    await expect(readFile(join(repoRoot, "src", "reverted.ts"), "utf8")).rejects.toThrow();
     await expect(readFile(join(repoRoot, "src", "real.ts"), "utf8")).resolves.toBe(
       "export const real = 2;\n"
     );
     expect(result.decision.lifecycleState).toBe("budget_exit");
     expect(rollbackBoundary.trackedDirtyFiles).toContain("src/real.ts");
     expect(rollbackOutcome.status).toBe("restored");
-    expect(rollbackOutcome.deletedFiles).toContain("src/ghost-new-file.ts");
+    expect(rollbackOutcome.deletedFiles).toContain("src/reverted.ts");
     expect(rollbackOutcome.after.trackedDirtyFiles).toEqual(["src/real.ts"]);
+    const expected = {
+      observationStatus: "observed",
+      touchedDuringExecution: ["src/reverted.ts"],
+      netChangedAtCompletion: [],
+      revertedBeforeCompletion: ["src/reverted.ts"]
+    };
+    expect(readCompletedFileEffects(result.loop)).toEqual(expected);
+    expect(await readPersistedCompletedFileEffects(runsRoot, result.loop.loopId)).toEqual(expected);
+    expect(result.loop.terminationEnvelope).toMatchObject({
+      schemaVersion: "termination/1",
+      class: "operational_exit",
+      exit: { primary: "turn_cap" }
+    });
   });
 
   it("restores forbidden file changes on the filesystem safety-block path and persists rollback artifacts", async () => {
@@ -2487,6 +2653,24 @@ const store: import("../src/index").RunStore = {
     expect(patchDecision.reasonCodes).toContain("scope_violation");
     expect(rollbackOutcome.status).toBe("restored");
     expect(rollbackOutcome.deletedFiles).toContain("apps/leak.ts");
+    const expected = {
+      observationStatus: "observed",
+      touchedDuringExecution: ["apps/leak.ts"],
+      netChangedAtCompletion: [],
+      revertedBeforeCompletion: ["apps/leak.ts"]
+    };
+    expect(readCompletedFileEffects(result.loop)).toEqual(expected);
+    expect(await readPersistedCompletedFileEffects(runsRoot, result.loop.loopId)).toEqual(expected);
+    expect(result.loop.terminationEnvelope).toEqual({
+      schemaVersion: "termination/1",
+      class: "guard_stop",
+      guard: {
+        reasonCode: "surface_write_not_allowed",
+        reason: result.decision.reason,
+        failureClass: "safety_leash_blocked",
+        safetySurface: "filesystem"
+      }
+    });
   }, 30_000);
 
   it("writes consistent admission and settlement ledger payloads across mixed adapter types", async () => {
@@ -2905,6 +3089,26 @@ async function readLedger(
     .split("\n")
     .filter(Boolean)
     .map((line) => JSON.parse(line) as { kind: string; payload: Record<string, unknown> });
+}
+
+function readCompletedFileEffects(loop: {
+  events: Array<{ type: string; payload?: Record<string, unknown> }>;
+}): Record<string, unknown> {
+  const completed = [...loop.events].reverse().find((event) => event.type === "run.completed");
+  expect(completed?.payload).toBeDefined();
+  const effects = completed?.payload?.["fileEffects"];
+  expect(effects).toBeDefined();
+  return effects as Record<string, unknown>;
+}
+
+async function readPersistedCompletedFileEffects(
+  runsRoot: string,
+  runId: string
+): Promise<Record<string, unknown>> {
+  const persisted = JSON.parse(
+    await readFile(join(runsRoot, runId, "loop-record.json"), "utf8")
+  ) as { events: Array<{ type: string; payload?: Record<string, unknown> }> };
+  return readCompletedFileEffects(persisted);
 }
 
 function initializeGitRepo(repoRoot: string): void {

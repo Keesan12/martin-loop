@@ -10,20 +10,20 @@
       "provenance": "production-exporter",
       "envelope": {
         "schemaVersion": "martin.swarm-hosted.v1",
-        "envelopeId": "556b9a101307268448eb4efb977632923d1a97ef58bf28057ec837444da08a40",
+        "envelopeId": "eb79cf2bf8a4df019040309e8dc0d7c3f026782e22ba041406fd55419023bbf8",
         "sourceSchemas": {
           "swarm": "martin.swarm.v1",
           "receipt": "martin.swarm-receipt.v1",
           "evidenceIndex": "martin.swarm-evidence-index.v1"
         },
         "sourceIdentities": {
-          "receiptId": "swarm-receipt-2c3397c4daa64245",
-          "receiptSha256": "2c3397c4daa642456ec5bb19f36eaebc7c2c6b925a8f1958bb1e901e5dfeee4c",
-          "evidenceIndexSha256": "2c1cc5471be05ca74ad3c9c69b6127e3c99c479641bcd3e0bf500d510e713082",
-          "eventChainSha256": "06d61e71e9e0c776ce58612d0e3da229bc9730b3a05f7355dbe8f354262c5623"
+          "receiptId": "swarm-receipt-85aa2fda5860ca92",
+          "receiptSha256": "85aa2fda5860ca9214abca249115bb532c06b1e9ef93cf392cdfded8c166934c",
+          "evidenceIndexSha256": "96a2f574accd72b63f8ef411912b5aa3812dd2deeba61ba53c5b6ca365f70cae",
+          "eventChainSha256": "d2f546189c643e10a8e025dbbc5425e34418cb5db2910307772f7e19c6ae1e66"
         },
         "runtimeVersion": "0.8.0",
-        "createdAt": "2026-10-03T12:07:16.000Z",
+        "createdAt": "2026-10-03T12:07:31.000Z",
         "swarm": {
           "swarmId": "swarm-verified-15-agent",
           "workspaceId": "workspace-verified-15-agent",
@@ -662,7 +662,7 @@
             "sourceIdempotencyKey": "child-run-000dfq9b:verified",
             "sequence": 3,
             "type": "CHILD_VERIFIED",
-            "timestamp": "2026-10-03T12:00:32.000Z",
+            "timestamp": "2026-10-03T12:00:33.000Z",
             "taskId": "task-1",
             "agentId": "agent-1",
             "childRunId": "child-run-000dfq9b",
@@ -673,7 +673,7 @@
             "sourceIdempotencyKey": "child-run-0017o4c9:started",
             "sequence": 4,
             "type": "CHILD_STARTED",
-            "timestamp": "2026-10-03T12:00:36.000Z",
+            "timestamp": "2026-10-03T12:00:37.000Z",
             "taskId": "task-2",
             "agentId": "agent-2",
             "childRunId": "child-run-0017o4c9",
@@ -684,7 +684,7 @@
             "sourceIdempotencyKey": "child-run-0017o4c9:verified",
             "sequence": 5,
             "type": "CHILD_VERIFIED",
-            "timestamp": "2026-10-03T12:01:00.000Z",
+            "timestamp": "2026-10-03T12:01:02.000Z",
             "taskId": "task-2",
             "agentId": "agent-2",
             "childRunId": "child-run-0017o4c9",
@@ -695,7 +695,7 @@
             "sourceIdempotencyKey": "child-run-0021wif7:started",
             "sequence": 6,
             "type": "CHILD_STARTED",
-            "timestamp": "2026-10-03T12:01:04.000Z",
+            "timestamp": "2026-10-03T12:01:06.000Z",
             "taskId": "task-3",
             "agentId": "agent-3",
             "childRunId": "child-run-0021wif7",
@@ -706,7 +706,7 @@
             "sourceIdempotencyKey": "child-run-0021wif7:verified",
             "sequence": 7,
             "type": "CHILD_VERIFIED",
-            "timestamp": "2026-10-03T12:01:28.000Z",
+            "timestamp": "2026-10-03T12:01:31.000Z",
             "taskId": "task-3",
             "agentId": "agent-3",
             "childRunId": "child-run-0021wif7",
@@ -717,7 +717,7 @@
             "sourceIdempotencyKey": "child-run-002w4wi6:started",
             "sequence": 8,
             "type": "CHILD_STARTED",
-            "timestamp": "2026-10-03T12:01:32.000Z",
+            "timestamp": "2026-10-03T12:01:35.000Z",
             "taskId": "task-4",
             "agentId": "agent-4",
             "childRunId": "child-run-002w4wi6",
@@ -728,7 +728,7 @@
             "sourceIdempotencyKey": "child-run-002w4wi6:verified",
             "sequence": 9,
             "type": "CHILD_VERIFIED",
-            "timestamp": "2026-10-03T12:01:56.000Z",
+            "timestamp": "2026-10-03T12:02:00.000Z",
             "taskId": "task-4",
             "agentId": "agent-4",
             "childRunId": "child-run-002w4wi6",
@@ -739,7 +739,7 @@
             "sourceIdempotencyKey": "child-run-003qdal4:started",
             "sequence": 10,
             "type": "CHILD_STARTED",
-            "timestamp": "2026-10-03T12:02:00.000Z",
+            "timestamp": "2026-10-03T12:02:04.000Z",
             "taskId": "task-5",
             "agentId": "agent-5",
             "childRunId": "child-run-003qdal4",
@@ -750,7 +750,7 @@
             "sourceIdempotencyKey": "child-run-003qdal4:verified",
             "sequence": 11,
             "type": "CHILD_VERIFIED",
-            "timestamp": "2026-10-03T12:02:24.000Z",
+            "timestamp": "2026-10-03T12:02:29.000Z",
             "taskId": "task-5",
             "agentId": "agent-5",
             "childRunId": "child-run-003qdal4",
@@ -761,7 +761,7 @@
             "sourceIdempotencyKey": "child-run-004kloo2:started",
             "sequence": 12,
             "type": "CHILD_STARTED",
-            "timestamp": "2026-10-03T12:02:28.000Z",
+            "timestamp": "2026-10-03T12:02:33.000Z",
             "taskId": "task-6",
             "agentId": "agent-6",
             "childRunId": "child-run-004kloo2",
@@ -772,7 +772,7 @@
             "sourceIdempotencyKey": "child-run-004kloo2:verified",
             "sequence": 13,
             "type": "CHILD_VERIFIED",
-            "timestamp": "2026-10-03T12:02:52.000Z",
+            "timestamp": "2026-10-03T12:02:58.000Z",
             "taskId": "task-6",
             "agentId": "agent-6",
             "childRunId": "child-run-004kloo2",
@@ -783,7 +783,7 @@
             "sourceIdempotencyKey": "child-run-005eu2r1:started",
             "sequence": 14,
             "type": "CHILD_STARTED",
-            "timestamp": "2026-10-03T12:02:56.000Z",
+            "timestamp": "2026-10-03T12:03:02.000Z",
             "taskId": "task-7",
             "agentId": "agent-7",
             "childRunId": "child-run-005eu2r1",
@@ -794,7 +794,7 @@
             "sourceIdempotencyKey": "child-run-005eu2r1:verified",
             "sequence": 15,
             "type": "CHILD_VERIFIED",
-            "timestamp": "2026-10-03T12:03:20.000Z",
+            "timestamp": "2026-10-03T12:03:27.000Z",
             "taskId": "task-7",
             "agentId": "agent-7",
             "childRunId": "child-run-005eu2r1",
@@ -805,7 +805,7 @@
             "sourceIdempotencyKey": "child-run-00692gtz:started",
             "sequence": 16,
             "type": "CHILD_STARTED",
-            "timestamp": "2026-10-03T12:03:24.000Z",
+            "timestamp": "2026-10-03T12:03:31.000Z",
             "taskId": "task-8",
             "agentId": "agent-8",
             "childRunId": "child-run-00692gtz",
@@ -816,7 +816,7 @@
             "sourceIdempotencyKey": "child-run-00692gtz:verified",
             "sequence": 17,
             "type": "CHILD_VERIFIED",
-            "timestamp": "2026-10-03T12:03:48.000Z",
+            "timestamp": "2026-10-03T12:03:56.000Z",
             "taskId": "task-8",
             "agentId": "agent-8",
             "childRunId": "child-run-00692gtz",
@@ -827,7 +827,7 @@
             "sourceIdempotencyKey": "child-run-0073auwx:started",
             "sequence": 18,
             "type": "CHILD_STARTED",
-            "timestamp": "2026-10-03T12:03:52.000Z",
+            "timestamp": "2026-10-03T12:04:00.000Z",
             "taskId": "task-9",
             "agentId": "agent-9",
             "childRunId": "child-run-0073auwx",
@@ -838,7 +838,7 @@
             "sourceIdempotencyKey": "child-run-0073auwx:verified",
             "sequence": 19,
             "type": "CHILD_VERIFIED",
-            "timestamp": "2026-10-03T12:04:16.000Z",
+            "timestamp": "2026-10-03T12:04:25.000Z",
             "taskId": "task-9",
             "agentId": "agent-9",
             "childRunId": "child-run-0073auwx",
@@ -849,7 +849,7 @@
             "sourceIdempotencyKey": "child-run-007xj8zw:started",
             "sequence": 20,
             "type": "CHILD_STARTED",
-            "timestamp": "2026-10-03T12:04:20.000Z",
+            "timestamp": "2026-10-03T12:04:29.000Z",
             "taskId": "task-10",
             "agentId": "agent-10",
             "childRunId": "child-run-007xj8zw",
@@ -860,7 +860,7 @@
             "sourceIdempotencyKey": "child-run-007xj8zw:verified",
             "sequence": 21,
             "type": "CHILD_VERIFIED",
-            "timestamp": "2026-10-03T12:04:44.000Z",
+            "timestamp": "2026-10-03T12:04:54.000Z",
             "taskId": "task-10",
             "agentId": "agent-10",
             "childRunId": "child-run-007xj8zw",
@@ -871,7 +871,7 @@
             "sourceIdempotencyKey": "child-run-008rrn2u:started",
             "sequence": 22,
             "type": "CHILD_STARTED",
-            "timestamp": "2026-10-03T12:04:48.000Z",
+            "timestamp": "2026-10-03T12:04:58.000Z",
             "taskId": "task-11",
             "agentId": "agent-11",
             "childRunId": "child-run-008rrn2u",
@@ -882,7 +882,7 @@
             "sourceIdempotencyKey": "child-run-008rrn2u:verified",
             "sequence": 23,
             "type": "CHILD_VERIFIED",
-            "timestamp": "2026-10-03T12:05:12.000Z",
+            "timestamp": "2026-10-03T12:05:23.000Z",
             "taskId": "task-11",
             "agentId": "agent-11",
             "childRunId": "child-run-008rrn2u",
@@ -893,7 +893,7 @@
             "sourceIdempotencyKey": "child-run-009m015s:started",
             "sequence": 24,
             "type": "CHILD_STARTED",
-            "timestamp": "2026-10-03T12:05:16.000Z",
+            "timestamp": "2026-10-03T12:05:27.000Z",
             "taskId": "task-12",
             "agentId": "agent-12",
             "childRunId": "child-run-009m015s",
@@ -904,7 +904,7 @@
             "sourceIdempotencyKey": "child-run-009m015s:verified",
             "sequence": 25,
             "type": "CHILD_VERIFIED",
-            "timestamp": "2026-10-03T12:05:40.000Z",
+            "timestamp": "2026-10-03T12:05:52.000Z",
             "taskId": "task-12",
             "agentId": "agent-12",
             "childRunId": "child-run-009m015s",
@@ -915,7 +915,7 @@
             "sourceIdempotencyKey": "child-run-00ag8f8r:started",
             "sequence": 26,
             "type": "CHILD_STARTED",
-            "timestamp": "2026-10-03T12:05:44.000Z",
+            "timestamp": "2026-10-03T12:05:56.000Z",
             "taskId": "task-13",
             "agentId": "agent-13",
             "childRunId": "child-run-00ag8f8r",
@@ -926,7 +926,7 @@
             "sourceIdempotencyKey": "child-run-00ag8f8r:verified",
             "sequence": 27,
             "type": "CHILD_VERIFIED",
-            "timestamp": "2026-10-03T12:06:08.000Z",
+            "timestamp": "2026-10-03T12:06:21.000Z",
             "taskId": "task-13",
             "agentId": "agent-13",
             "childRunId": "child-run-00ag8f8r",
@@ -937,7 +937,7 @@
             "sourceIdempotencyKey": "child-run-00bagtbp:started",
             "sequence": 28,
             "type": "CHILD_STARTED",
-            "timestamp": "2026-10-03T12:06:12.000Z",
+            "timestamp": "2026-10-03T12:06:25.000Z",
             "taskId": "task-14",
             "agentId": "agent-14",
             "childRunId": "child-run-00bagtbp",
@@ -948,7 +948,7 @@
             "sourceIdempotencyKey": "child-run-00bagtbp:verified",
             "sequence": 29,
             "type": "CHILD_VERIFIED",
-            "timestamp": "2026-10-03T12:06:36.000Z",
+            "timestamp": "2026-10-03T12:06:50.000Z",
             "taskId": "task-14",
             "agentId": "agent-14",
             "childRunId": "child-run-00bagtbp",
@@ -959,7 +959,7 @@
             "sourceIdempotencyKey": "child-run-00c4p7en:started",
             "sequence": 30,
             "type": "CHILD_STARTED",
-            "timestamp": "2026-10-03T12:06:40.000Z",
+            "timestamp": "2026-10-03T12:06:54.000Z",
             "taskId": "task-15",
             "agentId": "agent-15",
             "childRunId": "child-run-00c4p7en",
@@ -970,26 +970,26 @@
             "sourceIdempotencyKey": "child-run-00c4p7en:verified",
             "sequence": 31,
             "type": "CHILD_VERIFIED",
-            "timestamp": "2026-10-03T12:07:04.000Z",
+            "timestamp": "2026-10-03T12:07:19.000Z",
             "taskId": "task-15",
             "agentId": "agent-15",
             "childRunId": "child-run-00c4p7en",
             "attemptId": "attempt-00c30qmi"
           },
           {
-            "eventId": "parent-global-verifier:swarm-verified-15-agent:f0bf011cb01b5ca4f13dd4465ecd0934e809ab3b306c14b0eb3c6ff8ddee9ee1",
-            "sourceIdempotencyKey": "parent-global-verifier:swarm-verified-15-agent:f0bf011cb01b5ca4f13dd4465ecd0934e809ab3b306c14b0eb3c6ff8ddee9ee1",
+            "eventId": "parent-global-verifier:swarm-verified-15-agent:e962c7b5cb059ed1c0c2190529c21454f32c8e38709951ca072b4d5844623ceb",
+            "sourceIdempotencyKey": "parent-global-verifier:swarm-verified-15-agent:e962c7b5cb059ed1c0c2190529c21454f32c8e38709951ca072b4d5844623ceb",
             "sequence": 32,
             "type": "GLOBAL_VERIFIER_PASSED",
-            "timestamp": "2026-10-03T12:07:11.000Z",
+            "timestamp": "2026-10-03T12:07:26.000Z",
             "verificationId": "global-verification-00cyxlhm"
           },
           {
-            "eventId": "parent-outcome:swarm-verified-15-agent:verified:f0bf011cb01b5ca4f13dd4465ecd0934e809ab3b306c14b0eb3c6ff8ddee9ee1",
-            "sourceIdempotencyKey": "parent-outcome:swarm-verified-15-agent:verified:f0bf011cb01b5ca4f13dd4465ecd0934e809ab3b306c14b0eb3c6ff8ddee9ee1",
+            "eventId": "parent-outcome:swarm-verified-15-agent:verified:e962c7b5cb059ed1c0c2190529c21454f32c8e38709951ca072b4d5844623ceb",
+            "sourceIdempotencyKey": "parent-outcome:swarm-verified-15-agent:verified:e962c7b5cb059ed1c0c2190529c21454f32c8e38709951ca072b4d5844623ceb",
             "sequence": 33,
             "type": "SWARM_VERIFIED",
-            "timestamp": "2026-10-03T12:07:16.000Z",
+            "timestamp": "2026-10-03T12:07:31.000Z",
             "verificationId": "global-verification-00cyxlhm"
           }
         ],
@@ -999,7 +999,7 @@
           "integratedTreeHash": "528732cadbcdc09711fc2e71e251b48b4f6da2a0",
           "evidence": [
             {
-              "eventId": "parent-global-verifier:swarm-verified-15-agent:f0bf011cb01b5ca4f13dd4465ecd0934e809ab3b306c14b0eb3c6ff8ddee9ee1",
+              "eventId": "parent-global-verifier:swarm-verified-15-agent:e962c7b5cb059ed1c0c2190529c21454f32c8e38709951ca072b4d5844623ceb",
               "sequence": 32
             }
           ]
@@ -1009,7 +1009,7 @@
           "source": "sealed_parent_receipt",
           "evidence": [
             {
-              "eventId": "parent-outcome:swarm-verified-15-agent:verified:f0bf011cb01b5ca4f13dd4465ecd0934e809ab3b306c14b0eb3c6ff8ddee9ee1",
+              "eventId": "parent-outcome:swarm-verified-15-agent:verified:e962c7b5cb059ed1c0c2190529c21454f32c8e38709951ca072b4d5844623ceb",
               "sequence": 33
             }
           ]
@@ -1020,17 +1020,17 @@
           "algorithm": "hmac-sha256",
           "keyId": "hosted-3d92c57743ba0c14",
           "keyLocatorHash": "ad39e28164db50c2f4797c011836976ce8c7571b4ac0b2949c24a871d2acd22d",
-          "signatureHmacSha256": "183f75a48cbb75f06d58a8d43dbb2497fae88a4ee4283007112b8a25fc189ed1"
+          "signatureHmacSha256": "63853ff2214eb9b90c3bee86681ae6d333136bd8c6e20ee7d3a761cf2791aa50"
         }
       },
       "atlas": {
         "schemaVersion": "martin.swarm-atlas-view.v1",
-        "envelopeId": "556b9a101307268448eb4efb977632923d1a97ef58bf28057ec837444da08a40",
+        "envelopeId": "eb79cf2bf8a4df019040309e8dc0d7c3f026782e22ba041406fd55419023bbf8",
         "sourceIdentities": {
-          "receiptId": "swarm-receipt-2c3397c4daa64245",
-          "receiptSha256": "2c3397c4daa642456ec5bb19f36eaebc7c2c6b925a8f1958bb1e901e5dfeee4c",
-          "evidenceIndexSha256": "2c1cc5471be05ca74ad3c9c69b6127e3c99c479641bcd3e0bf500d510e713082",
-          "eventChainSha256": "06d61e71e9e0c776ce58612d0e3da229bc9730b3a05f7355dbe8f354262c5623"
+          "receiptId": "swarm-receipt-85aa2fda5860ca92",
+          "receiptSha256": "85aa2fda5860ca9214abca249115bb532c06b1e9ef93cf392cdfded8c166934c",
+          "evidenceIndexSha256": "96a2f574accd72b63f8ef411912b5aa3812dd2deeba61ba53c5b6ca365f70cae",
+          "eventChainSha256": "d2f546189c643e10a8e025dbbc5425e34418cb5db2910307772f7e19c6ae1e66"
         },
         "swarm": {
           "swarmId": "swarm-verified-15-agent",
@@ -1708,7 +1708,7 @@
           "integratedTreeHash": "528732cadbcdc09711fc2e71e251b48b4f6da2a0",
           "evidence": [
             {
-              "eventId": "parent-global-verifier:swarm-verified-15-agent:f0bf011cb01b5ca4f13dd4465ecd0934e809ab3b306c14b0eb3c6ff8ddee9ee1",
+              "eventId": "parent-global-verifier:swarm-verified-15-agent:e962c7b5cb059ed1c0c2190529c21454f32c8e38709951ca072b4d5844623ceb",
               "sequence": 32
             }
           ]
@@ -1718,7 +1718,7 @@
           "source": "sealed_parent_receipt",
           "evidence": [
             {
-              "eventId": "parent-outcome:swarm-verified-15-agent:verified:f0bf011cb01b5ca4f13dd4465ecd0934e809ab3b306c14b0eb3c6ff8ddee9ee1",
+              "eventId": "parent-outcome:swarm-verified-15-agent:verified:e962c7b5cb059ed1c0c2190529c21454f32c8e38709951ca072b4d5844623ceb",
               "sequence": 33
             }
           ]
@@ -1728,16 +1728,16 @@
       },
       "sansa": {
         "schemaVersion": "martin.swarm-sansa-view.v1",
-        "envelopeId": "556b9a101307268448eb4efb977632923d1a97ef58bf28057ec837444da08a40",
+        "envelopeId": "eb79cf2bf8a4df019040309e8dc0d7c3f026782e22ba041406fd55419023bbf8",
         "sourceIdentities": {
-          "receiptId": "swarm-receipt-2c3397c4daa64245",
-          "receiptSha256": "2c3397c4daa642456ec5bb19f36eaebc7c2c6b925a8f1958bb1e901e5dfeee4c",
-          "evidenceIndexSha256": "2c1cc5471be05ca74ad3c9c69b6127e3c99c479641bcd3e0bf500d510e713082",
-          "eventChainSha256": "06d61e71e9e0c776ce58612d0e3da229bc9730b3a05f7355dbe8f354262c5623"
+          "receiptId": "swarm-receipt-85aa2fda5860ca92",
+          "receiptSha256": "85aa2fda5860ca9214abca249115bb532c06b1e9ef93cf392cdfded8c166934c",
+          "evidenceIndexSha256": "96a2f574accd72b63f8ef411912b5aa3812dd2deeba61ba53c5b6ca365f70cae",
+          "eventChainSha256": "d2f546189c643e10a8e025dbbc5425e34418cb5db2910307772f7e19c6ae1e66"
         },
         "facts": [
           {
-            "factId": "observed:32:parent-global-verifier:swarm-verified-15-agent:f0bf011cb01b5ca4f13dd4465ecd0934e809ab3b306c14b0eb3c6ff8ddee9ee1",
+            "factId": "observed:32:parent-global-verifier:swarm-verified-15-agent:e962c7b5cb059ed1c0c2190529c21454f32c8e38709951ca072b4d5844623ceb",
             "kind": "verification_boundary",
             "derivationKind": "observed",
             "taskIds": [],
@@ -1749,7 +1749,7 @@
             ],
             "evidence": [
               {
-                "eventId": "parent-global-verifier:swarm-verified-15-agent:f0bf011cb01b5ca4f13dd4465ecd0934e809ab3b306c14b0eb3c6ff8ddee9ee1",
+                "eventId": "parent-global-verifier:swarm-verified-15-agent:e962c7b5cb059ed1c0c2190529c21454f32c8e38709951ca072b4d5844623ceb",
                 "sequence": 32
               }
             ]
@@ -1760,7 +1760,7 @@
           "source": "sealed_parent_receipt",
           "evidence": [
             {
-              "eventId": "parent-outcome:swarm-verified-15-agent:verified:f0bf011cb01b5ca4f13dd4465ecd0934e809ab3b306c14b0eb3c6ff8ddee9ee1",
+              "eventId": "parent-outcome:swarm-verified-15-agent:verified:e962c7b5cb059ed1c0c2190529c21454f32c8e38709951ca072b4d5844623ceb",
               "sequence": 33
             }
           ]
@@ -1771,7 +1771,7 @@
           "integratedTreeHash": "528732cadbcdc09711fc2e71e251b48b4f6da2a0",
           "evidence": [
             {
-              "eventId": "parent-global-verifier:swarm-verified-15-agent:f0bf011cb01b5ca4f13dd4465ecd0934e809ab3b306c14b0eb3c6ff8ddee9ee1",
+              "eventId": "parent-global-verifier:swarm-verified-15-agent:e962c7b5cb059ed1c0c2190529c21454f32c8e38709951ca072b4d5844623ceb",
               "sequence": 32
             }
           ]
@@ -1779,12 +1779,12 @@
       },
       "dashboard": {
         "schemaVersion": "martin.swarm-dashboard-view.v1",
-        "envelopeId": "556b9a101307268448eb4efb977632923d1a97ef58bf28057ec837444da08a40",
+        "envelopeId": "eb79cf2bf8a4df019040309e8dc0d7c3f026782e22ba041406fd55419023bbf8",
         "sourceIdentities": {
-          "receiptId": "swarm-receipt-2c3397c4daa64245",
-          "receiptSha256": "2c3397c4daa642456ec5bb19f36eaebc7c2c6b925a8f1958bb1e901e5dfeee4c",
-          "evidenceIndexSha256": "2c1cc5471be05ca74ad3c9c69b6127e3c99c479641bcd3e0bf500d510e713082",
-          "eventChainSha256": "06d61e71e9e0c776ce58612d0e3da229bc9730b3a05f7355dbe8f354262c5623"
+          "receiptId": "swarm-receipt-85aa2fda5860ca92",
+          "receiptSha256": "85aa2fda5860ca9214abca249115bb532c06b1e9ef93cf392cdfded8c166934c",
+          "evidenceIndexSha256": "96a2f574accd72b63f8ef411912b5aa3812dd2deeba61ba53c5b6ca365f70cae",
+          "eventChainSha256": "d2f546189c643e10a8e025dbbc5425e34418cb5db2910307772f7e19c6ae1e66"
         },
         "swarmId": "swarm-verified-15-agent",
         "children": [
@@ -2094,7 +2094,7 @@
           "source": "sealed_parent_receipt",
           "evidence": [
             {
-              "eventId": "parent-outcome:swarm-verified-15-agent:verified:f0bf011cb01b5ca4f13dd4465ecd0934e809ab3b306c14b0eb3c6ff8ddee9ee1",
+              "eventId": "parent-outcome:swarm-verified-15-agent:verified:e962c7b5cb059ed1c0c2190529c21454f32c8e38709951ca072b4d5844623ceb",
               "sequence": 33
             }
           ]
@@ -2105,7 +2105,7 @@
           "integratedTreeHash": "528732cadbcdc09711fc2e71e251b48b4f6da2a0",
           "evidence": [
             {
-              "eventId": "parent-global-verifier:swarm-verified-15-agent:f0bf011cb01b5ca4f13dd4465ecd0934e809ab3b306c14b0eb3c6ff8ddee9ee1",
+              "eventId": "parent-global-verifier:swarm-verified-15-agent:e962c7b5cb059ed1c0c2190529c21454f32c8e38709951ca072b4d5844623ceb",
               "sequence": 32
             }
           ]
@@ -2125,20 +2125,20 @@
       "provenance": "production-exporter",
       "envelope": {
         "schemaVersion": "martin.swarm-hosted.v1",
-        "envelopeId": "dd26ca7621f8c831fe0e904262f3bd6952c6a7e87b8073774b0b0e462c1889da",
+        "envelopeId": "c5c3484700e47f0640c25ef44a2186e6e7ad464474c7150b01b73e4e62400c73",
         "sourceSchemas": {
           "swarm": "martin.swarm.v1",
           "receipt": "martin.swarm-receipt.v1",
           "evidenceIndex": "martin.swarm-evidence-index.v1"
         },
         "sourceIdentities": {
-          "receiptId": "swarm-receipt-dc5c5b90c9f867b7",
-          "receiptSha256": "dc5c5b90c9f867b736c2359b36ba9b0b2180403664944f5d63f55813029f2522",
-          "evidenceIndexSha256": "8cd783ecddbf82a15270aeb1485f4b51b687494ca123310fe801c4220a193e20",
-          "eventChainSha256": "cc6f71bd45f48245eb3c00221929d4b458b1cad90e60ec3fc2074fba26169918"
+          "receiptId": "swarm-receipt-1d8a2180d342eeee",
+          "receiptSha256": "1d8a2180d342eeeeee9f4d98896a67e82b7a41a0b309655e565f777952640e79",
+          "evidenceIndexSha256": "ab2f4259fbc4e334b58ff9ad0ab2d6489f73233a60ee4dacf6ae467a969d2e85",
+          "eventChainSha256": "c4d605ee1c595e886e058f546f048d8cb01525efd69faf64495fca57420a64cd"
         },
         "runtimeVersion": "0.8.0",
-        "createdAt": "2026-10-03T12:00:35.000Z",
+        "createdAt": "2026-10-03T12:00:36.000Z",
         "swarm": {
           "swarmId": "swarm-stopped-blocking-dependency",
           "workspaceId": "workspace-stopped-blocking-dependency",
@@ -2248,7 +2248,7 @@
             "sourceIdempotencyKey": "child-run-000dfq9b:child_stopped",
             "sequence": 3,
             "type": "CHILD_STOPPED",
-            "timestamp": "2026-10-03T12:00:33.000Z",
+            "timestamp": "2026-10-03T12:00:34.000Z",
             "taskId": "task-1",
             "agentId": "agent-1",
             "childRunId": "child-run-000dfq9b",
@@ -2259,7 +2259,7 @@
             "sourceIdempotencyKey": "a5ef5f3480fe628b13919c0631e27def4bfb91523a63255e1d5c1afcc8811280:stopped:cancelled",
             "sequence": 4,
             "type": "SWARM_STOPPED",
-            "timestamp": "2026-10-03T12:00:35.000Z"
+            "timestamp": "2026-10-03T12:00:36.000Z"
           }
         ],
         "globalVerification": {
@@ -2282,17 +2282,17 @@
           "algorithm": "hmac-sha256",
           "keyId": "hosted-54d3b9d7cc50aa8d",
           "keyLocatorHash": "06f95ae37064fd8223b947c1d2391341bb3226510ae6df05b4f09b1e7450ccfd",
-          "signatureHmacSha256": "1505d4cde8a7561eca5f03cd72c105c3a23c2bc24fe17cfdcf15d34ebd970268"
+          "signatureHmacSha256": "9b137b99aa1130b667e972783f6c09a2a6cb30ef59a0bc9fb25342d826d6c3bb"
         }
       },
       "atlas": {
         "schemaVersion": "martin.swarm-atlas-view.v1",
-        "envelopeId": "dd26ca7621f8c831fe0e904262f3bd6952c6a7e87b8073774b0b0e462c1889da",
+        "envelopeId": "c5c3484700e47f0640c25ef44a2186e6e7ad464474c7150b01b73e4e62400c73",
         "sourceIdentities": {
-          "receiptId": "swarm-receipt-dc5c5b90c9f867b7",
-          "receiptSha256": "dc5c5b90c9f867b736c2359b36ba9b0b2180403664944f5d63f55813029f2522",
-          "evidenceIndexSha256": "8cd783ecddbf82a15270aeb1485f4b51b687494ca123310fe801c4220a193e20",
-          "eventChainSha256": "cc6f71bd45f48245eb3c00221929d4b458b1cad90e60ec3fc2074fba26169918"
+          "receiptId": "swarm-receipt-1d8a2180d342eeee",
+          "receiptSha256": "1d8a2180d342eeeeee9f4d98896a67e82b7a41a0b309655e565f777952640e79",
+          "evidenceIndexSha256": "ab2f4259fbc4e334b58ff9ad0ab2d6489f73233a60ee4dacf6ae467a969d2e85",
+          "eventChainSha256": "c4d605ee1c595e886e058f546f048d8cb01525efd69faf64495fca57420a64cd"
         },
         "swarm": {
           "swarmId": "swarm-stopped-blocking-dependency",
@@ -2402,12 +2402,12 @@
       },
       "sansa": {
         "schemaVersion": "martin.swarm-sansa-view.v1",
-        "envelopeId": "dd26ca7621f8c831fe0e904262f3bd6952c6a7e87b8073774b0b0e462c1889da",
+        "envelopeId": "c5c3484700e47f0640c25ef44a2186e6e7ad464474c7150b01b73e4e62400c73",
         "sourceIdentities": {
-          "receiptId": "swarm-receipt-dc5c5b90c9f867b7",
-          "receiptSha256": "dc5c5b90c9f867b736c2359b36ba9b0b2180403664944f5d63f55813029f2522",
-          "evidenceIndexSha256": "8cd783ecddbf82a15270aeb1485f4b51b687494ca123310fe801c4220a193e20",
-          "eventChainSha256": "cc6f71bd45f48245eb3c00221929d4b458b1cad90e60ec3fc2074fba26169918"
+          "receiptId": "swarm-receipt-1d8a2180d342eeee",
+          "receiptSha256": "1d8a2180d342eeeeee9f4d98896a67e82b7a41a0b309655e565f777952640e79",
+          "evidenceIndexSha256": "ab2f4259fbc4e334b58ff9ad0ab2d6489f73233a60ee4dacf6ae467a969d2e85",
+          "eventChainSha256": "c4d605ee1c595e886e058f546f048d8cb01525efd69faf64495fca57420a64cd"
         },
         "facts": [
           {
@@ -2477,12 +2477,12 @@
       },
       "dashboard": {
         "schemaVersion": "martin.swarm-dashboard-view.v1",
-        "envelopeId": "dd26ca7621f8c831fe0e904262f3bd6952c6a7e87b8073774b0b0e462c1889da",
+        "envelopeId": "c5c3484700e47f0640c25ef44a2186e6e7ad464474c7150b01b73e4e62400c73",
         "sourceIdentities": {
-          "receiptId": "swarm-receipt-dc5c5b90c9f867b7",
-          "receiptSha256": "dc5c5b90c9f867b736c2359b36ba9b0b2180403664944f5d63f55813029f2522",
-          "evidenceIndexSha256": "8cd783ecddbf82a15270aeb1485f4b51b687494ca123310fe801c4220a193e20",
-          "eventChainSha256": "cc6f71bd45f48245eb3c00221929d4b458b1cad90e60ec3fc2074fba26169918"
+          "receiptId": "swarm-receipt-1d8a2180d342eeee",
+          "receiptSha256": "1d8a2180d342eeeeee9f4d98896a67e82b7a41a0b309655e565f777952640e79",
+          "evidenceIndexSha256": "ab2f4259fbc4e334b58ff9ad0ab2d6489f73233a60ee4dacf6ae467a969d2e85",
+          "eventChainSha256": "c4d605ee1c595e886e058f546f048d8cb01525efd69faf64495fca57420a64cd"
         },
         "swarmId": "swarm-stopped-blocking-dependency",
         "children": [
@@ -2536,20 +2536,20 @@
       "provenance": "production-exporter",
       "envelope": {
         "schemaVersion": "martin.swarm-hosted.v1",
-        "envelopeId": "91e37adaa8e03eced5c0785f7aa5553b2a6a6f1a91f5bff3963243967e69880a",
+        "envelopeId": "89224256f4b90bd12502b13c93231b92f499e812ffdeb0fcea9971d0ca32943e",
         "sourceSchemas": {
           "swarm": "martin.swarm.v1",
           "receipt": "martin.swarm-receipt.v1",
           "evidenceIndex": "martin.swarm-evidence-index.v1"
         },
         "sourceIdentities": {
-          "receiptId": "swarm-receipt-40f1d1d8ec2691ff",
-          "receiptSha256": "40f1d1d8ec2691ff4940827eff47796d25e935f695993404c8ecc6eceaa2f142",
-          "evidenceIndexSha256": "7c89d313c5104ad525b8d609feb761edfb6ef6136d7292bd990bf62ed2910722",
-          "eventChainSha256": "54136cb6550202de44738d8b4479a143d82a0a999ee327f1720f6b8cd8faf4c4"
+          "receiptId": "swarm-receipt-4b7f74eddc2c2007",
+          "receiptSha256": "4b7f74eddc2c2007927254c318d9e6e7db14811704867052de20aec81da731b2",
+          "evidenceIndexSha256": "e8743c5f7438ea95f2d81f7b907facfb0342576ba5624406e0869ce6c21a4178",
+          "eventChainSha256": "1458ddda2ea90fa3a2c4df35ef0d7df8c3df85802732ed67cdab08852e39db2d"
         },
         "runtimeVersion": "0.8.0",
-        "createdAt": "2026-10-03T12:00:34.000Z",
+        "createdAt": "2026-10-03T12:00:35.000Z",
         "swarm": {
           "swarmId": "swarm-needs-review-child-failure",
           "workspaceId": "workspace-needs-review-child-failure",
@@ -2659,7 +2659,7 @@
             "sourceIdempotencyKey": "child-run-000dfq9b:child_stopped",
             "sequence": 3,
             "type": "CHILD_STOPPED",
-            "timestamp": "2026-10-03T12:00:32.000Z",
+            "timestamp": "2026-10-03T12:00:33.000Z",
             "taskId": "task-1",
             "agentId": "agent-1",
             "childRunId": "child-run-000dfq9b",
@@ -2671,7 +2671,7 @@
             "sourceIdempotencyKey": "6a0db980b1b6a8faa0774cb938d17c1eebbd105f83b6f068fa88a2572a0b03fe:terminal:needs_review",
             "sequence": 4,
             "type": "SWARM_NEEDS_REVIEW",
-            "timestamp": "2026-10-03T12:00:34.000Z"
+            "timestamp": "2026-10-03T12:00:35.000Z"
           }
         ],
         "globalVerification": {
@@ -2694,17 +2694,17 @@
           "algorithm": "hmac-sha256",
           "keyId": "hosted-defe61a3c3ba30a1",
           "keyLocatorHash": "38f4f27ff26737aa5e57b02e2413dc7a5ba1bbbf49c4fd05bb389505b0f52075",
-          "signatureHmacSha256": "3398565f5179ad4a9a17afc92358fda5aed6a99e91f35b6d12213c7415d067b3"
+          "signatureHmacSha256": "a65a5c09fceb8e2a4e7174f50f973e160d6af0610344cea48ed77dab263fa46c"
         }
       },
       "atlas": {
         "schemaVersion": "martin.swarm-atlas-view.v1",
-        "envelopeId": "91e37adaa8e03eced5c0785f7aa5553b2a6a6f1a91f5bff3963243967e69880a",
+        "envelopeId": "89224256f4b90bd12502b13c93231b92f499e812ffdeb0fcea9971d0ca32943e",
         "sourceIdentities": {
-          "receiptId": "swarm-receipt-40f1d1d8ec2691ff",
-          "receiptSha256": "40f1d1d8ec2691ff4940827eff47796d25e935f695993404c8ecc6eceaa2f142",
-          "evidenceIndexSha256": "7c89d313c5104ad525b8d609feb761edfb6ef6136d7292bd990bf62ed2910722",
-          "eventChainSha256": "54136cb6550202de44738d8b4479a143d82a0a999ee327f1720f6b8cd8faf4c4"
+          "receiptId": "swarm-receipt-4b7f74eddc2c2007",
+          "receiptSha256": "4b7f74eddc2c2007927254c318d9e6e7db14811704867052de20aec81da731b2",
+          "evidenceIndexSha256": "e8743c5f7438ea95f2d81f7b907facfb0342576ba5624406e0869ce6c21a4178",
+          "eventChainSha256": "1458ddda2ea90fa3a2c4df35ef0d7df8c3df85802732ed67cdab08852e39db2d"
         },
         "swarm": {
           "swarmId": "swarm-needs-review-child-failure",
@@ -2814,12 +2814,12 @@
       },
       "sansa": {
         "schemaVersion": "martin.swarm-sansa-view.v1",
-        "envelopeId": "91e37adaa8e03eced5c0785f7aa5553b2a6a6f1a91f5bff3963243967e69880a",
+        "envelopeId": "89224256f4b90bd12502b13c93231b92f499e812ffdeb0fcea9971d0ca32943e",
         "sourceIdentities": {
-          "receiptId": "swarm-receipt-40f1d1d8ec2691ff",
-          "receiptSha256": "40f1d1d8ec2691ff4940827eff47796d25e935f695993404c8ecc6eceaa2f142",
-          "evidenceIndexSha256": "7c89d313c5104ad525b8d609feb761edfb6ef6136d7292bd990bf62ed2910722",
-          "eventChainSha256": "54136cb6550202de44738d8b4479a143d82a0a999ee327f1720f6b8cd8faf4c4"
+          "receiptId": "swarm-receipt-4b7f74eddc2c2007",
+          "receiptSha256": "4b7f74eddc2c2007927254c318d9e6e7db14811704867052de20aec81da731b2",
+          "evidenceIndexSha256": "e8743c5f7438ea95f2d81f7b907facfb0342576ba5624406e0869ce6c21a4178",
+          "eventChainSha256": "1458ddda2ea90fa3a2c4df35ef0d7df8c3df85802732ed67cdab08852e39db2d"
         },
         "facts": [
           {
@@ -2889,12 +2889,12 @@
       },
       "dashboard": {
         "schemaVersion": "martin.swarm-dashboard-view.v1",
-        "envelopeId": "91e37adaa8e03eced5c0785f7aa5553b2a6a6f1a91f5bff3963243967e69880a",
+        "envelopeId": "89224256f4b90bd12502b13c93231b92f499e812ffdeb0fcea9971d0ca32943e",
         "sourceIdentities": {
-          "receiptId": "swarm-receipt-40f1d1d8ec2691ff",
-          "receiptSha256": "40f1d1d8ec2691ff4940827eff47796d25e935f695993404c8ecc6eceaa2f142",
-          "evidenceIndexSha256": "7c89d313c5104ad525b8d609feb761edfb6ef6136d7292bd990bf62ed2910722",
-          "eventChainSha256": "54136cb6550202de44738d8b4479a143d82a0a999ee327f1720f6b8cd8faf4c4"
+          "receiptId": "swarm-receipt-4b7f74eddc2c2007",
+          "receiptSha256": "4b7f74eddc2c2007927254c318d9e6e7db14811704867052de20aec81da731b2",
+          "evidenceIndexSha256": "e8743c5f7438ea95f2d81f7b907facfb0342576ba5624406e0869ce6c21a4178",
+          "eventChainSha256": "1458ddda2ea90fa3a2c4df35ef0d7df8c3df85802732ed67cdab08852e39db2d"
         },
         "swarmId": "swarm-needs-review-child-failure",
         "children": [
@@ -2948,20 +2948,20 @@
       "provenance": "production-exporter",
       "envelope": {
         "schemaVersion": "martin.swarm-hosted.v1",
-        "envelopeId": "8385ab042418021b140d4e12b05f8063f07ead975853a595bee1624d64b8bb65",
+        "envelopeId": "76402a208dc95d3e8776fd21c6d72615aa0f81b2d933ccfe4b810a7fca849f63",
         "sourceSchemas": {
           "swarm": "martin.swarm.v1",
           "receipt": "martin.swarm-receipt.v1",
           "evidenceIndex": "martin.swarm-evidence-index.v1"
         },
         "sourceIdentities": {
-          "receiptId": "swarm-receipt-f36d5076cc53f1b7",
-          "receiptSha256": "f36d5076cc53f1b79a11540bc0147ee28bb320f3f632f8864baed35e13046248",
-          "evidenceIndexSha256": "97c2c020644c1f4f9229ecf56ec92e196bdd14ea7f26e3f4334ccad2f5f7b951",
-          "eventChainSha256": "cf17c0c97298adf810750752d1b2d053f8d80171543ffb37cc9e7cbba6336df8"
+          "receiptId": "swarm-receipt-44e5536c1d98b2aa",
+          "receiptSha256": "44e5536c1d98b2aa4292c300936575748fa390d2639ea0223ab89dbfa5cdf566",
+          "evidenceIndexSha256": "0a02313e38551b3e7173d6626241326d3f0cf540f83bfe1e8f098aba2db64728",
+          "eventChainSha256": "ee18d89eb6899f4fb083f7caa79e92f9ae02fecc6bfc57ee6dd617a1a9b71343"
         },
         "runtimeVersion": "0.8.0",
-        "createdAt": "2026-10-03T12:00:44.000Z",
+        "createdAt": "2026-10-03T12:00:45.000Z",
         "swarm": {
           "swarmId": "swarm-failed-global-verifier",
           "workspaceId": "workspace-failed-global-verifier",
@@ -3054,26 +3054,26 @@
             "sourceIdempotencyKey": "child-run-000dfq9b:verified",
             "sequence": 3,
             "type": "CHILD_VERIFIED",
-            "timestamp": "2026-10-03T12:00:32.000Z",
+            "timestamp": "2026-10-03T12:00:33.000Z",
             "taskId": "task-1",
             "agentId": "agent-1",
             "childRunId": "child-run-000dfq9b",
             "attemptId": "attempt-000br9h5"
           },
           {
-            "eventId": "parent-global-verifier:swarm-failed-global-verifier:555a288beb7295b11950bffadd91721e67dd66610d7b9083ed9e9b4701c36842",
-            "sourceIdempotencyKey": "parent-global-verifier:swarm-failed-global-verifier:555a288beb7295b11950bffadd91721e67dd66610d7b9083ed9e9b4701c36842",
+            "eventId": "parent-global-verifier:swarm-failed-global-verifier:07c5e8cb2b57915b250b6ee2a2d336eea233420f0d988288673d82d7bc10bfb7",
+            "sourceIdempotencyKey": "parent-global-verifier:swarm-failed-global-verifier:07c5e8cb2b57915b250b6ee2a2d336eea233420f0d988288673d82d7bc10bfb7",
             "sequence": 4,
             "type": "GLOBAL_VERIFIER_FAILED",
-            "timestamp": "2026-10-03T12:00:39.000Z",
+            "timestamp": "2026-10-03T12:00:40.000Z",
             "verificationId": "global-verification-0017o4c9"
           },
           {
-            "eventId": "parent-outcome:swarm-failed-global-verifier:needs_review:555a288beb7295b11950bffadd91721e67dd66610d7b9083ed9e9b4701c36842",
-            "sourceIdempotencyKey": "parent-outcome:swarm-failed-global-verifier:needs_review:555a288beb7295b11950bffadd91721e67dd66610d7b9083ed9e9b4701c36842",
+            "eventId": "parent-outcome:swarm-failed-global-verifier:needs_review:07c5e8cb2b57915b250b6ee2a2d336eea233420f0d988288673d82d7bc10bfb7",
+            "sourceIdempotencyKey": "parent-outcome:swarm-failed-global-verifier:needs_review:07c5e8cb2b57915b250b6ee2a2d336eea233420f0d988288673d82d7bc10bfb7",
             "sequence": 5,
             "type": "SWARM_NEEDS_REVIEW",
-            "timestamp": "2026-10-03T12:00:44.000Z",
+            "timestamp": "2026-10-03T12:00:45.000Z",
             "verificationId": "global-verification-0017o4c9"
           }
         ],
@@ -3083,7 +3083,7 @@
           "integratedTreeHash": "77ddbb288d41077bdb7567aa2019e11d031abed2",
           "evidence": [
             {
-              "eventId": "parent-global-verifier:swarm-failed-global-verifier:555a288beb7295b11950bffadd91721e67dd66610d7b9083ed9e9b4701c36842",
+              "eventId": "parent-global-verifier:swarm-failed-global-verifier:07c5e8cb2b57915b250b6ee2a2d336eea233420f0d988288673d82d7bc10bfb7",
               "sequence": 4
             }
           ]
@@ -3093,7 +3093,7 @@
           "source": "sealed_parent_receipt",
           "evidence": [
             {
-              "eventId": "parent-outcome:swarm-failed-global-verifier:needs_review:555a288beb7295b11950bffadd91721e67dd66610d7b9083ed9e9b4701c36842",
+              "eventId": "parent-outcome:swarm-failed-global-verifier:needs_review:07c5e8cb2b57915b250b6ee2a2d336eea233420f0d988288673d82d7bc10bfb7",
               "sequence": 5
             }
           ]
@@ -3104,17 +3104,17 @@
           "algorithm": "hmac-sha256",
           "keyId": "hosted-d0fa45c1fd12faa1",
           "keyLocatorHash": "543f6f103954a4aafa1dd1a926f55ee8083df5aa2600086ffafd0183ab40b337",
-          "signatureHmacSha256": "74c693be27915ae03154891213a6733ad6fbc12d2a3c96b965f27b4d8104392d"
+          "signatureHmacSha256": "24ba10ea80074a07be45276dad89340d9006ac4edcbabac95f4d0a4c5e58e789"
         }
       },
       "atlas": {
         "schemaVersion": "martin.swarm-atlas-view.v1",
-        "envelopeId": "8385ab042418021b140d4e12b05f8063f07ead975853a595bee1624d64b8bb65",
+        "envelopeId": "76402a208dc95d3e8776fd21c6d72615aa0f81b2d933ccfe4b810a7fca849f63",
         "sourceIdentities": {
-          "receiptId": "swarm-receipt-f36d5076cc53f1b7",
-          "receiptSha256": "f36d5076cc53f1b79a11540bc0147ee28bb320f3f632f8864baed35e13046248",
-          "evidenceIndexSha256": "97c2c020644c1f4f9229ecf56ec92e196bdd14ea7f26e3f4334ccad2f5f7b951",
-          "eventChainSha256": "cf17c0c97298adf810750752d1b2d053f8d80171543ffb37cc9e7cbba6336df8"
+          "receiptId": "swarm-receipt-44e5536c1d98b2aa",
+          "receiptSha256": "44e5536c1d98b2aa4292c300936575748fa390d2639ea0223ab89dbfa5cdf566",
+          "evidenceIndexSha256": "0a02313e38551b3e7173d6626241326d3f0cf540f83bfe1e8f098aba2db64728",
+          "eventChainSha256": "ee18d89eb6899f4fb083f7caa79e92f9ae02fecc6bfc57ee6dd617a1a9b71343"
         },
         "swarm": {
           "swarmId": "swarm-failed-global-verifier",
@@ -3189,7 +3189,7 @@
           "integratedTreeHash": "77ddbb288d41077bdb7567aa2019e11d031abed2",
           "evidence": [
             {
-              "eventId": "parent-global-verifier:swarm-failed-global-verifier:555a288beb7295b11950bffadd91721e67dd66610d7b9083ed9e9b4701c36842",
+              "eventId": "parent-global-verifier:swarm-failed-global-verifier:07c5e8cb2b57915b250b6ee2a2d336eea233420f0d988288673d82d7bc10bfb7",
               "sequence": 4
             }
           ]
@@ -3199,7 +3199,7 @@
           "source": "sealed_parent_receipt",
           "evidence": [
             {
-              "eventId": "parent-outcome:swarm-failed-global-verifier:needs_review:555a288beb7295b11950bffadd91721e67dd66610d7b9083ed9e9b4701c36842",
+              "eventId": "parent-outcome:swarm-failed-global-verifier:needs_review:07c5e8cb2b57915b250b6ee2a2d336eea233420f0d988288673d82d7bc10bfb7",
               "sequence": 5
             }
           ]
@@ -3209,16 +3209,16 @@
       },
       "sansa": {
         "schemaVersion": "martin.swarm-sansa-view.v1",
-        "envelopeId": "8385ab042418021b140d4e12b05f8063f07ead975853a595bee1624d64b8bb65",
+        "envelopeId": "76402a208dc95d3e8776fd21c6d72615aa0f81b2d933ccfe4b810a7fca849f63",
         "sourceIdentities": {
-          "receiptId": "swarm-receipt-f36d5076cc53f1b7",
-          "receiptSha256": "f36d5076cc53f1b79a11540bc0147ee28bb320f3f632f8864baed35e13046248",
-          "evidenceIndexSha256": "97c2c020644c1f4f9229ecf56ec92e196bdd14ea7f26e3f4334ccad2f5f7b951",
-          "eventChainSha256": "cf17c0c97298adf810750752d1b2d053f8d80171543ffb37cc9e7cbba6336df8"
+          "receiptId": "swarm-receipt-44e5536c1d98b2aa",
+          "receiptSha256": "44e5536c1d98b2aa4292c300936575748fa390d2639ea0223ab89dbfa5cdf566",
+          "evidenceIndexSha256": "0a02313e38551b3e7173d6626241326d3f0cf540f83bfe1e8f098aba2db64728",
+          "eventChainSha256": "ee18d89eb6899f4fb083f7caa79e92f9ae02fecc6bfc57ee6dd617a1a9b71343"
         },
         "facts": [
           {
-            "factId": "observed:4:parent-global-verifier:swarm-failed-global-verifier:555a288beb7295b11950bffadd91721e67dd66610d7b9083ed9e9b4701c36842",
+            "factId": "observed:4:parent-global-verifier:swarm-failed-global-verifier:07c5e8cb2b57915b250b6ee2a2d336eea233420f0d988288673d82d7bc10bfb7",
             "kind": "verification_boundary",
             "derivationKind": "observed",
             "taskIds": [],
@@ -3230,7 +3230,7 @@
             ],
             "evidence": [
               {
-                "eventId": "parent-global-verifier:swarm-failed-global-verifier:555a288beb7295b11950bffadd91721e67dd66610d7b9083ed9e9b4701c36842",
+                "eventId": "parent-global-verifier:swarm-failed-global-verifier:07c5e8cb2b57915b250b6ee2a2d336eea233420f0d988288673d82d7bc10bfb7",
                 "sequence": 4
               }
             ]
@@ -3241,7 +3241,7 @@
           "source": "sealed_parent_receipt",
           "evidence": [
             {
-              "eventId": "parent-outcome:swarm-failed-global-verifier:needs_review:555a288beb7295b11950bffadd91721e67dd66610d7b9083ed9e9b4701c36842",
+              "eventId": "parent-outcome:swarm-failed-global-verifier:needs_review:07c5e8cb2b57915b250b6ee2a2d336eea233420f0d988288673d82d7bc10bfb7",
               "sequence": 5
             }
           ]
@@ -3252,7 +3252,7 @@
           "integratedTreeHash": "77ddbb288d41077bdb7567aa2019e11d031abed2",
           "evidence": [
             {
-              "eventId": "parent-global-verifier:swarm-failed-global-verifier:555a288beb7295b11950bffadd91721e67dd66610d7b9083ed9e9b4701c36842",
+              "eventId": "parent-global-verifier:swarm-failed-global-verifier:07c5e8cb2b57915b250b6ee2a2d336eea233420f0d988288673d82d7bc10bfb7",
               "sequence": 4
             }
           ]
@@ -3260,12 +3260,12 @@
       },
       "dashboard": {
         "schemaVersion": "martin.swarm-dashboard-view.v1",
-        "envelopeId": "8385ab042418021b140d4e12b05f8063f07ead975853a595bee1624d64b8bb65",
+        "envelopeId": "76402a208dc95d3e8776fd21c6d72615aa0f81b2d933ccfe4b810a7fca849f63",
         "sourceIdentities": {
-          "receiptId": "swarm-receipt-f36d5076cc53f1b7",
-          "receiptSha256": "f36d5076cc53f1b79a11540bc0147ee28bb320f3f632f8864baed35e13046248",
-          "evidenceIndexSha256": "97c2c020644c1f4f9229ecf56ec92e196bdd14ea7f26e3f4334ccad2f5f7b951",
-          "eventChainSha256": "cf17c0c97298adf810750752d1b2d053f8d80171543ffb37cc9e7cbba6336df8"
+          "receiptId": "swarm-receipt-44e5536c1d98b2aa",
+          "receiptSha256": "44e5536c1d98b2aa4292c300936575748fa390d2639ea0223ab89dbfa5cdf566",
+          "evidenceIndexSha256": "0a02313e38551b3e7173d6626241326d3f0cf540f83bfe1e8f098aba2db64728",
+          "eventChainSha256": "ee18d89eb6899f4fb083f7caa79e92f9ae02fecc6bfc57ee6dd617a1a9b71343"
         },
         "swarmId": "swarm-failed-global-verifier",
         "children": [
@@ -3295,7 +3295,7 @@
           "source": "sealed_parent_receipt",
           "evidence": [
             {
-              "eventId": "parent-outcome:swarm-failed-global-verifier:needs_review:555a288beb7295b11950bffadd91721e67dd66610d7b9083ed9e9b4701c36842",
+              "eventId": "parent-outcome:swarm-failed-global-verifier:needs_review:07c5e8cb2b57915b250b6ee2a2d336eea233420f0d988288673d82d7bc10bfb7",
               "sequence": 5
             }
           ]
@@ -3306,7 +3306,7 @@
           "integratedTreeHash": "77ddbb288d41077bdb7567aa2019e11d031abed2",
           "evidence": [
             {
-              "eventId": "parent-global-verifier:swarm-failed-global-verifier:555a288beb7295b11950bffadd91721e67dd66610d7b9083ed9e9b4701c36842",
+              "eventId": "parent-global-verifier:swarm-failed-global-verifier:07c5e8cb2b57915b250b6ee2a2d336eea233420f0d988288673d82d7bc10bfb7",
               "sequence": 4
             }
           ]
@@ -3326,20 +3326,20 @@
       "provenance": "production-exporter",
       "envelope": {
         "schemaVersion": "martin.swarm-hosted.v1",
-        "envelopeId": "0db2c2645952936a4317237fc0dcdb84ee6291788dbd56f7d0662608c37693dd",
+        "envelopeId": "698e5d0c10b126b00d31ca07af590d50f98feb1c22ea429e673fd820fdca774d",
         "sourceSchemas": {
           "swarm": "martin.swarm.v1",
           "receipt": "martin.swarm-receipt.v1",
           "evidenceIndex": "martin.swarm-evidence-index.v1"
         },
         "sourceIdentities": {
-          "receiptId": "swarm-receipt-11e64caab21485ca",
-          "receiptSha256": "11e64caab21485ca55972f056923de01825349cb2d77c8a44445374666af75f4",
-          "evidenceIndexSha256": "4464cc7ff3bca15c82b76a57e8301fbdb7935903406a20c7b624193641ec04b1",
-          "eventChainSha256": "8da205936ff9ed0ee417d87f7fd3b577b0b531d8d0657487cd01750c468c8c3b"
+          "receiptId": "swarm-receipt-2b8faae477e50ad5",
+          "receiptSha256": "2b8faae477e50ad51b659df6fc18ef5f4ab433dcf7c6410f8dfbf1cb2f388b3d",
+          "evidenceIndexSha256": "c6f5ee5e0713855f50f3bcf147ef29b7642f0ab027d6c77ad83658c627d93d89",
+          "eventChainSha256": "6c4bb7bbeadf338226ff94e183d4cd527fa6df87b422d608a59b5ef61bf96b3d"
         },
         "runtimeVersion": "0.8.0",
-        "createdAt": "2026-10-03T12:01:18.000Z",
+        "createdAt": "2026-10-03T12:01:20.000Z",
         "swarm": {
           "swarmId": "swarm-reassigned-recovered",
           "workspaceId": "workspace-reassigned-recovered",
@@ -3418,7 +3418,7 @@
                   "sequence": 6
                 },
                 {
-                  "eventId": "parent-integration:14c876bbec98cc28d086c2b64082bf042cb83ff15129058b68c999dfdd86ceab:000000",
+                  "eventId": "parent-integration:b35d0b82dcec11a21fcb383a58aebe489a9b45b054cdd392d10670809ba506b9:000000",
                   "sequence": 7
                 }
               ]
@@ -3460,7 +3460,7 @@
               "state": "admitted",
               "evidence": [
                 {
-                  "eventId": "parent-integration:14c876bbec98cc28d086c2b64082bf042cb83ff15129058b68c999dfdd86ceab:000000",
+                  "eventId": "parent-integration:b35d0b82dcec11a21fcb383a58aebe489a9b45b054cdd392d10670809ba506b9:000000",
                   "sequence": 7
                 }
               ]
@@ -3494,7 +3494,7 @@
             "sourceIdempotencyKey": "child-run-000dfq9b:child_stopped",
             "sequence": 3,
             "type": "CHILD_STOPPED",
-            "timestamp": "2026-10-03T12:00:32.000Z",
+            "timestamp": "2026-10-03T12:00:33.000Z",
             "taskId": "task-1",
             "agentId": "agent-1",
             "childRunId": "child-run-000dfq9b",
@@ -3506,7 +3506,7 @@
             "sourceIdempotencyKey": "task-1:reassigned:1",
             "sequence": 4,
             "type": "TASK_REASSIGNED",
-            "timestamp": "2026-10-03T12:00:34.000Z",
+            "timestamp": "2026-10-03T12:00:35.000Z",
             "taskId": "task-1",
             "agentId": "agent-1",
             "attemptId": "attempt-000br9h5",
@@ -3518,7 +3518,7 @@
             "sourceIdempotencyKey": "child-run-001hqx19:started",
             "sequence": 5,
             "type": "CHILD_STARTED",
-            "timestamp": "2026-10-03T12:00:38.000Z",
+            "timestamp": "2026-10-03T12:00:39.000Z",
             "taskId": "task-1",
             "agentId": "agent-recovery",
             "childRunId": "child-run-001hqx19",
@@ -3529,18 +3529,6 @@
             "sourceIdempotencyKey": "child-run-001hqx19:verified",
             "sequence": 6,
             "type": "CHILD_VERIFIED",
-            "timestamp": "2026-10-03T12:01:05.000Z",
-            "taskId": "task-1",
-            "agentId": "agent-recovery",
-            "childRunId": "child-run-001hqx19",
-            "attemptId": "attempt-0019cl4f",
-            "candidateId": "candidate-001msbdq"
-          },
-          {
-            "eventId": "parent-integration:14c876bbec98cc28d086c2b64082bf042cb83ff15129058b68c999dfdd86ceab:000000",
-            "sourceIdempotencyKey": "parent-integration:14c876bbec98cc28d086c2b64082bf042cb83ff15129058b68c999dfdd86ceab:000000",
-            "sequence": 7,
-            "type": "CHILD_PATCH_ADMITTED",
             "timestamp": "2026-10-03T12:01:07.000Z",
             "taskId": "task-1",
             "agentId": "agent-recovery",
@@ -3549,19 +3537,31 @@
             "candidateId": "candidate-001msbdq"
           },
           {
-            "eventId": "parent-global-verifier:swarm-reassigned-recovered:14c876bbec98cc28d086c2b64082bf042cb83ff15129058b68c999dfdd86ceab",
-            "sourceIdempotencyKey": "parent-global-verifier:swarm-reassigned-recovered:14c876bbec98cc28d086c2b64082bf042cb83ff15129058b68c999dfdd86ceab",
+            "eventId": "parent-integration:b35d0b82dcec11a21fcb383a58aebe489a9b45b054cdd392d10670809ba506b9:000000",
+            "sourceIdempotencyKey": "parent-integration:b35d0b82dcec11a21fcb383a58aebe489a9b45b054cdd392d10670809ba506b9:000000",
+            "sequence": 7,
+            "type": "CHILD_PATCH_ADMITTED",
+            "timestamp": "2026-10-03T12:01:09.000Z",
+            "taskId": "task-1",
+            "agentId": "agent-recovery",
+            "childRunId": "child-run-001hqx19",
+            "attemptId": "attempt-0019cl4f",
+            "candidateId": "candidate-001msbdq"
+          },
+          {
+            "eventId": "parent-global-verifier:swarm-reassigned-recovered:b35d0b82dcec11a21fcb383a58aebe489a9b45b054cdd392d10670809ba506b9",
+            "sourceIdempotencyKey": "parent-global-verifier:swarm-reassigned-recovered:b35d0b82dcec11a21fcb383a58aebe489a9b45b054cdd392d10670809ba506b9",
             "sequence": 8,
             "type": "GLOBAL_VERIFIER_PASSED",
-            "timestamp": "2026-10-03T12:01:13.000Z",
+            "timestamp": "2026-10-03T12:01:15.000Z",
             "verificationId": "global-verification-002h0pgp"
           },
           {
-            "eventId": "parent-outcome:swarm-reassigned-recovered:verified:14c876bbec98cc28d086c2b64082bf042cb83ff15129058b68c999dfdd86ceab",
-            "sourceIdempotencyKey": "parent-outcome:swarm-reassigned-recovered:verified:14c876bbec98cc28d086c2b64082bf042cb83ff15129058b68c999dfdd86ceab",
+            "eventId": "parent-outcome:swarm-reassigned-recovered:verified:b35d0b82dcec11a21fcb383a58aebe489a9b45b054cdd392d10670809ba506b9",
+            "sourceIdempotencyKey": "parent-outcome:swarm-reassigned-recovered:verified:b35d0b82dcec11a21fcb383a58aebe489a9b45b054cdd392d10670809ba506b9",
             "sequence": 9,
             "type": "SWARM_VERIFIED",
-            "timestamp": "2026-10-03T12:01:18.000Z",
+            "timestamp": "2026-10-03T12:01:20.000Z",
             "verificationId": "global-verification-002h0pgp"
           }
         ],
@@ -3571,7 +3571,7 @@
           "integratedTreeHash": "fb73acaf9e5314dd1f931e435b5d793b6d5bbe90",
           "evidence": [
             {
-              "eventId": "parent-global-verifier:swarm-reassigned-recovered:14c876bbec98cc28d086c2b64082bf042cb83ff15129058b68c999dfdd86ceab",
+              "eventId": "parent-global-verifier:swarm-reassigned-recovered:b35d0b82dcec11a21fcb383a58aebe489a9b45b054cdd392d10670809ba506b9",
               "sequence": 8
             }
           ]
@@ -3581,7 +3581,7 @@
           "source": "sealed_parent_receipt",
           "evidence": [
             {
-              "eventId": "parent-outcome:swarm-reassigned-recovered:verified:14c876bbec98cc28d086c2b64082bf042cb83ff15129058b68c999dfdd86ceab",
+              "eventId": "parent-outcome:swarm-reassigned-recovered:verified:b35d0b82dcec11a21fcb383a58aebe489a9b45b054cdd392d10670809ba506b9",
               "sequence": 9
             }
           ]
@@ -3592,17 +3592,17 @@
           "algorithm": "hmac-sha256",
           "keyId": "hosted-a470ed3e5444f7d3",
           "keyLocatorHash": "32cd8340ddce70c1daae172931d3bda51ad76dbb259d2a92df16eb4a79d589f5",
-          "signatureHmacSha256": "c9571f06318eb2be9f908b6ea86db5bf9d2794cb035a7da88c7fe608ddaad02b"
+          "signatureHmacSha256": "7e6268ca77212e50c2450cb39a6ce36f86540c5d0215ba13bbc3f8c8dc7642b8"
         }
       },
       "atlas": {
         "schemaVersion": "martin.swarm-atlas-view.v1",
-        "envelopeId": "0db2c2645952936a4317237fc0dcdb84ee6291788dbd56f7d0662608c37693dd",
+        "envelopeId": "698e5d0c10b126b00d31ca07af590d50f98feb1c22ea429e673fd820fdca774d",
         "sourceIdentities": {
-          "receiptId": "swarm-receipt-11e64caab21485ca",
-          "receiptSha256": "11e64caab21485ca55972f056923de01825349cb2d77c8a44445374666af75f4",
-          "evidenceIndexSha256": "4464cc7ff3bca15c82b76a57e8301fbdb7935903406a20c7b624193641ec04b1",
-          "eventChainSha256": "8da205936ff9ed0ee417d87f7fd3b577b0b531d8d0657487cd01750c468c8c3b"
+          "receiptId": "swarm-receipt-2b8faae477e50ad5",
+          "receiptSha256": "2b8faae477e50ad51b659df6fc18ef5f4ab433dcf7c6410f8dfbf1cb2f388b3d",
+          "evidenceIndexSha256": "c6f5ee5e0713855f50f3bcf147ef29b7642f0ab027d6c77ad83658c627d93d89",
+          "eventChainSha256": "6c4bb7bbeadf338226ff94e183d4cd527fa6df87b422d608a59b5ef61bf96b3d"
         },
         "swarm": {
           "swarmId": "swarm-reassigned-recovered",
@@ -3682,7 +3682,7 @@
                 "sequence": 6
               },
               {
-                "eventId": "parent-integration:14c876bbec98cc28d086c2b64082bf042cb83ff15129058b68c999dfdd86ceab:000000",
+                "eventId": "parent-integration:b35d0b82dcec11a21fcb383a58aebe489a9b45b054cdd392d10670809ba506b9:000000",
                 "sequence": 7
               }
             ]
@@ -3723,7 +3723,7 @@
               "state": "admitted",
               "evidence": [
                 {
-                  "eventId": "parent-integration:14c876bbec98cc28d086c2b64082bf042cb83ff15129058b68c999dfdd86ceab:000000",
+                  "eventId": "parent-integration:b35d0b82dcec11a21fcb383a58aebe489a9b45b054cdd392d10670809ba506b9:000000",
                   "sequence": 7
                 }
               ]
@@ -3739,7 +3739,7 @@
           "integratedTreeHash": "fb73acaf9e5314dd1f931e435b5d793b6d5bbe90",
           "evidence": [
             {
-              "eventId": "parent-global-verifier:swarm-reassigned-recovered:14c876bbec98cc28d086c2b64082bf042cb83ff15129058b68c999dfdd86ceab",
+              "eventId": "parent-global-verifier:swarm-reassigned-recovered:b35d0b82dcec11a21fcb383a58aebe489a9b45b054cdd392d10670809ba506b9",
               "sequence": 8
             }
           ]
@@ -3749,7 +3749,7 @@
           "source": "sealed_parent_receipt",
           "evidence": [
             {
-              "eventId": "parent-outcome:swarm-reassigned-recovered:verified:14c876bbec98cc28d086c2b64082bf042cb83ff15129058b68c999dfdd86ceab",
+              "eventId": "parent-outcome:swarm-reassigned-recovered:verified:b35d0b82dcec11a21fcb383a58aebe489a9b45b054cdd392d10670809ba506b9",
               "sequence": 9
             }
           ]
@@ -3759,12 +3759,12 @@
       },
       "sansa": {
         "schemaVersion": "martin.swarm-sansa-view.v1",
-        "envelopeId": "0db2c2645952936a4317237fc0dcdb84ee6291788dbd56f7d0662608c37693dd",
+        "envelopeId": "698e5d0c10b126b00d31ca07af590d50f98feb1c22ea429e673fd820fdca774d",
         "sourceIdentities": {
-          "receiptId": "swarm-receipt-11e64caab21485ca",
-          "receiptSha256": "11e64caab21485ca55972f056923de01825349cb2d77c8a44445374666af75f4",
-          "evidenceIndexSha256": "4464cc7ff3bca15c82b76a57e8301fbdb7935903406a20c7b624193641ec04b1",
-          "eventChainSha256": "8da205936ff9ed0ee417d87f7fd3b577b0b531d8d0657487cd01750c468c8c3b"
+          "receiptId": "swarm-receipt-2b8faae477e50ad5",
+          "receiptSha256": "2b8faae477e50ad51b659df6fc18ef5f4ab433dcf7c6410f8dfbf1cb2f388b3d",
+          "evidenceIndexSha256": "c6f5ee5e0713855f50f3bcf147ef29b7642f0ab027d6c77ad83658c627d93d89",
+          "eventChainSha256": "6c4bb7bbeadf338226ff94e183d4cd527fa6df87b422d608a59b5ef61bf96b3d"
         },
         "facts": [
           {
@@ -3853,13 +3853,13 @@
                 "sequence": 6
               },
               {
-                "eventId": "parent-integration:14c876bbec98cc28d086c2b64082bf042cb83ff15129058b68c999dfdd86ceab:000000",
+                "eventId": "parent-integration:b35d0b82dcec11a21fcb383a58aebe489a9b45b054cdd392d10670809ba506b9:000000",
                 "sequence": 7
               }
             ]
           },
           {
-            "factId": "observed:8:parent-global-verifier:swarm-reassigned-recovered:14c876bbec98cc28d086c2b64082bf042cb83ff15129058b68c999dfdd86ceab",
+            "factId": "observed:8:parent-global-verifier:swarm-reassigned-recovered:b35d0b82dcec11a21fcb383a58aebe489a9b45b054cdd392d10670809ba506b9",
             "kind": "verification_boundary",
             "derivationKind": "observed",
             "taskIds": [],
@@ -3871,7 +3871,7 @@
             ],
             "evidence": [
               {
-                "eventId": "parent-global-verifier:swarm-reassigned-recovered:14c876bbec98cc28d086c2b64082bf042cb83ff15129058b68c999dfdd86ceab",
+                "eventId": "parent-global-verifier:swarm-reassigned-recovered:b35d0b82dcec11a21fcb383a58aebe489a9b45b054cdd392d10670809ba506b9",
                 "sequence": 8
               }
             ]
@@ -3882,7 +3882,7 @@
           "source": "sealed_parent_receipt",
           "evidence": [
             {
-              "eventId": "parent-outcome:swarm-reassigned-recovered:verified:14c876bbec98cc28d086c2b64082bf042cb83ff15129058b68c999dfdd86ceab",
+              "eventId": "parent-outcome:swarm-reassigned-recovered:verified:b35d0b82dcec11a21fcb383a58aebe489a9b45b054cdd392d10670809ba506b9",
               "sequence": 9
             }
           ]
@@ -3893,7 +3893,7 @@
           "integratedTreeHash": "fb73acaf9e5314dd1f931e435b5d793b6d5bbe90",
           "evidence": [
             {
-              "eventId": "parent-global-verifier:swarm-reassigned-recovered:14c876bbec98cc28d086c2b64082bf042cb83ff15129058b68c999dfdd86ceab",
+              "eventId": "parent-global-verifier:swarm-reassigned-recovered:b35d0b82dcec11a21fcb383a58aebe489a9b45b054cdd392d10670809ba506b9",
               "sequence": 8
             }
           ]
@@ -3901,12 +3901,12 @@
       },
       "dashboard": {
         "schemaVersion": "martin.swarm-dashboard-view.v1",
-        "envelopeId": "0db2c2645952936a4317237fc0dcdb84ee6291788dbd56f7d0662608c37693dd",
+        "envelopeId": "698e5d0c10b126b00d31ca07af590d50f98feb1c22ea429e673fd820fdca774d",
         "sourceIdentities": {
-          "receiptId": "swarm-receipt-11e64caab21485ca",
-          "receiptSha256": "11e64caab21485ca55972f056923de01825349cb2d77c8a44445374666af75f4",
-          "evidenceIndexSha256": "4464cc7ff3bca15c82b76a57e8301fbdb7935903406a20c7b624193641ec04b1",
-          "eventChainSha256": "8da205936ff9ed0ee417d87f7fd3b577b0b531d8d0657487cd01750c468c8c3b"
+          "receiptId": "swarm-receipt-2b8faae477e50ad5",
+          "receiptSha256": "2b8faae477e50ad51b659df6fc18ef5f4ab433dcf7c6410f8dfbf1cb2f388b3d",
+          "evidenceIndexSha256": "c6f5ee5e0713855f50f3bcf147ef29b7642f0ab027d6c77ad83658c627d93d89",
+          "eventChainSha256": "6c4bb7bbeadf338226ff94e183d4cd527fa6df87b422d608a59b5ef61bf96b3d"
         },
         "swarmId": "swarm-reassigned-recovered",
         "children": [
@@ -3949,7 +3949,7 @@
                 "sequence": 6
               },
               {
-                "eventId": "parent-integration:14c876bbec98cc28d086c2b64082bf042cb83ff15129058b68c999dfdd86ceab:000000",
+                "eventId": "parent-integration:b35d0b82dcec11a21fcb383a58aebe489a9b45b054cdd392d10670809ba506b9:000000",
                 "sequence": 7
               }
             ]
@@ -3960,7 +3960,7 @@
           "source": "sealed_parent_receipt",
           "evidence": [
             {
-              "eventId": "parent-outcome:swarm-reassigned-recovered:verified:14c876bbec98cc28d086c2b64082bf042cb83ff15129058b68c999dfdd86ceab",
+              "eventId": "parent-outcome:swarm-reassigned-recovered:verified:b35d0b82dcec11a21fcb383a58aebe489a9b45b054cdd392d10670809ba506b9",
               "sequence": 9
             }
           ]
@@ -3971,7 +3971,7 @@
           "integratedTreeHash": "fb73acaf9e5314dd1f931e435b5d793b6d5bbe90",
           "evidence": [
             {
-              "eventId": "parent-global-verifier:swarm-reassigned-recovered:14c876bbec98cc28d086c2b64082bf042cb83ff15129058b68c999dfdd86ceab",
+              "eventId": "parent-global-verifier:swarm-reassigned-recovered:b35d0b82dcec11a21fcb383a58aebe489a9b45b054cdd392d10670809ba506b9",
               "sequence": 8
             }
           ]
@@ -4001,13 +4001,13 @@
           "evidenceIndex": "martin.swarm-evidence-index.v1"
         },
         "sourceIdentities": {
-          "receiptId": "swarm-receipt-2c3397c4daa64245",
-          "receiptSha256": "2c3397c4daa642456ec5bb19f36eaebc7c2c6b925a8f1958bb1e901e5dfeee4c",
-          "evidenceIndexSha256": "2c1cc5471be05ca74ad3c9c69b6127e3c99c479641bcd3e0bf500d510e713082",
-          "eventChainSha256": "06d61e71e9e0c776ce58612d0e3da229bc9730b3a05f7355dbe8f354262c5623"
+          "receiptId": "swarm-receipt-85aa2fda5860ca92",
+          "receiptSha256": "85aa2fda5860ca9214abca249115bb532c06b1e9ef93cf392cdfded8c166934c",
+          "evidenceIndexSha256": "96a2f574accd72b63f8ef411912b5aa3812dd2deeba61ba53c5b6ca365f70cae",
+          "eventChainSha256": "d2f546189c643e10a8e025dbbc5425e34418cb5db2910307772f7e19c6ae1e66"
         },
         "runtimeVersion": "0.8.0",
-        "createdAt": "2026-10-03T12:07:16.000Z",
+        "createdAt": "2026-10-03T12:07:31.000Z",
         "swarm": {
           "swarmId": "swarm-verified-15-agent",
           "workspaceId": "workspace-verified-15-agent",
@@ -4646,7 +4646,7 @@
             "sourceIdempotencyKey": "child-run-000dfq9b:verified",
             "sequence": 3,
             "type": "CHILD_VERIFIED",
-            "timestamp": "2026-10-03T12:00:32.000Z",
+            "timestamp": "2026-10-03T12:00:33.000Z",
             "taskId": "task-1",
             "agentId": "agent-1",
             "childRunId": "child-run-000dfq9b",
@@ -4657,7 +4657,7 @@
             "sourceIdempotencyKey": "child-run-0017o4c9:started",
             "sequence": 4,
             "type": "CHILD_STARTED",
-            "timestamp": "2026-10-03T12:00:36.000Z",
+            "timestamp": "2026-10-03T12:00:37.000Z",
             "taskId": "task-2",
             "agentId": "agent-2",
             "childRunId": "child-run-0017o4c9",
@@ -4668,7 +4668,7 @@
             "sourceIdempotencyKey": "child-run-0017o4c9:verified",
             "sequence": 5,
             "type": "CHILD_VERIFIED",
-            "timestamp": "2026-10-03T12:01:00.000Z",
+            "timestamp": "2026-10-03T12:01:02.000Z",
             "taskId": "task-2",
             "agentId": "agent-2",
             "childRunId": "child-run-0017o4c9",
@@ -4679,7 +4679,7 @@
             "sourceIdempotencyKey": "child-run-0021wif7:started",
             "sequence": 6,
             "type": "CHILD_STARTED",
-            "timestamp": "2026-10-03T12:01:04.000Z",
+            "timestamp": "2026-10-03T12:01:06.000Z",
             "taskId": "task-3",
             "agentId": "agent-3",
             "childRunId": "child-run-0021wif7",
@@ -4690,7 +4690,7 @@
             "sourceIdempotencyKey": "child-run-0021wif7:verified",
             "sequence": 7,
             "type": "CHILD_VERIFIED",
-            "timestamp": "2026-10-03T12:01:28.000Z",
+            "timestamp": "2026-10-03T12:01:31.000Z",
             "taskId": "task-3",
             "agentId": "agent-3",
             "childRunId": "child-run-0021wif7",
@@ -4701,7 +4701,7 @@
             "sourceIdempotencyKey": "child-run-002w4wi6:started",
             "sequence": 8,
             "type": "CHILD_STARTED",
-            "timestamp": "2026-10-03T12:01:32.000Z",
+            "timestamp": "2026-10-03T12:01:35.000Z",
             "taskId": "task-4",
             "agentId": "agent-4",
             "childRunId": "child-run-002w4wi6",
@@ -4712,7 +4712,7 @@
             "sourceIdempotencyKey": "child-run-002w4wi6:verified",
             "sequence": 9,
             "type": "CHILD_VERIFIED",
-            "timestamp": "2026-10-03T12:01:56.000Z",
+            "timestamp": "2026-10-03T12:02:00.000Z",
             "taskId": "task-4",
             "agentId": "agent-4",
             "childRunId": "child-run-002w4wi6",
@@ -4723,7 +4723,7 @@
             "sourceIdempotencyKey": "child-run-003qdal4:started",
             "sequence": 10,
             "type": "CHILD_STARTED",
-            "timestamp": "2026-10-03T12:02:00.000Z",
+            "timestamp": "2026-10-03T12:02:04.000Z",
             "taskId": "task-5",
             "agentId": "agent-5",
             "childRunId": "child-run-003qdal4",
@@ -4734,7 +4734,7 @@
             "sourceIdempotencyKey": "child-run-003qdal4:verified",
             "sequence": 11,
             "type": "CHILD_VERIFIED",
-            "timestamp": "2026-10-03T12:02:24.000Z",
+            "timestamp": "2026-10-03T12:02:29.000Z",
             "taskId": "task-5",
             "agentId": "agent-5",
             "childRunId": "child-run-003qdal4",
@@ -4745,7 +4745,7 @@
             "sourceIdempotencyKey": "child-run-004kloo2:started",
             "sequence": 12,
             "type": "CHILD_STARTED",
-            "timestamp": "2026-10-03T12:02:28.000Z",
+            "timestamp": "2026-10-03T12:02:33.000Z",
             "taskId": "task-6",
             "agentId": "agent-6",
             "childRunId": "child-run-004kloo2",
@@ -4756,7 +4756,7 @@
             "sourceIdempotencyKey": "child-run-004kloo2:verified",
             "sequence": 13,
             "type": "CHILD_VERIFIED",
-            "timestamp": "2026-10-03T12:02:52.000Z",
+            "timestamp": "2026-10-03T12:02:58.000Z",
             "taskId": "task-6",
             "agentId": "agent-6",
             "childRunId": "child-run-004kloo2",
@@ -4767,7 +4767,7 @@
             "sourceIdempotencyKey": "child-run-005eu2r1:started",
             "sequence": 14,
             "type": "CHILD_STARTED",
-            "timestamp": "2026-10-03T12:02:56.000Z",
+            "timestamp": "2026-10-03T12:03:02.000Z",
             "taskId": "task-7",
             "agentId": "agent-7",
             "childRunId": "child-run-005eu2r1",
@@ -4778,7 +4778,7 @@
             "sourceIdempotencyKey": "child-run-005eu2r1:verified",
             "sequence": 15,
             "type": "CHILD_VERIFIED",
-            "timestamp": "2026-10-03T12:03:20.000Z",
+            "timestamp": "2026-10-03T12:03:27.000Z",
             "taskId": "task-7",
             "agentId": "agent-7",
             "childRunId": "child-run-005eu2r1",
@@ -4789,7 +4789,7 @@
             "sourceIdempotencyKey": "child-run-00692gtz:started",
             "sequence": 16,
             "type": "CHILD_STARTED",
-            "timestamp": "2026-10-03T12:03:24.000Z",
+            "timestamp": "2026-10-03T12:03:31.000Z",
             "taskId": "task-8",
             "agentId": "agent-8",
             "childRunId": "child-run-00692gtz",
@@ -4800,7 +4800,7 @@
             "sourceIdempotencyKey": "child-run-00692gtz:verified",
             "sequence": 17,
             "type": "CHILD_VERIFIED",
-            "timestamp": "2026-10-03T12:03:48.000Z",
+            "timestamp": "2026-10-03T12:03:56.000Z",
             "taskId": "task-8",
             "agentId": "agent-8",
             "childRunId": "child-run-00692gtz",
@@ -4811,7 +4811,7 @@
             "sourceIdempotencyKey": "child-run-0073auwx:started",
             "sequence": 18,
             "type": "CHILD_STARTED",
-            "timestamp": "2026-10-03T12:03:52.000Z",
+            "timestamp": "2026-10-03T12:04:00.000Z",
             "taskId": "task-9",
             "agentId": "agent-9",
             "childRunId": "child-run-0073auwx",
@@ -4822,7 +4822,7 @@
             "sourceIdempotencyKey": "child-run-0073auwx:verified",
             "sequence": 19,
             "type": "CHILD_VERIFIED",
-            "timestamp": "2026-10-03T12:04:16.000Z",
+            "timestamp": "2026-10-03T12:04:25.000Z",
             "taskId": "task-9",
             "agentId": "agent-9",
             "childRunId": "child-run-0073auwx",
@@ -4833,7 +4833,7 @@
             "sourceIdempotencyKey": "child-run-007xj8zw:started",
             "sequence": 20,
             "type": "CHILD_STARTED",
-            "timestamp": "2026-10-03T12:04:20.000Z",
+            "timestamp": "2026-10-03T12:04:29.000Z",
             "taskId": "task-10",
             "agentId": "agent-10",
             "childRunId": "child-run-007xj8zw",
@@ -4844,7 +4844,7 @@
             "sourceIdempotencyKey": "child-run-007xj8zw:verified",
             "sequence": 21,
             "type": "CHILD_VERIFIED",
-            "timestamp": "2026-10-03T12:04:44.000Z",
+            "timestamp": "2026-10-03T12:04:54.000Z",
             "taskId": "task-10",
             "agentId": "agent-10",
             "childRunId": "child-run-007xj8zw",
@@ -4855,7 +4855,7 @@
             "sourceIdempotencyKey": "child-run-008rrn2u:started",
             "sequence": 22,
             "type": "CHILD_STARTED",
-            "timestamp": "2026-10-03T12:04:48.000Z",
+            "timestamp": "2026-10-03T12:04:58.000Z",
             "taskId": "task-11",
             "agentId": "agent-11",
             "childRunId": "child-run-008rrn2u",
@@ -4866,7 +4866,7 @@
             "sourceIdempotencyKey": "child-run-008rrn2u:verified",
             "sequence": 23,
             "type": "CHILD_VERIFIED",
-            "timestamp": "2026-10-03T12:05:12.000Z",
+            "timestamp": "2026-10-03T12:05:23.000Z",
             "taskId": "task-11",
             "agentId": "agent-11",
             "childRunId": "child-run-008rrn2u",
@@ -4877,7 +4877,7 @@
             "sourceIdempotencyKey": "child-run-009m015s:started",
             "sequence": 24,
             "type": "CHILD_STARTED",
-            "timestamp": "2026-10-03T12:05:16.000Z",
+            "timestamp": "2026-10-03T12:05:27.000Z",
             "taskId": "task-12",
             "agentId": "agent-12",
             "childRunId": "child-run-009m015s",
@@ -4888,7 +4888,7 @@
             "sourceIdempotencyKey": "child-run-009m015s:verified",
             "sequence": 25,
             "type": "CHILD_VERIFIED",
-            "timestamp": "2026-10-03T12:05:40.000Z",
+            "timestamp": "2026-10-03T12:05:52.000Z",
             "taskId": "task-12",
             "agentId": "agent-12",
             "childRunId": "child-run-009m015s",
@@ -4899,7 +4899,7 @@
             "sourceIdempotencyKey": "child-run-00ag8f8r:started",
             "sequence": 26,
             "type": "CHILD_STARTED",
-            "timestamp": "2026-10-03T12:05:44.000Z",
+            "timestamp": "2026-10-03T12:05:56.000Z",
             "taskId": "task-13",
             "agentId": "agent-13",
             "childRunId": "child-run-00ag8f8r",
@@ -4910,7 +4910,7 @@
             "sourceIdempotencyKey": "child-run-00ag8f8r:verified",
             "sequence": 27,
             "type": "CHILD_VERIFIED",
-            "timestamp": "2026-10-03T12:06:08.000Z",
+            "timestamp": "2026-10-03T12:06:21.000Z",
             "taskId": "task-13",
             "agentId": "agent-13",
             "childRunId": "child-run-00ag8f8r",
@@ -4921,7 +4921,7 @@
             "sourceIdempotencyKey": "child-run-00bagtbp:started",
             "sequence": 28,
             "type": "CHILD_STARTED",
-            "timestamp": "2026-10-03T12:06:12.000Z",
+            "timestamp": "2026-10-03T12:06:25.000Z",
             "taskId": "task-14",
             "agentId": "agent-14",
             "childRunId": "child-run-00bagtbp",
@@ -4932,7 +4932,7 @@
             "sourceIdempotencyKey": "child-run-00bagtbp:verified",
             "sequence": 29,
             "type": "CHILD_VERIFIED",
-            "timestamp": "2026-10-03T12:06:36.000Z",
+            "timestamp": "2026-10-03T12:06:50.000Z",
             "taskId": "task-14",
             "agentId": "agent-14",
             "childRunId": "child-run-00bagtbp",
@@ -4943,7 +4943,7 @@
             "sourceIdempotencyKey": "child-run-00c4p7en:started",
             "sequence": 30,
             "type": "CHILD_STARTED",
-            "timestamp": "2026-10-03T12:06:40.000Z",
+            "timestamp": "2026-10-03T12:06:54.000Z",
             "taskId": "task-15",
             "agentId": "agent-15",
             "childRunId": "child-run-00c4p7en",
@@ -4954,26 +4954,26 @@
             "sourceIdempotencyKey": "child-run-00c4p7en:verified",
             "sequence": 31,
             "type": "CHILD_VERIFIED",
-            "timestamp": "2026-10-03T12:07:04.000Z",
+            "timestamp": "2026-10-03T12:07:19.000Z",
             "taskId": "task-15",
             "agentId": "agent-15",
             "childRunId": "child-run-00c4p7en",
             "attemptId": "attempt-00c30qmi"
           },
           {
-            "eventId": "parent-global-verifier:swarm-verified-15-agent:f0bf011cb01b5ca4f13dd4465ecd0934e809ab3b306c14b0eb3c6ff8ddee9ee1",
-            "sourceIdempotencyKey": "parent-global-verifier:swarm-verified-15-agent:f0bf011cb01b5ca4f13dd4465ecd0934e809ab3b306c14b0eb3c6ff8ddee9ee1",
+            "eventId": "parent-global-verifier:swarm-verified-15-agent:e962c7b5cb059ed1c0c2190529c21454f32c8e38709951ca072b4d5844623ceb",
+            "sourceIdempotencyKey": "parent-global-verifier:swarm-verified-15-agent:e962c7b5cb059ed1c0c2190529c21454f32c8e38709951ca072b4d5844623ceb",
             "sequence": 32,
             "type": "GLOBAL_VERIFIER_PASSED",
-            "timestamp": "2026-10-03T12:07:11.000Z",
+            "timestamp": "2026-10-03T12:07:26.000Z",
             "verificationId": "global-verification-00cyxlhm"
           },
           {
-            "eventId": "parent-outcome:swarm-verified-15-agent:verified:f0bf011cb01b5ca4f13dd4465ecd0934e809ab3b306c14b0eb3c6ff8ddee9ee1",
-            "sourceIdempotencyKey": "parent-outcome:swarm-verified-15-agent:verified:f0bf011cb01b5ca4f13dd4465ecd0934e809ab3b306c14b0eb3c6ff8ddee9ee1",
+            "eventId": "parent-outcome:swarm-verified-15-agent:verified:e962c7b5cb059ed1c0c2190529c21454f32c8e38709951ca072b4d5844623ceb",
+            "sourceIdempotencyKey": "parent-outcome:swarm-verified-15-agent:verified:e962c7b5cb059ed1c0c2190529c21454f32c8e38709951ca072b4d5844623ceb",
             "sequence": 33,
             "type": "SWARM_VERIFIED",
-            "timestamp": "2026-10-03T12:07:16.000Z",
+            "timestamp": "2026-10-03T12:07:31.000Z",
             "verificationId": "global-verification-00cyxlhm"
           }
         ],
@@ -4983,7 +4983,7 @@
           "integratedTreeHash": "528732cadbcdc09711fc2e71e251b48b4f6da2a0",
           "evidence": [
             {
-              "eventId": "parent-global-verifier:swarm-verified-15-agent:f0bf011cb01b5ca4f13dd4465ecd0934e809ab3b306c14b0eb3c6ff8ddee9ee1",
+              "eventId": "parent-global-verifier:swarm-verified-15-agent:e962c7b5cb059ed1c0c2190529c21454f32c8e38709951ca072b4d5844623ceb",
               "sequence": 32
             }
           ]
@@ -4993,7 +4993,7 @@
           "source": "sealed_parent_receipt",
           "evidence": [
             {
-              "eventId": "parent-outcome:swarm-verified-15-agent:verified:f0bf011cb01b5ca4f13dd4465ecd0934e809ab3b306c14b0eb3c6ff8ddee9ee1",
+              "eventId": "parent-outcome:swarm-verified-15-agent:verified:e962c7b5cb059ed1c0c2190529c21454f32c8e38709951ca072b4d5844623ceb",
               "sequence": 33
             }
           ]
@@ -5004,7 +5004,7 @@
           "algorithm": "hmac-sha256",
           "keyId": "hosted-3d92c57743ba0c14",
           "keyLocatorHash": "ad39e28164db50c2f4797c011836976ce8c7571b4ac0b2949c24a871d2acd22d",
-          "signatureHmacSha256": "183f75a48cbb75f06d58a8d43dbb2497fae88a4ee4283007112b8a25fc189ed1"
+          "signatureHmacSha256": "63853ff2214eb9b90c3bee86681ae6d333136bd8c6e20ee7d3a761cf2791aa50"
         }
       }
     },
@@ -5014,20 +5014,20 @@
       "tamper": "parent_authority",
       "envelope": {
         "schemaVersion": "martin.swarm-hosted.v1",
-        "envelopeId": "50fc6f84e22d95235529fcb1d38c370a7023545d79a4222cc47ff7ede782adcf",
+        "envelopeId": "6da261930b8dfbd25de2845b11ab5687c99fca8880c0456ebb0b53fbe0d92328",
         "sourceSchemas": {
           "swarm": "martin.swarm.v1",
           "receipt": "martin.swarm-receipt.v1",
           "evidenceIndex": "martin.swarm-evidence-index.v1"
         },
         "sourceIdentities": {
-          "receiptId": "swarm-receipt-f36d5076cc53f1b7",
-          "receiptSha256": "f36d5076cc53f1b79a11540bc0147ee28bb320f3f632f8864baed35e13046248",
-          "evidenceIndexSha256": "97c2c020644c1f4f9229ecf56ec92e196bdd14ea7f26e3f4334ccad2f5f7b951",
-          "eventChainSha256": "cf17c0c97298adf810750752d1b2d053f8d80171543ffb37cc9e7cbba6336df8"
+          "receiptId": "swarm-receipt-44e5536c1d98b2aa",
+          "receiptSha256": "44e5536c1d98b2aa4292c300936575748fa390d2639ea0223ab89dbfa5cdf566",
+          "evidenceIndexSha256": "0a02313e38551b3e7173d6626241326d3f0cf540f83bfe1e8f098aba2db64728",
+          "eventChainSha256": "ee18d89eb6899f4fb083f7caa79e92f9ae02fecc6bfc57ee6dd617a1a9b71343"
         },
         "runtimeVersion": "0.8.0",
-        "createdAt": "2026-10-03T12:00:44.000Z",
+        "createdAt": "2026-10-03T12:00:45.000Z",
         "swarm": {
           "swarmId": "swarm-failed-global-verifier",
           "workspaceId": "workspace-failed-global-verifier",
@@ -5120,26 +5120,26 @@
             "sourceIdempotencyKey": "child-run-000dfq9b:verified",
             "sequence": 3,
             "type": "CHILD_VERIFIED",
-            "timestamp": "2026-10-03T12:00:32.000Z",
+            "timestamp": "2026-10-03T12:00:33.000Z",
             "taskId": "task-1",
             "agentId": "agent-1",
             "childRunId": "child-run-000dfq9b",
             "attemptId": "attempt-000br9h5"
           },
           {
-            "eventId": "parent-global-verifier:swarm-failed-global-verifier:555a288beb7295b11950bffadd91721e67dd66610d7b9083ed9e9b4701c36842",
-            "sourceIdempotencyKey": "parent-global-verifier:swarm-failed-global-verifier:555a288beb7295b11950bffadd91721e67dd66610d7b9083ed9e9b4701c36842",
+            "eventId": "parent-global-verifier:swarm-failed-global-verifier:07c5e8cb2b57915b250b6ee2a2d336eea233420f0d988288673d82d7bc10bfb7",
+            "sourceIdempotencyKey": "parent-global-verifier:swarm-failed-global-verifier:07c5e8cb2b57915b250b6ee2a2d336eea233420f0d988288673d82d7bc10bfb7",
             "sequence": 4,
             "type": "GLOBAL_VERIFIER_FAILED",
-            "timestamp": "2026-10-03T12:00:39.000Z",
+            "timestamp": "2026-10-03T12:00:40.000Z",
             "verificationId": "global-verification-0017o4c9"
           },
           {
-            "eventId": "parent-outcome:swarm-failed-global-verifier:needs_review:555a288beb7295b11950bffadd91721e67dd66610d7b9083ed9e9b4701c36842",
-            "sourceIdempotencyKey": "parent-outcome:swarm-failed-global-verifier:needs_review:555a288beb7295b11950bffadd91721e67dd66610d7b9083ed9e9b4701c36842",
+            "eventId": "parent-outcome:swarm-failed-global-verifier:needs_review:07c5e8cb2b57915b250b6ee2a2d336eea233420f0d988288673d82d7bc10bfb7",
+            "sourceIdempotencyKey": "parent-outcome:swarm-failed-global-verifier:needs_review:07c5e8cb2b57915b250b6ee2a2d336eea233420f0d988288673d82d7bc10bfb7",
             "sequence": 5,
             "type": "SWARM_VERIFIED",
-            "timestamp": "2026-10-03T12:00:44.000Z",
+            "timestamp": "2026-10-03T12:00:45.000Z",
             "verificationId": "global-verification-0017o4c9"
           }
         ],
@@ -5149,7 +5149,7 @@
           "integratedTreeHash": "77ddbb288d41077bdb7567aa2019e11d031abed2",
           "evidence": [
             {
-              "eventId": "parent-global-verifier:swarm-failed-global-verifier:555a288beb7295b11950bffadd91721e67dd66610d7b9083ed9e9b4701c36842",
+              "eventId": "parent-global-verifier:swarm-failed-global-verifier:07c5e8cb2b57915b250b6ee2a2d336eea233420f0d988288673d82d7bc10bfb7",
               "sequence": 4
             }
           ]
@@ -5159,7 +5159,7 @@
           "source": "sealed_parent_receipt",
           "evidence": [
             {
-              "eventId": "parent-outcome:swarm-failed-global-verifier:needs_review:555a288beb7295b11950bffadd91721e67dd66610d7b9083ed9e9b4701c36842",
+              "eventId": "parent-outcome:swarm-failed-global-verifier:needs_review:07c5e8cb2b57915b250b6ee2a2d336eea233420f0d988288673d82d7bc10bfb7",
               "sequence": 5
             }
           ]
@@ -5170,7 +5170,7 @@
           "algorithm": "hmac-sha256",
           "keyId": "hosted-d0fa45c1fd12faa1",
           "keyLocatorHash": "543f6f103954a4aafa1dd1a926f55ee8083df5aa2600086ffafd0183ab40b337",
-          "signatureHmacSha256": "74c693be27915ae03154891213a6733ad6fbc12d2a3c96b965f27b4d8104392d"
+          "signatureHmacSha256": "24ba10ea80074a07be45276dad89340d9006ac4edcbabac95f4d0a4c5e58e789"
         }
       }
     }

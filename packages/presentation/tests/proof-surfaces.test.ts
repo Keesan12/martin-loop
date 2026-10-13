@@ -58,6 +58,33 @@ function handoff(outcome: VerifiedHandoffV1["outcome"]): VerifiedHandoffV1 {
       lifecycleState:
         outcome === "VERIFIED" ? "completed" : "human_escalation"
     },
+    lifecycleTruth: outcome === "VERIFIED"
+      ? {
+          executionStatus: "completed",
+          lifecycleState: "completed",
+          terminationClass: "operational_exit",
+          reasonCode: "goal_met",
+          reason: "Persisted goal evidence passed.",
+          matchedReasons: ["goal_met"],
+          exhaustedLimits: [],
+          evidenceAvailable: true
+        }
+      : {
+          executionStatus: "failed",
+          lifecycleState: "human_escalation",
+          terminationClass: "guard_stop",
+          reasonCode: "provider_failure",
+          reason: "Provider execution failed.",
+          matchedReasons: [],
+          exhaustedLimits: [],
+          evidenceAvailable: true
+        },
+    fileEffects: {
+      observationStatus: "observed",
+      touchedDuringExecution: ["packages/cli/src/updater.ts", "packages/cli/src/reverted.ts"],
+      netChangedAtCompletion: ["packages/cli/src/updater.ts"],
+      revertedBeforeCompletion: ["packages/cli/src/reverted.ts"]
+    },
     verification: {
       status: outcome === "VERIFIED" ? "PASSED" : "NOT_RUN",
       summary:
@@ -175,6 +202,62 @@ describe("Verified Handoff V2", () => {
     expect(rendered).not.toContain("\u001b[");
   });
 
+  it("renders lifecycle, exhausted limits, and file effects as separate canonical facts", () => {
+    const withTurnCap = {
+      ...handoff("STOPPED"),
+      sourceStatus: { status: "exited" as const, lifecycleState: "budget_exit" as const },
+      lifecycleTruth: {
+        executionStatus: "exited" as const,
+        lifecycleState: "budget_exit" as const,
+        terminationClass: "operational_exit" as const,
+        reasonCode: "turn_cap" as const,
+        reason: "Iteration limit reached (4).",
+        matchedReasons: ["turn_cap" as const],
+        exhaustedLimits: ["iterations" as const],
+        evidenceAvailable: true
+      }
+    };
+
+    const terminal = stripAnsi(renderVerifiedHandoff(withTurnCap, { width: 140 }));
+    const markdown = renderVerifiedHandoffMarkdown(withTurnCap);
+
+    for (const expected of [
+      "Execution",
+      "exited / budget exit",
+      "Verification",
+      "Receipt Integrity",
+      "Termination Reason",
+      "turn cap: Iteration limit reached (4).",
+      "Exhausted Limits",
+      "iterations",
+      "Touched During Execution",
+      "packages/cli/src/updater.ts, packages/cli/src/reverted.ts",
+      "Net Changed at Completion",
+      "packages/cli/src/updater.ts",
+      "Reverted Before Completion",
+      "packages/cli/src/reverted.ts"
+    ]) {
+      expect(terminal).toContain(expected);
+      expect(markdown).toContain(expected);
+    }
+    expect(terminal).not.toContain("dollar pressure");
+    expect(markdown).not.toContain("dollar pressure");
+  });
+
+  it("fails closed for tampered, verifier-free, failed, and contradictory VERIFIED inputs", () => {
+    const cases: VerifiedHandoffV1[] = [
+      { ...handoff("VERIFIED"), receiptIntegrity: { state: "tamper_detected", reason: "Hash mismatch." } },
+      { ...handoff("VERIFIED"), verification: { ...handoff("VERIFIED").verification, checks: [] } },
+      { ...handoff("VERIFIED"), verification: { ...handoff("VERIFIED").verification, status: "FAILED" } },
+      { ...handoff("VERIFIED"), verification: { ...handoff("VERIFIED").verification, status: "CONTRADICTED" } }
+    ];
+
+    for (const candidate of cases) {
+      expect(stripAnsi(renderVerifiedHandoff(candidate, { width: 100 }))).toContain("NEEDS REVIEW");
+      expect(renderVerifiedHandoffMarkdown(candidate)).toContain("NEEDS REVIEW");
+    }
+  });
+
   it("fails closed when legacy handoffs omit execution provenance", () => {
     const {
       executionMode: _executionMode,
@@ -191,6 +274,24 @@ describe("Verified Handoff V2", () => {
     expect(rendered).toContain("simulated");
     expect(rendered).toContain("INELIGIBLE");
     expect(rendered).not.toContain("— VERIFIED");
+  });
+
+  it("renders unavailable lifecycle and file-effect evidence for legacy handoffs", () => {
+    const {
+      lifecycleTruth: _lifecycleTruth,
+      fileEffects: _fileEffects,
+      ...legacy
+    } = handoff("VERIFIED");
+
+    const terminal = stripAnsi(renderVerifiedHandoff(legacy as VerifiedHandoffV1, { width: 120 }));
+    const markdown = renderVerifiedHandoffMarkdown(legacy as VerifiedHandoffV1);
+
+    expect(terminal).toContain("NEEDS REVIEW");
+    expect(markdown).toContain("NEEDS REVIEW");
+    expect(terminal).toContain("Termination Reason            unavailable");
+    expect(markdown).toContain("| Termination Reason | unavailable |");
+    expect(terminal).toContain("Touched During Execution      unavailable");
+    expect(markdown).toContain("| Touched During Execution | unavailable |");
   });
 });
 
@@ -225,6 +326,7 @@ describe("governance agreement — terminal vs Markdown", () => {
   it.each([
     { outcome: "VERIFIED" as const, executionMode: "governed" as const, eligible: true,  expected: "VERIFIED" },
     { outcome: "VERIFIED" as const, executionMode: "simulated" as const, eligible: false, expected: "NEEDS REVIEW" },
+    { outcome: "VERIFIED" as const, executionMode: "verification_only" as const, eligible: false, expected: "NEEDS REVIEW" },
     { outcome: "STOPPED"  as const, executionMode: "governed" as const, eligible: true,  expected: "STOPPED" },
   ])("$expected: terminal and Markdown agree", ({ outcome, executionMode, eligible, expected }) => {
     const h = { ...handoff(outcome), executionMode, governanceClaimEligible: eligible };
