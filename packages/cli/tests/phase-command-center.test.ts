@@ -2,15 +2,16 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { resolveCliCommandAvailability } from "@martin/adapters";
+import { diagnoseCodexHost, resolveCliCommandAvailability } from "@martin/adapters";
 import { describe, expect, it } from "vitest";
 
 import { executeCli, parseCliArguments } from "../src/index.js";
 import { createNativePhaseCommandCenterSnapshot } from "../src/phase-command-center.js";
 import { resolveInvocationRoot } from "../src/run-store.js";
 
-const codexAvailable = resolveCliCommandAvailability("codex").available;
-const itIfCodexAvailable = codexAvailable ? it : it.skip;
+const codexAvailability = resolveCliCommandAvailability("codex");
+const nativeCodexAvailable = diagnoseCodexHost(codexAvailability).nativeInstallValid;
+const itIfNativeCodexAvailable = nativeCodexAvailable ? it : it.skip;
 
 async function createPhaseFixture() {
   const rootDir = await mkdtemp(join(tmpdir(), "martin-phase-cli-"));
@@ -150,7 +151,7 @@ describe("native phase command center", () => {
     }
   });
 
-  itIfCodexAvailable("surfaces receipt scope and Codex host diagnostics in session-start", async () => {
+  itIfNativeCodexAvailable("surfaces receipt scope and Codex host diagnostics in session-start", async () => {
     const { rootDir, runsDir } = await createPhaseFixture();
     const previousLive = process.env.MARTIN_LIVE;
     process.env.MARTIN_LIVE = "true";
@@ -200,7 +201,7 @@ describe("native phase command center", () => {
     }
   });
 
-  itIfCodexAvailable("executes phase session-start as the documented compatibility alias", async () => {
+  itIfNativeCodexAvailable("executes phase session-start as the documented compatibility alias", async () => {
     const { rootDir, runsDir } = await createPhaseFixture();
     const previousLive = process.env.MARTIN_LIVE;
     process.env.MARTIN_LIVE = "true";

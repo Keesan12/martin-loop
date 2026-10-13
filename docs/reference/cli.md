@@ -46,6 +46,7 @@ The audit reads Claude Code session history locally. It estimates API-equivalent
 Use this sequence when you are new to the product or setting up a fresh repo:
 
 ```sh
+npx -y martin-loop@latest enable --engine codex
 npx -y martin-loop@latest start
 npx -y martin-loop@latest --version
 npx -y martin-loop@latest demo
@@ -85,6 +86,7 @@ npx -y martin-loop@latest share --latest
 ## Inspect-First Flow
 
 ```sh
+npx -y martin-loop@latest enable --engine codex
 npx -y martin-loop@latest doctor
 npx -y martin-loop@latest session-start
 npx -y martin-loop@latest preflight "fix the auth regression" --verify "pnpm test"
@@ -150,6 +152,20 @@ npx martin-loop challenge --latest
 npx martin-loop share --latest
 npx martin-loop badge --format json --runs-dir ~/.martin/runs
 ```
+
+## Evidence-readiness badge
+
+`martin badge` reports how many of five binary local evidence signals are present:
+
+1. a configured budget;
+2. a configured verifier;
+3. a persisted run receipt with verified integrity;
+4. rollback, restore, or patch evidence; and
+5. passing local MCP doctor prerequisites.
+
+The human result and full `--json` document report `N/5` signals and explain every missing signal. `--format svg` emits an SVG badge, while `--format json` emits the compact four-field Shields static-endpoint document.
+
+A `5/5` result means all five local evidence signals are present. It is not a historical success rate, probability, benchmark result, or claim that agent runs succeed 100 percent of the time. The retained `points` and `maxPoints` fields are compatibility readiness points, with 20 points assigned to each present signal.
 
 ## Share command
 

@@ -30,7 +30,28 @@ test("shouldScanPath skips known fixture and guard files", () => {
   assert.equal(shouldScanPath("scripts/public-copy-scan.mjs"), false);
   assert.equal(shouldScanPath("scripts/public-portability-guard.mjs"), false);
   assert.equal(shouldScanPath("scripts/run-swarm-live-qualification.ts"), false);
+  assert.equal(shouldScanPath("scripts/run-swarm-live-qualification-public.ts"), true);
+  assert.equal(shouldScanPath("packages/core/src/public-copy-scan.test-helper.ts"), true);
   assert.equal(shouldScanPath("packages/core/src/index.ts"), true);
+});
+
+test("runPublicPortabilityGuard reports exact production paths and rules for representative credentials", async () => {
+  const rootDir = await mkdtemp(path.join(os.tmpdir(), "martin-portability-secret-"));
+  await mkdir(path.join(rootDir, "packages", "core", "src"), { recursive: true });
+  const relativePath = "packages/core/src/credentials.ts";
+
+  await writeFile(
+    path.join(rootDir, relativePath),
+    "export const leakedCredential = 'ghp_1234567890abcdefghijklmnop';\n",
+  );
+
+  await assert.rejects(
+    () => runPublicPortabilityGuard({ rootDir, files: [relativePath] }),
+    (error) => {
+      assert.match(String(error), /packages\/core\/src\/credentials\.ts: representative API credential/iu);
+      return true;
+    },
+  );
 });
 
 test("runPublicPortabilityGuard passes on clean portable files", async () => {

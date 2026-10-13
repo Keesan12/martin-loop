@@ -75,11 +75,54 @@ function resolveHandoffAuthority(handoff: VerifiedHandoffV1): {
   const executionMode = handoff.executionMode ?? "simulated";
   const governanceClaimEligible =
     executionMode === "governed" && handoff.governanceClaimEligible === true;
+  const lifecycleTruth = handoff.lifecycleTruth;
+  const canonicalEvidenceSupportsVerified =
+    governanceClaimEligible &&
+    handoff.sourceStatus.status === "completed" &&
+    handoff.sourceStatus.lifecycleState === "completed" &&
+    lifecycleTruth !== undefined &&
+    lifecycleTruth.evidenceAvailable === true &&
+    lifecycleTruth.terminationClass === "operational_exit" &&
+    lifecycleTruth.reasonCode === "goal_met" &&
+    handoff.fileEffects !== undefined &&
+    handoff.verification.status === "PASSED" &&
+    handoff.verification.checks.length > 0 &&
+    handoff.verification.checks.every((check) => check.status === "PASSED") &&
+    handoff.receiptIntegrity.state === "verified" &&
+    handoff.unresolvedWork.length === 0;
   const effectiveOutcome: VerifiedHandoffOutcome =
-    handoff.outcome === "VERIFIED" && !governanceClaimEligible
+    handoff.outcome === "VERIFIED" && !canonicalEvidenceSupportsVerified
       ? "NEEDS_REVIEW"
       : handoff.outcome;
   return { executionMode, governanceClaimEligible, effectiveOutcome };
+}
+
+function formatExecution(handoff: VerifiedHandoffV1): string {
+  return `${humanize(handoff.sourceStatus.status)} / ${humanize(handoff.sourceStatus.lifecycleState)}`;
+}
+
+function formatTerminationReason(handoff: VerifiedHandoffV1): string {
+  const truth = handoff.lifecycleTruth;
+  if (!truth?.evidenceAvailable) return "unavailable";
+  if (!truth.reasonCode) return truth.terminationClass === "none" ? "none" : "unknown";
+  return `${humanize(truth.reasonCode)}${truth.reason ? `: ${truth.reason}` : ""}`;
+}
+
+function formatExhaustedLimits(handoff: VerifiedHandoffV1): string {
+  const truth = handoff.lifecycleTruth;
+  if (!truth?.evidenceAvailable) return "unavailable";
+  return truth.exhaustedLimits.length > 0
+    ? truth.exhaustedLimits.map(humanize).join(", ")
+    : "none";
+}
+
+function formatFileEffectList(
+  handoff: VerifiedHandoffV1,
+  field: "touchedDuringExecution" | "netChangedAtCompletion" | "revertedBeforeCompletion",
+): string {
+  const effects = handoff.fileEffects;
+  if (!effects || effects.observationStatus === "unavailable") return "unavailable";
+  return effects[field].length > 0 ? effects[field].join(", ") : "none";
 }
 
 export function renderVerifiedHandoff(
@@ -92,6 +135,7 @@ export function renderVerifiedHandoff(
   const { executionMode, governanceClaimEligible, effectiveOutcome } =
     resolveHandoffAuthority(handoff);
   const outcome = effectiveOutcome.replace("_", " ");
+  const labelWidth = 30;
   const checks = handoff.verification.checks.map((check) => ({
     check: check.command,
     status: paint(
@@ -108,19 +152,25 @@ export function renderVerifiedHandoff(
       paint(outcome, outcomeTone(effectiveOutcome), environment),
     horizontalRule(width, "━"),
     "",
-    bounded("Task".padEnd(20) + handoff.task.objective),
-    bounded("Run".padEnd(20) + handoff.loopId),
-    bounded("Execution Mode".padEnd(20) + executionMode.replaceAll("_", " ")),
-    bounded("Governed Claim".padEnd(20) + (governanceClaimEligible ? "ELIGIBLE" : "INELIGIBLE")),
+    bounded("Task".padEnd(labelWidth) + handoff.task.objective),
+    bounded("Run".padEnd(labelWidth) + handoff.loopId),
+    bounded("Execution Mode".padEnd(labelWidth) + executionMode.replaceAll("_", " ")),
+    bounded("Governed Claim".padEnd(labelWidth) + (governanceClaimEligible ? "ELIGIBLE" : "INELIGIBLE")),
+    bounded("Execution".padEnd(labelWidth) + formatExecution(handoff)),
     bounded(
-      "Verification".padEnd(20) + handoff.verification.status.replace("_", " "),
+      "Verification".padEnd(labelWidth) + handoff.verification.status.replace("_", " "),
     ),
-    bounded("Scope".padEnd(20) + handoff.scope.status.replaceAll("_", " ")),
-    bounded("Test Integrity".padEnd(20) + handoff.testIntegrity.verdict),
-    bounded("Receipt Integrity".padEnd(20) + handoff.receiptIntegrity.state),
-    bounded("Attempts".padEnd(20) + handoff.usage.attempts),
+    bounded("Receipt Integrity".padEnd(labelWidth) + handoff.receiptIntegrity.state),
+    bounded("Termination Reason".padEnd(labelWidth) + formatTerminationReason(handoff)),
+    bounded("Exhausted Limits".padEnd(labelWidth) + formatExhaustedLimits(handoff)),
+    bounded("Touched During Execution".padEnd(labelWidth) + formatFileEffectList(handoff, "touchedDuringExecution")),
+    bounded("Net Changed at Completion".padEnd(labelWidth) + formatFileEffectList(handoff, "netChangedAtCompletion")),
+    bounded("Reverted Before Completion".padEnd(labelWidth) + formatFileEffectList(handoff, "revertedBeforeCompletion")),
+    bounded("Scope".padEnd(labelWidth) + handoff.scope.status.replaceAll("_", " ")),
+    bounded("Test Integrity".padEnd(labelWidth) + handoff.testIntegrity.verdict),
+    bounded("Attempts".padEnd(labelWidth) + handoff.usage.attempts),
     bounded(
-      "Cost".padEnd(20) +
+      "Cost".padEnd(labelWidth) +
         formatCost(handoff.usage.actualUsd, handoff.usage.costProvenance),
     ),
   ];
@@ -193,10 +243,16 @@ export function renderVerifiedHandoffMarkdown(
     `| Run | ${handoff.loopId} |`,
     `| Execution Mode | ${executionMode.replaceAll("_", " ")} |`,
     `| Governed Claim | ${governanceClaimEligible ? "ELIGIBLE" : "INELIGIBLE"} |`,
+    `| Execution | ${formatExecution(handoff)} |`,
     `| Verification | ${handoff.verification.status.replace("_", " ")} |`,
+    `| Receipt Integrity | ${handoff.receiptIntegrity.state} |`,
+    `| Termination Reason | ${formatTerminationReason(handoff)} |`,
+    `| Exhausted Limits | ${formatExhaustedLimits(handoff)} |`,
+    `| Touched During Execution | ${formatFileEffectList(handoff, "touchedDuringExecution")} |`,
+    `| Net Changed at Completion | ${formatFileEffectList(handoff, "netChangedAtCompletion")} |`,
+    `| Reverted Before Completion | ${formatFileEffectList(handoff, "revertedBeforeCompletion")} |`,
     `| Scope | ${handoff.scope.status.replaceAll("_", " ")} |`,
     `| Test Integrity | ${handoff.testIntegrity.verdict} |`,
-    `| Receipt Integrity | ${handoff.receiptIntegrity.state} |`,
     `| Attempts | ${handoff.usage.attempts} |`,
     `| Cost | ${formatCost(handoff.usage.actualUsd, handoff.usage.costProvenance)} |`,
   ];

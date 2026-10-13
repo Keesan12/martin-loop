@@ -49,7 +49,10 @@ npx martin-loop doctor
 
 ## Recommended flow
 
+Save the runtime for this project before the first governed command. Replace `codex` with `claude` or `gemini` when that is the runtime you intend to use.
+
 ```sh
+martin enable --engine codex
 martin doctor
 martin session-start
 martin phase contract --json

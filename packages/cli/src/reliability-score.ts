@@ -27,6 +27,9 @@ export type MartinReliabilitySignal = {
 export type MartinReliabilityGrade = "ready" | "strong" | "needs-evidence" | "blocked";
 
 export type MartinReliabilityScore = {
+  meaning: "five_binary_local_evidence_signals";
+  signalCount: number;
+  totalSignals: 5;
   points: number;
   maxPoints: number;
   grade: MartinReliabilityGrade;
@@ -54,6 +57,7 @@ const SIGNALS: Array<{
 ];
 
 const POINTS_PER_SIGNAL = 20;
+const TOTAL_SIGNALS = 5 as const;
 const MAX_POINTS = SIGNALS.length * POINTS_PER_SIGNAL;
 
 export function computeMartinReliabilityScore(
@@ -79,16 +83,20 @@ export function computeMartinReliabilityScore(
   });
 
   const points = signals.reduce((total, signal) => total + signal.points, 0);
+  const signalCount = signals.filter((signal) => signal.passed).length;
   const grade = gradeForPoints(points);
   const missingReasons = signals
     .filter((signal) => !signal.passed)
     .map((signal) => signal.reason ?? `${signal.label}: Evidence missing`);
 
   return {
+    meaning: "five_binary_local_evidence_signals",
+    signalCount,
+    totalSignals: TOTAL_SIGNALS,
     points,
     maxPoints: MAX_POINTS,
     grade,
-    summary: `Martin Loop agent reliability readiness: ${points}/${MAX_POINTS} ${grade}`,
+    summary: `Evidence readiness: ${signalCount}/${TOTAL_SIGNALS} signals (${grade}; ${points}/${MAX_POINTS} readiness points)`,
     signals,
     missingReasons
   };
@@ -99,15 +107,15 @@ export function renderMartinReliabilityBadgeJson(
 ): MartinReliabilityBadgeJson {
   return {
     schemaVersion: 1,
-    label: "agent reliability",
-    message: `${score.points}/${score.maxPoints} ${score.grade}`,
+    label: "evidence readiness",
+    message: `${score.signalCount}/${score.totalSignals} ${score.grade}`,
     color: colorForGrade(score.grade)
   };
 }
 
 export function renderMartinReliabilityBadgeSvg(score: MartinReliabilityScore): string {
-  const label = "agent reliability";
-  const message = `${score.points}/${score.maxPoints} ${score.grade}`;
+  const label = "evidence readiness";
+  const message = `${score.signalCount}/${score.totalSignals} ${score.grade}`;
   const color = colorHexForGrade(score.grade);
   const title = `${label}: ${message}`;
   const detail = score.missingReasons.length > 0 ? score.missingReasons.join("; ") : "All required evidence present";
@@ -131,8 +139,8 @@ export function renderMartinReliabilityBadgeSvg(score: MartinReliabilityScore): 
       '" d="M118 0h4v20h-4z"/>',
     '<rect rx="3" width="220" height="20" fill="url(#s)"/>',
     '<g fill="#fff" text-anchor="middle" font-family="Verdana,DejaVu Sans,sans-serif" font-size="11">',
-    '<text x="59" y="15" fill="#010101" fill-opacity=".3">agent reliability</text>',
-    '<text x="59" y="14">agent reliability</text>',
+    `<text x="59" y="15" fill="#010101" fill-opacity=".3">${label}</text>`,
+    `<text x="59" y="14">${label}</text>`,
     `<text x="169" y="15" fill="#010101" fill-opacity=".3">${escapeXml(message)}</text>`,
     `<text x="169" y="14">${escapeXml(message)}</text>`,
     "</g>",

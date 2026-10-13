@@ -567,6 +567,30 @@ function parseRetryAfterMs(headerValue: string | null): number | undefined {
  * scoping when multiple queue directories are active (e.g., in tests).
  */
 const activeClaimPaths = new Set<string>();
+type SyncClaimRenameStage = "acquire_item" | "publish_owner" | "requeue";
+let syncClaimRenameHookForTests: ((
+  stage: SyncClaimRenameStage,
+  source: string,
+  destination: string,
+) => Promise<void>) | undefined;
+
+/** @internal Deterministic filesystem-failure seam for claim lifecycle tests only. */
+export function setSyncClaimRenameHookForTests(hook?: (
+  stage: SyncClaimRenameStage,
+  source: string,
+  destination: string,
+) => Promise<void>): void {
+  syncClaimRenameHookForTests = hook;
+}
+
+async function renameClaimPath(
+  stage: SyncClaimRenameStage,
+  source: string,
+  destination: string,
+): Promise<void> {
+  await syncClaimRenameHookForTests?.(stage, source, destination);
+  await rename(source, destination);
+}
 
 /**
  * Atomically claims a queue item by exclusively creating .inflight/<queueId>.claim,
@@ -608,7 +632,7 @@ async function claimItem(file: string, queueDir: string): Promise<string | undef
     const reservedItemPath = join(reservationDir, "item.json");
 
     try {
-      await rename(src, reservedItemPath);
+      await renameClaimPath("acquire_item", src, reservedItemPath);
     } catch (err) {
       await rm(reservationDir, { recursive: true, force: true });
       if ((err as NodeJS.ErrnoException).code === "ENOENT") return undefined;
@@ -618,7 +642,7 @@ async function claimItem(file: string, queueDir: string): Promise<string | undef
     const claimId = randomUUID();
     const ownedClaimDir = join(inflightDir, `${queueId}.${claimId}.claim`);
     try {
-      await rename(reservationDir, ownedClaimDir);
+      await renameClaimPath("publish_owner", reservationDir, ownedClaimDir);
       return join(ownedClaimDir, "item.json");
     } catch (err) {
       // The queue item is already inside our reservation. Put it back before
@@ -655,7 +679,7 @@ async function releaseItem(
   const queueFile = claimQueueId ? `${claimQueueId}.json` : meta ? `${meta.queueId}.json` : base;
   const dest = join(queueDir, queueFile);
   try {
-    await rename(inflightPath, dest);
+    await renameClaimPath("requeue", inflightPath, dest);
     if (claimQueueId) await rm(dirname(inflightPath), { recursive: true, force: true });
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") {

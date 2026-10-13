@@ -42,6 +42,7 @@ export const FORBIDDEN_PUBLIC_COPY_PATTERNS = [
   /\/Users\//i,
   /\bOneDrive\b/i,
   /\.codex[\\/]+attachments\b/i,
+  /(?:sk-proj-[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|npm_[A-Za-z0-9]{36})/i,
 ];
 
 const PATH_SPECIFIC_ALLOWLIST = [

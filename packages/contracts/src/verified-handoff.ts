@@ -7,6 +7,7 @@ import type {
   LoopStatus,
   ReceiptIntegritySummary,
 } from "./index.js";
+import type { ExitKind } from "./exits.js";
 
 export const VERIFIED_HANDOFF_OUTCOMES = [
   "VERIFIED",
@@ -115,6 +116,31 @@ export interface VerifiedHandoffRecoveryV1 {
   summary: string;
 }
 
+export type VerifiedHandoffExhaustedLimitV1 =
+  | "usd"
+  | "tokens"
+  | "iterations"
+  | "wall_clock";
+
+export interface VerifiedHandoffLifecycleTruthV1 {
+  executionStatus: LoopStatus;
+  lifecycleState: LoopLifecycleState;
+  terminationClass: "operational_exit" | "guard_stop" | "none";
+  reasonCode?: ExitKind | string;
+  reason?: string;
+  matchedReasons: ExitKind[];
+  exhaustedLimits: VerifiedHandoffExhaustedLimitV1[];
+  evidenceAvailable: boolean;
+}
+
+export interface VerifiedHandoffFileEffectsV1 {
+  observationStatus: "observed" | "unavailable";
+  touchedDuringExecution: string[];
+  netChangedAtCompletion: string[];
+  revertedBeforeCompletion: string[];
+  observationReason?: string;
+}
+
 export interface VerifiedHandoffV1 {
   schemaVersion: "1.0.0";
   handoffId: string;
@@ -137,6 +163,8 @@ export interface VerifiedHandoffV1 {
     status: LoopStatus;
     lifecycleState: LoopLifecycleState;
   };
+  lifecycleTruth: VerifiedHandoffLifecycleTruthV1;
+  fileEffects: VerifiedHandoffFileEffectsV1;
   verification: {
     status: EvidenceStatus;
     summary: string;

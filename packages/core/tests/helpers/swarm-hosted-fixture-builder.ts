@@ -171,6 +171,18 @@ export function canonicalSwarmHostedFixtureBytes(bundle: SwarmHostedFixtureBundl
   return `${JSON.stringify(bundle, null, 2)}\n`;
 }
 
+export async function readFrozenProductionSwarmHostedFixtureBundle(): Promise<SwarmHostedFixtureBundle> {
+  const bytes = await readFile(
+    new URL("../../../contracts/tests/fixtures/swarm-hosted-v1-cases.json", import.meta.url),
+    "utf8",
+  );
+  const parsed = JSON.parse(bytes) as SwarmHostedFixtureBundle;
+  if (parsed.schemaVersion !== FIXTURE_SCHEMA_VERSION) {
+    throw new Error(`Unexpected frozen hosted fixture schema: ${String(parsed.schemaVersion)}`);
+  }
+  return parsed;
+}
+
 export const canonicalSwarmHostedFixtureBundleBytes = canonicalSwarmHostedFixtureBytes;
 
 export function swarmHostedFixtureSha256(bytes: string): string {

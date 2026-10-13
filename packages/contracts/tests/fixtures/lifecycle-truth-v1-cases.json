@@ -1,0 +1,139 @@
+{
+  "schemaVersion": "martin.lifecycle-truth-fixtures.v1",
+  "cases": [
+    {
+      "id": "positive",
+      "loop": {
+        "loopId": "loop_lifecycle_positive",
+        "workspaceId": "ws_lifecycle_positive",
+        "projectId": "proj_lifecycle_matrix",
+        "status": "completed",
+        "lifecycleState": "completed",
+        "task": { "title": "Positive lifecycle case", "objective": "Persist a verified edit", "verificationPlan": ["node verify.mjs"], "mutationMode": "edit", "allowedPaths": ["src/positive.ts"] },
+        "budget": { "maxUsd": 1, "softLimitUsd": 0.75, "maxIterations": 2, "maxTokens": 10000 },
+        "cost": { "actualUsd": 0.01, "avoidedUsd": 0, "tokensIn": 100, "tokensOut": 20, "provenance": "actual" },
+        "artifacts": [],
+        "attempts": [{ "attemptId": "attempt_lifecycle_positive", "index": 1, "adapterId": "agent-cli:codex", "model": "fixture-model", "startedAt": "2026-10-09T18:00:00.000Z", "completedAt": "2026-10-09T18:00:01.000Z", "summary": "Persisted a verified edit." }],
+        "events": [
+          { "eventId": "evt_positive_verify", "type": "verification.completed", "timestamp": "2026-10-09T18:00:01.000Z", "lifecycleState": "verifying", "payload": { "passed": true, "attemptIndex": 1, "summary": "Verifier passed.", "changedFiles": ["src/positive.ts"], "binding": { "runId": "loop_lifecycle_positive", "workspaceId": "ws_lifecycle_positive", "attemptId": "attempt_lifecycle_positive", "cwd": "C:/martin/lifecycle-fixture", "runsRoot": "C:/martin/lifecycle-fixture/runs", "commands": ["node verify.mjs"] }, "steps": [{ "command": "node verify.mjs", "launched": true, "completed": true, "crashed": false, "exitCode": 0, "timedOut": false }] } },
+          { "eventId": "evt_positive_complete", "type": "run.completed", "timestamp": "2026-10-09T18:00:02.000Z", "lifecycleState": "completed", "payload": { "reason": "goal_met", "fileEffects": { "observationStatus": "observed", "touchedDuringExecution": ["src/positive.ts"], "netChangedAtCompletion": ["src/positive.ts"], "revertedBeforeCompletion": [] } } }
+        ],
+        "metadata": { "executionMode": "governed" },
+        "createdAt": "2026-10-09T18:00:00.000Z",
+        "updatedAt": "2026-10-09T18:00:02.000Z",
+        "receiptScope": { "workingDirectory": "C:/martin/lifecycle-fixture", "runsRoot": "C:/martin/lifecycle-fixture/runs" },
+        "terminationEnvelope": { "schemaVersion": "termination/1", "class": "operational_exit", "exit": { "schemaVersion": "exit-evaluation/1", "policyVersion": "exit-policy/1", "shouldExit": true, "primary": "goal_met", "matched": ["goal_met"], "phase": "post_attempt", "evaluatedAt": "2026-10-09T18:00:02.000Z", "matches": [{ "kind": "goal_met", "reason": "Configured verification goal passed.", "evidence": { "verifierScore": 1 } }] } }
+      },
+      "expected": { "outcome": "VERIFIED", "executionMode": "governed", "governanceClaimEligible": true, "sourceStatus": { "status": "completed", "lifecycleState": "completed" }, "verification": { "status": "PASSED" }, "receiptIntegrity": { "state": "verified" }, "lifecycleTruth": { "executionStatus": "completed", "lifecycleState": "completed", "terminationClass": "operational_exit", "reasonCode": "goal_met", "reason": "Configured verification goal passed.", "matchedReasons": ["goal_met"], "exhaustedLimits": [], "evidenceAvailable": true }, "fileEffects": { "observationStatus": "observed", "touchedDuringExecution": ["src/positive.ts"], "netChangedAtCompletion": ["src/positive.ts"], "revertedBeforeCompletion": [] } }
+    },
+    {
+      "id": "verifier_failed",
+      "loop": {
+        "loopId": "loop_lifecycle_verifier_failed", "workspaceId": "ws_lifecycle_verifier_failed", "projectId": "proj_lifecycle_matrix", "status": "completed", "lifecycleState": "completed",
+        "task": { "title": "Verifier failed lifecycle case", "objective": "Retain a failed verifier", "verificationPlan": ["node verify.mjs"], "mutationMode": "edit", "allowedPaths": ["src/failed.ts"] },
+        "budget": { "maxUsd": 1, "softLimitUsd": 0.75, "maxIterations": 2, "maxTokens": 10000 }, "cost": { "actualUsd": 0.01, "avoidedUsd": 0, "tokensIn": 100, "tokensOut": 20, "provenance": "actual" }, "artifacts": [],
+        "attempts": [{ "attemptId": "attempt_lifecycle_verifier_failed", "index": 1, "adapterId": "agent-cli:codex", "model": "fixture-model", "startedAt": "2026-10-09T18:01:00.000Z", "completedAt": "2026-10-09T18:01:01.000Z", "summary": "Verifier failed." }],
+        "events": [
+          { "eventId": "evt_verifier_failed_verify", "type": "verification.completed", "timestamp": "2026-10-09T18:01:01.000Z", "lifecycleState": "verifying", "payload": { "passed": false, "attemptIndex": 1, "summary": "Verifier failed.", "changedFiles": ["src/failed.ts"], "binding": { "runId": "loop_lifecycle_verifier_failed", "workspaceId": "ws_lifecycle_verifier_failed", "attemptId": "attempt_lifecycle_verifier_failed", "cwd": "C:/martin/lifecycle-fixture", "runsRoot": "C:/martin/lifecycle-fixture/runs", "commands": ["node verify.mjs"] }, "steps": [{ "command": "node verify.mjs", "launched": true, "completed": true, "crashed": false, "exitCode": 1, "timedOut": false }] } },
+          { "eventId": "evt_verifier_failed_complete", "type": "run.completed", "timestamp": "2026-10-09T18:01:02.000Z", "lifecycleState": "completed", "payload": { "reason": "verification_failed", "fileEffects": { "observationStatus": "observed", "touchedDuringExecution": ["src/failed.ts"], "netChangedAtCompletion": ["src/failed.ts"], "revertedBeforeCompletion": [] } } }
+        ],
+        "metadata": { "executionMode": "governed" }, "createdAt": "2026-10-09T18:01:00.000Z", "updatedAt": "2026-10-09T18:01:02.000Z", "receiptScope": { "workingDirectory": "C:/martin/lifecycle-fixture", "runsRoot": "C:/martin/lifecycle-fixture/runs" }
+      },
+      "expected": { "outcome": "NEEDS_REVIEW", "executionMode": "governed", "governanceClaimEligible": true, "sourceStatus": { "status": "completed", "lifecycleState": "completed" }, "verification": { "status": "FAILED" }, "receiptIntegrity": { "state": "verified" }, "lifecycleTruth": { "executionStatus": "completed", "lifecycleState": "completed", "terminationClass": "none", "matchedReasons": [], "exhaustedLimits": [], "evidenceAvailable": false }, "fileEffects": { "observationStatus": "observed", "touchedDuringExecution": ["src/failed.ts"], "netChangedAtCompletion": ["src/failed.ts"], "revertedBeforeCompletion": [] } }
+    },
+    {
+      "id": "denied",
+      "loop": {
+        "loopId": "loop_lifecycle_denied", "workspaceId": "ws_lifecycle_denied", "projectId": "proj_lifecycle_matrix", "status": "exited", "lifecycleState": "human_escalation",
+        "task": { "title": "Denied lifecycle case", "objective": "Reject a denied write", "verificationPlan": ["node verify.mjs"], "mutationMode": "edit", "allowedPaths": ["src/allowed.ts"], "deniedPaths": ["secrets/**"] },
+        "budget": { "maxUsd": 1, "softLimitUsd": 0.75, "maxIterations": 2, "maxTokens": 10000 }, "cost": { "actualUsd": 0.01, "avoidedUsd": 0, "tokensIn": 100, "tokensOut": 20, "provenance": "actual" }, "artifacts": [],
+        "attempts": [{ "attemptId": "attempt_lifecycle_denied", "index": 1, "adapterId": "agent-cli:codex", "model": "fixture-model", "startedAt": "2026-10-09T18:02:00.000Z", "completedAt": "2026-10-09T18:02:01.000Z", "summary": "Denied write was restored.", "failureClass": "safety_leash_blocked" }],
+        "events": [{ "eventId": "evt_denied_complete", "type": "run.completed", "timestamp": "2026-10-09T18:02:02.000Z", "lifecycleState": "human_escalation", "payload": { "reason": "surface_write_not_allowed", "fileEffects": { "observationStatus": "observed", "touchedDuringExecution": ["secrets/token.txt"], "netChangedAtCompletion": [], "revertedBeforeCompletion": ["secrets/token.txt"] } } }],
+        "metadata": { "executionMode": "governed" }, "createdAt": "2026-10-09T18:02:00.000Z", "updatedAt": "2026-10-09T18:02:02.000Z", "receiptScope": { "workingDirectory": "C:/martin/lifecycle-fixture", "runsRoot": "C:/martin/lifecycle-fixture/runs" },
+        "terminationEnvelope": { "schemaVersion": "termination/1", "class": "guard_stop", "guard": { "reasonCode": "surface_write_not_allowed", "reason": "Denied path was restored.", "failureClass": "safety_leash_blocked", "safetySurface": "filesystem" } }
+      },
+      "expected": { "outcome": "STOPPED", "executionMode": "governed", "governanceClaimEligible": true, "sourceStatus": { "status": "exited", "lifecycleState": "human_escalation" }, "verification": { "status": "NOT_RUN" }, "receiptIntegrity": { "state": "verified" }, "lifecycleTruth": { "executionStatus": "exited", "lifecycleState": "human_escalation", "terminationClass": "guard_stop", "reasonCode": "surface_write_not_allowed", "reason": "Denied path was restored.", "matchedReasons": [], "exhaustedLimits": [], "evidenceAvailable": true }, "fileEffects": { "observationStatus": "observed", "touchedDuringExecution": ["secrets/token.txt"], "netChangedAtCompletion": [], "revertedBeforeCompletion": ["secrets/token.txt"] } }
+    },
+    {
+      "id": "reverted",
+      "loop": {
+        "loopId": "loop_lifecycle_reverted", "workspaceId": "ws_lifecycle_reverted", "projectId": "proj_lifecycle_matrix", "status": "completed", "lifecycleState": "completed",
+        "task": { "title": "Reverted lifecycle case", "objective": "Retain reverted edit evidence", "verificationPlan": ["node verify.mjs"], "mutationMode": "edit", "allowedPaths": ["src/reverted.ts"] },
+        "budget": { "maxUsd": 1, "softLimitUsd": 0.75, "maxIterations": 2, "maxTokens": 10000 }, "cost": { "actualUsd": 0.01, "avoidedUsd": 0, "tokensIn": 100, "tokensOut": 20, "provenance": "actual" }, "artifacts": [],
+        "attempts": [{ "attemptId": "attempt_lifecycle_reverted", "index": 1, "adapterId": "agent-cli:codex", "model": "fixture-model", "startedAt": "2026-10-09T18:03:00.000Z", "completedAt": "2026-10-09T18:03:01.000Z", "summary": "Edit was reverted." }],
+        "events": [
+          { "eventId": "evt_reverted_verify", "type": "verification.completed", "timestamp": "2026-10-09T18:03:01.000Z", "lifecycleState": "verifying", "payload": { "passed": true, "attemptIndex": 1, "summary": "Verifier passed.", "changedFiles": [], "binding": { "runId": "loop_lifecycle_reverted", "workspaceId": "ws_lifecycle_reverted", "attemptId": "attempt_lifecycle_reverted", "cwd": "C:/martin/lifecycle-fixture", "runsRoot": "C:/martin/lifecycle-fixture/runs", "commands": ["node verify.mjs"] }, "steps": [{ "command": "node verify.mjs", "launched": true, "completed": true, "crashed": false, "exitCode": 0, "timedOut": false }] } },
+          { "eventId": "evt_reverted_complete", "type": "run.completed", "timestamp": "2026-10-09T18:03:02.000Z", "lifecycleState": "completed", "payload": { "reason": "goal_met", "fileEffects": { "observationStatus": "observed", "touchedDuringExecution": ["src/reverted.ts"], "netChangedAtCompletion": [], "revertedBeforeCompletion": ["src/reverted.ts"] } } }
+        ],
+        "metadata": { "executionMode": "governed" }, "createdAt": "2026-10-09T18:03:00.000Z", "updatedAt": "2026-10-09T18:03:02.000Z", "receiptScope": { "workingDirectory": "C:/martin/lifecycle-fixture", "runsRoot": "C:/martin/lifecycle-fixture/runs" },
+        "terminationEnvelope": { "schemaVersion": "termination/1", "class": "operational_exit", "exit": { "schemaVersion": "exit-evaluation/1", "policyVersion": "exit-policy/1", "shouldExit": true, "primary": "goal_met", "matched": ["goal_met"], "phase": "post_attempt", "evaluatedAt": "2026-10-09T18:03:02.000Z", "matches": [{ "kind": "goal_met", "reason": "Configured verification goal passed.", "evidence": { "verifierScore": 1 } }] } }
+      },
+      "expected": { "outcome": "NEEDS_REVIEW", "executionMode": "governed", "governanceClaimEligible": true, "sourceStatus": { "status": "completed", "lifecycleState": "completed" }, "verification": { "status": "PASSED" }, "receiptIntegrity": { "state": "verified" }, "lifecycleTruth": { "executionStatus": "completed", "lifecycleState": "completed", "terminationClass": "operational_exit", "reasonCode": "goal_met", "reason": "Configured verification goal passed.", "matchedReasons": ["goal_met"], "exhaustedLimits": [], "evidenceAvailable": true }, "fileEffects": { "observationStatus": "observed", "touchedDuringExecution": ["src/reverted.ts"], "netChangedAtCompletion": [], "revertedBeforeCompletion": ["src/reverted.ts"] } }
+    },
+    {
+      "id": "no_edit",
+      "loop": {
+        "loopId": "loop_lifecycle_no_edit", "workspaceId": "ws_lifecycle_no_edit", "projectId": "proj_lifecycle_matrix", "status": "completed", "lifecycleState": "completed",
+        "task": { "title": "No edit lifecycle case", "objective": "Require a mutation but observe none", "verificationPlan": ["node verify.mjs"], "mutationMode": "edit", "allowedPaths": ["src/no-edit.ts"] },
+        "budget": { "maxUsd": 1, "softLimitUsd": 0.75, "maxIterations": 2, "maxTokens": 10000 }, "cost": { "actualUsd": 0.01, "avoidedUsd": 0, "tokensIn": 100, "tokensOut": 20, "provenance": "actual" }, "artifacts": [],
+        "attempts": [{ "attemptId": "attempt_lifecycle_no_edit", "index": 1, "adapterId": "agent-cli:codex", "model": "fixture-model", "startedAt": "2026-10-09T18:04:00.000Z", "completedAt": "2026-10-09T18:04:01.000Z", "summary": "No files changed." }],
+        "events": [
+          { "eventId": "evt_no_edit_verify", "type": "verification.completed", "timestamp": "2026-10-09T18:04:01.000Z", "lifecycleState": "verifying", "payload": { "passed": true, "attemptIndex": 1, "summary": "Verifier passed.", "changedFiles": [], "binding": { "runId": "loop_lifecycle_no_edit", "workspaceId": "ws_lifecycle_no_edit", "attemptId": "attempt_lifecycle_no_edit", "cwd": "C:/martin/lifecycle-fixture", "runsRoot": "C:/martin/lifecycle-fixture/runs", "commands": ["node verify.mjs"] }, "steps": [{ "command": "node verify.mjs", "launched": true, "completed": true, "crashed": false, "exitCode": 0, "timedOut": false }] } },
+          { "eventId": "evt_no_edit_complete", "type": "run.completed", "timestamp": "2026-10-09T18:04:02.000Z", "lifecycleState": "completed", "payload": { "reason": "goal_met", "fileEffects": { "observationStatus": "observed", "touchedDuringExecution": [], "netChangedAtCompletion": [], "revertedBeforeCompletion": [] } } }
+        ],
+        "metadata": { "executionMode": "governed" }, "createdAt": "2026-10-09T18:04:00.000Z", "updatedAt": "2026-10-09T18:04:02.000Z", "receiptScope": { "workingDirectory": "C:/martin/lifecycle-fixture", "runsRoot": "C:/martin/lifecycle-fixture/runs" },
+        "terminationEnvelope": { "schemaVersion": "termination/1", "class": "operational_exit", "exit": { "schemaVersion": "exit-evaluation/1", "policyVersion": "exit-policy/1", "shouldExit": true, "primary": "goal_met", "matched": ["goal_met"], "phase": "post_attempt", "evaluatedAt": "2026-10-09T18:04:02.000Z", "matches": [{ "kind": "goal_met", "reason": "Configured verification goal passed.", "evidence": { "verifierScore": 1 } }] } }
+      },
+      "expected": { "outcome": "NEEDS_REVIEW", "executionMode": "governed", "governanceClaimEligible": true, "sourceStatus": { "status": "completed", "lifecycleState": "completed" }, "verification": { "status": "PASSED" }, "receiptIntegrity": { "state": "verified" }, "lifecycleTruth": { "executionStatus": "completed", "lifecycleState": "completed", "terminationClass": "operational_exit", "reasonCode": "goal_met", "reason": "Configured verification goal passed.", "matchedReasons": ["goal_met"], "exhaustedLimits": [], "evidenceAvailable": true }, "fileEffects": { "observationStatus": "observed", "touchedDuringExecution": [], "netChangedAtCompletion": [], "revertedBeforeCompletion": [] } }
+    },
+    {
+      "id": "proof_only",
+      "loop": {
+        "loopId": "loop_lifecycle_proof_only", "workspaceId": "ws_lifecycle_proof_only", "projectId": "proj_lifecycle_matrix", "status": "completed", "lifecycleState": "completed",
+        "task": { "title": "Proof-only lifecycle case", "objective": "Verify without governed mutation authority", "verificationPlan": ["node verify.mjs"], "mutationMode": "read_only" },
+        "budget": { "maxUsd": 1, "softLimitUsd": 0.75, "maxIterations": 1, "maxTokens": 10000 }, "cost": { "actualUsd": 0, "avoidedUsd": 0, "tokensIn": 0, "tokensOut": 0, "provenance": "actual" }, "artifacts": [],
+        "attempts": [{ "attemptId": "attempt_lifecycle_proof_only", "index": 1, "adapterId": "direct:verifier:verify-only", "model": "fixture-model", "startedAt": "2026-10-09T18:05:00.000Z", "completedAt": "2026-10-09T18:05:01.000Z", "summary": "Proof verifier passed." }],
+        "events": [
+          { "eventId": "evt_proof_only_verify", "type": "verification.completed", "timestamp": "2026-10-09T18:05:01.000Z", "lifecycleState": "verifying", "payload": { "passed": true, "attemptIndex": 1, "summary": "Proof verifier passed.", "changedFiles": [], "binding": { "runId": "loop_lifecycle_proof_only", "workspaceId": "ws_lifecycle_proof_only", "attemptId": "attempt_lifecycle_proof_only", "cwd": "C:/martin/lifecycle-fixture", "runsRoot": "C:/martin/lifecycle-fixture/runs", "commands": ["node verify.mjs"] }, "steps": [{ "command": "node verify.mjs", "launched": true, "completed": true, "crashed": false, "exitCode": 0, "timedOut": false }] } },
+          { "eventId": "evt_proof_only_complete", "type": "run.completed", "timestamp": "2026-10-09T18:05:02.000Z", "lifecycleState": "completed", "payload": { "reason": "goal_met", "fileEffects": { "observationStatus": "observed", "touchedDuringExecution": [], "netChangedAtCompletion": [], "revertedBeforeCompletion": [] } } }
+        ],
+        "metadata": { "executionMode": "verification_only", "governanceClaimEligible": "false" }, "createdAt": "2026-10-09T18:05:00.000Z", "updatedAt": "2026-10-09T18:05:02.000Z", "receiptScope": { "workingDirectory": "C:/martin/lifecycle-fixture", "runsRoot": "C:/martin/lifecycle-fixture/runs" },
+        "terminationEnvelope": { "schemaVersion": "termination/1", "class": "operational_exit", "exit": { "schemaVersion": "exit-evaluation/1", "policyVersion": "exit-policy/1", "shouldExit": true, "primary": "goal_met", "matched": ["goal_met"], "phase": "post_attempt", "evaluatedAt": "2026-10-09T18:05:02.000Z", "matches": [{ "kind": "goal_met", "reason": "Configured verification goal passed.", "evidence": { "verifierScore": 1 } }] } }
+      },
+      "expected": { "outcome": "NEEDS_REVIEW", "executionMode": "verification_only", "governanceClaimEligible": false, "sourceStatus": { "status": "completed", "lifecycleState": "completed" }, "verification": { "status": "PASSED" }, "receiptIntegrity": { "state": "verified" }, "lifecycleTruth": { "executionStatus": "completed", "lifecycleState": "completed", "terminationClass": "operational_exit", "reasonCode": "goal_met", "reason": "Configured verification goal passed.", "matchedReasons": ["goal_met"], "exhaustedLimits": [], "evidenceAvailable": true }, "fileEffects": { "observationStatus": "observed", "touchedDuringExecution": [], "netChangedAtCompletion": [], "revertedBeforeCompletion": [] } }
+    },
+    {
+      "id": "tampered",
+      "tamperAfterSigning": true,
+      "loop": {
+        "loopId": "loop_lifecycle_tampered", "workspaceId": "ws_lifecycle_tampered", "projectId": "proj_lifecycle_matrix", "status": "completed", "lifecycleState": "completed",
+        "task": { "title": "Tampered lifecycle case", "objective": "Reject altered persisted evidence", "verificationPlan": ["node verify.mjs"], "mutationMode": "edit", "allowedPaths": ["src/tampered.ts"] },
+        "budget": { "maxUsd": 1, "softLimitUsd": 0.75, "maxIterations": 2, "maxTokens": 10000 }, "cost": { "actualUsd": 0.01, "avoidedUsd": 0, "tokensIn": 100, "tokensOut": 20, "provenance": "actual" }, "artifacts": [],
+        "attempts": [{ "attemptId": "attempt_lifecycle_tampered", "index": 1, "adapterId": "agent-cli:codex", "model": "fixture-model", "startedAt": "2026-10-09T18:06:00.000Z", "completedAt": "2026-10-09T18:06:01.000Z", "summary": "Evidence was later altered." }],
+        "events": [
+          { "eventId": "evt_tampered_verify", "type": "verification.completed", "timestamp": "2026-10-09T18:06:01.000Z", "lifecycleState": "verifying", "payload": { "passed": true, "attemptIndex": 1, "summary": "Verifier passed.", "changedFiles": ["src/tampered.ts"], "binding": { "runId": "loop_lifecycle_tampered", "workspaceId": "ws_lifecycle_tampered", "attemptId": "attempt_lifecycle_tampered", "cwd": "C:/martin/lifecycle-fixture", "runsRoot": "C:/martin/lifecycle-fixture/runs", "commands": ["node verify.mjs"] }, "steps": [{ "command": "node verify.mjs", "launched": true, "completed": true, "crashed": false, "exitCode": 0, "timedOut": false }] } },
+          { "eventId": "evt_tampered_complete", "type": "run.completed", "timestamp": "2026-10-09T18:06:02.000Z", "lifecycleState": "completed", "payload": { "reason": "goal_met", "fileEffects": { "observationStatus": "observed", "touchedDuringExecution": ["src/tampered.ts"], "netChangedAtCompletion": ["src/tampered.ts"], "revertedBeforeCompletion": [] } } }
+        ],
+        "metadata": { "executionMode": "governed" }, "createdAt": "2026-10-09T18:06:00.000Z", "updatedAt": "2026-10-09T18:06:02.000Z", "receiptScope": { "workingDirectory": "C:/martin/lifecycle-fixture", "runsRoot": "C:/martin/lifecycle-fixture/runs" },
+        "terminationEnvelope": { "schemaVersion": "termination/1", "class": "operational_exit", "exit": { "schemaVersion": "exit-evaluation/1", "policyVersion": "exit-policy/1", "shouldExit": true, "primary": "goal_met", "matched": ["goal_met"], "phase": "post_attempt", "evaluatedAt": "2026-10-09T18:06:02.000Z", "matches": [{ "kind": "goal_met", "reason": "Configured verification goal passed.", "evidence": { "verifierScore": 1 } }] } }
+      },
+      "expected": { "outcome": "NEEDS_REVIEW", "executionMode": "governed", "governanceClaimEligible": true, "sourceStatus": { "status": "completed", "lifecycleState": "completed" }, "verification": { "status": "PASSED" }, "receiptIntegrity": { "state": "tamper_detected" }, "lifecycleTruth": { "executionStatus": "completed", "lifecycleState": "completed", "terminationClass": "operational_exit", "reasonCode": "goal_met", "reason": "Configured verification goal passed.", "matchedReasons": ["goal_met"], "exhaustedLimits": [], "evidenceAvailable": true }, "fileEffects": { "observationStatus": "observed", "touchedDuringExecution": ["src/tampered.ts"], "netChangedAtCompletion": ["src/tampered.ts"], "revertedBeforeCompletion": [] } }
+    },
+    {
+      "id": "forged_success",
+      "loop": {
+        "loopId": "loop_lifecycle_forged_success", "workspaceId": "ws_lifecycle_forged_success", "projectId": "proj_lifecycle_matrix", "status": "completed", "lifecycleState": "completed",
+        "task": { "title": "Forged success lifecycle case", "objective": "Reject an unbound pass claim", "verificationPlan": ["node verify.mjs"], "mutationMode": "edit", "allowedPaths": ["src/forged.ts"] },
+        "budget": { "maxUsd": 1, "softLimitUsd": 0.75, "maxIterations": 2, "maxTokens": 10000 }, "cost": { "actualUsd": 0.01, "avoidedUsd": 0, "tokensIn": 100, "tokensOut": 20, "provenance": "actual" }, "artifacts": [],
+        "attempts": [{ "attemptId": "attempt_lifecycle_forged_success", "index": 1, "adapterId": "agent-cli:codex", "model": "fixture-model", "startedAt": "2026-10-09T18:07:00.000Z", "completedAt": "2026-10-09T18:07:01.000Z", "summary": "Stored success claim lacks execution evidence." }],
+        "events": [
+          { "eventId": "evt_forged_success_verify", "type": "verification.completed", "timestamp": "2026-10-09T18:07:01.000Z", "lifecycleState": "verifying", "payload": { "passed": true, "attemptIndex": 1, "summary": "Stored pass claim without binding or steps.", "changedFiles": ["src/forged.ts"] } },
+          { "eventId": "evt_forged_success_complete", "type": "run.completed", "timestamp": "2026-10-09T18:07:02.000Z", "lifecycleState": "completed", "payload": { "reason": "goal_met", "fileEffects": { "observationStatus": "observed", "touchedDuringExecution": ["src/forged.ts"], "netChangedAtCompletion": ["src/forged.ts"], "revertedBeforeCompletion": [] } } }
+        ],
+        "metadata": { "executionMode": "governed" }, "createdAt": "2026-10-09T18:07:00.000Z", "updatedAt": "2026-10-09T18:07:02.000Z", "receiptScope": { "workingDirectory": "C:/martin/lifecycle-fixture", "runsRoot": "C:/martin/lifecycle-fixture/runs" },
+        "terminationEnvelope": { "schemaVersion": "termination/1", "class": "operational_exit", "exit": { "schemaVersion": "exit-evaluation/1", "policyVersion": "exit-policy/1", "shouldExit": true, "primary": "goal_met", "matched": ["goal_met"], "phase": "post_attempt", "evaluatedAt": "2026-10-09T18:07:02.000Z", "matches": [{ "kind": "goal_met", "reason": "Configured verification goal passed.", "evidence": { "verifierScore": 1 } }] } }
+      },
+      "expected": { "outcome": "NEEDS_REVIEW", "executionMode": "governed", "governanceClaimEligible": true, "sourceStatus": { "status": "completed", "lifecycleState": "completed" }, "verification": { "status": "CONTRADICTED" }, "receiptIntegrity": { "state": "verified" }, "lifecycleTruth": { "executionStatus": "completed", "lifecycleState": "completed", "terminationClass": "operational_exit", "reasonCode": "goal_met", "reason": "Configured verification goal passed.", "matchedReasons": ["goal_met"], "exhaustedLimits": [], "evidenceAvailable": true }, "fileEffects": { "observationStatus": "observed", "touchedDuringExecution": ["src/forged.ts"], "netChangedAtCompletion": ["src/forged.ts"], "revertedBeforeCompletion": [] } }
+    }
+  ]
+}

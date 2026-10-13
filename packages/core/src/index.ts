@@ -26,6 +26,8 @@ import {
   type ReceiptScope,
   type RollbackBoundaryArtifact,
   type RollbackOutcomeArtifact,
+  type TerminationEnvelopeV1,
+  type VerifiedHandoffFileEffectsV1,
   type PolicyPhase
 } from "@martin/contracts";
 import {
@@ -234,6 +236,7 @@ export type { PromptPacket, CompilerAdapterRequest } from "./compiler.js";
 // ─── Verified Handoff builder ────────────────────────────────────────────────
 export {
   buildVerifiedHandoff,
+  deriveVerifiedHandoffLifecycleTruth,
   deriveVerifiedHandoffExecutionBoundary,
   resolveVerifiedHandoffOutcome,
   toTestIntegrityVerdict,
@@ -708,6 +711,84 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     { now: now(), idFactory }
   );
 
+  const adapterChain = [input.adapter, ...(input.fallbackAdapters ?? [])];
+  const runsRoot = input.store?.runsRoot ?? resolveRunsRoot();
+  const observesWorkspaceMutations =
+    input.task.repoRoot !== undefined &&
+    adapterChain.some((adapter) => adapter.metadata.capabilities?.workspaceMutations !== false);
+  const touchedDuringExecution = new Set<string>();
+  let completionBoundary: RollbackBoundaryArtifact | undefined;
+  let completionBoundaryReason: string | undefined;
+
+  if (observesWorkspaceMutations) {
+    try {
+      completionBoundary = await captureRollbackBoundary({
+        repoRoot: input.task.repoRoot,
+        capturedAt: loop.createdAt
+      });
+      if (!completionBoundary) {
+        completionBoundaryReason = "A run-wide file-effect observation boundary was not available.";
+      }
+    } catch (error) {
+      completionBoundaryReason = `Run-wide file-effect observation was unavailable: ${fileEffectErrorMessage(error)}`;
+    }
+  } else {
+    completionBoundaryReason =
+      "A mutation-capable run-wide file-effect observation boundary was not available.";
+  }
+
+  async function finalizeCurrentLoop(
+    decision: ExitDecision,
+    timestamp: string,
+    routingEconomicsInput?: Parameters<typeof finalizeLoop>[4]
+  ): Promise<LoopRecord> {
+    const fileEffects = observeRunFileEffects({
+      repoRoot: input.task.repoRoot,
+      boundary: completionBoundary,
+      touchedDuringExecution,
+      unavailableReason: completionBoundaryReason
+    });
+    return finalizeLoop(
+      loop,
+      decision,
+      timestamp,
+      idFactory,
+      routingEconomicsInput,
+      fileEffects
+    );
+  }
+
+  async function persistGuardStop(decision: ExitDecision): Promise<TerminationEnvelopeV1> {
+    const envelope: TerminationEnvelopeV1 = {
+      schemaVersion: "termination/1",
+      class: "guard_stop",
+      guard: {
+        reasonCode: decision.reasonCode ?? "guard_stop",
+        reason: decision.reason,
+        ...(decision.failureClass ? { failureClass: decision.failureClass } : {}),
+        ...(decision.safetySurface ? { safetySurface: decision.safetySurface } : {})
+      }
+    };
+    if (input.store) {
+      await persistTerminationEnvelope(runDir(runsRoot, loop.loopId), envelope);
+      await input.store.appendLedger(
+        loop.loopId,
+        makeLedgerEvent({
+          kind: "run.terminated",
+          runId: loop.loopId,
+          payload: {
+            terminationClass: envelope.class,
+            reasonCode: envelope.guard.reasonCode,
+            reason: envelope.guard.reason,
+            ...(envelope.guard.failureClass ? { failureClass: envelope.guard.failureClass } : {}),
+            ...(envelope.guard.safetySurface ? { safetySurface: envelope.guard.safetySurface } : {})
+          }
+        })
+      );
+    }
+    return envelope;
+  }
+
   if (input.store) {
     await input.store.initRun({
       runId: loop.loopId,
@@ -793,7 +874,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         reason: handoffGate.message ?? "Context handoff verification failed.",
         reasonCode: handoffGate.reasonCode ?? "handoff_verification_failed"
       };
-      const finalizedLoop = finalizeLoop(loop, handoffExitDecision, now(), idFactory);
+      const finalizedLoop = await finalizeCurrentLoop(handoffExitDecision, now());
       await persistLoopRecordIfSupported(input.store, finalizedLoop);
       return { loop: finalizedLoop, decision: handoffExitDecision };
     }
@@ -815,7 +896,6 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     }
   }
 
-  const adapterChain = [input.adapter, ...(input.fallbackAdapters ?? [])];
   let currentAdapterIndex = 0;
   let currentAdapter = adapterChain[currentAdapterIndex] ?? input.adapter;
   let useCompressedContext = false;
@@ -864,10 +944,12 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         })
       );
     }
-    const finalizedLoop = finalizeLoop(loop, leashExitDecision, now(), idFactory);
-    await persistLoopRecordIfSupported(input.store, finalizedLoop);
+    const terminationEnvelope = await persistGuardStop(leashExitDecision);
+    const finalizedLoop = await finalizeCurrentLoop(leashExitDecision, now());
+    const finalizedWithEnvelope: LoopRecord = { ...finalizedLoop, terminationEnvelope };
+    await persistLoopRecordIfSupported(input.store, finalizedWithEnvelope);
     return {
-      loop: finalizedLoop,
+      loop: finalizedWithEnvelope,
       decision: leashExitDecision
     };
   }
@@ -912,10 +994,12 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       );
     }
 
-    const finalizedLoop = finalizeLoop(loop, secretExitDecision, now(), idFactory);
-    await persistLoopRecordIfSupported(input.store, finalizedLoop);
+    const terminationEnvelope = await persistGuardStop(secretExitDecision);
+    const finalizedLoop = await finalizeCurrentLoop(secretExitDecision, now());
+    const finalizedWithEnvelope: LoopRecord = { ...finalizedLoop, terminationEnvelope };
+    await persistLoopRecordIfSupported(input.store, finalizedWithEnvelope);
     return {
-      loop: finalizedLoop,
+      loop: finalizedWithEnvelope,
       decision: secretExitDecision
     };
   }
@@ -946,7 +1030,6 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
   // resumed runs count correctly; incremented once per governed attempt.
   let governedTurnsUsed = loop.attempts.length;
 
-  const runsRoot = input.store?.runsRoot ?? resolveRunsRoot();
   const exitSignalSource = input.exitSignalSource ?? createFileExitSignalSource(runsRoot);
 
   // Diagnostic writes fire from sync callbacks — track them so the finally
@@ -1173,7 +1256,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     // persistLoopRecordIfSupported reads ledger.jsonl to compute the integrity hash;
     // any write that lands after that read produces a false ledger_hash_mismatch on verify.
     await stopSignalMonitorAndDrainDiagnostics();
-    const finalizedLoop = finalizeLoop(loop, exitDecision, now(), idFactory, routingInput);
+    const finalizedLoop = await finalizeCurrentLoop(exitDecision, now(), routingInput);
     const finalizedWithEnvelope: LoopRecord = { ...finalizedLoop, terminationEnvelope: envelope };
     await persistLoopRecordIfSupported(input.store, finalizedWithEnvelope);
     return { loop: finalizedWithEnvelope, decision: exitDecision };
@@ -1237,7 +1320,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         );
       }
       await stopSignalMonitorAndDrainDiagnostics();
-      const finalizedLoop = finalizeLoop(loop, preflightExitDecision, now(), idFactory);
+      const finalizedLoop = await finalizeCurrentLoop(preflightExitDecision, now());
       await persistLoopRecordIfSupported(input.store, finalizedLoop);
       return {
         loop: finalizedLoop,
@@ -1300,10 +1383,12 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         );
       }
       await stopSignalMonitorAndDrainDiagnostics();
-      const finalizedLoop = finalizeLoop(loop, poisoningExitDecision, now(), idFactory);
-      await persistLoopRecordIfSupported(input.store, finalizedLoop);
+      const terminationEnvelope = await persistGuardStop(poisoningExitDecision);
+      const finalizedLoop = await finalizeCurrentLoop(poisoningExitDecision, now());
+      const finalizedWithEnvelope: LoopRecord = { ...finalizedLoop, terminationEnvelope };
+      await persistLoopRecordIfSupported(input.store, finalizedWithEnvelope);
       return {
-        loop: finalizedLoop,
+        loop: finalizedWithEnvelope,
         decision: poisoningExitDecision
       };
     }
@@ -1373,7 +1458,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         );
       }
       await stopSignalMonitorAndDrainDiagnostics();
-      const finalizedLoop = finalizeLoop(loop, exitDecision, now(), idFactory);
+      const finalizedLoop = await finalizeCurrentLoop(exitDecision, now());
       await persistLoopRecordIfSupported(input.store, finalizedLoop);
       return {
         loop: finalizedLoop,
@@ -1705,6 +1790,9 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     const changedFiles = tracksWorkspaceMutations
       ? resolveChangedFiles(result, request.context.repoRoot, rollbackBoundary)
       : [];
+    for (const filePath of normalizeFileEffectPaths(changedFiles)) {
+      touchedDuringExecution.add(filePath);
+    }
 
     // Routing economics: detect first meaningful workspace delta
     if (!firstDeltaDetected && changedFiles.length > 0) {
@@ -1811,10 +1899,12 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       }
 
       await stopSignalMonitorAndDrainDiagnostics();
-      const finalizedLoop = finalizeLoop(loop, filesystemExitDecision, now(), idFactory);
-      await persistLoopRecordIfSupported(input.store, finalizedLoop);
+      const terminationEnvelope = await persistGuardStop(filesystemExitDecision);
+      const finalizedLoop = await finalizeCurrentLoop(filesystemExitDecision, now());
+      const finalizedWithEnvelope: LoopRecord = { ...finalizedLoop, terminationEnvelope };
+      await persistLoopRecordIfSupported(input.store, finalizedWithEnvelope);
       return {
-        loop: finalizedLoop,
+        loop: finalizedWithEnvelope,
         decision: filesystemExitDecision
       };
     }
@@ -1903,10 +1993,12 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       }
 
       await stopSignalMonitorAndDrainDiagnostics();
-      const finalizedLoop = finalizeLoop(loop, approvalExitDecision, now(), idFactory);
-      await persistLoopRecordIfSupported(input.store, finalizedLoop);
+      const terminationEnvelope = await persistGuardStop(approvalExitDecision);
+      const finalizedLoop = await finalizeCurrentLoop(approvalExitDecision, now());
+      const finalizedWithEnvelope: LoopRecord = { ...finalizedLoop, terminationEnvelope };
+      await persistLoopRecordIfSupported(input.store, finalizedWithEnvelope);
       return {
-        loop: finalizedLoop,
+        loop: finalizedWithEnvelope,
         decision: approvalExitDecision
       };
     }
@@ -2078,7 +2170,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       }
 
       await stopSignalMonitorAndDrainDiagnostics();
-      const finalizedLoop = finalizeLoop(loop, patchExitDecision, now(), idFactory);
+      const finalizedLoop = await finalizeCurrentLoop(patchExitDecision, now());
       await persistLoopRecordIfSupported(input.store, finalizedLoop);
       return {
         loop: finalizedLoop,
@@ -2189,7 +2281,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       // Drain pending diagnostic ledger writes before receipt signing.
       await stopSignalMonitorAndDrainDiagnostics();
       const routingInput = { runStartMs, firstDeltaDetected, firstDeltaTimestampMs, firstDeltaFilePath, firstDeltaChangeType, preDeltaCostUsd };
-      const finalizedLoop = finalizeLoop(loop, decision, now(), idFactory, routingInput);
+      const finalizedLoop = await finalizeCurrentLoop(decision, now(), routingInput);
       await persistLoopRecordIfSupported(input.store, finalizedLoop);
       return {
         loop: finalizedLoop,
@@ -2198,33 +2290,11 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     }
   }
 
-  const decision: ExitDecision = {
-    shouldExit: true,
-    lifecycleState: "budget_exit",
-    status: "exited",
-    reason: "Martin exited because the loop exhausted its configured iteration budget."
-  };
-
-  if (input.store) {
-    await input.store.appendLedger(
-      loop.loopId,
-      makeLedgerEvent({
-        kind: "run.exited",
-        runId: loop.loopId,
-        payload: createRunExitPayload(decision)
-      })
-    );
+  const exhaustedTerminal = await evaluateCheckpoint("before_retry");
+  if (!exhaustedTerminal) {
+    throw new Error("Loop exhausted its configured iterations without an exit-policy decision.");
   }
-
-  // Drain pending diagnostic ledger writes before receipt signing.
-  await stopSignalMonitorAndDrainDiagnostics();
-  const routingInput = { runStartMs, firstDeltaDetected, firstDeltaTimestampMs, firstDeltaFilePath, firstDeltaChangeType, preDeltaCostUsd };
-  const finalizedLoop = finalizeLoop(loop, decision, now(), idFactory, routingInput);
-  await persistLoopRecordIfSupported(input.store, finalizedLoop);
-  return {
-    loop: finalizedLoop,
-    decision
-  };
+  return await terminateRun(exhaustedTerminal);
   } finally {
     if (wallTimer !== undefined) clearTimeout(wallTimer);
     disposeSignalMonitor();
@@ -2302,13 +2372,17 @@ function finalizeLoop(
     firstDeltaChangeType?: "create" | "modify" | "delete" | "patch_proposed";
     preDeltaCostUsd: number;
   },
+  fileEffects?: VerifiedHandoffFileEffectsV1,
 ): LoopRecord {
   const finalized = appendLoopEvent(
     loop,
     {
       type: "run.completed",
       lifecycleState: decision.lifecycleState,
-      payload: createRunExitPayload(decision)
+      payload: {
+        ...createRunExitPayload(decision),
+        ...(fileEffects ? { fileEffects } : {})
+      }
     },
     { now: timestamp, idFactory }
   );
@@ -2331,6 +2405,62 @@ function finalizeLoop(
     cost: { ...finalized.cost, avoidedUsd },
     ...(routingEconomics ? { routingEconomics } : {})
   };
+}
+
+function observeRunFileEffects(input: {
+  repoRoot?: string;
+  boundary?: RollbackBoundaryArtifact;
+  touchedDuringExecution: ReadonlySet<string>;
+  unavailableReason?: string;
+}): VerifiedHandoffFileEffectsV1 {
+  const touchedDuringExecution = normalizeFileEffectPaths(input.touchedDuringExecution);
+  if (!input.repoRoot || !input.boundary) {
+    return {
+      observationStatus: "unavailable",
+      touchedDuringExecution,
+      netChangedAtCompletion: [],
+      revertedBeforeCompletion: [],
+      observationReason:
+        input.unavailableReason ??
+        "A run-wide file-effect observation boundary was not available."
+    };
+  }
+
+  try {
+    const netChangedAtCompletion = normalizeFileEffectPaths(
+      listAttemptChangedFilesSinceBoundary({
+        repoRoot: input.repoRoot,
+        boundary: input.boundary
+      })
+    );
+    const netChanged = new Set(netChangedAtCompletion);
+    return {
+      observationStatus: "observed",
+      touchedDuringExecution,
+      netChangedAtCompletion,
+      revertedBeforeCompletion: touchedDuringExecution.filter((filePath) => !netChanged.has(filePath))
+    };
+  } catch (error) {
+    return {
+      observationStatus: "unavailable",
+      touchedDuringExecution,
+      netChangedAtCompletion: [],
+      revertedBeforeCompletion: [],
+      observationReason: `Final file-effect observation was unavailable: ${fileEffectErrorMessage(error)}`
+    };
+  }
+}
+
+function normalizeFileEffectPaths(paths: Iterable<string>): string[] {
+  return [...new Set(
+    [...paths]
+      .map((filePath) => filePath.replaceAll("\\", "/").replace(/^\.\//u, "").trim())
+      .filter(Boolean)
+  )].sort();
+}
+
+function fileEffectErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function buildRoutingEconomics(
@@ -2458,11 +2588,16 @@ function resolveChangedFiles(
   repoRoot?: string,
   rollbackBoundary?: RollbackBoundaryArtifact
 ): string[] {
-  if (result.execution?.changedFiles !== undefined) {
-    return result.execution.changedFiles;
+  const adapterReported = normalizeFileEffectPaths(result.execution?.changedFiles ?? []);
+  try {
+    const gitObserved = listAttemptChangedFilesSinceBoundary({ repoRoot, boundary: rollbackBoundary });
+    return normalizeFileEffectPaths([...adapterReported, ...gitObserved]);
+  } catch (error) {
+    if (result.execution?.changedFiles !== undefined) {
+      return adapterReported;
+    }
+    throw error;
   }
-
-  return listAttemptChangedFilesSinceBoundary({ repoRoot, boundary: rollbackBoundary });
 }
 
 function buildPatchDiff(result: MartinAdapterResult, changedFiles: string[]): string | undefined {

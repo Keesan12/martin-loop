@@ -14,6 +14,7 @@ import {
   renderDeterministicSwarmDemoHuman,
   resolveDeterministicSwarmDemoFixtureDirectory,
   runDeterministicSwarmDemo,
+  toDeterministicSwarmDemoData,
   type DeterministicSwarmDemoResult,
 } from "../src/swarm-demo.js";
 
@@ -177,6 +178,55 @@ describe("deterministic swarm demo graph", () => {
 });
 
 describe("deterministic swarm demo intervention", () => {
+  it("projects passing results as explicit non-governed local simulation evidence", async () => {
+    const targetDirectory = await createTarget();
+    const result = await runDeterministicSwarmDemo({ targetDirectory });
+
+    const projection = toDeterministicSwarmDemoData(result);
+
+    expect(projection).toMatchObject({
+      command: "demo --swarm",
+      evidenceKind: "deterministic_demo",
+      executionMode: "local_simulation",
+      simulationCheck: "passed",
+      governanceClaimEligible: false,
+      persistedToSwarmRunStore: false,
+      signedIntegrity: "not_evaluated",
+      inspectionPath: "demo --swarm",
+      providerMode: "deterministic_local",
+      providerSpendUsd: 0,
+      agents: 15,
+      graphEdges: result.graphEdges,
+      plannedGraphEdges: result.plannedGraphEdges,
+      executionGraphEdges: result.executionGraphEdges,
+      executionAttribution: result.executionAttribution,
+      agentStatuses: result.agentStatuses,
+      globalVerifier: result.globalVerifier,
+      events: result.events,
+      receiptEvidence: result.receiptEvidence,
+    });
+    expect(projection).not.toHaveProperty("status");
+    expect(projection).not.toHaveProperty("record");
+    expect(projection).not.toBe(result);
+    expect(projection.events).not.toBe(result.events);
+    expect(projection.receiptEvidence).not.toBe(result.receiptEvidence);
+  });
+
+  it.each([
+    ["failed", { launched: true, completed: true, crashed: false, exitCode: 1 }, "failed"],
+    ["unlaunched", { launched: false, completed: false, crashed: false, exitCode: null }, "unknown"],
+    ["incomplete", { launched: true, completed: false, crashed: false, exitCode: null }, "unknown"],
+    ["crashed", { launched: true, completed: true, crashed: true, exitCode: 1 }, "unknown"],
+  ] as const)("projects a %s verifier as simulationCheck=%s", async (_label, verifierResult, expected) => {
+    const targetDirectory = await createTarget();
+    const result = await runDeterministicSwarmDemo({
+      targetDirectory,
+      parentVerifier: () => verifierResult,
+    });
+
+    expect(toDeterministicSwarmDemoData(result)).toMatchObject({ simulationCheck: expected });
+  });
+
   it("rejects Agent 06 before write and admits Agent 10's exact reassignment", async () => {
     const targetDirectory = await createTarget();
     const result = await runDeterministicSwarmDemo({ targetDirectory });
@@ -221,14 +271,21 @@ describe("deterministic swarm demo intervention", () => {
     expect(result.status).not.toBe("verified");
     expect(result.globalVerifier).toMatchObject(verifierResult);
     expect(result).toMatchObject(counts);
-    expect(renderDeterministicSwarmDemoHuman(result)).toContain(`${counts.completed} completed · ${counts.stopped} stopped`);
+    const human = renderDeterministicSwarmDemoHuman(result);
+    expect(human).toContain(`${counts.completed} completed · ${counts.stopped} stopped`);
+    expect(human).toMatch(/^LOCAL SIMULATION · NON-GOVERNED · deterministic local workers · \$0 provider spend/u);
     if (counts.needsReview > 0) {
-      expect(renderDeterministicSwarmDemoHuman(result)).toContain(`${counts.needsReview} needs review`);
+      expect(human).toContain(`${counts.needsReview} needs review`);
     }
     expect(result.events.some((event) => event.type === "SWARM_VERIFIED")).toBe(false);
     expect(result.parentOutcome.state).not.toBe("verified");
     expect(getDeterministicSwarmDemoExitCode(result)).toBe(1);
-    expect(renderDeterministicSwarmDemoHuman(result)).not.toContain("DEMO VERIFIED");
+    expect(human).not.toContain(
+      "LOCAL SIMULATION CHECK PASSED · non-governed · not persisted · signed receipt integrity not evaluated",
+    );
+    for (const forbiddenClaim of ["SWARM VERIFIED", "DEMO VERIFIED", "GOVERNED BY MARTINLOOP"]) {
+      expect(human).not.toContain(forbiddenClaim);
+    }
   });
 
   it("allows only the parent evaluator to append SWARM_VERIFIED after actual integrated verification", async () => {
@@ -245,8 +302,14 @@ describe("deterministic swarm demo intervention", () => {
       && receipt.referentialBinding === "passed"
       && receipt.signedIntegrity === "not_evaluated"
     ))).toBe(true);
-    expect(renderDeterministicSwarmDemoHuman(result)).toContain(
-      "DEMO VERIFIED · deterministic local evidence only · not persisted to the swarm run store"
+    const human = renderDeterministicSwarmDemoHuman(result);
+    expect(human).toMatch(/^LOCAL SIMULATION · NON-GOVERNED · deterministic local workers · \$0 provider spend/u);
+    expect(human).toContain(
+      "LOCAL SIMULATION CHECK PASSED · non-governed · not persisted · signed receipt integrity not evaluated",
     );
+    expect(human).toContain("Receipt binding: deterministic_demo · signed integrity: not_evaluated");
+    for (const forbiddenClaim of ["SWARM VERIFIED", "DEMO VERIFIED", "GOVERNED BY MARTINLOOP"]) {
+      expect(human).not.toContain(forbiddenClaim);
+    }
   });
 });

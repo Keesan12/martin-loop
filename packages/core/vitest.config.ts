@@ -9,6 +9,7 @@ export default defineConfig({
     }
   },
   test: {
+    fileParallelism: false,
     include: ["tests/**/*.test.ts"],
     testTimeout: 15_000
   }

@@ -175,7 +175,7 @@ function normalizeWorkingDirectoryForExpectation(workingDirectory: string): stri
   return process.platform === "win32" ? workingDirectory.toLowerCase() : workingDirectory;
 }
 
-function installDeterministicCodexHost(): void {
+function installDeterministicCodexHost(onAdapterSelect?: (engine: string | undefined) => void): void {
   const availability = {
     command: "codex",
     available: true,
@@ -236,7 +236,8 @@ function installDeterministicCodexHost(): void {
           steps: request.context.verificationPlan.map((command) => ({ command, launched: true, completed: true, crashed: false, exitCode: 0, timedOut: false })),
         }
       })
-    })
+    }),
+    onAdapterSelect
   );
 }
 
@@ -977,6 +978,77 @@ describe("--engine flag", () => {
 // --cwd flag
 // ---------------------------------------------------------------------------
 
+describe("saved engine preference lifecycle", () => {
+  it("uses one saved engine for preflight and run while explicit input wins", { timeout: 45_000 }, async () => {
+    await withTempDir(async (workspace) => {
+      initializeGitRepo(workspace);
+      const runsDir = join(workspace, ".martin-runs");
+      const configPath = join(workspace, "martin.config.yaml");
+      await writeFile(configPath, "# existing operator config\nengine: claude\n", "utf8");
+      const selectedEngines: Array<string | undefined> = [];
+      installDeterministicCodexHost((engine) => selectedEngines.push(engine));
+
+      const enabled = await executeCli([
+        "--json", "enable",
+        "--cwd", workspace,
+        "--runs-dir", runsDir,
+        "--engine", "codex"
+      ]);
+      expect(enabled.exitCode).toBe(0);
+
+      const preflight = await withEnv("MARTIN_LIVE", "true", () => executeCli([
+        "--json", "preflight",
+        "--cwd", workspace,
+        "--runs-dir", runsDir,
+        "--objective", "Use the saved engine",
+        "--verify", NOOP_VERIFIER,
+        "--budget-usd", "2"
+      ]));
+      expect(preflight.exitCode).toBe(0);
+      expect(JSON.parse(preflight.stdout).environment.engine).toBe("codex");
+
+      const run = await withEnv("MARTIN_LIVE", "true", () => executeCli([
+        "--json", "run",
+        "--cwd", workspace,
+        "--runs-dir", runsDir,
+        "--objective", "Use the saved engine",
+        "--verify", NOOP_VERIFIER,
+        "--budget-usd", "2",
+        "--max-iterations", "1"
+      ]));
+      expect([0, 7]).toContain(run.exitCode);
+      expect(JSON.parse(run.stdout).environment.engine).toBe("codex");
+      expect(selectedEngines).toContain("codex");
+
+      const explicitPreflight = await withEnv("MARTIN_LIVE", "true", () => executeCli([
+        "--json", "preflight",
+        "--cwd", workspace,
+        "--runs-dir", runsDir,
+        "--engine", "openai",
+        "--objective", "Override the saved engine",
+        "--verify", NOOP_VERIFIER,
+        "--budget-usd", "2"
+      ]));
+      expect(explicitPreflight.exitCode).toBe(0);
+      expect(JSON.parse(explicitPreflight.stdout).environment.engine).toBe("openai");
+
+      const explicitRun = await withEnv("MARTIN_LIVE", "true", () => executeCli([
+        "--json", "run",
+        "--cwd", workspace,
+        "--runs-dir", runsDir,
+        "--engine", "openai",
+        "--objective", "Override the saved engine",
+        "--verify", NOOP_VERIFIER,
+        "--budget-usd", "2",
+        "--max-iterations", "1"
+      ]));
+      expect([0, 7]).toContain(explicitRun.exitCode);
+      expect(JSON.parse(explicitRun.stdout).environment.engine).toBe("openai");
+      expect(selectedEngines).toContain("openai");
+    });
+  });
+});
+
 describe("--cwd flag", () => {
   it("passes working directory to the adapter", async () => {
     await withTempDir(async (dir) => {
@@ -1085,8 +1157,8 @@ describe("demo command", () => {
 
       expect(result.exitCode).toBe(0);
       expect(result.stderr).toBe("");
-      expect(result.stdout).toContain("DEMO SWARM · deterministic local workers · $0 provider spend");
-      expect(result.stdout).toContain("GOVERNED BY MARTINLOOP");
+      expect(result.stdout).toContain("LOCAL SIMULATION · NON-GOVERNED · deterministic local workers · $0 provider spend");
+      expect(result.stdout).toContain("LOCAL SIMULATION CHECK PASSED");
       for (const phase of ["CREATE", "PLAN", "FAN OUT", "REVIEW", "RECOVER", "INTEGRATE", "VERIFY", "COMPLETE"]) {
         expect(result.stdout).toContain(phase);
       }
@@ -1100,10 +1172,10 @@ describe("demo command", () => {
       expect(result.stdout).toContain("14 completed · 1 stopped · 1 reassigned task");
       expect(result.stdout).toContain("0 denied changes admitted");
       expect(result.stdout).toContain("Parent verifier: PASS");
-      expect(result.stdout).toContain(
-        "DEMO VERIFIED · deterministic local evidence only · not persisted to the swarm run store"
-      );
+      expect(result.stdout).toContain("non-governed · not persisted · signed receipt integrity not evaluated");
       expect(result.stdout).not.toContain("SWARM VERIFIED");
+      expect(result.stdout).not.toContain("DEMO VERIFIED");
+      expect(result.stdout).not.toContain("GOVERNED BY MARTINLOOP");
     });
   });
 
@@ -1118,8 +1190,15 @@ describe("demo command", () => {
       expect(jsonResult.exitCode).toBe(0);
       expect(jsonResult.stdout).not.toMatch(/[\u001B\r]/u);
       expect(payload).toMatchObject({
+        command: "demo --swarm",
+        evidenceKind: "deterministic_demo",
+        executionMode: "local_simulation",
+        simulationCheck: "passed",
+        governanceClaimEligible: false,
+        persistedToSwarmRunStore: false,
+        signedIntegrity: "not_evaluated",
+        inspectionPath: "demo --swarm",
         swarmId: "swarm-demo-launch-board",
-        status: "verified",
         agents: 15,
         completed: 14,
         stopped: 1,
@@ -1129,11 +1208,48 @@ describe("demo command", () => {
         providerSpendUsd: 0,
       });
       expect(Array.isArray(payload["events"])).toBe(true);
+      expect(payload).not.toHaveProperty("status");
       expect(payload).not.toHaveProperty("record");
 
       const quietTarget = join(dir, "quiet-target");
       const quietResult = await executeCli(["demo", "--swarm", "--dir", quietTarget, "--quiet"]);
       expect(quietResult).toEqual({ exitCode: 0, stdout: "swarm-demo-launch-board", stderr: "" });
+    });
+  });
+
+  it("keeps demo output outside every persisted swarm selector", async () => {
+    await withTempDir(async (dir) => {
+      const targetDirectory = join(dir, "demo-target");
+      const runsDir = join(dir, "runs");
+      const shareDirectory = join(dir, "share-bundle");
+      await mkdir(runsDir, { recursive: true });
+
+      const demo = await withEnv("MARTIN_RUNS_DIR", runsDir, () => executeCli([
+        "demo", "--swarm", "--dir", targetDirectory, "--json",
+      ]));
+      const demoId = (JSON.parse(demo.stdout) as { swarmId: string }).swarmId;
+      expect(demo.exitCode).toBe(0);
+      await expect(access(join(runsDir, "_swarms"))).rejects.toThrow();
+
+      const commands = [
+        ["swarm", "status", "--swarm-id", demoId, "--runs-dir", runsDir, "--json"],
+        ["swarm", "status", "--latest", "--runs-dir", runsDir, "--json"],
+        ["swarm", "inspect", "--swarm-id", demoId, "--runs-dir", runsDir, "--json"],
+        ["swarm", "inspect", "--latest", "--runs-dir", runsDir, "--json"],
+        ["swarm", "dossier", "--id", demoId, "--runs-dir", runsDir, "--json"],
+        ["swarm", "dossier", "--latest", "--runs-dir", runsDir, "--json"],
+        ["swarm", "verify", "--id", demoId, "--runs-dir", runsDir, "--json"],
+        ["swarm", "verify", "--latest", "--runs-dir", runsDir, "--json"],
+        ["swarm", "share", "--id", demoId, "--runs-dir", runsDir, "--out-dir", shareDirectory, "--json"],
+        ["swarm", "share", "--latest", "--runs-dir", runsDir, "--out-dir", shareDirectory, "--json"],
+      ];
+
+      for (const command of commands) {
+        const result = await executeCli(command);
+        expect(result.exitCode).not.toBe(0);
+        expect(`${result.stdout}\n${result.stderr}`).toMatch(/not_found|not found|missing swarm store/iu);
+      }
+      await expect(access(shareDirectory)).rejects.toThrow();
     });
   });
 
@@ -1173,6 +1289,102 @@ describe("demo command", () => {
 });
 
 // ---------------------------------------------------------------------------
+// MCP portable runs-root intent
+// ---------------------------------------------------------------------------
+
+describe("mcp project Codex runs-root portability", () => {
+  it.each([
+    ["print-config", []],
+    ["install", ["--dry-run"]]
+  ] as const)("omits the resolved default runs root from mcp %s output", async (subcommand, extraArgs) => {
+    await withTempDir(async (cwd) => {
+      await withRunsRoot(async (runsRoot) => {
+        const result = await executeCli([
+          "--json",
+          "mcp",
+          subcommand,
+          "--host",
+          "codex",
+          "--scope",
+          "project",
+          "--cwd",
+          cwd,
+          ...extraArgs
+        ]);
+
+        expect(result.exitCode).toBe(0);
+        const payload = JSON.parse(result.stdout);
+        expect(payload.targetPath).toBe(join(cwd, ".codex", "config.toml"));
+        expect(payload.serverId).toBe("martin-loop");
+        expect(payload.content).not.toContain("cwd =");
+        expect(payload.content).not.toContain("MARTIN_RUNS_DIR");
+        expect(payload.content).not.toContain(runsRoot);
+      });
+    });
+  });
+
+  it.each([
+    ["print-config", []],
+    ["install", ["--dry-run"]]
+  ] as const)("preserves an explicit runs root in mcp %s output", async (subcommand, extraArgs) => {
+    await withTempDir(async (cwd) => {
+      const customRunsRoot = join(cwd, "chosen-runs");
+      const renderedRunsRoot = customRunsRoot.replaceAll("\\", "\\\\");
+      const result = await executeCli([
+        "--json",
+        "mcp",
+        subcommand,
+        "--host",
+        "codex",
+        "--scope",
+        "project",
+        "--cwd",
+        cwd,
+        "--runs-dir",
+        customRunsRoot,
+        ...extraArgs
+      ]);
+
+      expect(result.exitCode).toBe(0);
+      const payload = JSON.parse(result.stdout);
+      expect(payload.targetPath).toBe(join(cwd, ".codex", "config.toml"));
+      expect(payload.serverId).toBe("martin-loop");
+      expect(payload.content).not.toContain("cwd =");
+      expect(payload.content).toContain(`MARTIN_RUNS_DIR = "${renderedRunsRoot}"`);
+    });
+  });
+
+  it("keeps project install, verify, rollback, and uninstall portable", async () => {
+    await withTempDir(async (cwd) => {
+      const targetPath = join(cwd, ".codex", "config.toml");
+      await mkdir(join(cwd, ".codex"), { recursive: true });
+      await writeFile(targetPath, "# operator config\n", "utf8");
+      const baseArgs = ["--host", "codex", "--scope", "project", "--cwd", cwd];
+
+      const installed = await executeCli(["--json", "mcp", "install", ...baseArgs]);
+      expect(installed.exitCode).toBe(0);
+      const installedContent = await readFile(targetPath, "utf8");
+      expect(installedContent).toContain('[mcp_servers."martin-loop"]');
+      expect(installedContent).not.toContain("cwd =");
+      expect(installedContent).not.toContain("MARTIN_RUNS_DIR");
+
+      const verified = await executeCli(["--json", "mcp", "verify-install", ...baseArgs]);
+      expect(verified.exitCode).toBe(0);
+
+      const rolledBack = await executeCli(["--json", "mcp", "rollback", ...baseArgs]);
+      expect(rolledBack.exitCode).toBe(0);
+      expect(await readFile(targetPath, "utf8")).toBe("# operator config\n");
+
+      const reinstalled = await executeCli(["--json", "mcp", "install", ...baseArgs]);
+      expect(reinstalled.exitCode).toBe(0);
+      const uninstalled = await executeCli(["--json", "mcp", "uninstall", ...baseArgs]);
+      expect(uninstalled.exitCode).toBe(0);
+      expect(await readFile(targetPath, "utf8")).toBe("# operator config\n");
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Help surface
 // ---------------------------------------------------------------------------
 
@@ -1188,5 +1400,13 @@ describe("help command", () => {
     expect(result.stdout).toContain("martin-loop demo");
     expect(result.stdout).toContain("martin-loop inspect");
     expect(result.stdout).toContain("martin-loop resume");
+    expect(result.stdout).toContain("provider-free local simulation");
+    expect(result.stdout).toContain("non-governed");
+    expect(result.stdout).toContain("not written to the Swarm run store");
+    expect(result.stdout).toMatch(/swarm status.*persisted/iu);
+    expect(result.stdout).toMatch(/swarm inspect.*persisted/iu);
+    expect(result.stdout).toMatch(/swarm dossier.*sealed persisted/iu);
+    expect(result.stdout).toMatch(/swarm verify.*sealed persisted/iu);
+    expect(result.stdout).toMatch(/swarm share.*sealed persisted/iu);
   });
 });

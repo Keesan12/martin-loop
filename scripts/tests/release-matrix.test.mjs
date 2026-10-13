@@ -1,10 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, readFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 
 import {
   createReleaseMatrixEnvironment,
   createReleaseMatrixPlan,
   resolveReleaseMatrixLane,
+  runLocalReleaseMatrix,
 } from "../release-matrix.mjs";
 
 test("createReleaseMatrixPlan keeps install first in every platform lane", () => {
@@ -95,4 +99,56 @@ test("createReleaseMatrixEnvironment honors mixed-case install env keys", () => 
   });
 
   assert.equal(env.npm_config_confirm_modules_purge, "mixed-case-value");
+});
+
+test("runLocalReleaseMatrix persists a repository timeout result and does not attempt later stages", async () => {
+  const outputRoot = await mkdtemp(path.join(os.tmpdir(), "martin-release-matrix-summary-test-"));
+  const plan = {
+    rootDir: process.cwd(),
+    lanes: [{
+      id: "test",
+      runner: "local-test",
+      platform: process.platform,
+      steps: [
+        { label: "stage one", command: ["one"] },
+        { label: "stage two", command: ["two"] },
+        { label: "stage three", command: ["three"] },
+      ],
+    }],
+  };
+  const calls = [];
+  const runner = async (step, options) => {
+    calls.push(step.label);
+    const timedOut = step.label === "stage two";
+    return {
+      label: step.label,
+      command: [...step.command],
+      status: timedOut ? "failed" : "passed",
+      failureKind: timedOut ? "repository_stage_timeout" : null,
+      startedAt: "2026-10-09T12:00:00.000Z",
+      completedAt: "2026-10-09T12:00:00.020Z",
+      elapsedMs: 20,
+      exitCode: timedOut ? null : 0,
+      signal: null,
+      timedOut,
+      timeoutMs: options.timeoutMs,
+      spawnError: null,
+      termination: { requested: timedOut, attempted: timedOut, observed: timedOut, escalated: false, helperExitCode: 0, helperTimedOut: false },
+      logPath: path.join(options.logDir, `${options.index}.log`),
+    };
+  };
+
+  await assert.rejects(
+    runLocalReleaseMatrix({ outputRoot, plan, runner, timeoutMs: 654 }),
+    /stage two.*repository stage timeout/iu,
+  );
+
+  assert.deepEqual(calls, ["stage one", "stage two"]);
+  const summary = JSON.parse(await readFile(path.join(outputRoot, "logs", "summary.json"), "utf8"));
+  assert.equal(summary.status, "failed");
+  assert.equal(summary.failureKind, "repository_stage_timeout");
+  assert.equal(summary.externalHarnessTimedOut, false);
+  assert.equal(summary.results.length, 2);
+  assert.equal(summary.results[1].timedOut, true);
+  assert.equal(summary.results[1].termination.observed, true);
 });

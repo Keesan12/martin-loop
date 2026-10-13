@@ -95,17 +95,31 @@ describe("outcomes verify CLI", () => {
     const contract = await contractFile(origin, root);
     const runsRoot = join(root, "runs");
 
+    const startedAt = performance.now();
     const result = await executeCli([
       "outcomes", "verify", "--contract", contract, "--allow-local", "--runs-dir", runsRoot, "--json",
     ]);
-
-    expect(result.exitCode).toBe(0);
+    const elapsedMs = Math.round(performance.now() - startedAt);
     const payload = JSON.parse(result.stdout);
+
+    expect(
+      result.exitCode,
+      JSON.stringify({
+        exitCode: result.exitCode,
+        status: payload.status,
+        aggregate: payload.aggregate,
+        action: payload.actions?.[0],
+        elapsedMs,
+        deadlineMs: 150,
+        requestTimeoutMs: 75,
+        pollIntervalMs: 25,
+      }),
+    ).toBe(0);
     expect(payload).toMatchObject({
       command: "outcomes verify",
       status: "passed",
       aggregate: { claimedDone: 1, passed: 1, failed: 0, unknown: 0 },
-      actions: [{ actionId: "booking-001", status: "passed" }],
+      actions: [{ actionId: "booking-001", status: "passed", reasonCode: "passed" }],
       evidence: { kind: "external_outcome", contractId: "booking-save" },
     });
     expect(result.stdout).not.toContain("VERIFIED");

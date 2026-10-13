@@ -150,6 +150,29 @@ describe("evaluateExitPolicy — individual exit triggers", () => {
     expect(ev.primary).toBe("turn_cap");
   });
 
+  it.each([
+    {
+      label: "USD only",
+      snapshot: { actualUsd: 10, tokensUsed: 0 },
+      expected: { usdExceeded: true, tokensExceeded: false },
+    },
+    {
+      label: "tokens only",
+      snapshot: { actualUsd: 0, tokensUsed: 100_000 },
+      expected: { usdExceeded: false, tokensExceeded: true },
+    },
+    {
+      label: "USD and tokens",
+      snapshot: { actualUsd: 10, tokensUsed: 100_000 },
+      expected: { usdExceeded: true, tokensExceeded: true },
+    },
+  ])("persists exact $label budget-cap match flags", ({ snapshot, expected }) => {
+    const evaluation = evaluateExitPolicy(makePolicy(), makeSnapshot(snapshot));
+    const budgetMatch = evaluation.matches.find((match) => match.kind === "budget_cap");
+
+    expect(budgetMatch?.evidence).toMatchObject(expected);
+  });
+
   it("fires error_threshold when consecutiveErrors reaches maxConsecutive", () => {
     const policy = makePolicy({ errors: { maxConsecutive: 3 } });
     const snap = makeSnapshot({ consecutiveErrors: 3 });

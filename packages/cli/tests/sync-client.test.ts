@@ -27,6 +27,7 @@ import {
   enqueueLoopForHostedSync,
   flushSyncQueue,
   queueFileName,
+  setSyncClaimRenameHookForTests,
   syncLoopToHosted,
   syncQueueStatus,
 } from "../src/sync-client.js";
@@ -183,6 +184,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  setSyncClaimRenameHookForTests(undefined);
   vi.restoreAllMocks();
   vi.useRealTimers();
   delete process.env["MARTIN_SYNC_QUEUE_DIR"];
@@ -891,6 +893,55 @@ describe("flushSyncQueue", () => {
     vi.spyOn(process.stdout, "write").mockImplementation((s) => { out.push(String(s)); return true; });
     await flushSyncQueue();
     expect(out.join("")).toContain("empty");
+  });
+
+  it.each(["acquire_item", "publish_owner"] as const)(
+    "fails closed on Windows-style EPERM during %s and leaves the queue recoverable",
+    async (blockedStage) => {
+      await mkdir(qDir(), { recursive: true });
+      const item = makeItem();
+      await writeFile(join(qDir(), `${item.queueId}.json`), JSON.stringify(item), "utf8");
+      process.env["MARTIN_TELEMETRY_ENDPOINT"] = "http://127.0.0.1:1";
+      process.env["MARTIN_API_TOKEN"] = "tok";
+      setSyncClaimRenameHookForTests(async (stage) => {
+        if (stage === blockedStage) {
+          throw Object.assign(new Error(`injected ${blockedStage} EPERM`), { code: "EPERM" });
+        }
+      });
+
+      await expect(flushSyncQueue()).rejects.toMatchObject({ code: "EPERM" });
+
+      expect(await queueFiles()).toEqual([`${item.queueId}.json`]);
+      expect(await inflightFiles()).toHaveLength(0);
+    },
+  );
+
+  it("fails closed on Windows-style EPERM during requeue and retains the owned claim", async () => {
+    await mkdir(qDir(), { recursive: true });
+    const item = makeItem();
+    await writeFile(join(qDir(), `${item.queueId}.json`), JSON.stringify(item), "utf8");
+    const { url, close } = await startServer((_req, res) => {
+      res.writeHead(500);
+      res.end("{}");
+    });
+    process.env["MARTIN_TELEMETRY_ENDPOINT"] = url;
+    process.env["MARTIN_API_TOKEN"] = "tok";
+    setSyncClaimRenameHookForTests(async (stage) => {
+      if (stage === "requeue") {
+        throw Object.assign(new Error("injected requeue EPERM"), { code: "EPERM" });
+      }
+    });
+
+    try {
+      await expect(flushSyncQueue()).rejects.toMatchObject({ code: "EPERM" });
+      expect(await queueFiles()).toHaveLength(0);
+      const claims = await inflightFiles();
+      expect(claims).toHaveLength(1);
+      expect(await readFile(join(inflightDir(), claims[0]!, "item.json"), "utf8"))
+        .toContain(item.queueId);
+    } finally {
+      await close();
+    }
   });
 
   it("treats ENOENT while persisting retry state as a lost claim and continues", async () => {

@@ -36,6 +36,9 @@ describe("Martin Reliability Score", () => {
   it("scores perfect evidence as 100 with a readiness grade", () => {
     const score = computeMartinReliabilityScore(perfectInput);
 
+    expect(score.meaning).toBe("five_binary_local_evidence_signals");
+    expect(score.signalCount).toBe(5);
+    expect(score.totalSignals).toBe(5);
     expect(score.points).toBe(100);
     expect(score.maxPoints).toBe(100);
     expect(score.grade).toBe("ready");
@@ -64,12 +67,24 @@ describe("Martin Reliability Score", () => {
     });
 
     expect(score.points).toBe(40);
+    expect(score.signalCount).toBe(2);
+    expect(score.totalSignals).toBe(5);
     expect(score.grade).toBe("needs-evidence");
     expect(score.missingReasons).toEqual([
       "Verifier configured: No --verify command or config rule found",
       "Rollback evidence present: Missing rollback proof at [redacted-path]",
       "MCP doctor passing: doctor exited 1"
     ]);
+    expect(score.signals.find((signal) => signal.id === "verifierConfigured")).toMatchObject({
+      passed: false,
+      detail: "No --verify command or config rule found",
+      reason: "Verifier configured: No --verify command or config rule found"
+    });
+    expect(
+      score.signals
+        .filter((signal) => !signal.passed)
+        .every((signal) => typeof signal.reason === "string" && signal.reason.trim().length > 0)
+    ).toBe(true);
   });
 
   it("treats unsigned receipts as missing verified evidence", () => {
@@ -93,7 +108,7 @@ describe("Martin Reliability Score", () => {
     );
   });
 
-  it("does not claim autonomous operation in score or badge output", () => {
+  it("does not claim statistical or autonomous reliability in score or badge output", () => {
     const score = computeMartinReliabilityScore(perfectInput);
     const combined = [
       JSON.stringify(score),
@@ -101,7 +116,9 @@ describe("Martin Reliability Score", () => {
       JSON.stringify(renderMartinReliabilityBadgeJson(score))
     ].join("\n");
 
-    expect(combined).not.toMatch(/autonom(?:y|ous)/iu);
+    expect(combined).not.toMatch(
+      /agent reliability|success[ _-]?rate|probability|benchmark|autonom(?:y|ous)/iu
+    );
   });
 
   it("renders deterministic SVG for the same score", () => {
@@ -135,9 +152,20 @@ describe("Martin Reliability Score", () => {
 
     expect(renderMartinReliabilityBadgeJson(score)).toEqual({
       schemaVersion: 1,
-      label: "agent reliability",
-      message: "100/100 ready",
+      label: "evidence readiness",
+      message: "5/5 ready",
       color: "brightgreen"
     });
+  });
+
+  it("renders evidence-readiness signal counts in summaries and SVG", () => {
+    const score = computeMartinReliabilityScore(perfectInput);
+    const svg = renderMartinReliabilityBadgeSvg(score);
+
+    expect(score.summary).toContain("Evidence readiness: 5/5 signals");
+    expect(score.summary).toContain("100/100 readiness points");
+    expect(svg).toContain("evidence readiness");
+    expect(svg).toContain("5/5 ready");
+    expect(svg).not.toContain("100/100");
   });
 });

@@ -34,6 +34,10 @@ const PORTABILITY_RULES = [
   { label: "internal main repo name", pattern: /\bML_Main_Repo_Internal\b/i },
   { label: "internal OSS repo name", pattern: /\bML_Core_OSS_Internal\b/i },
   { label: "internal machine workspace path", pattern: /\bmartin-loop_MAIN_FULL_REPO\b/i },
+  {
+    label: "representative API credential",
+    pattern: /(?:sk-proj-[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|npm_[A-Za-z0-9]{36})/i,
+  },
 ];
 
 const PATH_ALLOWLIST = [

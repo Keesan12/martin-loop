@@ -6,11 +6,14 @@ import { createHash } from "node:crypto";
 import type {
   CostProvenance,
   ExecutionMode,
+  ExitKind,
   LoopRecord,
   ReceiptIntegritySummary,
   TestIntegrityStatus,
   TestIntegrityVerdict,
   VerifiedHandoffCheckV1,
+  VerifiedHandoffFileEffectsV1,
+  VerifiedHandoffLifecycleTruthV1,
   VerifiedHandoffOutcome,
   VerifiedHandoffRecoveryV1,
   VerifiedHandoffRequirementV1,
@@ -53,7 +56,72 @@ const STOPPED_LIFECYCLE_STATES = new Set<LoopRecord["lifecycleState"]>([
   "diminishing_returns",
   "stuck_exit",
   "human_escalation",
+  "wall_clock",
+  "error_threshold",
+  "external_event",
 ]);
+
+export function deriveVerifiedHandoffLifecycleTruth(
+  loop: LoopRecord,
+): VerifiedHandoffLifecycleTruthV1 {
+  const envelope = loop.terminationEnvelope;
+  if (envelope === undefined) {
+    return {
+      executionStatus: loop.status,
+      lifecycleState: loop.lifecycleState,
+      terminationClass: "none",
+      matchedReasons: [],
+      exhaustedLimits: [],
+      evidenceAvailable: false,
+    };
+  }
+
+  if (envelope.class === "guard_stop") {
+    return {
+      executionStatus: loop.status,
+      lifecycleState: loop.lifecycleState,
+      terminationClass: "guard_stop",
+      reasonCode: envelope.guard.reasonCode,
+      reason: envelope.guard.reason,
+      matchedReasons: [],
+      exhaustedLimits: [],
+      evidenceAvailable: true,
+    };
+  }
+
+  const primary = envelope.exit.primary;
+  const primaryMatch = envelope.exit.matches.find(
+    (match) => match.kind === primary,
+  );
+  const exhausted = new Set<VerifiedHandoffLifecycleTruthV1["exhaustedLimits"][number]>();
+  for (const match of envelope.exit.matches) {
+    if (match.kind === "turn_cap") {
+      exhausted.add("iterations");
+    } else if (match.kind === "wall_clock") {
+      exhausted.add("wall_clock");
+    } else if (match.kind === "budget_cap") {
+      if (match.evidence["usdExceeded"] === true) {
+        exhausted.add("usd");
+      }
+      if (match.evidence["tokensExceeded"] === true) {
+        exhausted.add("tokens");
+      }
+    }
+  }
+  const exhaustedLimits = (["usd", "tokens", "iterations", "wall_clock"] as const)
+    .filter((limit) => exhausted.has(limit));
+
+  return {
+    executionStatus: loop.status,
+    lifecycleState: loop.lifecycleState,
+    terminationClass: "operational_exit",
+    ...(primary ? { reasonCode: primary } : {}),
+    ...(primaryMatch?.reason ? { reason: primaryMatch.reason } : {}),
+    matchedReasons: [...envelope.exit.matched],
+    exhaustedLimits,
+    evidenceAvailable: true,
+  };
+}
 
 export interface VerifierExecutionBinding {
   runId: string;
@@ -120,6 +188,9 @@ export function verifierActuallyPassed(
 
 export function resolveVerifiedHandoffOutcome(input: {
   lifecycleState: LoopRecord["lifecycleState"];
+  sourceStatus?: LoopRecord["status"];
+  terminationClass?: VerifiedHandoffLifecycleTruthV1["terminationClass"];
+  reasonCode?: ExitKind | string;
   executionStatus?: "completed" | "write_blocked" | "sandbox_blocked" | "policy_rejected" | "failed";
   verificationStatus: BuildVerifiedHandoffInput["verification"]["status"];
   receiptIntegrity: ReceiptIntegritySummary["state"];
@@ -134,6 +205,10 @@ export function resolveVerifiedHandoffOutcome(input: {
 }): VerifiedHandoffOutcome {
   if (
     STOPPED_LIFECYCLE_STATES.has(input.lifecycleState) ||
+    input.terminationClass === "guard_stop" ||
+    (input.terminationClass === "operational_exit" &&
+      input.reasonCode !== undefined &&
+      input.reasonCode !== "goal_met") ||
     input.executionStatus === "write_blocked" ||
     input.executionStatus === "sandbox_blocked" ||
     input.executionStatus === "policy_rejected"
@@ -142,6 +217,9 @@ export function resolveVerifiedHandoffOutcome(input: {
   }
 
   if (
+    input.sourceStatus !== "completed" ||
+    input.terminationClass !== "operational_exit" ||
+    input.reasonCode !== "goal_met" ||
     input.executionStatus === "failed" ||
     input.governanceClaimEligible === false ||
     input.evidenceContradicted === true ||
@@ -239,6 +317,7 @@ export interface BuildVerifiedHandoffInput {
   definitionOfDonePreSatisfied?: boolean;
   evidenceContradicted?: boolean;
   changedFiles?: string[];
+  fileEffects?: Partial<VerifiedHandoffFileEffectsV1>;
   scope?: Partial<VerifiedHandoffScopeV1>;
   testIntegrity?: Partial<VerifiedHandoffTestIntegrityV1>;
   requirements?: VerifiedHandoffRequirementV1[];
@@ -293,6 +372,18 @@ export function buildVerifiedHandoff(
   const generatedAt = input.generatedAt ?? new Date().toISOString();
   const changedFiles = input.changedFiles ?? [];
   const unresolvedWork = input.unresolvedWork ?? [];
+  const lifecycleTruth = deriveVerifiedHandoffLifecycleTruth(input.loop);
+  const fileEffects: VerifiedHandoffFileEffectsV1 = {
+    observationStatus: input.fileEffects?.observationStatus ?? "unavailable",
+    touchedDuringExecution: [...(input.fileEffects?.touchedDuringExecution ?? [])],
+    netChangedAtCompletion: [...(input.fileEffects?.netChangedAtCompletion ?? [])],
+    revertedBeforeCompletion: [...(input.fileEffects?.revertedBeforeCompletion ?? [])],
+    ...(input.fileEffects?.observationReason
+      ? { observationReason: input.fileEffects.observationReason }
+      : input.fileEffects?.observationStatus === "observed"
+        ? {}
+        : { observationReason: "File-effect evidence was not recorded for this run." }),
+  };
 
   const scope: VerifiedHandoffScopeV1 = {
     status: input.scope?.status ?? "NOT_EVALUATED",
@@ -319,16 +410,40 @@ export function buildVerifiedHandoff(
   };
 
   const executionBoundary = deriveVerifiedHandoffExecutionBoundary(input.loop);
-  const verifierStepsActuallyPassed =
-    input.verification.steps.length > 0 &&
-    input.verification.steps.every(
-      (step) =>
-        step.launched === true &&
-        step.completed === true &&
-        step.crashed === false &&
-        step.timedOut !== true &&
-        step.exitCode === 0
-    );
+  const expectedVerifierBinding: VerifierExecutionBinding | undefined =
+    input.verification.binding
+      ? {
+          runId: input.loop.loopId,
+          workspaceId: input.loop.workspaceId,
+          ...(input.loop.attempts.at(-1)?.attemptId
+            ? { attemptId: input.loop.attempts.at(-1)?.attemptId }
+            : {}),
+          cwd:
+            input.loop.receiptScope?.workingDirectory ??
+            input.loop.task.repoRoot ??
+            input.verification.binding.cwd,
+          ...(input.loop.receiptScope?.runsRoot
+            ? { runsRoot: input.loop.receiptScope.runsRoot }
+            : {}),
+          ...(input.loop.task.executionProfile
+            ? { executionProfile: input.loop.task.executionProfile }
+            : {}),
+          ...(input.loop.task.allowedNetworkDomains?.length
+            ? { allowedNetworkDomains: [...input.loop.task.allowedNetworkDomains] }
+            : {}),
+          commands: [...input.loop.task.verificationPlan],
+        }
+      : undefined;
+  const verifierStepsActuallyPassed = expectedVerifierBinding
+    ? verifierActuallyPassed(
+        {
+          passed: input.verification.status === "passed",
+          binding: input.verification.binding,
+          steps: input.verification.steps,
+        },
+        expectedVerifierBinding,
+      )
+    : false;
   const effectiveVerificationStatus =
     input.verification.status === "passed" && !verifierStepsActuallyPassed
       ? input.verification.steps.length === 0
@@ -344,6 +459,9 @@ export function buildVerifiedHandoff(
 
   const outcome = resolveVerifiedHandoffOutcome({
     lifecycleState: input.loop.lifecycleState,
+    sourceStatus: input.loop.status,
+    terminationClass: lifecycleTruth.terminationClass,
+    reasonCode: lifecycleTruth.reasonCode,
     executionStatus: input.executionStatus,
     verificationStatus: effectiveVerificationStatus,
     receiptIntegrity: input.receiptIntegrity.state,
@@ -383,6 +501,8 @@ export function buildVerifiedHandoff(
       status: input.loop.status,
       lifecycleState: input.loop.lifecycleState,
     },
+    lifecycleTruth,
+    fileEffects,
     verification: {
       status: toEvidenceStatus(effectiveVerificationStatus),
       summary: input.verification.summary,

@@ -817,15 +817,53 @@ describe("share command", () => {
 });
 
 describe("badge command", () => {
-  it("renders an OSS reliability badge as SVG without autonomy claims", async () => {
+  it.each([
+    ["unknown badge format", ["badge", "--format", "nonsense"]],
+    ["missing badge format", ["badge", "--format"]],
+    ["empty badge format", ["badge", "--format", ""]],
+    ["option-like badge format", ["badge", "--format", "--governed"]],
+    ["duplicate badge format", ["badge", "--format", "svg", "--format", "json"]],
+    ["contradictory badge format", ["--json", "badge", "--format", "svg"]],
+  ])("rejects %s", async (_label, argv) => {
+    const result = await executeCli(argv);
+    expect(result.exitCode).toBe(2);
+    if (argv.includes("--json")) {
+      expect(JSON.parse(result.stdout)).toMatchObject({ ok: false, category: "invalid_input" });
+    } else {
+      expect(result.stderr).toContain("invalid_input");
+    }
+    expect(result.stdout).not.toContain("<svg");
+  });
+
+  it("describes the badge as five-signal evidence readiness in help", async () => {
+    const result = await executeCli(["--help"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("evidence readiness from five local signals");
+    expect(result.stdout).not.toContain("agent reliability");
+  });
+
+  it("renders an evidence-readiness badge as SVG without statistical or autonomy claims", async () => {
     const result = await executeCli(["badge", "--format", "svg"]);
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("<svg");
-    expect(result.stdout).toContain("agent reliability");
-    expect(result.stdout).not.toContain("full autonomy");
-    expect(result.stdout).not.toContain("self-learning");
+    expect(result.stdout).toContain("evidence readiness");
+    expect(result.stdout).toMatch(/\d\/5 (?:ready|strong|needs-evidence|blocked)/u);
+    expect(result.stdout).not.toMatch(
+      /agent reliability|success[ _-]?rate|probability|benchmark|autonom(?:y|ous)|self-learning/iu
+    );
     expect(result.stdout).not.toMatch(/[A-Z]:\\/);
+  });
+
+  it("keeps compact Shields JSON compatible and uses a signal count", async () => {
+    const result = await executeCli(["badge", "--format", "json"]);
+    const payload = JSON.parse(result.stdout);
+
+    expect(result.exitCode).toBe(0);
+    expect(Object.keys(payload).sort()).toEqual(["color", "label", "message", "schemaVersion"]);
+    expect(payload).toMatchObject({ schemaVersion: 1, label: "evidence readiness" });
+    expect(payload.message).toMatch(/^\d\/5 (?:ready|strong|needs-evidence|blocked)$/u);
   });
 
   it("marks the badge as missing verified receipts when the latest persisted run has missing integrity material", async () => {
@@ -838,15 +876,142 @@ describe("badge command", () => {
       const result = await executeCli(["--json", "badge"]);
       const payload = JSON.parse(result.stdout) as {
         command: string;
-        score: { missingReasons: string[]; points: number; grade: string };
+        score: {
+          meaning: string;
+          signalCount: number;
+          totalSignals: number;
+          missingReasons: string[];
+          points: number;
+          grade: string;
+          signals: Array<{ passed: boolean; detail?: string; reason?: string }>;
+        };
       };
 
       expect(result.exitCode).toBe(0);
       expect(payload.command).toBe("badge");
+      expect(payload.score.meaning).toBe("five_binary_local_evidence_signals");
+      expect(payload.score.totalSignals).toBe(5);
       expect(payload.score.points).toBeLessThan(100);
       expect(payload.score.missingReasons).toContain(
         "Verified run receipts present: Latest persisted run receipt integrity is material_missing."
       );
+      expect(payload.score.signals.filter((signal) => !signal.passed)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            passed: false,
+            detail: expect.any(String),
+            reason: expect.any(String)
+          })
+        ])
+      );
+    });
+  });
+
+  it("does not treat a generic Latest diff.patch artifact as rollback evidence", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const loop = makeLoopRecord();
+      const loopDir = join(runsRoot, loop.loopId);
+      const ledgerEntries = loop.events;
+      await mkdir(loopDir, { recursive: true });
+      await writeFile(
+        join(loopDir, "loop-record.json"),
+        `${JSON.stringify(loop, null, 2)}\n`,
+        "utf8"
+      );
+      await writeFile(
+        join(loopDir, "ledger.jsonl"),
+        ledgerEntries.map((entry) => JSON.stringify(entry)).join("\n").concat("\n"),
+        "utf8"
+      );
+      await writeReceiptIntegrityMaterial({
+        runId: loop.loopId,
+        runsRoot,
+        loopRecord: loop,
+        ledgerEntries,
+        scope: loop.receiptScope,
+        signedAt: loop.updatedAt
+      });
+
+      const result = await executeCli(["--json", "badge"]);
+      const payload = JSON.parse(result.stdout);
+
+      expect(result.exitCode).toBe(0);
+      expect(payload.score).toMatchObject({
+        meaning: "five_binary_local_evidence_signals",
+        signalCount: 4,
+        totalSignals: 5,
+        points: 80,
+        maxPoints: 100,
+        missingReasons: [
+          "Rollback evidence present: No rollback artifact evidence found."
+        ]
+      });
+      expect(
+        payload.score.signals.find(
+          (signal: { id: string }) => signal.id === "rollbackEvidencePresent"
+        )
+      ).toMatchObject({
+        passed: false,
+        detail: "No rollback artifact evidence found.",
+        reason: "Rollback evidence present: No rollback artifact evidence found."
+      });
+    });
+  });
+
+  it("renders a fixture with separate explicit rollback evidence as 5/5", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const baseLoop = makeLoopRecord();
+      const loop: LoopRecord = {
+        ...baseLoop,
+        artifacts: [
+          ...baseLoop.artifacts,
+          {
+            artifactId: "artifact_rollback",
+            kind: "diff",
+            label: "Rollback patch",
+            uri: "file:///tmp/rollback.patch"
+          }
+        ]
+      };
+      const loopDir = join(runsRoot, loop.loopId);
+      const ledgerEntries = loop.events;
+      await mkdir(loopDir, { recursive: true });
+      await writeFile(
+        join(loopDir, "loop-record.json"),
+        `${JSON.stringify(loop, null, 2)}\n`,
+        "utf8"
+      );
+      await writeFile(
+        join(loopDir, "ledger.jsonl"),
+        ledgerEntries.map((entry) => JSON.stringify(entry)).join("\n").concat("\n"),
+        "utf8"
+      );
+      await writeReceiptIntegrityMaterial({
+        runId: loop.loopId,
+        runsRoot,
+        loopRecord: loop,
+        ledgerEntries,
+        scope: loop.receiptScope,
+        signedAt: loop.updatedAt
+      });
+
+      const human = await executeCli(["badge"]);
+      const json = await executeCli(["--json", "badge"]);
+      const payload = JSON.parse(json.stdout);
+
+      expect(human.exitCode).toBe(0);
+      expect(human.stdout).toMatch(/^Evidence readiness: 5\/5 signals/mu);
+      expect(human.stdout).toContain("100/100 readiness points");
+      expect(json.exitCode).toBe(0);
+      expect(payload.score).toMatchObject({
+        meaning: "five_binary_local_evidence_signals",
+        signalCount: 5,
+        totalSignals: 5,
+        points: 100,
+        maxPoints: 100
+      });
+      expect(payload.score.signals).toHaveLength(5);
+      expect(payload.score.signals.every((signal: { passed: boolean }) => signal.passed)).toBe(true);
     });
   });
 });

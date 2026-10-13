@@ -471,10 +471,10 @@ describe("400 bad request is not retried", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 14. Timeout queues entry and resolves within ~4s
+// 14. Timeout queues entry and resolves within its explicit test deadline
 // ---------------------------------------------------------------------------
 
-describe("timeout (3s abort) queues the entry", () => {
+describe("timeout abort queues the entry", () => {
   it("resolves with timeout result and queues entry when server never responds", async () => {
     // Server accepts connections but never sends a response
     const server = await new Promise<{ url: string; stop: () => Promise<void> }>((resolve) => {
@@ -491,18 +491,19 @@ describe("timeout (3s abort) queues the entry", () => {
     const start = Date.now();
     let result: Awaited<ReturnType<typeof submitToIntake>> | undefined;
     try {
-      result = await submitToIntake(BASE_PAYLOAD);
+      result = await submitToIntake(BASE_PAYLOAD, { timeoutMs: 100 });
     } finally {
       restore();
     }
 
     const elapsed = Date.now() - start;
-    expect(elapsed).toBeLessThan(5_000); // resolves within 5s despite 3s timeout
+    expect(elapsed).toBeLessThan(2_000);
     await server.stop();
     expect(result!.ok).toBe(false);
     if (!result!.ok) {
       expect(result!.status).toBe("timeout");
       expect(result!.retryable).toBe(true);
+      expect(result!.message).toContain("100 milliseconds");
     }
 
     const draftPath = join(tempHome, ".martin", "intake-draft.jsonl");

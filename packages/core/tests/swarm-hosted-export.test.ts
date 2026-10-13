@@ -23,6 +23,12 @@ import {
   canonicalSwarmHostedFixtureBundleBytes,
 } from "./helpers/swarm-hosted-fixture-builder.js";
 
+interface SemanticDifference {
+  readonly path: string;
+  readonly expected: unknown;
+  readonly received: unknown;
+}
+
 describe.sequential("authenticated swarm hosted exporter", () => {
   let firstProductionBundle: Awaited<ReturnType<typeof buildProductionSwarmHostedFixtureBundle>>;
   let firstProductionBundleBytes: string;
@@ -64,6 +70,8 @@ describe.sequential("authenticated swarm hosted exporter", () => {
   }, 120_000);
 
   it("rebuilds the exact frozen production-layout bundle and checksum through the production exporter", () => {
+    expect(firstSemanticDifference(JSON.parse(frozenProductionBundleBytes), firstProductionBundle))
+      .toBeUndefined();
     expect(firstProductionBundleBytes).toBe(frozenProductionBundleBytes);
     expect(createHash("sha256").update(firstProductionBundleBytes).digest("hex"))
       .toBe(frozenProductionBundleChecksum);
@@ -255,6 +263,40 @@ describe.sequential("authenticated swarm hosted exporter", () => {
     expect(core).not.toHaveProperty("readHostedTransportKey");
   });
 });
+
+function firstSemanticDifference(
+  expected: unknown,
+  received: unknown,
+  path = "$",
+): SemanticDifference | undefined {
+  if (Object.is(expected, received)) return undefined;
+  if (Array.isArray(expected) && Array.isArray(received)) {
+    if (expected.length !== received.length) {
+      return { path: `${path}.length`, expected: expected.length, received: received.length };
+    }
+    for (let index = 0; index < expected.length; index += 1) {
+      const difference = firstSemanticDifference(expected[index], received[index], `${path}[${index}]`);
+      if (difference) return difference;
+    }
+    return undefined;
+  }
+  if (isRecord(expected) && isRecord(received)) {
+    const keys = [...new Set([...Object.keys(expected), ...Object.keys(received)])].sort();
+    for (const key of keys) {
+      if (!(key in expected) || !(key in received)) {
+        return { path: `${path}.${key}`, expected: expected[key], received: received[key] };
+      }
+      const difference = firstSemanticDifference(expected[key], received[key], `${path}.${key}`);
+      if (difference) return difference;
+    }
+    return undefined;
+  }
+  return { path, expected, received };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 function acceptedFixture(options: {
   omitChildEventAttemptId?: boolean;

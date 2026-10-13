@@ -12,13 +12,13 @@ import {
   projectSwarmTraceFacts,
 } from "../src/swarm/hosted-projection.js";
 import {
-  buildProductionSwarmHostedFixtureBundle,
+  readFrozenProductionSwarmHostedFixtureBundle,
   type SwarmHostedFixtureBundle,
 } from "./helpers/swarm-hosted-fixture-builder.js";
 
 describe("hosted swarm projections", () => {
   it("recomputes Atlas, SANSA, and dashboard bytes from each same production-exported frozen envelope", async () => {
-    const bundle: SwarmHostedFixtureBundle = await buildProductionSwarmHostedFixtureBundle();
+    const bundle: SwarmHostedFixtureBundle = await readFrozenProductionSwarmHostedFixtureBundle();
 
     for (const fixture of bundle.validCases) {
       expect(projectSwarmAtlasView(fixture.envelope), `${fixture.name}:atlas`).toEqual(fixture.atlas);

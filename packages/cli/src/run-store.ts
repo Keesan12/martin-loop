@@ -22,6 +22,7 @@ import type {
   MartinRunSelector,
   ReceiptIntegritySummary,
   ReceiptScope,
+  VerifiedHandoffFileEffectsV1,
   VerifiedHandoffV1,
 } from "@martin/contracts";
 
@@ -636,26 +637,35 @@ export function buildArtifactSummary(loop: LoopRecord): ArtifactSummary {
 export function buildRunReceipt(
   loop: LoopRecord,
   verification = buildVerificationSummary(loop),
-  receiptScope = resolveReceiptScope(loop)
+  receiptScope = resolveReceiptScope(loop),
+  verifiedHandoff?: VerifiedHandoffV1,
 ): Record<string, unknown> {
   const latestAttempt = loop.attempts.at(-1);
-  const integrity = resolveReceiptIntegrity(loop);
+  const integrity = verifiedHandoff?.receiptIntegrity ?? resolveReceiptIntegrity(loop);
   const trustworthy = integrity.state === "verified";
   const rollbackArtifacts = loop.artifacts.filter((artifact) =>
     /rollback|restore|diff|patch/iu.test(`${artifact.kind} ${artifact.label} ${artifact.uri}`)
   );
-  const stopConditionReached =
-    loop.lifecycleState === "budget_exit" ||
-    loop.lifecycleState === "diminishing_returns" ||
-    loop.lifecycleState === "stuck_exit" ||
-    loop.lifecycleState === "human_escalation";
+  const stopConditionReached = verifiedHandoff
+    ? verifiedHandoff.outcome === "STOPPED"
+    : loop.lifecycleState === "budget_exit" ||
+      loop.lifecycleState === "diminishing_returns" ||
+      loop.lifecycleState === "stuck_exit" ||
+      loop.lifecycleState === "human_escalation";
   const prevented = trustworthy
-    ? buildPreventionSummary(loop, verification, stopConditionReached)
+    ? buildPreventionSummary(loop, verification, stopConditionReached, verifiedHandoff)
     : ["trust claim unavailable until receipt integrity verifies"];
 
   return {
     trustworthy,
     receiptIntegrity: integrity,
+    ...(verifiedHandoff
+      ? {
+          outcome: verifiedHandoff.outcome,
+          lifecycleTruth: verifiedHandoff.lifecycleTruth,
+          fileEffects: verifiedHandoff.fileEffects,
+        }
+      : {}),
     ...(receiptScope ? { receiptScope } : {}),
     whatHappened: latestAttempt?.summary ?? verification.summary ?? loop.task.objective,
     whatMartinPrevented: prevented,
@@ -687,7 +697,7 @@ export function buildRunReceipt(
       artifacts: rollbackArtifacts.slice(0, 5)
     },
     nextSafeAction: trustworthy
-      ? selectNextSafeAction(loop, verification, rollbackArtifacts.length)
+      ? selectNextSafeAction(loop, verification, rollbackArtifacts.length, verifiedHandoff)
       : `Verify canonical receipt integrity for loop ${loop.loopId} before sharing proof or cost claims.`
   };
 }
@@ -696,6 +706,13 @@ export function buildVerifiedHandoffFromPersistedLoop(
   detail: PersistedLoopDetail
 ): VerifiedHandoffV1 {
   const verification = buildVerificationSummary(detail.loop);
+  const completionEvent = detail.loop.events
+    .filter((event) => event.type === "run.completed")
+    .at(-1);
+  const completionPayload = isRecord(completionEvent?.payload)
+    ? completionEvent.payload
+    : undefined;
+  const fileEffects = readPersistedFileEffects(completionPayload?.["fileEffects"]);
   const rollbackArtifacts = detail.loop.artifacts.filter((artifact) =>
     /rollback|restore|diff|patch/iu.test(
       `${artifact.kind} ${artifact.label} ${artifact.uri}`
@@ -730,6 +747,7 @@ export function buildVerifiedHandoffFromPersistedLoop(
       warnings: verification.warnings,
       ...(verification.binding ? { binding: verification.binding } : {}),
     },
+    ...(fileEffects ? { fileEffects } : {}),
     scope: {
       status:
         detail.loop.task.allowedPaths?.length ||
@@ -738,7 +756,7 @@ export function buildVerifiedHandoffFromPersistedLoop(
           : "NOT_EVALUATED",
       allowedPaths: detail.loop.task.allowedPaths ?? [],
       deniedPaths: detail.loop.task.deniedPaths ?? [],
-      changedFiles: verification.changedFiles,
+      changedFiles: fileEffects?.netChangedAtCompletion ?? verification.changedFiles,
       violations: [],
     },
     testIntegrity: {
@@ -800,12 +818,47 @@ function readStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
 }
 
+function readPersistedFileEffects(value: unknown): VerifiedHandoffFileEffectsV1 | undefined {
+  if (!isRecord(value)) return undefined;
+  const observationStatus = value["observationStatus"];
+  if (observationStatus !== "observed" && observationStatus !== "unavailable") {
+    return undefined;
+  }
+  const touchedDuringExecution = value["touchedDuringExecution"];
+  const netChangedAtCompletion = value["netChangedAtCompletion"];
+  const revertedBeforeCompletion = value["revertedBeforeCompletion"];
+  const arraysAreValid = [
+    touchedDuringExecution,
+    netChangedAtCompletion,
+    revertedBeforeCompletion,
+  ].every((entries) => Array.isArray(entries) && entries.every((entry) => typeof entry === "string"));
+  if (!arraysAreValid) {
+    return {
+      observationStatus: "unavailable",
+      touchedDuringExecution: [],
+      netChangedAtCompletion: [],
+      revertedBeforeCompletion: [],
+      observationReason: "Persisted file-effect evidence was malformed or incomplete.",
+    };
+  }
+
+  return {
+    observationStatus,
+    touchedDuringExecution: readStringArray(touchedDuringExecution),
+    netChangedAtCompletion: readStringArray(netChangedAtCompletion),
+    revertedBeforeCompletion: readStringArray(revertedBeforeCompletion),
+    ...(typeof value["observationReason"] === "string"
+      ? { observationReason: value["observationReason"] }
+      : {}),
+  };
+}
+
 export function buildRunDossier(detail: PersistedLoopDetail): Record<string, unknown> {
   const verification = buildVerificationSummary(detail.loop);
   const artifactSummary = buildArtifactSummary(detail.loop);
   const receiptScope = resolveReceiptScope(detail.loop, detail.runsRoot);
-  const receipt = buildRunReceipt(detail.loop, verification, receiptScope);
   const verifiedHandoff = buildVerifiedHandoffFromPersistedLoop(detail);
+  const receipt = buildRunReceipt(detail.loop, verification, receiptScope, verifiedHandoff);
 
   return {
     source: detail.source,
@@ -1096,13 +1149,36 @@ function dedupeRunIndexEntries(entries: RunIndexEntry[]): RunIndexEntry[] {
 function buildPreventionSummary(
   loop: LoopRecord,
   verification: VerificationSummary,
-  stopConditionReached: boolean
+  stopConditionReached: boolean,
+  verifiedHandoff?: VerifiedHandoffV1,
 ): string[] {
   const prevented: string[] = [];
   const latestAttempt = loop.attempts.at(-1);
 
-  if (stopConditionReached) {
-    prevented.push("another unsafe or uneconomical retry before operator review");
+  if (stopConditionReached && verifiedHandoff) {
+    for (const exhaustedLimit of verifiedHandoff.lifecycleTruth.exhaustedLimits) {
+      switch (exhaustedLimit) {
+        case "iterations":
+          prevented.push("iteration limit overrun beyond the persisted turn cap");
+          break;
+        case "usd":
+          prevented.push("additional provider spend beyond the persisted USD limit");
+          break;
+        case "tokens":
+          prevented.push("additional token use beyond the persisted token limit");
+          break;
+        case "wall_clock":
+          prevented.push("execution beyond the persisted wall-clock limit");
+          break;
+      }
+    }
+    if (verifiedHandoff.lifecycleTruth.terminationClass === "guard_stop") {
+      prevented.push(
+        `continued execution after ${verifiedHandoff.lifecycleTruth.reasonCode ?? "a policy guard"}`,
+      );
+    }
+  } else if (stopConditionReached) {
+    prevented.push("another retry before operator review");
   }
   if (verification.status === "failed" || verification.status === "contradicted") {
     prevented.push("false success claims after a failed verifier");
@@ -1125,10 +1201,27 @@ function buildPreventionSummary(
 function selectNextSafeAction(
   loop: LoopRecord,
   verification: VerificationSummary,
-  rollbackEvidenceCount: number
+  rollbackEvidenceCount: number,
+  verifiedHandoff?: VerifiedHandoffV1,
 ): string {
   if (verification.status === "failed" || verification.status === "contradicted") {
     return `Debug loop ${loop.loopId} before another attempt; start with verifier evidence and the latest failed attempt.`;
+  }
+
+  if (verifiedHandoff?.lifecycleTruth.exhaustedLimits.includes("iterations")) {
+    return `Review loop ${loop.loopId} before increasing the iteration limit or starting another attempt.`;
+  }
+
+  if (verifiedHandoff?.lifecycleTruth.exhaustedLimits.includes("usd")) {
+    return `Review loop ${loop.loopId} before increasing the USD limit or starting another attempt.`;
+  }
+
+  if (verifiedHandoff?.lifecycleTruth.exhaustedLimits.includes("tokens")) {
+    return `Review loop ${loop.loopId} before increasing the token limit or starting another attempt.`;
+  }
+
+  if (verifiedHandoff?.lifecycleTruth.exhaustedLimits.includes("wall_clock")) {
+    return `Review loop ${loop.loopId} before increasing the wall-clock limit or starting another attempt.`;
   }
 
   if (loop.lifecycleState === "budget_exit" || loop.lifecycleState === "diminishing_returns") {

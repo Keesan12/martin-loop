@@ -167,7 +167,7 @@ describe("runLiveSwarm", () => {
     const base = createPlan([task("task-a")]);
     const plan = createSwarmLivePlan({
       ...base,
-      parentContract: { ...base.parentContract, maxWallClockMs: 2_000 },
+      parentContract: { ...base.parentContract, maxWallClockMs: 30_000 },
       agents: base.agents.map((agent) => ({
         ...agent,
         contract: { ...agent.contract, maxWallClockMs: 250 },
@@ -175,23 +175,36 @@ describe("runLiveSwarm", () => {
     });
     const fixture = createFixture(plan);
     let childSignal: AbortSignal | undefined;
+    let markChildStarted!: () => void;
+    const childStarted = new Promise<void>((resolvePromise) => {
+      markChildStarted = resolvePromise;
+    });
     fixture.input.adapterFactory = ({ engine }) => ({
       ...passAdapter(engine.model),
       async execute(request) {
         childSignal = request.signal;
+        markChildStarted();
         return new Promise((resolvePromise, rejectPromise) => {
           request.signal?.addEventListener("abort", () => rejectPromise(request.signal?.reason), { once: true });
         });
       },
     });
 
-    const settled = await Promise.race([
-      runLiveSwarmWithDependencies(fixture.input, fixture.dependencies).then(() => "settled"),
-      new Promise<string>((resolvePromise) => setTimeout(() => resolvePromise("timeout"), 2_000)),
-    ]);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const running = runLiveSwarmWithDependencies(fixture.input, fixture.dependencies);
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(0);
+      await childStarted;
 
-    expect(settled).toBe("settled");
-    expect(childSignal?.aborted).toBe(true);
+      expect(childSignal).toBeDefined();
+      expect(childSignal?.aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(250);
+      await running;
+      expect(childSignal?.aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("uses completion events to bound N children by maxConcurrency", async () => {
@@ -204,6 +217,12 @@ describe("runLiveSwarm", () => {
     let active = 0;
     let peak = 0;
     const gates = new Map<string, Deferred<void>>();
+    const started = new Map([
+      ["task-a", deferred<void>()],
+      ["task-b", deferred<void>()],
+      ["task-c", deferred<void>()],
+    ]);
+    const startOrder: string[] = [];
     fixture.input.adapterFactory = ({ task: assigned }) => ({
       ...passAdapter("gpt-test"),
       async execute(request) {
@@ -211,6 +230,8 @@ describe("runLiveSwarm", () => {
         peak = Math.max(peak, active);
         const gate = deferred<void>();
         gates.set(assigned.taskId, gate);
+        startOrder.push(assigned.taskId);
+        started.get(assigned.taskId)?.resolve(undefined);
         await gate.promise;
         active -= 1;
         return passedAdapterResult(request);
@@ -218,10 +239,21 @@ describe("runLiveSwarm", () => {
     });
 
     const run = runLiveSwarmWithDependencies(fixture.input, fixture.dependencies);
-    await vi.waitFor(() => expect(gates.size).toBe(2));
+    await Promise.all([started.get("task-a")!.promise, started.get("task-b")!.promise]);
+    expect([...startOrder].sort()).toEqual(["task-a", "task-b"]);
     expect(peak).toBe(2);
     gates.get("task-a")?.resolve(undefined);
-    await vi.waitFor(() => expect(gates.has("task-c")).toBe(true));
+    await started.get("task-c")!.promise;
+    const aSettled = fixture.live.events.findIndex((event) => (
+      event.type === "CHILD_VERIFIED" && event.taskId === "task-a"
+    ));
+    const cStarted = fixture.live.events.findIndex((event) => (
+      event.type === "CHILD_STARTED" && event.taskId === "task-c"
+    ));
+    expect(startOrder.slice(0, 2).sort()).toEqual(["task-a", "task-b"]);
+    expect(startOrder.at(-1)).toBe("task-c");
+    expect(aSettled).toBeGreaterThan(-1);
+    expect(cStarted).toBeGreaterThan(aSettled);
     gates.get("task-b")?.resolve(undefined);
     gates.get("task-c")?.resolve(undefined);
     const result = await run;

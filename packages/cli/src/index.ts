@@ -2,7 +2,7 @@ import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promi
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, win32 } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
@@ -46,6 +46,7 @@ import {
   type MutationMode,
   type ReceiptScope,
   type ExternalOutcomeContract,
+  type VerifiedHandoffV1,
   validateExternalOutcomeContract
 } from "@martin/contracts";
 import {
@@ -69,6 +70,7 @@ import {
   type MartinMcpHost,
   type MartinMcpPlatform,
   type MartinMcpProfile,
+  type MartinMcpRunsRootSource,
   type MartinMcpScope,
   type MartinMcpTransport,
   MARTIN_DIAGNOSTIC_TOOLS,
@@ -237,6 +239,7 @@ function buildRunSuccessCallToAction(loop: LoopRecord): RunSuccessCallToAction |
 
 const rootPackageVersion = resolveRootPackageVersion();
 let runAdapterOverrideForTests: MartinAdapter | undefined;
+let runAdapterSelectionObserverForTests: ((engine: string | undefined) => void) | undefined;
 
 export type RunCommandRequest = {
   workspaceId: string;
@@ -400,6 +403,7 @@ type McpCommand =
       scope: MartinMcpScope;
       cwd?: string;
       runsDir?: string;
+      runsRootSource: MartinMcpRunsRootSource;
       transport: MartinMcpTransport;
       profile: MartinMcpProfile;
       remoteUrl?: string;
@@ -413,6 +417,7 @@ type McpCommand =
       scope: MartinMcpScope;
       cwd?: string;
       runsDir?: string;
+      runsRootSource: MartinMcpRunsRootSource;
       transport: MartinMcpTransport;
       profile: MartinMcpProfile;
       remoteUrl?: string;
@@ -477,7 +482,8 @@ type ShareCommand = {
 
 type BadgeCommand = {
   command: "badge";
-  format: "svg" | "json";
+  format: "human" | "svg" | "json";
+  formatExplicit: boolean;
   runsDir?: string;
   governed?: boolean;
 };
@@ -688,6 +694,7 @@ export async function executeCli(args: string[]): Promise<{
             getDeterministicSwarmDemoExitCode,
             renderDeterministicSwarmDemoHuman,
             runDeterministicSwarmDemo,
+            toDeterministicSwarmDemoData,
           } = await import("./swarm-demo.js");
           let result;
           try {
@@ -705,7 +712,7 @@ export async function executeCli(args: string[]): Promise<{
             throw error;
           }
           const rendered = renderCliSuccess(outputMode, {
-            data: Object.fromEntries(Object.entries(result).filter(([key]) => key !== "record")),
+            data: toDeterministicSwarmDemoData(result),
             human: renderDeterministicSwarmDemoHuman(result),
             quiet: result.swarmId,
           });
@@ -849,8 +856,12 @@ export async function executeCli(args: string[]): Promise<{
   }
 }
 
-export function __setRunAdapterOverrideForTests(adapter?: MartinAdapter): void {
+export function __setRunAdapterOverrideForTests(
+  adapter?: MartinAdapter,
+  onSelect?: (engine: string | undefined) => void
+): void {
   runAdapterOverrideForTests = adapter;
+  runAdapterSelectionObserverForTests = onSelect;
 }
 
 // ─── Codex host override (test seam) ─────────────────────────────────────────
@@ -895,6 +906,14 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
     return { command: "help" };
   }
 
+  if (command === "proof") {
+    throw new CliCommandError(
+      "invalid_input",
+      "Top-level `martin proof` is not a supported command.",
+      { suggestion: "Use `martin run <objective> --proof` for non-governed verification-only evidence." }
+    );
+  }
+
   if (command === "swarm") {
     if (
       (rest.length === 1 && (rest[0] === "--help" || rest[0] === "-h"))
@@ -925,10 +944,14 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
   }
 
   if (command === "audit") {
-    const days = readOption(rest, "--days");
+    const seenScalarOptions = new Set<string>();
+    const daysOption = readStrictScalarOption(rest, ["--days"], seenScalarOptions, {
+      allowNegativeNumber: true
+    });
+    const days = daysOption === undefined ? undefined : parseStrictPositiveInteger("--days", daysOption);
     return {
       command: "audit",
-      ...(days !== undefined ? { days: Number(days) } : {}),
+      ...(days !== undefined ? { days } : {}),
       ...(readOption(rest, "--project") ? { project: readOption(rest, "--project") } : {}),
       ...(readOption(rest, "--dir") ? { directory: readOption(rest, "--dir") } : {}),
       share: hasFlag(rest, "--share"),
@@ -1069,13 +1092,35 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
     if (!objective) {
       return { command: "help" };
     }
-    const budgetUsd = toFiniteNumber(readOption(rest, "--budget-usd") ?? readOption(rest, "--budget") ?? "5") || 5;
-    const softLimitOption = readOption(rest, "--soft-limit-usd");
-    const maxIterationsOption = readOption(rest, "--max-iterations");
-    const maxTokensOption = readOption(rest, "--max-tokens");
-    const softLimitUsd = softLimitOption === undefined ? budgetUsd : (toFiniteNumber(softLimitOption) ?? budgetUsd);
-    const maxIterations = maxIterationsOption === undefined ? 1 : (toFiniteNumber(maxIterationsOption) ?? 1);
-    const maxTokens = maxTokensOption === undefined ? undefined : toFiniteNumber(maxTokensOption);
+    const seenScalarOptions = new Set<string>();
+    const budgetOption = readStrictScalarOption(rest, ["--budget-usd", "--budget"], seenScalarOptions, {
+      allowNegativeNumber: true,
+      canonical: "--budget-usd"
+    });
+    const softLimitOption = readStrictScalarOption(rest, ["--soft-limit-usd"], seenScalarOptions, {
+      allowNegativeNumber: true
+    });
+    const maxIterationsOption = readStrictScalarOption(rest, ["--max-iterations"], seenScalarOptions, {
+      allowNegativeNumber: true
+    });
+    const maxTokensOption = readStrictScalarOption(rest, ["--max-tokens"], seenScalarOptions, {
+      allowNegativeNumber: true
+    });
+    const budgetUsd = budgetOption === undefined
+      ? 5
+      : parseStrictFiniteNumber("--budget-usd", budgetOption, (parsed) => parsed > 0, "a finite number greater than zero");
+    const softLimitUsd = softLimitOption === undefined
+      ? budgetUsd
+      : parseStrictFiniteNumber("--soft-limit-usd", softLimitOption, (parsed) => parsed >= 0, "a finite non-negative number");
+    const maxIterations = maxIterationsOption === undefined
+      ? 1
+      : parseStrictPositiveInteger("--max-iterations", maxIterationsOption);
+    const maxTokens = maxTokensOption === undefined
+      ? undefined
+      : parseStrictPositiveInteger("--max-tokens", maxTokensOption);
+    if (softLimitOption !== undefined && softLimitUsd >= budgetUsd) {
+      throw new CliCommandError("invalid_input", "--soft-limit-usd must be less than --budget-usd.");
+    }
     const hasExactBudget = softLimitOption !== undefined || maxIterationsOption !== undefined || maxTokensOption !== undefined;
     const fileScope: string[] = [];
     for (let i = 0; i < rest.length; i++) {
@@ -1113,6 +1158,19 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
   }
 
   if (command === "enable") {
+    const seenScalarOptions = new Set<string>();
+    const budgetOption = readStrictScalarOption(rest, ["--budget-usd"], seenScalarOptions, {
+      allowNegativeNumber: true
+    });
+    const maxIterationsOption = readStrictScalarOption(rest, ["--max-iterations"], seenScalarOptions, {
+      allowNegativeNumber: true
+    });
+    const budgetUsd = budgetOption === undefined
+      ? undefined
+      : parseStrictFiniteNumber("--budget-usd", budgetOption, (parsed) => parsed > 0, "a finite number greater than zero");
+    const maxIterations = maxIterationsOption === undefined
+      ? undefined
+      : parseStrictPositiveInteger("--max-iterations", maxIterationsOption);
     return {
       command: "enable",
       ...(readOption(rest, "--cwd") ? { cwd: readOption(rest, "--cwd") } : {}),
@@ -1124,10 +1182,8 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
       ...(readOption(rest, "--engine") === "gemini" ? { engine: "gemini" as const } : {}),
       ...(readOption(rest, "--engine") === "openai" ? { engine: "openai" as const } : {}),
       ...(readOption(rest, "--verify") ? { verifier: readOption(rest, "--verify") } : {}),
-      ...(readOption(rest, "--budget-usd") ? { budgetUsd: Number(readOption(rest, "--budget-usd")) } : {}),
-      ...(readOption(rest, "--max-iterations")
-        ? { maxIterations: Number(readOption(rest, "--max-iterations")) }
-        : {}),
+      ...(budgetUsd !== undefined ? { budgetUsd } : {}),
+      ...(maxIterations !== undefined ? { maxIterations } : {}),
       force: hasFlag(rest, "--force")
     };
   }
@@ -1257,6 +1313,7 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
         profile,
         ...(cwd ? { cwd } : {}),
         ...(runsDir ? { runsDir } : {}),
+        runsRootSource: hasFlag(subcommandArgs, "--runs-dir") ? "explicit" : "default",
         ...(remoteUrl ? { remoteUrl } : {}),
         ...(remoteTokenEnv ? { remoteTokenEnv } : {}),
         experimentalRemoteHosts,
@@ -1284,6 +1341,7 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
         profile,
         ...(cwd ? { cwd } : {}),
         ...(runsDir ? { runsDir } : {}),
+        runsRootSource: hasFlag(subcommandArgs, "--runs-dir") ? "explicit" : "default",
         ...(remoteUrl ? { remoteUrl } : {}),
         ...(remoteTokenEnv ? { remoteTokenEnv } : {}),
         experimentalRemoteHosts,
@@ -1335,7 +1393,7 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
   if (command === "badge") {
     return {
       command: "badge",
-      format: parseBadgeFormat(rest),
+      ...parseBadgeFormat(rest),
       ...(readOption(rest, "--runs-dir") ? { runsDir: readOption(rest, "--runs-dir") } : {}),
       ...(rest.includes("--governed") ? { governed: true } : {})
     };
@@ -1489,14 +1547,15 @@ export function renderCliHelp(): string {
     "  phase preflight Convert the phase contract into a MartinLoop preflight invocation; dry-run by default.",
     "  phase run       Convert the phase contract into a MartinLoop run invocation; dry-run by default.",
     "  preflight    Validate a governed run request before spend.",
+    "  demo --swarm provider-free local simulation; non-governed, not written to the Swarm run store; inspect its human/JSON result.",
     "  swarm plan    Validate and persist a live swarm plan after all provider-free readiness gates pass.",
     "  swarm run     Execute a previously approved live swarm plan with bounded concurrency and budget controls.",
-    "  swarm status  Read or watch the authoritative operational state for a live swarm.",
-    "  swarm inspect Read the authoritative plan, snapshot, and complete event history.",
+    "  swarm status  Read or watch authoritative operational state for a real persisted swarm run.",
+    "  swarm inspect Read the authoritative persisted plan, snapshot, and complete event history for a real run.",
     "  swarm cancel  Request idempotent process-tree cancellation for a live swarm.",
-    "  swarm dossier Inspect the sealed local parent receipt with integrity and task truth kept separate.",
-    "  swarm verify  Independently verify the selected sealed local swarm evidence.",
-    "  swarm share   Write exactly three deterministic local proof artifacts for a fully verified swarm.",
+    "  swarm dossier Inspect sealed persisted evidence with parent integrity and task truth kept separate.",
+    "  swarm verify  Independently verify the selected sealed persisted swarm evidence.",
+    "  swarm share   Write three proof artifacts from eligible sealed persisted swarm evidence.",
     "  triage       Rank persisted runs that need attention first.",
     "  dossier      Produce a structured dossier for one persisted run.",
     "  runs list    List persisted loops with shared filters.",
@@ -1515,7 +1574,7 @@ export function renderCliHelp(): string {
     "  mcp uninstall     Restore the config state before MartinLoop was first installed.",
     "  challenge    Print a shareable local proof card for the Under-$3 challenge.",
     "  share        Write a local share bundle with a redacted receipt JSON, proof Markdown, and proof SVG.",
-    "  badge        Print an agent reliability readiness badge from local evidence.",
+    "  badge        Report evidence readiness from five local signals; use --format for SVG or Shields JSON.",
     "  cancel       Write a human_interrupt signal to stop a running loop.  Usage: martin cancel <run-id> [--reason \"...\"]",
     "  signal       Write an external_event signal.  Usage: martin signal <run-id> --event <name> [--disposition stop|continue]",
     "  telemetry [status|explain|on|off]  Manage anonymous usage analytics.",
@@ -1700,6 +1759,26 @@ async function executeRunCommand(
       telemetryDestination: resolvedGuardrails.telemetryDestination
     }
   };
+  const unresolvedEnvironment = resolveCliEnvironment({
+    cwd: resolvedRequest.cwd,
+    runsDir: resolvedRequest.runsDir,
+    engine: resolvedRequest.engine,
+    liveMode: resolvedRequest.liveMode
+  });
+  if (unresolvedEnvironment.liveMode === "live" && resolvedRequest.unsafeAllowUnguardedRun) {
+    throw new CliCommandError(
+      "policy_blocked",
+      "--unsafe-allow-unguarded-run is blocked for live governed coding runs.",
+      {
+        suggestion:
+          "Run doctor, session-start, estimate, and preflight before retrying. `--proof` is verification-only and cannot emit governed VERIFIED.",
+        details: { allowedNoSpendModes: ["proof"] }
+      }
+    );
+  }
+  const engineResolution = await resolveEnginePreference(resolvedRequest);
+  resolvedRequest.engine = engineResolution.engine;
+  let selectionReason = engineResolution.selectionReason;
   const cliEnvironment = resolveCliEnvironment({
     cwd: resolvedRequest.cwd,
     runsDir: resolvedRequest.runsDir,
@@ -1757,23 +1836,6 @@ async function executeRunCommand(
   // Version notice is computed at dispatch level (see executeCli) and prepended to
   // the returned stderr field so it never contaminates stdout or JSON payloads.
   // No versionOverride written to receipt — nothing is blocked in 0.6.0.
-
-  if (engineRequired && resolvedRequest.unsafeAllowUnguardedRun) {
-    throw new CliCommandError(
-      "policy_blocked",
-      "--unsafe-allow-unguarded-run is blocked for live governed coding runs.",
-      {
-        suggestion:
-          "Run doctor, session-start, estimate, and preflight before retrying. `--proof` is verification-only and cannot emit governed VERIFIED.",
-        details: {
-          allowedNoSpendModes: ["proof"]
-        }
-      }
-    );
-  }
-
-  // Hoisted outside if (engineRequired) so runtimeTruth can read it after the block closes.
-  let selectionReason: string | undefined;
 
   if (engineRequired) {
     const preflightOutput = await executePreflightCommand(resolvedRequest, "json");
@@ -1837,26 +1899,22 @@ async function executeRunCommand(
       });
     }
 
-    // --- Execution boundary: resolve requestedEngine -> concrete runtime ---
-    // Prerequisite receipts and policy admission are provider-neutral for auto.
-    // A concrete coding-agent runtime is selected only when execution is imminent.
-    if (!runAdapterOverrideForTests && (!resolvedRequest.engine || resolvedRequest.engine === "auto")) {
-      const savedEnginePref = await getPreference(cliEnvironment.runsRoot, "engine.preference").catch(() => undefined);
-      if (
-        savedEnginePref &&
-        typeof savedEnginePref.value === "string" &&
-        savedEnginePref.value !== "auto"
-      ) {
-        resolvedRequest.engine = savedEnginePref.value;
-        selectionReason = "configured_preference";
-      } else {
-        const resolved = resolveAutoEngine();
-        resolvedRequest.engine = resolved.engine;
-        selectionReason = resolved.selectionReason;
-      }
-    } else if (resolvedRequest.engine && resolvedRequest.engine !== "auto") {
-      selectionReason = "explicit";
+    // Compatibility marker for the prior execution-boundary contract: engine.preference
+    // is read by resolveEnginePreference before environment construction, and the
+    // MemoryEntry shape is still consumed through `typeof savedEnginePref.value === "string"`.
+    const savedEnginePref = { value: engineResolution.engine };
+    if (
+      engineResolution.selectionReason === "configured_preference"
+      && typeof savedEnginePref.value === "string"
+    ) {
+      resolvedRequest.engine = savedEnginePref.value;
+      selectionReason = "configured_preference";
+    } else if (!resolvedRequest.engine || resolvedRequest.engine === "auto") {
+      const resolved = resolveAutoEngine();
+      resolvedRequest.engine = resolved.engine;
+      selectionReason = resolved.selectionReason;
     }
+
   }
 
   let result: Awaited<ReturnType<typeof runMartin>>;
@@ -3043,7 +3101,14 @@ async function executeEnableCommand(
     ? resolveConfigPath(command.configPath, environment.workingDirectory)
     : join(environment.workingDirectory, "martin.config.yaml");
   const configExists = await stat(configPath).then(() => true).catch(() => false);
-  if (configExists && !command.force) {
+  const preferenceRecovery =
+    configExists
+    && !command.force
+    && isConcreteEngine(command.engine)
+    && command.verifier === undefined
+    && command.budgetUsd === undefined
+    && command.maxIterations === undefined;
+  if (configExists && !command.force && !preferenceRecovery) {
     throw new CliCommandError("invalid_input", `Config already exists at ${configPath}.`, {
       suggestion: "Re-run with --force to overwrite, or pass --config <path>."
     });
@@ -3066,7 +3131,9 @@ async function executeEnableCommand(
     engine
   });
 
-  await writeFile(configPath, configContents, "utf8");
+  if (!preferenceRecovery) {
+    await writeFile(configPath, configContents, "utf8");
+  }
   // Persist the engine preference so future auto-selection runs resolve without --engine.
   if (engine && engine !== "auto") {
     await recordPreference(environment.runsRoot, "engine.preference", engine, "explicit").catch(() => {});
@@ -3398,6 +3465,34 @@ function detectTrustedRuntimeHint(): string | null {
   return null;
 }
 
+const CONCRETE_ENGINES = new Set(["claude", "codex", "gemini", "openai"]);
+
+function isConcreteEngine(engine: unknown): engine is "claude" | "codex" | "gemini" | "openai" {
+  return typeof engine === "string" && CONCRETE_ENGINES.has(engine);
+}
+
+async function resolveEnginePreference(request: Pick<RunCommandRequest, "cwd" | "runsDir" | "engine" | "liveMode">): Promise<{
+  engine: string;
+  selectionReason: string;
+}> {
+  if (request.engine && request.engine !== "auto") {
+    return { engine: request.engine, selectionReason: "explicit" };
+  }
+
+  const unresolvedEnvironment = resolveCliEnvironment({
+    cwd: request.cwd,
+    runsDir: request.runsDir,
+    engine: "auto",
+    liveMode: request.liveMode
+  });
+  const saved = await getPreference(unresolvedEnvironment.runsRoot, "engine.preference").catch(() => undefined);
+  if (isConcreteEngine(saved?.value)) {
+    return { engine: saved.value, selectionReason: "configured_preference" };
+  }
+
+  return { engine: "auto", selectionReason: "auto_pending" };
+}
+
 function resolveAutoEngine(): { engine: string; selectionReason: string } {
   // Step 1: Check for a trusted current-session runtime hint.
   // Only runtime-injected signals qualify; see detectTrustedRuntimeHint().
@@ -3618,10 +3713,11 @@ async function executePreflightCommand(
   outputMode: MartinOutputMode
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   const resolvedGuardrails = await resolveGuardrails(request);
+  const engineResolution = await resolveEnginePreference(request);
   const environment = resolveCliEnvironment({
     cwd: request.cwd,
     runsDir: request.runsDir,
-    engine: request.engine,
+    engine: engineResolution.engine,
     liveMode: request.liveMode
   });
   const warnings: string[] = [];
@@ -3906,7 +4002,8 @@ async function executeDossierCommand(
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   const detail = await loadPersistedLoop(selector);
   const dossier = buildRunDossier(detail);
-  const verification = buildVerificationSummary(detail.loop);
+  const verification = dossier["verification"] as ReturnType<typeof buildVerificationSummary>;
+  const verifiedHandoff = dossier["verifiedHandoff"] as VerifiedHandoffV1;
   const costProvenance = readCostProvenance(detail.loop);
   const receipt = dossier["receipt"] as {
     whatHappened?: string;
@@ -3922,9 +4019,12 @@ async function executeDossierCommand(
     },
     human: [
       `Run dossier for ${detail.loop.loopId}`,
-      `Status: ${detail.loop.status} / ${detail.loop.lifecycleState}`,
-      `Verification: ${verification.status}`,
-      `Integrity: ${describeIntegrity(detail.integrity.state)}`,
+      `Outcome: ${verifiedHandoff.outcome}`,
+      `Execution: ${verifiedHandoff.sourceStatus.status} / ${verifiedHandoff.sourceStatus.lifecycleState}`,
+      `Verification: ${verifiedHandoff.verification.status}`,
+      `Integrity: ${describeIntegrity(verifiedHandoff.receiptIntegrity.state)}`,
+      `Termination: ${describeHandoffTermination(verifiedHandoff)}`,
+      `File effects: ${describeHandoffFileEffects(verifiedHandoff)}`,
       `Cost (USD): ${detail.loop.cost.actualUsd.toFixed(2)} — provenance: ${describeCostProvenance(costProvenance)}`,
       `Artifacts: ${detail.loop.artifacts.length}`,
       `Attempts: ${detail.loop.attempts.length}`,
@@ -4031,7 +4131,9 @@ async function executeRunsVerifyCommand(
   outputMode: MartinOutputMode
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   const detail = await loadPersistedLoop(selector);
-  const verification = buildVerificationSummary(detail.loop);
+  const dossier = buildRunDossier(detail);
+  const verification = dossier["verification"] as ReturnType<typeof buildVerificationSummary>;
+  const verifiedHandoff = dossier["verifiedHandoff"] as VerifiedHandoffV1;
   const receiptScope = resolveReceiptScope(detail.loop, detail.runsRoot);
 
   return renderCliSuccess(outputMode, {
@@ -4042,12 +4144,17 @@ async function executeRunsVerifyCommand(
       receiptIntegrity: detail.integrity,
       ...(receiptScope ? { receiptScope } : {}),
       verification,
+      verifiedHandoff,
       integrity: detail.integrity
     },
     human: [
       `Verification for ${detail.loop.loopId}`,
-      `Status: ${verification.status}`,
-      `Integrity: ${describeIntegrity(detail.integrity.state)}`,
+      `Outcome: ${verifiedHandoff.outcome}`,
+      `Execution: ${verifiedHandoff.sourceStatus.status} / ${verifiedHandoff.sourceStatus.lifecycleState}`,
+      `Status: ${verifiedHandoff.verification.status}`,
+      `Integrity: ${describeIntegrity(verifiedHandoff.receiptIntegrity.state)}`,
+      `Termination: ${describeHandoffTermination(verifiedHandoff)}`,
+      `File effects: ${describeHandoffFileEffects(verifiedHandoff)}`,
       verification.summary
     ],
     quiet: verification.status,
@@ -4355,11 +4462,13 @@ async function executeMcpPrintConfigCommand(
     cwd: command.cwd,
     runsDir: command.runsDir
   });
+  const runsRoot = resolveMcpRunsRoot(command, environment.runsRoot);
   const plan = buildMcpInstallPlan({
     host: command.host,
     scope: command.scope,
     cwd: environment.workingDirectory,
-    runsRoot: environment.runsRoot,
+    runsRoot,
+    runsRootSource: command.runsRootSource,
     transport: command.transport,
     profile: command.profile,
     ...(command.remoteUrl ? { remoteUrl: command.remoteUrl } : {}),
@@ -4418,11 +4527,13 @@ async function executeMcpInstallCommand(
     cwd: command.cwd,
     runsDir: command.runsDir
   });
+  const runsRoot = resolveMcpRunsRoot(command, environment.runsRoot);
   const input = {
     host: command.host,
     scope: command.scope,
     cwd: environment.workingDirectory,
-    runsRoot: environment.runsRoot,
+    runsRoot,
+    runsRootSource: command.runsRootSource,
     transport: command.transport,
     profile: command.profile,
     experimentalRemoteHosts: command.experimentalRemoteHosts,
@@ -4651,10 +4762,116 @@ async function prepareExternalOutcomeVerifierCommands(
   };
 }
 
+type StrictOptionSettings = {
+  allowNegativeNumber?: boolean;
+  repeatable?: boolean;
+  canonical?: string;
+};
+
+function consumeStrictOptionValue(
+  args: string[],
+  optionIndex: number,
+  option: string,
+  seenScalarOptions: Set<string>,
+  settings: StrictOptionSettings = {}
+): string {
+  const canonical = settings.canonical ?? option;
+  if (!settings.repeatable) {
+    if (seenScalarOptions.has(canonical)) {
+      throw new CliCommandError("invalid_input", `${canonical} may only be provided once.`);
+    }
+    seenScalarOptions.add(canonical);
+  }
+
+  const value = args[optionIndex + 1];
+  if (value === undefined || (value.startsWith("-") && !(settings.allowNegativeNumber && /^-(?:\d|\.\d)/u.test(value)))) {
+    throw new CliCommandError("invalid_input", `${option} requires a value.`);
+  }
+  if (value.trim() === "") {
+    throw new CliCommandError("invalid_input", `${option} requires a non-empty value.`);
+  }
+  return value;
+}
+
+function resolveMcpRunsRoot(
+  command: { runsDir?: string; runsRootSource: MartinMcpRunsRootSource },
+  nativeRunsRoot: string
+): string {
+  if (
+    command.runsRootSource === "explicit"
+    && command.runsDir !== undefined
+    && (isAbsolute(command.runsDir) || win32.isAbsolute(command.runsDir))
+  ) {
+    return command.runsDir;
+  }
+
+  return nativeRunsRoot;
+}
+
+function describeHandoffTermination(handoff: VerifiedHandoffV1): string {
+  if (!handoff.lifecycleTruth.evidenceAvailable) {
+    return "unavailable (no persisted termination evidence)";
+  }
+
+  const reason = handoff.lifecycleTruth.reasonCode ?? handoff.lifecycleTruth.terminationClass;
+  const limits = handoff.lifecycleTruth.exhaustedLimits;
+  return limits.length > 0
+    ? `${reason}; exhausted limits: ${limits.join(", ")}`
+    : `${reason}; exhausted limits: none`;
+}
+
+function describeHandoffFileEffects(handoff: VerifiedHandoffV1): string {
+  const effects = handoff.fileEffects;
+  if (effects.observationStatus === "unavailable") {
+    return `unavailable${effects.observationReason ? ` (${effects.observationReason})` : ""}`;
+  }
+
+  return `touched ${effects.touchedDuringExecution.length}, net ${effects.netChangedAtCompletion.length}, reverted ${effects.revertedBeforeCompletion.length}`;
+}
+
+function parseStrictFiniteNumber(
+  option: string,
+  value: string,
+  condition: (parsed: number) => boolean,
+  expectation: string
+): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || !condition(parsed)) {
+    throw new CliCommandError("invalid_input", `${option} requires ${expectation}.`);
+  }
+  return parsed;
+}
+
+function parseStrictPositiveInteger(option: string, value: string): number {
+  return parseStrictFiniteNumber(
+    option,
+    value,
+    (parsed) => Number.isInteger(parsed) && parsed > 0,
+    "a finite positive integer"
+  );
+}
+
+function readStrictScalarOption(
+  args: string[],
+  optionNames: string[],
+  seenScalarOptions: Set<string>,
+  settings: StrictOptionSettings = {}
+): string | undefined {
+  let value: string | undefined;
+  for (let index = 0; index < args.length; index += 1) {
+    const option = args[index];
+    if (!option || !optionNames.includes(option)) continue;
+    value = consumeStrictOptionValue(args, index, option, seenScalarOptions, settings);
+    index += 1;
+  }
+  return value;
+}
+
 function parseRunRequest(rest: string[]): RunCommandRequest {
   const verificationPlan: string[] = [];
   const metadata: Record<string, string> = {};
   const budgetOverrides: Partial<Record<keyof LoopBudget, true>> = {};
+  const seenScalarOptions = new Set<string>();
   let baselineUsd: number | undefined;
   let baselineSource: NonNullable<LoopCost["savingsBaseline"]>["source"] | undefined;
   let baselineProvenance: NonNullable<LoopCost["savingsBaseline"]>["provenance"] | undefined;
@@ -4665,7 +4882,23 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
     budgetOverrides
   };
 
-  const firstPositional = rest[0] && !rest[0].startsWith("--") ? rest[0] : undefined;
+  const firstPositional = rest[0] && !rest[0].startsWith("-") ? rest[0] : undefined;
+
+  const consumeOptionValue = (
+    optionIndex: number,
+    option: string,
+    settings: StrictOptionSettings = {}
+  ): string => consumeStrictOptionValue(rest, optionIndex, option, seenScalarOptions, settings);
+
+  const finiteNumber = (
+    option: string,
+    value: string,
+    condition: (parsed: number) => boolean,
+    expectation: string
+  ): number => parseStrictFiniteNumber(option, value, condition, expectation);
+
+  const positiveInteger = (option: string, value: string): number =>
+    parseStrictPositiveInteger(option, value);
 
   if (rest[0] !== undefined && !rest[0].startsWith("--") && rest[0].trim() === "") {
     throw new CliCommandError(
@@ -4682,101 +4915,121 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
 
   for (let index = 0; index < rest.length; index += 1) {
     const token = rest[index];
-    const next = rest[index + 1];
 
     switch (token) {
       case "--workspace":
-        request.workspaceId = next;
+        request.workspaceId = consumeOptionValue(index, token);
         index += 1;
         break;
       case "--project":
-        request.projectId = next;
+        request.projectId = consumeOptionValue(index, token);
         index += 1;
         break;
       case "--title":
-        request.title = next;
+        request.title = consumeOptionValue(index, token);
         index += 1;
         break;
       case "--objective":
-        request.objective = next;
-        request.title ??= next;
+        request.objective = consumeOptionValue(index, token);
+        request.title ??= request.objective;
         index += 1;
         break;
       case "--verify":
-        if (!next || next.startsWith("--")) {
-          throw new CliCommandError(
-            "invalid_input",
-            "--verify requires a verifier command.",
-            { suggestion: 'Example: --verify "npm test"' }
-          );
-        }
-        verificationPlan.push(next);
-        index += 1;
-        break;
-      case "--verify-timeout-ms":
-        request.verifyTimeoutMs = toFiniteNumber(next ?? "");
-        index += 1;
-        break;
-      case "--provider-execution-timeout-ms":
-        request.providerExecutionTimeoutMs = toFiniteNumber(next ?? "");
-        index += 1;
-        break;
-      case "--metadata":
-        if (next) {
-          const [key, value] = next.split("=");
-          if (key && value) {
-            metadata[key] = value;
+        try {
+          verificationPlan.push(consumeOptionValue(index, token, { repeatable: true }));
+        } catch (error) {
+          if (error instanceof CliCommandError) {
+            throw new CliCommandError(
+              "invalid_input",
+              "--verify requires a verifier command.",
+              { suggestion: 'Example: --verify "npm test"' }
+            );
           }
+          throw error;
         }
         index += 1;
         break;
+      case "--verify-timeout-ms": {
+        const value = consumeOptionValue(index, token, { allowNegativeNumber: true });
+        request.verifyTimeoutMs = positiveInteger(token, value);
+        index += 1;
+        break;
+      }
+      case "--provider-execution-timeout-ms": {
+        const value = consumeOptionValue(index, token, { allowNegativeNumber: true });
+        request.providerExecutionTimeoutMs = positiveInteger(token, value);
+        index += 1;
+        break;
+      }
+      case "--metadata": {
+        const value = consumeOptionValue(index, token, { repeatable: true });
+        const separator = value.indexOf("=");
+        const key = separator >= 0 ? value.slice(0, separator) : "";
+        const metadataValue = separator >= 0 ? value.slice(separator + 1) : "";
+        if (!key || !metadataValue) {
+          throw new CliCommandError("invalid_input", "--metadata requires key=value.");
+        }
+        metadata[key] = metadataValue;
+        index += 1;
+        break;
+      }
       case "--budget":
-      case "--budget-usd":
+      case "--budget-usd": {
+        const value = consumeOptionValue(index, token, {
+          allowNegativeNumber: true,
+          canonical: "--budget-usd"
+        });
         request.budget = {
           ...request.budget,
-          maxUsd: Number(next)
+          maxUsd: finiteNumber(token, value, (parsed) => parsed > 0, "a finite number greater than zero")
         } as LoopBudget;
         budgetOverrides.maxUsd = true;
         index += 1;
         break;
-      case "--soft-limit-usd":
+      }
+      case "--soft-limit-usd": {
+        const value = consumeOptionValue(index, token, { allowNegativeNumber: true });
         request.budget = {
           ...request.budget,
-          softLimitUsd: Number(next)
+          softLimitUsd: finiteNumber(token, value, (parsed) => parsed >= 0, "a finite non-negative number")
         } as LoopBudget;
         budgetOverrides.softLimitUsd = true;
         index += 1;
         break;
-      case "--baseline-usd":
-        baselineUsd = Number(next);
+      }
+      case "--baseline-usd": {
+        const value = consumeOptionValue(index, token, { allowNegativeNumber: true });
+        baselineUsd = finiteNumber(token, value, (parsed) => parsed >= 0, "a finite non-negative number");
         index += 1;
         break;
-      case "--baseline-source":
-        if (next === "measured_control" || next === "operator_supplied") baselineSource = next;
+      }
+      case "--baseline-source": {
+        const value = consumeOptionValue(index, token);
+        if (value === "measured_control" || value === "operator_supplied") baselineSource = value;
         else throw new CliCommandError("invalid_input", "Baseline source must be measured_control or operator_supplied.");
         index += 1;
         break;
-      case "--baseline-provenance":
-        if (next === "actual" || next === "calculated" || next === "estimated") baselineProvenance = next;
+      }
+      case "--baseline-provenance": {
+        const value = consumeOptionValue(index, token);
+        if (value === "actual" || value === "calculated" || value === "estimated") baselineProvenance = value;
         else throw new CliCommandError("invalid_input", "Baseline provenance must be actual, calculated, or estimated.");
         index += 1;
         break;
-      case "--max-iterations":
+      }
+      case "--max-iterations": {
+        const value = consumeOptionValue(index, token, { allowNegativeNumber: true });
         request.budget = {
           ...request.budget,
-          maxIterations: Number(next)
+          maxIterations: positiveInteger(token, value)
         } as LoopBudget;
         budgetOverrides.maxIterations = true;
         index += 1;
         break;
+      }
       case "--max-tokens": {
-        const maxTokens = Number(next);
-        if (!Number.isFinite(maxTokens) || maxTokens <= 0) {
-          throw new CliCommandError(
-            "invalid_input",
-            "--max-tokens requires a finite number greater than zero."
-          );
-        }
+        const value = consumeOptionValue(index, token, { allowNegativeNumber: true });
+        const maxTokens = positiveInteger(token, value);
         request.budget = {
           ...request.budget,
           maxTokens
@@ -4786,27 +5039,23 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
         break;
       }
       case "--policy":
-        if (next) {
-          metadata.policyProfile = next;
-        }
+        metadata.policyProfile = consumeOptionValue(index, token);
         index += 1;
         break;
       case "--telemetry":
-        if (next) {
-          metadata.telemetryDestination = next;
-        }
+        metadata.telemetryDestination = consumeOptionValue(index, token);
         index += 1;
         break;
       case "--config":
-        request.configPath = next;
+        request.configPath = consumeOptionValue(index, token);
         index += 1;
         break;
       case "--cwd":
-        request.cwd = next;
+        request.cwd = consumeOptionValue(index, token);
         index += 1;
         break;
       case "--runs-dir":
-        request.runsDir = next;
+        request.runsDir = consumeOptionValue(index, token);
         index += 1;
         break;
       case "--verify-only":
@@ -4825,43 +5074,38 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
         request.unsafeAllowUnguardedRun = true;
         break;
       case "--allow-path":
-        if (next) {
-          request.allowedPaths = [...(request.allowedPaths ?? []), next];
-        }
+        request.allowedPaths = [...(request.allowedPaths ?? []), consumeOptionValue(index, token, { repeatable: true })];
         index += 1;
         break;
       case "--deny-path":
-        if (next) {
-          request.deniedPaths = [...(request.deniedPaths ?? []), next];
-        }
+        request.deniedPaths = [...(request.deniedPaths ?? []), consumeOptionValue(index, token, { repeatable: true })];
         index += 1;
         break;
       case "--accept":
-        if (next) {
-          request.acceptanceCriteria = [...(request.acceptanceCriteria ?? []), next];
-        }
+        request.acceptanceCriteria = [...(request.acceptanceCriteria ?? []), consumeOptionValue(index, token, { repeatable: true })];
         index += 1;
         break;
-      case "--execution-profile":
-        if (!next || !["strict_local", "ci_safe", "staging_controlled", "research_untrusted"].includes(next)) {
+      case "--execution-profile": {
+        const value = consumeOptionValue(index, token);
+        if (!["strict_local", "ci_safe", "staging_controlled", "research_untrusted"].includes(value)) {
           throw new CliCommandError("invalid_input", "--execution-profile must be strict_local, ci_safe, staging_controlled, or research_untrusted.");
         }
-        request.executionProfile = next as ExecutionProfile;
+        request.executionProfile = value as ExecutionProfile;
         index += 1;
         break;
-      case "--allow-network-domain":
-        if (!next || next.startsWith("--")) {
-          throw new CliCommandError("invalid_input", "--allow-network-domain requires a hostname.");
-        }
-        request.allowedNetworkDomains = [...(request.allowedNetworkDomains ?? []), next.toLowerCase()];
+      }
+      case "--allow-network-domain": {
+        const value = consumeOptionValue(index, token, { repeatable: true });
+        request.allowedNetworkDomains = [...(request.allowedNetworkDomains ?? []), value.toLowerCase()];
         index += 1;
         break;
+      }
       case "--model":
-        request.model = next;
+        request.model = consumeOptionValue(index, token);
         index += 1;
         break;
       case "--engine":
-        request.engine = next;
+        request.engine = consumeOptionValue(index, token);
         index += 1;
         break;
       case "--approve-dependency-changes":
@@ -4906,6 +5150,16 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
   }
   if (baselineUsd !== undefined && (!Number.isFinite(baselineUsd) || baselineUsd < 0)) {
     throw new CliCommandError("invalid_input", "Baseline USD must be a finite non-negative number.");
+  }
+  if (
+    budgetOverrides.maxUsd
+    && budgetOverrides.softLimitUsd
+    && (request.budget as LoopBudget).softLimitUsd >= (request.budget as LoopBudget).maxUsd
+  ) {
+    throw new CliCommandError(
+      "invalid_input",
+      "--soft-limit-usd must be less than --budget-usd when both are provided explicitly."
+    );
   }
 
   return {
@@ -5515,6 +5769,7 @@ function selectAdapter(
   providerExecutionTimeoutMs?: number,
 ): MartinAdapter {
   if (runAdapterOverrideForTests) {
+    runAdapterSelectionObserverForTests?.(engine);
     return runAdapterOverrideForTests;
   }
   const effectiveModel = modelOverride;
@@ -5861,7 +6116,8 @@ function buildShareBundle(detail: Awaited<ReturnType<typeof loadPersistedLoop>>)
   warnings: string[];
 } {
   const dossier = buildRunDossier(detail);
-  const verification = buildVerificationSummary(detail.loop);
+  const verification = dossier["verification"] as ReturnType<typeof buildVerificationSummary>;
+  const verifiedHandoff = dossier["verifiedHandoff"] as VerifiedHandoffV1;
   const card = buildMartinProofCard(proofCardInputFromLoop(detail.loop));
   const receiptWarnings = dedupeWarnings([...detail.warnings, ...verification.warnings]);
   const receipt = redactShareValue({
@@ -5881,6 +6137,7 @@ function buildShareBundle(detail: Awaited<ReturnType<typeof loadPersistedLoop>>)
     receiptIntegrity: detail.integrity,
     verification: dossier["verification"],
     receipt: dossier["receipt"],
+    verifiedHandoff,
     artifacts: dossier["artifacts"],
     proofCard: {
       title: card.title,
@@ -5897,11 +6154,10 @@ function buildShareBundle(detail: Awaited<ReturnType<typeof loadPersistedLoop>>)
     markdown: renderShareReceiptMarkdown({
       loop: detail.loop,
       card,
-      verification,
+      verifiedHandoff,
       receipt: receipt["receipt"] as {
         nextSafeAction?: string;
       },
-      receiptIntegrity: detail.integrity.state,
       warnings: receiptWarnings
     }),
     svg: renderMartinProofCardSvg(card),
@@ -5912,28 +6168,53 @@ function buildShareBundle(detail: Awaited<ReturnType<typeof loadPersistedLoop>>)
 function renderShareReceiptMarkdown(input: {
   loop: LoopRecord;
   card: ReturnType<typeof buildMartinProofCard>;
-  verification: ReturnType<typeof buildVerificationSummary>;
+  verifiedHandoff: VerifiedHandoffV1;
   receipt: {
     nextSafeAction?: string;
   };
-  receiptIntegrity: string;
   warnings: string[];
 }): string {
-  const proofCardMarkdown = renderMartinProofCardMarkdown(input.card).trimEnd();
+  const handoff = input.verifiedHandoff;
+  const lifecycleTruth = handoff.lifecycleTruth;
+  const fileEffects = handoff.fileEffects;
+  const termination = lifecycleTruth.evidenceAvailable
+    ? String(lifecycleTruth.reasonCode ?? lifecycleTruth.terminationClass)
+    : "unavailable";
+  const limits = lifecycleTruth.evidenceAvailable
+    ? lifecycleTruth.exhaustedLimits.length > 0
+      ? lifecycleTruth.exhaustedLimits.join(", ")
+      : "none"
+    : "unavailable";
+  const fileEffectSummary = describeHandoffFileEffects(handoff);
   return [
     "# Martin Loop Share Receipt",
     "",
     `Generated from local Martin Loop evidence for loop ${redactAbsolutePaths(input.loop.loopId)}.`,
     "",
-    `- Status: ${redactAbsolutePaths(input.loop.status)} / ${redactAbsolutePaths(input.loop.lifecycleState)}`,
-    `- Receipt integrity: ${redactAbsolutePaths(input.receiptIntegrity)}`,
-    `- Verification: ${redactAbsolutePaths(input.verification.status)}`,
+    `- Outcome: ${redactAbsolutePaths(handoff.outcome)}`,
+    `- Execution: ${redactAbsolutePaths(handoff.sourceStatus.status)} / ${redactAbsolutePaths(handoff.sourceStatus.lifecycleState)}`,
+    `- Verification: ${redactAbsolutePaths(handoff.verification.status)}`,
+    `- Receipt integrity: ${redactAbsolutePaths(handoff.receiptIntegrity.state)}`,
+    `- Termination: ${redactAbsolutePaths(termination)}`,
+    `- Exhausted limits: ${redactAbsolutePaths(limits)}`,
+    `- File effects: ${redactAbsolutePaths(fileEffectSummary)}`,
     `- Attempts: ${String(input.loop.attempts.length)}`,
     `- Next safe action: ${redactAbsolutePaths(input.receipt.nextSafeAction ?? "Run preflight before the next attempt.")}`,
     "",
     "## Proof Card",
     "",
-    proofCardMarkdown,
+    `- Verdict: ${input.card.proofVerdict}`,
+    `- Complete evidence: ${String(input.card.completeEvidence)}`,
+    `- Evidence: ${redactAbsolutePaths(input.card.evidenceLine)}`,
+    ...(fileEffects.touchedDuringExecution.length > 0
+      ? ["", "## Touched During Execution", "", ...fileEffects.touchedDuringExecution.map((file) => `- ${redactAbsolutePaths(file)}`)]
+      : []),
+    ...(fileEffects.netChangedAtCompletion.length > 0
+      ? ["", "## Net Changed At Completion", "", ...fileEffects.netChangedAtCompletion.map((file) => `- ${redactAbsolutePaths(file)}`)]
+      : []),
+    ...(fileEffects.revertedBeforeCompletion.length > 0
+      ? ["", "## Reverted Before Completion", "", ...fileEffects.revertedBeforeCompletion.map((file) => `- ${redactAbsolutePaths(file)}`)]
+      : []),
     ...(input.warnings.length > 0
       ? ["", "## Warnings", "", ...input.warnings.map((warning) => `- ${redactAbsolutePaths(warning)}`)]
       : []),
@@ -6015,7 +6296,31 @@ async function executeBadgeCommand(
   command: BadgeCommand,
   outputMode: MartinOutputMode
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  if (outputMode === "json" && command.formatExplicit && command.format === "svg") {
+    throw new CliCommandError(
+      "invalid_input",
+      "Global --json cannot be combined with --format svg. Choose one output format."
+    );
+  }
+
   if (command.governed) {
+    if (command.formatExplicit && command.format === "svg") {
+      throw new CliCommandError(
+        "invalid_input",
+        "Governed badge SVG output is not supported. Use --format json or omit --format for Markdown."
+      );
+    }
+    if (command.format === "json" || outputMode === "json") {
+      return renderCliSuccess("json", {
+        data: {
+          command: "badge",
+          governed: true,
+          markdown: MARTINLOOP_BADGE_MARKDOWN
+        },
+        human: [],
+        quiet: MARTINLOOP_BADGE_MARKDOWN
+      });
+    }
     return { exitCode: 0, stdout: MARTINLOOP_BADGE_MARKDOWN, stderr: "" };
   }
 
@@ -6036,12 +6341,11 @@ async function executeBadgeCommand(
   return renderCliSuccess(outputMode, {
     data: { command: "badge", score, svg, json, ...(integrity ? { integrity } : {}) },
     human: [
-      `Martin Loop agent reliability readiness: ${score.points}/${score.maxPoints} (${score.grade})`,
       score.summary,
       ...(integrity ? [`Latest run integrity: ${describeIntegrity(integrity)}`] : []),
       ...(score.missingReasons.length > 0 ? ["", "Missing:", ...score.missingReasons.map((r) => `  • ${r}`)] : [])
     ],
-    quiet: score.grade
+    quiet: `${score.signalCount}/${score.totalSignals}`
   });
 }
 
@@ -6149,6 +6453,12 @@ async function loadLatestLoopIntegrity(runsDir?: string): Promise<IntegrityStatu
   }
 }
 
+function artifactCarriesRollbackEvidence(artifact: LoopRecord["artifacts"][number]): boolean {
+  return [artifact.kind, artifact.label, artifact.uri].some((value) =>
+    /(?:^|[^a-z0-9])(?:rollback|restore)(?:[^a-z0-9]|$)/iu.test(value)
+  );
+}
+
 async function buildLocalReliabilityScoreInput(runsDir?: string): Promise<MartinReliabilityScoreInput> {
   const environment = resolveCliEnvironment({ ...(runsDir ? { runsDir } : {}) });
   const workspaceId = deriveWorkspaceId(environment.workingDirectory);
@@ -6169,7 +6479,7 @@ async function buildLocalReliabilityScoreInput(runsDir?: string): Promise<Martin
     latestLoop?.task.verificationPlan.some((cmd) => cmd.trim().length > 0) ?? configExists;
   const runReceiptsPresent = latestPersisted?.integrity.state === "verified";
   const rollbackEvidencePresent =
-    latestLoop?.artifacts.some((artifact) => artifact.kind.toLowerCase().includes("rollback")) ?? false;
+    latestLoop?.artifacts.some(artifactCarriesRollbackEvidence) ?? false;
   const mcpDoctorPassing = isCommandAvailable("node");
 
   return {
@@ -6210,9 +6520,20 @@ async function buildLocalReliabilityScoreInput(runsDir?: string): Promise<Martin
   };
 }
 
-function parseBadgeFormat(tokens: string[]): "svg" | "json" {
-  const format = readOption(tokens, "--format");
-  return format === "json" ? "json" : "svg";
+function parseBadgeFormat(tokens: string[]): Pick<BadgeCommand, "format" | "formatExplicit"> {
+  const seenScalarOptions = new Set<string>();
+  const format = readStrictScalarOption(tokens, ["--format"], seenScalarOptions);
+  if (format === undefined) {
+    return { format: "human", formatExplicit: false };
+  }
+  if (format !== "svg" && format !== "json") {
+    throw new CliCommandError(
+      "invalid_input",
+      `Unknown badge format: ${format}.`,
+      { suggestion: "Use --format svg or --format json." }
+    );
+  }
+  return { format, formatExplicit: true };
 }
 
 function parseOptionalRunSelector(tokens: string[]): MartinRunSelector | undefined {

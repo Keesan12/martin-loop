@@ -14,6 +14,8 @@ interface MockResponse {
   body: unknown;
 }
 
+const INTEGRATION_TEST_TIMEOUT_MS = 15_000;
+
 function startMockServer(handler: (req: IncomingMessage, body: string) => MockResponse): Promise<{ url: string; close: () => void }> {
   return new Promise((resolve) => {
     const server = createServer((req: IncomingMessage, res: ServerResponse) => {
@@ -85,7 +87,7 @@ describe("OpenAI-compatible governed workspace edits", () => {
     "moonshotai/kimi-k2",
     "nvidia/llama-3.1-nemotron-70b-instruct",
   ]) {
-    it(`applies governed edits and verifies ${model}`, async () => {
+    it(`applies governed edits and verifies ${model}`, { timeout: INTEGRATION_TEST_TIMEOUT_MS }, async () => {
       const workingDirectory = await createWorkspace();
       cleanup.push(workingDirectory);
       const { url, close } = await startMockServer(() => ({
@@ -113,7 +115,15 @@ describe("OpenAI-compatible governed workspace edits", () => {
       });
       const result = await adapter.execute(makeRequest(workingDirectory) as any);
 
-      expect(result.status).toBe("completed");
+      const failureDiagnostics = JSON.stringify({
+        model,
+        status: result.status,
+        summary: result.summary,
+        verification: result.verification,
+        failure: result.failure,
+        execution: result.execution
+      }, null, 2);
+      expect(result.status, failureDiagnostics).toBe("completed");
       expect(result.verification.passed).toBe(true);
       expect(await readFile(join(workingDirectory, "src", "billing.js"), "utf8")).toContain("annual = true");
       expect(await readFile(join(workingDirectory, "config", "billing-policy.json"), "utf8")).toContain("15");
@@ -121,7 +131,7 @@ describe("OpenAI-compatible governed workspace edits", () => {
     });
   }
 
-  it("keeps read-only governed work read-only even when the model proposes edits", async () => {
+  it("keeps read-only governed work read-only even when the model proposes edits", { timeout: INTEGRATION_TEST_TIMEOUT_MS }, async () => {
     const workingDirectory = await createWorkspace();
     cleanup.push(workingDirectory);
     let capturedBody: any;
@@ -160,14 +170,20 @@ describe("OpenAI-compatible governed workspace edits", () => {
       workingDirectory
     }).execute(request);
 
-    expect(result.status).toBe("completed");
+    expect(result.status, JSON.stringify({
+      status: result.status,
+      summary: result.summary,
+      verification: result.verification,
+      failure: result.failure,
+      execution: result.execution
+    }, null, 2)).toBe("completed");
     expect(result.verification.passed).toBe(true);
     expect(await readFile(join(workingDirectory, "src", "billing.js"), "utf8")).toBe(before);
     expect(capturedBody.messages[1]?.content).toContain("READ-ONLY EXECUTION");
     expect(capturedBody.messages[1]?.content).not.toContain('"edits":[{"path"');
   });
 
-  it("rejects a denied edit before touching the protected file", async () => {
+  it("rejects a denied edit before touching the protected file", { timeout: INTEGRATION_TEST_TIMEOUT_MS }, async () => {
     const workingDirectory = await createWorkspace();
     cleanup.push(workingDirectory);
     const before = await readFile(join(workingDirectory, "config", "billing-policy.json"), "utf8");
@@ -198,7 +214,7 @@ describe("OpenAI-compatible governed workspace edits", () => {
     expect(await readFile(join(workingDirectory, "config", "billing-policy.json"), "utf8")).toBe(before);
   });
 
-  it("rejects a symlink traversal before writing outside the workspace", async () => {
+  it("rejects a symlink traversal before writing outside the workspace", { timeout: INTEGRATION_TEST_TIMEOUT_MS }, async () => {
     const workingDirectory = await createWorkspace();
     const outsideDirectory = await mkdtemp(join(tmpdir(), "martin-openai-outside-"));
     cleanup.push(workingDirectory, outsideDirectory);
@@ -246,7 +262,7 @@ describe("OpenAI-compatible governed workspace edits", () => {
     expect(await readFile(outsideFile, "utf8")).toBe("export const owned = false;\n");
   });
 
-  it("does not let a chat-only response pass the coding verifier on an unchanged baseline", async () => {
+  it("does not let a chat-only response pass the coding verifier on an unchanged baseline", { timeout: INTEGRATION_TEST_TIMEOUT_MS }, async () => {
     const workingDirectory = await createWorkspace();
     cleanup.push(workingDirectory);
     const { url, close } = await startMockServer(() => ({
