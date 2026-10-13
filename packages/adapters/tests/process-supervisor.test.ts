@@ -97,6 +97,9 @@ describe("POSIX owned-group process-table evidence", () => {
     expect(classifyPosixProcessGroupSnapshot("", 123)).toBe("invalid");
     expect(classifyPosixProcessGroupSnapshot("HEADER NOT EXPECTED", 123)).toBe("invalid");
     expect(classifyPosixProcessGroupSnapshot("123 123 S\n", -1)).toBe("invalid");
+    // A PID group missing from the snapshot is not equivalent to observed dead members
+    // when kill(-pgid, 0) has returned EPERM; a subsequent ESRCH is required.
+    expect(classifyPosixProcessGroupSnapshot(" 999 900 S\n", 123)).toBe("absent");
   });
 });
 
