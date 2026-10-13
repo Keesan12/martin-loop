@@ -573,7 +573,8 @@ function createStreamingUsageInspector(
   promptTokenEstimate: number,
   capTokens?: number,
   detailTokensIncludedInTotals = false,
-  observedUsageGovernor?: MartinObservedUsageGovernor
+  observedUsageGovernor?: MartinObservedUsageGovernor,
+  usageReportingMode: "incremental" | "terminal" = "incremental"
 ): {
   onChunk: (chunk: Buffer, terminate: (reason: string) => void) => void;
   snapshot: () => StreamingUsageSnapshot;
@@ -621,14 +622,20 @@ function createStreamingUsageInspector(
       if (final) finalObservationPublished = true;
       try {
         const decision = observedUsageGovernor({ cumulativeUsd, cumulativeTokens, turns, final });
-        if (decision.action === "terminate") {
+        if (decision.action === "terminate" && !(usageReportingMode === "terminal" && final)) {
           terminate(`Parent observed-usage governor terminated the subprocess: ${decision.reason}.`);
         }
       } catch (error) {
-        terminate(`Parent observed-usage governor failed closed: ${error instanceof Error ? error.message : String(error)}.`);
+        if (!(usageReportingMode === "terminal" && final)) {
+          terminate(`Parent observed-usage governor failed closed: ${error instanceof Error ? error.message : String(error)}.`);
+        }
       }
       return;
     }
+    // Codex reports authoritative usage on turn.completed, after the provider
+    // turn and its workspace edits have already finished. Record that terminal
+    // settlement, but do not kill and discard completed work at this point.
+    if (usageReportingMode === "terminal" && final) return;
     if (capTokens !== undefined && capTokens > 0 && cumulativeTokens > capTokens) {
       terminate(
         `Streaming token lease exceeded after ${String(turns)} turn(s): observed ${String(cumulativeTokens)} tokens ` +
@@ -777,7 +784,11 @@ function createStreamingUsageInspector(
       return;
     }
 
-    extractUsageFromEvent(event, terminate);
+    extractUsageFromEvent(
+      event,
+      terminate,
+      usageReportingMode === "terminal" && event.type === "turn.completed"
+    );
   };
 
   return {
@@ -794,7 +805,10 @@ function createStreamingUsageInspector(
       const bytesCeiling = blendedCostPerChar && blendedCostPerChar > 0
         ? Math.ceil((capUsd / blendedCostPerChar) * 2)
         : undefined;
-      if (!usageEventSeen && capUsd > 0 && bytesCeiling !== undefined && totalBytes > bytesCeiling) {
+      if (
+        usageReportingMode === "incremental" &&
+        !usageEventSeen && capUsd > 0 && bytesCeiling !== undefined && totalBytes > bytesCeiling
+      ) {
         terminate(
           `Streaming byte ceiling exceeded (${String(totalBytes)} bytes > ${String(bytesCeiling)} ceiling) ` +
             `without any usage events parsed. The Claude stream-json event format may have changed. ` +
@@ -808,6 +822,7 @@ function createStreamingUsageInspector(
       // enforce the cap. This catches cases where Claude's event format
       // changed but bytes are still flowing.
       if (
+        usageReportingMode === "incremental" &&
         !usageEventSeen &&
         capUsd > 0 &&
         firstChunkAt !== undefined &&
@@ -949,6 +964,8 @@ export interface AgentCliAdapterOptions {
   streamingTokenCap?: boolean;
   /** Provider detail-token fields are already included in input/output token totals. */
   streamingUsageDetailsIncludedInTotals?: boolean;
+  /** Whether provider usage arrives incrementally or only on a terminal event. */
+  streamingUsageReportingMode?: "incremental" | "terminal";
   /** Estimated floor used by the host to reject impossible token caps before spawning. */
   budgetPreflight?: {
     minimumViableTokens: number;
@@ -1110,7 +1127,8 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
             estimatedUsage.tokensIn,
             options.streamingTokenCap ? request.context.remainingTokens : undefined,
             options.streamingUsageDetailsIncludedInTotals,
-            request.observedUsageGovernor
+            request.observedUsageGovernor,
+            options.streamingUsageReportingMode
           )
           : undefined;
 
