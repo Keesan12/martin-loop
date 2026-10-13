@@ -578,8 +578,9 @@ describe("buildCodexExecArgs", () => {
 });
 
 describe("createCodexCliAdapter live token enforcement", () => {
-  it("terminates a streaming Codex child after a turn reports a token-lease breach", async () => {
+  it("settles an over-cap terminal Codex usage event without killing completed work", async () => {
     let killed = false;
+    const observations: Array<{ cumulativeTokens: number; final: boolean }> = [];
     const adapter = createCodexCliAdapter({
       capabilityProfile: profile({
         binaryPath: "codex",
@@ -602,17 +603,17 @@ describe("createCodexCliAdapter live token enforcement", () => {
       }),
       spawnImpl: createStreamingCodexSpawn([
         JSON.stringify({
-          type: "turn.completed",
-          usage: {
-            input_tokens: 1_300,
-            cached_input_tokens: 500,
-            output_tokens: 900,
-            reasoning_output_tokens: 500
-          }
+          type: "item.completed",
+          item: { type: "agent_message", text: "completed after one provider turn" }
         }),
         JSON.stringify({
-          type: "item.completed",
-          item: { type: "agent_message", text: "completed after exceeding the lease" }
+          type: "turn.completed",
+          usage: {
+            input_tokens: 608_871,
+            cached_input_tokens: 590_000,
+            output_tokens: 3_539,
+            reasoning_output_tokens: 2_000
+          }
         })
       ], () => { killed = true; })
     });
@@ -626,21 +627,103 @@ describe("createCodexCliAdapter live token enforcement", () => {
         objective: "respect the child token lease",
         verificationPlan: [],
         focus: "bounded execution",
-        remainingBudgetUsd: 100,
+        remainingBudgetUsd: 1.5,
         remainingIterations: 1,
-        remainingTokens: 2_000
+        remainingTokens: 128_000
       },
-      previousAttempts: []
+      previousAttempts: [],
+      observedUsageGovernor(observation) {
+        observations.push({
+          cumulativeTokens: observation.cumulativeTokens,
+          final: observation.final
+        });
+        return { action: "terminate", reason: "terminal usage exceeded the configured lease" };
+      }
     });
 
-    expect(killed).toBe(true);
-    expect(result.status).toBe("failed");
-    expect(result.failure?.classHint).toBe("budget_pressure");
-    expect(result.failure?.message).toMatch(/token.*(?:cap|lease)|(?:cap|lease).*token/iu);
-    expect(result.summary).not.toContain("completed after exceeding the lease");
-    expect(result.usage.tokensIn).toBe(1_300);
-    expect(result.usage.tokensOut).toBe(900);
-    expect(result.verification.passed).toBe(false);
+    expect(killed).toBe(false);
+    expect(result.status).toBe("completed");
+    expect(result.failure).toBeUndefined();
+    expect(result.summary).toContain("completed after one provider turn");
+    expect(result.usage.tokensIn).toBe(608_871);
+    expect(result.usage.tokensOut).toBe(3_539);
+    expect(observations).toEqual([{ cumulativeTokens: 612_410, final: true }]);
+  });
+
+  it("does not estimate Codex spend from pre-terminal JSONL transport bytes", async () => {
+    let killed = false;
+    let observedNow = 0;
+    const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => observedNow);
+    const adapter = createCodexCliAdapter({
+      model: "gpt-6.1-sol",
+      capabilityProfile: profile({
+        binaryPath: "codex",
+        sandbox: { flag: "--sandbox", scope: "exec", values: ["workspace-write"] },
+        approvalPolicy: {
+          flag: "--ask-for-approval",
+          scope: "exec",
+          semantics: "approval-policy",
+          values: ["never"]
+        },
+        json: { flag: "--json", scope: "exec" },
+        model: { flag: "--model", scope: "exec" },
+        promptTransport: "stdin-dash"
+      }),
+      autonomyResolution: markCodexAutonomyResolutionVerifiedByLaunchProbe({
+        binaryPath: "codex",
+        intent: "governed-autonomous",
+        strategy: "sandbox+approval",
+        sandboxValue: "workspace-write",
+        approvalValue: "never"
+      }),
+      spawnImpl: createStreamingCodexSpawn([
+        JSON.stringify({ type: "item.started", item: { type: "command_execution" } }),
+        JSON.stringify({
+          type: "item.completed",
+          item: { type: "command_execution", aggregated_output: "x".repeat(152_650) }
+        }),
+        JSON.stringify({
+          type: "item.completed",
+          item: { type: "agent_message", text: "completed after verbose tool output" }
+        }),
+        JSON.stringify({
+          type: "turn.completed",
+          usage: {
+            input_tokens: 10_000,
+            cached_input_tokens: 8_000,
+            output_tokens: 500,
+            reasoning_output_tokens: 200
+          }
+        })
+      ], () => { killed = true; }, (index) => {
+        observedNow = index === 0 ? 0 : 47_000;
+      })
+    });
+
+    try {
+      const result = await adapter.execute({
+        loopId: "loop-codex-jsonl-bytes",
+        workspaceId: "workspace-codex-jsonl-bytes",
+        attemptId: "attempt-codex-jsonl-bytes",
+        context: {
+          taskTitle: "bounded child",
+          objective: "ignore transport byte volume",
+          verificationPlan: [],
+          focus: "bounded execution",
+          remainingBudgetUsd: 0.5,
+          remainingIterations: 1,
+          remainingTokens: 700_000
+        },
+        previousAttempts: []
+      });
+
+      expect(killed).toBe(false);
+      expect(result.status).toBe("completed");
+      expect(result.summary).toContain("completed after verbose tool output");
+      expect(result.usage).toMatchObject({ tokensIn: 10_000, tokensOut: 500 });
+    } finally {
+      nowSpy.mockRestore();
+    }
   });
 
   it("allows an owned Codex child to complete below its token lease without double-counting detail fields", async () => {
@@ -1026,7 +1109,11 @@ describe("filesystem sandbox preflight", () => {
   });
 });
 
-function createStreamingCodexSpawn(lines: string[], onKill: () => void): SpawnLike {
+function createStreamingCodexSpawn(
+  lines: string[],
+  onKill: () => void,
+  beforeLine?: (index: number) => void
+): SpawnLike {
   return (_command, _args = [], _options) => {
     const child = new EventEmitter() as Partial<ChildProcess> & {
       stdout: PassThrough;
@@ -1055,8 +1142,9 @@ function createStreamingCodexSpawn(lines: string[], onKill: () => void): SpawnLi
     };
 
     void (async () => {
-      for (const line of lines) {
+      for (const [index, line] of lines.entries()) {
         if (killed) return;
+        beforeLine?.(index);
         child.stdout.write(`${line}\n`);
         await new Promise((resolveLine) => setImmediate(resolveLine));
       }

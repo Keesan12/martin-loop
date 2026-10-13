@@ -77,6 +77,7 @@ export function createCodexCliAdapter(options: CodexCliAdapterOptions = {}) {
     streamingUsageCap: true,
     streamingTokenCap: true,
     streamingUsageDetailsIncludedInTotals: true,
+    streamingUsageReportingMode: "terminal",
     budgetPreflight: {
       minimumViableTokens: CODEX_MINIMUM_VIABLE_TOKEN_BUDGET,
       basis: CODEX_TOKEN_BUDGET_PREFLIGHT_BASIS

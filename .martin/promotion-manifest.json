@@ -2,15 +2,15 @@
   "schemaVersion": "martin.public-promotion.v2",
   "sourceAuthority": "validated-internal-release-source",
   "sourceRepositoryFingerprint": "04aac733f3b08513fddcc72a9013b9f59cf7919f9a0a3893d0b3d953929826ec",
-  "privateMergeSha": "7b5ed8538702d3fe45f498f83da87382050b5a4e",
-  "privateMainShaValidated": "7b5ed8538702d3fe45f498f83da87382050b5a4e",
-  "publicBaseSha": "c139d1e5685bc7ade894140d642078b7c20dd918",
+  "privateMergeSha": "08d72797937f05c7b3d80a44035192ce9ad0ee2c",
+  "privateMainShaValidated": "08d72797937f05c7b3d80a44035192ce9ad0ee2c",
+  "publicBaseSha": "cea4d8d2caf12c0c9e05e1a96bdd021a5d082762",
   "promotedBy": "Torram",
-  "validatedAt": "2026-10-13T07:54:39.479Z",
+  "validatedAt": "2026-10-13T14:43:04.653Z",
   "internalHealthPassed": true,
-  "internalHealthEvidenceSha256": "2f58a2375999f9e06a9467c1192aa9f1352718a67cbc7430915f4d535530a59f",
+  "internalHealthEvidenceSha256": "9a3c96dd88e9eac5746381e02257813902488a90d2bbc25c313d80555f669571",
   "surfaceSpecHash": "a9c8d22be91bc0dd19238f7676aec62aacc77d8cc3a66327b46d71f16d65164a",
-  "surfaceHash": "f254a8cc5941a26020c02206cf87f88685c8ecd2e3c74430f1e359e3f2389676",
+  "surfaceHash": "43325cef8245870881712c43370897a599341e4518502926f3255e98858cc22d",
   "surfaceEntries": [
     {
       "path": ".agents/plugins/marketplace.json",
@@ -135,7 +135,7 @@
     {
       "path": "CHANGELOG.md",
       "mode": "100644",
-      "sha256": "0464f2e3219832b29f8a4352b6c59ff350f2e0c0f9e127176b9578cc3e128339"
+      "sha256": "c03e8db289c47cc9e3a6ef8f29542d85c7bede4d32b50b7db821ae796db7987f"
     },
     {
       "path": "CLAUDE.md",
@@ -160,7 +160,7 @@
     {
       "path": "README.md",
       "mode": "100644",
-      "sha256": "5827286b0bd103e76fb0ec53c2b55eca967f26b31de64d1227349831ca1b76cd"
+      "sha256": "149568d83990f488105d2f6b1b1b884188faf3973d58b329e22077a811f479d6"
     },
     {
       "path": "SECURITY.md",
@@ -345,7 +345,7 @@
     {
       "path": "dist/vendor/cli/package.json",
       "mode": "100644",
-      "sha256": "1c426bd127949e644d48c4b7728606daf54a76950198366d1fb0d4c012d10cd0"
+      "sha256": "051f28222d4b8bddd8c1b37afeb3fa3f3bda492e299f2bc23a9b49dbc37195bc"
     },
     {
       "path": "docs/CLI_AUDIT_FINDINGS.md",
@@ -615,7 +615,7 @@
     {
       "path": "docs/product-truth/public-release-truth.json",
       "mode": "100644",
-      "sha256": "1f087f1e119788d3c1baaa9ad9a8e3acec4a3997662536aa9785897ee1808bab"
+      "sha256": "493af016a37f3e2ead95141c4a85f3711c8d197f9c46b018f6acf8a648f461ce"
     },
     {
       "path": "docs/reference/SWARM-HOSTED-V1-HANDOFF.md",
@@ -826,6 +826,11 @@
       "path": "docs/release/MCP-0.8.3-RELEASE-NOTES.md",
       "mode": "100644",
       "sha256": "3698df9b4d4437962e8c1bb9445c0f81ef8b07da7f34599698ae833dc3a5208e"
+    },
+    {
+      "path": "docs/release/MCP-0.8.4-RELEASE-NOTES.md",
+      "mode": "100644",
+      "sha256": "470023c1b2485256eec033749ade78d54330a97b3fff127456706f8940bb9b50"
     },
     {
       "path": "docs/release/MCP-COMPATIBILITY.md",
@@ -1053,6 +1058,11 @@
       "sha256": "66aa04875d1e53aa537cb5889511913c97d7d98f7c16fb9505f303b04942150f"
     },
     {
+      "path": "docs/release/OSS-0.8.4-RELEASE-NOTES.md",
+      "mode": "100644",
+      "sha256": "3951183bb63a1929cf0ecb54e5ad02d54f1e626923316c309b85670a4cb99f27"
+    },
+    {
       "path": "docs/release/ROOT-DELIVERY-SLICE-MAP.md",
       "mode": "100644",
       "sha256": "6630b907658a938467fd04b8a2e9aecd25ab3102194baa15be13b561f2a7bbac"
@@ -1060,7 +1070,7 @@
     {
       "path": "docs/release/VERSION-LEDGER.md",
       "mode": "100644",
-      "sha256": "7d9cf01bf1473db50492eaa974ef4efd7bf96172fe9986165a8c97fac7860687"
+      "sha256": "1bd1b2a1698d7d0911f57637a45117dbe60ac52938716d87b1f6eba47bdebe3d"
     },
     {
       "path": "docs/release/reliability-hardening/BASELINE.md",
@@ -1155,7 +1165,7 @@
     {
       "path": "package.json",
       "mode": "100644",
-      "sha256": "8161999d373fce25c2677592e69ab1d092147e055a7b5646c9511af3b255f791"
+      "sha256": "76392eab3a9ef70d9606b7c1906910b9e47382102c93e66c5e90a7ae7d622bb8"
     },
     {
       "path": "packages/README.md",
@@ -1175,7 +1185,7 @@
     {
       "path": "packages/adapters/src/claude-cli.ts",
       "mode": "100644",
-      "sha256": "805f90392dfd6a40b6974bb3d3c3b0a81feaba26978e8053c7b0a0648aa27cce"
+      "sha256": "25f70143d8a6c1353ccae1a80148fb5dc3202c5e3d2b5ef2c9180e5c7543ebc9"
     },
     {
       "path": "packages/adapters/src/cli-bridge.ts",
@@ -1190,7 +1200,7 @@
     {
       "path": "packages/adapters/src/codex-cli.ts",
       "mode": "100644",
-      "sha256": "a1ae9736206281899362eff8876fe4228004a4f91de56c6668c52e68f42d334c"
+      "sha256": "f9da06afe49005301d4cd8f376c50cfb1db1ccfe5e3bd225a89df154f6071880"
     },
     {
       "path": "packages/adapters/src/codex-host.ts",
@@ -1265,7 +1275,7 @@
     {
       "path": "packages/adapters/tests/codex-launcher.test.ts",
       "mode": "100644",
-      "sha256": "48165b7466698e256fb44437663e3df4517668447271945dc54a6e3bd02a69b5"
+      "sha256": "fb21bfd13e36def727dba1322bd6e2f7e4ef5f18a91f7a5e60bb8bc9ee353f1c"
     },
     {
       "path": "packages/adapters/tests/fixtures/process-tree-child.cjs",
@@ -1675,7 +1685,7 @@
     {
       "path": "packages/cli/tests/swarm-demo.test.ts",
       "mode": "100644",
-      "sha256": "e3ef5f51682ee40a428e445034d5a54769143aa41ec74a268a4be59614acb310"
+      "sha256": "72854227886e3f10fed96c5a6462769644a057129ba824dd7112e929db1f353c"
     },
     {
       "path": "packages/cli/tests/swarm-evidence-cli.test.ts",
@@ -1701,6 +1711,11 @@
       "path": "packages/cli/tests/telemetry.test.ts",
       "mode": "100644",
       "sha256": "5a8bb2396fa61a06afa995bbf6762f6afd1bfaf764f8414c69ccf02a6f334c5c"
+    },
+    {
+      "path": "packages/cli/tests/test-runner-config.test.ts",
+      "mode": "100644",
+      "sha256": "3d261cd6da38d83b2d61904d1c73e81dffa99911ff9a1d11a3f382f21ae1c747"
     },
     {
       "path": "packages/cli/tests/trajectory-triage.test.ts",
@@ -1740,7 +1755,7 @@
     {
       "path": "packages/cli/vitest.config.ts",
       "mode": "100644",
-      "sha256": "4c8ab849e149c3c4e20a7511d27493659acdcb9b024f85898fe829986f6a54cd"
+      "sha256": "2831aba4166577fd4a4114bfe3351104fe2559d909a82e0f07c7d60cc613fd60"
     },
     {
       "path": "packages/contracts/package.json",
@@ -2320,7 +2335,7 @@
     {
       "path": "packages/core/tests/exit-runtime-integration.test.ts",
       "mode": "100644",
-      "sha256": "e74be2ec958f58668a9c70fcb4dc232d0867bb190605b55731b407cb4f55832f"
+      "sha256": "549bf41bde91bb976d445168c685bf017303eb79dbe325f263a3ddd6ae99cefc"
     },
     {
       "path": "packages/core/tests/exit-signal.test.ts",
@@ -2555,7 +2570,7 @@
     {
       "path": "packages/mcp/mcpb/manifest.json",
       "mode": "100644",
-      "sha256": "7e83152a0a6aa9261438036b48e63dfd1dc7073e70aa5c6bd836f96720690359"
+      "sha256": "0aad2a0b28dbda2f5cc286535d3b5ff39819168e86368795caa876a1d7516089"
     },
     {
       "path": "packages/mcp/mcpb/smoke-mcpb.mjs",
@@ -2565,7 +2580,7 @@
     {
       "path": "packages/mcp/package.json",
       "mode": "100644",
-      "sha256": "63af1bd2231800f8c1469d0aa9f9b185e33247b929aa0fe14dd17b9a87208547"
+      "sha256": "8aabbafa648deab5c1f578573dc671c53855fe453eda5b111a7d4e7ef1d13270"
     },
     {
       "path": "packages/mcp/scripts/build-package-lib.mjs",
@@ -2620,7 +2635,7 @@
     {
       "path": "packages/mcp/server.json",
       "mode": "100644",
-      "sha256": "38f2ed522dd901d8ba52b0f30606a2698cc50559b7a849b74e68a3c0cff555b9"
+      "sha256": "ce41f1775c515702bb26769f431d765c060f520d0ebf47b7f4b20e9a82261f13"
     },
     {
       "path": "packages/mcp/src/arcade/capabilities.ts",
@@ -2650,7 +2665,7 @@
     {
       "path": "packages/mcp/src/package-version.ts",
       "mode": "100644",
-      "sha256": "fa05f3e8c01ae8da05bf43827a220ea332d794614f2e60854d2a0973cc078154"
+      "sha256": "c5324ff786d7d009bddc156f7a2a09eb27b9c082bcb56fdac8c99943100e7db8"
     },
     {
       "path": "packages/mcp/src/prompts.ts",
@@ -2950,12 +2965,12 @@
     {
       "path": "plugins/martinloop/.claude-plugin/plugin.json",
       "mode": "100644",
-      "sha256": "b273a20c2dc7c62ac92b4a291cec69889ff2b238f2fe78d603d7bc93d62b9479"
+      "sha256": "cc27f9c0a3c529b938a9547ced358b64638610b91da2a07f4ba1ececddbf2d56"
     },
     {
       "path": "plugins/martinloop/.codex-plugin/plugin.json",
       "mode": "100644",
-      "sha256": "80faf28526f127a7139b61fb2b240e642e939f23f4f935c62f1527ee267e8a48"
+      "sha256": "0c07a74ced176e281d5e3f6f90e7dc087ae7c865bf5d0d268426fd0b83a57fe4"
     },
     {
       "path": "plugins/martinloop/.codexignore",
@@ -2965,7 +2980,7 @@
     {
       "path": "plugins/martinloop/.mcp.json",
       "mode": "100644",
-      "sha256": "b5c1a59591d8b5b0588dd77c8a206a90d23fea40d04b489f30bf34c26ae43a71"
+      "sha256": "6e7f0e6ab60574b213ff27998a274b0b35cc6dca888954d19590d2d7c1aa64d4"
     },
     {
       "path": "plugins/martinloop/LICENSE",
@@ -2995,7 +3010,7 @@
     {
       "path": "plugins/martinloop/plugin.json",
       "mode": "100644",
-      "sha256": "b273a20c2dc7c62ac92b4a291cec69889ff2b238f2fe78d603d7bc93d62b9479"
+      "sha256": "cc27f9c0a3c529b938a9547ced358b64638610b91da2a07f4ba1ececddbf2d56"
     },
     {
       "path": "plugins/martinloop/skills/martinloop-govern/SKILL.md",

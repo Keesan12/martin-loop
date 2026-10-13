@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.8.4] - 2026-10-13
+
+### Fixed
+- Governed Codex runs now settle the terminal usage aggregate once, preserve completed work, and apply the configured budget before any retry without counting transport bytes or duplicate detail fields as spend.
+
 ## [0.8.3] - 2026-10-13
 
 ### Fixed

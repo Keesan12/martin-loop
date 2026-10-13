@@ -465,6 +465,76 @@ it("budget cap fires after the first attempt updates cost", async () => {
   expect(result.loop.cost.actualUsd).toBeGreaterThan(0.05);
 });
 
+it("settles one terminal Codex aggregate, verifies it, and budget-exits before retry", async () => {
+  const runsRoot = join(scratchRoot, "runs");
+  await mkdir(runsRoot, { recursive: true });
+  const store = createFileRunStore({ runsRoot });
+  const counter = { n: 0 };
+
+  const result = await runMartin({
+    workspaceId: "ws_codex_terminal_usage",
+    projectId: "proj",
+    task: baseTask(),
+    budget: baseBudget({
+      maxUsd: 1.5,
+      softLimitUsd: 1,
+      maxIterations: 3,
+      maxTokens: 128_000
+    }),
+    adapter: okAdapter({
+      executionCount: counter,
+      execute: async () => ({
+        status: "completed",
+        summary: "Codex completed one provider turn.",
+        usage: {
+          actualUsd: 0.17,
+          estimatedUsd: 0.17,
+          tokensIn: 608_871,
+          tokensOut: 3_539,
+          provenance: "estimated"
+        },
+        verification: { passed: true, summary: "host verifier passed" }
+      })
+    }),
+    store,
+    exitSignalSource: emptySource(),
+    exitPolicy: {
+      budget: { maxUsd: 1.5, maxTokens: 128_000 },
+      turns: { max: 3 }
+    }
+  });
+
+  expect(counter.n).toBe(1);
+  expect(result.loop.cost).toMatchObject({
+    actualUsd: 0.17,
+    tokensIn: 608_871,
+    tokensOut: 3_539
+  });
+  expect(result.decision).toMatchObject({
+    status: "exited",
+    lifecycleState: "budget_exit",
+    reasonCode: "budget_cap"
+  });
+  expect(result.loop.terminationEnvelope?.class).toBe("operational_exit");
+  if (result.loop.terminationEnvelope?.class !== "operational_exit") {
+    throw new Error("Expected an operational exit envelope.");
+  }
+  expect(result.loop.terminationEnvelope.exit.matched).toEqual(["budget_cap"]);
+
+  const ledger = (await readFile(join(runsRoot, result.loop.loopId, "ledger.jsonl"), "utf8"))
+    .trim()
+    .split(/\r?\n/u)
+    .map((line) => JSON.parse(line) as { kind: string; payload?: Record<string, unknown> });
+  expect(ledger.filter((entry) => entry.kind === "budget.settled")).toHaveLength(1);
+  expect(ledger.find((entry) => entry.kind === "budget.settled")?.payload).toMatchObject({
+    tokensIn: 608_871,
+    tokensOut: 3_539
+  });
+  expect(ledger.findIndex((entry) => entry.kind === "verification.completed")).toBeLessThan(
+    ledger.findIndex((entry) => entry.kind === "run.terminated")
+  );
+});
+
 // ─── test 6: before-retry checkpoint stops another attempt ───────────────────
 
 it("before-retry checkpoint prevents a second attempt when turn cap is 1", async () => {

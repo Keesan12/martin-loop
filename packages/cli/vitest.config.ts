@@ -17,6 +17,10 @@ export default defineConfig({
     }
   },
   test: {
+    // CLI fixtures launch real subprocesses and exercise Windows filesystem
+    // replacement/cleanup semantics. Parallel files can starve those child
+    // processes and hold their temporary directories past hook deadlines.
+    fileParallelism: false,
     include: ["tests/**/*.test.ts"],
     testTimeout: 15_000
   }
