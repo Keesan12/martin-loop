@@ -66,6 +66,13 @@ export class CliCommandError extends Error {
   }
 }
 
+export function missingLiveSwarmStoreError(): CliCommandError {
+  return new CliCommandError("not_found", "No matching live swarm store was found.", {
+    suggestion: "`demo --swarm` output is not persisted to the swarm run store; inspect it with "
+      + "`demo --swarm --json` or the files under its --dir. Live swarms are created by `swarm run`."
+  });
+}
+
 export function formatJson(value: unknown): string {
   return JSON.stringify(value, null, 2);
 }

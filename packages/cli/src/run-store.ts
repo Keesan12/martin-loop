@@ -476,6 +476,14 @@ export async function loadPersistedLoop(
   const loop = inspected.loops.find((candidate) =>
     !selector.workspaceId || candidate.workspaceId === selector.workspaceId
   );
+  if (!loop && selector.workspaceId && inspected.loops.length > 0) {
+    throw new CliCommandError(
+      "not_found",
+      `No persisted Martin loops were found for this workspace (${selector.workspaceId}). `
+        + `${inspected.loops.length} persisted loop(s) in ${runsRoot} belong to other workspaces.`,
+      { suggestion: "Run from that project directory or pass --all-workspaces." }
+    );
+  }
   if (!loop) {
     throw new CliCommandError("not_found", "No persisted Martin loops were found.");
   }

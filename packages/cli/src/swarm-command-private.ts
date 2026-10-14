@@ -48,7 +48,7 @@ import {
   resolveCodexSwarmLaunchBinding,
   type CodexLaunchBinding,
 } from "./swarm-engine.js";
-import { CliCommandError, renderCliSuccess } from "./ux.js";
+import { CliCommandError, missingLiveSwarmStoreError, renderCliSuccess } from "./ux.js";
 import {
   renderSwarmInspectHuman,
   renderSwarmCancelHuman,
@@ -933,7 +933,7 @@ function mapEvidenceError(error: unknown): unknown {
 function mapOperationalError(error: unknown): unknown {
   const code = typeof error === "object" && error !== null && "code" in error
     ? String((error as { code?: unknown }).code ?? "") : "";
-  if (code === "MISSING_SWARM_STORE") return new CliCommandError("not_found", "No matching live swarm store was found.");
+  if (code === "MISSING_SWARM_STORE") return missingLiveSwarmStoreError();
   if (["UNSAFE_FILENAME_ID", "INVALID_SWARM_ID", "STORE_PATH_ESCAPE"].includes(code)) {
     return new CliCommandError("policy_blocked", redactSecretsFromText(error instanceof Error ? error.message : "Unsafe swarm selector."));
   }

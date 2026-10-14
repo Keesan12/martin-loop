@@ -118,6 +118,7 @@ import {
   triagePersistedLoops,
   type IntegrityStatus
 } from "./run-store.js";
+import { assertWellFormedVerifier, describeMalformedVerifier } from "./verifier-input.js";
 import { CliCommandError, exitCodeForGovernedOutcome, renderCliError, renderCliSuccess, renderRunHeader, renderInlineMilestone, renderMilestonePrompt, renderLoopCard, type RunOutcome } from "./ux.js";
 import { deriveWorkspaceId, evaluateCliRunGate, readWorkspaceGovernanceReadiness, recordCliWorkflowStep } from "./workflow-state.js";
 import {
@@ -141,7 +142,7 @@ import {
   recordBadgeCtaShown
 } from "./cli-milestone-state.js";
 import { offerArcadeWhileWaiting } from "./arcade/offer.js";
-import { MARTINLOOP_BADGE_CTA, MARTINLOOP_BADGE_MARKDOWN } from "./governed-badge.js";
+import { MARTINLOOP_BADGE_CTA, MARTINLOOP_BADGE_MARKDOWN, MARTINLOOP_BADGE_SHIELDS } from "./governed-badge.js";
 import { enqueueLoopForHostedSync, flushSyncQueue, syncQueueStatus } from "./sync-client.js";
 import {
   executeSwarmDossierCommand,
@@ -1181,7 +1182,7 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
       ...(readOption(rest, "--engine") === "claude" ? { engine: "claude" as const } : {}),
       ...(readOption(rest, "--engine") === "gemini" ? { engine: "gemini" as const } : {}),
       ...(readOption(rest, "--engine") === "openai" ? { engine: "openai" as const } : {}),
-      ...(readOption(rest, "--verify") ? { verifier: readOption(rest, "--verify") } : {}),
+      ...(readOption(rest, "--verify") ? { verifier: assertWellFormedVerifier(readOption(rest, "--verify") ?? "") } : {}),
       ...(budgetUsd !== undefined ? { budgetUsd } : {}),
       ...(maxIterations !== undefined ? { maxIterations } : {}),
       force: hasFlag(rest, "--force")
@@ -1592,6 +1593,7 @@ export function renderCliHelp(): string {
     "  --loop-id <id>           Select a persisted loop by ID.",
     "  --file <path>            Select a persisted loop via file or run directory.",
     "  --latest                 Select the most recently updated loop.",
+    "  --all-workspaces         Include loops from every workspace in the runs root (default: current directory's workspace).",
     "  --attempt-index <n>      Select a specific attempt for attempt inspection.",
     "  --out-dir <path>         Override where `martin share` writes the local bundle.",
     "  --contract <path>        External outcome contract for `martin outcomes verify`.",
@@ -3777,6 +3779,12 @@ async function executePreflightCommand(
   if (verificationPlan.length === 0) {
     warnings.push("No verification plan is configured for this run.");
   }
+  for (const verifier of verificationPlan) {
+    const malformed = describeMalformedVerifier(verifier);
+    if (malformed !== undefined) {
+      blockingIssues.push(malformed);
+    }
+  }
 
   const configuredMaxTokens = resolvedGuardrails.budget.maxTokens;
   const codexTokenBudgetTooSmall =
@@ -4043,22 +4051,39 @@ async function executeRunsListCommand(
   outputMode: MartinOutputMode
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   const listed = await listPersistedLoops(filters);
+  const allWorkspaces = filters.workspaceId === undefined;
+  const otherWorkspaceLoopCount = !allWorkspaces && listed.loops.length === 0
+    ? (await listPersistedLoops({ runsDir: filters.runsDir, limit: Number.MAX_SAFE_INTEGER })).loops.length
+    : undefined;
+  const scopeWarnings = otherWorkspaceLoopCount
+    ? [
+        `${otherWorkspaceLoopCount} persisted loop(s) in ${listed.runsRoot} belong to other workspaces. `
+          + "Run from that project directory or pass --all-workspaces."
+      ]
+    : [];
 
   return renderCliSuccess(outputMode, {
     data: {
       command: "runs_list",
       runsRoot: listed.runsRoot,
+      scope: {
+        allWorkspaces,
+        ...(filters.workspaceId ? { workspaceId: filters.workspaceId } : {}),
+        ...(allWorkspaces ? {} : { workingDirectory: resolveCliEnvironment().workingDirectory })
+      },
       count: listed.loops.length,
+      ...(otherWorkspaceLoopCount !== undefined ? { otherWorkspaceLoopCount } : {}),
       loops: listed.loops
     },
+    warnings: [...listed.warnings, ...scopeWarnings],
     human: [
-      `Listed ${listed.loops.length} persisted runs from ${listed.runsRoot}`,
+      `Listed ${listed.loops.length} persisted runs from ${listed.runsRoot}`
+        + (allWorkspaces ? " (all workspaces)" : " (current workspace)"),
       ...listed.loops.slice(0, 10).map(
         (loop) => `- ${loop.loopId} ${loop.status}/${loop.lifecycleState} ${loop.task.title}`
       )
     ],
-    quiet: listed.loops[0]?.loopId ?? "",
-    warnings: listed.warnings
+    quiet: listed.loops[0]?.loopId ?? ""
   });
 }
 
@@ -4936,8 +4961,11 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
         break;
       case "--verify":
         try {
-          verificationPlan.push(consumeOptionValue(index, token, { repeatable: true }));
+          verificationPlan.push(assertWellFormedVerifier(consumeOptionValue(index, token, { repeatable: true })));
         } catch (error) {
+          if (error instanceof CliCommandError && error.details?.["verifier"] !== undefined) {
+            throw error;
+          }
           if (error instanceof CliCommandError) {
             throw new CliCommandError(
               "invalid_input",
@@ -5198,7 +5226,9 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
 
 function parseRunListFilters(tokens: string[]): MartinRunListFilters {
   return {
-    workspaceId: deriveWorkspaceId(resolveCliEnvironment().workingDirectory),
+    ...(hasFlag(tokens, "--all-workspaces")
+      ? {}
+      : { workspaceId: deriveWorkspaceId(resolveCliEnvironment().workingDirectory) }),
     ...(readOption(tokens, "--runs-dir") ? { runsDir: readOption(tokens, "--runs-dir") } : {}),
     ...(readOption(tokens, "--limit") ? { limit: Number(readOption(tokens, "--limit")) } : {}),
     ...(readOption(tokens, "--status") ? { status: readOption(tokens, "--status") } : {}),
@@ -5218,7 +5248,9 @@ function parseRunSelector(
   options: { allowLatest: boolean; includeAttemptIndex?: boolean }
 ): MartinRunSelector {
   const selector: MartinRunSelector = {
-    workspaceId: deriveWorkspaceId(resolveCliEnvironment().workingDirectory),
+    ...(hasFlag(tokens, "--all-workspaces")
+      ? {}
+      : { workspaceId: deriveWorkspaceId(resolveCliEnvironment().workingDirectory) }),
     ...(readOption(tokens, "--runs-dir") ? { runsDir: readOption(tokens, "--runs-dir") } : {}),
     ...(readOption(tokens, "--file") ? { file: readOption(tokens, "--file") } : {}),
     ...(readOption(tokens, "--loop-id") ? { loopId: readOption(tokens, "--loop-id") } : {}),
@@ -5245,7 +5277,7 @@ function parseMcpHost(tokens: string[]): MartinMcpHost {
     throw new CliCommandError(
       "invalid_input",
       "mcp commands require --host <codex|claude|gemini|cursor|vscode|copilot|continue|generic>.",
-      { suggestion: "Pass --host codex, --host claude, --host cursor, --host vscode, --host copilot, --host continue, or --host generic." }
+      { suggestion: "Pass --host codex, --host claude, --host gemini, --host cursor, --host vscode, --host copilot, --host continue, or --host generic." }
     );
   }
 
@@ -6315,7 +6347,8 @@ async function executeBadgeCommand(
         data: {
           command: "badge",
           governed: true,
-          markdown: MARTINLOOP_BADGE_MARKDOWN
+          markdown: MARTINLOOP_BADGE_MARKDOWN,
+          ...MARTINLOOP_BADGE_SHIELDS
         },
         human: [],
         quiet: MARTINLOOP_BADGE_MARKDOWN

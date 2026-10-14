@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.8.5] - 2026-10-14
+
+### Fixed
+- `run`, `preflight`, and `enable` reject a `--verify` value that contains an unterminated quote or MartinLoop's own options (for example after a stray quote on Windows merges later flags into the verifier) with `invalid_input` and exit code 2, instead of reporting the run as ready.
+- `runs list` reports the workspace it is scoped to. When the current workspace has no runs but the runs root holds runs for other workspaces, it says how many and how to list them; `runs get --latest` explains the same. New `--all-workspaces` opts into the whole runs root.
+- `badge --governed --format json` also returns the Shields endpoint fields (`schemaVersion`, `label`, `message`, `color`) alongside the existing `command`, `governed`, and `markdown` fields.
+- `demo --swarm` output and the `swarm status` not-found error explain that demo output is not persisted and how to inspect it.
+- POSIX process-tree cleanup recognises an owned process group whose remaining members are only defunct (zombie) entries as closed, while unreadable or ambiguous process tables still fail closed.
+- The missing `--host` suggestion for `mcp` commands lists every supported host.
+
 ## [0.8.4] - 2026-10-13
 
 ### Fixed
