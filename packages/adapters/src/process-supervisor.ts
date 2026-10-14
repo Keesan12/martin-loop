@@ -427,11 +427,19 @@ async function terminatePosixGroupAfterRootExit(
   const target = -pid;
   const initial = probePosixProcessGroup(target, killGroup);
   if (initial === "closed") return { state: "closed" };
-  if (initial instanceof Error) return cleanupFailure("termination_failed", initial);
+  if (initial instanceof Error) {
+    if (isErrno(initial, "EPERM") && await confirmInactivePosixGroup(pid, killGroup)) {
+      return { state: "closed" };
+    }
+    return cleanupFailure("termination_failed", initial);
+  }
   try {
     killGroup(target, "SIGTERM");
   } catch (error) {
     if (isErrno(error, "ESRCH")) return { state: "closed" };
+    if (isErrno(error, "EPERM") && await confirmInactivePosixGroup(pid, killGroup)) {
+      return { state: "closed" };
+    }
     return cleanupFailure("termination_failed", error);
   }
   if (await waitForPosixGroupExit(target, killGroup, graceMs, waitImpl)) return { state: "closed" };
@@ -439,13 +447,29 @@ async function terminatePosixGroupAfterRootExit(
     killGroup(target, "SIGKILL");
   } catch (error) {
     if (isErrno(error, "ESRCH")) return { state: "closed" };
+    if (isErrno(error, "EPERM") && await confirmInactivePosixGroup(pid, killGroup)) {
+      return { state: "closed" };
+    }
     return cleanupFailure("termination_failed", error);
   }
   if (await waitForPosixGroupExit(target, killGroup, graceMs, waitImpl)) return { state: "closed" };
+
+  // A reparented, already-terminated descendant can remain as a zombie in the
+  // process table. On POSIX, kill(-pgid, 0) still sees that process group even
+  // though its remaining members cannot execute code. Prove the absence of
+  // *runnable* group members rather than treating an unreapable zombie as live.
+  // Do not turn an unreadable/ambiguous process snapshot into success.
+  const snapshot = await inspectPosixProcessGroupMembers(pid);
+  if (snapshot === "closed" || (snapshot === "absent" && probePosixProcessGroup(target, killGroup) === "closed")) {
+    return { state: "closed" };
+  }
+  if (snapshot instanceof Error) return cleanupFailure("termination_failed", snapshot);
   return {
     state: "failed",
     code: "tree_close_timeout",
-    message: "Owned POSIX process group remained live after SIGTERM and SIGKILL."
+    message: snapshot === "invalid"
+      ? "Could not prove owned POSIX group closure from the process table."
+      : "Owned POSIX process group still has live members after SIGTERM and SIGKILL."
   };
 }
 
@@ -465,6 +489,17 @@ async function waitForPosixGroupExit(
   return probePosixProcessGroup(target, killGroup) === "closed";
 }
 
+async function confirmInactivePosixGroup(
+  ownedGroupPid: number,
+  killGroup: (ownedGroupPid: number, signal: NodeJS.Signals | 0) => void
+): Promise<boolean> {
+  const snapshot = await inspectPosixProcessGroupMembers(ownedGroupPid);
+  if (snapshot === "closed") return true; // Observed owned members are all defunct zombies.
+  // An absent group is not proof on its own after EPERM. Require an ESRCH re-probe.
+  return snapshot === "absent"
+    && probePosixProcessGroup(-ownedGroupPid, killGroup) === "closed";
+}
+
 function probePosixProcessGroup(
   target: number,
   killGroup: (ownedGroupPid: number, signal: NodeJS.Signals | 0) => void
@@ -476,6 +511,51 @@ function probePosixProcessGroup(
     if (isErrno(error, "ESRCH")) return "closed";
     return error instanceof Error ? error : new Error(String(error));
   }
+}
+
+/**
+ * Classify an OS process-table snapshot with PID, PGID and STAT columns.
+ * POSIX Z means terminated but not yet reaped; other states remain live.
+ * Malformed or empty output must never assert cleanup success.
+ * @internal - deterministic pure classification for process-supervisor tests
+ */
+export function classifyPosixProcessGroupSnapshot(
+  output: string,
+  ownedGroupPid: number
+): "closed" | "alive" | "absent" | "invalid" {
+  if (!isOwnedPid(ownedGroupPid)) return "invalid";
+  let observed = 0;
+  let matchingGroupMembers = 0;
+  for (const line of output.split(/\r?\n/u)) {
+    if (!line.trim()) continue;
+    const match = /^\s*(\d+)\s+(\d+)\s+(\S+)\s*$/u.exec(line);
+    if (!match) return "invalid";
+    observed += 1;
+    if (Number(match[2]) === ownedGroupPid) {
+      matchingGroupMembers += 1;
+      if (!match[3]!.startsWith("Z")) return "alive";
+    }
+  }
+  if (observed === 0) return "invalid";
+  return matchingGroupMembers > 0 ? "closed" : "absent";
+}
+
+async function inspectPosixProcessGroupMembers(
+  ownedGroupPid: number
+): Promise<"closed" | "alive" | "absent" | "invalid" | Error> {
+  return new Promise((resolveResult) => {
+    execFile("ps", ["-axo", "pid=,pgid=,stat="], {
+      encoding: "utf8",
+      timeout: 2_000,
+      maxBuffer: 8 * 1024 * 1024
+    }, (error, stdout) => {
+      if (error) {
+        resolveResult(error);
+        return;
+      }
+      resolveResult(classifyPosixProcessGroupSnapshot(stdout, ownedGroupPid));
+    });
+  });
 }
 
 function isErrno(error: unknown, code: string): boolean {

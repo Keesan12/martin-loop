@@ -58,7 +58,23 @@ describe("badge --governed CLI command", () => {
       command: "badge",
       governed: true,
       markdown: MARTINLOOP_BADGE_MARKDOWN,
+      schemaVersion: 1,
+      label: "MartinLoop",
+      message: "Governed",
+      color: "blue",
     });
+  });
+
+  // `badge --format json` emits a Shields endpoint object; the governed variant
+  // must expose the same fields so automation does not special-case it.
+  it("governed JSON carries the same Shields fields as the evidence badge JSON", async () => {
+    const plain = JSON.parse((await executeCli(["badge", "--format", "json"])).stdout) as Record<string, unknown>;
+    const governed = JSON.parse((await executeCli(["badge", "--governed", "--format", "json"])).stdout) as Record<string, unknown>;
+    for (const key of ["schemaVersion", "label", "message", "color"]) {
+      expect(plain).toHaveProperty(key);
+      expect(governed).toHaveProperty(key);
+    }
+    expect(governed["schemaVersion"]).toBe(plain["schemaVersion"]);
   });
 
   it("rejects governed SVG instead of labeling Markdown as SVG", async () => {

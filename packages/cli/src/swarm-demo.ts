@@ -651,5 +651,9 @@ export function renderDeterministicSwarmDemoHuman(result: DeterministicSwarmDemo
   if (result.status === "verified") {
     lines.push("LOCAL SIMULATION CHECK PASSED · non-governed · not persisted · signed receipt integrity not evaluated");
   }
+  lines.push(
+    "Inspect this demo with `demo --swarm --json` or the files under --dir. "
+      + "swarm status, inspect, verify and share read live swarm runs only and will not find it."
+  );
   return lines.join("\n");
 }

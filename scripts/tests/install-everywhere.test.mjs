@@ -10,7 +10,8 @@ import { fileURLToPath } from "node:url";
 import {
   buildInstallLinks,
   buildMcpConfig,
-  loadMcpPackage
+  loadMcpPackage,
+  renderMarkdown
 } from "../generate-install-links.mjs";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -36,6 +37,17 @@ test("install links use the exact registry package and valid host payloads", asy
   assert.deepEqual(vscodePayload, { name: "martin-loop", ...config });
   assert.match(readme, new RegExp(links.vscode.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "u"));
   assert.match(readme, new RegExp(links.cursor.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "u"));
+});
+
+test("README carries the generator's install block verbatim for the current MCP version", async () => {
+  const packageMetadata = await loadMcpPackage(repositoryRoot);
+  const readme = (await readFile(path.join(repositoryRoot, "README.md"), "utf8")).replace(/\r\n/gu, "\n");
+  const block = renderMarkdown(packageMetadata, buildInstallLinks(packageMetadata)).trimEnd();
+
+  assert.ok(
+    readme.includes(block),
+    "README install block drifted from scripts/generate-install-links.mjs --markdown; regenerate it"
+  );
 });
 
 test("shared plugin manifests use one MCP and skill source without private data", async () => {

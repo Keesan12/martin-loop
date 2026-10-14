@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import type { ChildProcess, SpawnOptions } from "node:child_process";
+import { execFileSync, type ChildProcess, type SpawnOptions } from "node:child_process";
 import { PassThrough, Writable } from "node:stream";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import {
   spawnSupervisedProcess,
   spawnSupervisedProcessForTest,
+  classifyPosixProcessGroupSnapshot,
   type ProcessSpawnLike,
   type SpawnSupervisedProcessOptions
 } from "../src/process-supervisor.js";
@@ -44,10 +45,28 @@ function createFakeChild(pid = 4321): FakeChild {
 function isAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
-    return true;
   } catch (error) {
     return (error as NodeJS.ErrnoException).code === "EPERM";
   }
+  if (process.platform !== "win32") {
+    // On macOS/Linux an orphaned dead descendant can remain in the process
+    // table as a zombie, so kill(pid, 0) is not evidence that it is runnable.
+    // An unavailable ps probe must fail closed rather than assert success.
+    try {
+      const state = execFileSync("ps", ["-o", "stat=", "-p", String(pid)], {
+        encoding: "utf8",
+        timeout: 2_000
+      }).trim();
+      return state.length === 0 || !state.startsWith("Z");
+    } catch (error) {
+      if (typeof error === "object" && error !== null && "status" in error
+        && (error as { status?: number }).status === 1) {
+        return false; // ps reports the PID no longer exists.
+      }
+      return true;
+    }
+  }
+  return true;
 }
 
 async function waitUntil(predicate: () => boolean | Promise<boolean>, timeoutMs = 5_000): Promise<void> {
@@ -57,6 +76,32 @@ async function waitUntil(predicate: () => boolean | Promise<boolean>, timeoutMs 
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
 }
+
+describe("POSIX owned-group process-table evidence", () => {
+  it("treats groups with only terminated zombies as closed", () => {
+    expect(classifyPosixProcessGroupSnapshot(
+      " 123 123 Z+\n 124 123 Z\n 999 900 S+\n", 123
+    )).toBe("closed");
+  });
+
+  it("does not call a group closed while any non-zombie member remains", () => {
+    expect(classifyPosixProcessGroupSnapshot(
+      " 123 123 Z\n 124 123 S\n", 123
+    )).toBe("alive");
+    expect(classifyPosixProcessGroupSnapshot(
+      " 124 123 D\n", 123
+    )).toBe("alive");
+  });
+
+  it("fails closed on incomplete or invalid process-table evidence", () => {
+    expect(classifyPosixProcessGroupSnapshot("", 123)).toBe("invalid");
+    expect(classifyPosixProcessGroupSnapshot("HEADER NOT EXPECTED", 123)).toBe("invalid");
+    expect(classifyPosixProcessGroupSnapshot("123 123 S\n", -1)).toBe("invalid");
+    // A PID group missing from the snapshot is not equivalent to observed dead members
+    // when kill(-pgid, 0) has returned EPERM; a subsequent ESRCH is required.
+    expect(classifyPosixProcessGroupSnapshot(" 999 900 S\n", 123)).toBe("absent");
+  });
+});
 
 describe("spawnSupervisedProcess", () => {
   it("preserves normal stdout, stderr, exit, and close semantics", async () => {
@@ -431,7 +476,8 @@ describe("spawnSupervisedProcess", () => {
         .map((line) => JSON.parse(line) as { kind: string; pid: number; grandchildPid?: number });
       const record = records.find((entry) => entry.kind === "child");
       expect(record?.grandchildPid).toBeTypeOf("number");
-      expect(result).toMatchObject({ completed: true, exitCode: 0, cleanup: { state: "closed" } });
+      expect(result.cleanup, JSON.stringify(result.cleanup)).toEqual({ state: "closed" });
+      expect(result).toMatchObject({ completed: true, exitCode: 0 });
       await waitUntil(() => !isAlive(record!.pid) && !isAlive(record!.grandchildPid!));
       expect(isAlive(record!.grandchildPid!)).toBe(false);
     } finally {
