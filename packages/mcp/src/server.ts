@@ -546,6 +546,25 @@ const preflightOutputSchema = {
           },
           required: ["available", "detail"]
         },
+        // Present when the Codex launch probe ran on a live host.
+        codexDiagnostics: {
+          type: "object",
+          additionalProperties: true,
+          properties: {
+            selectedPath: { type: "string" },
+            hostPlatform: { type: "string" },
+            installKind: { type: "string" },
+            nativeInstallValid: { type: "boolean" },
+            invocationMode: { type: "string" },
+            sandboxMode: { type: "string" },
+            sandboxCompatible: { type: "boolean" },
+            launchReady: { type: "boolean" },
+            summary: { type: "string" },
+            remediation: { type: "string" },
+            candidateProbeResults: { type: "array", items: { type: "object", additionalProperties: true } }
+          },
+          required: ["launchReady", "summary"]
+        },
         runsRoot: { type: "string" },
         pathScope: {
           type: "object",
@@ -830,9 +849,21 @@ const controlOutputSchema = {
     controlId: { type: "string", description: "Unique receipt ID for this control action." },
     requestedAt: { type: "string", description: "ISO 8601 timestamp when the control was recorded." },
     requestedBy: { type: "string", description: "Identity that requested the control, if provided." },
-    reason: { type: "string", description: "Human-readable reason for the control, if provided." }
+    reason: { type: "string", description: "Human-readable reason for the control, if provided." },
+    ok: { type: "boolean", description: "Whether the control receipt was recorded." },
+    summary: { type: "string", description: "Human-readable result of the control request." },
+    requestedAction: {
+      type: "string",
+      enum: ["pause", "cancel", "continue"],
+      description: "The control action that was requested."
+    },
+    state: {
+      type: "object",
+      additionalProperties: true,
+      description: "Run control state after this request, including all recorded receipts."
+    }
   },
-  required: ["loopId", "action", "controlId", "requestedAt"]
+  required: ["loopId", "action", "controlId", "requestedAt", "ok", "summary", "requestedAction", "state"]
 } as const;
 
 const evalOutputSchema = {
@@ -886,6 +917,18 @@ const prSummaryOutputSchema = {
     score: { type: "number", description: "Numeric verification score from 0–100." }
   },
   required: ["loopId", "title", "body", "grade", "score"]
+} as const;
+
+const createPrOutputSchema = {
+  ...prSummaryOutputSchema,
+  properties: {
+    ...prSummaryOutputSchema.properties,
+    execute: { type: "boolean", description: "Whether gh was asked to create the pull request." },
+    created: { type: "boolean", description: "Whether a pull request was created." },
+    branch: { type: "string", description: "Current branch of the run's repository, when known." },
+    url: { type: "string", description: "URL of the created pull request." }
+  },
+  required: [...prSummaryOutputSchema.required, "execute", "created"]
 } as const;
 
 const prReviewOutputSchema = {
@@ -1596,7 +1639,7 @@ export function createMartinMcpServer(serverInfo?: {
           execute: { type: "boolean" }
         }
       },
-      outputSchema: prSummaryOutputSchema
+      outputSchema: createPrOutputSchema
     },
     {
       name: "martin_review_pr",

@@ -2,15 +2,15 @@
   "schemaVersion": "martin.public-promotion.v2",
   "sourceAuthority": "validated-internal-release-source",
   "sourceRepositoryFingerprint": "04aac733f3b08513fddcc72a9013b9f59cf7919f9a0a3893d0b3d953929826ec",
-  "privateMergeSha": "fd5f0b8da1dfb7cbfc7235ef2722c11fed224c37",
-  "privateMainShaValidated": "fd5f0b8da1dfb7cbfc7235ef2722c11fed224c37",
-  "publicBaseSha": "ab672947513b21cfd03b3de7e5c9643658524c5e",
+  "privateMergeSha": "66a1758bd586721efde9baaf506f434cfb38d0cd",
+  "privateMainShaValidated": "66a1758bd586721efde9baaf506f434cfb38d0cd",
+  "publicBaseSha": "cfac43683431ff93fc98308d7fe13c4f7549e038",
   "promotedBy": "Torram",
-  "validatedAt": "2026-10-14T15:10:47.850Z",
+  "validatedAt": "2026-10-15T15:43:39.408Z",
   "internalHealthPassed": true,
-  "internalHealthEvidenceSha256": "00ba1c340d11189f792b6d7de8787f724e00e6614663d30415b4343e7a18459d",
+  "internalHealthEvidenceSha256": "9cab4016a624fbb1d9b4980982f7ec72656cf256d02e6f4af09b4337b012f25e",
   "surfaceSpecHash": "a9c8d22be91bc0dd19238f7676aec62aacc77d8cc3a66327b46d71f16d65164a",
-  "surfaceHash": "917a50a04b0701e1439d3bd20afc6d9cedf7df2da36064f46cea0f76990d2397",
+  "surfaceHash": "2cbc6361f64ecf1017bcc9d9d162c8704ce47fae1e3c9c2ee9766ad54a0c0ee5",
   "surfaceEntries": [
     {
       "path": ".agents/plugins/marketplace.json",
@@ -135,7 +135,7 @@
     {
       "path": "CHANGELOG.md",
       "mode": "100644",
-      "sha256": "307688a91a329127fd100cf30213498947975dbdb90c4ccb686a65c5f99a7d5b"
+      "sha256": "964a72d9143b182cc1de1842cdcb8e102f736277af4c03ac7a0c5a5a1ebcec27"
     },
     {
       "path": "CLAUDE.md",
@@ -160,7 +160,7 @@
     {
       "path": "README.md",
       "mode": "100644",
-      "sha256": "8d9731009ed99f623837bf4d276fc7495faba0d2fa17cfa42b5c40870f5822d1"
+      "sha256": "b289805441ac54ffce561600ad95d8b79d0eaaae4e1409d96bf7834f28016b95"
     },
     {
       "path": "SECURITY.md",
@@ -345,7 +345,7 @@
     {
       "path": "dist/vendor/cli/package.json",
       "mode": "100644",
-      "sha256": "7ac74aa8fb3bbc53b4798aa486d8ce8db389bea769e2c18fde70d0173d2624a8"
+      "sha256": "65135bf8a02402cd96eb17ea6e45991fce44677da89e266676b736592dd6e5e9"
     },
     {
       "path": "docs/CLI_AUDIT_FINDINGS.md",
@@ -615,7 +615,7 @@
     {
       "path": "docs/product-truth/public-release-truth.json",
       "mode": "100644",
-      "sha256": "46c0bd24d4c9ef339121eb8b3ee2ccc201401581c0123880ae5e5f5abb4a26ca"
+      "sha256": "1df56a3eeae2190ebe60b7831b8c7d02d1c360b49cdbe730c16106463d33e518"
     },
     {
       "path": "docs/reference/SWARM-HOSTED-V1-HANDOFF.md",
@@ -836,6 +836,11 @@
       "path": "docs/release/MCP-0.8.5-RELEASE-NOTES.md",
       "mode": "100644",
       "sha256": "2328f39e16bf84bcff1ac36425acdb77b2504b35964b139f39e4ebde764bfedc"
+    },
+    {
+      "path": "docs/release/MCP-0.8.6-RELEASE-NOTES.md",
+      "mode": "100644",
+      "sha256": "fde519b131eee19e51a1e43ec01834b245fdbf6793dcc5cb4b50c184c0b90855"
     },
     {
       "path": "docs/release/MCP-COMPATIBILITY.md",
@@ -1073,6 +1078,11 @@
       "sha256": "d2754e04f077529daeaa3730f3e44e96c2a2e1cba76070f676e81685f6ed8024"
     },
     {
+      "path": "docs/release/OSS-0.8.6-RELEASE-NOTES.md",
+      "mode": "100644",
+      "sha256": "3be69ceb26cf6bce96dcce0d7548c454b449b33ea5e51a8d4e6aee70d1a7d328"
+    },
+    {
       "path": "docs/release/ROOT-DELIVERY-SLICE-MAP.md",
       "mode": "100644",
       "sha256": "6630b907658a938467fd04b8a2e9aecd25ab3102194baa15be13b561f2a7bbac"
@@ -1080,7 +1090,7 @@
     {
       "path": "docs/release/VERSION-LEDGER.md",
       "mode": "100644",
-      "sha256": "dedaef3cb0430b0110dde3aee70e4d39b68fa1131d4854e327d2d591826f0415"
+      "sha256": "6395a71f1d84688fe4ae56ccb547313f10ed4640994129b4fbb159a6557a0c21"
     },
     {
       "path": "docs/release/reliability-hardening/BASELINE.md",
@@ -1175,7 +1185,7 @@
     {
       "path": "package.json",
       "mode": "100644",
-      "sha256": "4fb6f75d7ff71a3d8e1d330b56277a21c6260be78a5608b11f30204fb920881f"
+      "sha256": "9deb5aead7690c3fe424d5056d587ef231dab4ac1b383bfe73bf93042f9ae0d9"
     },
     {
       "path": "packages/README.md",
@@ -1195,7 +1205,7 @@
     {
       "path": "packages/adapters/src/claude-cli.ts",
       "mode": "100644",
-      "sha256": "25f70143d8a6c1353ccae1a80148fb5dc3202c5e3d2b5ef2c9180e5c7543ebc9"
+      "sha256": "6dddd910c978c3bc94c1e93e8601f129f52503d72860782c33b4d153d9e91a19"
     },
     {
       "path": "packages/adapters/src/cli-bridge.ts",
@@ -1280,7 +1290,7 @@
     {
       "path": "packages/adapters/tests/codex-cli.test.ts",
       "mode": "100644",
-      "sha256": "553740e093a37d98580ac2f7d9d697b72eef277f6e22759b879a9096443dd875"
+      "sha256": "8706abc8abfcbf2454898e16608986af8fa741795e7482260b5866aa4a721412"
     },
     {
       "path": "packages/adapters/tests/codex-launcher.test.ts",
@@ -1395,12 +1405,12 @@
     {
       "path": "packages/cli/src/index.ts",
       "mode": "100644",
-      "sha256": "e95ae6c6b0788bc4ec9226490ae6c8b1f0861da777dd26ef6f4aee69a081b062"
+      "sha256": "8c33a069179398987ba827fa00334b417626d7291247e43b5db2215359436ec6"
     },
     {
       "path": "packages/cli/src/mcp-config.ts",
       "mode": "100644",
-      "sha256": "48c48b5cd2917ae9e298a1f66850d7fe4d0eb7440a803a3dda5f8af6931ee726"
+      "sha256": "fa6a3428da6f677de036987175f36b032487d1e5279873dc812446dade4d6f2c"
     },
     {
       "path": "packages/cli/src/mcp-install-state.ts",
@@ -1540,7 +1550,7 @@
     {
       "path": "packages/cli/src/verifier-input.ts",
       "mode": "100644",
-      "sha256": "af2c699b1b6abe1fcda49dfbd3dbfc99185fb13aa87fc7b14fe9ae4400cfdd7c"
+      "sha256": "a7eeb7d5a4add5a538ab11fd2f540d35257ef21921d99b8fa87e46fd63429e05"
     },
     {
       "path": "packages/cli/src/workflow-state.ts",
@@ -1610,7 +1620,7 @@
     {
       "path": "packages/cli/tests/mcp-config.test.ts",
       "mode": "100644",
-      "sha256": "1394d966952485bdeb6c379b0496bd62e630b8a2057dd5cec3f0b837b5de4ee3"
+      "sha256": "dcd05035592be5dd2eb300504e5fac12b9de86370d8589690c17a4fe5fbb7a59"
     },
     {
       "path": "packages/cli/tests/mcp-host-hint.test.ts",
@@ -1635,7 +1645,7 @@
     {
       "path": "packages/cli/tests/operator-commands.test.ts",
       "mode": "100644",
-      "sha256": "b407bf246fcb6bbacff95b5bca004ec2e64eaad71c1a4f0a25ca894f64b500c3"
+      "sha256": "015b99d6ef2adc9a87f3f25713af99e3c27b4931a61c4087415f7fb6e2e74374"
     },
     {
       "path": "packages/cli/tests/outcomes-command.test.ts",
@@ -1765,7 +1775,7 @@
     {
       "path": "packages/cli/tests/verifier-input.test.ts",
       "mode": "100644",
-      "sha256": "5bf27ef7299923f7074b099e9dfb48d18ee3ee67e97987797a61429807e80058"
+      "sha256": "4e97e4a056387a72a0dcd8551779b9f116be1fbb59fcf8e5c5be05bff240d59e"
     },
     {
       "path": "packages/cli/tests/version-enforcement.test.ts",
@@ -2095,7 +2105,7 @@
     {
       "path": "packages/core/src/grounding.ts",
       "mode": "100644",
-      "sha256": "087d1e35b2245673d220ff6c34f34ca90c1f03431f6dfe958fd2bff578ef3b99"
+      "sha256": "8cc361d039771f0af078874f0d720e06e758171bc9924437d26a8551256becf8"
     },
     {
       "path": "packages/core/src/identity.ts",
@@ -2395,7 +2405,7 @@
     {
       "path": "packages/core/tests/grounding.test.ts",
       "mode": "100644",
-      "sha256": "d91e3c70287a364f532a163527884a39b8703c46fe8e5aff87f5e3f93aa113bc"
+      "sha256": "b589912c0e5d2deaa79696771cfef1877bdb86bd8acf27898bac90982f142bd6"
     },
     {
       "path": "packages/core/tests/helpers/swarm-hosted-fixture-builder.ts",
@@ -2605,7 +2615,7 @@
     {
       "path": "packages/mcp/mcpb/manifest.json",
       "mode": "100644",
-      "sha256": "dbb9e983ced5e95ee0cd62a11ae2c110429417390996c68afa07d2ee431d643d"
+      "sha256": "9a4e9ebf315ff91340ddd5f054855df0e8f41571a35acc86cf0b9931f39c6725"
     },
     {
       "path": "packages/mcp/mcpb/smoke-mcpb.mjs",
@@ -2615,7 +2625,7 @@
     {
       "path": "packages/mcp/package.json",
       "mode": "100644",
-      "sha256": "278f402a10fb3848b2b860f74721f7888f7c1dc5e6c082f620c89897003b24a3"
+      "sha256": "25be47830df863cec12b489eeebe3280d4177006c1c566e2a142e4c6698dc916"
     },
     {
       "path": "packages/mcp/scripts/build-package-lib.mjs",
@@ -2670,12 +2680,12 @@
     {
       "path": "packages/mcp/server.json",
       "mode": "100644",
-      "sha256": "c574f94e5a9d2510c0ae238a30001021f6af2547b86e74301558d6c8c3bed3aa"
+      "sha256": "2b61f2091085f6139676cc667c43536fe0ac566eb5d40a261af24364d0995f5d"
     },
     {
       "path": "packages/mcp/src/arcade/capabilities.ts",
       "mode": "100644",
-      "sha256": "b84a89e50ad4e0ae51cff2d35a6d224cef40605bf4c5e6041eef52951137f59a"
+      "sha256": "e65a8edc8b73121216e8b65df40d16ecccfd2a7b58d6cfcca6e5e4015db7c47f"
     },
     {
       "path": "packages/mcp/src/arcade/resource.ts",
@@ -2700,7 +2710,7 @@
     {
       "path": "packages/mcp/src/package-version.ts",
       "mode": "100644",
-      "sha256": "2ac49ffe61d31ff233ad3611c021bc22339df0c6ac73c9767b61920aff73a128"
+      "sha256": "8514ee1af1451d95e4260991d1f96421b01d793d0ede3c738c6a946d21500b0d"
     },
     {
       "path": "packages/mcp/src/prompts.ts",
@@ -2715,12 +2725,12 @@
     {
       "path": "packages/mcp/src/server-validation.ts",
       "mode": "100644",
-      "sha256": "41bbbcd3f40ac09f933ca4bbfa1766fcbe844d56ac92c92debff014cdeecc5dd"
+      "sha256": "3f128552b44ffc29de2a8adcb259ded44b8c0344d75aace0ce267c15fe80ed78"
     },
     {
       "path": "packages/mcp/src/server.ts",
       "mode": "100644",
-      "sha256": "b813c78d4af3865597345162052ea2a93b2cd16daf2ba4a524c5b7ff14198cde"
+      "sha256": "c2e671401fc0b3db2fdafa40cb42093469f548f3077484d5c1c1f11c52109961"
     },
     {
       "path": "packages/mcp/src/tools/doctor.ts",
@@ -2780,7 +2790,7 @@
     {
       "path": "packages/mcp/src/tools/pr-tools.ts",
       "mode": "100644",
-      "sha256": "bd488dde1786b2efdb47db85d8c1e24b0d2bd92f5b15e8aab6a78f19f0b4b240"
+      "sha256": "e2eea88bafd15190e09f20469aa3fbae6f2f47708b58488bb9d4b0857175b801"
     },
     {
       "path": "packages/mcp/src/tools/preflight.ts",
@@ -2790,7 +2800,7 @@
     {
       "path": "packages/mcp/src/tools/run-controls.ts",
       "mode": "100644",
-      "sha256": "8ee0aa533973e78afdfc316364e4212a274819c46c6b64a9ad8fb63c6ece5be8"
+      "sha256": "8ae32912e3d4f04c486d88bb11a1f50cc1b28feb89d31a252a78eaa30856db13"
     },
     {
       "path": "packages/mcp/src/tools/run-dossier.ts",
@@ -2855,7 +2865,7 @@
     {
       "path": "packages/mcp/tests/arcade-app.test.ts",
       "mode": "100644",
-      "sha256": "e7677bc94c1cfa757246dddf91b81400f63b85215658f1eac3e7b5c3e0e5a84a"
+      "sha256": "218a9b80fba99deef417e4fa01004760d8ea79ab958c6cbfa02d326ec5fd4560"
     },
     {
       "path": "packages/mcp/tests/build-package.test.ts",
@@ -2868,6 +2878,11 @@
       "sha256": "7da5d6140e4978c029f753e9d332ebf170ed077bba017eaaf36ad00031f31e62"
     },
     {
+      "path": "packages/mcp/tests/mcp-contract.test.ts",
+      "mode": "100644",
+      "sha256": "09ee25206671252a760efc7e2348bf82d018992fcf82bdcfb8fdc0d79b2b3f77"
+    },
+    {
       "path": "packages/mcp/tests/mcp-discovery.test.ts",
       "mode": "100644",
       "sha256": "9d0dc144f201780f140f86f86588c8d60ee59e6ce5c8cf0ba57b8a2adb7c4cbd"
@@ -2876,6 +2891,11 @@
       "path": "packages/mcp/tests/mcp-tools.test.ts",
       "mode": "100644",
       "sha256": "88b6a1bce0f8244dc82fec67fa1522d6c46cd74d2b3920b2951628959be622fa"
+    },
+    {
+      "path": "packages/mcp/tests/pr-tools.test.ts",
+      "mode": "100644",
+      "sha256": "13b8e25f53c356af176ef36f4b5a6ff9fd5a14ed9b18577af64b0ee70fd9a4d8"
     },
     {
       "path": "packages/mcp/tests/run-dossier.test.ts",
@@ -3000,12 +3020,12 @@
     {
       "path": "plugins/martinloop/.claude-plugin/plugin.json",
       "mode": "100644",
-      "sha256": "63de66361e39735ade73e1945f452f0b60ed493144b2a53841d05d971c8cd83e"
+      "sha256": "8b94f36a8cd9ca8ff82c298f5f338906b406a053d8a4185e408bcaf2bd686e52"
     },
     {
       "path": "plugins/martinloop/.codex-plugin/plugin.json",
       "mode": "100644",
-      "sha256": "195f09bf90adea111e6140abf2a9739c6e5aa43985cac51c5fa65f95a09fd492"
+      "sha256": "ec63126c5bf18320abd706c96410cd32d7cf2114b4fd4269c958033a0d0a3491"
     },
     {
       "path": "plugins/martinloop/.codexignore",
@@ -3015,7 +3035,7 @@
     {
       "path": "plugins/martinloop/.mcp.json",
       "mode": "100644",
-      "sha256": "8dad507a6d22526b2c43d68df02e007ab340dafabf42933c2124c8c9e270d21e"
+      "sha256": "c86d507b1e28e553d4b36835813949362a90b7c3516636dc1b5faa26ebd4fdd3"
     },
     {
       "path": "plugins/martinloop/LICENSE",
@@ -3045,7 +3065,7 @@
     {
       "path": "plugins/martinloop/plugin.json",
       "mode": "100644",
-      "sha256": "63de66361e39735ade73e1945f452f0b60ed493144b2a53841d05d971c8cd83e"
+      "sha256": "8b94f36a8cd9ca8ff82c298f5f338906b406a053d8a4185e408bcaf2bd686e52"
     },
     {
       "path": "plugins/martinloop/skills/martinloop-govern/SKILL.md",
@@ -3654,9 +3674,9 @@
     {
       "path": "packages/cli/src/mcp-config.ts",
       "kind": "content",
-      "privateSha256": "48c48b5cd2917ae9e298a1f66850d7fe4d0eb7440a803a3dda5f8af6931ee726",
+      "privateSha256": "fa6a3428da6f677de036987175f36b032487d1e5279873dc812446dade4d6f2c",
       "privateMode": "100644",
-      "publicSha256": "edf1ade164300da759cc9e51d06ec8316d02ce62ee753cafb54b9e0dd7e41e35",
+      "publicSha256": "a6737bc00dfa6ba82f940a2801e010b558a707febf8c471e8727c9808efcb9ff",
       "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
       "reviewedBy": "Vakeesan Mahalingam",
       "publicMode": "100644"
@@ -3664,9 +3684,9 @@
     {
       "path": "packages/cli/tests/mcp-config.test.ts",
       "kind": "content",
-      "privateSha256": "1394d966952485bdeb6c379b0496bd62e630b8a2057dd5cec3f0b837b5de4ee3",
+      "privateSha256": "dcd05035592be5dd2eb300504e5fac12b9de86370d8589690c17a4fe5fbb7a59",
       "privateMode": "100644",
-      "publicSha256": "b031be06c7398ce0c94408f32f13c2a17991e1730839effce653c5396aa2109b",
+      "publicSha256": "b17f6a2e4ebc08bd54c4d7bf2e1f6372692794cbf822928c2f85ab8ac05019c8",
       "reason": "Intentional public/private content divergence: public copy has distribution-specific adaptations",
       "reviewedBy": "Vakeesan Mahalingam",
       "publicMode": "100644"

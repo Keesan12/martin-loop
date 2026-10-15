@@ -218,6 +218,70 @@ describe("capability-driven Codex adapter", () => {
     expect(calls).toHaveLength(1);
   });
 
+  describe("failed Codex turns never reach the verifier", () => {
+    const verifier = process.platform === "win32" ? "cmd /c exit 0" : "true";
+    const usageLimit = "You've hit your usage limit. Try again later.";
+    const failedTurn = [
+      JSON.stringify({ type: "thread.started", thread_id: "thread_fail" }),
+      JSON.stringify({ type: "turn.started" }),
+      JSON.stringify({ type: "error", message: usageLimit }),
+      JSON.stringify({ type: "turn.failed", error: { message: usageLimit } })
+    ].join("\n");
+
+    async function runWith(stdout: string, exitCode: number) {
+      const calls: SpawnCall[] = [];
+      const adapter = createCodexCliAdapter({
+        capabilityProfile: negotiatedProfile(),
+        autonomyResolution: negotiatedAutonomy(),
+        spawnImpl: createScriptedSpawn(calls, [{ stdout, exitCode }, { stdout: "ok\n", exitCode: 0 }])
+      });
+      return { result: await adapter.execute(request([verifier])), calls };
+    }
+
+    it.each([1, 0])("fails a turn.failed stream (exit %i) without running the verifier", async (exitCode) => {
+      const { result, calls } = await runWith(failedTurn, exitCode);
+
+      expect(result.status).toBe("failed");
+      expect(result.verification.passed).toBe(false);
+      expect(result.verification.summary).toContain("Verifier not run");
+      expect(result.failure?.message).toContain("usage limit");
+      expect(calls).toHaveLength(1);
+    });
+
+    it("fails an error event without turn.completed and a nonzero exit", async () => {
+      const stdout = [
+        JSON.stringify({ type: "thread.started", thread_id: "thread_err" }),
+        JSON.stringify({ type: "error", message: "stream disconnected" })
+      ].join("\n");
+      const { result, calls } = await runWith(stdout, 1);
+
+      expect(result.status).toBe("failed");
+      expect(result.verification.passed).toBe(false);
+      expect(calls).toHaveLength(1);
+    });
+
+    it("keeps a settled turn.completed attempt even when the process exits nonzero", async () => {
+      const stdout = [
+        JSON.stringify({ type: "thread.started", thread_id: "thread_ok" }),
+        JSON.stringify({ type: "item.completed", item: { id: "i1", type: "agent_message", text: "Patched." } }),
+        JSON.stringify({ type: "turn.completed", usage: { input_tokens: 10, output_tokens: 5 } })
+      ].join("\n");
+      const { result, calls } = await runWith(stdout, 1);
+
+      expect(result.status).toBe("completed");
+      expect(result.verification.passed).toBe(true);
+      expect(calls).toHaveLength(2);
+    });
+
+    it("keeps exit-0 runs without failure events unchanged", async () => {
+      const stdout = JSON.stringify({ type: "item.completed", item: { id: "i1", type: "agent_message", text: "Done." } });
+      const { result, calls } = await runWith(stdout, 0);
+
+      expect(result.status).toBe("completed");
+      expect(calls).toHaveLength(2);
+    });
+  });
+
   it("settles Codex JSONL usage through an absolute selected binary", async () => {
     const calls: SpawnCall[] = [];
     const verifier = process.platform === "win32" ? "cmd /c exit 0" : "true";

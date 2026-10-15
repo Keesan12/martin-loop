@@ -1,9 +1,11 @@
 import { CliCommandError } from "./ux.js";
 
-// Options that only MartinLoop itself accepts. When one of these appears inside a verifier
-// value, the operator's shell folded later MartinLoop flags into the verifier string. On
-// Windows this happens when a stray quote reaches the npm `.cmd` shim: cmd.exe opens a quoted
-// region and node receives every remaining flag as part of the `--verify` value.
+// Options distinctive to MartinLoop. When one of these appears inside a verifier value, the
+// operator's shell folded later MartinLoop flags into the verifier string. On Windows this
+// happens when a stray quote reaches the npm `.cmd` shim: cmd.exe opens a quoted region and
+// node receives every remaining flag as part of the `--verify` value. Generic names that other
+// tools also accept (`--verify`, `--max-tokens`, `--max-iterations`) are deliberately absent so
+// a verifier program's own flags are never rejected.
 const MARTIN_OWNED_OPTIONS = new Set([
   "--allow-network-domain",
   "--allow-path",
@@ -14,18 +16,34 @@ const MARTIN_OWNED_OPTIONS = new Set([
   "--baseline-usd",
   "--budget-usd",
   "--deny-path",
-  "--engine",
   "--execution-profile",
-  "--max-iterations",
-  "--max-tokens",
   "--provider-execution-timeout-ms",
   "--runs-dir",
   "--soft-limit-usd",
   "--unsafe-allow-unguarded-run",
-  "--verify",
   "--verify-only",
   "--verify-timeout-ms",
 ]);
+
+// `--engine` is common in verifier programs (browsers, test runners); it only signals a fold
+// when its value is one of MartinLoop's own engines.
+const MARTIN_ENGINES = new Set(["auto", "claude", "codex", "gemini", "openai"]);
+
+function foldedMartinOptions(tokens: string[]): string[] {
+  const folded: string[] = [];
+  tokens.forEach((token, index) => {
+    const [name, inlineValue] = token.split("=", 2);
+    if (name && MARTIN_OWNED_OPTIONS.has(name)) {
+      folded.push(name);
+      return;
+    }
+    if (name === "--engine") {
+      const value = (inlineValue ?? tokens[index + 1] ?? "").toLowerCase();
+      if (MARTIN_ENGINES.has(value)) folded.push(`--engine ${value}`);
+    }
+  });
+  return folded;
+}
 
 // Verifiers that intentionally invoke MartinLoop (for example `martin outcomes verify`) may
 // legitimately carry MartinLoop options.
@@ -48,7 +66,7 @@ export function describeMalformedVerifier(command: string): string | undefined {
     return undefined;
   }
 
-  const swallowed = tokens.filter((token) => MARTIN_OWNED_OPTIONS.has(token.split("=")[0] ?? token));
+  const swallowed = foldedMartinOptions(tokens);
   if (swallowed.length > 0) {
     return `--verify value contains MartinLoop option(s) ${swallowed.join(", ")}: ${command}. `
       + "The shell merged later flags into the verifier, usually because of a stray quote.";

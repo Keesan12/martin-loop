@@ -75,6 +75,23 @@ export async function martinCreatePrTool(
     };
   }
 
+  // Opening a PR claims the work is done. Only a VERIFIED run with intact receipts qualifies.
+  const dossier = await martinRunDossierTool(input);
+  const outcome = dossier.verifiedHandoff.outcome;
+  const integrity = dossier.receiptIntegrity.state;
+  if (outcome !== "VERIFIED" || integrity !== "verified") {
+    throw new MartinToolError(
+      "policy_blocked",
+      `Refusing to open a PR: run ${summary.loopId} is ${outcome} with receipt integrity ${integrity}.`,
+      {
+        category: "policy_blocked",
+        suggestion: "Open a PR only from a VERIFIED run, or rerun martin_create_pr with execute=false to preview it.",
+        retryable: false,
+        details: { outcome, receiptIntegrity: integrity }
+      }
+    );
+  }
+
   const gh = detectCliAvailability("gh");
   if (!gh.available) {
     throw new MartinToolError("engine_unavailable", "GitHub CLI is not available on PATH.", {

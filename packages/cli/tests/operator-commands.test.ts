@@ -345,9 +345,10 @@ describe("operator commands", () => {
       const attempt = JSON.parse(
         (await executeCli(["--json", "runs", "attempt", "--loop-id", loop.loopId])).stdout
       );
-      const verify = JSON.parse(
-        (await executeCli(["--json", "runs", "verify", "--loop-id", loop.loopId])).stdout
-      );
+      const verifyResult = await executeCli(["--json", "runs", "verify", "--loop-id", loop.loopId]);
+      const verify = JSON.parse(verifyResult.stdout);
+      // Missing integrity material and a failed verification are reported, not exit failures.
+      expect(verifyResult.exitCode).toBe(0);
       const triage = JSON.parse((await executeCli(["--json", "triage"])).stdout);
 
       expect(dossier.command).toBe("dossier");
@@ -420,9 +421,10 @@ describe("operator commands", () => {
 
       const dossier = JSON.parse((await executeCli(["--json", "dossier", "--loop-id", loop.loopId])).stdout);
       const getRun = JSON.parse((await executeCli(["--json", "runs", "get", "--loop-id", loop.loopId])).stdout);
-      const verify = JSON.parse(
-        (await executeCli(["--json", "runs", "verify", "--loop-id", loop.loopId])).stdout
-      );
+      const verifyResult = await executeCli(["--json", "runs", "verify", "--loop-id", loop.loopId]);
+      const verify = JSON.parse(verifyResult.stdout);
+      // A tampered record must fail exit-code-only gates, not just report it in JSON.
+      expect(verifyResult.exitCode).toBe(7);
 
       for (const payload of [dossier, getRun, verify]) {
         expect(payload.receiptIntegrity.state).toBe("tamper_detected");
@@ -563,7 +565,17 @@ describe("operator commands", () => {
     expect(codex.content).toContain("enabled_tools");
     expect(claude.command).toBe("mcp_print_config");
     expect(claude.content).toContain("\"martin-loop\"");
-    expect(claude.content).toContain("\"MARTIN_RUNS_DIR\"");
+    // Project configs are committed: the default runs root and cwd stay out of them.
+    expect(claude.content).not.toContain("\"MARTIN_RUNS_DIR\"");
+    expect(claude.content).not.toContain("\"cwd\"");
+    const claudeExplicitRuns = JSON.parse(
+      (
+        await executeCli([
+          "--json", "mcp", "print-config", "--host", "claude", "--scope", "project", "--runs-dir", "chosen-runs"
+        ])
+      ).stdout
+    );
+    expect(claudeExplicitRuns.content).toContain("\"MARTIN_RUNS_DIR\"");
     expect(gemini.command).toBe("mcp_print_config");
     expect(gemini.content).toContain("\"httpUrl\"");
     expect(gemini.content).toContain("\"includeTools\"");

@@ -38,6 +38,12 @@ export interface MartinRunControlOutput {
   loopId: string;
   requestedAction: MartinControlAction;
   state: MartinRunControlState;
+  // The receipt recorded by this request.
+  action: MartinControlAction;
+  controlId: string;
+  requestedAt: string;
+  reason?: string;
+  requestedBy?: string;
 }
 
 export async function createRunControlReceipt(
@@ -75,7 +81,12 @@ export async function createRunControlReceipt(
           : `Continue request recorded for ${detail.loop.loopId}.`,
     loopId: detail.loop.loopId,
     requestedAction: action,
-    state
+    state,
+    action: receipt.action,
+    controlId: receipt.controlId,
+    requestedAt: receipt.requestedAt,
+    ...(receipt.reason ? { reason: receipt.reason } : {}),
+    ...(receipt.requestedBy ? { requestedBy: receipt.requestedBy } : {})
   };
 }
 

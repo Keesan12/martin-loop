@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [0.8.6] - 2026-10-15
+
+### Fixed
+- A Codex turn that fails (for example on a usage limit, authentication, or network error) now fails the attempt before verification. Previously the verifier could pass against the unchanged workspace and the run was reported as verified.
+- Patch grounding no longer rejects built-in callables such as `require`, `setTimeout`, `parseInt`, or test-runner globals, or methods defined by the patch, so correct changes in CommonJS projects are kept.
+- `--verify` accepts verifier programs whose own flags share generic names such as `--engine`, `--verify`, `--max-tokens`, or `--max-iterations`. The stray-quote flag merge on Windows is still rejected.
+- `runs verify` exits with code 7 when a persisted record no longer matches its signed snapshot (`tamper_detected`).
+- Project-scoped MCP configs for every host omit the installing machine's working directory and default runs root. An explicit `--runs-dir` is still written.
+- MCP: `martin_preflight` returns results on hosts with Codex installed; `martin_dossier`, `martin_pr_summary`, `martin_create_pr`, `martin_review_pr`, `martin_pause`, `martin_cancel`, and `martin_continue` accept every documented argument; `martin_arcade_status` reports runs that need review.
+- MCP: `martin_create_pr` with `execute: true` opens a pull request only for a verified run with intact receipts.
+
 ## [0.8.5] - 2026-10-14
 
 ### Fixed

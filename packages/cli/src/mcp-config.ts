@@ -535,10 +535,7 @@ function buildClaudeConfigSnippet(
           [serverId]: {
             command: launcher.command,
             args: launcher.args,
-            cwd: input.cwd,
-            env: {
-              MARTIN_RUNS_DIR: input.runsRoot
-            }
+            ...localServerPlacement(input, { includeCwd: true })
           }
         }
       },
@@ -589,10 +586,7 @@ function buildGeminiConfigSnippet(
           [serverId]: {
             command: launcher.command,
             args: launcher.args,
-            cwd: input.cwd,
-            env: {
-              MARTIN_RUNS_DIR: input.runsRoot
-            },
+            ...localServerPlacement(input, { includeCwd: true }),
             includeTools: tools
           }
         }
@@ -633,10 +627,7 @@ function buildGenericConfigSnippet(
               : {
                   command: launcher.command,
                   args: launcher.args,
-                  cwd: input.cwd,
-                  env: {
-                    MARTIN_RUNS_DIR: input.runsRoot
-                  },
+                  ...localServerPlacement(input, { includeCwd: true }),
                   includeTools: tools
                 }
         }
@@ -741,9 +732,7 @@ function buildCursorConfigSnippet(
               : {
                   command: launcher.command,
                   args: launcher.args,
-                  env: {
-                    MARTIN_RUNS_DIR: input.runsRoot
-                  }
+                  ...localServerPlacement(input, { includeCwd: false })
                 })
           }
         }
@@ -775,9 +764,7 @@ function buildCopilotConfigSnippet(
               : {
                   command: launcher.command,
                   args: launcher.args,
-                  env: {
-                    MARTIN_RUNS_DIR: input.runsRoot
-                  }
+                  ...localServerPlacement(input, { includeCwd: false })
                 })
           }
         }
@@ -811,9 +798,7 @@ function buildContinueConfigSnippet(
               : {
                   command: launcher.command,
                   args: launcher.args,
-                  env: {
-                    MARTIN_RUNS_DIR: input.runsRoot
-                  }
+                  ...localServerPlacement(input, { includeCwd: false })
                 }),
             includeTools: tools
           }
@@ -827,6 +812,22 @@ function buildContinueConfigSnippet(
 
 function usesWindowsSeparators(pathValue: string): boolean {
   return /^[A-Za-z]:([\\/]|$)/u.test(pathValue) || pathValue.includes("\\");
+}
+
+/**
+ * Where a local stdio server runs and which runs root it uses. Project configs are committed
+ * and shared, so they never embed the installer's working directory, and they only embed a
+ * runs root the operator chose explicitly; the default runs root is what the server uses anyway.
+ */
+function localServerPlacement(
+  input: Pick<MartinMcpConfigInput, "scope" | "cwd" | "runsRoot" | "runsRootSource">,
+  options: { includeCwd: boolean }
+): { cwd?: string; env?: { MARTIN_RUNS_DIR: string } } {
+  const project = input.scope === "project";
+  return {
+    ...(options.includeCwd && !project ? { cwd: input.cwd } : {}),
+    ...(project && input.runsRootSource === "default" ? {} : { env: { MARTIN_RUNS_DIR: input.runsRoot } })
+  };
 }
 
 function buildStdioLauncher(platform: MartinMcpPlatform): {

@@ -350,6 +350,37 @@ function extractUsage(
   });
 }
 
+/**
+ * Returns the provider's failure message when the Codex JSONL stream shows a failed turn:
+ * an explicit `turn.failed`, or an `error` event with no `turn.completed`. Undefined otherwise.
+ */
+function findCodexTurnFailure(stdout: string): string | undefined {
+  let completed = false;
+  let turnFailed = false;
+  let message: string | undefined;
+  for (const line of stdout.split(/\r?\n/u)) {
+    let event: { type?: string; message?: unknown; error?: { message?: unknown } };
+    try {
+      event = JSON.parse(line.trim()) as typeof event;
+    } catch {
+      continue;
+    }
+    if (event.type === "turn.completed") completed = true;
+    if (event.type === "turn.failed") {
+      turnFailed = true;
+      message = String(event.error?.message ?? message ?? "Codex turn failed.");
+    } else if (event.type === "error") {
+      message ??= String(event.message ?? "Codex reported an error.");
+    }
+  }
+  if (turnFailed) return message;
+  return message !== undefined && !completed ? message : undefined;
+}
+
+function codexTurnCompleted(stdout: string): boolean {
+  return /"type"\s*:\s*"turn\.completed"/u.test(stdout);
+}
+
 function extractCodexJsonlResult(
   stdout: string,
   modelLabel: string | undefined
@@ -1230,9 +1261,29 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
         !supportsJsonOutput && options.command === "gemini"
           ? extractGeminiJsonResult(agentResult.stdout, options.model)
           : undefined;
+      // A failed Codex turn did no verified work: never let the verifier run against an
+      // untouched workspace and certify it.
+      const codexTurnFailure =
+        options.command === "codex" ? findCodexTurnFailure(agentResult.stdout) : undefined;
+      if (codexTurnFailure !== undefined) {
+        const failureMessage = `codex turn failed: ${codexTurnFailure}`;
+        return {
+          status: "failed",
+          summary: "codex turn failed before verifier execution.",
+          usage: codexJsonlResult?.usage ?? normalizeUsage({
+            actualUsd: 0,
+            tokensIn: 0,
+            tokensOut: 0,
+            provenance: "unavailable"
+          }),
+          verification: { passed: false, summary: `Verifier not run: ${failureMessage}` },
+          failure: { message: failureMessage }
+        };
+      }
       const producedStructuredCompletion =
         parsed?.result !== undefined ||
-        codexJsonlResult !== undefined ||
+        (codexJsonlResult !== undefined &&
+          (agentResult.exitCode === 0 || codexTurnCompleted(agentResult.stdout))) ||
         geminiJsonResult !== undefined;
       if (agentResult.exitCode !== 0 && !producedStructuredCompletion) {
         const failureMessage = formatPreVerifierSubprocessFailure(

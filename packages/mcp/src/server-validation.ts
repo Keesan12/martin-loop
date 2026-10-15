@@ -607,7 +607,7 @@ function validateGetVerificationResultsInput(
 function validateRunDossierInput(args: unknown): MartinRunDossierInput {
   const record = requireObject(args);
   assertAllowedKeys(record, ["file", "loopId", "runsDir", "latest", "format"]);
-  const base = validateGetRunInput(args);
+  const base = validateGetRunInput(pickKeys(record, RUN_SELECTOR_KEYS));
   return {
     ...base,
     ...optionalEnumAsObject(record.format, "format", ["json", "md", "github-pr"] as const)
@@ -621,7 +621,7 @@ function validateEvalInput(args: unknown): MartinEvalInput {
 function validateRunControlInput(args: unknown): MartinRunControlRequestInput {
   const record = requireObject(args);
   assertAllowedKeys(record, ["file", "loopId", "runsDir", "latest", "reason", "requestedBy"]);
-  const base = validateGetRunInput(args);
+  const base = validateGetRunInput(pickKeys(record, RUN_SELECTOR_KEYS));
   return {
     ...base,
     ...optionalString(record.reason, "reason"),
@@ -632,7 +632,7 @@ function validateRunControlInput(args: unknown): MartinRunControlRequestInput {
 function validateCreatePrInput(args: unknown): MartinCreatePrInput {
   const record = requireObject(args);
   assertAllowedKeys(record, ["file", "loopId", "runsDir", "latest", "format", "title", "base", "execute"]);
-  const base = validateRunDossierInput(args);
+  const base = validateRunDossierInput(pickKeys(record, [...RUN_SELECTOR_KEYS, "format"]));
   return {
     ...base,
     ...optionalString(record.title, "title"),
@@ -644,11 +644,18 @@ function validateCreatePrInput(args: unknown): MartinCreatePrInput {
 function validateReviewPrInput(args: unknown): MartinReviewPrInput {
   const record = requireObject(args);
   assertAllowedKeys(record, ["file", "loopId", "runsDir", "latest", "format", "prBody"]);
-  const base = validateRunDossierInput(args);
+  const base = validateRunDossierInput(pickKeys(record, [...RUN_SELECTOR_KEYS, "format"]));
   return {
     ...base,
     ...optionalString(record.prBody, "prBody")
   };
+}
+
+const RUN_SELECTOR_KEYS = ["file", "loopId", "runsDir", "latest"] as const;
+
+// Base validators check their own allowed keys, so composed validators hand them only those keys.
+function pickKeys(record: Record<string, unknown>, keys: readonly string[]): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(record).filter(([key]) => keys.includes(key)));
 }
 
 function requireObject(value: unknown): Record<string, unknown> {
