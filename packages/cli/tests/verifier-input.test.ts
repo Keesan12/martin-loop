@@ -100,6 +100,32 @@ describe("malformed verifier input", () => {
     );
   });
 
+  it.each([
+    "node ./verify.js --engine browser",
+    "npm test -- --engine chromium",
+    "node eval.js --max-tokens 100 --max-iterations 3",
+    "npm run e2e -- --verify",
+    "playwright test --project=chromium --engine webkit",
+  ])("keeps a verifier whose own flags share a generic name: %j", (verifier) => {
+    expect(parseCliArguments(["preflight", "Valid verifier", "--engine", "codex", "--verify", verifier, "--budget-usd", "1"])).toEqual(
+      expect.objectContaining({
+        request: expect.objectContaining({ verificationPlan: [verifier], engine: "codex" }),
+      })
+    );
+  });
+
+  it.each([
+    ["unterminated --budget-usd 1 --json", /--budget-usd/u],
+    ["npm test --engine codex", /--engine codex/u],
+    ["npm test --engine=claude", /--engine=claude/u],
+    ["npm test --deny-path secrets/**", /--deny-path/u],
+    ["npm test --runs-dir ./runs", /--runs-dir/u],
+  ])("still rejects a MartinLoop flag folded into the verifier: %j", (verifier, named) => {
+    expect(() => parseCliArguments(["preflight", "Folded", "--verify", verifier])).toThrow(
+      expect.objectContaining({ category: "invalid_input", message: expect.stringMatching(named) })
+    );
+  });
+
   it("keeps following flags parsed when the verifier is well formed", () => {
     expect(parseCliArguments([
       "preflight", "Flags stay flags",

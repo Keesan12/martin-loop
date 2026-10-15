@@ -170,6 +170,97 @@ describe("scanPatchForGroundingViolations", () => {
     expect(result.resolvedFiles).toContain("packages/contracts/src/agent-execution.ts");
   });
 
+  describe("language and runtime globals", () => {
+    async function commonJsIndex() {
+      const root = await mkdtemp(join(tmpdir(), "martin-scan-cjs-"));
+      await writeFile(join(root, "math.js"), "function add(a,b){return a+b}\nmodule.exports={add};\n");
+      await writeFile(join(root, "math.test.js"), "const test=require('node:test');\nconst {add}=require('./math');\n");
+      return buildRepoGroundingIndex(root);
+    }
+
+    it("accepts a CommonJS patch (require is a Node global)", async () => {
+      const index = await commonJsIndex();
+      const diff = `--- a/math.js
++++ b/math.js
+@@ -1,2 +1,3 @@
+ function add(a,b){return a+b}
+-module.exports={add};
++function subtract(a,b){return a-b}
++module.exports={add,subtract};
+--- a/math.test.js
++++ b/math.test.js
+@@ -1,2 +1,3 @@
+ const test=require('node:test');
+-const {add}=require('./math');
++const {add,subtract}=require('./math');
++test('subtract',()=>require('node:assert').equal(subtract(5,2),3));`;
+
+      const result = scanPatchForGroundingViolations(diff, index, { allowedPaths: ["math.js", "math.test.js"] });
+
+      expect(result.violations).toEqual([]);
+    });
+
+    it("accepts standard runtime and test-runner globals", async () => {
+      const index = await commonJsIndex();
+      const diff = `--- a/math.js
++++ b/math.js
+@@ -1,2 +1,12 @@
+ function add(a,b){return a+b}
++setTimeout(() => clearTimeout(0), 1);
++const n = parseInt("4", 10) + parseFloat("1.5");
++queueMicrotask(() => structuredClone({ n }));
++const url = encodeURIComponent(decodeURIComponent("a%20b"));
++describe("math", () => { beforeEach(() => {}); expect(add(1, 1)).toBe(2); });
++assert(add(1, 1) === 2);
++class Child extends Base { constructor() { super(); } }
++fetch(url);
++module.exports={add};`;
+
+      const result = scanPatchForGroundingViolations(diff, index, { allowedPaths: ["math.js"] });
+
+      expect(result.violations.filter((v) => v.kind === "symbol_not_found")).toEqual([]);
+    });
+
+    it("accepts class and object method definitions added by the patch", async () => {
+      const index = await commonJsIndex();
+      const diff = `--- a/math.js
++++ b/math.js
+@@ -1,2 +1,12 @@
+ function add(a,b){return a+b}
++class Calculator {
++  multiplyValues(a, b) {
++    return a * b;
++  }
++  static async divideValues(a, b) {
++    return a / b;
++  }
++}
++const helpers = { squareValue(n) { return n * n; } };
++console.log(new Calculator().multiplyValues(2, 3), helpers.squareValue(4));
+ module.exports={add};`;
+
+      const result = scanPatchForGroundingViolations(diff, index, { allowedPaths: ["math.js"] });
+
+      expect(result.violations).toEqual([]);
+    });
+
+    it("still flags a call to a function that exists nowhere", async () => {
+      const index = await commonJsIndex();
+      const diff = `--- a/math.js
++++ b/math.js
+@@ -1,2 +1,3 @@
+ function add(a,b){return a+b}
++const value = frobnicateWidgetTotals(add(1, 2));
+ module.exports={add};`;
+
+      const result = scanPatchForGroundingViolations(diff, index, { allowedPaths: ["math.js"] });
+
+      expect(result.violations).toEqual([
+        expect.objectContaining({ kind: "symbol_not_found", reference: "frobnicateWidgetTotals" })
+      ]);
+    });
+  });
+
   it("resolves a relative import between two files added by the same patch", async () => {
     const root = await mkdtemp(join(tmpdir(), "martin-scan-new-import-"));
     await mkdir(join(root, "src"), { recursive: true });

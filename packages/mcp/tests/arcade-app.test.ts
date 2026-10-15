@@ -21,7 +21,7 @@ const appCapabilities = {
   }
 };
 
-function makeDossier(lifecycleState: string, outcome: "VERIFIED" | "STOPPED" | "NEEDS REVIEW") {
+function makeDossier(lifecycleState: string, outcome: "VERIFIED" | "STOPPED" | "NEEDS_REVIEW") {
   return {
     loop: {
       loopId: "loop_arcade_001",
@@ -113,18 +113,18 @@ describe("Arcade read-only status authority", () => {
   it.each(["created", "running", "verifying"])(
     "does not display a terminal outcome while lifecycle is %s",
     async (lifecycleState) => {
-      const dossier = makeDossier(lifecycleState, "NEEDS REVIEW");
+      const dossier = makeDossier(lifecycleState, "NEEDS_REVIEW");
       const reader = vi.fn(async () => dossier as never);
       const snapshot = await readArcadeStatus({}, reader);
 
       expect(reader).toHaveBeenCalledWith({ latest: true });
       expect(snapshot.displayOutcome).toBeNull();
       expect(snapshot.completed).toBe(false);
-      expect(dossier.verifiedHandoff.outcome).toBe("NEEDS REVIEW");
+      expect(dossier.verifiedHandoff.outcome).toBe("NEEDS_REVIEW");
     }
   );
 
-  it.each(["VERIFIED", "STOPPED", "NEEDS REVIEW"] as const)(
+  it.each(["VERIFIED", "STOPPED", "NEEDS_REVIEW"] as const)(
     "passes through authoritative terminal outcome %s without mutation",
     async (outcome) => {
       const dossier = makeDossier("completed", outcome);

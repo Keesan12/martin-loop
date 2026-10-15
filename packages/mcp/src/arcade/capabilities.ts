@@ -1,3 +1,5 @@
+import { VERIFIED_HANDOFF_OUTCOMES } from "@martin/contracts";
+
 export const MARTIN_ARCADE_UI_EXTENSION_ID = "io.modelcontextprotocol/ui";
 export const MARTIN_ARCADE_MIME_TYPE = "text/html;profile=mcp-app";
 export const MARTIN_ARCADE_RESOURCE_URI = "ui://martinloop/arcade/index.html";
@@ -60,7 +62,7 @@ export function buildArcadeToolDefinitions(capabilities: unknown) {
           completed: { type: "boolean", description: "Whether the run is outside an active lifecycle state." },
           displayOutcome: {
             anyOf: [
-              { type: "string", enum: ["VERIFIED", "STOPPED", "NEEDS REVIEW"] },
+              { type: "string", enum: [...VERIFIED_HANDOFF_OUTCOMES] },
               { type: "null" }
             ],
             description: "Terminal verified-handoff outcome, or null while the run is active."

@@ -30,6 +30,22 @@ export interface RepoGroundingHit {
   symbols: string[];
 }
 
+// Callables provided by the JavaScript language, Node.js, browsers, and common test runners.
+// They are never declared in the repository, so they must not count as ungrounded symbols.
+const STANDARD_CALLABLE_GLOBALS = new Set([
+  // CommonJS / Node.js
+  "require", "setTimeout", "setInterval", "setImmediate", "clearTimeout", "clearInterval",
+  "clearImmediate", "queueMicrotask", "structuredClone", "fetch",
+  // ECMAScript globals
+  "parseInt", "parseFloat", "isNaN", "isFinite", "encodeURIComponent", "decodeURIComponent",
+  "encodeURI", "decodeURI", "escape", "unescape", "eval",
+  // Browser globals
+  "alert", "confirm", "prompt", "atob", "btoa", "requestAnimationFrame", "cancelAnimationFrame",
+  // Test runners (node:test, vitest, jest, mocha, chai)
+  "describe", "suite", "test", "it", "expect", "assert", "before", "after", "beforeEach",
+  "afterEach", "beforeAll", "afterAll", "context", "specify", "should"
+]);
+
 const TEXT_EXTENSIONS = new Set([
   ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs",
   ".json", ".md", ".txt", ".yaml", ".yml", ".py", ".go",
@@ -379,16 +395,29 @@ export function scanPatchForGroundingViolations(
     "while",
     "switch",
     "catch",
-    "typeof"
+    "typeof",
+    "super",
+    "yield",
+    "delete",
+    "throw",
+    "instanceof",
+    "constructor"
   ]);
   const addedLines = [...diff.matchAll(addedLinePattern)].map((match) => match[1] ?? "");
   const declaredSymbols = new Set<string>();
   const declarationPattern = /\b(?:function|class|interface|type|enum|const|let|var)\s+([A-Za-z_][A-Za-z0-9_]*)/g;
+  // Class and object-literal method definitions: `name(args) {`, optionally async/static/get/set.
+  const methodDefinitionPattern =
+    /(?:^|[{,])\s*(?:(?:public|private|protected|static|async|get|set|override)\s+)*([A-Za-z_][A-Za-z0-9_]*)\s*\([^()]*\)\s*(?::[^{=]+)?\{/gu;
 
   for (const line of addedLines) {
     for (const declarationMatch of line.matchAll(declarationPattern)) {
       const symbol = declarationMatch[1];
       if (symbol) declaredSymbols.add(symbol.toLowerCase());
+    }
+    for (const methodMatch of line.matchAll(methodDefinitionPattern)) {
+      const methodName = methodMatch[1];
+      if (methodName && !symbolKeywords.has(methodName)) declaredSymbols.add(methodName.toLowerCase());
     }
 
     if (/^\s*import\b/u.test(line)) {
@@ -432,6 +461,7 @@ export function scanPatchForGroundingViolations(
       const symbol = symbolMatch[1];
       if (!symbol) continue;
       if (symbolKeywords.has(symbol)) continue;
+      if (STANDARD_CALLABLE_GLOBALS.has(symbol)) continue;
       if (/^[A-Z]/u.test(symbol)) continue;
       if (declaredSymbols.has(symbol.toLowerCase())) continue;
       if (indexedSymbols.has(symbol.toLowerCase())) continue;

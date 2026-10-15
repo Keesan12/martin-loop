@@ -4151,6 +4151,9 @@ async function executeRunsAttemptCommand(
   });
 }
 
+// Same code as the `verification_failed` error category.
+const RUNS_VERIFY_TAMPER_EXIT_CODE = 7;
+
 async function executeRunsVerifyCommand(
   selector: MartinRunSelector,
   outputMode: MartinOutputMode
@@ -4160,8 +4163,11 @@ async function executeRunsVerifyCommand(
   const verification = dossier["verification"] as ReturnType<typeof buildVerificationSummary>;
   const verifiedHandoff = dossier["verifiedHandoff"] as VerifiedHandoffV1;
   const receiptScope = resolveReceiptScope(detail.loop, detail.runsRoot);
+  // A record that no longer matches its signed snapshot fails exit-code-only gates as well.
+  const tampered = detail.integrity.state === "tamper_detected";
 
   return renderCliSuccess(outputMode, {
+    ...(tampered ? { exitCode: RUNS_VERIFY_TAMPER_EXIT_CODE } : {}),
     data: {
       command: "runs_verify",
       loopId: detail.loop.loopId,
