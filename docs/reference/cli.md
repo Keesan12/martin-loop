@@ -76,6 +76,7 @@ npx -y martin-loop@latest share --latest
 --cwd <path>            Repo root for the run
 --allow-path <glob>     Restrict writes to this path pattern; repeatable
 --deny-path <glob>      Block this path pattern; repeatable
+--approve-test-changes  Allow the agent to remove or rewrite existing test code
 --accept <criterion>    Add an acceptance criterion; repeatable
 --config <path>         Path to a martin.config.yaml file
 --workspace <id>        Workspace ID for the run record

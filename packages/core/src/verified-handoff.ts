@@ -366,6 +366,9 @@ function toCheck(
 // Main builder
 // ---------------------------------------------------------------------------
 
+export const NO_FILE_CHANGES_WARNING =
+  "No file changes were observed for this run; the verifier result reflects the workspace as it already was.";
+
 export function buildVerifiedHandoff(
   input: BuildVerifiedHandoffInput
 ): VerifiedHandoffV1 {
@@ -454,6 +457,11 @@ export function buildVerifiedHandoff(
     ...input.verification.warnings,
     ...(effectiveVerificationStatus !== input.verification.status
       ? ["A VERIFIED claim requires at least one launched, completed, exit-zero verifier step."]
+      : []),
+    ...(fileEffects.observationStatus === "observed" &&
+    fileEffects.netChangedAtCompletion.length === 0 &&
+    input.loop.task.mutationMode !== "read_only"
+      ? [NO_FILE_CHANGES_WARNING]
       : []),
   ];
 

@@ -1433,7 +1433,7 @@ function assertPermissions(value: unknown, path: string): void {
 }
 
 function assertApproval(value: unknown, path: string): void {
-  assertExactKeys(asObject(value, path), ["dependencyAdds", "migrations", "configChanges", "externalWrites"], path);
+  assertExactKeys(asObject(value, path), ["dependencyAdds", "migrations", "configChanges", "externalWrites", "testChanges"], path);
 }
 
 function assertBudget(value: unknown, path: string): void {

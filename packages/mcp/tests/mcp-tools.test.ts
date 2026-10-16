@@ -574,6 +574,40 @@ describe("martinDoctorTool", () => {
 });
 
 describe("martinPreflightTool", () => {
+  it("accepts legitimate verifier-owned flags that resemble generic Martin options", async () => {
+    const originalEnv = process.env.MARTIN_LIVE;
+    process.env.MARTIN_LIVE = "false";
+    try {
+      const result = await martinPreflightTool({
+        objective: "Allow verifier flags",
+        verificationPlan: ["node eval.js --max-tokens 100 --max-iterations 3", "npm test -- --engine chromium"]
+      });
+      expect(result.ok).toBe(true);
+      expect(result.warnings).not.toEqual(expect.arrayContaining([expect.stringContaining("contains MartinLoop option") ]));
+    } finally {
+      if (originalEnv === undefined) delete process.env.MARTIN_LIVE;
+      else process.env.MARTIN_LIVE = originalEnv;
+    }
+  });
+
+  it("blocks an unterminated verifier quote before advertising readiness", async () => {
+    const originalEnv = process.env.MARTIN_LIVE;
+    process.env.MARTIN_LIVE = "false";
+    try {
+      const result = await martinPreflightTool({
+        objective: "Reject malformed verifier input",
+        verificationPlan: ['node -e "process.exit(0)']
+      });
+
+      expect(result.ok).toBe(false);
+      expect(result.summary).toContain("unterminated quote");
+      expect(result.warnings).toEqual(expect.arrayContaining([expect.stringContaining("unterminated quote")]));
+    } finally {
+      if (originalEnv === undefined) delete process.env.MARTIN_LIVE;
+      else process.env.MARTIN_LIVE = originalEnv;
+    }
+  });
+
   it("normalizes run inputs and expected inspection layout without executing work", async () => {
     const originalEnv = process.env.MARTIN_LIVE;
     process.env.MARTIN_LIVE = "false";
