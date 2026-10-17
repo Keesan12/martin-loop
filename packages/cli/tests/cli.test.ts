@@ -12,12 +12,35 @@ import { createLoopRecord, type LoopRecord } from "../../contracts/src/index.js"
 import {
   __setCodexHostOverridesForTests,
   __setRunAdapterOverrideForTests,
+  describeApprovalRollbackStatus,
   executeCli,
   parseCliArguments,
 } from "../src/index.js";
 
 const STAR_CTA_HEADLINE = "⭐ MartinLoop produced a verified handoff.";
 const STAR_CTA_REPO = "github.com/Keesan12/martin-loop";
+
+describe("approval rollback wording", () => {
+  it("never claims the workspace is unchanged when rollback failed", () => {
+    const message = describeApprovalRollbackStatus(
+      {
+        attempted: true,
+        status: "failed",
+        restoredAt: "2026-10-15T00:00:00.000Z",
+        decision: "DISCARD",
+        before: { trackedDirtyFiles: ["test.ts"], untrackedFiles: [] },
+        after: { trackedDirtyFiles: ["test.ts"], untrackedFiles: [] },
+        restoredFiles: [],
+        deletedFiles: [],
+        error: "safe restoration could not be proved"
+      },
+      "loop_failed_rollback"
+    );
+
+    expect(message).toContain("Rollback failed");
+    expect(message).not.toContain("workspace is unchanged");
+  });
+});
 
 describe("swarm demo argument parsing", () => {
   it("preserves the exact legacy demo command shape", () => {
@@ -815,6 +838,20 @@ describe("parseCliArguments", () => {
           configChanges: true
         }
       })
+    });
+  });
+
+  it("maps --approve-test-changes to the test-change approval field", () => {
+    const parsed = parseCliArguments([
+      "run",
+      "--objective",
+      "Rewrite the outdated add test",
+      "--approve-test-changes"
+    ]);
+
+    expect(parsed).toEqual({
+      command: "run",
+      request: expect.objectContaining({ approvalPolicy: { testChanges: true } })
     });
   });
 

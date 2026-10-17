@@ -1024,7 +1024,7 @@ function budgetWidened(parent: LoopBudget, child: LoopBudget): boolean {
 }
 
 function approvalWidened(parent: ApprovalPolicy, child: ApprovalPolicy): boolean {
-  const keys = ["dependencyAdds", "migrations", "configChanges", "externalWrites"] as const;
+  const keys = ["dependencyAdds", "migrations", "configChanges", "externalWrites", "testChanges"] as const;
   return keys.some((key) => child[key] === true && parent[key] !== true);
 }
 

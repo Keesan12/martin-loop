@@ -74,9 +74,12 @@ import {
 } from "./grounding.js";
 import {
   captureRollbackBoundary,
+  findEscapingLinks,
   listAttemptChangedFilesSinceBoundary,
+  listIgnoredFileChangesSinceBoundary,
   restoreRollbackBoundary
 } from "./rollback.js";
+import { findWeakenedTestFiles } from "./test-integrity.js";
 import { compilePromptPacket } from "./compiler.js";
 import { makeLedgerEvent, resolveRunsRoot, runDir, type RunStore } from "./persistence/index.js";
 import {
@@ -157,8 +160,10 @@ export {
   scanPatchForGroundingViolations,
   captureRollbackBoundary,
   listAttemptChangedFilesSinceBoundary,
+  listIgnoredFileChangesSinceBoundary,
   restoreRollbackBoundary
 };
+export { describeMalformedVerifier } from "./verifier-input.js";
 export type {
   BudgetPreflightDecision,
   BudgetPreflightInput,
@@ -217,7 +222,9 @@ export {
   isTestFile,
   extractImports,
   hasTrivialAssertionsOnly,
-  importsPreExistingCode
+  importsPreExistingCode,
+  isTestPath,
+  findWeakenedTestFiles
 } from "./test-integrity.js";
 export type { TestIntegrityReport, TestIntegrityFinding } from "./test-integrity.js";
 
@@ -236,6 +243,7 @@ export type { PromptPacket, CompilerAdapterRequest } from "./compiler.js";
 // ─── Verified Handoff builder ────────────────────────────────────────────────
 export {
   buildVerifiedHandoff,
+  NO_FILE_CHANGES_WARNING,
   deriveVerifiedHandoffLifecycleTruth,
   deriveVerifiedHandoffExecutionBoundary,
   resolveVerifiedHandoffOutcome,
@@ -1787,9 +1795,39 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       );
     }
 
-    const changedFiles = tracksWorkspaceMutations
-      ? resolveChangedFiles(result, request.context.repoRoot, rollbackBoundary)
-      : [];
+    let changedFiles: string[] = [];
+    try {
+      changedFiles = tracksWorkspaceMutations
+        ? resolveChangedFiles(result, request.context.repoRoot, rollbackBoundary)
+        : [];
+    } catch (error) {
+      for (const filePath of normalizeFileEffectPaths(result.execution?.changedFiles ?? [])) {
+        touchedDuringExecution.add(filePath);
+      }
+      const observationExitDecision: ExitDecision = {
+        shouldExit: true,
+        lifecycleState: "human_escalation",
+        status: "exited",
+        reason: `Workspace change observation became unavailable: ${fileEffectErrorMessage(error)}`,
+        reasonCode: "workspace_observation_unavailable"
+      };
+      if (input.store) {
+        await input.store.appendLedger(
+          loop.loopId,
+          makeLedgerEvent({
+            kind: "run.exited",
+            runId: loop.loopId,
+            payload: createRunExitPayload(observationExitDecision)
+          })
+        );
+      }
+      await stopSignalMonitorAndDrainDiagnostics();
+      const terminationEnvelope = await persistGuardStop(observationExitDecision);
+      const finalizedLoop = await finalizeCurrentLoop(observationExitDecision, now());
+      const finalizedWithEnvelope: LoopRecord = { ...finalizedLoop, terminationEnvelope };
+      await persistLoopRecordIfSupported(input.store, finalizedWithEnvelope);
+      return { loop: finalizedWithEnvelope, decision: observationExitDecision };
+    }
     for (const filePath of normalizeFileEffectPaths(changedFiles)) {
       touchedDuringExecution.add(filePath);
     }
@@ -1817,9 +1855,18 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     const changedFileEvidenceAvailable =
       result.execution?.changedFiles !== undefined || changedFiles.length > 0;
 
+    const ignoredChanges = tracksWorkspaceMutations
+      ? listIgnoredFileChangesSinceBoundary({ repoRoot: request.context.repoRoot, boundary: rollbackBoundary })
+      : { created: [], modified: [], deleted: [] };
+    const escapingLinks =
+      tracksWorkspaceMutations && request.context.repoRoot
+        ? findEscapingLinks(request.context.repoRoot, [...changedFiles, ...ignoredChanges.created])
+        : [];
     const filesystemDecision = evaluateFilesystemLeash({
       repoRoot: request.context.repoRoot,
       changedFiles,
+      ignoredFiles: [...ignoredChanges.created, ...ignoredChanges.modified, ...ignoredChanges.deleted],
+      escapingLinks,
       allowedPaths: request.context.allowedPaths,
       deniedPaths: request.context.deniedPaths,
       mutationMode: request.context.mutationMode
@@ -1848,7 +1895,14 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         repoRoot: request.context.repoRoot,
         boundary: rollbackBoundary,
         restoredAt: attemptCompletedAt,
-        decision: patchDecision.decision
+        decision: patchDecision.decision,
+        // Attempt-created ignored violations are removed. Modified or deleted
+        // baseline ignored violations are restored from the bounded in-memory snapshot.
+        removePaths: violatingIgnoredPaths(filesystemDecision.violations, ignoredChanges.created),
+        restoreIgnoredPaths: violatingIgnoredPaths(filesystemDecision.violations, [
+          ...ignoredChanges.modified,
+          ...ignoredChanges.deleted
+        ])
       });
 
       if (input.store) {
@@ -1909,8 +1963,17 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       };
     }
 
+    const weakenedTestFiles =
+      tracksWorkspaceMutations && request.context.repoRoot && rollbackBoundary?.headRef
+        ? findWeakenedTestFiles({
+            repoRoot: request.context.repoRoot,
+            baseRef: rollbackBoundary.headRef,
+            changedFiles
+          })
+        : [];
     const changeApprovalDecision = evaluateChangeApprovalLeash({
       changedFiles,
+      weakenedTestFiles,
       executionProfile: request.context.executionProfile,
       approvalPolicy: request.context.approvalPolicy
     });
@@ -2354,6 +2417,8 @@ function safetyLeashReasonCode(
       return "migration_approval_required";
     case "config_change_approval_required":
       return "config_change_approval_required";
+    case "test_change_approval_required":
+      return "test_change_approval_required";
     default:
       return `${safetySurface}_safety_block`;
   }
@@ -2430,7 +2495,8 @@ function observeRunFileEffects(input: {
     const netChangedAtCompletion = normalizeFileEffectPaths(
       listAttemptChangedFilesSinceBoundary({
         repoRoot: input.repoRoot,
-        boundary: input.boundary
+        boundary: input.boundary,
+        includeBaselineSnapshotChanges: true
       })
     );
     const netChanged = new Set(netChangedAtCompletion);
@@ -2583,21 +2649,33 @@ function mergeCostProvenance(
   return COST_PROVENANCE_RANK[current] < COST_PROVENANCE_RANK[previous] ? current : previous;
 }
 
+/**
+ * Git-backed observation that degrades the same way `resolveChangedFiles` does:
+ * when Git becomes unavailable after the attempt, fall back only if the adapter
+ * reported its own changed files; otherwise fail closed.
+ */
+function violatingIgnoredPaths(
+  violations: SafetyViolation[],
+  ignoredPaths: string[]
+): string[] {
+  const violating = new Set(
+    violations.map((violation) => violation.file?.replace(/\/$/u, "")).filter(Boolean)
+  );
+  return ignoredPaths.filter((filePath) => violating.has(filePath.replace(/\/$/u, "")));
+}
+
 function resolveChangedFiles(
   result: MartinAdapterResult,
   repoRoot?: string,
   rollbackBoundary?: RollbackBoundaryArtifact
 ): string[] {
   const adapterReported = normalizeFileEffectPaths(result.execution?.changedFiles ?? []);
-  try {
-    const gitObserved = listAttemptChangedFilesSinceBoundary({ repoRoot, boundary: rollbackBoundary });
-    return normalizeFileEffectPaths([...adapterReported, ...gitObserved]);
-  } catch (error) {
-    if (result.execution?.changedFiles !== undefined) {
-      return adapterReported;
-    }
-    throw error;
-  }
+  const gitObserved = listAttemptChangedFilesSinceBoundary({
+    repoRoot,
+    boundary: rollbackBoundary,
+    includeBaselineSnapshotChanges: true
+  });
+  return normalizeFileEffectPaths([...adapterReported, ...gitObserved]);
 }
 
 function buildPatchDiff(result: MartinAdapterResult, changedFiles: string[]): string | undefined {

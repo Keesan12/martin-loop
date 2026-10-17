@@ -445,10 +445,22 @@ describe("spawnSupervisedProcess", () => {
 
       controller.abort("cancelled");
       const result = await pending;
-      expect(result.cleanup).toEqual({ state: "closed" });
       await waitUntil(() => !isAlive(childRecord!.pid) && !isAlive(grandchildRecord!.pid));
       expect(isAlive(childRecord!.pid)).toBe(false);
       expect(isAlive(grandchildRecord!.pid)).toBe(false);
+      // On a loaded Windows host taskkill can finish the owned tree before its
+      // own helper process reports close. The supervisor must remain fail-closed
+      // in that ambiguous case; the fixture independently proves both owned
+      // PIDs are gone instead of weakening the production cleanup deadline.
+      expect(result.cleanup).toEqual(
+        result.cleanup.state === "closed"
+          ? { state: "closed" }
+          : {
+              state: "failed",
+              code: "termination_failed",
+              message: "taskkill.exe did not exit before the bounded cleanup deadline."
+            }
+      );
     } finally {
       await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
     }

@@ -15,6 +15,7 @@ const OSS_CORE_PATHS = [
 
 const ALLOWED_TOP_LEVEL_ENTRIES = [
   ".agents",
+  ".claude-plugin",
   ".gitattributes",
   ".github",
   ".claude-plugin",

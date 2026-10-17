@@ -214,6 +214,8 @@ interface ClaudeJsonOutput {
   subtype?: string;
   result?: string;
   error?: string;
+  /** True when Claude ended the session on an API or execution error. */
+  is_error?: boolean;
   /** Authoritative cumulative cost reported by Claude on the final `result` event (json/stream-json). */
   total_cost_usd?: number;
   usage?: {
@@ -285,7 +287,7 @@ function extractUsage(
   modelLabel: string | undefined,
   modelSource: "provider_reported" | "explicit_override" | "agent_default"
 ): MartinAdapterResult["usage"] {
-  if (!parsed?.usage) {
+  if (!parsed) {
     return normalizeUsage({
       actualUsd: 0,
       tokensIn: 0,
@@ -294,13 +296,14 @@ function extractUsage(
     });
   }
 
-  const promptTokens = parsed.usage.inputTokens ?? parsed.usage.input_tokens ?? 0;
+  const usage = parsed.usage ?? {};
+  const promptTokens = usage.inputTokens ?? usage.input_tokens ?? 0;
   const cacheCreationInputTokens =
-    parsed.usage.cacheCreationInputTokens ?? parsed.usage.cache_creation_input_tokens ?? 0;
+    usage.cacheCreationInputTokens ?? usage.cache_creation_input_tokens ?? 0;
   const cachedInputTokens =
-    parsed.usage.cacheReadInputTokens ?? parsed.usage.cache_read_input_tokens ?? 0;
+    usage.cacheReadInputTokens ?? usage.cache_read_input_tokens ?? 0;
   const tokensIn = promptTokens + cachedInputTokens + cacheCreationInputTokens;
-  const tokensOut = parsed.usage.outputTokens ?? parsed.usage.output_tokens ?? 0;
+  const tokensOut = usage.outputTokens ?? usage.output_tokens ?? 0;
 
   const pricingResolution = resolveModelPricing(modelLabel);
 
@@ -888,6 +891,14 @@ function createStreamingUsageInspector(
  * the final `result` event, which carries the same `result`/`usage`/
  * `total_cost_usd` fields as the single-blob `json` format.
  */
+function findClaudeResultError(result: ClaudeJsonOutput): string | undefined {
+  const errorSubtype = result.subtype?.startsWith("error") === true;
+  if (result.is_error !== true && !errorSubtype) {
+    return undefined;
+  }
+  return truncate(result.result ?? result.error ?? result.subtype ?? "unknown error", 500);
+}
+
 function parseStreamJsonResult(stdout: string): ClaudeJsonOutput | undefined {
   let lastResult: ClaudeJsonOutput | undefined;
   for (const rawLine of stdout.split(/\r?\n/u)) {
@@ -1276,6 +1287,19 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
             tokensOut: 0,
             provenance: "unavailable"
           }),
+          verification: { passed: false, summary: `Verifier not run: ${failureMessage}` },
+          failure: { message: failureMessage }
+        };
+      }
+      // A Claude session that ended in an error (API failure, max turns) did no
+      // verified work: never let the verifier certify the untouched workspace.
+      const claudeResultError = parsed ? findClaudeResultError(parsed) : undefined;
+      if (claudeResultError !== undefined) {
+        const failureMessage = `${options.command} reported an error: ${claudeResultError}`;
+        return {
+          status: "failed",
+          summary: `${options.command} session ended in an error before verifier execution.`,
+          usage: extractUsage(parsed, options.model, options.model ? "explicit_override" : "agent_default"),
           verification: { passed: false, summary: `Verifier not run: ${failureMessage}` },
           failure: { message: failureMessage }
         };

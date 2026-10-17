@@ -139,6 +139,8 @@ export interface ApprovalPolicy {
   migrations?: boolean;
   configChanges?: boolean;
   externalWrites?: boolean;
+  /** Allows an attempt to remove or rewrite lines in existing test files. */
+  testChanges?: boolean;
 }
 
 export interface VerificationStep {
@@ -875,9 +877,24 @@ export interface RollbackBoundaryArtifact {
   strategy: RollbackBoundaryStrategy;
   capturedAt: string;
   headRef?: string;
+  /** Branch HEAD pointed at when the boundary was captured; absent when detached. */
+  headBranch?: string;
   trackedDirtyFiles: string[];
   untrackedFiles: string[];
   snapshots: RollbackFileSnapshot[];
+  /**
+   * Git-ignored files present at the boundary. Dependency and build output
+   * directories are recorded as a single collapsed `dir/` entry.
+   */
+  ignoredFiles?: RollbackIgnoredFileStamp[];
+}
+
+export interface RollbackIgnoredFileStamp {
+  path: string;
+  size: number;
+  mtimeMs: number;
+  /** Content hash for non-output ignored files; contents are never persisted. */
+  sha256?: string;
 }
 
 export type RollbackOutcomeStatus = "restored" | "not_required" | "failed" | "unavailable";
@@ -897,6 +914,8 @@ export interface RollbackOutcomeArtifact {
   };
   restoredFiles: string[];
   deletedFiles: string[];
+  /** Set when attempt-created commits were rewound to the boundary HEAD. */
+  rewoundHead?: { from: string; to: string };
   error?: string;
 }
 

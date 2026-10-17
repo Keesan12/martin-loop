@@ -2,6 +2,23 @@
 
 ## [Unreleased]
 
+## [0.8.7] - 2026-10-16
+
+### Fixed
+- Rollback no longer follows directory links or Windows junctions into files outside the workspace; unsafe linked paths stop the run rather than altering external targets.
+- Deleting an existing test, removing or changing its assertions, dropping a case, or marking one skipped requires explicit `--approve-test-changes` approval. Adding tests, appending cases, and editing imports or formatting do not. Swarm children cannot grant themselves broader test-change authority than their parent.
+- Changes an agent commits are checked like any other change; a blocked commit is rewound and its files restored.
+- Ignored secret and denied-path files are checked for edits and deletions, including same-size content changes; blocked changes are restored only when the original state can be authenticated.
+- Writes to secret and key files (`.env` and `.env.*` other than templates, `*.pem`, `*.key`, `*.p12`, `*.pfx`, SSH private keys) stop the run unless the file is named explicitly in `--allow-path`.
+- An edit run that changes no files now carries a warning in its verified handoff.
+- Capturing the pre-attempt state no longer fails on repositories with very large git-ignored directories.
+- Failed Claude Code sessions, including terminal `is_error` results, cannot be passed to a green verifier and reported as successfully completed. Provider-reported cost remains recorded when available.
+- Malformed verifier commands are rejected consistently in MCP preflight and the CLI, instead of returning misleading readiness.
+- Rollback failures and unavailable restoration are reported explicitly; the CLI no longer claims an unchanged workspace without evidence.
+
+### Security boundary
+- MartinLoop governs observed repository changes and its own rollback operations. It does not provide an operating-system sandbox for an arbitrary provider process launched with host-level filesystem access. Use an isolated sandbox where outside-repository writes must be prevented.
+
 ## [0.8.6] - 2026-10-15
 
 ### Fixed

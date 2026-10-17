@@ -2,6 +2,8 @@ import { isAbsolute, relative, resolve } from "node:path";
 
 import type { ApprovalPolicy, ExecutionProfile, LoopTask } from "@martin/contracts";
 
+import { isInsideDependencyOrBuildDirectory } from "./output-directories.js";
+
 export type SafetySurface = "command" | "filesystem" | "secret" | "spend" | "network" | "dependency";
 
 export type SafetyViolationKind =
@@ -13,6 +15,7 @@ export type SafetyViolationKind =
   | "dependency_approval_required"
   | "migration_approval_required"
   | "config_change_approval_required"
+  | "test_change_approval_required"
   | "secret_value"
   | "protected_path";
 
@@ -253,13 +256,26 @@ export function evaluateVerificationLeash(
 export function evaluateFilesystemLeash(input: {
   repoRoot?: string;
   changedFiles: string[];
+  /**
+   * Git-ignored files the attempt created or modified. These are checked only
+   * against denied paths and protected secret files, never allowed paths, so
+   * dependency installs and build output stay unaffected.
+   */
+  ignoredFiles?: string[];
+  /** Symlinks or junctions created inside the repo that resolve outside it. */
+  escapingLinks?: string[];
   allowedPaths?: string[];
   deniedPaths?: string[];
   mutationMode?: "edit" | "read_only" | "verify_only";
 }): SafetyLeashDecision {
-  const violations: SafetyViolation[] = [];
+  const violations: SafetyViolation[] = (input.escapingLinks ?? []).map((link) => ({
+    kind: "path_outside_repo" as const,
+    file: link,
+    message: `Link inside the repo points outside the configured repo root: ${link}`
+  }));
+  const escapingLinks = new Set(input.escapingLinks ?? []);
 
-  for (const rawFile of input.changedFiles) {
+  for (const rawFile of input.changedFiles.filter((file) => !escapingLinks.has(file))) {
     const normalized = normalizeChangedFile(rawFile, input.repoRoot);
 
     if (normalized.outsideRepo) {
@@ -295,12 +311,41 @@ export function evaluateFilesystemLeash(input: {
     }
 
     const allowedPaths = input.allowedPaths ?? [];
+    if (isProtectedSecretFile(file) && !isExplicitlyAllowed(file, allowedPaths)) {
+      violations.push(protectedSecretViolation(file));
+      continue;
+    }
+
     if (allowedPaths.length > 0 && !allowedPaths.some((pattern) => matchesPathPattern(file, pattern))) {
       violations.push({
         kind: "path_not_allowed",
         file,
         message: `Changed file is outside the allowed paths: ${file}`
       });
+    }
+  }
+
+  for (const rawFile of input.ignoredFiles ?? []) {
+    const file = normalizePathForMatching(rawFile);
+    if (!file) {
+      continue;
+    }
+
+    if ((input.deniedPaths ?? []).some((pattern) => matchesPathPattern(file, pattern))) {
+      violations.push({
+        kind: "path_denied",
+        file,
+        message: `Git-ignored file matches a denylisted path: ${file}`
+      });
+      continue;
+    }
+
+    if (
+      !isInsideDependencyOrBuildDirectory(file) &&
+      isProtectedSecretFile(file) &&
+      !isExplicitlyAllowed(file, input.allowedPaths ?? [])
+    ) {
+      violations.push(protectedSecretViolation(file));
     }
   }
 
@@ -417,6 +462,8 @@ export function resolveExecutionProfile(input: {
 
 export function evaluateChangeApprovalLeash(input: {
   changedFiles: string[];
+  /** Existing test files the attempt deleted or removed lines from. */
+  weakenedTestFiles?: string[];
   executionProfile?: ExecutionProfile;
   approvalPolicy?: ApprovalPolicy;
 }): SafetyLeashDecision {
@@ -453,6 +500,16 @@ export function evaluateChangeApprovalLeash(input: {
     }
   }
 
+  if (!input.approvalPolicy?.testChanges) {
+    for (const file of input.weakenedTestFiles ?? []) {
+      violations.push({
+        kind: "test_change_approval_required",
+        file,
+        message: `Removing or rewriting existing test code requires approval: ${file}`
+      });
+    }
+  }
+
   if (violations.length > 0) {
     return {
       allowed: false,
@@ -462,7 +519,8 @@ export function evaluateChangeApprovalLeash(input: {
       profile: profile.name,
       blockedCommands: [],
       violations,
-      reason: "Safety leash blocked dependency, migration, or configuration changes that require approval."
+      reason:
+        "Safety leash blocked dependency, migration, configuration, or existing-test changes that require approval."
     };
   }
 
@@ -516,6 +574,47 @@ function normalizeChangedFile(
   return {
     file: repoRelative,
     outsideRepo: false
+  };
+}
+
+const SAFE_ENV_TEMPLATE_SUFFIXES = new Set(["example", "sample", "template", "dist", "defaults"]);
+const PRIVATE_KEY_BASENAMES = new Set(["id_rsa", "id_dsa", "id_ecdsa", "id_ed25519"]);
+const SECRET_MATERIAL_EXTENSIONS = new Set(["pem", "key", "p12", "pfx"]);
+
+/** Files that conventionally hold credentials or private key material. */
+function isProtectedSecretFile(file: string): boolean {
+  const leaf = normalizePathForMatching(file).split("/").at(-1) ?? "";
+  if (leaf === ".env") {
+    return true;
+  }
+  if (leaf.startsWith(".env.")) {
+    return !SAFE_ENV_TEMPLATE_SUFFIXES.has(leaf.slice(".env.".length).toLowerCase());
+  }
+  if (PRIVATE_KEY_BASENAMES.has(leaf)) {
+    return true;
+  }
+  const extension = leaf.includes(".") ? leaf.split(".").at(-1)?.toLowerCase() : undefined;
+  return extension !== undefined && SECRET_MATERIAL_EXTENSIONS.has(extension);
+}
+
+/**
+ * A protected file counts as allowed only when an allowed-path entry targets it
+ * specifically; broad wildcards such as `**` or `src/*` do not approve secrets.
+ */
+function isExplicitlyAllowed(file: string, allowedPaths: string[]): boolean {
+  return allowedPaths.some((pattern) => {
+    const leafPattern = normalizePathForMatching(pattern).split("/").at(-1) ?? "";
+    return !/^\*+$/u.test(leafPattern) && matchesPathPattern(file, pattern);
+  });
+}
+
+function protectedSecretViolation(file: string): SafetyViolation {
+  return {
+    kind: "protected_path",
+    file,
+    message:
+      `Changed file is a protected secret or key file: ${file}. ` +
+      "Name it explicitly in allowed paths to permit agent writes."
   };
 }
 
