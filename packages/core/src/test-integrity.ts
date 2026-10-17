@@ -17,8 +17,11 @@
  * calls these during the post-run verification step.
  */
 
-import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { lstatSync, readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { join, relative, extname } from "node:path";
+
+import { extractTestSurface, hasTestSurface, testSurfaceWeakened } from "./test-surface.js";
 
 export interface TestIntegrityReport {
   totalNewTests: number;
@@ -243,4 +246,111 @@ export function validateTestIntegrity(
     verdict,
     summary
   };
+}
+
+const TEST_PATH_PATTERNS = [
+  /\.(?:test|spec)\.[cm]?[jt]sx?$/u,
+  /(?:^|\/)(?:__tests__|tests?)\//u,
+  /(?:^|\/)test_[^/]+\.py$/u,
+  /_test\.(?:py|go)$/u
+];
+
+/**
+ * Repo-relative path check for test sources, covering JS/TS naming, test
+ * directories at any depth (including the repo root), Python, and Go.
+ */
+export function isTestPath(filePath: string): boolean {
+  const normalized = filePath.replace(/\\/gu, "/").replace(/^\.\//u, "");
+  return TEST_PATH_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+/**
+ * Existing test files whose assertions the attempt removed or altered, whose cases it
+ * dropped or skipped, or which it deleted, compared with the boundary commit. New test
+ * files, appended cases, and edits to imports, setup or formatting are not reported.
+ * Files with no recognizable test surface (data, golden and snapshot files, unknown
+ * frameworks) fall back to the strict rule: any removed line counts. Changes committed
+ * by the attempt are included because the comparison is against `baseRef`, not HEAD.
+ */
+export function findWeakenedTestFiles(input: {
+  repoRoot: string;
+  baseRef: string;
+  changedFiles: string[];
+}): string[] {
+  const candidates = [...new Set(input.changedFiles.map((file) => file.replace(/\\/gu, "/")))]
+    .filter(isTestPath)
+    .sort();
+  if (candidates.length === 0) {
+    return [];
+  }
+
+  const removedLines = listFilesWithRemovedLines(input.repoRoot, input.baseRef, candidates);
+  return [...removedLines].filter((filePath) => isWeakened(input, filePath)).sort();
+}
+
+/** Files among `candidates` that lost at least one line (or are binary) since `baseRef`. */
+function listFilesWithRemovedLines(repoRoot: string, baseRef: string, candidates: string[]): Set<string> {
+  const result = spawnSync(
+    "git",
+    ["diff", "--numstat", "--no-renames", "-z", baseRef, "--", ...candidates],
+    { cwd: repoRoot, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 }
+  );
+  if (result.status !== 0 || typeof result.stdout !== "string") {
+    const detail = typeof result.stderr === "string" ? result.stderr.trim() : "";
+    throw new Error(`Test-change inspection failed: ${detail || `git exited with ${String(result.status)}`}`);
+  }
+
+  const removed = new Set<string>();
+  for (const record of result.stdout.split("\0")) {
+    const [, deletions, filePath] = record.split("\t");
+    if (filePath && deletions !== undefined && (deletions === "-" || Number(deletions) > 0)) {
+      removed.add(filePath.trim());
+    }
+  }
+  return removed;
+}
+
+/** Cap on file size the surface analysis reads; larger files use the strict rule. */
+const MAX_SURFACE_BYTES = 2 * 1024 * 1024;
+
+function isWeakened(input: { repoRoot: string; baseRef: string }, filePath: string): boolean {
+  const before = readBaseContent(input.repoRoot, input.baseRef, filePath);
+  if (before === undefined) {
+    return true;
+  }
+
+  const after = readWorkingContent(input.repoRoot, filePath);
+  if (after === undefined) {
+    // Deleted, replaced by a link, unreadable or oversized: cannot prove it still asserts.
+    return true;
+  }
+
+  if (!hasTestSurface(extractTestSurface(before, filePath))) {
+    return true;
+  }
+  return testSurfaceWeakened(before, after, filePath);
+}
+
+function readBaseContent(repoRoot: string, baseRef: string, filePath: string): string | undefined {
+  const result = spawnSync("git", ["show", `${baseRef}:${filePath}`], {
+    cwd: repoRoot,
+    encoding: "utf8",
+    maxBuffer: MAX_SURFACE_BYTES * 2
+  });
+  return result.status === 0 && typeof result.stdout === "string" && result.stdout.length <= MAX_SURFACE_BYTES
+    ? result.stdout
+    : undefined;
+}
+
+function readWorkingContent(repoRoot: string, filePath: string): string | undefined {
+  const absolutePath = join(repoRoot, filePath);
+  try {
+    const stats = lstatSync(absolutePath);
+    if (!stats.isFile() || stats.size > MAX_SURFACE_BYTES) {
+      return undefined;
+    }
+    return readFileSync(absolutePath, "utf8");
+  } catch {
+    return undefined;
+  }
 }

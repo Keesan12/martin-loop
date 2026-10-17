@@ -14,6 +14,7 @@ import {
   resolveDefaultLedgerPath,
   resolveRunsRoot,
   saveDeliveryRecord,
+  describeMalformedVerifier,
 } from "@martin/core";
 import type { UpdateAvailableField } from "@martin/contracts";
 
@@ -180,6 +181,9 @@ export async function martinPreflightTool(
         })
       : undefined;
   const warnings: string[] = [];
+  const malformedVerifiers = (input.verificationPlan ?? [])
+    .map((command) => describeMalformedVerifier(command))
+    .filter((reason): reason is string => reason !== undefined);
   const allowedPaths = input.allowedPaths ?? [];
   const deniedPaths = input.deniedPaths ?? [];
   const overlappingScopes = allowedPaths.filter((candidate) => deniedPaths.includes(candidate));
@@ -201,6 +205,7 @@ export async function martinPreflightTool(
   if ((input.verificationPlan?.length ?? 0) === 0) {
     warnings.push("No verificationPlan was provided; Martin can run, but completion confidence will be lower.");
   }
+  warnings.push(...malformedVerifiers);
 
   if ((input.allowedPaths?.length ?? 0) === 0) {
     warnings.push("No allowedPaths were provided; Martin will rely on the broader repo root scope.");
@@ -218,7 +223,7 @@ export async function martinPreflightTool(
   const engineReady =
     !executionMode.liveMode ||
     (engineAvailability.available && (engine !== "codex" || codexProbe?.ok !== false));
-  const ok = engineReady;
+  const ok = engineReady && malformedVerifiers.length === 0;
   const receiptScope = {
     invocationRoot: workspaceRoot,
     workingDirectory,
@@ -231,9 +236,9 @@ export async function martinPreflightTool(
     summary: ok
       ? `Preflight ready for ${engine} in ${workingDirectory} with a ${formatUsd(budget.maxUsd)} budget cap and ${runContract.risk.level} risk.`
       : `Preflight blocked: ${
-          engine === "codex" && codexProbe && !codexProbe.ok
+          malformedVerifiers[0] ?? (engine === "codex" && codexProbe && !codexProbe.ok
             ? codexProbe.summary
-            : `${engine} is not available for live execution.`
+            : `${engine} is not available for live execution.`)
         }`,
     warnings,
     receiptScope,

@@ -11,6 +11,7 @@ import type {
 } from "@martin/contracts";
 import {
   buildVerifiedHandoff,
+  NO_FILE_CHANGES_WARNING,
   resolveVerifiedHandoffOutcome,
   toTestIntegrityVerdict,
   verifierActuallyPassed,
@@ -895,6 +896,55 @@ describe("buildVerifiedHandoff", () => {
       expect((handoff as unknown as { fileEffects?: unknown }).fileEffects).toEqual(
         input.fileEffects,
       );
+    });
+
+    it("warns when an observed run changed no files", () => {
+      const handoff = buildVerifiedHandoff(
+        makeInput({
+          fileEffects: {
+            observationStatus: "observed",
+            touchedDuringExecution: [],
+            netChangedAtCompletion: [],
+            revertedBeforeCompletion: [],
+          },
+        })
+      );
+
+      expect(handoff.verification.warnings).toContain(NO_FILE_CHANGES_WARNING);
+    });
+
+    it("does not warn when the run changed files or file effects were not observed", () => {
+      const changed = buildVerifiedHandoff(
+        makeInput({
+          fileEffects: {
+            observationStatus: "observed",
+            touchedDuringExecution: ["src/a.ts"],
+            netChangedAtCompletion: ["src/a.ts"],
+            revertedBeforeCompletion: [],
+          },
+        })
+      );
+      const unobserved = buildVerifiedHandoff(makeInput());
+
+      expect(changed.verification.warnings).not.toContain(NO_FILE_CHANGES_WARNING);
+      expect(unobserved.verification.warnings).not.toContain(NO_FILE_CHANGES_WARNING);
+    });
+
+    it("does not warn for read-only runs that are not meant to change files", () => {
+      const loop = makeLoop();
+      const handoff = buildVerifiedHandoff(
+        makeInput({
+          loop: { ...loop, task: { ...loop.task, mutationMode: "read_only" } },
+          fileEffects: {
+            observationStatus: "observed",
+            touchedDuringExecution: [],
+            netChangedAtCompletion: [],
+            revertedBeforeCompletion: [],
+          },
+        })
+      );
+
+      expect(handoff.verification.warnings).not.toContain(NO_FILE_CHANGES_WARNING);
     });
   });
 });

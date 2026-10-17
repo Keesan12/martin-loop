@@ -353,6 +353,7 @@ describe("swarm parent and child authority", () => {
     ["network permission", { permissions: { ...child.permissions, networkDomains: ["example.com"] } }, "CHILD_NETWORK_WIDENED"],
     ["command permission", { permissions: { ...child.permissions, commands: ["git push"] } }, "CHILD_COMMAND_WIDENED"],
     ["approval authority", { approvalPolicy: { ...child.approvalPolicy, dependencyAdds: true } }, "CHILD_APPROVAL_WIDENED"],
+    ["test-change approval authority", { approvalPolicy: { ...child.approvalPolicy, testChanges: true } }, "CHILD_APPROVAL_WIDENED"],
     ["verifier authority", { verifierAuthority: "parent_global" }, "CHILD_GLOBAL_VERIFIER_FORBIDDEN"]
   ] as const)("rejects child %s widening with a structured error", (_name, override, code) => {
     const result = validateSwarmChildContract(parent, {

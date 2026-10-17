@@ -60,6 +60,34 @@ describe("default CLI swarm surface", () => {
 });
 
 describe("swarm plan", () => {
+  it("accepts bounded test-change authority in strict parent and child contracts", async () => {
+    const fixture = await createPlanFixture();
+    const plan = createSwarmLivePlan({
+      ...fixture.plan,
+      parentContract: {
+        ...fixture.plan.parentContract,
+        approvalPolicy: { ...fixture.plan.parentContract.approvalPolicy, testChanges: true }
+      },
+      agents: fixture.plan.agents.map((agent) => ({
+        ...agent,
+        contract: {
+          ...agent.contract,
+          approvalPolicy: { ...agent.contract.approvalPolicy, testChanges: true }
+        }
+      }))
+    });
+    await writeFile(fixture.file, JSON.stringify(plan, null, 2), "utf8");
+    await recordPrerequisites({ ...fixture, plan });
+
+    const result = await executeSwarmPlanCommand(
+      { file: fixture.file, cwd: fixture.cwd, runsDir: fixture.runsRoot },
+      "json",
+      dependencies(plan.baselineCommit)
+    );
+
+    expect(result.exitCode).toBe(0);
+  });
+
   it("persists a stable inspectable plan and reports graph, scope, verifier, engine, and budget before spend", async () => {
     const fixture = await createPlanFixture();
     await recordPrerequisites(fixture);

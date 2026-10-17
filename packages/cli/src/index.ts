@@ -45,6 +45,7 @@ import {
   type MartinRunSelector,
   type MutationMode,
   type ReceiptScope,
+  type RollbackOutcomeArtifact,
   type ExternalOutcomeContract,
   type VerifiedHandoffV1,
   validateExternalOutcomeContract
@@ -1644,6 +1645,7 @@ export function renderCliHelp(): string {
     "  --execution-profile <name> strict_local, ci_safe, staging_controlled, or research_untrusted.",
     "  --allow-network-domain <host> Allow one verifier/provider network hostname (repeatable).",
     "  --approve-external-writes Explicitly approve a staging task that may write to an external system.",
+    "  --approve-test-changes   Allow the agent to remove or rewrite existing test code.",
     "  --config <path>          Path to martin.config.yaml.",
     "",
     "Exit codes:",
@@ -2258,8 +2260,12 @@ async function executeRunCommand(
     result.decision.failureClass === "safety_leash_blocked" &&
     (result.decision.reasonCode === "dependency_approval_required" ||
       result.decision.reasonCode === "migration_approval_required" ||
-      result.decision.reasonCode === "config_change_approval_required");
+      result.decision.reasonCode === "config_change_approval_required" ||
+      result.decision.reasonCode === "test_change_approval_required");
   const isPolicyBlocked = result.decision.failureClass === "safety_leash_blocked";
+  const approvalRollbackOutcome = isApprovalBlocked
+    ? await readLatestRollbackOutcome(cliEnvironment.runsRoot, result.loop)
+    : undefined;
 
   const runOutcome: RunOutcome =
     isApprovalBlocked
@@ -2460,8 +2466,10 @@ async function executeRunCommand(
       ...(isApprovalBlocked ? [
         "",
         "Blocked: the agent needs operator approval to proceed.",
-        "Re-run with --approve-dependency-changes (or --approve-migrations / --approve-config-changes as appropriate).",
-        `The workspace is unchanged. Review the blocked attempt: martin receipt --run ${result.loop.loopId}`
+        result.decision.reasonCode === "test_change_approval_required"
+          ? "The agent removed or rewrote existing test code. Review the change, then re-run with --approve-test-changes to allow it."
+          : "Re-run with --approve-dependency-changes (or --approve-migrations / --approve-config-changes as appropriate).",
+        describeApprovalRollbackStatus(approvalRollbackOutcome, result.loop.loopId)
       ] : []),
       ...inlineMilestones.map(renderInlineMilestone),
       // Static CTA only for non-TTY mode (piped/JSON). TTY uses the interactive milestone prompt.
@@ -2505,6 +2513,42 @@ async function executeRunCommand(
   }
 
   return finalOutput;
+}
+
+async function readLatestRollbackOutcome(
+  runsRoot: string,
+  loop: LoopRecord
+): Promise<RollbackOutcomeArtifact | undefined> {
+  for (const attempt of [...loop.attempts].sort((left, right) => right.index - left.index)) {
+    const path = join(
+      runsRoot,
+      loop.loopId,
+      "artifacts",
+      `attempt-${String(attempt.index).padStart(3, "0")}`,
+      "rollback-outcome.json"
+    );
+    try {
+      return JSON.parse(await readFile(path, "utf8")) as RollbackOutcomeArtifact;
+    } catch (error) {
+      if (error instanceof Error && "code" in error && error.code === "ENOENT") continue;
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
+export function describeApprovalRollbackStatus(
+  outcome: RollbackOutcomeArtifact | undefined,
+  loopId: string
+): string {
+  const receipt = `Review the blocked attempt: martin receipt --run ${loopId}`;
+  if (outcome?.status === "restored" || outcome?.status === "not_required") {
+    return `The workspace is unchanged. ${receipt}`;
+  }
+  if (outcome?.status === "failed") {
+    return `Rollback failed; the workspace state could not be proven unchanged. ${receipt}`;
+  }
+  return `Rollback evidence is unavailable; the workspace state could not be proven unchanged. ${receipt}`;
 }
 
 function buildPreflightSuggestion(objective: string, verificationPlan: string[]): string {
@@ -5153,6 +5197,9 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
         break;
       case "--approve-external-writes":
         request.approvalPolicy = { ...request.approvalPolicy, externalWrites: true };
+        break;
+      case "--approve-test-changes":
+        request.approvalPolicy = { ...request.approvalPolicy, testChanges: true };
         break;
       case "--allow-outdated":
         request.allowOutdated = true;
