@@ -893,8 +893,6 @@ export interface RollbackIgnoredFileStamp {
   path: string;
   size: number;
   mtimeMs: number;
-  /** Content hash for non-output ignored files; contents are never persisted. */
-  sha256?: string;
 }
 
 export type RollbackOutcomeStatus = "restored" | "not_required" | "failed" | "unavailable";

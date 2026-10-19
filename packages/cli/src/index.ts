@@ -2541,7 +2541,7 @@ export function describeApprovalRollbackStatus(
   outcome: RollbackOutcomeArtifact | undefined,
   loopId: string
 ): string {
-  const receipt = `Review the blocked attempt: martin receipt --run ${loopId}`;
+  const receipt = `Review the blocked attempt: martin runs attempt --loop-id ${loopId}`;
   if (outcome?.status === "restored" || outcome?.status === "not_required") {
     return `The workspace is unchanged. ${receipt}`;
   }

@@ -129,6 +129,41 @@ describe("findWeakenedTestFiles", () => {
     ]);
   });
 
+  it("flags an inserted focused test even when no existing line was removed", async () => {
+    const { directory, head } = await createRepository();
+    await writeFile(
+      join(directory, "math.test.js"),
+      `${BASE_TEST}test.only('mul', () => assert.equal(mul(2, 3), 6));\n`,
+      "utf8"
+    );
+
+    expect(findWeakenedTestFiles({ repoRoot: directory, baseRef: head, changedFiles: ["math.test.js"] })).toEqual([
+      "math.test.js"
+    ]);
+  });
+
+  it.each(["fdescribe", "fit"])("flags a newly focused %s case", async (focus) => {
+    const { directory, head } = await createRepository();
+    await writeFile(join(directory, "math.test.js"), `${BASE_TEST}${focus}('focused', () => {});\n`, "utf8");
+
+    expect(findWeakenedTestFiles({ repoRoot: directory, baseRef: head, changedFiles: ["math.test.js"] })).toEqual([
+      "math.test.js"
+    ]);
+  });
+
+  it("flags a newly inserted pytest expected-failure marker", async () => {
+    const { directory, head } = await createRepository();
+    await writeFile(
+      join(directory, "tests", "suite.py"),
+      "import pytest\n\n@pytest.mark.xfail\ndef test_one():\n    assert 1 == 1\n",
+      "utf8"
+    );
+
+    expect(findWeakenedTestFiles({ repoRoot: directory, baseRef: head, changedFiles: ["tests/suite.py"] })).toEqual([
+      "tests/suite.py"
+    ]);
+  });
+
   it("keeps the strict removed-line rule for golden and data files in test directories", async () => {
     const { directory } = await createRepository();
     const golden = join(directory, "tests", "expected.json");
@@ -161,5 +196,24 @@ describe("findWeakenedTestFiles", () => {
     expect(
       findWeakenedTestFiles({ repoRoot: directory, baseRef: head, changedFiles: ["mul.test.js", "math.js"] })
     ).toEqual([]);
+  });
+
+  it.each([
+    ["focused-new.test.js", "test.only('focused', () => {});\n"],
+    ["suite-new.test.js", "fdescribe('focused', () => {});\n"],
+    ["tests/test_expected.py", "import pytest\n\n@pytest.mark.xfail\ndef test_expected():\n    assert True\n"]
+  ])("flags focus or expected-failure markers in brand-new test file %s", async (filePath, content) => {
+    const { directory, head } = await createRepository();
+    const absolutePath = join(directory, filePath);
+    await writeFile(absolutePath, content, "utf8");
+
+    expect(findWeakenedTestFiles({ repoRoot: directory, baseRef: head, changedFiles: [filePath] })).toEqual([filePath]);
+  });
+
+  it("allows an ordinary brand-new test file", async () => {
+    const { directory, head } = await createRepository();
+    await writeFile(join(directory, "ordinary-new.test.js"), "test('ordinary', () => assert.equal(1, 1));\n", "utf8");
+
+    expect(findWeakenedTestFiles({ repoRoot: directory, baseRef: head, changedFiles: ["ordinary-new.test.js"] })).toEqual([]);
   });
 });

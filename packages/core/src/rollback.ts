@@ -19,8 +19,20 @@ import {
 
 /** Past this many ignored files, further ignored directories stay collapsed. */
 const MAX_EXPANDED_IGNORED_FILES = 20_000;
+const MAX_HASHED_IGNORED_FILE_BYTES = 8 * 1024 * 1024;
+const MAX_HASHED_IGNORED_TOTAL_BYTES = 16 * 1024 * 1024;
 const MAX_IGNORED_SNAPSHOT_BYTES = 64 * 1024 * 1024;
 const ignoredContentSnapshots = new WeakMap<RollbackBoundaryArtifact, Map<string, Buffer>>();
+const ignoredObservations = new WeakMap<RollbackBoundaryArtifact, Map<string, IgnoredFileObservation>>();
+
+interface IgnoredFileObservation extends RollbackIgnoredFileStamp {
+  ctimeMs: number;
+  sha256?: string;
+}
+
+interface IgnoredHashBudget {
+  remainingBytes: number;
+}
 
 export interface IgnoredFileChanges {
   created: string[];
@@ -92,7 +104,12 @@ export async function captureRollbackBoundary(input: {
     snapshots.push(await readRollbackSnapshot(input.repoRoot, filePath));
   }
 
-  const ignoredFiles = readIgnoredInventory(input.repoRoot);
+  const observedIgnoredFiles = readIgnoredInventory(input.repoRoot);
+  const ignoredFiles: RollbackIgnoredFileStamp[] = observedIgnoredFiles.map(({ path, size, mtimeMs }) => ({
+    path,
+    size,
+    mtimeMs
+  }));
   const headRef = readGitScalar(input.repoRoot, ["rev-parse", "HEAD"]);
   const headBranch = readHeadBranch(input.repoRoot);
 
@@ -106,6 +123,7 @@ export async function captureRollbackBoundary(input: {
     snapshots,
     ignoredFiles
   };
+  ignoredObservations.set(boundary, new Map(observedIgnoredFiles.map((entry) => [entry.path, entry])));
   ignoredContentSnapshots.set(boundary, captureIgnoredContent(input.repoRoot, ignoredFiles));
   return boundary;
 }
@@ -123,6 +141,7 @@ export function listIgnoredFileChangesSinceBoundary(input: {
   }
 
   const baseline = new Map(input.boundary.ignoredFiles.map((entry) => [entry.path, entry]));
+  const baselineObservations = ignoredObservations.get(input.boundary);
   const created: string[] = [];
   const modified: string[] = [];
   const currentEntries = readIgnoredInventory(input.repoRoot);
@@ -135,17 +154,28 @@ export function listIgnoredFileChangesSinceBoundary(input: {
     const previous = baseline.get(entry.path);
     if (!previous) {
       created.push(entry.path);
-    } else if (
-      !entry.path.endsWith("/") &&
-      (previous.sha256 !== undefined && entry.sha256 !== undefined
-        ? previous.sha256 !== entry.sha256
-        : previous.size !== entry.size || previous.mtimeMs !== entry.mtimeMs)
-    ) {
+    } else if (!entry.path.endsWith("/") && ignoredObservationChanged(previous, baselineObservations?.get(entry.path), entry)) {
       modified.push(entry.path);
     }
   }
 
   return makeIgnoredFileChanges(created.sort(), modified.sort(), deleted.sort());
+}
+
+function ignoredObservationChanged(
+  previous: RollbackIgnoredFileStamp,
+  previousObservation: IgnoredFileObservation | undefined,
+  current: IgnoredFileObservation
+): boolean {
+  if (previousObservation?.sha256 !== undefined && current.sha256 !== undefined) {
+    return previousObservation.sha256 !== current.sha256;
+  }
+  if (previousObservation !== undefined) {
+    return previous.size !== current.size ||
+      previous.mtimeMs !== current.mtimeMs ||
+      previousObservation.ctimeMs !== current.ctimeMs;
+  }
+  return previous.size !== current.size || previous.mtimeMs !== current.mtimeMs;
 }
 
 function makeIgnoredFileChanges(
@@ -441,12 +471,13 @@ function unstagePath(repoRoot: string, filePath: string): void {
   }
 }
 
-function readIgnoredInventory(repoRoot: string): RollbackIgnoredFileStamp[] {
+function readIgnoredInventory(repoRoot: string): IgnoredFileObservation[] {
   const collapsed = collapsePathsThroughLinks(repoRoot, readGitLines(repoRoot, [
     "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "--", "."
   ]));
-  const inventory: RollbackIgnoredFileStamp[] = [];
+  const inventory: IgnoredFileObservation[] = [];
   let expanded = 0;
+  const hashBudget: IgnoredHashBudget = { remainingBytes: MAX_HASHED_IGNORED_TOTAL_BYTES };
 
   for (const entry of collapsed) {
     const isDirectory = entry.endsWith("/");
@@ -455,7 +486,7 @@ function readIgnoredInventory(repoRoot: string): RollbackIgnoredFileStamp[] {
       isDirectory &&
       (DEPENDENCY_AND_BUILD_DIRECTORIES.has(leaf) || expanded >= MAX_EXPANDED_IGNORED_FILES)
     ) {
-      inventory.push({ path: entry, size: 0, mtimeMs: 0 });
+      inventory.push({ path: entry, size: 0, mtimeMs: 0, ctimeMs: 0 });
       continue;
     }
 
@@ -466,7 +497,12 @@ function readIgnoredInventory(repoRoot: string): RollbackIgnoredFileStamp[] {
         )
       : [entry];
     for (const filePath of files) {
-      inventory.push(stampIgnoredFile(repoRoot, filePath));
+      if (expanded >= MAX_EXPANDED_IGNORED_FILES) {
+        throw new RollbackStateUnavailableError(
+          `Ignored rollback inventory exceeds the ${String(MAX_EXPANDED_IGNORED_FILES)}-file observation limit at ${entry}`
+        );
+      }
+      inventory.push(stampIgnoredFile(repoRoot, filePath, hashBudget));
       expanded += 1;
     }
   }
@@ -474,18 +510,30 @@ function readIgnoredInventory(repoRoot: string): RollbackIgnoredFileStamp[] {
   return inventory.sort((left, right) => left.path.localeCompare(right.path));
 }
 
-function stampIgnoredFile(repoRoot: string, filePath: string): RollbackIgnoredFileStamp {
+function stampIgnoredFile(
+  repoRoot: string,
+  filePath: string,
+  hashBudget: IgnoredHashBudget
+): IgnoredFileObservation {
   try {
     const absolutePath = resolveRepoPath(repoRoot, filePath, { allowLeafLink: true });
     const link = isLinkPath(repoRoot, filePath);
     const stats = link ? lstatSync(absolutePath) : statSync(absolutePath);
-    const stamp: RollbackIgnoredFileStamp = {
+    const stamp: IgnoredFileObservation = {
       path: normalizeRepoPath(filePath),
       size: stats.size,
-      mtimeMs: Math.trunc(stats.mtimeMs)
+      mtimeMs: Math.trunc(stats.mtimeMs),
+      ctimeMs: Math.trunc(stats.ctimeMs)
     };
-    if (!link && stats.isFile() && !isInsideDependencyOrBuildDirectory(filePath)) {
+    if (
+      !link &&
+      stats.isFile() &&
+      stats.size <= MAX_HASHED_IGNORED_FILE_BYTES &&
+      stats.size <= hashBudget.remainingBytes &&
+      !isInsideDependencyOrBuildDirectory(filePath)
+    ) {
       stamp.sha256 = createHash("sha256").update(readFileSync(absolutePath)).digest("hex");
+      hashBudget.remainingBytes -= stats.size;
     }
     return stamp;
   } catch (error) {
@@ -495,7 +543,7 @@ function stampIgnoredFile(repoRoot: string, filePath: string): RollbackIgnoredFi
       );
     }
     // Vanished between listing and stat; record presence only so later comparison fails closed.
-    return { path: normalizeRepoPath(filePath), size: -1, mtimeMs: -1 };
+    return { path: normalizeRepoPath(filePath), size: -1, mtimeMs: -1, ctimeMs: -1 };
   }
 }
 

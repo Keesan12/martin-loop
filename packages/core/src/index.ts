@@ -1796,13 +1796,65 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     }
 
     let changedFiles: string[] = [];
+    let ignoredChanges = { created: [] as string[], modified: [] as string[], deleted: [] as string[] };
+    let escapingLinks: string[] = [];
+    let weakenedTestFiles: string[] = [];
     try {
       changedFiles = tracksWorkspaceMutations
         ? resolveChangedFiles(result, request.context.repoRoot, rollbackBoundary)
         : [];
+      ignoredChanges = tracksWorkspaceMutations
+        ? listIgnoredFileChangesSinceBoundary({ repoRoot: request.context.repoRoot, boundary: rollbackBoundary })
+        : ignoredChanges;
+      escapingLinks =
+        tracksWorkspaceMutations && request.context.repoRoot
+          ? findEscapingLinks(request.context.repoRoot, [...changedFiles, ...ignoredChanges.created])
+          : [];
+      weakenedTestFiles =
+        tracksWorkspaceMutations && request.context.repoRoot && rollbackBoundary?.headRef
+          ? findWeakenedTestFiles({
+              repoRoot: request.context.repoRoot,
+              baseRef: rollbackBoundary.headRef,
+              changedFiles
+            })
+          : [];
     } catch (error) {
       for (const filePath of normalizeFileEffectPaths(result.execution?.changedFiles ?? [])) {
         touchedDuringExecution.add(filePath);
+      }
+      for (const filePath of normalizeFileEffectPaths(changedFiles)) {
+        touchedDuringExecution.add(filePath);
+      }
+      let rollbackOutcome: RollbackOutcomeArtifact;
+      try {
+        rollbackOutcome = (await restoreRollbackBoundary({
+          repoRoot: request.context.repoRoot,
+          boundary: rollbackBoundary,
+          restoredAt: attemptCompletedAt,
+          decision: "DISCARD"
+        })) ?? {
+          attempted: false,
+          status: "unavailable",
+          restoredAt: attemptCompletedAt,
+          decision: "DISCARD",
+          before: { trackedDirtyFiles: [], untrackedFiles: [] },
+          after: { trackedDirtyFiles: [], untrackedFiles: [] },
+          restoredFiles: [],
+          deletedFiles: [],
+          error: "Rollback could not run because no repository root was available."
+        };
+      } catch (rollbackError) {
+        rollbackOutcome = {
+          attempted: true,
+          status: "failed",
+          restoredAt: attemptCompletedAt,
+          decision: "DISCARD",
+          before: { trackedDirtyFiles: [], untrackedFiles: [] },
+          after: { trackedDirtyFiles: [], untrackedFiles: [] },
+          restoredFiles: [],
+          deletedFiles: [],
+          error: `Rollback failed after workspace observation became unavailable: ${fileEffectErrorMessage(rollbackError)}`
+        };
       }
       const observationExitDecision: ExitDecision = {
         shouldExit: true,
@@ -1812,6 +1864,11 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         reasonCode: "workspace_observation_unavailable"
       };
       if (input.store) {
+        await input.store.writeAttemptArtifacts(loop.loopId, currentAttemptIndex, {
+          compiledContext,
+          ...(rollbackBoundary ? { rollbackBoundary } : {}),
+          rollbackOutcome
+        });
         await input.store.appendLedger(
           loop.loopId,
           makeLedgerEvent({
@@ -1855,13 +1912,6 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     const changedFileEvidenceAvailable =
       result.execution?.changedFiles !== undefined || changedFiles.length > 0;
 
-    const ignoredChanges = tracksWorkspaceMutations
-      ? listIgnoredFileChangesSinceBoundary({ repoRoot: request.context.repoRoot, boundary: rollbackBoundary })
-      : { created: [], modified: [], deleted: [] };
-    const escapingLinks =
-      tracksWorkspaceMutations && request.context.repoRoot
-        ? findEscapingLinks(request.context.repoRoot, [...changedFiles, ...ignoredChanges.created])
-        : [];
     const filesystemDecision = evaluateFilesystemLeash({
       repoRoot: request.context.repoRoot,
       changedFiles,
@@ -1963,14 +2013,6 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       };
     }
 
-    const weakenedTestFiles =
-      tracksWorkspaceMutations && request.context.repoRoot && rollbackBoundary?.headRef
-        ? findWeakenedTestFiles({
-            repoRoot: request.context.repoRoot,
-            baseRef: rollbackBoundary.headRef,
-            changedFiles
-          })
-        : [];
     const changeApprovalDecision = evaluateChangeApprovalLeash({
       changedFiles,
       weakenedTestFiles,

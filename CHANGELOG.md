@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.8.8] - 2026-10-19
+
+### Fixed
+- A workspace-observation failure after provider execution now ends the attempt as a typed failure, attempts safe rollback, and cannot be reported as VERIFIED.
+- Newly created tests that introduce focused or expected-failure markers now require explicit test-change approval, while ordinary new tests remain allowed.
+- Ignored-file inspection now has bounded per-file and aggregate hashing limits without persisting private file hashes; metadata checks still detect later eligible changes after the hash budget is exhausted.
+- Claude Code's authoritative reported cost is preserved even when token usage is absent, without fabricating token counts or calculated spend.
+- Versioned `npx` and package-manager `exec` launcher forms are recognized without weakening malformed-quote or folded-MartinLoop-option rejection. MCP JSON verification-plan entries no longer receive CLI argv-fold detection, while malformed quotes remain rejected.
+- Blocked-run guidance now points to the supported attempt-inspection command.
+
 ## [0.8.7] - 2026-10-16
 
 ### Fixed

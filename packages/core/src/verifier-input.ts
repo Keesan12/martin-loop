@@ -8,6 +8,10 @@ const MARTIN_OWNED_OPTIONS = new Set([
 
 const MARTIN_ENGINES = new Set(["auto", "claude", "codex", "gemini", "openai"]);
 const MARTIN_EXECUTABLES = new Set(["martin", "martin-loop", "martin.cmd", "martin-loop.cmd"]);
+const LAUNCHER_BOOLEAN_OPTIONS = new Set([
+  "-s", "--silent", "-y", "--yes", "--no-install", "--offline", "--prefer-offline", "--no-color"
+]);
+const LAUNCHER_VALUE_OPTIONS = new Set(["--cwd", "--dir", "--filter", "--package", "-p", "--workspace", "-w"]);
 
 function foldedMartinOptions(tokens: string[]): string[] {
   const folded: string[] = [];
@@ -26,12 +30,18 @@ function foldedMartinOptions(tokens: string[]): string[] {
 }
 
 /** Returns a reason when a verifier would be parsed differently from what the operator intended. */
-export function describeMalformedVerifier(command: string): string | undefined {
+export function describeMalformedVerifier(
+  command: string,
+  options: { detectShellFold?: boolean } = {}
+): string | undefined {
   const quote = findUnterminatedQuote(command);
   if (quote !== undefined) return `--verify value has an unterminated quote (${quote}): ${command}`;
+  if (options.detectShellFold === false) return undefined;
 
   const tokens = command.trim().split(/\s+/u);
-  const executable = tokens[0]?.replace(/^["']|["']$/gu, "").toLowerCase() ?? "";
+  const normalized = tokens.map(normalizeExecutableToken);
+  const executableIndex = resolveLaunchedExecutableIndex(normalized);
+  const executable = normalized[executableIndex] ?? "";
   if (MARTIN_EXECUTABLES.has(executable)) return undefined;
 
   const swallowed = foldedMartinOptions(tokens);
@@ -40,6 +50,46 @@ export function describeMalformedVerifier(command: string): string | undefined {
       + "The shell merged later flags into the verifier, usually because of a stray quote.";
   }
   return undefined;
+}
+
+function resolveLaunchedExecutableIndex(tokens: string[]): number {
+  if (tokens[0] === "node") return 1;
+  if (tokens[0] === "npx" || tokens[0] === "pnpx") {
+    return skipLauncherOptions(tokens, 1);
+  }
+  if (tokens[0] === "pnpm" || tokens[0] === "npm" || tokens[0] === "yarn") {
+    const actionIndex = skipLauncherOptions(tokens, 1);
+    if (tokens[actionIndex] !== "exec" && tokens[actionIndex] !== "dlx") return 0;
+    return skipLauncherOptions(tokens, actionIndex + 1);
+  }
+  return 0;
+}
+
+function skipLauncherOptions(tokens: string[], start: number): number {
+  let index = start;
+  while (index < tokens.length) {
+    const token = tokens[index] ?? "";
+    if (token === "--" || LAUNCHER_BOOLEAN_OPTIONS.has(token) || token.startsWith("--color=")) {
+      index += 1;
+      continue;
+    }
+    if (LAUNCHER_VALUE_OPTIONS.has(token)) {
+      index += 2;
+      continue;
+    }
+    if ([...LAUNCHER_VALUE_OPTIONS].some((option) => token.startsWith(`${option}=`))) {
+      index += 1;
+      continue;
+    }
+    break;
+  }
+  return index;
+}
+
+function normalizeExecutableToken(token: string): string {
+  const unquoted = token.replace(/^["']|["']$/gu, "");
+  const basename = unquoted.split(/[\\/]/u).at(-1)?.toLowerCase() ?? "";
+  return basename.endsWith(".js") ? basename.slice(0, -3) : basename;
 }
 
 function findUnterminatedQuote(command: string): '"' | "'" | undefined {

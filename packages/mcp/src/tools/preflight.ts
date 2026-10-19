@@ -182,7 +182,7 @@ export async function martinPreflightTool(
       : undefined;
   const warnings: string[] = [];
   const malformedVerifiers = (input.verificationPlan ?? [])
-    .map((command) => describeMalformedVerifier(command))
+    .map((command) => describeMalformedVerifier(command, { detectShellFold: false }))
     .filter((reason): reason is string => reason !== undefined);
   const allowedPaths = input.allowedPaths ?? [];
   const deniedPaths = input.deniedPaths ?? [];

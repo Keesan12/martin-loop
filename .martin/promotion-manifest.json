@@ -2,15 +2,15 @@
   "schemaVersion": "martin.public-promotion.v2",
   "sourceAuthority": "validated-internal-release-source",
   "sourceRepositoryFingerprint": "04aac733f3b08513fddcc72a9013b9f59cf7919f9a0a3893d0b3d953929826ec",
-  "privateMergeSha": "d97e4eaf521a30bbfdd8c5a6217eb7392caac47d",
-  "privateMainShaValidated": "d97e4eaf521a30bbfdd8c5a6217eb7392caac47d",
-  "publicBaseSha": "513e9d10833ea05e3404d7bc04c7831ed2f1473c",
+  "privateMergeSha": "c09775d4bd7e5cad407556d90e183aec85f3aa3d",
+  "privateMainShaValidated": "c09775d4bd7e5cad407556d90e183aec85f3aa3d",
+  "publicBaseSha": "eca49c35bc88f05338cab9ca0ca2292d1cd2219f",
   "promotedBy": "Torram",
-  "validatedAt": "2026-10-16T23:14:02.168Z",
+  "validatedAt": "2026-10-19T14:58:53.270Z",
   "internalHealthPassed": true,
-  "internalHealthEvidenceSha256": "8f0ae8d3a8d96ff3f664022f57f963604879315f81874cff0dffa74f764b5b97",
+  "internalHealthEvidenceSha256": "8b2ec2d4625f9fd25fdac73bd3d1e2ccc90b60c4939acd0196bcb5f176a512ea",
   "surfaceSpecHash": "a9c8d22be91bc0dd19238f7676aec62aacc77d8cc3a66327b46d71f16d65164a",
-  "surfaceHash": "594bced4baeb0ca48eb608473ae82ff54b2e1e846ff043bb96f82d701284103b",
+  "surfaceHash": "37aa801ebb50b37059f9ce73fca64d35c290e8e178cac54af7083566d26b5517",
   "surfaceEntries": [
     {
       "path": ".agents/plugins/marketplace.json",
@@ -20,7 +20,7 @@
     {
       "path": ".claude-plugin/marketplace.json",
       "mode": "100644",
-      "sha256": "f003c6285b8b29e16c7a3dfaf6ed73704fa162edc018bd2352abca6024450ea0"
+      "sha256": "6bd507443698b8d25c595884d3a415df219af1d4a6bb2a3f929e652cd98090e2"
     },
     {
       "path": ".claude/rules/martinloop-internal-first.md",
@@ -140,7 +140,7 @@
     {
       "path": "CHANGELOG.md",
       "mode": "100644",
-      "sha256": "33bf9b68544d5c3462e2289b7d0fc826b6f1e4bf3cafb3f9cb93c8f5a1b31921"
+      "sha256": "cd6b8c0fdad4e1bc8b45aa4cd810c0948a8a04479484e3d1b8ee88e2a285adc0"
     },
     {
       "path": "CLAUDE.md",
@@ -165,7 +165,7 @@
     {
       "path": "README.md",
       "mode": "100644",
-      "sha256": "053d96f9d88ee9ede56d4a2d3931b4a581d560fb7ccac592e3224634bf6d99c3"
+      "sha256": "44328ac451a280dffd1a7c61f90ff356a96ab65239e5f1e2cf38174a64322ec7"
     },
     {
       "path": "SECURITY.md",
@@ -350,7 +350,7 @@
     {
       "path": "dist/vendor/cli/package.json",
       "mode": "100644",
-      "sha256": "341aeb74bc63a3539c8723f148c5eda71c1c93a071c81cd94ea8c0cd3168fe36"
+      "sha256": "2620342abaa74901617e4c4f78a2ac97bbd036b002427b2b574a986d4f084014"
     },
     {
       "path": "docs/CLI_AUDIT_FINDINGS.md",
@@ -620,7 +620,7 @@
     {
       "path": "docs/product-truth/public-release-truth.json",
       "mode": "100644",
-      "sha256": "e493b9dd23d7b28187b0b980e3ab9c2425f0469c65f9222a6b076fc6673c1521"
+      "sha256": "265d8411d58b78374a3059af5e34b18cec10e8297386e442507c29e9c2adb4b8"
     },
     {
       "path": "docs/reference/SWARM-HOSTED-V1-HANDOFF.md",
@@ -851,6 +851,11 @@
       "path": "docs/release/MCP-0.8.7-RELEASE-NOTES.md",
       "mode": "100644",
       "sha256": "baa541ae91b8a223373dd773f14f2f702045c3bd71ff58f6bff3d576c138e720"
+    },
+    {
+      "path": "docs/release/MCP-0.8.8-RELEASE-NOTES.md",
+      "mode": "100644",
+      "sha256": "5678fc97273630650c3f640c792b1f1f3048ad0c68366c1dfd708fbdb142c71c"
     },
     {
       "path": "docs/release/MCP-COMPATIBILITY.md",
@@ -1098,6 +1103,11 @@
       "sha256": "5b788b4c11bbd5c77315a036588a43f8aef6467639c61dfc165c64177d167ea7"
     },
     {
+      "path": "docs/release/OSS-0.8.8-RELEASE-NOTES.md",
+      "mode": "100644",
+      "sha256": "fe08e788627cbe142aa9f0cc11a9390c3351f68d24a278633650f5f8ecc601f6"
+    },
+    {
       "path": "docs/release/ROOT-DELIVERY-SLICE-MAP.md",
       "mode": "100644",
       "sha256": "6630b907658a938467fd04b8a2e9aecd25ab3102194baa15be13b561f2a7bbac"
@@ -1105,7 +1115,7 @@
     {
       "path": "docs/release/VERSION-LEDGER.md",
       "mode": "100644",
-      "sha256": "d54677fee1e90eac52531a00be60834a94dae6ca703aa59f8fac0c7e402ea80e"
+      "sha256": "dfd5d3ed7256346c951917b06dc3c7d3bf0ddd9fc541151900c7fb0f1812cb33"
     },
     {
       "path": "docs/release/reliability-hardening/BASELINE.md",
@@ -1200,7 +1210,7 @@
     {
       "path": "package.json",
       "mode": "100644",
-      "sha256": "5b123294fe3aaf74d91260370483c0dd56948a546e517fb6cb5239ebdc753141"
+      "sha256": "37ae006a824ae7c7cac81ba258a9651d7627332bec6af610b5c8218832dcd8da"
     },
     {
       "path": "packages/README.md",
@@ -1220,7 +1230,7 @@
     {
       "path": "packages/adapters/src/claude-cli.ts",
       "mode": "100644",
-      "sha256": "bc3faa0eeaca9d86b2f73110cccc3faa6b8cf04270980cdabd38a4f209a08b43"
+      "sha256": "ae13c166239522d70ec2d2c884de0607975a95b8aa679ad53af04eba9b19e528"
     },
     {
       "path": "packages/adapters/src/cli-bridge.ts",
@@ -1300,7 +1310,7 @@
     {
       "path": "packages/adapters/tests/claude-error-result.test.ts",
       "mode": "100644",
-      "sha256": "8d4ac345c7f499e19e509569d206330db325ed33b02fc9a6e77a54cb70278d81"
+      "sha256": "91472f449c431734b7f95fc51751b2fd427ef7bdb961589243349e86d2f713a7"
     },
     {
       "path": "packages/adapters/tests/cli-bridge.test.ts",
@@ -1425,7 +1435,7 @@
     {
       "path": "packages/cli/src/index.ts",
       "mode": "100644",
-      "sha256": "8a9ff4ba9e36654ea69443dbc2d07346b03f6b8f6274a7fa83716eacf6fe3098"
+      "sha256": "63efd62306a1333fe08b5b377c79b09b247c29e98563b8a2966c06ff75731daf"
     },
     {
       "path": "packages/cli/src/mcp-config.ts",
@@ -1615,7 +1625,7 @@
     {
       "path": "packages/cli/tests/cli.test.ts",
       "mode": "100644",
-      "sha256": "5115aa8cefc2854f7b91fbe99fd96e746e693bcb27f514fcb2ea1390ed244534"
+      "sha256": "c988f7d7932fa417b7e10fef1fcda64f0e338fcfccefd064fab325e52c008556"
     },
     {
       "path": "packages/cli/tests/corpus-intelligence.test.ts",
@@ -1890,7 +1900,7 @@
     {
       "path": "packages/contracts/src/index.ts",
       "mode": "100644",
-      "sha256": "eb3c4e1c7600ff6024b1a7563224b541e47d48325668674df25bf1f56eed5356"
+      "sha256": "9886a159f9345e1284ea9c0f9f2370d546d5fdf6d0459cefadd28ae5bf93bafa"
     },
     {
       "path": "packages/contracts/src/mission.ts",
@@ -2135,7 +2145,7 @@
     {
       "path": "packages/core/src/index.ts",
       "mode": "100644",
-      "sha256": "d7ba9b492bd453f1d11df519d24d594778e923db978586e33c696fc95cda4ba7"
+      "sha256": "f9fcde3c6eff5cb8d8a547d6c20cbeaa565c87cb86003d75cbe1bc1a6747512d"
     },
     {
       "path": "packages/core/src/leash.ts",
@@ -2240,7 +2250,7 @@
     {
       "path": "packages/core/src/rollback.ts",
       "mode": "100644",
-      "sha256": "3c9ea80f44666b5020d873b47abcd586ef2a146be4312a0f3162f20651e44c91"
+      "sha256": "d0e77cfd1a0dad8c886fbe93732a17ecbfb3174a20e37985f19cdbe5ccaeffa8"
     },
     {
       "path": "packages/core/src/routing.ts",
@@ -2345,12 +2355,12 @@
     {
       "path": "packages/core/src/test-integrity.ts",
       "mode": "100644",
-      "sha256": "3afa840396ac2e49e90433db156a8cd7474b9fc3766dfa4638032b33e7dc1536"
+      "sha256": "b1e80068bcdd245eea713cba6e8b0c1fea6caa991eb17fade60b63795d6baca3"
     },
     {
       "path": "packages/core/src/test-surface.ts",
       "mode": "100644",
-      "sha256": "b334132b0bfca917141052dce56490114d6da8ffa6cf7488f32fc7e73f266f03"
+      "sha256": "f87461e98ec063702380bf0393722ce85532f5bc065d0b05baa6fc169fd6dd79"
     },
     {
       "path": "packages/core/src/trajectory.ts",
@@ -2365,7 +2375,7 @@
     {
       "path": "packages/core/src/verifier-input.ts",
       "mode": "100644",
-      "sha256": "0d1acda0df74c3e96bbc20eb49bba3211ddc32482876a5927cf54d7be73b6a34"
+      "sha256": "acc7eab1c4bf2300c1f6a1fab3dd1461eb148949586cbaf8647359d690d49f25"
     },
     {
       "path": "packages/core/tests/attempt-started-persistence.test.ts",
@@ -2500,7 +2510,12 @@
     {
       "path": "packages/core/tests/rollback-commits-ignored.test.ts",
       "mode": "100644",
-      "sha256": "f68376927748e389a666f3e955236784186a0251ee88c51f71540f90895c1978"
+      "sha256": "fc7728eb7c9be3318d4238871e9fdd9014a30611192fd01bc72aafe439165834"
+    },
+    {
+      "path": "packages/core/tests/rollback-hash-budget.test.ts",
+      "mode": "100644",
+      "sha256": "fc9a789571601734a55dc82cdea3f075981d81890eacfc03b0224ec1ca36da2b"
     },
     {
       "path": "packages/core/tests/rollback-links.test.ts",
@@ -2526,6 +2541,11 @@
       "path": "packages/core/tests/runs-reader.test.ts",
       "mode": "100644",
       "sha256": "aa8f2a9d2472062bdafdb58cbcf703ef10d7fe19ca8fa9e6bbfaf7a9ed420b8d"
+    },
+    {
+      "path": "packages/core/tests/runtime-post-observation-failure.test.ts",
+      "mode": "100644",
+      "sha256": "a32d83fb58f8506fdca85b067aafce44a551eea861264ce12bc12c2bc95d34d1"
     },
     {
       "path": "packages/core/tests/runtime-workspace-hardening.test.ts",
@@ -2625,7 +2645,7 @@
     {
       "path": "packages/core/tests/test-weakening.test.ts",
       "mode": "100644",
-      "sha256": "e581e1dbc880d8f91244bee1d648b8920fad35f572a32d05fa48411bb1bfc2a7"
+      "sha256": "0f00d92a7a63451c62da2faf083100005ab590da9092177e663ed4717588ba1b"
     },
     {
       "path": "packages/core/tests/trace-store.test.ts",
@@ -2641,6 +2661,11 @@
       "path": "packages/core/tests/verified-handoff.test.ts",
       "mode": "100644",
       "sha256": "7f931dd22603d82b8664804563015e23e3359e801fdc0dfb6212441be62e9522"
+    },
+    {
+      "path": "packages/core/tests/verifier-input.test.ts",
+      "mode": "100644",
+      "sha256": "0ca19ec234a9187d0162130c0eddd791847cf564f48ed545fb8f825f4a96dd23"
     },
     {
       "path": "packages/core/tsconfig.build.json",
@@ -2680,7 +2705,7 @@
     {
       "path": "packages/mcp/mcpb/manifest.json",
       "mode": "100644",
-      "sha256": "bd1b35851930f7d8a0ec21a02fe161364096092867c35289b8a476f6c9192cef"
+      "sha256": "7fc2eb665e8f5d4fd4827fe62dea1d00171856444a90ce5c23cfb2908b5e1e74"
     },
     {
       "path": "packages/mcp/mcpb/smoke-mcpb.mjs",
@@ -2690,7 +2715,7 @@
     {
       "path": "packages/mcp/package.json",
       "mode": "100644",
-      "sha256": "10dd4a823d149556e33945c8ff4277bb040f308986f34a2aa9453328af51b4be"
+      "sha256": "acdfc2e8d696f54f2c8e525322488918ea92a3640b2a9a0f0afa7351696bd8e4"
     },
     {
       "path": "packages/mcp/scripts/build-package-lib.mjs",
@@ -2745,7 +2770,7 @@
     {
       "path": "packages/mcp/server.json",
       "mode": "100644",
-      "sha256": "82416fbd52f9db9a257fdbf02deb7262a142862cfd640ff4a98190849e3d36f0"
+      "sha256": "09b5a9afdc0ffee87ed6628d82776c612a8012600c83e8fc6c85a3e96d24712c"
     },
     {
       "path": "packages/mcp/src/arcade/capabilities.ts",
@@ -2775,7 +2800,7 @@
     {
       "path": "packages/mcp/src/package-version.ts",
       "mode": "100644",
-      "sha256": "66457a0a3cdb5b26528325a63d10ab25e6af0f46eda173f0778036904958d37f"
+      "sha256": "30f59039966b1ccaef6ee9f939dfb635429582fa11f66bf9ca00f2e11ceaeb04"
     },
     {
       "path": "packages/mcp/src/prompts.ts",
@@ -2860,7 +2885,7 @@
     {
       "path": "packages/mcp/src/tools/preflight.ts",
       "mode": "100644",
-      "sha256": "331988b1c19fbd6c1998220c36fb252664047293ad645c56ddfdf02450843614"
+      "sha256": "7c8ea93e923e5f001be51c26d94d37569db07ff488fa752db701fd9d0b19e901"
     },
     {
       "path": "packages/mcp/src/tools/run-controls.ts",
@@ -2955,7 +2980,7 @@
     {
       "path": "packages/mcp/tests/mcp-tools.test.ts",
       "mode": "100644",
-      "sha256": "c9cf3a70c51b03d6b2cb06c3ff85bc79ddf5bd7244e8ccf53d2ca404a7c0a977"
+      "sha256": "c7b87ee5e043508a3544c4ce99503b99b312910ea246515ad14e5f9187835376"
     },
     {
       "path": "packages/mcp/tests/pr-tools.test.ts",
@@ -3085,12 +3110,12 @@
     {
       "path": "plugins/martinloop/.claude-plugin/plugin.json",
       "mode": "100644",
-      "sha256": "bd3c076c585df937ed65273aaf0f1c85b77f178c9b72720e0b6e304423182812"
+      "sha256": "063aa5c5af6337fecff47ff3a68f2c5248c6897c399f2981e893a25b9fc8de4b"
     },
     {
       "path": "plugins/martinloop/.codex-plugin/plugin.json",
       "mode": "100644",
-      "sha256": "33c6f4e924bc274ee8a45791595716d483ab91f131d57122ad2811f8e2b786de"
+      "sha256": "a5c1ed5ebccb9e63c945d5efcd92ce51e31941d058fb054973974c53c0a94540"
     },
     {
       "path": "plugins/martinloop/.codexignore",
@@ -3100,7 +3125,7 @@
     {
       "path": "plugins/martinloop/.mcp.json",
       "mode": "100644",
-      "sha256": "167d513458978904f02afac979d0d4cedb4f35d56dedf03b4ceea86b969c7ddc"
+      "sha256": "952854ef20e8e5b2774a08092b134b084a344e4fa8a399d81824f3f087852cdd"
     },
     {
       "path": "plugins/martinloop/LICENSE",
@@ -3130,7 +3155,7 @@
     {
       "path": "plugins/martinloop/plugin.json",
       "mode": "100644",
-      "sha256": "bd3c076c585df937ed65273aaf0f1c85b77f178c9b72720e0b6e304423182812"
+      "sha256": "063aa5c5af6337fecff47ff3a68f2c5248c6897c399f2981e893a25b9fc8de4b"
     },
     {
       "path": "plugins/martinloop/skills/martinloop-govern/SKILL.md",

@@ -41,8 +41,10 @@ const CASE_PATTERNS: RegExp[] = [
 
 const SKIP_PATTERNS: RegExp[] = [
   /\b(?:test|it|describe|context|suite)\s*\.\s*(?:skip|todo)\b/gu,
+  /\b(?:test|it|describe|context|suite|specify)\s*\.\s*only\b/gu,
+  /\bf(?:it|describe)\s*\(/gu,
   /\bx(?:it|describe|test|context)\s*\(/gu,
-  /@pytest\.mark\.skip\w*|\bpytest\.skip\s*\(|@unittest\.skip\w*|\bself\.skipTest\s*\(/gu,
+  /@pytest\.mark\.(?:skip\w*|xfail)|\bpytest\.(?:skip|xfail)\s*\(|@unittest\.(?:skip\w*|expectedFailure)|\bself\.skipTest\s*\(/gu,
   /\bt\.Skip\w*\s*\(/gu,
   /#\[ignore\b/gu,
   /@Disabled\b|@Ignore\b/gu

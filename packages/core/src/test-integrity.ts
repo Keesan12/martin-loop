@@ -284,12 +284,26 @@ export function findWeakenedTestFiles(input: {
     return [];
   }
 
-  const removedLines = listFilesWithRemovedLines(input.repoRoot, input.baseRef, candidates);
-  return [...removedLines].filter((filePath) => isWeakened(input, filePath)).sort();
+  const changedLines = listChangedTestFiles(input.repoRoot, input.baseRef, candidates);
+  for (const filePath of candidates) {
+    if (
+      !changedLines.has(filePath) &&
+      readBaseContent(input.repoRoot, input.baseRef, filePath) === undefined &&
+      readWorkingContent(input.repoRoot, filePath) !== undefined
+    ) {
+      // Untracked files are absent from `git diff --numstat` but still belong
+      // to the caller's observed changed-file set.
+      changedLines.set(filePath, false);
+    }
+  }
+  return [...changedLines.entries()]
+    .filter(([filePath, removedLines]) => isWeakened(input, filePath, removedLines))
+    .map(([filePath]) => filePath)
+    .sort();
 }
 
-/** Files among `candidates` that lost at least one line (or are binary) since `baseRef`. */
-function listFilesWithRemovedLines(repoRoot: string, baseRef: string, candidates: string[]): Set<string> {
+/** Modified files among `candidates`, with whether they lost a line (or are binary). */
+function listChangedTestFiles(repoRoot: string, baseRef: string, candidates: string[]): Map<string, boolean> {
   const result = spawnSync(
     "git",
     ["diff", "--numstat", "--no-renames", "-z", baseRef, "--", ...candidates],
@@ -300,23 +314,30 @@ function listFilesWithRemovedLines(repoRoot: string, baseRef: string, candidates
     throw new Error(`Test-change inspection failed: ${detail || `git exited with ${String(result.status)}`}`);
   }
 
-  const removed = new Set<string>();
+  const changed = new Map<string, boolean>();
   for (const record of result.stdout.split("\0")) {
-    const [, deletions, filePath] = record.split("\t");
-    if (filePath && deletions !== undefined && (deletions === "-" || Number(deletions) > 0)) {
-      removed.add(filePath.trim());
+    const [additions, deletions, filePath] = record.split("\t");
+    if (filePath && additions !== undefined && deletions !== undefined) {
+      changed.set(filePath.trim(), deletions === "-" || Number(deletions) > 0);
     }
   }
-  return removed;
+  return changed;
 }
 
 /** Cap on file size the surface analysis reads; larger files use the strict rule. */
 const MAX_SURFACE_BYTES = 2 * 1024 * 1024;
 
-function isWeakened(input: { repoRoot: string; baseRef: string }, filePath: string): boolean {
+function isWeakened(
+  input: { repoRoot: string; baseRef: string },
+  filePath: string,
+  removedLines: boolean
+): boolean {
   const before = readBaseContent(input.repoRoot, input.baseRef, filePath);
   if (before === undefined) {
-    return true;
+    const after = readWorkingContent(input.repoRoot, filePath);
+    // New tests are welcome, but focus/skip/expected-failure markers can still
+    // suppress the authoritative suite and therefore require approval.
+    return after === undefined || testSurfaceWeakened("", after, filePath);
   }
 
   const after = readWorkingContent(input.repoRoot, filePath);
@@ -326,7 +347,7 @@ function isWeakened(input: { repoRoot: string; baseRef: string }, filePath: stri
   }
 
   if (!hasTestSurface(extractTestSurface(before, filePath))) {
-    return true;
+    return removedLines;
   }
   return testSurfaceWeakened(before, after, filePath);
 }

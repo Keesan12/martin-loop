@@ -296,6 +296,7 @@ function extractUsage(
     });
   }
 
+  const hasRawUsage = parsed.usage !== undefined;
   const usage = parsed.usage ?? {};
   const promptTokens = usage.inputTokens ?? usage.input_tokens ?? 0;
   const cacheCreationInputTokens =
@@ -313,7 +314,7 @@ function extractUsage(
   const hasAuthoritativeCost = typeof parsed.total_cost_usd === "number";
   const actualUsd: number = hasAuthoritativeCost
     ? (parsed.total_cost_usd as number)
-    : pricingResolution.pricing
+    : hasRawUsage && pricingResolution.pricing
       ? calculateUsageCost({
           inputTokens: promptTokens,
           cachedInputTokens,
@@ -327,7 +328,11 @@ function extractUsage(
     tokensIn,
     tokensOut,
     cachedInputTokens,
-    provenance: hasAuthoritativeCost ? "actual" : pricingResolution.pricing ? "calculated" : "unavailable",
+    provenance: hasAuthoritativeCost
+      ? "actual"
+      : hasRawUsage && pricingResolution.pricing
+        ? "calculated"
+        : "unavailable",
     providerSettlement: {
       providerId: "claude",
       ...(modelLabel ? { model: modelLabel } : {}),
@@ -347,7 +352,7 @@ function extractUsage(
       ...(pricingResolution.pricing
         ? { pricingVersion: pricingResolution.pricing.pricingVersion ?? EMBEDDED_PRICING_VERSION }
         : {}),
-      rawUsageAvailable: true,
+      rawUsageAvailable: hasRawUsage,
       settledAt: new Date().toISOString()
     }
   });
@@ -1339,7 +1344,7 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
       const observedClaudeModel = options.streamingUsageCap
         ? extractClaudeObservedModel(agentResult.stdout)
         : undefined;
-      const usage = parsed?.usage
+      const usage = parsed
         ? extractUsage(
             parsed,
             observedClaudeModel ?? options.model,
