@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [0.8.9] - 2026-10-22
+
+### Added
+- Governed CLI runs can use an explicit ordered provider fallback chain with repeatable `--fallback-engine`; MCP `martin_run` exposes the same authority through `fallbackEngines`. MartinLoop does not add providers implicitly.
+- Added `martin continue <loopId>` for eligible interrupted reversible runs. Continuation reuses the same loop ID and persisted task, verifier, scope, budget, and evidence.
+
+### Safety / recovery
+- Provider fallback is validated before spend, cannot silently widen to a new vendor, and remains disabled for external-write recovery.
+- Durable execution leases prevent concurrent provider children for one run during reconnects.
+- Retained candidate rollback authority and the latest verifier failure evidence survive process reconnects so repair can continue from the existing candidate.
+- USD, token, iteration, and wall-clock limits remain bound to the original run; reconnecting does not reset resource authority.
+- Terminal, exhausted, uncertain-active, irreversible, and external-write runs fail closed instead of being automatically replayed.
+
+
 ## [0.8.8] - 2026-10-19
 
 ### Fixed

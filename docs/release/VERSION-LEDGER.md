@@ -5,9 +5,9 @@ This file is the release source of truth for package/version mapping in this rep
 ## Root package: `martin-loop`
 
 - live npm dist-tag `latest`: verify live with `npm view martin-loop version`
-- live public GitHub release: `v0.8.7`
-- live public baseline in this train: `0.8.7`
-- root public baseline: `0.8.7`
+- live public GitHub release: `v0.8.8`
+- live public baseline in this train: `0.8.8`
+- root public baseline: `0.8.8`
 - releases consumed since the original `0.2.8` launch:
   - `0.2.9` fixed proof-run classification, Windows `.cmd` resolution, and public provider defaults
   - `0.2.10` tightened verifier evidence, `--runs-dir` consistency, and public help output
@@ -51,21 +51,22 @@ This file is the release source of truth for package/version mapping in this rep
   - `0.8.5` rejected malformed verifier input before preflight readiness, reported runs scope, aligned governed badge JSON, clarified swarm demo inspection, and hardened POSIX process-tree cleanup
   - `0.8.6` closed failed Codex-turn false verification, CommonJS grounding, MCP tool schemas, Windows verifier flags, tamper verification exit, portable MCP configs, and unverified PR execution
   - `0.8.7` contained rollback within repository boundaries, enforced test and protected-file approval, rejected false provider success, and made restoration outcomes explicit
-- current in-repo root release target: `0.8.8` (pending publication)
+  - `0.8.8` added autonomous repair context, safe candidate retention, task-aware retry budgets, truthful MCP verification, and hardened customer acceptance
+- current in-repo root release target: `0.8.9` (pending publication)
 - next planned root follow-on: not scheduled
 
 ## Standalone package: `@martinloop/mcp`
 
 - live npm dist-tag `latest`: verify live with `npm view @martinloop/mcp version`
-- live public GitHub release: `mcp-v0.8.7`
-- live public baseline in this train: `0.8.7`
-- standalone MCP public baseline: `0.8.7`
+- live public GitHub release: `mcp-v0.8.8`
+- live public baseline in this train: `0.8.8`
+- standalone MCP public baseline: `0.8.8`
 - official MCP Registry version: verify live during release close; do not cache the mutable registry version here
-- live MCPB baseline: `0.8.7`
-- live MCPB SHA-256: see the `mcp-v0.8.7` GitHub release checksum asset
-- live MCPB size: see the `mcp-v0.8.7` GitHub release asset
-- current in-repo standalone release target: `0.8.8` (pending publication)
-- current in-repo MCPB release target: `0.8.8` with manifest schema `0.3` (pending publication)
+- live MCPB baseline: `0.8.8`
+- live MCPB SHA-256: see the `mcp-v0.8.8` GitHub release checksum asset
+- live MCPB size: see the `mcp-v0.8.8` GitHub release asset
+- current in-repo standalone release target: `0.8.9` (pending publication)
+- current in-repo MCPB release target: `0.8.9` with manifest schema `0.3` (pending publication)
 - next planned standalone release: not scheduled
 
 ## Release rules
@@ -84,7 +85,8 @@ This file is the release source of truth for package/version mapping in this rep
 - The `0.8.5` train aligned the root package, standalone MCP package, plugin metadata, and MCPB product version at `0.8.5`. MCPB manifest schema remains `0.3`.
 - The `0.8.6` train aligned the root package, standalone MCP package, plugin metadata, and MCPB product version at `0.8.6`. MCPB manifest schema remains `0.3`.
 - The `0.8.7` train aligned the root package, standalone MCP package, plugin metadata, and MCPB product version at `0.8.7`. MCPB manifest schema remains `0.3`.
-- The `0.8.8` candidate aligns the root package, standalone MCP package, plugin metadata, and MCPB product version at `0.8.8`. MCPB manifest schema remains `0.3`.
+- The `0.8.8` train aligned the root package, standalone MCP package, plugin metadata, and MCPB product version at `0.8.8`. MCPB manifest schema remains `0.3`.
+- The `0.8.9` candidate aligns the root package, standalone MCP package, plugin metadata, and MCPB product version at `0.8.9`. MCPB manifest schema remains `0.3`.
 - Do not infer standalone MCP release state from the root package, or the other way around.
 - Public release notes must be written for customers and evaluators, not for internal operators.
 - Public-facing examples, screenshots, README copy, and changelog entries must stay free of internal repo names, absolute system paths, private branch names, or process noise.
