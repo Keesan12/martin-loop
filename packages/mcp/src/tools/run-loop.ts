@@ -358,8 +358,8 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
     metadata: {
       executionMode: evidenceExecutionMode,
       governanceClaimEligible: evidenceExecutionMode === "governed" ? "true" : "false",
-      authorizedPrimaryEngine: engine,
-      ...(fallbackEngines.length > 0
+      ...(executionMode.liveMode ? { authorizedPrimaryEngine: engine } : {}),
+      ...(executionMode.liveMode && fallbackEngines.length > 0
         ? { authorizedFallbackEngines: fallbackEngines.join(",") }
         : {})
     },
