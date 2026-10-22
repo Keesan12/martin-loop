@@ -2945,9 +2945,13 @@ async function executeContinueRunCommand(
     );
   }
 
-  let engine = command.engine ?? persistedPrimary;
+  const engine = command.engine ?? persistedPrimary;
   if (!engine || engine === "auto") {
-    engine = resolveAutoEngine().engine;
+    throw new CliCommandError(
+      "policy_blocked",
+      "continue cannot infer a new provider because the persisted run has no concrete provider authority.",
+      { suggestion: "Inspect the persisted run; if provider authority is unavailable, start a new governed run." }
+    );
   }
   const continuationFallbackEngines = persistedFallbackEngines.filter(
     (candidate) => candidate !== engine
