@@ -667,7 +667,7 @@ export interface RunMartinInput {
   fallbackAdapters?: MartinAdapter[];
   /**
    * Continue an unfinished persisted run under the same loop ID and authority.
-   * The caller must acquire an execution lease before invoking runMartin.
+   * runMartin acquires the durable execution lease before any store persistence.
    */
   resume?: {
     loop: LoopRecord;
@@ -783,6 +783,16 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         { now: now(), idFactory }
       );
 
+  const executionLease = input.store?.runsRoot
+    ? await acquireRunExecutionLease({
+        runsRoot: input.store.runsRoot,
+        runId: loop.loopId,
+        owner: resumeLoop ? "runMartin:resume" : "runMartin",
+        now: () => loop.updatedAt
+      })
+    : undefined;
+
+  try {
   loop = appendLoopEvent(
     loop,
     {
@@ -1536,17 +1546,6 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     return { loop: finalizedWithEnvelope, decision: exitDecision };
   }
 
-  // Acquire the durable execution lease only after static gates pass and immediately
-  // before provider-capable execution begins. This prevents a reconnect from
-  // launching a second provider child while the original owner is still alive.
-  const executionLease = input.store?.runsRoot
-    ? await acquireRunExecutionLease({
-        runsRoot: input.store.runsRoot,
-        runId: loop.loopId,
-        owner: resumeLoop ? "runMartin:resume" : "runMartin",
-        now: () => loop.updatedAt
-      })
-    : undefined;
   if (resumeLoop && input.store) {
     await input.store.appendLedger(
       loop.loopId,
@@ -2910,6 +2909,8 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         // The exception that caused this path will propagate to the caller.
       }
     }
+  }
+  } finally {
     if (executionLease) {
       await executionLease.release().catch(() => undefined);
     }
