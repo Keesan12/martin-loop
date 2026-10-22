@@ -2455,7 +2455,10 @@ const store: import("../src/index").RunStore = {
     expect(await readPersistedCompletedFileEffects(runsRoot, result.loop.loopId)).toEqual(effects);
   });
 
-  it("restores the pre-attempt repo boundary for discarded verifier regressions and preserves pre-existing dirty files", async () => {
+  it("retains safe candidate when verifier fails (SAFE_UNVERIFIED) and preserves pre-existing dirty files", async () => {
+    // C1: A patch that is within scope but fails the verifier is SAFE_UNVERIFIED.
+    // The workspace is NOT rolled back — the candidate stays so attempt N+1 can repair.
+    // The attempt record carries candidateRetained:true.
     const runsRoot = await mkdtemp(join(tmpdir(), "martin-patch-rollback-"));
     const repoRoot = join(runsRoot, "repo");
     await materializeCommittedRepo(repoRoot);
@@ -2527,36 +2530,26 @@ const store: import("../src/index").RunStore = {
       idFactory: createIdFactory()
     });
 
-    const rollbackBoundary = JSON.parse(
-      await readFile(
-        join(runsRoot, result.loop.loopId, "artifacts", "attempt-001", "rollback-boundary.json"),
-        "utf8"
-      )
-    );
-    const rollbackOutcome = JSON.parse(
-      await readFile(
-        join(runsRoot, result.loop.loopId, "artifacts", "attempt-001", "rollback-outcome.json"),
-        "utf8"
-      )
-    );
-
+    // C1 TERMINAL CLEANUP: run ended without VERIFIED (budget_exit, maxIterations=1).
+    // Terminal cleanup fires, restoring the pre-candidate workspace boundary.
+    // src/reverted.ts must NOT be present after a non-VERIFIED terminal stop.
     await expect(readFile(join(repoRoot, "src", "reverted.ts"), "utf8")).rejects.toThrow();
+    // Pre-existing dirty file must be preserved unchanged.
     await expect(readFile(join(repoRoot, "src", "real.ts"), "utf8")).resolves.toBe(
       "export const real = 2;\n"
     );
     expect(result.decision.lifecycleState).toBe("budget_exit");
-    expect(rollbackBoundary.trackedDirtyFiles).toContain("src/real.ts");
-    expect(rollbackOutcome.status).toBe("restored");
-    expect(rollbackOutcome.deletedFiles).toContain("src/reverted.ts");
-    expect(rollbackOutcome.after.trackedDirtyFiles).toEqual(["src/real.ts"]);
-    const expected = {
-      observationStatus: "observed",
-      touchedDuringExecution: ["src/reverted.ts"],
-      netChangedAtCompletion: [],
-      revertedBeforeCompletion: ["src/reverted.ts"]
-    };
-    expect(readCompletedFileEffects(result.loop)).toEqual(expected);
-    expect(await readPersistedCompletedFileEffects(runsRoot, result.loop.loopId)).toEqual(expected);
+    // Attempt record must carry candidateRetained:true (candidate WAS retained between attempts)
+    expect(result.loop.attempts[0]?.candidateRetained).toBe(true);
+    expect(result.loop.attempts[0]?.verifierScore).toBe(0);
+
+    // C1 TERMINAL CLEANUP: the run ended without VERIFIED, so the workspace must
+    // be restored to the pre-candidate boundary. src/reverted.ts must NOT exist.
+    await expect(readFile(join(repoRoot, "src", "reverted.ts"), "utf8")).rejects.toThrow();
+    // Pre-existing dirty file must be preserved unchanged.
+    await expect(readFile(join(repoRoot, "src", "real.ts"), "utf8")).resolves.toBe(
+      "export const real = 2;\n"
+    );
     expect(result.loop.terminationEnvelope).toMatchObject({
       schemaVersion: "termination/1",
       class: "operational_exit",

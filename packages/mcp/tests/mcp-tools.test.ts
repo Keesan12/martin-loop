@@ -590,6 +590,23 @@ describe("martinPreflightTool", () => {
     }
   });
 
+  it("does not apply CLI argv-fold detection to JSON verification-plan entries", async () => {
+    const originalEnv = process.env.MARTIN_LIVE;
+    process.env.MARTIN_LIVE = "false";
+    try {
+      const result = await martinPreflightTool({
+        objective: "Validate a JSON-delivered verifier command",
+        verificationPlan: ["node scripts/check.js --budget-usd 5"]
+      });
+
+      expect(result.ok).toBe(true);
+      expect(result.warnings).not.toEqual(expect.arrayContaining([expect.stringContaining("shell merged later flags")]));
+    } finally {
+      if (originalEnv === undefined) delete process.env.MARTIN_LIVE;
+      else process.env.MARTIN_LIVE = originalEnv;
+    }
+  });
+
   it("blocks an unterminated verifier quote before advertising readiness", async () => {
     const originalEnv = process.env.MARTIN_LIVE;
     process.env.MARTIN_LIVE = "false";

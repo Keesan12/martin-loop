@@ -1,5 +1,4 @@
 import { spawnSync } from "node:child_process";
-
 import {
   type ApprovalPolicy,
   DEFAULT_AGENT_EXECUTION_INTENT,
@@ -8,6 +7,7 @@ import {
   type AgentExecutionIntent,
   appendLoopEvent,
   createLoopRecord,
+  resolveEffectiveMaxIterations,
   type ContextHandoffReceipt,
   type CostProvenance,
   type ExecutionProfile,
@@ -37,6 +37,7 @@ import {
   evaluateCostGovernor,
   evaluateBudgetPreflight,
   inferExit,
+  isSafeUnverifiedDiscard,
   nextPolicyPhase,
   policyPhaseToLifecycleState,
   scorePatchDecision,
@@ -368,6 +369,29 @@ export interface MartinAdapterRequest {
     remainingTokens?: number;
     /** Who executes verifier commands. Defaults to provider_and_host for standalone compatibility. */
     verificationExecutionOwner?: "provider_and_host" | "host_only";
+    /** Structured failure evidence from the most recent attempt, for repair context. */
+    lastVerifierFailure?: {
+      /** The failing verifier command. */
+      command: string;
+      /** Native exit code when a normal exit occurred; undefined for crash/timeout. */
+      exitCode?: number;
+      /** Whether the step crashed (signal/exception) before producing a normal exit. */
+      crashed?: boolean;
+      /** Whether the verifier step timed out. */
+      timedOut?: boolean;
+      /** Bounded, sanitized failure excerpt (max 1500 chars, tail kept). */
+      failureExcerpt: string;
+      /** ID of the attempt that produced this failure. */
+      attemptId: string;
+      /** Index of the attempt that produced this failure (1-based). */
+      attemptIndex: number;
+    };
+    /**
+     * True when the previous attempt's candidate patch was retained in the workspace
+     * (SAFE_UNVERIFIED) rather than rolled back.  The next agent should inspect the
+     * existing changes and repair only the failing part — not rebuild from scratch.
+     */
+    previousCandidateRetained?: boolean;
   };
   previousAttempts: LoopAttempt[];
   /** Non-persisted synchronous parent authority for cumulative live usage. */
@@ -688,12 +712,19 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     input.task.providerExecutionTimeoutMs
   );
   const agentExecutionIntent = input.task.agentExecutionIntent ?? DEFAULT_AGENT_EXECUTION_INTENT;
+  // D1: apply task-class-aware iteration defaults when the caller did not set an
+  // explicit maxIterations. reversible_edit → 3, verification_only/irreversible → 1.
+  const effectiveMaxIterations = resolveEffectiveMaxIterations(
+    input.task,
+    input.budget.maxIterations
+  );
+  const effectiveBudget: LoopBudget = { ...input.budget, maxIterations: effectiveMaxIterations };
   let loop = createLoopRecord(
     {
       workspaceId: input.workspaceId,
       projectId: input.projectId,
       task: { ...input.task, agentExecutionIntent, providerExecutionTimeoutMs },
-      budget: input.budget,
+      budget: effectiveBudget,
       ...(input.savingsBaseline ? { cost: { savingsBaseline: input.savingsBaseline } } : {}),
       ...(input.receiptScope
         ? { receiptScope: { ...input.receiptScope, agentExecutionIntent, providerExecutionTimeoutMs } }
@@ -1015,6 +1046,12 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
   // Explicit PolicyPhase state machine — starts at GATHER, advances per attempt
   let currentPhase: PolicyPhase = "GATHER";
   let phaseRetryCount = 0;
+  let lastVerifierFailure: MartinAdapterRequest["context"]["lastVerifierFailure"];
+
+  // C1 terminal cleanup: boundary captured immediately before the first retained candidate.
+  // Used to restore the workspace if the run terminates without VERIFIED.
+  // The invariant is: if this is set, the current workspace contains unverified candidate code.
+  let preCandidateBoundary: Awaited<ReturnType<typeof captureRollbackBoundary>> | undefined;
 
   // Routing economics: track first meaningful workspace delta
   const runStartMs = Date.now();
@@ -1177,8 +1214,16 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     };
   }
 
-  // Idempotent termination: only the first caller writes the envelope (A1 fix)
-  function finishFromEvaluation(
+  // Termination selection with deferred disk write.
+  //
+  // The "run.terminated" ledger event is written at the original timing (here, before
+  // terminateRun runs) to preserve ledger ordering. The DISK write of termination.json
+  // is deferred to terminateRun() so that it reflects the true final terminal state
+  // AFTER retained-candidate cleanup — not a potentially stale pre-cleanup state.
+  //
+  // First-write-wins semantics on disk are preserved: persistTerminationEnvelope is
+  // called exactly once per run, from terminateRun(), after cleanup resolves.
+  function selectTerminalEvaluation(
     evaluation: import("@martin/contracts").ExitEvaluationV1
   ): Promise<import("@martin/contracts").TerminationEnvelopeV1> {
     if (terminationPromise !== undefined) return terminationPromise;
@@ -1189,9 +1234,9 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     };
     terminationPromise = (async () => {
       if (input.store) {
-        // persistTerminationEnvelope is atomic and returns the winning envelope
-        // (may differ from ours if another path won the race — that's fine).
-        await persistTerminationEnvelope(runDir(runsRoot, loop.loopId), envelope);
+        // Write the "run.terminated" ledger entry at the original timing — this
+        // preserves ledger ordering and receipt integrity hashes.
+        // The DISK termination.json is deliberately deferred to terminateRun().
         await input.store.appendLedger(
           loop.loopId,
           makeLedgerEvent({
@@ -1219,7 +1264,118 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     // Surface signal-monitor failures immediately rather than silently losing cancellation
     if (signalMonitorError !== undefined) throw signalMonitorError;
     const evaluation = evaluateExitPolicy(exitPolicy, currentExitSnapshot(phase, result));
-    return evaluation.shouldExit ? finishFromEvaluation(evaluation) : undefined;
+    if (!evaluation.shouldExit) return undefined;
+    return await selectTerminalEvaluation(evaluation);
+  }
+
+  /**
+   * Blocker 1 / Blocker 2 — Authoritative retained-candidate terminal restoration.
+   *
+   * Must be called at EVERY terminal exit that does not produce lifecycleState="completed".
+   * If preCandidateBoundary is set, the workspace contains unverified candidate code.
+   * This helper:
+   *   1. Detects whether retained unverified candidate state exists.
+   *   2. Restores the exact pre-candidate boundary (not the per-attempt boundary).
+   *   3. Independently inspects the resulting workspace via the rollback outcome.
+   *   4. Persists rollback outcome/evidence to the ledger.
+   *   5. Clears preCandidateBoundary ONLY after proven restoration.
+   *   6. On failure: surfaces workspace_restore_failed and escalates the exit decision.
+   *
+   * NEVER silently swallows restore errors. NEVER returns a clean-looking exit
+   * while residual unverified code may remain in the repository.
+   */
+  async function restoreRetainedCandidateForTerminalExit(
+    exitDecision: ExitDecision
+  ): Promise<ExitDecision> {
+    // Step 1: determine whether retained unverified candidate state exists.
+    if (!preCandidateBoundary || exitDecision.lifecycleState === "completed") {
+      return exitDecision;
+    }
+
+    const capturedBoundary = preCandidateBoundary;
+    const restoredAt = now();
+
+    try {
+      // Step 2: restore the exact pre-candidate boundary.
+      const rollbackOutcome = await restoreRollbackBoundary({
+        repoRoot: input.task.repoRoot,
+        boundary: capturedBoundary,
+        restoredAt,
+        decision: "DISCARD"
+      });
+
+      // Step 3: independently inspect the resulting workspace.
+      if (!rollbackOutcome) {
+        throw new Error(
+          "Workspace restore returned no outcome — repoRoot may be unavailable or boundary invalid."
+        );
+      }
+
+      // Step 4: prove the restoration — only success/partial are acceptable outcomes.
+      if (rollbackOutcome.status === "failed" || rollbackOutcome.status === "unavailable") {
+        throw new Error(
+          rollbackOutcome.error ??
+          `Workspace restore returned status "${rollbackOutcome.status}" — pre-candidate state not confirmed.`
+        );
+      }
+
+      // Persist rollback outcome evidence.
+      if (input.store) {
+        await input.store.appendLedger(
+          loop.loopId,
+          makeLedgerEvent({
+            kind: "run.diagnostic",
+            runId: loop.loopId,
+            payload: {
+              code: "terminal_candidate_restore",
+              details: {
+                status: rollbackOutcome.status,
+                restoredFiles: rollbackOutcome.restoredFiles?.length ?? 0,
+                deletedFiles: rollbackOutcome.deletedFiles?.length ?? 0,
+                capturedAt: capturedBoundary.capturedAt
+              }
+            }
+          })
+        );
+      }
+
+      // Step 5/6: clear retained-candidate authority only after proven restoration.
+      preCandidateBoundary = undefined;
+      return exitDecision;
+
+    } catch (restoreError) {
+      // Persist the failure evidence.
+      if (input.store) {
+        try {
+          await input.store.appendLedger(
+            loop.loopId,
+            makeLedgerEvent({
+              kind: "run.diagnostic",
+              runId: loop.loopId,
+              payload: {
+                code: "terminal_candidate_restore_failed",
+                details: {
+                  error: restoreError instanceof Error ? restoreError.message : String(restoreError),
+                  capturedAt: capturedBoundary.capturedAt
+                }
+              }
+            })
+          );
+        } catch {
+          // Ledger write failure is secondary — the restore error is what matters.
+        }
+      }
+
+      // DO NOT clear preCandidateBoundary — workspace state is unknown.
+      // Surface explicit unsafe status; never return a clean-looking exit.
+      return {
+        ...exitDecision,
+        lifecycleState: "human_escalation",
+        status: "exited",
+        reasonCode: "workspace_restore_failed",
+        reason: `MartinLoop retained an unverified candidate but could not restore the pre-candidate workspace: ${restoreError instanceof Error ? restoreError.message : String(restoreError)}. Manual workspace inspection required.`
+      };
+    }
   }
 
   async function terminateRun(
@@ -1232,7 +1388,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       envelope.exit,
       observedExternalEvent?.disposition
     );
-    const exitDecision: ExitDecision = {
+    let exitDecision: ExitDecision = {
       shouldExit: legacyDecision.shouldExit,
       lifecycleState: legacyDecision.lifecycleState,
       status: legacyDecision.status,
@@ -1260,12 +1416,43 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       firstDeltaChangeType,
       preDeltaCostUsd
     };
-    // Drain all pending diagnostic ledger writes BEFORE signing the receipt.
-    // persistLoopRecordIfSupported reads ledger.jsonl to compute the integrity hash;
-    // any write that lands after that read produces a false ledger_hash_mismatch on verify.
+    // Drain all pending diagnostic ledger writes BEFORE the cleanup helper may add more.
     await stopSignalMonitorAndDrainDiagnostics();
+
+    // Retained-candidate cleanup runs BEFORE any durable termination envelope is
+    // written to disk. This guarantees that termination.json reflects the TRUE
+    // final state (original exit OR workspace_restore_failed) in a single atomic
+    // first-write-wins write. selectTerminalEvaluation() already memoized the winner
+    // in memory; disk persistence happens only here, after cleanup resolves.
+    exitDecision = await restoreRetainedCandidateForTerminalExit(exitDecision);
+
+    // Persist the authoritative termination envelope exactly once, after cleanup.
+    let finalEnvelope: import("@martin/contracts").TerminationEnvelopeV1;
+    if (exitDecision.reasonCode === "workspace_restore_failed") {
+      // Cleanup failed: write guard_stop(workspace_restore_failed) as the sole record.
+      if (input.store) {
+        await input.store.appendLedger(
+          loop.loopId,
+          makeLedgerEvent({
+            kind: "run.exited",
+            runId: loop.loopId,
+            payload: createRunExitPayload(exitDecision)
+          })
+        );
+      }
+      finalEnvelope = await persistGuardStop(exitDecision);
+    } else {
+      // Cleanup succeeded (or was not needed): persist the original operational_exit.
+      // "run.terminated" was already written by selectTerminalEvaluation() at the
+      // original timing (before terminateRun runs) to preserve ledger ordering.
+      finalEnvelope = envelope;
+      if (input.store) {
+        await persistTerminationEnvelope(runDir(runsRoot, loop.loopId), finalEnvelope);
+      }
+    }
+
     const finalizedLoop = await finalizeCurrentLoop(exitDecision, now(), routingInput);
-    const finalizedWithEnvelope: LoopRecord = { ...finalizedLoop, terminationEnvelope: envelope };
+    const finalizedWithEnvelope: LoopRecord = { ...finalizedLoop, terminationEnvelope: finalEnvelope };
     await persistLoopRecordIfSupported(input.store, finalizedWithEnvelope);
     return { loop: finalizedWithEnvelope, decision: exitDecision };
   }
@@ -1298,7 +1485,9 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       remainingBudgetUsd: distilled.constraints.remainingBudgetUsd,
       remainingTokens: distilled.constraints.remainingTokens,
       minimumViableTokens: executingAdapter.metadata.budgetPreflight?.minimumViableTokens,
-      perAttemptCapUsd: loop.budget.maxUsd * 0.25
+      // D2: pass remaining iterations so the preflight can compute a budget-aware cap
+      // rather than using the old rigid maxUsd * 0.25 that blocked viable attempts.
+      remainingIterations: distilled.constraints.remainingIterations
     });
 
     if (!budgetPreflight.allowed) {
@@ -1328,11 +1517,13 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         );
       }
       await stopSignalMonitorAndDrainDiagnostics();
-      const finalizedLoop = await finalizeCurrentLoop(preflightExitDecision, now());
+      // Blocker 2: budget preflight may fire when a prior-attempt candidate is retained.
+      const finalPreflightDecision = await restoreRetainedCandidateForTerminalExit(preflightExitDecision);
+      const finalizedLoop = await finalizeCurrentLoop(finalPreflightDecision, now());
       await persistLoopRecordIfSupported(input.store, finalizedLoop);
       return {
         loop: finalizedLoop,
-        decision: preflightExitDecision
+        decision: finalPreflightDecision
       };
     }
 
@@ -1391,13 +1582,15 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         );
       }
       await stopSignalMonitorAndDrainDiagnostics();
-      const terminationEnvelope = await persistGuardStop(poisoningExitDecision);
-      const finalizedLoop = await finalizeCurrentLoop(poisoningExitDecision, now());
+      // Blocker 2: poisoning check may fire between attempts while a candidate is retained.
+      const finalPoisoningDecision = await restoreRetainedCandidateForTerminalExit(poisoningExitDecision);
+      const terminationEnvelope = await persistGuardStop(finalPoisoningDecision);
+      const finalizedLoop = await finalizeCurrentLoop(finalPoisoningDecision, now());
       const finalizedWithEnvelope: LoopRecord = { ...finalizedLoop, terminationEnvelope };
       await persistLoopRecordIfSupported(input.store, finalizedWithEnvelope);
       return {
         loop: finalizedWithEnvelope,
-        decision: poisoningExitDecision
+        decision: finalPoisoningDecision
       };
     }
 
@@ -1437,12 +1630,17 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
 
     if (!admissionDecision.allowed) {
       const exitReason = admissionDecision.reason;
-      const exitDecision: ExitDecision = {
+      // Fix false budget_exit: trajectory circuit-break is diminishing_returns, not budget_exit.
+      // A trajectory/no-progress stop is not a resource exhaustion.
+      const admissionLifecycleState =
+        admissionDecision.recommendedIntervention === "escalate_human"
+          ? "human_escalation"
+          : admissionDecision.circuitBreakDecision?.shouldStop
+            ? "diminishing_returns"
+            : "budget_exit";
+      const admissionExitDecision: ExitDecision = {
         shouldExit: true,
-        lifecycleState:
-          admissionDecision.recommendedIntervention === "escalate_human"
-            ? "human_escalation"
-            : "budget_exit",
+        lifecycleState: admissionLifecycleState,
         status: "exited",
         reason: exitReason
       };
@@ -1461,16 +1659,18 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
           makeLedgerEvent({
             kind: "run.exited",
             runId: loop.loopId,
-            payload: createRunExitPayload(exitDecision)
+            payload: createRunExitPayload(admissionExitDecision)
           })
         );
       }
       await stopSignalMonitorAndDrainDiagnostics();
-      const finalizedLoop = await finalizeCurrentLoop(exitDecision, now());
+      // Blocker 2: admission may be denied between attempts while a candidate is retained.
+      const finalAdmissionDecision = await restoreRetainedCandidateForTerminalExit(admissionExitDecision);
+      const finalizedLoop = await finalizeCurrentLoop(finalAdmissionDecision, now());
       await persistLoopRecordIfSupported(input.store, finalizedLoop);
       return {
         loop: finalizedLoop,
-        decision: exitDecision
+        decision: finalAdmissionDecision
       };
     }
 
@@ -1541,6 +1741,12 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         remainingTokens: distilled.constraints.remainingTokens,
         ...(input.verificationExecutionOwner
           ? { verificationExecutionOwner: input.verificationExecutionOwner }
+          : {}),
+        ...(lastVerifierFailure ? { lastVerifierFailure } : {}),
+        // C1: tell the adapter whether the previous candidate was retained so it can
+        // repair rather than rebuild.
+        ...(loop.attempts.at(-1)?.candidateRetained
+          ? { previousCandidateRetained: true }
           : {})
       },
       previousAttempts: loop.attempts,
@@ -1583,6 +1789,37 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       // rather than letting it propagate as an unhandled exception.
       const abortTerminal = await evaluateCheckpoint("post_attempt");
       if (abortTerminal !== undefined) return await terminateRun(abortTerminal);
+      // Blocker 2 (exception path): provider threw a genuine non-abort exception.
+      // Restore any retained candidate BEFORE re-throwing so the workspace is
+      // never left with unverified code after an exception escape.
+      const exceptionBaseDecision: ExitDecision = {
+        shouldExit: true,
+        lifecycleState: "human_escalation",
+        status: "exited",
+        reason: "Provider threw an unexpected exception.",
+        reasonCode: "provider_exception"
+      };
+      let cleanedExceptionDecision: ExitDecision = exceptionBaseDecision;
+      try {
+        cleanedExceptionDecision = await restoreRetainedCandidateForTerminalExit(exceptionBaseDecision);
+      } catch (cleanupError) {
+        queueControlDiagnostic("terminal_restore_on_provider_exception_failed", {
+          error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError)
+        });
+      }
+      if (cleanedExceptionDecision.reasonCode === "workspace_restore_failed") {
+        // Cleanup failed: persist workspace_restore_failed as the terminal authority
+        // so the operator knows the workspace state is unsafe. Then surface both errors.
+        try {
+          await persistGuardStop(cleanedExceptionDecision);
+        } catch { /* persist best-effort */ }
+        const wsError = new Error(
+          cleanedExceptionDecision.reason,
+          { cause: execError instanceof Error ? execError : new Error(String(execError)) }
+        );
+        throw wsError;
+      }
+      // Cleanup succeeded — rethrow the original provider error.
       throw execError;
     } finally {
       activeAttemptController = undefined;
@@ -1602,6 +1839,12 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         : undefined;
 
     const currentAttemptIndex = loop.attempts.length + 1;
+    // Progress evidence is computed below from effectiveVerification (which includes
+    // host-run results). Initialize from the normalized (not raw) verification so
+    // that initial values are already binding-checked. Back-patched with the final
+    // authoritative values after effectiveVerification is available (Blocker 4).
+    let currentVerifierScore = verification.passed ? 1 : 0;
+    let currentFailingVerifierStepCount: number | undefined;
     const attempt: LoopAttempt = {
       attemptId,
       index: currentAttemptIndex,
@@ -1614,7 +1857,10 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       ...(failure?.recommendedIntervention
         ? { intervention: failure.recommendedIntervention }
         : {}),
-      ...(failure?.diagnosticHint ? { diagnosticHint: failure.diagnosticHint } : {})
+      ...(failure?.diagnosticHint ? { diagnosticHint: failure.diagnosticHint } : {}),
+      // C2: real progress signals — back-patched from effectiveVerification below
+      verifierScore: currentVerifierScore
+      // C1: candidateRetained is set below after rollback decision is made
     };
 
     loop = {
@@ -1796,13 +2042,67 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     }
 
     let changedFiles: string[] = [];
+    let ignoredChanges = { created: [] as string[], modified: [] as string[], deleted: [] as string[] };
+    let escapingLinks: string[] = [];
+    let weakenedTestFiles: string[] = [];
     try {
       changedFiles = tracksWorkspaceMutations
         ? resolveChangedFiles(result, request.context.repoRoot, rollbackBoundary)
         : [];
+      ignoredChanges = tracksWorkspaceMutations
+        ? listIgnoredFileChangesSinceBoundary({ repoRoot: request.context.repoRoot, boundary: rollbackBoundary })
+        : ignoredChanges;
+      escapingLinks =
+        tracksWorkspaceMutations && request.context.repoRoot
+          ? findEscapingLinks(request.context.repoRoot, [...changedFiles, ...ignoredChanges.created])
+          : [];
+      weakenedTestFiles =
+        tracksWorkspaceMutations && request.context.repoRoot && rollbackBoundary?.headRef
+          ? findWeakenedTestFiles({
+              repoRoot: request.context.repoRoot,
+              baseRef: rollbackBoundary.headRef,
+              changedFiles
+            })
+          : [];
     } catch (error) {
       for (const filePath of normalizeFileEffectPaths(result.execution?.changedFiles ?? [])) {
         touchedDuringExecution.add(filePath);
+      }
+      for (const filePath of normalizeFileEffectPaths(changedFiles)) {
+        touchedDuringExecution.add(filePath);
+      }
+      let rollbackOutcome: RollbackOutcomeArtifact;
+      try {
+        rollbackOutcome = (await restoreRollbackBoundary({
+          repoRoot: request.context.repoRoot,
+          boundary: rollbackBoundary,
+          restoredAt: attemptCompletedAt,
+          decision: "DISCARD",
+          removePaths: ignoredChanges.created,
+          restoreIgnoredPaths: [...ignoredChanges.modified, ...ignoredChanges.deleted]
+        })) ?? {
+          attempted: false,
+          status: "unavailable",
+          restoredAt: attemptCompletedAt,
+          decision: "DISCARD",
+          before: { trackedDirtyFiles: [], untrackedFiles: [] },
+          after: { trackedDirtyFiles: [], untrackedFiles: [] },
+          restoredFiles: [],
+          deletedFiles: [],
+          error: "Rollback could not run because no repository root was available."
+        };
+      } catch (rollbackError) {
+        rollbackOutcome = {
+          attempted: true,
+          status: "failed",
+          restoredAt: attemptCompletedAt,
+          decision: "DISCARD",
+          before: { trackedDirtyFiles: [], untrackedFiles: [] },
+          after: { trackedDirtyFiles: [], untrackedFiles: [] },
+          restoredFiles: [],
+          deletedFiles: [],
+          error: `Rollback failed after workspace observation became unavailable: ${fileEffectErrorMessage(rollbackError)}`
+        };
       }
       const observationExitDecision: ExitDecision = {
         shouldExit: true,
@@ -1812,6 +2112,11 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         reasonCode: "workspace_observation_unavailable"
       };
       if (input.store) {
+        await input.store.writeAttemptArtifacts(loop.loopId, currentAttemptIndex, {
+          compiledContext,
+          ...(rollbackBoundary ? { rollbackBoundary } : {}),
+          rollbackOutcome
+        });
         await input.store.appendLedger(
           loop.loopId,
           makeLedgerEvent({
@@ -1822,11 +2127,13 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         );
       }
       await stopSignalMonitorAndDrainDiagnostics();
-      const terminationEnvelope = await persistGuardStop(observationExitDecision);
-      const finalizedLoop = await finalizeCurrentLoop(observationExitDecision, now());
+      // Blocker 2: observation failure is terminal; restore pre-candidate boundary if set.
+      const finalObservationDecision = await restoreRetainedCandidateForTerminalExit(observationExitDecision);
+      const terminationEnvelope = await persistGuardStop(finalObservationDecision);
+      const finalizedLoop = await finalizeCurrentLoop(finalObservationDecision, now());
       const finalizedWithEnvelope: LoopRecord = { ...finalizedLoop, terminationEnvelope };
       await persistLoopRecordIfSupported(input.store, finalizedWithEnvelope);
-      return { loop: finalizedWithEnvelope, decision: observationExitDecision };
+      return { loop: finalizedWithEnvelope, decision: finalObservationDecision };
     }
     for (const filePath of normalizeFileEffectPaths(changedFiles)) {
       touchedDuringExecution.add(filePath);
@@ -1855,13 +2162,6 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     const changedFileEvidenceAvailable =
       result.execution?.changedFiles !== undefined || changedFiles.length > 0;
 
-    const ignoredChanges = tracksWorkspaceMutations
-      ? listIgnoredFileChangesSinceBoundary({ repoRoot: request.context.repoRoot, boundary: rollbackBoundary })
-      : { created: [], modified: [], deleted: [] };
-    const escapingLinks =
-      tracksWorkspaceMutations && request.context.repoRoot
-        ? findEscapingLinks(request.context.repoRoot, [...changedFiles, ...ignoredChanges.created])
-        : [];
     const filesystemDecision = evaluateFilesystemLeash({
       repoRoot: request.context.repoRoot,
       changedFiles,
@@ -1891,19 +2191,26 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         reason: filesystemDecision.reason ?? "Safety leash blocked filesystem changes.",
         ...classifySafetyLeashExit(filesystemDecision, "filesystem")
       };
-      const rollbackOutcome = await restoreRollbackBoundary({
-        repoRoot: request.context.repoRoot,
-        boundary: rollbackBoundary,
-        restoredAt: attemptCompletedAt,
-        decision: patchDecision.decision,
-        // Attempt-created ignored violations are removed. Modified or deleted
-        // baseline ignored violations are restored from the bounded in-memory snapshot.
-        removePaths: violatingIgnoredPaths(filesystemDecision.violations, ignoredChanges.created),
-        restoreIgnoredPaths: violatingIgnoredPaths(filesystemDecision.violations, [
-          ...ignoredChanges.modified,
-          ...ignoredChanges.deleted
-        ])
-      });
+      // Wrap per-attempt rollback so that if it throws, preCandidateBoundary
+      // restoration still runs via the cleanup helper below.
+      let rollbackOutcome: RollbackOutcomeArtifact | undefined;
+      try {
+        rollbackOutcome = await restoreRollbackBoundary({
+          repoRoot: request.context.repoRoot,
+          boundary: rollbackBoundary,
+          restoredAt: attemptCompletedAt,
+          decision: patchDecision.decision,
+          removePaths: violatingIgnoredPaths(filesystemDecision.violations, ignoredChanges.created),
+          restoreIgnoredPaths: violatingIgnoredPaths(filesystemDecision.violations, [
+            ...ignoredChanges.modified,
+            ...ignoredChanges.deleted
+          ])
+        }) ?? undefined;
+      } catch (rollbackError) {
+        queueControlDiagnostic("attempt_rollback_failed_on_filesystem_exit", {
+          error: rollbackError instanceof Error ? rollbackError.message : String(rollbackError)
+        });
+      }
 
       if (input.store) {
         await input.store.writeAttemptArtifacts(loop.loopId, currentAttemptIndex, {
@@ -1953,24 +2260,19 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       }
 
       await stopSignalMonitorAndDrainDiagnostics();
-      const terminationEnvelope = await persistGuardStop(filesystemExitDecision);
-      const finalizedLoop = await finalizeCurrentLoop(filesystemExitDecision, now());
+      // Blocker 2: attempt-2 rollback restores to state-with-attempt-1-candidate.
+      // We must also restore preCandidateBoundary to fully remove retained unverified code.
+      const finalFilesystemDecision = await restoreRetainedCandidateForTerminalExit(filesystemExitDecision);
+      const terminationEnvelope = await persistGuardStop(finalFilesystemDecision);
+      const finalizedLoop = await finalizeCurrentLoop(finalFilesystemDecision, now());
       const finalizedWithEnvelope: LoopRecord = { ...finalizedLoop, terminationEnvelope };
       await persistLoopRecordIfSupported(input.store, finalizedWithEnvelope);
       return {
         loop: finalizedWithEnvelope,
-        decision: filesystemExitDecision
+        decision: finalFilesystemDecision
       };
     }
 
-    const weakenedTestFiles =
-      tracksWorkspaceMutations && request.context.repoRoot && rollbackBoundary?.headRef
-        ? findWeakenedTestFiles({
-            repoRoot: request.context.repoRoot,
-            baseRef: rollbackBoundary.headRef,
-            changedFiles
-          })
-        : [];
     const changeApprovalDecision = evaluateChangeApprovalLeash({
       changedFiles,
       weakenedTestFiles,
@@ -2000,12 +2302,20 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
           "Safety leash blocked dependency or migration changes that require approval.",
         ...classifySafetyLeashExit(changeApprovalDecision, "dependency")
       };
-      const rollbackOutcome = await restoreRollbackBoundary({
-        repoRoot: request.context.repoRoot,
-        boundary: rollbackBoundary,
-        restoredAt: attemptCompletedAt,
-        decision: patchDecision.decision
-      });
+      // Wrap per-attempt rollback so that preCandidateBoundary restore still runs below.
+      let rollbackOutcome: RollbackOutcomeArtifact | undefined;
+      try {
+        rollbackOutcome = await restoreRollbackBoundary({
+          repoRoot: request.context.repoRoot,
+          boundary: rollbackBoundary,
+          restoredAt: attemptCompletedAt,
+          decision: patchDecision.decision
+        }) ?? undefined;
+      } catch (rollbackError) {
+        queueControlDiagnostic("attempt_rollback_failed_on_approval_exit", {
+          error: rollbackError instanceof Error ? rollbackError.message : String(rollbackError)
+        });
+      }
 
       if (input.store) {
         await input.store.writeAttemptArtifacts(loop.loopId, currentAttemptIndex, {
@@ -2056,13 +2366,15 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       }
 
       await stopSignalMonitorAndDrainDiagnostics();
-      const terminationEnvelope = await persistGuardStop(approvalExitDecision);
-      const finalizedLoop = await finalizeCurrentLoop(approvalExitDecision, now());
+      // Blocker 2: per-attempt rollback above only restores to state-with-retained-candidate.
+      const finalApprovalDecision = await restoreRetainedCandidateForTerminalExit(approvalExitDecision);
+      const terminationEnvelope = await persistGuardStop(finalApprovalDecision);
+      const finalizedLoop = await finalizeCurrentLoop(finalApprovalDecision, now());
       const finalizedWithEnvelope: LoopRecord = { ...finalizedLoop, terminationEnvelope };
       await persistLoopRecordIfSupported(input.store, finalizedWithEnvelope);
       return {
         loop: finalizedWithEnvelope,
-        decision: approvalExitDecision
+        decision: finalApprovalDecision
       };
     }
 
@@ -2118,21 +2430,67 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       });
     }
 
+    // C1 — Safe candidate retention.
+    // Distinguish UNSAFE discards (must roll back) from SAFE_UNVERIFIED discards
+    // (retain candidate for the next repair attempt).
+    //
+    // UNSAFE: scope/safety violations — rollback immediately; hard boundaries.
+    // SAFE_UNVERIFIED: only soft heuristics (grounding, low novelty, verifier
+    //   not yet improved) — leave the workspace in the candidate state so the
+    //   next agent can repair rather than rebuild from scratch.
+    // provider failure (result.status === "failed"): rollback — the workspace
+    //   state is unknown and may be partially corrupt.
+    // When patchDecision is undefined (no patch truth evaluation, e.g. verifierConfigured=false),
+    // preserve original behavior: only rollback on provider failure.  Do not treat the absence
+    // of a patch decision as "unsafe" — it simply means patch evaluation was not applicable.
+    const candidateIsUnsafe =
+      patchDecision !== undefined && (
+        patchDecision.decision === "ESCALATE" ||
+        (patchDecision.decision === "DISCARD" &&
+          !isSafeUnverifiedDiscard(patchDecision.reasonCodes))
+      );
+
+    // Blocker 3: candidate may only be retained if an authoritative rollback boundary
+    // exists to enable exact restoration. Without a boundary, we cannot prove we can
+    // undo the retention — fail closed and discard instead.
+    const candidateRetainedThisAttempt =
+      patchDecision?.decision === "DISCARD" &&
+      isSafeUnverifiedDiscard(patchDecision.reasonCodes) &&
+      result.status !== "failed" &&
+      rollbackBoundary !== undefined;
+
     let rollbackOutcome: RollbackOutcomeArtifact | undefined;
-    if (patchDecision && patchDecision.decision !== "KEEP") {
+    if (candidateIsUnsafe && result.status !== "failed") {
       rollbackOutcome = await restoreRollbackBoundary({
         repoRoot: request.context.repoRoot,
         boundary: rollbackBoundary,
         restoredAt: attemptCompletedAt,
-        decision: patchDecision.decision
+        decision: patchDecision?.decision ?? "DISCARD"
       });
     } else if (result.status === "failed") {
+      // Provider failure: workspace state unknown — always rollback.
       rollbackOutcome = await restoreRollbackBoundary({
         repoRoot: request.context.repoRoot,
         boundary: rollbackBoundary,
         restoredAt: attemptCompletedAt,
         decision: "DISCARD"
       });
+    }
+    // else: candidateRetainedThisAttempt or KEEP — leave workspace as-is.
+
+    // C1: back-patch candidateRetained onto the attempt that was already appended.
+    if (candidateRetainedThisAttempt) {
+      // First retention: record the boundary BEFORE this candidate was applied,
+      // so terminal cleanup can restore the workspace if the run never reaches VERIFIED.
+      if (!preCandidateBoundary && rollbackBoundary) {
+        preCandidateBoundary = rollbackBoundary;
+      }
+      loop = {
+        ...loop,
+        attempts: loop.attempts.map((a) =>
+          a.attemptId === attemptId ? { ...a, candidateRetained: true } : a
+        )
+      };
     }
 
     if (input.store) {
@@ -2233,11 +2591,13 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       }
 
       await stopSignalMonitorAndDrainDiagnostics();
-      const finalizedLoop = await finalizeCurrentLoop(patchExitDecision, now());
+      // Blocker 2: ESCALATE/HANDOFF exits can occur after a candidate is retained.
+      const finalPatchExitDecision = await restoreRetainedCandidateForTerminalExit(patchExitDecision);
+      const finalizedLoop = await finalizeCurrentLoop(finalPatchExitDecision, now());
       await persistLoopRecordIfSupported(input.store, finalizedLoop);
       return {
         loop: finalizedLoop,
-        decision: patchExitDecision
+        decision: finalPatchExitDecision
       };
     }
 
@@ -2259,6 +2619,27 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
           }
         : result;
 
+    // Authoritative verification evidence from effectiveResult (grounding/patch-truth applied).
+    // Back-patch verifierScore/failingVerifierStepCount BEFORE inferExit so that progress
+    // decisions use normalized, binding-checked evidence — never raw adapter-reported values.
+    const effectiveVerification = normalizeVerificationOutcome(effectiveResult, expectedVerifierBinding);
+    {
+      const steps = effectiveVerification.steps ?? [];
+      const launched = steps.filter(s => s.launched);
+      const passing = launched.filter(s => s.exitCode === 0 && !s.timedOut && !s.crashed);
+      const failing = launched.filter(s => s.exitCode !== 0 || s.timedOut || s.crashed);
+      currentVerifierScore = effectiveVerification.passed
+        ? 1 : launched.length > 0 ? passing.length / launched.length : 0;
+      currentFailingVerifierStepCount = failing.length > 0 ? failing.length : undefined;
+      loop = {
+        ...loop,
+        attempts: loop.attempts.map(a => a.attemptId === attemptId
+          ? { ...a, verifierScore: currentVerifierScore, ...(currentFailingVerifierStepCount !== undefined ? { failingVerifierStepCount: currentFailingVerifierStepCount } : {}) }
+          : a
+        )
+      };
+    }
+
     const decision = inferExit({
       loop,
       lastResult: effectiveResult,
@@ -2276,10 +2657,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     if (failure) phaseRetryCount++;
     else phaseRetryCount = 0;
 
-    // Post-attempt: persisted verification and exit decisions must use the same
-    // authoritative outcome. effectiveResult reflects any grounding/leash override,
-    // so verification.completed is written here — never from the raw adapter result.
-    const effectiveVerification = normalizeVerificationOutcome(effectiveResult, expectedVerifierBinding);
+    // Post-attempt: verification.completed event uses the same authoritative effectiveVerification.
 
     loop = appendLoopEvent(
       loop,
@@ -2320,6 +2698,40 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       );
     }
 
+    if (!effectiveVerification.passed) {
+      // Find the best failure evidence: prefer a step with a nonzero exit, then a
+      // crashed/timed-out step, then fall back to the verification summary/warnings.
+      const steps = effectiveVerification.steps ?? [];
+      const failedStep =
+        steps.find(s => !s.timedOut && !s.crashed && s.exitCode !== undefined && s.exitCode !== 0) ??
+        steps.find(s => s.timedOut || s.crashed);
+
+      // Build the failure excerpt: prefer step detail, fall back to verification
+      // summary and warnings so attempt 2 never receives an empty failure block.
+      const rawExcerpt = failedStep?.detail?.trim()
+        ? failedStep.detail
+        : [
+            effectiveVerification.summary,
+            ...(effectiveVerification.warnings ?? [])
+          ].filter(Boolean).join("\n");
+
+      lastVerifierFailure = {
+        command: failedStep?.command ?? effectiveVerification.binding?.commands?.[0] ?? "unknown",
+        // Only include exitCode for normal (non-crash, non-timeout) exits.
+        // Crash/timeout sentinels like -1 are not meaningful native exit codes.
+        ...(!failedStep?.crashed && !failedStep?.timedOut && failedStep?.exitCode !== undefined
+          ? { exitCode: failedStep.exitCode }
+          : {}),
+        ...(failedStep?.crashed ? { crashed: true } : {}),
+        ...(failedStep?.timedOut ? { timedOut: true } : {}),
+        failureExcerpt: sanitizeVerifierExcerpt(rawExcerpt ?? ""),
+        attemptId,
+        attemptIndex: currentAttemptIndex,
+      };
+    } else {
+      lastVerifierFailure = undefined;
+    }
+
     const postAttemptTerminal = await evaluateCheckpoint("post_attempt", {
       status: effectiveResult.status === "completed" ? "completed" : "failed",
       verificationPassed: effectiveVerification.passed
@@ -2343,12 +2755,15 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       }
       // Drain pending diagnostic ledger writes before receipt signing.
       await stopSignalMonitorAndDrainDiagnostics();
+      // Blocker 2: inferExit can return shouldExit=true (e.g. diminishing_returns) while
+      // a prior-attempt candidate is retained. No-op when lifecycleState="completed".
+      const finalInferDecision = await restoreRetainedCandidateForTerminalExit(decision);
       const routingInput = { runStartMs, firstDeltaDetected, firstDeltaTimestampMs, firstDeltaFilePath, firstDeltaChangeType, preDeltaCostUsd };
-      const finalizedLoop = await finalizeCurrentLoop(decision, now(), routingInput);
+      const finalizedLoop = await finalizeCurrentLoop(finalInferDecision, now(), routingInput);
       await persistLoopRecordIfSupported(input.store, finalizedLoop);
       return {
         loop: finalizedLoop,
-        decision
+        decision: finalInferDecision
       };
     }
   }
@@ -2366,6 +2781,23 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     activeAttemptController?.abort();
     // Flush any diagnostic ledger writes queued from signal callbacks
     await Promise.all(pendingControlWrites);
+    // Last-resort: if an unhandled exception escaped the main loop and preCandidateBoundary
+    // is still set, attempt to restore the workspace so unverified code is not left behind.
+    // This path is reached only when none of the normal terminal paths ran successfully.
+    if (preCandidateBoundary) {
+      try {
+        await restoreRollbackBoundary({
+          repoRoot: input.task.repoRoot,
+          boundary: preCandidateBoundary,
+          restoredAt: now(),
+          decision: "DISCARD"
+        });
+        preCandidateBoundary = undefined;
+      } catch {
+        // Cannot safely write to ledger here. The workspace state is unknown.
+        // The exception that caused this path will propagate to the caller.
+      }
+    }
   }
 }
 
@@ -2787,6 +3219,28 @@ function truncateVerificationDetail(text: string, maxLength: number): string {
   return text.length <= maxLength ? text : `${text.slice(0, maxLength - 1)}…`;
 }
 
+/**
+ * Sanitize verifier output before it is stored as a structured failure excerpt
+ * that will eventually appear in a provider prompt.
+ *
+ * Two-layer contract:
+ *   Layer 1 (here, core): hard size cap + strip control characters and secrets.
+ *   Layer 2 (adapter): sanitizeForPrompt removes prompt-injection patterns.
+ *
+ * Rules:
+ *  - Keep tail (most recent lines are most relevant for repair).
+ *  - Strip null bytes and C0/C1 control characters except \n and \t.
+ *  - Hard cap at 1500 characters — large test output cannot flood the context.
+ *  - Tag the excerpt so downstream consumers know it is untrusted evidence.
+ */
+export function sanitizeVerifierExcerpt(raw: string): string {
+  const HARD_CAP = 1500;
+  // Strip control characters except newline (\n) and horizontal tab (\t)
+  const stripped = raw.replace(/[\u0000-\u0008\u000b-\u000c\u000e-\u001f\u007f\u0080-\u009f]+/gu, " ");
+  // Keep the tail — the most recent output is the most actionable failure
+  return stripped.length <= HARD_CAP ? stripped : stripped.slice(-(HARD_CAP));
+}
+
 function resolveExpectedVerifierBinding(request: MartinAdapterRequest): VerifierExecutionBinding {
   const commands = request.context.verificationStack?.length
     ? request.context.verificationStack.map((step) => step.command)
@@ -3071,3 +3525,5 @@ export type {
   SwarmShareProjection,
   SwarmStatusCounts,
 } from "./swarm/evidence-projection.js";
+
+// buildRepairHeader removed — test scaffolding, not product code

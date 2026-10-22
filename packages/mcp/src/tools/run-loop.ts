@@ -228,8 +228,14 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
   });
 
   const lastAttempt = result.loop.attempts.at(-1);
+  // D5: verificationPassed must reflect authoritative verifier execution/binding,
+  // NOT merely lifecycle completion. A run can complete without a real verifier
+  // (when verificationPlan is empty or binding is absent). Only report true when
+  // the lifecycle is completed AND the last attempt has verifierScore === 1.
   const verificationPassed =
-    lastAttempt !== undefined && result.decision.lifecycleState === "completed";
+    lastAttempt !== undefined &&
+    result.decision.lifecycleState === "completed" &&
+    (lastAttempt.verifierScore ?? 0) >= 1;
   const costState = evaluateCostGovernor({
     budget: result.loop.budget,
     cost: {

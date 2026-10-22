@@ -347,8 +347,9 @@ describe("operator commands", () => {
       );
       const verifyResult = await executeCli(["--json", "runs", "verify", "--loop-id", loop.loopId]);
       const verify = JSON.parse(verifyResult.stdout);
-      // Missing integrity material and a failed verification are reported, not exit failures.
-      expect(verifyResult.exitCode).toBe(0);
+      // material_missing is an untrustworthy integrity state → must exit non-zero (6) so
+      // exit-code-only automation cannot silently treat it as a verified run.
+      expect(verifyResult.exitCode).toBe(6);
       const triage = JSON.parse((await executeCli(["--json", "triage"])).stdout);
 
       expect(dossier.command).toBe("dossier");

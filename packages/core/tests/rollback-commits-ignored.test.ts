@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, truncate, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -119,6 +119,52 @@ describe("rollback boundary: attempt commits", () => {
 });
 
 describe("rollback boundary: ignored files", () => {
+  it("does not persist low-entropy ignored-file hashes but still detects same-size same-mtime tampering", async () => {
+    const directory = await createRepository();
+    const secretPath = join(directory, ".env");
+    await writeFile(secretPath, "PIN=1111\n", "utf8");
+    const fixedTime = new Date("2026-10-15T00:00:00.000Z");
+    await utimes(secretPath, fixedTime, fixedTime);
+    const boundary = await captureRollbackBoundary({ repoRoot: directory, capturedAt });
+
+    expect(JSON.stringify(boundary)).not.toMatch(/sha256|[a-f0-9]{64}/u);
+
+    await writeFile(secretPath, "PIN=9999\n", "utf8");
+    await utimes(secretPath, fixedTime, fixedTime);
+    expect(listIgnoredFileChangesSinceBoundary({ repoRoot: directory, boundary }).modified).toContain(".env");
+  });
+
+  it("does not hash ignored files above the bounded per-file limit", async () => {
+    const directory = await createRepository();
+    const largePath = join(directory, "secrets", "large.bin");
+    await mkdir(join(directory, "secrets"), { recursive: true });
+    await writeFile(largePath, "x", "utf8");
+    await truncate(largePath, 9 * 1024 * 1024);
+
+    const boundary = await captureRollbackBoundary({ repoRoot: directory, capturedAt });
+    const stamp = boundary?.ignoredFiles?.find((entry) => entry.path === "secrets/large.bin");
+    expect(stamp).toBeDefined();
+    expect(stamp).not.toHaveProperty("sha256");
+  });
+
+  it("fails closed once an ignored directory reaches the expansion cap", async () => {
+    const directory = await createRepository();
+    const bulk = join(directory, "secrets", "over-cap");
+    await mkdir(bulk, { recursive: true });
+    const count = 20_001;
+    for (let offset = 0; offset < count; offset += 400) {
+      await Promise.all(
+        Array.from({ length: Math.min(400, count - offset) }, (_, index) =>
+          writeFile(join(bulk, `${String(offset + index).padStart(5, "0")}.txt`), "", "utf8")
+        )
+      );
+    }
+
+    await expect(captureRollbackBoundary({ repoRoot: directory, capturedAt })).rejects.toThrow(
+      /ignored rollback inventory exceeds the 20000-file observation limit/iu
+    );
+  }, 120_000);
+
   it("lists ignored files an attempt created or modified, but not pre-existing ones", async () => {
     const directory = await createRepository();
     await mkdir(join(directory, "secrets"), { recursive: true });

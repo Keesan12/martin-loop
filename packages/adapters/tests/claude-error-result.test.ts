@@ -105,6 +105,22 @@ describe("Claude error results never reach the verifier", () => {
 
     expect(result.status).toBe("failed");
     expect(result.usage).toMatchObject({ actualUsd: 0.42, provenance: "actual" });
+    expect(result.usage.providerSettlement).toMatchObject({ rawUsageAvailable: false });
     expect(calls).toHaveLength(1);
+  });
+
+  it("retains authoritative success cost without fabricating raw token usage", async () => {
+    const { result, calls } = await runWith({
+      stdout: [
+        JSON.stringify({ type: "system", subtype: "init", model: "claude-sonnet-4-6" }),
+        JSON.stringify({ type: "result", subtype: "success", is_error: false, result: "Patched.", total_cost_usd: 0.37 })
+      ].join("\n"),
+      exitCode: 0
+    });
+
+    expect(result.status).toBe("completed");
+    expect(result.usage).toMatchObject({ actualUsd: 0.37, provenance: "actual" });
+    expect(result.usage.providerSettlement).toMatchObject({ rawUsageAvailable: false });
+    expect(calls).toHaveLength(2);
   });
 });
