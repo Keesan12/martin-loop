@@ -233,6 +233,7 @@ function validateRunInput(args: unknown): RunLoopInput {
     "workingDirectory",
     "engine",
     "model",
+    "fallbackEngines",
     "context",
     "policyPack",
     "maxUsd",
@@ -258,6 +259,7 @@ function validateRunInput(args: unknown): RunLoopInput {
       : {}),
     ...(engine ? { engine } : {}),
     ...optionalString(record.model, "model"),
+    ...optionalEnumArrayAsObject(record.fallbackEngines, "fallbackEngines", MARTIN_ENGINE_VALUES),
     ...optionalString(record.context, "context"),
     ...optionalEnumAsObject(record.policyPack, "policyPack", [
       "solo-founder",
@@ -873,4 +875,23 @@ function optionalEnumAsObject<T extends readonly string[]>(
 ): Partial<Record<typeof name, T[number]>> {
   const enumValue = optionalEnum(value, name, allowed);
   return enumValue ? ({ [name]: enumValue } as Partial<Record<typeof name, T[number]>>) : {};
+}
+
+function optionalEnumArrayAsObject<T extends readonly string[]>(
+  value: unknown,
+  name: string,
+  allowed: T
+): Partial<Record<typeof name, T[number][]>> {
+  if (value === undefined) return {};
+  if (!Array.isArray(value)) throw invalidArgumentsError(`Invalid ${name}.`);
+  const values = value.map((item) => {
+    if (typeof item !== "string" || !allowed.includes(item)) {
+      throw invalidArgumentsError(`Invalid ${name}.`);
+    }
+    return item as T[number];
+  });
+  if (new Set(values).size !== values.length) {
+    throw invalidArgumentsError(`Invalid ${name}: duplicate engines are not allowed.`);
+  }
+  return { [name]: values } as Partial<Record<typeof name, T[number][]>>;
 }
