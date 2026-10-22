@@ -374,6 +374,59 @@ describe("execution continuation", () => {
     expect(await readFile(join(repoRoot, "target.js"), "utf8")).toContain("value: 3");
   });
 
+  it("does not reset the hard wall-clock budget on reconnect", async () => {
+    const root = await mkdtemp(join(tmpdir(), "martin-resume-wall-"));
+    temporaryDirectories.push(root);
+    const nowMs = Date.parse("2026-10-22T01:00:00.000Z");
+    const loop: LoopRecord = {
+      ...createLoopRecord({
+        loopId: "loop_resume_wall",
+        workspaceId: "ws_wall",
+        projectId: "proj_wall",
+        task: {
+          title: "expired run",
+          objective: "must not get more time after reconnect",
+          verificationPlan: ["node --version"],
+          mutationMode: "read_only",
+          definitionOfDonePreSatisfied: true
+        },
+        budget: { maxUsd: 1, softLimitUsd: 0.8, maxIterations: 3 },
+        createdAt: "2026-10-22T00:29:00.000Z",
+        updatedAt: "2026-10-22T00:29:10.000Z"
+      }),
+      status: "running",
+      lifecycleState: "running"
+    };
+
+    let providerCalls = 0;
+    const adapter: MartinAdapter = {
+      adapterId: "agent-cli:claude",
+      kind: "direct-provider",
+      label: "wall-clock-test",
+      metadata: { providerId: "claude", capabilities: { workspaceMutations: false } },
+      async execute() {
+        providerCalls += 1;
+        throw new Error("provider should not launch after wall-clock expiry");
+      }
+    };
+
+    const result = await runMartin({
+      workspaceId: loop.workspaceId,
+      projectId: loop.projectId,
+      task: loop.task,
+      budget: loop.budget,
+      adapter,
+      store: createFileRunStore({ runsRoot: join(root, "runs") }),
+      now: () => new Date(nowMs).toISOString(),
+      nowMs: () => nowMs,
+      resume: { loop }
+    });
+
+    expect(providerCalls).toBe(0);
+    expect(result.loop.loopId).toBe(loop.loopId);
+    expect(result.loop.lifecycleState).not.toBe("completed");
+  });
+
   it("refuses irreversible or exhausted persisted runs", () => {
     const irreversible = createLoopRecord({
       loopId: "loop_irreversible",
