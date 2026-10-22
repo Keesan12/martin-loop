@@ -99,6 +99,7 @@ import {
   verifyMartinMcpInstall
 } from "./mcp-install-state.js";
 import { persistLoopArtifacts } from "./persistence.js";
+import { finalizeContinuationEvidence } from "./continuation-finalize.js";
 import {
   buildMartinProofCard,
   renderMartinProofCardMarkdown,
@@ -2912,6 +2913,13 @@ async function executeContinueRunCommand(
   if (!workingDirectory) {
     throw new CliCommandError("environment", "Persisted run has no repository root and cannot be continued.");
   }
+  if (detail.loop.metadata["executionMode"] !== "governed") {
+    throw new CliCommandError(
+      "policy_blocked",
+      "continue is available only for governed live runs; this persisted run was not authorized for live execution.",
+      { suggestion: "Start a new governed run to authorize live provider execution." }
+    );
+  }
 
   const persistedPrimary =
     detail.loop.metadata["authorizedPrimaryEngine"] ??
@@ -3036,6 +3044,7 @@ async function executeContinueRunCommand(
     }
   });
 
+  await finalizeContinuationEvidence(result.loop, detail.runsRoot);
   await enqueueLoopForHostedSync(result.loop, { runtimeVersion: rootPackageVersion });
   const verification = buildVerificationSummary(result.loop);
   const governanceClaimEligible = deriveLoopExecutionBoundary(result.loop).governanceClaimEligible;
