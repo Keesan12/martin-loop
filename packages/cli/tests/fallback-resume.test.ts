@@ -75,6 +75,7 @@ describe("execution continuation parsing", () => {
       command: "resume",
       selector: { loopId: "loop_abc123" }
     });
+  });
 
   it("parses requested continuation providers without granting authority by itself", () => {
     expect(
@@ -91,6 +92,5 @@ describe("execution continuation parsing", () => {
       engine: "codex",
       fallbackEngines: ["gemini"]
     });
-  });
   });
 });
