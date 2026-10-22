@@ -584,4 +584,18 @@ describe("execution continuation", () => {
     expect(second.lease.owner).toBe("second");
     await second.release();
   });
+  it("acquires the execution lease before durable store persistence", async () => {
+    const source = await readFile(new URL("../src/index.ts", import.meta.url), "utf8");
+    const runStart = source.indexOf("export async function runMartin");
+    const lease = source.indexOf("const executionLease =", runStart);
+    const outerTry = source.indexOf("try {", lease);
+    const firstStoreWrite = source.indexOf("if (input.store) {", outerTry);
+    const outerFinally = source.lastIndexOf("} finally {", source.indexOf("\nfunction createRunExitPayload", runStart));
+
+    expect(lease).toBeGreaterThan(runStart);
+    expect(outerTry).toBeGreaterThan(lease);
+    expect(firstStoreWrite).toBeGreaterThan(outerTry);
+    expect(outerFinally).toBeGreaterThan(firstStoreWrite);
+  });
+
 });
