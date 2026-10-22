@@ -37,7 +37,7 @@ npx -y martin-loop@0.8.9 run "Fix the failing test" \
 Continue an eligible persisted run:
 
 ```sh
-npx -y martin-loop@0.8.9 continue <loopId>
+npx -y martin-loop@0.8.9 continue LOOP_ID
 ```
 
 If you use the standalone MCP server, upgrade it to `@martinloop/mcp@0.8.9`. The root CLI, MCP package, plugins, and MCPB product version advance together; MCPB manifest schema remains `0.3`.
