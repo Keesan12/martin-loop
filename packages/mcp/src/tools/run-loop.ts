@@ -121,7 +121,32 @@ function ensureLiveEngineReady(
   providerExecutionTimeoutMs?: number
 ): ReturnType<typeof probeCodexLaunch> | undefined {
   if (engine === "openai") {
-    // Configuration validation happens in resolveOpenAiCompatibleRuntimeConfig.
+    const config = resolveOpenAiCompatibleRuntimeConfig();
+    const localEndpoint = /^(?:https?:\/\/)?(?:localhost|127\.0\.0\.1|\[::1\])(?::|\/|$)/iu.test(
+      config.baseUrl
+    );
+    if (!config.model) {
+      throw new MartinToolError(
+        "engine_unavailable",
+        "Authorized OpenAI-compatible fallback has no configured model.",
+        {
+          category: "environment",
+          suggestion: "Set MARTIN_OPENAI_MODEL before authorizing the OpenAI fallback.",
+          retryable: false
+        }
+      );
+    }
+    if (!config.apiKeyConfigured && !localEndpoint) {
+      throw new MartinToolError(
+        "engine_unavailable",
+        "Authorized OpenAI-compatible fallback is not authenticated.",
+        {
+          category: "environment",
+          suggestion: "Set MARTIN_OPENAI_API_KEY, or use an explicitly local OpenAI-compatible endpoint.",
+          retryable: false
+        }
+      );
+    }
     return undefined;
   }
   if (engine === "codex") {
