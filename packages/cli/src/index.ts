@@ -6344,6 +6344,26 @@ function selectAuthorizedFallbackAdapters(input: {
 
   return input.engines.map((engine) => {
     let codexProbe: CodexProbeForTests | undefined;
+    if (engine === "openai") {
+      const config = resolveOpenAiCompatibleRuntimeConfig();
+      const localEndpoint = /^(?:https?:\/\/)?(?:localhost|127\.0\.0\.1|\[::1\])(?::|\/|$)/iu.test(
+        config.baseUrl
+      );
+      if (!config.model) {
+        throw new CliCommandError(
+          "environment",
+          "Authorized OpenAI-compatible fallback has no configured model.",
+          { suggestion: "Set MARTIN_OPENAI_MODEL before authorizing the OpenAI fallback." }
+        );
+      }
+      if (!config.apiKeyConfigured && !localEndpoint) {
+        throw new CliCommandError(
+          "environment",
+          "Authorized OpenAI-compatible fallback is not authenticated.",
+          { suggestion: "Set MARTIN_OPENAI_API_KEY, or use an explicitly local OpenAI-compatible endpoint." }
+        );
+      }
+    }
     if (engine === "claude" && !isCommandAvailable("claude")) {
       throw new CliCommandError("environment", "Authorized fallback engine 'claude' is not available on PATH.");
     }
