@@ -3326,16 +3326,16 @@
       "provenance": "production-exporter",
       "envelope": {
         "schemaVersion": "martin.swarm-hosted.v1",
-        "envelopeId": "f7158f5de6ec27e54118eb50cf1050961a08d4010d54cb285dcf32ec7962a87b",
+        "envelopeId": "998c91f47387883eafddee2699eec3592df8dee76a7d571092181881f1bae07e",
         "sourceSchemas": {
           "swarm": "martin.swarm.v1",
           "receipt": "martin.swarm-receipt.v1",
           "evidenceIndex": "martin.swarm-evidence-index.v1"
         },
         "sourceIdentities": {
-          "receiptId": "swarm-receipt-fc647eb54b253984",
-          "receiptSha256": "fc647eb54b25398439105cbcce87b0eafca496c1c8cf0faf0ea5251c7178898a",
-          "evidenceIndexSha256": "f01fd08bc743c857ed72ba685747c7e489768b4d3fefa9d1bcad5fbd2a4ebd44",
+          "receiptId": "swarm-receipt-4d2541441836f8f4",
+          "receiptSha256": "4d2541441836f8f4baf4f10dd2fa8c38a0251b49a0a906766d5d8ee3baa8047b",
+          "evidenceIndexSha256": "119f2078747d12168b92edd548c634cecafe5bcac059b0c0e7d72eb38555ef65",
           "eventChainSha256": "6c4bb7bbeadf338226ff94e183d4cd527fa6df87b422d608a59b5ef61bf96b3d"
         },
         "runtimeVersion": "0.8.0",
@@ -3592,16 +3592,16 @@
           "algorithm": "hmac-sha256",
           "keyId": "hosted-a470ed3e5444f7d3",
           "keyLocatorHash": "32cd8340ddce70c1daae172931d3bda51ad76dbb259d2a92df16eb4a79d589f5",
-          "signatureHmacSha256": "f79144aaa5ea1265ec99db3d5e50468b5dc8b383f1401c5caef2d35794f411fb"
+          "signatureHmacSha256": "92b22842c6235b6cfba3e769b075c7ccaf50f2ede52ed952226296c8504ffe20"
         }
       },
       "atlas": {
         "schemaVersion": "martin.swarm-atlas-view.v1",
-        "envelopeId": "f7158f5de6ec27e54118eb50cf1050961a08d4010d54cb285dcf32ec7962a87b",
+        "envelopeId": "998c91f47387883eafddee2699eec3592df8dee76a7d571092181881f1bae07e",
         "sourceIdentities": {
-          "receiptId": "swarm-receipt-fc647eb54b253984",
-          "receiptSha256": "fc647eb54b25398439105cbcce87b0eafca496c1c8cf0faf0ea5251c7178898a",
-          "evidenceIndexSha256": "f01fd08bc743c857ed72ba685747c7e489768b4d3fefa9d1bcad5fbd2a4ebd44",
+          "receiptId": "swarm-receipt-4d2541441836f8f4",
+          "receiptSha256": "4d2541441836f8f4baf4f10dd2fa8c38a0251b49a0a906766d5d8ee3baa8047b",
+          "evidenceIndexSha256": "119f2078747d12168b92edd548c634cecafe5bcac059b0c0e7d72eb38555ef65",
           "eventChainSha256": "6c4bb7bbeadf338226ff94e183d4cd527fa6df87b422d608a59b5ef61bf96b3d"
         },
         "swarm": {
@@ -3759,11 +3759,11 @@
       },
       "sansa": {
         "schemaVersion": "martin.swarm-sansa-view.v1",
-        "envelopeId": "f7158f5de6ec27e54118eb50cf1050961a08d4010d54cb285dcf32ec7962a87b",
+        "envelopeId": "998c91f47387883eafddee2699eec3592df8dee76a7d571092181881f1bae07e",
         "sourceIdentities": {
-          "receiptId": "swarm-receipt-fc647eb54b253984",
-          "receiptSha256": "fc647eb54b25398439105cbcce87b0eafca496c1c8cf0faf0ea5251c7178898a",
-          "evidenceIndexSha256": "f01fd08bc743c857ed72ba685747c7e489768b4d3fefa9d1bcad5fbd2a4ebd44",
+          "receiptId": "swarm-receipt-4d2541441836f8f4",
+          "receiptSha256": "4d2541441836f8f4baf4f10dd2fa8c38a0251b49a0a906766d5d8ee3baa8047b",
+          "evidenceIndexSha256": "119f2078747d12168b92edd548c634cecafe5bcac059b0c0e7d72eb38555ef65",
           "eventChainSha256": "6c4bb7bbeadf338226ff94e183d4cd527fa6df87b422d608a59b5ef61bf96b3d"
         },
         "facts": [
@@ -3901,11 +3901,11 @@
       },
       "dashboard": {
         "schemaVersion": "martin.swarm-dashboard-view.v1",
-        "envelopeId": "f7158f5de6ec27e54118eb50cf1050961a08d4010d54cb285dcf32ec7962a87b",
+        "envelopeId": "998c91f47387883eafddee2699eec3592df8dee76a7d571092181881f1bae07e",
         "sourceIdentities": {
-          "receiptId": "swarm-receipt-fc647eb54b253984",
-          "receiptSha256": "fc647eb54b25398439105cbcce87b0eafca496c1c8cf0faf0ea5251c7178898a",
-          "evidenceIndexSha256": "f01fd08bc743c857ed72ba685747c7e489768b4d3fefa9d1bcad5fbd2a4ebd44",
+          "receiptId": "swarm-receipt-4d2541441836f8f4",
+          "receiptSha256": "4d2541441836f8f4baf4f10dd2fa8c38a0251b49a0a906766d5d8ee3baa8047b",
+          "evidenceIndexSha256": "119f2078747d12168b92edd548c634cecafe5bcac059b0c0e7d72eb38555ef65",
           "eventChainSha256": "6c4bb7bbeadf338226ff94e183d4cd527fa6df87b422d608a59b5ef61bf96b3d"
         },
         "swarmId": "swarm-reassigned-recovered",

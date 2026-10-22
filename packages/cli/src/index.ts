@@ -19,7 +19,20 @@ import {
   CODEX_MINIMUM_VIABLE_TOKEN_BUDGET,
   CODEX_TOKEN_BUDGET_PREFLIGHT_BASIS,
 } from "@martin/adapters";
-import { runMartin, classifyRoute, createFileRunStore, getHistoricalDirectSuccessRate, getPreference, hashExternalOutcomeContract, recordPreference, writeExitSignal, type MartinAdapter } from "@martin/core";
+import {
+  runMartin,
+  classifyRoute,
+  createFileRunStore,
+  evaluateRunResumability,
+  getHistoricalDirectSuccessRate,
+  getPreference,
+  hashExternalOutcomeContract,
+  loadResumeCandidateBoundary,
+  loadResumeVerifierFailure,
+  recordPreference,
+  writeExitSignal,
+  type MartinAdapter
+} from "@martin/core";
 import {
   fetchSelectedMessage,
   getCliInstalledVersion,
@@ -86,6 +99,7 @@ import {
   verifyMartinMcpInstall
 } from "./mcp-install-state.js";
 import { persistLoopArtifacts } from "./persistence.js";
+import { finalizeContinuationEvidence } from "./continuation-finalize.js";
 import {
   buildMartinProofCard,
   renderMartinProofCardMarkdown,
@@ -260,6 +274,8 @@ export type RunCommandRequest = {
   runsDir?: string;
   model?: string;
   engine?: string;
+  /** Explicit, ordered provider fallbacks authorized by the user. */
+  fallbackEngines?: string[];
   liveMode?: "live" | "proof";
   mutationMode?: MutationMode;
   unsafeAllowUnguardedRun?: boolean;
@@ -306,6 +322,14 @@ type InspectCommand = {
 type ResumeCommand = {
   command: "resume";
   selector: MartinRunSelector;
+};
+
+type ContinueRunCommand = {
+  command: "continue_run";
+  selector: MartinRunSelector;
+  engine?: string;
+  fallbackEngines?: string[];
+  model?: string;
 };
 
 type DoctorCommand = {
@@ -593,6 +617,7 @@ export type ParsedCliArguments =
     }
   | InspectCommand
   | ResumeCommand
+  | ContinueRunCommand
   | DoctorCommand
   | StartCommand
   | EnableCommand
@@ -771,6 +796,8 @@ export async function executeCli(args: string[]): Promise<{
         return await executeInspectCommand(parsed, outputMode);
       case "resume":
         return await executeResumeCommand(parsed, outputMode);
+      case "continue_run":
+        return await executeContinueRunCommand(parsed, outputMode);
       case "doctor":
         return await executeDoctorCommand(parsed, outputMode);
       case "start":
@@ -1044,6 +1071,24 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
         loopId,
         ...(readOption(rest, "--runs-dir") ? { runsDir: readOption(rest, "--runs-dir") } : {})
       }
+    };
+  }
+
+  if (command === "continue") {
+    const loopId = rest[0] && !rest[0].startsWith("--")
+      ? rest[0]
+      : readOption(rest, "--loop-id") ?? "";
+    const fallbackEngines = readOptions(rest, "--fallback-engine");
+    assertAuthorizedFallbackEngineNames(fallbackEngines);
+    return {
+      command: "continue_run",
+      selector: {
+        loopId,
+        ...(readOption(rest, "--runs-dir") ? { runsDir: readOption(rest, "--runs-dir") } : {})
+      },
+      ...(readOption(rest, "--engine") ? { engine: readOption(rest, "--engine") } : {}),
+      ...(fallbackEngines.length > 0 ? { fallbackEngines } : {}),
+      ...(readOption(rest, "--model") ? { model: readOption(rest, "--model") } : {})
     };
   }
 
@@ -1595,6 +1640,9 @@ export function renderCliHelp(): string {
     "  signal       Write an external_event signal.  Usage: martin signal <run-id> --event <name> [--disposition stop|continue]",
     "  telemetry [status|explain|on|off]  Manage anonymous usage analytics.",
     "",
+    "Execution recovery:",
+    "  continue <loop-id>  Continue an unfinished persisted governed run under its original task/budget authority.",
+    "",
     "Compatibility aliases:",
     "  inspect      Legacy file-based summary view. Prefer `martin dossier` or `martin runs get`.",
     "  resume       Legacy loop lookup alias. Prefer `martin runs get --loop-id`.",
@@ -1633,6 +1681,7 @@ export function renderCliHelp(): string {
     "",
     "Run options:",
     "  --engine <name>          Adapter: auto (default), claude, codex, gemini, or openai. auto detects your available coding agent.",
+    "  --fallback-engine <name> Explicit authorized fallback provider; repeat to define order.",
     "                           openai routes to any OpenAI-compatible endpoint.",
     "                           Set MARTIN_OPENAI_BASE_URL, MARTIN_OPENAI_API_KEY,",
     "                           MARTIN_OPENAI_MODEL. Works with Ollama, OpenRouter,",
@@ -2021,6 +2070,16 @@ async function executeRunCommand(
     resolvedRequest.verifyTimeoutMs,
     resolvedRequest.providerExecutionTimeoutMs,
   );
+  const fallbackAdapters = selectAuthorizedFallbackAdapters({
+    engines: resolvedRequest.fallbackEngines ?? [],
+    primaryEngine: resolvedRequest.engine,
+    workingDirectory: cliEnvironment.workingDirectory,
+    mutationMode: effectiveMutationMode,
+    liveMode: cliEnvironment.liveMode,
+    verifyTimeoutMs: resolvedRequest.verifyTimeoutMs,
+    providerExecutionTimeoutMs: resolvedRequest.providerExecutionTimeoutMs,
+    externalWritesApproved: resolvedRequest.approvalPolicy?.externalWrites === true
+  });
   const executionMode = runAdapterOverrideForTests
     ? "simulated"
     : adapter.adapterId === "direct:verifier:verify-only"
@@ -2045,6 +2104,12 @@ async function executeRunCommand(
     executionMode,
     governanceClaimEligible: executionMode === "governed" ? "true" : "false",
     ...(runtimeTruth ?? {}),
+    ...(resolvedRequest.engine && resolvedRequest.engine !== "auto"
+      ? { authorizedPrimaryEngine: resolvedRequest.engine }
+      : {}),
+    ...(resolvedRequest.fallbackEngines?.length
+      ? { authorizedFallbackEngines: resolvedRequest.fallbackEngines.join(",") }
+      : {})
   };
   // Load telemetry state before the governed run.
   const { readTelemetryConfig, isTelemetrySendingEnabled, initializeTelemetryIfNeeded,
@@ -2123,6 +2188,7 @@ async function executeRunCommand(
       ...(resolvedRequest.savingsBaseline ? { savingsBaseline: resolvedRequest.savingsBaseline } : {}),
       metadata: executionMetadata,
       adapter,
+      ...(fallbackAdapters.length > 0 ? { fallbackAdapters } : {}),
       store: createFileRunStore({ runsRoot: cliEnvironment.runsRoot }),
     });
     result = await offerArcadeWhileWaiting(governedTask, {
@@ -2823,6 +2889,197 @@ async function executeResumeCommand(
     ],
     quiet: detail.loop.loopId,
     warnings: detail.warnings
+  });
+}
+
+async function executeContinueRunCommand(
+  command: ContinueRunCommand,
+  outputMode: MartinOutputMode
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  if (!command.selector.loopId) {
+    throw new CliCommandError("invalid_input", "continue requires a loop ID.", {
+      suggestion: "Use `martin continue <loopId>`."
+    });
+  }
+
+  const detail = await loadPersistedLoop(command.selector);
+  const resumability = evaluateRunResumability(detail.loop);
+  if (!resumability.allowed) {
+    throw new CliCommandError("policy_blocked", resumability.reason, {
+      suggestion: "Inspect the run with `martin runs get --loop-id <loopId>` before starting new work."
+    });
+  }
+  const workingDirectory = detail.loop.task.repoRoot;
+  if (!workingDirectory) {
+    throw new CliCommandError("environment", "Persisted run has no repository root and cannot be continued.");
+  }
+  if (detail.loop.metadata["executionMode"] !== "governed") {
+    throw new CliCommandError(
+      "policy_blocked",
+      "continue is available only for governed live runs; this persisted run was not authorized for live execution.",
+      { suggestion: "Start a new governed run to authorize live provider execution." }
+    );
+  }
+
+  const persistedPrimary =
+    detail.loop.metadata["authorizedPrimaryEngine"] ??
+    inferEngineFromAdapterId(detail.loop.attempts.at(-1)?.adapterId);
+  const persistedFallbackEngines = (detail.loop.metadata["authorizedFallbackEngines"] ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  assertAuthorizedFallbackEngineNames(persistedFallbackEngines);
+
+  if (
+    command.fallbackEngines !== undefined &&
+    command.fallbackEngines.join(",") !== persistedFallbackEngines.join(",")
+  ) {
+    throw new CliCommandError(
+      "policy_blocked",
+      "continue cannot widen or change the provider fallback authority of the persisted run.",
+      { suggestion: "Start a new governed run to authorize a different provider chain." }
+    );
+  }
+
+  if (
+    command.engine &&
+    command.engine !== persistedPrimary &&
+    !persistedFallbackEngines.includes(command.engine)
+  ) {
+    throw new CliCommandError(
+      "policy_blocked",
+      "continue cannot switch to a provider that was not authorized by the persisted run.",
+      { suggestion: "Use the persisted provider authority, or start a new governed run." }
+    );
+  }
+
+  const engine = command.engine ?? persistedPrimary;
+  if (!engine || engine === "auto") {
+    throw new CliCommandError(
+      "policy_blocked",
+      "continue cannot infer a new provider because the persisted run has no concrete provider authority.",
+      { suggestion: "Inspect the persisted run; if provider authority is unavailable, start a new governed run." }
+    );
+  }
+  const continuationFallbackEngines = persistedFallbackEngines.filter(
+    (candidate) => candidate !== engine
+  );
+  let codexProbe: CodexProbeForTests | undefined;
+  if (engine === "claude" && !isCommandAvailable("claude")) {
+    throw new CliCommandError("environment", "Persisted run provider 'claude' is not available on PATH.");
+  }
+  if (engine === "gemini" && !resolveCliCommandAvailability("gemini").available) {
+    throw new CliCommandError("environment", "Persisted run provider 'gemini' is not available on PATH.");
+  }
+  if (engine === "codex") {
+    const sandbox = checkCodexSandboxPreflight({
+      requestedSandbox:
+        detail.loop.task.mutationMode === "read_only" ? "read-only" : "workspace-write",
+      workingDirectory
+    });
+    if (!sandbox.ok) {
+      throw new CliCommandError(
+        "policy_blocked",
+        "Codex cannot prove the persisted run's sandbox boundary.",
+        { suggestion: sandbox.remediation }
+      );
+    }
+    const availability = resolveCodexAvailabilityForCli();
+    codexProbe = resolveCodexProbeForCli({
+      workingDirectory,
+      availability,
+      providerExecutionTimeoutMs: detail.loop.task.providerExecutionTimeoutMs
+    });
+    if (!codexProbe.ok) {
+      throw new CliCommandError("environment", codexProbe.summary, {
+        suggestion: "Run `martin doctor --engine codex` before continuing this run."
+      });
+    }
+  }
+
+  const adapter = selectAdapter(
+    engine,
+    workingDirectory,
+    command.model,
+    detail.loop.task.mutationMode,
+    "live",
+    codexProbe,
+    detail.loop.task.verificationTimeoutMs,
+    detail.loop.task.providerExecutionTimeoutMs
+  );
+  const fallbackAdapters = selectAuthorizedFallbackAdapters({
+    engines: continuationFallbackEngines,
+    primaryEngine: engine,
+    workingDirectory,
+    mutationMode: detail.loop.task.mutationMode,
+    liveMode: "live",
+    verifyTimeoutMs: detail.loop.task.verificationTimeoutMs,
+    providerExecutionTimeoutMs: detail.loop.task.providerExecutionTimeoutMs,
+    externalWritesApproved: detail.loop.task.approvalPolicy?.externalWrites === true
+  });
+  const preCandidateBoundary = await loadResumeCandidateBoundary(detail.runsRoot, detail.loop);
+  const lastVerifierFailure = await loadResumeVerifierFailure(detail.runsRoot, detail.loop);
+
+  const result = await runMartin({
+    workspaceId: detail.loop.workspaceId,
+    projectId: detail.loop.projectId,
+    ...(detail.loop.teamId ? { teamId: detail.loop.teamId } : {}),
+    task: detail.loop.task,
+    budget: detail.loop.budget,
+    metadata: {
+      ...detail.loop.metadata,
+      resumedVia: "cli",
+      ...(persistedPrimary ? { authorizedPrimaryEngine: persistedPrimary } : {}),
+      ...(persistedFallbackEngines.length
+        ? { authorizedFallbackEngines: persistedFallbackEngines.join(",") }
+        : {})
+    },
+    adapter,
+    ...(fallbackAdapters.length > 0 ? { fallbackAdapters } : {}),
+    store: createFileRunStore({ runsRoot: detail.runsRoot }),
+    resume: {
+      loop: detail.loop,
+      ...(preCandidateBoundary ? { preCandidateBoundary } : {}),
+      ...(lastVerifierFailure ? { lastVerifierFailure } : {})
+    }
+  });
+
+  await finalizeContinuationEvidence(result.loop, detail.runsRoot);
+  await enqueueLoopForHostedSync(result.loop, { runtimeVersion: rootPackageVersion });
+  const verification = buildVerificationSummary(result.loop);
+  const governanceClaimEligible = deriveLoopExecutionBoundary(result.loop).governanceClaimEligible;
+  const outcome: VerifiedHandoffV1["outcome"] =
+    result.loop.status === "completed" &&
+    result.loop.lifecycleState === "completed" &&
+    verification.status === "passed" &&
+    governanceClaimEligible
+      ? "VERIFIED"
+      : result.loop.status === "completed"
+        ? "NEEDS_REVIEW"
+        : "STOPPED";
+
+  return renderCliSuccess(outputMode, {
+    exitCode: exitCodeForGovernedOutcome(outcome),
+    data: {
+      command: "continue",
+      loopId: result.loop.loopId,
+      status: result.loop.status,
+      lifecycleState: result.loop.lifecycleState,
+      attempts: result.loop.attempts.length,
+      verification,
+      outcome,
+      engine,
+      fallbackEngines: continuationFallbackEngines
+    },
+    human: [
+      `Continued persisted run ${result.loop.loopId}`,
+      `Status: ${result.loop.status} / ${result.loop.lifecycleState}`,
+      `Attempts: ${result.loop.attempts.length}`,
+      `Verification: ${verification.status}`,
+      `Outcome: ${outcome}`
+    ],
+    quiet: result.loop.loopId,
+    warnings: verification.warnings
   });
 }
 
@@ -5264,6 +5521,12 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
         request.engine = consumeOptionValue(index, token);
         index += 1;
         break;
+      case "--fallback-engine": {
+        const fallbackEngine = consumeOptionValue(index, token, { repeatable: true });
+        request.fallbackEngines = [...(request.fallbackEngines ?? []), fallbackEngine];
+        index += 1;
+        break;
+      }
       case "--approve-dependency-changes":
         request.approvalPolicy = { ...request.approvalPolicy, dependencyAdds: true };
         break;
@@ -5292,6 +5555,18 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
         }
         break;
     }
+  }
+
+  assertAuthorizedFallbackEngineNames(request.fallbackEngines ?? []);
+  if (
+    request.engine &&
+    request.engine !== "auto" &&
+    request.fallbackEngines?.includes(request.engine)
+  ) {
+    throw new CliCommandError(
+      "invalid_input",
+      "--fallback-engine cannot repeat the primary --engine."
+    );
   }
 
   const resolvedObjective = (request.objective ?? request.title ?? "").trim();
@@ -5342,6 +5617,7 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
     ...(request.runsDir ? { runsDir: request.runsDir } : {}),
     ...(request.model ? { model: request.model } : {}),
     ...(request.engine ? { engine: request.engine } : {}),
+    ...(request.fallbackEngines?.length ? { fallbackEngines: request.fallbackEngines } : {}),
     ...(request.liveMode ? { liveMode: request.liveMode } : {}),
     ...(request.mutationMode ? { mutationMode: request.mutationMode } : {}),
     ...(request.unsafeAllowUnguardedRun ? { unsafeAllowUnguardedRun: true } : {}),
@@ -5525,6 +5801,41 @@ function parseMcpPlatform(tokens: string[]): MartinMcpPlatform | undefined {
 function readOption(tokens: string[], flag: string): string | undefined {
   const index = tokens.indexOf(flag);
   return index >= 0 ? tokens[index + 1] : undefined;
+}
+
+function readOptions(tokens: string[], flag: string): string[] {
+  const values: string[] = [];
+  for (let index = 0; index < tokens.length; index += 1) {
+    if (tokens[index] !== flag) continue;
+    const value = tokens[index + 1];
+    if (!value || value.startsWith("--")) {
+      throw new CliCommandError("invalid_input", `${flag} requires a value.`);
+    }
+    values.push(value);
+    index += 1;
+  }
+  return values;
+}
+
+const AUTHORIZED_FALLBACK_ENGINES = new Set(["claude", "codex", "gemini", "openai"]);
+
+function assertAuthorizedFallbackEngineNames(engines: string[]): void {
+  const seen = new Set<string>();
+  for (const engine of engines) {
+    if (!AUTHORIZED_FALLBACK_ENGINES.has(engine)) {
+      throw new CliCommandError(
+        "invalid_input",
+        `Invalid --fallback-engine "${engine}". Use claude, codex, gemini, or openai.`
+      );
+    }
+    if (seen.has(engine)) {
+      throw new CliCommandError(
+        "invalid_input",
+        `Duplicate --fallback-engine "${engine}" is not allowed.`
+      );
+    }
+    seen.add(engine);
+  }
 }
 
 function hasFlag(tokens: string[], flag: string): boolean {
@@ -6013,6 +6324,106 @@ function selectAdapter(
       suggestion: "Use --engine with a supported value, or omit --engine to auto-detect your available coding agent.",
     }
   );
+}
+
+function selectAuthorizedFallbackAdapters(input: {
+  engines: string[];
+  primaryEngine?: string;
+  workingDirectory: string;
+  mutationMode?: MutationMode;
+  liveMode: "live" | "proof";
+  verifyTimeoutMs?: number;
+  providerExecutionTimeoutMs?: number;
+  externalWritesApproved: boolean;
+}): MartinAdapter[] {
+  if (input.engines.length === 0) return [];
+  assertAuthorizedFallbackEngineNames(input.engines);
+  if (input.liveMode !== "live") {
+    throw new CliCommandError(
+      "invalid_input",
+      "--fallback-engine is available only for live governed execution."
+    );
+  }
+  if (input.externalWritesApproved) {
+    throw new CliCommandError(
+      "policy_blocked",
+      "Provider fallback is disabled for tasks authorized to perform external writes.",
+      { suggestion: "Use one provider for irreversible/external-write work and verify persisted state independently." }
+    );
+  }
+  if (input.primaryEngine && input.primaryEngine !== "auto" && input.engines.includes(input.primaryEngine)) {
+    throw new CliCommandError("invalid_input", "Fallback chain cannot include the primary engine.");
+  }
+
+  return input.engines.map((engine) => {
+    let codexProbe: CodexProbeForTests | undefined;
+    if (engine === "openai") {
+      const config = resolveOpenAiCompatibleRuntimeConfig();
+      const localEndpoint = /^(?:https?:\/\/)?(?:localhost|127\.0\.0\.1|\[::1\])(?::|\/|$)/iu.test(
+        config.baseUrl
+      );
+      if (!config.model) {
+        throw new CliCommandError(
+          "environment",
+          "Authorized OpenAI-compatible fallback has no configured model.",
+          { suggestion: "Set MARTIN_OPENAI_MODEL before authorizing the OpenAI fallback." }
+        );
+      }
+      if (!config.apiKeyConfigured && !localEndpoint) {
+        throw new CliCommandError(
+          "environment",
+          "Authorized OpenAI-compatible fallback is not authenticated.",
+          { suggestion: "Set MARTIN_OPENAI_API_KEY, or use an explicitly local OpenAI-compatible endpoint." }
+        );
+      }
+    }
+    if (engine === "claude" && !isCommandAvailable("claude")) {
+      throw new CliCommandError("environment", "Authorized fallback engine 'claude' is not available on PATH.");
+    }
+    if (engine === "gemini" && !resolveCliCommandAvailability("gemini").available) {
+      throw new CliCommandError("environment", "Authorized fallback engine 'gemini' is not available on PATH.");
+    }
+    if (engine === "codex") {
+      const sandbox = checkCodexSandboxPreflight({
+        requestedSandbox: input.mutationMode === "read_only" ? "read-only" : "workspace-write",
+        workingDirectory: input.workingDirectory
+      });
+      if (!sandbox.ok) {
+        throw new CliCommandError("policy_blocked", "Authorized Codex fallback cannot prove the requested sandbox boundary.", {
+          suggestion: sandbox.remediation
+        });
+      }
+      const availability = resolveCodexAvailabilityForCli();
+      codexProbe = resolveCodexProbeForCli({
+        workingDirectory: input.workingDirectory,
+        availability,
+        providerExecutionTimeoutMs: input.providerExecutionTimeoutMs
+      });
+      if (!codexProbe.ok) {
+        throw new CliCommandError("environment", codexProbe.summary, {
+          suggestion: "Run `martin doctor --engine codex` before authorizing Codex as a fallback."
+        });
+      }
+    }
+    return selectAdapter(
+      engine,
+      input.workingDirectory,
+      undefined,
+      input.mutationMode,
+      input.liveMode,
+      codexProbe,
+      input.verifyTimeoutMs,
+      input.providerExecutionTimeoutMs
+    );
+  });
+}
+
+function inferEngineFromAdapterId(adapterId?: string): string | undefined {
+  if (!adapterId) return undefined;
+  for (const engine of ["claude", "codex", "gemini", "openai"]) {
+    if (adapterId.toLowerCase().includes(engine)) return engine;
+  }
+  return undefined;
 }
 
 function buildDoctorRecommendations(input: {

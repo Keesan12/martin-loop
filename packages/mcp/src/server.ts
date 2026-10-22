@@ -1005,7 +1005,17 @@ export function createMartinMcpServer(serverInfo?: {
           },
           model: {
             type: "string",
-            description: "Optional model override passed to the CLI."
+            description: "Optional model override passed to the primary provider."
+          },
+          fallbackEngines: {
+            type: "array",
+            uniqueItems: true,
+            items: {
+              type: "string",
+              enum: [...MARTIN_ENGINE_VALUES]
+            },
+            description:
+              "Explicit ordered provider fallbacks authorized for this run. No provider is added implicitly."
           },
           maxUsd: {
             type: "number",
