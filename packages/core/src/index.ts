@@ -109,6 +109,12 @@ import {
   verifierActuallyPassed,
   type VerifierExecutionBinding,
 } from "./verified-handoff.js";
+import {
+  acquireRunExecutionLease,
+  evaluateRunResumability,
+  loadResumeCandidateBoundary,
+  loadResumeVerifierFailure
+} from "./resume.js";
 
 // ─── Public API re-exports ───────────────────────────────────────────────────
 export type {
@@ -208,6 +214,12 @@ export type { LocalIdentityAuthority } from "./identity.js";
 export { compileExecutionPolicy } from "./policy-compiler.js";
 export { assessTrajectory, decideCircuitBreak } from "./trajectory.js";
 export { calculateAvoidedUsd, calculateLoopAvoidedUsd } from "./savings.js";
+export {
+  acquireRunExecutionLease,
+  evaluateRunResumability,
+  loadResumeCandidateBoundary,
+  loadResumeVerifierFailure
+};
 export type { AvoidedUsdInput } from "./savings.js";
 
 // ─── Routing economics ─────────────────────────────────────────────────────
@@ -653,6 +665,15 @@ export interface RunMartinInput {
   idFactory?: (prefix: string) => string;
   maxRecentAttempts?: number;
   fallbackAdapters?: MartinAdapter[];
+  /**
+   * Continue an unfinished persisted run under the same loop ID and authority.
+   * The caller must acquire an execution lease before invoking runMartin.
+   */
+  resume?: {
+    loop: LoopRecord;
+    preCandidateBoundary?: RollbackBoundaryArtifact;
+    lastVerifierFailure?: MartinAdapterRequest["context"]["lastVerifierFailure"];
+  };
   receiptScope?: ReceiptScope;
   /** Optional persistence store. When provided, runMartin writes artifacts on each lifecycle event. */
   store?: RunStore;
@@ -707,33 +728,60 @@ export function distillContext(
 export async function runMartin(input: RunMartinInput): Promise<RunMartinResult> {
   const now = input.now ?? (() => new Date().toISOString());
   const idFactory = input.idFactory;
+  const resumeLoop = input.resume?.loop;
+  if (resumeLoop) {
+    const resumability = evaluateRunResumability(resumeLoop);
+    if (!resumability.allowed) {
+      throw new Error(`Run ${resumeLoop.loopId} cannot be continued: ${resumability.reason}`);
+    }
+    if (
+      resumeLoop.workspaceId !== input.workspaceId ||
+      resumeLoop.projectId !== input.projectId
+    ) {
+      throw new Error("Resume authority does not match the persisted workspace/project identity.");
+    }
+  }
 
+  const task = resumeLoop?.task ?? input.task;
   const providerExecutionTimeoutMs = normalizeProviderExecutionTimeoutMs(
-    input.task.providerExecutionTimeoutMs
+    task.providerExecutionTimeoutMs
   );
-  const agentExecutionIntent = input.task.agentExecutionIntent ?? DEFAULT_AGENT_EXECUTION_INTENT;
-  // D1: apply task-class-aware iteration defaults when the caller did not set an
-  // explicit maxIterations. reversible_edit → 3, verification_only/irreversible → 1.
-  const effectiveMaxIterations = resolveEffectiveMaxIterations(
-    input.task,
-    input.budget.maxIterations
-  );
-  const effectiveBudget: LoopBudget = { ...input.budget, maxIterations: effectiveMaxIterations };
-  let loop = createLoopRecord(
-    {
-      workspaceId: input.workspaceId,
-      projectId: input.projectId,
-      task: { ...input.task, agentExecutionIntent, providerExecutionTimeoutMs },
-      budget: effectiveBudget,
-      ...(input.savingsBaseline ? { cost: { savingsBaseline: input.savingsBaseline } } : {}),
-      ...(input.receiptScope
-        ? { receiptScope: { ...input.receiptScope, agentExecutionIntent, providerExecutionTimeoutMs } }
-        : {}),
-      ...(input.teamId ? { teamId: input.teamId } : {}),
-      ...(input.metadata ? { metadata: input.metadata } : {})
-    },
-    { now: now(), idFactory }
-  );
+  const agentExecutionIntent = task.agentExecutionIntent ?? DEFAULT_AGENT_EXECUTION_INTENT;
+  // D1: apply task-class-aware iteration defaults only for a new run. A resumed
+  // run inherits the exact persisted budget authority.
+  const effectiveMaxIterations = resumeLoop
+    ? resumeLoop.budget.maxIterations
+    : resolveEffectiveMaxIterations(task, input.budget.maxIterations);
+  const effectiveBudget: LoopBudget = resumeLoop
+    ? { ...resumeLoop.budget }
+    : { ...input.budget, maxIterations: effectiveMaxIterations };
+  let loop: LoopRecord = resumeLoop
+    ? {
+        ...resumeLoop,
+        status: "running",
+        lifecycleState: "running",
+        updatedAt: now(),
+        metadata: {
+          ...resumeLoop.metadata,
+          ...(input.metadata ?? {}),
+          resumedFromPersistence: "true"
+        }
+      }
+    : createLoopRecord(
+        {
+          workspaceId: input.workspaceId,
+          projectId: input.projectId,
+          task: { ...task, agentExecutionIntent, providerExecutionTimeoutMs },
+          budget: effectiveBudget,
+          ...(input.savingsBaseline ? { cost: { savingsBaseline: input.savingsBaseline } } : {}),
+          ...(input.receiptScope
+            ? { receiptScope: { ...input.receiptScope, agentExecutionIntent, providerExecutionTimeoutMs } }
+            : {}),
+          ...(input.teamId ? { teamId: input.teamId } : {}),
+          ...(input.metadata ? { metadata: input.metadata } : {})
+        },
+        { now: now(), idFactory }
+      );
 
   loop = appendLoopEvent(
     loop,
@@ -744,7 +792,10 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         adapterId: input.adapter.adapterId,
         providerId: input.adapter.metadata.providerId,
         model: input.adapter.metadata.model,
-        transport: getAdapterTransport(input.adapter)
+        transport: getAdapterTransport(input.adapter),
+        ...(resumeLoop
+          ? { resumed: true, priorAttemptCount: resumeLoop.attempts.length }
+          : {})
       }
     },
     { now: now(), idFactory }
@@ -753,16 +804,19 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
   const adapterChain = [input.adapter, ...(input.fallbackAdapters ?? [])];
   const runsRoot = input.store?.runsRoot ?? resolveRunsRoot();
   const observesWorkspaceMutations =
-    input.task.repoRoot !== undefined &&
+    task.repoRoot !== undefined &&
     adapterChain.some((adapter) => adapter.metadata.capabilities?.workspaceMutations !== false);
   const touchedDuringExecution = new Set<string>();
-  let completionBoundary: RollbackBoundaryArtifact | undefined;
+  // A retained candidate is already present when resuming; its first rollback
+  // boundary is also the original run-wide completion boundary.
+  let completionBoundary: RollbackBoundaryArtifact | undefined =
+    input.resume?.preCandidateBoundary;
   let completionBoundaryReason: string | undefined;
 
-  if (observesWorkspaceMutations) {
+  if (observesWorkspaceMutations && !completionBoundary) {
     try {
       completionBoundary = await captureRollbackBoundary({
-        repoRoot: input.task.repoRoot,
+        repoRoot: task.repoRoot,
         capturedAt: loop.createdAt
       });
       if (!completionBoundary) {
@@ -782,7 +836,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     routingEconomicsInput?: Parameters<typeof finalizeLoop>[4]
   ): Promise<LoopRecord> {
     const fileEffects = observeRunFileEffects({
-      repoRoot: input.task.repoRoot,
+      repoRoot: task.repoRoot,
       boundary: completionBoundary,
       touchedDuringExecution,
       unavailableReason: completionBoundaryReason
@@ -829,23 +883,25 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
   }
 
   if (input.store) {
-    await input.store.initRun({
-      runId: loop.loopId,
-      workspaceId: input.workspaceId,
-      projectId: input.projectId,
-      task: input.task,
-      budget: input.budget,
-      createdAt: loop.createdAt,
-      ...(input.metadata ? { metadata: input.metadata } : {})
-    });
-    await input.store.appendLedger(
-      loop.loopId,
-      makeLedgerEvent({
-        kind: "contract.created",
+    if (!resumeLoop) {
+      await input.store.initRun({
         runId: loop.loopId,
-        payload: { workspaceId: input.workspaceId, projectId: input.projectId }
-      })
-    );
+        workspaceId: loop.workspaceId,
+        projectId: loop.projectId,
+        task,
+        budget: effectiveBudget,
+        createdAt: loop.createdAt,
+        ...(input.metadata ? { metadata: input.metadata } : {})
+      });
+      await input.store.appendLedger(
+        loop.loopId,
+        makeLedgerEvent({
+          kind: "contract.created",
+          runId: loop.loopId,
+          payload: { workspaceId: loop.workspaceId, projectId: loop.projectId }
+        })
+      );
+    }
     await persistLoopRecordIfSupported(input.store, loop);
   }
 
@@ -935,20 +991,24 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     }
   }
 
-  let currentAdapterIndex = 0;
+  const previousAdapterId = resumeLoop?.attempts.at(-1)?.adapterId;
+  const resumedAdapterIndex = previousAdapterId
+    ? adapterChain.findIndex((adapter) => adapter.adapterId === previousAdapterId)
+    : -1;
+  let currentAdapterIndex = resumedAdapterIndex >= 0 ? resumedAdapterIndex : 0;
   let currentAdapter = adapterChain[currentAdapterIndex] ?? input.adapter;
   let useCompressedContext = false;
   const executionProfile = resolveExecutionProfile({
-    executionProfile: input.task.executionProfile,
-    allowedNetworkDomains: input.task.allowedNetworkDomains
+    executionProfile: task.executionProfile,
+    allowedNetworkDomains: task.allowedNetworkDomains
   });
 
   // Safety leash: block destructive verifier commands before any attempt
   const leashDecision = evaluateVerificationLeash({
-    verificationPlan: input.task.verificationPlan,
-    verificationStack: input.task.verificationStack,
-    executionProfile: input.task.executionProfile,
-    allowedNetworkDomains: input.task.allowedNetworkDomains
+    verificationPlan: task.verificationPlan,
+    verificationStack: task.verificationStack,
+    executionProfile: task.executionProfile,
+    allowedNetworkDomains: task.allowedNetworkDomains
   });
 
   if (!leashDecision.allowed) {
@@ -995,9 +1055,9 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
 
   const secretDecision = evaluateSecretLeash({
     values: [
-      input.task.title,
-      input.task.objective,
-      ...(input.task.acceptanceCriteria ?? [])
+      task.title,
+      task.objective,
+      ...(task.acceptanceCriteria ?? [])
     ]
   });
 
@@ -1046,12 +1106,14 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
   // Explicit PolicyPhase state machine — starts at GATHER, advances per attempt
   let currentPhase: PolicyPhase = "GATHER";
   let phaseRetryCount = 0;
-  let lastVerifierFailure: MartinAdapterRequest["context"]["lastVerifierFailure"];
+  let lastVerifierFailure: MartinAdapterRequest["context"]["lastVerifierFailure"] =
+    input.resume?.lastVerifierFailure;
 
   // C1 terminal cleanup: boundary captured immediately before the first retained candidate.
   // Used to restore the workspace if the run terminates without VERIFIED.
   // The invariant is: if this is set, the current workspace contains unverified candidate code.
-  let preCandidateBoundary: Awaited<ReturnType<typeof captureRollbackBoundary>> | undefined;
+  let preCandidateBoundary: Awaited<ReturnType<typeof captureRollbackBoundary>> | undefined =
+    input.resume?.preCandidateBoundary;
 
   // Routing economics: track first meaningful workspace delta
   const runStartMs = Date.now();
@@ -1063,7 +1125,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
 
   // ── Eight-exit runtime control state ─────────────────────────────────────
   const nowMs = input.nowMs ?? (() => Date.now());
-  const exitPolicy = createDefaultExitPolicy(input.budget, input.exitPolicy);
+  const exitPolicy = createDefaultExitPolicy(loop.budget, input.exitPolicy);
 
   let activeAttemptController: AbortController | undefined;
   let observedHumanInterrupt: import("@martin/contracts").ExitSignalV1 | undefined;
@@ -1298,7 +1360,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     try {
       // Step 2: restore the exact pre-candidate boundary.
       const rollbackOutcome = await restoreRollbackBoundary({
-        repoRoot: input.task.repoRoot,
+        repoRoot: task.repoRoot,
         boundary: capturedBoundary,
         restoredAt,
         decision: "DISCARD"
@@ -1455,6 +1517,38 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     const finalizedWithEnvelope: LoopRecord = { ...finalizedLoop, terminationEnvelope: finalEnvelope };
     await persistLoopRecordIfSupported(input.store, finalizedWithEnvelope);
     return { loop: finalizedWithEnvelope, decision: exitDecision };
+  }
+
+  // Acquire the durable execution lease only after static gates pass and immediately
+  // before provider-capable execution begins. This prevents a reconnect from
+  // launching a second provider child while the original owner is still alive.
+  const executionLease = input.store?.runsRoot
+    ? await acquireRunExecutionLease({
+        runsRoot: input.store.runsRoot,
+        runId: loop.loopId,
+        owner: resumeLoop ? "runMartin:resume" : "runMartin"
+      })
+    : undefined;
+  if (resumeLoop && input.store) {
+    await input.store.appendLedger(
+      loop.loopId,
+      makeLedgerEvent({
+        kind: "run.diagnostic",
+        runId: loop.loopId,
+        payload: {
+          code: "run_resumed",
+          details: {
+            priorAttemptCount: resumeLoop.attempts.length,
+            remainingIterations: Math.max(
+              resumeLoop.budget.maxIterations - resumeLoop.attempts.length,
+              0
+            ),
+            leaseOwner: executionLease?.lease.owner
+          }
+        }
+      })
+    );
+    await persistLoopRecordIfSupported(input.store, loop);
   }
 
   try {
@@ -2382,11 +2476,11 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     // Uses the task's repoRoot to build/load the grounding index, then scans any diff
     let groundingScanResult: GroundingScanResult | undefined;
     const patchDiff = buildPatchDiff(result, changedFiles);
-    if (patchDiff && input.task.repoRoot) {
+    if (patchDiff && task.repoRoot) {
       try {
-        const groundingIndex = await loadOrBuildRepoGroundingIndex(input.task.repoRoot);
+        const groundingIndex = await loadOrBuildRepoGroundingIndex(task.repoRoot);
         groundingScanResult = scanPatchForGroundingViolations(patchDiff, groundingIndex, {
-          allowedPaths: input.task.allowedPaths
+          allowedPaths: task.allowedPaths
         });
 
         if (input.store && groundingScanResult.violations.length > 0) {
@@ -2787,7 +2881,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     if (preCandidateBoundary) {
       try {
         await restoreRollbackBoundary({
-          repoRoot: input.task.repoRoot,
+          repoRoot: task.repoRoot,
           boundary: preCandidateBoundary,
           restoredAt: now(),
           decision: "DISCARD"
@@ -2797,6 +2891,9 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         // Cannot safely write to ledger here. The workspace state is unknown.
         // The exception that caused this path will propagate to the caller.
       }
+    }
+    if (executionLease) {
+      await executionLease.release().catch(() => undefined);
     }
   }
 }
