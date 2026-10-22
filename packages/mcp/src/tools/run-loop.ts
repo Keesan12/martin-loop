@@ -316,14 +316,8 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
           ...(input.providerExecutionTimeoutMs !== undefined
             ? { providerExecutionTimeoutMs: input.providerExecutionTimeoutMs }
             : {}),
-          ...(fallbackEngine === "codex"
-            ? {
-                codexProbe: ensureLiveEngineReady(
-                  fallbackEngine,
-                  workingDirectory,
-                  input.providerExecutionTimeoutMs
-                )
-              }
+          ...(fallbackProbeOverrides.get(fallbackEngine)
+            ? { codexProbe: fallbackProbeOverrides.get(fallbackEngine) }
             : {})
         })
       )
