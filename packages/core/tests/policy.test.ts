@@ -256,4 +256,126 @@ describe("evaluatePatchDecision", () => {
     expect(decision.decision).toBe("DISCARD");
     expect(decision.reasonCodes).toContain("large_diff_no_improvement");
   });
+
+  // ── Test A: grounding false-positive is overridden by authoritative verifier ─
+  it("A — grounding false-positive: verificationPassed=true + groundingViolationCount>0 + changedFileCount>0 → KEEP", () => {
+    const decision = evaluatePatchDecision({
+      verificationPassed: true,
+      previousVerifierScore: 0,
+      verifierScore: 1,
+      groundingViolationCount: 2,  // heuristic flagged unknown symbols
+      changedFileCount: 1,          // real code change was made
+      diffNovelty: 0.5,
+      diffStats: { filesChanged: 1, addedLines: 10, deletedLines: 2 },
+      costUsd: 0.2
+    });
+    expect(decision.decision).toBe("KEEP");
+    expect(decision.reasonCodes).toContain("verifier_passed");
+    // grounding_failure is present as information but did not override verifier
+    expect(decision.reasonCodes).not.toContain("scope_violation");
+  });
+
+  // ── Test B: baseline-green no-op is NOT accepted (false-VERIFIED prevention) ─
+  it("B — no-op baseline green: verificationPassed=true + mutationRequired + changedFileCount=0 → DISCARD", () => {
+    const decision = evaluatePatchDecision({
+      verificationPassed: true,
+      previousVerifierScore: 1,
+      verifierScore: 1,
+      groundingViolationCount: 0,
+      changedFileCount: 0,          // agent made no changes (count = 0 proves evidence is available)
+      mutationRequired: true,        // but the task required a change
+      definitionOfDonePreSatisfied: false,  // not pre-satisfied
+      diffNovelty: 0,
+      diffStats: { filesChanged: 0, addedLines: 0, deletedLines: 0 },
+      costUsd: 0.05
+    });
+    expect(decision.decision).toBe("DISCARD");
+    expect(decision.reasonCodes).toContain("no_code_change");
+  });
+
+  // ── Test C: genuinely pre-satisfied task is accepted ─────────────────────────
+  it("C — pre-satisfied task: verificationPassed=true + changedFileCount=0 + definitionOfDonePreSatisfied=true → KEEP", () => {
+    const decision = evaluatePatchDecision({
+      verificationPassed: true,
+      previousVerifierScore: 1,
+      verifierScore: 1,
+      groundingViolationCount: 0,
+      changedFileCount: 0,
+      mutationRequired: true,
+      definitionOfDonePreSatisfied: true,   // existing codebase already satisfies the goal
+      diffNovelty: 0,
+      diffStats: { filesChanged: 0, addedLines: 0, deletedLines: 0 },
+      costUsd: 0.05
+    });
+    expect(decision.decision).toBe("KEEP");
+  });
+
+  // ── Test D: verifier cannot override hard policy boundaries ──────────────────
+  it("D1 — scope violation blocks even passing verifier → DISCARD", () => {
+    const decision = evaluatePatchDecision({
+      verificationPassed: true,
+      previousVerifierScore: 0,
+      verifierScore: 1,
+      groundingViolationCount: 0,
+      changedFileCount: 2,
+      scopeViolationCount: 1,       // agent wrote outside allowed paths
+      diffNovelty: 0.6,
+      diffStats: { filesChanged: 2, addedLines: 15, deletedLines: 3 },
+      costUsd: 0.2
+    });
+    expect(decision.decision).toBe("DISCARD");
+    expect(decision.reasonCodes).toContain("scope_violation");
+  });
+
+  it("D2 — safety violation escalates even with passing verifier → ESCALATE", () => {
+    const decision = evaluatePatchDecision({
+      verificationPassed: true,
+      previousVerifierScore: 0,
+      verifierScore: 1,
+      groundingViolationCount: 0,
+      changedFileCount: 1,
+      safetyViolationCount: 1,      // secret exposure, test tampering, etc.
+      diffNovelty: 0.5,
+      diffStats: { filesChanged: 1, addedLines: 5, deletedLines: 1 },
+      costUsd: 0.1
+    });
+    expect(decision.decision).toBe("ESCALATE");
+    expect(decision.reasonCodes).toContain("safety_violation");
+  });
+
+  it("D3 — human approval required escalates even with passing verifier → ESCALATE", () => {
+    const decision = evaluatePatchDecision({
+      verificationPassed: true,
+      previousVerifierScore: 0,
+      verifierScore: 1,
+      groundingViolationCount: 0,
+      changedFileCount: 1,
+      humanApprovalRequired: true,  // e.g. test file removal
+      diffNovelty: 0.5,
+      diffStats: { filesChanged: 1, addedLines: 5, deletedLines: 1 },
+      costUsd: 0.1
+    });
+    expect(decision.decision).toBe("ESCALATE");
+  });
+
+  // ── Test E: realistic grounding false-positive (new module/symbol) ────────────
+  // Agent adds a new helper function in a new file. The grounding heuristic flags
+  // the new symbol as unknown (it wasn't in the repo before). The verifier passes
+  // because the real tests exercise the new code. This must be KEEP.
+  it("E — realistic new module: new symbol flagged by grounding but verifier confirms correctness → KEEP", () => {
+    const decision = evaluatePatchDecision({
+      verificationPassed: true,
+      previousVerifierScore: 0,
+      verifierScore: 1,
+      groundingViolationCount: 3,   // e.g. 3 new exported symbols unfamiliar to heuristic
+      changedFileCount: 2,          // new helper file + usage site
+      diffNovelty: 0.8,             // highly novel (new code)
+      diffStats: { filesChanged: 2, addedLines: 45, deletedLines: 0 },
+      costUsd: 0.3
+    });
+    expect(decision.decision).toBe("KEEP");
+    expect(decision.reasonCodes).toContain("verifier_passed");
+    // grounding_failure is in reasonCodes as information but was overridden
+    expect(decision.decision).not.toBe("DISCARD");
+  });
 });

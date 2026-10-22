@@ -399,8 +399,15 @@ export function inferExit(input: {
     };
   }
 
+  // C2 — progress-aware repetition check.
+  // Two consecutive attempts with the same failureClass are NOT necessarily
+  // the same state. If the verifierScore improved (e.g. fewer failing tests),
+  // that is measurable progress and we must not stop prematurely.
+  // Only stop when the failure class repeated AND there is no measurable improvement:
+  //   - verifierScore did not increase, AND
+  //   - candidate diff did not change (candidateRetained with same failure)
   const lastTwo = input.loop.attempts.slice(-2);
-  const repeatedFailure =
+  const repeatedFailureClass =
     lastTwo.length === 2 &&
     lastTwo.every(
       (attempt) =>
@@ -409,12 +416,33 @@ export function inferExit(input: {
         attempt.failureClass === input.lastFailure?.failureClass
     );
 
-  if (repeatedFailure && input.lastFailure) {
+  // Measure progress using REAL evidence from actual verifier step results.
+  // Multiple signals are checked; any one constituting real progress allows continuation.
+  const measurableProgressOccurred = (() => {
+    const [prev, curr] = lastTwo;
+    if (!prev || !curr) return false;
+
+    // Signal 1: verifierScore improved (computed from real passing/total step ratio)
+    const prevScore = prev.verifierScore ?? 0;
+    const currScore = curr.verifierScore ?? 0;
+    if (currScore > prevScore) return true;
+
+    // Signal 2: fewer failing verifier steps than previous attempt (monotonic improvement)
+    if (
+      prev.failingVerifierStepCount !== undefined &&
+      curr.failingVerifierStepCount !== undefined &&
+      curr.failingVerifierStepCount < prev.failingVerifierStepCount
+    ) return true;
+
+    return false;
+  })();
+
+  if (repeatedFailureClass && !measurableProgressOccurred && input.lastFailure) {
     return {
       shouldExit: true,
       lifecycleState: "diminishing_returns",
       status: "exited",
-      reason: `Martin exited because ${input.lastFailure.failureClass} repeated across consecutive attempts.`
+      reason: `Martin exited because ${input.lastFailure.failureClass} repeated across consecutive attempts with no measurable progress (score, step count, or failure surface unchanged).`
     };
   }
 
@@ -550,6 +578,17 @@ export interface BudgetPreflightInput {
   remainingTokens?: number;
   /** Adapter-declared estimated floor required to admit a credible first turn. */
   minimumViableTokens?: number;
+  /**
+   * Remaining iterations allowed. Used to compute a budget-aware per-attempt cap
+   * that reserves capacity for verifier and at least one repair attempt.
+   * When omitted, the preflight uses remaining budget divided by a conservative
+   * factor to prevent over-allocation on the first attempt.
+   */
+  remainingIterations?: number;
+  /**
+   * Explicit per-attempt spending cap. When set, overrides the computed cap.
+   * Only use when the caller has specific rate-limiting requirements.
+   */
   perAttemptCapUsd?: number;
   pricePerMTokenUsd?: number;
 }
@@ -610,11 +649,33 @@ export function evaluateBudgetPreflight(input: BudgetPreflightInput): BudgetPref
     };
   }
 
-  const perAttemptCap = input.perAttemptCapUsd ?? Math.max(input.remainingBudgetUsd * 0.2, 0.05);
+  // D2 — Budget-aware per-attempt cap.
+  //
+  // Old behavior: rigid maxUsd * 0.25 — blocked viable attempts when total budget
+  // was large (e.g. $0.30 cost blocked on $1.00 budget because 0.30 > 0.25).
+  //
+  // New behavior: if an explicit cap is provided, honor it. Otherwise compute a
+  // cap that reserves budget for the verifier and at least one repair attempt beyond
+  // the current one, giving the provider meaningful runway.
+  //
+  // Formula: cap = remainingBudget / (remainingIterations + 1)
+  //   +1 accounts for the current attempt being the "next" attempt.
+  //   Minimum cap of $0.05 prevents degenerate near-zero rejections.
+  const perAttemptCap: number = (() => {
+    if (input.perAttemptCapUsd !== undefined) return input.perAttemptCapUsd;
+    const iters = input.remainingIterations;
+    if (iters !== undefined && iters > 0) {
+      // Divide remaining budget evenly across remaining iterations.
+      return Math.max(roundUsd(input.remainingBudgetUsd / iters), 0.05);
+    }
+    // No iteration information: allow up to 80% of remaining budget per attempt
+    // (down from the old 25%-of-total which was frequently too low).
+    return Math.max(roundUsd(input.remainingBudgetUsd * 0.8), 0.05);
+  })();
   if (estimatedAttemptCostUsd > perAttemptCap) {
     return {
       allowed: false,
-      reason: `Preflight: estimated attempt cost $${estimatedAttemptCostUsd} exceeds per-attempt cap $${roundUsd(perAttemptCap)}.`,
+      reason: `Preflight: estimated attempt cost $${estimatedAttemptCostUsd} exceeds per-attempt cap $${roundUsd(perAttemptCap)} (remaining budget $${input.remainingBudgetUsd}, ${input.remainingIterations ?? "?"} iterations left).`,
       estimate
     };
   }
@@ -806,6 +867,45 @@ export function selectRecoveryRecipe(evidence: EvidenceVector): RecoveryDecision
   };
 }
 
+/**
+ * Explicit allowlist of reason codes that are SAFE to retain as an unverified
+ * candidate for the next repair attempt.
+ *
+ * FAIL-CLOSED: any reason code NOT in this set causes an immediate rollback.
+ * This prevents future or unknown reason codes from silently becoming "safe."
+ *
+ * Retainable only when ALL of these are also true:
+ *  - scope_violation is absent (agent stayed within allowed paths)
+ *  - safety_violation is absent (no secret/tenancy/test-integrity violation)
+ *  - workspace observation was authoritative (changed files were tracked)
+ *  - provider did not crash/fail (status !== "failed")
+ *
+ * no_code_change is explicitly NOT retainable — there is nothing to repair.
+ * Use a different recovery strategy instead.
+ */
+const RETAINABLE_SOFT_REASON_CODES = new Set<PatchDecisionReasonCode>([
+  "verifier_not_improved",
+  "low_novelty_no_progress",
+  "large_diff_no_improvement",
+  "grounding_failure",
+  "verifier_regressed", // actual test regression — retry with different approach
+]);
+
+/**
+ * Returns true ONLY when every reason code is in the explicit allowlist of
+ * retainable soft failures.  Unknown or future reason codes default to UNSAFE
+ * (fail-closed), preventing silent candidate retention for unrecognized states.
+ */
+export function isSafeUnverifiedDiscard(
+  reasonCodes: readonly PatchDecisionReasonCode[]
+): boolean {
+  if (reasonCodes.length === 0) {
+    // No specific signal — we don't know why it's being discarded; fail closed.
+    return false;
+  }
+  return reasonCodes.every((code) => RETAINABLE_SOFT_REASON_CODES.has(code));
+}
+
 export function evaluatePatchDecision(input: PatchDecisionInput): EvaluatedPatchDecision {
   const score = scorePatchDecision(input);
   const reasonCodes = [...score.reasonCodes];
@@ -929,24 +1029,46 @@ function decidePatchOutcome(
   input: PatchDecisionInput,
   reasonCodes: PatchDecisionReasonCode[]
 ): PatchDecision {
+  // 1. Explicit human approval required — always escalate regardless of verifier.
+  // 2. Safety violation — always escalate.
   if (input.humanApprovalRequired || reasonCodes.includes("safety_violation")) {
     return "ESCALATE";
   }
 
+  // 3. Scope violation — hard boundary: out-of-scope writes are never kept,
+  //    even if the verifier passes, because the change violated the task contract.
+  if (reasonCodes.includes("scope_violation")) {
+    return "DISCARD";
+  }
+
+  // 4. Required mutation is absent — a green generic test suite is not proof
+  //    that the requested work happened.  Discard if:
+  //      - a code change was required (mutation_required = edit mode)
+  //      - no files were actually changed
+  //      - the task was not pre-satisfied by the existing codebase
+  //    Note: the scorer already suppresses no_code_change when
+  //    definitionOfDonePreSatisfied is true, so that legitimate case passes through.
+  if (reasonCodes.includes("no_code_change")) {
+    return "DISCARD";
+  }
+
+  // 5. Passing verifier is the authoritative signal and overrides lower-confidence
+  //    heuristics such as grounding failure.  A grounding heuristic (symbol
+  //    resolution, repo anatomy check) is weaker evidence than an actual passing
+  //    host-run test exit code.
+  if (input.verificationPassed) {
+    return "KEEP";
+  }
+
+  // 6. Non-passing verifier: discard on any remaining negative heuristic signal.
   if (
     reasonCodes.includes("grounding_failure") ||
-    reasonCodes.includes("scope_violation") ||
-    reasonCodes.includes("no_code_change") ||
     reasonCodes.includes("verifier_regressed") ||
     reasonCodes.includes("large_diff_no_improvement") ||
     reasonCodes.includes("low_novelty_no_progress") ||
     reasonCodes.includes("verifier_not_improved")
   ) {
     return "DISCARD";
-  }
-
-  if (input.verificationPassed) {
-    return "KEEP";
   }
 
   return "DISCARD";

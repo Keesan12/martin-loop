@@ -101,6 +101,26 @@ export type LoopEventType =
   | "run.completed"
   | "run.terminated";
 
+/**
+ * Task class determines the default retry/iteration posture.
+ *
+ * - `reversible_edit`: Local repository edits that can be rolled back.
+ *   MartinLoop runs multiple attempts by default (FAIL → DIAGNOSE → REPAIR → VERIFY).
+ * - `verification_only`: Read-only or proof-only work. One attempt is appropriate.
+ * - `irreversible`: External writes, deploys, API mutations. One attempt unless the
+ *   contract explicitly proves idempotent/safe retry.
+ *
+ * When not set, behavior is determined by other task properties (mutationMode, etc.).
+ */
+export type TaskClass = "reversible_edit" | "verification_only" | "irreversible";
+
+/** Default max iterations by task class. */
+export const DEFAULT_ITERATIONS_BY_TASK_CLASS: Record<TaskClass, number> = {
+  reversible_edit: 3,
+  verification_only: 1,
+  irreversible: 1,
+};
+
 export interface LoopTask {
   title: string;
   objective: string;
@@ -109,6 +129,12 @@ export interface LoopTask {
   verificationTimeoutMs?: number;
   verificationStack?: VerificationStep[];
   mutationMode?: MutationMode;
+  /**
+   * Task class that determines the default retry/iteration posture.
+   * When set, overrides the generic default budget.maxIterations if the caller
+   * did not explicitly set one.
+   */
+  taskClass?: TaskClass;
   /** Explicit task-authority evidence that all definition-of-done criteria were satisfied before execution. */
   definitionOfDonePreSatisfied?: boolean;
   executionProfile?: ExecutionProfile;
@@ -310,6 +336,28 @@ export interface LoopAttempt {
   diagnosticHint?: string;
   /** Which stage of the run lifecycle this attempt represents. */
   callStage?: CallStage;
+  /**
+   * Normalized verifier score derived from REAL step evidence (0–1).
+   * 1.0  = verifier passed completely.
+   * 0.0  = all configured steps failed or no steps ran.
+   * 0–1  = fraction of launched steps that exited 0.
+   * Never injected manually — always computed from actual host-run step exitCodes.
+   */
+  verifierScore?: number;
+  /**
+   * Number of verifier commands that failed (exitCode !== 0 and launched).
+   * Used with the previous attempt's failingVerifierStepCount to detect measurable progress.
+   * Reflects verifier command count, NOT individual test count.
+   * Undefined when no step-level evidence is available.
+   */
+  failingVerifierStepCount?: number;
+  /**
+   * Whether the candidate patch was retained (SAFE_UNVERIFIED) rather than rolled back.
+   * True means the workspace still holds the partial work and the next attempt should
+   * repair, not rebuild from scratch.
+   * False/absent means the workspace was restored.
+   */
+  candidateRetained?: boolean;
 }
 
 export interface LoopEvent {
@@ -470,6 +518,37 @@ export const DEFAULT_BUDGET: LoopBudget = {
   softLimitUsd: 15,
   maxIterations: 8
 };
+
+/**
+ * D1 — Resolve the effective max iterations for a task.
+ *
+ * Applies task-class-aware defaults unless the caller explicitly set a
+ * non-default value. The caller value wins when it differs from the generic
+ * DEFAULT_BUDGET.maxIterations, preserving exact --max-iterations CLI behavior.
+ *
+ * Rules:
+ *  - Explicit non-default caller value always wins.
+ *  - taskClass="verification_only" or "irreversible" → 1 attempt.
+ *  - taskClass="reversible_edit" → 3 attempts (execute + verify + one repair).
+ *  - mutationMode="read_only" without taskClass → 1 attempt.
+ *  - Otherwise → DEFAULT_BUDGET.maxIterations.
+ */
+export function resolveEffectiveMaxIterations(
+  task: { taskClass?: TaskClass; mutationMode?: string },
+  callerMaxIterations?: number
+): number {
+  const defaultValue = DEFAULT_BUDGET.maxIterations;
+  // Explicit caller value that differs from the generic default → honor it exactly.
+  if (callerMaxIterations !== undefined && callerMaxIterations !== defaultValue) {
+    return callerMaxIterations;
+  }
+  // Apply task-class aware defaults (overrides the generic default, not explicit values).
+  if (task.taskClass !== undefined) {
+    return DEFAULT_ITERATIONS_BY_TASK_CLASS[task.taskClass];
+  }
+  if (task.mutationMode === "read_only") return 1;
+  return callerMaxIterations ?? defaultValue;
+}
 
 export const EMPTY_COST: LoopCost = {
   actualUsd: 0,
@@ -893,8 +972,6 @@ export interface RollbackIgnoredFileStamp {
   path: string;
   size: number;
   mtimeMs: number;
-  /** Content hash for non-output ignored files; contents are never persisted. */
-  sha256?: string;
 }
 
 export type RollbackOutcomeStatus = "restored" | "not_required" | "failed" | "unavailable";

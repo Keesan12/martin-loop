@@ -464,11 +464,17 @@ export async function loadPersistedLoop(
       throw new CliCommandError("not_found", "No persisted Martin loops were found in the selected file.");
     }
 
+    // Provide runDirectory and loopRecordPath so attachReceiptIntegrity can perform
+    // the full canonical path binding check.  If the file lies within the runs root
+    // the integrity state proceeds to verifyReceiptIntegrityFromFiles; if outside, it
+    // is classified as "relocated" rather than the less informative "selector_noncanonical".
     return await attachReceiptIntegrity({
       source: targetPath,
       runsRoot,
       loop,
-      warnings: []
+      warnings: [],
+      runDirectory: path.dirname(targetPath),
+      loopRecordPath: targetPath
     });
   }
 

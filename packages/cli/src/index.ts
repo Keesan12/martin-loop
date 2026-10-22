@@ -681,7 +681,9 @@ export async function executeCli(args: string[]): Promise<{
       case "version":
         return {
           exitCode: 0,
-          stdout: rootPackageVersion,
+          stdout: outputMode === "json"
+            ? JSON.stringify({ version: rootPackageVersion })
+            : rootPackageVersion,
           stderr: ""
         };
       case "bench":
@@ -1257,6 +1259,9 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
   }
 
   if (command === "dossier" || command === "handoff") {
+    if (rest[0] === "--help" || rest[0] === "-h") {
+      return { command: "help" };
+    }
     return {
       command: "dossier",
       selector: parseRunSelector(rest, { allowLatest: true })
@@ -1265,6 +1270,9 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
 
   if (command === "runs") {
     const [subcommand, ...subcommandArgs] = rest;
+    if (subcommand === "--help" || subcommand === "-h") {
+      return { command: "help" };
+    }
     if (subcommand === "list") {
       return {
         command: "runs_list",
@@ -1284,6 +1292,9 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
       };
     }
     if (subcommand === "verify") {
+      if (subcommandArgs[0] === "--help" || subcommandArgs[0] === "-h") {
+        return { command: "help" };
+      }
       return {
         command: "runs_verify",
         selector: parseRunSelector(subcommandArgs, { allowLatest: true })
@@ -1393,6 +1404,9 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
   }
 
   if (command === "badge") {
+    if (rest[0] === "--help" || rest[0] === "-h") {
+      return { command: "help" };
+    }
     return {
       command: "badge",
       ...parseBadgeFormat(rest),
@@ -1830,6 +1844,31 @@ async function executeRunCommand(
   const receiptScope = buildCliReceiptScope(cliEnvironment);
   const engineRequired = cliEnvironment.liveMode === "live";
   const preRunWarnings: string[] = [];
+
+  // Reject escaping allow/deny paths unconditionally — before any provider or
+  // verifier is launched, regardless of live/proof mode.  This mirrors the check
+  // in executePreflightCommand so that proof-mode runs are equally confined.
+  const runPathBlockers: string[] = [];
+  for (const allowedPath of resolvedRequest.allowedPaths ?? []) {
+    if (isEscapingPath(allowedPath)) {
+      runPathBlockers.push(
+        `allowed-path escapes the working directory and would be silently ignored by the runtime scope guard: ${allowedPath}`
+      );
+    }
+  }
+  for (const deniedPath of resolvedRequest.deniedPaths ?? []) {
+    if (isEscapingPath(deniedPath)) {
+      runPathBlockers.push(
+        `denied-path escapes the working directory and cannot be enforced by the runtime scope guard: ${deniedPath}`
+      );
+    }
+  }
+  if (runPathBlockers.length > 0) {
+    throw new CliCommandError(
+      "invalid_input",
+      `Run path scope validation failed. Resolve the invalid paths and retry.\n${runPathBlockers.map((b) => `  - ${b}`).join("\n")}`
+    );
+  }
 
   // Fire delivery fetch early so it races with the run. Never throws.
   const deliveryFetchPromise = fetchSelectedMessage(
@@ -2541,7 +2580,7 @@ export function describeApprovalRollbackStatus(
   outcome: RollbackOutcomeArtifact | undefined,
   loopId: string
 ): string {
-  const receipt = `Review the blocked attempt: martin receipt --run ${loopId}`;
+  const receipt = `Review the blocked attempt: martin runs attempt --loop-id ${loopId}`;
   if (outcome?.status === "restored" || outcome?.status === "not_required") {
     return `The workspace is unchanged. ${receipt}`;
   }
@@ -3869,6 +3908,23 @@ async function executePreflightCommand(
     );
   }
 
+  // Reject allowedPaths that escape the working directory before declaring readiness.
+  // Corresponds to Atlas FL-011 (traversal), FL-012 (absolute), FL-013 (deny escape).
+  for (const allowedPath of request.allowedPaths ?? []) {
+    if (isEscapingPath(allowedPath)) {
+      blockingIssues.push(
+        `allowed-path escapes the working directory and would be silently ignored by the runtime scope guard: ${allowedPath}`
+      );
+    }
+  }
+  for (const deniedPath of request.deniedPaths ?? []) {
+    if (isEscapingPath(deniedPath)) {
+      blockingIssues.push(
+        `denied-path escapes the working directory and cannot be enforced by the runtime scope guard: ${deniedPath}`
+      );
+    }
+  }
+
   const overlappingPaths = (request.allowedPaths ?? []).filter((allowedPath) =>
     (request.deniedPaths ?? []).includes(allowedPath)
   );
@@ -4197,6 +4253,12 @@ async function executeRunsAttemptCommand(
 
 // Same code as the `verification_failed` error category.
 const RUNS_VERIFY_TAMPER_EXIT_CODE = 7;
+// Reuses the `store_unreadable` exit-code category (6): integrity material is present but
+// cannot be trusted — sidecar missing, run relocated outside canonical root, selector did not
+// point to a canonical store location, or evidence was unsigned.  The JSON still carries the
+// exact `receiptIntegrity.state` value so callers can distinguish cases.  The exit code
+// contract: 0 = verified, 6 = untrustworthy evidence, 7 = active tamper detected.
+const RUNS_VERIFY_UNTRUSTED_EXIT_CODE = 6;
 
 async function executeRunsVerifyCommand(
   selector: MartinRunSelector,
@@ -4207,11 +4269,27 @@ async function executeRunsVerifyCommand(
   const verification = dossier["verification"] as ReturnType<typeof buildVerificationSummary>;
   const verifiedHandoff = dossier["verifiedHandoff"] as VerifiedHandoffV1;
   const receiptScope = resolveReceiptScope(detail.loop, detail.runsRoot);
-  // A record that no longer matches its signed snapshot fails exit-code-only gates as well.
-  const tampered = detail.integrity.state === "tamper_detected";
+  // Two-tier exit code contract:
+  //   Tier 1 — receipt integrity: are the signed bytes trustworthy?
+  //   Tier 2 — handoff outcome:   did the verified work actually pass?
+  //
+  // A verified receipt only proves the bytes match the signature; it does NOT
+  // guarantee the verifier passed or the handoff outcome is VERIFIED.  CI gates
+  // that rely solely on exit code must therefore see a non-zero result for:
+  //   - tamper_detected               → exit 7  (active tampering)
+  //   - material_missing / relocated /
+  //     selector_noncanonical / unsigned → exit 6  (untrustworthy evidence)
+  //   - verified receipt + outcome NEEDS_REVIEW or STOPPED → exit 7 / 9
+  //     (bytes intact but work was not successfully verified or was budget-stopped)
+  //   - verified receipt + outcome VERIFIED → exit 0  (clean)
+  const integrityState = detail.integrity.state;
+  const runsVerifyExitCode =
+    integrityState === "tamper_detected" ? RUNS_VERIFY_TAMPER_EXIT_CODE
+    : integrityState !== "verified" ? RUNS_VERIFY_UNTRUSTED_EXIT_CODE
+    : exitCodeForGovernedOutcome(verifiedHandoff.outcome);
 
   return renderCliSuccess(outputMode, {
-    ...(tampered ? { exitCode: RUNS_VERIFY_TAMPER_EXIT_CODE } : {}),
+    ...(runsVerifyExitCode !== 0 ? { exitCode: runsVerifyExitCode } : {}),
     data: {
       command: "runs_verify",
       loopId: detail.loop.loopId,
@@ -6644,6 +6722,30 @@ function parseOptionalRunSelector(tokens: string[]): MartinRunSelector | undefin
 
 function resolveCodexAvailabilityForCli(): CodexAvailabilityForTests {
   return codexAvailabilityOverrideForTests ?? resolveCliCommandAvailability("codex");
+}
+
+/**
+ * Returns true when a path pattern escapes the working directory and therefore
+ * cannot be enforced by the runtime filesystem scope guard.
+ *
+ * Rejects:
+ *   - patterns containing `..` segments (Windows and POSIX: `..`, `..\`, `../`)
+ *   - absolute POSIX paths (starting with `/`)
+ *   - Windows absolute paths (e.g. `C:\`, `C:/`, drive-letter prefix `X:`)
+ *   - UNC paths (starting with `\\` or `//`)
+ */
+function isEscapingPath(pattern: string): boolean {
+  const normalized = pattern.replace(/\\/gu, "/");
+  // UNC paths: //server/share
+  if (normalized.startsWith("//")) return true;
+  // Absolute POSIX paths
+  if (normalized.startsWith("/")) return true;
+  // Windows drive-letter absolute paths: C:/ or C:
+  if (/^[a-zA-Z]:/u.test(normalized)) return true;
+  // Traversal segments: ../ or .. at start/end or standalone
+  if (/(^|\/)\.\.($|\/)/u.test(normalized)) return true;
+  if (normalized === ".." || normalized.startsWith("../") || normalized.endsWith("/..")) return true;
+  return false;
 }
 
 function resolveCodexProbeForCli(input: {

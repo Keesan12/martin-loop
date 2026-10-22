@@ -40,6 +40,13 @@ describe("approval rollback wording", () => {
     expect(message).toContain("Rollback failed");
     expect(message).not.toContain("workspace is unchanged");
   });
+
+  it("points operators to the supported attempt inspection command", () => {
+    const message = describeApprovalRollbackStatus(undefined, "loop_blocked_291");
+
+    expect(message).toContain("martin runs attempt --loop-id loop_blocked_291");
+    expect(message).not.toContain("martin receipt --run");
+  });
 });
 
 describe("swarm demo argument parsing", () => {
