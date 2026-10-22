@@ -260,6 +260,10 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
     runsRoot
   };
   let codexProbeOverride: ReturnType<typeof probeCodexLaunch> | undefined;
+  const fallbackProbeOverrides = new Map<
+    MartinEngine,
+    ReturnType<typeof probeCodexLaunch> | undefined
+  >();
   if (executionMode.liveMode) {
     codexProbeOverride = ensureLiveEngineReady(
       engine,
@@ -267,10 +271,13 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
       input.providerExecutionTimeoutMs
     );
     for (const fallbackEngine of fallbackEngines) {
-      ensureLiveEngineReady(
+      fallbackProbeOverrides.set(
         fallbackEngine,
-        workingDirectory,
-        input.providerExecutionTimeoutMs
+        ensureLiveEngineReady(
+          fallbackEngine,
+          workingDirectory,
+          input.providerExecutionTimeoutMs
+        )
       );
     }
   }
