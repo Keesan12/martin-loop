@@ -376,11 +376,12 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
     lastAttempt !== undefined &&
     result.decision.lifecycleState === "completed" &&
     (lastAttempt.verifierScore ?? 0) >= 1;
+  const fallbackAdapterIndex = lastAttempt
+    ? fallbackAdapters.findIndex((candidate) => candidate.adapterId === lastAttempt.adapterId)
+    : -1;
   const effectiveEngine =
-    lastAttempt?.adapterId && lastAttempt.adapterId !== adapter.adapterId
-      ? (fallbackEngines.find((candidate) =>
-          lastAttempt.adapterId.toLowerCase().includes(candidate)
-        ) ?? engine)
+    fallbackAdapterIndex >= 0
+      ? (fallbackEngines[fallbackAdapterIndex] ?? engine)
       : engine;
   const costState = evaluateCostGovernor({
     budget: result.loop.budget,
