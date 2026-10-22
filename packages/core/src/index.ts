@@ -1115,8 +1115,14 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
   let preCandidateBoundary: Awaited<ReturnType<typeof captureRollbackBoundary>> | undefined =
     input.resume?.preCandidateBoundary;
 
-  // Routing economics: track first meaningful workspace delta
-  const runStartMs = Date.now();
+  // Routing economics + hard wall-clock authority. A resumed run inherits the
+  // original createdAt boundary rather than receiving a fresh time budget.
+  const nowMs = input.nowMs ?? (() => Date.now());
+  const persistedRunStartMs = Date.parse(loop.createdAt);
+  const runStartMs =
+    resumeLoop && Number.isFinite(persistedRunStartMs)
+      ? persistedRunStartMs
+      : nowMs();
   let firstDeltaDetected = false;
   let firstDeltaTimestampMs: number | undefined;
   let firstDeltaFilePath: string | undefined;
@@ -1124,7 +1130,6 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
   let preDeltaCostUsd = 0;
 
   // ── Eight-exit runtime control state ─────────────────────────────────────
-  const nowMs = input.nowMs ?? (() => Date.now());
   const exitPolicy = createDefaultExitPolicy(loop.budget, input.exitPolicy);
 
   let activeAttemptController: AbortController | undefined;
@@ -1205,11 +1210,16 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
 
   const runController = new AbortController();
 
+  const elapsedBeforeProcessStartMs = Math.max(0, nowMs() - runStartMs);
+  const remainingWallClockMs = Math.max(
+    0,
+    exitPolicy.wallClock.maxElapsedMs - elapsedBeforeProcessStartMs
+  );
   const wallTimer =
     exitPolicy.wallClock.maxElapsedMs > 0
       ? setTimeout(() => {
           activeAttemptController?.abort(new Error("MartinLoop wall-clock exit reached"));
-        }, exitPolicy.wallClock.maxElapsedMs)
+        }, remainingWallClockMs)
       : undefined;
   (wallTimer as NodeJS.Timeout | undefined)?.unref?.();
 
