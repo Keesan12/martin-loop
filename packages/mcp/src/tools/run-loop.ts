@@ -2,6 +2,8 @@ import {
   createClaudeCliAdapter,
   createCodexCliAdapter,
   createGeminiCliAdapter,
+  createOpenAiCompatibleAdapter,
+  resolveOpenAiCompatibleRuntimeConfig,
   probeCodexLaunch,
   resolveCliCommandAvailability,
   createVerifierOnlyAdapter,
@@ -13,6 +15,7 @@ import {
   evaluateCostGovernor,
   resolveRunsRoot,
   runMartin,
+  type MartinAdapter,
   type RunStore
 } from "@martin/core";
 import type { ExecutionMode, LoopBudget, ReceiptScope } from "@martin/contracts";
@@ -35,6 +38,8 @@ export interface RunLoopInput {
   workingDirectory?: string;
   engine?: MartinEngine;
   model?: string;
+  /** Explicit ordered provider fallbacks authorized by the caller. */
+  fallbackEngines?: MartinEngine[];
   maxUsd?: number;
   maxIterations?: number;
   maxTokens?: number;
@@ -88,10 +93,158 @@ export function __setRunStoreOverrideForTests(store?: RunStore): void {
   runStoreOverrideForTests = store;
 }
 
+function assertAuthorizedFallbackEngines(
+  primary: MartinEngine,
+  fallbacks: MartinEngine[]
+): void {
+  const seen = new Set<MartinEngine>();
+  for (const fallback of fallbacks) {
+    if (fallback === primary) {
+      throw new MartinToolError("invalid_arguments", "Fallback chain cannot repeat the primary engine.", {
+        category: "invalid_input",
+        retryable: false
+      });
+    }
+    if (seen.has(fallback)) {
+      throw new MartinToolError("invalid_arguments", `Duplicate fallback engine '${fallback}'.`, {
+        category: "invalid_input",
+        retryable: false
+      });
+    }
+    seen.add(fallback);
+  }
+}
+
+function ensureLiveEngineReady(
+  engine: MartinEngine,
+  workingDirectory: string,
+  providerExecutionTimeoutMs?: number
+): ReturnType<typeof probeCodexLaunch> | undefined {
+  if (engine === "openai") {
+    const config = resolveOpenAiCompatibleRuntimeConfig();
+    const localEndpoint = /^(?:https?:\/\/)?(?:localhost|127\.0\.0\.1|\[::1\])(?::|\/|$)/iu.test(
+      config.baseUrl
+    );
+    if (!config.model) {
+      throw new MartinToolError(
+        "engine_unavailable",
+        "Authorized OpenAI-compatible fallback has no configured model.",
+        {
+          category: "environment",
+          suggestion: "Set MARTIN_OPENAI_MODEL before authorizing the OpenAI fallback.",
+          retryable: false
+        }
+      );
+    }
+    if (!config.apiKeyConfigured && !localEndpoint) {
+      throw new MartinToolError(
+        "engine_unavailable",
+        "Authorized OpenAI-compatible fallback is not authenticated.",
+        {
+          category: "environment",
+          suggestion: "Set MARTIN_OPENAI_API_KEY, or use an explicitly local OpenAI-compatible endpoint.",
+          retryable: false
+        }
+      );
+    }
+    return undefined;
+  }
+  if (engine === "codex") {
+    const availability = resolveCliCommandAvailability("codex");
+    if (!availability.available) {
+      throw new MartinToolError("engine_unavailable", "Engine 'codex' is not available on PATH.", {
+        category: "environment",
+        suggestion: "Install/authenticate Codex before authorizing it for governed execution.",
+        retryable: false
+      });
+    }
+    const probe = probeCodexLaunch({
+      workingDirectory,
+      availability,
+      ...(providerExecutionTimeoutMs !== undefined ? { providerExecutionTimeoutMs } : {})
+    });
+    if (!probe.ok) {
+      throw new MartinToolError("engine_unavailable", probe.summary, {
+        category: "environment",
+        suggestion: "Run martin_doctor or martin_preflight with engine='codex' before retrying.",
+        retryable: false
+      });
+    }
+    return probe;
+  }
+  const availability = getEngineAvailability(engine);
+  if (!availability.available) {
+    throw new MartinToolError("engine_unavailable", `Engine '${engine}' is not available on PATH.`, {
+      category: "environment",
+      suggestion: "Install/authenticate every provider explicitly listed in the fallback chain.",
+      retryable: false
+    });
+  }
+  return undefined;
+}
+
+function createLiveEngineAdapter(input: {
+  engine: MartinEngine;
+  workingDirectory: string;
+  model?: string;
+  verifyTimeoutMs?: number;
+  providerExecutionTimeoutMs?: number;
+  codexProbe?: ReturnType<typeof probeCodexLaunch>;
+}): MartinAdapter {
+  if (input.engine === "codex") {
+    return createCodexCliAdapter({
+      workingDirectory: input.workingDirectory,
+      ...(input.verifyTimeoutMs !== undefined ? { verifyTimeoutMs: input.verifyTimeoutMs } : {}),
+      ...(input.providerExecutionTimeoutMs !== undefined
+        ? { providerExecutionTimeoutMs: input.providerExecutionTimeoutMs }
+        : {}),
+      ...(input.model ? { model: input.model } : {}),
+      ...(input.codexProbe
+        ? {
+            command: input.codexProbe.command,
+            capabilityProfile: input.codexProbe.capabilityProfile,
+            autonomyResolution: input.codexProbe.autonomyResolution
+          }
+        : {})
+    });
+  }
+  if (input.engine === "gemini") {
+    return createGeminiCliAdapter({
+      workingDirectory: input.workingDirectory,
+      ...(input.verifyTimeoutMs !== undefined ? { verifyTimeoutMs: input.verifyTimeoutMs } : {}),
+      ...(input.providerExecutionTimeoutMs !== undefined
+        ? { providerExecutionTimeoutMs: input.providerExecutionTimeoutMs }
+        : {}),
+      ...(input.model ? { model: input.model } : {})
+    });
+  }
+  if (input.engine === "openai") {
+    const config = resolveOpenAiCompatibleRuntimeConfig();
+    const resolvedModel = input.model ?? config.model;
+    return createOpenAiCompatibleAdapter({
+      baseUrl: config.baseUrl,
+      apiKey: config.apiKey,
+      ...(resolvedModel ? { model: resolvedModel } : {}),
+      workingDirectory: input.workingDirectory,
+      ...(input.verifyTimeoutMs !== undefined ? { verifyTimeoutMs: input.verifyTimeoutMs } : {})
+    });
+  }
+  return createClaudeCliAdapter({
+    workingDirectory: input.workingDirectory,
+    ...(input.verifyTimeoutMs !== undefined ? { verifyTimeoutMs: input.verifyTimeoutMs } : {}),
+    ...(input.providerExecutionTimeoutMs !== undefined
+      ? { providerExecutionTimeoutMs: input.providerExecutionTimeoutMs }
+      : {}),
+    ...(input.model ? { model: input.model } : {})
+  });
+}
+
 export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
   const workingDirectory = resolveSafeRepoRoot(input.workingDirectory);
   const engine = input.engine ?? "claude";
   const model = input.model;
+  const fallbackEngines = input.fallbackEngines ?? [];
+  assertAuthorizedFallbackEngines(engine, fallbackEngines);
   const allowedPaths = normalizeSafePathPatterns(input.allowedPaths, "allowedPaths");
   const deniedPaths = normalizeSafePathPatterns(input.deniedPaths, "deniedPaths");
   const executionMode = resolveExecutionMode();
@@ -107,41 +260,25 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
     runsRoot
   };
   let codexProbeOverride: ReturnType<typeof probeCodexLaunch> | undefined;
+  const fallbackProbeOverrides = new Map<
+    MartinEngine,
+    ReturnType<typeof probeCodexLaunch> | undefined
+  >();
   if (executionMode.liveMode) {
-    if (engine === "codex") {
-      const engineAvailability = resolveCliCommandAvailability("codex");
-      if (!engineAvailability.available) {
-        throw new MartinToolError("engine_unavailable", `Engine '${engine}' is not available on PATH.`, {
-          category: "environment",
-          suggestion: "Install the requested CLI. MARTIN_LIVE=false is verification-only and cannot emit governed VERIFIED.",
-          retryable: false
-        });
-      }
-
-      const codexProbe = probeCodexLaunch({
-        workingDirectory,
-        availability: engineAvailability,
-        ...(input.providerExecutionTimeoutMs !== undefined
-          ? { providerExecutionTimeoutMs: input.providerExecutionTimeoutMs }
-          : {})
-      });
-      if (!codexProbe.ok) {
-        throw new MartinToolError("engine_unavailable", codexProbe.summary, {
-          category: "environment",
-          suggestion: "Run martin_doctor or martin_preflight with engine='codex' before retrying live governed work.",
-          retryable: false
-        });
-      }
-      codexProbeOverride = codexProbe;
-    } else {
-      const engineAvailability = getEngineAvailability(engine);
-      if (!engineAvailability.available) {
-        throw new MartinToolError("engine_unavailable", `Engine '${engine}' is not available on PATH.`, {
-          category: "environment",
-          suggestion: "Install the requested CLI. MARTIN_LIVE=false is verification-only and cannot emit governed VERIFIED.",
-          retryable: false
-        });
-      }
+    codexProbeOverride = ensureLiveEngineReady(
+      engine,
+      workingDirectory,
+      input.providerExecutionTimeoutMs
+    );
+    for (const fallbackEngine of fallbackEngines) {
+      fallbackProbeOverrides.set(
+        fallbackEngine,
+        ensureLiveEngineReady(
+          fallbackEngine,
+          workingDirectory,
+          input.providerExecutionTimeoutMs
+        )
+      );
     }
   }
 
@@ -153,39 +290,38 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
           ...(input.verifyTimeoutMs !== undefined ? { verifyTimeoutMs: input.verifyTimeoutMs } : {}),
           ...(proofModeVerifierSpawnImpl ? { spawnImpl: proofModeVerifierSpawnImpl } : {})
         })
-      : engine === "codex"
-        ? createCodexCliAdapter({
-            workingDirectory,
-            ...(input.verifyTimeoutMs !== undefined ? { verifyTimeoutMs: input.verifyTimeoutMs } : {}),
-            ...(input.providerExecutionTimeoutMs !== undefined
-              ? { providerExecutionTimeoutMs: input.providerExecutionTimeoutMs }
-              : {}),
-            ...(model ? { model } : {}),
-            ...(codexProbeOverride
-              ? {
-                  command: codexProbeOverride.command,
-                  capabilityProfile: codexProbeOverride.capabilityProfile,
-                  autonomyResolution: codexProbeOverride.autonomyResolution
-                }
-              : {})
-          })
-        : engine === "gemini"
-          ? createGeminiCliAdapter({
-              workingDirectory,
-              ...(input.verifyTimeoutMs !== undefined ? { verifyTimeoutMs: input.verifyTimeoutMs } : {}),
-              ...(input.providerExecutionTimeoutMs !== undefined
-                ? { providerExecutionTimeoutMs: input.providerExecutionTimeoutMs }
-                : {}),
-              ...(model ? { model } : {})
-            })
-        : createClaudeCliAdapter({
-            workingDirectory,
-            ...(input.verifyTimeoutMs !== undefined ? { verifyTimeoutMs: input.verifyTimeoutMs } : {}),
-            ...(input.providerExecutionTimeoutMs !== undefined
-              ? { providerExecutionTimeoutMs: input.providerExecutionTimeoutMs }
-              : {}),
-            ...(model ? { model } : {})
-          });
+      : createLiveEngineAdapter({
+          engine,
+          workingDirectory,
+          ...(model ? { model } : {}),
+          ...(input.verifyTimeoutMs !== undefined ? { verifyTimeoutMs: input.verifyTimeoutMs } : {}),
+          ...(input.providerExecutionTimeoutMs !== undefined
+            ? { providerExecutionTimeoutMs: input.providerExecutionTimeoutMs }
+            : {}),
+          ...(codexProbeOverride ? { codexProbe: codexProbeOverride } : {})
+        });
+
+  if (!executionMode.liveMode && fallbackEngines.length > 0) {
+    throw new MartinToolError("invalid_arguments", "fallbackEngines are available only in live governed mode.", {
+      category: "invalid_input",
+      retryable: false
+    });
+  }
+  const fallbackAdapters = executionMode.liveMode
+    ? fallbackEngines.map((fallbackEngine) =>
+        createLiveEngineAdapter({
+          engine: fallbackEngine,
+          workingDirectory,
+          ...(input.verifyTimeoutMs !== undefined ? { verifyTimeoutMs: input.verifyTimeoutMs } : {}),
+          ...(input.providerExecutionTimeoutMs !== undefined
+            ? { providerExecutionTimeoutMs: input.providerExecutionTimeoutMs }
+            : {}),
+          ...(fallbackProbeOverrides.get(fallbackEngine)
+            ? { codexProbe: fallbackProbeOverrides.get(fallbackEngine) }
+            : {})
+        })
+      )
+    : [];
 
   const partialBudget: Partial<LoopBudget> = {};
   if (input.maxUsd !== undefined) {
@@ -222,9 +358,14 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
     budget,
     metadata: {
       executionMode: evidenceExecutionMode,
-      governanceClaimEligible: evidenceExecutionMode === "governed" ? "true" : "false"
+      governanceClaimEligible: evidenceExecutionMode === "governed" ? "true" : "false",
+      ...(executionMode.liveMode ? { authorizedPrimaryEngine: engine } : {}),
+      ...(executionMode.liveMode && fallbackEngines.length > 0
+        ? { authorizedFallbackEngines: fallbackEngines.join(",") }
+        : {})
     },
-    adapter
+    adapter,
+    ...(fallbackAdapters.length > 0 ? { fallbackAdapters } : {})
   });
 
   const lastAttempt = result.loop.attempts.at(-1);
@@ -236,6 +377,13 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
     lastAttempt !== undefined &&
     result.decision.lifecycleState === "completed" &&
     (lastAttempt.verifierScore ?? 0) >= 1;
+  const fallbackAdapterIndex = lastAttempt
+    ? fallbackAdapters.findIndex((candidate) => candidate.adapterId === lastAttempt.adapterId)
+    : -1;
+  const effectiveEngine =
+    fallbackAdapterIndex >= 0
+      ? (fallbackEngines[fallbackAdapterIndex] ?? engine)
+      : engine;
   const costState = evaluateCostGovernor({
     budget: result.loop.budget,
     cost: {
@@ -267,7 +415,7 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
     ...(costState.remainingTokens !== undefined
       ? { remainingTokens: costState.remainingTokens }
       : {}),
-    engine,
+    engine: effectiveEngine,
     workingDirectory,
     budget,
     inspection: {

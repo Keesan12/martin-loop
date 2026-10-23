@@ -10,7 +10,7 @@
       "name": "martinloop",
       "source": "./plugins/martinloop",
       "description": "One system around coding agents to run, verify, recover, and hand off software work.",
-      "version": "0.8.8",
+      "version": "0.8.9",
       "author": {
         "name": "MartinLoop contributors"
       }
