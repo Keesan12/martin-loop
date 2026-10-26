@@ -81,6 +81,10 @@ export function createVerifierOnlyAdapter(
       providerId: "verifier",
       model: "verify-only",
       transport: "cli",
+      budgetPreflight: {
+        pricePerMTokenUsd: 0,
+        basis: "Verifier-only execution launches no model provider."
+      },
       capabilities: createAdapterCapabilities({
         usageSettlement: true,
         diffArtifacts: true,

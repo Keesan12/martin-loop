@@ -14,6 +14,7 @@ const WORKSPACES_DIRECTORY = "workspaces";
 const DOCTOR_TTL_MS = 24 * 60 * 60 * 1000;
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 const PREFLIGHT_TTL_MS = 6 * 60 * 60 * 1000;
+const MAX_RECEIPT_CLOCK_SKEW_MS = 30_000;
 
 type CliWorkflowStepName =
   | "start"
@@ -22,7 +23,8 @@ type CliWorkflowStepName =
   | "doctor"
   | "estimate"
   | "session-start"
-  | "preflight";
+  | "preflight"
+  | "swarm-plan";
 
 interface CliWorkflowReceipt {
   step: CliWorkflowStepName;
@@ -35,6 +37,9 @@ interface CliWorkflowReceipt {
   canonicalScopeKey?: string;
   pathScopeKey?: string;
   budgetKey?: string;
+  exactBudgetKey?: string;
+  planHash?: string;
+  baselineCommit?: string;
 }
 
 interface WorkflowState {
@@ -74,6 +79,12 @@ export interface CliRunGateResult {
   nextCommand: string;
   message: string;
   missingSteps: CliWorkflowStepName[];
+}
+
+export interface SwarmPlanGateInput extends CliRunGateInput {
+  planHash: string;
+  baselineCommit: string;
+  engine: string;
 }
 
 export async function consumeFirstRunBanner(runsRoot: string): Promise<string | undefined> {
@@ -156,12 +167,121 @@ export async function recordCliWorkflowStep(input: CliWorkflowStepInput): Promis
     pathScopeKey: hashPathScope(input.allowedPaths ?? [], input.deniedPaths ?? []),
     ...(input.budget
       ? { budgetKey: input.step === "estimate" ? hashEstimateBudget(input.budget) : hashBudget(input.budget) }
-      : {})
+      : {}),
+    ...(input.budget ? { exactBudgetKey: hashBudget(input.budget) } : {})
   };
 
   state.cli ??= {};
   state.cli[input.step] = receipt;
   await writeWorkflowState(input.runsRoot, state, input.workingDirectory);
+}
+
+export async function recordSwarmPlanReadiness(input: SwarmPlanGateInput): Promise<void> {
+  assertSwarmPlanBinding(input);
+  const state = await readWorkflowState(input.runsRoot, input.workingDirectory);
+  state.cli ??= {};
+  state.cli["swarm-plan"] = {
+    step: "swarm-plan",
+    recordedAt: new Date().toISOString(),
+    workingDirectory: normalizeWorkingDirectory(input.workingDirectory),
+    objectiveKey: normalizeObjective(input.objective),
+    engine: input.engine,
+    verificationPlanKey: hashVerificationPlan(input.verificationPlan),
+    ...(input.receiptScope ? { scopeKey: hashReceiptScope(input.receiptScope) } : {}),
+    ...(input.receiptScope ? { canonicalScopeKey: hashCanonicalReceiptScope(input.receiptScope) } : {}),
+    pathScopeKey: hashPathScope(input.allowedPaths ?? [], input.deniedPaths ?? []),
+    ...(input.budget ? { budgetKey: hashBudget(input.budget), exactBudgetKey: hashBudget(input.budget) } : {}),
+    planHash: input.planHash,
+    baselineCommit: input.baselineCommit.toLowerCase(),
+  };
+  await writeWorkflowState(input.runsRoot, state, input.workingDirectory);
+}
+
+export async function evaluateSwarmPlanGate(input: SwarmPlanGateInput): Promise<CliRunGateResult> {
+  assertSwarmPlanBinding(input);
+  const state = await readWorkflowState(input.runsRoot, input.workingDirectory);
+  const cliState = state.cli ?? {};
+  const workingDirectory = normalizeWorkingDirectory(input.workingDirectory);
+  const receiptScope = input.receiptScope ?? {
+    invocationRoot: input.workingDirectory,
+    workingDirectory: input.workingDirectory,
+    repoRoot: input.workingDirectory,
+    runsRoot: input.runsRoot,
+  };
+  const scopeKey = hashReceiptScope(receiptScope);
+  const canonicalScopeKey = hashCanonicalReceiptScope(receiptScope);
+  const verificationPlanKey = hashVerificationPlan(input.verificationPlan);
+  const pathScopeKey = hashPathScope(input.allowedPaths ?? [], input.deniedPaths ?? []);
+  const exactBudgetKey = input.budget ? hashBudget(input.budget) : undefined;
+  const missingSteps: CliWorkflowStepName[] = [];
+
+  const doctorReady = isFresh(cliState.doctor, DOCTOR_TTL_MS, (receipt) =>
+    receipt.workingDirectory === workingDirectory
+    && receipt.engine === input.engine
+    && matchesCanonicalScope(receipt, canonicalScopeKey, scopeKey)
+  );
+  if (!doctorReady) missingSteps.push("doctor");
+
+  const estimateReady = isFresh(cliState.estimate, PREFLIGHT_TTL_MS, (receipt) =>
+    receipt.workingDirectory === workingDirectory
+    && receipt.objectiveKey === normalizeObjective(input.objective)
+    && (!input.budget || receipt.budgetKey === hashEstimateBudget(input.budget))
+    && matchesCanonicalScope(receipt, canonicalScopeKey, scopeKey)
+  );
+  if (!estimateReady) missingSteps.push("estimate");
+
+  const preflightReady = isFresh(cliState.preflight, PREFLIGHT_TTL_MS, (receipt) =>
+    receipt.workingDirectory === workingDirectory
+    && receipt.objectiveKey === normalizeObjective(input.objective)
+    && receipt.engine === input.engine
+    && receipt.verificationPlanKey === verificationPlanKey
+    && receipt.pathScopeKey === pathScopeKey
+    && receipt.exactBudgetKey === exactBudgetKey
+    && matchesCanonicalScope(receipt, canonicalScopeKey, scopeKey)
+  );
+  if (!preflightReady) missingSteps.push("preflight");
+
+  const planReady = isFresh(cliState["swarm-plan"], PREFLIGHT_TTL_MS, (receipt) =>
+    receipt.workingDirectory === workingDirectory
+    && receipt.objectiveKey === normalizeObjective(input.objective)
+    && receipt.engine === input.engine
+    && receipt.verificationPlanKey === verificationPlanKey
+    && receipt.pathScopeKey === pathScopeKey
+    && receipt.exactBudgetKey === exactBudgetKey
+    && receipt.planHash === input.planHash
+    && receipt.baselineCommit === input.baselineCommit.toLowerCase()
+    && matchesCanonicalScope(receipt, canonicalScopeKey, scopeKey)
+  );
+  if (!planReady) missingSteps.push("swarm-plan");
+
+  if (missingSteps.length === 0) {
+    return {
+      allowed: true,
+      nextCommand: "martin-loop swarm run",
+      message: "Exact live swarm plan and governed readiness receipts are present.",
+      missingSteps,
+    };
+  }
+  return {
+    allowed: false,
+    nextCommand: missingSteps.includes("swarm-plan")
+      ? "martin-loop swarm plan --file <plan.json>"
+      : selectNextCommand(missingSteps, input.objective, input.verificationPlan),
+    message: `Governed live swarm blocked until exact receipts exist for ${missingSteps.join(", ")}.`,
+    missingSteps,
+  };
+}
+
+function assertSwarmPlanBinding(input: SwarmPlanGateInput): void {
+  if (!/^[0-9a-f]{64}$/u.test(input.planHash)) {
+    throw new Error("Swarm plan hash must be a lowercase SHA-256 value.");
+  }
+  if (!/^[0-9a-f]{40,64}$/iu.test(input.baselineCommit)) {
+    throw new Error("Swarm baseline commit must be an immutable Git object ID.");
+  }
+  if (!input.engine.trim()) {
+    throw new Error("Swarm engine must be explicit.");
+  }
 }
 
 export async function evaluateCliRunGate(input: CliRunGateInput): Promise<CliRunGateResult> {
@@ -400,7 +520,8 @@ function isFresh(
     return false;
   }
 
-  return Date.now() - recordedAt <= ttlMs;
+  const ageMs = Date.now() - recordedAt;
+  return ageMs >= -MAX_RECEIPT_CLOCK_SKEW_MS && ageMs <= ttlMs;
 }
 
 function normalizeWorkingDirectory(workingDirectory: string): string {

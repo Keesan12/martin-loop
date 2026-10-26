@@ -1659,6 +1659,58 @@ describe("syncQueueStatus", () => {
     expect(out.join("")).toContain("empty");
   });
 
+  it("can suppress transport stdout and return structured status", async () => {
+    const out: string[] = [];
+    vi.spyOn(process.stdout, "write").mockImplementation((s) => { out.push(String(s)); return true; });
+
+    const status = await syncQueueStatus({ stdout: false });
+
+    expect(out).toEqual([]);
+    expect(status).toMatchObject({
+      pending: 0,
+      parseable: 0,
+      corrupt: 0,
+      quarantined: 0,
+      items: [],
+    });
+  });
+
+  it("keeps sync status --json parseable without direct stdout writes", async () => {
+    const out: string[] = [];
+    vi.spyOn(process.stdout, "write").mockImplementation((s) => { out.push(String(s)); return true; });
+
+    const result = await executeCli(["--json", "sync", "status"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(out).toEqual([]);
+    expect(() => JSON.parse(result.stdout)).not.toThrow();
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      command: "sync",
+      action: "status",
+      pending: 0,
+    });
+  });
+
+  it("keeps sync flush --json parseable on missing configuration without direct stdout writes", async () => {
+    const out: string[] = [];
+    const err: string[] = [];
+    vi.spyOn(process.stdout, "write").mockImplementation((s) => { out.push(String(s)); return true; });
+    vi.spyOn(process.stderr, "write").mockImplementation((s) => { err.push(String(s)); return true; });
+
+    const result = await executeCli(["--json", "sync", "flush"]);
+
+    expect(result.exitCode).toBe(4);
+    expect(out).toEqual([]);
+    expect(() => JSON.parse(result.stdout)).not.toThrow();
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      command: "sync",
+      action: "flush",
+      ok: false,
+      reason: "missing_both",
+    });
+    expect(err.join("")).toContain("Hosted sync is not configured");
+  });
+
   it("lists items sorted by enqueuedAt and shows attempts", async () => {
     await mkdir(qDir(), { recursive: true });
     // Insert items out of chronological order

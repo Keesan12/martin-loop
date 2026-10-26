@@ -669,6 +669,22 @@ export async function executeCli(args: string[]): Promise<{
   try {
     const global = stripGlobalOptions(args);
     outputMode = global.outputMode;
+
+    // Help is a read-only control surface. Intercept it before normal parsing so
+    // no command-specific side effects (config writes, mode changes, cleanup,
+    // installs, etc.) can occur just because --help was requested.
+    const helpSubject = resolveCommandHelpSubject(global.commandArgs);
+    if (helpSubject !== undefined) {
+      const helpText = renderCommandHelp(helpSubject);
+      const subject = helpSubject.length > 0 ? helpSubject.join(" ") : "root";
+      return renderCliSuccess(outputMode, {
+        data: { command: "help", subject, help: helpText },
+        human: helpText,
+        quiet: subject,
+        exitCode: 0
+      });
+    }
+
     const parsed = parseCliArguments(global.commandArgs);
 
     // Startup update check — global-npm channel only, interactive TTY, before command dispatch.
@@ -697,12 +713,15 @@ export async function executeCli(args: string[]): Promise<{
     }
 
     switch (parsed.command) {
-      case "help":
-        return {
-          exitCode: 0,
-          stdout: renderCliHelp(),
-          stderr: ""
-        };
+      case "help": {
+        const helpText = renderCliHelp();
+        return renderCliSuccess(outputMode, {
+          data: { command: "help", subject: "root", help: helpText },
+          human: helpText,
+          quiet: "root",
+          exitCode: 0
+        });
+      }
       case "version":
         return {
           exitCode: 0,
@@ -861,9 +880,10 @@ export async function executeCli(args: string[]): Promise<{
         return await executeCancelCommand(parsed, outputMode);
       case "signal":
         return await executeSignalCommand(parsed, outputMode);
-      case "sync":
+      case "sync": {
+        const renderTransportStdout = outputMode === "human";
         if (parsed.sub === "flush") {
-          const result = await flushSyncQueue();
+          const result = await flushSyncQueue({ stdout: renderTransportStdout });
           const exitCode = result.ok
             ? 0
             : result.reason === "missing_endpoint"
@@ -871,15 +891,37 @@ export async function executeCli(args: string[]): Promise<{
               : result.reason === "missing_token" || result.reason === "missing_both"
                 ? 4
                 : 1;
-          return { exitCode, stdout: "", stderr: "" };
-        } else {
-          await syncQueueStatus();
+          if (outputMode === "human") {
+            return { exitCode, stdout: "", stderr: "" };
+          }
+          return renderCliSuccess(outputMode, {
+            data: { command: "sync", action: "flush", ...result },
+            human: [],
+            quiet: result.ok ? "ok" : result.reason ?? "incomplete",
+            exitCode
+          });
         }
-        return { exitCode: 0, stdout: "", stderr: "" };
+
+        const status = await syncQueueStatus({ stdout: renderTransportStdout });
+        if (outputMode === "human") {
+          return { exitCode: 0, stdout: "", stderr: "" };
+        }
+        return renderCliSuccess(outputMode, {
+          data: { command: "sync", action: "status", ...status },
+          human: [],
+          quiet: String(status.pending),
+          exitCode: 0
+        });
+      }
       case "telemetry": {
         const { executeTelemetryCommand } = await import("./telemetry.js");
-        const exitCode = await executeTelemetryCommand(parsed.action);
-        return renderCliSuccess(outputMode, { data: { command: "telemetry", action: parsed.action }, human: [], quiet: "", exitCode });
+        const result = await executeTelemetryCommand(parsed.action);
+        return renderCliSuccess(outputMode, {
+          data: { command: "telemetry", ...result.data },
+          human: result.human,
+          quiet: result.quiet,
+          exitCode: result.exitCode
+        });
       }
     }
   } catch (error) {
@@ -926,7 +968,37 @@ export function __setCodexHostOverridesForTests(
   codexProbeOverrideForTests = overrides?.probe;
 }
 
+const KNOWN_LONG_OPTIONS = new Set([
+  "--accept", "--adapter-id", "--all", "--all-workspaces", "--allow-local", "--allow-network-domain",
+  "--allow-outdated", "--allow-path", "--approve-config-changes", "--approve-dependency-changes",
+  "--approve-external-writes", "--approve-migrations", "--approve-test-changes", "--attempt-index",
+  "--baseline-provenance", "--baseline-source", "--baseline-usd", "--budget", "--budget-usd", "--config",
+  "--contract", "--cwd", "--days", "--deny-path", "--dir", "--disposition", "--dry-run", "--engine",
+  "--event", "--execute", "--execution-profile", "--expected-contract-sha256", "--experimental-remote-hosts",
+  "--fallback-engine", "--file", "--files", "--filter", "--force", "--format", "--governed", "--help",
+  "--host", "--id", "--install-governance", "--json", "--latest", "--lifecycle-state", "--limit", "--live",
+  "--loop-id", "--max-iterations", "--max-tokens", "--metadata", "--model", "--objective", "--offline",
+  "--out-dir", "--platform", "--policy", "--profile", "--project", "--proof", "--provider-execution-timeout-ms",
+  "--quiet", "--reason", "--remote-token-env", "--remote-url", "--run-scan-limit", "--runs", "--runs-dir",
+  "--scenario", "--scope", "--share", "--soft-limit-usd", "--status", "--suite", "--swarm", "--swarm-id",
+  "--telemetry", "--title", "--transport", "--unsafe-allow-unguarded-run", "--updated-after", "--verify",
+  "--verify-only", "--verify-timeout-ms", "--version", "--watch", "--workspace",
+]);
+
 export function parseCliArguments(args: string[]): ParsedCliArguments {
+  const commandWithSpecializedOptionErrors =
+    args[0] === "run"
+    || args[0] === "preflight"
+    || (args[0] === "demo" && args.includes("--swarm"));
+  if (!commandWithSpecializedOptionErrors) {
+    for (const token of args) {
+      if (!token.startsWith("--")) continue;
+      const option = token.split("=", 1)[0]!;
+      if (!KNOWN_LONG_OPTIONS.has(option)) {
+        throw new CliCommandError("invalid_input", `Unknown option: ${option}`);
+      }
+    }
+  }
   const [command, ...rest] = args;
 
   if (command === "--version" || command === "-V" || command === "version") {
@@ -1541,6 +1613,139 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
   return { command: "help" };
 }
 
+const COMMAND_HELP_TOP_LEVEL = new Set([
+  "run",
+  "preflight",
+  "bench",
+  "audit",
+  "sync",
+  "demo",
+  "swarm",
+  "inspect",
+  "resume",
+  "continue",
+  "doctor",
+  "gate",
+  "mode",
+  "clean",
+  "estimate",
+  "start",
+  "tour",
+  "enable",
+  "env",
+  "review",
+  "receipts",
+  "outcomes",
+  "session-start",
+  "phase",
+  "gsd",
+  "triage",
+  "dossier",
+  "handoff",
+  "runs",
+  "mcp",
+  "challenge",
+  "share",
+  "badge",
+  "cancel",
+  "signal",
+  "telemetry"
+]);
+
+const COMMAND_HELP_SUBCOMMANDS: Readonly<Record<string, ReadonlySet<string>>> = {
+  runs: new Set(["list", "get", "attempt", "verify"]),
+  mcp: new Set(["print-config", "install", "verify-install", "rollback", "uninstall"]),
+  swarm: new Set(["plan", "run", "status", "inspect", "cancel", "dossier", "verify", "share"]),
+  receipts: new Set(["explain"]),
+  outcomes: new Set(["verify"]),
+  phase: new Set(["session-start", "status", "contract", "preflight", "run"]),
+  gsd: new Set(["session-start", "status", "contract", "preflight", "run"]),
+  sync: new Set(["status", "flush"]),
+  mode: new Set(["auto", "plan", "edits"]),
+  telemetry: new Set(["status", "explain", "on", "off"])
+};
+
+function resolveCommandHelpSubject(args: string[]): string[] | undefined {
+  const helpIndex = args.findIndex((token) => token === "--help" || token === "-h");
+  if (helpIndex < 0) {
+    return undefined;
+  }
+
+  if (helpIndex === 0 || !args[0] || args[0] === "help") {
+    return [];
+  }
+
+  const command = args[0];
+  if (!COMMAND_HELP_TOP_LEVEL.has(command)) {
+    throw new CliCommandError(
+      "invalid_input",
+      `Unknown help target: ${command}.`,
+      { suggestion: "Run `martin --help` for the supported command list." }
+    );
+  }
+
+  const validSubcommands = COMMAND_HELP_SUBCOMMANDS[command];
+  if (!validSubcommands) {
+    return [command];
+  }
+
+  const nested = args
+    .slice(1, helpIndex)
+    .find((token) => !token.startsWith("-"));
+
+  if (!nested) {
+    return [command];
+  }
+
+  if (!validSubcommands.has(nested)) {
+    throw new CliCommandError(
+      "invalid_input",
+      `Unknown help target: ${command} ${nested}.`,
+      { suggestion: `Run \`martin ${command} --help\` for supported subcommands.` }
+    );
+  }
+
+  return [command, nested];
+}
+
+function renderCommandHelp(subject: string[]): string {
+  if (subject.length === 0) {
+    return renderCliHelp();
+  }
+
+  const fullHelp = renderCliHelp().split("\n");
+  const subjectText = subject.join(" ");
+  const publishedSubject = `martin-loop ${subjectText}`;
+  const canonicalSubject = `martin ${subjectText}`;
+  const usageLines = fullHelp.filter((line) => {
+    const trimmed = line.trim();
+    return (
+      trimmed === canonicalSubject ||
+      trimmed.startsWith(`${canonicalSubject} `) ||
+      trimmed === publishedSubject ||
+      trimmed.startsWith(`${publishedSubject} `)
+    );
+  });
+
+  const renderedUsage = usageLines.length > 0
+    ? usageLines
+    : [`  ${canonicalSubject} [options]`];
+
+  return [
+    "Martin Loop CLI",
+    CLI_TAGLINE_LINE,
+    CLI_ATTRIBUTION_LINE,
+    "",
+    `Command: ${canonicalSubject}`,
+    "",
+    "Usage:",
+    ...renderedUsage,
+    "",
+    "Help only: no command was executed or state changed.",
+    "Run `martin --help` for the full command index."
+  ].join("\n");
+}
+
 export function renderCliHelp(): string {
   return [
     "Martin Loop CLI",
@@ -1852,6 +2057,14 @@ async function executeRunCommand(
     engine: resolvedRequest.engine,
     liveMode: resolvedRequest.liveMode
   });
+  resolvedRequest.allowedPaths = normalizeConfinedScopePaths(
+    resolvedRequest.allowedPaths,
+    cliEnvironment.workingDirectory,
+  );
+  resolvedRequest.deniedPaths = normalizeConfinedScopePaths(
+    resolvedRequest.deniedPaths,
+    cliEnvironment.workingDirectory,
+  );
   const hasExternalOutcomeVerifier = resolvedRequest.verificationPlan.some((command) =>
     /(?:^|\s)(?:martin|martin-loop)\s+outcomes\s+verify(?:\s|$)/iu.test(command)
   );
@@ -2271,10 +2484,13 @@ async function executeRunCommand(
   });
   await enqueueLoopForHostedSync(result.loop, { runtimeVersion: rootPackageVersion });
   if (process.env["MARTIN_TELEMETRY_ENDPOINT"] && process.env["MARTIN_API_TOKEN"]) {
-    void flushSyncQueue().catch((error: unknown) => {
-      console.error(
-        `[martin sync] Background flush failed: ${error instanceof Error ? error.message : String(error)}`
-      );
+    const renderTransportOutput = outputMode === "human";
+    void flushSyncQueue({ stdout: renderTransportOutput }).catch((error: unknown) => {
+      if (renderTransportOutput) {
+        console.error(
+          `[martin sync] Background flush failed: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
     });
   }
 
@@ -2585,22 +2801,24 @@ async function executeRunCommand(
     exitCode: runExitCode
   });
 
-  await renderMilestonePrompt(
-    milestoneInteractivePrompt,
-    {
-      rank: currentRank,
-      prevRank: milestoneState?.currentRank ?? null,
-      totalSavedUsd: milestoneState?.totalSavedUsd ?? 0,
-      successfulRunCount: milestoneState?.successfulRunCount ?? 0,
-      starShownCount: milestoneState?.star.shownCount ?? 0
-    },
-    {
-      onStarConfirmed: recordStarConfirmed,
-      onWaitlistJoined: recordWaitlistJoined,
-      onWaitlistDeclined: recordWaitlistDeclined,
-      onFeedback: recordFeedback
-    }
-  );
+  if (outputMode === "human" && !process.env["CI"]) {
+    await renderMilestonePrompt(
+      milestoneInteractivePrompt,
+      {
+        rank: currentRank,
+        prevRank: milestoneState?.currentRank ?? null,
+        totalSavedUsd: milestoneState?.totalSavedUsd ?? 0,
+        successfulRunCount: milestoneState?.successfulRunCount ?? 0,
+        starShownCount: milestoneState?.star.shownCount ?? 0
+      },
+      {
+        onStarConfirmed: recordStarConfirmed,
+        onWaitlistJoined: recordWaitlistJoined,
+        onWaitlistDeclined: recordWaitlistDeclined,
+        onFeedback: recordFeedback
+      }
+    );
+  }
 
   // Replay queued intake submissions from previous failed network requests.
   // Fires only on verified-success interactive TTY runs. Never throws — primary run is unaffected.
@@ -4062,6 +4280,8 @@ async function executePreflightCommand(
     engine: engineResolution.engine,
     liveMode: request.liveMode
   });
+  request.allowedPaths = normalizeConfinedScopePaths(request.allowedPaths, environment.workingDirectory);
+  request.deniedPaths = normalizeConfinedScopePaths(request.deniedPaths, environment.workingDirectory);
   const warnings: string[] = [];
   const blockingIssues: string[] = [];
   const verificationPlan =
@@ -7157,6 +7377,20 @@ function isEscapingPath(pattern: string): boolean {
   if (/(^|\/)\.\.($|\/)/u.test(normalized)) return true;
   if (normalized === ".." || normalized.startsWith("../") || normalized.endsWith("/..")) return true;
   return false;
+}
+
+function normalizeConfinedScopePaths(patterns: string[] | undefined, workingDirectory: string): string[] | undefined {
+  return patterns?.map((pattern) => {
+    const isNativeAbsolute = isAbsolute(pattern);
+    const isForeignWindowsAbsolute = process.platform !== "win32"
+      && (/^[a-zA-Z]:[\\/]/u.test(pattern) || pattern.startsWith("\\\\"));
+    if (!isNativeAbsolute || isForeignWindowsAbsolute) {
+      return pattern;
+    }
+
+    const repoRelative = relative(resolve(workingDirectory), resolve(pattern)).replace(/\\/gu, "/");
+    return repoRelative.length > 0 && !isEscapingPath(repoRelative) ? repoRelative : pattern;
+  });
 }
 
 function resolveCodexProbeForCli(input: {

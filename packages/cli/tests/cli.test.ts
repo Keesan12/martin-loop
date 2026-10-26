@@ -869,6 +869,45 @@ describe("parseCliArguments", () => {
     expect(parseCliArguments(["preflight", "-h"])).toEqual({ command: "help" });
   });
 
+  it("renders nested help before parsing or executing the command", async () => {
+    for (const argv of [
+      ["runs", "verify", "--help"],
+      ["mcp", "install", "--host", "codex", "--scope", "project", "--help"],
+      ["mcp", "rollback", "--host", "codex", "--scope", "project", "--help"],
+      ["clean", "--all", "--help"],
+      ["mode", "edits", "--help"],
+      ["sync", "flush", "--help"],
+    ]) {
+      const result = await executeCli(argv);
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).toBe("");
+      expect(result.stdout).toContain("Help only: no command was executed or state changed.");
+      expect(result.stdout).toContain(`Command: martin ${argv[0]}`);
+    }
+  });
+
+  it("does not write configuration when enable help is requested", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-help-readonly-"));
+    const configPath = join(directory, "martin.config.yaml");
+    try {
+      const result = await executeCli(["enable", "--cwd", directory, "--force", "--help"]);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("Command: martin enable");
+      await expect(readFile(configPath, "utf8")).rejects.toThrow();
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("fails closed for unknown top-level help targets instead of treating them as objective shorthand", async () => {
+    const result = await executeCli(["--json", "not-a-command", "--help"]);
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toBe("");
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      category: "invalid_input",
+    });
+  });
+
   it("parses onboarding commands and objective shorthand", () => {
     expect(parseCliArguments(["start"])).toEqual({ command: "start" });
     expect(parseCliArguments(["env"])).toEqual({ command: "env" });

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { createHash } from "node:crypto";
+import { posix, win32 } from "node:path";
 
 import type {
   CostProvenance,
@@ -147,6 +148,80 @@ export interface BoundVerifierEvidence {
   }>;
 }
 
+function sameOptionalVerifierFilesystemPath(
+  actual: string | undefined,
+  expected: string | undefined
+): boolean {
+  if (actual === undefined || expected === undefined) {
+    return actual === expected;
+  }
+  return sameVerifierFilesystemPath(actual, expected);
+}
+
+type VerifierFilesystemPathKind = "windows" | "posix" | "relative";
+
+function classifyVerifierFilesystemPath(value: string): VerifierFilesystemPathKind {
+  // Persisted Windows bindings are expected to be drive-absolute or UNC.
+  // Do not use win32.isAbsolute() here because it also classifies POSIX-style
+  // root paths such as "/repo" as Windows root-relative paths.
+  if (/^[A-Za-z]:[\\/]/u.test(value) || /^\\\\/u.test(value) || /^\/\//u.test(value)) {
+    return "windows";
+  }
+  if (value.startsWith("/")) {
+    return "posix";
+  }
+  return "relative";
+}
+
+function stripTrailingVerifierSeparators(value: string, kind: VerifierFilesystemPathKind): string {
+  if (kind === "windows") {
+    // Preserve drive roots (C:\\) and UNC share roots while removing harmless
+    // trailing separators from ordinary persisted paths.
+    if (/^[a-z]:\\$/iu.test(value) || /^\\\\[^\\]+\\[^\\]+\\?$/u.test(value)) {
+      return value;
+    }
+    return value.replace(/[\\/]+$/u, "");
+  }
+  if (kind === "posix") {
+    return value === "/" ? value : value.replace(/\/+$/u, "");
+  }
+  return value;
+}
+
+function normalizeVerifierFilesystemPath(value: string): {
+  kind: VerifierFilesystemPathKind;
+  value: string;
+} {
+  const kind = classifyVerifierFilesystemPath(value);
+  if (kind === "windows") {
+    return {
+      kind,
+      value: stripTrailingVerifierSeparators(win32.normalize(value), kind).toLowerCase(),
+    };
+  }
+  if (kind === "posix") {
+    return {
+      kind,
+      value: stripTrailingVerifierSeparators(posix.normalize(value), kind),
+    };
+  }
+  // Relative verifier bindings are legacy/non-canonical. Normalize only their
+  // separators/dot segments and keep comparison case-sensitive/fail-closed.
+  return {
+    kind,
+    value: stripTrailingVerifierSeparators(posix.normalize(value.replace(/\\/gu, "/")), kind),
+  };
+}
+
+function sameVerifierFilesystemPath(actual: string, expected: string): boolean {
+  const normalizedActual = normalizeVerifierFilesystemPath(actual);
+  const normalizedExpected = normalizeVerifierFilesystemPath(expected);
+  return (
+    normalizedActual.kind === normalizedExpected.kind &&
+    normalizedActual.value === normalizedExpected.value
+  );
+}
+
 export function verifierActuallyPassed(
   evidence: BoundVerifierEvidence | null | undefined,
   expected: VerifierExecutionBinding
@@ -163,8 +238,8 @@ export function verifierActuallyPassed(
     evidence.binding.runId !== expected.runId ||
     evidence.binding.workspaceId !== expected.workspaceId ||
     (evidence.binding.attemptId ?? undefined) !== (expected.attemptId ?? undefined) ||
-    evidence.binding.cwd !== expected.cwd ||
-    (evidence.binding.runsRoot ?? undefined) !== (expected.runsRoot ?? undefined) ||
+    !sameVerifierFilesystemPath(evidence.binding.cwd, expected.cwd) ||
+    !sameOptionalVerifierFilesystemPath(evidence.binding.runsRoot, expected.runsRoot) ||
     (evidence.binding.executionProfile ?? undefined) !== (expected.executionProfile ?? undefined) ||
     JSON.stringify(evidence.binding.allowedNetworkDomains ?? []) !== JSON.stringify(expected.allowedNetworkDomains ?? []) ||
     JSON.stringify(evidence.binding.commands) !== JSON.stringify(expected.commands)

@@ -65,7 +65,7 @@ import {
   evaluateSwarmPlanGate,
   recordSwarmPlanReadiness,
   type SwarmPlanGateInput,
-} from "./swarm-workflow-state.js";
+} from "./workflow-state.js";
 
 const execFileAsync = promisify(execFile);
 const MAX_PLAN_BYTES = 1024 * 1024;

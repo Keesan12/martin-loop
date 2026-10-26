@@ -600,7 +600,10 @@ export interface BudgetPreflightDecision {
 }
 
 export function evaluateBudgetPreflight(input: BudgetPreflightInput): BudgetPreflightDecision {
-  const pricePerMToken = input.pricePerMTokenUsd ?? 3.0;
+  const declaredPrice = input.pricePerMTokenUsd;
+  const validDeclaredPrice = declaredPrice === undefined
+    || (Number.isFinite(declaredPrice) && declaredPrice >= 0);
+  const pricePerMToken = validDeclaredPrice ? (declaredPrice ?? 3.0) : 3.0;
   const rawPromptTokens = Math.ceil(input.promptCharCount / 4);
   const estimatedPromptTokens = Math.ceil(rawPromptTokens * 1.2);
   const estimatedToolOverheadTokens = 800 + input.attemptCount * 200;
@@ -628,6 +631,14 @@ export function evaluateBudgetPreflight(input: BudgetPreflightInput): BudgetPref
     estimatedAttemptCostUsd,
     provenance
   };
+
+  if (!validDeclaredPrice) {
+    return {
+      allowed: false,
+      reason: "Preflight: invalid adapter price; pricePerMTokenUsd must be finite and non-negative.",
+      estimate
+    };
+  }
 
   if (
     input.remainingTokens !== undefined

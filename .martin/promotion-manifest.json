@@ -2,15 +2,15 @@
   "schemaVersion": "martin.public-promotion.v2",
   "sourceAuthority": "validated-internal-release-source",
   "sourceRepositoryFingerprint": "04aac733f3b08513fddcc72a9013b9f59cf7919f9a0a3893d0b3d953929826ec",
-  "privateMergeSha": "f2f1e91610af9c46790841367665abf516b1ed5c",
-  "privateMainShaValidated": "f2f1e91610af9c46790841367665abf516b1ed5c",
-  "publicBaseSha": "d956fcc0adb8ffc5e815b15b7d3ddd25424b9207",
+  "privateMergeSha": "422bc6e4d5dd1da3fbb49df27005c445be6d859d",
+  "privateMainShaValidated": "422bc6e4d5dd1da3fbb49df27005c445be6d859d",
+  "publicBaseSha": "1713e4ff804a06dd3395e1da6cb50927a49e04bf",
   "promotedBy": "Torram",
-  "validatedAt": "2026-10-22T17:58:00.910Z",
+  "validatedAt": "2026-10-26T15:38:01.769Z",
   "internalHealthPassed": true,
-  "internalHealthEvidenceSha256": "b64dbf1d6760b6e785ba9d23c3f5fe8331f4dcc2fdbe7a3bd945b52cb4226481",
+  "internalHealthEvidenceSha256": "4e7e8222c16f217eb1f580abcacf7fda38301d6620ed7a5d15c5fc7cd03f4b7a",
   "surfaceSpecHash": "a9c8d22be91bc0dd19238f7676aec62aacc77d8cc3a66327b46d71f16d65164a",
-  "surfaceHash": "8f2a0a29dc64fa93aa6bfe75ebdf6b782159defcf3e5a0c930e036b9a203248f",
+  "surfaceHash": "0d3272277559a2a103cf5c0292ec148da9da57ae9af233a02090944baf0cac62",
   "surfaceEntries": [
     {
       "path": ".agents/plugins/marketplace.json",
@@ -20,7 +20,7 @@
     {
       "path": ".claude-plugin/marketplace.json",
       "mode": "100644",
-      "sha256": "af61b4c24dadfcdb08e898ee1a958c05a3437fd91703edfab452fd2d0dbad14d"
+      "sha256": "6ea8b57e2f515520e3ea62be4aa4a151e2c98830469105f4eb09ee1981831a16"
     },
     {
       "path": ".claude/rules/martinloop-internal-first.md",
@@ -140,7 +140,7 @@
     {
       "path": "CHANGELOG.md",
       "mode": "100644",
-      "sha256": "c5e8052c7ed28212588796dd7432062ac80b65e6780cda636eb4d7473b15e4bc"
+      "sha256": "c3049a28bd4b9b4a2b4bdae0ad122719872ad4592285958433c696c3ed7925f4"
     },
     {
       "path": "CLAUDE.md",
@@ -165,7 +165,7 @@
     {
       "path": "README.md",
       "mode": "100644",
-      "sha256": "57384e4a9ce86213ec40a7c0deedae61606d19f6d528bf78bf06389e93e12f79"
+      "sha256": "586e73fdad012dc77c4b36d1f9e37c20abda911ebfb449fe0e79b745983fcc59"
     },
     {
       "path": "SECURITY.md",
@@ -350,7 +350,7 @@
     {
       "path": "dist/vendor/cli/package.json",
       "mode": "100644",
-      "sha256": "cd0358ba2cf21bdd7e7b3cb371e9879be153da51683eca4fb5576f620b58999a"
+      "sha256": "23571708a75d5794dae22ca4579edea7f2c9c9d9da04938ea46e3bf6224e7c63"
     },
     {
       "path": "docs/CLI_AUDIT_FINDINGS.md",
@@ -620,7 +620,7 @@
     {
       "path": "docs/product-truth/public-release-truth.json",
       "mode": "100644",
-      "sha256": "d14cbfe1fc0cf39a117c68b5701083caba08d5f311f67649f5b05f68088339b7"
+      "sha256": "cb2a48ad9e1159d6dcf1d50c6a46cdcafaadf3eae27c8f69059295f5279c04dd"
     },
     {
       "path": "docs/reference/SWARM-HOSTED-V1-HANDOFF.md",
@@ -821,6 +821,11 @@
       "path": "docs/release/MCP-0.8.1-RELEASE-NOTES.md",
       "mode": "100644",
       "sha256": "d09c4a7db243d36b1608e407f0e66191f931d1ff6509ab52d8649eddd5560e44"
+    },
+    {
+      "path": "docs/release/MCP-0.8.10-RELEASE-NOTES.md",
+      "mode": "100644",
+      "sha256": "a56b832cc96b5c495b1a65572a672221fc5f44bf1e9cc61dfe1bfdd787b6529b"
     },
     {
       "path": "docs/release/MCP-0.8.2-RELEASE-NOTES.md",
@@ -1078,6 +1083,11 @@
       "sha256": "65543251a60b9e28d42993d70c5a30ea0dbd1e9c2118546efba0f6ea9632870f"
     },
     {
+      "path": "docs/release/OSS-0.8.10-RELEASE-NOTES.md",
+      "mode": "100644",
+      "sha256": "df1b50344c380bcdd2d89fa2a7c48be9ce8541cd022e3d034e70cb111a7f8be3"
+    },
+    {
       "path": "docs/release/OSS-0.8.2-RELEASE-NOTES.md",
       "mode": "100644",
       "sha256": "e8abdcaa93a85976b0f8ef69957f5cc5646bf6187b201d5be2b0024aa9117dc2"
@@ -1125,7 +1135,7 @@
     {
       "path": "docs/release/VERSION-LEDGER.md",
       "mode": "100644",
-      "sha256": "c069ef8d4b97a905bf668be914977ae71921d38fea5ed09f3ce226654b677ceb"
+      "sha256": "7c33cf5d0f11a64557f1e988b172c232e68c2328d50af31d23dd95a0e18d31d6"
     },
     {
       "path": "docs/release/reliability-hardening/BASELINE.md",
@@ -1220,7 +1230,7 @@
     {
       "path": "package.json",
       "mode": "100644",
-      "sha256": "8d770122288590dcb42b1eba09449e634b6dbe10ef4fd2e7bd8412550b6db57c"
+      "sha256": "3c253dfbe4f5a1ec15b81f7964f85558cef3c860f514d3a61e196a4af06e436f"
     },
     {
       "path": "packages/README.md",
@@ -1285,7 +1295,7 @@
     {
       "path": "packages/adapters/src/process-supervisor.ts",
       "mode": "100644",
-      "sha256": "3b779386e9d17f3f20af5e717029b9a9745400a17138aa6181fb23d1cbc70547"
+      "sha256": "c8ef51839aa215659c4784911f3cbe0b18a79d96a245b75c16de5e4b00a2ea47"
     },
     {
       "path": "packages/adapters/src/runtime-support.ts",
@@ -1305,7 +1315,7 @@
     {
       "path": "packages/adapters/src/verifier-only.ts",
       "mode": "100644",
-      "sha256": "7acd75a0cbecbe522e328effed8e423ff75b44f16927f032c2bbd44e00c05119"
+      "sha256": "07f078540fce16ea3433cc901d1d8ee8d37ee5952c149378015bb744ea7374a4"
     },
     {
       "path": "packages/adapters/src/workspace-edit-protocol.ts",
@@ -1315,7 +1325,7 @@
     {
       "path": "packages/adapters/tests/claude-cli.test.ts",
       "mode": "100644",
-      "sha256": "9ac91afafa6b11064283a2c528727b09d6f43926734c10a07e7be3222e35f6e1"
+      "sha256": "09d496109e482aa311f9598fcf2637fd66217f456c15c2bff932404489532fe3"
     },
     {
       "path": "packages/adapters/tests/claude-error-result.test.ts",
@@ -1355,7 +1365,7 @@
     {
       "path": "packages/adapters/tests/process-supervisor.test.ts",
       "mode": "100644",
-      "sha256": "1255a22f49f6beaea93e32aefa43e3b9f8071e62a6e20a48c35b3802e211754c"
+      "sha256": "9ed6d4d9b03d773c116272fa4d343be059b123da89aba1d93478f41230a25cfc"
     },
     {
       "path": "packages/adapters/tests/recovery-prompt.test.ts",
@@ -1455,7 +1465,7 @@
     {
       "path": "packages/cli/src/index.ts",
       "mode": "100644",
-      "sha256": "ce38f6076ac68a851089c27f2c25763cfd510b9b7c86d196669f392e541c9115"
+      "sha256": "f70b370f13fcfd9e8c334df1d44c583c050beed04ea7477505e86e7375139394"
     },
     {
       "path": "packages/cli/src/mcp-config.ts",
@@ -1525,7 +1535,7 @@
     {
       "path": "packages/cli/src/swarm-command-private.ts",
       "mode": "100644",
-      "sha256": "3ee8379d5a596437a6bec92aaa216a498abc7a96dfe4caf2d4d51b27f1a18436"
+      "sha256": "820e9ac1890cded30b5f26375d5bf0825d71656dc94a65ae853df7f805d7980b"
     },
     {
       "path": "packages/cli/src/swarm-command.ts",
@@ -1560,12 +1570,12 @@
     {
       "path": "packages/cli/src/swarm-workflow-state.ts",
       "mode": "100644",
-      "sha256": "0757277f50f943bf30e3436cf115659a3d11d2feb4cb969d492a20425a380036"
+      "sha256": "7d9984fabbc90906643fdc1ce7d2f33f9d50852def5d3f4f66eeb4eecf8d42d9"
     },
     {
       "path": "packages/cli/src/sync-client.ts",
       "mode": "100644",
-      "sha256": "7edcf8459b38f72c57c9669a3a748c60d5914238efd7248a78c75627da13e8f8"
+      "sha256": "261d9e747c02c72a3e36e8dbdae4fdfd4d118d86706aa7e62af61db88cce6388"
     },
     {
       "path": "packages/cli/src/sync-privacy.ts",
@@ -1575,7 +1585,7 @@
     {
       "path": "packages/cli/src/telemetry.ts",
       "mode": "100644",
-      "sha256": "e838b847431c70f728ae60e780389bbeb48a06d173ae1742c923c9b19ad7b4b4"
+      "sha256": "6e0123e1a43e353be611eb38c375b9d4fcc7488d2cfbf5491913f438260d5da7"
     },
     {
       "path": "packages/cli/src/update-prompt.ts",
@@ -1605,7 +1615,7 @@
     {
       "path": "packages/cli/src/workflow-state.ts",
       "mode": "100644",
-      "sha256": "f19148e86293f01c85d50069db72bc0d0ffb40a5cdc3f67dc93dda3c8a4183ea"
+      "sha256": "d73af479921d2f4f3d838b17ef1618219bee54eb81ed312284052b33404fc3c7"
     },
     {
       "path": "packages/cli/tests/_intake-queue-writer.ts",
@@ -1645,7 +1655,7 @@
     {
       "path": "packages/cli/tests/cli.test.ts",
       "mode": "100644",
-      "sha256": "c988f7d7932fa417b7e10fef1fcda64f0e338fcfccefd064fab325e52c008556"
+      "sha256": "e43c57a089b824a65c7c3ac137c7f73a72e04787fb765ae4bfaef6aff9e23499"
     },
     {
       "path": "packages/cli/tests/continue-review-contract.test.ts",
@@ -1675,7 +1685,7 @@
     {
       "path": "packages/cli/tests/help-contract.test.ts",
       "mode": "100644",
-      "sha256": "8827e8da6bf2e6ebbe6c8d54fa8b1f30f77b0ea5dc8be3b44c096e270aff0d96"
+      "sha256": "d6093eb0eade7c0a3f6c122e6e6311965b82af58f6f7a1f4fc136637bc30d234"
     },
     {
       "path": "packages/cli/tests/home-dir.test.ts",
@@ -1735,7 +1745,7 @@
     {
       "path": "packages/cli/tests/preflight-path-validation.test.ts",
       "mode": "100644",
-      "sha256": "a3ec8bffd448f05d494657cd65e382d1ca73075993d2ce7ac120832f58e0fd49"
+      "sha256": "4c478bfae744fc7835bf0cd4709df3d1c78d91f4155a0ba6403c163cf5159b31"
     },
     {
       "path": "packages/cli/tests/proof-card.test.ts",
@@ -1770,7 +1780,7 @@
     {
       "path": "packages/cli/tests/run-store.test.ts",
       "mode": "100644",
-      "sha256": "b2bca4920374d3af10a121f0394aaf2b135bcad55bac5fdc42271cce668bb51d"
+      "sha256": "b8a7f88e943a12610293625cc1ad24e9bd2d4f585114718731cf6833ff24fa1b"
     },
     {
       "path": "packages/cli/tests/runs-discovery.test.ts",
@@ -1790,7 +1800,7 @@
     {
       "path": "packages/cli/tests/swarm-cli.test.ts",
       "mode": "100644",
-      "sha256": "431b6d8e46e1fa58d05571cb2d10ba224365e0fdaab3736cbe358759ced6232b"
+      "sha256": "4adc04b90097fac7007494e92e471e813fa3af7f09fe09aa050426aa8a3b8dbf"
     },
     {
       "path": "packages/cli/tests/swarm-demo-guidance.test.ts",
@@ -1815,7 +1825,7 @@
     {
       "path": "packages/cli/tests/sync-client.test.ts",
       "mode": "100644",
-      "sha256": "12c004248c13fa1e039d796d6f97aa43b072ebdb40a2850fafa02c5b84c2b780"
+      "sha256": "d37a9306155ade35c72a078bb43dcaf242225fc3de7b6addc7a0ea9caf590bab"
     },
     {
       "path": "packages/cli/tests/sync-receipt-transport.test.ts",
@@ -1825,7 +1835,7 @@
     {
       "path": "packages/cli/tests/telemetry.test.ts",
       "mode": "100644",
-      "sha256": "5a8bb2396fa61a06afa995bbf6762f6afd1bfaf764f8414c69ccf02a6f334c5c"
+      "sha256": "157309152c145d70f832399bf79e0c430e8cf41f3bc3b1b5a2f46a5b74948941"
     },
     {
       "path": "packages/cli/tests/test-runner-config.test.ts",
@@ -2190,7 +2200,7 @@
     {
       "path": "packages/core/src/index.ts",
       "mode": "100644",
-      "sha256": "4f1718dc99d8572de1bd0a5ef10681739d24ea214ab0dde93da1b47ce1a660d5"
+      "sha256": "4b65612081db4b0bd2ad592fb9b90c81628c28006a278fb019fa4681f83fb801"
     },
     {
       "path": "packages/core/src/leash.ts",
@@ -2275,7 +2285,7 @@
     {
       "path": "packages/core/src/policy.ts",
       "mode": "100644",
-      "sha256": "2e54e446b1b27c3e021fce66be0406fc776f716b233405d4630049fd15643130"
+      "sha256": "fde8e5c4b9584fe192fede4f546b9fc030049d2a05acb9c24a4ad386894e1c40"
     },
     {
       "path": "packages/core/src/red-blue/red-phase.ts",
@@ -2420,7 +2430,7 @@
     {
       "path": "packages/core/src/verified-handoff.ts",
       "mode": "100644",
-      "sha256": "eab141612d09fc97d3a634cefe952cc1b980f27801531c80313584a35b418f83"
+      "sha256": "bb10e3ca3df618edbf938f7cda09e1af5a73bdd0d8e0bce8c527be55256b483c"
     },
     {
       "path": "packages/core/src/verifier-input.ts",
@@ -2545,7 +2555,7 @@
     {
       "path": "packages/core/tests/policy.test.ts",
       "mode": "100644",
-      "sha256": "e6be95d14dc592e77e51b77c73fbec334d9f3d8e44c35b1892862dbf2fe166dd"
+      "sha256": "39526619377cb9de104212d18be5e8f6989819f6122d6afb0f2d50cf1636119c"
     },
     {
       "path": "packages/core/tests/recovery-context.test.ts",
@@ -2615,7 +2625,7 @@
     {
       "path": "packages/core/tests/runtime.test.ts",
       "mode": "100644",
-      "sha256": "b31dcad5bcf90f1c4561bd4be4b23f8d128eb77226e1ad581e99de4be580cdb8"
+      "sha256": "2199e5e5390b54d72bdef284ee29f70ddc23bf94b744a58be7c9da9d66907e85"
     },
     {
       "path": "packages/core/tests/savings.test.ts",
@@ -2740,7 +2750,7 @@
     {
       "path": "packages/core/tests/verified-handoff.test.ts",
       "mode": "100644",
-      "sha256": "7f931dd22603d82b8664804563015e23e3359e801fdc0dfb6212441be62e9522"
+      "sha256": "68f053e1deb9d63a42911ccbaf59f81be4e9a14e409fa237c90fc5623f4b59fe"
     },
     {
       "path": "packages/core/tests/verifier-input.test.ts",
@@ -2785,7 +2795,7 @@
     {
       "path": "packages/mcp/mcpb/manifest.json",
       "mode": "100644",
-      "sha256": "d6e60aba8c089e75efcc80859ac70d0141befbb0db7280d215a5abe800209b69"
+      "sha256": "0e5ec83f4297fae7781eb4d942e1ef68e6ab1474aa9ae7d47b9f45a66db62e35"
     },
     {
       "path": "packages/mcp/mcpb/smoke-mcpb.mjs",
@@ -2795,7 +2805,7 @@
     {
       "path": "packages/mcp/package.json",
       "mode": "100644",
-      "sha256": "334fc7e467fc56632c39e9480bf09e4bab114b0874bbadc5157f7acfeaa80101"
+      "sha256": "f0d7594fed7a12a22755e3743bc401356dc32c6c2227f7c77a1698e8d877b35e"
     },
     {
       "path": "packages/mcp/scripts/build-package-lib.mjs",
@@ -2850,7 +2860,7 @@
     {
       "path": "packages/mcp/server.json",
       "mode": "100644",
-      "sha256": "9584d4ba9e2a357c763f36cff22595f765c32362c8e47cc3eb7429b97ba6ba1a"
+      "sha256": "f7a9d0627ad7b213468668bb936333608d38eec1690329037081961f35aeb9e1"
     },
     {
       "path": "packages/mcp/src/arcade/capabilities.ts",
@@ -2880,7 +2890,7 @@
     {
       "path": "packages/mcp/src/package-version.ts",
       "mode": "100644",
-      "sha256": "7ebed22096c4c6cf18074c6ec1e64e656aee58730de363e8890a98d9927de9aa"
+      "sha256": "5b55fc5c8b4b3eecf78d0c2861eb1f6272669da706a24d7d29639a5b7ba7c5ab"
     },
     {
       "path": "packages/mcp/src/prompts.ts",
@@ -3195,12 +3205,12 @@
     {
       "path": "plugins/martinloop/.claude-plugin/plugin.json",
       "mode": "100644",
-      "sha256": "bbdc1430f52c052fde5e10befe59e5795bc8e1ca915de30775ea3ae0ac85a378"
+      "sha256": "64042632e8b7c9822828d6a42d63197a5b7126164c0abcc3c77a33709c8f017c"
     },
     {
       "path": "plugins/martinloop/.codex-plugin/plugin.json",
       "mode": "100644",
-      "sha256": "a30373dccad4dd5af42be9b67280ead7e935fea297466beb7e666cf363b8ebdb"
+      "sha256": "6cc53402875524cc4125683669b228679970db21cf8635967bb685764c0b49fb"
     },
     {
       "path": "plugins/martinloop/.codexignore",
@@ -3210,7 +3220,7 @@
     {
       "path": "plugins/martinloop/.mcp.json",
       "mode": "100644",
-      "sha256": "4e4b65d9c9b85771750207889037159b50d53f39b436573fae5923f5f475c633"
+      "sha256": "b6793b4846bfbe999aaf1c46b1fad261d5c9573431577042bc6ad2ec69061398"
     },
     {
       "path": "plugins/martinloop/LICENSE",
@@ -3240,7 +3250,7 @@
     {
       "path": "plugins/martinloop/plugin.json",
       "mode": "100644",
-      "sha256": "bbdc1430f52c052fde5e10befe59e5795bc8e1ca915de30775ea3ae0ac85a378"
+      "sha256": "64042632e8b7c9822828d6a42d63197a5b7126164c0abcc3c77a33709c8f017c"
     },
     {
       "path": "plugins/martinloop/skills/martinloop-govern/SKILL.md",
@@ -3255,7 +3265,7 @@
     {
       "path": "pnpm-lock.yaml",
       "mode": "100644",
-      "sha256": "140fff6396524fa11670439252259883a93fd1448878efd7701d747354690f37"
+      "sha256": "732a2e205b18d15c149a7db1aae2ab7a3e5cba73ae99691857bed5f4e564126f"
     },
     {
       "path": "pnpm-workspace.yaml",

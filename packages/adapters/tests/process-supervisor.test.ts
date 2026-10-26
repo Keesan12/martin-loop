@@ -9,12 +9,46 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import {
+  classifyWindowsDescendantPostcondition,
   spawnSupervisedProcess,
   spawnSupervisedProcessForTest,
   classifyPosixProcessGroupSnapshot,
   type ProcessSpawnLike,
   type SpawnSupervisedProcessOptions
 } from "../src/process-supervisor.js";
+
+describe("Windows owned-descendant process-table evidence", () => {
+  it("keeps a failed termination indeterminate when captured descendants disappear between snapshots", () => {
+    expect(classifyWindowsDescendantPostcondition(
+      [
+        { ProcessId: 4101, ParentProcessId: 4100 },
+        { ProcessId: 4102, ParentProcessId: 4101 },
+        { ProcessId: 9001, ParentProcessId: 9000 }
+      ],
+      [{ ProcessId: 9001, ParentProcessId: 9000 }],
+      4100
+    )).toBe("invalid");
+  });
+
+  it("does not treat an orphaned descendant created between snapshots as proof of closure", () => {
+    expect(classifyWindowsDescendantPostcondition(
+      [{ ProcessId: 4151, ParentProcessId: 4150 }],
+      [{ ProcessId: 4152, ParentProcessId: 1 }],
+      4150
+    )).toBe("invalid");
+  });
+
+  it("does not claim closure while a captured descendant remains present", () => {
+    expect(classifyWindowsDescendantPostcondition(
+      [
+        { ProcessId: 4201, ParentProcessId: 4200 },
+        { ProcessId: 4202, ParentProcessId: 4201 }
+      ],
+      [{ ProcessId: 4202, ParentProcessId: 4201 }],
+      4200
+    )).toBe("alive");
+  });
+});
 
 interface FakeChild extends ChildProcess {
   emitClose(code: number | null): void;
