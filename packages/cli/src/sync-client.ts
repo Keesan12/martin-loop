@@ -1292,7 +1292,17 @@ export interface SyncFlushResult {
   reason?: "missing_token" | "missing_endpoint" | "missing_both" | "incomplete";
 }
 
-export async function flushSyncQueue(): Promise<SyncFlushResult> {
+export interface SyncOutputOptions {
+  stdout?: boolean;
+}
+
+function writeSyncStdout(message: string, options: SyncOutputOptions): void {
+  if (options.stdout !== false) {
+    process.stdout.write(message);
+  }
+}
+
+export async function flushSyncQueue(options: SyncOutputOptions = {}): Promise<SyncFlushResult> {
   const endpoint = process.env["MARTIN_TELEMETRY_ENDPOINT"]?.trim();
   const token = process.env["MARTIN_API_TOKEN"]?.trim();
   if (!endpoint || !token) {
@@ -1333,7 +1343,7 @@ export async function flushSyncQueue(): Promise<SyncFlushResult> {
   }
 
   if (parseable.length === 0) {
-    process.stdout.write("[martin sync] Queue is empty.\n");
+    writeSyncStdout("[martin sync] Queue is empty.\n", options);
     return {
       ok: quarantinedCount === 0 && stillPending === 0,
       uploaded: 0,
@@ -1349,8 +1359,9 @@ export async function flushSyncQueue(): Promise<SyncFlushResult> {
   );
   const deferred = parseable.length - eligible.length;
 
-  process.stdout.write(
-    `[martin sync] Flushing ${eligible.length} eligible item(s)${deferred > 0 ? ` (${deferred} deferred by backoff)` : ""}…\n`
+  writeSyncStdout(
+    `[martin sync] Flushing ${eligible.length} eligible item(s)${deferred > 0 ? ` (${deferred} deferred by backoff)` : ""}…\n`,
+    options
   );
 
   let succeeded = 0;
@@ -1424,8 +1435,9 @@ export async function flushSyncQueue(): Promise<SyncFlushResult> {
     }
   }
 
-  process.stdout.write(
-    `[martin sync] Done — ${succeeded} uploaded, ${quarantinedCount} quarantined, ${stillPending} still pending.\n`
+  writeSyncStdout(
+    `[martin sync] Done — ${succeeded} uploaded, ${quarantinedCount} quarantined, ${stillPending} still pending.\n`,
+    options
   );
 
   const pending = deferred + stillPending;
@@ -1448,37 +1460,67 @@ export async function flushSyncQueue(): Promise<SyncFlushResult> {
  * May throw on unrecoverable filesystem errors.
  * Called by `martin sync status`.
  */
-export async function syncQueueStatus(): Promise<void> {
+export interface SyncQueueStatusResult {
+  pending: number;
+  parseable: number;
+  corrupt: number;
+  quarantined: number;
+  items: Array<{
+    loopId: string;
+    enqueuedAt: string;
+    attempts: number;
+    nextRetryNotBefore?: string;
+  }>;
+}
+
+export async function syncQueueStatus(options: SyncOutputOptions = {}): Promise<SyncQueueStatusResult> {
   const queueDir = resolveQueueDir();
   const items = await listQueueOldestFirst(queueDir);
   const allFiles = await safeListQueue(queueDir);
+  const corrupt = allFiles.length - items.length;
 
   if (allFiles.length === 0) {
-    process.stdout.write("[martin sync] Queue is empty.\n");
+    writeSyncStdout("[martin sync] Queue is empty.\n", options);
   } else {
-    process.stdout.write(`[martin sync] ${allFiles.length} item(s) pending upload:\n`);
+    writeSyncStdout(`[martin sync] ${allFiles.length} item(s) pending upload:\n`, options);
     for (const { item } of items) {
       const backoffNote = item.nextRetryNotBefore
         ? `, retry after: ${item.nextRetryNotBefore}`
         : "";
-      process.stdout.write(
-        `  • ${item.loopId} (queued ${item.enqueuedAt}, attempts: ${item.attempts}${backoffNote})\n`
+      writeSyncStdout(
+        `  • ${item.loopId} (queued ${item.enqueuedAt}, attempts: ${item.attempts}${backoffNote})\n`,
+        options
       );
     }
-    const corrupt = allFiles.length - items.length;
-    if (corrupt > 0) process.stdout.write(`  • ${corrupt} unreadable/corrupt item(s)\n`);
+    if (corrupt > 0) {
+      writeSyncStdout(`  • ${corrupt} unreadable/corrupt item(s)\n`, options);
+    }
   }
 
   const quarantineDir = resolveQuarantineDir(queueDir);
+  let quarantined = 0;
   try {
-    const quarantined = (await readdir(quarantineDir)).filter((f) => f.endsWith(".json"));
-    if (quarantined.length > 0) {
-      process.stdout.write(
-        `[martin sync] ${quarantined.length} item(s) in quarantine — inspect ~/.martin/runs/.sync-queue/.quarantine/\n`
+    quarantined = (await readdir(quarantineDir)).filter((f) => f.endsWith(".json")).length;
+    if (quarantined > 0) {
+      writeSyncStdout(
+        `[martin sync] ${quarantined} item(s) in quarantine — inspect ~/.martin/runs/.sync-queue/.quarantine/\n`,
+        options
       );
     }
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
-    // ENOENT: no quarantine dir yet — fine
   }
+
+  return {
+    pending: allFiles.length,
+    parseable: items.length,
+    corrupt,
+    quarantined,
+    items: items.map(({ item }) => ({
+      loopId: item.loopId,
+      enqueuedAt: item.enqueuedAt,
+      attempts: item.attempts,
+      ...(item.nextRetryNotBefore ? { nextRetryNotBefore: item.nextRetryNotBefore } : {})
+    }))
+  };
 }

@@ -986,6 +986,9 @@ describe("runMartin", () => {
       metadata: {
         providerId: "openai",
         model: "gpt-5-mini",
+        budgetPreflight: {
+          pricePerMTokenUsd: 0,
+        },
         capabilities: {
           preflight: true,
           usageSettlement: true,
@@ -1040,8 +1043,8 @@ describe("runMartin", () => {
         allowedPaths: ["packages/contracts/**"]
       },
       budget: {
-        maxUsd: 10,
-        softLimitUsd: 6,
+        maxUsd: 0.01,
+        softLimitUsd: 0.01,
         maxIterations: 1,
         maxTokens: 2_000
       },

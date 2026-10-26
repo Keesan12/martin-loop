@@ -504,6 +504,8 @@ export interface MartinAdapter {
     budgetPreflight?: {
       /** Estimated token floor required before the adapter can report first-turn usage. */
       minimumViableTokens?: number;
+      /** Adapter-specific provider price used by the admission estimate. */
+      pricePerMTokenUsd?: number;
       basis?: string;
     };
     capabilities?: {
@@ -1596,6 +1598,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       remainingBudgetUsd: distilled.constraints.remainingBudgetUsd,
       remainingTokens: distilled.constraints.remainingTokens,
       minimumViableTokens: executingAdapter.metadata.budgetPreflight?.minimumViableTokens,
+      pricePerMTokenUsd: executingAdapter.metadata.budgetPreflight?.pricePerMTokenUsd,
       // D2: pass remaining iterations so the preflight can compute a budget-aware cap
       // rather than using the old rigid maxUsd * 0.25 that blocked viable attempts.
       remainingIterations: distilled.constraints.remainingIterations

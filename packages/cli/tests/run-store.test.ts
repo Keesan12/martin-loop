@@ -283,6 +283,62 @@ describe("buildVerificationSummary", () => {
     expect(summary.steps[0]?.evidence).toEqual(evidence);
   });
 
+  it("does not contradict a verifier-passed Windows run only because persisted path spelling differs", () => {
+    const loop = makeLoopRecord({
+      loopId: "loop_windows_binding",
+      workspaceId: "workspace_windows_binding",
+      task: {
+        title: "Verify Windows binding",
+        objective: "Verify Windows binding",
+        repoRoot: "C:\\Repo\\Work",
+        verificationPlan: ["npm test"],
+      },
+      receiptScope: {
+        workingDirectory: "C:\\Repo\\Work",
+        runsRoot: "C:\\Temp\\Martin-Runs",
+      },
+      attempts: [{
+        attemptId: "attempt_windows_1",
+        index: 1,
+        adapterId: "agent-cli:codex",
+        model: "gpt-5.4",
+        startedAt: "2026-10-24T12:00:00.000Z",
+      }],
+      events: [{
+        eventId: "evt_windows_verification",
+        timestamp: "2026-10-24T12:01:00.000Z",
+        type: "verification.completed",
+        lifecycleState: "completed",
+        payload: {
+          passed: true,
+          attemptIndex: 1,
+          summary: "Verifier passed.",
+          binding: {
+            runId: "loop_windows_binding",
+            workspaceId: "workspace_windows_binding",
+            attemptId: "attempt_windows_1",
+            cwd: "c:/repo/work/.",
+            runsRoot: "c:/temp/martin-runs",
+            commands: ["npm test"],
+          },
+          steps: [{
+            command: "npm test",
+            launched: true,
+            completed: true,
+            crashed: false,
+            exitCode: 0,
+            timedOut: false,
+          }],
+        },
+      }],
+    });
+
+    expect(buildVerificationSummary(loop)).toMatchObject({
+      status: "passed",
+      summary: "Verifier passed.",
+    });
+  });
+
   it("does not invent timedOut or fastFail fields when persisted evidence omits them", () => {
     const loop = makeLoopRecord({
       events: [

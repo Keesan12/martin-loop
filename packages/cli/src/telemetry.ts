@@ -438,33 +438,65 @@ Never sent:
 - workspace, project, or organization identifiers
 - raw exception messages or stacks`;
 
+export interface TelemetryCommandResult {
+  exitCode: number;
+  data: Record<string, unknown>;
+  human: string[];
+  quiet: string;
+}
+
 export async function executeTelemetryCommand(
   action: "status" | "explain" | "on" | "off"
-): Promise<number> {
+): Promise<TelemetryCommandResult> {
   const config = await readTelemetryConfig();
   switch (action) {
     case "status": {
       const effective = isTelemetrySendingEnabled(config);
       const envDisabled = telemetryEnvironmentDisabled();
-      const preferenceType = config.userChoseExplicitly ? "explicit" : "default";
-      process.stdout.write(`Telemetry\n`);
-      process.stdout.write(`  Stored enabled:   ${config.enabled}\n`);
-      process.stdout.write(`  Notice shown:     ${config.noticeShown}\n`);
-      process.stdout.write(`  Preference:       ${preferenceType}\n`);
-      process.stdout.write(`  Env disabled:     ${envDisabled}\n`);
-      process.stdout.write(`  Effective:        ${effective ? "sending" : "not sending"}\n`);
-      return 0;
+      const preference = config.userChoseExplicitly ? "explicit" : "default";
+      return {
+        exitCode: 0,
+        data: {
+          action,
+          storedEnabled: config.enabled,
+          noticeShown: config.noticeShown,
+          preference,
+          envDisabled,
+          effective: effective ? "sending" : "not_sending"
+        },
+        human: [
+          "Telemetry",
+          `  Stored enabled:   ${config.enabled}`,
+          `  Notice shown:     ${config.noticeShown}`,
+          `  Preference:       ${preference}`,
+          `  Env disabled:     ${envDisabled}`,
+          `  Effective:        ${effective ? "sending" : "not sending"}`
+        ],
+        quiet: effective ? "sending" : "not_sending"
+      };
     }
     case "explain":
-      process.stdout.write(`${TELEMETRY_MANIFEST}\n`);
-      return 0;
+      return {
+        exitCode: 0,
+        data: { action, manifest: TELEMETRY_MANIFEST },
+        human: [TELEMETRY_MANIFEST],
+        quiet: "explain"
+      };
     case "on":
       await writeTelemetryConfig({ ...config, enabled: true, userChoseExplicitly: true, noticeShown: true });
-      process.stdout.write(`Telemetry enabled.\n`);
-      return 0;
+      return {
+        exitCode: 0,
+        data: { action, enabled: true },
+        human: ["Telemetry enabled."],
+        quiet: "on"
+      };
     case "off":
       await writeTelemetryConfig({ ...config, enabled: false, userChoseExplicitly: true, noticeShown: true });
-      process.stdout.write(`Telemetry disabled.\n`);
-      return 0;
+      return {
+        exitCode: 0,
+        data: { action, enabled: false },
+        human: ["Telemetry disabled."],
+        quiet: "off"
+      };
   }
 }

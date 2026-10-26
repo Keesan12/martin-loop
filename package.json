@@ -1,7 +1,7 @@
 {
   "name": "martin-loop",
   "private": false,
-  "version": "0.8.9",
+  "version": "0.8.10",
   "type": "module",
   "description": "Open-source command center for governed AI coding agents with built-in onboarding, hard gates, MCP, and shareable run receipts.",
   "packageManager": "pnpm@10.33.0",
@@ -126,13 +126,7 @@
     "vitest": "^4.1.8"
   },
   "dependencies": {
-    "@open-policy-agent/opa-wasm": "^1.10.0",
-    "@opentelemetry/api-logs": "^0.214.0",
-    "@opentelemetry/exporter-logs-otlp-http": "^0.214.0",
-    "@opentelemetry/resources": "^2.6.1",
-    "@opentelemetry/sdk-logs": "^0.214.0",
-    "@opentelemetry/semantic-conventions": "^1.38.0",
-    "ts-morph": "^21.0.0"
+    "@open-policy-agent/opa-wasm": "^1.10.0"
   },
   "workspaces": [
     "packages/*",

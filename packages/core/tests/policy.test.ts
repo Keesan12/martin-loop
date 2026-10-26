@@ -43,6 +43,22 @@ describe("evaluateBudgetPreflight", () => {
     expect(decision.reason).toContain("per-attempt cap");
   });
 
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, -0.01])(
+    "rejects invalid adapter pricing before admission (%s)",
+    (pricePerMTokenUsd) => {
+      const decision = evaluateBudgetPreflight({
+        promptCharCount: 2_000,
+        attemptCount: 0,
+        remainingBudgetUsd: 10,
+        pricePerMTokenUsd
+      });
+
+      expect(decision.allowed).toBe(false);
+      expect(decision.reason).toContain("invalid adapter price");
+      expect(Number.isFinite(decision.estimate.estimatedAttemptCostUsd)).toBe(true);
+    }
+  );
+
   it("estimate always carries provenance: estimated", () => {
     const decision = evaluateBudgetPreflight({
       promptCharCount: 1000,

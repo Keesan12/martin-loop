@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [0.8.10] - 2026-10-26
+
+### Fixed
+- Command-specific help is read-only, stays JSON-pure in machine modes, and rejects unknown top-level or nested targets without falling through into execution.
+- Unknown long options now fail closed before command side effects while preserving the stricter run and preflight validators.
+- Telemetry and sync machine output is structured and no longer contaminated by human-facing transport text.
+- Absolute native paths inside the selected working directory are canonicalized to repository-relative scope; escaping, foreign-syntax, drive-mismatched, traversal, UNC, and root-only paths remain blocked.
+- Persisted verifier path bindings compare using their recorded Windows or POSIX syntax rather than the host operating system's path rules.
+- Verifier-only execution now declares zero provider pricing during budget preflight.
+- Swarm doctor, estimate, preflight, and plan use one canonical workflow-state authority with exact receipt hashes and bounded clock-skew handling.
+- Interactive milestone prompts remain suppressed in JSON, quiet, and CI execution.
+
 ## [0.8.9] - 2026-10-22
 
 ### Added

@@ -406,6 +406,67 @@ describe("verifierActuallyPassed", () => {
     expect(verifierActuallyPassed(passing, expected)).toBe(true);
   });
 
+  it("accepts canonically equivalent POSIX filesystem bindings", () => {
+    const expectedWithRunsRoot = {
+      ...expected,
+      cwd: "/repo-a",
+      runsRoot: "/tmp/martin-runs",
+    };
+    const evidence = {
+      ...passing,
+      binding: {
+        ...expectedWithRunsRoot,
+        cwd: "/repo-a/./",
+        runsRoot: "/tmp/martin-runs/.",
+      },
+    };
+    expect(verifierActuallyPassed(evidence, expectedWithRunsRoot)).toBe(true);
+  });
+
+  it("accepts case/separator-equivalent Windows filesystem bindings", () => {
+    const expectedWindows = {
+      ...expected,
+      cwd: "C:\\Repo\\Work",
+      runsRoot: "C:\\Temp\\Martin-Runs",
+    };
+    const evidence = {
+      ...passing,
+      binding: {
+        ...expectedWindows,
+        cwd: "c:/repo/work/.",
+        runsRoot: "c:/temp/martin-runs/",
+      },
+    };
+    expect(verifierActuallyPassed(evidence, expectedWindows)).toBe(true);
+  });
+
+  it("keeps POSIX path comparison case-sensitive", () => {
+    const expectedPosix = { ...expected, cwd: "/repo-a" };
+    const evidence = {
+      ...passing,
+      binding: { ...expectedPosix, cwd: "/Repo-A" },
+    };
+    expect(verifierActuallyPassed(evidence, expectedPosix)).toBe(false);
+  });
+
+  it("does not equate Windows and POSIX path syntaxes", () => {
+    const expectedWindows = { ...expected, cwd: "C:\\repo-a" };
+    const evidence = {
+      ...passing,
+      binding: { ...expectedWindows, cwd: "/repo-a" },
+    };
+    expect(verifierActuallyPassed(evidence, expectedWindows)).toBe(false);
+  });
+
+  it("rejects a different Windows drive even when the remainder matches", () => {
+    const expectedWindows = { ...expected, cwd: "C:\\Repo\\Work" };
+    const evidence = {
+      ...passing,
+      binding: { ...expectedWindows, cwd: "D:\\Repo\\Work" },
+    };
+    expect(verifierActuallyPassed(evidence, expectedWindows)).toBe(false);
+  });
+
   it.each([
     ["never launched", { steps: [{ command: "npm test", launched: false, exitCode: 1, timedOut: false }] }],
     ["incomplete", { steps: [{ command: "npm test", launched: true, completed: false, crashed: false, exitCode: 0, timedOut: false }] }],

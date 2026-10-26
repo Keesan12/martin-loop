@@ -732,6 +732,15 @@ describe("runSubprocess", () => {
 });
 
 describe("createVerifierOnlyAdapter", () => {
+  it("declares zero provider pricing for budget preflight", () => {
+    const adapter = createVerifierOnlyAdapter();
+
+    expect(adapter.metadata.budgetPreflight).toEqual({
+      pricePerMTokenUsd: 0,
+      basis: "Verifier-only execution launches no model provider."
+    });
+  });
+
   it("short-circuits git inspection outside a repository", async () => {
     const directory = await mkdtemp(join(tmpdir(), "martin-no-git-"));
     let spawnCalls = 0;

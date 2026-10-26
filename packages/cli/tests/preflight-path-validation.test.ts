@@ -1,7 +1,7 @@
 /**
  * Regression tests for preflight allowed-path traversal rejection.
  *
- * Addresses Atlas FL-011 (allow_path_traversal_rejected), FL-012 (allow_path_absolute_rejected),
+ * Addresses Atlas FL-011 (allow_path_traversal_rejected), FL-012 (allow_path_absolute_confined),
  * and FL-013 (deny_path_escape). Preflight must return ready:false with a blocking issue
  * for any path that escapes the working directory — before any provider spend occurs.
  *
@@ -96,6 +96,18 @@ describe("preflight path traversal rejection (FL-011/FL-012/FL-013)", () => {
       expect(payload.ready).toBe(false);
       const issues = payload.blockingIssues as string[];
       expect(issues.some((i) => i.includes(ESCAPING_PATH_FRAGMENT))).toBe(true);
+    });
+  });
+
+  it("accepts and repo-relativizes an absolute allowed-path inside the working directory", async () => {
+    await withTempDir(async (workspace) => {
+      const absoluteInsidePath = join(workspace, "inside-scope-canary.txt");
+      const { exitCode, payload } = await runPreflight(workspace, ["--allow-path", absoluteInsidePath]);
+
+      expect(exitCode).toBe(0);
+      expect(payload.ready, JSON.stringify(payload, null, 2)).toBe(true);
+      expect(payload.blockingIssues).toEqual([]);
+      expect((payload.request as { allowedPaths?: string[] }).allowedPaths).toEqual(["inside-scope-canary.txt"]);
     });
   });
 

@@ -25,7 +25,11 @@ import {
 import { createExplicitSwarmAdapterFactory } from "../src/swarm-engine.js";
 import { executeCli, parseCliArguments, renderCliHelp } from "../src/index.js";
 import { CliCommandError } from "../src/ux.js";
-import { recordCliWorkflowStep } from "../src/swarm-workflow-state.js";
+import {
+  evaluateSwarmPlanGate,
+  recordCliWorkflowStep,
+  recordSwarmPlanReadiness,
+} from "../src/workflow-state.js";
 
 const scratch: string[] = [];
 const execFileAsync = promisify(execFile);
@@ -171,6 +175,44 @@ describe("swarm plan", () => {
       "human",
       dependencies(fixture.plan.baselineCommit),
     )).rejects.toThrow(new RegExp(missing, "iu"));
+  });
+
+  it("accepts estimate-scoped budget authority while preserving exact preflight and plan budgets", async () => {
+    const fixture = await createPlanFixture();
+    const finalBudget = fixture.plan.parentContract.budget;
+    const estimateBudget = {
+      ...finalBudget,
+      softLimitUsd: 1,
+      maxIterations: 1,
+      maxTokens: 1_000,
+    };
+    await recordPrerequisites(fixture, undefined, estimateBudget);
+    const gateInput = swarmPlanGateInput(fixture);
+    await recordSwarmPlanReadiness(gateInput);
+
+    await expect(evaluateSwarmPlanGate(gateInput)).resolves.toMatchObject({
+      allowed: true,
+      missingSteps: [],
+    });
+  });
+
+  it("blocks swarm readiness when the estimate maxUsd authority differs", async () => {
+    const fixture = await createPlanFixture();
+    const finalBudget = fixture.plan.parentContract.budget;
+    await recordPrerequisites(fixture, undefined, {
+      ...finalBudget,
+      maxUsd: finalBudget.maxUsd + 1,
+      softLimitUsd: 1,
+      maxIterations: 1,
+      maxTokens: 1_000,
+    });
+    const gateInput = swarmPlanGateInput(fixture);
+    await recordSwarmPlanReadiness(gateInput);
+
+    await expect(evaluateSwarmPlanGate(gateInput)).resolves.toMatchObject({
+      allowed: false,
+      missingSteps: ["estimate"],
+    });
   });
 
   it("rejects a changed Git baseline before persisting readiness", async () => {
@@ -945,6 +987,7 @@ async function createPlanFixture(options: { engine?: string; model?: string; swa
 async function recordPrerequisites(
   fixture: Awaited<ReturnType<typeof createPlanFixture>>,
   missing?: "doctor" | "estimate" | "preflight",
+  estimateBudget = fixture.plan.parentContract.budget,
 ): Promise<void> {
   const receiptScope = {
     invocationRoot: fixture.cwd,
@@ -968,7 +1011,7 @@ async function recordPrerequisites(
       workingDirectory: fixture.cwd,
       objective: fixture.plan.parentContract.objective,
       receiptScope,
-      budget: fixture.plan.parentContract.budget,
+      budget: estimateBudget,
     });
   }
   if (missing !== "preflight") {
@@ -985,6 +1028,27 @@ async function recordPrerequisites(
       budget: fixture.plan.parentContract.budget,
     });
   }
+}
+
+function swarmPlanGateInput(fixture: Awaited<ReturnType<typeof createPlanFixture>>) {
+  return {
+    runsRoot: fixture.runsRoot,
+    workingDirectory: fixture.cwd,
+    objective: fixture.plan.parentContract.objective,
+    engine: fixture.plan.engine.engine,
+    verificationPlan: fixture.plan.parentContract.globalVerifierStack.map((step) => step.command),
+    receiptScope: {
+      invocationRoot: fixture.cwd,
+      workingDirectory: fixture.cwd,
+      repoRoot: fixture.cwd,
+      runsRoot: fixture.runsRoot,
+    },
+    allowedPaths: fixture.plan.parentContract.scope.allowedPaths,
+    deniedPaths: fixture.plan.parentContract.scope.deniedPaths,
+    budget: fixture.plan.parentContract.budget,
+    planHash: fixture.plan.planHash,
+    baselineCommit: fixture.plan.baselineCommit,
+  };
 }
 
 function dependencies(baselineCommit: string, launch = vi.fn()): SwarmCommandDependencies {

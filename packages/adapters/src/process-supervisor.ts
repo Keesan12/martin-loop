@@ -563,12 +563,53 @@ function isErrno(error: unknown, code: string): boolean {
     && String((error as { code?: unknown }).code) === code;
 }
 
+type WindowsProcessTreeRow = { ProcessId: number; ParentProcessId: number };
+
+/**
+ * Classify descendants that remain visible after a failed termination attempt.
+ * Two point-in-time snapshots cannot prove closure across the interval because
+ * a descendant may be created and reparented between them. Absence is therefore
+ * indeterminate and must retain the original termination failure.
+ * @internal - deterministic pure classification for process-supervisor tests
+ */
+export function classifyWindowsDescendantPostcondition(
+  initialRows: WindowsProcessTreeRow[],
+  postTerminationRows: WindowsProcessTreeRow[],
+  rootPid: number
+): "closed" | "alive" | "invalid" {
+  if (!isOwnedPid(rootPid)) return "invalid";
+  const allRows = [...initialRows, ...postTerminationRows];
+  if (allRows.some((row) => !isOwnedPid(row.ProcessId) || !Number.isSafeInteger(row.ParentProcessId))) {
+    return "invalid";
+  }
+
+  const ownedLineage = new Set<number>([rootPid]);
+  const expandLineage = (rows: WindowsProcessTreeRow[]) => {
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const row of rows) {
+        if (ownedLineage.has(row.ParentProcessId) && !ownedLineage.has(row.ProcessId)) {
+          ownedLineage.add(row.ProcessId);
+          changed = true;
+        }
+      }
+    }
+  };
+  expandLineage(initialRows);
+  expandLineage(postTerminationRows);
+
+  return postTerminationRows.some((row) => ownedLineage.has(row.ProcessId))
+    ? "alive"
+    : "invalid";
+}
+
 async function terminateWindowsDescendantsAfterRootExit(
   rootPid: number,
   graceMs: number,
   waitImpl: (durationMs: number) => Promise<void>
 ): Promise<ProcessTreeCleanupResult> {
-  let rows: Array<{ ProcessId: number; ParentProcessId: number }>;
+  let rows: WindowsProcessTreeRow[];
   try {
     rows = await readWindowsProcessTree();
   } catch (error) {
@@ -581,14 +622,19 @@ async function terminateWindowsDescendantsAfterRootExit(
     childrenByParent.set(row.ParentProcessId, children);
   }
   const directChildren = childrenByParent.get(rootPid) ?? [];
+  let taskkillFailure: Extract<ProcessTreeCleanupResult, { state: "failed" }> | undefined;
   for (const childPid of directChildren) {
     const failure = await runTaskkill(childPid, spawnProcess, graceMs, waitImpl);
-    if (failure) return failure;
+    taskkillFailure ??= failure;
   }
+  // Once taskkill has failed, a later process-table snapshot cannot prove the
+  // complete descendant set closed. Return the bounded failure immediately;
+  // starting another PowerShell query here could otherwise stall cleanup.
+  if (taskkillFailure) return taskkillFailure;
   return { state: "closed" };
 }
 
-function readWindowsProcessTree(): Promise<Array<{ ProcessId: number; ParentProcessId: number }>> {
+function readWindowsProcessTree(): Promise<WindowsProcessTreeRow[]> {
   const script = [
     "Get-CimInstance Win32_Process",
     "Select-Object ProcessId,ParentProcessId",

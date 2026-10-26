@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { executeCli } from "../src/index.js";
 import {
   shouldShowTelemetryNotice,
   isTelemetrySendingEnabled,
@@ -833,5 +834,35 @@ describe("assertAllowedTelemetryPayload — run_failed reason enum", () => {
     expect(() => assertAllowedTelemetryPayload("run_failed", {
       durationMs: 500, command: "run", reason: "",
     })).toThrow(/Unsupported failure reason/);
+  });
+});
+
+describe("telemetry CLI machine-output contract", () => {
+  it("keeps status/explain/on/off JSON-pure inside an isolated profile", async () => {
+    const profile = await fs.mkdtemp(path.join(os.tmpdir(), "martin-telemetry-cli-"));
+    const previousHome = process.env["HOME"];
+    const previousUserProfile = process.env["USERPROFILE"];
+    process.env["HOME"] = profile;
+    process.env["USERPROFILE"] = profile;
+
+    try {
+      for (const action of ["status", "explain", "on", "off"] as const) {
+        const result = await executeCli(["--json", "telemetry", action]);
+        expect(result.exitCode).toBe(0);
+        expect(result.stderr).toBe("");
+        expect(() => JSON.parse(result.stdout)).not.toThrow();
+        expect(JSON.parse(result.stdout)).toMatchObject({
+          command: "telemetry",
+          action,
+        });
+        expect(result.stdout).not.toMatch(/^Telemetry(?: enabled| disabled)?\.?/u);
+      }
+    } finally {
+      if (previousHome === undefined) delete process.env["HOME"];
+      else process.env["HOME"] = previousHome;
+      if (previousUserProfile === undefined) delete process.env["USERPROFILE"];
+      else process.env["USERPROFILE"] = previousUserProfile;
+      await fs.rm(profile, { recursive: true, force: true });
+    }
   });
 });
