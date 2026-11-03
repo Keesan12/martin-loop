@@ -6,38 +6,70 @@ on:
       - "Validate and cut paired release tags"
     types:
       - completed
+  workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: Exact commit already bound by both release tags
+        required: true
+        type: string
+      version:
+        description: Existing paired-tag semantic version
+        required: true
+        type: string
+      failed_run_id:
+        description: Failed root publisher run that authorizes partial-release recovery
+        required: true
+        type: string
 
 permissions:
+  actions: read
   contents: write
   id-token: write
 
 jobs:
   publish-npm:
     name: Publish to npm
-    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'workflow_dispatch' && github.repository == 'Keesan12/martin-loop'
+    if: >-
+      github.repository == 'Keesan12/martin-loop' &&
+      ((github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'workflow_dispatch') ||
+      github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: main
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.candidate_sha || 'main' }}
           fetch-depth: 0
 
       - name: Resolve release coordinates
         id: release-vars
         shell: bash
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
         run: |
-          VERSION="$(node -p "require('./package.json').version")"
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            VERSION="$REQUESTED_VERSION"
+          else
+            VERSION="$(node -p "require('./package.json').version")"
+          fi
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$ ]]
+          test "$(node -p "require('./package.json').version")" = "$VERSION"
           RELEASE_TAG="v${VERSION}"
           echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Verify paired tags resolve to current public main
+      - name: Verify paired tags resolve to authorized release source
         shell: bash
         env:
           RELEASE_TAG: ${{ steps.release-vars.outputs.tag }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          FAILED_RUN_ID: ${{ inputs.failed_run_id }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           VERSION="${RELEASE_TAG#v}"
           git fetch origin main
+          git fetch --force origin "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
           git fetch --force origin "refs/tags/mcp-v${VERSION}:refs/tags/mcp-v${VERSION}"
           TAG_SHA="$(git rev-list -n 1 "$RELEASE_TAG")"
           MCP_TAG_SHA="$(git rev-list -n 1 "mcp-v${VERSION}")"
@@ -45,7 +77,29 @@ jobs:
           HEAD_SHA="$(git rev-parse HEAD)"
           test "$HEAD_SHA" = "$TAG_SHA"
           test "$TAG_SHA" = "$MCP_TAG_SHA"
-          test "$TAG_SHA" = "$MAIN_SHA"
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            [[ "$CANDIDATE_SHA" =~ ^[a-f0-9]{40}$ ]]
+            [[ "$FAILED_RUN_ID" =~ ^[0-9]+$ ]]
+            test "$HEAD_SHA" = "$CANDIDATE_SHA"
+            git merge-base --is-ancestor "$CANDIDATE_SHA" "$MAIN_SHA"
+            test "$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${FAILED_RUN_ID}" --jq .name)" = "Release"
+            test "$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${FAILED_RUN_ID}" --jq .event)" = "workflow_run"
+            test "$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${FAILED_RUN_ID}" --jq .head_sha)" = "$CANDIDATE_SHA"
+            test "$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${FAILED_RUN_ID}" --jq .conclusion)" = "failure"
+            FAILED_PACK_STEPS="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${FAILED_RUN_ID}/jobs?filter=latest" --jq '[.jobs[] | select(.name == "Publish to npm") | .steps[] | select(.name == "Pack root tarball" and .conclusion == "failure")] | length')"
+            test "$FAILED_PACK_STEPS" = "1"
+            test "$(npm view "@martinloop/mcp@$VERSION" version)" = "$VERSION"
+            if npm view "martin-loop@$VERSION" version >/dev/null 2>&1; then
+              echo "Root package already exists; partial-publication recovery is not authorized."
+              exit 1
+            fi
+            if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+              echo "Root GitHub release already exists; partial-publication recovery is not authorized."
+              exit 1
+            fi
+          else
+            test "$TAG_SHA" = "$MAIN_SHA"
+          fi
 
       - uses: pnpm/action-setup@b0f76dfb45f55f8421693e4803ac7bb65143bd34
         with:
@@ -96,7 +150,7 @@ jobs:
         run: |
           rm -rf dist-release
           mkdir -p dist-release
-          npm pack --json --pack-destination dist-release > "$RUNNER_TEMP/martin-loop-root-pack.json"
+          npm pack --ignore-scripts --json --pack-destination dist-release > "$RUNNER_TEMP/martin-loop-root-pack.json"
           mapfile -t TARBALLS < <(find dist-release -maxdepth 1 -type f -name '*.tgz' -print | sort)
           if [[ "${#TARBALLS[@]}" -ne 1 ]]; then
             echo "npm pack produced ${#TARBALLS[@]} tarballs; expected exactly one."
@@ -104,6 +158,8 @@ jobs:
             exit 1
           fi
           echo "tarball=./${TARBALLS[0]#./}" >> "$GITHUB_OUTPUT"
+          git restore --source=HEAD -- package.json
+          pnpm release:clean-check
 
       - name: Read package version
         id: package-version

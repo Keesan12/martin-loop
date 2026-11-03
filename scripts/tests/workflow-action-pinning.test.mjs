@@ -36,7 +36,12 @@ test("privileged publisher workflows bind trusted main to paired release tags", 
     const workflowPath = path.join(WORKFLOWS_DIR, workflowName);
     const workflow = await readFile(workflowPath, "utf8");
 
-    assert.match(workflow, /ref:\s+main/);
+    if (workflowName === "release.yml") {
+      assert.match(workflow, /ref:\s*\$\{\{ github\.event_name == 'workflow_dispatch' && inputs\.candidate_sha \|\| 'main' \}\}/);
+      assert.match(workflow, /git merge-base --is-ancestor "\$CANDIDATE_SHA" "\$MAIN_SHA"/);
+    } else {
+      assert.match(workflow, /ref:\s+main/);
+    }
     assert.doesNotMatch(workflow, /github\.event\.workflow_run\.head_sha/);
     assert.match(workflow, /MAIN_SHA="\$\(git rev-parse origin\/main\)"/);
     assert.match(workflow, /HEAD_SHA="\$\(git rev-parse HEAD\)"/);
