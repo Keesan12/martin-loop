@@ -597,13 +597,11 @@ async function buildLocalFallbackTarballSpec({ packageDir, tempPackDir }) {
   return path.join(tempPackDir, packEntry.filename);
 }
 
-function createInstalledPackageLaunch(installedPackageDir) {
-  const binDirectory = path.resolve(installedPackageDir, "..", "..", ".bin");
-  const executable = process.platform === "win32"
-    ? path.join(binDirectory, "mcp.cmd")
-    : path.join(binDirectory, "mcp");
-
-  return createCommandLaunch(executable, []);
+export function createInstalledPackageLaunch(installedPackageDir) {
+  return {
+    command: process.execPath,
+    args: [path.join(installedPackageDir, "dist", "server.js")],
+  };
 }
 
 async function importMcpSdk() {
