@@ -618,6 +618,7 @@ describe("0.9.0 CLI trust hardening", () => {
       },
       stdio: ["ignore", "ignore", "pipe"]
     });
+    const claimantExit = once(claimant, "exit");
     let claimantStderr = "";
     claimant.stderr?.on("data", (chunk: Buffer) => {
       claimantStderr += chunk.toString("utf8");
@@ -639,7 +640,7 @@ describe("0.9.0 CLI trust hardening", () => {
       }
     }
     claimant.kill();
-    await once(claimant, "exit");
+    await claimantExit;
 
     await expectMissing(lockPath);
     await runOwnershipWorkers(runsRoot, keyRoot, 1);
@@ -742,6 +743,7 @@ describe("0.9.0 CLI trust hardening", () => {
       },
       stdio: ["ignore", "ignore", "pipe"]
     });
+    const claimantExit = once(claimant, "exit");
     let claimantStderr = "";
     claimant.stderr?.on("data", (chunk: Buffer) => {
       claimantStderr += chunk.toString("utf8");
@@ -763,7 +765,7 @@ describe("0.9.0 CLI trust hardening", () => {
       }
     }
     claimant.kill();
-    await once(claimant, "exit");
+    await claimantExit;
 
     await expectMissing(keyPath);
     await runOwnershipWorkers(runsRoot, keyRoot, 1);
