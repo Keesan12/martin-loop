@@ -1,6 +1,11 @@
 {
   "schemaVersion": "martin.failure-taxonomy.runtime.v1",
   "source": "packages/contracts/src/index.ts#FAILURE_CLASSES",
+  "sourceProvenance": {
+    "file": "packages/contracts/src/index.ts",
+    "symbol": "FAILURE_CLASSES",
+    "fileSha256": "a6bf2689082172e09106e6bdcf066dbc04f96a572f98687a700294376b660fd3"
+  },
   "canonicalClassCount": 13,
   "failureClasses": [
     "logic_error",
@@ -16,5 +21,60 @@
     "budget_pressure",
     "safety_leash_blocked",
     "sandbox_write_blocked"
-  ]
+  ],
+  "classes": [
+    {
+      "classId": "logic_error",
+      "description": "Core reasoning or implementation logic did not satisfy objective constraints."
+    },
+    {
+      "classId": "hallucination",
+      "description": "Agent asserted or used unsupported repo/runtime facts."
+    },
+    {
+      "classId": "syntax_error",
+      "description": "Generated code failed syntax validation before runtime correctness checks."
+    },
+    {
+      "classId": "type_error",
+      "description": "Generated code failed static type checks."
+    },
+    {
+      "classId": "test_regression",
+      "description": "Changes caused tests that previously passed to fail."
+    },
+    {
+      "classId": "scope_creep",
+      "description": "Attempt modified behavior or files outside the declared objective boundary."
+    },
+    {
+      "classId": "no_progress",
+      "description": "Retries continued without meaningful objective progress."
+    },
+    {
+      "classId": "repo_grounding_failure",
+      "description": "Edits were not grounded to actual repository symbols/paths/state."
+    },
+    {
+      "classId": "verification_failure",
+      "description": "Verifier gate failed; run did not satisfy completion criteria."
+    },
+    {
+      "classId": "environment_mismatch",
+      "description": "Execution failed due to host/runtime/tooling mismatch."
+    },
+    {
+      "classId": "budget_pressure",
+      "description": "Run hit or approached budget/iteration/token constraints."
+    },
+    {
+      "classId": "safety_leash_blocked",
+      "description": "Policy/safety enforcement blocked unsafe or disallowed actions."
+    },
+    {
+      "classId": "sandbox_write_blocked",
+      "description": "Run produced a patch but the runtime could not persist writes inside the allowed workspace."
+    }
+  ],
+  "sourceChecksum": "47aac06db5fe7acf9013b56debf6a6c59b7124a568f655bd471dfc877d960972"
 }

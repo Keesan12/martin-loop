@@ -1253,7 +1253,7 @@ describe("demo command", () => {
     });
   });
 
-  it("fails unsupported modes before mutating the requested target", async () => {
+  it("fails unsupported options before mutating the requested target", async () => {
     await withTempDir(async (dir) => {
       const unknownTarget = join(dir, "unknown-target");
       const unknown = await executeCli(["demo", "--swarm", "--scenario", "unknown", "--dir", unknownTarget]);
@@ -1264,7 +1264,7 @@ describe("demo command", () => {
       const liveTarget = join(dir, "live-target");
       const live = await executeCli(["demo", "--swarm", "--live", "--dir", liveTarget]);
       expect(live.exitCode).toBe(2);
-      expect(live.stderr).toMatch(/live workers are not part/iu);
+      expect(live.stderr).toMatch(/persisted swarm demo modes do not accept --dir or --force/iu);
       await expect(access(liveTarget)).rejects.toThrow();
     });
   });

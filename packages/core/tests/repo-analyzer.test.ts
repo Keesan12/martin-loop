@@ -1,7 +1,7 @@
 /**
  * Repo Style Analyzer — real tests.
  *
- * Runs analyzeRepoStyle against the actual ML_Core_OSS_Internal repo
+ * Runs analyzeRepoStyle against the actual repository
  * to verify detection of real conventions.
  */
 

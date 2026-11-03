@@ -2,7 +2,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { SURFACE_SCHEMA, compareSurface, expectedPublicEntries, hashSurface, listSurfaceEntries, surfaceSpecHash } from "./lib/public-release-surface.mjs";
+import { SURFACE_SCHEMA, compareSurface, hashSurface, listSurfaceEntries, surfaceSpecHash, validatePublicSurfaceEntries } from "./lib/public-release-surface.mjs";
 
 const ROOT = process.cwd();
 const MANIFEST_PATH = resolve(ROOT, ".martin", "promotion-manifest.json");
@@ -15,15 +15,22 @@ function requireSha(value, field) { if (typeof value !== "string" || !/^[a-f0-9]
 
 let manifest;
 try { manifest = JSON.parse(readFileSync(MANIFEST_PATH, "utf8")); } catch { fail(`missing or invalid ${MANIFEST_PATH}`); }
+const manifestFields = ["schemaVersion", "sourceAuthority", "sourceRepositoryFingerprint", "packageVersion", "privateMergeSha", "privateMainShaValidated", "publicBaseSha", "promotedBy", "validatedAt", "internalHealthPassed", "internalHealthEvidenceSha256", "surfaceSpecHash", "publicSurfaceHash", "publicSurfaceEntries", "reviewedDivergencesCount", "reviewedDivergencesHash"].sort();
+const actualManifestFields = Object.keys(manifest).sort();
+if (actualManifestFields.length !== manifestFields.length || actualManifestFields.some((field, index) => field !== manifestFields[index])) fail("promotion manifest has unsupported fields");
 if (manifest.schemaVersion !== SURFACE_SCHEMA) fail("unsupported promotion manifest schema");
 if (manifest.sourceAuthority !== "validated-internal-release-source") fail("sourceAuthority must identify the validated internal release source");
 if (manifest.sourceRepositoryFingerprint !== "04aac733f3b08513fddcc72a9013b9f59cf7919f9a0a3893d0b3d953929826ec") fail("source repository fingerprint does not match the release authority");
 for (const field of ["privateMergeSha", "privateMainShaValidated", "publicBaseSha"]) requireSha(manifest[field], field);
 if (manifest.internalHealthPassed !== true) fail("internalHealthPassed must be true");
 if (typeof manifest.internalHealthEvidenceSha256 !== "string" || !/^[a-f0-9]{64}$/u.test(manifest.internalHealthEvidenceSha256)) fail("internal health evidence digest is required");
+if (typeof manifest.packageVersion !== "string" || manifest.packageVersion.length === 0) fail("packageVersion is required");
 if (typeof manifest.validatedAt !== "string" || Number.isNaN(Date.parse(manifest.validatedAt))) fail("validatedAt must be a valid ISO-8601 timestamp");
 if (manifest.surfaceSpecHash !== surfaceSpecHash()) fail("canonical release-surface specification changed after validation");
-if (!Array.isArray(manifest.surfaceEntries) || hashSurface(manifest.surfaceEntries) !== manifest.surfaceHash) fail("private release-surface inventory is malformed or tampered");
+try { validatePublicSurfaceEntries(manifest.publicSurfaceEntries); } catch (error) { fail(error.message); }
+if (hashSurface(manifest.publicSurfaceEntries) !== manifest.publicSurfaceHash) fail("public release-surface inventory is malformed or tampered");
+if (!Number.isSafeInteger(manifest.reviewedDivergencesCount) || manifest.reviewedDivergencesCount < 0) fail("reviewedDivergencesCount must be a non-negative safe integer");
+if (typeof manifest.reviewedDivergencesHash !== "string" || !/^[a-f0-9]{64}$/u.test(manifest.reviewedDivergencesHash)) fail("reviewedDivergencesHash is required");
 
 try {
   const markers = execFileSync("git", ["grep", "-n", "-E", "^(<<<<<<<|=======|>>>>>>>)", "--", "."], { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
@@ -36,9 +43,7 @@ if (git(["cat-file", "-t", manifest.publicBaseSha]) !== "commit") fail("publicBa
 try { execFileSync("git", ["merge-base", "--is-ancestor", manifest.publicBaseSha, "HEAD"], { cwd: ROOT, stdio: "ignore" }); }
 catch { fail(`publicBaseSha ${manifest.publicBaseSha} is not an ancestor of HEAD`); }
 
-let expected;
-try { expected = expectedPublicEntries(manifest.surfaceEntries, manifest.reviewedDivergences ?? []); }
-catch (error) { fail(error.message); }
+const expected = manifest.publicSurfaceEntries;
 const actual = listSurfaceEntries(ROOT, "HEAD");
 const comparison = compareSurface(expected, actual);
 if (!comparison.matches) {

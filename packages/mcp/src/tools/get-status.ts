@@ -41,6 +41,9 @@ export interface GetStatusOutput {
   };
   live: {
     phase: string;
+    requestedControlState: "active" | "paused" | "cancellation_requested" | "terminal";
+    appliedControlState: "active" | "paused" | "cancellation_pending" | "terminal";
+    /** Backwards-compatible applied pause state. Never reflects an unapplied request. */
     pauseState: "active" | "paused" | "cancellation_requested";
     approvalState: "not_required" | "resume_requested";
     commandsRun: number;
@@ -56,8 +59,11 @@ export async function getStatusTool(input: GetStatusInput): Promise<GetStatusOut
     input.loopJson !== undefined
       ? {
           requestedState: "active" as const,
+          appliedState: "active" as const,
           approvalState: "not_required" as const,
-          receipts: []
+          receipts: [],
+          applications: [],
+          publications: []
         }
       : await readRunControlState(input);
   const latestEvent = loop.events?.at(-1);
@@ -102,7 +108,14 @@ export async function getStatusTool(input: GetStatusInput): Promise<GetStatusOut
     },
     live: {
       phase: latestEvent?.lifecycleState ?? loop.lifecycleState,
-      pauseState: control.requestedState,
+      requestedControlState: control.requestedState,
+      appliedControlState: control.appliedState,
+      pauseState:
+        control.appliedState === "paused"
+          ? "paused"
+          : control.appliedState === "cancellation_pending"
+            ? "cancellation_requested"
+            : "active",
       approvalState: control.approvalState,
       commandsRun: loop.attempts.length,
       filesTouched: changedFiles,

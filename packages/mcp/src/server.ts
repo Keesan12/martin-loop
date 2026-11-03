@@ -420,6 +420,44 @@ const statusOutputSchema = {
         loop: loopPreviewSchema
       },
       required: ["loop"]
+    },
+    live: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        phase: { type: "string" },
+        requestedControlState: {
+          type: "string",
+          enum: ["active", "paused", "cancellation_requested", "terminal"],
+          description: "Latest durable operator request; this does not prove executor application."
+        },
+        appliedControlState: {
+          type: "string",
+          enum: ["active", "paused", "cancellation_pending", "terminal"],
+          description: "Control state reconciled from validated executor application evidence."
+        },
+        pauseState: {
+          type: "string",
+          enum: ["active", "paused", "cancellation_requested"],
+          description: "Backwards-compatible applied control state; pending pause requests remain active."
+        },
+        approvalState: {
+          type: "string",
+          enum: ["not_required", "resume_requested"]
+        },
+        commandsRun: { type: "integer" },
+        filesTouched: { type: "integer" },
+        verifierStep: { type: "string" }
+      },
+      required: [
+        "phase",
+        "requestedControlState",
+        "appliedControlState",
+        "pauseState",
+        "approvalState",
+        "commandsRun",
+        "filesTouched"
+      ]
     }
   },
   required: [
@@ -435,7 +473,8 @@ const statusOutputSchema = {
     "remainingBudgetUsd",
     "remainingIterations",
     "budget",
-    "inspection"
+    "inspection",
+    "live"
   ]
 } as const;
 
@@ -800,10 +839,20 @@ const logsOutputSchema = {
       additionalProperties: false,
       properties: {
         lifecycleState: { type: "string", description: "Current run lifecycle state (e.g. running, completed, cancelled)." },
+        requestedControlState: {
+          type: "string",
+          enum: ["active", "paused", "cancellation_requested", "terminal"],
+          description: "Latest durable operator request; this does not prove executor application."
+        },
+        appliedControlState: {
+          type: "string",
+          enum: ["active", "paused", "cancellation_pending", "terminal"],
+          description: "Control state reconciled from validated executor application evidence."
+        },
         pauseState: {
           type: "string",
           enum: ["active", "paused", "cancellation_requested"],
-          description: "Whether the run is active, paused, or has a pending cancellation."
+          description: "Backwards-compatible applied control state; pending pause requests remain active."
         },
         approvalState: {
           type: "string",
@@ -811,7 +860,7 @@ const logsOutputSchema = {
           description: "Whether the run is waiting at a human-approval checkpoint."
         }
       },
-      required: ["lifecycleState", "pauseState", "approvalState"]
+      required: ["lifecycleState", "requestedControlState", "appliedControlState", "pauseState", "approvalState"]
     },
     entries: {
       type: "array",
@@ -836,6 +885,88 @@ const logsOutputSchema = {
   required: ["source", "sourceKind", "loopId", "logCount", "live", "entries"]
 } as const;
 
+const controlReceiptSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    schemaVersion: { const: "martin.run-control.v2" },
+    controlId: { type: "string" },
+    loopId: { type: "string" },
+    action: { type: "string", enum: ["pause", "cancel", "continue"] },
+    requestedAt: { type: "string" },
+    authorityBoundary: { const: "local_os_user" },
+    principal: { const: "local_mcp_client" },
+    executorLeaseToken: { type: "string" },
+    workspaceId: { type: "string" },
+    projectId: { type: "string" },
+    expectedPreviousControlId: { type: "string" },
+    reason: { type: "string" },
+    previousReceiptHash: { type: "string", pattern: "^[a-f0-9]{64}$" },
+    receiptHash: { type: "string", pattern: "^[a-f0-9]{64}$" }
+  },
+  required: [
+    "schemaVersion",
+    "controlId",
+    "loopId",
+    "action",
+    "requestedAt",
+    "authorityBoundary",
+    "principal",
+    "executorLeaseToken",
+    "receiptHash"
+  ]
+} as const;
+
+const controlApplicationSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    schemaVersion: { const: "martin.run-control-application.v2" },
+    loopId: { type: "string" },
+    controlId: { type: "string" },
+    action: { type: "string", enum: ["pause_applied", "continue_applied"] },
+    appliedAt: { type: "string" },
+    relatedControlId: { type: "string" },
+    receiptHash: { type: "string", pattern: "^[a-f0-9]{64}$" },
+    previousApplicationHash: { type: "string", pattern: "^[a-f0-9]{64}$" },
+    applicationHash: { type: "string", pattern: "^[a-f0-9]{64}$" }
+  },
+  required: ["schemaVersion", "loopId", "controlId", "action", "appliedAt", "receiptHash", "applicationHash"]
+} as const;
+
+const controlPublicationSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    schemaVersion: { const: "martin.run-control-publication.v1" },
+    loopId: { type: "string" },
+    controlId: { type: "string" },
+    receiptHash: { type: "string", pattern: "^[a-f0-9]{64}$" },
+    signalState: { type: "string", enum: ["created", "already_exists"] },
+    recordedAt: { type: "string" },
+    previousPublicationHash: { type: "string", pattern: "^[a-f0-9]{64}$" },
+    publicationHash: { type: "string", pattern: "^[a-f0-9]{64}$" }
+  },
+  required: ["schemaVersion", "loopId", "controlId", "receiptHash", "signalState", "recordedAt", "publicationHash"]
+} as const;
+
+const controlStateSchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    requestedState: { type: "string", enum: ["active", "paused", "cancellation_requested", "terminal"] },
+    latestReceipt: controlReceiptSchema,
+    approvalState: { type: "string", enum: ["not_required", "resume_requested"] },
+    appliedState: { type: "string", enum: ["active", "paused", "cancellation_pending", "terminal"] },
+    receipts: { type: "array", items: controlReceiptSchema },
+    applications: { type: "array", items: controlApplicationSchema },
+    publications: { type: "array", items: controlPublicationSchema },
+    receiptPath: { type: "string" },
+    applicationPath: { type: "string" }
+  },
+  required: ["requestedState", "approvalState", "appliedState", "receipts", "applications", "publications"]
+} as const;
+
 const controlOutputSchema = {
   type: "object",
   additionalProperties: false,
@@ -848,7 +979,6 @@ const controlOutputSchema = {
     },
     controlId: { type: "string", description: "Unique receipt ID for this control action." },
     requestedAt: { type: "string", description: "ISO 8601 timestamp when the control was recorded." },
-    requestedBy: { type: "string", description: "Identity that requested the control, if provided." },
     reason: { type: "string", description: "Human-readable reason for the control, if provided." },
     ok: { type: "boolean", description: "Whether the control receipt was recorded." },
     summary: { type: "string", description: "Human-readable result of the control request." },
@@ -857,13 +987,36 @@ const controlOutputSchema = {
       enum: ["pause", "cancel", "continue"],
       description: "The control action that was requested."
     },
-    state: {
-      type: "object",
-      additionalProperties: true,
-      description: "Run control state after this request, including all recorded receipts."
-    }
+    publicationState: {
+      type: "string",
+      enum: ["published", "already_requested", "receipt_recorded", "published_audit_pending"],
+      description: "Whether an authoritative cancellation signal was published or a cooperative receipt was recorded."
+    },
+    applicationState: {
+      type: "string",
+      enum: ["pending_observation", "requested_only", "terminal_reconciled"],
+      description: "Whether the active executor has applied the control; publication alone is not application proof."
+    },
+    authorityBoundary: { const: "local_os_user" },
+    principal: { const: "local_mcp_client" },
+    receiptHash: { type: "string", pattern: "^[a-f0-9]{64}$" },
+    state: controlStateSchema
   },
-  required: ["loopId", "action", "controlId", "requestedAt", "ok", "summary", "requestedAction", "state"]
+  required: [
+    "loopId",
+    "action",
+    "controlId",
+    "requestedAt",
+    "ok",
+    "summary",
+    "requestedAction",
+    "publicationState",
+    "applicationState",
+    "authorityBoundary",
+    "principal",
+    "receiptHash",
+    "state"
+  ]
 } as const;
 
 const evalOutputSchema = {
@@ -955,6 +1108,7 @@ export function createMartinMcpServer(serverInfo?: {
   name?: string;
   version?: string;
   toolProfile?: MartinMcpToolProfile;
+  controlTransport?: "local_stdio" | "untrusted_remote";
 }) {
   const toolProfile = serverInfo?.toolProfile ?? "full";
   const server = new Server(
@@ -1287,7 +1441,7 @@ export function createMartinMcpServer(serverInfo?: {
     {
       name: "martin_logs",
       description:
-        "Read recent MartinLoop events, ledger entries, and operator control receipts for a single run. " +
+        "Read recent MartinLoop events, ledger entries, operator control receipts, and reconciled executor control-application records for a single run. " +
         "Use to observe live or completed run activity, diagnose stuck or failed runs, or audit operator actions. " +
         "Do not use to check run completion status — use martin_get_status instead. " +
         "Do not use to retrieve verification evidence — use martin_get_verification_results instead. " +
@@ -1314,7 +1468,7 @@ export function createMartinMcpServer(serverInfo?: {
     {
       name: "martin_pause",
       description:
-        "Write a durable pause receipt for one canonical MartinLoop run. Provide exactly one selector: file, loopId, or latest; runsDir changes the run-store root, while reason and requestedBy add audit context. Use for a temporary hold before risky follow-up work. This records a request and does not kill a process; use martin_cancel to abandon work or martin_continue to resume.",
+        "Request a durable cooperative pause for one active MartinLoop run. The executor applies it at the next safe attempt boundary; it does not suspend or kill an in-flight provider. Provide exactly one selector: file, loopId, or latest. Use martin_status to distinguish requested from applied state; use martin_cancel to abandon work or martin_continue to release the applied pause.",
       annotations: {
         destructiveHint: true,
         idempotentHint: false
@@ -1327,8 +1481,7 @@ export function createMartinMcpServer(serverInfo?: {
           loopId: { type: "string", description: "Canonical MartinLoop run identifier. Mutually exclusive with file and latest." },
           runsDir: { type: "string", description: "Optional run-store root override used to resolve loopId or latest." },
           latest: { const: true, description: "When true, targets the latest canonical run. Mutually exclusive with file and loopId." },
-          reason: { type: "string", description: "Optional non-empty reason recorded in the pause receipt." },
-          requestedBy: { type: "string", description: "Optional human or runtime identity label recorded for audit context." }
+          reason: { type: "string", description: "Optional non-empty reason recorded in the pause receipt." }
         }
       },
       outputSchema: controlOutputSchema
@@ -1336,10 +1489,10 @@ export function createMartinMcpServer(serverInfo?: {
     {
       name: "martin_cancel",
       description:
-        "Write a durable cancellation receipt for one canonical MartinLoop run. Provide exactly one selector: file, loopId, or latest; runsDir changes the run-store root, while reason and requestedBy add audit context. Use when work must be abandoned, not temporarily held. This records a request and does not kill a process; use martin_pause for a reversible hold.",
+        "Publish the canonical durable cancellation signal for one active MartinLoop run. The active executor polls this signal, aborts its provider, restores governed workspace state, and records terminal evidence. Use the tool when work must stop; publication is not application proof, so use martin_status to observe terminal state or martin_pause for a reversible safe-boundary hold.",
       annotations: {
         destructiveHint: true,
-        idempotentHint: false
+        idempotentHint: true
       },
       inputSchema: {
         type: "object",
@@ -1349,8 +1502,7 @@ export function createMartinMcpServer(serverInfo?: {
           loopId: { type: "string", description: "Canonical MartinLoop run identifier. Mutually exclusive with file and latest." },
           runsDir: { type: "string", description: "Optional run-store root override used to resolve loopId or latest." },
           latest: { const: true, description: "When true, targets the latest canonical run. Mutually exclusive with file and loopId." },
-          reason: { type: "string", description: "Optional non-empty reason recorded in the cancellation receipt." },
-          requestedBy: { type: "string", description: "Optional human or runtime identity label recorded for audit context." }
+          reason: { type: "string", description: "Optional non-empty reason recorded in the cancellation receipt." }
         }
       },
       outputSchema: controlOutputSchema
@@ -1358,7 +1510,7 @@ export function createMartinMcpServer(serverInfo?: {
     {
       name: "martin_continue",
       description:
-        "Record a durable continue or resume request for a Martin run after a human pause or approval checkpoint.",
+        "Release the exact pending cooperative pause for one active MartinLoop run. Continue is bound to that pause and does not grant approval, widen safety policy, or resume a terminal approval escalation.",
       annotations: {
         destructiveHint: true,
         idempotentHint: false
@@ -1371,8 +1523,7 @@ export function createMartinMcpServer(serverInfo?: {
           loopId: { type: "string" },
           runsDir: { type: "string" },
           latest: { const: true },
-          reason: { type: "string" },
-          requestedBy: { type: "string" }
+          reason: { type: "string" }
         }
       },
       outputSchema: controlOutputSchema
@@ -1963,19 +2114,28 @@ export function createMartinMcpServer(serverInfo?: {
 
     if (name === "martin_pause") {
       const input = validateToolInput("martin_pause", args) as Parameters<typeof createRunControlReceipt>[1];
-      const output = await createRunControlReceipt("pause", input);
+      const output = await createRunControlReceipt("pause", {
+        ...input,
+        authority: { transport: serverInfo?.controlTransport ?? "untrusted_remote" }
+      });
       return createToolSuccessResult(output, output.summary);
     }
 
     if (name === "martin_cancel") {
       const input = validateToolInput("martin_cancel", args) as Parameters<typeof createRunControlReceipt>[1];
-      const output = await createRunControlReceipt("cancel", input);
+      const output = await createRunControlReceipt("cancel", {
+        ...input,
+        authority: { transport: serverInfo?.controlTransport ?? "untrusted_remote" }
+      });
       return createToolSuccessResult(output, output.summary);
     }
 
     if (name === "martin_continue") {
       const input = validateToolInput("martin_continue", args) as Parameters<typeof createRunControlReceipt>[1];
-      const output = await createRunControlReceipt("continue", input);
+      const output = await createRunControlReceipt("continue", {
+        ...input,
+        authority: { transport: serverInfo?.controlTransport ?? "untrusted_remote" }
+      });
       return createToolSuccessResult(output, output.summary);
     }
 
@@ -2159,6 +2319,7 @@ function normalizeRunBudget(input: Parameters<typeof runLoopTool>[0]): LoopBudge
 
 export async function connectMartinMcpStdioServer(options: { toolProfile?: MartinMcpToolProfile } = {}) {
   const server = createMartinMcpServer({
+    controlTransport: "local_stdio",
     ...(options.toolProfile ? { toolProfile: options.toolProfile } : {})
   });
   const transport = new StdioServerTransport();
@@ -2252,6 +2413,7 @@ export async function connectMartinMcpHttpServer(
   const path = options.path ?? "/mcp";
 
   const mcpServer = createMartinMcpServer({
+    controlTransport: "untrusted_remote",
     ...(options.toolProfile ? { toolProfile: options.toolProfile } : {})
   });
   const transport = new StreamableHTTPServerTransport({

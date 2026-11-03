@@ -36,7 +36,7 @@ describe("Martin Reliability Score", () => {
   it("scores perfect evidence as 100 with a readiness grade", () => {
     const score = computeMartinReliabilityScore(perfectInput);
 
-    expect(score.meaning).toBe("five_binary_local_evidence_signals");
+    expect(score.meaning).toBe("local_evidence_signals_with_measurement_state");
     expect(score.signalCount).toBe(5);
     expect(score.totalSignals).toBe(5);
     expect(score.points).toBe(100);
@@ -108,6 +108,40 @@ describe("Martin Reliability Score", () => {
     );
   });
 
+  it("reports unavailable evidence as unmeasured instead of a fabricated failure", () => {
+    const score = computeMartinReliabilityScore({
+      signals: {
+        budgetConfigured: { present: true },
+        verifierConfigured: { present: true },
+        runReceiptsPresent: { present: true },
+        rollbackEvidencePresent: { present: true },
+        mcpDoctorPassing: {
+          present: false,
+          measured: false,
+          detail: "No version-bound MCP doctor observation is available."
+        }
+      }
+    });
+
+    expect(score.signalCount).toBe(4);
+    expect(score.measuredSignals).toBe(4);
+    expect(score.unmeasuredSignals).toBe(1);
+    expect(score.points).toBe(80);
+    expect(score.grade).toBe("strong");
+    expect(score.missingReasons).toEqual([]);
+    expect(score.unmeasuredReasons).toEqual([
+      "MCP doctor passing: No version-bound MCP doctor observation is available."
+    ]);
+    expect(score.signals.find((signal) => signal.id === "mcpDoctorPassing")).toMatchObject({
+      measured: false,
+      passed: false,
+      points: 0
+    });
+    expect(score.summary).toContain("4/4 measured signals");
+    expect(score.summary).toContain("1 unmeasured");
+    expect(renderMartinReliabilityBadgeJson(score).message).toBe("4/5 strong");
+  });
+
   it("does not claim statistical or autonomous reliability in score or badge output", () => {
     const score = computeMartinReliabilityScore(perfectInput);
     const combined = [
@@ -162,7 +196,7 @@ describe("Martin Reliability Score", () => {
     const score = computeMartinReliabilityScore(perfectInput);
     const svg = renderMartinReliabilityBadgeSvg(score);
 
-    expect(score.summary).toContain("Evidence readiness: 5/5 signals");
+    expect(score.summary).toContain("Evidence readiness: 5/5 measured signals");
     expect(score.summary).toContain("100/100 readiness points");
     expect(svg).toContain("evidence readiness");
     expect(svg).toContain("5/5 ready");

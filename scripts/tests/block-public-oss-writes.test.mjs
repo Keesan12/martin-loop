@@ -19,6 +19,8 @@ import { tmpdir } from "node:os";
 
 const HOOK_PATH = resolve(import.meta.dirname, "..", "hooks", "block-public-oss-writes.js");
 const INSTALLER_PATH = resolve(import.meta.dirname, "..", "hooks", "install-claude-public-write-hook.js");
+const SYNTHETIC_PRIVATE_REPOSITORY = "example-internal/martin-loop-private-fixture";
+const SYNTHETIC_PRIVATE_REPOSITORY_URL = `https://github.com/${SYNTHETIC_PRIVATE_REPOSITORY}.git`;
 
 /**
  * Invoke the hook with a synthesised tool_input object.
@@ -91,13 +93,25 @@ test("internal git commit is allowed", () => {
 
 test("internal git push to an explicit non-public remote is allowed", () => {
   assert.strictEqual(
-    invoke({ command: "git push https://github.com/martin-Loop/ML_Core_OSS_Internal.git feat/my-internal-feature" }),
-    ALLOW
+    invoke({ command: `git push ${SYNTHETIC_PRIVATE_REPOSITORY_URL} feat/my-internal-feature` }),
+    ALLOW,
   );
 });
 
+test("internal git push to non-public origin branch is allowed", () => {
+  const dir = makeRemoteRepo("origin", SYNTHETIC_PRIVATE_REPOSITORY_URL);
+  try {
+    assert.strictEqual(
+      invoke({ command: `cd "${dir}" && git push origin feat/my-internal-feature` }),
+      ALLOW,
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("internal git push to private origin URL is allowed", () => {
-  const dir = makeRemoteRepo("origin", "https://github.com/martin-Loop/ML_Core_OSS_Internal.git");
+  const dir = makeRemoteRepo("origin", SYNTHETIC_PRIVATE_REPOSITORY_URL);
   try {
     assert.strictEqual(invoke({ command: `cd "${dir}" && git push origin feat/my-internal-feature` }), ALLOW);
   } finally {
@@ -168,7 +182,7 @@ test("public checkout rejects branch changes before a guarded mutation", () => {
 });
 
 test("public checkout rejects compound cwd changes before a guarded mutation", () => {
-  const internalDir = makeRemoteRepo("origin", "https://github.com/martin-Loop/ML_Core_OSS_Internal.git");
+  const internalDir = makeRemoteRepo("origin", SYNTHETIC_PRIVATE_REPOSITORY_URL);
   const publicDir = makePublicCheckout();
   try {
     assert.strictEqual(
@@ -310,14 +324,14 @@ test("read-only gh pr view on any repo is allowed", () => {
 
 test("internal gh pr create is allowed", () => {
   assert.strictEqual(
-    invoke({ command: "gh pr create --repo martin-Loop/ML_Core_OSS_Internal --title guardrail" }),
+    invoke({ command: `gh pr create --repo ${SYNTHETIC_PRIVATE_REPOSITORY} --title guardrail` }),
     ALLOW
   );
 });
 
 test("internal gh pr merge is allowed", () => {
   assert.strictEqual(
-    invoke({ command: "gh pr merge 66 --repo martin-Loop/ML_Core_OSS_Internal --squash" }),
+    invoke({ command: `gh pr merge 66 --repo ${SYNTHETIC_PRIVATE_REPOSITORY} --squash` }),
     ALLOW
   );
 });
@@ -458,7 +472,7 @@ test("git push via arbitrary alias is blocked when alias resolves to public repo
 test("git push is blocked when push URL differs from private fetch URL", () => {
   const dir = makeRemoteRepoWithPushUrl(
     "origin",
-    "https://github.com/martin-Loop/ML_Core_OSS_Internal.git",
+    SYNTHETIC_PRIVATE_REPOSITORY_URL,
     "https://github.com/Keesan12/martin-loop.git"
   );
   try {

@@ -41,6 +41,8 @@ test("current MCP metadata stays aligned for the release cut", async () => {
 
 test("version ledger derives current release coordinates from package metadata", async () => {
   const ledger = await readRepoFile(path.join("docs", "release", "VERSION-LEDGER.md"));
+  const publishing = await readRepoFile(path.join("docs", "release", "MCP-PUBLISHING.md"));
+  const checklist = await readRepoFile(path.join("docs", "release", "MCP-RELEASE-CHECKLIST.md"));
   const rootSection = readLedgerSection(ledger, "Root package: `martin-loop`");
   const standaloneSection = readLedgerSection(ledger, "Standalone package: `@martinloop/mcp`");
 
@@ -60,15 +62,18 @@ test("version ledger derives current release coordinates from package metadata",
   );
   assert.match(
     ledger,
-    new RegExp(escapeRegex(`current in-repo standalone release target: \`${packageJson.version}\``)),
+    new RegExp(escapeRegex(`current in-repo standalone release baseline: \`${packageJson.version}\``)),
   );
   assert.match(
     ledger,
-    new RegExp(escapeRegex(`current in-repo root release target: \`${rootPackageJson.version}\``)),
+    new RegExp(escapeRegex(`current in-repo root release baseline: \`${rootPackageJson.version}\``)),
   );
   assert.equal(rootReleaseTag, `v${rootBaseline}`);
   assert.equal(standaloneReleaseTag, `mcp-v${standaloneBaseline}`);
   assert.equal(mcpbBaseline, standaloneBaseline);
+  assert.match(publishing, new RegExp(escapeRegex(`current published standalone package: \`@martinloop/mcp\` (live version: \`${standaloneBaseline}\`)`)));
+  assert.match(publishing, new RegExp(escapeRegex(`current in-repo standalone release baseline: \`${packageJson.version}\` (pending publication)`)));
+  assert.doesNotMatch(checklist, /MCP-X\.Y\.Z-RELEASE-PACKET\.md/);
 
   const currentTargetsArePublished = rootBaseline === rootPackageJson.version
     && standaloneBaseline === packageJson.version;
@@ -97,17 +102,28 @@ test("MCP slice map defines the 0.3.x train without private-hosted bleed", async
   }
 });
 
-test("public MCP docs describe the current baseline and the next train in human-facing language", async () => {
-  const [packageReadme, aiGuide, releaseNotes031, releaseNotes032, releaseNotes033] = await Promise.all([
+test("public MCP docs describe the current baseline and historical releases in human-facing language", async () => {
+  const [packageReadme, aiGuide, ledger, releaseNotes031, releaseNotes032, releaseNotes033] = await Promise.all([
     readRepoFile(path.join("packages", "mcp", "README.md")),
     readRepoFile(path.join("docs", "oss", "MCP-FOR-AI-AGENTS.md")),
+    readRepoFile(path.join("docs", "release", "VERSION-LEDGER.md")),
     readRepoFile(path.join("docs", "release", "MCP-0.3.1-RELEASE-NOTES.md")),
     readRepoFile(path.join("docs", "release", "MCP-0.3.2-RELEASE-NOTES.md")),
     readRepoFile(path.join("docs", "release", "MCP-0.3.3-RELEASE-NOTES.md"))
   ]);
+  const standaloneSection = readLedgerSection(ledger, "Standalone package: `@martinloop/mcp`");
+  const liveStandaloneBaseline = readLedgerValue(standaloneSection, "standalone MCP public baseline");
 
-  // AI guide still references the release train
-  assert.match(aiGuide, /0\.3\.1/);
+  // The active guide names the live package baseline without presenting a
+  // historical train as current.
+  assert.match(aiGuide, new RegExp(escapeRegex(`@martinloop/mcp@${liveStandaloneBaseline}`)));
+  if (liveStandaloneBaseline !== packageJson.version) {
+    assert.doesNotMatch(
+      aiGuide,
+      new RegExp(`${escapeRegex(`@martinloop/mcp@${packageJson.version}`)}[^\n]*live public standalone MCP baseline`),
+    );
+  }
+  assert.match(aiGuide, /No later standalone release is presented as live/);
   assert.match(aiGuide, /local-first/i);
   assert.match(aiGuide, /martin_doctor/);
   assert.match(aiGuide, /martin_run/);
@@ -158,10 +174,8 @@ test("public MCP docs stay free of internal workspace leakage", async () => {
   ]);
 
   const forbiddenPatterns = [
-    /ML_Main_Repo_Internal/,
-    /ML_Core_OSS_Internal/,
-    /martin-Loop\/ML_/,
-    /martin-loop_MAIN_FULL_REPO/,
+    /\b[A-Za-z0-9-]+(?:_[A-Za-z0-9-]+)*_Internal\b/i,
+    /\b[A-Za-z0-9-]+_MAIN_FULL_REPO\b/i,
     /C:\\Users\\/,
     /OneDrive/,
     /docs\/internal/,

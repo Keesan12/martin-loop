@@ -26,6 +26,11 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Fetch public release-truth authority
+        run: git fetch --no-tags --depth=1 https://github.com/Keesan12/martin-loop.git main:refs/remotes/public/main
 
       - name: Set up pnpm
         uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
@@ -44,7 +49,7 @@ jobs:
         run: |
           pnpm release:clean-check
           node ./scripts/fleet-release-authority-check.mjs --source
-          node ./scripts/release-truth-check.mjs --allow-divergence-marker=[sync-parity]
+          pnpm release:truth-check
           node ./scripts/release-matrix.mjs
           node ./scripts/fleet-release-authority-check.mjs --built
           pnpm release:clean-check

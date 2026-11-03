@@ -58,5 +58,10 @@ test("platform release validation enforces source, built, and clean-state author
 
   assert.match(workflow, /fleet-release-authority-check\.mjs --source/);
   assert.match(workflow, /fleet-release-authority-check\.mjs --built/);
+  assert.match(workflow, /persist-credentials: false/);
+  assert.match(
+    workflow,
+    /git fetch --no-tags --depth=1 https:\/\/github\.com\/Keesan12\/martin-loop\.git main:refs\/remotes\/public\/main/,
+  );
   assert.equal(workflow.match(/pnpm release:clean-check/g)?.length, 2);
 });

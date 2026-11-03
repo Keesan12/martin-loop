@@ -142,6 +142,15 @@ describe("server validation", () => {
     ).toThrow("Unknown arguments");
   });
 
+  it("rejects caller-supplied run-control identity labels", () => {
+    expect(() =>
+      validateToolInput("martin_pause", {
+        loopId: "loop_identity_spoof",
+        requestedBy: "admin"
+      })
+    ).toThrow("Unknown arguments");
+  });
+
   it("rejects absolute and parent-traversing path patterns", () => {
     expect(() =>
       validateToolInput("martin_run", {
@@ -632,6 +641,34 @@ describe("server validation", () => {
       code: "invalid_arguments",
       suggestion: "Provide 'objective' when calling this Martin prompt."
     });
+  });
+
+  it("fails closed for run-control mutation on the default untrusted transport", async () => {
+    const server = createMartinMcpServer() as unknown as ServerWithRequestHandlers;
+    const callTool = server._requestHandlers.get("tools/call");
+    if (!callTool) {
+      throw new Error("Expected tools/call request handler.");
+    }
+
+    const result = await callTool(
+      {
+        method: "tools/call",
+        params: {
+          name: "martin_pause",
+          arguments: { loopId: "loop_remote_control_must_fail" }
+        }
+      },
+      {}
+    );
+
+    expect(result).toMatchObject({
+      isError: true,
+      _meta: {
+        "martinloop/errorCode": "unsupported_operation",
+        "martinloop/errorCategory": "invalid_input"
+      }
+    });
+    expect(JSON.stringify(result)).toContain("local stdio transport");
   });
 
   it("documents the same positive attemptIndex contract in the public schema", async () => {

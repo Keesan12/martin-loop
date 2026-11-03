@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-02
+
+### Added
+- Governed Swarm execution now requires explicit agent count and concurrency. Provider-free governed runs require exactly $0; live runs require positive budget authority and bind successful evidence to canonical provider settlement.
+- MCP clients can pause, continue, and cancel eligible local runs through capability-aware controls with terminal-state precedence and auditable application receipts.
+
+### Changed
+- Cleanup ownership and recovery use crash-safe, link-safe claims that fail closed under concurrent writers and stale-lock races.
+- Failure-taxonomy artifacts and release evidence are bound to normalized source bytes and exact candidate builds across Windows, macOS, and Linux.
+
+### Security
+- Run-control journals, execution leases, cancellation signals, and publication records now use stronger identity, replay, and race protections.
+- Provider-host filesystem access remains outside MartinLoop's operating-system containment boundary; use an isolated sandbox when host-level writes must be prevented.
+
 ## [0.8.10] - 2026-10-26
 
 ### Fixed

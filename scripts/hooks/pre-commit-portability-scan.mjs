@@ -6,21 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const INTERNAL_PATH = /^(?:docs\/internal\/|\.planning\/|research\/|old\/|scripts\/config\/)/u;
 
-// Internal-name fragments are concatenated at runtime to avoid the scanner
-// flagging its own source as a portability violation.
-const _REPO_PATTERNS = [
-  "ML_Main" + "_Repo_Internal",
-  "ML_Engine" + "_Internal",
-  "ML_Control" + "_Plane_Internal",
-  "martin-loop" + "_MAIN_FULL_REPO",
-  "One" + "Drive",
-].join("|");
-const _DOCS_INTERNAL = "docs" + "\\/internal";
-const _WIN_USER_PATH = "[A-Za-z]" + ":[\\\\/]Users[\\\\/]";
-const INTERNAL_CONTENT = new RegExp(
-  `(?:${_REPO_PATTERNS}|${_WIN_USER_PATH}|${_DOCS_INTERNAL})`,
-  "iu",
-);
+const INTERNAL_CONTENT = /(?:\b[A-Za-z0-9-]+(?:_[A-Za-z0-9-]+)*_Internal\b|\b[A-Za-z0-9-]+_MAIN_FULL_REPO\b|[A-Za-z]:[\\/]Users[\\/]|docs[\\/]internal|[A-Za-z]:[\\/][^\r\n]*[\\/]One[D]rive[\\/])/iu;
 
 function runGit(args, rootDir) {
   return execFileSync("git", ["-C", rootDir, ...args], {

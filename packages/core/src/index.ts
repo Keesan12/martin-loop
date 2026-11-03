@@ -74,7 +74,9 @@ import {
   type RepoGroundingIndex
 } from "./grounding.js";
 import {
+  authenticateManagedPathExclusions,
   captureRollbackBoundary,
+  filterManagedRollbackPaths,
   findEscapingLinks,
   listAttemptChangedFilesSinceBoundary,
   listIgnoredFileChangesSinceBoundary,
@@ -82,7 +84,13 @@ import {
 } from "./rollback.js";
 import { findWeakenedTestFiles } from "./test-integrity.js";
 import { compilePromptPacket } from "./compiler.js";
-import { makeLedgerEvent, resolveRunsRoot, runDir, type RunStore } from "./persistence/index.js";
+import {
+  makeLedgerEvent,
+  resolveReceiptIntegrityRoot,
+  resolveRunsRoot,
+  runDir,
+  type RunStore
+} from "./persistence/index.js";
 import {
   createDefaultExitPolicy,
   evaluateExitPolicy,
@@ -111,6 +119,7 @@ import {
 } from "./verified-handoff.js";
 import {
   acquireRunExecutionLease,
+  readActiveRunExecutionLease,
   evaluateRunResumability,
   loadResumeCandidateBoundary,
   loadResumeVerifierFailure
@@ -216,6 +225,7 @@ export { assessTrajectory, decideCircuitBreak } from "./trajectory.js";
 export { calculateAvoidedUsd, calculateLoopAvoidedUsd } from "./savings.js";
 export {
   acquireRunExecutionLease,
+  readActiveRunExecutionLease,
   evaluateRunResumability,
   loadResumeCandidateBoundary,
   loadResumeVerifierFailure
@@ -700,6 +710,43 @@ export interface RunMartinInput {
   observedUsageGovernor?: MartinObservedUsageGovernor;
   /** Optional parent cancellation signal. Relayed into the active governed attempt. */
   signal?: AbortSignal;
+  /** Optional durable cooperative pause/continue source. */
+  runControlSource?: RunControlSource;
+  /** Poll interval while a cooperative pause is applied (default 250 ms). */
+  runControlPollIntervalMs?: number;
+}
+
+export interface RunControlCommand {
+  controlId: string;
+  loopId: string;
+  action: "pause" | "continue";
+  requestedAt: string;
+  /** Explicit local-process boundary; not an authenticated human identity. */
+  principal: "local_mcp_client";
+  receiptHash: string;
+  reason?: string;
+  expectedPreviousControlId?: string;
+}
+
+export interface RunControlSnapshot {
+  pause?: RunControlCommand;
+  continuedBy?: RunControlCommand;
+}
+
+export interface RunControlApplication {
+  loopId: string;
+  controlId: string;
+  action: "pause_applied" | "continue_applied";
+  appliedAt: string;
+  relatedControlId?: string;
+  receiptHash: string;
+}
+
+export interface RunControlSource {
+  poll(runId: string): Promise<RunControlSnapshot>;
+  recordApplication(application: RunControlApplication): Promise<void>;
+  /** Serialize terminal intent against new control receipts before persistence. */
+  recordTerminalIntent?(runId: string): Promise<void>;
 }
 
 export interface RunMartinResult {
@@ -790,6 +837,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         runsRoot: input.store.runsRoot,
         runId: loop.loopId,
         owner: resumeLoop ? "runMartin:resume" : "runMartin",
+        runControlCapable: input.runControlSource !== undefined,
         now: () => loop.updatedAt
       })
     : undefined;
@@ -815,6 +863,9 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
 
   const adapterChain = [input.adapter, ...(input.fallbackAdapters ?? [])];
   const runsRoot = input.store?.runsRoot ?? resolveRunsRoot();
+  const managedRollbackRoots = input.store?.runsRoot
+    ? [input.store.runsRoot, resolveReceiptIntegrityRoot()]
+    : [];
   const observesWorkspaceMutations =
     task.repoRoot !== undefined &&
     adapterChain.some((adapter) => adapter.metadata.capabilities?.workspaceMutations !== false);
@@ -829,7 +880,8 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     try {
       completionBoundary = await captureRollbackBoundary({
         repoRoot: task.repoRoot,
-        capturedAt: loop.createdAt
+        capturedAt: loop.createdAt,
+        managedRoots: managedRollbackRoots
       });
       if (!completionBoundary) {
         completionBoundaryReason = "A run-wide file-effect observation boundary was not available.";
@@ -850,6 +902,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     const fileEffects = observeRunFileEffects({
       repoRoot: task.repoRoot,
       boundary: completionBoundary,
+      managedRoots: managedRollbackRoots,
       touchedDuringExecution,
       unavailableReason: completionBoundaryReason
     });
@@ -1349,7 +1402,89 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     if (signalMonitorError !== undefined) throw signalMonitorError;
     const evaluation = evaluateExitPolicy(exitPolicy, currentExitSnapshot(phase, result));
     if (!evaluation.shouldExit) return undefined;
-    return await selectTerminalEvaluation(evaluation);
+    const terminal = await selectTerminalEvaluation(evaluation);
+    await input.runControlSource?.recordTerminalIntent?.(loop.loopId);
+    return terminal;
+  }
+
+  async function waitForControlPoll(intervalMs: number): Promise<void> {
+    if (runController.signal.aborted) return;
+    await new Promise<void>((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        runController.signal.removeEventListener("abort", finish);
+        resolve();
+      };
+      const timer = setTimeout(finish, intervalMs);
+      timer.unref?.();
+      runController.signal.addEventListener("abort", finish, { once: true });
+      if (runController.signal.aborted) finish();
+    });
+  }
+
+  async function awaitCooperativeRunControl(): Promise<
+    import("@martin/contracts").TerminationEnvelopeV1 | undefined
+  > {
+    const source = input.runControlSource;
+    if (!source) return undefined;
+
+    const initial = await source.poll(loop.loopId);
+    const pause = initial.pause;
+    if (!pause) return undefined;
+    if (pause.loopId !== loop.loopId || pause.action !== "pause") {
+      throw new Error("Run control integrity check failed before pause application.");
+    }
+
+    await source.recordApplication({
+      loopId: loop.loopId,
+      controlId: pause.controlId,
+      action: "pause_applied",
+      appliedAt: now(),
+      receiptHash: pause.receiptHash
+    });
+
+    const pollIntervalMs = input.runControlPollIntervalMs ?? 250;
+    while (true) {
+      const terminal = await evaluateCheckpoint("pre_attempt");
+      if (terminal) return terminal;
+
+      await waitForControlPoll(pollIntervalMs);
+      // Cancellation aborts the wait immediately. Reconcile terminal state
+      // before polling cooperative receipts because the production control
+      // source intentionally clears pause/continue after a cancel receipt.
+      const awakenedTerminal = await evaluateCheckpoint("pre_attempt");
+      if (awakenedTerminal) return awakenedTerminal;
+      const snapshot = await source.poll(loop.loopId);
+      if (snapshot.pause) {
+        if (snapshot.pause.controlId !== pause.controlId || snapshot.pause.loopId !== loop.loopId) {
+          throw new Error("Run control integrity check failed while pause was applied.");
+        }
+        continue;
+      }
+
+      const continuedBy = snapshot.continuedBy;
+      if (
+        !continuedBy ||
+        continuedBy.loopId !== loop.loopId ||
+        continuedBy.action !== "continue" ||
+        continuedBy.expectedPreviousControlId !== pause.controlId
+      ) {
+        throw new Error("Run control integrity check failed while releasing pause.");
+      }
+
+      await source.recordApplication({
+        loopId: loop.loopId,
+        controlId: continuedBy.controlId,
+        action: "continue_applied",
+        relatedControlId: pause.controlId,
+        appliedAt: now(),
+        receiptHash: continuedBy.receiptHash
+      });
+      return await evaluateCheckpoint("pre_attempt");
+    }
   }
 
   /**
@@ -1391,6 +1526,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       const rollbackOutcome = await restoreRollbackBoundary({
         repoRoot: task.repoRoot,
         boundary: capturedBoundary,
+        managedRoots: managedRollbackRoots,
         restoredAt,
         decision: "DISCARD"
       });
@@ -1584,6 +1720,9 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     if (preRunTerminal !== undefined) return await terminateRun(preRunTerminal);
 
   while (loop.attempts.length < loop.budget.maxIterations) {
+    const controlTerminal = await awaitCooperativeRunControl();
+    if (controlTerminal !== undefined) return await terminateRun(controlTerminal);
+
     const distilled = distillContext(loop, {
       maxRecentAttempts: useCompressedContext ? 1 : (input.maxRecentAttempts ?? 3)
     });
@@ -1881,7 +2020,8 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     const rollbackBoundary = tracksWorkspaceMutations
       ? await captureRollbackBoundary({
           repoRoot: request.context.repoRoot,
-          capturedAt: attemptStartedAt
+          capturedAt: attemptStartedAt,
+          managedRoots: managedRollbackRoots
         })
       : undefined;
 
@@ -2161,10 +2301,14 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     let weakenedTestFiles: string[] = [];
     try {
       changedFiles = tracksWorkspaceMutations
-        ? resolveChangedFiles(result, request.context.repoRoot, rollbackBoundary)
+        ? resolveChangedFiles(result, request.context.repoRoot, rollbackBoundary, managedRollbackRoots)
         : [];
       ignoredChanges = tracksWorkspaceMutations
-        ? listIgnoredFileChangesSinceBoundary({ repoRoot: request.context.repoRoot, boundary: rollbackBoundary })
+        ? listIgnoredFileChangesSinceBoundary({
+            repoRoot: request.context.repoRoot,
+            boundary: rollbackBoundary,
+            managedRoots: managedRollbackRoots
+          })
         : ignoredChanges;
       escapingLinks =
         tracksWorkspaceMutations && request.context.repoRoot
@@ -2190,6 +2334,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         rollbackOutcome = (await restoreRollbackBoundary({
           repoRoot: request.context.repoRoot,
           boundary: rollbackBoundary,
+          managedRoots: managedRollbackRoots,
           restoredAt: attemptCompletedAt,
           decision: "DISCARD",
           removePaths: ignoredChanges.created,
@@ -2312,6 +2457,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         rollbackOutcome = await restoreRollbackBoundary({
           repoRoot: request.context.repoRoot,
           boundary: rollbackBoundary,
+          managedRoots: managedRollbackRoots,
           restoredAt: attemptCompletedAt,
           decision: patchDecision.decision,
           removePaths: violatingIgnoredPaths(filesystemDecision.violations, ignoredChanges.created),
@@ -2422,6 +2568,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         rollbackOutcome = await restoreRollbackBoundary({
           repoRoot: request.context.repoRoot,
           boundary: rollbackBoundary,
+          managedRoots: managedRollbackRoots,
           restoredAt: attemptCompletedAt,
           decision: patchDecision.decision
         }) ?? undefined;
@@ -2578,6 +2725,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       rollbackOutcome = await restoreRollbackBoundary({
         repoRoot: request.context.repoRoot,
         boundary: rollbackBoundary,
+        managedRoots: managedRollbackRoots,
         restoredAt: attemptCompletedAt,
         decision: patchDecision?.decision ?? "DISCARD"
       });
@@ -2586,6 +2734,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       rollbackOutcome = await restoreRollbackBoundary({
         repoRoot: request.context.repoRoot,
         boundary: rollbackBoundary,
+        managedRoots: managedRollbackRoots,
         restoredAt: attemptCompletedAt,
         decision: "DISCARD"
       });
@@ -2903,6 +3052,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         await restoreRollbackBoundary({
           repoRoot: task.repoRoot,
           boundary: preCandidateBoundary,
+          managedRoots: managedRollbackRoots,
           restoredAt: now(),
           decision: "DISCARD"
         });
@@ -3026,14 +3176,15 @@ function finalizeLoop(
 function observeRunFileEffects(input: {
   repoRoot?: string;
   boundary?: RollbackBoundaryArtifact;
+  managedRoots: string[];
   touchedDuringExecution: ReadonlySet<string>;
   unavailableReason?: string;
 }): VerifiedHandoffFileEffectsV1 {
-  const touchedDuringExecution = normalizeFileEffectPaths(input.touchedDuringExecution);
+  const observedTouchedDuringExecution = normalizeFileEffectPaths(input.touchedDuringExecution);
   if (!input.repoRoot || !input.boundary) {
     return {
       observationStatus: "unavailable",
-      touchedDuringExecution,
+      touchedDuringExecution: observedTouchedDuringExecution,
       netChangedAtCompletion: [],
       revertedBeforeCompletion: [],
       observationReason:
@@ -3043,10 +3194,20 @@ function observeRunFileEffects(input: {
   }
 
   try {
+    const exclusions = authenticateManagedPathExclusions(
+      input.repoRoot,
+      input.boundary,
+      input.managedRoots
+    );
+    const touchedDuringExecution = filterManagedRollbackPaths(
+      observedTouchedDuringExecution,
+      exclusions
+    );
     const netChangedAtCompletion = normalizeFileEffectPaths(
       listAttemptChangedFilesSinceBoundary({
         repoRoot: input.repoRoot,
         boundary: input.boundary,
+        managedRoots: input.managedRoots,
         includeBaselineSnapshotChanges: true
       })
     );
@@ -3060,7 +3221,7 @@ function observeRunFileEffects(input: {
   } catch (error) {
     return {
       observationStatus: "unavailable",
-      touchedDuringExecution,
+      touchedDuringExecution: observedTouchedDuringExecution,
       netChangedAtCompletion: [],
       revertedBeforeCompletion: [],
       observationReason: `Final file-effect observation was unavailable: ${fileEffectErrorMessage(error)}`
@@ -3218,12 +3379,20 @@ function violatingIgnoredPaths(
 function resolveChangedFiles(
   result: MartinAdapterResult,
   repoRoot?: string,
-  rollbackBoundary?: RollbackBoundaryArtifact
+  rollbackBoundary?: RollbackBoundaryArtifact,
+  managedRoots: string[] = []
 ): string[] {
-  const adapterReported = normalizeFileEffectPaths(result.execution?.changedFiles ?? []);
+  const exclusions = repoRoot && rollbackBoundary
+    ? authenticateManagedPathExclusions(repoRoot, rollbackBoundary, managedRoots)
+    : [];
+  const adapterReported = filterManagedRollbackPaths(
+    normalizeFileEffectPaths(result.execution?.changedFiles ?? []),
+    exclusions
+  );
   const gitObserved = listAttemptChangedFilesSinceBoundary({
     repoRoot,
     boundary: rollbackBoundary,
+    managedRoots,
     includeBaselineSnapshotChanges: true
   });
   return normalizeFileEffectPaths([...adapterReported, ...gitObserved]);

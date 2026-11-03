@@ -81,6 +81,8 @@ Every attempt runs your verifier. Every dollar is tracked. If the agent drifts o
 **Run the loop:**
 `martin_doctor` `martin_plan` `martin_preflight` `martin_run` `martin_pause` `martin_continue` `martin_cancel`
 
+The three run-control mutation tools are local-stdio only. They require a live MartinLoop executor lease, and their `local_os_user` authority label describes the same-machine boundary rather than an authenticated person. Remote HTTP sessions are rejected for these tools.
+
 **Inspect results:**
 `martin_status` `martin_logs` `martin_dossier` `martin_eval` `martin_inspect` `martin_list_runs` `martin_get_run` `martin_get_attempt` `martin_get_verification_results` `martin_triage_runs`
 

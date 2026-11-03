@@ -866,6 +866,8 @@ export async function runLiveSwarmWithDependencies(
         }
       },
       metadata: {
+        executionMode: "governed",
+        governanceClaimEligible: "true",
         "swarm.parentId": record.swarmId,
         "swarm.agentId": agent.agentId,
         "swarm.taskIds": JSON.stringify([task.taskId]),

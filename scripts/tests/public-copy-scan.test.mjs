@@ -23,8 +23,9 @@ test("findPublicCopyViolations detects forbidden public-process language", () =>
 });
 
 test("findPublicCopyViolations detects internal repo names and local path leakage", () => {
+  const syntheticInternalRepository = ["Example", "Service", "Internal"].join("_");
   const internalRepoLeak = findPublicCopyViolations(
-    "Source: martin-Loop/ML_Main_Repo_Internal",
+    `Source: example-internal/${syntheticInternalRepository}`,
     "README.md",
   );
   const windowsPathLeak = findPublicCopyViolations(

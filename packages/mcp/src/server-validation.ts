@@ -622,12 +622,11 @@ function validateEvalInput(args: unknown): MartinEvalInput {
 
 function validateRunControlInput(args: unknown): MartinRunControlRequestInput {
   const record = requireObject(args);
-  assertAllowedKeys(record, ["file", "loopId", "runsDir", "latest", "reason", "requestedBy"]);
+  assertAllowedKeys(record, ["file", "loopId", "runsDir", "latest", "reason"]);
   const base = validateGetRunInput(pickKeys(record, RUN_SELECTOR_KEYS));
   return {
     ...base,
-    ...optionalString(record.reason, "reason"),
-    ...optionalString(record.requestedBy, "requestedBy")
+    ...optionalString(record.reason, "reason")
   };
 }
 

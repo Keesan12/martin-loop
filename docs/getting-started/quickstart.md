@@ -16,7 +16,7 @@ npx -y martin-loop@latest start
 npx -y martin-loop@latest demo
 cd martin-loop-demo
 npm install
-npx -y martin-loop@latest run "Summarize the demo workspace and prove tests still pass" --verify "npm test" --budget-usd 2 --max-iterations 1
+npx -y martin-loop@latest run "Summarize the demo workspace and prove tests still pass" --engine codex --verify "npm test" --budget-usd 2 --max-iterations 1
 npx -y martin-loop@latest dossier --latest
 npx -y martin-loop@latest share --latest
 ```
@@ -35,18 +35,18 @@ npx -y martin-loop@latest doctor
 For deterministic package-line verification in fresh environments:
 
 ```sh
-npx -y martin-loop@0.3.2 --version
+npx -y martin-loop@0.9.0 --version
 npm view martin-loop version
 npm view @martinloop/mcp version
 ```
 
-If `npx martin-loop --version` differs from npm live, run `npx -y martin-loop@latest --version` or pin `@0.3.2` to avoid local cache drift.
+If `npx martin-loop --version` differs from npm live, run `npx -y martin-loop@latest --version` or pin `@0.9.0` to avoid local cache drift.
 
 ## Run a Governed Task
 
 ```sh
-npx -y martin-loop@latest preflight "fix the auth regression" --verify "pnpm test"
-npx -y martin-loop@latest run "fix the auth regression" --budget 3.00 --verify "pnpm test"
+npx -y martin-loop@latest preflight "fix the auth regression" --engine codex --verify "pnpm test"
+npx -y martin-loop@latest run "fix the auth regression" --engine codex --budget 3.00 --verify "pnpm test"
 ```
 
 By default, MartinLoop auto-checks `doctor`, `session-start`, and `preflight` for the same repo and task before a real run will spend money. If preflight finds a real blocker, MartinLoop stops before live spend and tells you what to fix.
@@ -54,7 +54,7 @@ By default, MartinLoop auto-checks `doctor`, `session-start`, and `preflight` fo
 For explicit no-spend validation, pass `--proof` intentionally:
 
 ```sh
-npx -y martin-loop@latest run "fix the auth regression" --proof --budget 1.00 --verify "pnpm test"
+npx -y martin-loop@latest run "fix the auth regression" --proof --engine codex --budget 1.00 --verify "pnpm test"
 ```
 
 If you want to inspect the governed checks first:
@@ -62,7 +62,7 @@ If you want to inspect the governed checks first:
 ```sh
 npx -y martin-loop@latest doctor
 npx -y martin-loop@latest session-start
-npx -y martin-loop@latest preflight "fix the auth regression" --verify "pnpm test"
+npx -y martin-loop@latest preflight "fix the auth regression" --engine codex --verify "pnpm test"
 ```
 
 ## Review Evidence

@@ -8,12 +8,37 @@ export const PUBLIC_ONBOARDING_SURFACES = [
   "README.md",
   "packages/cli/README.md",
   "docs/reference/cli.md",
+  "docs/getting-started/mcp.md",
+  "docs/getting-started/quickstart.md",
+  "docs/oss/QUICKSTART.md",
+  "docs/oss/MCP-FOR-AI-AGENTS.md",
+  "docs/reference/mcp-compatibility.md",
+  "docs/release/MCP-PUBLISHING.md",
 ];
 
 const SHELL_FENCE_LANGUAGES = new Set(["bash", "console", "powershell", "sh", "shell"]);
 const SUPPORTED_ENGINES = new Set(["claude", "codex", "gemini", "openai"]);
 const UNSAFE_GOVERNED_EXAMPLE_REASON =
   "governed run/preflight example must select a supported --engine or follow an adjacent enable --engine gate";
+const LIVE_STANDALONE_MCP_BASELINE_PATTERN =
+  /^\s*`@martinloop\/mcp@(?<version>\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)`\s+is the live public standalone MCP baseline\b/iu;
+
+function parseStandaloneMcpLiveBaseline(versionLedger) {
+  const section = versionLedger.match(
+    /## Standalone package: `@martinloop\/mcp`(?<body>[\s\S]*?)(?=\n## |$)/u,
+  )?.groups?.body;
+  const matches = [...(section ?? "").matchAll(
+    /^\s*-\s*standalone MCP public baseline:\s*`(?<version>\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)`\s*$/gimu,
+  )];
+
+  if (matches.length !== 1 || !matches[0]?.groups?.version) {
+    throw new Error(
+      "VERSION-LEDGER.md must declare exactly one standalone MCP public baseline in the standalone package section",
+    );
+  }
+
+  return matches[0].groups.version;
+}
 
 function parseFencedBlocks(contents) {
   const lines = contents.split(/\r?\n/u);
@@ -99,9 +124,58 @@ function engineViolation(engine) {
   return undefined;
 }
 
-export function evaluateOnboardingDocument({ relativePath, contents }) {
+export function evaluateOnboardingDocument({
+  relativePath,
+  contents,
+  currentRootVersion,
+  currentMcpVersion,
+  liveMcpVersion,
+}) {
   const { lines, blocks } = parseFencedBlocks(contents);
   const violations = [];
+
+  if (currentRootVersion && currentMcpVersion) {
+    for (const [index, line] of lines.entries()) {
+      const packagePattern = /(?<package>martin-loop|@martinloop\/mcp)@(?<version>\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)/gu;
+      const liveMcpDeclaration = line.match(LIVE_STANDALONE_MCP_BASELINE_PATTERN);
+      const liveMcpDeclarationIndex = liveMcpDeclaration
+        ? line.indexOf("@martinloop/mcp@", liveMcpDeclaration.index)
+        : -1;
+      for (const match of line.matchAll(packagePattern)) {
+        const packageName = match.groups?.package;
+        const version = match.groups?.version;
+        const currentVersion = packageName === "@martinloop/mcp" ? currentMcpVersion : currentRootVersion;
+        const isDeclaredLiveMcpBaseline = packageName === "@martinloop/mcp"
+          && match.index === liveMcpDeclarationIndex
+          && version === liveMcpDeclaration?.groups?.version
+          && Boolean(liveMcpVersion);
+        if (isDeclaredLiveMcpBaseline && version !== liveMcpVersion) {
+          violations.push({
+            relativePath,
+            line: index + 1,
+            reason: `stale live MCP baseline ${version}; version ledger live baseline is ${liveMcpVersion}`,
+          });
+        } else if (!isDeclaredLiveMcpBaseline && version && version !== currentVersion) {
+          violations.push({
+            relativePath,
+            line: index + 1,
+            reason: `stale package version "${packageName}@${version}"; current package version is ${currentVersion}`,
+          });
+        }
+      }
+
+      const proseMatch = line.match(/\b(?<version>\d+\.\d+\.\d+)\b.*\bcurrent public (?:standalone )?MCP package line\b/iu)
+        ?? line.match(/\bcurrent public (?:standalone )?MCP package line\b.*\b(?<version>\d+\.\d+\.\d+)\b/iu);
+      const proseVersion = proseMatch?.groups?.version;
+      if (proseVersion && proseVersion !== currentMcpVersion) {
+        violations.push({
+          relativePath,
+          line: index + 1,
+          reason: `stale MCP package line ${proseVersion}; current package version is ${currentMcpVersion}`,
+        });
+      }
+    }
+  }
 
   for (const [blockIndex, block] of blocks.entries()) {
     if (!SHELL_FENCE_LANGUAGES.has(block.language)) {
@@ -134,10 +208,20 @@ export function evaluateOnboardingDocument({ relativePath, contents }) {
 
 export async function evaluatePublicOnboardingSurfaces(rootDir = process.cwd()) {
   const violations = [];
+  const rootPackage = JSON.parse(await readFile(path.join(rootDir, "package.json"), "utf8"));
+  const mcpPackage = JSON.parse(await readFile(path.join(rootDir, "packages/mcp/package.json"), "utf8"));
+  const versionLedger = await readFile(path.join(rootDir, "docs/release/VERSION-LEDGER.md"), "utf8");
+  const liveMcpVersion = parseStandaloneMcpLiveBaseline(versionLedger);
 
   for (const relativePath of PUBLIC_ONBOARDING_SURFACES) {
     const contents = await readFile(path.join(rootDir, relativePath), "utf8");
-    violations.push(...evaluateOnboardingDocument({ relativePath, contents }).violations);
+    violations.push(...evaluateOnboardingDocument({
+      relativePath,
+      contents,
+      currentRootVersion: rootPackage.version,
+      currentMcpVersion: mcpPackage.version,
+      liveMcpVersion,
+    }).violations);
   }
 
   return {

@@ -92,8 +92,9 @@ export async function verifyReceiptIntegrityFromFiles(input: {
   runsRoot: string;
   loopRecordPath: string;
   ledgerPath: string;
+  integrityPath?: string;
 }): Promise<ReceiptIntegritySummary> {
-  const integrityPath = resolveReceiptIntegrityPath(input.runsRoot, input.runId);
+  const integrityPath = input.integrityPath ?? resolveReceiptIntegrityPath(input.runsRoot, input.runId);
   const [rawMaterial, rawLoopRecord, rawLedger, key] = await Promise.all([
     readFile(integrityPath, "utf8").catch(() => null),
     readFile(input.loopRecordPath, "utf8").catch(() => null),

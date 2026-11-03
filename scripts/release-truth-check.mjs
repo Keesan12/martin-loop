@@ -1,14 +1,20 @@
 #!/usr/bin/env node
 
-import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import {
+  contentDigest,
+  reconcileDivergences,
+  validateDivergenceManifest,
+} from "./lib/release-truth-divergence.mjs";
 
 const repoRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
-const markerFlag = process.argv.find((arg) => arg.startsWith("--allow-divergence-marker="));
-const allowedMarker = markerFlag ? markerFlag.slice("--allow-divergence-marker=".length) : undefined;
+const manifestFlag = process.argv.find((arg) => arg.startsWith("--allow-divergence-manifest="));
+const manifestPath = manifestFlag
+  ? resolve(repoRoot, manifestFlag.slice("--allow-divergence-manifest=".length))
+  : undefined;
 const mirrorRoot = resolveMirrorRoot();
 
 const CRITICAL_FILES = [
@@ -27,22 +33,22 @@ for (const relativePath of CRITICAL_FILES) {
   }
 
   const publicFile = safeReadGitRef("public/main", relativePath);
-  if (publicFile.ok && publicFile.text !== local.text) {
+  if (publicFile.ok && contentDigest(publicFile.text) !== contentDigest(local.text)) {
     divergences.push({
       lane: "public",
       relativePath,
-      localSha: sha(local.text),
-      remoteSha: sha(publicFile.text)
+      localSha: contentDigest(local.text),
+      remoteSha: contentDigest(publicFile.text)
     });
   }
 
   const mirrorFile = safeReadMirror(relativePath);
-  if (mirrorFile.ok && mirrorFile.text !== local.text) {
+  if (mirrorFile.ok && contentDigest(mirrorFile.text) !== contentDigest(local.text)) {
     divergences.push({
       lane: "embedded_mirror",
       relativePath,
-      localSha: sha(local.text),
-      remoteSha: sha(mirrorFile.text)
+      localSha: contentDigest(local.text),
+      remoteSha: contentDigest(mirrorFile.text)
     });
   }
 }
@@ -80,30 +86,29 @@ assertInvariant(
   "packages/cli/src/index.ts"
 );
 
-if (divergences.length === 0) {
-  console.log("release-truth-check: ok (critical MCP/CLI surfaces are in parity).");
-  process.exit(0);
+const approvals = readDivergenceApprovals(manifestPath);
+const convergedLanes = gitRefMatchesHead("public/main") ? ["public"] : [];
+const reconciliation = reconcileDivergences({ divergences, approvals, convergedLanes });
+
+if (reconciliation.staleApprovals.length > 0) {
+  console.error("release-truth-check: divergence manifest contains stale or mismatched approvals.");
+  printRows(reconciliation.staleApprovals);
+  process.exit(1);
 }
 
-if (allowedMarker && latestCommitMessage().includes(allowedMarker)) {
-  console.warn("release-truth-check: divergence accepted by explicit sync marker.");
-  for (const row of divergences) {
-    console.warn(
-      `  - ${row.lane}:${row.relativePath} local=${row.localSha.slice(0, 12)} remote=${row.remoteSha.slice(0, 12)}`
-    );
+if (reconciliation.unapproved.length === 0) {
+  if (reconciliation.approved.length > 0) {
+    console.warn("release-truth-check: exact reviewed divergences accepted.");
+    printRows(reconciliation.approved);
+  } else {
+    console.log("release-truth-check: ok (critical MCP/CLI surfaces are in parity).");
   }
   process.exit(0);
 }
 
 console.error("release-truth-check: divergence detected across critical MCP/CLI files.");
-for (const row of divergences) {
-  console.error(
-    `  - ${row.lane}:${row.relativePath} local=${row.localSha.slice(0, 12)} remote=${row.remoteSha.slice(0, 12)}`
-  );
-}
-if (allowedMarker) {
-  console.error(`Add sync marker '${allowedMarker}' in the commit message to acknowledge intentional drift.`);
-}
+printRows(reconciliation.unapproved);
+console.error("Provide an exact hash-bound divergence manifest only after reviewing each listed path.");
 process.exit(1);
 
 function assertInvariant(name, pattern, relativePath) {
@@ -113,17 +118,6 @@ function assertInvariant(name, pattern, relativePath) {
   }
   if (!pattern.test(result.text)) {
     fail(`Invariant '${name}' failed in ${relativePath}.`);
-  }
-}
-
-function latestCommitMessage() {
-  try {
-    return execFileSync("git", ["log", "-1", "--pretty=%B"], {
-      cwd: repoRoot,
-      encoding: "utf8"
-    }).trim();
-  } catch {
-    return "";
   }
 }
 
@@ -159,8 +153,22 @@ function safeReadGitRef(ref, relativePath) {
   }
 }
 
-function sha(text) {
-  return createHash("sha256").update(text).digest("hex");
+function gitRefMatchesHead(ref) {
+  try {
+    const head = execFileSync("git", ["rev-parse", "HEAD^{commit}"], {
+      cwd: repoRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"]
+    }).trim();
+    const candidate = execFileSync("git", ["rev-parse", `${ref}^{commit}`], {
+      cwd: repoRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"]
+    }).trim();
+    return head.length > 0 && head === candidate;
+  } catch {
+    return false;
+  }
 }
 
 function resolveMirrorRoot() {
@@ -173,6 +181,25 @@ function resolveMirrorRoot() {
   }
 
   return null;
+}
+
+function readDivergenceApprovals(filePath) {
+  if (!filePath) {
+    return [];
+  }
+  try {
+    return validateDivergenceManifest(JSON.parse(readFileSync(filePath, "utf8")));
+  } catch (error) {
+    fail(`Invalid divergence manifest ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+function printRows(rows) {
+  for (const row of rows) {
+    console.error(
+      `  - ${row.lane}:${row.relativePath} local=${row.localSha.slice(0, 12)} remote=${row.remoteSha.slice(0, 12)}`
+    );
+  }
 }
 
 function fail(message) {

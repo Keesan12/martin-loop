@@ -17,7 +17,7 @@ body:
     attributes:
       label: What would you like MartinLoop to do?
       description: Share the behavior, command, integration, or UX you want.
-      placeholder: Add a CI-friendly mode that only verifies and reports policy failures.
+      placeholder: Add a CI workflow that runs preflight and verifies persisted evidence without starting a provider.
     validations:
       required: true
   - type: textarea

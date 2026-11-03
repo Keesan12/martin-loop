@@ -35,10 +35,15 @@ import {
   waitForSwarmOperationalRevision,
 } from "../../core/dist/swarm/operations.js";
 import {
+  createSwarmLivePlan,
+  SWARM_CHILD_MAX_WALL_CLOCK_MS,
+  resolveSwarmDeadlineMs,
   validateSwarmLivePlan,
   type MartinOutputMode,
   type SwarmLivePlan,
 } from "@martin/contracts";
+
+import type { PersistedSwarmDemoRouteRequest } from "./swarm-demo.js";
 
 import { resolveCliEnvironment } from "./run-store.js";
 import { enqueueCommittedSwarmForHostedSync } from "./swarm-sync-client.js";
@@ -69,6 +74,8 @@ import {
 
 const execFileAsync = promisify(execFile);
 const MAX_PLAN_BYTES = 1024 * 1024;
+const SWARM_DEMO_MODEL = "gpt-6.1-sol";
+const DETERMINISTIC_SWARM_MODEL = "deterministic-governed";
 
 export interface SwarmPlanCommandRequest {
   file: string;
@@ -113,6 +120,14 @@ export interface SwarmCommandDependencies {
   }): Promise<unknown>;
 }
 
+export interface PersistedSwarmDemoCommandDependencies {
+  readRepositoryRoot(cwd: string): Promise<string>;
+  readBaselineCommit(cwd: string): Promise<string>;
+  readWorktreeClean(cwd: string): Promise<boolean>;
+  runLiveSwarm(input: RunProductionLiveSwarmInput): Promise<RunLiveSwarmResult>;
+  resolveCodexLaunch(input: { workingDirectory: string; model: string }): CodexLaunchBinding;
+}
+
 const productionDependencies: SwarmCommandDependencies = {
   async readRepositoryRoot(cwd) {
     const result = await execFileAsync("git", ["rev-parse", "--show-toplevel"], {
@@ -142,6 +157,346 @@ const productionDependencies: SwarmCommandDependencies = {
   resolveCodexLaunch: resolveCodexSwarmLaunchBinding,
   enqueueCommittedSwarmForHostedSync,
 };
+
+export async function executePersistedSwarmDemoCommand(
+  request: PersistedSwarmDemoRouteRequest,
+  outputMode: MartinOutputMode,
+  dependencies: PersistedSwarmDemoCommandDependencies = {
+    readRepositoryRoot: productionDependencies.readRepositoryRoot!,
+    readBaselineCommit: productionDependencies.readBaselineCommit,
+    readWorktreeClean: productionDependencies.readWorktreeClean,
+    runLiveSwarm: productionDependencies.runLiveSwarm,
+    resolveCodexLaunch: productionDependencies.resolveCodexLaunch,
+  },
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  const environment = resolveCliEnvironment({
+    cwd: request.cwd,
+    ...(request.runsDir ? { runsDir: request.runsDir } : {}),
+    engine: request.engine,
+    liveMode: request.mode === "live" ? "live" : "proof",
+  });
+  const canonicalRoot = await dependencies.readRepositoryRoot(environment.workingDirectory);
+  if (!(await dependencies.readWorktreeClean(canonicalRoot))) {
+    throw new CliCommandError(
+      "policy_blocked",
+      "Persisted swarm demo execution requires a clean worktree so the baseline and sealed evidence stay exact.",
+    );
+  }
+  const baselineCommit = await dependencies.readBaselineCommit(canonicalRoot);
+  await mkdir(environment.runsRoot, { recursive: true });
+  const nonce = `${Date.now().toString(36)}-${randomBytes(4).toString("hex")}`;
+  const swarmId = `live-swarm-${request.mode}-${nonce}`;
+  const perAgentUsd = request.budgetUsd / request.agents;
+  const swarmDeadlineMs = resolveSwarmDeadlineMs({
+    agents: request.agents,
+    maxConcurrency: request.maxConcurrency,
+  });
+  const plan = createSwarmLivePlan({
+    planId: `plan-${swarmId}`,
+    swarmId,
+    workspaceId: "live-swarm-demo",
+    projectId: "governed-live-swarm",
+    baselineCommit,
+    parentContract: {
+      policyVersion: "live-swarm-demo-v1",
+      objective: request.mode === "live"
+        ? `Qualify ${request.agents} live Codex agents through the governed Swarm runtime.`
+        : `Qualify ${request.agents} provider-free deterministic agents through the governed Swarm runtime.`,
+      definitionOfDone: [
+        "Every required read-only child completes with bound verification.",
+        "The parent verifier passes after fan-in.",
+        "Core seals an authoritative verified parent receipt.",
+      ],
+      budget: {
+        maxUsd: request.budgetUsd,
+        softLimitUsd: request.mode === "live" ? request.budgetUsd * 0.8 : 0,
+        maxIterations: request.agents,
+      },
+      maxWallClockMs: swarmDeadlineMs,
+      maxConcurrency: request.maxConcurrency,
+      scope: { allowedPaths: ["**/*"], deniedPaths: [".git/**"] },
+      permissions: { networkDomains: [], commands: ["node --version"] },
+      integrationStrategy: "parent_fan_in",
+      globalVerifierStack: [{ command: "node --version", type: "test_full" }],
+      stopPolicy: { budgetExhausted: "stop", blockingFailure: "needs_review", verifierFailure: "stop" },
+      recoveryPolicy: { maxReassignmentsPerTask: 0, dependencyWaiversAllowed: false },
+      approvalPolicy: {},
+      orchestrationStrategy: "hierarchical_dag",
+    },
+    tasks: Array.from({ length: request.agents }, (_, index) => ({
+      taskId: `qualification-${index + 1}`,
+      title: `Qualification agent ${index + 1}`,
+      objective: "Inspect the repository baseline and report readiness without changing files.",
+      required: true,
+      dependsOn: [],
+      assignedAgentId: `agent-${index + 1}`,
+      status: "queued" as const,
+      mutationMode: "read_only" as const,
+      writeScope: [],
+    })),
+    agents: Array.from({ length: request.agents }, (_, index) => ({
+      agentId: `agent-${index + 1}`,
+      role: "worker",
+      status: "queued" as const,
+      contract: {
+        agentId: `agent-${index + 1}`,
+        taskIds: [`qualification-${index + 1}`],
+        scope: { allowedPaths: ["**/*"], deniedPaths: [".git/**"] },
+        budget: {
+          maxUsd: perAgentUsd,
+          softLimitUsd: request.mode === "live" ? perAgentUsd * 0.8 : 0,
+          maxIterations: 1,
+        },
+        maxWallClockMs: SWARM_CHILD_MAX_WALL_CLOCK_MS,
+        permissions: { networkDomains: [], commands: ["node --version"] },
+        approvalPolicy: {},
+        verifierAuthority: "child_only" as const,
+      },
+    })),
+    engine: request.mode === "live"
+      ? { engine: "codex", model: SWARM_DEMO_MODEL }
+      : { engine: "openai", model: DETERMINISTIC_SWARM_MODEL },
+    childMaxIterations: 1,
+    createdAt: new Date().toISOString(),
+  });
+
+  const controller = new AbortController();
+  const deadline = setTimeout(
+    () => controller.abort(new Error(`Swarm demo exceeded its derived ${swarmDeadlineMs}ms deadline.`)),
+    swarmDeadlineMs,
+  );
+  let result: RunLiveSwarmResult;
+  try {
+    result = await dependencies.runLiveSwarm({
+      plan,
+      canonicalRoot,
+      ownedRoot: join(environment.runsRoot, "_swarms", plan.swarmId, "worktrees"),
+      storeRoot: environment.runsRoot,
+      runsRoot: environment.runsRoot,
+      workspaceIsolationMode: "independent_clone",
+      adapterFactory: request.mode === "live"
+        ? createExplicitSwarmAdapterFactory(plan.engine, undefined, dependencies.resolveCodexLaunch)
+        : () => ({
+            adapterId: "live-swarm:local-deterministic",
+            kind: "agent-cli",
+            label: "Live Swarm local deterministic governed adapter (provider-free)",
+            metadata: {
+              providerId: "local-deterministic",
+              model: DETERMINISTIC_SWARM_MODEL,
+              capabilities: { workspaceMutations: false },
+            },
+            async execute(adapterRequest) {
+              return {
+                status: "completed" as const,
+                summary: "Provider-free governed qualification completed without repository mutation.",
+                usage: { actualUsd: 0, tokensIn: 0, tokensOut: 0 },
+                verification: {
+                  passed: true,
+                  summary: "Deterministic governed child passed.",
+                  binding: {
+                    runId: adapterRequest.loopId,
+                    attemptId: adapterRequest.attemptId,
+                    ...(adapterRequest.context.runsRoot ? { runsRoot: adapterRequest.context.runsRoot } : {}),
+                    ...(adapterRequest.context.executionProfile ? { executionProfile: adapterRequest.context.executionProfile } : {}),
+                    workspaceId: adapterRequest.workspaceId,
+                    cwd: adapterRequest.context.repoRoot ?? canonicalRoot,
+                    commands: adapterRequest.context.verificationPlan,
+                  },
+                  steps: [{ command: "provider-free-deterministic-check", launched: true, completed: true, crashed: false, exitCode: 0, timedOut: false }],
+                },
+              };
+            },
+          }),
+      verifierExecutor: createSwarmVerifierExecutor(),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    throw mapKnownSwarmError(error, "runtime");
+  } finally {
+    clearTimeout(deadline);
+  }
+
+  const authoritative = isAuthoritativeLiveSwarmVerified(result);
+  const providerExecuted = request.mode === "live"
+    && await hasCanonicalLiveProviderEvidence(
+      result,
+      environment.runsRoot,
+      plan.engine.engine,
+      plan.engine.model,
+    );
+  const verified = result.outcome.state === "verified"
+    && authoritative
+    && (request.mode !== "live" || providerExecuted);
+  const data = {
+    command: "demo --swarm",
+    mode: request.mode,
+    swarmId: plan.swarmId,
+    planHash: plan.planHash,
+    engine: plan.engine,
+    providerExecuted,
+    providerSpendUsd: request.mode === "live" ? result.record.budgetLedger.settledUsd : 0,
+    simulationFallbackCalls: 0,
+    deadlineMs: swarmDeadlineMs,
+    outcome: result.outcome,
+    authoritative,
+  };
+  const rendered = renderCliSuccess(outputMode, {
+    data,
+    human: [
+      `Persisted ${request.mode} Swarm demo: ${plan.swarmId}`,
+      `Outcome: ${result.outcome.state}`,
+      `Authoritative parent receipt: ${authoritative ? "yes" : "no"}`,
+      `Provider executed: ${providerExecuted ? "yes" : "no"}`,
+      "Simulation fallback calls: 0",
+    ],
+    quiet: plan.swarmId,
+  });
+  return {
+    ...rendered,
+    exitCode: verified ? 0 : 1,
+    stderr: verified ? rendered.stderr : "Persisted Swarm demo did not produce authoritative verified evidence.",
+  };
+}
+
+/**
+ * Requires mutually consistent provider process, raw-usage, and budget
+ * settlement evidence for every verified live child. A CHILD_VERIFIED event is
+ * routing state, not provider proof by itself.
+ */
+export async function hasCanonicalLiveProviderEvidence(
+  result: Pick<RunLiveSwarmResult, "record">,
+  runsRoot: string,
+  expectedEngine: string,
+  expectedModel: string,
+): Promise<boolean> {
+  const verifiedEvents = result.record.events.filter((event) => event.type === "CHILD_VERIFIED");
+  if (verifiedEvents.length === 0) return false;
+  const settledUsage = result.record.budgetLedger.leases.reduce(
+    (total, lease) => lease.status === "settled" && lease.actualUsage
+      ? { usd: total.usd + lease.actualUsage.usd, tokens: total.tokens + lease.actualUsage.tokens }
+      : total,
+    { usd: 0, tokens: 0 },
+  );
+  if (
+    settledUsage.usd !== result.record.budgetLedger.settledUsd
+    || settledUsage.tokens !== result.record.budgetLedger.settledTokens
+  ) return false;
+
+  for (const event of verifiedEvents) {
+    const childRunId = event.childRunId;
+    const leaseId = event.payload.leaseId;
+    const actualUsd = event.payload.actualUsd;
+    const actualTokens = event.payload.actualTokens;
+    if (
+      typeof childRunId !== "string"
+      || childRunId.length === 0
+      || event.payload.processCloseState !== "closed"
+      || event.payload.leaseState !== "settled"
+      || typeof leaseId !== "string"
+      || typeof actualUsd !== "number"
+      || !Number.isFinite(actualUsd)
+      || actualUsd < 0
+      || typeof actualTokens !== "number"
+      || !Number.isSafeInteger(actualTokens)
+      || actualTokens <= 0
+    ) return false;
+
+    const lease = result.record.budgetLedger.leases.find((candidate) => candidate.leaseId === leaseId);
+    if (
+      !lease
+      || lease.status !== "settled"
+      || lease.agentId !== event.agentId
+      || lease.taskId !== event.taskId
+      || lease.actualUsage?.usd !== actualUsd
+      || lease.actualUsage.tokens !== actualTokens
+    ) return false;
+
+    let loopRecord: unknown;
+    try {
+      loopRecord = JSON.parse(await readFile(join(runsRoot, childRunId, "loop-record.json"), "utf8"));
+    } catch {
+      return false;
+    }
+    if (!isCanonicalRawProviderLoopRecord(
+      loopRecord,
+      actualUsd,
+      actualTokens,
+      expectedEngine,
+      expectedModel,
+    )) return false;
+  }
+
+  return true;
+}
+
+function isCanonicalRawProviderLoopRecord(
+  value: unknown,
+  expectedUsd: number,
+  expectedTokens: number,
+  expectedEngine: string,
+  expectedModel: string,
+): boolean {
+  if (!value || typeof value !== "object") return false;
+  const cost = (value as { cost?: unknown }).cost;
+  if (!cost || typeof cost !== "object") return false;
+  const typedCost = cost as {
+    actualUsd?: unknown;
+    tokensIn?: unknown;
+    tokensOut?: unknown;
+    providerSettlement?: unknown;
+  };
+  if (
+    typedCost.actualUsd !== expectedUsd
+    || typeof typedCost.tokensIn !== "number"
+    || !Number.isSafeInteger(typedCost.tokensIn)
+    || typedCost.tokensIn < 0
+    || typeof typedCost.tokensOut !== "number"
+    || !Number.isSafeInteger(typedCost.tokensOut)
+    || typedCost.tokensOut < 0
+    || typedCost.tokensIn + typedCost.tokensOut !== expectedTokens
+  ) return false;
+  const settlement = typedCost.providerSettlement;
+  if (!settlement || typeof settlement !== "object") return false;
+  const typedSettlement = settlement as {
+    providerId?: unknown;
+    model?: unknown;
+    transport?: unknown;
+    source?: unknown;
+    inputTokens?: unknown;
+    outputTokens?: unknown;
+    rawUsageAvailable?: unknown;
+    settledAt?: unknown;
+  };
+  const authority = CANONICAL_RAW_PROVIDER_AUTHORITIES[expectedEngine];
+  if (!authority || typeof expectedModel !== "string" || expectedModel.length === 0) return false;
+  return typedSettlement.providerId === authority.providerId
+    && typedSettlement.model === expectedModel
+    && typedSettlement.transport === authority.transport
+    && typedSettlement.rawUsageAvailable === true
+    && typedSettlement.source === authority.source
+    && typeof typedSettlement.inputTokens === "number"
+    && Number.isSafeInteger(typedSettlement.inputTokens)
+    && typedSettlement.inputTokens >= 0
+    && typedSettlement.inputTokens === typedCost.tokensIn
+    && typeof typedSettlement.outputTokens === "number"
+    && Number.isSafeInteger(typedSettlement.outputTokens)
+    && typedSettlement.outputTokens >= 0
+    && typedSettlement.outputTokens === typedCost.tokensOut
+    && typedSettlement.inputTokens + typedSettlement.outputTokens === expectedTokens
+    && typeof typedSettlement.settledAt === "string"
+    && Number.isFinite(Date.parse(typedSettlement.settledAt));
+}
+
+const CANONICAL_RAW_PROVIDER_AUTHORITIES: Readonly<Record<string, Readonly<{
+  providerId: string;
+  source: string;
+  transport: string;
+}>>> = Object.freeze({
+  claude: Object.freeze({ providerId: "claude", source: "claude_json", transport: "cli" }),
+  codex: Object.freeze({ providerId: "codex", source: "codex_jsonl", transport: "cli" }),
+  gemini: Object.freeze({ providerId: "gemini", source: "gemini_json", transport: "cli" }),
+  openai: Object.freeze({ providerId: "openai-compatible", source: "openai_compatible_json", transport: "http" }),
+});
 
 /** @internal Keeps optional hosted sync strictly downstream from immutable local truth. */
 export async function runBestEffortPostSealSwarmSync<T>(

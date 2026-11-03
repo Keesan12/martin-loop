@@ -28,17 +28,38 @@ const legacyStaticCodexPattern = [
 
 const baselineExclusionPattern = [heavyClaudeCliPattern, legacyStaticCodexPattern].join("|");
 
+// claude-cli.test.ts exercises several real subprocess and Git lifecycles. Running
+// every top-level suite in one long-lived Vitest worker lets completed subprocess
+// cleanup and Windows filesystem pressure accumulate until unrelated 5s tests time
+// out inside the repeated release matrix. A fresh process per suite preserves the
+// same assertions and timeouts while making process ownership deterministic.
+const claudeCliSuites = [
+  "createAgentCliAdapter",
+  "createStubAgentCliAdapter",
+  "createStubDirectProviderAdapter",
+  "splitCommand",
+  "containsShellOperator",
+  "createSpawnPlan",
+  "runSubprocess",
+  "createVerifierOnlyAdapter",
+  "createClaudeCliAdapter",
+  "createCodexCliAdapter",
+  "createGeminiCliAdapter"
+];
+
+const baselineClaudeCliCommands = claudeCliSuites.map((suite) => [
+  "run",
+  "--maxWorkers=1",
+  "tests/claude-cli.test.ts",
+  "--testNamePattern",
+  `^${suite} (?!.*(${baselineExclusionPattern})).*$`
+]);
+
 const commands =
   lane === "baseline"
     ? [
         ["run", "--maxWorkers=1", "--exclude", "tests/claude-cli.test.ts"],
-        [
-          "run",
-          "--maxWorkers=1",
-          "tests/claude-cli.test.ts",
-          "--testNamePattern",
-          `^(?!.*(${baselineExclusionPattern})).*$`
-        ],
+        ...baselineClaudeCliCommands,
         [
           "run",
           "--maxWorkers=1",

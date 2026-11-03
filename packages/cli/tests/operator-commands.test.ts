@@ -126,6 +126,52 @@ function makeLoopRecord(): LoopRecord {
   };
 }
 
+function makeCompletedVerifiedLoopRecord(): LoopRecord {
+  const loop = makeLoopRecord();
+  const attempt = loop.attempts[0]!;
+  const command = loop.task.verificationPlan[0]!;
+  const cwd = process.cwd();
+
+  return {
+    ...loop,
+    status: "completed",
+    lifecycleState: "completed",
+    metadata: { ...loop.metadata, executionMode: "governed" },
+    events: [
+      loop.events[0]!,
+      {
+        eventId: "evt_verified",
+        timestamp: "2026-05-16T12:00:00.000Z",
+        type: "verification.completed",
+        lifecycleState: "completed",
+        payload: {
+          attemptId: attempt.attemptId,
+          attemptIndex: attempt.index,
+          passed: true,
+          summary: "Verifier passed.",
+          binding: {
+            runId: loop.loopId,
+            workspaceId: loop.workspaceId,
+            attemptId: attempt.attemptId,
+            cwd,
+            commands: [command]
+          },
+          steps: [
+            {
+              command,
+              launched: true,
+              completed: true,
+              crashed: false,
+              exitCode: 0,
+              timedOut: false
+            }
+          ]
+        }
+      }
+    ]
+  };
+}
+
 async function withRunsRoot<T>(fn: (runsRoot: string) => Promise<T>): Promise<T> {
   const previousRunsRoot = process.env.MARTIN_RUNS_DIR;
   const previousGroundingDir = process.env.MARTIN_GROUNDING_DIR;
@@ -902,7 +948,7 @@ describe("badge command", () => {
 
       expect(result.exitCode).toBe(0);
       expect(payload.command).toBe("badge");
-      expect(payload.score.meaning).toBe("five_binary_local_evidence_signals");
+      expect(payload.score.meaning).toBe("local_evidence_signals_with_measurement_state");
       expect(payload.score.totalSignals).toBe(5);
       expect(payload.score.points).toBeLessThan(100);
       expect(payload.score.missingReasons).toContain(
@@ -946,17 +992,26 @@ describe("badge command", () => {
       });
 
       const result = await executeCli(["--json", "badge"]);
+      const governed = await executeCli(["badge", "--governed"]);
       const payload = JSON.parse(result.stdout);
 
       expect(result.exitCode).toBe(0);
+      expect(governed.exitCode).toBe(2);
+      expect(governed.stdout).not.toContain("MartinLoop-Governed");
       expect(payload.score).toMatchObject({
-        meaning: "five_binary_local_evidence_signals",
-        signalCount: 4,
+        meaning: "local_evidence_signals_with_measurement_state",
+        signalCount: 2,
+        measuredSignals: 4,
+        unmeasuredSignals: 1,
         totalSignals: 5,
-        points: 80,
+        points: 40,
         maxPoints: 100,
         missingReasons: [
+          "Verified run receipts present: Latest persisted run receipt integrity verified, but the run did not complete with passing verifier evidence in governed execution mode.",
           "Rollback evidence present: No rollback artifact evidence found."
+        ],
+        unmeasuredReasons: [
+          "MCP doctor passing: No workspace-bound MCP doctor observation is available."
         ]
       });
       expect(
@@ -971,7 +1026,39 @@ describe("badge command", () => {
     });
   });
 
-  it("renders a fixture with separate explicit rollback evidence as 5/5", async () => {
+  it("emits the governed badge only for a completed governed run with verified receipt and verifier evidence", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const loop = makeCompletedVerifiedLoopRecord();
+      const loopDir = join(runsRoot, loop.loopId);
+      await mkdir(loopDir, { recursive: true });
+      await writeFile(
+        join(loopDir, "loop-record.json"),
+        `${JSON.stringify(loop, null, 2)}\n`,
+        "utf8"
+      );
+      await writeFile(
+        join(loopDir, "ledger.jsonl"),
+        loop.events.map((entry) => JSON.stringify(entry)).join("\n").concat("\n"),
+        "utf8"
+      );
+      await writeReceiptIntegrityMaterial({
+        runId: loop.loopId,
+        runsRoot,
+        loopRecord: loop,
+        ledgerEntries: loop.events,
+        scope: loop.receiptScope,
+        signedAt: loop.updatedAt
+      });
+
+      const governed = await executeCli(["badge", "--governed"]);
+
+      expect(governed.exitCode).toBe(0);
+      expect(governed.stderr).toBe("");
+      expect(governed.stdout).toContain("MartinLoop-Governed");
+    });
+  });
+
+  it("reports MCP doctor evidence as unmeasured without a version-bound observation", async () => {
     await withRunsRoot(async (runsRoot) => {
       const baseLoop = makeLoopRecord();
       const loop: LoopRecord = {
@@ -1013,18 +1100,149 @@ describe("badge command", () => {
       const payload = JSON.parse(json.stdout);
 
       expect(human.exitCode).toBe(0);
-      expect(human.stdout).toMatch(/^Evidence readiness: 5\/5 signals/mu);
-      expect(human.stdout).toContain("100/100 readiness points");
+      expect(human.stdout).toMatch(/^Evidence readiness: 3\/4 measured signals/mu);
+      expect(human.stdout).toContain("60/100 readiness points");
+      expect(human.stdout).toContain("No workspace-bound MCP doctor observation is available.");
       expect(json.exitCode).toBe(0);
       expect(payload.score).toMatchObject({
-        meaning: "five_binary_local_evidence_signals",
-        signalCount: 5,
+        meaning: "local_evidence_signals_with_measurement_state",
+        signalCount: 3,
+        measuredSignals: 4,
+        unmeasuredSignals: 1,
         totalSignals: 5,
-        points: 100,
+        points: 60,
         maxPoints: 100
       });
       expect(payload.score.signals).toHaveLength(5);
-      expect(payload.score.signals.every((signal: { passed: boolean }) => signal.passed)).toBe(true);
+      expect(payload.score.signals.find((signal: { id: string }) => signal.id === "mcpDoctorPassing")).toMatchObject({
+        measured: false,
+        passed: false,
+        detail: "No workspace-bound MCP doctor observation is available."
+      });
+    });
+  });
+
+  it("awards MCP doctor evidence only for a fresh workspace- and version-bound passing observation", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const versionResult = await executeCli(["--version", "--json"]);
+      const { version } = JSON.parse(versionResult.stdout) as { version: string };
+      const workingDirectory = resolve(process.cwd());
+      const wsDir = join(runsRoot, "_martin", "workspaces", testWorkspaceKey(workingDirectory));
+      await mkdir(wsDir, { recursive: true });
+      await writeFile(join(wsDir, "workflow-state.json"), JSON.stringify({
+        version: 1,
+        mcp: {
+          doctor: {
+            step: "doctor",
+            recordedAt: new Date().toISOString(),
+            workingDirectory,
+            doctorStatus: "ok",
+            serverVersion: version
+          }
+        }
+      }), "utf8");
+
+      const result = await executeCli(["--json", "badge"]);
+      const payload = JSON.parse(result.stdout);
+      expect(result.exitCode).toBe(0);
+      expect(payload.score.measuredSignals).toBe(5);
+      expect(payload.score.unmeasuredSignals).toBe(0);
+      expect(payload.score.signals.find((signal: { id: string }) => signal.id === "mcpDoctorPassing")).toMatchObject({
+        measured: true,
+        passed: true,
+        detail: `MCP doctor passed for this workspace on MartinLoop ${version}.`
+      });
+    });
+  });
+
+  it("does not reuse MCP doctor evidence from another version", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const workingDirectory = resolve(process.cwd());
+      const wsDir = join(runsRoot, "_martin", "workspaces", testWorkspaceKey(workingDirectory));
+      await mkdir(wsDir, { recursive: true });
+      await writeFile(join(wsDir, "workflow-state.json"), JSON.stringify({
+        version: 1,
+        mcp: {
+          doctor: {
+            step: "doctor",
+            recordedAt: new Date().toISOString(),
+            workingDirectory,
+            doctorStatus: "ok",
+            serverVersion: "0.0.0-stale"
+          }
+        }
+      }), "utf8");
+
+      const result = await executeCli(["--json", "badge"]);
+      const payload = JSON.parse(result.stdout);
+      expect(result.exitCode).toBe(0);
+      expect(payload.score.signals.find((signal: { id: string }) => signal.id === "mcpDoctorPassing")).toMatchObject({
+        measured: false,
+        passed: false,
+        detail: "The MCP doctor observation is not bound to the installed MartinLoop version."
+      });
+    });
+  });
+
+  it("does not reuse an expired MCP doctor observation", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const versionResult = await executeCli(["--version", "--json"]);
+      const { version } = JSON.parse(versionResult.stdout) as { version: string };
+      const workingDirectory = resolve(process.cwd());
+      const wsDir = join(runsRoot, "_martin", "workspaces", testWorkspaceKey(workingDirectory));
+      await mkdir(wsDir, { recursive: true });
+      await writeFile(join(wsDir, "workflow-state.json"), JSON.stringify({
+        version: 1,
+        mcp: {
+          doctor: {
+            step: "doctor",
+            recordedAt: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString(),
+            workingDirectory,
+            doctorStatus: "ok",
+            serverVersion: version
+          }
+        }
+      }), "utf8");
+
+      const result = await executeCli(["--json", "badge"]);
+      const payload = JSON.parse(result.stdout);
+      expect(result.exitCode).toBe(0);
+      expect(payload.score.signals.find((signal: { id: string }) => signal.id === "mcpDoctorPassing")).toMatchObject({
+        measured: false,
+        passed: false,
+        detail: "The workspace-bound MCP doctor observation is missing, expired, or has an invalid timestamp."
+      });
+    });
+  });
+
+  it("records a version-bound degraded MCP doctor observation as a measured failure", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const versionResult = await executeCli(["--version", "--json"]);
+      const { version } = JSON.parse(versionResult.stdout) as { version: string };
+      const workingDirectory = resolve(process.cwd());
+      const wsDir = join(runsRoot, "_martin", "workspaces", testWorkspaceKey(workingDirectory));
+      await mkdir(wsDir, { recursive: true });
+      await writeFile(join(wsDir, "workflow-state.json"), JSON.stringify({
+        version: 1,
+        mcp: {
+          doctor: {
+            step: "doctor",
+            recordedAt: new Date().toISOString(),
+            workingDirectory,
+            doctorStatus: "degraded",
+            serverVersion: version
+          }
+        }
+      }), "utf8");
+
+      const result = await executeCli(["--json", "badge"]);
+      const payload = JSON.parse(result.stdout);
+      expect(result.exitCode).toBe(0);
+      expect(payload.score.signals.find((signal: { id: string }) => signal.id === "mcpDoctorPassing")).toMatchObject({
+        measured: true,
+        passed: false,
+        detail: `MCP doctor reported a degraded result for this workspace on MartinLoop ${version}.`
+      });
     });
   });
 });

@@ -4,7 +4,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, wr
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { createHash } from "node:crypto";
-import { expectedPublicEntries, listSurfaceEntries, sha256 } from "./lib/public-release-surface.mjs";
+import { SURFACE_SCHEMA, expectedPublicEntries, hashSurface, listSurfaceEntries, readPrivatePromotionNote, requirePrivatePromotionProof, sha256, syncPrivatePromotionNotes, validatePrivatePromotionProof, validatePrivatePromotionRemote, validatePublicSurfaceEntries } from "./lib/public-release-surface.mjs";
 import { internalHealthCommandSetSha256 } from "./lib/internal-health-commands.mjs";
 
 const PRIVATE_ROOT = process.cwd();
@@ -52,6 +52,29 @@ function removeTarget(root, path) {
   const target = resolve(root, ...path.split("/"));
   rmSync(target, { force: true });
 }
+function assertNoIgnoredNewTargets() {
+  const ignored = [];
+  for (const path of target.keys()) {
+    if (publicBaseByPath.has(path)) continue;
+    const result = spawnSync("git", ["check-ignore", "--quiet", "--no-index", "--", path], {
+      cwd: PUBLIC_ROOT,
+      windowsHide: true,
+    });
+    if (result.status === 0) {
+      ignored.push(path);
+      continue;
+    }
+    if (result.status !== 1) {
+      throw new Error(`git check-ignore failed for ${path}: ${result.stderr?.toString() ?? ""}`);
+    }
+  }
+  if (ignored.length) {
+    throw new Error(
+      `public target contains ignored new paths that cannot be staged: ${ignored.join(", ")}. `
+      + "Add a reviewed private-only resolution for each path instead of copying internal files into the public checkout.",
+    );
+  }
+}
 function mergeContent({ publicBase, oldPrivate, newPrivate, path }) {
   const temp = mkdtempSync(join(tmpdir(), "martin-promotion-"));
   try {
@@ -75,10 +98,11 @@ function sameHash(buffer, expected) { return sha256(buffer) === expected; }
 
 const publicRepoArg = arg("--public-repo");
 if (!publicRepoArg) {
-  console.error("Usage: node scripts/prepare-public-promotion.mjs --public-repo <path> [--health-evidence <path>] [--public-remote origin] [--resolutions <json>]");
+  console.error("Usage: node scripts/prepare-public-promotion.mjs --public-repo <path> [--health-evidence <path>] [--public-remote origin] [--private-proof-remote origin] [--resolutions <json>]");
   process.exit(2);
 }
 const resolutionsPath = arg("--resolutions");
+const privateProofRemote = arg("--private-proof-remote", "origin");
 const manualResolutions = resolutionsPath
   ? JSON.parse(readFileSync(resolve(PRIVATE_ROOT, resolutionsPath), "utf8"))
   : [];
@@ -109,6 +133,7 @@ const PUBLIC_ROOT = resolve(publicRepoArg);
 if (fingerprint(repositorySlug(PRIVATE_ROOT)) !== EXPECTED_PRIVATE_REPOSITORY_FINGERPRINT) {
   throw new Error("prepare-public-promotion must run from the private release authority repository");
 }
+validatePrivatePromotionRemote(PRIVATE_ROOT, privateProofRemote, EXPECTED_PRIVATE_REPOSITORY_FINGERPRINT);
 if (repositorySlug(PUBLIC_ROOT) !== EXPECTED_PUBLIC_SLUG) {
   throw new Error(`public repository must be ${EXPECTED_PUBLIC_SLUG}`);
 }
@@ -164,7 +189,23 @@ try {
 }
 
 const publicBaseEntries = listSurfaceEntries(PUBLIC_ROOT, publicBaseSha);
-const expectedPrevious = expectedPublicEntries(previousManifest.surfaceEntries, previousManifest.reviewedDivergences ?? []);
+let expectedPrevious;
+let oldDivergences;
+if (previousManifest.schemaVersion === SURFACE_SCHEMA) {
+  validatePublicSurfaceEntries(previousManifest.publicSurfaceEntries);
+  if (hashSurface(previousManifest.publicSurfaceEntries) !== previousManifest.publicSurfaceHash) throw new Error("public promotion manifest uses a non-canonical public surface hash");
+  syncPrivatePromotionNotes(PRIVATE_ROOT, privateProofRemote, EXPECTED_PRIVATE_REPOSITORY_FINGERPRINT);
+  const privateProof = requirePrivatePromotionProof(readPrivatePromotionNote(PRIVATE_ROOT, previousManifest.privateMainShaValidated), previousManifest);
+  const previousPrivateEntries = listSurfaceEntries(PRIVATE_ROOT, previousManifest.privateMainShaValidated);
+  oldDivergences = validatePrivatePromotionProof(privateProof.boundary, previousManifest, previousPrivateEntries);
+  expectedPrevious = previousManifest.publicSurfaceEntries;
+} else if (previousManifest.schemaVersion === "martin.public-promotion.v2") {
+  const legacyDivergences = previousManifest["reviewedDivergences"] ?? [];
+  expectedPrevious = expectedPublicEntries(previousManifest.surfaceEntries, legacyDivergences);
+  oldDivergences = legacyDivergences;
+} else {
+  throw new Error("current public main has an unsupported promotion manifest schema");
+}
 const previousExpectedByPath = new Map(expectedPrevious.map((entry) => [entry.path, entry]));
 const publicBaseByPath = new Map(publicBaseEntries.map((entry) => [entry.path, entry]));
 const previousMissing = [...previousExpectedByPath.keys()].filter((path) => !publicBaseByPath.has(path));
@@ -177,7 +218,6 @@ const previousChanged = [...previousExpectedByPath.keys()].filter((path) => {
 
 const privateEntries = listSurfaceEntries(PRIVATE_ROOT, privateSha);
 const privateByPath = new Map(privateEntries.map((entry) => [entry.path, entry]));
-const oldDivergences = previousManifest.reviewedDivergences ?? [];
 const oldByPath = new Map(oldDivergences.map((entry) => [entry.path, entry]));
 const previousPrivateSha = previousManifest.privateMainShaValidated;
 
@@ -459,6 +499,8 @@ if (unusedResolutions.length) {
   throw new Error(`unused promotion resolutions: ${unusedResolutions.join(", ")}`);
 }
 
+assertNoIgnoredNewTargets();
+
 const targetPaths = new Set(target.keys());
 for (const baseEntry of publicBaseEntries) {
   if (!targetPaths.has(baseEntry.path)) removeTarget(PUBLIC_ROOT, baseEntry.path);
@@ -484,6 +526,7 @@ try {
     "--public-base", publicBaseSha,
     "--internal-health-evidence", healthPath,
     "--divergences", divergencePath,
+    "--private-proof-remote", privateProofRemote,
     "--output", manifestPath,
   ], { cwd: PRIVATE_ROOT, stdio: "inherit" });
   git(PUBLIC_ROOT, ["add", "-f", ".martin/promotion-manifest.json"], "utf8");
@@ -496,16 +539,15 @@ console.log(`[public-promotion-prepare] RECONCILED_POST_RELEASE_PUBLIC_DRIFT=${r
 if (reconciledPublicDrift.length) console.log(reconciledPublicDrift.join("\n"));
 console.log(`[public-promotion-prepare] REVIEWED_POST_RELEASE_DRIFT_RESOLUTIONS=${reviewedPublicDriftResolutions.length}`);
 for (const item of reviewedPublicDriftResolutions) {
-  console.log(`${item.path}\t${item.resolution}\t${item.reviewedBy}\t${item.reason}`);
+  console.log(`${item.path}\t${item.resolution}`);
 }
 console.log(`[public-promotion-prepare] AUTO_MERGED_CONTENT_DIVERGENCES=${autoMerged.length}`);
 if (autoMerged.length) console.log(autoMerged.join("\n"));
 console.log(`[public-promotion-prepare] MANUALLY_RESOLVED_CONTENT_DIVERGENCES=${manuallyResolved.length}`);
 for (const item of manuallyResolved) {
-  console.log(`${item.path}\t${item.resolution}\t${item.reviewedBy}\t${item.reason}`);
+  console.log(`${item.path}\t${item.resolution}`);
 }
 console.log(`[public-promotion-prepare] NEW_PRIVATE_ONLY_DIVERGENCES=${newPrivateOnly.length}`);
-if (newPrivateOnly.length) console.log(newPrivateOnly.join("\n"));
 console.log(`[public-promotion-prepare] COLLAPSED_PUBLIC_ONLY_DIVERGENCES=${collapsedPublicOnly.length}`);
 if (collapsedPublicOnly.length) console.log(collapsedPublicOnly.join("\n"));
 console.log(`[public-promotion-prepare] REMOVED_PUBLIC_ONLY_DIVERGENCES=${removedPublicOnly.length}`);

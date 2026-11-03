@@ -1,6 +1,6 @@
 {
   "schemaVersion": "1.0.0",
-  "verifiedAt": "2026-07-31",
+  "verifiedAt": "2026-10-29",
   "capabilities": [
     {
       "id": "verifier-gated-completion",
@@ -32,25 +32,19 @@
     },
     {
       "id": "test-integrity-current",
-      "status": "partial",
-      "safeClaim": "MartinLoop Core includes analysis primitives for suspicious new agent-generated tests.",
+      "status": "shipped",
+      "safeClaim": "MartinLoop evaluates suspicious new tests and requires explicit approval when an attempt weakens or removes existing test code.",
       "prohibitedClaims": [
-        "Automatically verifies the complete test suite was not changed",
         "Detects every form of test tampering"
       ],
       "evidence": [
         "packages/core/src/test-integrity.ts",
-        "packages/core/tests/test-integrity.test.ts"
+        "packages/core/src/leash.ts",
+        "packages/core/tests/test-integrity.test.ts",
+        "packages/core/tests/test-weakening.test.ts",
+        "packages/core/tests/leash-protected-files.test.ts",
+        "packages/core/tests/runtime-workspace-hardening.test.ts"
       ]
-    },
-    {
-      "id": "test-integrity-asset-guard",
-      "status": "building",
-      "safeClaim": "MartinLoop is building runtime-integrated snapshot comparison for configured protected verification assets.",
-      "prohibitedClaims": [
-        "Checks existing test suite for unauthorized modification"
-      ],
-      "evidence": []
     },
     {
       "id": "zero-config-boundaries",
@@ -105,12 +99,16 @@
     },
     {
       "id": "sansa-fleet",
-      "status": "roadmap",
-      "safeClaim": "MartinLoop's architecture is designed to support multi-agent fleet governance. No shipped fleet primitives yet.",
+      "status": "partial",
+      "safeClaim": "MartinLoop ships provider-free Swarm planning and evidence primitives; governed live fleet execution remains a separately qualified boundary.",
       "prohibitedClaims": [
-        "Fleet capability available"
+        "Fully autonomous governed fleet execution is generally available"
       ],
-      "evidence": []
+      "evidence": [
+        "packages/core/src/swarm/index.ts",
+        "packages/core/src/swarm/evidence.ts",
+        "packages/cli/src/swarm-demo.ts"
+      ]
     }
   ]
 }

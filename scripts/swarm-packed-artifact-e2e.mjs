@@ -16,11 +16,7 @@ const SCHEMA_VERSION = "martin.swarm-packed-artifact.v1";
 const REQUIRED_COMMANDS = ["legacy-help", "legacy-demo", "swarm-demo", "single-agent-e2e", "package-entrypoint", "mcp-pack-smoke"];
 const TEXT_EXTENSIONS = new Set([".cjs", ".css", ".d.ts", ".html", ".js", ".json", ".md", ".mjs", ".txt", ".yml", ".yaml"]);
 const MAX_TEXT_BYTES = 1_000_000;
-const PRIVATE_REPOSITORY_PATTERN = new RegExp(`\\b(?:${[
-  ["ML", "Core", "OSS", "Internal"],
-  ["ML", "Main", "Repo", "Internal"],
-  ["ML", "Control", "Plane", "Internal"],
-].map((parts) => parts.join("_")).join("|")})\\b`, "iu");
+const PRIVATE_REPOSITORY_PATTERN = /\b[A-Za-z0-9-]+(?:_[A-Za-z0-9-]+)*_Internal\b/iu;
 
 function sha256(bytes) {
   return createHash("sha256").update(bytes).digest("hex");

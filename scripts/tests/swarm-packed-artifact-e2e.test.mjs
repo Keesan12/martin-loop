@@ -70,7 +70,7 @@ test("packed surface rejects planning, evidence, VCS, secrets, paths, and privat
     { entries: ["package/package.json"], texts: [{ path: "package/a.txt", text: "npm_token=secret-value" }] },
     { entries: ["package/package.json"], texts: [{ path: "package/a.txt", text: "C:\\Users\\operator\\repo" }] },
     { entries: ["package/package.json"], texts: [{ path: "package/a.txt", text: "/Users/operator/repo" }] },
-    { entries: ["package/package.json"], texts: [{ path: "package/a.txt", text: `${["ML", "Core", "OSS", "Internal"].join("_")} internal planning` }] },
+    { entries: ["package/package.json"], texts: [{ path: "package/a.txt", text: `${["Example", "Service", "Internal"].join("_")} internal planning` }] },
   ]) {
     assert.throws(() => assertCleanPackedSurface(fixture.entries, fixture.texts), /contamination/iu);
   }
