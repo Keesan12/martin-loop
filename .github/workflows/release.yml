@@ -82,15 +82,29 @@ jobs:
             [[ "$FAILED_RUN_ID" =~ ^[0-9]+$ ]]
             test "$HEAD_SHA" = "$CANDIDATE_SHA"
             git merge-base --is-ancestor "$CANDIDATE_SHA" "$MAIN_SHA"
-            test "$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${FAILED_RUN_ID}" --jq .name)" = "Release"
-            test "$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${FAILED_RUN_ID}" --jq .event)" = "workflow_run"
-            test "$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${FAILED_RUN_ID}" --jq .head_sha)" = "$CANDIDATE_SHA"
-            test "$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${FAILED_RUN_ID}" --jq .conclusion)" = "failure"
+            FAILED_RUN_NAME="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${FAILED_RUN_ID}" --jq .name)"
+            FAILED_RUN_EVENT="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${FAILED_RUN_ID}" --jq .event)"
+            FAILED_RUN_SHA="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${FAILED_RUN_ID}" --jq .head_sha)"
+            FAILED_RUN_CONCLUSION="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${FAILED_RUN_ID}" --jq .conclusion)"
+            test "$FAILED_RUN_NAME" = "Release"
+            test "$FAILED_RUN_CONCLUSION" = "failure"
+            TOTAL_FAILED_STEPS="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${FAILED_RUN_ID}/jobs?filter=latest" --jq '[.jobs[] | .steps[] | select(.conclusion == "failure")] | length')"
+            test "$TOTAL_FAILED_STEPS" = "1"
             FAILED_PACK_STEPS="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${FAILED_RUN_ID}/jobs?filter=latest" --jq '[.jobs[] | select(.name == "Publish to npm") | .steps[] | select(.name == "Pack root tarball" and .conclusion == "failure")] | length')"
-            test "$FAILED_PACK_STEPS" = "1"
+            FAILED_AVAILABILITY_STEPS="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${FAILED_RUN_ID}/jobs?filter=latest" --jq '[.jobs[] | select(.name == "Publish to npm") | .steps[] | select(.name == "Verify npm availability" and .conclusion == "failure")] | length')"
+            SUCCESSFUL_AUTHORITY_STEPS="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${FAILED_RUN_ID}/jobs?filter=latest" --jq '[.jobs[] | select(.name == "Publish to npm") | .steps[] | select(.name == "Verify paired tags resolve to authorized release source" and .conclusion == "success")] | length')"
+            SUCCESSFUL_PUBLISH_STEPS="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${FAILED_RUN_ID}/jobs?filter=latest" --jq '[.jobs[] | select(.name == "Publish to npm") | .steps[] | select(.name == "Publish to npm" and .conclusion == "success")] | length')"
             test "$(npm view "@martinloop/mcp@$VERSION" version)" = "$VERSION"
-            if npm view "martin-loop@$VERSION" version >/dev/null 2>&1; then
-              echo "Root package already exists; partial-publication recovery is not authorized."
+            if [[ "$FAILED_RUN_EVENT" == "workflow_run" && "$FAILED_RUN_SHA" == "$CANDIDATE_SHA" && "$FAILED_PACK_STEPS" == "1" ]]; then
+              if npm view "martin-loop@$VERSION" version >/dev/null 2>&1; then
+                echo "Root package already exists; pre-publication recovery is not authorized."
+                exit 1
+              fi
+            elif [[ "$FAILED_RUN_EVENT" == "workflow_dispatch" && "$FAILED_AVAILABILITY_STEPS" == "1" && "$SUCCESSFUL_AUTHORITY_STEPS" == "1" && "$SUCCESSFUL_PUBLISH_STEPS" == "1" ]]; then
+              git merge-base --is-ancestor "$FAILED_RUN_SHA" "$MAIN_SHA"
+              test "$(npm view "martin-loop@$VERSION" version)" = "$VERSION"
+            else
+              echo "Failed run does not match an authorized root recovery state."
               exit 1
             fi
             if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
@@ -185,6 +199,14 @@ jobs:
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Verify existing npm artifact matches release tarball
+        if: steps.npm-version.outputs.exists == 'true'
+        shell: bash
+        run: |
+          LOCAL_SHASUM="$(sha1sum "${{ steps.root-pack.outputs.tarball }}" | awk '{print $1}')"
+          REMOTE_SHASUM="$(npm view "martin-loop@${{ steps.package-version.outputs.version }}" dist.shasum)"
+          test "$LOCAL_SHASUM" = "$REMOTE_SHASUM"
 
       - name: Publish to npm
         if: steps.npm-version.outputs.exists != 'true'

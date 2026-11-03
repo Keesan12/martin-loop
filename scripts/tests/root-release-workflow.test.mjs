@@ -26,9 +26,23 @@ test("root release workflow uses GitHub Actions trusted publishing without npm t
   assert.doesNotMatch(workflow, /release-recovery-state\.mjs --publisher-coordinates/);
   assert.match(workflow, /actions\/runs\/\$\{FAILED_RUN_ID\}/);
   assert.match(workflow, /Pack root tarball/);
+  assert.match(workflow, /Verify npm availability/);
+  assert.match(workflow, /Verify paired tags resolve to authorized release source/);
+  assert.match(workflow, /Publish to npm/);
+  assert.match(workflow, /git merge-base --is-ancestor "\$FAILED_RUN_SHA" "\$MAIN_SHA"/);
+  assert.match(workflow, /FAILED_AVAILABILITY_STEPS/);
+  assert.match(workflow, /TOTAL_FAILED_STEPS/);
+  assert.match(workflow, /test "\$TOTAL_FAILED_STEPS" = "1"/);
+  assert.match(workflow, /SUCCESSFUL_AUTHORITY_STEPS/);
+  assert.match(workflow, /SUCCESSFUL_PUBLISH_STEPS/);
   assert.match(workflow, /git merge-base --is-ancestor "\$CANDIDATE_SHA" "\$MAIN_SHA"/);
   assert.match(workflow, /npm view "@martinloop\/mcp@\$VERSION" version/);
   assert.match(workflow, /npm view "martin-loop@\$VERSION" version/);
+  assert.match(
+    workflow,
+    /npm view "martin-loop@\$\{\{ steps\.package-version\.outputs\.version \}\}" dist\.shasum/,
+  );
+  assert.match(workflow, /sha1sum "\$\{\{ steps\.root-pack\.outputs\.tarball \}\}"/);
   assert.match(workflow, /permissions:\s*[\s\S]*contents:\s*write/);
   assert.match(workflow, /permissions:\s*[\s\S]*id-token:\s*write/);
   assert.match(workflow, /node-version:\s*24/);
