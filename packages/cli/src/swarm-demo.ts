@@ -129,6 +129,36 @@ export interface RunDeterministicSwarmDemoOptions {
   parentVerifier?: (targetDirectory: string) => InjectedParentVerifierResult;
 }
 
+export interface PersistedSwarmDemoRouteRequest {
+  mode: "governed" | "live";
+  cwd: string;
+  runsDir?: string;
+  agents: number;
+  maxConcurrency: number;
+  budgetUsd: number;
+  engine: "codex";
+}
+
+export interface PersistedSwarmDemoRouteDependencies<T = unknown> {
+  runSimulation(): Promise<T> | T;
+  runGoverned(request: PersistedSwarmDemoRouteRequest): Promise<T>;
+  runLive(request: PersistedSwarmDemoRouteRequest): Promise<T>;
+}
+
+/**
+ * Routes persisted demo modes without a simulation fallback. A governed/live
+ * failure is returned to the caller unchanged so it cannot be reinterpreted as
+ * a successful local demo.
+ */
+export function executePersistedSwarmDemoRoute<T>(
+  request: PersistedSwarmDemoRouteRequest,
+  dependencies: PersistedSwarmDemoRouteDependencies<T>,
+): Promise<T> {
+  return request.mode === "governed"
+    ? dependencies.runGoverned(request)
+    : dependencies.runLive(request);
+}
+
 const DATA_SOURCE = `export const launchItems = [
   { id: "alpha", name: "Alpha" },
   { id: "beta", name: "Beta" },

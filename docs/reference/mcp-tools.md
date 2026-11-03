@@ -18,8 +18,10 @@ The `@martinloop/mcp` package exposes one primary coding execution entrypoint pl
 | `martin_status` | Summarize live or recent run status. |
 | `martin_logs` | Read recent run-control receipts and workflow events. |
 | `martin_pause` | Request that a running loop pause at a safe boundary. |
-| `martin_cancel` | Cancel a running loop and capture the control receipt. |
+| `martin_cancel` | Publish a durable cancellation signal for a running loop and capture its receipt; observe terminal run evidence to confirm application. |
 | `martin_continue` | Continue a paused loop with the recorded run context. |
+
+Run-control mutation is available only over the local stdio MCP transport and only while a live, control-capable MartinLoop executor owns the run. The recorded `local_os_user` / `local_mcp_client` principal is a same-machine trust boundary, not an authenticated human identity. HTTP and other shared or remote transports reject run-control requests until they can supply authenticated principals and scope enforcement.
 
 ## Inspection and Evidence
 

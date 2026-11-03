@@ -36,7 +36,7 @@ body:
     attributes:
       label: MartinLoop version
       description: Run `npx martin-loop --version` if you are not sure.
-      placeholder: "0.2.7"
+      placeholder: Paste the output of `npx -y martin-loop@latest --version`
     validations:
       required: true
   - type: textarea
@@ -44,7 +44,7 @@ body:
     attributes:
       label: Environment
       description: Include OS, Node version, client or host, and package version.
-      placeholder: Windows 11, Node 22, Codex CLI, martin-loop 0.2.7
+      placeholder: Windows 11, Node 22, Codex CLI, and the exact MartinLoop version output
     validations:
       required: true
   - type: textarea

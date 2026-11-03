@@ -1,5 +1,6 @@
-import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
-import { readFileSync } from "node:fs";
+import { cp, lstat, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
+import { readFileSync, type Dirent } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, win32 } from "node:path";
@@ -30,6 +31,7 @@ import {
   loadResumeCandidateBoundary,
   loadResumeVerifierFailure,
   recordPreference,
+  verifyReceiptIntegrityFromFiles,
   writeExitSignal,
   type MartinAdapter
 } from "@martin/core";
@@ -99,6 +101,8 @@ import {
   verifyMartinMcpInstall
 } from "./mcp-install-state.js";
 import { persistLoopArtifacts } from "./persistence.js";
+import { resolveCleanOwnershipDirectoryPath, verifyWorkflowCleanOwnership } from "./clean-ownership.js";
+import { runCleanRecoveryTestHook } from "./clean-recovery-test-hook.js";
 import { finalizeContinuationEvidence } from "./continuation-finalize.js";
 import {
   buildMartinProofCard,
@@ -222,6 +226,8 @@ const STAR_CTA_LINES = [
   "─────────────────────────────────────────────"
 ] as const;
 const CLI_TAGLINE_LINE = "Your coding agent says it's done. MartinLoop makes it prove it.";
+const CLEAN_SAME_USER_MUTATION_BOUNDARY =
+  "Safety boundary: clean revalidates and quarantines selected paths, but Node cannot perform descriptor-relative recursive deletion on Windows. A same-user process that can continuously mutate the runs root can still race the final path-based operation; stop competing writers and inspect every reported quarantine path before retrying.";
 const CLI_ATTRIBUTION_LINE = "Apache 2.0 · martinloop.com · github.com/Keesan12/martin-loop";
 const MCP_HOST_USAGE = "codex|claude|gemini|generic|cursor|copilot|continue";
 const MCP_HOST_LIST = "codex, claude, gemini, generic, cursor, copilot, continue";
@@ -614,6 +620,21 @@ export type ParsedCliArguments =
       force: boolean;
       swarm: true;
       scenario: "launch-board";
+      mode: "simulation";
+    }
+  | {
+      command: "demo";
+      directory: string;
+      force: boolean;
+      swarm: true;
+      scenario: "launch-board";
+      mode: "governed" | "live";
+      cwd: string;
+      runsDir?: string;
+      agents: number;
+      maxConcurrency: number;
+      budgetUsd: number;
+      engine: "codex";
     }
   | InspectCommand
   | ResumeCommand
@@ -739,11 +760,33 @@ export async function executeCli(args: string[]): Promise<{
       case "demo": {
         if ("swarm" in parsed && parsed.swarm) {
           const {
+            executePersistedSwarmDemoRoute,
             getDeterministicSwarmDemoExitCode,
             renderDeterministicSwarmDemoHuman,
             runDeterministicSwarmDemo,
             toDeterministicSwarmDemoData,
           } = await import("./swarm-demo.js");
+          if (parsed.mode !== "simulation") {
+            const { executePersistedSwarmDemoCommand } = await import("./swarm-command-private.js");
+            return await executePersistedSwarmDemoRoute(
+              {
+                mode: parsed.mode,
+                cwd: parsed.cwd,
+                ...(parsed.runsDir ? { runsDir: parsed.runsDir } : {}),
+                agents: parsed.agents,
+                maxConcurrency: parsed.maxConcurrency,
+                budgetUsd: parsed.budgetUsd,
+                engine: parsed.engine,
+              },
+              {
+                runSimulation: async () => {
+                  throw new CliCommandError("policy_blocked", "Persisted swarm execution attempted a forbidden simulation fallback.");
+                },
+                runGoverned: (request) => executePersistedSwarmDemoCommand(request, outputMode),
+                runLive: (request) => executePersistedSwarmDemoCommand(request, outputMode),
+              },
+            );
+          }
           let result;
           try {
             result = await runDeterministicSwarmDemo({
@@ -1084,10 +1127,18 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
 
   if (command === "demo") {
     if (hasFlag(rest, "--swarm")) {
+      const governed = hasFlag(rest, "--governed");
+      const live = hasFlag(rest, "--live");
+      if (governed && live) {
+        throw new CliCommandError(
+          "invalid_input",
+          "--governed and --live are mutually exclusive swarm demo modes.",
+        );
+      }
       for (let index = 0; index < rest.length; index += 1) {
         const token = rest[index]!;
-        if (token === "--swarm" || token === "--force" || token === "--live") continue;
-        if (token === "--dir" || token === "--scenario") {
+        if (token === "--swarm" || token === "--force" || token === "--live" || token === "--governed") continue;
+        if (["--dir", "--scenario", "--cwd", "--runs-dir", "--engine", "--agents", "--max-concurrency", "--budget-usd"].includes(token)) {
           const value = rest[index + 1];
           if (!value || value.startsWith("--")) {
             throw new CliCommandError("invalid_input", `${token} requires a value.`);
@@ -1097,14 +1148,16 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
         }
         throw new CliCommandError("invalid_input", `Unsupported swarm demo argument: ${token}.`);
       }
-      if (hasFlag(rest, "--live")) {
-        throw new CliCommandError(
-          "invalid_input",
-          "Live workers are not part of deterministic demo mode.",
-          { suggestion: "Run demo --swarm without --live. Live swarm execution is delivered separately." },
-        );
-      }
-      const scenario = readOption(rest, "--scenario") ?? "launch-board";
+      const seen = new Set<string>();
+      const scenarioValue = readStrictScalarOption(rest, ["--scenario"], seen);
+      const directoryValue = readStrictScalarOption(rest, ["--dir"], seen);
+      const cwdValue = readStrictScalarOption(rest, ["--cwd"], seen);
+      const runsDirValue = readStrictScalarOption(rest, ["--runs-dir"], seen);
+      const engineValue = readStrictScalarOption(rest, ["--engine"], seen);
+      const agentsValue = readStrictScalarOption(rest, ["--agents"], seen);
+      const concurrencyValue = readStrictScalarOption(rest, ["--max-concurrency"], seen);
+      const budgetValue = readStrictScalarOption(rest, ["--budget-usd"], seen, { allowNegativeNumber: true });
+      const scenario = scenarioValue ?? "launch-board";
       if (scenario !== "launch-board") {
         throw new CliCommandError(
           "invalid_input",
@@ -1112,12 +1165,61 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
           { suggestion: "Use --scenario launch-board." },
         );
       }
-      return {
+      const base = {
         command: "demo",
-        directory: resolve(readOption(rest, "--dir") ?? join(process.cwd(), "martin-loop-demo")),
+        directory: resolve(directoryValue ?? join(process.cwd(), "martin-loop-demo")),
         force: hasFlag(rest, "--force"),
         swarm: true,
         scenario: "launch-board",
+      } as const;
+      if (!governed && !live) return { ...base, mode: "simulation" as const };
+      if (hasFlag(rest, "--force") || directoryValue !== undefined) {
+        throw new CliCommandError(
+          "invalid_input",
+          "Persisted swarm demo modes do not accept --dir or --force; use --cwd and --runs-dir for governed evidence.",
+        );
+      }
+
+      const engine = engineValue ?? "codex";
+      if (engine !== "codex") {
+        throw new CliCommandError("invalid_input", "Persisted swarm demo execution currently requires --engine codex.");
+      }
+      if (live && agentsValue === undefined) {
+        throw new CliCommandError("invalid_input", "Live swarm execution requires an explicit --agents value.");
+      }
+      if (live && concurrencyValue === undefined) {
+        throw new CliCommandError("invalid_input", "Live swarm execution requires an explicit --max-concurrency value.");
+      }
+      if (live && budgetValue === undefined) {
+        throw new CliCommandError("invalid_input", "Live swarm execution requires an explicit positive --budget-usd value.");
+      }
+      const agents = agentsValue === undefined ? 15 : parseStrictPositiveInteger("--agents", agentsValue);
+      if (!Number.isSafeInteger(agents) || agents > 15) {
+        throw new CliCommandError("invalid_input", "--agents must be a safe integer between 1 and 15 for the persisted swarm demo.");
+      }
+      const maxConcurrency = concurrencyValue === undefined
+        ? Math.min(5, agents)
+        : parseStrictPositiveInteger("--max-concurrency", concurrencyValue);
+      if (maxConcurrency > agents) {
+        throw new CliCommandError("invalid_input", "--max-concurrency cannot exceed --agents.");
+      }
+      const budgetUsd = budgetValue === undefined
+        ? 0
+        : parseStrictFiniteNumber(
+            "--budget-usd",
+            budgetValue,
+            (parsed) => Number.isFinite(parsed) && (live ? parsed > 0 : parsed === 0),
+            live ? "a finite number greater than zero" : "exactly zero for provider-free governed mode",
+          );
+      return {
+        ...base,
+        mode: live ? "live" as const : "governed" as const,
+        cwd: resolve(cwdValue ?? process.cwd()),
+        ...(runsDirValue ? { runsDir: runsDirValue } : {}),
+        agents,
+        maxConcurrency,
+        budgetUsd,
+        engine: "codex" as const,
       };
     }
     return {
@@ -1740,6 +1842,7 @@ function renderCommandHelp(subject: string[]): string {
     "",
     "Usage:",
     ...renderedUsage,
+    ...(subjectText === "clean" ? ["", CLEAN_SAME_USER_MUTATION_BOUNDARY] : []),
     "",
     "Help only: no command was executed or state changed.",
     "Run `martin --help` for the full command index."
@@ -1780,6 +1883,8 @@ export function renderCliHelp(): string {
     "  martin demo [--dir <path>] [--force]",
     "  martin-loop demo [--dir <path>] [--force] (published alias)",
     "  martin-loop demo --swarm [--scenario launch-board] [--dir <path>] [--force]",
+    "  martin-loop demo --swarm --governed [--agents <1-15>] [--max-concurrency <n>] [--budget-usd 0] [--cwd <path>] [--runs-dir <path>]",
+    "  martin-loop demo --swarm --live --engine codex --agents <1-15> --max-concurrency <n> --budget-usd <usd> [--cwd <path>] [--runs-dir <path>]",
     "  martin swarm plan --file <plan.json> [--cwd <path>] [--runs-dir <path>]",
     "  martin swarm run --file <plan.json> [--cwd <path>] [--runs-dir <path>]",
     "  martin swarm status (--swarm-id <id> | --latest) [--watch] [--runs-dir <path>]",
@@ -1814,6 +1919,8 @@ export function renderCliHelp(): string {
     "  phase run       Convert the phase contract into a MartinLoop run invocation; dry-run by default.",
     "  preflight    Validate a governed run request before spend.",
     "  demo --swarm provider-free local simulation; non-governed, not written to the Swarm run store; inspect its human/JSON result.",
+    "  demo --swarm --governed provider-free deterministic execution through the real persisted Core receipt pipeline.",
+    "  demo --swarm --live authentic Codex execution through the same persisted pipeline; explicit agents, concurrency, and positive budget are required; failures never fall back to simulation.",
     "  swarm plan    Validate and persist a live swarm plan after all provider-free readiness gates pass.",
     "  swarm run     Execute a previously approved live swarm plan with bounded concurrency and budget controls.",
     "  swarm status  Read or watch authoritative operational state for a real persisted swarm run.",
@@ -1832,7 +1939,7 @@ export function renderCliHelp(): string {
     "  estimate     Estimate cost, route, and Pre Work Burn for an objective without spending.",
     "  gate         Hard governance check — exits non-zero if doctor/estimate are missing. Use in hooks.",
     "  mode         Show or set working mode: auto (default), plan, edits.",
-    "  clean        Remove MartinLoop artifacts (_martin/, old run records).",
+    "  clean        Remove verified MartinLoop-owned artifacts after link, junction, identity, and boundary checks; see `martin clean --help` for the same-user mutation boundary.",
     "  mcp print-config  Print a known-good MCP config for a supported host without writing files.",
     "  mcp install       Write a starter MCP config, or call Claude Code directly for local scope.",
     "  mcp verify-install Verify the installed config against the local install ledger.",
@@ -1840,7 +1947,7 @@ export function renderCliHelp(): string {
     "  mcp uninstall     Restore the config state before MartinLoop was first installed.",
     "  challenge    Print a shareable local proof card for the Under-$3 challenge.",
     "  share        Write a local share bundle with a redacted receipt JSON, proof Markdown, and proof SVG.",
-    "  badge        Report evidence readiness from five local signals; use --format for SVG or Shields JSON.",
+    "  badge        Report evidence readiness from five local signals with explicit measured/unmeasured state; use --format for SVG or Shields JSON.",
     "  cancel       Write a human_interrupt signal to stop a running loop.  Usage: martin cancel <run-id> [--reason \"...\"]",
     "  signal       Write an external_event signal.  Usage: martin signal <run-id> --event <name> [--disposition stop|continue]",
     "  telemetry [status|explain|on|off]  Manage anonymous usage analytics.",
@@ -3587,7 +3694,7 @@ async function executeStartCommand(
       recommended: {
         engine: snapshot.recommendedEngine,
         verifier: snapshot.verifier.command,
-        budgetUsd: 2,
+        budgetUsd: defaultBudgetUsd,
         maxIterations: 1
       },
       next: {
@@ -3598,7 +3705,7 @@ async function executeStartCommand(
         preflight: preflightCommand,
         run: governedRunCommand,
         proofRun: proofCommand,
-        enable: `martin enable --engine ${snapshot.recommendedEngine} --verify "${snapshot.verifier.command}" --budget-usd 2 --max-iterations 1`,
+        enable: `martin enable --engine ${snapshot.recommendedEngine} --verify "${snapshot.verifier.command}" --budget-usd ${defaultBudgetUsd} --max-iterations 1`,
         review: "martin review",
         dossier: "martin dossier --latest",
         share: "martin share --latest"
@@ -3641,7 +3748,7 @@ async function executeStartCommand(
       `  $ ${proofCommand}`,
       "",
       "Set repo defaults",
-      `  $ martin enable --engine ${snapshot.recommendedEngine} --verify "${snapshot.verifier.command}" --budget-usd 2 --max-iterations 1`
+      `  $ martin enable --engine ${snapshot.recommendedEngine} --verify "${snapshot.verifier.command}" --budget-usd ${defaultBudgetUsd} --max-iterations 1`
     ],
     quiet: "martin start"
   });
@@ -4971,12 +5078,40 @@ async function executeCleanCommand(
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   const environment = resolveCliEnvironment({ cwd: command.cwd, runsDir: command.runsDir });
   const removed: string[] = [];
+  const targets: Array<{
+    candidatePath: string;
+    parentPath: string;
+    expectedName: string;
+    ownership: "workflow-state" | "loop-record";
+    label: string;
+    identity: CleanDirectoryIdentity;
+  }> = [];
 
-  const martinDir = join(environment.workingDirectory, "_martin");
-  const martinDirExists = await stat(martinDir).then(() => true).catch(() => false);
-  if (martinDirExists && !command.cleanAll && !command.cleanRuns) {
-    await rm(martinDir, { recursive: true, force: true });
-    removed.push(`_martin/ (workflow state)`);
+  if (!await assertSafeCleanParentIfPresent(environment.runsRoot)) {
+    return renderCliSuccess(outputMode, {
+      data: { command: "clean", removed },
+      human: ["Nothing to clean. Working directory is already tidy."],
+      quiet: "clean"
+    });
+  }
+
+  const martinDir = join(environment.runsRoot, "_martin");
+  const martinDirInfo = await statCleanTargetIfPresent(martinDir, "_martin");
+  if (martinDirInfo && (!command.cleanRuns || command.cleanAll)) {
+    const identity = await assertSafeCleanDirectory({
+      candidatePath: martinDir,
+      parentPath: environment.runsRoot,
+      expectedName: "_martin",
+      ownership: "workflow-state"
+    });
+    targets.push({
+      candidatePath: martinDir,
+      parentPath: environment.runsRoot,
+      expectedName: "_martin",
+      ownership: "workflow-state",
+      label: "_martin/ (workflow state)",
+      identity
+    });
   }
 
   if (command.cleanRuns || command.cleanAll) {
@@ -4985,16 +5120,103 @@ async function executeCleanCommand(
     try {
       const entries = await readdir(runsRoot, { withFileTypes: true });
       for (const entry of entries) {
+        if (entry.name.startsWith("loop_") && entry.isSymbolicLink()) {
+          throw cleanBoundaryError(entry.name, "the target is a symbolic link or junction");
+        }
         if (entry.name.startsWith("loop_") && entry.isDirectory()) {
           const runPath = join(runsRoot, entry.name);
-          const info = await stat(runPath).catch(() => null);
-          if (info && info.mtimeMs < thirtyDaysAgo) {
-            await rm(runPath, { recursive: true, force: true });
-            removed.push(`runs/${entry.name}`);
+          const info = await statCleanTargetIfPresent(runPath, entry.name);
+          if (info && (command.cleanAll || info.mtimeMs < thirtyDaysAgo)) {
+            const identity = await assertSafeCleanDirectory({
+              candidatePath: runPath,
+              parentPath: runsRoot,
+              expectedName: entry.name,
+              ownership: "loop-record"
+            });
+            targets.push({
+              candidatePath: runPath,
+              parentPath: runsRoot,
+              expectedName: entry.name,
+              ownership: "loop-record",
+              label: `runs/${entry.name}`,
+              identity
+            });
           }
         }
       }
-    } catch { /* skip */ }
+    } catch (error) {
+      if (error instanceof CliCommandError) {
+        throw error;
+      }
+      if (!isNodeErrorWithCode(error, "ENOENT")) {
+        throw new CliCommandError(
+          "environment",
+          `Unable to clean run records under ${runsRoot}.`,
+          { suggestion: "Check directory permissions and retry the clean command." }
+        );
+      }
+    }
+  }
+
+  const quarantined: Array<(typeof targets)[number] & { originalPath: string }> = [];
+  try {
+    for (const target of targets) {
+      await assertSafeCleanDirectory(target);
+      const quarantinePath = join(target.parentPath, `.martin-clean-${randomUUID()}`);
+      if (await lstat(quarantinePath).then(() => true).catch(() => false)) {
+        throw cleanBoundaryError(target.expectedName, "a clean quarantine path unexpectedly already exists");
+      }
+      await rename(target.candidatePath, quarantinePath).catch(() => {
+        throw cleanBoundaryError(target.expectedName, "the target changed before it could be quarantined safely");
+      });
+      const quarantinedTarget = {
+        ...target,
+        originalPath: target.candidatePath,
+        candidatePath: quarantinePath
+      };
+      quarantined.push(quarantinedTarget);
+      await runCleanRecoveryTestHook({
+        candidatePath: quarantinePath,
+        originalPath: target.candidatePath,
+        parentPath: target.parentPath
+      });
+      await assertSafeCleanDirectory(quarantinedTarget);
+    }
+  } catch (error) {
+    const recovery = await recoverQuarantinedCleanTargets(quarantined);
+    const cause = error instanceof Error ? error.message : String(error);
+    throw new CliCommandError(
+      "environment",
+      `Clean aborted before deletion: ${cause}\nRecovery status:\n${recovery.map((line) => `  - ${line}`).join("\n")}`,
+      {
+        suggestion:
+          "Inspect every reported original and quarantine path. MartinLoop attempts to isolate detected replacements, but a same-user process with runs-root write access can race path-based recovery; stop competing writers before manual recovery."
+      }
+    );
+  }
+
+  for (let index = 0; index < quarantined.length; index += 1) {
+    const target = quarantined[index]!;
+    try {
+      await assertSafeCleanDirectory(target);
+      // Node does not expose recursive deletion by an already-open directory handle on Windows.
+      // The UUID quarantine plus identity revalidation narrows the final path-based rm boundary.
+      await rm(target.candidatePath, { recursive: true, force: false });
+      removed.push(target.label);
+    } catch (error) {
+      const cause = error instanceof Error ? error.message : String(error);
+      const remaining = quarantined.slice(index).map((entry) => entry.candidatePath);
+      throw new CliCommandError(
+        "environment",
+        `Clean partially completed: removed ${removed.length}/${quarantined.length} selected target(s). ` +
+          `Deletion stopped at ${target.candidatePath}: ${cause}. ` +
+          `Remaining quarantine path(s): ${remaining.join(", ") || "none"}.`,
+        {
+          suggestion:
+            "Do not delete the reported quarantine paths blindly. Inspect them, verify receipt ownership, and retry clean only after the filesystem is stable."
+        }
+      );
+    }
   }
 
   return renderCliSuccess(outputMode, {
@@ -5004,6 +5226,473 @@ async function executeCleanCommand(
       : ["Nothing to clean. Working directory is already tidy."],
     quiet: removed.length > 0 ? `removed:${removed.length}` : "clean"
   });
+}
+
+async function assertSafeCleanParentIfPresent(parentPathInput: string): Promise<boolean> {
+  const parentPath = await resolveCleanOwnershipDirectoryPath(parentPathInput);
+  const info = await lstat(parentPath).catch((error: unknown) => {
+    if (isNodeErrorWithCode(error, "ENOENT")) {
+      return null;
+    }
+    throw cleanBoundaryError("runs root", "the configured parent could not be inspected");
+  });
+  if (!info) {
+    return false;
+  }
+  if (info.isSymbolicLink()) {
+    throw cleanBoundaryError("runs root", "the configured parent is a symbolic link or junction");
+  }
+  if (!info.isDirectory()) {
+    throw cleanBoundaryError("runs root", "the configured parent is not a directory");
+  }
+  const canonicalParent = await realpath(parentPath).catch(() => {
+    throw cleanBoundaryError("runs root", "the configured parent boundary could not be verified");
+  });
+  if (isSameCanonicalPath(dirname(canonicalParent), canonicalParent)) {
+    throw cleanBoundaryError("runs root", "the configured parent is a filesystem root");
+  }
+  if (!isSameCanonicalPath(canonicalParent, parentPath)) {
+    throw cleanBoundaryError("runs root", "the configured parent contains a symbolic link, junction, or canonical path alias");
+  }
+  return true;
+}
+
+async function recoverQuarantinedCleanTargets(
+  quarantined: Array<{
+    candidatePath: string;
+    originalPath: string;
+    parentPath: string;
+    expectedName: string;
+    ownership: "workflow-state" | "loop-record";
+    identity: CleanDirectoryIdentity;
+  }>
+): Promise<string[]> {
+  const outcomes: string[] = [];
+  for (const target of [...quarantined].reverse()) {
+    let originalInfo: Awaited<ReturnType<typeof lstat>> | undefined;
+    try {
+      originalInfo = await lstat(target.originalPath);
+    } catch (error) {
+      if (!isNodeErrorWithCode(error, "ENOENT")) {
+        outcomes.push(
+          `original path could not be inspected and was left untouched: ${target.originalPath} ` +
+            `(${error instanceof Error ? error.message : String(error)})`
+        );
+        continue;
+      }
+    }
+    if (originalInfo) {
+      try {
+        await assertSafeCleanDirectory({ ...target, candidatePath: target.originalPath });
+        outcomes.push(`already safe at original path ${target.originalPath}`);
+      } catch (error) {
+        outcomes.push(
+          `original path is occupied by an unsafe replacement and was left untouched: ${target.originalPath} ` +
+            `(${error instanceof Error ? error.message : String(error)})`
+        );
+        let entries: Dirent[];
+        try {
+          entries = await readdir(target.parentPath, { withFileTypes: true });
+        } catch (scanError) {
+          outcomes.push(
+            `recovery scan failed for ${target.parentPath}: ` +
+              `${scanError instanceof Error ? scanError.message : String(scanError)}`
+          );
+          continue;
+        }
+        for (const entry of entries) {
+          const candidatePath = join(target.parentPath, entry.name);
+          if (isSameCanonicalPath(candidatePath, target.originalPath)) {
+            continue;
+          }
+          let candidateInfo: Awaited<ReturnType<typeof lstat>> | undefined;
+          try {
+            candidateInfo = await lstat(candidatePath);
+          } catch (candidateInspectError) {
+            if (!isNodeErrorWithCode(candidateInspectError, "ENOENT")) {
+              outcomes.push(
+                `recovery candidate could not be inspected: ${candidatePath} ` +
+                  `(${candidateInspectError instanceof Error ? candidateInspectError.message : String(candidateInspectError)})`
+              );
+            }
+          }
+          if (!candidateInfo || !matchesCleanIdentity(candidateInfo, target.identity)) {
+            continue;
+          }
+          try {
+            await assertSafeCleanDirectory({ ...target, candidatePath });
+            outcomes.push(
+              `verified target preserved at ${candidatePath}; it was not restored because ${target.originalPath} is occupied`
+            );
+          } catch (candidateError) {
+            outcomes.push(
+              `matching identity at ${candidatePath} failed safety validation: ` +
+                `${candidateError instanceof Error ? candidateError.message : String(candidateError)}`
+            );
+          }
+        }
+      }
+      continue;
+    }
+
+    let entries: Dirent[];
+    try {
+      entries = await readdir(target.parentPath, { withFileTypes: true });
+    } catch (scanError) {
+      outcomes.push(
+        `recovery scan failed for ${target.parentPath}; expected quarantine ${target.candidatePath}; ` +
+          `original was absent when inspected at ${target.originalPath}: ` +
+          `${scanError instanceof Error ? scanError.message : String(scanError)}`
+      );
+      continue;
+    }
+    const candidates = [
+      target.candidatePath,
+      ...entries.map((entry) => join(target.parentPath, entry.name))
+    ].filter((path, index, values) => values.indexOf(path) === index);
+    let recovered = false;
+    for (const candidatePath of candidates) {
+      let candidateInfo: Awaited<ReturnType<typeof lstat>> | undefined;
+      try {
+        candidateInfo = await lstat(candidatePath);
+      } catch (candidateInspectError) {
+        if (!isNodeErrorWithCode(candidateInspectError, "ENOENT")) {
+          outcomes.push(
+            `recovery candidate could not be inspected: ${candidatePath} ` +
+              `(${candidateInspectError instanceof Error ? candidateInspectError.message : String(candidateInspectError)})`
+          );
+        }
+      }
+      if (!candidateInfo || !matchesCleanIdentity(candidateInfo, target.identity)) {
+        continue;
+      }
+      try {
+        await assertSafeCleanDirectory({ ...target, candidatePath });
+        await runCleanRecoveryTestHook({
+          candidatePath,
+          originalPath: target.originalPath,
+          parentPath: target.parentPath
+        });
+        let renamedToOriginal = false;
+        try {
+          await rename(candidatePath, target.originalPath);
+          renamedToOriginal = true;
+          await assertSafeCleanDirectory({ ...target, candidatePath: target.originalPath });
+        } catch (restoreError) {
+          if (renamedToOriginal) {
+            await isolateFailedCleanRestore(target, outcomes, restoreError);
+          }
+          throw restoreError;
+        }
+        outcomes.push(`restored verified target from ${candidatePath} to ${target.originalPath}`);
+        recovered = true;
+        break;
+      } catch (error) {
+        outcomes.push(
+          `verified identity at ${candidatePath} could not be restored to ${target.originalPath}: ` +
+            `${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+    }
+    if (recovered) {
+      let quarantineInfo: Awaited<ReturnType<typeof lstat>> | undefined;
+      try {
+        quarantineInfo = await lstat(target.candidatePath);
+      } catch (quarantineInspectError) {
+        if (!isNodeErrorWithCode(quarantineInspectError, "ENOENT")) {
+          outcomes.push(
+            `quarantine path could not be inspected: ${target.candidatePath} ` +
+              `(${quarantineInspectError instanceof Error ? quarantineInspectError.message : String(quarantineInspectError)})`
+          );
+        }
+      }
+      if (quarantineInfo) {
+        outcomes.push(`unsafe replacement remains isolated at quarantine path ${target.candidatePath}`);
+      }
+    }
+    if (!recovered) {
+      let quarantineInfo: Awaited<ReturnType<typeof lstat>> | undefined;
+      try {
+        quarantineInfo = await lstat(target.candidatePath);
+      } catch (quarantineInspectError) {
+        if (!isNodeErrorWithCode(quarantineInspectError, "ENOENT")) {
+          outcomes.push(
+            `quarantine path could not be inspected: ${target.candidatePath} ` +
+              `(${quarantineInspectError instanceof Error ? quarantineInspectError.message : String(quarantineInspectError)})`
+          );
+        }
+      }
+      outcomes.push(
+        quarantineInfo
+          ? `unsafe or replaced quarantine entry was isolated at ${target.candidatePath}; original was absent when inspected at ${target.originalPath}`
+          : `verified target could not be located; expected quarantine ${target.candidatePath}; original was absent when inspected at ${target.originalPath}`
+      );
+    }
+  }
+  return outcomes.length > 0 ? outcomes : ["no target had been quarantined; no recovery action was required"];
+}
+
+async function isolateFailedCleanRestore(
+  target: {
+    originalPath: string;
+    parentPath: string;
+    expectedName: string;
+    ownership: "workflow-state" | "loop-record";
+    identity: CleanDirectoryIdentity;
+  },
+  outcomes: string[],
+  validationError: unknown
+): Promise<void> {
+  const isolationPath = join(target.parentPath, `.martin-clean-recovery-${randomUUID()}`);
+  try {
+    await rename(target.originalPath, isolationPath);
+    outcomes.push(
+      `post-restore validation failed; moved the untrusted original-path entry to ${isolationPath}: ` +
+        `${validationError instanceof Error ? validationError.message : String(validationError)}`
+    );
+  } catch (isolationError) {
+    outcomes.push(
+      `post-restore validation failed and the original-path entry could not be isolated from ${target.originalPath}: ` +
+        `${isolationError instanceof Error ? isolationError.message : String(isolationError)}`
+    );
+  }
+
+  let originalInfo: Awaited<ReturnType<typeof lstat>> | undefined;
+  try {
+    originalInfo = await lstat(target.originalPath);
+  } catch (error) {
+    if (!isNodeErrorWithCode(error, "ENOENT")) {
+      outcomes.push(
+        `original path could not be re-inspected after isolation attempt: ${target.originalPath} ` +
+          `(${error instanceof Error ? error.message : String(error)})`
+      );
+    }
+  }
+  if (originalInfo) {
+    try {
+      await assertSafeCleanDirectory({ ...target, candidatePath: target.originalPath });
+      outcomes.push(`original path is occupied only by the revalidated target: ${target.originalPath}`);
+    } catch (error) {
+      outcomes.push(
+        `same-user path mutation boundary remains unresolved at ${target.originalPath}; manual isolation is required: ` +
+          `${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  } else {
+    outcomes.push(`original path was absent when re-inspected after the isolation attempt: ${target.originalPath}`);
+  }
+
+  let entries: Dirent[];
+  try {
+    entries = await readdir(target.parentPath, { withFileTypes: true });
+  } catch (error) {
+    outcomes.push(
+      `could not scan for the verified target after failed restore under ${target.parentPath}: ` +
+        `${error instanceof Error ? error.message : String(error)}`
+    );
+    return;
+  }
+  for (const entry of entries) {
+    const candidatePath = join(target.parentPath, entry.name);
+    let info: Awaited<ReturnType<typeof lstat>> | undefined;
+    try {
+      info = await lstat(candidatePath);
+    } catch (error) {
+      if (!isNodeErrorWithCode(error, "ENOENT")) {
+        outcomes.push(
+          `post-restore candidate could not be inspected: ${candidatePath} ` +
+            `(${error instanceof Error ? error.message : String(error)})`
+        );
+      }
+    }
+    if (!info || !matchesCleanIdentity(info, target.identity)) {
+      continue;
+    }
+    try {
+      await assertSafeCleanDirectory({ ...target, candidatePath });
+      outcomes.push(`verified target remains preserved at ${candidatePath} after the failed restore`);
+    } catch (error) {
+      outcomes.push(
+        `matching target identity at ${candidatePath} failed safety validation after restore: ` +
+          `${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+}
+
+async function statCleanTargetIfPresent(
+  path: string,
+  displayName: string
+): Promise<Awaited<ReturnType<typeof stat>> | null> {
+  try {
+    return await lstat(path);
+  } catch (error) {
+    if (isNodeErrorWithCode(error, "ENOENT")) {
+      return null;
+    }
+    throw cleanBoundaryError(displayName, "the target could not be inspected because access was denied or unavailable");
+  }
+}
+
+interface CleanDirectoryIdentity {
+  dev: string;
+  ino: string;
+  birthtimeMs: number;
+}
+
+async function assertSafeCleanDirectory(input: {
+  candidatePath: string;
+  parentPath: string;
+  expectedName: string;
+  ownership: "workflow-state" | "loop-record";
+  identity?: CleanDirectoryIdentity;
+}): Promise<CleanDirectoryIdentity> {
+  const logicalCandidatePath = resolve(input.candidatePath);
+  const logicalParentPath = resolve(input.parentPath);
+  const candidatePath = await resolveCleanOwnershipDirectoryPath(input.candidatePath);
+  const parentPath = await resolveCleanOwnershipDirectoryPath(input.parentPath);
+  if (isSameCanonicalPath(dirname(parentPath), parentPath)) {
+    throw cleanBoundaryError(input.expectedName, "the configured parent is a filesystem root");
+  }
+  if (!isSameCanonicalPath(dirname(candidatePath), parentPath)) {
+    throw cleanBoundaryError(input.expectedName, "the target is not a direct child of the configured parent");
+  }
+
+  const candidateInfo = await lstat(candidatePath).catch(() => null);
+  if (candidateInfo?.isSymbolicLink()) {
+    throw cleanBoundaryError(input.expectedName, "the target is a symbolic link or junction");
+  }
+  if (!candidateInfo?.isDirectory()) {
+    throw cleanBoundaryError(input.expectedName, "the target is not a directory");
+  }
+  const observedIdentity = cleanDirectoryIdentity(candidateInfo);
+  if (input.identity && !matchesCleanIdentity(candidateInfo, input.identity)) {
+    throw cleanBoundaryError(input.expectedName, "the target identity changed after validation");
+  }
+
+  const [canonicalParent, canonicalCandidate] = await Promise.all([
+    realpath(parentPath),
+    realpath(candidatePath)
+  ]).catch(() => {
+    throw cleanBoundaryError(input.expectedName, "the canonical target boundary could not be verified");
+  });
+  if (!isSameCanonicalPath(canonicalParent, parentPath)) {
+    throw cleanBoundaryError(input.expectedName, "the configured parent contains a symbolic link, junction, or canonical path alias");
+  }
+  if (!isSameCanonicalPath(dirname(canonicalCandidate), canonicalParent)) {
+    throw cleanBoundaryError(input.expectedName, "the canonical target resolves outside the configured parent");
+  }
+  await assertNoLinkedDescendants(candidatePath, input.expectedName);
+
+  if (input.ownership === "workflow-state") {
+    if (!await verifyWorkflowCleanOwnership(logicalParentPath, logicalCandidatePath)) {
+      throw cleanBoundaryError(input.expectedName, "MartinLoop ownership could not be established");
+    }
+    const finalInfo = await lstat(candidatePath).catch(() => null);
+    if (!finalInfo || !matchesCleanIdentity(finalInfo, observedIdentity)) {
+      throw cleanBoundaryError(input.expectedName, "the target identity changed during validation");
+    }
+    return observedIdentity;
+  }
+
+  const recordPath = join(logicalCandidatePath, "loop-record.json");
+  let loopId: unknown;
+  try {
+    const parsed = JSON.parse(await readFile(recordPath, "utf8")) as { loopId?: unknown };
+    loopId = parsed.loopId;
+  } catch {
+    throw cleanUnownedRunError(input.expectedName, "material_missing", "loop-record.json is missing or unreadable");
+  }
+  if (loopId !== input.expectedName) {
+    throw cleanUnownedRunError(input.expectedName, "tamper_detected", "the loop record does not match the directory name");
+  }
+  const integrity = await verifyReceiptIntegrityFromFiles({
+    runId: input.expectedName,
+    runsRoot: logicalParentPath,
+    loopRecordPath: recordPath,
+    ledgerPath: join(logicalCandidatePath, "ledger.jsonl"),
+    integrityPath: join(logicalCandidatePath, "receipt-integrity.json")
+  });
+  if (integrity.state !== "verified") {
+    throw cleanUnownedRunError(input.expectedName, integrity.state, integrity.reason);
+  }
+  const finalInfo = await lstat(candidatePath).catch(() => null);
+  if (!finalInfo || !matchesCleanIdentity(finalInfo, observedIdentity)) {
+    throw cleanBoundaryError(input.expectedName, "the target identity changed during validation");
+  }
+  return observedIdentity;
+}
+
+function cleanDirectoryIdentity(info: Awaited<ReturnType<typeof lstat>>): CleanDirectoryIdentity {
+  return {
+    dev: info.dev.toString(),
+    ino: info.ino.toString(),
+    birthtimeMs: Number(info.birthtimeMs)
+  };
+}
+
+function matchesCleanIdentity(
+  info: Awaited<ReturnType<typeof lstat>>,
+  expected: CleanDirectoryIdentity
+): boolean {
+  const actual = cleanDirectoryIdentity(info);
+  return actual.dev === expected.dev && actual.ino === expected.ino && actual.birthtimeMs === expected.birthtimeMs;
+}
+
+async function assertNoLinkedDescendants(
+  rootPath: string,
+  displayName: string,
+  state: { visited: number } = { visited: 0 }
+): Promise<void> {
+  let entries: Dirent[];
+  try {
+    entries = await readdir(rootPath, { withFileTypes: true });
+  } catch {
+    throw cleanBoundaryError(displayName, "a nested target could not be inspected because access was denied or unavailable");
+  }
+  for (const entry of entries) {
+    state.visited += 1;
+    if (state.visited > 10_000) {
+      throw cleanBoundaryError(displayName, "the target is too large to verify safely");
+    }
+    const childPath = join(rootPath, entry.name);
+    const childInfo = await lstat(childPath).catch(() => {
+      throw cleanBoundaryError(displayName, "a nested target could not be inspected because access was denied or unavailable");
+    });
+    if (entry.isSymbolicLink() || childInfo.isSymbolicLink()) {
+      throw cleanBoundaryError(displayName, "the target contains a symbolic link or junction");
+    }
+    if (childInfo.isDirectory()) {
+      await assertNoLinkedDescendants(childPath, displayName, state);
+    }
+  }
+}
+
+function isSameCanonicalPath(left: string, right: string): boolean {
+  return process.platform === "win32"
+    ? left.toLowerCase() === right.toLowerCase()
+    : left === right;
+}
+
+function cleanBoundaryError(name: string, reason: string): CliCommandError {
+  return new CliCommandError(
+    "environment",
+    `Refusing to clean ${name}: ${reason}.`,
+    { suggestion: "Use a real MartinLoop-owned directory inside the configured workspace or runs root." }
+  );
+}
+
+function cleanUnownedRunError(name: string, state: string, reason?: string): CliCommandError {
+  return new CliCommandError(
+    "environment",
+    `Skipped unverified or legacy run directory ${name}; nothing was deleted. ` +
+      `Ownership state: ${state}${reason ? ` (${reason})` : ""}.`,
+    {
+      suggestion:
+        `Run \"martin runs verify --loop ${name}\" and archive or remove the directory manually only after reviewing its contents. ` +
+        "Legacy runs without signed receipt-integrity material are intentionally not auto-cleaned."
+    }
+  );
 }
 
 async function executeEstimateCommand(
@@ -6852,8 +7541,21 @@ function latestExitReason(loop: LoopRecord): string {
 }
 
 function parseChallengeFormat(tokens: string[]): "markdown" | "svg" {
-  const format = readOption(tokens, "--format");
-  return format === "svg" ? "svg" : "markdown";
+  const formats = readOptions(tokens, "--format");
+  if (formats.length === 0) {
+    return "markdown";
+  }
+  if (formats.length > 1) {
+    throw new CliCommandError("invalid_input", "--format may only be provided once.");
+  }
+  const [format] = formats;
+  if (format === "markdown" || format === "svg") {
+    return format;
+  }
+  throw new CliCommandError(
+    "invalid_input",
+    `Invalid --format value: ${format}. Use markdown or svg.`
+  );
 }
 
 async function executeShareCommand(
@@ -7104,6 +7806,14 @@ async function executeBadgeCommand(
         "Governed badge SVG output is not supported. Use --format json or omit --format for Markdown."
       );
     }
+    const evidence = await buildLocalReliabilityScoreInput(command.runsDir);
+    if (!evidence.signals.runReceiptsPresent.present) {
+      throw new CliCommandError(
+        "invalid_input",
+        "A governed badge requires a latest local governed run with verified receipt integrity and passing verifier evidence.",
+        { suggestion: "Run martin dossier --latest and martin runs verify --latest before requesting the governed badge." }
+      );
+    }
     if (command.format === "json" || outputMode === "json") {
       return renderCliSuccess("json", {
         data: {
@@ -7138,7 +7848,8 @@ async function executeBadgeCommand(
     human: [
       score.summary,
       ...(integrity ? [`Latest run integrity: ${describeIntegrity(integrity)}`] : []),
-      ...(score.missingReasons.length > 0 ? ["", "Missing:", ...score.missingReasons.map((r) => `  • ${r}`)] : [])
+      ...(score.missingReasons.length > 0 ? ["", "Missing:", ...score.missingReasons.map((r) => `  • ${r}`)] : []),
+      ...(score.unmeasuredReasons.length > 0 ? ["", "Not measured:", ...score.unmeasuredReasons.map((r) => `  • ${r}`)] : [])
     ],
     quiet: `${score.signalCount}/${score.totalSignals}`
   });
@@ -7265,17 +7976,33 @@ async function buildLocalReliabilityScoreInput(runsDir?: string): Promise<Martin
     ? await loadPersistedLoop({ latest: true, workspaceId, ...(runsDir ? { runsDir } : {}) }).catch(() => null)
     : null;
   const latestLoop = latestPersisted?.loop ?? loops.loops[0];
-  const configPath = join(environment.workingDirectory, "martin.config.yaml");
-  const configExists = await stat(configPath).then((entry) => entry.isFile()).catch(() => false);
+  const { config } = await loadGuardrailsConfig(undefined, environment.workingDirectory)
+    .catch(() => ({ config: undefined }));
   const budgetConfigured =
-    configExists ||
+    (typeof config?.budget?.maxUsd === "number" && config.budget.maxUsd > 0
+      && typeof config.budget.maxIterations === "number" && config.budget.maxIterations > 0) ||
     (latestLoop !== undefined && latestLoop.budget.maxUsd > 0 && latestLoop.budget.maxIterations > 0);
   const verifierConfigured =
-    latestLoop?.task.verificationPlan.some((cmd) => cmd.trim().length > 0) ?? configExists;
-  const runReceiptsPresent = latestPersisted?.integrity.state === "verified";
+    (latestLoop?.task.verificationPlan.some((cmd) => cmd.trim().length > 0) ?? false) ||
+    (config?.governance?.verifierRules?.some((cmd) => cmd.trim().length > 0) ?? false);
+  const runReceiptIntegrityVerified = latestPersisted?.integrity.state === "verified";
+  const runReceiptsPresent =
+    runReceiptIntegrityVerified &&
+    latestLoop !== undefined &&
+    latestLoop.status === "completed" &&
+    latestLoop.lifecycleState === "completed" &&
+    buildVerificationSummary(latestLoop).status === "passed" &&
+    deriveLoopExecutionBoundary(latestLoop).governanceClaimEligible;
   const rollbackEvidencePresent =
     latestLoop?.artifacts.some(artifactCarriesRollbackEvidence) ?? false;
-  const mcpDoctorPassing = isCommandAvailable("node");
+  const workflowReadiness = await readWorkspaceGovernanceReadiness(
+    environment.runsRoot,
+    environment.workingDirectory
+  );
+  const mcpDoctorEvidence = evaluateMcpDoctorReliabilityEvidence(
+    workflowReadiness.mcp.doctor,
+    environment.workingDirectory
+  );
 
   return {
     signals: {
@@ -7292,9 +8019,11 @@ async function buildLocalReliabilityScoreInput(runsDir?: string): Promise<Martin
       runReceiptsPresent: {
         present: runReceiptsPresent,
         detail: runReceiptsPresent
-          ? "Latest persisted run receipt integrity verified."
+          ? "Latest persisted run receipt integrity and governed outcome verified."
           : latestPersisted
-            ? `Latest persisted run receipt integrity is ${latestPersisted.integrity.state}.`
+            ? runReceiptIntegrityVerified
+              ? "Latest persisted run receipt integrity verified, but the run did not complete with passing verifier evidence in governed execution mode."
+              : `Latest persisted run receipt integrity is ${latestPersisted.integrity.state}.`
             : shouldInspectRunStore
               ? "No local run receipts found."
               : "Set MARTIN_RUNS_DIR to inspect verified local run receipts."
@@ -7306,12 +8035,66 @@ async function buildLocalReliabilityScoreInput(runsDir?: string): Promise<Martin
           : "No rollback artifact evidence found."
       },
       mcpDoctorPassing: {
-        present: mcpDoctorPassing,
-        detail: mcpDoctorPassing
-          ? "Local runtime can execute MCP doctor prerequisites."
-          : "Node runtime unavailable."
+        present: mcpDoctorEvidence.present,
+        measured: mcpDoctorEvidence.measured,
+        detail: mcpDoctorEvidence.detail
       }
     }
+  };
+}
+
+function evaluateMcpDoctorReliabilityEvidence(
+  receipt: {
+    recordedAt?: string;
+    workingDirectory?: string;
+    doctorStatus?: "ok" | "degraded";
+    doctorPassed?: boolean;
+    serverVersion?: string;
+    packageVersion?: string;
+  } | undefined,
+  workingDirectory: string
+): { present: boolean; measured: boolean; detail: string } {
+  const unavailable = (detail: string) => ({ present: false, measured: false, detail });
+  if (!receipt) {
+    return unavailable("No workspace-bound MCP doctor observation is available.");
+  }
+
+  const observedAt = Date.parse(receipt.recordedAt ?? "");
+  const now = Date.now();
+  if (!Number.isFinite(observedAt) || observedAt > now + 30_000 || now - observedAt > 24 * 60 * 60 * 1000) {
+    return unavailable("The workspace-bound MCP doctor observation is missing, expired, or has an invalid timestamp.");
+  }
+  if (
+    typeof receipt.workingDirectory !== "string" ||
+    !isSameCanonicalPath(resolve(receipt.workingDirectory), resolve(workingDirectory))
+  ) {
+    return unavailable("The MCP doctor observation is not bound to this workspace.");
+  }
+
+  const observedVersion = receipt.serverVersion ?? receipt.packageVersion;
+  if (observedVersion !== rootPackageVersion) {
+    return unavailable("The MCP doctor observation is not bound to the installed MartinLoop version.");
+  }
+
+  if (
+    receipt.doctorStatus !== undefined &&
+    receipt.doctorPassed !== undefined &&
+    (receipt.doctorStatus === "ok") !== receipt.doctorPassed
+  ) {
+    return unavailable("The MCP doctor observation contains conflicting outcomes.");
+  }
+  const doctorPassed = receipt.doctorStatus === "ok" || receipt.doctorPassed === true;
+  const doctorFailed = receipt.doctorStatus === "degraded" || receipt.doctorPassed === false;
+  if (!doctorPassed && !doctorFailed) {
+    return unavailable("The MCP doctor observation does not record an outcome.");
+  }
+
+  return {
+    present: doctorPassed,
+    measured: true,
+    detail: doctorPassed
+      ? `MCP doctor passed for this workspace on MartinLoop ${observedVersion}.`
+      : `MCP doctor reported a degraded result for this workspace on MartinLoop ${observedVersion}.`
   };
 }
 

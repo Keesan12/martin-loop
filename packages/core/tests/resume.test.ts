@@ -13,6 +13,7 @@ import {
   evaluateRunResumability,
   loadResumeCandidateBoundary,
   loadResumeVerifierFailure,
+  readActiveRunExecutionLease,
   runMartin,
   type MartinAdapter
 } from "../src/index.js";
@@ -28,6 +29,74 @@ afterEach(async () => {
 });
 
 describe("execution continuation", () => {
+  it("rejects a persisted rollback boundary that adds an unauthorized managed exclusion", async () => {
+    const root = await mkdtemp(join(tmpdir(), "martin-resume-exclusion-auth-"));
+    temporaryDirectories.push(root);
+    const repoRoot = join(root, "repo");
+    const runsRoot = join(repoRoot, ".martin-runs");
+    await mkdir(join(repoRoot, "src"), { recursive: true });
+    await writeFile(join(repoRoot, "src", "operator.ts"), "export const operator = true;\n", "utf8");
+
+    const git = (...args: string[]) => {
+      const result = spawnSync("git", args, { cwd: repoRoot, encoding: "utf8" });
+      if (result.status !== 0) {
+        throw new Error(`git ${args.join(" ")} failed: ${result.stderr}`);
+      }
+    };
+    git("init", "-q");
+    git("config", "user.email", "resume@test.invalid");
+    git("config", "user.name", "Resume Test");
+    git("add", ".");
+    git("commit", "-q", "-m", "baseline");
+
+    const boundary = await captureRollbackBoundary({
+      repoRoot,
+      capturedAt: "2026-10-22T00:00:00.000Z",
+      managedRoots: [runsRoot]
+    });
+    expect(boundary?.managedPathExclusions).toEqual([".martin-runs"]);
+    boundary!.managedPathExclusions = [".martin-runs", "src"];
+
+    const loop: LoopRecord = {
+      ...createLoopRecord({
+        loopId: "loop_resume_exclusion_auth",
+        workspaceId: "ws_resume_exclusion_auth",
+        projectId: "proj_resume_exclusion_auth",
+        task: {
+          title: "resume exclusion authority fixture",
+          objective: "preserve operator source visibility",
+          verificationPlan: ["node --version"],
+          repoRoot,
+          mutationMode: "edit"
+        },
+        budget: { maxUsd: 1, softLimitUsd: 0.8, maxIterations: 2 }
+      }),
+      status: "running",
+      lifecycleState: "running",
+      attempts: [{
+        attemptId: "att_persisted_1",
+        index: 1,
+        adapterId: "agent-cli:claude",
+        startedAt: "2026-10-22T00:00:00.000Z",
+        completedAt: "2026-10-22T00:00:01.000Z",
+        summary: "Candidate retained for resume.",
+        verifierScore: 0,
+        candidateRetained: true
+      }]
+    };
+    const attemptDir = join(runsRoot, loop.loopId, "artifacts", "attempt-001");
+    await mkdir(attemptDir, { recursive: true });
+    await writeFile(
+      join(attemptDir, "rollback-boundary.json"),
+      `${JSON.stringify(boundary, null, 2)}\n`,
+      "utf8"
+    );
+
+    await expect(loadResumeCandidateBoundary(runsRoot, loop)).rejects.toThrow(
+      /managed path exclusions do not match the configured MartinLoop roots/u
+    );
+  });
+
   it("continues the same persisted loop and preserves prior attempts", async () => {
     const root = await mkdtemp(join(tmpdir(), "martin-resume-"));
     temporaryDirectories.push(root);
@@ -584,6 +653,123 @@ describe("execution continuation", () => {
     expect(second.lease.owner).toBe("second");
     await second.release();
   });
+
+  it("admits only a live local lease owned by a control-capable executor", async () => {
+    const root = await mkdtemp(join(tmpdir(), "martin-capable-lease-"));
+    temporaryDirectories.push(root);
+    const unsupported = await acquireRunExecutionLease({
+      runsRoot: root,
+      runId: "loop_capable_lease",
+      owner: "diagnostic-reader"
+    });
+    await expect(readActiveRunExecutionLease({
+      runsRoot: root,
+      runId: "loop_capable_lease"
+    })).resolves.toBeUndefined();
+    await unsupported.release();
+
+    await writeFile(unsupported.path, `${JSON.stringify({
+      ...unsupported.lease,
+      owner: "runMartin",
+      capabilities: { runControl: true },
+      heartbeatAt: "2020-01-01T00:00:00.000Z",
+      heartbeatSequence: 99
+    })}\n`, "utf8");
+    await expect(readActiveRunExecutionLease({
+      runsRoot: root,
+      runId: "loop_capable_lease"
+    })).resolves.toBeUndefined();
+    await rm(unsupported.path, { force: true });
+
+    const supported = await acquireRunExecutionLease({
+      runsRoot: root,
+      runId: "loop_capable_lease",
+      owner: "runMartin"
+    });
+    await expect(readActiveRunExecutionLease({
+      runsRoot: root,
+      runId: "loop_capable_lease"
+    })).resolves.toBeUndefined();
+    await supported.release();
+
+    const controlCapable = await acquireRunExecutionLease({
+      runsRoot: root,
+      runId: "loop_capable_lease",
+      owner: "runMartin",
+      runControlCapable: true
+    });
+    await expect(readActiveRunExecutionLease({
+      runsRoot: root,
+      runId: "loop_capable_lease"
+    })).resolves.toMatchObject({
+      lease: {
+        token: controlCapable.lease.token,
+        owner: "runMartin",
+        capabilities: { runControl: true }
+      }
+    });
+    await expect(readActiveRunExecutionLease({
+      runsRoot: root,
+      runId: "loop_capable_lease",
+      host: "different-host"
+    })).resolves.toBeUndefined();
+    await controlCapable.release();
+    await expect(readActiveRunExecutionLease({
+      runsRoot: root,
+      runId: "loop_capable_lease"
+    })).resolves.toBeUndefined();
+  });
+
+  it("atomically elects one stale execution-lease reclaimer", async () => {
+    const root = await mkdtemp(join(tmpdir(), "martin-lease-reclaim-race-"));
+    temporaryDirectories.push(root);
+    const seed = await acquireRunExecutionLease({
+      runsRoot: root,
+      runId: "loop_reclaim_race",
+      owner: "runMartin",
+      runControlCapable: true
+    });
+    await seed.release();
+    await writeFile(seed.path, `${JSON.stringify({
+      ...seed.lease,
+      heartbeatAt: "2020-01-01T00:00:00.000Z",
+      heartbeatSequence: 99
+    })}\n`, "utf8");
+
+    let arrivals = 0;
+    let releaseReclaimers!: () => void;
+    const bothObserved = new Promise<void>((resolve) => { releaseReclaimers = resolve; });
+    const rendezvous = async (): Promise<void> => {
+      arrivals += 1;
+      if (arrivals === 2) releaseReclaimers();
+      await bothObserved;
+    };
+    const contenders = await Promise.allSettled([
+      acquireRunExecutionLease({
+        runsRoot: root,
+        runId: "loop_reclaim_race",
+        owner: "runMartin",
+        runControlCapable: true
+      }, { beforeStaleReclaim: rendezvous }),
+      acquireRunExecutionLease({
+        runsRoot: root,
+        runId: "loop_reclaim_race",
+        owner: "runMartin",
+        runControlCapable: true
+      }, { beforeStaleReclaim: rendezvous })
+    ]);
+    const winners = contenders.filter(
+      (outcome): outcome is PromiseFulfilledResult<Awaited<ReturnType<typeof acquireRunExecutionLease>>> =>
+        outcome.status === "fulfilled"
+    );
+    expect(winners).toHaveLength(1);
+    await expect(readActiveRunExecutionLease({
+      runsRoot: root,
+      runId: "loop_reclaim_race"
+    })).resolves.toMatchObject({ lease: { token: winners[0]!.value.lease.token } });
+    await winners[0]!.value.release();
+  });
+
   it("acquires the execution lease before durable store persistence", async () => {
     const source = await readFile(new URL("../src/index.ts", import.meta.url), "utf8");
     const runStart = source.indexOf("export async function runMartin");

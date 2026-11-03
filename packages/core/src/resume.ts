@@ -1,27 +1,40 @@
 /// <reference types="node" />
 import { createHash, randomBytes } from "node:crypto";
-import { mkdir, open, readFile, unlink } from "node:fs/promises";
+import { link, lstat, mkdir, open, readFile, rename, unlink } from "node:fs/promises";
 import { hostname } from "node:os";
 import { join } from "node:path";
+import { performance } from "node:perf_hooks";
 
 import type { LoopRecord, RollbackBoundaryArtifact } from "@martin/contracts";
 
-import { artifactDir, runDir } from "./persistence/index.js";
+import { artifactDir, resolveReceiptIntegrityRoot, runDir } from "./persistence/index.js";
+import { authenticateManagedPathExclusions, RollbackStateUnavailableError } from "./rollback.js";
+
+const locallyOwnedExecutionLeases = new Map<string, string>();
 
 export interface RunExecutionLease {
-  schemaVersion: "martin.execution-lease.v1";
+  schemaVersion: "martin.execution-lease.v2";
   runId: string;
   token: string;
   owner: string;
   pid: number;
   hostname: string;
   acquiredAt: string;
+  capabilities: { runControl: boolean };
+  processInstanceId: string;
+  heartbeatAt: string;
+  heartbeatSequence: number;
 }
 
 export interface AcquiredRunExecutionLease {
   lease: RunExecutionLease;
   path: string;
   release(): Promise<void>;
+}
+
+export interface ActiveRunExecutionLease {
+  lease: RunExecutionLease;
+  path: string;
 }
 
 
@@ -123,7 +136,19 @@ export async function loadResumeCandidateBoundary(
     }
     throw error;
   });
-  return JSON.parse(raw) as RollbackBoundaryArtifact;
+  const boundary = JSON.parse(raw) as RollbackBoundaryArtifact;
+  if (loop.task.repoRoot) {
+    authenticateManagedPathExclusions(
+      loop.task.repoRoot,
+      boundary,
+      [runsRoot, resolveReceiptIntegrityRoot()]
+    );
+  } else if (boundary.managedPathExclusions !== undefined) {
+    throw new RollbackStateUnavailableError(
+      "Rollback boundary managed path exclusions cannot be authenticated without a repository root."
+    );
+  }
+  return boundary;
 }
 
 export async function loadResumeVerifierFailure(
@@ -182,7 +207,10 @@ export async function acquireRunExecutionLease(input: {
   now?: () => string;
   host?: string;
   pid?: number;
-}): Promise<AcquiredRunExecutionLease> {
+  runControlCapable?: boolean;
+}, hooks: {
+  beforeStaleReclaim?: () => Promise<void>;
+} = {}): Promise<AcquiredRunExecutionLease> {
   const now = input.now ?? (() => new Date().toISOString());
   const host = input.host ?? hostname();
   const pid = input.pid ?? process.pid;
@@ -192,14 +220,18 @@ export async function acquireRunExecutionLease(input: {
   await mkdir(directory, { recursive: true });
 
   const token = `${pid}-${randomBytes(16).toString("hex")}`;
-  const lease: RunExecutionLease = {
-    schemaVersion: "martin.execution-lease.v1",
+  let lease: RunExecutionLease = {
+    schemaVersion: "martin.execution-lease.v2",
     runId: input.runId,
     token,
     owner: input.owner,
     pid,
     hostname: host,
-    acquiredAt: now()
+    acquiredAt: now(),
+    capabilities: { runControl: input.runControlCapable === true },
+    processInstanceId: randomBytes(16).toString("hex"),
+    heartbeatAt: wallClockIso(),
+    heartbeatSequence: 0
   };
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -211,39 +243,225 @@ export async function acquireRunExecutionLease(input: {
       } finally {
         await handle.close();
       }
+      const heartbeatPath = executionLeaseHeartbeatPath(path, lease.processInstanceId);
+      await writeLeaseAtomically(heartbeatPath, lease);
+      locallyOwnedExecutionLeases.set(path, `${lease.token}:${lease.processInstanceId}`);
+      let active = true;
+      let heartbeatPromise: Promise<void> | undefined;
+      const heartbeat = setInterval(() => {
+        if (!active || heartbeatPromise) return;
+        const nextLease: RunExecutionLease = {
+          ...lease,
+          heartbeatAt: wallClockIso(),
+          heartbeatSequence: lease.heartbeatSequence + 1
+        };
+        heartbeatPromise = writeLeaseAtomically(heartbeatPath, nextLease)
+          .then(() => { lease = nextLease; })
+          .catch(() => undefined)
+          .finally(() => { heartbeatPromise = undefined; });
+      }, 500);
+      heartbeat.unref();
       return {
         lease,
         path,
         async release(): Promise<void> {
+          active = false;
+          clearInterval(heartbeat);
+          await heartbeatPromise;
+          if (
+            locallyOwnedExecutionLeases.get(path) ===
+            `${lease.token}:${lease.processInstanceId}`
+          ) {
+            locallyOwnedExecutionLeases.delete(path);
+          }
           try {
             const existing = JSON.parse(await readFile(path, "utf8")) as RunExecutionLease;
             if (existing.token === token) await unlink(path);
           } catch (error) {
             if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
           }
+          await unlink(heartbeatPath).catch((error: NodeJS.ErrnoException) => {
+            if (error.code !== "ENOENT") throw error;
+          });
         }
       };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      const existing = await readLease(path);
+      const existing = await readLeaseWithHeartbeat(path);
       if (!existing) continue;
       if (existing.hostname !== host) {
         throw new Error(
           `Run ${input.runId} is leased by ${existing.owner} on ${existing.hostname}; refusing cross-host takeover.`
         );
       }
-      if (isProcessAlive(existing.pid)) {
+      if (isProcessAlive(existing.pid) && isFreshExecutionLease(existing)) {
         throw new Error(
           `Run ${input.runId} is already executing under ${existing.owner} (pid ${existing.pid}).`
         );
       }
-      await unlink(path).catch((unlinkError: NodeJS.ErrnoException) => {
-        if (unlinkError.code !== "ENOENT") throw unlinkError;
-      });
+      await hooks.beforeStaleReclaim?.();
+      await reclaimStaleExecutionLease(path, existing);
     }
   }
 
   throw new Error(`Unable to acquire execution lease for run ${input.runId}.`);
+}
+
+async function reclaimStaleExecutionLease(
+  path: string,
+  observed: RunExecutionLease
+): Promise<boolean> {
+  const claimPath = `${path}.reclaim-${createHash("sha256")
+    .update(`${observed.token}:${observed.processInstanceId}`)
+    .digest("hex")
+    .slice(0, 24)}`;
+  try {
+    // The deterministic hard-link claim atomically elects one reclaimer for
+    // the observed lease inode. A stale observer can never unlink a successor.
+    await link(path, claimPath);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "EEXIST" || code === "ENOENT") return false;
+    throw error;
+  }
+
+  try {
+    const claimedStat = await lstat(claimPath);
+    const claimed = await readLease(claimPath);
+    const currentStat = await lstat(path).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return undefined;
+      throw error;
+    });
+    if (
+      !claimed ||
+      !currentStat ||
+      claimed.token !== observed.token ||
+      claimed.processInstanceId !== observed.processInstanceId ||
+      claimedStat.dev !== currentStat.dev ||
+      claimedStat.ino !== currentStat.ino
+    ) {
+      return false;
+    }
+    await unlink(path);
+    await unlink(executionLeaseHeartbeatPath(path, observed.processInstanceId)).catch(
+      (error: NodeJS.ErrnoException) => {
+        if (error.code !== "ENOENT") throw error;
+      }
+    );
+    return true;
+  } finally {
+    await unlink(claimPath).catch(() => undefined);
+  }
+}
+
+/**
+ * Returns the persisted execution lease only when its schema, run identity,
+ * supported owner and local process liveness are all authoritative. Control
+ * surfaces use this to avoid accepting commands for an abandoned or incapable
+ * executor.
+ */
+export async function readActiveRunExecutionLease(input: {
+  runsRoot: string;
+  runId: string;
+  host?: string;
+}): Promise<ActiveRunExecutionLease | undefined> {
+  const host = input.host ?? hostname();
+  const directory = join(input.runsRoot, ".execution-leases");
+  const leaseFile = `${createHash("sha256").update(input.runId).digest("hex")}.json`;
+  const path = join(directory, leaseFile);
+  const lease = await readLeaseWithHeartbeat(path);
+  if (!isAdmissibleActiveLease(lease, input.runId, host)) return undefined;
+  // Same-process executors have a stronger identity proof than a sampled
+  // heartbeat: the unguessable token/instance pair is held in live memory.
+  // A stale lease whose PID was reused cannot satisfy this binding.
+  if (
+    lease.pid === process.pid &&
+    locallyOwnedExecutionLeases.get(path) === `${lease.token}:${lease.processInstanceId}`
+  ) {
+    return { lease, path };
+  }
+  // A PID can be reused after the former owner crashes. Require the same
+  // unguessable process instance to advance its heartbeat before admitting a
+  // mutation; PID liveness alone is never authority.
+  await new Promise<void>((resolve) => setTimeout(resolve, 650));
+  const confirmed = await readLeaseWithHeartbeat(path);
+  if (
+    !isAdmissibleActiveLease(confirmed, input.runId, host) ||
+    confirmed.token !== lease.token ||
+    confirmed.processInstanceId !== lease.processInstanceId ||
+    confirmed.heartbeatSequence <= lease.heartbeatSequence
+  ) {
+    return undefined;
+  }
+  return { lease: confirmed, path };
+}
+
+function isAdmissibleActiveLease(
+  lease: RunExecutionLease | undefined,
+  runId: string,
+  host: string
+): lease is RunExecutionLease {
+  return Boolean(
+    lease &&
+    lease.schemaVersion === "martin.execution-lease.v2" &&
+    lease.runId === runId &&
+    Boolean(lease.token) &&
+    ["runMartin", "runMartin:resume"].includes(lease.owner) &&
+    lease.capabilities?.runControl === true &&
+    lease.hostname === host &&
+    isProcessAlive(lease.pid) &&
+    isFreshExecutionLease(lease)
+  );
+}
+
+function isFreshExecutionLease(lease: Pick<RunExecutionLease, "heartbeatAt">): boolean {
+  const heartbeat = Date.parse(lease.heartbeatAt);
+  const now = wallClockMs();
+  return Number.isFinite(heartbeat) && now - heartbeat <= 2_000 && heartbeat <= now + 5_000;
+}
+
+function wallClockMs(): number {
+  return performance.timeOrigin + performance.now();
+}
+
+function wallClockIso(): string {
+  return new Date(wallClockMs()).toISOString();
+}
+
+async function writeLeaseAtomically(path: string, lease: RunExecutionLease): Promise<void> {
+  const temporaryPath = `${path}.heartbeat-${process.pid}-${randomBytes(8).toString("hex")}`;
+  const handle = await open(temporaryPath, "wx", 0o600);
+  try {
+    await handle.writeFile(`${JSON.stringify(lease, null, 2)}\n`, "utf8");
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+  try {
+    await rename(temporaryPath, path);
+  } finally {
+    await unlink(temporaryPath).catch(() => undefined);
+  }
+}
+
+function executionLeaseHeartbeatPath(path: string, processInstanceId: string): string {
+  return `${path}.${processInstanceId}.heartbeat`;
+}
+
+async function readLeaseWithHeartbeat(path: string): Promise<RunExecutionLease | undefined> {
+  const lease = await readLease(path);
+  if (!lease || lease.schemaVersion !== "martin.execution-lease.v2" || !lease.processInstanceId) {
+    return lease;
+  }
+  const heartbeat = await readLease(executionLeaseHeartbeatPath(path, lease.processInstanceId));
+  if (
+    !heartbeat ||
+    heartbeat.token !== lease.token ||
+    heartbeat.processInstanceId !== lease.processInstanceId
+  ) {
+    return lease;
+  }
+  return heartbeat;
 }
 
 async function readLease(path: string): Promise<RunExecutionLease | undefined> {

@@ -8,6 +8,8 @@ import { join, resolve } from "node:path";
 
 import type { LoopBudget, MutationMode, ReceiptScope } from "@martin/contracts";
 
+import { ensureWorkflowCleanOwnership } from "./clean-ownership.js";
+
 const WORKFLOW_STATE_DIRECTORY = "_martin";
 const WORKFLOW_STATE_FILENAME = "workflow-state.json";
 const WORKSPACES_DIRECTORY = "workspaces";
@@ -421,6 +423,11 @@ function buildBlockedMessage(missingSteps: CliWorkflowStepName[], nextCommand: s
  */
 export interface WorkspaceGovernanceReceipt {
   recordedAt?: string;
+  workingDirectory?: string;
+  doctorStatus?: "ok" | "degraded";
+  doctorPassed?: boolean;
+  serverVersion?: string;
+  packageVersion?: string;
 }
 
 /**
@@ -483,6 +490,7 @@ async function readWorkflowState(runsRoot: string, workingDirectory?: string): P
 // Writes per-workspace state atomically (tmp → rename) when workingDirectory is supplied.
 // Atomic rename prevents partial reads from concurrent processes in the same workspace.
 async function writeWorkflowState(runsRoot: string, state: WorkflowState, workingDirectory?: string): Promise<void> {
+  await ensureWorkflowCleanOwnership(runsRoot);
   const statePath = resolveWorkflowStatePath(runsRoot, workingDirectory);
   const dir = workingDirectory
     ? join(resolve(runsRoot), WORKFLOW_STATE_DIRECTORY, WORKSPACES_DIRECTORY, deriveWorkspaceKey(workingDirectory))

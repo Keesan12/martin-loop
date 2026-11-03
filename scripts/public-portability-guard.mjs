@@ -6,6 +6,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const PUBLIC_REPOSITORY_SLUG = "keesan12/martin-loop";
+const INTERNAL_REPOSITORY_PATTERN = /\b[A-Za-z0-9-]+(?:_[A-Za-z0-9-]+)*_Internal\b/iu;
 
 const TEXT_FILE_EXTENSIONS = new Set([
   ".md",
@@ -31,9 +33,8 @@ const PORTABILITY_RULES = [
   { label: "macOS user profile path", pattern: /\/Users\/[A-Za-z0-9._-]+\//i },
   { label: "OneDrive machine path", pattern: /\bOneDrive\b/i },
   { label: "Codex attachment path", pattern: /\.codex[\\/]+attachments/i },
-  { label: "internal main repo name", pattern: /\bML_Main_Repo_Internal\b/i },
-  { label: "internal OSS repo name", pattern: /\bML_Core_OSS_Internal\b/i },
-  { label: "internal machine workspace path", pattern: /\bmartin-loop_MAIN_FULL_REPO\b/i },
+  { label: "internal repository name", pattern: INTERNAL_REPOSITORY_PATTERN },
+  { label: "internal machine workspace path", pattern: /\b[A-Za-z0-9-]+_MAIN_FULL_REPO\b/i },
   {
     label: "representative API credential",
     pattern: /(?:sk-proj-[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|npm_[A-Za-z0-9]{36})/i,
@@ -68,16 +69,39 @@ export function normalizeRelativePath(value) {
 
 export function shouldScanPath(relativePath) {
   const normalized = normalizeRelativePath(relativePath);
-  if (!normalized) {
-    return false;
-  }
-
-  const extension = path.extname(normalized).toLowerCase();
-  if (!TEXT_FILE_EXTENSIONS.has(extension) && !normalized.endsWith("Dockerfile")) {
+  if (!isTextPath(normalized)) {
     return false;
   }
 
   return !PATH_ALLOWLIST.some((rule) => rule.test(normalized));
+}
+
+function isTextPath(relativePath) {
+  if (!relativePath) return false;
+  const extension = path.extname(relativePath).toLowerCase();
+  return TEXT_FILE_EXTENSIONS.has(extension) || relativePath.endsWith("Dockerfile");
+}
+
+function githubRepositorySlug(remoteUrl) {
+  const normalized = remoteUrl.trim().replaceAll("\\", "/");
+  const scpLike = /^git@github\.com:([^/]+\/[^/]+?)(?:\.git)?$/iu.exec(normalized);
+  if (scpLike) return scpLike[1].toLowerCase();
+  try {
+    const parsed = new URL(normalized);
+    if (parsed.hostname.toLowerCase() !== "github.com") return null;
+    return parsed.pathname.replace(/^\/+|\/+$/gu, "").replace(/\.git$/iu, "").toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+function isPublicDistributionRepository(rootDir) {
+  try {
+    const remoteUrl = execFileSync("git", ["-C", rootDir, "config", "--get", "remote.origin.url"], { encoding: "utf8" });
+    return githubRepositorySlug(remoteUrl) === PUBLIC_REPOSITORY_SLUG;
+  } catch {
+    return false;
+  }
 }
 
 export function findPortabilityViolations(contents, relativePath) {
@@ -123,12 +147,23 @@ export async function runPublicPortabilityGuard(options = {}) {
   const rootDir = options.rootDir ?? ROOT_DIR;
   const trackedFiles = options.files ?? collectTrackedFiles(rootDir);
   const scannedFiles = trackedFiles.filter((file) => shouldScanPath(file));
+  const identityFiles = isPublicDistributionRepository(rootDir)
+    ? trackedFiles.filter((file) => isTextPath(normalizeRelativePath(file)))
+    : [];
+  const scannedFileSet = new Set(scannedFiles);
+  const identityFileSet = new Set(identityFiles);
+  const filesToRead = [...new Set([...scannedFiles, ...identityFiles])].sort();
   const violations = [];
 
-  for (const relativePath of scannedFiles) {
+  for (const relativePath of filesToRead) {
     const fullPath = path.join(rootDir, relativePath);
     const contents = await readFile(fullPath, "utf8");
-    violations.push(...findPortabilityViolations(contents, relativePath));
+    if (scannedFileSet.has(relativePath)) {
+      violations.push(...findPortabilityViolations(contents, relativePath));
+    }
+    if (identityFileSet.has(relativePath) && INTERNAL_REPOSITORY_PATTERN.test(contents)) {
+      violations.push({ path: relativePath, rule: "private development repository identity" });
+    }
   }
 
   if (violations.length > 0) {

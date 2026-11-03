@@ -7,7 +7,7 @@
 - The root `martin-loop` package provides the public CLI, SDK, demo workspace, and top-level release notes.
 - The standalone `@martinloop/mcp` package stays on its own version line.
 - The server identifier remains `io.github.Keesan12/martin-loop`.
-- The current public standalone MCP package line is `0.3.0`.
+- The current standalone MCP package line is `0.9.0`.
 
 ## Stability Commitments
 

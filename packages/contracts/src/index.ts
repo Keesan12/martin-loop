@@ -962,6 +962,12 @@ export interface RollbackBoundaryArtifact {
   untrackedFiles: string[];
   snapshots: RollbackFileSnapshot[];
   /**
+   * Exact repo-relative roots owned by MartinLoop persistence for this run.
+   * These roots are not agent workspace mutations and must remain excluded
+   * from observation and rollback after the boundary is persisted/resumed.
+   */
+  managedPathExclusions?: string[];
+  /**
    * Git-ignored files present at the boundary. Dependency and build output
    * directories are recorded as a single collapsed `dir/` entry.
    */
@@ -1179,6 +1185,12 @@ export {
   validateSwarmParentContract,
   validateSwarmRunRecord
 } from "./swarm.js";
+export {
+  SWARM_CHILD_MAX_WALL_CLOCK_MS,
+  SWARM_PARENT_VERIFIER_ALLOWANCE_MS,
+  resolveSwarmDeadlineMs,
+} from "./swarm-timing.js";
+export type { SwarmExecutionShape } from "./swarm-timing.js";
 export type {
   SwarmAgentRecord,
   SwarmAgentStatus,

@@ -131,19 +131,112 @@ test("rejects unknown runtime aliases in both command and saved gate forms", () 
   assert.match(savedGate.violations[0]?.reason ?? "", /unsupported engine "cursor"/);
 });
 
-test("repository runner uses only the three fixed public onboarding surfaces", async () => {
+test("repository runner covers every active public onboarding and MCP reference surface", async () => {
   assert.deepEqual(PUBLIC_ONBOARDING_SURFACES, [
     "README.md",
     "packages/cli/README.md",
     "docs/reference/cli.md",
+    "docs/getting-started/mcp.md",
+    "docs/getting-started/quickstart.md",
+    "docs/oss/QUICKSTART.md",
+    "docs/oss/MCP-FOR-AI-AGENTS.md",
+    "docs/reference/mcp-compatibility.md",
+    "docs/release/MCP-PUBLISHING.md",
   ]);
 
   const result = await evaluatePublicOnboardingSurfaces(ROOT_DIR);
-  assert.equal(result.checkedFiles.length, 3);
+  assert.equal(result.checkedFiles.length, 9);
   assert.deepEqual(result.checkedFiles, PUBLIC_ONBOARDING_SURFACES);
   assert.deepEqual(result, {
     ok: true,
     checkedFiles: PUBLIC_ONBOARDING_SURFACES,
     violations: [],
+  });
+});
+
+test("rejects stale pinned package versions on active onboarding surfaces", () => {
+  const result = evaluateOnboardingDocument({
+    relativePath: "docs/getting-started/quickstart.md",
+    contents: "Run `npx -y martin-loop@0.3.2 --version`.",
+    currentRootVersion: "0.8.10",
+    currentMcpVersion: "0.8.10",
+  });
+
+  assert.deepEqual(result, {
+    ok: false,
+    violations: [{
+      relativePath: "docs/getting-started/quickstart.md",
+      line: 1,
+      reason: 'stale package version "martin-loop@0.3.2"; current package version is 0.8.10',
+    }],
+  });
+});
+
+test("accepts an explicitly labeled live standalone MCP baseline that matches the version ledger", () => {
+  const result = evaluateOnboardingDocument({
+    relativePath: "docs/oss/MCP-FOR-AI-AGENTS.md",
+    contents: "`@martinloop/mcp@0.8.10` is the live public standalone MCP baseline for MartinLoop.",
+    currentRootVersion: "0.9.0",
+    currentMcpVersion: "0.9.0",
+    liveMcpVersion: "0.8.10",
+  });
+
+  assert.deepEqual(result, { ok: true, violations: [] });
+});
+
+test("rejects an explicitly labeled live standalone MCP baseline that disagrees with the version ledger", () => {
+  const result = evaluateOnboardingDocument({
+    relativePath: "docs/oss/MCP-FOR-AI-AGENTS.md",
+    contents: "`@martinloop/mcp@0.8.9` is the live public standalone MCP baseline for MartinLoop.",
+    currentRootVersion: "0.9.0",
+    currentMcpVersion: "0.9.0",
+    liveMcpVersion: "0.8.10",
+  });
+
+  assert.deepEqual(result, {
+    ok: false,
+    violations: [{
+      relativePath: "docs/oss/MCP-FOR-AI-AGENTS.md",
+      line: 1,
+      reason: "stale live MCP baseline 0.8.9; version ledger live baseline is 0.8.10",
+    }],
+  });
+});
+
+test("does not treat an executable MCP pin comment as a live-baseline declaration", () => {
+  const result = evaluateOnboardingDocument({
+    relativePath: "docs/oss/MCP-FOR-AI-AGENTS.md",
+    contents: "npx -y @martinloop/mcp@0.8.10 # live public standalone MCP baseline",
+    currentRootVersion: "0.9.0",
+    currentMcpVersion: "0.9.0",
+    liveMcpVersion: "0.8.10",
+  });
+
+  assert.deepEqual(result, {
+    ok: false,
+    violations: [{
+      relativePath: "docs/oss/MCP-FOR-AI-AGENTS.md",
+      line: 1,
+      reason: 'stale package version "@martinloop/mcp@0.8.10"; current package version is 0.9.0',
+    }],
+  });
+});
+
+test("does not exempt a second stale pin on a valid live-baseline declaration line", () => {
+  const result = evaluateOnboardingDocument({
+    relativePath: "docs/oss/MCP-FOR-AI-AGENTS.md",
+    contents: "`@martinloop/mcp@0.8.10` is the live public standalone MCP baseline; do not install `@martinloop/mcp@0.8.9`.",
+    currentRootVersion: "0.9.0",
+    currentMcpVersion: "0.9.0",
+    liveMcpVersion: "0.8.10",
+  });
+
+  assert.deepEqual(result, {
+    ok: false,
+    violations: [{
+      relativePath: "docs/oss/MCP-FOR-AI-AGENTS.md",
+      line: 1,
+      reason: 'stale package version "@martinloop/mcp@0.8.9"; current package version is 0.9.0',
+    }],
   });
 });

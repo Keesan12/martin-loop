@@ -24,6 +24,20 @@ afterEach(async () => {
 });
 
 describe("swarm dossier and verify", () => {
+  it("keeps persisted demo selectors explicit by returned swarm ID", () => {
+    for (const subcommand of ["status", "inspect"] as const) {
+      expect(parseCliArguments(["swarm", subcommand, "--swarm-id", "swarm-demo-governed-a"]))
+        .toMatchObject({ request: { swarmId: "swarm-demo-governed-a" } });
+    }
+    for (const subcommand of ["dossier", "verify"] as const) {
+      expect(parseCliArguments(["swarm", subcommand, "--id", "swarm-demo-governed-a"]))
+        .toMatchObject({ request: { swarmId: "swarm-demo-governed-a" } });
+    }
+    expect(parseCliArguments([
+      "swarm", "share", "--id", "swarm-demo-governed-a", "--out-dir", "bundle",
+    ])).toMatchObject({ request: { swarmId: "swarm-demo-governed-a", outputDir: "bundle" } });
+  });
+
   it("keeps dossier, verify, and share complete offline without fetch, queue, or hosted warnings", async () => {
     const root = await createCanonicalTempRoot("martin-swarm-offline-evidence-");
     scratch.push(root);
@@ -176,7 +190,7 @@ describe("swarm share", () => {
         .toBe(await readFile(join(secondDir, file), "utf8"));
     }
     const combined = (await Promise.all((await readdir(firstDir)).map((file) => readFile(join(firstDir, file), "utf8")))).join("\n");
-    expect(combined).not.toMatch(/sk-proj-|AKIA[0-9A-Z]{16}|C:\\Users\\|ML_Core_OSS_Internal|private-repo/iu);
+    expect(combined).not.toMatch(/sk-proj-|AKIA[0-9A-Z]{16}|C:\\Users\\|\b[A-Za-z0-9-]+(?:_[A-Za-z0-9-]+)*_Internal\b|private-repo/iu);
     expect(JSON.parse(first.stdout)).toMatchObject({
       command: "swarm share", swarmId: "swarm-a", outputDir: firstDir,
     });

@@ -147,9 +147,9 @@ describe("every safely callable tool returns output that matches its advertised 
     ["martin_pr_summary", { ...sel, format: "md" }],
     ["martin_create_pr", { ...sel, title: "Preview only", base: "main", execute: false }],
     ["martin_review_pr", { ...sel, prBody: "Review body" }],
-    ["martin_pause", { ...sel, reason: "contract test", requestedBy: "tester" }],
-    ["martin_continue", { ...sel, reason: "contract test", requestedBy: "tester" }],
-    ["martin_cancel", { ...sel, reason: "contract test", requestedBy: "tester" }]
+    ["martin_pause", { ...sel, reason: "contract test" }],
+    ["martin_continue", { ...sel, reason: "contract test" }],
+    ["martin_cancel", { ...sel, reason: "contract test" }]
   ];
 
   it.each(calls)("%s returns schema-valid output for %j", async (name, args) => {
@@ -169,6 +169,47 @@ describe("advertised MCP output schemas", () => {
     expect(schema, `${name} advertises an output schema`).toBeDefined();
     return schema as Record<string, unknown>;
   }
+
+  it("advertises the sealed nested run-control state contract", () => {
+    const receiptHash = "a".repeat(64);
+    const receipt = {
+      schemaVersion: "martin.run-control.v2",
+      controlId: "ctl_contract",
+      loopId: "loop_contract",
+      action: "cancel",
+      requestedAt: "2026-11-01T00:00:00.000Z",
+      authorityBoundary: "local_os_user",
+      principal: "local_mcp_client",
+      executorLeaseToken: "lease_contract",
+      receiptHash
+    };
+    const result = {
+      ok: true,
+      summary: "Cancellation signal is live and terminal evidence has been observed.",
+      loopId: "loop_contract",
+      requestedAction: "cancel",
+      action: "cancel",
+      controlId: "ctl_contract",
+      requestedAt: "2026-11-01T00:00:00.000Z",
+      publicationState: "already_requested",
+      applicationState: "terminal_reconciled",
+      authorityBoundary: "local_os_user",
+      principal: "local_mcp_client",
+      receiptHash,
+      state: {
+        requestedState: "terminal",
+        approvalState: "not_required",
+        appliedState: "terminal",
+        receipts: [receipt],
+        applications: [],
+        publications: []
+      }
+    };
+
+    const outcome = validator.getValidator(outputSchemaOf("martin_cancel") as never)(result);
+    expect(outcome.errorMessage ?? "").toBe("");
+    expect(outcome.valid).toBe(true);
+  });
 
   it("accepts a preflight result that carries Codex host diagnostics", async () => {
     const originalLive = process.env.MARTIN_LIVE;

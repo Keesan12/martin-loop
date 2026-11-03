@@ -37,7 +37,7 @@ afterEach(() => {
 describe("deterministic swarm demo graph", () => {
   it("preserves deterministic demo routing beside the new swarm evidence namespace", () => {
     expect(parseCliArguments(["demo", "--swarm", "--scenario", "launch-board"])).toMatchObject({
-      command: "demo", swarm: true, scenario: "launch-board",
+      command: "demo", swarm: true, scenario: "launch-board", mode: "simulation",
     });
     expect(parseCliArguments(["swarm", "share", "--latest", "--out-dir", "bundle"]))
       .toMatchObject({ command: "swarm_share", request: { latest: true, outputDir: "bundle" } });

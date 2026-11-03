@@ -39,42 +39,35 @@ describe("governed-badge constants", () => {
 });
 
 describe("badge --governed CLI command", () => {
-  it("returns exact badge markdown with exit 0", async () => {
+  it("refuses to claim governance without a verified local receipt", async () => {
     const result = await executeCli(["badge", "--governed"]);
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toBe(MARTINLOOP_BADGE_MARKDOWN);
-    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(2);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain("requires a latest local governed run with verified receipt integrity and passing verifier evidence");
   });
 
   it.each([
     ["explicit format", ["badge", "--governed", "--format", "json"]],
     ["global before", ["--json", "badge", "--governed"]],
     ["global after", ["badge", "--governed", "--json"]],
-  ])("returns one governed JSON document for %s", async (_label, argv) => {
+  ])("fails closed without verified evidence for %s", async (_label, argv) => {
     const result = await executeCli(argv);
-    expect(result.exitCode).toBe(0);
-    expect(result.stderr).toBe("");
-    expect(JSON.parse(result.stdout)).toEqual({
-      command: "badge",
-      governed: true,
-      markdown: MARTINLOOP_BADGE_MARKDOWN,
-      schemaVersion: 1,
-      label: "MartinLoop",
-      message: "Governed",
-      color: "blue",
-    });
+    expect(result.exitCode).toBe(2);
+    expect(`${result.stdout}\n${result.stderr}`).toContain("verified receipt integrity and passing verifier evidence");
+    expect(result.stdout).not.toContain(MARTINLOOP_BADGE_MARKDOWN);
   });
 
-  // `badge --format json` emits a Shields endpoint object; the governed variant
-  // must expose the same fields so automation does not special-case it.
-  it("governed JSON carries the same Shields fields as the evidence badge JSON", async () => {
+  // The evidence badge remains a valid Shields endpoint even when the stronger
+  // governed claim correctly fails closed without a verified local receipt.
+  it("keeps the evidence badge JSON valid while governed JSON fails closed without evidence", async () => {
     const plain = JSON.parse((await executeCli(["badge", "--format", "json"])).stdout) as Record<string, unknown>;
-    const governed = JSON.parse((await executeCli(["badge", "--governed", "--format", "json"])).stdout) as Record<string, unknown>;
+    const governedResult = await executeCli(["badge", "--governed", "--format", "json"]);
     for (const key of ["schemaVersion", "label", "message", "color"]) {
       expect(plain).toHaveProperty(key);
-      expect(governed).toHaveProperty(key);
     }
-    expect(governed["schemaVersion"]).toBe(plain["schemaVersion"]);
+    expect(governedResult.exitCode).toBe(2);
+    expect(governedResult.stdout).toBe("");
+    expect(governedResult.stderr).toContain("verified receipt integrity and passing verifier evidence");
   });
 
   it("rejects governed SVG instead of labeling Markdown as SVG", async () => {
@@ -89,7 +82,8 @@ describe("badge --governed CLI command", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).not.toBe(MARTINLOOP_BADGE_MARKDOWN);
     expect(result.stdout).toContain("Evidence readiness:");
-    expect(result.stdout).toMatch(/\d\/5 signals/u);
+    expect(result.stdout).toMatch(/\d\/4 measured signals/u);
+    expect(result.stdout).toContain("1 unmeasured");
     expect(result.stdout).not.toContain("agent reliability");
   });
 });

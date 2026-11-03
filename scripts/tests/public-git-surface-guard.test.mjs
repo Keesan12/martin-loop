@@ -29,7 +29,7 @@ test("public git surface guard rejects internal-process commit subjects", () => 
     },
     {
       sha: "111111111111",
-      subject: "docs: update internal handoff for staging_repo_Internal",
+      subject: `docs: update internal handoff for ${["staging", "repo", "Internal"].join("_")}`,
     },
     {
       sha: "222222222222",

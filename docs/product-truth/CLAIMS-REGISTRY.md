@@ -46,26 +46,14 @@ Any PR touching runtime behavior, CLI/MCP outcomes, public copy, package metadat
 
 ---
 
-### Test Integrity — Current (`test-integrity-current`) — **partial**
+### Test Integrity — Current (`test-integrity-current`) — **shipped**
 
-**Safe claim:** MartinLoop Core includes analysis primitives for suspicious new agent-generated tests.
+**Safe claim:** MartinLoop evaluates suspicious new tests and requires explicit approval when an attempt weakens or removes existing test code.
 
 **Prohibited:**
-- "Automatically verifies the complete test suite was not changed"
 - "Detects every form of test tampering"
 
-**Evidence:** `packages/core/src/test-integrity.ts`, `packages/core/tests/test-integrity.test.ts`
-
----
-
-### Test Integrity — Verification Asset Guard (`test-integrity-asset-guard`) — **building**
-
-**Safe claim:** MartinLoop is building runtime-integrated snapshot comparison for configured protected verification assets.
-
-**Prohibited:**
-- "Checks existing test suite for unauthorized modification" (claim gate: see `docs/product-truth/validation/test-integrity-validation-v1.md`)
-
-**Evidence:** Claim gate not yet cleared.
+**Evidence:** `packages/core/src/test-integrity.ts`, `packages/core/src/leash.ts`, `packages/core/tests/test-integrity.test.ts`, `packages/core/tests/test-weakening.test.ts`, `packages/core/tests/leash-protected-files.test.ts`, `packages/core/tests/runtime-workspace-hardening.test.ts`
 
 ---
 
@@ -115,11 +103,11 @@ Any PR touching runtime behavior, CLI/MCP outcomes, public copy, package metadat
 
 ---
 
-### SANSA / Fleet (`sansa-fleet`) — **roadmap**
+### SANSA / Fleet (`sansa-fleet`) — **partial**
 
-**Safe claim:** MartinLoop's architecture is designed to support multi-agent fleet governance. No shipped fleet primitives yet.
+**Safe claim:** MartinLoop ships provider-free Swarm planning and evidence primitives; governed live fleet execution remains a separately qualified boundary.
 
 **Prohibited:**
-- Any present-tense claim about fleet capability
+- "Fully autonomous governed fleet execution is generally available"
 
-**Evidence:** Roadmap only.
+**Evidence:** `packages/core/src/swarm/index.ts`, `packages/core/src/swarm/evidence.ts`, `packages/cli/src/swarm-demo.ts`

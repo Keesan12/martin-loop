@@ -32,6 +32,7 @@ import {
   type MartinEngine
 } from "./tool-support.js";
 import { normalizeLoopBudget } from "./workflow-governance.js";
+import { createFileRunControlSource } from "./run-controls.js";
 
 export interface RunLoopInput {
   objective: string;
@@ -340,6 +341,12 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
     workspaceId: input.workspaceId ?? "ws_mcp",
     projectId: input.projectId ?? "proj_mcp",
     store: runStoreOverrideForTests ?? createFileRunStore({ runsRoot }),
+    // The in-memory store override is a verification-only composition with no
+    // durable run directory to serialize. Production always couples the file
+    // store and file control source over the same runs root.
+    runControlSource: runStoreOverrideForTests
+      ? undefined
+      : createFileRunControlSource(runsRoot),
     receiptScope,
     task: {
       title: input.objective.slice(0, 100),

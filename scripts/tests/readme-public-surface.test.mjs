@@ -33,8 +33,7 @@ const FORBIDDEN_PUBLIC_COPY_PATTERNS = [
   /\bKeesan explicitly\b/i,
   /\bpending directory\b/i,
   /\bprivate beta\b/i,
-  /\bML_Main_Repo_Internal\b/i,
-  /\bML_Core_OSS_Internal\b/i,
+  /\b[A-Za-z0-9-]+(?:_[A-Za-z0-9-]+)*_Internal\b/i,
   /[A-Za-z]:\\Users\\/i,
   /\/Users\//i,
   /\bOneDrive\b/i,
@@ -203,6 +202,25 @@ test("public markdown copy avoids non-public process language", async () => {
     for (const pattern of FORBIDDEN_PUBLIC_COPY_PATTERNS) {
       assert.doesNotMatch(contents, pattern, `${relativePath} contains ${pattern}`);
     }
+  }
+});
+
+test("current release copy distinguishes provider-free governed budgets from live budgets", async () => {
+  const manifest = await readRootManifest();
+  const currentReleaseNotes = await readRepoFile(`docs/release/OSS-${manifest.version}-RELEASE-NOTES.md`);
+  const changelog = await readRepoFile("CHANGELOG.md");
+
+  for (const contents of [currentReleaseNotes, changelog]) {
+    assert.match(contents, /provider-free governed[^\n]*exactly \$0/i);
+    assert.match(contents, /live[^\n]*positive budget/i);
+    assert.doesNotMatch(
+      contents,
+      /Governed Swarm execution now requires explicit agent count, concurrency, and positive budget authority/i,
+    );
+    assert.doesNotMatch(
+      contents,
+      /Governed Swarm runs require explicit agent, concurrency, and positive budget limits/i,
+    );
   }
 });
 

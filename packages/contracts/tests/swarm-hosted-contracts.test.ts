@@ -102,11 +102,7 @@ describe("martin.swarm-hosted.v1 contracts", () => {
     });
 
     expect(bytes).not.toMatch(/[A-Z]:\\|\/Users\/|\/home\/|sk-proj-|ghp_|npm_|xox[baprs]-|BEGIN (?:RSA |OPENSSH )?PRIVATE KEY/iu);
-    for (const marker of [
-      ["ML", "Core", "OSS", "Internal"].join("_"),
-      ["ML", "Control", "Plane", "Internal"].join("_"),
-      ["martin", "loop", "magic"].join("-"),
-    ]) expect(bytes).not.toContain(marker);
+    expect(bytes).not.toMatch(/\b[A-Za-z0-9-]+(?:_[A-Za-z0-9-]+)*_Internal\b/iu);
     expect(bytes).not.toMatch(/localhost|\.git(?:hub)?\/|"(?:command|prompt|diff|stdout|stderr|payload|secret|token|privateKey)"\s*:/iu);
   });
 

@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "approvals": [
+    {
+      "lane": "public",
+      "relativePath": "packages/mcp/src/server-validation.ts",
+      "localSha": "c6dadd57e5db41d1c74460699d43c2c3bef4437f4c312ebbdf0a799bd3974b95",
+      "remoteSha": "4a9f7ef633a27efe776a24e322396b9283a2bbf127f98a99c7daabc43894e84c",
+      "reason": "The reviewed 0.9.0 active-control schema rejects unsupported remote control authority and unknown control arguments ahead of the current public 0.8.10 source."
+    },
+    {
+      "lane": "public",
+      "relativePath": "packages/mcp/src/server.ts",
+      "localSha": "8206eac14e690e9680b307352b2362bf9382709c9e922ea85c405db39ad1cf0e",
+      "remoteSha": "95d0879cf25b221372823837fa9201b323bc1c8998c45c0ec0d195b1d3233592",
+      "reason": "The reviewed 0.9.0 MCP server wires capability-aware pause, continue, and cancellation controls ahead of the current public 0.8.10 source."
+    },
+    {
+      "lane": "public",
+      "relativePath": "packages/cli/src/mcp-config.ts",
+      "localSha": "fa6a3428da6f677de036987175f36b032487d1e5279873dc812446dade4d6f2c",
+      "remoteSha": "a6737bc00dfa6ba82f940a2801e010b558a707febf8c471e8727c9808efcb9ff",
+      "reason": "The source configuration includes portable project-scope host support not yet present in the 0.8.10 distribution; keep this exact difference explicit until canonical promotion."
+    },
+    {
+      "lane": "public",
+      "relativePath": "packages/cli/src/index.ts",
+      "localSha": "a15bce8e83b4f88f521ce7b48bc13102ed7b6bba91137d55002dd93ac4522f1c",
+      "remoteSha": "f70b370f13fcfd9e8c334df1d44c583c050beed04ea7477505e86e7375139394",
+      "reason": "The reviewed 0.9.0 source contains CLI trust, cleanup, active-control, governed Swarm, budget, challenge-validation, and governed-badge fixes ahead of the current public 0.8.10 source; keep this exact difference explicit until canonical promotion."
+    }
+  ]
+}

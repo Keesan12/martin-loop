@@ -11,7 +11,6 @@ Use this checklist before calling a Martin MCP release ready.
 
 - `packages/mcp/package.json` version matches `packages/mcp/server.json`
 - the matching `docs/release/MCP-X.Y.Z-RELEASE-NOTES.md` exists
-- the matching `docs/release/MCP-X.Y.Z-RELEASE-PACKET.md` exists
 - `docs/release/VERSION-LEDGER.md` matches live npm, public GitHub `main`, and the current repo package manifests
 
 ## Docs

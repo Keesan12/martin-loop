@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -11,12 +12,13 @@ import {
 } from "../public-portability-guard.mjs";
 
 test("findPortabilityViolations detects local machine paths and internal repo names", () => {
+  const syntheticInternalRepository = ["Example", "Service", "Internal"].join("_");
   const windowsPath = findPortabilityViolations(
     "See C:\\Users\\Example\\OneDrive\\Documents\\notes.md",
     "README.md",
   );
   const internalRepo = findPortabilityViolations(
-    "Mirror from ML_Main_Repo_Internal before release.",
+    `Mirror from ${syntheticInternalRepository} before release.`,
     "docs/guide.md",
   );
 
@@ -90,6 +92,23 @@ test("runPublicPortabilityGuard fails when source includes local machine depende
         files: ["packages/core/src/index.ts"],
       }),
     /Public portability guard failed/i,
+  );
+});
+
+test("public distribution scan includes tests for private authority identity leakage", async () => {
+  const rootDir = await mkdtemp(path.join(os.tmpdir(), "martin-portability-public-identity-"));
+  const relativePath = "scripts/tests/release-fixture.test.mjs";
+  await mkdir(path.join(rootDir, "scripts", "tests"), { recursive: true });
+  const privateRepositorySlug = `example-internal/${["Example", "Service", "Internal"].join("_")}`;
+
+  execFileSync("git", ["init", "-b", "main"], { cwd: rootDir, stdio: "ignore" });
+  execFileSync("git", ["remote", "add", "origin", "https://github.com/Keesan12/martin-loop.git"], { cwd: rootDir, stdio: "ignore" });
+  await writeFile(path.join(rootDir, relativePath), `export const leakedRepository = '${privateRepositorySlug}';\n`);
+  execFileSync("git", ["add", relativePath], { cwd: rootDir, stdio: "ignore" });
+
+  await assert.rejects(
+    () => runPublicPortabilityGuard({ rootDir }),
+    /scripts\/tests\/release-fixture\.test\.mjs: private development repository identity/iu,
   );
 });
 

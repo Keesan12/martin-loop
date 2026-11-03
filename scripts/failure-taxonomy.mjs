@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -42,13 +43,34 @@ function parseFailureClasses(source) {
   return classes;
 }
 
-function toCanonicalJson(classes) {
+function toCanonicalJson(classes, contractsSource) {
+  const records = classes.map((classId) => {
+    const description = CLASS_DESCRIPTIONS[classId];
+    if (typeof description !== "string" || description.trim().length === 0) {
+      throw new Error(`FAILURE_CLASSES entry is missing a description: ${classId}`);
+    }
+    return { classId, description };
+  });
+  const sourceChecksum = createHash("sha256")
+    .update(JSON.stringify(records), "utf8")
+    .digest("hex");
+  const sourceFileSha256 = createHash("sha256")
+    .update(contractsSource.replace(/\r\n/g, "\n"), "utf8")
+    .digest("hex");
+
   return `${JSON.stringify(
     {
       schemaVersion: "martin.failure-taxonomy.runtime.v1",
       source: "packages/contracts/src/index.ts#FAILURE_CLASSES",
+      sourceProvenance: {
+        file: "packages/contracts/src/index.ts",
+        symbol: "FAILURE_CLASSES",
+        fileSha256: sourceFileSha256
+      },
       canonicalClassCount: classes.length,
-      failureClasses: classes
+      failureClasses: classes,
+      classes: records,
+      sourceChecksum
     },
     null,
     2
@@ -91,8 +113,9 @@ export async function loadFailureClassesFromContracts() {
 }
 
 export async function syncFailureTaxonomyArtifacts({ write = false } = {}) {
-  const classes = await loadFailureClassesFromContracts();
-  await ensureMatchesOrWrite(CANONICAL_JSON_PATH, toCanonicalJson(classes), write);
+  const contractsSource = await readFile(CONTRACTS_PATH, "utf8");
+  const classes = parseFailureClasses(contractsSource);
+  await ensureMatchesOrWrite(CANONICAL_JSON_PATH, toCanonicalJson(classes, contractsSource), write);
   await ensureMatchesOrWrite(CANONICAL_MARKDOWN_PATH, toCanonicalMarkdown(classes), write);
   return classes;
 }

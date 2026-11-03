@@ -44,7 +44,7 @@ test("private repo references still fail inside an explicit public payload", asy
   await mkdir(path.join(rootDir, "dist"), { recursive: true });
   await writeFile(
     path.join(rootDir, "dist", "index.js"),
-    "export const leaked = 'ML_Core_OSS_Internal';\n",
+    `export const leaked = '${["Example", "Service", "Internal"].join("_")}';\n`,
   );
 
   await assert.rejects(
@@ -53,6 +53,6 @@ test("private repo references still fail inside an explicit public payload", asy
         rootDir,
         files: ["dist/index.js"],
       }),
-    /internal OSS repo name/,
+    /internal repository name/,
   );
 });

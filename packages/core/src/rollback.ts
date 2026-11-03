@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { lstatSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { dirname, isAbsolute, relative, resolve } from "node:path";
+import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 
 import type {
   PatchDecision,
@@ -58,6 +58,8 @@ export class RollbackStateUnavailableError extends Error {
 export function listAttemptChangedFilesSinceBoundary(input: {
   repoRoot?: string;
   boundary?: RollbackBoundaryArtifact;
+  /** Trusted, currently configured MartinLoop-owned roots. */
+  managedRoots?: string[];
   /** Include content changes to dirty/untracked paths that existed at the boundary. */
   includeBaselineSnapshotChanges?: boolean;
 }): string[] {
@@ -67,32 +69,43 @@ export function listAttemptChangedFilesSinceBoundary(input: {
 
   // Diff against the boundary commit (not the live HEAD) so that changes an
   // attempt commits are still reported as attempt changes.
-  const repoState = readRepoState(input.repoRoot, input.boundary?.headRef);
+  const exclusions = input.boundary
+    ? authenticateManagedPathExclusions(input.repoRoot, input.boundary, input.managedRoots ?? [])
+    : [];
+  const repoState = readRepoState(input.repoRoot, input.boundary?.headRef, exclusions);
   if (!input.boundary) {
     return uniqueSorted([...repoState.trackedDirtyFiles, ...repoState.untrackedFiles]);
   }
 
-  const baselineTracked = new Set(input.boundary.trackedDirtyFiles);
-  const baselineUntracked = new Set(input.boundary.untrackedFiles);
+  const baselineTracked = new Set(filterManagedRollbackPaths(input.boundary.trackedDirtyFiles, exclusions));
+  const baselineUntracked = new Set(filterManagedRollbackPaths(input.boundary.untrackedFiles, exclusions));
 
-  return uniqueSorted([
+  return filterManagedRollbackPaths(uniqueSorted([
     ...repoState.trackedDirtyFiles.filter((filePath) => !baselineTracked.has(filePath)),
     ...repoState.untrackedFiles.filter((filePath) => !baselineUntracked.has(filePath)),
     ...(input.includeBaselineSnapshotChanges
-      ? snapshotChangedPaths(input.repoRoot, input.boundary.snapshots)
+      ? snapshotChangedPaths(
+          input.repoRoot,
+          input.boundary.snapshots.filter((snapshot) =>
+            !isManagedRollbackPath(snapshot.path, exclusions)
+          )
+        )
       : [])
-  ]);
+  ]), exclusions);
 }
 
 export async function captureRollbackBoundary(input: {
   repoRoot?: string;
   capturedAt: string;
+  /** Absolute, configured MartinLoop-owned roots to exclude when contained in the repo. */
+  managedRoots?: string[];
 }): Promise<RollbackBoundaryArtifact | undefined> {
   if (!input.repoRoot) {
     return undefined;
   }
 
-  const repoState = readRepoState(input.repoRoot);
+  const managedPathExclusions = resolveManagedPathExclusions(input.repoRoot, input.managedRoots ?? []);
+  const repoState = readRepoState(input.repoRoot, "HEAD", managedPathExclusions);
   // Links are recorded by path only: their targets are never read or restored.
   const snapshotPaths = uniqueSorted([
     ...repoState.trackedDirtyFiles,
@@ -104,7 +117,7 @@ export async function captureRollbackBoundary(input: {
     snapshots.push(await readRollbackSnapshot(input.repoRoot, filePath));
   }
 
-  const observedIgnoredFiles = readIgnoredInventory(input.repoRoot);
+  const observedIgnoredFiles = readIgnoredInventory(input.repoRoot, managedPathExclusions);
   const ignoredFiles: RollbackIgnoredFileStamp[] = observedIgnoredFiles.map(({ path, size, mtimeMs }) => ({
     path,
     size,
@@ -121,7 +134,8 @@ export async function captureRollbackBoundary(input: {
     trackedDirtyFiles: repoState.trackedDirtyFiles,
     untrackedFiles: repoState.untrackedFiles,
     snapshots,
-    ignoredFiles
+    ignoredFiles,
+    ...(managedPathExclusions.length > 0 ? { managedPathExclusions } : {})
   };
   ignoredObservations.set(boundary, new Map(observedIgnoredFiles.map((entry) => [entry.path, entry])));
   ignoredContentSnapshots.set(boundary, captureIgnoredContent(input.repoRoot, ignoredFiles));
@@ -135,18 +149,31 @@ export async function captureRollbackBoundary(input: {
 export function listIgnoredFileChangesSinceBoundary(input: {
   repoRoot?: string;
   boundary?: RollbackBoundaryArtifact;
+  /** Trusted, currently configured MartinLoop-owned roots. */
+  managedRoots?: string[];
 }): IgnoredFileChanges {
-  if (!input.repoRoot || !input.boundary?.ignoredFiles) {
+  if (!input.repoRoot || !input.boundary) {
     return makeIgnoredFileChanges([], [], []);
   }
 
-  const baseline = new Map(input.boundary.ignoredFiles.map((entry) => [entry.path, entry]));
+  const exclusions = authenticateManagedPathExclusions(
+    input.repoRoot,
+    input.boundary,
+    input.managedRoots ?? []
+  );
+  if (!input.boundary.ignoredFiles) {
+    return makeIgnoredFileChanges([], [], []);
+  }
+  const baseline = new Map(input.boundary.ignoredFiles
+    .filter((entry) => !isManagedRollbackPath(entry.path, exclusions))
+    .map((entry) => [entry.path, entry]));
   const baselineObservations = ignoredObservations.get(input.boundary);
   const created: string[] = [];
   const modified: string[] = [];
-  const currentEntries = readIgnoredInventory(input.repoRoot);
+  const currentEntries = readIgnoredInventory(input.repoRoot, exclusions);
   const current = new Map(currentEntries.map((entry) => [entry.path, entry]));
   const deleted = input.boundary.ignoredFiles
+    .filter((entry) => !isManagedRollbackPath(entry.path, exclusions))
     .filter((entry) => !current.has(entry.path))
     .map((entry) => entry.path);
 
@@ -202,6 +229,8 @@ export async function restoreRollbackBoundary(input: {
   removePaths?: string[];
   /** Pre-existing ignored paths to restore from the in-memory boundary. */
   restoreIgnoredPaths?: string[];
+  /** Trusted, currently configured MartinLoop-owned roots. */
+  managedRoots?: string[];
 }): Promise<RollbackOutcomeArtifact | undefined> {
   if (!input.repoRoot) {
     return undefined;
@@ -221,17 +250,25 @@ export async function restoreRollbackBoundary(input: {
     };
   }
 
-  const before = readRepoState(input.repoRoot, input.boundary.headRef);
+  const exclusions = authenticateManagedPathExclusions(
+    input.repoRoot,
+    input.boundary,
+    input.managedRoots ?? []
+  );
+  const before = readRepoState(input.repoRoot, input.boundary.headRef, exclusions);
   const currentHead = readGitScalar(input.repoRoot, ["rev-parse", "HEAD"]);
   const headMoved = input.boundary.headRef !== undefined && currentHead !== input.boundary.headRef;
-  const removePaths = uniqueSorted(input.removePaths ?? []);
-  const restoreIgnoredPaths = uniqueSorted(input.restoreIgnoredPaths ?? []);
-  const snapshotsUnchanged = await rollbackSnapshotsMatch(input.repoRoot, input.boundary.snapshots);
+  const removePaths = filterManagedRollbackPaths(uniqueSorted(input.removePaths ?? []), exclusions);
+  const restoreIgnoredPaths = filterManagedRollbackPaths(uniqueSorted(input.restoreIgnoredPaths ?? []), exclusions);
+  const rollbackSnapshots = input.boundary.snapshots.filter((snapshot) =>
+    !isManagedRollbackPath(snapshot.path, exclusions)
+  );
+  const snapshotsUnchanged = await rollbackSnapshotsMatch(input.repoRoot, rollbackSnapshots);
   if (
     !headMoved &&
     removePaths.length === 0 &&
     restoreIgnoredPaths.length === 0 &&
-    repoStateMatchesBoundary(before, input.boundary) &&
+    repoStateMatchesBoundary(before, input.boundary, exclusions) &&
     snapshotsUnchanged
   ) {
     return {
@@ -256,8 +293,8 @@ export async function restoreRollbackBoundary(input: {
       rewoundHead = { from: currentHead, to: input.boundary.headRef };
     }
 
-    const baselineTracked = new Set(input.boundary.trackedDirtyFiles);
-    const baselineUntracked = new Set(input.boundary.untrackedFiles);
+    const baselineTracked = new Set(filterManagedRollbackPaths(input.boundary.trackedDirtyFiles, exclusions));
+    const baselineUntracked = new Set(filterManagedRollbackPaths(input.boundary.untrackedFiles, exclusions));
 
     for (const filePath of before.trackedDirtyFiles) {
       if (!baselineTracked.has(filePath)) {
@@ -279,7 +316,7 @@ export async function restoreRollbackBoundary(input: {
       }
     }
 
-    for (const snapshot of input.boundary.snapshots) {
+    for (const snapshot of rollbackSnapshots) {
       await restoreRollbackSnapshot(input.repoRoot, snapshot);
       if (snapshot.existed) {
         restoredFiles.add(snapshot.path);
@@ -306,9 +343,9 @@ export async function restoreRollbackBoundary(input: {
       restoredFiles.add(filePath);
     }
 
-    const after = readRepoState(input.repoRoot, input.boundary.headRef);
+    const after = readRepoState(input.repoRoot, input.boundary.headRef, exclusions);
     const restored =
-      repoStateMatchesBoundary(after, input.boundary) &&
+      repoStateMatchesBoundary(after, input.boundary, exclusions) &&
       (input.boundary.headRef === undefined ||
         readGitScalar(input.repoRoot, ["rev-parse", "HEAD"]) === input.boundary.headRef);
 
@@ -327,7 +364,7 @@ export async function restoreRollbackBoundary(input: {
         : { error: "Repo state still diverged from the recorded rollback boundary after restore." })
     };
   } catch (error) {
-    const after = readRepoState(input.repoRoot, input.boundary.headRef);
+    const after = readRepoState(input.repoRoot, input.boundary.headRef, exclusions);
 
     return {
       attempted: true,
@@ -343,16 +380,23 @@ export async function restoreRollbackBoundary(input: {
   }
 }
 
-function readRepoState(repoRoot: string, baseRef = "HEAD"): RepoStateSnapshot {
+function readRepoState(
+  repoRoot: string,
+  baseRef = "HEAD",
+  managedPathExclusions: readonly string[] = []
+): RepoStateSnapshot {
   return {
-    trackedDirtyFiles: readGitLines(repoRoot, ["diff", "--name-only", baseRef, "--", "."]),
+    trackedDirtyFiles: filterManagedRollbackPaths(
+      readGitLines(repoRoot, ["diff", "--name-only", baseRef, "--", "."]),
+      managedPathExclusions
+    ),
     // Git for Windows lists untracked files *through* junctions, so a link to a
     // directory outside the repo would otherwise surface that directory's files as
     // repo paths. Collapse every such path to the link itself.
-    untrackedFiles: collapsePathsThroughLinks(
+    untrackedFiles: filterManagedRollbackPaths(collapsePathsThroughLinks(
       repoRoot,
       readGitLines(repoRoot, ["ls-files", "--others", "--exclude-standard", "--", "."])
-    )
+    ), managedPathExclusions)
   };
 }
 
@@ -471,10 +515,13 @@ function unstagePath(repoRoot: string, filePath: string): void {
   }
 }
 
-function readIgnoredInventory(repoRoot: string): IgnoredFileObservation[] {
+function readIgnoredInventory(
+  repoRoot: string,
+  managedPathExclusions: readonly string[] = []
+): IgnoredFileObservation[] {
   const collapsed = collapsePathsThroughLinks(repoRoot, readGitLines(repoRoot, [
     "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "--", "."
-  ]));
+  ])).filter((entry) => !isManagedRollbackPath(entry, managedPathExclusions));
   const inventory: IgnoredFileObservation[] = [];
   let expanded = 0;
   const hashBudget: IgnoredHashBudget = { remainingBytes: MAX_HASHED_IGNORED_TOTAL_BYTES };
@@ -492,12 +539,12 @@ function readIgnoredInventory(repoRoot: string): IgnoredFileObservation[] {
       );
     }
 
-    const files = isDirectory
+    const files = (isDirectory
       ? collapsePathsThroughLinks(
           repoRoot,
           readGitLines(repoRoot, ["ls-files", "--others", "--ignored", "--exclude-standard", "--", entry])
         )
-      : [entry];
+      : [entry]).filter((filePath) => !isManagedRollbackPath(filePath, managedPathExclusions));
     for (const filePath of files) {
       if (expanded >= MAX_EXPANDED_IGNORED_FILES) {
         throw new RollbackStateUnavailableError(
@@ -823,10 +870,16 @@ function resolveRepoPath(
 
 function repoStateMatchesBoundary(
   state: RepoStateSnapshot,
-  boundary: RollbackBoundaryArtifact
+  boundary: RollbackBoundaryArtifact,
+  exclusions: readonly string[] = []
 ): boolean {
-  return arraysEqual(state.trackedDirtyFiles, boundary.trackedDirtyFiles) &&
-    arraysEqual(state.untrackedFiles, boundary.untrackedFiles);
+  return arraysEqual(
+    state.trackedDirtyFiles,
+    filterManagedRollbackPaths(boundary.trackedDirtyFiles, exclusions)
+  ) && arraysEqual(
+    state.untrackedFiles,
+    filterManagedRollbackPaths(boundary.untrackedFiles, exclusions)
+  );
 }
 
 function arraysEqual(left: string[], right: string[]): boolean {
@@ -839,6 +892,69 @@ function arraysEqual(left: string[], right: string[]): boolean {
 
 function uniqueSorted(values: string[]): string[] {
   return [...new Set(values.map((value) => normalizeRepoPath(value)).filter(Boolean))].sort();
+}
+
+export function filterManagedRollbackPaths(
+  values: readonly string[],
+  exclusions: readonly string[]
+): string[] {
+  return values.filter((value) => !isManagedRollbackPath(value, exclusions));
+}
+
+/**
+ * Re-derive exclusion authority from trusted current configuration. Persisted
+ * rollback evidence records what was authorized, but never grants authority.
+ */
+export function authenticateManagedPathExclusions(
+  repoRoot: string,
+  boundary: RollbackBoundaryArtifact,
+  managedRoots: readonly string[]
+): string[] {
+  const expected = resolveManagedPathExclusions(repoRoot, managedRoots);
+  const persistedValue = boundary.managedPathExclusions;
+  if (
+    persistedValue !== undefined &&
+    (!Array.isArray(persistedValue) || persistedValue.some((entry) => typeof entry !== "string"))
+  ) {
+    throw new RollbackStateUnavailableError(
+      "Rollback boundary managed path exclusions are invalid and cannot be trusted."
+    );
+  }
+  const persisted = uniqueSorted(persistedValue ?? []);
+  if (!arraysEqual(persisted, expected)) {
+    throw new RollbackStateUnavailableError(
+      "Rollback boundary managed path exclusions do not match the configured MartinLoop roots."
+    );
+  }
+  return expected;
+}
+
+function isManagedRollbackPath(value: string, exclusions: readonly string[]): boolean {
+  const path = normalizeRepoPath(value).replace(/\/$/u, "");
+  return exclusions.some((entry) => {
+    const root = normalizeRepoPath(entry).replace(/\/$/u, "");
+    return root.length > 0 && (path === root || path.startsWith(`${root}/`));
+  });
+}
+
+function resolveManagedPathExclusions(repoRoot: string, roots: readonly string[]): string[] {
+  const absoluteRepoRoot = resolve(repoRoot);
+  return uniqueSorted(roots.flatMap((root) => {
+    const absoluteRoot = resolve(root);
+    const relativeRoot = relative(absoluteRepoRoot, absoluteRoot);
+    if (
+      relativeRoot === "" ||
+      relativeRoot === ".." ||
+      relativeRoot.startsWith(`..${sep}`) ||
+      isAbsolute(relativeRoot)
+    ) {
+      return [];
+    }
+    // A configured link/junction is not an authenticated in-repository
+    // persistence root. Reuse rollback's link-safe resolver and fail closed.
+    resolveRepoPath(absoluteRepoRoot, relativeRoot);
+    return [relativeRoot];
+  }));
 }
 
 function normalizeRepoPath(value: string): string {

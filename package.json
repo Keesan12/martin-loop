@@ -1,10 +1,13 @@
 {
   "name": "martin-loop",
   "private": false,
-  "version": "0.8.10",
+  "version": "0.9.0",
   "type": "module",
   "description": "Open-source command center for governed AI coding agents with built-in onboarding, hard gates, MCP, and shareable run receipts.",
   "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=20"
+  },
   "keywords": [
     "coding-agent",
     "coding-agents",
@@ -75,7 +78,8 @@
     "access": "public"
   },
   "scripts": {
-    "build": "pnpm --filter @martin/contracts build && pnpm --filter @martin/core build && pnpm --filter @martin/adapters build && pnpm --filter @martin/presentation build && pnpm --filter @martin/benchmarks build && pnpm --filter @martin/cli build && pnpm --filter @martinloop/mcp build && node ./scripts/build-public-facade.mjs",
+    "build": "pnpm --filter @martin/contracts build && pnpm --filter @martin/core build && pnpm --filter @martin/adapters build && pnpm --filter @martin/presentation build && pnpm --filter @martin/benchmarks build && pnpm --filter @martin/cli build && pnpm --filter @martinloop/mcp build && node ./scripts/build-public-facade.mjs && node ./scripts/generate-candidate-build-manifest.mjs",
+    "build:candidate": "pnpm build && node ./scripts/generate-candidate-build-manifest.mjs",
     "bench:build": "pnpm --filter @martin/benchmarks build",
     "bench:test": "pnpm --filter @martin/benchmarks test",
     "bench:eval": "pnpm --filter @martin/benchmarks eval",
@@ -106,7 +110,7 @@
     "release:root:guard": "node ./scripts/root-release-guard.mjs --pack",
     "release:validate:platforms": "node ./scripts/release-matrix.mjs",
     "release:matrix:local": "node ./scripts/release-matrix.mjs",
-    "release:truth-check": "node ./scripts/release-truth-check.mjs --allow-divergence-marker=[sync-parity]",
+    "release:truth-check": "node ./scripts/release-truth-check.mjs --allow-divergence-manifest=scripts/release-truth-divergences.json",
     "release:verify-live": "node ./scripts/verify-live-release.mjs",
     "run:cli": "pnpm --filter @martin/cli dev",
     "public:promotion-guard": "node scripts/verify-public-promotion.mjs",
@@ -115,6 +119,7 @@
     "hooks:install:claude-public-write-guard": "node scripts/hooks/install-claude-public-write-hook.js",
     "hooks:install:git-portability-guard": "node scripts/hooks/install-git-portability-hook.mjs",
     "release:health:evidence": "node scripts/generate-internal-health-evidence.mjs",
+    "release:live-swarm:verify": "node scripts/verify-release-consumer.mjs",
     "release:promotion:prepare": "node scripts/prepare-public-promotion.mjs",
     "test:outcomes:packed": "node scripts/external-outcome-packed-e2e.mjs"
   },
@@ -134,7 +139,7 @@
   ],
   "pnpm": {
     "overrides": {
-      "@hono/node-server": "^1.19.13",
+      "@hono/node-server": "^2.1.3",
       "ajv": "^8.20.0",
       "fast-uri": "^3.1.2",
       "hono": "^4.12.21",

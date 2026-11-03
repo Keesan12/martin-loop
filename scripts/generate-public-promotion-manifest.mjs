@@ -2,7 +2,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { SURFACE_SCHEMA, hashSurface, listSurfaceEntries, sha256, surfaceSpecHash, validateReviewedDivergences } from "./lib/public-release-surface.mjs";
+import { SURFACE_SCHEMA, createPublicPromotionBoundary, listSurfaceEntries, persistPrivatePromotionNote, sha256, surfaceSpecHash } from "./lib/public-release-surface.mjs";
 import { internalHealthCommandSetSha256 } from "./lib/internal-health-commands.mjs";
 function arg(name, fallback) { const index = process.argv.indexOf(name); return index === -1 ? fallback : process.argv[index + 1]; }
 const cwd = process.cwd();
@@ -10,6 +10,7 @@ const privateRef = arg("--private-ref");
 const publicBaseSha = arg("--public-base");
 const privateMergeSha = arg("--private-merge", privateRef);
 const healthEvidencePath = arg("--internal-health-evidence");
+const privateProofRemote = arg("--private-proof-remote", "origin");
 const output = resolve(cwd, arg("--output", ".martin/promotion-manifest.json"));
 if (!privateRef || !publicBaseSha || !healthEvidencePath) { console.error("Usage: node scripts/generate-public-promotion-manifest.mjs --private-ref <sha> --public-base <sha> --internal-health-evidence <json> [--private-merge <sha>] [--divergences <json>] [--output <path>]"); process.exit(2); }
 function commit(value, label) {
@@ -41,8 +42,18 @@ if (healthEvidence.schemaVersion !== "martin.internal-health.v2" || healthEviden
 const entries = listSurfaceEntries(cwd, privateMainShaValidated);
 const divergencesPath = arg("--divergences");
 const reviewedDivergences = divergencesPath ? JSON.parse(readFileSync(resolve(cwd, divergencesPath), "utf8")) : [];
-validateReviewedDivergences(entries, reviewedDivergences);
-const manifest = { schemaVersion: SURFACE_SCHEMA, sourceAuthority: "validated-internal-release-source", sourceRepositoryFingerprint, privateMergeSha: resolvedPrivateMergeSha, privateMainShaValidated, publicBaseSha: resolvedPublicBaseSha, promotedBy: process.env.GITHUB_ACTOR || process.env.USERNAME || "unknown", validatedAt: new Date().toISOString(), internalHealthPassed: true, internalHealthEvidenceSha256: sha256(healthEvidenceBytes), surfaceSpecHash: surfaceSpecHash(), surfaceHash: hashSurface(entries), surfaceEntries: entries, reviewedDivergences };
+const packageVersion = JSON.parse(readFileSync(resolve(cwd, "package.json"), "utf8")).version;
+if (typeof packageVersion !== "string" || packageVersion.length === 0) throw new Error("package.json version is required");
+const boundary = createPublicPromotionBoundary(entries, reviewedDivergences);
+const manifest = { schemaVersion: SURFACE_SCHEMA, sourceAuthority: "validated-internal-release-source", sourceRepositoryFingerprint, packageVersion, privateMergeSha: resolvedPrivateMergeSha, privateMainShaValidated, publicBaseSha: resolvedPublicBaseSha, promotedBy: process.env.GITHUB_ACTOR || process.env.USERNAME || "unknown", validatedAt: new Date().toISOString(), internalHealthPassed: true, internalHealthEvidenceSha256: sha256(healthEvidenceBytes), surfaceSpecHash: surfaceSpecHash(), ...boundary.publicManifestFields };
+const privateProof = {
+  packageVersion,
+  sourceRepositoryFingerprint,
+  privateMainShaValidated,
+  publicBaseSha: resolvedPublicBaseSha,
+  boundary: boundary.privateProof,
+};
+persistPrivatePromotionNote(cwd, privateProofRemote, privateProof, sourceRepositoryFingerprint);
 mkdirSync(dirname(output), { recursive: true });
 writeFileSync(output, `${JSON.stringify(manifest, null, 2)}\n`);
-console.log(`[promotion-manifest] wrote ${output} with ${entries.length} canonical entries`);
+console.log(`[promotion-manifest] wrote ${output} with ${manifest.publicSurfaceEntries.length} public entries and ${manifest.reviewedDivergencesCount} reviewed divergences`);

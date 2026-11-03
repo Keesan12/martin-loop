@@ -65,12 +65,25 @@ describe("swarm demo argument parsing", () => {
       force: false,
       swarm: true,
       scenario: "launch-board",
+      mode: "simulation",
     });
   });
 
-  it("rejects unknown scenarios, live mode, and unsupported swarm flags", () => {
+  it("routes live mode while rejecting unknown scenarios and unsupported swarm flags", () => {
     expect(() => parseCliArguments(["demo", "--swarm", "--scenario", "unknown"])).toThrow(/unknown.*scenario/iu);
-    expect(() => parseCliArguments(["demo", "--swarm", "--live"])).toThrow(/live workers are not part/iu);
+    expect(() => parseCliArguments(["demo", "--swarm", "--live"])).toThrow(/agents/iu);
+    expect(parseCliArguments([
+      "demo", "--swarm", "--live", "--agents", "15", "--max-concurrency", "5", "--budget-usd", "12",
+    ])).toMatchObject({
+      command: "demo",
+      swarm: true,
+      scenario: "launch-board",
+      mode: "live",
+      agents: 15,
+      maxConcurrency: 5,
+      budgetUsd: 12,
+      engine: "codex",
+    });
     expect(() => parseCliArguments(["demo", "--swarm", "--surprise"])).toThrow(/unsupported/iu);
   });
 

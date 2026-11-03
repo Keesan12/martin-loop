@@ -7,6 +7,7 @@ export type MartinReliabilitySignalId =
 
 export type MartinReliabilitySignalEvidence = {
   present: boolean;
+  measured?: boolean;
   detail?: string;
 };
 
@@ -17,6 +18,7 @@ export type MartinReliabilityScoreInput = {
 export type MartinReliabilitySignal = {
   id: MartinReliabilitySignalId;
   label: string;
+  measured: boolean;
   passed: boolean;
   points: number;
   maxPoints: number;
@@ -27,8 +29,10 @@ export type MartinReliabilitySignal = {
 export type MartinReliabilityGrade = "ready" | "strong" | "needs-evidence" | "blocked";
 
 export type MartinReliabilityScore = {
-  meaning: "five_binary_local_evidence_signals";
+  meaning: "local_evidence_signals_with_measurement_state";
   signalCount: number;
+  measuredSignals: number;
+  unmeasuredSignals: number;
   totalSignals: 5;
   points: number;
   maxPoints: number;
@@ -36,6 +40,7 @@ export type MartinReliabilityScore = {
   summary: string;
   signals: MartinReliabilitySignal[];
   missingReasons: string[];
+  unmeasuredReasons: string[];
 };
 
 export type MartinReliabilityBadgeJson = {
@@ -66,14 +71,16 @@ export function computeMartinReliabilityScore(
   const signals = SIGNALS.map((definition): MartinReliabilitySignal => {
     const evidence = input.signals[definition.id];
     const detail = sanitizeText(evidence.detail ?? "");
-    const passed = evidence.present;
-    const reason = passed
+    const measured = evidence.measured !== false;
+    const passed = measured && evidence.present;
+    const reason = passed || !measured
       ? undefined
       : `${definition.label}: ${detail.length > 0 ? detail : "Evidence missing"}`;
 
     return {
       id: definition.id,
       label: definition.label,
+      measured,
       passed,
       points: passed ? POINTS_PER_SIGNAL : 0,
       maxPoints: POINTS_PER_SIGNAL,
@@ -84,21 +91,29 @@ export function computeMartinReliabilityScore(
 
   const points = signals.reduce((total, signal) => total + signal.points, 0);
   const signalCount = signals.filter((signal) => signal.passed).length;
+  const measuredSignals = signals.filter((signal) => signal.measured).length;
+  const unmeasuredSignals = TOTAL_SIGNALS - measuredSignals;
   const grade = gradeForPoints(points);
   const missingReasons = signals
-    .filter((signal) => !signal.passed)
+    .filter((signal) => signal.measured && !signal.passed)
     .map((signal) => signal.reason ?? `${signal.label}: Evidence missing`);
+  const unmeasuredReasons = signals
+    .filter((signal) => !signal.measured)
+    .map((signal) => `${signal.label}: ${signal.detail ?? "Not measured"}`);
 
   return {
-    meaning: "five_binary_local_evidence_signals",
+    meaning: "local_evidence_signals_with_measurement_state",
     signalCount,
+    measuredSignals,
+    unmeasuredSignals,
     totalSignals: TOTAL_SIGNALS,
     points,
     maxPoints: MAX_POINTS,
     grade,
-    summary: `Evidence readiness: ${signalCount}/${TOTAL_SIGNALS} signals (${grade}; ${points}/${MAX_POINTS} readiness points)`,
+    summary: `Evidence readiness: ${signalCount}/${measuredSignals} measured signals (${unmeasuredSignals} unmeasured; ${grade}; ${points}/${MAX_POINTS} readiness points)`,
     signals,
-    missingReasons
+    missingReasons,
+    unmeasuredReasons
   };
 }
 
@@ -118,7 +133,8 @@ export function renderMartinReliabilityBadgeSvg(score: MartinReliabilityScore): 
   const message = `${score.signalCount}/${score.totalSignals} ${score.grade}`;
   const color = colorHexForGrade(score.grade);
   const title = `${label}: ${message}`;
-  const detail = score.missingReasons.length > 0 ? score.missingReasons.join("; ") : "All required evidence present";
+  const incompleteReasons = [...score.missingReasons, ...score.unmeasuredReasons];
+  const detail = incompleteReasons.length > 0 ? incompleteReasons.join("; ") : "All required evidence present";
   const safeDetail = escapeXml(sanitizeText(detail));
 
   return [

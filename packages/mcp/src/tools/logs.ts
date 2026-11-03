@@ -16,6 +16,8 @@ export interface MartinLogsOutput {
   logCount: number;
   live: {
     lifecycleState: string;
+    requestedControlState: "active" | "paused" | "cancellation_requested" | "terminal";
+    appliedControlState: "active" | "paused" | "cancellation_pending" | "terminal";
     pauseState: "active" | "paused" | "cancellation_requested";
     approvalState: "not_required" | "resume_requested";
   };
@@ -51,12 +53,28 @@ export async function martinLogsTool(input: MartinLogsInput): Promise<MartinLogs
     kind: `run.${receipt.action}`,
     payload: {
       controlId: receipt.controlId,
+      ...(receipt.expectedPreviousControlId
+        ? { expectedPreviousControlId: receipt.expectedPreviousControlId }
+        : {}),
       ...(receipt.reason ? { reason: receipt.reason } : {}),
-      ...(receipt.requestedBy ? { requestedBy: receipt.requestedBy } : {})
+      principal: receipt.principal,
+      authorityBoundary: receipt.authorityBoundary,
+      receiptHash: receipt.receiptHash
+    }
+  }));
+  const applicationEntries = controls.applications.map((application) => ({
+    timestamp: application.appliedAt,
+    source: "control" as const,
+    kind: `run.${application.action}`,
+    payload: {
+      controlId: application.controlId,
+      ...(application.relatedControlId
+        ? { relatedControlId: application.relatedControlId }
+        : {})
     }
   }));
 
-  const entries = [...eventEntries, ...ledgerEntries, ...controlEntries]
+  const entries = [...eventEntries, ...ledgerEntries, ...controlEntries, ...applicationEntries]
     .sort((left, right) => {
       const leftTime = left.timestamp ? new Date(left.timestamp).getTime() : 0;
       const rightTime = right.timestamp ? new Date(right.timestamp).getTime() : 0;
@@ -71,7 +89,14 @@ export async function martinLogsTool(input: MartinLogsInput): Promise<MartinLogs
     logCount: entries.length,
     live: {
       lifecycleState: detail.loop.lifecycleState,
-      pauseState: controls.requestedState,
+      requestedControlState: controls.requestedState,
+      appliedControlState: controls.appliedState,
+      pauseState:
+        controls.appliedState === "paused"
+          ? "paused"
+          : controls.appliedState === "cancellation_pending"
+            ? "cancellation_requested"
+            : "active",
       approvalState: controls.approvalState
     },
     entries

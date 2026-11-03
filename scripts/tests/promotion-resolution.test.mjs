@@ -16,6 +16,22 @@ test("reviewed resolutions can make a private file private-only", () => {
   assert.match(source, /divergenceKind/);
   assert.match(source, /private-only/);
   assert.match(source, /NEW_PRIVATE_ONLY_DIVERGENCES/);
+  assert.doesNotMatch(source, /newPrivateOnly\.join/);
+});
+
+test("schema v3 carry-forward requires the private proof and does not recover exclusions from public metadata", () => {
+  const source = readFileSync(resolve("scripts/prepare-public-promotion.mjs"), "utf8");
+  assert.match(source, /syncPrivatePromotionNotes/);
+  assert.match(source, /readPrivatePromotionNote/);
+  assert.match(source, /requirePrivatePromotionProof/);
+  assert.match(source, /validatePrivatePromotionProof/);
+  assert.doesNotMatch(source, /previousManifest\.reviewedDivergences/);
+});
+
+test("preparer logs never emit private review identities or rationales", () => {
+  const source = readFileSync(resolve("scripts/prepare-public-promotion.mjs"), "utf8");
+  assert.doesNotMatch(source, /console\.log\([^\n]*reviewedBy/);
+  assert.doesNotMatch(source, /console\.log\([^\n]*reason/);
 });
 
 test("reviewed private resolutions can collapse or remove old public-only divergences", () => {
@@ -126,4 +142,20 @@ test("promotion preparer force-stages the ignored generated promotion manifest",
     source,
     /git\(PUBLIC_ROOT, \["add", "-f", "\.martin\/promotion-manifest\.json"\], "utf8"\)/,
   );
+});
+
+test("promotion preparer rejects ignored new targets before writing public bytes", () => {
+  const source = readFileSync(resolve("scripts/prepare-public-promotion.mjs"), "utf8");
+  const guard = source.indexOf("\nassertNoIgnoredNewTargets();");
+  const remove = source.indexOf("for (const baseEntry of publicBaseEntries)");
+  const write = source.indexOf("for (const [path, item] of target) writeTarget");
+  assert.notEqual(guard, -1, "missing ignored-target guard invocation");
+  assert.notEqual(remove, -1, "missing target removal loop");
+  assert.notEqual(write, -1, "missing target writer");
+  assert.ok(guard < remove, "ignored targets must fail before public bytes are removed");
+  assert.ok(guard < write, "ignored targets must fail before public bytes are written");
+  assert.match(source, /check-ignore/);
+  assert.match(source, /--no-index/);
+  assert.match(source, /publicBaseByPath\.has\(path\)/);
+  assert.match(source, /reviewed private-only resolution/);
 });
