@@ -151,6 +151,8 @@ describe("complete public promotion surface", () => {
       assert.doesNotThrow(() => requirePrivatePromotionProof(readPrivatePromotionNote(repo, baseSha), publicManifest));
       const clone = join(TMP, "clean-clone");
       execFileSync("git", ["clone", "--quiet", "--branch", "main", join(TMP, "proof.git"), clone]);
+      execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: clone });
+      execFileSync("git", ["config", "user.name", "Test"], { cwd: clone });
       execFileSync("git", ["config", `url.${pathToFileURL(join(TMP, "proof.git")).href}.insteadOf`, PRIVATE_REPOSITORY_URL], { cwd: clone });
       execFileSync("git", ["remote", "set-url", "origin", PRIVATE_REPOSITORY_URL], { cwd: clone });
       syncPrivatePromotionNotes(clone, "origin", PRIVATE_REPOSITORY_FINGERPRINT);
