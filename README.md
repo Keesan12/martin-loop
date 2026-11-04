@@ -22,6 +22,7 @@ Your coding agent still writes the code. MartinLoop keeps the job focused, bound
   [![Node](https://img.shields.io/badge/node-%3E%3D20-3c873a?style=flat-square&logo=nodedotjs&logoColor=white)](#quick-start)
   [![npm version](https://img.shields.io/npm/v/martin-loop?style=flat-square&logo=npm&logoColor=white)](https://www.npmjs.com/package/martin-loop)
   [![npm downloads](https://img.shields.io/npm/dm/martin-loop?style=flat-square&label=downloads)](https://www.npmjs.com/package/martin-loop)
+  [![mcp.market](https://mcp.market/badge/keesan12-martin-loop.svg)](https://mcp.market/server/keesan12-martin-loop)
 
   MartinLoop is part of the NVIDIA Inception program.
   <br>
