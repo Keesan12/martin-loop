@@ -11,7 +11,7 @@
   "internalHealthPassed": true,
   "internalHealthEvidenceSha256": "969ac3e5f2d8c67b481318a8637a503e46633aa9d4fe159a5f7b2aecf60999a4",
   "surfaceSpecHash": "a9c8d22be91bc0dd19238f7676aec62aacc77d8cc3a66327b46d71f16d65164a",
-  "publicSurfaceHash": "9fe04bafb6da586a8471e5fa57d8ddd4381d58c53a8779d7c802bbc3c85f014e",
+  "publicSurfaceHash": "40366b17cd0b97c8374f6f66925265328d9878e4c3f1961b560cca147f532b4f",
   "publicSurfaceEntries": [
     {
       "path": ".agents/plugins/marketplace.json",
@@ -4061,7 +4061,7 @@
     {
       "path": "scripts/release-truth-divergences.json",
       "mode": "100644",
-      "sha256": "24c5108fba4473db6044436743c7d68b27282e22c8fc962373e7e06fddf6065f"
+      "sha256": "d14e8f3051ea1f5210460e728915595276829215811846cc19d34f4d909a4493"
     },
     {
       "path": "scripts/root-release-guard.mjs",
@@ -4364,6 +4364,6 @@
       "sha256": "c1deb0e576c2efd2d49847b168c8c7aa69fb97405a8aa01d89a5da1cda400a3c"
     }
   ],
-  "reviewedDivergencesCount": 140,
-  "reviewedDivergencesHash": "ad9b8bd9cd93d0bba62d818abd43116667d746758b0ee4fb3bf33909e02afbe8"
+  "reviewedDivergencesCount": 141,
+  "reviewedDivergencesHash": "07ac2a5cc4bdcfa7f6d58168d99fbc52689677134bb345e0032310eaab67bfa6"
 }
