@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { lstat, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { createRequire, syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
@@ -71,7 +72,25 @@ export interface SwarmHostedFixtureEvidenceIndexDiagnostic {
     readonly sha256: string;
     readonly bytes: number;
   }>;
+  readonly childLoopRecords: ReadonlyArray<{
+    readonly path: string;
+    readonly metadata: Readonly<Record<string, unknown>>;
+  }>;
 }
+
+export interface FixturePublicationFileSystem {
+  mkdir(path: string, options: { readonly recursive: true }): Promise<unknown>;
+  writeFile(path: string, bytes: string, encoding: "utf8"): Promise<unknown>;
+  rename(source: string, destination: string): Promise<unknown>;
+  rm(path: string, options: { readonly force: true; readonly recursive?: boolean }): Promise<unknown>;
+}
+
+const DEFAULT_FIXTURE_PUBLICATION_FILE_SYSTEM: FixturePublicationFileSystem = {
+  mkdir,
+  writeFile,
+  rename,
+  rm,
+};
 
 interface CaseSpec {
   readonly name: string;
@@ -87,17 +106,21 @@ const CASES: readonly CaseSpec[] = [
   { name: "reassigned-recovered", taskCount: 1, mode: "reassigned" },
 ];
 
-export async function buildProductionSwarmHostedFixtureBundle(): Promise<SwarmHostedFixtureBundle> {
+export async function buildProductionSwarmHostedFixtureBundle(
+  onEvidenceIndex?: (diagnostic: SwarmHostedFixtureEvidenceIndexDiagnostic) => void,
+): Promise<SwarmHostedFixtureBundle> {
   return withFixtureLock(async () => {
     const scratchRoot = join(tmpdir(), `martin-swarm-hosted-v1-production-fixtures.${FIXTURE_PROTOCOL_VERSION}`);
     await rm(scratchRoot, { recursive: true, force: true });
     await mkdir(scratchRoot, { recursive: true });
     const previousIntegrityRoot = process.env["MARTIN_INTEGRITY_KEY_DIR"];
+    const previousLeaseRoot = process.env["MARTIN_PERSISTENCE_LEASE_DIR"];
     process.env["MARTIN_INTEGRITY_KEY_DIR"] = join(scratchRoot, "integrity");
+    process.env["MARTIN_PERSISTENCE_LEASE_DIR"] = join(scratchRoot, "leases");
     try {
       const validCases: SwarmHostedFixtureCase[] = [];
       for (const spec of CASES) {
-        validCases.push(await withDeterministicRuntime(() => buildCase(scratchRoot, spec)));
+        validCases.push(await withDeterministicRuntime(() => buildCase(scratchRoot, spec, onEvidenceIndex)));
       }
       const verified = validCases[0]!.envelope;
       const failedGlobal = validCases.find((item) => item.name === "failed-global-verifier")!.envelope;
@@ -138,6 +161,8 @@ export async function buildProductionSwarmHostedFixtureBundle(): Promise<SwarmHo
     } finally {
       if (previousIntegrityRoot === undefined) delete process.env["MARTIN_INTEGRITY_KEY_DIR"];
       else process.env["MARTIN_INTEGRITY_KEY_DIR"] = previousIntegrityRoot;
+      if (previousLeaseRoot === undefined) delete process.env["MARTIN_PERSISTENCE_LEASE_DIR"];
+      else process.env["MARTIN_PERSISTENCE_LEASE_DIR"] = previousLeaseRoot;
       await rm(scratchRoot, { recursive: true, force: true });
     }
   });
@@ -153,7 +178,9 @@ export async function buildProductionSwarmHostedFixtureEvidenceIndexDiagnostic(
     await rm(scratchRoot, { recursive: true, force: true });
     await mkdir(scratchRoot, { recursive: true });
     const previousIntegrityRoot = process.env["MARTIN_INTEGRITY_KEY_DIR"];
+    const previousLeaseRoot = process.env["MARTIN_PERSISTENCE_LEASE_DIR"];
     process.env["MARTIN_INTEGRITY_KEY_DIR"] = join(scratchRoot, "integrity");
+    process.env["MARTIN_PERSISTENCE_LEASE_DIR"] = join(scratchRoot, "leases");
     let diagnostic: SwarmHostedFixtureEvidenceIndexDiagnostic | undefined;
     try {
       await buildCase(scratchRoot, spec, (value) => { diagnostic = value; });
@@ -162,6 +189,8 @@ export async function buildProductionSwarmHostedFixtureEvidenceIndexDiagnostic(
     } finally {
       if (previousIntegrityRoot === undefined) delete process.env["MARTIN_INTEGRITY_KEY_DIR"];
       else process.env["MARTIN_INTEGRITY_KEY_DIR"] = previousIntegrityRoot;
+      if (previousLeaseRoot === undefined) delete process.env["MARTIN_PERSISTENCE_LEASE_DIR"];
+      else process.env["MARTIN_PERSISTENCE_LEASE_DIR"] = previousLeaseRoot;
       await rm(scratchRoot, { recursive: true, force: true });
     }
   }));
@@ -189,16 +218,81 @@ export function swarmHostedFixtureSha256(bytes: string): string {
   return createHash("sha256").update(bytes, "utf8").digest("hex");
 }
 
-export async function writeProductionSwarmHostedFixtures(
-  fixturePath: string,
-  checksumPath: string,
-): Promise<{ readonly checksum: string; readonly bytes: number }> {
-  const canonicalBytes = canonicalSwarmHostedFixtureBytes(await buildProductionSwarmHostedFixtureBundle());
+export async function writeProductionSwarmHostedFixtures(input: {
+  readonly fixturePath: string;
+  readonly checksumPath: string;
+  readonly handoffPath: string;
+  readonly bundle?: SwarmHostedFixtureBundle;
+  readonly publicationFileSystem?: FixturePublicationFileSystem;
+}): Promise<{ readonly checksum: string; readonly bytes: number }> {
+  const canonicalBytes = canonicalSwarmHostedFixtureBytes(
+    input.bundle ?? await buildProductionSwarmHostedFixtureBundle(),
+  );
   const checksum = swarmHostedFixtureSha256(canonicalBytes);
-  await mkdir(dirname(fixturePath), { recursive: true });
-  await writeFile(fixturePath, canonicalBytes, "utf8");
-  await writeFile(checksumPath, `${checksum}\n`, "utf8");
+  const handoff = await readFile(input.handoffPath, "utf8");
+  const matches = handoff.match(/^CHECKSUM_SHA256=.*$/gmu) ?? [];
+  if (matches.length !== 1) {
+    throw new Error(`Expected exactly one CHECKSUM_SHA256 entry in ${input.handoffPath}.`);
+  }
+  const updatedHandoff = handoff.replace(/^CHECKSUM_SHA256=.*$/mu, `CHECKSUM_SHA256=${checksum}`);
+  await publishFixtureTransaction([
+    { path: input.fixturePath, bytes: canonicalBytes },
+    { path: input.checksumPath, bytes: `${checksum}\n` },
+    { path: input.handoffPath, bytes: updatedHandoff },
+  ], input.publicationFileSystem ?? DEFAULT_FIXTURE_PUBLICATION_FILE_SYSTEM);
   return { checksum, bytes: Buffer.byteLength(canonicalBytes, "utf8") };
+}
+
+async function publishFixtureTransaction(
+  artifacts: ReadonlyArray<{ readonly path: string; readonly bytes: string }>,
+  fileSystem: FixturePublicationFileSystem,
+): Promise<void> {
+  const transactionId = `${process.pid}.${randomUUID()}`;
+  const staged = artifacts.map((artifact) => ({
+    ...artifact,
+    temporaryPath: `${artifact.path}.tmp.${transactionId}`,
+    backupPath: `${artifact.path}.backup.${transactionId}`,
+    hadOriginal: false,
+    published: false,
+  }));
+  let publicationComplete = false;
+  try {
+    for (const artifact of staged) {
+      await fileSystem.mkdir(dirname(artifact.path), { recursive: true });
+      await fileSystem.writeFile(artifact.temporaryPath, artifact.bytes, "utf8");
+    }
+    for (const artifact of staged) {
+      try {
+        await fileSystem.rename(artifact.path, artifact.backupPath);
+        artifact.hadOriginal = true;
+      } catch (error) {
+        if (!isFsCode(error, "ENOENT")) throw error;
+      }
+    }
+    for (const artifact of staged) {
+      await fileSystem.rename(artifact.temporaryPath, artifact.path);
+      artifact.published = true;
+    }
+    publicationComplete = true;
+    for (const artifact of staged) {
+      await fileSystem.rm(artifact.backupPath, { force: true });
+    }
+  } catch (error) {
+    if (publicationComplete) throw error;
+    for (const artifact of [...staged].reverse()) {
+      if (artifact.published) await fileSystem.rm(artifact.path, { force: true });
+      if (artifact.hadOriginal) {
+        try {
+          await fileSystem.rename(artifact.backupPath, artifact.path);
+        } catch {
+          // Preserve the backup for operator recovery if synchronized storage blocks restoration.
+        }
+      }
+    }
+    throw error;
+  } finally {
+    await Promise.allSettled(staged.map((artifact) => fileSystem.rm(artifact.temporaryPath, { force: true })));
+  }
 }
 
 async function buildCase(
@@ -272,7 +366,10 @@ async function buildCase(
     ownedRoot: join(runsRoot, "_swarms", plan.swarmId, "worktrees"),
     storeRoot: runsRoot,
     runsRoot,
-    adapterFactory: ({ agent }) => createAdapter(spec, agent.agentId, cancellation, runsRoot),
+    adapterFactory: ({ agent, childRunId }) => {
+      seedChildIntegrityKeySync(runsRoot, childRunId);
+      return createAdapter(spec, agent.agentId, cancellation);
+    },
     verifierExecutor: createVerifier(spec.mode === "failed_global"),
     signal: cancellation.signal,
   };
@@ -301,7 +398,16 @@ async function buildCase(
       join(runsRoot, "_swarms", plan.swarmId, "evidence", "evidence-index.json"),
       "utf8",
     )) as { files?: SwarmHostedFixtureEvidenceIndexDiagnostic["files"] };
-    onEvidenceIndex({ caseName: spec.name, files: index.files ?? [] });
+    const files = index.files ?? [];
+    const childLoopRecords = await Promise.all(files
+      .filter((file) => file.path.endsWith("/loop-record.json"))
+      .map(async (file) => {
+        const record = JSON.parse(await readFile(join(runsRoot, ...file.path.split("/")), "utf8")) as {
+          metadata?: Record<string, unknown>;
+        };
+        return { path: file.path, metadata: record.metadata ?? {} };
+      }));
+    onEvidenceIndex({ caseName: spec.name, files, childLoopRecords });
   }
   return fixtureCase(spec.name, built.envelope);
 }
@@ -358,7 +464,6 @@ function createAdapter(
   spec: CaseSpec,
   agentId: string,
   cancellation: AbortController,
-  runsRoot: string,
 ): MartinAdapter {
   return {
     adapterId: "codex:gpt-test",
@@ -366,7 +471,6 @@ function createAdapter(
     label: "production fixture child",
     metadata: { providerId: "codex", model: "gpt-test", capabilities: { workspaceMutations: spec.mode === "reassigned" } },
     async execute(request) {
-      await seedChildIntegrityKey(runsRoot, request.loopId);
       if (spec.mode === "stopped") cancellation.abort("fixture_cancelled");
       if (spec.mode === "needs_review" || (spec.mode === "reassigned" && agentId !== "agent-recovery")) {
         return failedAdapterResult();
@@ -479,8 +583,12 @@ async function seedIntegrityKey(runsRoot: string, swarmId: string): Promise<void
   await seedPrivateIntegrityKey(runsRoot, `swarm-${swarmId}.key`, `fixture-key-${swarmId}`);
 }
 
-async function seedChildIntegrityKey(runsRoot: string, childRunId: string): Promise<void> {
-  await seedPrivateIntegrityKey(runsRoot, `${childRunId}.key`, `fixture-child-key-${childRunId}`);
+function seedChildIntegrityKeySync(runsRoot: string, childRunId: string): void {
+  const integrityRoot = process.env["MARTIN_INTEGRITY_KEY_DIR"]!;
+  const rootHash = createHash("sha256").update(runsRoot).digest("hex").slice(0, 16);
+  const keyDir = join(integrityRoot, rootHash);
+  mkdirSync(keyDir, { recursive: true });
+  writeFileSync(join(keyDir, `${childRunId}.key`), `fixture-child-key-${childRunId}\n`, "utf8");
 }
 
 async function seedPrivateIntegrityKey(runsRoot: string, fileName: string, secret: string): Promise<void> {

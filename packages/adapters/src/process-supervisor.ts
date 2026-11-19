@@ -49,6 +49,7 @@ type ProcessSupervisorTestSeams =
       platform: "win32";
       taskkillSpawnImpl: ProcessSpawnLike;
       wait: (durationMs: number) => Promise<void>;
+      windowsTreeFallback?: (ownedPid: number, durationMs: number) => Promise<ProcessTreeCleanupResult>;
       killProcessGroup?: never;
     }
   | {
@@ -206,6 +207,9 @@ async function spawnSupervisedProcessInternal(
         platform,
         graceMs: options.terminationGraceMs ?? 1_000,
         taskkillSpawnImpl: testSeams?.taskkillSpawnImpl ?? spawnProcess,
+        windowsTreeFallback: testSeams?.platform === "win32"
+          ? (testSeams.windowsTreeFallback ?? unavailableWindowsTreeFallback)
+          : terminateWindowsTreeFallback,
         killProcessGroup: testSeams?.killProcessGroup,
         wait: testSeams?.wait ?? wait,
         authority: testSeams !== undefined || options.spawnImpl === undefined
@@ -291,6 +295,9 @@ async function spawnSupervisedProcessInternal(
           platform,
           graceMs: options.terminationGraceMs ?? 1_000,
           taskkillSpawnImpl: testSeams?.taskkillSpawnImpl ?? spawnProcess,
+          windowsTreeFallback: testSeams?.platform === "win32"
+            ? (testSeams.windowsTreeFallback ?? unavailableWindowsTreeFallback)
+            : terminateWindowsTreeFallback,
           killProcessGroup: testSeams?.killProcessGroup,
           wait: testSeams?.wait ?? wait,
           authority: testSeams !== undefined || options.spawnImpl === undefined
@@ -358,6 +365,7 @@ async function terminateOwnedProcessTree(
     platform: NodeJS.Platform;
     graceMs: number;
     taskkillSpawnImpl: ProcessSpawnLike;
+    windowsTreeFallback?: (ownedPid: number, durationMs: number) => Promise<ProcessTreeCleanupResult>;
     killProcessGroup?: (ownedGroupPid: number, signal: NodeJS.Signals | 0) => void;
     wait: (durationMs: number) => Promise<void>;
     authority: "owned_os_process" | "injected_child_only";
@@ -388,14 +396,14 @@ async function terminateOwnedProcessTree(
     if (options.naturalExit) {
       return terminateWindowsDescendantsAfterRootExit(pid, options.graceMs, options.wait);
     }
-    const taskkillResult = await runTaskkill(
+    return terminateWindowsOwnedTree(
       pid,
-      options.taskkillSpawnImpl,
+      closedPromise,
       Math.max(options.graceMs, 1_000),
+      options.taskkillSpawnImpl,
+      options.windowsTreeFallback ?? terminateWindowsTreeFallback,
       options.wait
     );
-    if (taskkillResult !== undefined) return taskkillResult;
-    return waitForOwnedClose(closedPromise, options.graceMs, options.wait);
   }
 
   const killGroup = options.killProcessGroup ?? ((ownedGroupPid, signal) => process.kill(ownedGroupPid, signal));
@@ -604,6 +612,156 @@ export function classifyWindowsDescendantPostcondition(
     : "invalid";
 }
 
+async function terminateWindowsOwnedTree(
+  rootPid: number,
+  closedPromise: Promise<void>,
+  durationMs: number,
+  taskkillSpawnImpl: ProcessSpawnLike,
+  windowsTreeFallback: (ownedPid: number, durationMs: number) => Promise<ProcessTreeCleanupResult>,
+  waitImpl: (durationMs: number) => Promise<void>
+): Promise<ProcessTreeCleanupResult> {
+  const primary = (async (): Promise<ProcessTreeCleanupResult> => {
+    const failure = await runTaskkill(rootPid, taskkillSpawnImpl, durationMs, waitImpl);
+    if (failure !== undefined) throw failure;
+    await closedPromise;
+    return { state: "closed" };
+  })();
+  const fallback = (async (): Promise<ProcessTreeCleanupResult> => {
+    const result = await windowsTreeFallback(rootPid, durationMs);
+    if (result.state === "failed") throw result;
+    // CIM snapshots are useful for best-effort descendant cleanup, but they
+    // are not an authoritative containment boundary. A child can be created
+    // and reparented between snapshots, so fallback-only absence cannot prove
+    // tree closure. Only the tree-aware primary plus the owned-root close
+    // event may certify a closed Windows process tree.
+    throw {
+      state: "failed" as const,
+      code: "tree_close_timeout" as const,
+      message: "Windows fallback cleanup completed without authoritative process-tree containment proof."
+    };
+  })();
+  const closure = Promise.any([primary, fallback]);
+  const result = await Promise.race([
+    closure.then(
+      (value) => ({ kind: "closed" as const, value }),
+      (error: unknown) => ({ kind: "failed" as const, error })
+    ),
+    waitImpl(durationMs).then(() => ({ kind: "timeout" as const }))
+  ]);
+  if (result.kind === "closed") return result.value;
+  if (result.kind === "failed") return firstWindowsCleanupFailure(result.error);
+
+  // Do not kill only the root here. Either tree-aware helper may still be
+  // taking its lineage snapshot; root-only termination can reparent a live
+  // descendant and make both helpers miss it. The fixed-argv helpers continue
+  // best-effort while this bounded result remains fail-closed.
+  return {
+    state: "failed",
+    code: "tree_close_timeout",
+    message: "Windows process-tree cleanup did not prove closure before the bounded deadline."
+  };
+}
+
+function firstWindowsCleanupFailure(error: unknown): Extract<ProcessTreeCleanupResult, { state: "failed" }> {
+  const candidates = error instanceof AggregateError ? error.errors : [error];
+  for (const candidate of candidates) {
+    if (candidate && typeof candidate === "object" && "state" in candidate
+      && (candidate as { state?: unknown }).state === "failed") {
+      return candidate as Extract<ProcessTreeCleanupResult, { state: "failed" }>;
+    }
+  }
+  return cleanupFailure("termination_failed", error);
+}
+
+async function unavailableWindowsTreeFallback(): Promise<ProcessTreeCleanupResult> {
+  return {
+    state: "failed",
+    code: "missing_test_termination_seam",
+    message: "Injected Windows fallback termination seam is unavailable."
+  };
+}
+
+async function terminateWindowsTreeFallback(
+  rootPid: number,
+  durationMs: number
+): Promise<ProcessTreeCleanupResult> {
+  const script = [
+    "$ErrorActionPreference='Stop'",
+    `$rootPid=${String(rootPid)}`,
+    "$rows=@(Get-CimInstance Win32_Process)",
+    "$root=@($rows|Where-Object{[int]$_.ProcessId -eq $rootPid})",
+    "if($root.Count -ne 1){exit 4}",
+    "$owned=New-Object 'System.Collections.Generic.HashSet[int]'",
+    "[void]$owned.Add($rootPid)",
+    "do{$changed=$false;foreach($row in $rows){if($owned.Contains([int]$row.ParentProcessId)-and $owned.Add([int]$row.ProcessId)){$changed=$true}}}while($changed)",
+    "foreach($row in $root){try{$null=Invoke-CimMethod -InputObject $row -MethodName Terminate -Arguments @{Reason=1}}catch{}}",
+    "$targets=@($rows|Where-Object{$owned.Contains([int]$_.ProcessId)-and [int]$_.ProcessId -ne $rootPid})",
+    "foreach($row in $targets){try{$null=Invoke-CimMethod -InputObject $row -MethodName Terminate -Arguments @{Reason=1}}catch{}}",
+    "$post=@(Get-CimInstance Win32_Process)",
+    "do{$changed=$false;foreach($row in $post){if($owned.Contains([int]$row.ParentProcessId)-and $owned.Add([int]$row.ProcessId)){$changed=$true}}}while($changed)",
+    "$late=@($post|Where-Object{$owned.Contains([int]$_.ProcessId)})",
+    "foreach($row in $late){try{$null=Invoke-CimMethod -InputObject $row -MethodName Terminate -Arguments @{Reason=1}}catch{}}",
+    "$remaining=@(Get-CimInstance Win32_Process|Where-Object{$owned.Contains([int]$_.ProcessId)})",
+    "if($remaining.Count -gt 0){exit 3}else{exit 0}"
+  ].join(";");
+  let helper: ChildProcess;
+  try {
+    helper = spawnProcess("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
+      stdio: "ignore",
+      windowsHide: true
+    });
+  } catch (error) {
+    return cleanupFailure("termination_failed", error);
+  }
+  return waitForWindowsFallback(helper, durationMs);
+}
+
+/** @internal - production fallback seam for deterministic package tests only. */
+export async function terminateWindowsTreeFallbackForTest(
+  rootPid: number,
+  durationMs: number
+): Promise<ProcessTreeCleanupResult> {
+  return terminateWindowsTreeFallback(rootPid, durationMs);
+}
+
+async function waitForWindowsFallback(
+  helper: ChildProcess,
+  durationMs: number
+): Promise<ProcessTreeCleanupResult> {
+  const completion = new Promise<ProcessTreeCleanupResult>((resolveResult) => {
+    let settled = false;
+    const finish = (result: ProcessTreeCleanupResult) => {
+      if (settled) return;
+      settled = true;
+      resolveResult(result);
+    };
+    helper.once("error", (error) => finish(cleanupFailure("termination_failed", error)));
+    helper.once("close", (code) => finish(code === 0
+      ? { state: "closed" }
+      : {
+          state: "failed",
+          code: "termination_failed",
+          message: `Windows fallback tree terminator exited with code ${String(code)}`
+        }));
+  });
+  const result = await Promise.race([
+    completion,
+    wait(durationMs).then((): ProcessTreeCleanupResult => ({
+      state: "failed",
+      code: "termination_failed",
+      message: "Windows fallback tree terminator did not exit before the bounded cleanup deadline."
+    }))
+  ]);
+  if (result.state === "failed" && result.message.includes("did not exit")) {
+    // The supervisor result remains bounded and failed, but terminating the
+    // fixed-argv cleanup helper here would recreate the process-tree leak that
+    // the helper is still attempting to close. Let it finish best-effort
+    // without keeping the parent event loop alive.
+    try { helper.unref(); } catch { /* bounded failure remains authoritative */ }
+  }
+  return result;
+}
+
 async function terminateWindowsDescendantsAfterRootExit(
   rootPid: number,
   graceMs: number,
@@ -709,12 +867,11 @@ async function runTaskkill(
   ]);
   if (result.state === "closed") return result.value;
 
-  try {
-    taskkill.kill("SIGKILL");
-  } catch {
-    // The bounded failure below remains authoritative if the taskkill helper
-    // itself cannot be interrupted.
-  }
+  // The result remains bounded and failed, but killing taskkill here can leave
+  // its exact owned child/grandchild tree alive indefinitely. The command and
+  // argv are fixed by this module, so allow it to finish best-effort without
+  // keeping the parent event loop alive.
+  try { taskkill.unref(); } catch { /* bounded failure remains authoritative */ }
   return {
     state: "failed",
     code: "termination_failed",

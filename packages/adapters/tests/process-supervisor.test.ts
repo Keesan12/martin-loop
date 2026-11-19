@@ -13,11 +13,19 @@ import {
   spawnSupervisedProcess,
   spawnSupervisedProcessForTest,
   classifyPosixProcessGroupSnapshot,
+  terminateWindowsTreeFallbackForTest,
   type ProcessSpawnLike,
   type SpawnSupervisedProcessOptions
 } from "../src/process-supervisor.js";
 
 describe("Windows owned-descendant process-table evidence", () => {
+  it.runIf(process.platform === "win32")("fails closed when the fallback snapshot no longer contains the owned root", async () => {
+    await expect(terminateWindowsTreeFallbackForTest(2_147_483_647, 2_000)).resolves.toMatchObject({
+      state: "failed",
+      code: "termination_failed"
+    });
+  });
+
   it("keeps a failed termination indeterminate when captured descendants disappear between snapshots", () => {
     expect(classifyWindowsDescendantPostcondition(
       [
@@ -267,6 +275,17 @@ describe("spawnSupervisedProcess", () => {
 
   it("returns a typed cleanup failure when taskkill never exits", async () => {
     const child = createFakeChild(9124);
+    let ownedChildKillCalls = 0;
+    Object.defineProperty(child, "kill", {
+      value: () => { ownedChildKillCalls += 1; return true; }
+    });
+    const taskkill = createFakeChild(7003);
+    let taskkillKillCalls = 0;
+    let taskkillUnrefCalls = 0;
+    Object.defineProperties(taskkill, {
+      kill: { value: () => { taskkillKillCalls += 1; return true; } },
+      unref: { value: () => { taskkillUnrefCalls += 1; return taskkill; } }
+    });
     const controller = new AbortController();
     const pending = spawnSupervisedProcessForTest("tool", [], {
       cwd: process.cwd(),
@@ -276,7 +295,7 @@ describe("spawnSupervisedProcess", () => {
       spawnImpl: () => child
     }, {
       platform: "win32",
-      taskkillSpawnImpl: () => createFakeChild(7003),
+      taskkillSpawnImpl: () => taskkill,
       wait: async () => undefined
     });
     controller.abort("cancelled");
@@ -287,7 +306,72 @@ describe("spawnSupervisedProcess", () => {
     ]);
     expect(result).not.toBe("hung");
     expect(result).toMatchObject({
-      cleanup: { state: "failed", code: "termination_failed" }
+      cleanup: { state: "failed", code: "tree_close_timeout" }
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(ownedChildKillCalls).toBe(0);
+    expect(taskkillKillCalls).toBe(0);
+    expect(taskkillUnrefCalls).toBe(1);
+  });
+
+  it("does not accept fallback snapshots as closure authority when taskkill stalls", async () => {
+    const child = createFakeChild(9126);
+    const controller = new AbortController();
+    const fallbackCalls: Array<{ pid: number; durationMs: number }> = [];
+    // Deterministic seam for a descendant that escaped the fallback's two CIM
+    // snapshots by being created and reparented between them.
+    let orphanedDescendantAlive = true;
+    let waitCalls = 0;
+    const pending = spawnSupervisedProcessForTest("tool", [], {
+      cwd: process.cwd(),
+      timeoutMs: 1_000,
+      signal: controller.signal,
+      terminationGraceMs: 25,
+      spawnImpl: () => child
+    }, {
+      platform: "win32",
+      taskkillSpawnImpl: () => createFakeChild(7005),
+      wait: async () => {
+        waitCalls += 1;
+        if (waitCalls > 1) await new Promise((resolve) => setImmediate(resolve));
+      },
+      windowsTreeFallback: async (pid, durationMs) => {
+        fallbackCalls.push({ pid, durationMs });
+        child.emitClose(1);
+        return { state: "closed" };
+      }
+    });
+    controller.abort("cancelled");
+
+    await expect(pending).resolves.toMatchObject({ cleanup: { state: "failed" } });
+    expect(fallbackCalls).toEqual([{ pid: 9126, durationMs: 1_000 }]);
+    expect(orphanedDescendantAlive).toBe(true);
+    orphanedDescendantAlive = false;
+  });
+
+  it("does not upgrade a failed Windows fallback to closure", async () => {
+    const child = createFakeChild(9127);
+    const controller = new AbortController();
+    const pending = spawnSupervisedProcessForTest("tool", [], {
+      cwd: process.cwd(),
+      timeoutMs: 100,
+      signal: controller.signal,
+      terminationGraceMs: 5,
+      spawnImpl: () => child
+    }, {
+      platform: "win32",
+      taskkillSpawnImpl: () => createFakeChild(7006),
+      wait: async () => undefined,
+      windowsTreeFallback: async () => ({
+        state: "failed",
+        code: "tree_close_timeout",
+        message: "captured descendant remains alive"
+      })
+    });
+    controller.abort("cancelled");
+
+    await expect(pending).resolves.toMatchObject({
+      cleanup: { state: "failed", code: "tree_close_timeout" }
     });
   });
 

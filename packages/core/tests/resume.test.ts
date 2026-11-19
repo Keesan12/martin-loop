@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { createLoopRecord, type LoopRecord } from "@martin/contracts";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   acquireRunExecutionLease,
@@ -681,6 +681,27 @@ describe("execution continuation", () => {
     })).resolves.toBeUndefined();
     await rm(unsupported.path, { force: true });
 
+    for (const malformed of [
+      { token: "" },
+      { processInstanceId: "" },
+      { pid: 0 },
+      { heartbeatSequence: Number.NaN }
+    ]) {
+      await writeFile(unsupported.path, `${JSON.stringify({
+        ...unsupported.lease,
+        owner: "runMartin",
+        capabilities: { runControl: true },
+        heartbeatAt: new Date().toISOString(),
+        heartbeatSequence: 1,
+        ...malformed
+      })}\n`, "utf8");
+      await expect(readActiveRunExecutionLease({
+        runsRoot: root,
+        runId: "loop_capable_lease"
+      })).resolves.toBeUndefined();
+    }
+    await rm(unsupported.path, { force: true });
+
     const supported = await acquireRunExecutionLease({
       runsRoot: root,
       runId: "loop_capable_lease",
@@ -692,28 +713,53 @@ describe("execution continuation", () => {
     })).resolves.toBeUndefined();
     await supported.release();
 
-    const controlCapable = await acquireRunExecutionLease({
-      runsRoot: root,
-      runId: "loop_capable_lease",
-      owner: "runMartin",
-      runControlCapable: true
-    });
-    await expect(readActiveRunExecutionLease({
-      runsRoot: root,
-      runId: "loop_capable_lease"
-    })).resolves.toMatchObject({
-      lease: {
-        token: controlCapable.lease.token,
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    let controlCapable: Awaited<ReturnType<typeof acquireRunExecutionLease>> | undefined;
+    try {
+      controlCapable = await acquireRunExecutionLease({
+        runsRoot: root,
+        runId: "loop_capable_lease",
         owner: "runMartin",
-        capabilities: { runControl: true }
+        runControlCapable: true
+      });
+      await expect(readActiveRunExecutionLease({
+        runsRoot: root,
+        runId: "loop_capable_lease"
+      })).resolves.toMatchObject({
+        lease: {
+          token: controlCapable.lease.token,
+          processInstanceId: controlCapable.lease.processInstanceId,
+          owner: "runMartin",
+          capabilities: { runControl: true }
+        }
+      });
+      const heartbeatPath = `${controlCapable.path}.${controlCapable.lease.processInstanceId}.heartbeat`;
+      await writeFile(heartbeatPath, `${JSON.stringify({
+        ...controlCapable.lease,
+        heartbeatAt: "2020-01-01T00:00:00.000Z",
+        heartbeatSequence: 99
+      })}\n`, "utf8");
+      await expect(readActiveRunExecutionLease({
+        runsRoot: root,
+        runId: "loop_capable_lease"
+      })).resolves.toMatchObject({
+        lease: {
+          token: controlCapable.lease.token,
+          processInstanceId: controlCapable.lease.processInstanceId
+        }
+      });
+      await expect(readActiveRunExecutionLease({
+        runsRoot: root,
+        runId: "loop_capable_lease",
+        host: "different-host"
+      })).resolves.toBeUndefined();
+    } finally {
+      try {
+        await controlCapable?.release();
+      } finally {
+        vi.useRealTimers();
       }
-    });
-    await expect(readActiveRunExecutionLease({
-      runsRoot: root,
-      runId: "loop_capable_lease",
-      host: "different-host"
-    })).resolves.toBeUndefined();
-    await controlCapable.release();
+    }
     await expect(readActiveRunExecutionLease({
       runsRoot: root,
       runId: "loop_capable_lease"

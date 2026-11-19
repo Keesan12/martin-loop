@@ -1,6 +1,6 @@
 # MCP For AI Agents
 
-`@martinloop/mcp@0.8.10` is the live public standalone MCP baseline for MartinLoop. The in-repo `0.9.0` candidate remains pending until the protected release workflow and registry verification complete. No later standalone release is presented as live before those checks finish.
+`@martinloop/mcp@0.9.0` is the live public standalone MCP baseline for MartinLoop. The in-repo `0.10.0` candidate remains pending until the protected release workflow and registry verification complete. No later standalone release is presented as live before those checks finish.
 
 It is built for hosts that need a governed local-first workflow, not a vague bag of tools.
 

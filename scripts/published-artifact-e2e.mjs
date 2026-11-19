@@ -10,6 +10,19 @@ import { packRootRelease } from "./pack-root-release.mjs";
 
 const ACCEPTANCE_FILE = "src/packaged-artifact-e2e.ts";
 const ACCEPTANCE_CONTENT = "export const packagedArtifactE2e = true;\n";
+const VERIFIER_FILE = "verify-packaged-artifact-e2e.cjs";
+const VERIFIER_CONTENT = `
+const { readFileSync } = require("node:fs");
+
+const expected = ${JSON.stringify(ACCEPTANCE_CONTENT)};
+let actual = "";
+try {
+  actual = readFileSync(${JSON.stringify(ACCEPTANCE_FILE)}, "utf8");
+} catch {
+  process.exit(1);
+}
+process.exit(actual === expected ? 0 : 1);
+`.trimStart();
 const LEDGER_FILENAME = "ledger.jsonl";
 
 function parseArgs(argv) {
@@ -191,17 +204,23 @@ const result = await runMartin({
   task: {
     title: "Packaged artifact E2E",
     objective: "Create a new allowed source file from an installed package artifact.",
-    verificationPlan: ["node -e \\"process.exit(0)\\""],
+    verificationPlan: ["node ${VERIFIER_FILE}"],
     repoRoot: workspaceDir,
     allowedPaths: [acceptanceFile]
   },
   budget: {
     maxUsd: 1,
     softLimitUsd: 1,
-    maxIterations: 1
+    maxIterations: 2
   },
   adapter,
-  store
+  store,
+  receiptScope: {
+    invocationRoot: workspaceDir,
+    workingDirectory: workspaceDir,
+    repoRoot: workspaceDir,
+    runsRoot
+  }
 });
 
 const loopId = result.loop.loopId;
@@ -283,10 +302,11 @@ export async function runPublishedArtifactE2e(options) {
     type: "module",
   }, null, 2)}\n`, "utf8");
   await writeFile(path.join(workspaceDir, "README.md"), "# Packaged artifact E2E fixture\n", "utf8");
+  await writeFile(path.join(workspaceDir, VERIFIER_FILE), VERIFIER_CONTENT, "utf8");
   await runCommand(["git", "init"], { cwd: workspaceDir });
   await runCommand(["git", "config", "user.email", "packaged-artifact-e2e@example.invalid"], { cwd: workspaceDir });
   await runCommand(["git", "config", "user.name", "Packaged Artifact E2E"], { cwd: workspaceDir });
-  await runCommand(["git", "add", "README.md"], { cwd: workspaceDir });
+  await runCommand(["git", "add", "README.md", VERIFIER_FILE], { cwd: workspaceDir });
   await runCommand(["git", "commit", "-m", "Add packaged artifact E2E fixture"], { cwd: workspaceDir });
   await runCommand(["npm", "install", "--save-exact", resolvedPackageSpec], { cwd: consumerDir, echo: true });
 
@@ -303,12 +323,33 @@ export async function runPublishedArtifactE2e(options) {
     GIT_CONFIG_VALUE_0: workspaceDir,
   };
   const result = await runCommand(["node", runnerPath], { cwd: consumerDir, env, echo: true });
+  const installedManifest = JSON.parse(
+    await readFile(path.join(consumerDir, "node_modules", "martin-loop", "package.json"), "utf8"),
+  );
+  const martinBin = installedManifest.bin?.martin;
+  if (typeof martinBin !== "string" || martinBin.length === 0) {
+    throw new Error("Installed martin-loop package does not expose the martin CLI binary.");
+  }
+  const verifyResult = await runCommand([
+    "node",
+    path.join(consumerDir, "node_modules", "martin-loop", martinBin),
+    "runs", "verify",
+    "--latest",
+    "--all-workspaces",
+    "--runs-dir", runsRoot,
+    "--json",
+  ], { cwd: workspaceDir, env, echo: true });
+  const verification = JSON.parse(verifyResult.stdout);
+  if (verification.receiptIntegrity?.state !== "verified" || verification.verification?.status !== "passed") {
+    throw new Error("Installed martin runs verify did not confirm verified receipt and verifier evidence.");
+  }
 
   return {
     tempRoot,
     packageSpec: options.packageSpec,
     resolvedPackageSpec,
     output: JSON.parse(result.stdout),
+    verification,
   };
 }
 

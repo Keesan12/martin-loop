@@ -97,6 +97,7 @@ export interface SwarmLiveAppendOptions {
 export interface CreateSwarmLiveStoreInput {
   rootDir: string;
   plan: SwarmLivePlan;
+  random?: () => number;
 }
 
 export interface OpenSwarmLiveStoreInput {
@@ -136,10 +137,11 @@ export class SwarmLiveStoreError extends Error {
 const writerQueues = new Map<string, Promise<void>>();
 
 export async function createSwarmLiveStore(input: CreateSwarmLiveStoreInput): Promise<SwarmLiveStore> {
+  const random = input.random ?? Math.random;
   assertValidPlan(input.plan);
   const paths = resolveStorePaths(input.rootDir, input.plan.swarmId);
   await mkdir(paths.directory, { recursive: true });
-  await publishJsonIfAbsent(paths.plan, input.plan);
+  await publishJsonIfAbsent(paths.plan, input.plan, random);
   const existingPlan = await readRequiredJson<SwarmLivePlan>(paths.plan, "MISSING_PLAN");
   assertValidPlan(existingPlan);
   if (existingPlan.planHash !== input.plan.planHash) {
@@ -152,7 +154,7 @@ export async function createSwarmLiveStore(input: CreateSwarmLiveStoreInput): Pr
   const eventsHandle = await open(paths.events, "a");
   await eventsHandle.close();
   await mkdir(paths.eventClaims, { recursive: true });
-  const store = new FileSwarmLiveStore(paths, clone(input.plan));
+  const store = new FileSwarmLiveStore(paths, clone(input.plan), random);
   await store.recover();
   return store;
 }
@@ -259,7 +261,8 @@ class FileSwarmLiveStore implements SwarmLiveStore {
 
   constructor(
     private readonly storePaths: SwarmLiveStorePaths,
-    plan: SwarmLivePlan
+    plan: SwarmLivePlan,
+    private readonly random: () => number = Math.random
   ) {
     this.plan = clone(plan);
   }
@@ -309,8 +312,8 @@ class FileSwarmLiveStore implements SwarmLiveStore {
     const events = await loadAuthoritativeEvents(this.storePaths, this.plan);
     const snapshot = replaySnapshot(this.plan, events);
     await Promise.all([
-      writeEventJournalAtomic(this.storePaths.events, events),
-      writeDerivedJsonAtomic(this.storePaths.snapshot, snapshot)
+      writeEventJournalAtomic(this.storePaths.events, events, this.random),
+      writeDerivedJsonAtomic(this.storePaths.snapshot, snapshot, this.random)
     ]);
   }
 
@@ -517,11 +520,11 @@ class FileSwarmLiveStore implements SwarmLiveStore {
           errors: validation.errors
         });
       }
-      await publishEventClaim(this.storePaths.eventClaims, event);
+      await publishEventClaim(this.storePaths.eventClaims, event, this.random);
       const next = reduceSnapshot(snapshot, event);
       await Promise.all([
-        writeEventJournalAtomic(this.storePaths.events, [...events, event]),
-        writeDerivedJsonAtomic(this.storePaths.snapshot, next)
+        writeEventJournalAtomic(this.storePaths.events, [...events, event], this.random),
+        writeDerivedJsonAtomic(this.storePaths.snapshot, next, this.random)
       ]);
       this.notify(next);
       return { event: clone(event), snapshot: clone(next), duplicate: false };
@@ -759,12 +762,16 @@ function validatePersistedEvent(event: SwarmLiveEvent, plan: SwarmLivePlan, sour
   }
 }
 
-async function publishEventClaim(directory: string, event: SwarmLiveEvent): Promise<void> {
+async function publishEventClaim(
+  directory: string,
+  event: SwarmLiveEvent,
+  random: () => number = Math.random
+): Promise<void> {
   await mkdir(directory, { recursive: true });
   const claimPath = resolve(directory, `${String(event.sequence).padStart(12, "0")}.json`);
   const temporary = resolve(
     directory,
-    `.${String(event.sequence).padStart(12, "0")}.${process.pid}.${Math.random().toString(16).slice(2)}.tmp`
+    `.${String(event.sequence).padStart(12, "0")}.${process.pid}.${random().toString(16).slice(2)}.tmp`
   );
   let handle: Awaited<ReturnType<typeof open>> | undefined;
   try {
@@ -839,8 +846,12 @@ function assertValidPlan(plan: SwarmLivePlan): void {
   }
 }
 
-async function publishJsonIfAbsent(path: string, value: unknown): Promise<void> {
-  const temporary = `${path}.${process.pid}.${Math.random().toString(16).slice(2)}.tmp`;
+async function publishJsonIfAbsent(
+  path: string,
+  value: unknown,
+  random: () => number = Math.random
+): Promise<void> {
+  const temporary = `${path}.${process.pid}.${random().toString(16).slice(2)}.tmp`;
   let handle: Awaited<ReturnType<typeof open>> | undefined;
   try {
     handle = await open(temporary, "wx");
@@ -859,25 +870,35 @@ async function publishJsonIfAbsent(path: string, value: unknown): Promise<void> 
   }
 }
 
-async function writeDerivedJsonAtomic(path: string, value: unknown): Promise<void> {
-  await writeTextAtomic(path, jsonText(value), { contentionSafe: true });
+async function writeDerivedJsonAtomic(
+  path: string,
+  value: unknown,
+  random: () => number = Math.random
+): Promise<void> {
+  await writeTextAtomic(path, jsonText(value), { contentionSafe: true }, random);
 }
 
-async function writeEventJournalAtomic(path: string, events: SwarmLiveEvent[]): Promise<void> {
+async function writeEventJournalAtomic(
+  path: string,
+  events: SwarmLiveEvent[],
+  random: () => number = Math.random
+): Promise<void> {
   await writeTextAtomic(
     path,
     eventJournalText(events),
-    { contentionSafe: true }
+    { contentionSafe: true },
+    random
   );
 }
 
 async function writeTextAtomic(
   path: string,
   value: string,
-  options: { contentionSafe?: boolean } = {}
+  options: { contentionSafe?: boolean } = {},
+  random: () => number = Math.random
 ): Promise<void> {
   if (options.contentionSafe && await readTextIfPresent(path) === value) return;
-  const temporary = `${path}.${process.pid}.${Math.random().toString(16).slice(2)}.tmp`;
+  const temporary = `${path}.${process.pid}.${random().toString(16).slice(2)}.tmp`;
   let handle: Awaited<ReturnType<typeof open>> | undefined;
   try {
     handle = await open(temporary, "wx");

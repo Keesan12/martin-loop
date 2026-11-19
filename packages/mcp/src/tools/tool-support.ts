@@ -23,6 +23,7 @@ import {
   type LoopRunRecord,
   type VerifierExecutionBinding
 } from "@martin/core";
+import { resolveOpenAiCompatibleRuntimeConfig, resolveProviderPricing } from "@martin/adapters";
 
 import { readAllLoopRecordsSafely } from "./run-store.js";
 
@@ -161,6 +162,7 @@ export interface CliAvailability {
   detail: string;
   resolvedPath?: string;
   candidatePaths?: string[];
+  transport?: "cli" | "http";
 }
 
 export interface ExecutionMode {
@@ -174,6 +176,8 @@ export interface RunStoreInspection extends LoopCollectionSummary {
   exists: boolean;
   loopCount: number;
   warnings: string[];
+  unreadableRecordCount: number;
+  warningsTruncated: boolean;
 }
 
 export interface CanonicalRunPaths {
@@ -310,8 +314,129 @@ function suggestInstallCommand(command: string): string {
   return install ? `Install with: ${install}` : `Install ${command} and ensure it is on PATH.`;
 }
 
-export function getEngineAvailability(engine: MartinEngine): CliAvailability {
-  return detectCliAvailability(engine);
+export function getEngineAvailability(
+  engine: MartinEngine,
+  modelOverride?: string,
+  pricePerMTokenUsd?: number
+): CliAvailability {
+  if (engine === "openai") {
+    let config: ReturnType<typeof resolveOpenAiCompatibleRuntimeConfig>;
+    try {
+      config = resolveOpenAiCompatibleRuntimeConfig(process.env, undefined, undefined, pricePerMTokenUsd);
+    } catch (error) {
+      const safeConfigurationError = error instanceof Error && (
+        error.message.startsWith("INVALID_OPENAI_BILLING_MODE:") ||
+        error.message.startsWith("INVALID_OPENAI_BASE_URL:") ||
+        error.message.startsWith("INVALID_OPENAI_PRICE:")
+      );
+      const detail = safeConfigurationError
+        ? error.message
+        : "OPENAI_CONFIGURATION_INVALID: unable to read OpenAI-compatible runtime configuration.";
+      return {
+        command: "openai",
+        available: false,
+        locator: "configured-endpoint",
+        transport: "http",
+        detail
+      };
+    }
+    const model = modelOverride ?? config.model;
+    let endpoint: URL;
+    try {
+      endpoint = new URL(config.baseUrl);
+    } catch {
+      return {
+        command: "openai",
+        available: false,
+        locator: "configured-endpoint",
+        transport: "http",
+        detail: "INVALID_OPENAI_BASE_URL: MARTIN_OPENAI_BASE_URL must be an absolute HTTP(S) URL."
+      };
+    }
+    if ((endpoint.protocol !== "http:" && endpoint.protocol !== "https:") || !endpoint.hostname) {
+      return {
+        command: "openai",
+        available: false,
+        locator: "configured-endpoint",
+        transport: "http",
+        detail: "INVALID_OPENAI_BASE_URL: MARTIN_OPENAI_BASE_URL must be an absolute HTTP(S) URL."
+      };
+    }
+    const hostname = endpoint.hostname.toLowerCase();
+    const localEndpoint = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
+    const billingMode = config.billingMode ?? (
+      localEndpoint && !config.apiKeyConfigured ? "local_unmetered" : "metered_api"
+    );
+    const catalogPricingAvailable = Boolean(model) && resolveProviderPricing(model, {
+      provider: "openai"
+    }).pricing !== undefined;
+    const explicitPricingValid = pricePerMTokenUsd === undefined || (
+      Number.isFinite(pricePerMTokenUsd) && pricePerMTokenUsd >= 0
+    );
+    if (!explicitPricingValid) {
+      return {
+        command: "openai",
+        available: false,
+        locator: "configured-endpoint",
+        transport: "http",
+        detail: "INVALID_OPENAI_PRICE: pricePerMTokenUsd must be finite and non-negative."
+      };
+    }
+    const explicitPricingAvailable = pricePerMTokenUsd !== undefined;
+    const pricingAvailable = billingMode === "local_unmetered" || catalogPricingAvailable || explicitPricingAvailable;
+    const available = Boolean(model) && (config.apiKeyConfigured || localEndpoint) && pricingAvailable;
+    return {
+      command: "openai",
+      available,
+      locator: "configured-endpoint",
+      transport: "http",
+      detail: !model
+        ? "MODEL_CONFIGURATION_REQUIRED: set MARTIN_OPENAI_MODEL before live execution."
+        : !pricingAvailable
+          ? "PRICING_CONFIGURATION_REQUIRED: unknown non-local models require pricePerMTokenUsd."
+        : available
+          ? `OpenAI-compatible model configured: ${model} at ${endpoint.origin}.`
+          : "OpenAI-compatible remote execution requires MARTIN_OPENAI_API_KEY."
+    };
+  }
+
+  const availability = detectCliAvailability(engine);
+  if (availability.available && !isOnPathDirectly(engine, availability.resolvedPath ?? "")) {
+    return {
+      ...availability,
+      available: false,
+      transport: "cli",
+      detail:
+        `${engine} was discovered at ${availability.resolvedPath ?? "an off-PATH location"}, ` +
+        "but this MCP adapter cannot bind that exact executable path. Add it to PATH before live execution."
+    };
+  }
+  return { ...availability, transport: "cli" };
+}
+
+export function resolveProviderNeutralEngine(): {
+  engine?: MartinEngine;
+  detail: string;
+  availableEngines: MartinEngine[];
+} {
+  const availableEngines = MARTIN_ENGINE_VALUES.filter((engine) => getEngineAvailability(engine).available);
+  if (availableEngines.length === 1) {
+    return {
+      engine: availableEngines[0],
+      detail: `Selected the only available provider: ${availableEngines[0]}.`,
+      availableEngines
+    };
+  }
+  if (availableEngines.length === 0) {
+    return {
+      detail: "No supported provider is ready for live execution; pass engine after configuring one provider.",
+      availableEngines
+    };
+  }
+  return {
+    detail: `Multiple providers are ready (${availableEngines.join(", ")}); pass engine explicitly.`,
+    availableEngines
+  };
 }
 
 export function createSkippedCliAvailability(
@@ -554,7 +679,9 @@ export async function inspectRunsRoot(runsRoot: string = resolveRunsRoot(process
     recentRuns: summary.recentRuns,
     statusBreakdown: summary.statusBreakdown,
     lifecycleBreakdown: summary.lifecycleBreakdown,
-    warnings: inspected.warnings
+    warnings: inspected.warnings,
+    unreadableRecordCount: inspected.unreadableRecordCount,
+    warningsTruncated: inspected.warningsTruncated
   };
   runStoreInspectionCache.set(runsRoot, { expiresAt: Date.now() + RUN_STORE_CACHE_TTL_MS, value });
   return value;

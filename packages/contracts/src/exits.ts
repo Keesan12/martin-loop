@@ -69,6 +69,11 @@ export interface ExitPolicyV1 {
   budget: {
     maxUsd: number;
     maxTokens?: number;
+    /**
+     * Explicit provider-free authority. Requires maxUsd to be exactly zero and treats any positive
+     * spend as budget exhaustion; a zero-spend run is never exhausted merely because 0 >= 0.
+     */
+    zeroSpendAuthority?: true;
   };
   wallClock: {
     maxElapsedMs: number;

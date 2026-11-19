@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve, sep } from "node:path";
 
 import { describe, expect, it } from "vitest";
+import { createLoopRecord } from "@martin/contracts";
 
 import {
   compileAndPersistContext,
@@ -14,6 +15,7 @@ import {
   verifyReceiptIntegrityFromFiles,
   writeReceiptIntegrityMaterial
 } from "../src/index";
+import { createFileRunStoreWithRecordedPathAuthorityForTest } from "../src/persistence/store";
 
 describe("makeLedgerEvent", () => {
   it("produces a well-formed LedgerEvent with all required fields", () => {
@@ -46,6 +48,232 @@ describe("makeLedgerEvent", () => {
 });
 
 describe("FileRunStore", () => {
+  it("materializes and signs an empty ledger before the first transactional append", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-empty-ledger-"));
+    const privateRoot = await mkdtemp(join(tmpdir(), "martin-empty-ledger-private-"));
+    const previousIntegrityRoot = process.env["MARTIN_INTEGRITY_KEY_DIR"];
+    const previousLeaseRoot = process.env["MARTIN_PERSISTENCE_LEASE_DIR"];
+    process.env["MARTIN_INTEGRITY_KEY_DIR"] = join(privateRoot, "integrity");
+    process.env["MARTIN_PERSISTENCE_LEASE_DIR"] = join(privateRoot, "leases");
+    const runId = "run_empty_ledger";
+    const loop = createLoopRecord({
+      loopId: runId,
+      workspaceId: "workspace-empty-ledger",
+      projectId: "project-empty-ledger",
+      task: { title: "T", objective: "O", verificationPlan: [] },
+      budget: { maxUsd: 1, softLimitUsd: 0.5, maxIterations: 1 },
+    });
+    const store = createFileRunStore({ runsRoot });
+
+    try {
+      await store.writeLoopRecord!(runId, loop);
+      const loopRecordPath = join(runsRoot, runId, "loop-record.json");
+      const ledgerPath = join(runsRoot, runId, "ledger.jsonl");
+      expect(await readFile(ledgerPath, "utf8")).toBe("");
+      await expect(verifyReceiptIntegrityFromFiles({ runId, runsRoot, loopRecordPath, ledgerPath }))
+        .resolves.toMatchObject({ state: "verified", entryCount: 0 });
+
+      await store.appendLedger(runId, makeLedgerEvent({
+        kind: "run.diagnostic",
+        runId,
+        payload: { code: "first_append" },
+      }));
+      await expect(verifyReceiptIntegrityFromFiles({ runId, runsRoot, loopRecordPath, ledgerPath }))
+        .resolves.toMatchObject({ state: "verified", entryCount: 1 });
+    } finally {
+      if (previousIntegrityRoot === undefined) delete process.env["MARTIN_INTEGRITY_KEY_DIR"];
+      else process.env["MARTIN_INTEGRITY_KEY_DIR"] = previousIntegrityRoot;
+      if (previousLeaseRoot === undefined) delete process.env["MARTIN_PERSISTENCE_LEASE_DIR"];
+      else process.env["MARTIN_PERSISTENCE_LEASE_DIR"] = previousLeaseRoot;
+      await Promise.all([
+        rm(runsRoot, { recursive: true, force: true }),
+        rm(privateRoot, { recursive: true, force: true }),
+      ]);
+    }
+  });
+
+  it("serializes distinct physical run roots through one recorded evidence identity", async () => {
+    const [firstRoot, secondRoot] = await Promise.all([
+      mkdtemp(join(tmpdir(), "martin-recorded-path-a-")),
+      mkdtemp(join(tmpdir(), "martin-recorded-path-b-")),
+    ]);
+    const recordedRoot = resolve(tmpdir(), "martin-recorded-path-authority", "runs");
+    const write = async (runsRoot: string): Promise<string> => {
+      const store = createFileRunStoreWithRecordedPathAuthorityForTest({ runsRoot, recordedRunsRoot: recordedRoot });
+      const workspace = join(runsRoot, "_swarms", "swarm-1", "worktrees", "child-1");
+      const loop = createLoopRecord({
+        loopId: "loop-recorded-path",
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        task: { title: "T", objective: "O", verificationPlan: [], repoRoot: workspace },
+        receiptScope: { repoRoot: workspace, workingDirectory: workspace, runsRoot },
+      }, { now: "2026-10-03T12:00:00.000Z" });
+      await store.appendLedger!(loop.loopId, makeLedgerEvent({
+        kind: "verification.completed",
+        runId: loop.loopId,
+        timestamp: "2026-10-03T12:00:01.000Z",
+        payload: { binding: { cwd: workspace, runsRoot } },
+      }));
+      await store.writeLoopRecord!(loop.loopId, loop);
+      await store.sealRecordedPathAuthority(loop.loopId);
+      return [
+        await readFile(join(runsRoot, loop.loopId, "loop-record.json"), "utf8"),
+        await readFile(join(runsRoot, loop.loopId, "ledger.jsonl"), "utf8"),
+      ].join("\n---ledger---\n");
+    };
+
+    try {
+      const [first, second] = await Promise.all([write(firstRoot), write(secondRoot)]);
+      expect(second).toBe(first);
+      expect(first).toContain(recordedRoot.replaceAll("\\", "\\\\"));
+      expect(first).not.toContain(firstRoot.replaceAll("\\", "\\\\"));
+      expect(second).not.toContain(secondRoot.replaceAll("\\", "\\\\"));
+    } finally {
+      await Promise.all([
+        rm(firstRoot, { recursive: true, force: true }),
+        rm(secondRoot, { recursive: true, force: true }),
+      ]);
+    }
+  });
+
+  it("keeps recorded path authority serialization-only and rejects non-canonical roots", async () => {
+    const physicalRoot = await mkdtemp(join(tmpdir(), "martin-physical-path-"));
+    const recordedRoot = await mkdtemp(join(tmpdir(), "martin-recorded-only-"));
+    const store = createFileRunStoreWithRecordedPathAuthorityForTest({
+      runsRoot: physicalRoot,
+      recordedRunsRoot: recordedRoot,
+    });
+    const workspace = join(physicalRoot, "_swarms", "swarm-1", "worktrees", "child-1");
+    const loop = createLoopRecord({
+      loopId: "loop-recorded-only",
+      workspaceId: "workspace-1",
+      projectId: "project-1",
+      task: { title: "T", objective: "O", verificationPlan: [], repoRoot: workspace },
+      receiptScope: { repoRoot: workspace, workingDirectory: workspace, runsRoot: physicalRoot },
+    }, { now: "2026-10-03T12:00:00.000Z" });
+
+    try {
+      await store.writeLoopRecord!(loop.loopId, loop);
+      await store.sealRecordedPathAuthority(loop.loopId);
+      expect(await stat(join(physicalRoot, loop.loopId, "loop-record.json"))).toBeDefined();
+      await expect(stat(join(recordedRoot, loop.loopId, "loop-record.json"))).rejects.toMatchObject({ code: "ENOENT" });
+      expect(() => createFileRunStoreWithRecordedPathAuthorityForTest({
+        runsRoot: physicalRoot,
+        recordedRunsRoot: `${recordedRoot}${sep}..${sep}martin-recorded-only`,
+      })).toThrow(/canonical absolute path/u);
+      let forgedError: unknown;
+      try {
+        createFileRunStore({
+          runsRoot: physicalRoot,
+          recordedRunsRoot: recordedRoot,
+        } as unknown as { runsRoot: string });
+      } catch (error) {
+        forgedError = error;
+      }
+      expect(forgedError).toMatchObject({ code: "RUN_STORE_RECORDED_PATH_AUTHORITY_FORBIDDEN" });
+    } finally {
+      await Promise.all([
+        rm(physicalRoot, { recursive: true, force: true }),
+        rm(recordedRoot, { recursive: true, force: true }),
+      ]);
+    }
+  });
+
+  it("maps only allowlisted structural paths and preserves user-controlled evidence text", async () => {
+    const physicalRoot = await mkdtemp(join(tmpdir(), "martin-recorded-allowlist-"));
+    const recordedRoot = resolve(tmpdir(), "martin-recorded-allowlist-authority", "runs");
+    const workspace = join(physicalRoot, "_swarms", "swarm-1", "worktrees", "child-1");
+    const store = createFileRunStoreWithRecordedPathAuthorityForTest({
+      runsRoot: physicalRoot,
+      recordedRunsRoot: recordedRoot,
+    });
+    const loop = createLoopRecord({
+      loopId: "loop-recorded-allowlist",
+      workspaceId: "workspace-1",
+      projectId: "project-1",
+      task: { title: "T", objective: workspace, verificationPlan: [], repoRoot: workspace },
+      attempts: [{
+        attemptId: "attempt-1",
+        index: 1,
+        adapterId: "fixture",
+        startedAt: "2026-10-03T12:00:00.000Z",
+        summary: workspace,
+      }],
+      metadata: { arbitraryPathText: workspace },
+      events: [{
+        eventId: "event-verification",
+        type: "verification.completed",
+        timestamp: "2026-10-03T12:00:01.000Z",
+        lifecycleState: "completed",
+        payload: {
+          summary: workspace,
+          binding: { cwd: workspace, runsRoot: physicalRoot, verifier: workspace },
+        },
+      }, {
+        eventId: "event-diagnostic",
+        type: "failure.classified",
+        timestamp: "2026-10-03T12:00:02.000Z",
+        lifecycleState: "running",
+        payload: { error: workspace, verifier: workspace, metadata: { cwd: workspace } },
+      }],
+      receiptScope: {
+        repoRoot: workspace,
+        workingDirectory: workspace,
+        invocationRoot: physicalRoot,
+        runsRoot: physicalRoot,
+        writableRoot: workspace,
+      },
+    }, { now: "2026-10-03T12:00:00.000Z" });
+    await store.appendLedger!(loop.loopId, makeLedgerEvent({
+      kind: "verification.completed",
+      runId: loop.loopId,
+      timestamp: "2026-10-03T12:00:03.000Z",
+      payload: { summary: workspace, binding: { cwd: workspace, runsRoot: physicalRoot, verifier: workspace } },
+    }));
+    await store.appendLedger!(loop.loopId, makeLedgerEvent({
+      kind: "run.diagnostic",
+      runId: loop.loopId,
+      timestamp: "2026-10-03T12:00:04.000Z",
+      payload: { error: workspace, verifier: workspace, metadata: { cwd: workspace } },
+    }));
+
+    try {
+      await store.writeLoopRecord!(loop.loopId, loop);
+      await store.sealRecordedPathAuthority(loop.loopId);
+      const stored = JSON.parse(await readFile(join(physicalRoot, loop.loopId, "loop-record.json"), "utf8")) as any;
+      const ledger = (await readFile(join(physicalRoot, loop.loopId, "ledger.jsonl"), "utf8"))
+        .trim().split(/\r?\n/u).map((line) => JSON.parse(line) as any);
+
+      expect(stored.task.repoRoot).toBe(join(recordedRoot, "_swarms", "swarm-1", "worktrees", "child-1"));
+      expect(stored.receiptScope).toMatchObject({
+        repoRoot: join(recordedRoot, "_swarms", "swarm-1", "worktrees", "child-1"),
+        workingDirectory: join(recordedRoot, "_swarms", "swarm-1", "worktrees", "child-1"),
+        invocationRoot: recordedRoot,
+        runsRoot: recordedRoot,
+        writableRoot: join(recordedRoot, "_swarms", "swarm-1", "worktrees", "child-1"),
+      });
+      expect(stored.events[0].payload.binding).toMatchObject({
+        cwd: join(recordedRoot, "_swarms", "swarm-1", "worktrees", "child-1"),
+        runsRoot: recordedRoot,
+        verifier: workspace,
+      });
+      expect(stored.task.objective).toBe(workspace);
+      expect(stored.attempts[0].summary).toBe(workspace);
+      expect(stored.metadata.arbitraryPathText).toBe(workspace);
+      expect(stored.events[0].payload.summary).toBe(workspace);
+      expect(stored.events[1].payload).toEqual({ error: workspace, verifier: workspace, metadata: { cwd: workspace } });
+      expect(ledger[0].payload.binding).toMatchObject({
+        cwd: join(recordedRoot, "_swarms", "swarm-1", "worktrees", "child-1"),
+        runsRoot: recordedRoot,
+        verifier: workspace,
+      });
+      expect(ledger[0].payload.summary).toBe(workspace);
+      expect(ledger[1].payload).toEqual({ error: workspace, verifier: workspace, metadata: { cwd: workspace } });
+    } finally {
+      await rm(physicalRoot, { recursive: true, force: true });
+    }
+  });
+
   it("writes contract.json on initRun and it is readable", async () => {
     const runsRoot = await mkdtemp(join(tmpdir(), "martin-store-"));
     const store = createFileRunStore({ runsRoot });

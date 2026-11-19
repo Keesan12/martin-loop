@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { lstat, mkdir, open, readFile, realpath } from "node:fs/promises";
+import { lstat, mkdir, open, readFile, realpath, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import {
@@ -29,8 +29,13 @@ import { redactSecretsFromText } from "../leash.js";
 import {
   createFileRunStore,
   runDir,
-  verifyReceiptIntegrityFromFiles
+  verifyReceiptIntegrityFromFiles,
+  type RunStore,
 } from "../persistence/index.js";
+import {
+  createFileRunStoreWithRecordedPathAuthorityForTest,
+  type RecordedPathAuthorityRunStore,
+} from "../persistence/store.js";
 import {
   authenticateSwarmReceiptSealCommit,
   resolveSwarmReceiptIntegrityPath,
@@ -46,7 +51,9 @@ import { readAndSealSwarmEvidence } from "./evidence.js";
 import { buildParentSwarmReceipt } from "./parent-receipt.js";
 import {
   captureAndAdmitSwarmCandidate,
+  captureAndAdmitSwarmCandidateWithRecordedScopeAuthorityForTest,
   inventorySwarmCandidatePaths,
+  rebindPersistedSwarmCandidateReceiptForTest,
   type CaptureSwarmCandidateInput,
   type CaptureSwarmCandidateResult,
   type SwarmCandidateArtifactWriter,
@@ -114,7 +121,19 @@ export interface SwarmLiveRuntimeEvidenceStore
   persistChildCompletion(evidence: PersistedSwarmChildCompletionEvidence): Promise<void>;
 }
 
+/**
+ * How child adapter identity is bound to the parent-selected engine.
+ * `strict` (the default) requires the adapter's provider and model to equal the plan engine.
+ * `provider_free_deterministic` is the one explicit exception, for the governed provider-free demo.
+ */
+export type SwarmProviderBindingMode = "strict" | "provider_free_deterministic";
+
+export const PROVIDER_FREE_DETERMINISTIC_ADAPTER_ID = "live-swarm:local-deterministic";
+export const PROVIDER_FREE_DETERMINISTIC_PROVIDER_ID = "local-deterministic";
+export const PROVIDER_FREE_DETERMINISTIC_MODEL = "deterministic-governed";
+
 export interface RunLiveSwarmInput {
+  readonly providerBindingMode?: SwarmProviderBindingMode;
   readonly plan: SwarmLivePlan;
   readonly liveStore: SwarmLiveStore;
   readonly workspaceManager: SwarmWorkspaceManager;
@@ -151,6 +170,7 @@ export function isAuthoritativeLiveSwarmVerified(result: RunLiveSwarmResult): bo
 }
 
 export interface RunProductionLiveSwarmInput {
+  readonly providerBindingMode?: SwarmProviderBindingMode;
   readonly plan: SwarmLivePlan;
   readonly canonicalRoot: string;
   readonly ownedRoot: string;
@@ -162,10 +182,22 @@ export interface RunProductionLiveSwarmInput {
   signal?: AbortSignal;
 }
 
+interface ProductionLiveSwarmTestDependencies {
+  readonly now?: () => string;
+  readonly nowMs?: () => number;
+  readonly random?: () => number;
+  readonly createId?: (prefix: string) => string;
+  readonly createCleanupId?: () => string;
+  readonly recordedRunsRoot?: string;
+}
+
 interface LiveRuntimeDependencies {
   captureCandidate(input: CaptureSwarmCandidateInput): Promise<CaptureSwarmCandidateResult>;
   inventoryCandidatePaths(workspacePath: string): Promise<string[]>;
   parentPipeline(input: RunParentSwarmPipelineInput): Promise<RunParentSwarmPipelineResult>;
+  createRunStore?(runsRoot: string): RunStore;
+  prepareCompletionEvidence?(runId: string): Promise<void>;
+  rebindCandidateEvidence?(runId: string, integrity: ReceiptIntegritySummary): Promise<void>;
   sealTerminal?(result: RunLiveSwarmResult): Promise<void>;
 }
 
@@ -209,17 +241,34 @@ export function runLiveSwarm(input: RunLiveSwarmInput): Promise<RunLiveSwarmResu
 export async function runProductionLiveSwarm(
   input: RunProductionLiveSwarmInput
 ): Promise<RunLiveSwarmResult> {
+  assertNoProductionAuthorityOverrides(input);
+  return runProductionLiveSwarmWithDependenciesForTest(input, {});
+}
+
+/** Internal source-level test seam; intentionally absent from package-root exports. */
+export async function runProductionLiveSwarmWithDependenciesForTest(
+  input: RunProductionLiveSwarmInput,
+  testDependencies: ProductionLiveSwarmTestDependencies
+): Promise<RunLiveSwarmResult> {
+  let recordedPathStore: RecordedPathAuthorityRunStore | undefined;
+  const projectedRunIds = new Set<string>();
   const validation = validateSwarmLivePlan(input.plan);
   if (!validation.ok) throw codedRuntimeError("INVALID_LIVE_PLAN", "Core rejected the live swarm plan.");
   assertSwarmPathIdentifier(input.plan.swarmId, "swarm ID");
   const paths = await resolveProductionRuntimePaths(input);
   const storeRoot = paths.storeRoot;
-  const liveStore = await createSwarmLiveStore({ rootDir: storeRoot, plan: input.plan });
+  const liveStore = await createSwarmLiveStore({
+    rootDir: storeRoot,
+    plan: input.plan,
+    ...(testDependencies.random ? { random: testDependencies.random } : {}),
+  });
   const workspaceManager = await createSwarmWorkspaceManager({
     canonicalRoot: resolve(input.canonicalRoot),
     ownedRoot: paths.ownedRoot,
     swarmId: input.plan.swarmId,
     ...(input.workspaceIsolationMode ? { isolationMode: input.workspaceIsolationMode } : {}),
+    ...(testDependencies.now ? { now: testDependencies.now } : {}),
+    ...(testDependencies.createCleanupId ? { createCleanupId: testDependencies.createCleanupId } : {}),
   });
   if (workspaceManager.baselineCommit.toLowerCase() !== input.plan.baselineCommit.toLowerCase()) {
     throw codedRuntimeError("LIVE_PLAN_BASELINE_MISMATCH", "Live swarm plan baseline no longer matches the canonical repository.");
@@ -233,6 +282,12 @@ export async function runProductionLiveSwarm(
     );
   }
   const evidenceStore = new FileSwarmLiveRuntimeEvidenceStore(paths.evidenceRoot);
+  const prepareRecordedEvidence = async (runId: string): Promise<void> => {
+    if (projectedRunIds.has(runId)) return;
+    if (!recordedPathStore) throw codedRuntimeError("RECORDED_PATH_STORE_MISSING", "Recorded evidence store was not initialized.");
+    await recordedPathStore.sealRecordedPathAuthority(runId);
+    projectedRunIds.add(runId);
+  };
   return runLiveSwarmWithDependencies({
     plan: input.plan,
     liveStore,
@@ -241,9 +296,51 @@ export async function runProductionLiveSwarm(
     adapterFactory: input.adapterFactory,
     verifierExecutor: input.verifierExecutor,
     runsRoot: paths.runsRoot,
+    ...(input.providerBindingMode ? { providerBindingMode: input.providerBindingMode } : {}),
     ...(input.signal ? { signal: input.signal } : {}),
+    ...(testDependencies.now ? { now: testDependencies.now } : {}),
+    ...(testDependencies.nowMs ? { nowMs: testDependencies.nowMs } : {}),
+    ...(testDependencies.createId ? { createId: testDependencies.createId } : {}),
   }, {
     ...productionDependencies,
+    ...(testDependencies.recordedRunsRoot
+      ? {
+          captureCandidate: async (candidateInput: CaptureSwarmCandidateInput) => {
+            const physicalRunsRoot = resolve(candidateInput.runsRoot);
+            const physicalWorkspaceRoot = resolve(candidateInput.workspace.path);
+            const workspaceRelation = relative(physicalRunsRoot, physicalWorkspaceRoot);
+            if (
+              workspaceRelation === ""
+              || workspaceRelation === ".."
+              || workspaceRelation.startsWith(`..${sep}`)
+              || isAbsolute(workspaceRelation)
+            ) {
+              throw codedRuntimeError("RECORDED_SCOPE_MAPPING_INVALID", "Child workspace escaped the physical runs root.");
+            }
+            const recordedRunsRoot = resolve(testDependencies.recordedRunsRoot!);
+            return captureAndAdmitSwarmCandidateWithRecordedScopeAuthorityForTest(candidateInput, {
+              childRunId: candidateInput.childRunId,
+              attemptId: candidateInput.attemptId,
+              physicalRunsRoot,
+              recordedRunsRoot,
+              physicalWorkspaceRoot,
+              recordedWorkspaceRoot: join(recordedRunsRoot, workspaceRelation),
+              projectReceipt: () => prepareRecordedEvidence(candidateInput.childRunId),
+            });
+          },
+          createRunStore: (runsRoot: string) => {
+            recordedPathStore = createFileRunStoreWithRecordedPathAuthorityForTest({
+              runsRoot,
+              recordedRunsRoot: testDependencies.recordedRunsRoot!,
+            });
+            return recordedPathStore;
+          },
+          prepareCompletionEvidence: prepareRecordedEvidence,
+          rebindCandidateEvidence: async (runId: string, integrity: ReceiptIntegritySummary) => {
+            await evidenceStore.rebindCandidateReceiptForRecordedPathAuthority(runId, integrity);
+          },
+        }
+      : {}),
     sealTerminal: async (result) => {
       try {
         await sealProductionSwarmTerminal(paths, input.plan, result);
@@ -412,12 +509,25 @@ function codedRuntimeError(code: string, message: string): Error & { code: strin
   return Object.assign(new Error(message), { code });
 }
 
+function assertNoProductionAuthorityOverrides(input: RunProductionLiveSwarmInput): void {
+  const value = input as unknown as Record<string, unknown>;
+  for (const key of ["now", "nowMs", "random", "createId", "createCleanupId", "recordedRunsRoot"] as const) {
+    if (Object.prototype.hasOwnProperty.call(value, key)) {
+      throw codedRuntimeError(
+        "LIVE_SWARM_AUTHORITY_OVERRIDE_FORBIDDEN",
+        `Production live swarm input cannot override ${key}.`
+      );
+    }
+  }
+}
+
 /** Internal test seam; intentionally not re-exported from the Core package root. */
 export async function runLiveSwarmWithDependencies(
   input: RunLiveSwarmInput,
   dependencies: LiveRuntimeDependencies
 ): Promise<RunLiveSwarmResult> {
   assertRuntimeInput(input);
+  const providerBindingMode: SwarmProviderBindingMode = input.providerBindingMode ?? "strict";
   const now = input.now ?? (() => new Date().toISOString());
   const nowMs = input.nowMs ?? (() => Date.now());
   const parentDeadlineMs = nowMs() + input.plan.parentContract.maxWallClockMs;
@@ -489,7 +599,8 @@ export async function runLiveSwarmWithDependencies(
     createdAt: now(),
     updatedAt: now()
   }, { now: now() });
-  const runStore = createFileRunStore({ runsRoot: input.runsRoot });
+  const runStore = dependencies.createRunStore?.(input.runsRoot)
+    ?? createFileRunStore({ runsRoot: input.runsRoot });
   const active = new Map<string, ActiveAttempt>();
   const candidateIds: string[] = [];
   const reassignmentCounts = new Map<string, number>();
@@ -501,7 +612,11 @@ export async function runLiveSwarmWithDependencies(
       idempotencyKey: `${input.plan.planHash}:created`,
       type: "SWARM_CREATED",
       timestamp: now(),
-      payload: { engine: input.plan.engine.engine, model: input.plan.engine.model }
+      payload: {
+        engine: input.plan.engine.engine,
+        model: input.plan.engine.model,
+        ...(providerBindingMode === "strict" ? {} : providerFreeIdentity(providerBindingMode))
+      }
     });
 
     while (true) {
@@ -634,8 +749,24 @@ export async function runLiveSwarmWithDependencies(
     schedulingOpen = false;
     clearTimeout(parentDeadlineTimer);
     input.signal?.removeEventListener("abort", abortParent);
+    await closeRemainingAttempts();
     cancellationMonitorController.abort("runtime closed");
     await cancellationMonitor;
+  }
+
+  /**
+   * A throw out of the main body must not leave children running against workspaces the
+   * caller is about to delete. Abort what is still active and await its settlement; settlement
+   * failures are swallowed here so they can never replace the error that is already propagating.
+   */
+  async function closeRemainingAttempts(): Promise<void> {
+    const remaining = [...active.values()];
+    if (remaining.length === 0) return;
+    for (const attempt of remaining) {
+      if (!attempt.controller.signal.aborted) attempt.controller.abort("runtime_closed");
+    }
+    const completions = await Promise.all(remaining.map((attempt) => attempt.completion));
+    await Promise.allSettled(completions.map((completion) => settleAttemptOnce(completion, true)));
   }
 
   async function launchTask(task: SwarmTaskNode): Promise<boolean> {
@@ -732,12 +863,8 @@ export async function runLiveSwarmWithDependencies(
         budget
       });
       adapter = isAdapterHandle(factoryResult) ? factoryResult.adapter : factoryResult;
-      if (adapter.metadata.providerId !== input.plan.engine.engine) {
-        throw new Error("LIVE_ENGINE_PROVIDER_MISMATCH: every child must use the parent-selected provider.");
-      }
-      if (adapter.metadata.model !== input.plan.engine.model) {
-        throw new Error("LIVE_ENGINE_MODEL_MISMATCH: every child must use the parent-selected model.");
-      }
+      assertAdapterProviderBinding(providerBindingMode, adapter, input.plan);
+      if (providerBindingMode === "provider_free_deterministic") adapter = guardProviderFreeAdapter(adapter);
     } catch (error) {
       await failPreparedLaunch({ task, agent, childRunId, leaseId, workspace, attemptId }, error);
       return false;
@@ -852,6 +979,9 @@ export async function runLiveSwarmWithDependencies(
         mutationMode: task.mutationMode === "write" ? "edit" as const : "read_only" as const
       },
       budget,
+      ...(providerBindingMode === "provider_free_deterministic"
+        ? { spendAuthority: "provider_free_zero_spend" as const, forceWorkspaceMutationTracking: true }
+        : {}),
       adapter,
       store: runStore,
       receiptScope: {
@@ -875,12 +1005,20 @@ export async function runLiveSwarmWithDependencies(
         "swarm.proposalId": proposalId,
         "swarm.baselineCommit": input.plan.baselineCommit,
         "swarm.engine": input.plan.engine.engine,
-        "swarm.model": input.plan.engine.model
+        "swarm.model": input.plan.engine.model,
+        ...(providerBindingMode === "strict"
+          ? {}
+          : {
+              "swarm.providerBindingMode": providerBindingMode,
+              "swarm.executionProviderId": PROVIDER_FREE_DETERMINISTIC_PROVIDER_ID,
+              "swarm.providerExecuted": "false"
+            })
       },
       verificationExecutionOwner: "host_only",
       observedUsageGovernor,
       signal: controller.signal,
       now,
+      nowMs,
       idFactory: childIdFactory(childRunId, createId)
     });
     const activeAttempt = {} as ActiveAttempt;
@@ -1443,7 +1581,11 @@ export async function runLiveSwarmWithDependencies(
     cleanup: SwarmCleanupRecord,
     preverifiedIntegrity?: ReceiptIntegritySummary
   ): Promise<void> {
-    const integrity = preverifiedIntegrity ?? await verifyChildReceipt(attempt);
+    await dependencies.prepareCompletionEvidence?.(attempt.childRunId);
+    const integrity = dependencies.prepareCompletionEvidence
+      ? await verifyChildReceipt(attempt)
+      : preverifiedIntegrity ?? await verifyChildReceipt(attempt);
+    await dependencies.rebindCandidateEvidence?.(attempt.childRunId, integrity);
     const receiptId = `receipt-${attempt.childRunId}`;
     const receipt = {
       receiptId,
@@ -1562,7 +1704,9 @@ export async function runLiveSwarmWithDependencies(
       if (!attempt.controller.signal.aborted) attempt.controller.abort(reason);
     }
     const completions = await Promise.all(attempts.map((attempt) => attempt.completion));
-    await Promise.all(completions.map((completion) => settleAttemptOnce(completion, true)));
+    const settlements = await Promise.allSettled(completions.map((completion) => settleAttemptOnce(completion, true)));
+    const failed = settlements.find((settlement): settlement is PromiseRejectedResult => settlement.status === "rejected");
+    if (failed) throw failed.reason;
     return record.outcome.state === "running" ? withTerminal(record, "stopped", reason, now()) : record;
   }
 
@@ -1651,9 +1795,95 @@ function assertRuntimeInput(input: RunLiveSwarmInput): void {
   if (!validation.ok) throw new Error("INVALID_LIVE_SWARM_PLAN");
   if (input.liveStore.plan.planHash !== input.plan.planHash) throw new Error("LIVE_PLAN_STORE_MISMATCH");
   if (input.workspaceManager.baselineCommit !== input.plan.baselineCommit) throw new Error("LIVE_BASELINE_MISMATCH");
+  assertProviderBindingMode(input.providerBindingMode, input.plan);
+}
+
+/**
+ * Provider-free evidence must say what actually ran. The plan keeps its legacy engine field, but the
+ * execution provider is the local deterministic adapter and no provider executed.
+ */
+function providerFreeIdentity(mode: SwarmProviderBindingMode): Record<string, string | boolean> {
+  return {
+    providerBindingMode: mode,
+    executionProviderId: PROVIDER_FREE_DETERMINISTIC_PROVIDER_ID,
+    providerExecuted: false
+  };
+}
+
+function assertProviderBindingMode(mode: unknown, plan: SwarmLivePlan): void {
+  if (mode === undefined || mode === "strict") return;
+  if (mode !== "provider_free_deterministic") {
+    throw new Error("LIVE_ENGINE_PROVIDER_MISMATCH: unknown provider binding mode.");
+  }
+  if (
+    plan.engine.model !== PROVIDER_FREE_DETERMINISTIC_MODEL
+    || plan.parentContract.budget.maxUsd !== 0
+    || plan.agents.some((agent) => agent.contract.budget.maxUsd !== 0)
+  ) {
+    throw new Error(
+      "LIVE_ENGINE_PROVIDER_MISMATCH: provider-free deterministic authority requires the deterministic model and a zero parent and child budget."
+    );
+  }
+}
+
+function assertAdapterProviderBinding(
+  mode: SwarmProviderBindingMode,
+  adapter: MartinAdapter,
+  plan: SwarmLivePlan
+): void {
+  if (mode === "provider_free_deterministic") {
+    if (
+      adapter.adapterId !== PROVIDER_FREE_DETERMINISTIC_ADAPTER_ID
+      || adapter.metadata.providerId !== PROVIDER_FREE_DETERMINISTIC_PROVIDER_ID
+      || adapter.metadata.model !== plan.engine.model
+      || adapter.metadata.capabilities?.workspaceMutations !== false
+    ) {
+      throw new Error(
+        "LIVE_ENGINE_PROVIDER_MISMATCH: provider-free deterministic authority admits only the local deterministic, non-mutating adapter bound to the plan model."
+      );
+    }
+    return;
+  }
+  if (adapter.metadata.providerId !== plan.engine.engine) {
+    throw new Error("LIVE_ENGINE_PROVIDER_MISMATCH: every child must use the parent-selected provider.");
+  }
+  if (adapter.metadata.model !== plan.engine.model) {
+    throw new Error("LIVE_ENGINE_MODEL_MISMATCH: every child must use the parent-selected model.");
+  }
+}
+
+/** Provider-free authority must never silently become provider-backed or mutating execution. */
+function guardProviderFreeAdapter(adapter: MartinAdapter): MartinAdapter {
+  const guarded = Object.create(adapter) as MartinAdapter;
+  guarded.execute = async (request) => {
+    const result = await adapter.execute(request);
+    const violation = providerFreeResultViolation(result);
+    if (violation) throw new Error(`PROVIDER_FREE_INVARIANT_VIOLATION: ${violation}.`);
+    return result;
+  };
+  return guarded;
+}
+
+function providerFreeResultViolation(result: Awaited<ReturnType<MartinAdapter["execute"]>>): string | undefined {
+  const usage = result.usage;
+  if (usage.actualUsd !== 0 || (usage.estimatedUsd ?? 0) !== 0) return "spend must be exactly zero";
+  if (usage.tokensIn !== 0 || usage.tokensOut !== 0) return "provider tokens must be exactly zero";
+  if ((usage.cachedInputTokens ?? 0) !== 0 || (usage.reasoningTokensOut ?? 0) !== 0) return "provider token detail must be zero";
+  if (usage.providerSettlement !== undefined) return "provider settlement must be absent";
+  const execution = result.execution;
+  if (execution) {
+    if ((execution.changedFiles?.length ?? 0) !== 0 || (execution.patch ?? "") !== "") return "workspace mutation must be absent";
+    const stats = execution.diffStats;
+    if (stats && (stats.filesChanged !== 0 || stats.addedLines !== 0 || stats.deletedLines !== 0)) {
+      return "workspace mutation must be absent";
+    }
+  }
+  return undefined;
 }
 
 class FileSwarmLiveRuntimeEvidenceStore implements SwarmLiveRuntimeEvidenceStore {
+  private readonly candidateIdsByChildRun = new Map<string, string>();
+
   constructor(private readonly root: string) {}
 
   async loadProcessClosure(childRunId: string): Promise<SwarmProcessClosureEvidence | undefined> {
@@ -1672,6 +1902,26 @@ class FileSwarmLiveRuntimeEvidenceStore implements SwarmLiveRuntimeEvidenceStore
       manifest: artifact.manifest.toString("base64"),
     });
     await writeExclusive(path, payload);
+    this.candidateIdsByChildRun.set(artifact.candidate.childRunId, artifact.candidate.candidateId);
+  }
+
+  async rebindCandidateReceiptForRecordedPathAuthority(
+    childRunId: string,
+    integrity: ReceiptIntegritySummary
+  ): Promise<void> {
+    const candidateId = this.candidateIdsByChildRun.get(childRunId);
+    if (!candidateId) return;
+    const artifact = await this.loadPersistedCandidate(candidateId);
+    if (!artifact || artifact.candidate.childRunId !== childRunId) {
+      throw codedRuntimeError("SWARM_CANDIDATE_REBIND_MISSING", "Recorded candidate artifact is missing its exact child binding.");
+    }
+    const rebound = rebindPersistedSwarmCandidateReceiptForTest(artifact, integrity);
+    const path = await this.resolvePath("candidates", candidateId);
+    await writeFile(path, JSON.stringify({
+      ...rebound,
+      patch: rebound.patch.toString("base64"),
+      manifest: rebound.manifest.toString("base64"),
+    }), "utf8");
   }
 
   async loadPersistedCandidate(candidateId: string): Promise<PersistedSwarmCandidateArtifact | undefined> {

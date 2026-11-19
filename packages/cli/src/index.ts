@@ -146,6 +146,19 @@ import {
   type OutcomesVerifyRequest,
 } from "./outcomes-command.js";
 import {
+  executeMissionCommand,
+  parseMissionCommandArguments,
+  type MissionOperatorPort,
+  type ParsedMissionCommand,
+} from "./mission-commands.js";
+import {
+  executeMemoryCommand,
+  parseMemoryCommandArguments,
+  type MemoryOperatorPort,
+  type ParsedMemoryCommand,
+} from "./memory-commands.js";
+import { createCoreOperatorPorts } from "./core-operator-ports.js";
+import {
   recordRunAndGetPrompt,
   retryQueuedIntake,
   readMilestoneState,
@@ -664,6 +677,8 @@ export type ParsedCliArguments =
   | SyncCommand
   | AuditCommand
   | DefaultCliSwarmCommand
+  | ParsedMissionCommand
+  | ParsedMemoryCommand
   | {
       command: "telemetry";
       action: "status" | "explain" | "on" | "off";
@@ -679,11 +694,17 @@ function prependStderr(
   return { ...result, stderr: sep };
 }
 
-export async function executeCli(args: string[]): Promise<{
+export interface OperatorCommandPorts {
+  mission?: MissionOperatorPort;
+  memory?: MemoryOperatorPort;
+}
+
+export async function executeCli(args: string[], operatorPorts?: OperatorCommandPorts): Promise<{
   exitCode: number;
   stdout: string;
   stderr: string;
 }> {
+  const effectiveOperatorPorts = operatorPorts ?? createCoreOperatorPorts();
   let outputMode: MartinOutputMode = "human";
   let executionVersionNotice = "";
 
@@ -854,6 +875,23 @@ export async function executeCli(args: string[]): Promise<{
         return await executeSwarmVerifyCommand(parsed.request, outputMode);
       case "swarm_share":
         return await executeSwarmShareCommand(parsed.request, outputMode);
+      case "mission_status":
+      case "mission_inspect":
+      case "mission_resume":
+      case "mission_pause":
+      case "mission_cancel":
+        if (!effectiveOperatorPorts.mission) {
+          throw new CliCommandError("environment", "Mission operator authority is unavailable in this runtime.");
+        }
+        return await executeMissionCommand(parsed, outputMode, effectiveOperatorPorts.mission);
+      case "memory_inspect":
+      case "memory_verify":
+      case "memory_candidates":
+      case "memory_revoke":
+        if (!effectiveOperatorPorts.memory) {
+          throw new CliCommandError("environment", "Memory operator authority is unavailable in this runtime.");
+        }
+        return await executeMemoryCommand(parsed, outputMode, effectiveOperatorPorts.memory);
       case "inspect":
         return await executeInspectCommand(parsed, outputMode);
       case "resume":
@@ -1019,12 +1057,12 @@ const KNOWN_LONG_OPTIONS = new Set([
   "--contract", "--cwd", "--days", "--deny-path", "--dir", "--disposition", "--dry-run", "--engine",
   "--event", "--execute", "--execution-profile", "--expected-contract-sha256", "--experimental-remote-hosts",
   "--fallback-engine", "--file", "--files", "--filter", "--force", "--format", "--governed", "--help",
-  "--host", "--id", "--install-governance", "--json", "--latest", "--lifecycle-state", "--limit", "--live",
-  "--loop-id", "--max-iterations", "--max-tokens", "--metadata", "--model", "--objective", "--offline",
+  "--host", "--host-approval", "--id", "--install-governance", "--json", "--latest", "--lifecycle-state", "--limit", "--live",
+  "--loop-id", "--max-iterations", "--max-tokens", "--memory-id", "--metadata", "--mission-id", "--model", "--objective", "--offline",
   "--out-dir", "--platform", "--policy", "--profile", "--project", "--proof", "--provider-execution-timeout-ms",
   "--quiet", "--reason", "--remote-token-env", "--remote-url", "--run-scan-limit", "--runs", "--runs-dir",
   "--scenario", "--scope", "--share", "--soft-limit-usd", "--status", "--suite", "--swarm", "--swarm-id",
-  "--telemetry", "--title", "--transport", "--unsafe-allow-unguarded-run", "--updated-after", "--verify",
+  "--state", "--telemetry", "--title", "--transport", "--unsafe-allow-unguarded-run", "--updated-after", "--verify",
   "--verify-only", "--verify-timeout-ms", "--version", "--watch", "--workspace",
 ]);
 
@@ -1070,6 +1108,14 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
       )
     ) return { command: "help" };
     return parseSwarmCommandArguments(rest);
+  }
+
+  if (command === "mission") {
+    return parseMissionCommandArguments(rest);
+  }
+
+  if (command === "memory") {
+    return parseMemoryCommandArguments(rest);
   }
 
   if (command === "run" || command === "preflight") {
@@ -1723,6 +1769,8 @@ const COMMAND_HELP_TOP_LEVEL = new Set([
   "sync",
   "demo",
   "swarm",
+  "mission",
+  "memory",
   "inspect",
   "resume",
   "continue",
@@ -1758,6 +1806,8 @@ const COMMAND_HELP_SUBCOMMANDS: Readonly<Record<string, ReadonlySet<string>>> = 
   runs: new Set(["list", "get", "attempt", "verify"]),
   mcp: new Set(["print-config", "install", "verify-install", "rollback", "uninstall"]),
   swarm: new Set(["plan", "run", "status", "inspect", "cancel", "dossier", "verify", "share"]),
+  mission: new Set(["status", "inspect", "resume", "pause", "cancel"]),
+  memory: new Set(["inspect", "verify", "candidates", "revoke"]),
   receipts: new Set(["explain"]),
   outcomes: new Set(["verify"]),
   phase: new Set(["session-start", "status", "contract", "preflight", "run"]),
@@ -1833,6 +1883,7 @@ function renderCommandHelp(subject: string[]): string {
     ? usageLines
     : [`  ${canonicalSubject} [options]`];
 
+  const embeddedHostOnly = subjectText === "mission pause" || subjectText === "mission cancel" || subjectText === "memory revoke";
   return [
     "Martin Loop CLI",
     CLI_TAGLINE_LINE,
@@ -1842,6 +1893,10 @@ function renderCommandHelp(subject: string[]): string {
     "",
     "Usage:",
     ...renderedUsage,
+    ...(embeddedHostOnly ? [
+      "",
+      "Availability: embedded host only; the standalone binary has no approval authority for this mutation.",
+    ] : []),
     ...(subjectText === "clean" ? ["", CLEAN_SAME_USER_MUTATION_BOUNDARY] : []),
     "",
     "Help only: no command was executed or state changed.",
@@ -1893,6 +1948,12 @@ export function renderCliHelp(): string {
     "  martin swarm dossier (--id <id> | --latest) [--runs-dir <path>]",
     "  martin swarm verify (--id <id> | --latest) [--runs-dir <path>]",
     "  martin swarm share (--id <id> | --latest) --out-dir <path> [--runs-dir <path>]",
+    "  martin mission status (--mission-id <id> | --latest) [--runs-dir <path>]",
+    "  martin mission inspect (--mission-id <id> | --latest) [--runs-dir <path>]",
+    "  martin mission resume (--mission-id <id> | --latest) [--runs-dir <path>]",
+    "  martin memory inspect (--memory-id <id> | --latest) [--runs-dir <path>]",
+    "  martin memory verify (--memory-id <id> | --latest) [--runs-dir <path>]",
+    "  martin memory candidates [--state <state>] [--runs-dir <path>]",
     "  martin inspect --file <path>",
     "  martin-loop inspect --file <path>        (published alias)",
     "  martin resume <loopId>",
@@ -1929,6 +1990,9 @@ export function renderCliHelp(): string {
     "  swarm dossier Inspect sealed persisted evidence with parent integrity and task truth kept separate.",
     "  swarm verify  Independently verify the selected sealed persisted swarm evidence.",
     "  swarm share   Write three proof artifacts from eligible sealed persisted swarm evidence.",
+    "  mission status|inspect  Read exact persisted mission lifecycle, budget, candidate, and verification authority.",
+    "  mission resume  Report exact persisted resume posture; only an embedded active supervisor host can advance it.",
+    "  memory inspect|verify|candidates  Read exact persisted memory authority without promoting candidates.",
     "  triage       Rank persisted runs that need attention first.",
     "  dossier      Produce a structured dossier for one persisted run.",
     "  runs list    List persisted loops with shared filters.",

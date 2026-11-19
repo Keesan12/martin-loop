@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { access, appendFile, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { access, appendFile, mkdir, mkdtemp, open, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -20,12 +20,13 @@ import type { MartinAdapter, MartinAdapterRequest } from "../src/index";
 import {
   isAuthoritativeLiveSwarmVerified,
   readSwarmReceiptProjection,
-  runProductionLiveSwarm,
+  runProductionLiveSwarm as runProductionLiveSwarmRaw,
   runLiveSwarm,
   runLiveSwarmWithDependencies,
   sameCanonicalSwarmEvent,
   verifySwarmReceiptProjection,
-  type RunLiveSwarmInput
+  type RunLiveSwarmInput,
+  type RunProductionLiveSwarmInput
 } from "../src/swarm/live-runtime";
 import { readSwarmOperationalState } from "../src/swarm/operations";
 import { createSwarmLiveStore } from "../src/swarm/live-store";
@@ -33,6 +34,35 @@ import { createSwarmLiveStore } from "../src/swarm/live-store";
 let scratchRoot: string;
 let previousIntegrityKeyDir: string | undefined;
 const execFileAsync = promisify(execFile);
+const activeProductionRuns = new Set<{
+  readonly controller: AbortController;
+  readonly promise: ReturnType<typeof runProductionLiveSwarmRaw>;
+}>();
+
+function runProductionLiveSwarm(input: RunProductionLiveSwarmInput) {
+  const controller = new AbortController();
+  const relayAbort = () => controller.abort(input.signal?.reason);
+  if (input.signal?.aborted) relayAbort();
+  else input.signal?.addEventListener("abort", relayAbort, { once: true });
+
+  const promise = runProductionLiveSwarmRaw({ ...input, signal: controller.signal });
+  const activeRun = { controller, promise };
+  activeProductionRuns.add(activeRun);
+  const release = () => {
+    input.signal?.removeEventListener("abort", relayAbort);
+    activeProductionRuns.delete(activeRun);
+  };
+  void promise.then(release, release);
+  return promise;
+}
+
+async function settleActiveProductionRuns(): Promise<void> {
+  const pending = [...activeProductionRuns];
+  for (const run of pending) {
+    run.controller.abort(new Error("test_teardown"));
+  }
+  await Promise.allSettled(pending.map((run) => run.promise));
+}
 
 beforeEach(async () => {
   scratchRoot = await mkdtemp(join(tmpdir(), "martin-live-swarm-"));
@@ -41,6 +71,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  await settleActiveProductionRuns();
   if (previousIntegrityKeyDir === undefined) delete process.env.MARTIN_INTEGRITY_KEY_DIR;
   else process.env.MARTIN_INTEGRITY_KEY_DIR = previousIntegrityKeyDir;
   await rm(scratchRoot, { recursive: true, force: true });
@@ -206,6 +237,48 @@ describe("runLiveSwarm", () => {
       vi.useRealTimers();
     }
   });
+
+  it("aborts and awaits still-running children before the runtime rejects on an internal failure", async () => {
+    const fixture = createFixture(createPlan([task("task-a"), task("task-b")], { maxConcurrency: 2 }));
+    const live = fixture.input.liveStore as any;
+    const originalAppend = live.append.bind(live);
+    let failAppends = false;
+    live.append = async (...args: unknown[]) => {
+      if (failAppends) throw new Error("injected append failure");
+      return originalAppend(...args);
+    };
+    const started = new Map([["task-a", deferred<void>()], ["task-b", deferred<void>()]]);
+    const gateA = deferred<void>();
+    let siblingSawAbort = false;
+    let siblingSettled = false;
+    fixture.input.adapterFactory = ({ task: assigned }) => ({
+      ...passAdapter("gpt-test"),
+      async execute(request) {
+        started.get(assigned.taskId)?.resolve(undefined);
+        if (assigned.taskId === "task-a") {
+          await gateA.promise;
+          return passedAdapterResult(request);
+        }
+        await new Promise<void>((resolveAborted) => {
+          if (request.signal?.aborted) resolveAborted();
+          else request.signal?.addEventListener("abort", () => resolveAborted(), { once: true });
+        });
+        siblingSawAbort = request.signal?.aborted === true;
+        siblingSettled = true;
+        return failedAdapterResult();
+      },
+    });
+
+    const run = runLiveSwarmWithDependencies(fixture.input, fixture.dependencies);
+    const outcome = run.then(() => undefined, (error: unknown) => error);
+    await Promise.all([started.get("task-a")!.promise, started.get("task-b")!.promise]);
+    failAppends = true;
+    gateA.resolve(undefined);
+
+    await expect(outcome).resolves.toMatchObject({ message: "injected append failure" });
+    expect(siblingSawAbort).toBe(true);
+    expect(siblingSettled).toBe(true);
+  }, 30_000);
 
   it("uses completion events to bound N children by maxConcurrency", async () => {
     const plan = createPlan([
@@ -1363,6 +1436,183 @@ describe("runLiveSwarm", () => {
     expect(publicCore).not.toHaveProperty("buildParentSwarmReceipt");
     expect(publicCore).not.toHaveProperty("writeSwarmReceiptIntegrityMaterial");
   });
+
+  it("keeps chronology, ID, and recorded-path authority out of production input", async () => {
+    type ForbiddenAuthorityKey = Extract<
+      keyof RunProductionLiveSwarmInput,
+      "now" | "nowMs" | "random" | "createId" | "createCleanupId" | "recordedRunsRoot"
+    >;
+    const compileTimeClosedSurface: Record<ForbiddenAuthorityKey, never> = {};
+    expect(compileTimeClosedSurface).toEqual({});
+
+    await expect(runProductionLiveSwarmRaw({
+      now: () => "2026-10-03T12:00:00.000Z",
+      nowMs: () => 0,
+      random: () => 0,
+      createId: () => "forged-id",
+      createCleanupId: () => "forged-cleanup-id",
+      recordedRunsRoot: join(scratchRoot, "forged-recorded-root"),
+    } as unknown as RunProductionLiveSwarmInput)).rejects.toMatchObject({
+      code: "LIVE_SWARM_AUTHORITY_OVERRIDE_FORBIDDEN",
+    });
+  });
+
+  it("aborts and settles an in-flight production run before test scratch teardown", async () => {
+    const fixture = await createProductionFixture("teardown-in-flight");
+    let markAdapterStarted!: () => void;
+    const adapterStarted = new Promise<void>((resolveStarted) => {
+      markAdapterStarted = resolveStarted;
+    });
+    const running = runProductionLiveSwarm(productionInput(fixture, ({ engine }) => ({
+      ...passAdapter(engine.model),
+      async execute(request) {
+        markAdapterStarted();
+        await new Promise<void>((resolveAborted) => {
+          if (request.signal?.aborted) resolveAborted();
+          else request.signal?.addEventListener("abort", () => resolveAborted(), { once: true });
+        });
+        return failedAdapterResult();
+      }
+    })));
+
+    await adapterStarted;
+    await settleActiveProductionRuns();
+
+    await expect(running).resolves.toBeDefined();
+    expect(activeProductionRuns).toHaveLength(0);
+    await expect(rm(scratchRoot, { recursive: true, force: true })).resolves.toBeUndefined();
+  });
+
+  it("aborts and settles an in-flight global verifier before scratch teardown", async () => {
+    const fixture = await createProductionFixture("teardown-verifier");
+    let markVerifierStarted!: () => void;
+    const verifierStarted = new Promise<void>((resolveStarted) => { markVerifierStarted = resolveStarted; });
+    let verifierSawAbort = false;
+    let verifierSettled = false;
+    const input = productionInput(fixture, ({ engine }) => passAdapter(engine.model));
+    input.verifierExecutor = {
+      async execute(request: any) {
+        markVerifierStarted();
+        await new Promise<void>((resolveAborted) => {
+          if (request.signal.aborted) resolveAborted();
+          else request.signal.addEventListener("abort", () => resolveAborted(), { once: true });
+        });
+        verifierSawAbort = request.signal.aborted;
+        verifierSettled = true;
+        return {
+          passed: false,
+          processCloseState: "closed" as const,
+          binding: {
+            swarmId: request.swarmId,
+            workspaceId: request.workspaceId,
+            cwd: request.cwd,
+            parentPolicyVersion: request.parentPolicyVersion,
+            baselineCommit: request.baselineCommit,
+            integratedTreeHash: request.integratedTreeHash,
+            commands: request.commands.map((step: any) => step.command)
+          },
+          subprocessResults: []
+        };
+      }
+    } as any;
+    const running = runProductionLiveSwarm(input);
+
+    await verifierStarted;
+    await settleActiveProductionRuns();
+    const [outcome] = await Promise.allSettled([running]);
+
+    expect(outcome.status).toBeDefined();
+    expect(verifierSawAbort).toBe(true);
+    expect(verifierSettled).toBe(true);
+    expect(activeProductionRuns).toHaveLength(0);
+    await expect(rm(scratchRoot, { recursive: true, force: true })).resolves.toBeUndefined();
+  }, 60_000);
+
+  it("holds an owned write open until cancellation, then closes it before workspace removal", async () => {
+    const fixture = await createProductionFixture("teardown-write");
+    let markWriteOpen!: () => void;
+    const writeOpen = new Promise<void>((resolveOpen) => { markWriteOpen = resolveOpen; });
+    let heldPath = "";
+    let handleClosed = false;
+    const running = runProductionLiveSwarm(productionInput(fixture, ({ engine, workspace }) => ({
+      ...passAdapter(engine.model),
+      async execute(request) {
+        heldPath = join(workspace.path, "held-write.txt");
+        const handle = await open(heldPath, "w");
+        try {
+          await handle.write("partial\n");
+          markWriteOpen();
+          await new Promise<void>((resolveAborted) => {
+            if (request.signal?.aborted) resolveAborted();
+            else request.signal?.addEventListener("abort", () => resolveAborted(), { once: true });
+          });
+        } finally {
+          await handle.close();
+          handleClosed = true;
+        }
+        return failedAdapterResult();
+      }
+    })));
+
+    await writeOpen;
+    await settleActiveProductionRuns();
+    const result = await running;
+
+    expect(handleClosed).toBe(true);
+    expect(heldPath).not.toBe("");
+    expect(result.outcome.state).not.toBe("verified");
+    expect(result.record.events.some((event) => event.type === "CHILD_PATCH_ADMITTED")).toBe(false);
+    expect(activeProductionRuns).toHaveLength(0);
+    await expect(rm(scratchRoot, { recursive: true, force: true })).resolves.toBeUndefined();
+  }, 60_000);
+
+  it("preserves a runtime rejection while teardown starts and still removes scratch", async () => {
+    const fixture = await createProductionFixture("teardown-reject");
+    const mismatched = createSwarmLivePlan({
+      ...fixture.plan,
+      baselineCommit: "0".repeat(40),
+    });
+    const running = runProductionLiveSwarm({ ...productionInput(fixture, ({ engine }) => passAdapter(engine.model)), plan: mismatched });
+    const rejection = running.then(() => undefined, (error: unknown) => error);
+
+    await expect(settleActiveProductionRuns()).resolves.toBeUndefined();
+    const original = await rejection;
+
+    expect(original).toMatchObject({ code: expect.stringMatching(/BASELINE|LIVE_PLAN/) });
+    expect(activeProductionRuns).toHaveLength(0);
+    await expect(rm(scratchRoot, { recursive: true, force: true })).resolves.toBeUndefined();
+  }, 60_000);
+
+  it("isolates three concurrent production lifecycles onto distinct roots with no ghost worktrees", async () => {
+    const fixtures = await Promise.all(["iso-a", "iso-b", "iso-c"].map((name) => createProductionFixture(name)));
+    const observed = fixtures.map(() => new Set<string>());
+    const results = await Promise.all(fixtures.map((fixture, index) => {
+      const input = productionInput(fixture, ({ engine, workspace }) => ({
+        ...passAdapter(engine.model),
+        async execute(request) {
+          observed[index]!.add(workspace.path);
+          return passedAdapterResult(request);
+        }
+      }));
+      input.verifierExecutor = passingVerifierExecutor() as any;
+      return runProductionLiveSwarm(input);
+    }));
+
+    const roots = fixtures.map((fixture) => join(fixture.runsRoot, "_swarms", fixture.plan.swarmId, "worktrees"));
+    expect(new Set(roots).size).toBe(3);
+    expect(new Set(fixtures.map((fixture) => fixture.plan.swarmId)).size).toBe(3);
+    const allWorkspaces = observed.flatMap((paths) => [...paths]);
+    expect(allWorkspaces).toHaveLength(3);
+    expect(new Set(allWorkspaces).size).toBe(3);
+    allWorkspaces.forEach((path, index) => expect(path.startsWith(roots[index]!)).toBe(true));
+    for (const result of results) expect(result.outcome.state).toBe("verified");
+    for (const fixture of fixtures) {
+      const listed = await git(fixture.canonicalRoot, ["worktree", "list", "--porcelain"]);
+      expect(listed.split("\n").filter((line) => line.startsWith("worktree "))).toHaveLength(1);
+    }
+    for (const path of allWorkspaces) await expect(access(path)).rejects.toMatchObject({ code: "ENOENT" });
+    for (const root of roots) await expect(rm(root, { recursive: true, force: true })).resolves.toBeUndefined();
+  }, 120_000);
 
   it("production composition constructs durable Core authority internally and never synthesizes parent verification", async () => {
     const canonicalRoot = join(scratchRoot, "production-repo");

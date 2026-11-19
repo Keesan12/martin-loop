@@ -1,6 +1,6 @@
 {
   "schemaVersion": "1.0.0",
-  "cliVersion": "0.9.0",
-  "mcpVersion": "0.9.0",
+  "cliVersion": "0.10.0",
+  "mcpVersion": "0.10.0",
   "failureClassCount": 13
 }

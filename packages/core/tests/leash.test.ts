@@ -4,6 +4,7 @@ import {
   classifyFailure,
   compilePromptPacket,
   evaluateChangeApprovalLeash,
+  deniesAllWritablePaths,
   evaluateFilesystemLeash,
   evaluateVerificationLeash,
   resolveExecutionProfile
@@ -125,6 +126,19 @@ describe("classifyFailure repo grounding", () => {
 });
 
 describe("evaluateFilesystemLeash", () => {
+  it.each([
+    ["**/*"],
+    ["**"],
+    ["./**/*"],
+    [".\\**\\*"]
+  ])("recognizes %s as a global deny policy", (pattern) => {
+    expect(deniesAllWritablePaths([pattern])).toBe(true);
+  });
+
+  it("does not mistake an ordinary subtree denial for a global deny policy", () => {
+    expect(deniesAllWritablePaths(["docs/**"])).toBe(false);
+  });
+
   it("blocks touched files outside the allowed paths", () => {
     const decision = evaluateFilesystemLeash({
       repoRoot: "/repo",

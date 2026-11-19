@@ -444,20 +444,26 @@ describe("swarm live operational store", () => {
     }), "utf8");
     await writeFile(store.paths().events, '{"forged":"derived-journal"}\n', "utf8");
     await writeFile(store.paths().snapshot, '{"forged":"derived-snapshot"}\n', "utf8");
-    const readyPath = join(rootDir, "reclaim-ready.txt");
     const goPath = join(rootDir, "reclaim-go.txt");
 
     const children = ["first", "second"].map((label) => runIndependentReclaimer({
       rootDir,
       swarmId: plan.swarmId,
-      readyPath,
       goPath,
       label,
       expectedRevision: eventCount
     }));
-    await waitForReadyChildren(readyPath, 2);
-    await writeFile(goPath, "go", "utf8");
-    const results = await Promise.all(children);
+    const results = await (async () => {
+      try {
+        await Promise.all(children.map((child) => child.ready));
+        await writeFile(goPath, "go", "utf8");
+        return await Promise.all(children.map((child) => child.result));
+      } finally {
+        await writeFile(goPath, "go", "utf8").catch(() => {});
+        for (const child of children) child.terminate();
+        await Promise.allSettled(children.map((child) => child.result));
+      }
+    })();
 
     expect(results.filter((result) => result.status === "success")).toHaveLength(1);
     expect(results.every((result) => result.opened)).toBe(true);
@@ -731,20 +737,25 @@ interface IndependentReclaimerResult {
   stderr?: string;
 }
 
-async function runIndependentReclaimer(input: {
+interface IndependentReclaimerHandle {
+  ready: Promise<void>;
+  result: Promise<IndependentReclaimerResult>;
+  terminate(): void;
+}
+
+function runIndependentReclaimer(input: {
   rootDir: string;
   swarmId: string;
-  readyPath: string;
   goPath: string;
   label: string;
   expectedRevision: number;
-}): Promise<IndependentReclaimerResult> {
+}): IndependentReclaimerHandle {
   const moduleUrl = new URL("../src/swarm/live-store.ts", import.meta.url).href;
   const tsconfigPath = fileURLToPath(new URL("../tsconfig.json", import.meta.url));
   const script = `
-    import { appendFile, readFile } from "node:fs/promises";
+    import { readFile } from "node:fs/promises";
     const { openSwarmLiveStore } = await import(process.env.STORE_MODULE_URL);
-    await appendFile(process.env.READY_PATH, process.env.LABEL + "\\n", "utf8");
+    console.log("READY:" + process.env.LABEL);
     while (!(await readFile(process.env.GO_PATH).then(() => true).catch(() => false))) {
       await new Promise((resolve) => setTimeout(resolve, 2));
     }
@@ -765,30 +776,48 @@ async function runIndependentReclaimer(input: {
       console.log("RESULT:" + JSON.stringify({ status: "error", opened, code: error?.code ?? "UNKNOWN" }));
     }
   `;
-  return new Promise<IndependentReclaimerResult>((resolvePromise, rejectPromise) => {
-    const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], {
-      cwd: fileURLToPath(new URL("../../..", import.meta.url)),
-      env: {
-        ...process.env,
-        TSX_TSCONFIG_PATH: tsconfigPath,
-        STORE_MODULE_URL: moduleUrl,
-        ROOT_DIR: input.rootDir,
-        SWARM_ID: input.swarmId,
-        READY_PATH: input.readyPath,
-        GO_PATH: input.goPath,
-        LABEL: input.label,
-        EXPECTED_REVISION: String(input.expectedRevision)
-      },
-      stdio: ["ignore", "pipe", "pipe"]
+  const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", script], {
+    cwd: fileURLToPath(new URL("../../..", import.meta.url)),
+    env: {
+      ...process.env,
+      TSX_TSCONFIG_PATH: tsconfigPath,
+      STORE_MODULE_URL: moduleUrl,
+      ROOT_DIR: input.rootDir,
+      SWARM_ID: input.swarmId,
+      GO_PATH: input.goPath,
+      LABEL: input.label,
+      EXPECTED_REVISION: String(input.expectedRevision)
+    },
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  let stdout = "";
+  let stderr = "";
+  let readySeen = false;
+  let resolveReady!: () => void;
+  let rejectReady!: (error: Error) => void;
+  const ready = new Promise<void>((resolvePromise, rejectPromise) => {
+    resolveReady = resolvePromise;
+    rejectReady = rejectPromise;
+  });
+  child.stdout.setEncoding("utf8");
+  child.stderr.setEncoding("utf8");
+  child.stdout.on("data", (chunk: string) => {
+    stdout += chunk;
+    if (!readySeen && stdout.split(/\r?\n/u).some((line) => line === `READY:${input.label}`)) {
+      readySeen = true;
+      resolveReady();
+    }
+  });
+  child.stderr.on("data", (chunk: string) => { stderr += chunk; });
+  const result = new Promise<IndependentReclaimerResult>((resolvePromise, rejectPromise) => {
+    child.once("error", (error) => {
+      if (!readySeen) rejectReady(error);
+      rejectPromise(error);
     });
-    let stdout = "";
-    let stderr = "";
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
-    child.stdout.on("data", (chunk: string) => { stdout += chunk; });
-    child.stderr.on("data", (chunk: string) => { stderr += chunk; });
-    child.once("error", rejectPromise);
     child.once("exit", () => {
+      if (!readySeen) {
+        rejectReady(new Error(`Independent reclaimer exited before readiness: ${stderr || stdout}`));
+      }
       const line = stdout.split(/\r?\n/u).find((candidate) => candidate.startsWith("RESULT:"));
       if (!line) {
         rejectPromise(new Error(`Independent reclaimer did not report a result: ${stderr || stdout}`));
@@ -797,14 +826,11 @@ async function runIndependentReclaimer(input: {
       resolvePromise({ ...JSON.parse(line.slice("RESULT:".length)), stderr } as IndependentReclaimerResult);
     });
   });
-}
-
-async function waitForReadyChildren(path: string, count: number): Promise<void> {
-  const deadline = Date.now() + 10_000;
-  while (Date.now() < deadline) {
-    const ready = await readFile(path, "utf8").catch(() => "");
-    if (ready.split(/\r?\n/u).filter(Boolean).length >= count) return;
-    await new Promise((resolvePromise) => setTimeout(resolvePromise, 5));
-  }
-  throw new Error("Independent reclaimers did not reach the start barrier.");
+  return {
+    ready,
+    result,
+    terminate() {
+      if (child.exitCode === null && child.signalCode === null) child.kill();
+    }
+  };
 }

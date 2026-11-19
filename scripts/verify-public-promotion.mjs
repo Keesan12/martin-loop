@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { SURFACE_SCHEMA, compareSurface, hashSurface, listSurfaceEntries, surfaceSpecHash, validatePublicSurfaceEntries } from "./lib/public-release-surface.mjs";
+import { scanPromotedSourceChanges } from "./public-source-copy-scan.mjs";
 
 const ROOT = process.cwd();
 const MANIFEST_PATH = resolve(ROOT, ".martin", "promotion-manifest.json");
@@ -32,6 +33,13 @@ if (hashSurface(manifest.publicSurfaceEntries) !== manifest.publicSurfaceHash) f
 if (!Number.isSafeInteger(manifest.reviewedDivergencesCount) || manifest.reviewedDivergencesCount < 0) fail("reviewedDivergencesCount must be a non-negative safe integer");
 if (typeof manifest.reviewedDivergencesHash !== "string" || !/^[a-f0-9]{64}$/u.test(manifest.reviewedDivergencesHash)) fail("reviewedDivergencesHash is required");
 
+let sourceScan;
+try {
+  sourceScan = scanPromotedSourceChanges(ROOT, { manifest, required: true });
+} catch (error) {
+  fail(error instanceof Error ? error.message : "promoted source-copy scan failed");
+}
+
 try {
   const markers = execFileSync("git", ["grep", "-n", "-E", "^(<<<<<<<|=======|>>>>>>>)", "--", "."], { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
   if (markers.trim()) fail(`merge-conflict markers found:\n${markers.trim()}`);
@@ -50,4 +58,4 @@ if (!comparison.matches) {
   const details = [comparison.missing.length && `missing: ${comparison.missing.join(", ")}`, comparison.extra.length && `unreviewed extra: ${comparison.extra.join(", ")}`, comparison.changed.length && `content mismatch: ${comparison.changed.join(", ")}`].filter(Boolean).join("; ");
   fail(`public surface differs from validated private surface (${details})`);
 }
-console.log(`[public-promotion-guard] PASS entries=${actual.length} private=${manifest.privateMainShaValidated} publicBase=${manifest.publicBaseSha}`);
+console.log(`[public-promotion-guard] PASS entries=${actual.length} sourceFiles=${sourceScan.checkedSourceFiles} sourceAdditions=${sourceScan.checkedSourceAdditions} private=${manifest.privateMainShaValidated} publicBase=${manifest.publicBaseSha}`);

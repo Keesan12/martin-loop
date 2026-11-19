@@ -3,12 +3,14 @@ import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 
+import { resolveProviderPricing } from "@martin/adapters";
+
 const AUDIT_VERSION = "0.1.0";
 const VERIFY_RE = /\b(npm|pnpm|yarn|bun)\s+(run\s+)?(test|lint|typecheck|type-check|check|build|verify)\b|\b(npx\s+)?(jest|vitest|mocha|ava|playwright\s+test|cypress\s+run|tsc|eslint)\b|\bpytest\b|\bpython\d?\s+-m\s+(pytest|unittest)\b|\bgo\s+(test|vet|build)\b|\bcargo\s+(test|build|check|clippy)\b|\bmvn\s+(test|verify)\b|\bgradle\w*\s+test\b|\bmake\s+(test|check)\b|\brspec\b|\bphpunit\b|\bdotnet\s+test\b|\bruff\b|\bmypy\b/u;
 const EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
 
 type OutputMode = "human" | "json" | "quiet";
-type PriceTuple = readonly [number, number, number, number];
+type PriceTuple = readonly [number, number, number, number, number];
 type AuditOptions = {
   days?: number;
   project?: string;
@@ -25,7 +27,7 @@ type PriceRecord = {
   cache_creation_input_token_cost?: number;
 };
 type Turn = { usd: number; priced: boolean };
-type AuditEvent = { kind: "turn"; usd: number } | { kind: "verify"; cmd: string; failed: boolean };
+type AuditEvent = { kind: "turn"; usd: number; priced: boolean } | { kind: "verify"; cmd: string; failed: boolean };
 type Session = {
   id: string;
   project: string;
@@ -52,6 +54,8 @@ type Score = {
   edits: number;
   endedRed: boolean;
   unverified: boolean;
+  unpricedTurns: number;
+  loopCostComplete: boolean;
 };
 type Summary = {
   tool: "martinloop-audit";
@@ -69,21 +73,10 @@ type Summary = {
   stuckLoops: number;
   sessionsEndedOnRed: number;
   sessionsEditedWithoutVerifier: number;
-  pricing: "LiteLLM public prices" | "bundled prices";
+  pricing: "official provider catalog" | "official provider catalog + LiteLLM fallback";
+  unpricedTurns: number;
+  loopCostStatus: "complete" | "lower_bound";
   costNote: string;
-};
-
-const FALLBACK: Readonly<Record<string, PriceTuple>> = {
-  "opus-5-5": [4e-6, 20e-6, 0.2e-6, 5e-6],
-  "opus-5": [5e-6, 25e-6, 0.5e-6, 6.25e-6],
-  "opus-4-5": [5e-6, 25e-6, 0.5e-6, 6.25e-6],
-  "opus-4": [15e-6, 75e-6, 1.5e-6, 18.75e-6],
-  "sonnet-5": [2e-6, 10e-6, 0.2e-6, 2.5e-6],
-  "sonnet-4-6": [3e-6, 15e-6, 0.3e-6, 3.75e-6],
-  "sonnet-4-5": [3e-6, 15e-6, 0.3e-6, 3.75e-6],
-  "sonnet-4": [3e-6, 15e-6, 0.3e-6, 3.75e-6],
-  "haiku-4-5": [1e-6, 5e-6, 0.1e-6, 1.25e-6],
-  "haiku": [0.8e-6, 4e-6, 0.08e-6, 1e-6],
 };
 
 const HELP = [
@@ -97,39 +90,80 @@ const HELP = [
   "  --dir <path>      Claude Code config dir (default: ~/.claude and ~/.config/claude)",
   "  --json            Machine-readable output",
   "  --share           Write loop-tax-card.svg and loop-tax.md to the current directory",
-  "  --offline         Use bundled prices only; make no pricing request",
+  "  --offline         Use the official provider catalog only; make no pricing request",
   "",
   "Session data is read and analyzed locally. By default MartinLoop may fetch the",
   "public LiteLLM model-price list; no session contents are sent. Use --offline for",
   "zero network access.",
 ].join("\n");
 
-function priceFor(model: string, live: Record<string, PriceRecord>): PriceTuple | null {
-  const normalized = model.replace(/-\d{8}$/u, "");
-  const record = live[model] ?? live[normalized];
-  if (record?.input_cost_per_token !== undefined) {
-    const input = record.input_cost_per_token;
+function priceFor(model: string, inputTokens: number, live: Record<string, PriceRecord>): PriceTuple | null {
+  const resolved = resolveProviderPricing(model, { provider: "anthropic", inputTokens });
+  const catalogRates = resolved.pricing?.ratesPerMillion;
+  const activeCacheWriteRates = Object.values(catalogRates?.cacheWrite ?? {}).filter((rate): rate is number => rate !== undefined);
+  const conservativeCacheWrite = activeCacheWriteRates.length === 0 ? undefined : Math.max(...activeCacheWriteRates);
+  if (
+    catalogRates !== undefined &&
+    catalogRates.cachedInput !== undefined &&
+    conservativeCacheWrite !== undefined
+  ) {
     return [
-      input,
-      record.output_cost_per_token ?? 0,
-      record.cache_read_input_token_cost ?? input * 0.1,
-      record.cache_creation_input_token_cost ?? input * 1.25,
+      catalogRates.input / 1_000_000,
+      catalogRates.output / 1_000_000,
+      catalogRates.cachedInput / 1_000_000,
+      (catalogRates.cacheWrite?.["5m"] ?? conservativeCacheWrite) / 1_000_000,
+      (catalogRates.cacheWrite?.["1h"] ?? conservativeCacheWrite) / 1_000_000,
     ];
   }
-  const key = Object.keys(FALLBACK).sort((a, b) => b.length - a.length).find((candidate) => normalized.includes(candidate));
-  return key === undefined ? null : FALLBACK[key] ?? null;
+
+  const normalized = model.replace(/-\d{8}$/u, "");
+  const record = live[model] ?? live[normalized];
+  if (
+    record?.input_cost_per_token !== undefined &&
+    record.output_cost_per_token !== undefined &&
+    record.cache_read_input_token_cost !== undefined &&
+    record.cache_creation_input_token_cost !== undefined
+  ) {
+    return [
+      record.input_cost_per_token,
+      record.output_cost_per_token,
+      record.cache_read_input_token_cost,
+      record.cache_creation_input_token_cost,
+      record.cache_creation_input_token_cost,
+    ];
+  }
+  return null;
 }
 
 function usageCost(model: string, usage: Record<string, unknown>, live: Record<string, PriceRecord>): Turn {
-  const price = priceFor(model, live);
-  if (price === null) return { usd: 0, priced: false };
   const n = (key: string): number => typeof usage[key] === "number" ? Number(usage[key]) : 0;
+  const rawCacheCreation = usage["cache_creation"];
+  const cacheCreation = rawCacheCreation !== null && typeof rawCacheCreation === "object"
+    ? rawCacheCreation as Record<string, unknown>
+    : {};
+  const cacheWrite5m = typeof cacheCreation["ephemeral_5m_input_tokens"] === "number"
+    ? Number(cacheCreation["ephemeral_5m_input_tokens"])
+    : 0;
+  const cacheWrite1h = typeof cacheCreation["ephemeral_1h_input_tokens"] === "number"
+    ? Number(cacheCreation["ephemeral_1h_input_tokens"])
+    : 0;
+  const cacheWriteAggregate = n("cache_creation_input_tokens");
+  const detailedCacheWrite = cacheWrite5m + cacheWrite1h;
+  const unspecifiedCacheWrite = Math.max(0, cacheWriteAggregate - detailedCacheWrite);
+  const price = priceFor(
+    model,
+    n("input_tokens") + n("cache_read_input_tokens") + Math.max(cacheWriteAggregate, detailedCacheWrite),
+    live,
+  );
+  if (price === null) return { usd: 0, priced: false };
   return {
     usd:
       n("input_tokens") * price[0] +
       n("output_tokens") * price[1] +
       n("cache_read_input_tokens") * price[2] +
-      n("cache_creation_input_tokens") * price[3],
+      cacheWrite5m * price[3] +
+      cacheWrite1h * price[4] +
+      unspecifiedCacheWrite * Math.max(price[3], price[4]),
     priced: true,
   };
 }
@@ -233,7 +267,7 @@ function parseFile(
           seenTurnKeys.add(key);
           const turn = usageCost(typeof message["model"] === "string" ? message["model"] : "", rawUsage as Record<string, unknown>, prices);
           session.turns.push(turn);
-          session.events.push({ kind: "turn", usd: turn.usd });
+          session.events.push({ kind: "turn", usd: turn.usd, priced: turn.priced });
         }
       }
       const content = Array.isArray(message["content"]) ? message["content"] : [];
@@ -283,7 +317,8 @@ function parseFile(
 function score(session: Session): Score {
   const computed = session.turns.reduce((sum, turn) => sum + turn.usd, 0);
   const total = session.reportedCost ?? computed;
-  const scale = computed > 0 && session.reportedCost !== null ? session.reportedCost / computed : 1;
+  const unpricedTurns = session.turns.filter((turn) => !turn.priced).length;
+  const scale = computed > 0 && session.reportedCost !== null && unpricedTurns === 0 ? session.reportedCost / computed : 1;
   let inLoop = false;
   let loopUsd = 0;
   let loops = 0;
@@ -295,10 +330,14 @@ function score(session: Session): Score {
   let sameFailures = 0;
   let verifies = 0;
   let lastFailed = false;
+  let loopCostComplete = true;
 
   for (const event of session.events) {
     if (event.kind === "turn") {
-      if (inLoop) loopUsd += event.usd * scale;
+      if (inLoop) {
+        if (event.priced) loopUsd += event.usd * scale;
+        else loopCostComplete = false;
+      }
       continue;
     }
     verifies += 1;
@@ -337,6 +376,8 @@ function score(session: Session): Score {
     edits: session.edits,
     endedRed: verifies > 0 && lastFailed,
     unverified: session.edits > 0 && verifies === 0,
+    unpricedTurns,
+    loopCostComplete,
   };
 }
 
@@ -351,7 +392,9 @@ function summarize(rows: Score[], online: boolean): Summary {
     red: acc.red + (row.endedRed ? 1 : 0),
     unverified: acc.unverified + (row.unverified ? 1 : 0),
     edits: acc.edits + (row.edits > 0 ? 1 : 0),
-  }), { usd: 0, loopUsd: 0, loops: 0, attempts: 0, longest: 0, stuck: 0, red: 0, unverified: 0, edits: 0 });
+    unpricedTurns: acc.unpricedTurns + row.unpricedTurns,
+    loopCostComplete: acc.loopCostComplete && row.loopCostComplete,
+  }), { usd: 0, loopUsd: 0, loops: 0, attempts: 0, longest: 0, stuck: 0, red: 0, unverified: 0, edits: 0, unpricedTurns: 0, loopCostComplete: true });
   const starts = rows.flatMap((row) => row.start === null ? [] : [row.start]);
   const ends = rows.flatMap((row) => row.end === null ? [] : [row.end]);
   return {
@@ -370,8 +413,12 @@ function summarize(rows: Score[], online: boolean): Summary {
     stuckLoops: sum.stuck,
     sessionsEndedOnRed: sum.red,
     sessionsEditedWithoutVerifier: sum.unverified,
-    pricing: online ? "LiteLLM public prices" : "bundled prices",
-    costNote: "Session totals use Claude Code's own cost record when present; otherwise API list prices. Subscription users pay a flat fee, so read this as API-equivalent spend.",
+    pricing: online ? "official provider catalog + LiteLLM fallback" : "official provider catalog",
+    unpricedTurns: sum.unpricedTurns,
+    loopCostStatus: sum.loopCostComplete ? "complete" : "lower_bound",
+    costNote: sum.unpricedTurns > 0
+      ? `${sum.unpricedTurns} turn${sum.unpricedTurns === 1 ? " was" : "s were"} omitted because no authoritative price was available. Session totals still use Claude Code's own cost record when present.${sum.loopCostComplete ? "" : " Loop spend and percentage are lower bounds because at least one omitted turn occurred inside a fix loop."}`
+      : "Session totals use Claude Code's own cost record when present; otherwise official API list prices, with LiteLLM only as a fallback for catalog-unknown models. Subscription users pay a flat fee, so read this as API-equivalent spend.",
   };
 }
 
@@ -380,17 +427,19 @@ function money(value: number): string {
 }
 
 function renderHuman(summary: Summary, top: Score[]): string {
+  const loopTaxQualifier = summary.loopCostStatus === "lower_bound" ? "at least " : "";
   const lines = [
     "",
     "∞ MartinLoop audit  " + summary.sessions + " session" + (summary.sessions === 1 ? "" : "s") + " · " + (summary.from ?? "n/a") + " → " + (summary.to ?? "n/a"),
     "──────────────────────────────────────────────────────────",
     "  Agent spend (API-equivalent)   " + money(summary.spendUsd),
-    "  Spent inside fix loops         " + money(summary.loopTaxUsd) + "  (" + summary.loopTaxPct + "% loop tax)",
+    "  " + (summary.loopCostStatus === "lower_bound" ? "Known spend inside fix loops   " : "Spent inside fix loops         ") + money(summary.loopTaxUsd) + "  (" + loopTaxQualifier + summary.loopTaxPct + "% loop tax)",
     "  Fix loops                      " + summary.fixLoops + "  (" + summary.failedVerifierRuns + " failed verifier runs, longest " + summary.longestLoop + " in a row)",
     "  Stuck loops (same cmd fails 3×) " + summary.stuckLoops,
     "  Sessions that ended on red     " + summary.sessionsEndedOnRed,
     "  Edited code, never ran a check " + summary.sessionsEditedWithoutVerifier + "  (of " + summary.sessionsWithEdits + " sessions with edits)",
   ];
+  if (summary.unpricedTurns > 0) lines.push("  Unpriced turns                  " + summary.unpricedTurns);
   const expensive = top.filter((row) => row.loopUsd > 0);
   if (expensive.length > 0) {
     lines.push("──────────────────────────────────────────────────────────", "  Most expensive loops");
@@ -413,11 +462,13 @@ function renderHuman(summary: Summary, top: Score[]): string {
 
 function writeShare(summary: Summary): void {
   const esc = (value: unknown): string => String(value).replace(/[&<>]/gu, (char) => char === "&" ? "&amp;" : char === "<" ? "&lt;" : "&gt;");
+  const loopTaxQualifier = summary.loopCostStatus === "lower_bound" ? "at least " : "";
+  const loopTaxSymbol = summary.loopCostStatus === "lower_bound" ? "≥" : "";
   const svg =
     '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">' +
     '<rect width="1200" height="630" fill="#17132A"/><rect width="12" height="630" fill="#6552D0"/>' +
     '<text x="80" y="110" font-family="Georgia,serif" font-size="34" fill="#B9AEF5">My coding-agent loop tax</text>' +
-    '<text x="80" y="250" font-family="Georgia,serif" font-weight="700" font-size="140" fill="#FFFFFF">' + summary.loopTaxPct + '%</text>' +
+    '<text x="80" y="250" font-family="Georgia,serif" font-weight="700" font-size="140" fill="#FFFFFF">' + loopTaxSymbol + summary.loopTaxPct + '%</text>' +
     '<text x="80" y="310" font-family="Arial,sans-serif" font-size="30" fill="#D8D3EE">of ' + esc(money(summary.spendUsd)) + ' agent spend went to fix-and-retry loops</text>' +
     '<text x="80" y="410" font-family="Arial,sans-serif" font-size="26" fill="#FFFFFF">' + summary.fixLoops + ' fix loops · longest ' + summary.longestLoop + ' retries · ' + summary.sessionsEndedOnRed + ' ended on red</text>' +
     '<text x="80" y="570" font-family="Courier New,monospace" font-size="28" fill="#B9AEF5">npx martin-loop@latest audit</text>' +
@@ -425,7 +476,7 @@ function writeShare(summary: Summary): void {
   writeFileSync(path.join(process.cwd(), "loop-tax-card.svg"), svg, "utf8");
   writeFileSync(
     path.join(process.cwd(), "loop-tax.md"),
-    "My coding-agent loop tax: **" + summary.loopTaxPct + "%** of " + money(summary.spendUsd) + " agent spend went to fix-and-retry loops.\n\n" +
+    "My coding-agent loop tax: **" + loopTaxQualifier + summary.loopTaxPct + "%** of " + money(summary.spendUsd) + " agent spend went to fix-and-retry loops.\n\n" +
       "- " + summary.fixLoops + " fix loops, longest " + summary.longestLoop + " retries in a row\n" +
       "- " + summary.stuckLoops + " stuck loops (same command failing 3+ times)\n" +
       "- " + summary.sessionsEndedOnRed + " sessions ended with a failing check\n\n" +
