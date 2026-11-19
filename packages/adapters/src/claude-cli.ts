@@ -39,6 +39,12 @@ import {
   normalizeStructuredErrors,
   normalizeUsage
 } from "./runtime-support.js";
+import {
+  resolveBudgetPreflightPricePerMTokenUsd,
+  resolveProviderPricing,
+  type PricingProvider,
+  type PricingResolutionStatus
+} from "./pricing/catalog.js";
 
 // ---------------------------------------------------------------------------
 // Cost estimation
@@ -48,141 +54,54 @@ import {
 // models are never assigned another model's price.
 // ---------------------------------------------------------------------------
 
-const BLENDED_INPUT_COST_PER_1K = 0.003;   // $/1K input tokens
-const BLENDED_OUTPUT_COST_PER_1K = 0.012;  // $/1K output tokens
-
 interface ModelPricing {
   inputPer1K: number;
   cachedInputPer1K?: number;
   cacheCreationInputPer1K?: number;
+  cacheCreation5mInputPer1K?: number;
+  cacheCreation1hInputPer1K?: number;
   outputPer1K: number;
   pricingVersion?: string;
-  longContext?: {
-    thresholdInputTokens: number;
-    inputPer1K: number;
-    cachedInputPer1K?: number;
-    cacheCreationInputPer1K?: number;
-    outputPer1K: number;
-  };
 }
 
 interface ModelPricingResolution {
-  status: "exact" | "alias" | "unknown";
+  status: PricingResolutionStatus;
   canonicalModelId?: string;
   pricing?: ModelPricing;
 }
 
-const PRICING_SNAPSHOT_2026_10_04 = "official-provider-pricing@2026-10-04";
-
-// USD per 1K tokens. Rates are standard/on-demand text-token prices from
-// official provider pricing pages as of 2026-10-04. Long-context tiers are
-// selected from the estimated/observed input-token count where providers
-// publish a threshold.
-const MODEL_PRICING: Record<string, ModelPricing> = {
-  // Anthropic current + supported legacy models.
-  "claude-fable-5-1":  { inputPer1K: 0.010, cachedInputPer1K: 0.00025, cacheCreationInputPer1K: 0.0125, outputPer1K: 0.050, pricingVersion: PRICING_SNAPSHOT_2026_10_04 },
-  "claude-opus-5-5":   { inputPer1K: 0.004, cachedInputPer1K: 0.0002, cacheCreationInputPer1K: 0.005, outputPer1K: 0.020, pricingVersion: PRICING_SNAPSHOT_2026_10_04 },
-  "claude-sonnet-5-5": { inputPer1K: 0.002, cachedInputPer1K: 0.0002, cacheCreationInputPer1K: 0.0025, outputPer1K: 0.010, pricingVersion: PRICING_SNAPSHOT_2026_10_04 },
-  "claude-opus-4-6":   { inputPer1K: 0.005, cachedInputPer1K: 0.0005, cacheCreationInputPer1K: 0.00625, outputPer1K: 0.025, pricingVersion: PRICING_SNAPSHOT_2026_10_04 },
-  "claude-sonnet-4-6": { inputPer1K: 0.003, cachedInputPer1K: 0.0003, cacheCreationInputPer1K: 0.00375, outputPer1K: 0.015, pricingVersion: PRICING_SNAPSHOT_2026_10_04 },
-  "claude-haiku-4-5":  { inputPer1K: 0.001, cachedInputPer1K: 0.0001, cacheCreationInputPer1K: 0.00125, outputPer1K: 0.005, pricingVersion: PRICING_SNAPSHOT_2026_10_04 },
-
-  // OpenAI / Codex. GPT-6-family long-context pricing applies above 272K input tokens.
-  "gpt-6-astra": {
-    inputPer1K: 0.010, cachedInputPer1K: 0.001, cacheCreationInputPer1K: 0.0125, outputPer1K: 0.050,
-    pricingVersion: PRICING_SNAPSHOT_2026_10_04,
-    longContext: { thresholdInputTokens: 272_000, inputPer1K: 0.020, cachedInputPer1K: 0.002, cacheCreationInputPer1K: 0.025, outputPer1K: 0.075 }
-  },
-  "gpt-6.1-sol": {
-    inputPer1K: 0.002, cachedInputPer1K: 0.0001, cacheCreationInputPer1K: 0.0025, outputPer1K: 0.010,
-    pricingVersion: PRICING_SNAPSHOT_2026_10_04,
-    longContext: { thresholdInputTokens: 272_000, inputPer1K: 0.004, cachedInputPer1K: 0.0002, cacheCreationInputPer1K: 0.005, outputPer1K: 0.015 }
-  },
-  "gpt-6-sol": {
-    inputPer1K: 0.002, cachedInputPer1K: 0.0002, cacheCreationInputPer1K: 0.0025, outputPer1K: 0.010,
-    pricingVersion: PRICING_SNAPSHOT_2026_10_04,
-    longContext: { thresholdInputTokens: 272_000, inputPer1K: 0.004, cachedInputPer1K: 0.0004, cacheCreationInputPer1K: 0.005, outputPer1K: 0.015 }
-  },
-  "gpt-6-luna": {
-    inputPer1K: 0.0001, cachedInputPer1K: 0.00001, cacheCreationInputPer1K: 0.000125, outputPer1K: 0.0005,
-    pricingVersion: PRICING_SNAPSHOT_2026_10_04,
-    longContext: { thresholdInputTokens: 272_000, inputPer1K: 0.0002, cachedInputPer1K: 0.00002, cacheCreationInputPer1K: 0.00025, outputPer1K: 0.00075 }
-  },
-  "gpt-5.6-sol": {
-    inputPer1K: 0.004, cachedInputPer1K: 0.0004, cacheCreationInputPer1K: 0.005, outputPer1K: 0.020,
-    pricingVersion: PRICING_SNAPSHOT_2026_10_04,
-    longContext: { thresholdInputTokens: 272_000, inputPer1K: 0.008, cachedInputPer1K: 0.0008, cacheCreationInputPer1K: 0.010, outputPer1K: 0.030 }
-  },
-  "gpt-5.3-codex":     { inputPer1K: 0.00175, cachedInputPer1K: 0.000175, outputPer1K: 0.014, pricingVersion: PRICING_SNAPSHOT_2026_10_04 },
-  "codex":             { inputPer1K: 0.00125, cachedInputPer1K: 0.000125, outputPer1K: 0.010 },
-  "gpt-5-codex":       { inputPer1K: 0.00125, cachedInputPer1K: 0.000125, outputPer1K: 0.010 },
-  "gpt-5.1-codex":     { inputPer1K: 0.00125, cachedInputPer1K: 0.000125, outputPer1K: 0.010 },
-  "gpt-5.1-codex-max": { inputPer1K: 0.00125, cachedInputPer1K: 0.000125, outputPer1K: 0.010 },
-  "gpt-5.2-codex":     { inputPer1K: 0.00175, cachedInputPer1K: 0.000175, outputPer1K: 0.014 },
-  "codex-mini-latest": { inputPer1K: 0.0015, cachedInputPer1K: 0.000375, outputPer1K: 0.006 },
-
-  // Google Gemini current + common supported models.
-  "gemini-3.8-flash":       { inputPer1K: 0.00075, cachedInputPer1K: 0.000075, outputPer1K: 0.00375, pricingVersion: PRICING_SNAPSHOT_2026_10_04 },
-  "gemini-3.7-flash":       { inputPer1K: 0.00075, cachedInputPer1K: 0.000075, outputPer1K: 0.00375, pricingVersion: PRICING_SNAPSHOT_2026_10_04 },
-  "gemini-3.5-flash-lite":  { inputPer1K: 0.0003, cachedInputPer1K: 0.00003, outputPer1K: 0.0025, pricingVersion: PRICING_SNAPSHOT_2026_10_04 },
-  "gemini-3.1-flash-lite":  { inputPer1K: 0.00025, cachedInputPer1K: 0.000025, outputPer1K: 0.0015, pricingVersion: PRICING_SNAPSHOT_2026_10_04 },
-  "gemini-3.1-pro-preview": {
-    inputPer1K: 0.002, cachedInputPer1K: 0.0002, outputPer1K: 0.012, pricingVersion: PRICING_SNAPSHOT_2026_10_04,
-    longContext: { thresholdInputTokens: 200_000, inputPer1K: 0.004, cachedInputPer1K: 0.0004, outputPer1K: 0.018 }
-  },
-  "gemini-3-flash-preview": { inputPer1K: 0.0005, cachedInputPer1K: 0.00005, outputPer1K: 0.003, pricingVersion: PRICING_SNAPSHOT_2026_10_04 },
-  "gemini-2.5-pro": {
-    inputPer1K: 0.00125, cachedInputPer1K: 0.000125, outputPer1K: 0.010, pricingVersion: PRICING_SNAPSHOT_2026_10_04,
-    longContext: { thresholdInputTokens: 200_000, inputPer1K: 0.0025, cachedInputPer1K: 0.00025, outputPer1K: 0.015 }
-  },
-  "gemini-2.5-flash":      { inputPer1K: 0.0003, cachedInputPer1K: 0.00003, outputPer1K: 0.0025, pricingVersion: PRICING_SNAPSHOT_2026_10_04 },
-  "gemini-2.5-flash-lite": { inputPer1K: 0.0001, cachedInputPer1K: 0.00001, outputPer1K: 0.0004, pricingVersion: PRICING_SNAPSHOT_2026_10_04 }
-};
-
-const CLAUDE_MODEL_ALIASES = [
-  { canonicalModelId: "claude-fable-5-1", aliases: [/^claude-fable-5-1-\d{8}$/u, /^claude-fable$/u, /^fable$/u] },
-  { canonicalModelId: "claude-opus-5-5", aliases: [/^claude-opus-5-5-\d{8}$/u, /^claude-opus$/u, /^opus$/u] },
-  { canonicalModelId: "claude-sonnet-5-5", aliases: [/^claude-sonnet-5-5-\d{8}$/u, /^claude-sonnet$/u, /^sonnet$/u] },
-  { canonicalModelId: "claude-opus-4-6", aliases: [/^claude-opus-4-6-\d{8}$/u] },
-  { canonicalModelId: "claude-sonnet-4-6", aliases: [/^claude-sonnet-4-6-\d{8}$/u] },
-  { canonicalModelId: "claude-haiku-4-5", aliases: [/^claude-haiku-4-5-\d{8}$/u, /^claude-haiku$/u, /^haiku$/u] }
-] as const;
-
-function resolveModelPricing(modelLabel: string | undefined): ModelPricingResolution {
-  const normalized = modelLabel?.trim().toLowerCase();
-  if (!normalized) {
-    return { status: "unknown" };
+function resolveModelPricing(
+  modelLabel: string | undefined,
+  provider: PricingProvider,
+  inputTokens = 0
+): ModelPricingResolution {
+  const resolution = resolveProviderPricing(modelLabel, { provider, inputTokens });
+  const rates = resolution.pricing?.ratesPerMillion;
+  if (!rates || !resolution.entry) {
+    return { status: resolution.status, ...(resolution.canonicalModelId ? { canonicalModelId: resolution.canonicalModelId } : {}) };
   }
-
-  const exact = MODEL_PRICING[normalized];
-  if (exact) {
-    return { status: "exact", canonicalModelId: normalized, pricing: exact };
-  }
-
-  for (const family of CLAUDE_MODEL_ALIASES) {
-    if (family.aliases.some((alias) => alias.test(normalized))) {
-      return {
-        status: "alias",
-        canonicalModelId: family.canonicalModelId,
-        pricing: MODEL_PRICING[family.canonicalModelId]
-      };
-    }
-  }
-
-  return { status: "unknown" };
-}
-
-function effectivePricingForInput(pricing: ModelPricing, inputTokens: number): ModelPricing {
-  const long = pricing.longContext;
-  if (!long || inputTokens <= long.thresholdInputTokens) {
-    return pricing;
-  }
+  const cacheWriteDuration = provider === "openai" ? "30m" : undefined;
+  const conservativeCacheWritePerMillion = rates.cacheWrite === undefined
+    ? undefined
+    : Math.max(...Object.values(rates.cacheWrite));
   return {
-    inputPer1K: long.inputPer1K,
-    cachedInputPer1K: long.cachedInputPer1K,
-    cacheCreationInputPer1K: long.cacheCreationInputPer1K,
-    outputPer1K: long.outputPer1K,
-    pricingVersion: pricing.pricingVersion
+    status: resolution.status,
+    canonicalModelId: resolution.canonicalModelId,
+    pricing: {
+      inputPer1K: rates.input / 1000,
+      outputPer1K: rates.output / 1000,
+      ...(rates.cachedInput === undefined ? {} : { cachedInputPer1K: rates.cachedInput / 1000 }),
+      ...(provider === "anthropic" && conservativeCacheWritePerMillion !== undefined
+        ? {
+            cacheCreationInputPer1K: conservativeCacheWritePerMillion / 1000,
+            ...(rates.cacheWrite?.["5m"] === undefined ? {} : { cacheCreation5mInputPer1K: rates.cacheWrite["5m"] / 1000 }),
+            ...(rates.cacheWrite?.["1h"] === undefined ? {} : { cacheCreation1hInputPer1K: rates.cacheWrite["1h"] / 1000 })
+          }
+        : cacheWriteDuration === undefined || rates.cacheWrite?.[cacheWriteDuration] === undefined
+        ? {}
+        : { cacheCreationInputPer1K: rates.cacheWrite[cacheWriteDuration] / 1000 }),
+      pricingVersion: `official-provider-pricing@${resolution.entry.source.retrievedAt}`
+    }
   };
 }
 
@@ -191,17 +110,28 @@ function calculateUsageCost(
     inputTokens: number;
     cachedInputTokens: number;
     cacheCreationInputTokens: number;
+    cacheCreation5mInputTokens?: number;
+    cacheCreation1hInputTokens?: number;
     outputTokens: number;
   },
   pricing: ModelPricing,
-  contextInputTokens = usage.inputTokens + usage.cachedInputTokens + usage.cacheCreationInputTokens
+  _contextInputTokens = usage.inputTokens + usage.cachedInputTokens + usage.cacheCreationInputTokens
 ): number {
-  const effective = effectivePricingForInput(pricing, contextInputTokens);
+  const knownDurationCacheCreationTokens =
+    (usage.cacheCreation5mInputTokens ?? 0) + (usage.cacheCreation1hInputTokens ?? 0);
+  const unspecifiedCacheCreationTokens = Math.max(
+    usage.cacheCreationInputTokens - knownDurationCacheCreationTokens,
+    0
+  );
   return (
-    (usage.inputTokens / 1000) * effective.inputPer1K +
-    (usage.cachedInputTokens / 1000) * (effective.cachedInputPer1K ?? effective.inputPer1K) +
-    (usage.cacheCreationInputTokens / 1000) * (effective.cacheCreationInputPer1K ?? effective.inputPer1K) +
-    (usage.outputTokens / 1000) * effective.outputPer1K
+    (usage.inputTokens / 1000) * pricing.inputPer1K +
+    (usage.cachedInputTokens / 1000) * (pricing.cachedInputPer1K ?? pricing.inputPer1K) +
+    (unspecifiedCacheCreationTokens / 1000) * (pricing.cacheCreationInputPer1K ?? pricing.inputPer1K) +
+    ((usage.cacheCreation5mInputTokens ?? 0) / 1000) *
+      (pricing.cacheCreation5mInputPer1K ?? pricing.cacheCreationInputPer1K ?? pricing.inputPer1K) +
+    ((usage.cacheCreation1hInputTokens ?? 0) / 1000) *
+      (pricing.cacheCreation1hInputPer1K ?? pricing.cacheCreationInputPer1K ?? pricing.inputPer1K) +
+    (usage.outputTokens / 1000) * pricing.outputPer1K
   );
 }
 
@@ -229,6 +159,10 @@ interface ClaudeJsonOutput {
     output_tokens?: number;
     cache_read_input_tokens?: number;
     cache_creation_input_tokens?: number;
+    cache_creation?: {
+      ephemeral_5m_input_tokens?: number;
+      ephemeral_1h_input_tokens?: number;
+    };
   };
 }
 
@@ -265,9 +199,6 @@ interface GeminiJsonOutput {
   };
 }
 
-const EMBEDDED_PRICING_VERSION = "embedded-v1";
-// Source snapshot: https://developers.openai.com/api/docs/models/gpt-6.1-sol
-
 function extractClaudeObservedModel(stdout: string): string | undefined {
   for (const line of stdout.split(/\r?\n/u)) {
     try {
@@ -301,12 +232,23 @@ function extractUsage(
   const promptTokens = usage.inputTokens ?? usage.input_tokens ?? 0;
   const cacheCreationInputTokens =
     usage.cacheCreationInputTokens ?? usage.cache_creation_input_tokens ?? 0;
+  const cacheCreation5mInputTokens = usage.cache_creation?.ephemeral_5m_input_tokens ?? 0;
+  const cacheCreation1hInputTokens = usage.cache_creation?.ephemeral_1h_input_tokens ?? 0;
+  const detailedCacheCreationInputTokens = cacheCreation5mInputTokens + cacheCreation1hInputTokens;
+  const effectiveCacheCreationInputTokens = Math.max(
+    cacheCreationInputTokens,
+    detailedCacheCreationInputTokens
+  );
   const cachedInputTokens =
     usage.cacheReadInputTokens ?? usage.cache_read_input_tokens ?? 0;
-  const tokensIn = promptTokens + cachedInputTokens + cacheCreationInputTokens;
+  const tokensIn = promptTokens + cachedInputTokens + effectiveCacheCreationInputTokens;
   const tokensOut = usage.outputTokens ?? usage.output_tokens ?? 0;
 
-  const pricingResolution = resolveModelPricing(modelLabel);
+  const pricingResolution = resolveModelPricing(
+    modelLabel,
+    "anthropic",
+    promptTokens + cachedInputTokens + effectiveCacheCreationInputTokens
+  );
 
   // Prefer Claude's own authoritative total_cost_usd (present on the final
   // `result` event in json/stream-json output) over our pricing-table estimate,
@@ -318,7 +260,9 @@ function extractUsage(
       ? calculateUsageCost({
           inputTokens: promptTokens,
           cachedInputTokens,
-          cacheCreationInputTokens,
+          cacheCreationInputTokens: effectiveCacheCreationInputTokens,
+          cacheCreation5mInputTokens,
+          cacheCreation1hInputTokens,
           outputTokens: tokensOut
         }, pricingResolution.pricing)
       : 0;
@@ -338,9 +282,9 @@ function extractUsage(
       ...(modelLabel ? { model: modelLabel } : {}),
       transport: "cli",
       source: "claude_json",
-      inputTokens: promptTokens + cacheCreationInputTokens,
+      inputTokens: promptTokens + effectiveCacheCreationInputTokens,
       cachedInputTokens,
-      cacheCreationInputTokens,
+      cacheCreationInputTokens: effectiveCacheCreationInputTokens,
       outputTokens: tokensOut,
       billingMode: "unknown",
       modelSource,
@@ -350,7 +294,7 @@ function extractUsage(
           ? "static_catalog"
           : "none",
       ...(pricingResolution.pricing
-        ? { pricingVersion: pricingResolution.pricing.pricingVersion ?? EMBEDDED_PRICING_VERSION }
+        ? { pricingVersion: pricingResolution.pricing.pricingVersion }
         : {}),
       rawUsageAvailable: hasRawUsage,
       settledAt: new Date().toISOString()
@@ -452,17 +396,16 @@ function extractCodexJsonlResult(
   // corresponding input/output totals. Do not add those details twice.
   const tokensIn = promptTokens;
   const tokensOut = outputTokens;
-  const pricingResolution = resolveModelPricing(modelLabel);
+  const pricingResolution = resolveModelPricing(modelLabel, "openai", promptTokens);
   const exactPricing = pricingResolution.pricing;
-  const pricing =
-    exactPricing ?? MODEL_PRICING["codex"] ??
-    { inputPer1K: BLENDED_INPUT_COST_PER_1K, outputPer1K: BLENDED_OUTPUT_COST_PER_1K };
-  const actualUsd = calculateUsageCost({
-    inputTokens: Math.max(promptTokens - cachedInputTokens, 0),
-    cachedInputTokens,
-    cacheCreationInputTokens: 0,
-    outputTokens
-  }, pricing, promptTokens);
+  const actualUsd = exactPricing
+    ? calculateUsageCost({
+        inputTokens: Math.max(promptTokens - cachedInputTokens, 0),
+        cachedInputTokens,
+        cacheCreationInputTokens: 0,
+        outputTokens
+      }, exactPricing, promptTokens)
+    : 0;
 
   return {
     summary,
@@ -472,7 +415,7 @@ function extractCodexJsonlResult(
       tokensOut,
       cachedInputTokens,
       reasoningTokensOut: reasoningOutputTokens,
-      provenance: exactPricing ? "calculated" : "estimated",
+      provenance: exactPricing ? "calculated" : "unavailable",
       providerSettlement: {
         providerId: "codex",
         ...(modelLabel ? { model: modelLabel } : {}),
@@ -484,8 +427,8 @@ function extractCodexJsonlResult(
         reasoningOutputTokens,
         billingMode: "unknown",
         modelSource: modelLabel ? "explicit_override" : "agent_default",
-        pricingSource: exactPricing ? "static_catalog" : "blended_fallback",
-        pricingVersion: exactPricing?.pricingVersion ?? EMBEDDED_PRICING_VERSION,
+        pricingSource: exactPricing ? "static_catalog" : "none",
+        ...(exactPricing?.pricingVersion ? { pricingVersion: exactPricing.pricingVersion } : {}),
         rawUsageAvailable: true,
         settledAt: new Date().toISOString()
       }
@@ -541,19 +484,18 @@ function extractGeminiJsonResult(
     };
   }
 
-  const tokensIn = promptTokens + cachedInputTokens;
+  const tokensIn = promptTokens;
   const tokensOut = outputTokens + reasoningOutputTokens;
-  const pricingResolution = resolveModelPricing(modelLabel);
+  const pricingResolution = resolveModelPricing(modelLabel, "google", promptTokens);
   const exactPricing = pricingResolution.pricing;
-  const pricing =
-    exactPricing ??
-    { inputPer1K: BLENDED_INPUT_COST_PER_1K, outputPer1K: BLENDED_OUTPUT_COST_PER_1K };
-  const actualUsd = calculateUsageCost({
-    inputTokens: promptTokens,
-    cachedInputTokens,
-    cacheCreationInputTokens: 0,
-    outputTokens: tokensOut
-  }, pricing, promptTokens + cachedInputTokens);
+  const actualUsd = exactPricing
+    ? calculateUsageCost({
+        inputTokens: Math.max(promptTokens - cachedInputTokens, 0),
+        cachedInputTokens,
+        cacheCreationInputTokens: 0,
+        outputTokens: tokensOut
+      }, exactPricing, promptTokens)
+    : 0;
 
   return {
     summary,
@@ -563,7 +505,7 @@ function extractGeminiJsonResult(
       tokensOut,
       cachedInputTokens,
       reasoningTokensOut: reasoningOutputTokens,
-      provenance: "estimated",
+      provenance: exactPricing ? "estimated" : "unavailable",
       providerSettlement: {
         providerId: "gemini",
         ...(modelLabel ? { model: modelLabel } : {}),
@@ -575,8 +517,8 @@ function extractGeminiJsonResult(
         reasoningOutputTokens,
         billingMode: "unknown",
         modelSource: modelLabel ? "explicit_override" : "agent_default",
-        pricingSource: exactPricing ? "static_catalog" : "blended_fallback",
-        pricingVersion: exactPricing?.pricingVersion ?? EMBEDDED_PRICING_VERSION,
+        pricingSource: exactPricing ? "static_catalog" : "none",
+        ...(exactPricing?.pricingVersion ? { pricingVersion: exactPricing.pricingVersion } : {}),
         rawUsageAvailable: true,
         settledAt: new Date().toISOString()
       }
@@ -618,7 +560,8 @@ function createStreamingUsageInspector(
   onChunk: (chunk: Buffer, terminate: (reason: string) => void) => void;
   snapshot: () => StreamingUsageSnapshot;
 } {
-  let pricingResolution = resolveModelPricing(modelLabel);
+  let observedModelLabel = modelLabel;
+  let pricingResolution = resolveModelPricing(modelLabel, "anthropic", promptTokenEstimate);
 
   // Safety margin: terminate at 80% of cap to bound one-turn overshoot.
   // Without this, a single expensive turn can blow past the cap before the
@@ -708,7 +651,8 @@ function createStreamingUsageInspector(
       observedEventIdentities.add(identity);
     }
     if (event.type === "system" && event.subtype === "init" && typeof event.model === "string") {
-      pricingResolution = resolveModelPricing(event.model);
+      observedModelLabel = event.model;
+      pricingResolution = resolveModelPricing(event.model, "anthropic", promptTokenEstimate);
     }
 
     // Check for authoritative total_cost_usd on ANY event — if Claude reports
@@ -738,9 +682,20 @@ function createStreamingUsageInspector(
       usageRecord.cache_read_input_tokens ?? usageRecord.cacheReadInputTokens ?? 0;
     const turnCacheCreationInputTokens =
       usageRecord.cache_creation_input_tokens ?? usageRecord.cacheCreationInputTokens ?? 0;
+    const cacheCreation = (usage as Record<string, unknown>)["cache_creation"] as
+      | { ephemeral_5m_input_tokens?: number; ephemeral_1h_input_tokens?: number }
+      | undefined;
+    const turnCacheCreation5mInputTokens = cacheCreation?.ephemeral_5m_input_tokens ?? 0;
+    const turnCacheCreation1hInputTokens = cacheCreation?.ephemeral_1h_input_tokens ?? 0;
+    const turnDetailedCacheCreationInputTokens =
+      turnCacheCreation5mInputTokens + turnCacheCreation1hInputTokens;
+    const turnEffectiveCacheCreationInputTokens = Math.max(
+      turnCacheCreationInputTokens,
+      turnDetailedCacheCreationInputTokens
+    );
     const turnTokensIn = detailTokensIncludedInTotals
       ? turnInputTokens
-      : turnInputTokens + turnCachedInputTokens + turnCacheCreationInputTokens;
+      : turnInputTokens + turnCachedInputTokens + turnEffectiveCacheCreationInputTokens;
     const turnOutputTokens = usageRecord.output_tokens ?? usageRecord.outputTokens ?? 0;
     const turnReasoningOutputTokens =
       usageRecord.reasoning_output_tokens ?? usageRecord.reasoningOutputTokens ?? 0;
@@ -753,15 +708,18 @@ function createStreamingUsageInspector(
       return;
     }
 
-    const turnUsd = pricingResolution.pricing
+    const turnPricingResolution = resolveModelPricing(observedModelLabel, "anthropic", turnTokensIn);
+    const turnUsd = turnPricingResolution.pricing
       ? calculateUsageCost({
           inputTokens: detailTokensIncludedInTotals
-            ? Math.max(turnInputTokens - turnCachedInputTokens - turnCacheCreationInputTokens, 0)
+            ? Math.max(turnInputTokens - turnCachedInputTokens - turnEffectiveCacheCreationInputTokens, 0)
             : turnInputTokens,
           cachedInputTokens: turnCachedInputTokens,
-          cacheCreationInputTokens: turnCacheCreationInputTokens,
+          cacheCreationInputTokens: turnEffectiveCacheCreationInputTokens,
+          cacheCreation5mInputTokens: turnCacheCreation5mInputTokens,
+          cacheCreation1hInputTokens: turnCacheCreation1hInputTokens,
           outputTokens: turnTokensOut
-        }, pricingResolution.pricing)
+        }, turnPricingResolution.pricing)
       : undefined;
     const remainingBudgetBeforeTurn = Math.max(capUsd - cumulativeUsd, 0);
 
@@ -1016,6 +974,7 @@ export interface AgentCliAdapterOptions {
   /** Estimated floor used by the host to reject impossible token caps before spawning. */
   budgetPreflight?: {
     minimumViableTokens: number;
+    pricePerMTokenUsd?: number;
     basis: string;
   };
   /** Test-only override for subprocess spawning. */
@@ -1099,6 +1058,27 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
   const supportsJsonOutput = options.supportsJsonOutput === true;
   const supportsUsageSettlement =
     supportsJsonOutput || options.command === "codex" || options.command === "gemini";
+  const pricingProvider: PricingProvider | undefined = options.command === "claude"
+    ? "anthropic"
+    : options.command === "codex"
+      ? "openai"
+      : options.command === "gemini"
+        ? "google"
+        : undefined;
+  const catalogPricePerMTokenUsd = pricingProvider === undefined
+    ? undefined
+    : resolveBudgetPreflightPricePerMTokenUsd(options.model, { provider: pricingProvider });
+  const budgetPreflight = options.budgetPreflight === undefined && catalogPricePerMTokenUsd === undefined
+    ? undefined
+    : {
+        ...options.budgetPreflight,
+        ...(options.budgetPreflight?.pricePerMTokenUsd !== undefined
+          ? { pricePerMTokenUsd: options.budgetPreflight.pricePerMTokenUsd }
+          : catalogPricePerMTokenUsd === undefined
+            ? {}
+            : { pricePerMTokenUsd: catalogPricePerMTokenUsd }),
+        basis: options.budgetPreflight?.basis ?? "official_provider_pricing_catalog_max_active_token_rate"
+      };
 
   const adapter: MartinAdapter = {
     adapterId,
@@ -1110,7 +1090,7 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
       transport: "cli",
       agentExecutionIntent,
       providerExecutionTimeoutMs: timeoutMs,
-      ...(options.budgetPreflight ? { budgetPreflight: options.budgetPreflight } : {}),
+      ...(budgetPreflight ? { budgetPreflight } : {}),
       capabilities: createAdapterCapabilities({
         preflight: true,
         usageSettlement: supportsUsageSettlement,
@@ -1218,10 +1198,10 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
           summary: `${options.command} subprocess timed out before completing.`,
           usage: normalizeUsage({
             actualUsd: estimatedUsage.actualUsd,
-            estimatedUsd: estimatedUsage.actualUsd,
+            ...(estimatedUsage.estimatedUsd === undefined ? {} : { estimatedUsd: estimatedUsage.estimatedUsd }),
             tokensIn: estimatedUsage.tokensIn,
             tokensOut: estimatedUsage.tokensOut,
-            provenance: "estimated"
+            provenance: estimatedUsage.provenance
           }),
           verification: { passed: false, summary: "Subprocess timed out." },
           failure: {
@@ -1358,10 +1338,10 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
           geminiJsonResult?.usage ??
           normalizeUsage({
             actualUsd: estimatedUsage.actualUsd,
-            estimatedUsd: estimatedUsage.actualUsd,
+            ...(estimatedUsage.estimatedUsd === undefined ? {} : { estimatedUsd: estimatedUsage.estimatedUsd }),
             tokensIn: estimatedUsage.tokensIn,
             tokensOut: Math.max(estimatedUsage.tokensOut, Math.ceil(agentText.length / 4)),
-            provenance: "estimated",
+            provenance: estimatedUsage.provenance,
             providerSettlement:
               options.command === "codex"
                 ? {
@@ -1371,6 +1351,8 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
                     source: "estimated_fallback",
                     inputTokens: estimatedUsage.tokensIn,
                     outputTokens: Math.max(estimatedUsage.tokensOut, Math.ceil(agentText.length / 4)),
+                    modelSource: options.model ? "explicit_override" : "agent_default",
+                    pricingSource: estimatedUsage.estimatedUsd === undefined ? "none" : "static_catalog",
                     rawUsageAvailable: false,
                     settledAt: new Date().toISOString()
                   }
@@ -1382,6 +1364,8 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
                       source: "estimated_fallback",
                       inputTokens: estimatedUsage.tokensIn,
                       outputTokens: Math.max(estimatedUsage.tokensOut, Math.ceil(agentText.length / 4)),
+                      modelSource: options.model ? "explicit_override" : "agent_default",
+                      pricingSource: estimatedUsage.estimatedUsd === undefined ? "none" : "static_catalog",
                       rawUsageAvailable: false,
                       settledAt: new Date().toISOString()
                     }
@@ -1974,11 +1958,16 @@ function estimatePromptCost(
 ): number | undefined {
   const inputTokens = Math.ceil(promptText.length / 3.5);
   const outputTokens = 2000;
-  const pricing = resolveModelPricing(model).pricing ?? (
-    providerCommand === "claude"
-      ? undefined
-      : { inputPer1K: BLENDED_INPUT_COST_PER_1K, outputPer1K: BLENDED_OUTPUT_COST_PER_1K }
-  );
+  const provider: PricingProvider | undefined = providerCommand === "claude"
+    ? "anthropic"
+    : providerCommand === "codex"
+      ? "openai"
+      : providerCommand === "gemini"
+        ? "google"
+        : undefined;
+  const pricing = provider === undefined
+    ? undefined
+    : resolveModelPricing(model, provider, inputTokens).pricing;
   if (!pricing) {
     return undefined;
   }

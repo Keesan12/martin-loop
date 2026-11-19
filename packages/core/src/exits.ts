@@ -93,7 +93,13 @@ export function createDefaultExitPolicy(
 
 export function validateExitPolicy(policy: ExitPolicyV1): void {
   assertFinitePositive("turns.max", policy.turns.max);
-  assertFinitePositive("budget.maxUsd", policy.budget.maxUsd);
+  if (policy.budget.zeroSpendAuthority === true) {
+    if (policy.budget.maxUsd !== 0) {
+      throw new RangeError("budget.maxUsd must be exactly zero under zero-spend authority");
+    }
+  } else {
+    assertFinitePositive("budget.maxUsd", policy.budget.maxUsd);
+  }
   if (policy.budget.maxTokens !== undefined) {
     assertFinitePositive("budget.maxTokens", policy.budget.maxTokens);
   }
@@ -190,7 +196,9 @@ export function evaluateExitPolicy(
   }
 
   // 5. Budget cap
-  const usdExceeded = snapshot.actualUsd >= policy.budget.maxUsd;
+  const usdExceeded = policy.budget.zeroSpendAuthority === true
+    ? snapshot.actualUsd > 0
+    : snapshot.actualUsd >= policy.budget.maxUsd;
   const tokensExceeded =
     policy.budget.maxTokens !== undefined && snapshot.tokensUsed >= policy.budget.maxTokens;
   if (usdExceeded || tokensExceeded) {

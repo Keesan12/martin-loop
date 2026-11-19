@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -11,6 +12,55 @@ import {
   findPublicCopyViolations,
   runPublicCopyScan,
 } from "../public-copy-scan.mjs";
+import { scanPromotedSourceChanges } from "../public-source-copy-scan.mjs";
+
+async function createPromotionFixture() {
+  const rootDir = await mkdtemp(path.join(os.tmpdir(), "martin-promoted-copy-"));
+  const git = (...args) => execFileSync("git", args, { cwd: rootDir, encoding: "utf8" }).trim();
+  const put = async (relativePath, contents) => {
+    const fullPath = path.join(rootDir, relativePath);
+    await mkdir(path.dirname(fullPath), { recursive: true });
+    await writeFile(fullPath, contents);
+  };
+
+  git("init", "-q");
+  git("config", "user.email", "scanner@example.test");
+  git("config", "user.name", "Promotion Scanner");
+  git("config", "core.autocrlf", "false");
+  await put("README.md", "# MartinLoop\n");
+  await put("docs/guide.md", "# Guide\n");
+  await put("packages/core/tests/grounding.test.ts", 'test("control", () => {});\n');
+  await put("packages/core/tests/café.test.ts", 'test("unicode control", () => {});\n');
+  await put("packages/core/src/private-only.ts", "export const internal = true;\n");
+  await put("scripts/promoted.mjs", "export const promoted = true;\n");
+  git("add", ".");
+  git("commit", "-qm", "public base");
+  const publicBaseSha = git("rev-parse", "HEAD");
+  const publicSurfaceEntries = [
+    "README.md",
+    "docs/guide.md",
+    "packages/core/tests/grounding.test.ts",
+    "packages/core/tests/café.test.ts",
+    "scripts/promoted.mjs",
+  ]
+    .map((entryPath) => ({ path: entryPath, mode: "100644", sha256: "a".repeat(64) }))
+    .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  await put(
+    ".martin/promotion-manifest.json",
+    `${JSON.stringify({ publicBaseSha, publicSurfaceEntries }, null, 2)}\n`,
+  );
+
+  return {
+    rootDir,
+    put,
+    commit: (message) => {
+      git("add", "-A");
+      git("commit", "-qm", message);
+    },
+    publicSurfaceEntries,
+    cleanup: () => rm(rootDir, { recursive: true, force: true }),
+  };
+}
 
 test("findPublicCopyViolations detects forbidden public-process language", () => {
   const violations = findPublicCopyViolations(
@@ -184,4 +234,178 @@ test("collectPublicArtifacts includes docs files for artifact checks", async () 
 
   assert.ok(files.includes("docs/release/v0.2.7.md"));
   assert.ok(files.includes("docs/release/artifact.zip"));
+});
+
+test("required promotion scan rejects the blind-audit CommonJS title with a file and line", async () => {
+  const fixture = await createPromotionFixture();
+  const privatePhrase = ["blind", "audit"].join(" ");
+  try {
+    await fixture.put(
+      "packages/core/tests/grounding.test.ts",
+      `test("accepts the CommonJS patch from the ${privatePhrase}", () => {});\n`,
+    );
+    fixture.commit("add prohibited promoted copy");
+
+    await assert.rejects(
+      runPublicCopyScan({ rootDir: fixture.rootDir, files: ["README.md"], sourceScanRequired: true }),
+      /packages\/core\/tests\/grounding\.test\.ts:1.*private audit language/iu,
+    );
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("promotion scan accepts the corrected CommonJS title and martin audit command", async () => {
+  const fixture = await createPromotionFixture();
+  try {
+    await fixture.put(
+      "packages/core/tests/grounding.test.ts",
+      'test("accepts a CommonJS patch (require is a Node global)", () => {});\n',
+    );
+    await fixture.put("scripts/promoted.mjs", 'export const command = "martin audit";\n');
+    fixture.commit("add acceptable promoted copy");
+
+    const result = await runPublicCopyScan({
+      rootDir: fixture.rootDir,
+      files: ["README.md"],
+      sourceScanRequired: true,
+    });
+    assert.ok(result.checkedSourceAdditions >= 2);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("promotion scan ignores private-only changes outside manifest publicSurfaceEntries", async () => {
+  const fixture = await createPromotionFixture();
+  const privatePhrase = ["blind", "audit"].join(" ");
+  try {
+    await fixture.put(
+      "packages/core/src/private-only.ts",
+      `// ${privatePhrase}\nexport const internal = true;\n`,
+    );
+
+    const result = await runPublicCopyScan({
+      rootDir: fixture.rootDir,
+      files: ["README.md"],
+      sourceScanRequired: true,
+    });
+    assert.equal(result.checkedSourceFiles, 0);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("promotion scan reads every line of a newly promoted source file", async () => {
+  const fixture = await createPromotionFixture();
+  const privatePhrase = ["blind", "audit"].join(" ");
+  try {
+    const newPath = "packages/core/tests/new-public.test.ts";
+    await fixture.put(newPath, `// ${privatePhrase}\nexport const value = true;\n`);
+    const manifestPath = path.join(fixture.rootDir, ".martin", "promotion-manifest.json");
+    await writeFile(
+      manifestPath,
+      `${JSON.stringify({
+        publicBaseSha: execFileSync("git", ["rev-parse", "HEAD"], { cwd: fixture.rootDir, encoding: "utf8" }).trim(),
+        publicSurfaceEntries: [
+          ...fixture.publicSurfaceEntries,
+          { path: newPath, mode: "100644", sha256: "b".repeat(64) },
+        ].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)),
+      }, null, 2)}\n`,
+    );
+    fixture.commit("add new promoted source");
+
+    await assert.rejects(
+      runPublicCopyScan({ rootDir: fixture.rootDir, files: ["README.md"], sourceScanRequired: true }),
+      /packages\/core\/tests\/new-public\.test\.ts:1.*private audit language/iu,
+    );
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("required promotion scan fails closed when its manifest is missing", async () => {
+  const fixture = await createPromotionFixture();
+  try {
+    await rm(path.join(fixture.rootDir, ".martin", "promotion-manifest.json"));
+    await assert.rejects(
+      runPublicCopyScan({ rootDir: fixture.rootDir, files: ["README.md"], sourceScanRequired: true }),
+      /promotion manifest.*required/iu,
+    );
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("required promotion scan fails closed when Git cannot execute", async () => {
+  const fixture = await createPromotionFixture();
+  try {
+    assert.throws(
+      () => scanPromotedSourceChanges(fixture.rootDir, {
+        required: true,
+        gitRunner: () => { throw new Error("git unavailable"); },
+      }),
+      /git unavailable/iu,
+    );
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("promotion scan inspects additions in a Git-quoted Unicode path", async () => {
+  const fixture = await createPromotionFixture();
+  const privatePhrase = ["blind", "audit"].join(" ");
+  try {
+    await fixture.put(
+      "packages/core/tests/café.test.ts",
+      `test("unicode control", () => {});\n// ${privatePhrase}\n`,
+    );
+    fixture.commit("change Unicode promoted source");
+
+    await assert.rejects(
+      runPublicCopyScan({ rootDir: fixture.rootDir, files: ["README.md"], sourceScanRequired: true }),
+      /packages\/core\/tests\/café\.test\.ts:2.*private audit language/iu,
+    );
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("promotion scan forces text inspection when attributes mark source binary", async () => {
+  const fixture = await createPromotionFixture();
+  const privatePhrase = ["blind", "audit"].join(" ");
+  try {
+    await fixture.put(".gitattributes", "packages/core/tests/grounding.test.ts binary\n");
+    await fixture.put(
+      "packages/core/tests/grounding.test.ts",
+      `test("control", () => {});\n// ${privatePhrase}\n`,
+    );
+    fixture.commit("change binary-marked promoted source");
+
+    await assert.rejects(
+      runPublicCopyScan({ rootDir: fixture.rootDir, files: ["README.md"], sourceScanRequired: true }),
+      /packages\/core\/tests\/grounding\.test\.ts:2.*private audit language/iu,
+    );
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("promotion scan rejects an operator machine path without self-triggering portability", async () => {
+  const fixture = await createPromotionFixture();
+  const machinePath = `C:\\Users\\operator\\${["One", "Drive"].join("")}\\private.txt`;
+  try {
+    await fixture.put(
+      "packages/core/tests/grounding.test.ts",
+      `export const leakedPath = ${JSON.stringify(machinePath)};\n`,
+    );
+    fixture.commit("add operator path disclosure");
+
+    await assert.rejects(
+      runPublicCopyScan({ rootDir: fixture.rootDir, files: ["README.md"], sourceScanRequired: true }),
+      /packages\/core\/tests\/grounding\.test\.ts:1.*operator OneDrive path/iu,
+    );
+  } finally {
+    await fixture.cleanup();
+  }
 });

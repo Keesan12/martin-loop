@@ -259,6 +259,32 @@ describe("complete public promotion surface", () => {
   test("scenario A: stale lockfile is blocked", () => { const expected = manifest(); write("pnpm-lock.yaml", "lockfileVersion: stale\n"); const result = run(expected); assert.equal(result.status, 1); assert.match(result.stderr, /pnpm-lock\.yaml/u); reset(); });
   test("scenario B: stale test or package-smoke file is blocked", () => { const expected = manifest(); write("packages/mcp/scripts/smoke.mjs", "throw new Error('stale');\n"); const result = run(expected); assert.equal(result.status, 1); assert.match(result.stderr, /packages\/mcp\/scripts\/smoke\.mjs/u); reset(); });
   test("scenario C: a newly added surface file is blocked unless reviewed", () => { const expected = manifest(); write("packages/cli/tests/new-release-case.test.ts", "export {};\n"); const result = run(expected); assert.equal(result.status, 1); assert.match(result.stderr, /unreviewed extra/u); reset(); });
+  test("manifest-matched promoted source disclosure is blocked with a file and line", () => {
+    const privatePhrase = ["blind", "audit"].join(" ");
+    write("packages/cli/tests/release.test.ts", `test('accepts the CommonJS patch from the ${privatePhrase}', () => {});\n`);
+    commit("candidate source disclosure");
+    const expected = manifest(listSurfaceEntries(repo));
+    const result = run(expected);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /packages\/cli\/tests\/release\.test\.ts:1.*private audit language/iu);
+    reset();
+  });
+  test("an unstaged sanitizing edit cannot mask prohibited copy committed at HEAD", () => {
+    const privatePhrase = ["blind", "audit"].join(" ");
+    write("packages/cli/tests/release.test.ts", `test('accepts the CommonJS patch from the ${privatePhrase}', () => {});\n`);
+    commit("candidate source disclosure");
+    const expected = manifest(listSurfaceEntries(repo));
+    write("packages/cli/tests/release.test.ts", "test('accepts a CommonJS patch', () => {});\n");
+    write(".martin/promotion-manifest.json", `${JSON.stringify(expected)}\n`);
+    const result = spawnSync("node", [SCRIPT], {
+      cwd: repo,
+      encoding: "utf8",
+      env: { ...process.env, GITHUB_ACTIONS: "true" },
+    });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /packages\/cli\/tests\/release\.test\.ts:1.*private audit language/iu);
+    reset();
+  });
   test("an extra file under an attempted reserved namespace is blocked", () => { const expected = manifest(); const attemptedReservedPrefix = [".private", "release"].join("-"); write(`${attemptedReservedPrefix}/unexpected.json`, "{}\n"); const result = run(expected); assert.equal(result.status, 1); assert.match(result.stderr, /unreviewed extra/u); reset(); });
   test("unknown manifest fields are blocked", () => { const expected = manifest(); expected.reviewedDivergences = []; const result = run(expected); assert.equal(result.status, 1); assert.match(result.stderr, /unsupported fields/u); reset(); });
   test("reviewed public-only divergence requires exact content hash", () => {

@@ -11,6 +11,7 @@ import {
   type SwarmGitCommand,
   type SwarmGitResult,
   type SwarmGitRunner,
+  type SwarmWorkspaceFs,
   type SwarmWorkspaceRuntimeHandle
 } from "../src/swarm/workspaces.js";
 
@@ -40,6 +41,103 @@ afterEach(async () => {
 });
 
 describe("swarm detached worktree lifecycle", () => {
+  it("reserves identities atomically while independent workspace operations run concurrently", async () => {
+    const canonicalRoot = resolve("virtual-canonical");
+    const ownedRoot = join(canonicalRoot, ".martin", "swarms", "swarm-concurrent", "worktrees");
+    const baselineCommit = "a".repeat(40);
+    const existing = new Set<string>([canonicalRoot]);
+    let createCalls = 0;
+    let removeCalls = 0;
+    let releaseCreates!: () => void;
+    let releaseRemoves!: () => void;
+    let notifyCreateEntered!: () => void;
+    let notifyRemoveEntered!: () => void;
+    const createGate = new Promise<void>((resolveGate) => { releaseCreates = resolveGate; });
+    const removeGate = new Promise<void>((resolveGate) => { releaseRemoves = resolveGate; });
+    const createEntered = new Promise<void>((resolveEntered) => { notifyCreateEntered = resolveEntered; });
+    const removeEntered = new Promise<void>((resolveEntered) => { notifyRemoveEntered = resolveEntered; });
+    const fs: SwarmWorkspaceFs = {
+      async mkdir(path) { existing.add(resolve(path)); },
+      async realpath(path) {
+        const canonical = resolve(path);
+        if (!existing.has(canonical)) throw Object.assign(new Error("missing virtual path"), { code: "ENOENT" });
+        return canonical;
+      },
+      async pathExists(path) { return existing.has(resolve(path)); },
+      async rm(path) {
+        removeCalls += 1;
+        notifyRemoveEntered();
+        await removeGate;
+        const target = resolve(path);
+        for (const candidate of [...existing]) {
+          if (candidate === target || candidate.startsWith(`${target}\\`) || candidate.startsWith(`${target}/`)) {
+            existing.delete(candidate);
+          }
+        }
+      }
+    };
+    const runner: SwarmGitRunner = async (command) => {
+      if (command.args[0] === "clone") {
+        createCalls += 1;
+        notifyCreateEntered();
+        await createGate;
+        const workspacePath = resolve(command.args.at(-1)!);
+        existing.add(workspacePath);
+        existing.add(join(workspacePath, ".git"));
+      }
+      if (command.args[0] === "rev-parse" && command.args[1] === "--show-toplevel") {
+        return { stdout: `${resolve(command.cwd)}\n`, stderr: "" };
+      }
+      if (command.args[0] === "rev-parse" && command.args.includes("HEAD^{commit}")) {
+        return { stdout: `${baselineCommit}\n`, stderr: "" };
+      }
+      if (command.args[0] === "rev-parse" && command.args[1] === "--git-dir") {
+        return { stdout: ".git\n", stderr: "" };
+      }
+      return { stdout: "", stderr: "" };
+    };
+    const manager = await createSwarmWorkspaceManager({
+      canonicalRoot,
+      ownedRoot,
+      swarmId: "swarm-concurrent-operations",
+      isolationMode: "independent_clone",
+      gitRunner: runner,
+      fs
+    });
+    const firstCreate = manager.createWorkspace({ kind: "integration", workspaceId: "integration-concurrent" });
+    const secondCreate = manager.createWorkspace({ kind: "verifier", workspaceId: "verifier-concurrent" });
+    await createEntered;
+    await expect(manager.createWorkspace({
+      kind: "integration",
+      workspaceId: "integration-concurrent"
+    })).rejects.toMatchObject({ code: "DUPLICATE_WORKSPACE_ID" });
+    await new Promise((resolveTick) => setImmediate(resolveTick));
+    const overlappingCreates = createCalls;
+    releaseCreates();
+    const [integration, verifier] = await Promise.all([firstCreate, secondCreate]);
+
+    const firstRemove = manager.removeWorkspace(integration, {
+      evidencePersisted: true,
+      processTreeClosed: true,
+      force: true
+    });
+    const secondRemove = manager.removeWorkspace(verifier, {
+      evidencePersisted: true,
+      processTreeClosed: true,
+      force: true
+    });
+    await removeEntered;
+    await new Promise((resolveTick) => setImmediate(resolveTick));
+    const overlappingRemoves = removeCalls;
+    releaseRemoves();
+    await expect(Promise.all([firstRemove, secondRemove])).resolves.toEqual([
+      expect.objectContaining({ state: "completed" }),
+      expect.objectContaining({ state: "completed" })
+    ]);
+    expect(overlappingCreates).toBe(2);
+    expect(overlappingRemoves).toBe(2);
+  });
+
   it("materializes canonical repository bytes independently of host autocrlf policy", async () => {
     const fixture = await createRepoFixture();
     runGit(fixture.canonicalRoot, ["config", "core.autocrlf", "true"]);
@@ -187,6 +285,78 @@ describe("swarm detached worktree lifecycle", () => {
     });
     await expect(access(child.path)).rejects.toThrow();
     expect(calls.some(({ args }) => args[0] === "worktree" && args[1] === "remove")).toBe(false);
+  }, 60_000);
+
+  it("rolls back a clone whose checkout fails and permits the same workspace ID to retry", async () => {
+    const fixture = await createRepoFixture();
+    const calls: GitCall[] = [];
+    const realRunner = recordingGitRunner(calls);
+    let failCheckout = true;
+    const runner: SwarmGitRunner = async (command) => {
+      if (command.args.includes("checkout") && failCheckout) {
+        failCheckout = false;
+        throw Object.assign(new Error("simulated checkout failure"), { code: "CHECKOUT_FAILED" });
+      }
+      return realRunner(command);
+    };
+    const manager = await createSwarmWorkspaceManager({
+      canonicalRoot: fixture.canonicalRoot,
+      ownedRoot: fixture.ownedRoot,
+      swarmId: "swarm-clone-checkout-rollback",
+      isolationMode: "independent_clone",
+      gitRunner: runner
+    });
+    const workspaceId = "clone-checkout-retry";
+    const workspacePath = join(fixture.ownedRoot, workspaceId);
+
+    await expect(manager.createWorkspace({ kind: "integration", workspaceId }))
+      .rejects.toMatchObject({ code: "CLONE_CHECKOUT_FAILED" });
+    await expect(access(workspacePath)).rejects.toThrow();
+
+    const retried = await manager.createWorkspace({ kind: "integration", workspaceId });
+    expect(retried.record.workspaceId).toBe(workspaceId);
+    await expect(manager.removeWorkspace(retried, {
+      evidencePersisted: true,
+      processTreeClosed: true,
+      force: true
+    })).resolves.toMatchObject({ state: "completed" });
+  }, 60_000);
+
+  it("rolls back a partially added worktree and permits the same workspace ID to retry", async () => {
+    const fixture = await createRepoFixture();
+    const calls: GitCall[] = [];
+    const realRunner = recordingGitRunner(calls);
+    let failAfterAdd = true;
+    const runner: SwarmGitRunner = async (command) => {
+      const result = await realRunner(command);
+      if (command.args[0] === "-c" && command.args.includes("add") && failAfterAdd) {
+        failAfterAdd = false;
+        throw Object.assign(new Error("simulated post-add failure"), { code: "ADD_FAILED" });
+      }
+      return result;
+    };
+    const manager = await createSwarmWorkspaceManager({
+      canonicalRoot: fixture.canonicalRoot,
+      ownedRoot: fixture.ownedRoot,
+      swarmId: "swarm-partial-add-rollback",
+      gitRunner: runner
+    });
+    const workspaceId = "partial-add-retry";
+    const workspacePath = join(fixture.ownedRoot, workspaceId);
+
+    await expect(manager.createWorkspace({ kind: "verifier", workspaceId }))
+      .rejects.toMatchObject({ code: "WORKTREE_CREATE_FAILED" });
+    await expect(access(workspacePath)).rejects.toThrow();
+    expect(gitScalar(fixture.canonicalRoot, ["worktree", "list", "--porcelain"]))
+      .not.toContain(resolve(workspacePath));
+
+    const retried = await manager.createWorkspace({ kind: "verifier", workspaceId });
+    expect(retried.record.workspaceId).toBe(workspaceId);
+    await expect(manager.removeWorkspace(retried, {
+      evidencePersisted: true,
+      processTreeClosed: true,
+      force: true
+    })).resolves.toMatchObject({ state: "completed" });
   }, 60_000);
 
   it("fails before worktree add for dirty or non-Git canonical inputs", async () => {

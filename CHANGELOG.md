@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-18
+
+### Added
+- Durable mission supervision persists a validated work-item graph, bounded child execution, immutable checkpoints, restart authority, and complete morning dossiers.
+- Governed Memory V2 adds scoped, provenance-bound, hash-chained memory with explicit promotion, revocation, expiry, and deterministic recovery.
+- Provider-free governed runs require exactly $0; live runs require a positive budget. Overnight acceptance infrastructure exercises long-running checkpoint, recovery, verifier, receipt, settlement, and integration invariants without provider calls or spend.
+
+### Changed
+- Mission recovery resumes from source-bound checkpoints without duplicating execution, verification, settlement, promotion, or integration.
+- Operator and MCP surfaces expose durable mission and memory state while preserving workspace, budget, and verifier authority.
+
+### Security
+- Checkpoint, lease, memory, receipt, and integration authorities fail closed on corruption, replay, stale ownership, cross-scope access, and source drift.
+- Windows process supervision and cleanup preserve bounded child lifecycles across interruption and restart.
+
 ## [0.9.0] - 2026-11-02
 
 ### Added

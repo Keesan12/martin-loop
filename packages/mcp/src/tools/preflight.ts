@@ -15,6 +15,7 @@ import {
   resolveRunsRoot,
   saveDeliveryRecord,
   describeMalformedVerifier,
+  deniesAllWritablePaths,
 } from "@martin/core";
 import type { UpdateAvailableField } from "@martin/contracts";
 
@@ -24,7 +25,9 @@ import {
   createSkippedCliAvailability,
   formatUsd,
   getEngineAvailability,
+  resolveProviderNeutralEngine,
   resolveExecutionMode,
+  type CliAvailability,
   type MartinEngine
 } from "./tool-support.js";
 import {
@@ -44,6 +47,7 @@ export interface MartinPreflightInput {
   workingDirectory?: string;
   engine?: MartinEngine;
   model?: string;
+  pricePerMTokenUsd?: number;
   context?: string;
   policyPack?: MartinPolicyPack;
   maxUsd?: number;
@@ -83,8 +87,9 @@ export interface MartinPreflightOutput {
   normalized: {
     objective: string;
     workingDirectory: string;
-    engine: MartinEngine;
+    engine: MartinEngine | "auto";
     model?: string;
+    pricePerMTokenUsd?: number;
     budget: {
       maxUsd: number;
       softLimitUsd: number;
@@ -98,12 +103,13 @@ export interface MartinPreflightOutput {
     projectId: string;
   };
   execution: {
-    requestedEngine: MartinEngine;
+    requestedEngine: MartinEngine | "auto";
     engineAvailability: {
       available: boolean;
       detail: string;
       resolvedPath?: string;
       candidatePaths?: string[];
+      transport?: "cli" | "http";
     };
     codexDiagnostics?: {
       selectedPath?: string;
@@ -137,6 +143,7 @@ export interface MartinPreflightOutput {
       allowedPathsCount: number;
       deniedPathsCount: number;
       hasScopeConflicts: boolean;
+      hasWritableSurface: boolean;
     };
       expectedRunLayout: {
         runDirectoryPattern: string;
@@ -166,13 +173,23 @@ export async function martinPreflightTool(
   const signals = inspectRepoSignals(workingDirectory, {
     includeHostAvailability: executionMode.liveMode
   });
-  const engine = input.engine ?? "claude";
-  const engineAvailability =
-    executionMode.liveMode
-      ? engine === "codex"
-        ? resolveCliCommandAvailability("codex")
-        : getEngineAvailability(engine)
-      : createSkippedCliAvailability(engine);
+  const neutralResolution = !input.engine && executionMode.liveMode
+    ? resolveProviderNeutralEngine()
+    : undefined;
+  const engine = input.engine ?? neutralResolution?.engine ?? "auto";
+  const engineAvailability: CliAvailability =
+    !executionMode.liveMode
+      ? createSkippedCliAvailability(engine)
+      : engine === "auto"
+        ? {
+            command: "auto",
+            available: false,
+            locator: "provider-neutral-selection",
+            detail: neutralResolution?.detail ?? "Pass engine explicitly."
+          }
+        : engine === "codex"
+          ? resolveCliCommandAvailability("codex")
+          : getEngineAvailability(engine, input.model, input.pricePerMTokenUsd);
   const codexProbe =
     executionMode.liveMode && engine === "codex" && engineAvailability.available
       ? probeCodexLaunch({
@@ -187,6 +204,7 @@ export async function martinPreflightTool(
   const allowedPaths = input.allowedPaths ?? [];
   const deniedPaths = input.deniedPaths ?? [];
   const overlappingScopes = allowedPaths.filter((candidate) => deniedPaths.includes(candidate));
+  const denyAllWritableSurface = deniesAllWritablePaths(deniedPaths);
 
   const budget = normalizeLoopBudget({
     maxUsd: input.maxUsd,
@@ -197,7 +215,7 @@ export async function martinPreflightTool(
   if (!executionMode.liveMode) {
     warnings.push("Verification-only mode is active; it cannot emit governed VERIFIED or prove live CLI readiness.");
   } else if (!engineAvailability.available) {
-    warnings.push(`Requested engine '${engine}' is not available on PATH.`);
+    warnings.push(`Requested engine '${engine}' is not ready: ${engineAvailability.detail}`);
   } else if (engine === "codex" && codexProbe && !codexProbe.ok) {
     warnings.push(codexProbe.summary);
   }
@@ -207,7 +225,9 @@ export async function martinPreflightTool(
   }
   warnings.push(...malformedVerifiers);
 
-  if ((input.allowedPaths?.length ?? 0) === 0) {
+  if (denyAllWritableSurface) {
+    warnings.push("The deniedPaths policy removes every writable path; mutation-capable execution is blocked.");
+  } else if ((input.allowedPaths?.length ?? 0) === 0) {
     warnings.push("No allowedPaths were provided; Martin will rely on the broader repo root scope.");
   }
   if (overlappingScopes.length > 0) {
@@ -222,8 +242,9 @@ export async function martinPreflightTool(
 
   const engineReady =
     !executionMode.liveMode ||
-    (engineAvailability.available && (engine !== "codex" || codexProbe?.ok !== false));
-  const ok = engineReady && malformedVerifiers.length === 0;
+    (engine !== "auto" && engineAvailability.available && (engine !== "codex" || codexProbe?.ok !== false));
+  const blocksMutationExecution = executionMode.liveMode && denyAllWritableSurface;
+  const ok = engineReady && malformedVerifiers.length === 0 && !blocksMutationExecution;
   const receiptScope = {
     invocationRoot: workspaceRoot,
     workingDirectory,
@@ -236,9 +257,11 @@ export async function martinPreflightTool(
     summary: ok
       ? `Preflight ready for ${engine} in ${workingDirectory} with a ${formatUsd(budget.maxUsd)} budget cap and ${runContract.risk.level} risk.`
       : `Preflight blocked: ${
-          malformedVerifiers[0] ?? (engine === "codex" && codexProbe && !codexProbe.ok
+          (blocksMutationExecution
+            ? "The path policy leaves no writable surface."
+            : malformedVerifiers[0]) ?? (engine === "codex" && codexProbe && !codexProbe.ok
             ? codexProbe.summary
-            : `${engine} is not available for live execution.`)
+            : engineAvailability.detail)
         }`,
     warnings,
     receiptScope,
@@ -255,6 +278,7 @@ export async function martinPreflightTool(
       workingDirectory,
       engine,
       ...(input.model ? { model: input.model } : {}),
+      ...(input.pricePerMTokenUsd !== undefined ? { pricePerMTokenUsd: input.pricePerMTokenUsd } : {}),
       budget,
       verificationPlan: input.verificationPlan ?? [],
       ...(input.allowedPaths ? { allowedPaths: input.allowedPaths } : {}),
@@ -270,7 +294,8 @@ export async function martinPreflightTool(
         ...(engineAvailability.resolvedPath ? { resolvedPath: engineAvailability.resolvedPath } : {}),
         ...(engineAvailability.candidatePaths?.length
           ? { candidatePaths: engineAvailability.candidatePaths }
-          : {})
+          : {}),
+        ...(engineAvailability.transport ? { transport: engineAvailability.transport } : {})
       },
       ...(codexProbe
         ? {
@@ -302,7 +327,8 @@ export async function martinPreflightTool(
         repoRoot: workingDirectory,
         allowedPathsCount: allowedPaths.length,
         deniedPathsCount: deniedPaths.length,
-        hasScopeConflicts: overlappingScopes.length > 0
+        hasScopeConflicts: overlappingScopes.length > 0,
+        hasWritableSurface: !denyAllWritableSurface
       },
       expectedRunLayout: {
         runDirectoryPattern: "<runsRoot>/<loopId>/",

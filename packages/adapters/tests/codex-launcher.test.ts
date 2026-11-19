@@ -1,4 +1,4 @@
-import type { ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
@@ -15,6 +15,7 @@ import {
   diagnoseCodexHost,
   probeCodexCapabilities,
   probeCodexLaunch,
+  probeCodexLaunchAsync,
   resolveCodexAutonomyCandidates,
   probeFilesystemWriteCapability,
   resolveCliCommandAvailability,
@@ -524,7 +525,8 @@ describe("buildCodexExecArgs", () => {
       autonomyResolution: autonomy("/usr/local/bin/codex", {
         strategy: "sandbox+approval",
         sandboxValue: "workspace-write",
-        approvalValue: "never"
+        approvalValue: "never",
+        windowsSandboxBackend: "mxc"
       })
     });
 
@@ -534,7 +536,7 @@ describe("buildCodexExecArgs", () => {
       "exec",
       "--ignore-user-config",
       "--config",
-      'windows.sandbox="elevated"',
+      'windows.sandbox="mxc"',
       "--sandbox",
       "workspace-write",
       "do something"
@@ -851,6 +853,82 @@ describe("resolveCodexAutonomyCandidates", () => {
 });
 
 describe("probeCodexLaunch", () => {
+  it("actively cancels the supervised asynchronous readiness probe", async () => {
+    const controller = new AbortController();
+    let launched = false;
+    const resultPromise = probeCodexLaunchAsync({
+      workingDirectory: process.cwd(),
+      availability: {
+        command: "codex",
+        available: true,
+        locator: "test",
+        detail: "test",
+        resolvedPath: "codex",
+        candidatePaths: ["codex"]
+      },
+      providerExecutionTimeoutMs: 5_000,
+      signal: controller.signal,
+      spawnImpl: (_command, _args, options) => {
+        const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], options);
+        child.once("spawn", () => {
+          launched = true;
+          controller.abort(new Error("MCP caller cancelled"));
+        });
+        return child;
+      }
+    });
+
+    const result = await resultPromise;
+
+    expect(launched).toBe(true);
+    expect(result.ok).toBe(false);
+    expect(result.summary).toMatch(/cancel|abort/iu);
+  });
+
+  it("fails closed when cancellation cannot prove process-tree cleanup", async () => {
+    const controller = new AbortController();
+    controller.abort(new Error("MCP caller cancelled"));
+
+    const result = await probeCodexLaunchAsync(
+      {
+        workingDirectory: process.cwd(),
+        availability: {
+          command: "codex",
+          available: true,
+          locator: "test",
+          detail: "test",
+          resolvedPath: "codex",
+          candidatePaths: ["codex"]
+        },
+        providerExecutionTimeoutMs: 5_000,
+        signal: controller.signal
+      },
+      {
+        spawnSupervisedProcessImpl: async () => ({
+          exitCode: 1,
+          stdout: "",
+          stderr: "",
+          timedOut: false,
+          completed: false,
+          crashed: false,
+          outputCapped: false,
+          terminationReason: "aborted",
+          launched: true,
+          cleanup: {
+            state: "failed",
+            code: "tree_close_timeout",
+            message: "Owned readiness process tree remained alive."
+          }
+        })
+      }
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.processCleanup).toMatchObject({ state: "failed", code: "tree_close_timeout" });
+    expect(result.summary).toMatch(/cleanup failed|remained alive/iu);
+    expect(result.summary).not.toMatch(/^Codex readiness probe was cancelled/iu);
+  });
+
   it("respects PATH candidate order before desktop fallbacks on Windows", () => {
     clearCodexCapabilityCacheForTests();
     const workingDirectory = process.cwd();
@@ -912,14 +990,99 @@ describe("probeCodexLaunch", () => {
 
       expect(result.ok, JSON.stringify(result, null, 2)).toBe(true);
       expect(result.command).toBe(pathCodex);
-      expect(result.args.slice(0, 5)).toEqual([
+      expect(result.args.slice(0, 3)).toEqual([
         "sandbox",
         "--config",
-        'windows.sandbox="elevated"',
-        "--permission-profile",
-        ":workspace"
+        'windows.sandbox="mxc"'
       ]);
+      expect(result.args).not.toContain("--permission-profile");
+      expect(result.args).not.toContain("-C");
       expect(observedCommands).not.toContain(desktopCodex);
+    } finally {
+      rmSync(candidateRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("negotiates a verified Windows sandbox backend and emits only advertised sandbox flags", () => {
+    clearCodexCapabilityCacheForTests();
+    const workingDirectory = process.cwd();
+    const candidateRoot = mkdtempSync(join(tmpdir(), "martin-codex-backend-negotiation-"));
+    const codexPath = join(candidateRoot, "codex.exe");
+    writeFileSync(codexPath, "", "utf8");
+    const sandboxAttempts: string[][] = [];
+    const spawnSyncImpl = vi.fn((_command: string, args: string[]) => {
+      if (args.length === 1 && args[0] === "--help") {
+        return { status: 0, stdout: "Usage: codex [COMMAND]", stderr: "" };
+      }
+      if (args[0] === "exec" && args[1] === "--help") {
+        return {
+          status: 0,
+          stdout: [
+            "Usage: codex exec [OPTIONS] [PROMPT]",
+            "--config <key=value>",
+            "--ignore-user-config",
+            "--sandbox <MODE> [possible values: read-only, workspace-write]",
+            "--ask-for-approval <POLICY> [possible values: on-request, never]",
+            "--cd <DIR>"
+          ].join("\n"),
+          stderr: ""
+        };
+      }
+      if (args[0] === "sandbox" && args[1] === "--help") {
+        return {
+          status: 0,
+          stdout: [
+            "Usage: codex sandbox [OPTIONS] [COMMAND]...",
+            "--config <key=value>",
+            "--permission-profile <NAME>",
+            "--cd <DIR>"
+          ].join("\n"),
+          stderr: ""
+        };
+      }
+      sandboxAttempts.push(args);
+      if (!args.includes('windows.sandbox="mxc"')) {
+        return { status: 1, stdout: "", stderr: "backend unavailable" };
+      }
+      const markerPath = args.at(-2);
+      if (markerPath) writeFileSync(markerPath, "MARTIN_CODEX_WRITE_OK", "utf8");
+      return { status: 0, stdout: "READY\n", stderr: "" };
+    });
+
+    try {
+      const result = probeCodexLaunch({
+        workingDirectory,
+        platform: "win32",
+        env: {},
+        availability: {
+          command: "codex",
+          available: true,
+          locator: "where.exe",
+          detail: "test",
+          resolvedPath: codexPath,
+          candidatePaths: [codexPath]
+        },
+        spawnSyncImpl: spawnSyncImpl as never
+      });
+
+      expect(result.ok, JSON.stringify(result, null, 2)).toBe(true);
+      expect(result.capabilityProfile?.sandboxPermissionProfile).toEqual({
+        flag: "--permission-profile",
+        scope: "sandbox"
+      });
+      expect(result.args).toContain('windows.sandbox="mxc"');
+      expect(result.args).toContain("--permission-profile");
+      expect(result.args).toContain(":workspace");
+      expect(sandboxAttempts).toHaveLength(1);
+      const providerArgs = buildCodexExecArgs({
+        workingDirectory,
+        platform: "win32",
+        capabilityProfile: result.capabilityProfile!,
+        autonomyResolution: result.autonomyResolution!,
+        prompt: "inspect"
+      });
+      expect(providerArgs).toContain('windows.sandbox="mxc"');
+      expect(providerArgs).not.toContain('windows.sandbox="elevated"');
     } finally {
       rmSync(candidateRoot, { recursive: true, force: true });
     }
@@ -1050,14 +1213,12 @@ describe("probeCodexLaunch", () => {
 
     expect(result.ok, JSON.stringify(result, null, 2)).toBe(true);
     expect(result.capabilityProfile?.sandbox?.values).toContain("workspace-write");
-    expect(result.args.slice(0, 6)).toEqual([
+    expect(result.args.slice(0, 3)).toEqual([
       "sandbox",
-      "--permission-profile",
-      ":workspace",
-      "-C",
-      workingDirectory,
-      "--"
+      "--",
+      process.execPath
     ]);
+    expect(result.args).not.toContain("--permission-profile");
     expect(result.args).not.toContain("exec");
     expect(result.summary).toContain("local sandbox probe passed");
     expect(providerExecCalls).toBe(0);
@@ -1090,7 +1251,7 @@ describe("probeCodexLaunch", () => {
     expect(escaped.summary).toMatch(/escaped|outside|boundary/iu);
     expect(providerExecCalls).toBe(0);
     expect(sandboxCalls).toBe(2);
-    expect(observedTimeout).toBe(300_000);
+    expect(observedTimeout).toBe(900_000);
   });
 });
 

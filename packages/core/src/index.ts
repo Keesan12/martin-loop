@@ -36,6 +36,7 @@ import {
   evaluatePatchDecision,
   evaluateCostGovernor,
   evaluateBudgetPreflight,
+  evaluateProviderFreeZeroSpendPreflight,
   inferExit,
   isSafeUnverifiedDiscard,
   nextPolicyPhase,
@@ -56,6 +57,7 @@ import {
 import {
   evaluateChangeApprovalLeash,
   evaluateFilesystemLeash,
+  deniesAllWritablePaths,
   evaluateSecretLeash,
   redactSecretsFromText,
   resolveExecutionProfile,
@@ -85,7 +87,7 @@ import {
 import { findWeakenedTestFiles } from "./test-integrity.js";
 import { compilePromptPacket } from "./compiler.js";
 import {
-  makeLedgerEvent,
+  makeLedgerEvent as makePersistenceLedgerEvent,
   resolveReceiptIntegrityRoot,
   resolveRunsRoot,
   runDir,
@@ -166,6 +168,7 @@ export {
   selectRecoveryRecipe,
   evaluateVerificationLeash,
   evaluateFilesystemLeash,
+  deniesAllWritablePaths,
   evaluateChangeApprovalLeash,
   evaluateSecretLeash,
   resolveExecutionProfile,
@@ -281,12 +284,14 @@ export type {
 
 // ─── Persistence (RunStore, LedgerEvent, FileRunStore) ──────────────────────
 export {
+  createCheckpointStore,
   createFileRunStore,
   makeLedgerEvent,
   readAllLoopRecords,
   readLatestLoopRecord,
   readLatestLoopRecordFromFile,
   readLoopRecordsFromFile,
+  recoverReceiptIntegrityTransaction,
   resolveRunsRoot,
   resolveReceiptIntegrityPath,
   verifyReceiptIntegrityFromFiles,
@@ -294,17 +299,50 @@ export {
 } from "./persistence/index.js";
 export type {
   AttemptArtifacts,
+  CheckpointStore,
   LedgerEvent,
   LedgerEventKind,
   LoopAttemptRecord,
   LoopRunRecord,
   ReceiptIntegrityChainEntry,
+  ReceiptIntegrityTransaction,
   RunContract,
   RunStore,
   StoredReceiptIntegrityMaterial
 } from "./persistence/index.js";
 export { compileAndPersistContext } from "./persistence/index.js";
 export type { CompileResult } from "./persistence/index.js";
+
+// Durable mission runtime and governed-memory operator authority.
+// Keep this explicit so consumers do not depend on private source paths.
+export {
+  classifyMissionMemoryCandidates,
+  classifyMissionMemoryRecords,
+  inspectMissionMemory,
+  readMissionRuntimeControlIntent,
+  readMissionRuntimeState,
+  revokeMissionMemory,
+  verifyMissionMemory,
+  writeMissionRuntimeControlIntent
+} from "./mission/index.js";
+export type {
+  MissionControlIntent,
+  MissionControlIntentInput,
+  MissionHostApprovalAuthority,
+  MissionHostApprovalReceipt,
+  MissionMemoryCandidateClassification,
+  MissionRuntimeState
+} from "./mission/index.js";
+export {
+  createHmacMemoryApprovalAuthorityV2,
+  MemoryStoreV2,
+  MemoryStoreV2Error
+} from "./persistence/index.js";
+export type {
+  MemoryApprovalAuthorityV2,
+  MemoryApprovalReceiptV2,
+  MemoryRecordV2
+} from "./persistence/index.js";
 
 // ─── Context Shadow — A-CTX-0 ────────────────────────────────────────────────
 export { compileContextShadow, estimateContextTokens } from "./context-shadow.js";
@@ -706,6 +744,13 @@ export interface RunMartinInput {
   availableArtifacts?: ReadonlyMap<string, true>;
   /** Keep standalone behavior by default; Swarm children use host_only. */
   verificationExecutionOwner?: "provider_and_host" | "host_only";
+  /**
+   * Explicit provider-free authority. The USD budget is exactly zero, any positive spend is exhaustion,
+   * and the preflight estimates zero provider spend. Requires `forceWorkspaceMutationTracking`.
+   */
+  spendAuthority?: "standard" | "provider_free_zero_spend";
+  /** The host observes workspace mutations even when the adapter declares itself non-mutating. */
+  forceWorkspaceMutationTracking?: boolean;
   /** Live-only parent budget authority; never written into durable loop state. */
   observedUsageGovernor?: MartinObservedUsageGovernor;
   /** Optional parent cancellation signal. Relayed into the active governed attempt. */
@@ -775,7 +820,19 @@ export function distillContext(
 }
 
 export async function runMartin(input: RunMartinInput): Promise<RunMartinResult> {
+  if (input.spendAuthority !== undefined && input.spendAuthority !== "standard" && input.spendAuthority !== "provider_free_zero_spend") {
+    throw new Error("Unknown spend authority.");
+  }
+  const zeroSpendAuthority = input.spendAuthority === "provider_free_zero_spend";
+  if (zeroSpendAuthority && (input.budget.maxUsd !== 0 || input.forceWorkspaceMutationTracking !== true)) {
+    throw new Error("Provider-free zero-spend authority requires an exactly zero USD budget and forced workspace mutation tracking.");
+  }
+  if (!zeroSpendAuthority && input.exitPolicy?.budget?.zeroSpendAuthority !== undefined) {
+    throw new Error("zeroSpendAuthority can only be granted through the explicit provider-free spend authority.");
+  }
   const now = input.now ?? (() => new Date().toISOString());
+  const makeLedgerEvent = (draft: Parameters<typeof makePersistenceLedgerEvent>[0]) =>
+    makePersistenceLedgerEvent(draft, { now: now() });
   const idFactory = input.idFactory;
   const resumeLoop = input.resume?.loop;
   if (resumeLoop) {
@@ -792,6 +849,9 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
   }
 
   const task = resumeLoop?.task ?? input.task;
+  if (zeroSpendAuthority && (task.repoRoot === undefined || (resumeLoop !== undefined && resumeLoop.budget.maxUsd !== 0))) {
+    throw new Error("Provider-free zero-spend authority requires a workspace repoRoot to observe and an exactly zero USD loop budget.");
+  }
   const providerExecutionTimeoutMs = normalizeProviderExecutionTimeoutMs(
     task.providerExecutionTimeoutMs
   );
@@ -1118,6 +1178,52 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     };
   }
 
+  const denyAllWritableSurface =
+    task.mutationMode !== "read_only"
+    && deniesAllWritablePaths(task.deniedPaths)
+    && adapterChain.some((candidate) => candidate.metadata.capabilities?.workspaceMutations !== false);
+
+  if (denyAllWritableSurface) {
+    const reason = "The filesystem policy denies every writable path for a mutation-capable adapter.";
+    const denyAllExitDecision: ExitDecision = {
+      shouldExit: true,
+      lifecycleState: "human_escalation",
+      status: "exited",
+      reason,
+      failureClass: "safety_leash_blocked",
+      safetySurface: "filesystem",
+      reasonCode: "zero_writable_surface"
+    };
+    if (input.store) {
+      await input.store.appendLedger(
+        loop.loopId,
+        makeLedgerEvent({
+          kind: "safety.violations_found",
+          runId: loop.loopId,
+          payload: {
+            surface: "filesystem",
+            blocked: true,
+            profile: executionProfile.name,
+            violations: ["zero_writable_surface"]
+          }
+        })
+      );
+      await input.store.appendLedger(
+        loop.loopId,
+        makeLedgerEvent({
+          kind: "run.exited",
+          runId: loop.loopId,
+          payload: createRunExitPayload(denyAllExitDecision)
+        })
+      );
+    }
+    const terminationEnvelope = await persistGuardStop(denyAllExitDecision);
+    const finalizedLoop = await finalizeCurrentLoop(denyAllExitDecision, now());
+    const finalizedWithEnvelope: LoopRecord = { ...finalizedLoop, terminationEnvelope };
+    await persistLoopRecordIfSupported(input.store, finalizedWithEnvelope);
+    return { loop: finalizedWithEnvelope, decision: denyAllExitDecision };
+  }
+
   const secretDecision = evaluateSecretLeash({
     values: [
       task.title,
@@ -1195,7 +1301,12 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
   let preDeltaCostUsd = 0;
 
   // ── Eight-exit runtime control state ─────────────────────────────────────
-  const exitPolicy = createDefaultExitPolicy(loop.budget, input.exitPolicy);
+  const exitPolicy = createDefaultExitPolicy(
+    loop.budget,
+    zeroSpendAuthority
+      ? { ...input.exitPolicy, budget: { ...input.exitPolicy?.budget, zeroSpendAuthority: true } }
+      : input.exitPolicy
+  );
 
   let activeAttemptController: AbortController | undefined;
   let observedHumanInterrupt: import("@martin/contracts").ExitSignalV1 | undefined;
@@ -1731,17 +1842,19 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     const attemptId = makeId("att", idFactory);
     const executingAdapter = currentAdapter;
 
-    const budgetPreflight = evaluateBudgetPreflight({
-      promptCharCount: distilled.focus.length + loop.task.objective.length * 3,
-      attemptCount: loop.attempts.length,
-      remainingBudgetUsd: distilled.constraints.remainingBudgetUsd,
-      remainingTokens: distilled.constraints.remainingTokens,
-      minimumViableTokens: executingAdapter.metadata.budgetPreflight?.minimumViableTokens,
-      pricePerMTokenUsd: executingAdapter.metadata.budgetPreflight?.pricePerMTokenUsd,
-      // D2: pass remaining iterations so the preflight can compute a budget-aware cap
-      // rather than using the old rigid maxUsd * 0.25 that blocked viable attempts.
-      remainingIterations: distilled.constraints.remainingIterations
-    });
+    const budgetPreflight = zeroSpendAuthority
+      ? evaluateProviderFreeZeroSpendPreflight()
+      : evaluateBudgetPreflight({
+          promptCharCount: distilled.focus.length + loop.task.objective.length * 3,
+          attemptCount: loop.attempts.length,
+          remainingBudgetUsd: distilled.constraints.remainingBudgetUsd,
+          remainingTokens: distilled.constraints.remainingTokens,
+          minimumViableTokens: executingAdapter.metadata.budgetPreflight?.minimumViableTokens,
+          pricePerMTokenUsd: executingAdapter.metadata.budgetPreflight?.pricePerMTokenUsd,
+          // D2: pass remaining iterations so the preflight can compute a budget-aware cap
+          // rather than using the old rigid maxUsd * 0.25 that blocked viable attempts.
+          remainingIterations: distilled.constraints.remainingIterations
+        });
 
     if (!budgetPreflight.allowed) {
       const preflightExitDecision: ExitDecision = {
@@ -1806,7 +1919,8 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         userPrompt: distilled.focus,
         toolOutput: priorVerifierOutput || undefined,
         history: loop.attempts.map(a => a.summary).join("\n")
-      }
+      },
+      now
     );
 
     if (contextPrecheck.verdict === "context_poisoning_block") {
@@ -2008,7 +2122,8 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
 
     const tracksWorkspaceMutations =
       request.context.repoRoot !== undefined &&
-      executingAdapter.metadata.capabilities?.workspaceMutations !== false;
+      (input.forceWorkspaceMutationTracking === true ||
+        executingAdapter.metadata.capabilities?.workspaceMutations !== false);
 
     // Pre-attempt: check signals that arrived during guard evaluation
     const preAttemptTerminal = await evaluateCheckpoint("pre_attempt");
@@ -2040,9 +2155,14 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       });
     } catch (execError) {
       // Convert an abort (wall-clock or signal-driven) into the correct exit
-      // rather than letting it propagate as an unhandled exception.
-      const abortTerminal = await evaluateCheckpoint("post_attempt");
-      if (abortTerminal !== undefined) return await terminateRun(abortTerminal);
+      // rather than letting it propagate as an unhandled exception. Do not run
+      // the general post-attempt evaluator for an ordinary provider exception:
+      // governedTurnsUsed already includes the active attempt, so the final
+      // permitted turn would otherwise mask the provider failure as turn_cap.
+      if (activeAttemptController.signal.aborted) {
+        const abortTerminal = await evaluateCheckpoint("post_attempt");
+        if (abortTerminal !== undefined) return await terminateRun(abortTerminal);
+      }
       // Blocker 2 (exception path): provider threw a genuine non-abort exception.
       // Restore any retained candidate BEFORE re-throwing so the workspace is
       // never left with unverified code after an exception escape.
@@ -2228,7 +2348,8 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     const costState = evaluateCostGovernor({
       budget: loop.budget,
       cost: loop.cost,
-      attemptsUsed: loop.attempts.length
+      attemptsUsed: loop.attempts.length,
+      ...(zeroSpendAuthority ? { zeroSpendAuthority: true } : {})
     });
 
     loop = appendLoopEvent(
@@ -2254,22 +2375,18 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         estimate: budgetPreflight.estimate,
         settledAt: attemptCompletedAt
       });
-      await input.store.writeAttemptArtifacts(loop.loopId, currentAttemptIndex, {
+      const settlementArtifacts = {
         compiledContext,
         verification,
         ...(rollbackBoundary ? { rollbackBoundary } : {})
-      });
-      await input.store.appendLedger(
-        loop.loopId,
+      };
+      const settlementLedgerEvents = [
         makeLedgerEvent({
           kind: "patch.generated",
           runId: loop.loopId,
           attemptIndex: currentAttemptIndex,
           payload: { status: result.status, summary: result.summary }
-        })
-      );
-      await input.store.appendLedger(
-        loop.loopId,
+        }),
         makeLedgerEvent({
           kind: "budget.settled",
           runId: loop.loopId,
@@ -2292,7 +2409,22 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
             preflightEstimateUsd: settlement.preflightEstimateUsd
           }
         })
-      );
+      ];
+      if (input.store.commitAttemptSettlement) {
+        await input.store.commitAttemptSettlement(
+          loop.loopId,
+          currentAttemptIndex,
+          loop,
+          settlementArtifacts,
+          settlementLedgerEvents
+        );
+      } else {
+        await input.store.writeAttemptArtifacts(loop.loopId, currentAttemptIndex, settlementArtifacts);
+        for (const event of settlementLedgerEvents) {
+          await input.store.appendLedger(loop.loopId, event);
+        }
+        await persistLoopRecordIfSupported(input.store, loop);
+      }
     }
 
     let changedFiles: string[] = [];
@@ -2405,7 +2537,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       );
       if (meaningfulFile) {
         firstDeltaDetected = true;
-        firstDeltaTimestampMs = Date.now();
+        firstDeltaTimestampMs = nowMs();
         firstDeltaFilePath = meaningfulFile;
         firstDeltaChangeType = "modify";
         preDeltaCostUsd = roundUsd(loop.cost.actualUsd - getUsageUsd(result.usage));
@@ -2903,6 +3035,19 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       };
     }
 
+    if (input.store) {
+      await input.store.writeAttemptArtifacts(loop.loopId, currentAttemptIndex, {
+        compiledContext,
+        verification: effectiveVerification,
+        ...(patchDiff ? { diff: patchDiff } : {}),
+        ...(groundingScanResult ? { groundingScan: groundingScanResult } : {}),
+        ...(patchDecision ? { patchScore: patchDecision.score } : {}),
+        ...(patchDecision ? { patchDecision: toPatchDecisionArtifact(patchDecision) } : {}),
+        ...(rollbackBoundary ? { rollbackBoundary } : {}),
+        ...(rollbackOutcome ? { rollbackOutcome } : {})
+      });
+    }
+
     const decision = inferExit({
       loop,
       lastResult: effectiveResult,
@@ -2942,9 +3087,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     );
 
     if (input.store) {
-      await input.store.appendLedger(
-        loop.loopId,
-        makeLedgerEvent({
+      const verificationLedgerEvent = makeLedgerEvent({
           kind: "verification.completed",
           runId: loop.loopId,
           attemptIndex: currentAttemptIndex,
@@ -2957,8 +3100,13 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
             ...(effectiveVerification.binding ? { binding: effectiveVerification.binding } : {}),
             changedFiles,
           }
-        })
-      );
+        });
+      if (input.store.commitRunCheckpoint) {
+        await input.store.commitRunCheckpoint(loop.loopId, loop, [verificationLedgerEvent]);
+      } else {
+        await input.store.appendLedger(loop.loopId, verificationLedgerEvent);
+        await persistLoopRecordIfSupported(input.store, loop);
+      }
     }
 
     if (!effectiveVerification.passed) {

@@ -233,6 +233,7 @@ function validateRunInput(args: unknown): RunLoopInput {
     "workingDirectory",
     "engine",
     "model",
+    "pricePerMTokenUsd",
     "fallbackEngines",
     "context",
     "policyPack",
@@ -259,6 +260,7 @@ function validateRunInput(args: unknown): RunLoopInput {
       : {}),
     ...(engine ? { engine } : {}),
     ...optionalString(record.model, "model"),
+    ...optionalNonNegativeNumber(record.pricePerMTokenUsd, "pricePerMTokenUsd"),
     ...optionalEnumArrayAsObject(record.fallbackEngines, "fallbackEngines", MARTIN_ENGINE_VALUES),
     ...optionalString(record.context, "context"),
     ...optionalEnumAsObject(record.policyPack, "policyPack", [
@@ -783,6 +785,19 @@ function optionalPositiveNumber(
     return {};
   }
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    throw invalidArgumentsError(`Invalid ${name}.`);
+  }
+  return { [name]: value } as Partial<Record<typeof name, number>>;
+}
+
+function optionalNonNegativeNumber(
+  value: unknown,
+  name: string
+): Partial<Record<typeof name, number>> {
+  if (value === undefined) {
+    return {};
+  }
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
     throw invalidArgumentsError(`Invalid ${name}.`);
   }
   return { [name]: value } as Partial<Record<typeof name, number>>;

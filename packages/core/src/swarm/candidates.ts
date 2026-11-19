@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { lstat, readFile, realpath } from "node:fs/promises";
-import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import {
   SWARM_SCHEMA_VERSION,
@@ -105,6 +105,16 @@ export interface CaptureSwarmCandidateResult {
   readonly cleanupAuthorized: boolean;
 }
 
+interface RecordedScopeAuthorityForTest {
+  readonly childRunId: string;
+  readonly attemptId: string;
+  readonly physicalRunsRoot: string;
+  readonly recordedRunsRoot: string;
+  readonly physicalWorkspaceRoot: string;
+  readonly recordedWorkspaceRoot: string;
+  readonly projectReceipt: () => Promise<void>;
+}
+
 interface RejectionContext {
   readonly input: CaptureSwarmCandidateInput;
   readonly reasonCode: SwarmPatchAdmissionReasonCode;
@@ -137,6 +147,21 @@ export async function inventorySwarmCandidatePaths(
 export async function captureAndAdmitSwarmCandidate(
   input: CaptureSwarmCandidateInput
 ): Promise<CaptureSwarmCandidateResult> {
+  return captureAndAdmitSwarmCandidateInternal(input);
+}
+
+/** Internal source-level fixture seam; intentionally absent from package-root exports. */
+export async function captureAndAdmitSwarmCandidateWithRecordedScopeAuthorityForTest(
+  input: CaptureSwarmCandidateInput,
+  authority: RecordedScopeAuthorityForTest
+): Promise<CaptureSwarmCandidateResult> {
+  return captureAndAdmitSwarmCandidateInternal(input, authority);
+}
+
+async function captureAndAdmitSwarmCandidateInternal(
+  input: CaptureSwarmCandidateInput,
+  recordedAuthority?: RecordedScopeAuthorityForTest
+): Promise<CaptureSwarmCandidateResult> {
   const now = input.now ?? (() => new Date().toISOString());
   const gitRunner = input.gitRunner ?? runGit;
   let receiptIntegrity: ReceiptIntegrityState = "material_missing";
@@ -168,7 +193,7 @@ export async function captureAndAdmitSwarmCandidate(
     return reject("process_active", "Child process tree must be closed before candidate capture.");
   }
 
-  const receiptSummary = await verifyReceiptIntegrityFromFiles({
+  let receiptSummary = await verifyReceiptIntegrityFromFiles({
     runId: input.childRunId,
     runsRoot: input.runsRoot,
     loopRecordPath: input.loopRecordPath,
@@ -179,7 +204,7 @@ export async function captureAndAdmitSwarmCandidate(
     return reject("receipt_not_verified", receiptSummary.reason ?? "Child receipt integrity is not verified.");
   }
 
-  const verifiedMaterial = await readVerifiedReceiptMaterial(input, receiptSummary);
+  let verifiedMaterial = await readVerifiedReceiptMaterial(input, receiptSummary);
   if (!verifiedMaterial || !receiptBindingMatches(input, verifiedMaterial)) {
     return reject("receipt_scope_mismatch", "Verified receipt is not bound to this swarm candidate identity.");
   }
@@ -189,6 +214,27 @@ export async function captureAndAdmitSwarmCandidate(
     workspaceRoot = await realpath(resolve(input.workspace.path));
     if (!await signedReceiptScopeMatches(verifiedMaterial.receiptScope, workspaceRoot)) {
       return reject("receipt_scope_mismatch", "Signed receipt scope does not match the manager-issued child workspace.");
+    }
+    if (recordedAuthority) {
+      if (!validRecordedScopeAuthority(input, recordedAuthority, workspaceRoot)) {
+        return reject("receipt_scope_mismatch", "Recorded receipt scope authority does not match this exact child workspace.");
+      }
+      await recordedAuthority.projectReceipt();
+      receiptSummary = await verifyReceiptIntegrityFromFiles({
+        runId: input.childRunId,
+        runsRoot: input.runsRoot,
+        loopRecordPath: input.loopRecordPath,
+        ledgerPath: input.ledgerPath
+      });
+      verifiedMaterial = await readVerifiedReceiptMaterial(input, receiptSummary);
+      if (
+        receiptSummary.state !== "verified"
+        || !verifiedMaterial
+        || !receiptBindingMatches(input, verifiedMaterial)
+        || !signedRecordedReceiptScopeMatches(verifiedMaterial.receiptScope, recordedAuthority.recordedWorkspaceRoot)
+      ) {
+        return reject("receipt_scope_mismatch", "Projected receipt scope does not match the authorized recorded workspace.");
+      }
     }
     await assertCanonicalStateUnchanged(
       gitRunner,
@@ -377,6 +423,36 @@ export async function captureAndAdmitSwarmCandidate(
   }
 
   return { admission, artifact, cleanupAuthorized: true };
+}
+
+function validRecordedScopeAuthority(
+  input: CaptureSwarmCandidateInput,
+  authority: RecordedScopeAuthorityForTest,
+  workspaceRoot: string
+): boolean {
+  if (authority.childRunId !== input.childRunId || authority.attemptId !== input.attemptId) return false;
+  const values = [
+    authority.physicalRunsRoot,
+    authority.recordedRunsRoot,
+    authority.physicalWorkspaceRoot,
+    authority.recordedWorkspaceRoot,
+  ];
+  if (values.some((value) => !isAbsolute(value) || resolve(value) !== value)) return false;
+  if (!pathsEqual(resolve(authority.physicalRunsRoot), resolve(input.runsRoot))) return false;
+  if (!pathsEqual(resolve(authority.physicalWorkspaceRoot), workspaceRoot)) return false;
+  const relation = relative(authority.physicalRunsRoot, authority.physicalWorkspaceRoot);
+  if (relation === "" || relation === ".." || relation.startsWith(`..${sep}`) || isAbsolute(relation)) return false;
+  return pathsEqual(join(authority.recordedRunsRoot, relation), authority.recordedWorkspaceRoot);
+}
+
+function signedRecordedReceiptScopeMatches(
+  scope: LoopRecord["receiptScope"],
+  recordedWorkspaceRoot: string
+): boolean {
+  const boundPaths = [scope?.repoRoot, scope?.workingDirectory]
+    .filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+  return boundPaths.length > 0
+    && boundPaths.every((boundPath) => isAbsolute(boundPath) && pathsEqual(resolve(boundPath), recordedWorkspaceRoot));
 }
 
 async function persistRejection(context: RejectionContext): Promise<CaptureSwarmCandidateResult> {
@@ -789,6 +865,30 @@ export function verifyPersistedSwarmCandidateArtifact(
       candidateTreeHash: artifact.candidateTreeHash,
       receipt: artifact.receiptIntegrity
     });
+}
+
+/** Internal fixture seam; rebinds an already-admitted artifact to the authoritative finalized child receipt. */
+export function rebindPersistedSwarmCandidateReceiptForTest(
+  artifact: PersistedSwarmCandidateArtifact,
+  receiptIntegrity: ReceiptIntegritySummary
+): PersistedSwarmCandidateArtifact {
+  const rebound: PersistedSwarmCandidateArtifact = Object.freeze({
+    ...artifact,
+    identitySha256: hashCandidateArtifactIdentity({
+      candidate: artifact.candidate,
+      attemptId: artifact.attemptId,
+      proposalId: artifact.proposalId,
+      patchSha256: artifact.candidate.patchSha256,
+      manifestSha256: artifact.manifestSha256,
+      candidateTreeHash: artifact.candidateTreeHash,
+      receipt: receiptIntegrity,
+    }),
+    receiptIntegrity: Object.freeze({ ...receiptIntegrity }),
+  });
+  if (!verifyPersistedSwarmCandidateArtifact(rebound)) {
+    throw new Error("Rebound candidate artifact failed its canonical identity verification.");
+  }
+  return rebound;
 }
 
 function manifestMatchesCandidate(manifest: Buffer, changedPaths: readonly string[]): boolean {

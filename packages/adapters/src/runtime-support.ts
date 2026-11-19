@@ -31,9 +31,8 @@ export function normalizeUsage(input: {
     input.provenance ??
     (input.estimatedUsd !== undefined ? "estimated" : "actual");
   const actualUsd =
-    provenance === "estimated"
-      ? input.estimatedUsd ?? input.actualUsd ?? 0
-      : input.actualUsd ?? 0;
+    input.actualUsd ??
+    (provenance === "estimated" ? input.estimatedUsd ?? 0 : 0);
 
   return {
     actualUsd: roundUsd(actualUsd),

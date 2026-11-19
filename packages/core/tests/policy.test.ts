@@ -85,6 +85,23 @@ describe("evaluateBudgetPreflight", () => {
     expect(decision.estimate.estimatedTotalTokens).toBe(128_000);
     expect(decision.estimate.provenance).toBe("estimated");
   });
+
+  it("prices the adapter minimum viable token floor before admitting spend", () => {
+    const decision = evaluateBudgetPreflight({
+      promptCharCount: 2_000,
+      attemptCount: 0,
+      remainingBudgetUsd: 1,
+      remainingTokens: 128_000,
+      minimumViableTokens: 128_000,
+      pricePerMTokenUsd: 50,
+      remainingIterations: 1
+    });
+
+    expect(decision.allowed).toBe(false);
+    expect(decision.reason).toContain("remaining budget");
+    expect(decision.estimate.estimatedTotalTokens).toBe(128_000);
+    expect(decision.estimate.estimatedAttemptCostUsd).toBe(6.41);
+  });
 });
 
 describe("computeEvidenceVector", () => {
@@ -393,5 +410,26 @@ describe("evaluatePatchDecision", () => {
     expect(decision.reasonCodes).toContain("verifier_passed");
     // grounding_failure is in reasonCodes as information but was overridden
     expect(decision.decision).not.toBe("DISCARD");
+  });
+});
+
+describe("provider-free zero-spend preflight", () => {
+  it("estimates exactly zero provider spend and admits under explicit authority", async () => {
+    const { evaluateProviderFreeZeroSpendPreflight } = await import("../src/policy");
+    const decision = evaluateProviderFreeZeroSpendPreflight();
+    expect(decision.allowed).toBe(true);
+    expect(decision.reason).toMatch(/provider-free zero-spend authority/u);
+    expect(decision.estimate).toMatchObject({
+      estimatedAttemptCostUsd: 0,
+      estimatedVerifierCostUsd: 0,
+      estimatedTotalTokens: 0,
+    });
+  });
+
+  it("leaves the standard preflight unchanged: a zero remaining budget is still refused", async () => {
+    const { evaluateBudgetPreflight } = await import("../src/policy");
+    const decision = evaluateBudgetPreflight({ promptCharCount: 100, attemptCount: 0, remainingBudgetUsd: 0 });
+    expect(decision.allowed).toBe(false);
+    expect(decision.estimate.estimatedAttemptCostUsd).toBeGreaterThan(0);
   });
 });

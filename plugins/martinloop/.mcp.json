@@ -4,7 +4,7 @@
       "command": "npx",
       "args": [
         "-y",
-        "@martinloop/mcp@0.9.0"
+        "@martinloop/mcp@0.10.0"
       ]
     }
   }

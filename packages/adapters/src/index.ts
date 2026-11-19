@@ -20,8 +20,24 @@ export {
 export {
   createOpenAiCompatibleAdapter,
   resolveOpenAiCompatibleRuntimeConfig,
+  type OpenAiCompatibleBillingMode,
   type OpenAiCompatibleAdapterOptions
 } from "./openai-compatible.js";
+export {
+  resolveBudgetPreflightPricePerMTokenUsd,
+  resolveProviderPricing,
+  type CacheWriteDuration,
+  type PricingAlias,
+  type PricingBand,
+  type PricingProvider,
+  type PricingResolutionStatus,
+  type PricingServiceTier,
+  type PricingSourceMetadata,
+  type ProviderPricingEntry,
+  type ResolvedProviderPricing,
+  type ResolveProviderPricingOptions,
+  type TokenRatesPerMillion
+} from "./pricing/catalog.js";
 export {
   createSwarmVerifierExecutor,
   createVerifierOnlyAdapter,
@@ -38,6 +54,8 @@ export {
   diagnoseCodexHost,
   probeCodexCapabilities,
   probeCodexLaunch,
+  probeCodexLaunchAsync,
+  type CodexLaunchProbeAsyncResult,
   resolveCliCommandAvailability,
   type CliCommandAvailability,
   type CodexApprovalCapability,

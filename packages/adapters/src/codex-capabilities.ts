@@ -12,6 +12,7 @@ export type CodexPromptTransport = "stdin-dash" | "argv";
 export type CodexWriteStrategy =
   | "sandbox+approval"
   | "automation";
+export type CodexWindowsSandboxBackend = "mxc" | "elevated" | "unelevated";
 
 export interface CodexCapabilityFlag {
   flag: string;
@@ -33,6 +34,7 @@ export interface CodexAutonomyResolution {
   strategy: "automation" | "sandbox+approval";
   sandboxValue?: "workspace-write";
   approvalValue?: string;
+  windowsSandboxBackend?: CodexWindowsSandboxBackend;
 }
 
 export interface CodexCapabilityProfile {
@@ -42,6 +44,8 @@ export interface CodexCapabilityProfile {
   probeError?: string;
   config?: CodexCapabilityFlag;
   sandboxConfig?: CodexCapabilityFlag;
+  sandboxPermissionProfile?: CodexCapabilityFlag;
+  sandboxCwd?: CodexCapabilityFlag;
   model?: CodexCapabilityFlag;
   cwd?: CodexCapabilityFlag;
   sandbox?: CodexSandboxCapability;
@@ -281,6 +285,8 @@ export function probeCodexCapabilities(
   const promptTransports = parsePromptTransports(execHelp);
   const probeError = globalProbe.error ?? execProbe.error ?? sandboxProbe.error;
   const sandboxConfigFlag = ["--config", "-c"].find((flag) => flagPattern(flag).test(sandboxCommandHelp));
+  const sandboxPermissionProfileFlag = ["--permission-profile", "-P"].find((flag) => flagPattern(flag).test(sandboxCommandHelp));
+  const sandboxCwdFlag = ["--cd", "-C", "--cwd", "--working-dir"].find((flag) => flagPattern(flag).test(sandboxCommandHelp));
 
   const profile: CodexCapabilityProfile = {
     binaryPath,
@@ -295,6 +301,12 @@ export function probeCodexCapabilities(
       : {}),
     ...(sandboxConfigFlag
       ? { sandboxConfig: { flag: sandboxConfigFlag, scope: "sandbox" as const } }
+      : {}),
+    ...(sandboxPermissionProfileFlag
+      ? { sandboxPermissionProfile: { flag: sandboxPermissionProfileFlag, scope: "sandbox" as const } }
+      : {}),
+    ...(sandboxCwdFlag
+      ? { sandboxCwd: { flag: sandboxCwdFlag, scope: "sandbox" as const } }
       : {}),
     ...(locateFlag(globalHelp, execHelp, ["--cd", "--cwd", "--working-dir", "-C"])
       ? { cwd: locateFlag(globalHelp, execHelp, ["--cd", "--cwd", "--working-dir", "-C"]) }
@@ -413,7 +425,12 @@ export function buildCodexExecArgs(options: CodexExecArgsOptions): string[] {
 
   if (profile.userConfigIsolation) pushCapabilityArg(globalArgs, execArgs, profile.userConfigIsolation);
   if (platform === "win32" && profile.userConfigIsolation && profile.config) {
-    pushCapabilityArg(globalArgs, execArgs, profile.config, 'windows.sandbox="elevated"');
+    if (options.mode !== "probe" && !resolution?.windowsSandboxBackend) {
+      throw new Error(`Resolved Codex binary ${profile.binaryPath} has no boundary-verified Windows sandbox backend.`);
+    }
+    if (resolution?.windowsSandboxBackend) {
+      pushCapabilityArg(globalArgs, execArgs, profile.config, `windows.sandbox="${resolution.windowsSandboxBackend}"`);
+    }
   }
   if (profile.cwd) pushCapabilityArg(globalArgs, execArgs, profile.cwd, options.workingDirectory);
 

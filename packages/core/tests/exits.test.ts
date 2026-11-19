@@ -610,3 +610,31 @@ describe("P1-SIGNAL: satisfied external event does not exit", () => {
     expect(decision.status).not.toBe("completed");
   });
 });
+
+// ─── Provider-free zero-spend authority ──────────────────────────────────────
+
+describe("zero-spend authority", () => {
+  const zeroSpendPolicy = () => makePolicy({ budget: { maxUsd: 0, zeroSpendAuthority: true } });
+
+  it("does not treat actualUsd 0 against maxUsd 0 as budget exhaustion", () => {
+    const ev = evaluateExitPolicy(zeroSpendPolicy(), makeSnapshot({ actualUsd: 0 }));
+    expect(ev.matched).not.toContain("budget_cap");
+  });
+
+  it("fails closed on any positive spend", () => {
+    const ev = evaluateExitPolicy(zeroSpendPolicy(), makeSnapshot({ actualUsd: 0.000001 }));
+    expect(ev.matched).toContain("budget_cap");
+  });
+
+  it("accepts only an exactly zero budget under zero-spend authority", () => {
+    expect(() => validateExitPolicy(zeroSpendPolicy())).not.toThrow();
+    expect(() => validateExitPolicy(makePolicy({ budget: { maxUsd: 1, zeroSpendAuthority: true } }))).toThrow(/exactly zero/u);
+  });
+
+  it("keeps standard semantics: a zero budget is rejected and actualUsd at the cap exhausts", () => {
+    expect(() => validateExitPolicy(makePolicy({ budget: { maxUsd: 0 } }))).toThrow(/greater than zero/u);
+    const standard = makePolicy({ budget: { maxUsd: 5 } });
+    expect(evaluateExitPolicy(standard, makeSnapshot({ actualUsd: 5 })).matched).toContain("budget_cap");
+    expect(evaluateExitPolicy(standard, makeSnapshot({ actualUsd: 4.99 })).matched).not.toContain("budget_cap");
+  });
+});

@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -48,12 +49,13 @@ export async function buildLiveSwarmProductionFixture({ root, submittedRoot, nam
   await seedKey(integrityRoot, runsRoot, `swarm-${swarmId}.key`, `parent-${swarmId}`);
   const result = await liveRuntime.runProductionLiveSwarm({
     plan, canonicalRoot: repositoryRoot, ownedRoot: join(runsRoot, "_swarms", swarmId, "worktrees"), storeRoot: runsRoot, runsRoot,
-    adapterFactory: ({ agent, childRunId }) => ({
-      declaredPaths: [`fixture/${agent.agentId.replace(`${name}-agent-`, "agent-")}.txt`],
-      adapter: {
+    adapterFactory: ({ agent, childRunId }) => {
+      seedKeySync(integrityRoot, runsRoot, `${childRunId}.key`, `child-${childRunId}`);
+      return {
+        declaredPaths: [`fixture/${agent.agentId.replace(`${name}-agent-`, "agent-")}.txt`],
+        adapter: {
         adapterId: "agent-cli:codex", kind: "agent-cli", label: "production persisted-store fixture", metadata: { providerId: "codex", model: "gpt-6.1-sol", capabilities: { workspaceMutations: true } },
         async execute(request) {
-          await seedKey(integrityRoot, runsRoot, `${childRunId}.key`, `child-${childRunId}`);
           const index = agent.agentId.replace(`${name}-agent-`, "");
           await delay(delayMsByIndex?.[Number(index)] ?? 0);
           await writeFile(join(request.context.repoRoot, "fixture", `agent-${index}.txt`), "after\n", "utf8");
@@ -64,8 +66,9 @@ export async function buildLiveSwarmProductionFixture({ root, submittedRoot, nam
             verification: { passed: true, summary: "verified", binding: { runId: request.loopId, workspaceId: request.workspaceId, attemptId: request.attemptId, cwd: request.context.repoRoot, runsRoot: request.context.runsRoot, executionProfile: request.context.executionProfile, allowedNetworkDomains: request.context.allowedNetworkDomains, commands: request.context.verificationPlan }, steps: [{ command: "echo verify", launched: true, completed: true, crashed: false, exitCode: 0, timedOut: false }] },
           };
         },
-      },
-    }),
+        },
+      };
+    },
     verifierExecutor: { async execute(request) { return { passed: verifierPass, processCloseState: "closed", binding: { swarmId: request.swarmId, workspaceId: request.workspaceId, cwd: request.cwd, parentPolicyVersion: request.parentPolicyVersion, baselineCommit: request.baselineCommit, integratedTreeHash: request.integratedTreeHash, commands: request.commands.map((item) => item.command) }, subprocessResults: request.commands.map((item) => ({ command: item.command, launched: true, completed: true, timedOut: false, exitCode: verifierPass ? 0 : 1, startedAt: new Date().toISOString(), completedAt: new Date().toISOString() })) }; } },
   });
   if (verifierPass ? result.outcome.state !== "verified" : result.outcome.state !== "needs_review") throw new Error(`production fixture outcome mismatch: ${JSON.stringify(result.outcome)}`);
@@ -113,5 +116,6 @@ export function qualificationReceipt({ runs, sourceSha, cliPath, cliSha256, vers
 }
 
 async function seedKey(root, runsRoot, name, secret) { const dir = join(root, digest(Buffer.from(runsRoot)).slice(0, 16)); await mkdir(dir, { recursive: true }); await writeFile(join(dir, name), `${secret}\n`); }
+function seedKeySync(root, runsRoot, name, secret) { const dir = join(root, digest(Buffer.from(runsRoot)).slice(0, 16)); mkdirSync(dir, { recursive: true }); writeFileSync(join(dir, name), `${secret}\n`); }
 async function git(cwd, args) { return (await execFileAsync("git", args, { cwd, windowsHide: true })).stdout; }
 function digest(value) { return createHash("sha256").update(value).digest("hex"); }

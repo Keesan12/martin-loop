@@ -784,7 +784,13 @@ async function ensureOwnershipKeyExclusive(runsRoot: string, keyPath: string): P
         break;
       }
       if (!matchesFileIdentity(current, identity)) {
-        const replacedValid = await readOwnershipKey(runsRoot).catch(() => undefined);
+        // Another process may have completed stale-key recovery and be between
+        // publishing the replacement hard link and removing its temporary
+        // publication link. During that bounded window readOwnershipKey()
+        // correctly rejects the multi-link file. Wait for the replacement to
+        // settle instead of misclassifying the legitimate identity change as
+        // tampering.
+        const replacedValid = await waitForOwnershipKey(runsRoot, recoveryDeadline);
         if (replacedValid) {
           return replacedValid;
         }

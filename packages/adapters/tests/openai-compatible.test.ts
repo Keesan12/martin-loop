@@ -10,7 +10,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { createLoopRecord } from "@martin/contracts";
-import { createOpenAiCompatibleAdapter } from "../src/openai-compatible.js";
+import {
+  createOpenAiCompatibleAdapter,
+  resolveOpenAiCompatibleRuntimeConfig
+} from "../src/openai-compatible.js";
 
 // ---------------------------------------------------------------------------
 // Mock server helpers
@@ -78,6 +81,91 @@ function makeRequest(overrides = {}) {
 // ---------------------------------------------------------------------------
 
 describe("createOpenAiCompatibleAdapter", () => {
+  it("fails closed for a metered model without authoritative pricing", () => {
+    expect(() => createOpenAiCompatibleAdapter({
+      baseUrl: "https://api.example.test",
+      apiKey: "sk-test",
+      model: "provider/unknown-model"
+    })).toThrow(/PRICING_CONFIGURATION_REQUIRED/u);
+  });
+
+  it("fails closed for an explicitly unknown billing mode without authoritative pricing", () => {
+    expect(() => createOpenAiCompatibleAdapter({
+      baseUrl: "https://api.example.test",
+      model: "provider/unknown-model",
+      billingMode: "unknown"
+    })).toThrow(/PRICING_CONFIGURATION_REQUIRED/u);
+  });
+
+  it("uses an explicit unknown-model price for metadata and its own budget preflight", async () => {
+    const fetchImpl = vi.fn<typeof fetch>();
+    const adapter = createOpenAiCompatibleAdapter({
+      baseUrl: "https://api.example.test",
+      apiKey: "sk-test",
+      model: "provider/unknown-model",
+      pricePerMTokenUsd: 40,
+      fetchImpl
+    });
+    const request = makeRequest() as any;
+    request.context.remainingBudgetUsd = 0.001;
+
+    expect(adapter.metadata.budgetPreflight?.pricePerMTokenUsd).toBe(40);
+    const result = await adapter.execute(request);
+    expect(result.failure?.message).toBe("budget_preflight_exceeded");
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("settles an explicit unknown-model price against provider-reported tokens", async () => {
+    const result = await createOpenAiCompatibleAdapter({
+      baseUrl: "https://api.example.test",
+      model: "provider/unknown-model",
+      billingMode: "unknown",
+      pricePerMTokenUsd: 40,
+      fetchImpl: async () => new Response(JSON.stringify({
+        choices: [{ message: { role: "assistant", content: "Done." }, finish_reason: "stop" }],
+        usage: { prompt_tokens: 100, completion_tokens: 50 }
+      }), { status: 200, headers: { "Content-Type": "application/json" } })
+    }).execute(makeRequest() as any);
+
+    expect(result.usage.actualUsd).toBeCloseTo(0.006, 6);
+    expect(result.usage.provenance).toBe("calculated");
+    expect(result.usage.providerSettlement).toMatchObject({
+      pricingSource: "blended_fallback",
+      pricingVersion: "configured-price-per-m-token"
+    });
+  });
+
+  it("publishes catalog pricing for metered models and explicit zero for local unmetered models", () => {
+    const metered = createOpenAiCompatibleAdapter({
+      baseUrl: "https://api.openai.com/v1",
+      apiKey: "sk-test",
+      model: "gpt-6-astra"
+    });
+    const local = createOpenAiCompatibleAdapter({
+      baseUrl: "http://127.0.0.1:11434",
+      model: "gpt-6-astra"
+    });
+
+    expect(metered.metadata.budgetPreflight?.pricePerMTokenUsd).toBe(75);
+    expect(local.metadata.budgetPreflight?.pricePerMTokenUsd).toBe(0);
+  });
+
+  it("lets an explicit billing option override an invalid environment value", () => {
+    const previous = process.env.MARTIN_OPENAI_BILLING_MODE;
+    process.env.MARTIN_OPENAI_BILLING_MODE = "invalid-mode";
+    try {
+      const adapter = createOpenAiCompatibleAdapter({
+        baseUrl: "http://127.0.0.1:11434",
+        model: "gpt-6.1-sol",
+        billingMode: "local_unmetered"
+      });
+      expect(adapter.metadata.budgetPreflight?.pricePerMTokenUsd).toBe(0);
+    } finally {
+      if (previous === undefined) delete process.env.MARTIN_OPENAI_BILLING_MODE;
+      else process.env.MARTIN_OPENAI_BILLING_MODE = previous;
+    }
+  });
+
   let mockClose: (() => void) | undefined;
 
   afterEach(() => {
@@ -101,7 +189,8 @@ describe("createOpenAiCompatibleAdapter", () => {
     const adapter = createOpenAiCompatibleAdapter({
       baseUrl: url,
       model: "test-model",
-      apiKey: "sk-test"
+      apiKey: "sk-test",
+      pricePerMTokenUsd: 3
     });
 
     const result = await adapter.execute(makeRequest() as any);
@@ -115,6 +204,28 @@ describe("createOpenAiCompatibleAdapter", () => {
     expect(result.status).toBe("completed");
     expect(result.usage.tokensIn).toBe(120);
     expect(result.usage.tokensOut).toBe(45);
+  });
+
+  it("does not duplicate the v1 segment when the configured base URL already includes it", async () => {
+    let requestedPath: string | undefined;
+    const { url, close } = await startMockServer((req) => {
+      requestedPath = req.url;
+      return {
+        body: {
+          choices: [{ message: { role: "assistant", content: "Completed." }, finish_reason: "stop" }],
+          usage: { prompt_tokens: 10, completion_tokens: 5 }
+        }
+      };
+    });
+    mockClose = close;
+
+    const result = await createOpenAiCompatibleAdapter({
+      baseUrl: `${url}/v1`,
+      model: "test-model"
+    }).execute(makeRequest() as any);
+
+    expect(result.status).toBe("completed");
+    expect(requestedPath).toBe("/v1/chat/completions");
   });
 
   it("returns failed when the API returns an error status", async () => {
@@ -154,21 +265,21 @@ describe("createOpenAiCompatibleAdapter", () => {
   });
 
   it("returns failed when the model returns an empty response", async () => {
-    const { url, close } = await startMockServer(() => ({
-      body: {
+    const adapter = createOpenAiCompatibleAdapter({
+      baseUrl: "https://api.example.test",
+      model: "test-model",
+      pricePerMTokenUsd: 3,
+      fetchImpl: async () => new Response(JSON.stringify({
         choices: [{ message: { role: "assistant", content: "" }, finish_reason: "stop" }],
         usage: { prompt_tokens: 50, completion_tokens: 0 }
-      }
-    }));
-    mockClose = close;
-
-    const adapter = createOpenAiCompatibleAdapter({ baseUrl: url, model: "test-model" });
+      }), { status: 200, headers: { "Content-Type": "application/json" } })
+    });
     const result = await adapter.execute(makeRequest() as any);
 
     expect(result.status).toBe("failed");
     expect(result.failure?.message).toBe("empty_response");
-    expect(result.usage.provenance).toBe("estimated");
-    expect(result.usage.estimatedUsd).toBe(result.usage.actualUsd);
+    expect(result.usage.provenance).toBe("calculated");
+    expect(result.usage.actualUsd).toBeGreaterThan(0);
   });
 
   it("skips git diff scans when no verification steps are configured", async () => {
@@ -266,7 +377,7 @@ describe("createOpenAiCompatibleAdapter", () => {
     };
     const adapter = createOpenAiCompatibleAdapter({
       baseUrl: "http://127.0.0.1:1",
-      model: "test-model",
+      model: "gpt-6.1-sol",
       fetchImpl
     });
     const request = makeRequest() as any;
@@ -384,14 +495,13 @@ describe("createOpenAiCompatibleAdapter", () => {
   });
 
   it("blocks on budget preflight when projected cost exceeds remaining budget", async () => {
-    const { url, close } = await startMockServer(() => ({ body: {} }));
-    mockClose = close;
+    const fetchImpl = vi.fn<typeof fetch>();
 
     const adapter = createOpenAiCompatibleAdapter({
-      baseUrl: url,
-      model: "test-model",
-      // Set a very expensive model to force preflight failure
-      apiKey: ""
+      baseUrl: "https://api.example.test",
+      model: "gpt-6.1-sol",
+      apiKey: "sk-test",
+      fetchImpl
     });
 
     // Override known pricing to make it expensive
@@ -404,6 +514,7 @@ describe("createOpenAiCompatibleAdapter", () => {
 
     expect(result.status).toBe("failed");
     expect(result.failure?.message).toBe("budget_preflight_exceeded");
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it("adds OpenRouter-specific headers when baseUrl contains openrouter", async () => {
@@ -422,7 +533,8 @@ describe("createOpenAiCompatibleAdapter", () => {
     const adapter = createOpenAiCompatibleAdapter({
       baseUrl: `${url}/openrouter`,
       model: "deepseek/deepseek-chat",
-      apiKey: ["sk", "or", "test"].join("-")
+      apiKey: ["sk", "or", "test"].join("-"),
+      pricePerMTokenUsd: 3
     });
 
     const result = await adapter.execute(makeRequest() as any);
@@ -431,45 +543,117 @@ describe("createOpenAiCompatibleAdapter", () => {
     expect(capturedHeaders["x-title"]).toBe("MartinLoop");
   });
 
-  it("uses known model pricing for deepseek/deepseek-chat", async () => {
+  it("settles official model pricing from the provider catalog", async () => {
+    const adapter = createOpenAiCompatibleAdapter({
+      baseUrl: "https://api.openai.com/v1",
+      model: "gpt-6.1-sol",
+      apiKey: "sk-test",
+      fetchImpl: async () => new Response(JSON.stringify({
+        choices: [{ message: { role: "assistant", content: "Fixed." }, finish_reason: "stop" }],
+        usage: { prompt_tokens: 1000, completion_tokens: 500 }
+      }), { status: 200, headers: { "Content-Type": "application/json" } })
+    });
+
+    const result = await adapter.execute(makeRequest() as any);
+
+    expect(result.status).toBe("completed");
+    expect(result.usage.actualUsd).toBeCloseTo(0.002 + 0.005, 6);
+    expect(result.usage.provenance).toBe("calculated");
+    expect(result.usage.providerSettlement).toMatchObject({
+      model: "gpt-6.1-sol",
+      modelSource: "explicit_override",
+      pricingSource: "static_catalog",
+      pricingVersion: "official-provider-pricing@2026-11-03"
+    });
+  });
+
+  it("does not charge local unmetered providers or reject them on synthetic dollar estimates", async () => {
     const { url, close } = await startMockServer(() => ({
       body: {
-        choices: [{ message: { role: "assistant", content: "Fixed." }, finish_reason: "stop" }],
+        choices: [{ message: { role: "assistant", content: "Local model completed." }, finish_reason: "stop" }],
         usage: { prompt_tokens: 1000, completion_tokens: 500 }
       }
     }));
     mockClose = close;
 
-    const adapter = createOpenAiCompatibleAdapter({
-      baseUrl: url,
-      model: "deepseek/deepseek-chat"
-    });
-
-    const result = await adapter.execute(makeRequest() as any);
-
-    // deepseek pricing: $0.00027/1K input + $0.0011/1K output
-    // 1000 input tokens = $0.00027, 500 output tokens = $0.00055 → $0.00082
-    expect(result.status).toBe("completed");
-    expect(result.usage.actualUsd).toBeCloseTo(0.00027 + 0.00055, 5);
-    expect(result.usage.provenance).toBe("calculated");
-    expect(result.usage.providerSettlement).toMatchObject({
-      model: "deepseek/deepseek-chat",
-      modelSource: "explicit_override",
-      pricingSource: "static_catalog"
-    });
-  });
-
-  it("marks cost estimated when the provider omits token usage", async () => {
-    const { url, close } = await startMockServer(() => ({
-      body: {
-        choices: [{ message: { role: "assistant", content: "Fixed." }, finish_reason: "stop" }]
-      }
-    }));
-    mockClose = close;
+    const request = makeRequest() as any;
+    request.context.remainingBudgetUsd = 0.000001;
 
     const result = await createOpenAiCompatibleAdapter({
       baseUrl: url,
-      model: "deepseek/deepseek-chat"
+      model: "local/custom-model"
+    }).execute(request);
+
+    expect(result.status).toBe("completed");
+    expect(result.usage.actualUsd).toBe(0);
+    expect(result.usage.estimatedUsd).toBeUndefined();
+    expect(result.usage.providerSettlement).toMatchObject({
+      billingMode: "local_unmetered",
+      pricingSource: "none"
+    });
+  });
+
+  it("does not treat a remote hostname containing localhost as local unmetered", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({
+      choices: [{ message: { role: "assistant", content: "Remote model completed." }, finish_reason: "stop" }],
+      usage: { prompt_tokens: 1000, completion_tokens: 500 }
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    const request = makeRequest() as any;
+    request.context.remainingBudgetUsd = 0.000001;
+
+    const result = await createOpenAiCompatibleAdapter({
+      baseUrl: "https://localhost.example.com",
+      model: "gpt-6.1-sol",
+      fetchImpl
+    }).execute(request);
+
+    expect(result.status).toBe("failed");
+    expect(result.failure?.message).toBe("budget_preflight_exceeded");
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("honors explicit metered billing authority for a loopback proxy", async () => {
+    const fetchImpl = vi.fn<typeof fetch>();
+    const request = makeRequest() as any;
+    request.context.remainingBudgetUsd = 0.000001;
+
+    const result = await createOpenAiCompatibleAdapter({
+      baseUrl: "http://127.0.0.1:11434",
+      model: "gpt-6.1-sol",
+      billingMode: "metered_api",
+      fetchImpl
+    }).execute(request);
+
+    expect(result.status).toBe("failed");
+    expect(result.failure?.message).toBe("budget_preflight_exceeded");
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("recognizes IPv6 loopback as local unmetered", async () => {
+    const request = makeRequest() as any;
+    request.context.remainingBudgetUsd = 0.000001;
+
+    const result = await createOpenAiCompatibleAdapter({
+      baseUrl: "http://[::1]:11434",
+      model: "local/ipv6-model",
+      fetchImpl: async () => new Response(JSON.stringify({
+        choices: [{ message: { role: "assistant", content: "IPv6 local model completed." }, finish_reason: "stop" }],
+        usage: { prompt_tokens: 1000, completion_tokens: 500 }
+      }), { status: 200, headers: { "Content-Type": "application/json" } })
+    }).execute(request);
+
+    expect(result.status).toBe("completed");
+    expect(result.usage.actualUsd).toBe(0);
+    expect(result.usage.providerSettlement?.billingMode).toBe("local_unmetered");
+  });
+
+  it("marks cost estimated when the provider omits token usage", async () => {
+    const result = await createOpenAiCompatibleAdapter({
+      baseUrl: "https://api.example.test",
+      model: "gpt-6.1-sol",
+      fetchImpl: async () => new Response(JSON.stringify({
+        choices: [{ message: { role: "assistant", content: "Fixed." }, finish_reason: "stop" }]
+      }), { status: 200, headers: { "Content-Type": "application/json" } })
     }).execute(makeRequest() as any);
 
     expect(result.usage.provenance).toBe("estimated");
@@ -477,17 +661,13 @@ describe("createOpenAiCompatibleAdapter", () => {
   });
 
   it("marks cost estimated when the provider reports only partial token usage", async () => {
-    const { url, close } = await startMockServer(() => ({
-      body: {
+    const result = await createOpenAiCompatibleAdapter({
+      baseUrl: "https://api.example.test",
+      model: "gpt-6.1-sol",
+      fetchImpl: async () => new Response(JSON.stringify({
         choices: [{ message: { role: "assistant", content: "Fixed." }, finish_reason: "stop" }],
         usage: { prompt_tokens: 100 }
-      }
-    }));
-    mockClose = close;
-
-    const result = await createOpenAiCompatibleAdapter({
-      baseUrl: url,
-      model: "deepseek/deepseek-chat"
+      }), { status: 200, headers: { "Content-Type": "application/json" } })
     }).execute(makeRequest() as any);
 
     expect(result.usage.tokensIn).toBe(100);
@@ -496,42 +676,37 @@ describe("createOpenAiCompatibleAdapter", () => {
     expect(result.usage.estimatedUsd).toBe(result.usage.actualUsd);
   });
 
-  it("marks cost estimated when pricing falls back for an unknown model", async () => {
-    const { url, close } = await startMockServer(() => ({
-      body: {
+  it("keeps unknown local-unmetered settlement unavailable instead of fabricating pricing", async () => {
+    const result = await createOpenAiCompatibleAdapter({
+      baseUrl: "http://localhost:11434",
+      model: "provider/unknown-model",
+      fetchImpl: async () => new Response(JSON.stringify({
         choices: [{ message: { role: "assistant", content: "Fixed." }, finish_reason: "stop" }],
         usage: { prompt_tokens: 100, completion_tokens: 50 }
-      }
-    }));
-    mockClose = close;
-
-    const result = await createOpenAiCompatibleAdapter({
-      baseUrl: url,
-      model: "provider/unknown-model"
+      }), { status: 200, headers: { "Content-Type": "application/json" } })
     }).execute(makeRequest() as any);
 
-    expect(result.usage.provenance).toBe("estimated");
-    expect(result.usage.estimatedUsd).toBe(result.usage.actualUsd);
+    expect(result.usage.actualUsd).toBe(0);
+    expect(result.usage.provenance).toBe("unavailable");
+    expect(result.usage.estimatedUsd).toBeUndefined();
+    expect(result.usage.providerSettlement?.pricingSource).toBe("none");
   });
 
-  it("marks empty-response cost estimated when pricing falls back for an unknown model", async () => {
-    const { url, close } = await startMockServer(() => ({
-      body: {
+  it("keeps empty-response cost unavailable for an unknown local model", async () => {
+    const result = await createOpenAiCompatibleAdapter({
+      baseUrl: "http://localhost:11434",
+      model: "provider/unknown-model",
+      fetchImpl: async () => new Response(JSON.stringify({
         choices: [{ message: { role: "assistant", content: "" }, finish_reason: "stop" }],
         usage: { prompt_tokens: 100, completion_tokens: 0 }
-      }
-    }));
-    mockClose = close;
-
-    const result = await createOpenAiCompatibleAdapter({
-      baseUrl: url,
-      model: "provider/unknown-model"
+      }), { status: 200, headers: { "Content-Type": "application/json" } })
     }).execute(makeRequest() as any);
 
     expect(result.status).toBe("failed");
     expect(result.failure?.message).toBe("empty_response");
-    expect(result.usage.provenance).toBe("estimated");
-    expect(result.usage.estimatedUsd).toBe(result.usage.actualUsd);
+    expect(result.usage.actualUsd).toBe(0);
+    expect(result.usage.provenance).toBe("unavailable");
+    expect(result.usage.estimatedUsd).toBeUndefined();
   });
 
   it("exposes correct adapterId and metadata", () => {
@@ -557,6 +732,61 @@ describe("createOpenAiCompatibleAdapter", () => {
     }
   });
 
+  it("reads explicit billing authority from the runtime environment", () => {
+    expect(resolveOpenAiCompatibleRuntimeConfig({
+      MARTIN_OPENAI_BILLING_MODE: "metered_api"
+    })).toMatchObject({ billingMode: "metered_api" });
+  });
+
+  it("rejects invalid billing authority from the runtime environment", () => {
+    expect(() => resolveOpenAiCompatibleRuntimeConfig({
+      MARTIN_OPENAI_BILLING_MODE: "free-ish"
+    })).toThrow(/INVALID_OPENAI_BILLING_MODE/u);
+  });
+
+  it("reads custom-model pricing authority from the runtime environment", () => {
+    expect(resolveOpenAiCompatibleRuntimeConfig({
+      MARTIN_OPENAI_PRICE_PER_M_TOKEN_USD: "12.5"
+    })).toMatchObject({ pricePerMTokenUsd: 12.5 });
+  });
+
+  it("lets an explicit price override an invalid environment value", () => {
+    const previous = process.env.MARTIN_OPENAI_PRICE_PER_M_TOKEN_USD;
+    process.env.MARTIN_OPENAI_PRICE_PER_M_TOKEN_USD = "not-a-price";
+    try {
+      const adapter = createOpenAiCompatibleAdapter({
+        baseUrl: "https://api.example.test",
+        apiKey: "configured",
+        model: "custom-model",
+        pricePerMTokenUsd: 12.5
+      });
+      expect(adapter.metadata.budgetPreflight?.pricePerMTokenUsd).toBe(12.5);
+    } finally {
+      if (previous === undefined) delete process.env.MARTIN_OPENAI_PRICE_PER_M_TOKEN_USD;
+      else process.env.MARTIN_OPENAI_PRICE_PER_M_TOKEN_USD = previous;
+    }
+  });
+
+  it("rejects invalid custom-model pricing authority from the runtime environment", () => {
+    expect(() => resolveOpenAiCompatibleRuntimeConfig({
+      MARTIN_OPENAI_PRICE_PER_M_TOKEN_USD: "not-a-price"
+    })).toThrow(/INVALID_OPENAI_PRICE/u);
+  });
+
+  it.each([
+    "https://user:secret@api.example.test",
+    "https://api.example.test?api-version=1",
+    "https://api.example.test#fragment"
+  ])("rejects endpoint components that live request construction cannot preserve: %s", (baseUrl) => {
+    expect(() => resolveOpenAiCompatibleRuntimeConfig({
+      MARTIN_OPENAI_BASE_URL: baseUrl
+    })).toThrow(/INVALID_OPENAI_BASE_URL/u);
+    expect(() => createOpenAiCompatibleAdapter({
+      baseUrl,
+      model: "gpt-6.1-sol"
+    })).toThrow(/INVALID_OPENAI_BASE_URL/u);
+  });
+
   it("uses the runtime API key when options.apiKey is unset", async () => {
     let capturedHeaders: Record<string, string | string[] | undefined> = {};
     const previousApiKey = process.env.MARTIN_OPENAI_API_KEY;
@@ -574,7 +804,11 @@ describe("createOpenAiCompatibleAdapter", () => {
       });
       mockClose = close;
 
-      const adapter = createOpenAiCompatibleAdapter({ baseUrl: url, model: "test-model" });
+      const adapter = createOpenAiCompatibleAdapter({
+        baseUrl: url,
+        model: "test-model",
+        pricePerMTokenUsd: 3
+      });
       const result = await adapter.execute(makeRequest() as any);
 
       expect(result.status).toBe("completed");

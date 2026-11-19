@@ -38,54 +38,45 @@ import type {
 
 import { readGitChangedFiles, runVerification } from "./cli-bridge.js";
 import { createAdapterCapabilities, normalizeUsage } from "./runtime-support.js";
+import {
+  resolveBudgetPreflightPricePerMTokenUsd,
+  resolveProviderPricing
+} from "./pricing/catalog.js";
 import { applyWorkspaceEdits, buildWorkspaceSnapshot } from "./workspace-edit-protocol.js";
 
 // ---------------------------------------------------------------------------
-// OpenRouter/OpenAI-compatible model pricing ($/1K tokens)
-// Automatically used when baseUrl contains openrouter.ai or known providers.
-// Defaults to a conservative blended estimate for unknown models.
+// OpenAI pricing is resolved from the shared, dated provider catalog. Unknown
+// compatible-provider models remain unpriced rather than receiving a
+// fabricated blended rate.
 // ---------------------------------------------------------------------------
 
-const KNOWN_MODEL_PRICING: Record<string, { inputPer1K: number; outputPer1K: number }> = {
-  // DeepSeek
-  "deepseek/deepseek-chat":          { inputPer1K: 0.00027, outputPer1K: 0.0011 },
-  "deepseek/deepseek-r1":            { inputPer1K: 0.0008,  outputPer1K: 0.0032 },
-  "deepseek/deepseek-coder":         { inputPer1K: 0.00014, outputPer1K: 0.00028 },
-  // Qwen
-  "qwen/qwen3-235b-a22b":            { inputPer1K: 0.00022, outputPer1K: 0.00088 },
-  "qwen/qwen3-32b":                  { inputPer1K: 0.00009, outputPer1K: 0.00009 },
-  "qwen/qwen-2.5-coder-32b-instruct":{ inputPer1K: 0.00007, outputPer1K: 0.00007 },
-  // Mistral
-  "mistralai/codestral-latest":      { inputPer1K: 0.0003,  outputPer1K: 0.0009 },
-  "mistralai/mistral-large":         { inputPer1K: 0.003,   outputPer1K: 0.009 },
-  "mistralai/mistral-small":         { inputPer1K: 0.0001,  outputPer1K: 0.0003 },
-  // Kimi
-  "moonshotai/kimi-k2":              { inputPer1K: 0.00065, outputPer1K: 0.0026 },
-  // Nemotron
-  "nvidia/llama-3.1-nemotron-70b-instruct": { inputPer1K: 0.00012, outputPer1K: 0.0003 },
-  // Llama (via OpenRouter)
-  "meta-llama/llama-3.3-70b-instruct": { inputPer1K: 0.00012, outputPer1K: 0.0003 },
-  "meta-llama/llama-3.1-405b-instruct": { inputPer1K: 0.0008, outputPer1K: 0.0008 },
-};
-
-const FALLBACK_INPUT_PER_1K = 0.0003;
-const FALLBACK_OUTPUT_PER_1K = 0.0012;
 const CHARS_PER_TOKEN = 4;
 
 function estimateCost(
   model: string,
   inputChars: number,
-  outputChars: number
-): { tokensIn: number; tokensOut: number; actualUsd: number } {
-  const pricing = KNOWN_MODEL_PRICING[model] ?? {
-    inputPer1K: FALLBACK_INPUT_PER_1K,
-    outputPer1K: FALLBACK_OUTPUT_PER_1K
-  };
+  outputChars: number,
+  pricePerMTokenUsd?: number
+): { tokensIn: number; tokensOut: number; estimatedUsd?: number } {
   const tokensIn = Math.ceil(inputChars / CHARS_PER_TOKEN);
   const tokensOut = Math.ceil(outputChars / CHARS_PER_TOKEN);
-  const actualUsd =
-    (tokensIn / 1000) * pricing.inputPer1K + (tokensOut / 1000) * pricing.outputPer1K;
-  return { tokensIn, tokensOut, actualUsd };
+  if (pricePerMTokenUsd !== undefined) {
+    return {
+      tokensIn,
+      tokensOut,
+      estimatedUsd: ((tokensIn + tokensOut) / 1_000_000) * pricePerMTokenUsd
+    };
+  }
+  const rates = resolveProviderPricing(model, {
+    provider: "openai",
+    inputTokens: tokensIn
+  }).pricing?.ratesPerMillion;
+  if (!rates) return { tokensIn, tokensOut };
+  return {
+    tokensIn,
+    tokensOut,
+    estimatedUsd: (tokensIn / 1_000_000) * rates.input + (tokensOut / 1_000_000) * rates.output
+  };
 }
 
 function normalizeOpenAiCompatibleUsage(input: {
@@ -95,21 +86,31 @@ function normalizeOpenAiCompatibleUsage(input: {
   usageWasFullyProviderReported: boolean;
   modelSource: "explicit_override" | "provider_configured";
   billingMode: "metered_api" | "local_unmetered" | "unknown";
+  configuredPricePerMTokenUsd?: number;
 }) {
-  const hasKnownPricing = KNOWN_MODEL_PRICING[input.model] !== undefined;
-  const pricing = KNOWN_MODEL_PRICING[input.model] ?? {
-    inputPer1K: FALLBACK_INPUT_PER_1K,
-    outputPer1K: FALLBACK_OUTPUT_PER_1K
-  };
-  const actualUsd =
-    (input.tokensIn / 1000) * pricing.inputPer1K +
-    (input.tokensOut / 1000) * pricing.outputPer1K;
-  const provenance =
-    input.usageWasFullyProviderReported && hasKnownPricing ? "calculated" : "estimated";
+  const resolution = resolveProviderPricing(input.model, {
+    provider: "openai",
+    inputTokens: input.tokensIn
+  });
+  const rates = resolution.pricing?.ratesPerMillion;
+  const isLocalUnmetered = input.billingMode === "local_unmetered";
+  const configuredUsd = isLocalUnmetered || input.configuredPricePerMTokenUsd === undefined
+    ? undefined
+    : ((input.tokensIn + input.tokensOut) / 1_000_000) * input.configuredPricePerMTokenUsd;
+  const catalogUsd = rates === undefined
+    ? undefined
+    : (input.tokensIn / 1_000_000) * rates.input +
+      (input.tokensOut / 1_000_000) * rates.output;
+  const settledUsd = configuredUsd ?? catalogUsd;
+  const provenance = settledUsd === undefined
+    ? "unavailable"
+    : !isLocalUnmetered && input.usageWasFullyProviderReported
+      ? "calculated"
+      : "estimated";
 
   return normalizeUsage({
-    actualUsd,
-    ...(provenance === "estimated" ? { estimatedUsd: actualUsd } : {}),
+    actualUsd: isLocalUnmetered || settledUsd === undefined ? 0 : settledUsd,
+    ...(provenance === "estimated" && settledUsd !== undefined ? { estimatedUsd: settledUsd } : {}),
     tokensIn: input.tokensIn,
     tokensOut: input.tokensOut,
     provenance,
@@ -122,8 +123,16 @@ function normalizeOpenAiCompatibleUsage(input: {
       outputTokens: input.tokensOut,
       billingMode: input.billingMode,
       modelSource: input.modelSource,
-      pricingSource: hasKnownPricing ? "static_catalog" : "blended_fallback",
-      pricingVersion: "embedded-v1",
+      pricingSource: configuredUsd !== undefined
+        ? "blended_fallback"
+        : rates === undefined
+          ? "none"
+          : "static_catalog",
+      ...(configuredUsd !== undefined
+        ? { pricingVersion: "configured-price-per-m-token" }
+        : rates === undefined || resolution.entry === undefined
+          ? {}
+          : { pricingVersion: `official-provider-pricing@${resolution.entry.source.retrievedAt}` }),
       rawUsageAvailable: input.usageWasFullyProviderReported,
       settledAt: new Date().toISOString()
     }
@@ -160,6 +169,11 @@ interface OpenAiResponse {
 // Adapter options
 // ---------------------------------------------------------------------------
 
+export type OpenAiCompatibleBillingMode =
+  | "metered_api"
+  | "local_unmetered"
+  | "unknown";
+
 export interface OpenAiCompatibleAdapterOptions {
   /** Base URL of the OpenAI-compatible API. No trailing slash. */
   baseUrl?: string;
@@ -167,6 +181,10 @@ export interface OpenAiCompatibleAdapterOptions {
   apiKey?: string;
   /** Model identifier passed as-is to the API (e.g. "deepseek/deepseek-chat"). */
   model?: string;
+  /** Explicit billing authority. Required to classify a metered loopback proxy. */
+  billingMode?: OpenAiCompatibleBillingMode;
+  /** Explicit conservative admission price for a model absent from the official catalog. */
+  pricePerMTokenUsd?: number;
   /**
    * System prompt prepended before the MartinLoop task prompt.
    * Default instructs the model to act as a focused coding assistant.
@@ -196,23 +214,86 @@ Follow these rules exactly:
 - Do not claim success unless your proposed edits satisfy the acceptance criteria and verifier.`;
 
 export const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com";
+
+function normalizeOpenAiCompatibleBaseUrl(baseUrl: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(baseUrl);
+  } catch {
+    throw new Error("INVALID_OPENAI_BASE_URL: endpoint must be an absolute HTTP(S) URL.");
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("INVALID_OPENAI_BASE_URL: endpoint protocol must be HTTP or HTTPS.");
+  }
+  if (parsed.username || parsed.password || parsed.search || parsed.hash) {
+    throw new Error(
+      "INVALID_OPENAI_BASE_URL: endpoint must not contain credentials, query parameters, or a fragment."
+    );
+  }
+  return baseUrl.replace(/\/+$/u, "");
+}
+
 export function resolveOpenAiCompatibleRuntimeConfig(
-  env: NodeJS.ProcessEnv = process.env
+  env: NodeJS.ProcessEnv = process.env,
+  billingModeOverride?: OpenAiCompatibleBillingMode,
+  baseUrlOverride?: string,
+  pricePerMTokenUsdOverride?: number
 ): {
   baseUrl: string;
   model?: string;
   apiKey: string;
   apiKeyConfigured: boolean;
   authPosture: "api_key" | "anonymous_or_local";
+  billingMode?: OpenAiCompatibleBillingMode;
+  pricePerMTokenUsd?: number;
 } {
   const apiKey = env["MARTIN_OPENAI_API_KEY"] ?? "";
+  const configuredBillingMode = billingModeOverride ?? env["MARTIN_OPENAI_BILLING_MODE"];
+  if (
+    configuredBillingMode !== undefined &&
+    configuredBillingMode !== "metered_api" &&
+    configuredBillingMode !== "local_unmetered" &&
+    configuredBillingMode !== "unknown"
+  ) {
+    throw new Error(
+      "INVALID_OPENAI_BILLING_MODE: MARTIN_OPENAI_BILLING_MODE must be metered_api, local_unmetered, or unknown."
+    );
+  }
+  const baseUrl = normalizeOpenAiCompatibleBaseUrl(
+    baseUrlOverride ?? env["MARTIN_OPENAI_BASE_URL"] ?? DEFAULT_OPENAI_BASE_URL
+  );
+  const configuredPriceText = pricePerMTokenUsdOverride === undefined
+    ? env["MARTIN_OPENAI_PRICE_PER_M_TOKEN_USD"]
+    : undefined;
+  const configuredPrice = pricePerMTokenUsdOverride ?? (
+    configuredPriceText === undefined || configuredPriceText.trim() === ""
+      ? undefined
+      : Number(configuredPriceText)
+  );
+  if (configuredPrice !== undefined && (!Number.isFinite(configuredPrice) || configuredPrice < 0)) {
+    throw new Error(
+      "INVALID_OPENAI_PRICE: MARTIN_OPENAI_PRICE_PER_M_TOKEN_USD must be finite and non-negative."
+    );
+  }
   return {
-    baseUrl: env["MARTIN_OPENAI_BASE_URL"] ?? DEFAULT_OPENAI_BASE_URL,
+    baseUrl,
     ...(env["MARTIN_OPENAI_MODEL"] ? { model: env["MARTIN_OPENAI_MODEL"] } : {}),
     apiKey,
     apiKeyConfigured: apiKey.length > 0,
-    authPosture: apiKey.length > 0 ? "api_key" : "anonymous_or_local"
+    authPosture: apiKey.length > 0 ? "api_key" : "anonymous_or_local",
+    ...(configuredBillingMode ? { billingMode: configuredBillingMode } : {}),
+    ...(configuredPrice === undefined ? {} : { pricePerMTokenUsd: configuredPrice })
   };
+}
+
+function isLoopbackBaseUrl(baseUrl: string): boolean {
+  try {
+    const parsed = new URL(baseUrl.includes("://") ? baseUrl : `http://${baseUrl}`);
+    const hostname = parsed.hostname.toLowerCase();
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
+  } catch {
+    return false;
+  }
 }
 
 function buildPrompt(request: MartinAdapterRequest, workspaceSnapshot = ""): string {
@@ -344,8 +425,13 @@ export function createOpenAiCompatibleAdapter(
   const verifyTimeoutMs = options.verifyTimeoutMs ?? 120_000;
   const systemPrompt = options.systemPrompt ?? DEFAULT_SYSTEM_PROMPT;
   const fetchFn = options.fetchImpl ?? globalThis.fetch;
-  const runtimeConfig = resolveOpenAiCompatibleRuntimeConfig();
-  const baseUrl = (options.baseUrl ?? runtimeConfig.baseUrl).replace(/\/$/, "");
+  const runtimeConfig = resolveOpenAiCompatibleRuntimeConfig(
+    process.env,
+    options.billingMode,
+    options.baseUrl,
+    options.pricePerMTokenUsd
+  );
+  const baseUrl = runtimeConfig.baseUrl;
   const model = options.model ?? runtimeConfig.model;
   if (!model) {
     throw new Error(
@@ -354,11 +440,25 @@ export function createOpenAiCompatibleAdapter(
   }
   const apiKey = options.apiKey ?? runtimeConfig.apiKey;
   const modelSource = options.model ? "explicit_override" as const : "provider_configured" as const;
-  const billingMode = /^(?:https?:\/\/)?(?:localhost|127\.0\.0\.1|\[::1\])/iu.test(baseUrl)
-    ? "local_unmetered" as const
-    : apiKey
-      ? "metered_api" as const
-      : "unknown" as const;
+  const billingMode: OpenAiCompatibleBillingMode =
+    runtimeConfig.billingMode ??
+    (isLoopbackBaseUrl(baseUrl) && apiKey.length === 0
+      ? "local_unmetered"
+      : apiKey.length > 0
+        ? "metered_api"
+        : "unknown");
+  const catalogPricePerMTokenUsd = resolveBudgetPreflightPricePerMTokenUsd(model, {
+    provider: "openai"
+  });
+  const configuredPricePerMTokenUsd = runtimeConfig.pricePerMTokenUsd;
+  const pricePerMTokenUsd = billingMode === "local_unmetered"
+    ? 0
+    : configuredPricePerMTokenUsd ?? catalogPricePerMTokenUsd;
+  if (billingMode !== "local_unmetered" && pricePerMTokenUsd === undefined) {
+    throw new Error(
+      "PRICING_CONFIGURATION_REQUIRED: non-local unknown models require pricePerMTokenUsd."
+    );
+  }
 
   return {
     adapterId: `openai-compatible:${model}`,
@@ -368,6 +468,14 @@ export function createOpenAiCompatibleAdapter(
       providerId: "openai-compatible",
       model,
       transport: "http",
+      ...(pricePerMTokenUsd === undefined ? {} : {
+        budgetPreflight: {
+          pricePerMTokenUsd,
+          basis: billingMode === "local_unmetered"
+            ? "local_unmetered_billing_authority"
+            : "provider_pricing_catalog_max_active_token_rate"
+        }
+      }),
       capabilities: createAdapterCapabilities({
         preflight: true,
         usageSettlement: true,
@@ -393,7 +501,7 @@ export function createOpenAiCompatibleAdapter(
           })
         : "";
       const prompt = buildPrompt(request, workspaceSnapshot);
-      const estimated = estimateCost(model, prompt.length, 2000);
+      const estimated = estimateCost(model, prompt.length, 2000, pricePerMTokenUsd);
       const baselineChangedFiles = hasVerificationSteps
         ? new Set(await readGitChangedFiles(workingDirectory, 5_000))
         : new Set<string>();
@@ -409,15 +517,17 @@ export function createOpenAiCompatibleAdapter(
 
       // Preflight: bail if projected cost exceeds remaining budget
       if (
+        billingMode !== "local_unmetered" &&
         request.context.remainingBudgetUsd > 0 &&
-        estimated.actualUsd > request.context.remainingBudgetUsd * 0.95
+        estimated.estimatedUsd !== undefined &&
+        estimated.estimatedUsd > request.context.remainingBudgetUsd * 0.95
       ) {
         return {
           status: "failed",
-          summary: `Preflight: projected cost $${estimated.actualUsd.toFixed(4)} exceeds remaining budget $${request.context.remainingBudgetUsd.toFixed(4)}.`,
+          summary: `Preflight: projected cost $${estimated.estimatedUsd.toFixed(4)} exceeds remaining budget $${request.context.remainingBudgetUsd.toFixed(4)}.`,
           usage: normalizeUsage({
-            actualUsd: estimated.actualUsd,
-            estimatedUsd: estimated.actualUsd,
+              actualUsd: estimated.estimatedUsd,
+              estimatedUsd: estimated.estimatedUsd,
             tokensIn: estimated.tokensIn,
             tokensOut: estimated.tokensOut,
             provenance: "estimated"
@@ -434,7 +544,8 @@ export function createOpenAiCompatibleAdapter(
       const MAX_RETRIES = 3;
       const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
       const NON_RETRYABLE_STATUS = new Set([400, 401, 403]);
-      const endpoint = `${baseUrl}/v1/chat/completions`;
+      const apiRoot = /\/v1$/iu.test(baseUrl) ? baseUrl : `${baseUrl}/v1`;
+      const endpoint = `${apiRoot}/chat/completions`;
       let responseText = "";
       let tokensIn = estimated.tokensIn;
       let tokensOut = 0;
@@ -578,7 +689,8 @@ export function createOpenAiCompatibleAdapter(
             tokensOut: 0,
             usageWasFullyProviderReported,
             modelSource,
-            billingMode
+            billingMode,
+            configuredPricePerMTokenUsd
           }),
           verification: { passed: false, summary: "Empty response — nothing to verify." },
           failure: { message: "empty_response" }
@@ -604,7 +716,8 @@ export function createOpenAiCompatibleAdapter(
               tokensOut,
               usageWasFullyProviderReported,
               modelSource,
-              billingMode
+              billingMode,
+              configuredPricePerMTokenUsd
             }),
             verification: { passed: false, summary: "Workspace edit protocol failed before verifier execution." },
             failure: { message }
@@ -653,7 +766,8 @@ export function createOpenAiCompatibleAdapter(
           tokensOut,
           usageWasFullyProviderReported,
           modelSource,
-          billingMode
+          billingMode,
+          configuredPricePerMTokenUsd
         }),
         verification,
         execution,

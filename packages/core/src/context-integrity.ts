@@ -64,7 +64,8 @@ export async function runContextIntegrityPrecheck(
     toolOutput?: string;
     retrievedContext?: string;
     history?: string;
-  }
+  },
+  now: () => string = () => new Date().toISOString()
 ): Promise<ContextIntegrityPrecheck> {
   const signals: string[] = [];
   const analyzedChannels = {
@@ -106,7 +107,7 @@ export async function runContextIntegrityPrecheck(
     reason: signals.length > 0 ? `Detected ${signals.length} poisoning signal(s).` : undefined,
     detectedSignals: signals,
     analyzedChannels,
-    timestamp: new Date().toISOString()
+    timestamp: now()
   };
 
   try {

@@ -370,16 +370,18 @@ export async function readActiveRunExecutionLease(input: {
   const leaseFile = `${createHash("sha256").update(input.runId).digest("hex")}.json`;
   const path = join(directory, leaseFile);
   const lease = await readLeaseWithHeartbeat(path);
-  if (!isAdmissibleActiveLease(lease, input.runId, host)) return undefined;
+  if (!hasActiveLeaseAuthority(lease, input.runId, host)) return undefined;
   // Same-process executors have a stronger identity proof than a sampled
-  // heartbeat: the unguessable token/instance pair is held in live memory.
-  // A stale lease whose PID was reused cannot satisfy this binding.
+  // heartbeat: the persisted token/instance pair must exactly match the live
+  // in-memory acquisition record. A stale lease whose PID was reused cannot
+  // satisfy this binding.
   if (
     lease.pid === process.pid &&
     locallyOwnedExecutionLeases.get(path) === `${lease.token}:${lease.processInstanceId}`
   ) {
     return { lease, path };
   }
+  if (!isFreshExecutionLease(lease)) return undefined;
   // A PID can be reused after the former owner crashes. Require the same
   // unguessable process instance to advance its heartbeat before admitting a
   // mutation; PID liveness alone is never authority.
@@ -396,7 +398,7 @@ export async function readActiveRunExecutionLease(input: {
   return { lease: confirmed, path };
 }
 
-function isAdmissibleActiveLease(
+function hasActiveLeaseAuthority(
   lease: RunExecutionLease | undefined,
   runId: string,
   host: string
@@ -405,13 +407,27 @@ function isAdmissibleActiveLease(
     lease &&
     lease.schemaVersion === "martin.execution-lease.v2" &&
     lease.runId === runId &&
-    Boolean(lease.token) &&
+    typeof lease.token === "string" &&
+    lease.token.trim().length > 0 &&
+    typeof lease.processInstanceId === "string" &&
+    lease.processInstanceId.trim().length > 0 &&
+    Number.isSafeInteger(lease.pid) &&
+    lease.pid > 0 &&
+    Number.isSafeInteger(lease.heartbeatSequence) &&
+    lease.heartbeatSequence >= 0 &&
     ["runMartin", "runMartin:resume"].includes(lease.owner) &&
     lease.capabilities?.runControl === true &&
     lease.hostname === host &&
-    isProcessAlive(lease.pid) &&
-    isFreshExecutionLease(lease)
+    isProcessAlive(lease.pid)
   );
+}
+
+function isAdmissibleActiveLease(
+  lease: RunExecutionLease | undefined,
+  runId: string,
+  host: string
+): lease is RunExecutionLease {
+  return hasActiveLeaseAuthority(lease, runId, host) && isFreshExecutionLease(lease);
 }
 
 function isFreshExecutionLease(lease: Pick<RunExecutionLease, "heartbeatAt">): boolean {

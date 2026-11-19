@@ -15,6 +15,7 @@ import {
   evaluateAttemptPolicy,
   evaluateCostGovernor,
   inferExit,
+  loadResumeVerifierFailure,
   runMartin,
   type CostGovernorState,
   type MartinAdapter,
@@ -80,6 +81,45 @@ describe("distillContext", () => {
 });
 
 describe("adapter token-budget admission", () => {
+  it("uses adapter model pricing when admitting a minimum viable attempt", async () => {
+    const execute = vi.fn();
+    const adapter: MartinAdapter = {
+      adapterId: "agent-cli:codex",
+      kind: "agent-cli",
+      label: "Expensive Codex CLI adapter",
+      metadata: {
+        providerId: "codex",
+        model: "gpt-6-astra",
+        budgetPreflight: {
+          minimumViableTokens: 128_000,
+          pricePerMTokenUsd: 75
+        }
+      },
+      execute
+    };
+
+    const result = await runMartin({
+      workspaceId: "ws_priced_preflight",
+      projectId: "proj_runtime",
+      task: {
+        title: "Reject an underfunded expensive model run",
+        objective: "Make one small edit.",
+        verificationPlan: ["echo ok"]
+      },
+      budget: {
+        maxUsd: 1,
+        softLimitUsd: 0.8,
+        maxIterations: 1,
+        maxTokens: 128_000
+      },
+      adapter
+    });
+
+    expect(execute).not.toHaveBeenCalled();
+    expect(result.decision.lifecycleState).toBe("budget_exit");
+    expect(result.decision.reason).toContain("$9.61");
+  });
+
   it("does not invoke an adapter when its minimum viable token budget exceeds the run cap", async () => {
     const execute = vi.fn();
     const adapter: MartinAdapter = {
@@ -1117,7 +1157,9 @@ describe("runMartin", () => {
         title: "Confirm proof-mode runs stay off the rollback path",
         objective: "Keep non-mutating proof adapters from snapshotting the dirty repo.",
         verificationPlan: ["pnpm --filter @martin/core test"],
-        repoRoot
+        repoRoot,
+        allowedPaths: [],
+        deniedPaths: ["**/*"]
       },
       budget: {
         maxUsd: 10,
@@ -1371,6 +1413,160 @@ describe("runMartin", () => {
     expect(ledger[safetyIndex]?.payload.violations).toEqual(
       expect.arrayContaining(["rm -rf ."])
     );
+  });
+
+  it.each([
+    { label: "with an empty allowlist", allowedPaths: [] as string[], taskClass: undefined },
+    { label: "even when an allowlist is present", allowedPaths: ["src/**"], taskClass: undefined },
+    { label: "when no allowlist is supplied", allowedPaths: undefined, taskClass: undefined },
+    { label: "despite contradictory verification-only task metadata", allowedPaths: [], taskClass: "verification_only" as const }
+  ])("blocks a deny-all writable surface before launch $label", async ({ allowedPaths, taskClass }) => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "martin-safety-deny-all-"));
+    const repoRoot = join(runsRoot, "repo");
+    await mkdir(repoRoot, { recursive: true });
+    const canaryPath = join(repoRoot, "canary.txt");
+    await writeFile(canaryPath, "original\n", "utf8");
+    initializeGitRepo(repoRoot);
+    const store = createFileRunStore({ runsRoot });
+    let adapterExecutions = 0;
+
+    const adapter: MartinAdapter = {
+      adapterId: "agent-cli:deny-all",
+      kind: "agent-cli",
+      label: "Deny-all launch marker adapter",
+      metadata: {
+        providerId: "codex",
+        model: "gpt-5",
+        capabilities: {
+          preflight: true,
+          usageSettlement: true,
+          diffArtifacts: true,
+          structuredErrors: true,
+          cachingSignals: false,
+          workspaceMutations: true
+        }
+      },
+      async execute() {
+        adapterExecutions += 1;
+        await writeFile(canaryPath, "mutated\n", "utf8");
+        return {
+          status: "completed",
+          summary: "This adapter must never launch.",
+          usage: { actualUsd: 1, tokensIn: 10, tokensOut: 10 },
+          verification: { passed: true, summary: "Unexpected verification pass" }
+        };
+      }
+    };
+
+    const result = await runMartin({
+      workspaceId: "ws_ops",
+      projectId: "proj_runtime",
+      task: {
+        title: "Prove deny-all is enforced before launch",
+        objective: "Do not allow any provider workspace mutation.",
+        verificationPlan: [],
+        repoRoot,
+        ...(taskClass ? { taskClass } : {}),
+        ...(allowedPaths ? { allowedPaths } : {}),
+        deniedPaths: ["**/*"]
+      },
+      budget: { maxUsd: 10, softLimitUsd: 6, maxIterations: 1, maxTokens: 2_000 },
+      adapter,
+      store,
+      now: createTimestampSource([
+        "2026-04-02T13:05:00.000Z",
+        "2026-04-02T13:05:01.000Z",
+        "2026-04-02T13:05:02.000Z",
+        "2026-04-02T13:05:03.000Z",
+        "2026-04-02T13:05:04.000Z"
+      ]),
+      idFactory: createIdFactory()
+    });
+
+    const ledger = await readLedger(runsRoot, result.loop.loopId);
+    const loopRecordPath = join(runsRoot, result.loop.loopId, "loop-record.json");
+    const ledgerPath = join(runsRoot, result.loop.loopId, "ledger.jsonl");
+    const integrity = await verifyReceiptIntegrityFromFiles({
+      runId: result.loop.loopId,
+      runsRoot,
+      loopRecordPath,
+      ledgerPath
+    });
+    expect(adapterExecutions).toBe(0);
+    expect(await readFile(canaryPath, "utf8")).toBe("original\n");
+    expect(result.loop.attempts).toHaveLength(0);
+    expect(result.loop.cost.actualUsd).toBe(0);
+    expect(result.decision).toMatchObject({
+      lifecycleState: "human_escalation",
+      failureClass: "safety_leash_blocked",
+      safetySurface: "filesystem",
+      reasonCode: "zero_writable_surface"
+    });
+    expect(ledger.map((entry) => entry.kind)).toEqual(
+      expect.arrayContaining(["safety.violations_found", "run.exited"])
+    );
+    expect(ledger.map((entry) => entry.kind)).not.toEqual(
+      expect.arrayContaining(["attempt.admitted", "patch.generated", "budget.settled"])
+    );
+    expect(integrity.state).toBe("verified");
+  });
+
+  it("preserves explicit read-only execution under a global deny policy", async () => {
+    let adapterExecutions = 0;
+    const adapter: MartinAdapter = {
+      adapterId: "direct:read-only-global-deny",
+      kind: "direct-provider",
+      label: "Read-only global-deny adapter",
+      metadata: {
+        providerId: "stub",
+        model: "stub",
+        capabilities: {
+          preflight: true,
+          usageSettlement: true,
+          diffArtifacts: false,
+          structuredErrors: true,
+          cachingSignals: false,
+          workspaceMutations: true
+        }
+      },
+      async execute() {
+        adapterExecutions += 1;
+        return {
+          status: "completed",
+          summary: "Read-only inspection completed without edits.",
+          usage: { actualUsd: 0, tokensIn: 0, tokensOut: 0, provenance: "actual" },
+          verification: { passed: true, summary: "Read-only verification passed." }
+        };
+      }
+    };
+
+    const result = await runMartin({
+      workspaceId: "ws_ops",
+      projectId: "proj_runtime",
+      task: {
+        title: "Inspect without editing",
+        objective: "Preserve a read-only verifier flow.",
+        verificationPlan: [],
+        mutationMode: "read_only",
+        deniedPaths: ["**/*"]
+      },
+      budget: { maxUsd: 1, softLimitUsd: 1, maxIterations: 1, maxTokens: 2_000 },
+      adapter,
+      now: createTimestampSource([
+        "2026-04-02T13:06:00.000Z",
+        "2026-04-02T13:06:01.000Z",
+        "2026-04-02T13:06:02.000Z",
+        "2026-04-02T13:06:03.000Z",
+        "2026-04-02T13:06:04.000Z",
+        "2026-04-02T13:06:05.000Z"
+      ]),
+      idFactory: createIdFactory()
+    });
+
+    expect(adapterExecutions).toBe(1);
+    expect(result.loop.attempts).toHaveLength(1);
+    expect(result.decision.failureClass).not.toBe("safety_leash_blocked");
+    expect(result.decision.reasonCode).not.toBe("zero_writable_surface");
   });
 
   it("challenge 12: blocks network access in strict_local before adapter execution", async () => {
@@ -2861,6 +3057,11 @@ const store: import("../src/index").RunStore = {
 
     // Persisted verification must reflect the effective (grounding-overridden) outcome
     expect(verificationEvent?.payload).toMatchObject({ passed: false });
+
+    const resumedFailure = await loadResumeVerifierFailure(runsRoot, result.loop);
+    expect(resumedFailure?.failureExcerpt).toBe(verificationEvent?.payload["summary"]);
+    expect(resumedFailure?.failureExcerpt).toContain("Patch discarded. Reasons: grounding_failure.");
+    expect(resumedFailure?.failureExcerpt).not.toContain("all tests green");
 
     // Exit must NOT be goal_met — the discarded patch never satisfied the goal
     expect(result.decision.reason).not.toMatch(/goal.?met/i);
