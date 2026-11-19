@@ -24,13 +24,6 @@
     },
     {
       "lane": "public",
-      "relativePath": "packages/cli/src/mcp-config.ts",
-      "localSha": "fa6a3428da6f677de036987175f36b032487d1e5279873dc812446dade4d6f2c",
-      "remoteSha": "a6737bc00dfa6ba82f940a2801e010b558a707febf8c471e8727c9808efcb9ff",
-      "reason": "The reviewed 0.10.0 private source retains explanatory portability and IDE-host configuration comments not present in public 0.9.0."
-    },
-    {
-      "lane": "public",
       "relativePath": "packages/cli/src/index.ts",
       "localSha": "289e4882ab1ca8b4eded616dece610b522c52998b7c4f512dc1073b75939c09e",
       "remoteSha": "a15bce8e83b4f88f521ce7b48bc13102ed7b6bba91137d55002dd93ac4522f1c",
