@@ -685,7 +685,7 @@ describe("0.9.0 CLI trust hardening", () => {
   });
 
   it("stale ownership key recovery is identity-bound across independent processes", async () => {
-    for (let iteration = 0; iteration < 1; iteration += 1) {
+    for (let iteration = 0; iteration < 3; iteration += 1) {
       const workspace = await makeRoot(`martin-clean-key-multiprocess-${iteration}-`);
       const runsRoot = join(workspace, "runs");
       const keyRoot = join(workspace, ".clean-keys");
@@ -697,7 +697,9 @@ describe("0.9.0 CLI trust hardening", () => {
 
       await expect(verifyWorkflowCleanOwnership(runsRoot)).resolves.toBe(true);
       expect((await readFile(keyPath, "utf8")).trim()).toMatch(/^[a-f0-9]{64}$/u);
+      expect((await lstat(keyPath)).nlink).toBe(1);
       await expectNoRecoveryClaims(keyRoot, `${createHash("sha256").update(resolve(runsRoot)).digest("hex").slice(0, 16)}.key`);
+      expect((await readdir(keyRoot)).filter((name) => name.endsWith(".init.tmp"))).toEqual([]);
     }
   });
 

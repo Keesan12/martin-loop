@@ -5,13 +5,16 @@ import {
   createOpenAiCompatibleAdapter,
   resolveOpenAiCompatibleRuntimeConfig,
   probeCodexLaunch,
+  probeCodexLaunchAsync,
   resolveCliCommandAvailability,
   createVerifierOnlyAdapter,
+  type CodexLaunchProbeAsyncResult,
   type SpawnLike
 } from "@martin/adapters";
 
 import {
   createFileRunStore,
+  deniesAllWritablePaths,
   evaluateCostGovernor,
   resolveRunsRoot,
   runMartin,
@@ -28,6 +31,7 @@ import {
   buildLoopPreview,
   buildRunRecordPaths,
   getEngineAvailability,
+  resolveProviderNeutralEngine,
   resolveExecutionMode,
   type MartinEngine
 } from "./tool-support.js";
@@ -39,6 +43,7 @@ export interface RunLoopInput {
   workingDirectory?: string;
   engine?: MartinEngine;
   model?: string;
+  pricePerMTokenUsd?: number;
   /** Explicit ordered provider fallbacks authorized by the caller. */
   fallbackEngines?: MartinEngine[];
   maxUsd?: number;
@@ -51,6 +56,10 @@ export interface RunLoopInput {
   deniedPaths?: string[];
   workspaceId?: string;
   projectId?: string;
+}
+
+export interface RunLoopExecutionContext {
+  signal?: AbortSignal;
 }
 
 export interface RunLoopOutput {
@@ -68,7 +77,7 @@ export interface RunLoopOutput {
   remainingBudgetUsd: number;
   remainingIterations: number;
   remainingTokens?: number;
-  engine: MartinEngine;
+  engine: MartinEngine | "auto";
   workingDirectory: string;
   budget: LoopBudget;
   inspection: {
@@ -85,6 +94,19 @@ export interface RunLoopOutput {
 
 let proofModeVerifierSpawnImpl: SpawnLike | undefined;
 let runStoreOverrideForTests: RunStore | undefined;
+type LiveEngineReadinessProbe = (input: {
+  engine: MartinEngine;
+  workingDirectory: string;
+  providerExecutionTimeoutMs?: number;
+  model?: string;
+  pricePerMTokenUsd?: number;
+  signal?: AbortSignal;
+}) => Promise<CodexLaunchProbeAsyncResult | ReturnType<typeof probeCodexLaunch> | undefined>;
+let liveEngineReadinessProbeForTests: LiveEngineReadinessProbe | undefined;
+
+export function __setLiveEngineReadinessProbeForTests(probe?: LiveEngineReadinessProbe): void {
+  liveEngineReadinessProbeForTests = probe;
+}
 
 export function __setProofModeVerifierSpawnImplForTests(spawnImpl?: SpawnLike): void {
   proofModeVerifierSpawnImpl = spawnImpl;
@@ -116,37 +138,34 @@ function assertAuthorizedFallbackEngines(
   }
 }
 
-function ensureLiveEngineReady(
+async function ensureLiveEngineReady(
   engine: MartinEngine,
   workingDirectory: string,
-  providerExecutionTimeoutMs?: number
-): ReturnType<typeof probeCodexLaunch> | undefined {
+  providerExecutionTimeoutMs?: number,
+  model?: string,
+  pricePerMTokenUsd?: number,
+  signal?: AbortSignal
+): Promise<CodexLaunchProbeAsyncResult | ReturnType<typeof probeCodexLaunch> | undefined> {
+  if (liveEngineReadinessProbeForTests) {
+    const probe = await liveEngineReadinessProbeForTests({
+      engine,
+      workingDirectory,
+      ...(providerExecutionTimeoutMs !== undefined ? { providerExecutionTimeoutMs } : {}),
+      ...(model !== undefined ? { model } : {}),
+      ...(pricePerMTokenUsd !== undefined ? { pricePerMTokenUsd } : {}),
+      ...(signal !== undefined ? { signal } : {})
+    });
+    assertReadinessCleanupCompleted(probe);
+    return probe;
+  }
   if (engine === "openai") {
-    const config = resolveOpenAiCompatibleRuntimeConfig();
-    const localEndpoint = /^(?:https?:\/\/)?(?:localhost|127\.0\.0\.1|\[::1\])(?::|\/|$)/iu.test(
-      config.baseUrl
-    );
-    if (!config.model) {
-      throw new MartinToolError(
-        "engine_unavailable",
-        "Authorized OpenAI-compatible fallback has no configured model.",
-        {
-          category: "environment",
-          suggestion: "Set MARTIN_OPENAI_MODEL before authorizing the OpenAI fallback.",
-          retryable: false
-        }
-      );
-    }
-    if (!config.apiKeyConfigured && !localEndpoint) {
-      throw new MartinToolError(
-        "engine_unavailable",
-        "Authorized OpenAI-compatible fallback is not authenticated.",
-        {
-          category: "environment",
-          suggestion: "Set MARTIN_OPENAI_API_KEY, or use an explicitly local OpenAI-compatible endpoint.",
-          retryable: false
-        }
-      );
+    const availability = getEngineAvailability(engine, model, pricePerMTokenUsd);
+    if (!availability.available) {
+      throw new MartinToolError("engine_unavailable", availability.detail, {
+        category: "environment",
+        suggestion: "Configure the OpenAI-compatible endpoint, model, and required authentication before live execution.",
+        retryable: false
+      });
     }
     return undefined;
   }
@@ -159,11 +178,15 @@ function ensureLiveEngineReady(
         retryable: false
       });
     }
-    const probe = probeCodexLaunch({
+    const probe = await probeCodexLaunchAsync({
       workingDirectory,
       availability,
-      ...(providerExecutionTimeoutMs !== undefined ? { providerExecutionTimeoutMs } : {})
+      ...(providerExecutionTimeoutMs !== undefined ? { providerExecutionTimeoutMs } : {}),
+      ...(model !== undefined ? { model } : {}),
+      ...(signal !== undefined ? { signal } : {})
     });
+    assertReadinessCleanupCompleted(probe);
+    if (signal?.aborted) return undefined;
     if (!probe.ok) {
       throw new MartinToolError("engine_unavailable", probe.summary, {
         category: "environment",
@@ -184,10 +207,24 @@ function ensureLiveEngineReady(
   return undefined;
 }
 
+function assertReadinessCleanupCompleted(
+  probe: CodexLaunchProbeAsyncResult | ReturnType<typeof probeCodexLaunch> | undefined
+): void {
+  if (probe && "processCleanup" in probe && probe.processCleanup.state === "failed") {
+    throw new MartinToolError("engine_unavailable", probe.summary, {
+      category: "environment",
+      suggestion: "Inspect and terminate the surviving readiness process tree before retrying.",
+      retryable: false,
+      details: { processCleanup: probe.processCleanup }
+    });
+  }
+}
+
 function createLiveEngineAdapter(input: {
   engine: MartinEngine;
   workingDirectory: string;
   model?: string;
+  pricePerMTokenUsd?: number;
   verifyTimeoutMs?: number;
   providerExecutionTimeoutMs?: number;
   codexProbe?: ReturnType<typeof probeCodexLaunch>;
@@ -220,12 +257,18 @@ function createLiveEngineAdapter(input: {
     });
   }
   if (input.engine === "openai") {
-    const config = resolveOpenAiCompatibleRuntimeConfig();
+    const config = resolveOpenAiCompatibleRuntimeConfig(
+      process.env,
+      undefined,
+      undefined,
+      input.pricePerMTokenUsd
+    );
     const resolvedModel = input.model ?? config.model;
     return createOpenAiCompatibleAdapter({
       baseUrl: config.baseUrl,
       apiKey: config.apiKey,
       ...(resolvedModel ? { model: resolvedModel } : {}),
+      ...(input.pricePerMTokenUsd !== undefined ? { pricePerMTokenUsd: input.pricePerMTokenUsd } : {}),
       workingDirectory: input.workingDirectory,
       ...(input.verifyTimeoutMs !== undefined ? { verifyTimeoutMs: input.verifyTimeoutMs } : {})
     });
@@ -240,15 +283,38 @@ function createLiveEngineAdapter(input: {
   });
 }
 
-export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
+export async function runLoopTool(
+  input: RunLoopInput,
+  context: RunLoopExecutionContext = {}
+): Promise<RunLoopOutput> {
   const workingDirectory = resolveSafeRepoRoot(input.workingDirectory);
-  const engine = input.engine ?? "claude";
+  const executionMode = resolveExecutionMode();
+  const neutralResolution = !input.engine && executionMode.liveMode
+    ? resolveProviderNeutralEngine()
+    : undefined;
+  if (executionMode.liveMode && !input.engine && !neutralResolution?.engine) {
+    throw new MartinToolError("engine_unavailable", neutralResolution?.detail ?? "Pass engine explicitly.", {
+      category: neutralResolution?.availableEngines.length ? "invalid_input" : "environment",
+      suggestion: "Pass engine explicitly after configuring and authenticating the intended provider.",
+      retryable: false
+    });
+  }
+  const engine = input.engine ?? neutralResolution?.engine ?? "auto";
+  const selectedEngine = engine === "auto" ? undefined : engine;
+  if (executionMode.liveMode && !selectedEngine) {
+    throw new MartinToolError("engine_unavailable", "Live execution requires a resolved provider.", {
+      category: "environment",
+      suggestion: "Pass engine explicitly after configuring and authenticating the intended provider.",
+      retryable: false
+    });
+  }
   const model = input.model;
   const fallbackEngines = input.fallbackEngines ?? [];
-  assertAuthorizedFallbackEngines(engine, fallbackEngines);
+  if (engine !== "auto") assertAuthorizedFallbackEngines(engine, fallbackEngines);
   const allowedPaths = normalizeSafePathPatterns(input.allowedPaths, "allowedPaths");
   const deniedPaths = normalizeSafePathPatterns(input.deniedPaths, "deniedPaths");
-  const executionMode = resolveExecutionMode();
+  const deniesAllWrites = deniesAllWritablePaths(deniedPaths);
+  const effectiveAllowedPaths = deniesAllWrites ? [] : allowedPaths;
   const evidenceExecutionMode: ExecutionMode = executionMode.liveMode
     ? "governed"
     : "verification_only";
@@ -265,24 +331,44 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
     MartinEngine,
     ReturnType<typeof probeCodexLaunch> | undefined
   >();
-  if (executionMode.liveMode) {
-    codexProbeOverride = ensureLiveEngineReady(
-      engine,
+  if (executionMode.liveMode && !deniesAllWrites && !context.signal?.aborted) {
+    codexProbeOverride = await ensureLiveEngineReady(
+      selectedEngine!,
       workingDirectory,
-      input.providerExecutionTimeoutMs
+      input.providerExecutionTimeoutMs,
+      model,
+      input.pricePerMTokenUsd,
+      context.signal
     );
     for (const fallbackEngine of fallbackEngines) {
+      if (context.signal?.aborted) break;
       fallbackProbeOverrides.set(
         fallbackEngine,
-        ensureLiveEngineReady(
+        await ensureLiveEngineReady(
           fallbackEngine,
           workingDirectory,
-          input.providerExecutionTimeoutMs
+          input.providerExecutionTimeoutMs,
+          undefined,
+          input.pricePerMTokenUsd,
+          context.signal
         )
       );
     }
   }
 
+  const providerPreparationSkipped = deniesAllWrites || context.signal?.aborted === true;
+  const noLaunchAdapter: MartinAdapter = {
+    adapterId: `policy:no-launch:${selectedEngine ?? "unresolved"}`,
+    kind: "agent-cli",
+    label: "Policy no-launch adapter",
+    metadata: {
+      providerId: selectedEngine ?? "policy",
+      capabilities: { workspaceMutations: true }
+    },
+    async execute() {
+      throw new Error("Policy no-launch adapter must never execute.");
+    }
+  };
   const adapter =
     !executionMode.liveMode
       ? createVerifierOnlyAdapter({
@@ -291,10 +377,13 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
           ...(input.verifyTimeoutMs !== undefined ? { verifyTimeoutMs: input.verifyTimeoutMs } : {}),
           ...(proofModeVerifierSpawnImpl ? { spawnImpl: proofModeVerifierSpawnImpl } : {})
         })
-      : createLiveEngineAdapter({
-          engine,
+      : providerPreparationSkipped
+        ? noLaunchAdapter
+        : createLiveEngineAdapter({
+          engine: selectedEngine!,
           workingDirectory,
           ...(model ? { model } : {}),
+          ...(input.pricePerMTokenUsd !== undefined ? { pricePerMTokenUsd: input.pricePerMTokenUsd } : {}),
           ...(input.verifyTimeoutMs !== undefined ? { verifyTimeoutMs: input.verifyTimeoutMs } : {}),
           ...(input.providerExecutionTimeoutMs !== undefined
             ? { providerExecutionTimeoutMs: input.providerExecutionTimeoutMs }
@@ -308,11 +397,12 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
       retryable: false
     });
   }
-  const fallbackAdapters = executionMode.liveMode
+  const fallbackAdapters = executionMode.liveMode && !providerPreparationSkipped
     ? fallbackEngines.map((fallbackEngine) =>
         createLiveEngineAdapter({
           engine: fallbackEngine,
           workingDirectory,
+          ...(input.pricePerMTokenUsd !== undefined ? { pricePerMTokenUsd: input.pricePerMTokenUsd } : {}),
           ...(input.verifyTimeoutMs !== undefined ? { verifyTimeoutMs: input.verifyTimeoutMs } : {}),
           ...(input.providerExecutionTimeoutMs !== undefined
             ? { providerExecutionTimeoutMs: input.providerExecutionTimeoutMs }
@@ -359,7 +449,7 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
         ? { providerExecutionTimeoutMs: input.providerExecutionTimeoutMs }
         : {}),
       repoRoot: workingDirectory,
-      ...(allowedPaths ? { allowedPaths } : {}),
+      ...(effectiveAllowedPaths ? { allowedPaths: effectiveAllowedPaths } : {}),
       ...(deniedPaths ? { deniedPaths } : {})
     },
     budget,
@@ -372,6 +462,7 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
         : {})
     },
     adapter,
+    ...(context.signal ? { signal: context.signal } : {}),
     ...(fallbackAdapters.length > 0 ? { fallbackAdapters } : {})
   });
 
@@ -416,7 +507,7 @@ export async function runLoopTool(input: RunLoopInput): Promise<RunLoopOutput> {
     governanceClaimEligible: evidenceExecutionMode === "governed",
     loopId: result.loop.loopId,
     pressure: costState.pressure,
-    shouldStop: costState.shouldStop,
+    shouldStop: result.decision.shouldExit || costState.shouldStop,
     remainingBudgetUsd: costState.remainingBudgetUsd,
     remainingIterations: costState.remainingIterations,
     ...(costState.remainingTokens !== undefined

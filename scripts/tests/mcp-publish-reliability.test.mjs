@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import packageJson from "../../packages/mcp/package.json" with { type: "json" };
 import serverJson from "../../packages/mcp/server.json" with { type: "json" };
 import { rewriteWorkspacePackageSpecifiers } from "../../packages/mcp/scripts/build-package-lib.mjs";
+import { createInstalledPackageLaunch } from "../../packages/mcp/scripts/smoke-published-package.mjs";
 
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -76,4 +77,13 @@ test("published smoke CLI rejects missing or flag-like package specs", () => {
   );
   assert.notEqual(flagValue.status, 0);
   assert.match(flagValue.stderr, /expected a package spec but received another flag/);
+});
+
+test("published MCP smoke launches the installed server directly with Node", () => {
+  const installedPackageDir = path.join("C:\\artifact", "node_modules", "@martinloop", "mcp");
+  const launch = createInstalledPackageLaunch(installedPackageDir);
+
+  assert.equal(launch.command, process.execPath);
+  assert.deepEqual(launch.args, [path.join(installedPackageDir, "dist", "server.js")]);
+  assert.doesNotMatch([launch.command, ...launch.args].join(" "), /\.cmd\b/iu);
 });

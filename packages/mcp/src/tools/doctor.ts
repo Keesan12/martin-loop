@@ -58,6 +58,7 @@ export interface MartinDoctorOutput {
     {
       available: boolean;
       detail: string;
+      transport?: "cli" | "http";
       resolvedPath?: string;
       candidatePaths?: string[];
       selectedPath?: string;
@@ -90,6 +91,8 @@ export interface MartinDoctorOutput {
   runStore: {
     exists: boolean;
     loopCount: number;
+    unreadableRecordCount: number;
+    warningsTruncated: boolean;
     latestRun?: LoopPreview;
   };
   readiness: MartinReadinessReport;
@@ -110,6 +113,9 @@ export async function martinDoctorTool(input: MartinDoctorInput): Promise<Martin
   const gemini = executionMode.liveMode
     ? getEngineAvailability("gemini")
     : createSkippedCliAvailability("gemini");
+  const openai = executionMode.liveMode
+    ? getEngineAvailability("openai")
+    : createSkippedCliAvailability("openai");
   const codexProbe =
     executionMode.liveMode && input.engine === "codex" && codex.available
       ? probeCodexLaunch({
@@ -133,14 +139,20 @@ export async function martinDoctorTool(input: MartinDoctorInput): Promise<Martin
   if (!runStore.exists) {
     warnings.push("Configured Martin runs root does not exist yet.");
   }
-  if (executionMode.liveMode && !claude.available && !codex.available && !gemini.available) {
-    warnings.push("None of claude, codex, or gemini is currently available on PATH for live runs.");
+  if (executionMode.liveMode && !claude.available && !codex.available && !gemini.available && !openai.available) {
+    warnings.push("No supported provider is currently ready for live runs.");
   }
   if (input.engine && executionMode.liveMode) {
     const selected =
-      input.engine === "claude" ? claude : input.engine === "gemini" ? gemini : codex;
+      input.engine === "claude"
+        ? claude
+        : input.engine === "gemini"
+          ? gemini
+          : input.engine === "openai"
+            ? openai
+            : codex;
     if (!selected.available) {
-      warnings.push(`Requested engine '${input.engine}' is not available on PATH.`);
+      warnings.push(`Requested engine '${input.engine}' is not ready: ${selected.detail}`);
     }
     if (input.engine === "codex" && codexProbe && !codexProbe.ok) {
       warnings.push(codexProbe.summary);
@@ -148,11 +160,14 @@ export async function martinDoctorTool(input: MartinDoctorInput): Promise<Martin
   }
   warnings.push(...runStore.warnings);
 
-  const status = warnings.length === 0 ? "ok" : "degraded";
+  const nonRunStoreWarningCount = warnings.length - runStore.warnings.length;
+  const runStoreIssueCount = Math.max(runStore.unreadableRecordCount, runStore.warnings.length);
+  const issueCount = nonRunStoreWarningCount + runStoreIssueCount;
+  const status = issueCount === 0 ? "ok" : "degraded";
   const summary =
     status === "ok"
       ? `Doctor passed: repo readiness ${readiness.score}/100 with ${runStore.loopCount} visible run(s).`
-      : `Doctor found ${warnings.length} issue(s); readiness ${readiness.score}/100 before live execution.`;
+      : `Doctor found ${issueCount} issue(s); readiness ${readiness.score}/100 before live execution.`;
 
   return {
     status,
@@ -214,19 +229,17 @@ export async function martinDoctorTool(input: MartinDoctorInput): Promise<Martin
         ...(gemini.resolvedPath ? { resolvedPath: gemini.resolvedPath } : {})
       },
       openai: {
-        available: Boolean(
-          process.env.MARTIN_OPENAI_MODEL &&
-          (process.env.MARTIN_OPENAI_API_KEY || process.env.MARTIN_OPENAI_BASE_URL)
-        ),
-        detail: process.env.MARTIN_OPENAI_MODEL
-          ? `OpenAI-compatible model configured: ${process.env.MARTIN_OPENAI_MODEL}.`
-          : "MODEL_CONFIGURATION_REQUIRED: set MARTIN_OPENAI_MODEL and the endpoint/auth required by your provider."
+        available: openai.available,
+        detail: openai.detail,
+        ...(openai.transport ? { transport: openai.transport } : {})
       }
     },
     ...(input.engine ? { requestedEngine: input.engine } : {}),
     runStore: {
       exists: runStore.exists,
       loopCount: runStore.loopCount,
+      unreadableRecordCount: runStore.unreadableRecordCount,
+      warningsTruncated: runStore.warningsTruncated,
       ...(runStore.latestRun ? { latestRun: runStore.latestRun } : {})
     },
     readiness,

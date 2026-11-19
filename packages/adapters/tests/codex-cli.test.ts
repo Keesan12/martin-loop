@@ -114,6 +114,28 @@ function negotiatedAutonomy(
 }
 
 describe("capability-driven Codex adapter", () => {
+  it("publishes catalog pricing to the host budget preflight", () => {
+    const adapter = createCodexCliAdapter({
+      model: "gpt-6-astra",
+      capabilityProfile: negotiatedProfile(),
+      autonomyResolution: negotiatedAutonomy()
+    });
+
+    expect(adapter.metadata.budgetPreflight).toMatchObject({
+      minimumViableTokens: 128_000,
+      pricePerMTokenUsd: 75
+    });
+  });
+
+  it("publishes provider-conservative pricing when Codex selects its model automatically", () => {
+    const adapter = createCodexCliAdapter({
+      capabilityProfile: negotiatedProfile(),
+      autonomyResolution: negotiatedAutonomy()
+    });
+
+    expect(adapter.metadata.budgetPreflight?.pricePerMTokenUsd).toBe(75);
+  });
+
   it("rejects a structurally valid autonomy resolution that did not pass the launch probe", () => {
     expect(() => createCodexCliAdapter({
       capabilityProfile: negotiatedProfile(),
@@ -315,7 +337,7 @@ describe("capability-driven Codex adapter", () => {
     expect(result.usage.reasoningTokensOut).toBe(50);
     expect(result.usage.actualUsd).toBeCloseTo(0.00383, 6);
     expect(result.usage.providerSettlement?.pricingVersion).toBe(
-      "official-provider-pricing@2026-10-04"
+      "official-provider-pricing@2026-11-03"
     );
     expect(calls[0]?.command).toBe(profile.binaryPath);
   });

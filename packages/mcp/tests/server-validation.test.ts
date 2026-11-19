@@ -343,6 +343,24 @@ describe("server validation", () => {
     ).toThrow("Invalid maxTokens.");
   });
 
+  it("validates optional OpenAI-compatible pricing authority", () => {
+    expect(validateToolInput("martin_preflight", {
+      objective: "Inspect custom model pricing",
+      engine: "openai",
+      pricePerMTokenUsd: 12.5
+    })).toMatchObject({ pricePerMTokenUsd: 12.5 });
+    expect(validateToolInput("martin_run", {
+      objective: "Run custom model pricing",
+      engine: "openai",
+      pricePerMTokenUsd: 0
+    })).toMatchObject({ pricePerMTokenUsd: 0 });
+    expect(() => validateToolInput("martin_run", {
+      objective: "Reject invalid pricing",
+      engine: "openai",
+      pricePerMTokenUsd: -1
+    })).toThrow("Invalid pricePerMTokenUsd.");
+  });
+
   it("accepts loopId and latest selectors for martin_status", () => {
     expect(
       validateToolInput("martin_status", {
@@ -890,6 +908,14 @@ describe("server validation", () => {
               }).budget.softLimitUsd
             ).toBe(1);
 
+            const controller = new AbortController();
+            let signalRead = false;
+            const requestExtra = {
+              get signal() {
+                signalRead = true;
+                return controller.signal;
+              }
+            };
             const runResult = await callTool(
               {
                 method: "tools/call",
@@ -907,7 +933,7 @@ describe("server validation", () => {
                   }
                 }
               },
-              {}
+              requestExtra
             );
 
             expect((runResult as { isError?: boolean }).isError).not.toBe(true);
@@ -923,6 +949,7 @@ describe("server validation", () => {
               }
             });
             expect(verifierCalls).toHaveLength(1);
+            expect(signalRead).toBe(true);
             expect(verifierCalls[0]?.command).toBe("node");
             expect(verifierCalls[0]?.args).toEqual(["--version"]);
           });

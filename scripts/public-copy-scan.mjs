@@ -4,6 +4,8 @@ import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { scanPromotedSourceChanges } from "./public-source-copy-scan.mjs";
+
 export const FORBIDDEN_PUBLIC_COPY_PATTERNS = [
   /\bremediation\b/i,
   /\bstable cockpit line\b/i,
@@ -195,9 +197,14 @@ export async function runPublicCopyScan(options = {}) {
     throw new Error(`Public copy scan found forbidden public artifacts:\n${details}`);
   }
 
+  const sourceScan = scanPromotedSourceChanges(rootDir, {
+    required: options.sourceScanRequired === true,
+  });
+
   return {
     checkedFiles: files.length,
     checkedArtifacts: publicArtifacts.length,
+    ...sourceScan,
     rootDir,
   };
 }

@@ -518,9 +518,11 @@ const doctorOutputSchema = {
       properties: {
         exists: { type: "boolean" },
         loopCount: { type: "integer" },
+        unreadableRecordCount: { type: "integer" },
+        warningsTruncated: { type: "boolean" },
         latestRun: loopPreviewSchema
       },
-      required: ["exists", "loopCount"]
+      required: ["exists", "loopCount", "unreadableRecordCount", "warningsTruncated"]
     },
     warnings: stringArraySchema
   },
@@ -612,9 +614,10 @@ const preflightOutputSchema = {
             repoRoot: { type: "string" },
             allowedPathsCount: { type: "integer" },
             deniedPathsCount: { type: "integer" },
-            hasScopeConflicts: { type: "boolean" }
+            hasScopeConflicts: { type: "boolean" },
+            hasWritableSurface: { type: "boolean" }
           },
-          required: ["repoRoot", "allowedPathsCount", "deniedPathsCount", "hasScopeConflicts"]
+          required: ["repoRoot", "allowedPathsCount", "deniedPathsCount", "hasScopeConflicts", "hasWritableSurface"]
         },
         expectedRunLayout: {
           type: "object",
@@ -1161,6 +1164,11 @@ export function createMartinMcpServer(serverInfo?: {
             type: "string",
             description: "Optional model override passed to the primary provider."
           },
+          pricePerMTokenUsd: {
+            type: "number",
+            minimum: 0,
+            description: "Explicit conservative per-million-token pricing authority for a catalog-unknown OpenAI-compatible model."
+          },
           fallbackEngines: {
             type: "array",
             uniqueItems: true,
@@ -1377,6 +1385,11 @@ export function createMartinMcpServer(serverInfo?: {
           model: {
             type: "string",
             description: "Model override passed to the CLI."
+          },
+          pricePerMTokenUsd: {
+            type: "number",
+            minimum: 0,
+            description: "Explicit conservative per-million-token pricing authority for a catalog-unknown OpenAI-compatible model."
           },
           context: {
             type: "string",
@@ -1935,7 +1948,7 @@ export function createMartinMcpServer(serverInfo?: {
   }
   });
 
-  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
   const { name, arguments: args } = request.params;
 
   try {
@@ -2003,7 +2016,7 @@ export function createMartinMcpServer(serverInfo?: {
           }
         });
       }
-      const output = await runLoopTool(input);
+      const output = await runLoopTool(input, { signal: extra.signal });
       return createToolSuccessResult(
         output,
         [

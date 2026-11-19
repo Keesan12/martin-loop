@@ -280,7 +280,10 @@ export function evaluateCostGovernor(input: {
   budget: LoopBudget;
   cost: LoopCost;
   attemptsUsed: number;
+  /** Explicit provider-free authority: a zero budget is the contract, so only positive spend is pressure. */
+  zeroSpendAuthority?: boolean;
 }): CostGovernorState {
+  const zeroSpend = input.zeroSpendAuthority === true;
   const remainingBudgetUsd = roundUsd(input.budget.maxUsd - input.cost.actualUsd);
   const remainingIterations = Math.max(input.budget.maxIterations - input.attemptsUsed, 0);
   const remainingTokens = input.budget.maxTokens === undefined
@@ -288,7 +291,7 @@ export function evaluateCostGovernor(input: {
     : Math.max(input.budget.maxTokens - input.cost.tokensIn - input.cost.tokensOut, 0);
 
   if (
-    input.cost.actualUsd >= input.budget.maxUsd ||
+    (zeroSpend ? input.cost.actualUsd > 0 : input.cost.actualUsd >= input.budget.maxUsd) ||
     input.attemptsUsed >= input.budget.maxIterations ||
     (remainingTokens !== undefined && remainingTokens <= 0)
   ) {
@@ -302,7 +305,7 @@ export function evaluateCostGovernor(input: {
     };
   }
 
-  if (input.cost.actualUsd >= input.budget.softLimitUsd) {
+  if (!zeroSpend && input.cost.actualUsd >= input.budget.softLimitUsd) {
     return {
       pressure: "soft_limit",
       shouldStop: false,
@@ -599,6 +602,28 @@ export interface BudgetPreflightDecision {
   estimate: BudgetPreflightEstimate;
 }
 
+/**
+ * Preflight for the explicit provider-free zero-spend authority. No provider runs, so every estimate is
+ * truthfully zero. It is admitted only because the caller proved zero-spend authority; the generic provider
+ * estimate is never used to fabricate a positive cost for a child that cannot incur one.
+ */
+export function evaluateProviderFreeZeroSpendPreflight(): BudgetPreflightDecision {
+  return {
+    allowed: true,
+    reason: "Preflight: explicit provider-free zero-spend authority; no provider spend is estimated.",
+    estimate: {
+      estimatedPromptTokens: 0,
+      estimatedToolOverheadTokens: 0,
+      estimatedOutputTokensMax: 0,
+      estimatedMinimumViableTokens: 0,
+      estimatedTotalTokens: 0,
+      estimatedVerifierCostUsd: 0,
+      estimatedAttemptCostUsd: 0,
+      provenance: "estimated"
+    }
+  };
+}
+
 export function evaluateBudgetPreflight(input: BudgetPreflightInput): BudgetPreflightDecision {
   const declaredPrice = input.pricePerMTokenUsd;
   const validDeclaredPrice = declaredPrice === undefined
@@ -616,9 +641,7 @@ export function evaluateBudgetPreflight(input: BudgetPreflightInput): BudgetPref
   const estimatedVerifierCostUsd = 0.01;
   const estimatedAttemptCostUsd =
     roundUsd(
-      ((estimatedPromptTokens + estimatedToolOverheadTokens + estimatedOutputTokensMax) /
-        1_000_000) *
-        pricePerMToken
+      (estimatedTotalTokens / 1_000_000) * pricePerMToken
     ) + estimatedVerifierCostUsd;
   const provenance: CostProvenance = "estimated";
   const estimate: BudgetPreflightEstimate = {

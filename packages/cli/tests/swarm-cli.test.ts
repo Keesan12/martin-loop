@@ -667,13 +667,13 @@ describe("swarm parser and live run", () => {
   );
 
   it("creates the existing OpenAI-compatible adapter under the generic live engine identity", async () => {
-    const fixture = await createPlanFixture({ engine: "openai", model: "llama3.3" });
+    const fixture = await createPlanFixture({ engine: "openai", model: "gpt-6.1-sol" });
     const factory = createExplicitSwarmAdapterFactory(fixture.plan.engine);
     const created = factory(adapterInput("openai-live", join(fixture.root, "openai-workspace"), fixture.plan));
     const adapter = "adapter" in created ? created.adapter : created;
 
     expect(adapter.metadata.providerId).toBe("openai");
-    expect(adapter.metadata.model).toBe("llama3.3");
+    expect(adapter.metadata.model).toBe("gpt-6.1-sol");
     expect(adapter.metadata.transport).toBe("http");
   });
 

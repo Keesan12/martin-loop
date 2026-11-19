@@ -1,5 +1,5 @@
 import { createHash, createHmac } from "node:crypto";
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -21,7 +21,49 @@ import {
   buildProductionSwarmHostedFixtureEvidenceIndexDiagnostic,
   buildProductionSwarmHostedFixtureBundle,
   canonicalSwarmHostedFixtureBundleBytes,
+  writeProductionSwarmHostedFixtures,
 } from "./helpers/swarm-hosted-fixture-builder.js";
+
+const EXPECTED_GOVERNED_SEMANTIC_SHA256 = "1298d76e1f7dc8e0dba8d1a88b6b35aff4274d1ba3ab4cf6fe81011ea585aec3";
+const GOVERNED_CHILD_METADATA_KEYS = [
+  "executionMode",
+  "governanceClaimEligible",
+  "swarm.agentId",
+  "swarm.attemptId",
+  "swarm.baselineCommit",
+  "swarm.engine",
+  "swarm.model",
+  "swarm.parentId",
+  "swarm.proposalId",
+  "swarm.taskIds",
+] as const;
+const EXPECTED_GOVERNED_SOURCE_IDENTITIES = {
+  "verified-15-agent": [
+    "ce0ca7241d6f1944b9880fd5e15c0db2d8587111875f836fdc19c37662fd3cd7",
+    "9e185b0b5e99e0178947d7cded29fbe2e92fb27a488f0703081e92b0dbb40d1b",
+    "e2af08023dfde2953ac2feadb885259b46ccef611395d77f87a17d95654b07be",
+  ],
+  "stopped-blocking-dependency": [
+    "b1a2066b2df14edcac0ae0a9a94f755b2c8ddd513cb59a9b807678009d6cda88",
+    "f7bfbabb19148f5dc04b23947c604d3e4010988e5bbb10a6ce29dade5742d103",
+    "f481d7bf88966e654ad76fe0767ce5f7350677345e71231019c6bd9a6400129f",
+  ],
+  "needs-review-child-failure": [
+    "ad367d6f554a8e6e45c2092b6f6c998b4e0867370bbbb5b32a67b9e1507aa023",
+    "a4b012f8370d63a6215b0774d8284a60ded1272e84005cd5a11122a66f92419d",
+    "86e3b99e76b74f75f147fb9114083edd09a97fa8b315e99b071d17f646ddb878",
+  ],
+  "failed-global-verifier": [
+    "c7a4fd6a91ef5aca972bba924f7a3a17fe6b40013506ada127da7ba4b0c311e0",
+    "d065effa7f908c3b5f8378f23d03f4f8aff1cb03e6ae157a0134a642db82f27f",
+    "58b2b04f347746e4942ef689cbebefcd0c9ca29b0edf53e2817efb0182bac6ff",
+  ],
+  "reassigned-recovered": [
+    "31ea100c42af7a961b6b82fe761788d2f10d26660632e025cdada87c8dc2eb29",
+    "8615d42512c1e55112465225da0b851b528761b8d085fa4a51eb909f089f2c26",
+    "a2e5fb84f57c3734954f5305f1fcc69d19c4d9f9c7cce285b7c7b84b8eb3c53e",
+  ],
+} as const;
 
 interface SemanticDifference {
   readonly path: string;
@@ -36,9 +78,12 @@ describe.sequential("authenticated swarm hosted exporter", () => {
   let frozenProductionBundleChecksum: string;
   let secondProductionBundle: Awaited<ReturnType<typeof buildProductionSwarmHostedFixtureBundle>>;
   let secondProductionBundleBytes: string;
+  const firstProductionDiagnostics: Awaited<ReturnType<typeof buildProductionSwarmHostedFixtureEvidenceIndexDiagnostic>>[] = [];
 
   beforeAll(async () => {
-    firstProductionBundle = await buildProductionSwarmHostedFixtureBundle();
+    firstProductionBundle = await buildProductionSwarmHostedFixtureBundle((diagnostic) => {
+      firstProductionDiagnostics.push(diagnostic);
+    });
     firstProductionBundleBytes = canonicalSwarmHostedFixtureBundleBytes(firstProductionBundle);
     frozenProductionBundleBytes = await readFile(
       new URL("../../contracts/tests/fixtures/swarm-hosted-v1-cases.json", import.meta.url),
@@ -68,6 +113,138 @@ describe.sequential("authenticated swarm hosted exporter", () => {
       secondCount: second.files.length,
     });
   }, 120_000);
+
+  it("binds every child proof to governed authority and preserves the frozen hosted swarm semantics", async () => {
+    expect(semanticSha256(firstProductionBundle)).toBe(EXPECTED_GOVERNED_SEMANTIC_SHA256);
+    for (const fixtureCase of firstProductionBundle.validCases) {
+      const [expectedReceipt, expectedEvidence, expectedEventChain] = EXPECTED_GOVERNED_SOURCE_IDENTITIES[
+        fixtureCase.name as keyof typeof EXPECTED_GOVERNED_SOURCE_IDENTITIES
+      ];
+      expect(fixtureCase.envelope.sourceIdentities.receiptSha256).toBe(expectedReceipt);
+      expect(fixtureCase.envelope.sourceIdentities.evidenceIndexSha256).toBe(expectedEvidence);
+      expect(fixtureCase.envelope.sourceIdentities.eventChainSha256).toBe(expectedEventChain);
+    }
+    expect(firstProductionDiagnostics.map(({ caseName }) => caseName)).toEqual(
+      firstProductionBundle.validCases.map(({ name }) => name),
+    );
+    const childLoopRecords = firstProductionDiagnostics.flatMap((diagnostic) => diagnostic.childLoopRecords);
+    expect(childLoopRecords.length).toBeGreaterThan(0);
+    expect(childLoopRecords.every(({ metadata }) => (
+      metadata.executionMode === "governed"
+      && metadata.governanceClaimEligible === "true"
+      && JSON.stringify(Object.keys(metadata).sort()) === JSON.stringify(GOVERNED_CHILD_METADATA_KEYS)
+    ))).toBe(true);
+  }, 120_000);
+
+  it("publishes fixture bytes, checksum, and handoff checksum through one canonical writer", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-swarm-hosted-writer-"));
+    const fixturePath = join(directory, "swarm-hosted-v1-cases.json");
+    const checksumPath = join(directory, "swarm-hosted-v1-cases.sha256");
+    const handoffPath = join(directory, "SWARM-HOSTED-V1-HANDOFF.md");
+    await writeFile(handoffPath, "CHECKSUM_SHA256=stale\n", "utf8");
+    try {
+      const result = await writeProductionSwarmHostedFixtures({
+        fixturePath,
+        checksumPath,
+        handoffPath,
+        bundle: firstProductionBundle,
+      });
+      const [fixtureBytes, checksumBytes, handoffBytes] = await Promise.all([
+        readFile(fixturePath, "utf8"),
+        readFile(checksumPath, "utf8"),
+        readFile(handoffPath, "utf8"),
+      ]);
+      expect(fixtureBytes).toBe(firstProductionBundleBytes);
+      expect(checksumBytes).toBe(`${result.checksum}\n`);
+      expect(handoffBytes).toContain(`CHECKSUM_SHA256=${result.checksum}`);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("restores the complete original fixture set when publication fails after backups", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-swarm-hosted-publish-failure-"));
+    const fixturePath = join(directory, "swarm-hosted-v1-cases.json");
+    const checksumPath = join(directory, "swarm-hosted-v1-cases.sha256");
+    const handoffPath = join(directory, "SWARM-HOSTED-V1-HANDOFF.md");
+    const originals = ["original fixture\n", "original checksum\n", "CHECKSUM_SHA256=original\n"] as const;
+    await Promise.all([
+      writeFile(fixturePath, originals[0], "utf8"),
+      writeFile(checksumPath, originals[1], "utf8"),
+      writeFile(handoffPath, originals[2], "utf8"),
+    ]);
+    try {
+      await expect(writeProductionSwarmHostedFixtures({
+        fixturePath,
+        checksumPath,
+        handoffPath,
+        bundle: firstProductionBundle,
+        publicationFileSystem: {
+          mkdir,
+          writeFile,
+          rm,
+          async rename(source, destination) {
+            if (source.includes(".tmp.") && destination === checksumPath) {
+              throw Object.assign(new Error("injected publish failure"), { code: "EIO" });
+            }
+            await rename(source, destination);
+          },
+        },
+      })).rejects.toThrow("injected publish failure");
+      await expect(Promise.all([
+        readFile(fixturePath, "utf8"),
+        readFile(checksumPath, "utf8"),
+        readFile(handoffPath, "utf8"),
+      ])).resolves.toEqual(originals);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("retains the complete published fixture set when backup cleanup partially fails", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-swarm-hosted-cleanup-failure-"));
+    const fixturePath = join(directory, "swarm-hosted-v1-cases.json");
+    const checksumPath = join(directory, "swarm-hosted-v1-cases.sha256");
+    const handoffPath = join(directory, "SWARM-HOSTED-V1-HANDOFF.md");
+    await Promise.all([
+      writeFile(fixturePath, "original fixture\n", "utf8"),
+      writeFile(checksumPath, "original checksum\n", "utf8"),
+      writeFile(handoffPath, "CHECKSUM_SHA256=original\n", "utf8"),
+    ]);
+    let backupCleanupCount = 0;
+    try {
+      await expect(writeProductionSwarmHostedFixtures({
+        fixturePath,
+        checksumPath,
+        handoffPath,
+        bundle: firstProductionBundle,
+        publicationFileSystem: {
+          mkdir,
+          writeFile,
+          rename,
+          async rm(path, options) {
+            if (String(path).includes(".backup.")) {
+              backupCleanupCount += 1;
+              if (backupCleanupCount === 2) throw Object.assign(new Error("injected cleanup failure"), { code: "EIO" });
+            }
+            await rm(path, options);
+          },
+        },
+      })).rejects.toThrow("injected cleanup failure");
+      const [fixtureBytes, checksumBytes, handoffBytes] = await Promise.all([
+        readFile(fixturePath, "utf8"),
+        readFile(checksumPath, "utf8"),
+        readFile(handoffPath, "utf8"),
+      ]);
+      const checksum = createHash("sha256").update(fixtureBytes).digest("hex");
+      expect(fixtureBytes).toBe(firstProductionBundleBytes);
+      expect(checksumBytes).toBe(`${checksum}\n`);
+      expect(handoffBytes).toContain(`CHECKSUM_SHA256=${checksum}`);
+      expect((await readdir(directory)).some((name) => name.includes(".backup."))).toBe(true);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
 
   it("rebuilds the exact frozen production-layout bundle and checksum through the production exporter", () => {
     expect(firstSemanticDifference(JSON.parse(frozenProductionBundleBytes), firstProductionBundle))
@@ -231,6 +408,7 @@ describe.sequential("authenticated swarm hosted exporter", () => {
     const runsRoot = join(root, "runs");
     const integrityRoot = join(root, "integrity");
     const swarmId = "swarm-hosted-key";
+    const previousIntegrityRoot = process.env["MARTIN_INTEGRITY_KEY_DIR"];
     await mkdir(runsRoot, { recursive: true });
     const rootHash = createHash("sha256").update(runsRoot).digest("hex").slice(0, 16);
     const keyDir = join(integrityRoot, rootHash);
@@ -249,7 +427,8 @@ describe.sequential("authenticated swarm hosted exporter", () => {
       expect(after).toEqual(before);
       expect(after).toEqual([`swarm-${swarmId}.key`]);
     } finally {
-      delete process.env["MARTIN_INTEGRITY_KEY_DIR"];
+      if (previousIntegrityRoot === undefined) delete process.env["MARTIN_INTEGRITY_KEY_DIR"];
+      else process.env["MARTIN_INTEGRITY_KEY_DIR"] = previousIntegrityRoot;
       await rm(root, { recursive: true, force: true });
     }
   });
@@ -263,6 +442,28 @@ describe.sequential("authenticated swarm hosted exporter", () => {
     expect(core).not.toHaveProperty("readHostedTransportKey");
   });
 });
+
+function semanticSha256(
+  bundle: Awaited<ReturnType<typeof buildProductionSwarmHostedFixtureBundle>>,
+): string {
+  const semantics = bundle.validCases.map(({ name, envelope }) => ({
+    name,
+    sourceSchemas: envelope.sourceSchemas,
+    runtimeVersion: envelope.runtimeVersion,
+    createdAt: envelope.createdAt,
+    swarm: envelope.swarm,
+    topology: envelope.topology,
+    budget: envelope.budget,
+    interventions: envelope.interventions,
+    integration: envelope.integration,
+    events: envelope.events,
+    globalVerification: envelope.globalVerification,
+    parentOutcome: envelope.parentOutcome,
+    taskVerificationState: envelope.taskVerificationState,
+    receiptIntegrityState: envelope.receiptIntegrityState,
+  }));
+  return createHash("sha256").update(JSON.stringify(semantics)).digest("hex");
+}
 
 function firstSemanticDifference(
   expected: unknown,

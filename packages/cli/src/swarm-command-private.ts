@@ -24,6 +24,9 @@ import {
   type SwarmShareProjection,
 } from "@martin/core";
 import {
+  PROVIDER_FREE_DETERMINISTIC_ADAPTER_ID,
+  PROVIDER_FREE_DETERMINISTIC_MODEL,
+  PROVIDER_FREE_DETERMINISTIC_PROVIDER_ID,
   isAuthoritativeLiveSwarmVerified,
   runProductionLiveSwarm,
   type RunProductionLiveSwarmInput,
@@ -73,9 +76,34 @@ import {
 } from "./workflow-state.js";
 
 const execFileAsync = promisify(execFile);
+
+/**
+ * The provider-free demo's only verification command is `node --version`. It is executed for real so the
+ * recorded step is truthful (the executed program is exactly the recorded one); any other command is reported
+ * as not launched and therefore fails closed.
+ * @internal exported for tests
+ */
+export async function runProviderFreeVerificationStep(
+  command: string,
+  _workspaceCwd: string,
+  execute: (file: string, args: string[], options: { cwd: string; windowsHide: boolean; timeout: number }) => Promise<unknown> = execFileAsync,
+) {
+  if (command !== "node --version") {
+    return { command, launched: false, completed: false, crashed: false, exitCode: 1, timedOut: false };
+  }
+  try {
+    // `node --version` does not depend on the workspace. Windows resolves a bare executable name against the
+    // child's cwd before PATH, so running it inside the (untrusted) workspace would let a planted node.exe
+    // run and report success. Use the directory of the running runtime instead.
+    await execute("node", ["--version"], { cwd: dirname(process.execPath), windowsHide: true, timeout: 30_000 });
+    return { command, launched: true, completed: true, crashed: false, exitCode: 0, timedOut: false };
+  } catch {
+    return { command, launched: true, completed: true, crashed: false, exitCode: 1, timedOut: false };
+  }
+}
 const MAX_PLAN_BYTES = 1024 * 1024;
 const SWARM_DEMO_MODEL = "gpt-6.1-sol";
-const DETERMINISTIC_SWARM_MODEL = "deterministic-governed";
+const DETERMINISTIC_SWARM_MODEL = PROVIDER_FREE_DETERMINISTIC_MODEL;
 
 export interface SwarmPlanCommandRequest {
   file: string;
@@ -268,6 +296,7 @@ export async function executePersistedSwarmDemoCommand(
   let result: RunLiveSwarmResult;
   try {
     result = await dependencies.runLiveSwarm({
+      ...(request.mode === "governed" ? { providerBindingMode: "provider_free_deterministic" as const } : {}),
       plan,
       canonicalRoot,
       ownedRoot: join(environment.runsRoot, "_swarms", plan.swarmId, "worktrees"),
@@ -277,11 +306,11 @@ export async function executePersistedSwarmDemoCommand(
       adapterFactory: request.mode === "live"
         ? createExplicitSwarmAdapterFactory(plan.engine, undefined, dependencies.resolveCodexLaunch)
         : () => ({
-            adapterId: "live-swarm:local-deterministic",
+            adapterId: PROVIDER_FREE_DETERMINISTIC_ADAPTER_ID,
             kind: "agent-cli",
             label: "Live Swarm local deterministic governed adapter (provider-free)",
             metadata: {
-              providerId: "local-deterministic",
+              providerId: PROVIDER_FREE_DETERMINISTIC_PROVIDER_ID,
               model: DETERMINISTIC_SWARM_MODEL,
               capabilities: { workspaceMutations: false },
             },
@@ -302,7 +331,9 @@ export async function executePersistedSwarmDemoCommand(
                     cwd: adapterRequest.context.repoRoot ?? canonicalRoot,
                     commands: adapterRequest.context.verificationPlan,
                   },
-                  steps: [{ command: "provider-free-deterministic-check", launched: true, completed: true, crashed: false, exitCode: 0, timedOut: false }],
+                  steps: await Promise.all(
+                    adapterRequest.context.verificationPlan.map((command) => runProviderFreeVerificationStep(command, adapterRequest.context.repoRoot ?? canonicalRoot)),
+                  ),
                 },
               };
             },

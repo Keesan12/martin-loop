@@ -441,6 +441,30 @@ it("turn count snapshot includes the attempt being executed", async () => {
 
 // ─── test 5: post-attempt budget check uses current (updated) cost ────────────
 
+it("does not mask a final-turn provider exception as turn_cap", async () => {
+  const runsRoot = join(scratchRoot, "runs");
+  await mkdir(runsRoot, { recursive: true });
+  const store = createFileRunStore({ runsRoot });
+  const providerError = new Error("provider failed before returning a result");
+
+  await expect(
+    runMartin({
+      workspaceId: "ws",
+      projectId: "proj",
+      task: baseTask(),
+      budget: baseBudget({ maxIterations: 1 }),
+      adapter: okAdapter({
+        execute: async () => {
+          throw providerError;
+        }
+      }),
+      store,
+      exitSignalSource: emptySource(),
+      exitPolicy: { turns: { max: 1 } }
+    })
+  ).rejects.toBe(providerError);
+});
+
 it("budget cap fires after the first attempt updates cost", async () => {
   const runsRoot = join(scratchRoot, "runs");
   await mkdir(runsRoot, { recursive: true });

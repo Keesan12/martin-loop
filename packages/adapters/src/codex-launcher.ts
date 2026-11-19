@@ -1,3 +1,5 @@
+import { fileURLToPath } from "node:url";
+import { normalizeProviderExecutionTimeoutMs } from "@martin/contracts";
 import {
   buildCodexExecArgs as buildCapabilityDrivenCodexExecArgs,
   markCodexAutonomyResolutionVerifiedByLaunchProbe,
@@ -5,9 +7,18 @@ import {
   type CodexExecArgsOptions
 } from "./codex-capabilities.js";
 import {
+  diagnoseCodexHost,
   probeCodexLaunch as probeCodexLaunchHost,
+  type CliCommandAvailability,
   type CodexLaunchProbeResult
 } from "./codex-host.js";
+import {
+  spawnSupervisedProcess,
+  type ProcessSpawnLike,
+  type ProcessTreeCleanupResult,
+  type SpawnSupervisedProcessOptions,
+  type SupervisedProcessResult
+} from "./process-supervisor.js";
 
 /**
  * Compatibility facade for callers that still populate the original
@@ -45,6 +56,75 @@ export function probeCodexLaunch(
     markCodexAutonomyResolutionVerifiedByLaunchProbe(result.autonomyResolution);
   }
   return result;
+}
+
+export type CodexLaunchProbeAsyncResult = CodexLaunchProbeResult & {
+  processCleanup: ProcessTreeCleanupResult;
+};
+
+interface CodexLaunchProbeAsyncTestSeams {
+  spawnSupervisedProcessImpl?: (
+    command: string,
+    args: readonly string[],
+    options: SpawnSupervisedProcessOptions
+  ) => Promise<SupervisedProcessResult>;
+}
+
+export async function probeCodexLaunchAsync(input: {
+  workingDirectory: string;
+  availability: CliCommandAvailability;
+  providerExecutionTimeoutMs?: number;
+  model?: string;
+  signal?: AbortSignal;
+  spawnImpl?: ProcessSpawnLike;
+}, testSeams: CodexLaunchProbeAsyncTestSeams = {}): Promise<CodexLaunchProbeAsyncResult> {
+  const timeoutMs = normalizeProviderExecutionTimeoutMs(input.providerExecutionTimeoutMs);
+  const payload = Buffer.from(JSON.stringify({
+    workingDirectory: input.workingDirectory,
+    availability: input.availability,
+    providerExecutionTimeoutMs: timeoutMs,
+    ...(input.model ? { model: input.model } : {})
+  }), "utf8").toString("base64url");
+  const workerPath = fileURLToPath(new URL("./codex-launch-probe-worker.js", import.meta.url));
+  const executeSupervised = testSeams.spawnSupervisedProcessImpl ?? spawnSupervisedProcess;
+  const execution = await executeSupervised(process.execPath, [workerPath, payload], {
+    cwd: input.workingDirectory,
+    timeoutMs,
+    ...(input.signal ? { signal: input.signal } : {}),
+    ...(input.spawnImpl ? { spawnImpl: input.spawnImpl } : {}),
+    requireTreeClosureOnSuccess: true
+  });
+
+  if (!execution.completed || execution.exitCode !== 0) {
+    const diagnosis = diagnoseCodexHost(input.availability);
+    const reason = execution.cleanup.state === "failed"
+      ? `Codex readiness process-tree cleanup failed: ${execution.cleanup.message}`
+      : input.signal?.aborted || execution.terminationReason === "aborted"
+        ? "Codex readiness probe was cancelled before completion."
+        : execution.timedOut
+          ? `Codex readiness probe exceeded the configured ${timeoutMs} ms timeout.`
+          : `Codex readiness probe failed: ${execution.stderr.trim() || execution.cleanup.state}.`;
+    return {
+      ok: false,
+      summary: reason,
+      availability: input.availability,
+      diagnosis,
+      command: input.availability.resolvedPath ?? input.availability.command,
+      args: [],
+      stderr: execution.stderr,
+      processCleanup: execution.cleanup
+    };
+  }
+
+  const serialized = execution.stdout.trim().split(/\r?\n/u).at(-1);
+  if (!serialized) {
+    throw new Error("Codex readiness probe worker returned no result.");
+  }
+  const result = JSON.parse(serialized) as CodexLaunchProbeResult;
+  if (result.ok && result.autonomyResolution) {
+    markCodexAutonomyResolutionVerifiedByLaunchProbe(result.autonomyResolution);
+  }
+  return { ...result, processCleanup: execution.cleanup };
 }
 
 export {

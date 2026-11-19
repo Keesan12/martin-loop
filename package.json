@@ -1,7 +1,7 @@
 {
   "name": "martin-loop",
   "private": false,
-  "version": "0.9.0",
+  "version": "0.10.0",
   "type": "module",
   "description": "Open-source command center for governed AI coding agents with built-in onboarding, hard gates, MCP, and shareable run receipts.",
   "packageManager": "pnpm@10.33.0",
@@ -88,6 +88,7 @@
     "test": "pnpm --filter @martin/contracts test && pnpm --filter @martin/core test:baseline && pnpm --filter @martin/adapters test:baseline && pnpm --filter @martin/benchmarks test && pnpm --filter @martin/cli test && pnpm --filter @martinloop/mcp test:baseline && node --test --test-concurrency=1 scripts/tests/*.mjs",
     "test:full": "pnpm -r --workspace-concurrency=1 test && node --test --test-concurrency=1 scripts/tests/*.mjs",
     "lint": "pnpm -r lint",
+    "fixtures:swarm-hosted:generate": "pnpm --filter @martin/contracts build && tsx packages/core/scripts/generate-swarm-hosted-fixtures.ts",
     "release:truth:generate": "node scripts/public-release-truth.mjs",
     "release:truth:check": "node scripts/public-release-truth.mjs --check",
     "release:authority:check": "node scripts/fleet-release-authority-check.mjs --source",

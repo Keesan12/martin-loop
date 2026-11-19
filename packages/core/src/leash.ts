@@ -80,6 +80,15 @@ const BLOCKED_PATTERNS: RegExp[] = [
   /\b(?:format-volume|diskpart)\b/iu
 ];
 
+/** True when the deny policy removes every writable repository path. */
+export function deniesAllWritablePaths(deniedPaths: readonly string[] | undefined): boolean {
+  return deniedPaths?.some((pattern) => {
+    let normalized = pattern.replace(/\\/gu, "/").trim();
+    while (normalized.startsWith("./")) normalized = normalized.slice(2);
+    return normalized === "**" || normalized === "**/*";
+  }) ?? false;
+}
+
 /**
  * Detects `rm` invocations that combine recursive + force flags regardless of
  * flag ordering/grouping (`-rf`, `-fr`, `-r -f`, `--recursive --force`),

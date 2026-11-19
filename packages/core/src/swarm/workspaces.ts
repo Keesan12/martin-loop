@@ -190,6 +190,8 @@ export async function createSwarmWorkspaceManager(
 
   const registered = new Map<SwarmWorkspaceRuntimeHandle, RegisteredWorkspace>();
   const registeredIds = new Set<string>();
+  const reservedIds = new Set<string>();
+  const removingHandles = new Set<SwarmWorkspaceRuntimeHandle>();
   let operationTail: Promise<void> = Promise.resolve();
 
   const runExclusively = async <T>(operation: () => Promise<T>): Promise<T> => {
@@ -200,30 +202,9 @@ export async function createSwarmWorkspaceManager(
 
   const createWorkspace = async (
     spec: SwarmWorkspaceSpec
-  ): Promise<SwarmWorkspaceRuntimeHandle> => runExclusively(async () => {
+  ): Promise<SwarmWorkspaceRuntimeHandle> => {
     assertSwarmPathIdentifier(spec.workspaceId, "workspace ID");
-    if (registeredIds.has(spec.workspaceId)) {
-      throw new SwarmWorkspaceError(
-        "DUPLICATE_WORKSPACE_ID",
-        `Workspace ID is already registered: ${spec.workspaceId}`
-      );
-    }
     validateSpec(spec);
-    await assertCanonicalClean(gitRunner, canonicalRoot);
-    const currentHead = await gitScalarOrThrow(
-      gitRunner,
-      canonicalRoot,
-      ["rev-parse", "--verify", "HEAD^{commit}"],
-      "BASELINE_UNAVAILABLE",
-      "Unable to verify the canonical baseline commit."
-    );
-    if (currentHead !== baselineCommit) {
-      throw new SwarmWorkspaceError(
-        "CANONICAL_BASELINE_CHANGED",
-        "Canonical HEAD no longer matches the captured swarm baseline."
-      );
-    }
-
     const workspacePath = resolve(join(ownedRoot, spec.workspaceId));
     if (!isStrictlyContained(ownedRoot, workspacePath)) {
       throw new SwarmWorkspaceError(
@@ -231,40 +212,67 @@ export async function createSwarmWorkspaceManager(
         "Workspace path escapes the real swarm-owned root."
       );
     }
-    if (await fs.pathExists(workspacePath)) {
-      throw new SwarmWorkspaceError(
-        "WORKSPACE_PATH_EXISTS",
-        `Workspace path already exists for ID: ${spec.workspaceId}`
-      );
-    }
+    await runExclusively(async () => {
+      if (registeredIds.has(spec.workspaceId) || reservedIds.has(spec.workspaceId)) {
+        throw new SwarmWorkspaceError(
+          "DUPLICATE_WORKSPACE_ID",
+          `Workspace ID is already registered: ${spec.workspaceId}`
+        );
+      }
+      reservedIds.add(spec.workspaceId);
+    });
 
-    if (isolationMode === "independent_clone") {
-      await runGitOrThrow(
-        gitRunner,
-        canonicalRoot,
-        ["clone", "--no-hardlinks", "--no-checkout", canonicalRoot, workspacePath],
-        "CLONE_CREATE_FAILED",
-        `Git could not create isolated clone ${spec.workspaceId}.`
-      );
-      await runGitOrThrow(
-        gitRunner,
-        workspacePath,
-        ["-c", "core.autocrlf=false", "checkout", "--detach", baselineCommit],
-        "CLONE_CHECKOUT_FAILED",
-        `Git could not checkout the immutable baseline for ${spec.workspaceId}.`
-      );
-    } else {
-      await runGitOrThrow(
-        gitRunner,
-        canonicalRoot,
-        ["-c", "core.autocrlf=false", "worktree", "add", "--detach", workspacePath, baselineCommit],
-        "WORKTREE_CREATE_FAILED",
-        `Git could not create detached workspace ${spec.workspaceId}.`
-      );
-    }
-
-    let workspaceRealPath = workspacePath;
+    let reservationFinalized = false;
     try {
+      await assertCanonicalClean(gitRunner, canonicalRoot);
+      const currentHead = await gitScalarOrThrow(
+        gitRunner,
+        canonicalRoot,
+        ["rev-parse", "--verify", "HEAD^{commit}"],
+        "BASELINE_UNAVAILABLE",
+        "Unable to verify the canonical baseline commit."
+      );
+      if (currentHead !== baselineCommit) {
+        throw new SwarmWorkspaceError(
+          "CANONICAL_BASELINE_CHANGED",
+          "Canonical HEAD no longer matches the captured swarm baseline."
+        );
+      }
+
+      if (await fs.pathExists(workspacePath)) {
+        throw new SwarmWorkspaceError(
+          "WORKSPACE_PATH_EXISTS",
+          `Workspace path already exists for ID: ${spec.workspaceId}`
+        );
+      }
+
+      let workspaceRealPath = workspacePath;
+      try {
+      if (isolationMode === "independent_clone") {
+        await runGitOrThrow(
+          gitRunner,
+          canonicalRoot,
+          ["clone", "--no-hardlinks", "--no-checkout", canonicalRoot, workspacePath],
+          "CLONE_CREATE_FAILED",
+          `Git could not create isolated clone ${spec.workspaceId}.`
+        );
+        await runGitOrThrow(
+          gitRunner,
+          workspacePath,
+          ["-c", "core.autocrlf=false", "checkout", "--detach", baselineCommit],
+          "CLONE_CHECKOUT_FAILED",
+          `Git could not checkout the immutable baseline for ${spec.workspaceId}.`
+        );
+      } else {
+        await runGitOrThrow(
+          gitRunner,
+          canonicalRoot,
+          ["-c", "core.autocrlf=false", "worktree", "add", "--detach", workspacePath, baselineCommit],
+          "WORKTREE_CREATE_FAILED",
+          `Git could not create detached workspace ${spec.workspaceId}.`
+        );
+      }
+
       workspaceRealPath = await fs.realpath(workspacePath);
       if (!isStrictlyContained(ownedRoot, workspaceRealPath)) {
         throw new SwarmWorkspaceError(
@@ -299,14 +307,13 @@ export async function createSwarmWorkspaceManager(
       const original = asWorkspaceError(validationFailure);
       const attemptedAt = now();
       try {
-        if (isolationMode === "independent_clone") {
-          await removeOwnedDirectory(fs, workspacePath);
-        } else {
-          await gitRunner({
-            cwd: canonicalRoot,
-            args: ["worktree", "remove", "--force", workspacePath]
-          });
-        }
+        await rollbackWorkspaceMaterialization({
+          gitRunner,
+          fs,
+          canonicalRoot,
+          workspacePath,
+          isolationMode
+        });
       } catch (rollbackFailure) {
         const errorCode = safeErrorCode(rollbackFailure);
         const cleanupPending = errorCode === "EPERM" || errorCode === "EBUSY";
@@ -322,15 +329,19 @@ export async function createSwarmWorkspaceManager(
           record,
           isolationMode
         }) satisfies SwarmWorkspaceRuntimeHandle;
-        registered.set(recoveryHandle, {
-          handle: recoveryHandle,
-          path: workspacePath,
-          realPath: workspaceRealPath,
-          record,
-          validated: false,
-          isolationMode
+        await runExclusively(async () => {
+          registered.set(recoveryHandle, {
+            handle: recoveryHandle,
+            path: workspacePath,
+            realPath: workspaceRealPath,
+            record,
+            validated: false,
+            isolationMode
+          });
+          registeredIds.add(spec.workspaceId);
+          reservedIds.delete(spec.workspaceId);
+          reservationFinalized = true;
         });
-        registeredIds.add(spec.workspaceId);
         const cleanup = freezeCleanupRecord({
           schemaVersion: SWARM_SCHEMA_VERSION,
           cleanupId: createCleanupId(),
@@ -360,47 +371,70 @@ export async function createSwarmWorkspaceManager(
       record,
       isolationMode
     }) satisfies SwarmWorkspaceRuntimeHandle;
-    registered.set(handle, {
-      handle,
-      path: workspacePath,
-      realPath: workspaceRealPath,
-      record,
-      validated: true,
-      isolationMode
+    await runExclusively(async () => {
+      registered.set(handle, {
+        handle,
+        path: workspacePath,
+        realPath: workspaceRealPath,
+        record,
+        validated: true,
+        isolationMode
+      });
+      registeredIds.add(spec.workspaceId);
+      reservedIds.delete(spec.workspaceId);
+      reservationFinalized = true;
     });
-    registeredIds.add(spec.workspaceId);
     return handle;
-  });
+    } finally {
+      if (!reservationFinalized) {
+        await runExclusively(async () => {
+          reservedIds.delete(spec.workspaceId);
+        });
+      }
+    }
+  };
 
   const removeWorkspace = async (
     handle: SwarmWorkspaceRuntimeHandle,
     gate: SwarmWorkspaceCleanupGate
-  ): Promise<SwarmCleanupRecord> => runExclusively(async () => {
-    const entry = registered.get(handle);
-    if (entry === undefined || entry.handle !== handle) {
-      throw new SwarmWorkspaceError(
-        "UNREGISTERED_WORKSPACE_HANDLE",
-        "Cleanup requires the exact manager-issued registered workspace handle."
-      );
-    }
-    if (!gate.evidencePersisted) {
-      throw new SwarmWorkspaceError(
-        "EVIDENCE_NOT_PERSISTED",
-        "Workspace cleanup cannot begin before evidence is persisted."
-      );
-    }
-    if (!gate.processTreeClosed) {
-      throw new SwarmWorkspaceError(
-        "PROCESS_TREE_ACTIVE",
-        "Workspace cleanup cannot begin before its process tree is closed."
-      );
-    }
-    if (pathsEqual(entry.realPath, canonicalRoot)) {
-      throw new SwarmWorkspaceError(
-        "CANONICAL_REMOVE_FORBIDDEN",
-        "Refusing to remove the canonical checkout."
-      );
-    }
+  ): Promise<SwarmCleanupRecord> => {
+    const entry = await runExclusively(async () => {
+      const registeredEntry = registered.get(handle);
+      if (registeredEntry === undefined || registeredEntry.handle !== handle) {
+        throw new SwarmWorkspaceError(
+          "UNREGISTERED_WORKSPACE_HANDLE",
+          "Cleanup requires the exact manager-issued registered workspace handle."
+        );
+      }
+      if (removingHandles.has(handle)) {
+        throw new SwarmWorkspaceError(
+          "WORKSPACE_REMOVAL_IN_PROGRESS",
+          "Cleanup is already in progress for this workspace handle."
+        );
+      }
+      if (!gate.evidencePersisted) {
+        throw new SwarmWorkspaceError(
+          "EVIDENCE_NOT_PERSISTED",
+          "Workspace cleanup cannot begin before evidence is persisted."
+        );
+      }
+      if (!gate.processTreeClosed) {
+        throw new SwarmWorkspaceError(
+          "PROCESS_TREE_ACTIVE",
+          "Workspace cleanup cannot begin before its process tree is closed."
+        );
+      }
+      if (pathsEqual(registeredEntry.realPath, canonicalRoot)) {
+        throw new SwarmWorkspaceError(
+          "CANONICAL_REMOVE_FORBIDDEN",
+          "Refusing to remove the canonical checkout."
+        );
+      }
+      removingHandles.add(handle);
+      return registeredEntry;
+    });
+
+    try {
 
     const currentRealPath = await fs.realpath(entry.path);
     if (!pathsEqual(currentRealPath, entry.realPath) || !isStrictlyContained(ownedRoot, currentRealPath)) {
@@ -440,8 +474,10 @@ export async function createSwarmWorkspaceManager(
         ];
         await gitRunner({ cwd: canonicalRoot, args });
       }
-      registered.delete(handle);
-      registeredIds.delete(entry.record.workspaceId);
+      await runExclusively(async () => {
+        registered.delete(handle);
+        registeredIds.delete(entry.record.workspaceId);
+      });
       return freezeCleanupRecord({
         schemaVersion: SWARM_SCHEMA_VERSION,
         cleanupId: createCleanupId(),
@@ -474,7 +510,12 @@ export async function createSwarmWorkspaceManager(
         errorCode
       });
     }
-  });
+    } finally {
+      await runExclusively(async () => {
+        removingHandles.delete(handle);
+      });
+    }
+  };
 
   return Object.freeze({
     baselineCommit,
@@ -483,6 +524,59 @@ export async function createSwarmWorkspaceManager(
     createWorkspace,
     removeWorkspace
   });
+}
+
+async function rollbackWorkspaceMaterialization(input: {
+  gitRunner: SwarmGitRunner;
+  fs: SwarmWorkspaceFs;
+  canonicalRoot: string;
+  workspacePath: string;
+  isolationMode: "worktree" | "independent_clone";
+}): Promise<void> {
+  if (input.isolationMode === "independent_clone") {
+    await removeOwnedDirectory(input.fs, input.workspacePath);
+    if (await input.fs.pathExists(input.workspacePath)) {
+      throw new SwarmWorkspaceError(
+        "CLONE_ROLLBACK_INCOMPLETE",
+        "Failed clone creation left filesystem state behind."
+      );
+    }
+    return;
+  }
+
+  let removalFailure: unknown;
+  try {
+    await input.gitRunner({
+      cwd: input.canonicalRoot,
+      args: ["worktree", "remove", "--force", input.workspacePath]
+    });
+  } catch (error) {
+    removalFailure = error;
+  }
+
+  const listedResult = await runGitOrThrow(
+    input.gitRunner,
+    input.canonicalRoot,
+    ["worktree", "list", "--porcelain", "-z"],
+    "WORKTREE_ROLLBACK_LIST_FAILED",
+    "Unable to verify worktree rollback metadata."
+  );
+  const remainsRegistered = parseWorktreeList(listedResult.stdout)
+    .some(({ path }) => pathsEqual(path, input.workspacePath));
+  if (remainsRegistered) {
+    throw removalFailure ?? new SwarmWorkspaceError(
+      "WORKTREE_ROLLBACK_INCOMPLETE",
+      "Failed worktree creation remains registered after rollback."
+    );
+  }
+
+  await removeOwnedDirectory(input.fs, input.workspacePath);
+  if (await input.fs.pathExists(input.workspacePath)) {
+    throw new SwarmWorkspaceError(
+      "WORKTREE_ROLLBACK_INCOMPLETE",
+      "Failed worktree creation left filesystem state behind."
+    );
+  }
 }
 
 async function removeOwnedDirectory(fs: SwarmWorkspaceFs, path: string): Promise<void> {

@@ -4,9 +4,9 @@ The standalone MCP line is published as its own package. Treat it like a product
 
 ## Current public truth
 
-- current published standalone package: `@martinloop/mcp` (live version: `0.8.10`)
-- current in-repo standalone release baseline: `0.9.0` (pending publication)
-- next planned standalone release: `0.9.0`, after exact release acceptance
+- current published standalone package: `@martinloop/mcp` (live version: `0.9.0`)
+- current in-repo standalone release baseline: `0.10.0` (pending publication)
+- next planned standalone release: `0.10.0`, after exact release acceptance
 - publish authority: GitHub Actions trusted publishing / OIDC
 
 ## Before publish

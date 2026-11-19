@@ -12,6 +12,7 @@ import {
 } from "node:fs";
 import { dirname, extname, join, resolve } from "node:path";
 import { userInfo } from "node:os";
+import { normalizeProviderExecutionTimeoutMs } from "@martin/contracts";
 import { createSpawnPlan, resolveNpmShimScript } from "./cli-bridge.js";
 import {
   cacheCodexCapabilityProfile,
@@ -20,6 +21,7 @@ import {
   type CodexAutonomyResolution,
   type CodexCapabilityProfile,
   type CodexPromptTransport,
+  type CodexWindowsSandboxBackend,
   type CodexWriteStrategy
 } from "./codex-capabilities.js";
 
@@ -86,6 +88,7 @@ export interface CodexLaunchProbeResult {
 
 type SpawnSyncLike = typeof spawnSync;
 const launchProbeCache = new Map<string, CodexLaunchProbeResult>();
+const WINDOWS_SANDBOX_BACKEND_CANDIDATES: readonly CodexWindowsSandboxBackend[] = ["mxc", "elevated", "unelevated"];
 
 export interface CodexSandboxPreflightOk {
   ok: true;
@@ -468,6 +471,7 @@ function buildLocalSandboxProbeArgs(input: {
   outsideMarkerPath: string;
   platform: NodeJS.Platform;
   capabilityProfile: CodexCapabilityProfile;
+  windowsSandboxBackend?: CodexWindowsSandboxBackend;
 }): string[] {
   const script = [
     "const fs = require('node:fs');",
@@ -484,18 +488,22 @@ function buildLocalSandboxProbeArgs(input: {
 
   const windowsSandboxConfig =
     input.platform === "win32" &&
-    input.capabilityProfile.userConfigIsolation &&
+    input.windowsSandboxBackend &&
     input.capabilityProfile.sandboxConfig
-      ? [input.capabilityProfile.sandboxConfig.flag, 'windows.sandbox="elevated"']
+      ? [input.capabilityProfile.sandboxConfig.flag, `windows.sandbox="${input.windowsSandboxBackend}"`]
       : [];
+  const permissionProfile = input.capabilityProfile.sandboxPermissionProfile
+    ? [input.capabilityProfile.sandboxPermissionProfile.flag, ":workspace"]
+    : [];
+  const sandboxCwd = input.capabilityProfile.sandboxCwd
+    ? [input.capabilityProfile.sandboxCwd.flag, input.workingDirectory]
+    : [];
 
   return [
     "sandbox",
     ...windowsSandboxConfig,
-    "--permission-profile",
-    ":workspace",
-    "-C",
-    input.workingDirectory,
+    ...permissionProfile,
+    ...sandboxCwd,
     "--",
     process.execPath,
     "-e",
@@ -690,92 +698,102 @@ export function probeCodexLaunch(input: {
       continue;
     }
 
-    const marker = `.martin-codex-write-probe-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.tmp`;
-    const markerPath = join(input.workingDirectory, marker);
-    // The outside canary is created under the user-home boundary because Codex
-    // intentionally grants temp writes and the repository may be nested inside
-    // a broader writable host workspace.
-    const outsideRoot = mkdtempSync(join(userInfo().homedir, ".martin-codex-outside-probe-"));
-    const outsideMarkerPath = join(outsideRoot, ".martin-codex-outside-probe.tmp");
-    const args = buildLocalSandboxProbeArgs({
-      workingDirectory: input.workingDirectory,
-      markerPath,
-      outsideMarkerPath,
-      platform,
-      capabilityProfile: profile
-    });
-    const plan = input.spawnSyncImpl
-      ? buildInjectedSpawnPlan(candidate.path, args, platform)
-      : { ...createSpawnPlan(candidate.path, args, input.workingDirectory, false), invocationMode: "direct" as const };
-    const result = spawnSyncImpl(plan.command, plan.args, {
-      cwd: input.workingDirectory,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-      timeout: 300_000
-    });
+    const backendCandidates = platform === "win32" && profile.userConfigIsolation && profile.sandboxConfig
+      ? WINDOWS_SANDBOX_BACKEND_CANDIDATES
+      : [undefined];
+    for (const windowsSandboxBackend of backendCandidates) {
+      const marker = `.martin-codex-write-probe-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.tmp`;
+      const markerPath = join(input.workingDirectory, marker);
+      // The outside canary is created under the user-home boundary because Codex
+      // intentionally grants temp writes and the repository may be nested inside
+      // a broader writable host workspace.
+      const outsideRoot = mkdtempSync(join(userInfo().homedir, ".martin-codex-outside-probe-"));
+      const outsideMarkerPath = join(outsideRoot, ".martin-codex-outside-probe.tmp");
+      const args = buildLocalSandboxProbeArgs({
+        workingDirectory: input.workingDirectory,
+        markerPath,
+        outsideMarkerPath,
+        platform,
+        capabilityProfile: profile,
+        ...(windowsSandboxBackend ? { windowsSandboxBackend } : {})
+      });
+      const plan = input.spawnSyncImpl
+        ? buildInjectedSpawnPlan(candidate.path, args, platform)
+        : { ...createSpawnPlan(candidate.path, args, input.workingDirectory, false), invocationMode: "direct" as const };
+      const result = spawnSyncImpl(plan.command, plan.args, {
+        cwd: input.workingDirectory,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+        timeout: normalizeProviderExecutionTimeoutMs(input.providerExecutionTimeoutMs)
+      });
 
-    let markerVerified = false;
-    let outsideDenied = false;
-    try {
-      markerVerified = existsSync(markerPath) && readFileSync(markerPath, "utf8") === "MARTIN_CODEX_WRITE_OK";
-      outsideDenied = !existsSync(outsideMarkerPath);
-    } finally {
+      let markerVerified = false;
+      let outsideDenied = false;
       try {
-        unlinkSync(markerPath);
-      } catch {
-        // best effort cleanup
+        markerVerified = existsSync(markerPath) && readFileSync(markerPath, "utf8") === "MARTIN_CODEX_WRITE_OK";
+        outsideDenied = !existsSync(outsideMarkerPath);
+      } finally {
+        try {
+          unlinkSync(markerPath);
+        } catch {
+          // best effort cleanup
+        }
+        rmSync(outsideRoot, { recursive: true, force: true });
       }
-      rmSync(outsideRoot, { recursive: true, force: true });
-    }
 
-    if (!result.error && result.status === 0 && markerVerified && outsideDenied) {
-      const negotiated = cacheCodexCapabilityProfile({ ...profile, promptTransport: transport }, platform);
-      selected = {
-        candidate: {
-          ...candidate,
-          diagnosis: { ...candidate.diagnosis, invocationMode: plan.invocationMode }
-        },
-        profile: negotiated,
+      if (!result.error && result.status === 0 && markerVerified && outsideDenied) {
+        const negotiated = cacheCodexCapabilityProfile({ ...profile, promptTransport: transport }, platform);
+        const negotiatedResolution: CodexAutonomyResolution = {
+          ...resolution,
+          ...(windowsSandboxBackend ? { windowsSandboxBackend } : {})
+        };
+        selected = {
+          candidate: {
+            ...candidate,
+            diagnosis: { ...candidate.diagnosis, invocationMode: plan.invocationMode }
+          },
+          profile: negotiated,
+          args,
+          resolution: negotiatedResolution,
+          transport,
+          ...(result.status === null ? {} : { exitCode: result.status }),
+          stdout: result.stdout ?? "",
+          stderr: result.stderr ?? ""
+        };
+        candidateResults.push({
+          path: candidate.path,
+          installKind: candidate.diagnosis.installKind,
+          invocationMode: plan.invocationMode,
+          nativeInstallValid: true,
+          sandboxCompatible: true,
+          launchReady: true,
+          summary: `Codex local sandbox capability probe passed with ${resolution.strategy} / ${transport}${windowsSandboxBackend ? ` / ${windowsSandboxBackend}` : ""}.`,
+          capabilityProfile: negotiated,
+          writeStrategy: resolution.strategy,
+          autonomyResolution: negotiatedResolution,
+          promptTransport: transport
+        });
+        break candidateLoop;
+      }
+
+      const failureDiagnosis = classifyFailure(result.stderr ?? "", result.stdout ?? "", candidate.diagnosis);
+      candidateSummary = result.error
+        ? `Codex local sandbox probe failed: ${result.error.message}`
+        : result.status !== 0
+          ? `Codex local sandbox probe exited non-zero: ${(result.stderr ?? result.stdout ?? "").trim() || String(result.status)}`
+          : !outsideDenied
+            ? "Codex local sandbox probe escaped the workspace boundary."
+            : "Codex local sandbox probe did not prove workspace writes.";
+      lastFailure = {
+        candidate: { ...candidate, diagnosis: failureDiagnosis },
+        profile,
         args,
-        resolution,
-        transport,
+        summary: candidateSummary,
         ...(result.status === null ? {} : { exitCode: result.status }),
         stdout: result.stdout ?? "",
         stderr: result.stderr ?? ""
       };
-      candidateResults.push({
-        path: candidate.path,
-        installKind: candidate.diagnosis.installKind,
-        invocationMode: plan.invocationMode,
-        nativeInstallValid: true,
-        sandboxCompatible: true,
-        launchReady: true,
-        summary: `Codex local sandbox capability probe passed with ${resolution.strategy} / ${transport}.`,
-        capabilityProfile: negotiated,
-        writeStrategy: resolution.strategy,
-        autonomyResolution: resolution,
-        promptTransport: transport
-      });
-      break candidateLoop;
     }
-
-    const failureDiagnosis = classifyFailure(result.stderr ?? "", result.stdout ?? "", candidate.diagnosis);
-    candidateSummary = result.error
-      ? `Codex local sandbox probe failed: ${result.error.message}`
-      : result.status !== 0
-        ? `Codex local sandbox probe exited non-zero: ${(result.stderr ?? result.stdout ?? "").trim() || String(result.status)}`
-        : !outsideDenied
-          ? "Codex local sandbox probe escaped the workspace boundary."
-          : "Codex local sandbox probe did not prove workspace writes.";
-    lastFailure = {
-      candidate: { ...candidate, diagnosis: failureDiagnosis },
-      profile,
-      args,
-      summary: candidateSummary,
-      ...(result.status === null ? {} : { exitCode: result.status }),
-      stdout: result.stdout ?? "",
-      stderr: result.stderr ?? ""
-    };
 
     candidateResults.push({
       path: candidate.path,

@@ -19,6 +19,7 @@ import { martinListRunsTool } from "../src/tools/list-runs.js";
 import { martinPreflightTool } from "../src/tools/preflight.js";
 import { martinRunDossierTool } from "../src/tools/run-dossier.js";
 import {
+  __setLiveEngineReadinessProbeForTests,
   __setProofModeVerifierSpawnImplForTests,
   __setRunStoreOverrideForTests,
   runLoopTool
@@ -179,6 +180,7 @@ function createImmediateSpawn(calls: Array<{ command: string; args: readonly str
 }
 
 afterEach(() => {
+  __setLiveEngineReadinessProbeForTests(undefined);
   __setProofModeVerifierSpawnImplForTests(undefined);
   __setRunStoreOverrideForTests(undefined);
 });
@@ -545,6 +547,39 @@ describe("martinDoctorTool", () => {
     });
   });
 
+  it("bounds corrupt-record diagnostics while preserving the total unreadable count", async () => {
+    await withRunsRoot(async (runsRoot) => {
+      const originalEnv = process.env.MARTIN_LIVE;
+      process.env.MARTIN_LIVE = "false";
+
+      try {
+        const loop = makeLoopRecord({ costUsd: 1.25 });
+        await mkdir(join(runsRoot, loop.loopId), { recursive: true });
+        await writeFile(join(runsRoot, loop.loopId, "loop-record.json"), JSON.stringify(loop), "utf8");
+        for (let index = 0; index < 25; index += 1) {
+          const loopId = `loop_broken_${String(index).padStart(2, "0")}`;
+          await mkdir(join(runsRoot, loopId), { recursive: true });
+          await writeFile(join(runsRoot, loopId, "loop-record.json"), "{not-json", "utf8");
+        }
+
+        const result = await martinDoctorTool({ runsDir: runsRoot, engine: "codex" });
+
+        expect(result.status).toBe("degraded");
+        expect(result.runStore.loopCount).toBe(1);
+        expect(result.runStore.unreadableRecordCount).toBe(25);
+        expect(result.runStore.warningsTruncated).toBe(true);
+        expect(result.warnings).toHaveLength(20);
+        expect(result.summary).toContain("25 issue(s)");
+      } finally {
+        if (originalEnv === undefined) {
+          delete process.env.MARTIN_LIVE;
+        } else {
+          process.env.MARTIN_LIVE = originalEnv;
+        }
+      }
+    });
+  });
+
   it("degrades missing explicit runsDir health checks instead of rejecting the path", async () => {
     await withRunsRoot(async (runsRoot) => {
       const originalEnv = process.env.MARTIN_LIVE;
@@ -574,6 +609,58 @@ describe("martinDoctorTool", () => {
 });
 
 describe("martinPreflightTool", () => {
+  it.each([["**/*"], ["**"]])("preserves proof-mode verification under global deny policy %s", async (pattern) => {
+    const originalEnv = process.env.MARTIN_LIVE;
+    process.env.MARTIN_LIVE = "false";
+    try {
+      const result = await martinPreflightTool({
+        objective: "Prove deny-all preflight truth",
+        deniedPaths: [pattern]
+      });
+
+      expect(result.ok).toBe(true);
+      expect(result.execution.pathScope.hasWritableSurface).toBe(false);
+      expect(result.warnings).toContain(
+        "The deniedPaths policy removes every writable path; mutation-capable execution is blocked."
+      );
+    } finally {
+      if (originalEnv === undefined) delete process.env.MARTIN_LIVE;
+      else process.env.MARTIN_LIVE = originalEnv;
+    }
+  });
+
+  it("blocks live mutation preflight when the path policy has no writable surface", async () => {
+    const previousLive = process.env.MARTIN_LIVE;
+    const previousBaseUrl = process.env.MARTIN_OPENAI_BASE_URL;
+    const previousModel = process.env.MARTIN_OPENAI_MODEL;
+    const previousApiKey = process.env.MARTIN_OPENAI_API_KEY;
+    process.env.MARTIN_LIVE = "true";
+    process.env.MARTIN_OPENAI_BASE_URL = "http://127.0.0.1:11434";
+    process.env.MARTIN_OPENAI_MODEL = "local-preflight-model";
+    delete process.env.MARTIN_OPENAI_API_KEY;
+    try {
+      const result = await martinPreflightTool({
+        objective: "Block live mutation under deny-all",
+        engine: "openai",
+        deniedPaths: ["**/*"]
+      });
+
+      expect(result.ok).toBe(false);
+      expect(result.summary).toContain("no writable surface");
+      expect(result.readiness.engineReady).toBe(true);
+      expect(result.execution.pathScope.hasWritableSurface).toBe(false);
+    } finally {
+      if (previousLive === undefined) delete process.env.MARTIN_LIVE;
+      else process.env.MARTIN_LIVE = previousLive;
+      if (previousBaseUrl === undefined) delete process.env.MARTIN_OPENAI_BASE_URL;
+      else process.env.MARTIN_OPENAI_BASE_URL = previousBaseUrl;
+      if (previousModel === undefined) delete process.env.MARTIN_OPENAI_MODEL;
+      else process.env.MARTIN_OPENAI_MODEL = previousModel;
+      if (previousApiKey === undefined) delete process.env.MARTIN_OPENAI_API_KEY;
+      else process.env.MARTIN_OPENAI_API_KEY = previousApiKey;
+    }
+  });
+
   it("accepts legitimate verifier-owned flags that resemble generic Martin options", async () => {
     const originalEnv = process.env.MARTIN_LIVE;
     process.env.MARTIN_LIVE = "false";
@@ -1326,6 +1413,122 @@ describe("martinTriageRunsTool", () => {
 // ---------------------------------------------------------------------------
 
 describe("runLoopTool", () => {
+  it("does not reinterpret failed readiness cleanup as an ordinary cancellation", async () => {
+    await withRunsRoot(async () => {
+      const originalEnv = process.env.MARTIN_LIVE;
+      process.env.MARTIN_LIVE = "true";
+      const controller = new AbortController();
+      __setLiveEngineReadinessProbeForTests(async ({ signal }) => {
+        controller.abort(new Error("MCP caller cancelled"));
+        expect(signal?.aborted).toBe(true);
+        return {
+        ok: false,
+        summary: "Codex readiness process-tree cleanup failed: process remained alive.",
+        availability: { command: "codex", available: true, locator: "test", detail: "test" },
+        diagnosis: {
+          hostPlatform: "windows",
+          nativeInstallValid: true,
+          installKind: "native",
+          invocationMode: "direct",
+          sandboxMode: "workspace-write",
+          sandboxCompatible: false,
+          warnings: []
+        },
+        command: "codex",
+        args: [],
+        processCleanup: {
+          state: "failed",
+          code: "tree_close_timeout",
+          message: "process remained alive"
+        }
+        } as never;
+      });
+
+      try {
+        await expect(runLoopTool(
+          {
+            objective: "Fail closed when readiness cleanup is unproven",
+            engine: "codex",
+            maxIterations: 1,
+            maxUsd: 1
+          },
+          { signal: controller.signal }
+        )).rejects.toThrow(/cleanup failed|remained alive/iu);
+      } finally {
+        if (originalEnv === undefined) delete process.env.MARTIN_LIVE;
+        else process.env.MARTIN_LIVE = originalEnv;
+      }
+    });
+  });
+
+  it.each(["**", "**/*"])("skips every live readiness probe when deniedPaths contains global pattern %s", async (globalPattern) => {
+    await withRunsRoot(async () => {
+      const originalEnv = process.env.MARTIN_LIVE;
+      process.env.MARTIN_LIVE = "true";
+      let readinessProbeCalls = 0;
+      __setLiveEngineReadinessProbeForTests(async () => {
+        readinessProbeCalls += 1;
+        throw new Error("deny-all must stop before readiness probing");
+      });
+
+      try {
+        const result = await runLoopTool({
+          objective: "Prove deny-all skips live provider readiness",
+          engine: "codex",
+          allowedPaths: ["src/**"],
+          deniedPaths: [globalPattern],
+          maxIterations: 1,
+          maxUsd: 1
+        });
+
+        expect(readinessProbeCalls).toBe(0);
+        expect(result.attempts).toBe(0);
+        expect(result.costUsd).toBe(0);
+        expect(result.reason).toMatch(/zero_writable_surface|denies every writable path/iu);
+        const persisted = await martinGetRunTool({ loopId: result.loopId });
+        expect(persisted.loop.lifecycleState).toBe("human_escalation");
+        expect(persisted.receiptIntegrity.state).toBe("verified");
+      } finally {
+        if (originalEnv === undefined) delete process.env.MARTIN_LIVE;
+        else process.env.MARTIN_LIVE = originalEnv;
+      }
+    });
+  });
+
+  it("propagates a pre-aborted MCP request signal before provider launch", async () => {
+    await withRunsRoot(async () => {
+      const originalEnv = process.env.MARTIN_LIVE;
+      process.env.MARTIN_LIVE = "false";
+      const calls: Array<{ command: string; args: readonly string[]; options?: SpawnOptions }> = [];
+      __setProofModeVerifierSpawnImplForTests(createImmediateSpawn(calls));
+      const controller = new AbortController();
+      controller.abort(new Error("MCP request timed out"));
+
+      try {
+        const result = await runLoopTool(
+          {
+            objective: "Stop when the MCP caller cancels",
+            verificationPlan: ["node --version"],
+            maxIterations: 1,
+            maxUsd: 1
+          },
+          { signal: controller.signal }
+        );
+
+        expect(calls).toHaveLength(0);
+        expect(result.attempts).toBe(0);
+        expect(result.shouldStop).toBe(true);
+        expect(result.reason).toMatch(/human_interrupt|cancel/i);
+        const persisted = await martinGetRunTool({ loopId: result.loopId });
+        expect(persisted.loop.lifecycleState).not.toBe("running");
+        expect(persisted.receiptIntegrity.state).toBe("verified");
+      } finally {
+        if (originalEnv === undefined) delete process.env.MARTIN_LIVE;
+        else process.env.MARTIN_LIVE = originalEnv;
+      }
+    });
+  });
+
   it("uses the injected proof-mode verifier spawn for verification-only contract tests", async () => {
     await withRunsRoot(async () => {
       const originalEnv = process.env.MARTIN_LIVE;

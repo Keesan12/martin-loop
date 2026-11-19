@@ -4,6 +4,7 @@ import path from "node:path";
 import {
   readLatestLoopRecordFromFile,
   readLoopRecordsFromFile,
+  recoverReceiptIntegrityTransaction,
   resolveRunsRoot,
   verifyReceiptIntegrityFromFiles,
   type LedgerEvent
@@ -668,6 +669,8 @@ export async function readAttemptArtifactFiles(detail: DetailedLoopSource, attem
 export async function readAllLoopRecordsSafely(runsRoot: string): Promise<{
   loops: InspectableLoopRecord[];
   warnings: string[];
+  unreadableRecordCount: number;
+  warningsTruncated: boolean;
 }> {
   let entries;
 
@@ -678,14 +681,18 @@ export async function readAllLoopRecordsSafely(runsRoot: string): Promise<{
       loops: [],
       warnings: [
         "Configured Martin runs root is missing or unreadable; no loop records could be inspected."
-      ]
+      ],
+      unreadableRecordCount: 0,
+      warningsTruncated: false
     };
   }
 
   const loops: InspectableLoopRecord[] = [];
   const warnings: string[] = [];
+  let unreadableRecordCount = 0;
+  const warningLimit = 20;
 
-  for (const entry of entries) {
+  for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
     if (entry.isDirectory()) {
       const canonicalLoopRecordPath = resolveInspectableLoopRecordPath(
         path.join(runsRoot, entry.name),
@@ -703,7 +710,10 @@ export async function readAllLoopRecordsSafely(runsRoot: string): Promise<{
       try {
         loops.push(await readCanonicalLoopRecord(canonicalLoopRecordPath));
       } catch {
-        warnings.push(`Skipped unreadable loop record for '${entry.name}'.`);
+        unreadableRecordCount += 1;
+        if (warnings.length < warningLimit) {
+          warnings.push(`Skipped unreadable loop record for '${entry.name}'.`);
+        }
       }
       continue;
     }
@@ -721,7 +731,10 @@ export async function readAllLoopRecordsSafely(runsRoot: string): Promise<{
     try {
       loops.push(...(await readRecordsFromFile(resolveSafeRunsJsonPath(entry.name, runsRoot))));
     } catch {
-      warnings.push(`Skipped unreadable run file '${entry.name}'.`);
+      unreadableRecordCount += 1;
+      if (warnings.length < warningLimit) {
+        warnings.push(`Skipped unreadable run file '${entry.name}'.`);
+      }
     }
   }
 
@@ -729,7 +742,9 @@ export async function readAllLoopRecordsSafely(runsRoot: string): Promise<{
 
   return {
     loops,
-    warnings
+    warnings,
+    unreadableRecordCount,
+    warningsTruncated: unreadableRecordCount > warnings.length
   };
 }
 
@@ -795,6 +810,11 @@ function buildDetailedLoopSource(input: {
 
 async function readCanonicalLoopRecord(file: string): Promise<InspectableLoopRecord> {
   try {
+    const runDirectory = path.dirname(file);
+    await recoverReceiptIntegrityTransaction({
+      runId: path.basename(runDirectory),
+      runsRoot: path.dirname(runDirectory)
+    });
     const text = await readFile(file, "utf8");
     return validateInspectableLoopRecord(JSON.parse(text));
   } catch {

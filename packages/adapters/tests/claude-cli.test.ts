@@ -255,10 +255,34 @@ describe("createAgentCliAdapter", () => {
   });
 
   it("uses the governed request provider timeout as execution authority", async () => {
+    const spawnImpl: SpawnLike = () => {
+      const child = new EventEmitter() as Partial<ChildProcess> & {
+        stdout: PassThrough;
+        stderr: PassThrough;
+        stdin: Writable;
+        exitCode: number | null;
+      };
+      child.stdout = new PassThrough();
+      child.stderr = new PassThrough();
+      child.stdin = new Writable({ write(_chunk, _encoding, callback) { callback(); } });
+      child.exitCode = null;
+      child.kill = () => true;
+
+      setTimeout(() => {
+        child.exitCode = 0;
+        child.stdout.end();
+        child.stderr.end();
+        child.emit("close", 0, null);
+      }, 100);
+
+      return child as ChildProcess;
+    };
     const adapter = createAgentCliAdapter({
-      command: process.execPath,
-      argsBuilder: () => ["-e", "setTimeout(() => process.exit(0), 100)"],
-      providerExecutionTimeoutMs: 10
+      command: "provider-cli",
+      argsBuilder: () => ["run"],
+      providerExecutionTimeoutMs: 10,
+      workingDirectory: tmpdir(),
+      spawnImpl
     });
 
     const result = await adapter.execute(makeRequest({
@@ -513,8 +537,9 @@ describe("createAgentCliAdapter", () => {
     );
 
     expect(result.status).toBe("completed");
-    expect(result.usage.provenance).toBe("estimated");
-    expect(result.usage.estimatedUsd).toBeGreaterThan(0);
+    expect(result.usage.provenance).toBe("unavailable");
+    expect(result.usage.actualUsd).toBe(0);
+    expect(result.usage.estimatedUsd).toBeUndefined();
   });
 });
 
@@ -932,6 +957,11 @@ describe("createVerifierOnlyAdapter", () => {
 // ---------------------------------------------------------------------------
 
 describe("createClaudeCliAdapter", () => {
+  it("publishes provider-conservative prices for automatic Claude and Gemini models", () => {
+    expect(createClaudeCliAdapter().metadata.budgetPreflight?.pricePerMTokenUsd).toBe(50);
+    expect(createGeminiCliAdapter().metadata.budgetPreflight?.pricePerMTokenUsd).toBe(18);
+  });
+
   it("returns correct adapterId and kind", () => {
     const adapter = createClaudeCliAdapter();
 
@@ -1373,6 +1403,53 @@ describe("createClaudeCliAdapter", () => {
       expect(observations).toEqual([{ cumulativeUsd: 0.25, cumulativeTokens: 475, turns: 1, final: true }]);
     });
 
+    it.each([
+      ["nested-only", undefined],
+      ["aggregate plus nested", 110_000],
+    ] as const)("counts and settles %s cache creation without double counting", async (_shape, aggregate) => {
+      const calls: SpawnCall[] = [];
+      const observations: unknown[] = [];
+      const adapter = createClaudeCliAdapter({
+        model: "claude-haiku-5-5",
+        spawnImpl: createStreamingSpawn(calls, [JSON.stringify({
+          type: "result",
+          subtype: "success",
+          result: "done",
+          usage: {
+            input_tokens: 10_000,
+            ...(aggregate === undefined ? {} : { cache_creation_input_tokens: aggregate }),
+            cache_creation: {
+              ephemeral_5m_input_tokens: 50_000,
+              ephemeral_1h_input_tokens: 60_000,
+            },
+            output_tokens: 1_000,
+          },
+        })]),
+      });
+
+      const result = await adapter.execute(makeRequest({
+        observedUsageGovernor(observation) {
+          observations.push(observation);
+          return { action: "continue", grantedUsd: 5, grantedTokens: 500_000 };
+        },
+      }));
+
+      expect(result.status).toBe("completed");
+      expect(result.usage.tokensIn).toBe(120_000);
+      expect(result.usage.actualUsd).toBeCloseTo(0.09875, 6);
+      expect(result.usage.providerSettlement).toMatchObject({
+        inputTokens: 120_000,
+        cacheCreationInputTokens: 110_000,
+        pricingSource: "static_catalog",
+      });
+      expect(observations).toEqual([{
+        cumulativeUsd: 0.09875,
+        cumulativeTokens: 121_000,
+        turns: 1,
+        final: true,
+      }]);
+    });
+
     it("deduplicates repeated provider usage events by stable event identity", async () => {
       const calls: SpawnCall[] = [];
       const observations: Array<{ cumulativeTokens: number; final: boolean }> = [];
@@ -1485,11 +1562,13 @@ describe("createClaudeCliAdapter", () => {
 
       expect(result.status).toBe("completed");
       expect(result.verification.passed).toBe(true);
-      expect(result.usage.actualUsd).toBeCloseTo(0.07125, 6);
+      // No cache duration was reported, so the 1h cache-write rate is used
+      // conservatively instead of assuming the cheaper 5m rate.
+      expect(result.usage.actualUsd).toBeCloseTo(0.075, 6);
       expect(result.usage.provenance).toBe("calculated");
       expect(result.usage.providerSettlement?.pricingSource).toBe("static_catalog");
       expect(result.usage.providerSettlement?.pricingVersion).toBe(
-        "official-provider-pricing@2026-10-04"
+        "official-provider-pricing@2026-11-03"
       );
       expect(calls).toHaveLength(2);
     });
@@ -1778,6 +1857,7 @@ describe("createCodexCliAdapter", () => {
     expect(adapter.metadata.agentExecutionIntent).toBe("governed-autonomous");
     expect(adapter.metadata.budgetPreflight).toEqual({
       minimumViableTokens: 128_000,
+      pricePerMTokenUsd: 75,
       basis: "codex_first_turn_usage_reports_after_completion"
     });
   });
@@ -2052,13 +2132,14 @@ describe("createCodexCliAdapter", () => {
     expect(result.usage.provenance).toBe("calculated");
     expect(result.usage.providerSettlement?.pricingSource).toBe("static_catalog");
     expect(result.usage.providerSettlement?.pricingVersion).toBe(
-      "official-provider-pricing@2026-10-04"
+      "official-provider-pricing@2026-11-03"
     );
   });
 
   it.each([
     "gpt-6-astra",
     "gpt-6.1-sol",
+    "gpt-6.1-terra",
     "gpt-6-sol",
     "gpt-6-luna",
     "gpt-5.6-sol",
@@ -2081,7 +2162,9 @@ describe("createCodexCliAdapter", () => {
     expect(result.usage.provenance).toBe("calculated");
     expect(result.usage.providerSettlement?.pricingSource).toBe("static_catalog");
     expect(result.usage.providerSettlement?.pricingVersion).toBe(
-      "official-provider-pricing@2026-10-04"
+      ["gpt-6-sol", "gpt-5.6-sol"].includes(model)
+        ? "official-provider-pricing@2026-10-04"
+        : "official-provider-pricing@2026-11-03"
     );
   });
 
@@ -2099,9 +2182,11 @@ describe("createCodexCliAdapter", () => {
 
     const result = await adapter.execute(makeRequest());
 
-    expect(result.usage.provenance).toBe("estimated");
+    expect(result.usage.provenance).toBe("unavailable");
+    expect(result.usage.actualUsd).toBe(0);
+    expect(result.usage.estimatedUsd).toBeUndefined();
     expect(result.usage.providerSettlement?.modelSource).toBe("agent_default");
-    expect(result.usage.providerSettlement?.pricingSource).toBe("blended_fallback");
+    expect(result.usage.providerSettlement?.pricingSource).toBe("none");
     expect(result.usage.providerSettlement?.pricingSource).not.toBe("static_catalog");
   });
 
@@ -2202,8 +2287,10 @@ describe("createGeminiCliAdapter", () => {
     expect(calls[0]?.args).not.toContain("--model");
     expect(calls[0]?.stdin).toContain("OBJECTIVE:");
     expect(result.summary).toContain("Patched the failing function");
-    expect(result.usage.provenance).toBe("estimated");
-    expect(result.usage.tokensIn).toBe(150);
+    expect(result.usage.provenance).toBe("unavailable");
+    expect(result.usage.actualUsd).toBe(0);
+    expect(result.usage.estimatedUsd).toBeUndefined();
+    expect(result.usage.tokensIn).toBe(120);
     expect(result.usage.tokensOut).toBe(55);
     expect(result.usage.cachedInputTokens).toBe(30);
     expect(result.usage.reasoningTokensOut).toBe(10);
@@ -2236,13 +2323,14 @@ describe("createGeminiCliAdapter", () => {
     expect(result.usage.actualUsd).toBeCloseTo(0.54, 6);
     expect(result.usage.providerSettlement?.pricingSource).toBe("static_catalog");
     expect(result.usage.providerSettlement?.pricingVersion).toBe(
-      "official-provider-pricing@2026-10-04"
+      "official-provider-pricing@2026-11-03"
     );
   });
 
   it.each([
+    "gemini-4-argon",
     "gemini-3.8-flash",
-    "gemini-3.7-flash",
+    "gemini-3.6-flash",
     "gemini-3.1-flash-lite",
     "gemini-3.1-pro-preview",
     "gemini-3-flash-preview",
@@ -2264,7 +2352,7 @@ describe("createGeminiCliAdapter", () => {
 
     expect(result.usage.providerSettlement?.pricingSource).toBe("static_catalog");
     expect(result.usage.providerSettlement?.pricingVersion).toBe(
-      "official-provider-pricing@2026-10-04"
+      "official-provider-pricing@2026-11-03"
     );
   });
 
@@ -2280,8 +2368,11 @@ describe("createGeminiCliAdapter", () => {
 
     const result = await adapter.execute(makeRequest());
 
+    expect(result.usage.provenance).toBe("unavailable");
     expect(result.usage.providerSettlement?.modelSource).toBe("agent_default");
-    expect(result.usage.providerSettlement?.pricingSource).toBe("blended_fallback");
+    expect(result.usage.actualUsd).toBe(0);
+    expect(result.usage.estimatedUsd).toBeUndefined();
+    expect(result.usage.providerSettlement?.pricingSource).toBe("none");
     expect(result.usage.providerSettlement?.pricingSource).not.toBe("static_catalog");
   });
 
