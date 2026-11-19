@@ -7,11 +7,11 @@
   "privateMainShaValidated": "c54f158eacc354ae94b38b72e4889b747eb4596b",
   "publicBaseSha": "4f3baefe4cc3d0615826205480c0836758bddc54",
   "promotedBy": "Torram",
-  "validatedAt": "2026-11-19T01:47:27.887Z",
+  "validatedAt": "2026-11-19T02:20:07.996Z",
   "internalHealthPassed": true,
   "internalHealthEvidenceSha256": "132db38b45b06678e16cd87838a9e657e99866947aade93732cb94f4d05b6089",
   "surfaceSpecHash": "a9c8d22be91bc0dd19238f7676aec62aacc77d8cc3a66327b46d71f16d65164a",
-  "publicSurfaceHash": "3ed8cf128a8c52c156a2823047f9ee1eb5e7e8590a89f31daaf7a59252ada8c0",
+  "publicSurfaceHash": "20b2fabd2d66f2df9b8244f230a21058484190a3abcd695999f2f3082cafedb8",
   "publicSurfaceEntries": [
     {
       "path": ".agents/plugins/marketplace.json",
@@ -4061,7 +4061,7 @@
     {
       "path": "scripts/release-truth-divergences.json",
       "mode": "100644",
-      "sha256": "21b1cb11a79a065e29d4b84bf7303a2251fb085967e3a61f8e7b735e371ac02d"
+      "sha256": "d74e5a92c8fdef92b7e9b270a11807802084f42df278888118a4d1806390a841"
     },
     {
       "path": "scripts/root-release-guard.mjs",
@@ -4364,6 +4364,6 @@
       "sha256": "c1deb0e576c2efd2d49847b168c8c7aa69fb97405a8aa01d89a5da1cda400a3c"
     }
   ],
-  "reviewedDivergencesCount": 140,
-  "reviewedDivergencesHash": "ad9b8bd9cd93d0bba62d818abd43116667d746758b0ee4fb3bf33909e02afbe8"
+  "reviewedDivergencesCount": 141,
+  "reviewedDivergencesHash": "0c60725fe3263d1a2e65fc14eb6dc9da0e51c9be1c55ef271a7c5585027bbb8f"
 }
