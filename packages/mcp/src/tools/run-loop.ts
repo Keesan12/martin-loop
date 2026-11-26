@@ -21,7 +21,7 @@ import {
   type MartinAdapter,
   type RunStore
 } from "@martin/core";
-import type { ExecutionMode, LoopBudget, ReceiptScope } from "@martin/contracts";
+import { assertConcreteLiveModel, type ExecutionMode, type LoopBudget, type ReceiptScope } from "@martin/contracts";
 
 import { normalizeSafePathPatterns, resolveSafeRepoRoot } from "../server-validation.js";
 import { MartinToolError } from "./tool-errors.js";
@@ -44,11 +44,15 @@ export interface RunLoopInput {
   engine?: MartinEngine;
   model?: string;
   pricePerMTokenUsd?: number;
-  /** Explicit ordered provider fallbacks authorized by the caller. */
+  /** @deprecated Engine-only authority is rejected; use fallbackProfiles. */
   fallbackEngines?: MartinEngine[];
+  /** Explicit ordered provider and exact-model fallbacks authorized by the caller. */
+  fallbackProfiles?: Array<{ engine: MartinEngine; model: string }>;
   maxUsd?: number;
   maxIterations?: number;
   maxTokens?: number;
+  maxWallClockMs?: number;
+  softTimeLimitMs?: number;
   verifyTimeoutMs?: number;
   providerExecutionTimeoutMs?: number;
   verificationPlan?: string[];
@@ -116,25 +120,36 @@ export function __setRunStoreOverrideForTests(store?: RunStore): void {
   runStoreOverrideForTests = store;
 }
 
-function assertAuthorizedFallbackEngines(
+function assertAuthorizedFallbackProfiles(
   primary: MartinEngine,
-  fallbacks: MartinEngine[]
+  profiles: Array<{ engine: MartinEngine; model: string }>
 ): void {
   const seen = new Set<MartinEngine>();
-  for (const fallback of fallbacks) {
-    if (fallback === primary) {
+  for (const profile of profiles) {
+    assertMcpConcreteLiveModel(profile.model);
+    if (profile.engine === primary) {
       throw new MartinToolError("invalid_arguments", "Fallback chain cannot repeat the primary engine.", {
         category: "invalid_input",
         retryable: false
       });
     }
-    if (seen.has(fallback)) {
-      throw new MartinToolError("invalid_arguments", `Duplicate fallback engine '${fallback}'.`, {
+    if (seen.has(profile.engine)) {
+      throw new MartinToolError("invalid_arguments", `Duplicate fallback engine '${profile.engine}'.`, {
         category: "invalid_input",
         retryable: false
       });
     }
-    seen.add(fallback);
+    seen.add(profile.engine);
+  }
+}
+
+function assertMcpConcreteLiveModel(value: unknown): string {
+  try {
+    return assertConcreteLiveModel(value);
+  } catch {
+    throw new MartinToolError("invalid_arguments", "Live execution requires one explicit concrete model identifier.", {
+      category: "invalid_input", retryable: false
+    });
   }
 }
 
@@ -267,6 +282,9 @@ function createLiveEngineAdapter(input: {
     return createOpenAiCompatibleAdapter({
       baseUrl: config.baseUrl,
       apiKey: config.apiKey,
+      ...(config.authPosture.posture === "remote_no_auth"
+        ? { authPosture: config.authPosture.posture }
+        : {}),
       ...(resolvedModel ? { model: resolvedModel } : {}),
       ...(input.pricePerMTokenUsd !== undefined ? { pricePerMTokenUsd: input.pricePerMTokenUsd } : {}),
       workingDirectory: input.workingDirectory,
@@ -308,9 +326,19 @@ export async function runLoopTool(
       retryable: false
     });
   }
-  const model = input.model;
-  const fallbackEngines = input.fallbackEngines ?? [];
-  if (engine !== "auto") assertAuthorizedFallbackEngines(engine, fallbackEngines);
+  if (input.fallbackEngines !== undefined) {
+    throw new MartinToolError("invalid_arguments", "fallbackEngines no longer grant live authority; use fallbackProfiles with explicit models.", {
+      category: "invalid_input", retryable: false
+    });
+  }
+  const fallbackProfiles = input.fallbackProfiles ?? [];
+  if (!executionMode.liveMode && fallbackProfiles.length > 0) {
+    throw new MartinToolError("invalid_arguments", "fallbackProfiles are available only in live governed mode.", {
+      category: "invalid_input", retryable: false
+    });
+  }
+  const model = executionMode.liveMode ? assertMcpConcreteLiveModel(input.model) : input.model;
+  if (engine !== "auto") assertAuthorizedFallbackProfiles(engine, fallbackProfiles);
   const allowedPaths = normalizeSafePathPatterns(input.allowedPaths, "allowedPaths");
   const deniedPaths = normalizeSafePathPatterns(input.deniedPaths, "deniedPaths");
   const deniesAllWrites = deniesAllWritablePaths(deniedPaths);
@@ -326,6 +354,16 @@ export async function runLoopTool(
     repoRoot: workingDirectory,
     runsRoot
   };
+  if (executionMode.liveMode && selectedEngine === "openai" && deniesAllWrites) {
+    const availability = getEngineAvailability("openai", model, input.pricePerMTokenUsd);
+    if (!availability.available) {
+      throw new MartinToolError("engine_unavailable", availability.detail, {
+        category: "environment",
+        suggestion: "Configure one explicit safe OpenAI-compatible endpoint/auth posture before retrying.",
+        retryable: false,
+      });
+    }
+  }
   let codexProbeOverride: ReturnType<typeof probeCodexLaunch> | undefined;
   const fallbackProbeOverrides = new Map<
     MartinEngine,
@@ -340,15 +378,15 @@ export async function runLoopTool(
       input.pricePerMTokenUsd,
       context.signal
     );
-    for (const fallbackEngine of fallbackEngines) {
+    for (const fallbackProfile of fallbackProfiles) {
       if (context.signal?.aborted) break;
       fallbackProbeOverrides.set(
-        fallbackEngine,
+        fallbackProfile.engine,
         await ensureLiveEngineReady(
-          fallbackEngine,
+          fallbackProfile.engine,
           workingDirectory,
           input.providerExecutionTimeoutMs,
-          undefined,
+          fallbackProfile.model,
           input.pricePerMTokenUsd,
           context.signal
         )
@@ -391,24 +429,19 @@ export async function runLoopTool(
           ...(codexProbeOverride ? { codexProbe: codexProbeOverride } : {})
         });
 
-  if (!executionMode.liveMode && fallbackEngines.length > 0) {
-    throw new MartinToolError("invalid_arguments", "fallbackEngines are available only in live governed mode.", {
-      category: "invalid_input",
-      retryable: false
-    });
-  }
   const fallbackAdapters = executionMode.liveMode && !providerPreparationSkipped
-    ? fallbackEngines.map((fallbackEngine) =>
+    ? fallbackProfiles.map((fallbackProfile) =>
         createLiveEngineAdapter({
-          engine: fallbackEngine,
+          engine: fallbackProfile.engine,
           workingDirectory,
+          model: fallbackProfile.model,
           ...(input.pricePerMTokenUsd !== undefined ? { pricePerMTokenUsd: input.pricePerMTokenUsd } : {}),
           ...(input.verifyTimeoutMs !== undefined ? { verifyTimeoutMs: input.verifyTimeoutMs } : {}),
           ...(input.providerExecutionTimeoutMs !== undefined
             ? { providerExecutionTimeoutMs: input.providerExecutionTimeoutMs }
             : {}),
-          ...(fallbackProbeOverrides.get(fallbackEngine)
-            ? { codexProbe: fallbackProbeOverrides.get(fallbackEngine) }
+          ...(fallbackProbeOverrides.get(fallbackProfile.engine)
+            ? { codexProbe: fallbackProbeOverrides.get(fallbackProfile.engine) }
             : {})
         })
       )
@@ -424,6 +457,8 @@ export async function runLoopTool(
   if (input.maxTokens !== undefined) {
     partialBudget.maxTokens = input.maxTokens;
   }
+  if (input.maxWallClockMs !== undefined) partialBudget.maxWallClockMs = input.maxWallClockMs;
+  if (input.softTimeLimitMs !== undefined) partialBudget.softTimeLimitMs = input.softTimeLimitMs;
 
   const budget: LoopBudget = normalizeLoopBudget(partialBudget);
 
@@ -457,9 +492,18 @@ export async function runLoopTool(
       executionMode: evidenceExecutionMode,
       governanceClaimEligible: evidenceExecutionMode === "governed" ? "true" : "false",
       ...(executionMode.liveMode ? { authorizedPrimaryEngine: engine } : {}),
-      ...(executionMode.liveMode && fallbackEngines.length > 0
-        ? { authorizedFallbackEngines: fallbackEngines.join(",") }
-        : {})
+      ...(executionMode.liveMode ? { authorizedPrimaryModel: model! } : {}),
+      ...(executionMode.liveMode && fallbackProfiles.length > 0
+        ? { authorizedFallbackProfiles: JSON.stringify(fallbackProfiles) }
+        : {}),
+      ...(executionMode.liveMode && selectedEngine === "openai" &&
+          typeof adapter.metadata.authPosture === "string" &&
+          typeof adapter.metadata.endpointClass === "string"
+        ? {
+            openAiAuthPosture: adapter.metadata.authPosture,
+            openAiEndpointClass: adapter.metadata.endpointClass,
+          }
+        : {}),
     },
     adapter,
     ...(context.signal ? { signal: context.signal } : {}),
@@ -480,7 +524,7 @@ export async function runLoopTool(
     : -1;
   const effectiveEngine =
     fallbackAdapterIndex >= 0
-      ? (fallbackEngines[fallbackAdapterIndex] ?? engine)
+      ? (fallbackProfiles[fallbackAdapterIndex]?.engine ?? engine)
       : engine;
   const costState = evaluateCostGovernor({
     budget: result.loop.budget,

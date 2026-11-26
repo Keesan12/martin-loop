@@ -10,7 +10,7 @@ The sole accepted source is the checked-in, production-exporter-derived fixture 
 SCHEMA=martin.swarm-hosted.v1
 FIXTURE=packages/contracts/tests/fixtures/swarm-hosted-v1-cases.json
 CHECKSUM_FILE=packages/contracts/tests/fixtures/swarm-hosted-v1-cases.sha256
-CHECKSUM_SHA256=a5ca5d8361a93fd7d80b3df0cb0d24e80395a0f17933275386581e78b7a83889
+CHECKSUM_SHA256=d02fc3bd3a7bde5aa5b98f36f59483ecb6d77b9716144ef176674d3bef1dd3be
 SYNC_ROUTE=/api/swarms/sync
 SYNC_ROUTE_OWNERSHIP=CLOSED_NATIVE_OWNER_ONLY
 TENANT_BINDING=workspaceId+projectId

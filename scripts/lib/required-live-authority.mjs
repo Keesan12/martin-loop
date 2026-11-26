@@ -244,6 +244,7 @@ async function validatePersistedRun(input) {
   const observationList = Array.isArray(capture.children) ? capture.children : [];
   expect(observationList.length === spec.agents, `trusted capture requires ${spec.agents} child observations`);
   expect(new Set(observationList.map((item) => item?.childRunId)).size === observationList.length, "trusted child observations must be unique");
+  expect(new Set(observationList.map((item) => item?.providerProcessId)).size === observationList.length, "external provider process IDs must be unique");
   const workspaceIds = []; const leaseIds = [];
   let childUsd = 0; let childTokens = 0;
   for (const child of children) {
@@ -288,6 +289,7 @@ async function validatePersistedRun(input) {
       expect(observation.workspaceId === start?.payload?.workspaceId && observation.workingDirectory === loop.receiptScope?.workingDirectory, `child ${child.childRunId} workspace observation mismatch`);
       expect(observation.candidateSourceSha === receipt.source.sha && observation.workspaceSourceSha === capture.workspaceSourceSha && observation.adapterId === "agent-cli:codex" && observation.providerId === "codex" && observation.model === capture.model && observation.transport === "cli", `child ${child.childRunId} external provider/source observation mismatch`);
       expect(Number.isSafeInteger(observation.providerProcessId) && observation.providerProcessId > 0 && ISO(observation.launchedAt) && ISO(observation.completedAt) && Date.parse(observation.completedAt) >= Date.parse(observation.launchedAt), `child ${child.childRunId} external provider process lifecycle is missing`);
+      expect(observation.providerProcessId !== capture.process?.pid && ISO(attempt?.startedAt) && ISO(attempt?.completedAt) && Date.parse(observation.launchedAt) >= Date.parse(attempt?.startedAt) && Date.parse(observation.completedAt) <= Date.parse(attempt?.completedAt), `child ${child.childRunId} external provider process lifecycle is outside the recorded attempt`);
       expect(observation.verificationId === parent.globalVerificationId && observation.receiptIntegritySha256 === child.receiptIntegritySha256, `child ${child.childRunId} external verifier/receipt observation mismatch`);
       expect(observation.actualUsd === loop.cost?.actualUsd && observation.actualTokens === tokens, `child ${child.childRunId} external accounting observation mismatch`);
     }

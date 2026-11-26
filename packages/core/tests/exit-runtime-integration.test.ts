@@ -12,6 +12,7 @@
  *   8. Termination persistence failure surfaces as a thrown error
  */
 
+import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -19,10 +20,12 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ExitPolicyV1 } from "@martin/contracts";
+import { appendLoopEvent, createLoopRecord } from "@martin/contracts";
 import type { ExitSignalSource, SignalReadResult } from "../src/exit-signal";
 import { writeExitSignal } from "../src/exit-signal";
 import { createFileRunStore } from "../src/persistence/index";
 import { runMartin, type MartinAdapter } from "../src/index";
+import { readRejectedProviderUsage } from "../src/provider-rejection-accounting";
 
 // ─── shared helpers ───────────────────────────────────────────────────────────
 
@@ -1117,4 +1120,169 @@ describe("P1-SIGNAL: satisfied external event lifecycle", () => {
     expect(result.decision.status).toBe("exited");
   });
 
+});
+
+describe("soft wall-clock budget", () => {
+  it("writes one warning and preserves the in-flight attempt settlement before stopping retries", async () => {
+    let elapsed = 0;
+    let calls = 0;
+    const store = createFileRunStore();
+    const result = await runMartin({
+      workspaceId: "ws",
+      projectId: "proj",
+      task: baseTask(),
+      budget: { ...baseBudget(), softTimeLimitMs: 50, maxWallClockMs: 1000 },
+      store,
+      nowMs: () => elapsed,
+      exitSignalSource: emptySource(),
+      adapter: okAdapter({ execute: async () => {
+        calls++;
+        elapsed = 75;
+        return {
+          status: "failed", summary: "Verifier failed.",
+          usage: { actualUsd: 0.01, tokensIn: 10, tokensOut: 2 },
+          verification: { passed: false, summary: "failed" }
+        };
+      } })
+    });
+    expect(calls).toBe(1);
+    expect(result.decision.reasonCode).toBe("soft_wall_clock");
+    expect(result.loop.cost).toMatchObject({ actualUsd: 0.01, tokensIn: 10, tokensOut: 2 });
+    expect(result.loop.events.filter((event) => event.type === "soft_limit_warning")).toHaveLength(1);
+    const ledger = await readFile(join(store.runsRoot!, result.loop.loopId, "ledger.jsonl"), "utf8");
+    expect(ledger.split(/\r?\n/u).filter((line) => line.includes('"kind":"soft_limit_warning"'))).toHaveLength(1);
+  });
+
+  it("notifies an active cooperative adapter without aborting it", async () => {
+    let startedAt: number | undefined;
+    const result = await runMartin({
+      workspaceId: "ws",
+      projectId: "proj",
+      task: baseTask(),
+      budget: { ...baseBudget(), softTimeLimitMs: 100, maxWallClockMs: 3000 },
+      nowMs: () => startedAt === undefined ? 0 : Date.now() - startedAt,
+      exitSignalSource: emptySource(),
+      adapter: okAdapter({ execute: async ({ wrapUpSignal, signal, loopId, attemptId, workspaceId, context }) => {
+        startedAt = Date.now();
+        expect(wrapUpSignal).toBeDefined();
+        if (!wrapUpSignal?.aborted) await new Promise<void>((resolve) => {
+          wrapUpSignal?.addEventListener("abort", () => resolve(), { once: true });
+        });
+        expect(signal?.aborted).toBe(false);
+        return {
+          status: "completed", summary: "Finished in time.",
+          usage: { actualUsd: 0.01, tokensIn: 10, tokensOut: 2 },
+          verification: {
+            passed: true,
+            summary: "pass",
+            binding: {
+              runId: loopId, attemptId, workspaceId, cwd: context.repoRoot ?? process.cwd(), commands: ["echo ok"],
+              ...(context.runsRoot ? { runsRoot: context.runsRoot } : {})
+            },
+            steps: [{ command: "echo ok", launched: true, completed: true, crashed: false, exitCode: 0, timedOut: false }]
+          }
+        };
+      } })
+    });
+    expect(result.loop.status).toBe("completed");
+    expect(result.loop.events.filter((event) => event.type === "soft_limit_warning")).toHaveLength(1);
+  });
+
+  it("retains the original deadline and recorded warning across a safe continuation", async () => {
+    const previous = appendLoopEvent({
+      ...createLoopRecord({
+        workspaceId: "ws", projectId: "proj", task: baseTask(),
+        budget: { ...baseBudget(), maxWallClockMs: 1000, softTimeLimitMs: 50 }
+      }),
+      wallClock: { startedAtMs: 0, hardLimitMs: 1000 }
+    }, { type: "soft_limit_warning", payload: { softDeadlineMs: 50, hardDeadlineMs: 1000 } });
+    const execute = vi.fn(okAdapter().execute);
+    const result = await runMartin({
+      workspaceId: "ws", projectId: "proj", task: baseTask(), budget: baseBudget(),
+      exitPolicy: { wallClock: { maxElapsedMs: 60_000 } },
+      nowMs: () => 1001, exitSignalSource: emptySource(),
+      resume: { loop: previous }, adapter: okAdapter({ execute })
+    });
+    expect(execute).not.toHaveBeenCalled();
+    expect(result.decision.reasonCode).toBe("wall_clock");
+    expect(result.loop.wallClock).toEqual(previous.wallClock);
+    expect(result.loop.events.filter((event) => event.type === "soft_limit_warning")).toHaveLength(1);
+  });
+
+  it("aborts at the hard deadline and retains usage returned by the adapter", async () => {
+    let startedAt: number | undefined;
+    const result = await runMartin({
+      workspaceId: "ws", projectId: "proj", task: baseTask(),
+      budget: { ...baseBudget(), softTimeLimitMs: 50, maxWallClockMs: 200 },
+      nowMs: () => startedAt === undefined ? 0 : Date.now() - startedAt,
+      exitSignalSource: emptySource(),
+      adapter: okAdapter({ execute: async ({ wrapUpSignal, signal }) => {
+        startedAt = Date.now();
+        await new Promise<void>((resolve) => signal?.addEventListener("abort", () => resolve(), { once: true }));
+        expect(wrapUpSignal?.aborted).toBe(true);
+        return {
+          status: "failed", summary: "Hard timeout.",
+          usage: { actualUsd: 0.01, tokensIn: 10, tokensOut: 2 },
+          verification: { passed: false, summary: "Stopped." }
+        };
+      } })
+    });
+    expect(result.decision.reasonCode).toBe("wall_clock");
+    expect(result.loop.cost).toMatchObject({ actualUsd: 0.01, tokensIn: 10, tokensOut: 2 });
+    expect(result.loop.events.filter((event) => event.type === "soft_limit_warning")).toHaveLength(1);
+  });
+
+  it.each([false, true])("restores the workspace on warning write failure (settlement outage: %s)", async (settlementOutage) => {
+    const repoRoot = join(scratchRoot, "repo");
+    await mkdir(repoRoot);
+    const target = join(repoRoot, "tracked.txt");
+    await writeFile(target, "baseline\n");
+    execFileSync("git", ["init", "-q"], { cwd: repoRoot });
+    execFileSync("git", ["config", "core.autocrlf", "false"], { cwd: repoRoot });
+    execFileSync("git", ["add", "--", "tracked.txt"], { cwd: repoRoot });
+    execFileSync("git", ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.test", "commit", "-qm", "Baseline"], { cwd: repoRoot });
+
+    let elapsed = 0;
+    const store = createFileRunStore();
+    const originalCommit = store.commitRunCheckpoint!.bind(store);
+    let resolveWarningAttempt: () => void;
+    const warningAttempted = new Promise<void>((resolve) => { resolveWarningAttempt = resolve; });
+    const warningCommit = vi.spyOn(store, "commitRunCheckpoint").mockImplementation(async (id, loop, events) => {
+      if (events.some((event) => event.kind === "soft_limit_warning")) {
+        resolveWarningAttempt();
+        throw new Error("injected warning checkpoint failure");
+      }
+      await originalCommit(id, loop, events);
+    });
+    const settlementError = new Error("injected attempt settlement failure");
+    if (settlementOutage) vi.spyOn(store, "commitAttemptSettlement").mockRejectedValue(settlementError);
+    const run = runMartin({
+      workspaceId: "ws", projectId: "proj", task: { ...baseTask(), repoRoot, allowedPaths: ["tracked.txt"] },
+      budget: { ...baseBudget(), softTimeLimitMs: 50, maxWallClockMs: 1000 },
+      nowMs: () => elapsed, exitSignalSource: emptySource(), store,
+      adapter: okAdapter({ execute: async () => {
+        await writeFile(target, "unverified edit\n");
+        elapsed = 75;
+        await warningAttempted;
+        return {
+          status: "failed", summary: "Verification failed.",
+          usage: { actualUsd: 0.01, tokensIn: 10, tokensOut: 2, provenance: "actual" },
+          verification: { passed: false, summary: "failed" }
+        };
+      } })
+    });
+    if (settlementOutage) {
+      await expect(run).rejects.toBe(settlementError);
+      expect(await readFile(target, "utf8")).toBe("baseline\n");
+      expect(readRejectedProviderUsage(settlementError)).toMatchObject({ usd: 0.01, tokens: 12 });
+      return;
+    }
+    const result = await run;
+    expect(warningCommit).toHaveBeenCalledTimes(1);
+    expect(result.decision.reasonCode).toBe("soft_limit_warning_persistence_failed");
+    expect(result.loop.cost).toMatchObject({ actualUsd: 0.01, tokensIn: 10, tokensOut: 2 });
+    expect(await readFile(target, "utf8")).toBe("baseline\n");
+    const ledger = await readFile(join(store.runsRoot!, result.loop.loopId, "ledger.jsonl"), "utf8");
+    expect(ledger.split(/\r?\n/u).filter((line) => line.includes('"kind":"soft_limit_warning"'))).toHaveLength(1);
+  });
 });

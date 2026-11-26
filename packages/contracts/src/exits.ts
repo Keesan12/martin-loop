@@ -13,7 +13,7 @@
  *      Completing on the final permitted iteration is legitimate success, not an
  *      overrun; turn_cap fires only when iterations are exhausted without
  *      verified completion.
- *   4. goal_met outranks error_threshold and no_progress — a deterministically
+ *   4. goal_met outranks advisory soft_wall_clock, error_threshold and no_progress — a deterministically
  *      verified result takes priority over soft progress signals.
  */
 
@@ -27,6 +27,7 @@ export const EXIT_KINDS = [
   "turn_cap",
   "budget_cap",
   "wall_clock",
+  "soft_wall_clock",
   "no_progress",
   "human_interrupt",
   "error_threshold",
@@ -78,6 +79,8 @@ export interface ExitPolicyV1 {
   wallClock: {
     maxElapsedMs: number;
     deadlineAt?: string;
+    softElapsedMs?: number;
+    softDeadlineAt?: string;
   };
   progress: {
     windowSize: number;

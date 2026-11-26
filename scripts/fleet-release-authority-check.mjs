@@ -5,6 +5,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 
+const RELEASE_VERSION = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/u;
+const RELEASE_REFERENCE = /\b\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?\b/gu;
+
 export async function collectReleaseAuthorityFailures(rootDir, options = {}) {
   const failures = [];
   const readJson = async (relativePath) =>
@@ -12,8 +15,8 @@ export async function collectReleaseAuthorityFailures(rootDir, options = {}) {
 
   const rootManifest = await readJson("package.json");
   const releaseVersion = rootManifest.version;
-  if (typeof releaseVersion !== "string" || !/^0\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u.test(releaseVersion)) {
-    failures.push(`root package version is not a valid pre-1.0 release: ${String(releaseVersion)}`);
+  if (typeof releaseVersion !== "string" || !RELEASE_VERSION.test(releaseVersion)) {
+    failures.push(`root package version is not a valid release: ${String(releaseVersion)}`);
     return failures;
   }
   const mcpManifest = await readJson("packages/mcp/package.json");
@@ -41,6 +44,12 @@ export async function collectReleaseAuthorityFailures(rootDir, options = {}) {
     (arg) => typeof arg === "string" && arg.startsWith("@martinloop/mcp@"),
   );
   expectVersion(failures, releaseVersion, "plugin MCP package version", pluginPackageSpec?.split("@").at(-1));
+  const marketplacePath = ".claude-plugin/marketplace.json";
+  if (await exists(path.join(rootDir, marketplacePath))) {
+    const marketplace = await readJson(marketplacePath);
+    const entry = marketplace.plugins?.find((plugin) => plugin?.name === "martinloop");
+    expectVersion(failures, releaseVersion, "Claude marketplace plugin version", entry?.version);
+  }
 
   for (const relativePath of [
     "plugins/martinloop/.claude-plugin/plugin.json",
@@ -79,7 +88,7 @@ async function checkReadmeAuthority(failures, rootDir, releaseVersion) {
   const authorityLine = /(?:current root package|deterministic installs|MCP package:|aligned at|^\*\*Install\*\*|^\*\*MCP\*\*)/iu;
   lines.forEach((line, index) => {
     if (!authorityLine.test(line)) return;
-    for (const version of line.match(/\b0\.\d+\.\d+\b/gu) ?? []) {
+    for (const version of line.match(RELEASE_REFERENCE) ?? []) {
       if (version !== releaseVersion) {
         failures.push(
           `${relativePath}:${index + 1} stale current release reference ${version}; expected ${releaseVersion}`,
@@ -128,7 +137,7 @@ async function checkCurrentReleaseDocs(failures, rootDir, releaseVersion) {
 
   lines.forEach((line, index) => {
     if (!/\bcurrent in-repo\b/iu.test(line)) return;
-    const versions = line.match(/\b0\.\d+\.\d+\b/gu) ?? [];
+    const versions = line.match(RELEASE_REFERENCE) ?? [];
     for (const version of versions) {
       if (version !== releaseVersion) {
         failures.push(

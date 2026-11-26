@@ -641,6 +641,13 @@ describe("parseCliArguments", () => {
     }));
   });
 
+  it.each(["run", "preflight"])("parses both wall-clock limits for %s", (command) => {
+    const parsed = parseCliArguments([
+      command, "--objective", "Audit the workspace", "--max-wall-clock-ms", "10000", "--soft-time-limit-ms", "8000"
+    ]);
+    expect(parsed).toMatchObject({ request: { budget: { maxWallClockMs: 10_000, softTimeLimitMs: 8_000 } } });
+  });
+
   it.each(["run", "preflight"])("rejects malformed run and preflight values for %s", (command) => {
     const invalidCases: Array<{ args: string[]; message: RegExp }> = [
       { args: ["--budget-usd", "not-a-number"], message: /--budget-usd.*finite.*greater than zero/iu },
@@ -1338,6 +1345,58 @@ describe("executeCli", () => {
       expect(adapterCalls).toBe(0);
       expect(probeCalls).toBe(0);
     } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it.each([
+    ["missing", []],
+    ["reserved", ["--model", "auto"]],
+  ] as const)("returns invalid_input for %s live model authority before side effects", async (_case, modelArgs) => {
+    const directory = await mkdtemp(join(tmpdir(), "martin-cli-invalid-model-"));
+    const runsDirectory = join(directory, "runs-must-not-exist");
+    const previousMartinLive = process.env.MARTIN_LIVE;
+    let adapterCalls = 0;
+    let probeCalls = 0;
+    __setRunAdapterOverrideForTests(
+      createStubDirectProviderAdapter({
+        providerId: "test",
+        model: "must-not-run",
+        responder: () => {
+          adapterCalls += 1;
+          throw new Error("invalid model reached the provider adapter");
+        },
+      }),
+    );
+    __setCodexHostOverridesForTests({
+      probe: () => {
+        probeCalls += 1;
+        throw new Error("invalid model reached the Codex launch probe");
+      },
+    });
+    process.env.MARTIN_LIVE = "true";
+
+    try {
+      const result = await executeCli([
+        "--json",
+        "run",
+        "--objective", "Reject invalid model authority",
+        "--engine", "codex",
+        ...modelArgs,
+        "--runs-dir", runsDirectory,
+      ]);
+
+      expect(result.exitCode, result.stdout || result.stderr).toBe(2);
+      expect(JSON.parse(result.stdout)).toMatchObject({ ok: false, category: "invalid_input" });
+      expect(adapterCalls).toBe(0);
+      expect(probeCalls).toBe(0);
+      await expect(readdir(runsDirectory)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      if (previousMartinLive === undefined) {
+        delete process.env.MARTIN_LIVE;
+      } else {
+        process.env.MARTIN_LIVE = previousMartinLive;
+      }
       await rm(directory, { force: true, recursive: true });
     }
   });
@@ -2077,6 +2136,8 @@ describe("executeCli", () => {
           "Create a source artifact through the CLI",
           "--engine",
           "codex",
+          "--model",
+          "test-artifact-producer",
           "--verify",
           `"${process.execPath}" -e "process.exit(0)"`,
           "--cwd",

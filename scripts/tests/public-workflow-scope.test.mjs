@@ -39,6 +39,24 @@ test("promotion workflow is public-repo scoped and requires public-staging or ma
   assert.match(workflow, /node scripts\/verify-public-promotion\.mjs/);
 });
 
+test("public dependency review runs on main pull requests with read-only permissions and pinned actions", async () => {
+  const workflow = (await readWorkflow(".github/workflows/dependency-review.yml")).replaceAll("\r\n", "\n");
+
+  assert.match(workflow, /on:\s*\n  pull_request:\s*\n    branches:\s*\n      - main/);
+  assert.match(workflow, /permissions:\s*\n  contents: read\n\s*\njobs:/);
+  assert.match(workflow, /if: github\.event\.repository\.private == false/);
+  assert.match(workflow, /uses: actions\/checkout@[0-9a-f]{40}\b/);
+  assert.match(workflow, /persist-credentials: false/);
+  assert.match(workflow, /uses: actions\/dependency-review-action@[0-9a-f]{40}\b/);
+  assert.doesNotMatch(workflow, /pull_request_target|:\s*write\b/);
+});
+
+test("the budget gate composite action pins its artifact uploader", async () => {
+  const action = await readWorkflow(".github/actions/martinloop/action.yml");
+
+  assert.match(action, /uses: actions\/upload-artifact@[0-9a-f]{40}\b/);
+});
+
 test("private repo references still fail inside an explicit public payload", async () => {
   const rootDir = await mkdtemp(path.join(os.tmpdir(), "martin-public-payload-"));
   await mkdir(path.join(rootDir, "dist"), { recursive: true });

@@ -655,6 +655,15 @@ export function buildRunReceipt(
   verifiedHandoff?: VerifiedHandoffV1,
 ): Record<string, unknown> {
   const latestAttempt = loop.attempts.at(-1);
+  const latestAttemptStarted = latestAttempt
+    ? loop.events.find((event) =>
+        event.type === "attempt.started"
+        && event.payload?.["attemptId"] === latestAttempt.attemptId
+      )
+    : undefined;
+  const latestAttemptProviderId = typeof latestAttemptStarted?.payload?.["providerId"] === "string"
+    ? latestAttemptStarted.payload["providerId"]
+    : undefined;
   const integrity = verifiedHandoff?.receiptIntegrity ?? resolveReceiptIntegrity(loop);
   const trustworthy = integrity.state === "verified";
   const rollbackArtifacts = loop.artifacts.filter((artifact) =>
@@ -681,6 +690,16 @@ export function buildRunReceipt(
         }
       : {}),
     ...(receiptScope ? { receiptScope } : {}),
+    ...(latestAttempt
+      ? {
+          executionAuthority: {
+            attemptId: latestAttempt.attemptId,
+            adapterId: latestAttempt.adapterId,
+            ...(latestAttemptProviderId ? { providerId: latestAttemptProviderId } : {}),
+            ...(latestAttempt.model ? { model: latestAttempt.model } : {})
+          }
+        }
+      : {}),
     whatHappened: latestAttempt?.summary ?? verification.summary ?? loop.task.objective,
     whatMartinPrevented: prevented,
     tokenWasteReceipt: {

@@ -10,6 +10,7 @@ import {
   type CodexAutonomyResolution,
   type CodexCapabilityProfile
 } from "./codex-launcher.js";
+import { assertConcreteLiveModel } from "@martin/contracts";
 
 /**
  * Conservative admission floor for one Codex CLI turn. Codex reports token
@@ -58,7 +59,7 @@ export function createCodexCliAdapter(options: CodexCliAdapterOptions = {}) {
   }
   const sandbox = options.sandbox ?? "workspace-write";
   const extraArgs = options.extraArgs ?? [];
-  const launchModel = options.model;
+  const launchModel = options.model === undefined ? undefined : assertConcreteLiveModel(options.model);
   return createAgentCliAdapter({
     // Keep semantic provider identity stable for usage parsing, pricing,
     // diagnostics, and adapter metadata. executionCommand selects the exact
@@ -66,7 +67,7 @@ export function createCodexCliAdapter(options: CodexCliAdapterOptions = {}) {
     command: "codex",
     executionCommand: selectedBinary,
     adapterIdSuffix: "codex",
-    model: options.model,
+    model: launchModel,
     label: options.label ?? "Codex CLI adapter",
     workingDirectory,
     timeoutMs: options.timeoutMs,

@@ -434,7 +434,8 @@ function settlementEventIdentity(event: LedgerEvent): string {
 }
 
 function isIdempotentCheckpointKind(kind: LedgerEvent["kind"]): boolean {
-  return kind === "patch.generated" || kind === "budget.settled" || kind === "verification.completed";
+  return kind === "patch.generated" || kind === "budget.settled" || kind === "verification.completed"
+    || kind === "soft_limit_warning";
 }
 
 function sameCheckpointEvent(left: LedgerEvent, right: LedgerEvent): boolean {

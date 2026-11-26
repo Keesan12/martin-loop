@@ -98,8 +98,10 @@ import {
   evaluateExitPolicy,
   hashProgressState,
   toLegacyExitDecision,
+  validateExitPolicy,
   type ExitPolicyOverrides
 } from "./exits.js";
+import { scheduleWallClock } from "./wall-clock.js";
 import {
   createFileExitSignalSource,
   isTerminalExitSignal,
@@ -108,6 +110,7 @@ import {
 } from "./exit-signal.js";
 import { persistTerminationEnvelope } from "./termination-store.js";
 import { calculateLoopAvoidedUsd } from "./savings.js";
+import { retainRejectedProviderUsage } from "./provider-rejection-accounting.js";
 import {
   runContextIntegrityPrecheck,
   type ContextIntegrityPrecheck,
@@ -458,6 +461,8 @@ export interface MartinAdapterRequest {
   observedUsageGovernor?: MartinObservedUsageGovernor;
   /** Abort signal propagated from the harness — adapters should honour it. */
   signal?: AbortSignal;
+  /** Advisory wrap-up notification. It never cancels the provider attempt. */
+  wrapUpSignal?: AbortSignal;
 }
 
 export interface MartinObservedUsage {
@@ -831,6 +836,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     throw new Error("zeroSpendAuthority can only be granted through the explicit provider-free spend authority.");
   }
   const now = input.now ?? (() => new Date().toISOString());
+  const nowMs = input.nowMs ?? (() => Date.now());
   const makeLedgerEvent = (draft: Parameters<typeof makePersistenceLedgerEvent>[0]) =>
     makePersistenceLedgerEvent(draft, { now: now() });
   const idFactory = input.idFactory;
@@ -892,6 +898,54 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         { now: now(), idFactory }
       );
 
+  const overrides = resumeLoop ? { ...input.exitPolicy, wallClock: undefined } : input.exitPolicy;
+  const exitPolicy = createDefaultExitPolicy(
+    loop.budget,
+    zeroSpendAuthority
+      ? { ...overrides, budget: { ...overrides?.budget, zeroSpendAuthority: true } }
+      : overrides
+  );
+  const previousWallClock = resumeLoop?.wallClock;
+  const persistedStartMs = Date.parse(loop.createdAt);
+  const runStartMs = previousWallClock?.startedAtMs ??
+    (resumeLoop && Number.isFinite(persistedStartMs) ? persistedStartMs : nowMs());
+  if (previousWallClock) {
+    exitPolicy.wallClock = {
+      maxElapsedMs: previousWallClock.hardLimitMs,
+      ...(previousWallClock.deadlineAt !== undefined ? { deadlineAt: previousWallClock.deadlineAt } : {}),
+      ...(previousWallClock.softDeadlineAt !== undefined ? { softDeadlineAt: previousWallClock.softDeadlineAt } : {}),
+      ...(loop.budget.softTimeLimitMs !== undefined ? { softElapsedMs: loop.budget.softTimeLimitMs } : {})
+    };
+  } else if (loop.budget.maxWallClockMs !== undefined) {
+    if (!Number.isSafeInteger(loop.budget.maxWallClockMs) || loop.budget.maxWallClockMs <= 0) {
+      throw new RangeError("maxWallClockMs must be a positive whole number");
+    }
+    exitPolicy.wallClock.maxElapsedMs = Math.min(loop.budget.maxWallClockMs, exitPolicy.wallClock.maxElapsedMs);
+  }
+  // The recorded budget is authoritative for the advisory limit as well as the hard cap.
+  exitPolicy.wallClock.softElapsedMs = loop.budget.softTimeLimitMs;
+  validateExitPolicy(exitPolicy);
+  const hardDeadlineMs = Math.min(
+    runStartMs + exitPolicy.wallClock.maxElapsedMs,
+    exitPolicy.wallClock.deadlineAt !== undefined ? Date.parse(exitPolicy.wallClock.deadlineAt) : Infinity
+  );
+  const advisoryDeadline = Math.min(
+    loop.budget.softTimeLimitMs === undefined ? Infinity : runStartMs + loop.budget.softTimeLimitMs,
+    exitPolicy.wallClock.softDeadlineAt === undefined ? Infinity : Date.parse(exitPolicy.wallClock.softDeadlineAt)
+  );
+  const softDeadlineMs = Number.isFinite(advisoryDeadline) ? advisoryDeadline : undefined;
+  if (softDeadlineMs !== undefined && softDeadlineMs >= hardDeadlineMs) {
+    throw new RangeError("softTimeLimitMs must precede the effective hard wall-clock deadline");
+  }
+  if (!previousWallClock) {
+    loop.wallClock = {
+      startedAtMs: runStartMs,
+      hardLimitMs: exitPolicy.wallClock.maxElapsedMs,
+      ...(exitPolicy.wallClock.deadlineAt !== undefined ? { deadlineAt: exitPolicy.wallClock.deadlineAt } : {}),
+      ...(exitPolicy.wallClock.softDeadlineAt !== undefined ? { softDeadlineAt: exitPolicy.wallClock.softDeadlineAt } : {})
+    };
+  }
+
   const executionLease = input.store?.runsRoot
     ? await acquireRunExecutionLease({
         runsRoot: input.store.runsRoot,
@@ -922,11 +976,16 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
   );
 
   const adapterChain = [input.adapter, ...(input.fallbackAdapters ?? [])];
+  const denyAllWritableSurface =
+    task.mutationMode !== "read_only"
+    && deniesAllWritablePaths(task.deniedPaths)
+    && adapterChain.some((candidate) => candidate.metadata.capabilities?.workspaceMutations !== false);
   const runsRoot = input.store?.runsRoot ?? resolveRunsRoot();
   const managedRollbackRoots = input.store?.runsRoot
     ? [input.store.runsRoot, resolveReceiptIntegrityRoot()]
     : [];
   const observesWorkspaceMutations =
+    !denyAllWritableSurface &&
     task.repoRoot !== undefined &&
     adapterChain.some((adapter) => adapter.metadata.capabilities?.workspaceMutations !== false);
   const touchedDuringExecution = new Set<string>();
@@ -950,8 +1009,9 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       completionBoundaryReason = `Run-wide file-effect observation was unavailable: ${fileEffectErrorMessage(error)}`;
     }
   } else {
-    completionBoundaryReason =
-      "A mutation-capable run-wide file-effect observation boundary was not available.";
+    completionBoundaryReason = denyAllWritableSurface
+      ? "Run-wide file-effect observation was skipped because the filesystem policy denies every writable path."
+      : "A mutation-capable run-wide file-effect observation boundary was not available.";
   }
 
   async function finalizeCurrentLoop(
@@ -1178,11 +1238,6 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     };
   }
 
-  const denyAllWritableSurface =
-    task.mutationMode !== "read_only"
-    && deniesAllWritablePaths(task.deniedPaths)
-    && adapterChain.some((candidate) => candidate.metadata.capabilities?.workspaceMutations !== false);
-
   if (denyAllWritableSurface) {
     const reason = "The filesystem policy denies every writable path for a mutation-capable adapter.";
     const denyAllExitDecision: ExitDecision = {
@@ -1286,14 +1341,6 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
   let preCandidateBoundary: Awaited<ReturnType<typeof captureRollbackBoundary>> | undefined =
     input.resume?.preCandidateBoundary;
 
-  // Routing economics + hard wall-clock authority. A resumed run inherits the
-  // original createdAt boundary rather than receiving a fresh time budget.
-  const nowMs = input.nowMs ?? (() => Date.now());
-  const persistedRunStartMs = Date.parse(loop.createdAt);
-  const runStartMs =
-    resumeLoop && Number.isFinite(persistedRunStartMs)
-      ? persistedRunStartMs
-      : nowMs();
   let firstDeltaDetected = false;
   let firstDeltaTimestampMs: number | undefined;
   let firstDeltaFilePath: string | undefined;
@@ -1301,14 +1348,44 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
   let preDeltaCostUsd = 0;
 
   // ── Eight-exit runtime control state ─────────────────────────────────────
-  const exitPolicy = createDefaultExitPolicy(
-    loop.budget,
-    zeroSpendAuthority
-      ? { ...input.exitPolicy, budget: { ...input.exitPolicy?.budget, zeroSpendAuthority: true } }
-      : input.exitPolicy
-  );
-
   let activeAttemptController: AbortController | undefined;
+  let providerExecuting = false;
+  const wrapUp = softDeadlineMs === undefined ? undefined : new AbortController();
+  let warningWrite: Promise<void> | undefined;
+  let warningEvent: ReturnType<typeof makeLedgerEvent> | undefined;
+  let warningFailure: unknown;
+  if (loop.events.some((event) => event.type === "soft_limit_warning")) wrapUp?.abort();
+
+  function observeSoftDeadline(): void {
+    if (softDeadlineMs === undefined || nowMs() < softDeadlineMs) return;
+    if (loop.events.some((event) => event.type === "soft_limit_warning")) return;
+    const timestamp = now();
+    const payload = {
+      ...(loop.budget.softTimeLimitMs !== undefined ? { softTimeLimitMs: loop.budget.softTimeLimitMs } : {}),
+      softDeadlineMs,
+      hardDeadlineMs
+    };
+    loop = appendLoopEvent(loop, { type: "soft_limit_warning", payload }, { now: timestamp, idFactory });
+    wrapUp?.abort();
+    if (!input.store) return;
+    const snapshot = loop;
+    const event = makeLedgerEvent({ kind: "soft_limit_warning", runId: loop.loopId, payload, timestamp });
+    warningEvent = event;
+    warningWrite = (async () => {
+      if (input.store?.commitRunCheckpoint) {
+        await input.store.commitRunCheckpoint(snapshot.loopId, snapshot, [event]);
+      } else if (input.store) {
+        await input.store.appendLedger(snapshot.loopId, event);
+        await persistLoopRecordIfSupported(input.store, snapshot);
+      }
+    })().catch((error: unknown) => { warningFailure = error; });
+  }
+
+  async function flushSoftDeadline(): Promise<void> {
+    observeSoftDeadline();
+    await warningWrite;
+    if (warningFailure !== undefined) throw warningFailure;
+  }
   let observedHumanInterrupt: import("@martin/contracts").ExitSignalV1 | undefined;
   let observedExternalEvent: import("@martin/contracts").ExternalExitEvent | undefined;
   let terminationPromise: Promise<import("@martin/contracts").TerminationEnvelopeV1> | undefined;
@@ -1386,18 +1463,13 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
 
   const runController = new AbortController();
 
-  const elapsedBeforeProcessStartMs = Math.max(0, nowMs() - runStartMs);
-  const remainingWallClockMs = Math.max(
-    0,
-    exitPolicy.wallClock.maxElapsedMs - elapsedBeforeProcessStartMs
-  );
-  const wallTimer =
-    exitPolicy.wallClock.maxElapsedMs > 0
-      ? setTimeout(() => {
-          activeAttemptController?.abort(new Error("MartinLoop wall-clock exit reached"));
-        }, remainingWallClockMs)
-      : undefined;
-  (wallTimer as NodeJS.Timeout | undefined)?.unref?.();
+  const stopHardTimer = scheduleWallClock(hardDeadlineMs, nowMs, () => {
+    activeAttemptController?.abort(new Error("MartinLoop wall-clock exit reached"));
+  });
+  const stopSoftTimer = softDeadlineMs === undefined ? undefined : scheduleWallClock(softDeadlineMs, nowMs, () => {
+    if (providerExecuting) observeSoftDeadline();
+    else wrapUp?.abort();
+  });
 
   const disposeSignalMonitor = startExitSignalMonitor({
     source: exitSignalSource,
@@ -1428,6 +1500,8 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     // Fence future polls and in-flight callbacks before taking the final ledger
     // snapshot. Draining alone leaves a window for new writes during signing.
     disposeSignalMonitor();
+    stopSoftTimer?.();
+    await warningWrite;
     runController.abort();
     input.signal?.removeEventListener("abort", observeParentAbort);
     await Promise.all(pendingControlWrites.splice(0));
@@ -1509,6 +1583,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     phase: import("@martin/contracts").ExitEvaluationPhase,
     result?: { status: "completed" | "failed"; verificationPassed: boolean }
   ): Promise<import("@martin/contracts").TerminationEnvelopeV1 | undefined> {
+    await flushSoftDeadline();
     // Surface signal-monitor failures immediately rather than silently losing cancellation
     if (signalMonitorError !== undefined) throw signalMonitorError;
     const evaluation = evaluateExitPolicy(exitPolicy, currentExitSnapshot(phase, result));
@@ -2070,6 +2145,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         payload: {
           attemptId,
           adapterId: executingAdapter.adapterId,
+          providerId: executingAdapter.metadata.providerId,
           model: executingAdapter.metadata.model,
           policyPhase: currentPhase
         }
@@ -2130,7 +2206,6 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     if (preAttemptTerminal !== undefined) return await terminateRun(preAttemptTerminal);
 
     activeAttemptController = new AbortController();
-    governedTurnsUsed += 1;
 
     const rollbackBoundary = tracksWorkspaceMutations
       ? await captureRollbackBoundary({
@@ -2147,19 +2222,29 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
     // and causes callers to start a concurrent recovery run before the backend finishes.
     await persistLoopRecordIfSupported(input.store, loop);
 
+    // The budget can expire while the rollback baseline or attempt record is being written.
+    const launchTerminal = await evaluateCheckpoint("pre_attempt");
+    if (launchTerminal !== undefined) return await terminateRun(launchTerminal);
+
     let result: MartinAdapterResult;
+    governedTurnsUsed += 1;
     try {
+      providerExecuting = true;
       result = await executingAdapter.execute({
         ...request,
-        signal: activeAttemptController.signal
+        signal: activeAttemptController.signal,
+        ...(wrapUp ? { wrapUpSignal: wrapUp.signal } : {})
       });
     } catch (execError) {
+      await warningWrite;
+      if (warningFailure !== undefined) preCandidateBoundary ??= rollbackBoundary;
       // Convert an abort (wall-clock or signal-driven) into the correct exit
       // rather than letting it propagate as an unhandled exception. Do not run
       // the general post-attempt evaluator for an ordinary provider exception:
       // governedTurnsUsed already includes the active attempt, so the final
       // permitted turn would otherwise mask the provider failure as turn_cap.
       if (activeAttemptController.signal.aborted) {
+        preCandidateBoundary ??= rollbackBoundary;
         const abortTerminal = await evaluateCheckpoint("post_attempt");
         if (abortTerminal !== undefined) return await terminateRun(abortTerminal);
       }
@@ -2196,7 +2281,91 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
       // Cleanup succeeded — rethrow the original provider error.
       throw execError;
     } finally {
+      providerExecuting = false;
       activeAttemptController = undefined;
+    }
+    observeSoftDeadline();
+    await warningWrite;
+    if (warningFailure !== undefined) preCandidateBoundary ??= rollbackBoundary;
+    try {
+      assertProviderSettlementBinding(executingAdapter, result);
+    } catch (bindingError) {
+      const reasonCode = "provider_settlement_binding_rejected";
+      const reason = "Provider settlement identity did not match the admitted adapter.";
+      const completedAt = now();
+      const attemptIndex = loop.attempts.length + 1;
+      let decision: ExitDecision = {
+        shouldExit: true,
+        lifecycleState: "human_escalation",
+        status: "exited",
+        reasonCode,
+        reason
+      };
+      // A rejected first attempt has no retained candidate yet. Its own
+      // pre-execution boundary is the only authority for discarding its edits.
+      preCandidateBoundary ??= rollbackBoundary;
+      if (tracksWorkspaceMutations && !preCandidateBoundary) {
+        decision = {
+          ...decision,
+          reasonCode: "workspace_restore_failed",
+          reason: "Rejected provider settlement without a rollback boundary. Manual workspace inspection required."
+        };
+      }
+      decision = await restoreRetainedCandidateForTerminalExit(decision);
+      await stopSignalMonitorAndDrainDiagnostics();
+
+      const retainedUsage = retainRejectedProviderUsage(bindingError, result.usage);
+      loop = appendLoopEvent(
+        {
+          ...loop,
+          cost: {
+            ...loop.cost,
+            actualUsd: roundUsd(loop.cost.actualUsd + (retainedUsage.usd ?? 0)),
+            tokensIn: loop.cost.tokensIn + retainedUsage.tokensIn,
+            tokensOut: loop.cost.tokensOut + retainedUsage.tokensOut,
+            provenance: "unavailable"
+          },
+          attempts: [...loop.attempts, {
+            attemptId,
+            index: attemptIndex,
+            adapterId: executingAdapter.adapterId,
+            ...(executingAdapter.metadata.model ? { model: executingAdapter.metadata.model } : {}),
+            startedAt: attemptStartedAt,
+            completedAt,
+            summary: reason
+          }]
+        },
+        {
+          type: "attempt.completed",
+          lifecycleState: "running",
+          payload: { attemptId, status: "failed", reasonCode, summary: reason }
+        },
+        { now: completedAt, idFactory }
+      );
+      if (input.store) {
+        const { actualUsd, estimatedUsd, tokensIn, tokensOut } = result.usage;
+        const observedUsage = Object.fromEntries(
+          Object.entries({ actualUsd, estimatedUsd, tokensIn, tokensOut })
+            .filter(([, value]) => Number.isFinite(value))
+        );
+        // Preserve the reported numbers for reconciliation without crediting
+        // contradictory provider evidence as authoritative settlement.
+        await input.store.appendLedger(loop.loopId, makeLedgerEvent({
+          kind: "run.diagnostic",
+          runId: loop.loopId,
+          attemptIndex,
+          payload: { code: reasonCode, authority: "rejected", observedUsage }
+        }));
+        await input.store.appendLedger(loop.loopId, makeLedgerEvent({
+          kind: "run.exited",
+          runId: loop.loopId,
+          payload: createRunExitPayload(decision)
+        }));
+      }
+      const terminationEnvelope = await persistGuardStop(decision);
+      const finalizedLoop = await finalizeCurrentLoop(decision, now());
+      await persistLoopRecordIfSupported(input.store, { ...finalizedLoop, terminationEnvelope });
+      throw bindingError;
     }
     const attemptCompletedAt = now();
     const compiledContext = compilePromptPacket(request);
@@ -2381,6 +2550,7 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
         ...(rollbackBoundary ? { rollbackBoundary } : {})
       };
       const settlementLedgerEvents = [
+        ...(warningFailure !== undefined && warningEvent !== undefined ? [warningEvent] : []),
         makeLedgerEvent({
           kind: "patch.generated",
           runId: loop.loopId,
@@ -2410,21 +2580,43 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
           }
         })
       ];
-      if (input.store.commitAttemptSettlement) {
-        await input.store.commitAttemptSettlement(
-          loop.loopId,
-          currentAttemptIndex,
-          loop,
-          settlementArtifacts,
-          settlementLedgerEvents
-        );
-      } else {
-        await input.store.writeAttemptArtifacts(loop.loopId, currentAttemptIndex, settlementArtifacts);
-        for (const event of settlementLedgerEvents) {
-          await input.store.appendLedger(loop.loopId, event);
+      try {
+        if (input.store.commitAttemptSettlement) {
+          await input.store.commitAttemptSettlement(
+            loop.loopId,
+            currentAttemptIndex,
+            loop,
+            settlementArtifacts,
+            settlementLedgerEvents
+          );
+        } else {
+          await input.store.writeAttemptArtifacts(loop.loopId, currentAttemptIndex, settlementArtifacts);
+          for (const event of settlementLedgerEvents) {
+            await input.store.appendLedger(loop.loopId, event);
+          }
+          await persistLoopRecordIfSupported(input.store, loop);
         }
-        await persistLoopRecordIfSupported(input.store, loop);
+      } catch (error) {
+        if (warningFailure === undefined) throw error;
+        const settlementError = error instanceof Error ? error : new Error("Attempt settlement could not be persisted.", { cause: error });
+        retainRejectedProviderUsage(settlementError, result.usage);
+        throw settlementError;
       }
+    }
+
+    if (warningFailure !== undefined) {
+      await stopSignalMonitorAndDrainDiagnostics();
+      const decision = await restoreRetainedCandidateForTerminalExit({
+        shouldExit: true,
+        lifecycleState: "human_escalation",
+        status: "exited",
+        reason: "The wall-clock warning could not be persisted while the attempt was active.",
+        reasonCode: "soft_limit_warning_persistence_failed"
+      });
+      const terminationEnvelope = await persistGuardStop(decision);
+      const finalizedLoop = { ...await finalizeCurrentLoop(decision, now()), terminationEnvelope };
+      await persistLoopRecordIfSupported(input.store, finalizedLoop);
+      return { loop: finalizedLoop, decision };
     }
 
     let changedFiles: string[] = [];
@@ -3185,11 +3377,13 @@ export async function runMartin(input: RunMartinInput): Promise<RunMartinResult>
   }
   return await terminateRun(exhaustedTerminal);
   } finally {
-    if (wallTimer !== undefined) clearTimeout(wallTimer);
+    stopHardTimer();
+    stopSoftTimer?.();
     disposeSignalMonitor();
     runController.abort();
     input.signal?.removeEventListener("abort", observeParentAbort);
     activeAttemptController?.abort();
+    await warningWrite;
     // Flush any diagnostic ledger writes queued from signal callbacks
     await Promise.all(pendingControlWrites);
     // Last-resort: if an unhandled exception escaped the main loop and preCandidateBoundary
@@ -3693,6 +3887,75 @@ function resolveExpectedVerifierBinding(request: MartinAdapterRequest): Verifier
   };
 }
 
+/**
+ * Provider settlement is an observation of the execution that just completed.
+ * When present, it may omit a model observation, but it may never contradict
+ * the adapter authority that was admitted for this attempt.
+ */
+function assertProviderSettlementBinding(
+  adapter: MartinAdapter,
+  result: Pick<MartinAdapterResult, "usage">
+): void {
+  const settlement = result.usage.providerSettlement;
+  if (!settlement) return;
+  if (settlement.providerId !== adapter.metadata.providerId) {
+    throw Object.assign(
+      new Error(
+        `Provider settlement authority ${settlement.providerId} does not match executing adapter provider ${adapter.metadata.providerId}.`
+      ),
+      {
+        code: "PROVIDER_SETTLEMENT_PROVIDER_MISMATCH",
+        executingAuthority: {
+          adapterId: adapter.adapterId,
+          providerId: adapter.metadata.providerId,
+          ...(adapter.metadata.model ? { model: adapter.metadata.model } : {})
+        },
+        observedSettlement: {
+          providerId: settlement.providerId,
+          ...(settlement.model ? { model: settlement.model } : {})
+        },
+        accountingEvidence: {
+          actualUsd: result.usage.actualUsd,
+          ...(result.usage.estimatedUsd !== undefined ? { estimatedUsd: result.usage.estimatedUsd } : {}),
+          tokensIn: result.usage.tokensIn,
+          tokensOut: result.usage.tokensOut,
+          providerSettlement: settlement
+        }
+      }
+    );
+  }
+  if (
+    settlement.model !== undefined
+    && adapter.metadata.model !== undefined
+    && settlement.model !== adapter.metadata.model
+  ) {
+    throw Object.assign(
+      new Error(
+        `Provider settlement model ${settlement.model} does not match executing adapter model ${adapter.metadata.model}.`
+      ),
+      {
+        code: "PROVIDER_SETTLEMENT_MODEL_MISMATCH",
+        executingAuthority: {
+          adapterId: adapter.adapterId,
+          providerId: adapter.metadata.providerId,
+          model: adapter.metadata.model
+        },
+        observedSettlement: {
+          providerId: settlement.providerId,
+          model: settlement.model
+        },
+        accountingEvidence: {
+          actualUsd: result.usage.actualUsd,
+          ...(result.usage.estimatedUsd !== undefined ? { estimatedUsd: result.usage.estimatedUsd } : {}),
+          tokensIn: result.usage.tokensIn,
+          tokensOut: result.usage.tokensOut,
+          providerSettlement: settlement
+        }
+      }
+    );
+  }
+}
+
 function normalizeVerificationOutcome(
   result: MartinAdapterResult,
   expectedBinding: VerifierExecutionBinding
@@ -3875,6 +4138,7 @@ export {
   validateExitPolicy
 } from "./exits.js";
 export type { ExitPolicyOverrides, LegacyExitDecision } from "./exits.js";
+export { validateWallClockBudget } from "./exits.js";
 export {
   SignalDiagnosticError,
   createFileExitSignalSource,

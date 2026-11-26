@@ -1,7 +1,11 @@
 import { EventEmitter } from "node:events";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import type { ChildProcess, SpawnOptions } from "node:child_process";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { MartinAdapterRequest } from "@martin/core";
 import {
@@ -25,10 +29,63 @@ interface ScriptedSpawnOutput {
   stderr?: string;
 }
 
-function createScriptedSpawn(calls: SpawnCall[], outputs: ScriptedSpawnOutput[] = [{ stdout: "done\n" }]): SpawnLike {
+function codexSuccess(model = "gpt-6.1-sol", text = "Done.", inputTokens = 10, outputTokens = 5): string {
+  return [
+    JSON.stringify({ type: "thread.started", thread_id: "thread_fixture" }),
+    JSON.stringify({ type: "turn.started" }),
+    JSON.stringify({ type: "item.completed", item: { id: "item_fixture", type: "agent_message", text } }),
+    JSON.stringify({
+      type: "turn.completed",
+      ...(model ? { model } : {}),
+      usage: {
+        input_tokens: inputTokens, cached_input_tokens: 0, output_tokens: outputTokens, reasoning_output_tokens: 0
+      }
+    })
+  ].join("\n");
+}
+
+function writeRetainedCodexSession(input: {
+  home: string;
+  cwd: string;
+  id: string;
+  turn: string;
+  contextModel?: string;
+  stale?: boolean;
+  otherThread?: boolean;
+  otherTurn?: boolean;
+  duplicate?: boolean;
+  usage: Record<string, number>;
+}): void {
+  // Field names and usage values come from the failed Codex 0.160.0 canary.
+  // Replace private content and use a fresh clock and local fixture workspace.
+  const now = new Date();
+  const timestamp = new Date(now.getTime() - (input.stale ? 60_000 : 0)).toISOString();
+  const [year, month, day] = now.toISOString().slice(0, 10).split("-");
+  const directory = join(input.home, "sessions", year!, month!, day!);
+  mkdirSync(directory, { recursive: true });
+  const sessionId = input.otherThread ? "01900000-0000-7000-8000-000000000003" : input.id;
+  const completedTurn = input.otherTurn ? "01900000-0000-7000-8000-000000000004" : input.turn;
+  const records = [
+    { type: "session_meta", payload: {
+      id: sessionId, session_id: sessionId, cwd: input.cwd, timestamp, source: "exec", cli_version: "0.160.0"
+    } },
+    { type: "event_msg", payload: { type: "task_started", turn_id: input.turn, root_turn_id: input.turn } },
+    { type: "turn_context", payload: {
+      turn_id: input.turn, root_turn_id: input.turn, cwd: input.cwd, model: input.contextModel ?? "gpt-6.1-sol"
+    } },
+    { type: "event_msg", payload: { type: "token_count", info: { total_token_usage: input.usage } } },
+    { type: "event_msg", payload: { type: "task_complete", turn_id: completedTurn } }
+  ].map((record) => JSON.stringify({ timestamp, ...record })).join("\n") + "\n";
+  writeFileSync(join(directory, `rollout-2026-11-24T16-41-43-${input.id}.jsonl`), records);
+  if (input.duplicate) {
+    writeFileSync(join(directory, `rollout-2026-11-24T16-41-44-${input.id}.jsonl`), records);
+  }
+}
+
+function createScriptedSpawn(calls: SpawnCall[], outputs: ScriptedSpawnOutput[] = [{ stdout: codexSuccess() }]): SpawnLike {
   let index = 0;
   return (command, args = [], options) => {
-    const output = outputs[index] ?? outputs.at(-1) ?? { stdout: "done\n" };
+    const output = outputs[index] ?? outputs.at(-1) ?? { stdout: codexSuccess() };
     index += 1;
     const child = new EventEmitter() as Partial<ChildProcess> & {
       stdout: PassThrough;
@@ -143,6 +200,14 @@ describe("capability-driven Codex adapter", () => {
     })).toThrow(/not verified by the launch probe/iu);
   });
 
+  it.each(["", " auto ", "default"])("rejects non-concrete explicit model authority %j", (model) => {
+    expect(() => createCodexCliAdapter({
+      model,
+      capabilityProfile: negotiatedProfile({ model: { flag: "--model", scope: "exec" } }),
+      autonomyResolution: negotiatedAutonomy()
+    })).toThrow(/explicit live model is invalid/iu);
+  });
+
   it("routes provider execution to the exact selected binary while preserving Codex identity", async () => {
     const calls: SpawnCall[] = [];
     const selectedBinary = "C:\\Program Files\\OpenAI\\Codex\\codex.exe";
@@ -151,7 +216,7 @@ describe("capability-driven Codex adapter", () => {
       command: selectedBinary,
       capabilityProfile: profile,
       autonomyResolution: negotiatedAutonomy({ binaryPath: selectedBinary }),
-      spawnImpl: createScriptedSpawn(calls)
+      spawnImpl: createScriptedSpawn(calls, [{ stdout: codexSuccess("gpt-5.5") }])
     });
     const result = await adapter.execute(request());
 
@@ -173,7 +238,7 @@ describe("capability-driven Codex adapter", () => {
     const adapter = createCodexCliAdapter({
       capabilityProfile: profile,
       autonomyResolution: negotiatedAutonomy({ strategy: "automation", sandboxValue: undefined, approvalValue: undefined }),
-      spawnImpl: createScriptedSpawn(calls)
+      spawnImpl: createScriptedSpawn(calls, [{ stdout: codexSuccess("gpt-5.5") }])
     });
     const result = await adapter.execute(request());
 
@@ -192,7 +257,7 @@ describe("capability-driven Codex adapter", () => {
       extraArgs: ["--ignore-rules"],
       capabilityProfile: profile,
       autonomyResolution: negotiatedAutonomy(),
-      spawnImpl: createScriptedSpawn(calls)
+      spawnImpl: createScriptedSpawn(calls, [{ stdout: codexSuccess("gpt-5.5") }])
     });
     const readOnlyRequest = request();
     (readOnlyRequest.context as any).mutationMode = "read_only";
@@ -214,7 +279,7 @@ describe("capability-driven Codex adapter", () => {
       command: profile.binaryPath,
       capabilityProfile: profile,
       autonomyResolution: negotiatedAutonomy(),
-      spawnImpl: createScriptedSpawn(calls, [{ stdout: "patched\n" }, { stdout: "ok\n" }])
+      spawnImpl: createScriptedSpawn(calls, [{ stdout: codexSuccess(undefined, "Patched.") }, { stdout: "ok\n" }])
     });
     const result = await adapter.execute(request([verifier]));
 
@@ -283,11 +348,7 @@ describe("capability-driven Codex adapter", () => {
     });
 
     it("keeps a settled turn.completed attempt even when the process exits nonzero", async () => {
-      const stdout = [
-        JSON.stringify({ type: "thread.started", thread_id: "thread_ok" }),
-        JSON.stringify({ type: "item.completed", item: { id: "i1", type: "agent_message", text: "Patched." } }),
-        JSON.stringify({ type: "turn.completed", usage: { input_tokens: 10, output_tokens: 5 } })
-      ].join("\n");
+      const stdout = codexSuccess(undefined, "Patched.");
       const { result, calls } = await runWith(stdout, 1);
 
       expect(result.status).toBe("completed");
@@ -295,12 +356,150 @@ describe("capability-driven Codex adapter", () => {
       expect(calls).toHaveLength(2);
     });
 
-    it("keeps exit-0 runs without failure events unchanged", async () => {
+    it("rejects exit-0 streams without terminal success before verifier", async () => {
       const stdout = JSON.stringify({ type: "item.completed", item: { id: "i1", type: "agent_message", text: "Done." } });
       const { result, calls } = await runWith(stdout, 0);
 
+      expect(result.status).toBe("failed");
+      expect(result.verification.summary).toContain("Verifier not run");
+      expect(calls).toHaveLength(1);
+    });
+
+    it.each([
+      ["missing thread start", codexSuccess("gpt-6.1-sol").split("\n").slice(1).join("\n")],
+      ["missing turn start", codexSuccess("gpt-6.1-sol").split("\n").filter((line) => !line.includes("turn.started")).join("\n")],
+      ["malformed JSONL", `${JSON.stringify({ type: "thread.started" })}\nnot-json\n${JSON.stringify({ type: "turn.completed", usage: { input_tokens: 1, output_tokens: 1 } })}`],
+      ["misleading prose", `work complete\n${JSON.stringify({ type: "turn.completed", usage: { input_tokens: 1, output_tokens: 1 } })}`],
+      ["error terminal", [
+        JSON.stringify({ type: "thread.started" }),
+        JSON.stringify({ type: "error", message: "provider rejected turn" }),
+        JSON.stringify({ type: "turn.completed", usage: { input_tokens: 1, output_tokens: 1 } })
+      ].join("\n")]
+    ])("rejects %s output before verifier", async (_label, stdout) => {
+      const { result, calls } = await runWith(stdout, 0);
+
+      expect(result.status).toBe("failed");
+      expect(result.verification.summary).toContain("Verifier not run");
+      expect(calls).toHaveLength(1);
+    });
+
+    it("rejects a terminal event bound to a different model before verifier", async () => {
+      const calls: SpawnCall[] = [];
+      const adapter = createCodexCliAdapter({
+        model: "gpt-6.1-sol",
+        capabilityProfile: negotiatedProfile({ model: { flag: "--model", scope: "exec" } }),
+        autonomyResolution: negotiatedAutonomy(),
+        spawnImpl: createScriptedSpawn(calls, [
+          { stdout: codexSuccess("gpt-6-astra", "Done.", 3000, 1000) },
+          { stdout: "ok\n" }
+        ])
+      });
+
+      const result = await adapter.execute(request([verifier]));
+      expect(result.status).toBe("failed");
+      expect(result.failure?.message).toMatch(/model.*mismatch/iu);
+      expect(result.usage).toMatchObject({
+        tokensIn: 3000, tokensOut: 1000, provenance: "calculated",
+        providerSettlement: { model: "gpt-6-astra", modelSource: "provider_reported" }
+      });
+      expect(result.usage.actualUsd).toBeGreaterThan(0);
+      expect(calls).toHaveLength(1);
+    });
+
+    it("accepts a structured terminal success bound to the exact requested model", async () => {
+      const calls: SpawnCall[] = [];
+      const adapter = createCodexCliAdapter({
+        model: "gpt-6.1-sol",
+        capabilityProfile: negotiatedProfile({ model: { flag: "--model", scope: "exec" } }),
+        autonomyResolution: negotiatedAutonomy(),
+        spawnImpl: createScriptedSpawn(calls, [
+          { stdout: codexSuccess("gpt-6.1-sol", "Patched and verified.") },
+          { stdout: "ok\n" }
+        ])
+      });
+
+      const result = await adapter.execute(request([verifier]));
       expect(result.status).toBe("completed");
+      expect(result.usage.providerSettlement?.model).toBe("gpt-6.1-sol");
       expect(calls).toHaveLength(2);
+    });
+
+    it.each([
+      { scenario: "matching turn context", expected: "completed" },
+      { scenario: "matching turn context with default model", expected: "completed", useDefault: true },
+      { scenario: "no bound context", expected: "failed", omitContext: true },
+      { scenario: "no bound context with default model", expected: "failed", omitContext: true, useDefault: true },
+      { scenario: "conflicting model", expected: "failed", contextModel: "gpt-6.1-astra" },
+      { scenario: "terminal and context disagree", expected: "failed", terminalModel: "gpt-6.1-sol", contextModel: "gpt-6.1-astra" },
+      { scenario: "stale matching context", expected: "failed", stale: true },
+      { scenario: "concurrent child's matching context", expected: "failed", otherCwd: true },
+      { scenario: "other thread's matching context", expected: "failed", otherThread: true },
+      { scenario: "different completed turn", expected: "failed", otherTurn: true },
+      { scenario: "ambiguous matching session files", expected: "failed", duplicate: true },
+      { scenario: "missing provider usage", expected: "failed", omitUsage: true },
+      { scenario: "usage from another execution", expected: "failed", otherUsage: true }
+    ])("validates retained Codex exec evidence with $scenario", async ({
+      expected, contextModel, terminalModel, omitContext, stale, otherCwd, otherThread,
+      otherTurn, duplicate, omitUsage, otherUsage, useDefault
+    }) => {
+      const root = await mkdtemp(join(tmpdir(), "martin-codex-session-fixture-"));
+      const home = join(root, "codex-home");
+      const cwd = join(root, "workspace");
+      const id = "01900000-0000-7000-8000-000000000001";
+      const turn = "01900000-0000-7000-8000-000000000002";
+      const usage = {
+        input_tokens: 147835, cached_input_tokens: 114048, output_tokens: 803, reasoning_output_tokens: 19
+      };
+      const stdout = [
+        { type: "thread.started", thread_id: id },
+        { type: "turn.started" },
+        { type: "item.completed", item: { id: "item_1", type: "agent_message", text: "[sanitized]" } },
+        { type: "turn.completed", model: terminalModel, usage: omitUsage ? undefined : usage }
+      ].map((row) => JSON.stringify(row)).join("\n");
+      const calls: SpawnCall[] = [];
+      const spawn = createScriptedSpawn(calls, [{ stdout }, { stdout: "ok\n" }]);
+      await mkdir(cwd);
+      vi.stubEnv("CODEX_HOME", home);
+      try {
+        const adapter = createCodexCliAdapter({
+          workingDirectory: cwd,
+          ...(useDefault ? {} : { model: "gpt-6.1-sol" }),
+          capabilityProfile: negotiatedProfile({ model: { flag: "--model", scope: "exec" } }),
+          autonomyResolution: negotiatedAutonomy(),
+          spawnImpl: (...args) => {
+            if (calls.length === 0 && !omitContext) {
+              writeRetainedCodexSession({
+                home, cwd: otherCwd ? root : cwd, id, turn, contextModel, stale, otherThread,
+                otherTurn, duplicate, usage: otherUsage ? { ...usage, input_tokens: 147836 } : usage
+              });
+            }
+            return spawn(...args);
+          }
+        });
+        const result = await adapter.execute(request([verifier]));
+        expect(result.status).toBe(expected);
+        expect(calls).toHaveLength(expected === "completed" ? 2 : 1);
+        if (expected === "completed") {
+          expect(result.usage.providerSettlement).toMatchObject({
+            model: "gpt-6.1-sol", modelSource: "provider_reported", rawUsageAvailable: true
+          });
+          expect(result.usage.actualUsd).toBeGreaterThan(0);
+        } else {
+          expect(result.usage).toMatchObject({ tokensIn: usage.input_tokens, tokensOut: usage.output_tokens });
+          expect(result.usage.providerSettlement?.rawUsageAvailable).toBe(true);
+          if (omitUsage) {
+            expect(result.failure?.message).toContain("did not include valid provider usage");
+            expect(result.usage.actualUsd).toBeGreaterThan(0);
+          }
+          if (omitContext || stale || otherThread || otherCwd || otherUsage) {
+            expect(result.usage.provenance).toBe("unavailable");
+            expect(result.usage.providerSettlement?.model).toBeUndefined();
+          }
+        }
+      } finally {
+        vi.unstubAllEnvs();
+        await rm(root, { recursive: true, force: true });
+      }
     });
   });
 
@@ -317,8 +516,9 @@ describe("capability-driven Codex adapter", () => {
         {
           stdout: [
             JSON.stringify({ type: "thread.started", thread_id: "thread_123" }),
+            JSON.stringify({ type: "turn.started" }),
             JSON.stringify({ type: "item.completed", item: { id: "item_1", type: "agent_message", text: "Patched and verified." } }),
-            JSON.stringify({ type: "turn.completed", usage: { input_tokens: 1200, cached_input_tokens: 300, output_tokens: 200, reasoning_output_tokens: 50 } })
+            JSON.stringify({ type: "turn.completed", model: "gpt-6.1-sol", usage: { input_tokens: 1200, cached_input_tokens: 300, output_tokens: 200, reasoning_output_tokens: 50 } })
           ].join("\n"),
           exitCode: 0
         },

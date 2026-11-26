@@ -1,7 +1,8 @@
 import { existsSync, lstatSync, realpathSync } from "node:fs";
 import { dirname, extname, isAbsolute, relative, resolve } from "node:path";
 
-import { resolveRunsRoot } from "@martin/core";
+import { resolveRunsRoot, validateWallClockBudget } from "@martin/core";
+import { assertConcreteLiveModel } from "@martin/contracts";
 
 import {
   invalidArgumentsError,
@@ -235,11 +236,14 @@ function validateRunInput(args: unknown): RunLoopInput {
     "model",
     "pricePerMTokenUsd",
     "fallbackEngines",
+    "fallbackProfiles",
     "context",
     "policyPack",
     "maxUsd",
     "maxIterations",
     "maxTokens",
+    "maxWallClockMs",
+    "softTimeLimitMs",
     "verifyTimeoutMs",
     "providerExecutionTimeoutMs",
     "maxMinutes",
@@ -253,15 +257,39 @@ function validateRunInput(args: unknown): RunLoopInput {
   ]);
 
   const engine = optionalEnum(record.engine, "engine", MARTIN_ENGINE_VALUES);
+  let model: string | undefined;
+  if (record.model !== undefined) {
+    try {
+      model = assertConcreteLiveModel(record.model);
+    } catch {
+      throw invalidArgumentsError("Invalid model. Provide one explicit concrete model identifier.");
+    }
+  }
+  if (record.fallbackEngines !== undefined) {
+    throw invalidArgumentsError(
+      "fallbackEngines no longer grant live authority; use fallbackProfiles with explicit {engine, model} entries.",
+      "Use fallbackProfiles with explicit {engine, model} entries."
+    );
+  }
+  const fallbackProfiles = validateFallbackProfiles(record.fallbackProfiles, engine);
+  const wallClockBudget = {
+    ...optionalPositiveInteger(record.maxWallClockMs, "maxWallClockMs"),
+    ...optionalPositiveInteger(record.softTimeLimitMs, "softTimeLimitMs")
+  };
+  try {
+    validateWallClockBudget(wallClockBudget);
+  } catch (error) {
+    throw invalidArgumentsError(error instanceof Error ? error.message : String(error));
+  }
   return {
     objective: requireString(record.objective, "objective"),
     ...(record.workingDirectory !== undefined
       ? { workingDirectory: resolveSafeRepoRoot(requireString(record.workingDirectory, "workingDirectory")) }
       : {}),
     ...(engine ? { engine } : {}),
-    ...optionalString(record.model, "model"),
+    ...(model !== undefined ? { model } : {}),
     ...optionalNonNegativeNumber(record.pricePerMTokenUsd, "pricePerMTokenUsd"),
-    ...optionalEnumArrayAsObject(record.fallbackEngines, "fallbackEngines", MARTIN_ENGINE_VALUES),
+    ...(fallbackProfiles ? { fallbackProfiles } : {}),
     ...optionalString(record.context, "context"),
     ...optionalEnumAsObject(record.policyPack, "policyPack", [
       "solo-founder",
@@ -273,6 +301,7 @@ function validateRunInput(args: unknown): RunLoopInput {
     ...optionalPositiveNumber(record.maxUsd, "maxUsd"),
     ...optionalPositiveInteger(record.maxIterations, "maxIterations"),
     ...optionalPositiveInteger(record.maxTokens, "maxTokens"),
+    ...wallClockBudget,
     ...optionalPositiveInteger(record.verifyTimeoutMs, "verifyTimeoutMs"),
     ...optionalPositiveInteger(record.providerExecutionTimeoutMs, "providerExecutionTimeoutMs"),
     ...optionalPositiveInteger(record.maxMinutes, "maxMinutes"),
@@ -284,6 +313,31 @@ function validateRunInput(args: unknown): RunLoopInput {
     ...optionalString(record.workspaceId, "workspaceId"),
     ...optionalString(record.projectId, "projectId")
   };
+}
+
+function validateFallbackProfiles(
+  value: unknown,
+  primaryEngine: MartinEngine | undefined
+): Array<{ engine: MartinEngine; model: string }> | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) throw invalidArgumentsError("Invalid fallbackProfiles.");
+  const seen = new Set<MartinEngine>();
+  return value.map((entry) => {
+    const profile = requireObject(entry);
+    assertAllowedKeys(profile, ["engine", "model"]);
+    const engine = optionalEnum(profile.engine, "fallbackProfiles.engine", MARTIN_ENGINE_VALUES);
+    if (!engine) throw invalidArgumentsError("Invalid fallbackProfiles.engine.");
+    if (engine === primaryEngine) throw invalidArgumentsError("Fallback profile cannot repeat the primary engine.");
+    if (seen.has(engine)) throw invalidArgumentsError(`Duplicate fallback profile engine '${engine}'.`);
+    seen.add(engine);
+    let model: string;
+    try {
+      model = assertConcreteLiveModel(profile.model);
+    } catch {
+      throw invalidArgumentsError("Invalid fallbackProfiles.model.");
+    }
+    return { engine, model };
+  });
 }
 
 function validateInspectInput(args: unknown): InspectLoopInput {

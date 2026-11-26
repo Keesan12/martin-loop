@@ -46,43 +46,20 @@ test("version ledger derives current release coordinates from package metadata",
   const rootSection = readLedgerSection(ledger, "Root package: `martin-loop`");
   const standaloneSection = readLedgerSection(ledger, "Standalone package: `@martinloop/mcp`");
 
-  const rootReleaseTag = readLedgerValue(rootSection, "live public GitHub release");
-  const rootBaseline = readLedgerValue(rootSection, "root public baseline");
-  const standaloneReleaseTag = readLedgerValue(standaloneSection, "live public GitHub release");
-  const standaloneBaseline = readLedgerValue(standaloneSection, "standalone MCP public baseline");
-  const mcpbBaseline = readLedgerValue(standaloneSection, "live MCPB baseline");
-
-  assert.match(
-    ledger,
-    new RegExp(escapeRegex("live npm dist-tag `latest`: verify live with `npm view martin-loop version`")),
-  );
-  assert.match(
-    ledger,
-    new RegExp(escapeRegex("live npm dist-tag `latest`: verify live with `npm view @martinloop/mcp version`")),
-  );
-  assert.match(
-    ledger,
-    new RegExp(escapeRegex(`current in-repo standalone release baseline: \`${packageJson.version}\``)),
-  );
-  assert.match(
-    ledger,
-    new RegExp(escapeRegex(`current in-repo root release baseline: \`${rootPackageJson.version}\``)),
-  );
-  assert.equal(rootReleaseTag, `v${rootBaseline}`);
-  assert.equal(standaloneReleaseTag, `mcp-v${standaloneBaseline}`);
-  assert.equal(mcpbBaseline, standaloneBaseline);
-  assert.match(publishing, new RegExp(escapeRegex(`current published standalone package: \`@martinloop/mcp\` (live version: \`${standaloneBaseline}\`)`)));
-  assert.match(publishing, new RegExp(escapeRegex(`current in-repo standalone release baseline: \`${packageJson.version}\` (pending publication)`)));
+  assert.equal(readLedgerValue(rootSection, "current in-repo root release baseline"), rootPackageJson.version);
+  assert.equal(readLedgerValue(standaloneSection, "current in-repo standalone release baseline"), packageJson.version);
+  assert.match(rootSection, /npm view martin-loop version/);
+  assert.match(rootSection, /v<version>.*github\.com\/Keesan12\/martin-loop\/releases/);
+  assert.match(standaloneSection, /npm view @martinloop\/mcp version/);
+  assert.match(standaloneSection, /mcp-v<version>.*github\.com\/Keesan12\/martin-loop\/releases/);
+  assert.match(standaloneSection, /registry\.modelcontextprotocol\.io[^\s)]+\/versions\/latest/);
+  assert.match(standaloneSection, /MCPB size and SHA-256: see the bundle and checksum assets/);
+  assert.match(standaloneSection, /historical .*mcp-v0\.10\.0/);
+  assert.match(publishing, /published standalone version: run `npm view @martinloop\/mcp version`/);
+  assert.match(publishing, new RegExp(escapeRegex(`current in-repo standalone release baseline: \`${packageJson.version}\``)));
+  assert.doesNotMatch(ledger + publishing, /pending publication|live version: `\d/);
   assert.doesNotMatch(checklist, /MCP-X\.Y\.Z-RELEASE-PACKET\.md/);
 
-  const currentTargetsArePublished = rootBaseline === rootPackageJson.version
-    && standaloneBaseline === packageJson.version;
-  if (currentTargetsArePublished) {
-    assert.doesNotMatch(ledger, /pending publication/);
-  } else {
-    assert.match(ledger, /pending publication/);
-  }
-  assert.doesNotMatch(ledger, /official MCP Registry version: `0\./);
   assert.match(ledger, /next planned root follow-on: not scheduled/);
   assert.match(ledger, /next planned standalone release: not scheduled/);
 });
@@ -103,27 +80,16 @@ test("MCP slice map defines the 0.3.x train without private-hosted bleed", async
 });
 
 test("public MCP docs describe the current baseline and historical releases in human-facing language", async () => {
-  const [packageReadme, aiGuide, ledger, releaseNotes031, releaseNotes032, releaseNotes033] = await Promise.all([
+  const [packageReadme, aiGuide, releaseNotes031, releaseNotes032, releaseNotes033] = await Promise.all([
     readRepoFile(path.join("packages", "mcp", "README.md")),
     readRepoFile(path.join("docs", "oss", "MCP-FOR-AI-AGENTS.md")),
-    readRepoFile(path.join("docs", "release", "VERSION-LEDGER.md")),
     readRepoFile(path.join("docs", "release", "MCP-0.3.1-RELEASE-NOTES.md")),
     readRepoFile(path.join("docs", "release", "MCP-0.3.2-RELEASE-NOTES.md")),
     readRepoFile(path.join("docs", "release", "MCP-0.3.3-RELEASE-NOTES.md"))
   ]);
-  const standaloneSection = readLedgerSection(ledger, "Standalone package: `@martinloop/mcp`");
-  const liveStandaloneBaseline = readLedgerValue(standaloneSection, "standalone MCP public baseline");
-
-  // The active guide names the live package baseline without presenting a
-  // historical train as current.
-  assert.match(aiGuide, new RegExp(escapeRegex(`@martinloop/mcp@${liveStandaloneBaseline}`)));
-  if (liveStandaloneBaseline !== packageJson.version) {
-    assert.doesNotMatch(
-      aiGuide,
-      new RegExp(`${escapeRegex(`@martinloop/mcp@${packageJson.version}`)}[^\n]*live public standalone MCP baseline`),
-    );
-  }
-  assert.match(aiGuide, /No later standalone release is presented as live/);
+  assert.match(aiGuide, /npm view @martinloop\/mcp version/);
+  assert.match(aiGuide, /\.\.\/release\/VERSION-LEDGER\.md/);
+  assert.doesNotMatch(aiGuide, /@martinloop\/mcp@\d+\.\d+\.\d+.*live public standalone MCP baseline/);
   assert.match(aiGuide, /local-first/i);
   assert.match(aiGuide, /martin_doctor/);
   assert.match(aiGuide, /martin_run/);

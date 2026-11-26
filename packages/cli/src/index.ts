@@ -31,6 +31,7 @@ import {
   loadResumeCandidateBoundary,
   loadResumeVerifierFailure,
   recordPreference,
+  validateWallClockBudget,
   verifyReceiptIntegrityFromFiles,
   writeExitSignal,
   type MartinAdapter
@@ -63,7 +64,9 @@ import {
   type RollbackOutcomeArtifact,
   type ExternalOutcomeContract,
   type VerifiedHandoffV1,
-  validateExternalOutcomeContract
+  validateExternalOutcomeContract,
+  assertConcreteLiveModel,
+  isOpenAiAuthPostureReady
 } from "@martin/contracts";
 import {
   buildGovernedPlanStages,
@@ -293,8 +296,8 @@ export type RunCommandRequest = {
   runsDir?: string;
   model?: string;
   engine?: string;
-  /** Explicit, ordered provider fallbacks authorized by the user. */
-  fallbackEngines?: string[];
+  /** Explicit, ordered provider and exact-model fallbacks authorized by the user. */
+  fallbackProfiles?: AuthorizedFallbackProfile[];
   liveMode?: "live" | "proof";
   mutationMode?: MutationMode;
   unsafeAllowUnguardedRun?: boolean;
@@ -347,7 +350,7 @@ type ContinueRunCommand = {
   command: "continue_run";
   selector: MartinRunSelector;
   engine?: string;
-  fallbackEngines?: string[];
+  fallbackProfiles?: AuthorizedFallbackProfile[];
   model?: string;
 };
 
@@ -1056,9 +1059,9 @@ const KNOWN_LONG_OPTIONS = new Set([
   "--baseline-provenance", "--baseline-source", "--baseline-usd", "--budget", "--budget-usd", "--config",
   "--contract", "--cwd", "--days", "--deny-path", "--dir", "--disposition", "--dry-run", "--engine",
   "--event", "--execute", "--execution-profile", "--expected-contract-sha256", "--experimental-remote-hosts",
-  "--fallback-engine", "--file", "--files", "--filter", "--force", "--format", "--governed", "--help",
+  "--fallback-engine", "--fallback-profile", "--file", "--files", "--filter", "--force", "--format", "--governed", "--help",
   "--host", "--host-approval", "--id", "--install-governance", "--json", "--latest", "--lifecycle-state", "--limit", "--live",
-  "--loop-id", "--max-iterations", "--max-tokens", "--memory-id", "--metadata", "--mission-id", "--model", "--objective", "--offline",
+  "--loop-id", "--max-iterations", "--max-tokens", "--max-wall-clock-ms", "--memory-id", "--metadata", "--mission-id", "--model", "--objective", "--offline", "--soft-time-limit-ms",
   "--out-dir", "--platform", "--policy", "--profile", "--project", "--proof", "--provider-execution-timeout-ms",
   "--quiet", "--reason", "--remote-token-env", "--remote-url", "--run-scan-limit", "--runs", "--runs-dir",
   "--scenario", "--scope", "--share", "--soft-limit-usd", "--status", "--suite", "--swarm", "--swarm-id",
@@ -1298,8 +1301,11 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
     const loopId = rest[0] && !rest[0].startsWith("--")
       ? rest[0]
       : readOption(rest, "--loop-id") ?? "";
-    const fallbackEngines = readOptions(rest, "--fallback-engine");
-    assertAuthorizedFallbackEngineNames(fallbackEngines);
+    rejectLegacyFallbackEngineOption(rest);
+    const fallbackProfiles = parseAuthorizedFallbackProfiles(readOptions(rest, "--fallback-profile"));
+    const requestedModel = rest.includes("--model")
+      ? assertCliConcreteLiveModel(readOption(rest, "--model"))
+      : undefined;
     return {
       command: "continue_run",
       selector: {
@@ -1307,8 +1313,8 @@ export function parseCliArguments(args: string[]): ParsedCliArguments {
         ...(readOption(rest, "--runs-dir") ? { runsDir: readOption(rest, "--runs-dir") } : {})
       },
       ...(readOption(rest, "--engine") ? { engine: readOption(rest, "--engine") } : {}),
-      ...(fallbackEngines.length > 0 ? { fallbackEngines } : {}),
-      ...(readOption(rest, "--model") ? { model: readOption(rest, "--model") } : {})
+      ...(fallbackProfiles.length > 0 ? { fallbackProfiles } : {}),
+      ...(requestedModel !== undefined ? { model: requestedModel } : {})
     };
   }
 
@@ -2057,7 +2063,7 @@ export function renderCliHelp(): string {
     "",
     "Run options:",
     "  --engine <name>          Adapter: auto (default), claude, codex, gemini, or openai. auto detects your available coding agent.",
-    "  --fallback-engine <name> Explicit authorized fallback provider; repeat to define order.",
+    "  --fallback-profile <engine=model> Explicit authorized fallback provider and exact model; repeat to define order.",
     "                           openai routes to any OpenAI-compatible endpoint.",
     "                           Set MARTIN_OPENAI_BASE_URL, MARTIN_OPENAI_API_KEY,",
     "                           MARTIN_OPENAI_MODEL. Works with Ollama, OpenRouter,",
@@ -2071,6 +2077,8 @@ export function renderCliHelp(): string {
     "  --soft-limit-usd <n>     Soft budget warning threshold in USD.",
     "  --max-iterations <n>     Set the maximum number of attempts.",
     "  --max-tokens <n>         Set the maximum total token budget.",
+    "  --max-wall-clock-ms <n>  Set the hard elapsed time limit in milliseconds.",
+    "  --soft-time-limit-ms <n> Warn after this many milliseconds and allow the active attempt to finish.",
     "  --verify <cmd>           Shell command to run as the verifier after each attempt.",
     "  --verify-timeout-ms <n>  Verifier timeout in milliseconds.",
     "  --provider-execution-timeout-ms <n>",
@@ -2314,6 +2322,10 @@ async function executeRunCommand(
   // No versionOverride written to receipt — nothing is blocked in 0.6.0.
 
   if (engineRequired) {
+    // Model authority is a user-input gate and must be resolved before
+    // preflight performs any provider readiness probe or other side effect.
+    resolvedRequest.model = assertCliConcreteLiveModel(resolvedRequest.model);
+
     const preflightOutput = await executePreflightCommand(resolvedRequest, "json");
     const preflight = JSON.parse(preflightOutput.stdout) as {
       ready?: boolean;
@@ -2455,7 +2467,7 @@ async function executeRunCommand(
     resolvedRequest.providerExecutionTimeoutMs,
   );
   const fallbackAdapters = selectAuthorizedFallbackAdapters({
-    engines: resolvedRequest.fallbackEngines ?? [],
+    profiles: resolvedRequest.fallbackProfiles ?? [],
     primaryEngine: resolvedRequest.engine,
     workingDirectory: cliEnvironment.workingDirectory,
     mutationMode: effectiveMutationMode,
@@ -2483,6 +2495,14 @@ async function executeRunCommand(
       }
     : undefined;
 
+  const openAiAuthorityMetadata = resolvedRequest.engine === "openai" &&
+    typeof adapter.metadata.authPosture === "string" &&
+    typeof adapter.metadata.endpointClass === "string"
+    ? {
+        openAiAuthPosture: adapter.metadata.authPosture,
+        openAiEndpointClass: adapter.metadata.endpointClass,
+      }
+    : undefined;
   const executionMetadata = {
     ...resolvedRequest.metadata,
     executionMode,
@@ -2491,8 +2511,10 @@ async function executeRunCommand(
     ...(resolvedRequest.engine && resolvedRequest.engine !== "auto"
       ? { authorizedPrimaryEngine: resolvedRequest.engine }
       : {}),
-    ...(resolvedRequest.fallbackEngines?.length
-      ? { authorizedFallbackEngines: resolvedRequest.fallbackEngines.join(",") }
+    ...(resolvedRequest.model ? { authorizedPrimaryModel: resolvedRequest.model } : {}),
+    ...(openAiAuthorityMetadata ?? {}),
+    ...(resolvedRequest.fallbackProfiles?.length
+      ? { authorizedFallbackProfiles: JSON.stringify(resolvedRequest.fallbackProfiles) }
       : {})
   };
   // Load telemetry state before the governed run.
@@ -3313,15 +3335,14 @@ async function executeContinueRunCommand(
   const persistedPrimary =
     detail.loop.metadata["authorizedPrimaryEngine"] ??
     inferEngineFromAdapterId(detail.loop.attempts.at(-1)?.adapterId);
-  const persistedFallbackEngines = (detail.loop.metadata["authorizedFallbackEngines"] ?? "")
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean);
-  assertAuthorizedFallbackEngineNames(persistedFallbackEngines);
+  const persistedPrimaryModel = assertConcreteLiveModel(detail.loop.metadata["authorizedPrimaryModel"]);
+  const persistedFallbackProfiles = parsePersistedFallbackProfiles(
+    detail.loop.metadata["authorizedFallbackProfiles"]
+  );
 
   if (
-    command.fallbackEngines !== undefined &&
-    command.fallbackEngines.join(",") !== persistedFallbackEngines.join(",")
+    command.fallbackProfiles !== undefined &&
+    JSON.stringify(command.fallbackProfiles) !== JSON.stringify(persistedFallbackProfiles)
   ) {
     throw new CliCommandError(
       "policy_blocked",
@@ -3333,7 +3354,7 @@ async function executeContinueRunCommand(
   if (
     command.engine &&
     command.engine !== persistedPrimary &&
-    !persistedFallbackEngines.includes(command.engine)
+    !persistedFallbackProfiles.some((profile) => profile.engine === command.engine)
   ) {
     throw new CliCommandError(
       "policy_blocked",
@@ -3350,9 +3371,21 @@ async function executeContinueRunCommand(
       { suggestion: "Inspect the persisted run; if provider authority is unavailable, start a new governed run." }
     );
   }
-  const continuationFallbackEngines = persistedFallbackEngines.filter(
-    (candidate) => candidate !== engine
-  );
+  const selectedModel = engine === persistedPrimary
+    ? persistedPrimaryModel
+    : persistedFallbackProfiles.find((profile) => profile.engine === engine)?.model;
+  const model = assertConcreteLiveModel(selectedModel);
+  if (command.model !== undefined && command.model !== model) {
+    throw new CliCommandError(
+      "policy_blocked",
+      "continue cannot change the exact model authority of the persisted run.",
+      { suggestion: "Use the persisted engine and model profile, or start a new governed run." }
+    );
+  }
+  const continuationFallbackProfiles = [
+    ...(engine === persistedPrimary ? [] : [{ engine: persistedPrimary!, model: persistedPrimaryModel }]),
+    ...persistedFallbackProfiles.filter((profile) => profile.engine !== engine)
+  ];
   let codexProbe: CodexProbeForTests | undefined;
   if (engine === "claude" && !isCommandAvailable("claude")) {
     throw new CliCommandError("environment", "Persisted run provider 'claude' is not available on PATH.");
@@ -3377,6 +3410,7 @@ async function executeContinueRunCommand(
     codexProbe = resolveCodexProbeForCli({
       workingDirectory,
       availability,
+      model,
       providerExecutionTimeoutMs: detail.loop.task.providerExecutionTimeoutMs
     });
     if (!codexProbe.ok) {
@@ -3389,15 +3423,29 @@ async function executeContinueRunCommand(
   const adapter = selectAdapter(
     engine,
     workingDirectory,
-    command.model,
+    model,
     detail.loop.task.mutationMode,
     "live",
     codexProbe,
     detail.loop.task.verificationTimeoutMs,
     detail.loop.task.providerExecutionTimeoutMs
   );
+  if (engine === "openai") {
+    const persistedPosture = detail.loop.metadata["openAiAuthPosture"];
+    const persistedEndpointClass = detail.loop.metadata["openAiEndpointClass"];
+    if (
+      (persistedPosture !== undefined && persistedPosture !== adapter.metadata.authPosture) ||
+      (persistedEndpointClass !== undefined && persistedEndpointClass !== adapter.metadata.endpointClass)
+    ) {
+      throw new CliCommandError(
+        "policy_blocked",
+        "continue cannot change the persisted OpenAI auth posture or endpoint class.",
+        { suggestion: "Restore the persisted endpoint/auth authority, or start a new governed run." }
+      );
+    }
+  }
   const fallbackAdapters = selectAuthorizedFallbackAdapters({
-    engines: continuationFallbackEngines,
+    profiles: continuationFallbackProfiles,
     primaryEngine: engine,
     workingDirectory,
     mutationMode: detail.loop.task.mutationMode,
@@ -3419,8 +3467,9 @@ async function executeContinueRunCommand(
       ...detail.loop.metadata,
       resumedVia: "cli",
       ...(persistedPrimary ? { authorizedPrimaryEngine: persistedPrimary } : {}),
-      ...(persistedFallbackEngines.length
-        ? { authorizedFallbackEngines: persistedFallbackEngines.join(",") }
+      authorizedPrimaryModel: persistedPrimaryModel,
+      ...(persistedFallbackProfiles.length
+        ? { authorizedFallbackProfiles: JSON.stringify(persistedFallbackProfiles) }
         : {})
     },
     adapter,
@@ -3458,7 +3507,8 @@ async function executeContinueRunCommand(
       verification,
       outcome,
       engine,
-      fallbackEngines: continuationFallbackEngines
+      model,
+      fallbackProfiles: continuationFallbackProfiles
     },
     human: [
       `Continued persisted run ${result.loop.loopId}`,
@@ -3553,10 +3603,18 @@ async function executeDoctorCommand(
       codex: {
         ...buildCodexEngineDiagnostics(codexAvailability, codexProbe)
       },
-      openai: {
-        available: Boolean(resolveOpenAiCompatibleRuntimeConfig().model),
-        ...resolveOpenAiCompatibleRuntimeConfig()
-      },
+      openai: (() => {
+        const config = resolveOpenAiCompatibleRuntimeConfig();
+        return {
+          available: Boolean(config.model) && isOpenAiAuthPostureReady(config.authPosture),
+          baseUrl: config.baseUrl,
+          model: config.model,
+          apiKeyConfigured: config.apiKeyConfigured,
+          authPosture: config.authPosture,
+          billingMode: config.billingMode,
+          pricePerMTokenUsd: config.pricePerMTokenUsd,
+        };
+      })(),
       gemini: {
         available: geminiAvailable,
         ...(geminiAvailability.resolvedPath ? { resolvedPath: geminiAvailability.resolvedPath } : {})
@@ -3664,10 +3722,11 @@ async function executeEnvCommand(
           ...(snapshot.geminiAvailability.resolvedPath ? { resolvedPath: snapshot.geminiAvailability.resolvedPath } : {})
         },
         openai: {
-          ready: Boolean(openai.model),
+          ready: Boolean(openai.model) && isOpenAiAuthPostureReady(openai.authPosture),
           baseUrl: openai.baseUrl,
           model: openai.model,
-          apiKeyConfigured: openai.apiKeyConfigured
+          apiKeyConfigured: openai.apiKeyConfigured,
+          authPosture: openai.authPosture,
         }
       },
       receiptSigning: {
@@ -4235,7 +4294,8 @@ function resolveAutoEngine(): { engine: string; selectionReason: string } {
     { id: "claude", available: isCommandAvailable("claude") },
     { id: "codex", available: resolveCodexAvailabilityForCli().available },
     { id: "gemini", available: resolveCliCommandAvailability("gemini").available },
-    { id: "openai", available: Boolean(openAiConfig.baseUrl && openAiConfig.model) },
+    { id: "openai", available: Boolean(openAiConfig.baseUrl && openAiConfig.model) &&
+        isOpenAiAuthPostureReady(openAiConfig.authPosture) },
   ];
 
   // Step 3: If the trusted runtime hint maps to an available engine, use it.
@@ -6424,6 +6484,15 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
         index += 1;
         break;
       }
+      case "--max-wall-clock-ms":
+      case "--soft-time-limit-ms": {
+        const field = token === "--max-wall-clock-ms" ? "maxWallClockMs" : "softTimeLimitMs";
+        const value = consumeOptionValue(index, token, { allowNegativeNumber: true });
+        request.budget = { ...request.budget, [field]: positiveInteger(token, value) } as LoopBudget;
+        budgetOverrides[field] = true;
+        index += 1;
+        break;
+      }
       case "--policy":
         metadata.policyProfile = consumeOptionValue(index, token);
         index += 1;
@@ -6494,9 +6563,14 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
         request.engine = consumeOptionValue(index, token);
         index += 1;
         break;
-      case "--fallback-engine": {
-        const fallbackEngine = consumeOptionValue(index, token, { repeatable: true });
-        request.fallbackEngines = [...(request.fallbackEngines ?? []), fallbackEngine];
+      case "--fallback-engine":
+        throw legacyFallbackEngineError();
+      case "--fallback-profile": {
+        const rawProfile = consumeOptionValue(index, token, { repeatable: true });
+        request.fallbackProfiles = [
+          ...(request.fallbackProfiles ?? []),
+          ...parseAuthorizedFallbackProfiles([rawProfile])
+        ];
         index += 1;
         break;
       }
@@ -6530,15 +6604,18 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
     }
   }
 
-  assertAuthorizedFallbackEngineNames(request.fallbackEngines ?? []);
+  assertAuthorizedFallbackProfiles(request.fallbackProfiles ?? []);
+  if (request.model !== undefined && request.liveMode !== "proof") {
+    request.model = assertCliConcreteLiveModel(request.model);
+  }
   if (
     request.engine &&
     request.engine !== "auto" &&
-    request.fallbackEngines?.includes(request.engine)
+    request.fallbackProfiles?.some((profile) => profile.engine === request.engine)
   ) {
     throw new CliCommandError(
       "invalid_input",
-      "--fallback-engine cannot repeat the primary --engine."
+      "--fallback-profile cannot repeat the primary --engine."
     );
   }
 
@@ -6590,7 +6667,7 @@ function parseRunRequest(rest: string[]): RunCommandRequest {
     ...(request.runsDir ? { runsDir: request.runsDir } : {}),
     ...(request.model ? { model: request.model } : {}),
     ...(request.engine ? { engine: request.engine } : {}),
-    ...(request.fallbackEngines?.length ? { fallbackEngines: request.fallbackEngines } : {}),
+    ...(request.fallbackProfiles?.length ? { fallbackProfiles: request.fallbackProfiles } : {}),
     ...(request.liveMode ? { liveMode: request.liveMode } : {}),
     ...(request.mutationMode ? { mutationMode: request.mutationMode } : {}),
     ...(request.unsafeAllowUnguardedRun ? { unsafeAllowUnguardedRun: true } : {}),
@@ -6791,6 +6868,67 @@ function readOptions(tokens: string[], flag: string): string[] {
 }
 
 const AUTHORIZED_FALLBACK_ENGINES = new Set(["claude", "codex", "gemini", "openai"]);
+type AuthorizedFallbackProfile = { engine: string; model: string };
+
+function legacyFallbackEngineError(): CliCommandError {
+  return new CliCommandError(
+    "invalid_input",
+    "--fallback-engine no longer grants live authority. Use --fallback-profile engine=model."
+  );
+}
+
+function rejectLegacyFallbackEngineOption(tokens: string[]): void {
+  if (tokens.includes("--fallback-engine")) throw legacyFallbackEngineError();
+}
+
+function parseAuthorizedFallbackProfiles(values: string[]): AuthorizedFallbackProfile[] {
+  const profiles = values.map((value) => {
+    const separator = value.indexOf("=");
+    if (separator <= 0 || separator === value.length - 1) {
+      throw new CliCommandError("invalid_input", "--fallback-profile requires engine=model.");
+    }
+    return { engine: value.slice(0, separator), model: assertCliConcreteLiveModel(value.slice(separator + 1)) };
+  });
+  assertAuthorizedFallbackProfiles(profiles);
+  return profiles;
+}
+
+function assertCliConcreteLiveModel(value: unknown): string {
+  try {
+    return assertConcreteLiveModel(value);
+  } catch (error) {
+    throw new CliCommandError(
+      "invalid_input",
+      error instanceof Error ? error.message : "Explicit live model authority is invalid.",
+      { suggestion: "Provide one concrete model identifier with --model; sentinel and inferred values are not accepted." },
+    );
+  }
+}
+
+function assertAuthorizedFallbackProfiles(profiles: AuthorizedFallbackProfile[]): void {
+  assertAuthorizedFallbackEngineNames(profiles.map((profile) => profile.engine));
+  for (const profile of profiles) assertConcreteLiveModel(profile.model);
+}
+
+function parsePersistedFallbackProfiles(value: string | undefined): AuthorizedFallbackProfile[] {
+  if (!value) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw new CliCommandError("policy_blocked", "Persisted fallback profile authority is malformed.");
+  }
+  if (!Array.isArray(parsed) || parsed.some((profile) =>
+    typeof profile !== "object" || profile === null ||
+    typeof (profile as { engine?: unknown }).engine !== "string" ||
+    typeof (profile as { model?: unknown }).model !== "string"
+  )) {
+    throw new CliCommandError("policy_blocked", "Persisted fallback profile authority is malformed.");
+  }
+  const profiles = parsed as AuthorizedFallbackProfile[];
+  assertAuthorizedFallbackProfiles(profiles);
+  return profiles;
+}
 
 function assertAuthorizedFallbackEngineNames(engines: string[]): void {
   const seen = new Set<string>();
@@ -7003,6 +7141,16 @@ async function resolveGuardrails(
   if (request.budgetOverrides?.maxTokens) {
     budget.maxTokens = request.budget.maxTokens;
   }
+  for (const field of ["maxWallClockMs", "softTimeLimitMs"] as const) {
+    const value = request.budgetOverrides?.[field]
+      ? request.budget[field] : config?.budget?.[field] ?? request.budget[field];
+    if (value !== undefined) budget[field] = value;
+  }
+  try {
+    validateWallClockBudget(budget);
+  } catch (error) {
+    throw new CliCommandError("invalid_input", error instanceof Error ? error.message : String(error));
+  }
 
   if (budget.softLimitUsd >= budget.maxUsd) {
     budget.softLimitUsd = Math.round(budget.maxUsd * 0.75 * 100) / 100;
@@ -7145,8 +7293,8 @@ function parseGuardrailsYaml(contents: string): GuardrailsConfig {
           config.budget.softLimitUsd = toFiniteNumber(scalar);
         } else if (key === "maxIterations") {
           config.budget.maxIterations = toFiniteNumber(scalar);
-        } else if (key === "maxTokens") {
-          config.budget.maxTokens = toFiniteNumber(scalar);
+        } else if (key === "maxTokens" || key === "maxWallClockMs" || key === "softTimeLimitMs") {
+          config.budget[key] = toFiniteNumber(scalar);
         }
       }
 
@@ -7274,6 +7422,9 @@ function selectAdapter(
     return createOpenAiCompatibleAdapter({
       baseUrl,
       apiKey,
+      ...(openAiConfig.authPosture.posture === "remote_no_auth"
+        ? { authPosture: openAiConfig.authPosture.posture }
+        : {}),
       model,
       workingDirectory,
       ...(verifyTimeoutMs !== undefined ? { verifyTimeoutMs } : {})
@@ -7300,7 +7451,7 @@ function selectAdapter(
 }
 
 function selectAuthorizedFallbackAdapters(input: {
-  engines: string[];
+  profiles: AuthorizedFallbackProfile[];
   primaryEngine?: string;
   workingDirectory: string;
   mutationMode?: MutationMode;
@@ -7309,12 +7460,12 @@ function selectAuthorizedFallbackAdapters(input: {
   providerExecutionTimeoutMs?: number;
   externalWritesApproved: boolean;
 }): MartinAdapter[] {
-  if (input.engines.length === 0) return [];
-  assertAuthorizedFallbackEngineNames(input.engines);
+  if (input.profiles.length === 0) return [];
+  assertAuthorizedFallbackProfiles(input.profiles);
   if (input.liveMode !== "live") {
     throw new CliCommandError(
       "invalid_input",
-      "--fallback-engine is available only for live governed execution."
+      "--fallback-profile is available only for live governed execution."
     );
   }
   if (input.externalWritesApproved) {
@@ -7324,24 +7475,17 @@ function selectAuthorizedFallbackAdapters(input: {
       { suggestion: "Use one provider for irreversible/external-write work and verify persisted state independently." }
     );
   }
-  if (input.primaryEngine && input.primaryEngine !== "auto" && input.engines.includes(input.primaryEngine)) {
+  if (input.primaryEngine && input.primaryEngine !== "auto" && input.profiles.some((profile) => profile.engine === input.primaryEngine)) {
     throw new CliCommandError("invalid_input", "Fallback chain cannot include the primary engine.");
   }
 
-  return input.engines.map((engine) => {
+  return input.profiles.map(({ engine, model }) => {
     let codexProbe: CodexProbeForTests | undefined;
     if (engine === "openai") {
       const config = resolveOpenAiCompatibleRuntimeConfig();
       const localEndpoint = /^(?:https?:\/\/)?(?:localhost|127\.0\.0\.1|\[::1\])(?::|\/|$)/iu.test(
         config.baseUrl
       );
-      if (!config.model) {
-        throw new CliCommandError(
-          "environment",
-          "Authorized OpenAI-compatible fallback has no configured model.",
-          { suggestion: "Set MARTIN_OPENAI_MODEL before authorizing the OpenAI fallback." }
-        );
-      }
       if (!config.apiKeyConfigured && !localEndpoint) {
         throw new CliCommandError(
           "environment",
@@ -7370,6 +7514,7 @@ function selectAuthorizedFallbackAdapters(input: {
       codexProbe = resolveCodexProbeForCli({
         workingDirectory: input.workingDirectory,
         availability,
+        model,
         providerExecutionTimeoutMs: input.providerExecutionTimeoutMs
       });
       if (!codexProbe.ok) {
@@ -7381,7 +7526,7 @@ function selectAuthorizedFallbackAdapters(input: {
     return selectAdapter(
       engine,
       input.workingDirectory,
-      undefined,
+      model,
       input.mutationMode,
       input.liveMode,
       codexProbe,

@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 
 import { writeReceiptIntegrityMaterial } from "@martin/core";
 import { createLoopRecord, type LoopEventDraft, type LoopRecord } from "@martin/contracts";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { executeCli } from "../src/index.js";
 import { deriveWorkspaceId } from "../src/workflow-state.js";
@@ -204,25 +204,38 @@ async function withRunsRoot<T>(fn: (runsRoot: string) => Promise<T>): Promise<T>
 
 describe("operator commands", () => {
   it("doctor reports environment readiness and starter MCP tools", async () => {
-    const result = await withEnv("MARTIN_LIVE", "false", () => executeCli(["--json", "doctor"]));
-    const payload = JSON.parse(result.stdout);
+    vi.stubEnv("MARTIN_OPENAI_BASE_URL", "https://api.openai.com");
+    vi.stubEnv("MARTIN_OPENAI_API_KEY", undefined);
+    vi.stubEnv("MARTIN_OPENAI_MODEL", undefined);
+    vi.stubEnv("MARTIN_OPENAI_AUTH_POSTURE", undefined);
+    try {
+      const result = await withEnv("MARTIN_LIVE", "false", () => executeCli(["--json", "doctor"]));
+      const payload = JSON.parse(result.stdout);
 
-    expect(result.exitCode).toBe(0);
-    expect(payload.command).toBe("doctor");
-    expect(payload.cliVersion).toBeTypeOf("string");
-    expect(payload.profiles.minimal).toContain("martin_list_runs");
-    expect(payload.starterTools).toContain("martin_doctor");
-    expect(payload.environment.runsRoot).toBeTypeOf("string");
-    expect(payload.receiptScope).toEqual(payload.scope);
-    expect(payload.scope.invocationRoot).toBeTypeOf("string");
-    expect(payload.scope.repoRoot).toBe(payload.environment.workingDirectory);
-    expect(payload.scope.runsRoot).toBe(payload.environment.runsRoot);
-    expect(payload.engines.openai).toMatchObject({
-      available: false,
-      baseUrl: "https://api.openai.com",
-      apiKeyConfigured: false,
-      authPosture: "anonymous_or_local"
-    });
+      expect(result.exitCode).toBe(0);
+      expect(payload.command).toBe("doctor");
+      expect(payload.cliVersion).toBeTypeOf("string");
+      expect(payload.profiles.minimal).toContain("martin_list_runs");
+      expect(payload.starterTools).toContain("martin_doctor");
+      expect(payload.environment.runsRoot).toBeTypeOf("string");
+      expect(payload.receiptScope).toEqual(payload.scope);
+      expect(payload.scope.invocationRoot).toBeTypeOf("string");
+      expect(payload.scope.repoRoot).toBe(payload.environment.workingDirectory);
+      expect(payload.scope.runsRoot).toBe(payload.environment.runsRoot);
+      expect(payload.engines.openai).toMatchObject({
+        available: false,
+        baseUrl: "https://api.openai.com",
+        apiKeyConfigured: false,
+        authPosture: {
+          posture: "hosted_bearer",
+          endpointClass: "hosted",
+          transport: "https",
+          credentialConfigured: false,
+        },
+      });
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("preflight reports blocked state when the working directory is missing", async () => {
@@ -280,6 +293,8 @@ describe("operator commands", () => {
         "run",
         "--objective",
         "Repair the failing MCP lane",
+        "--model",
+        "test-no-runtime",
         "--verify",
         "pnpm --filter @martinloop/mcp test",
         "--budget-usd",

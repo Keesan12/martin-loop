@@ -17,6 +17,8 @@ export interface MartinPlanInput {
   maxUsd?: number;
   maxIterations?: number;
   maxTokens?: number;
+  maxWallClockMs?: number;
+  softTimeLimitMs?: number;
   maxMinutes?: number;
   maxFilesChanged?: number;
   maxCommands?: number;

@@ -33,12 +33,15 @@ test("runRootReleaseGuard accepts the current OSS-safe root package shape", asyn
   assert.equal(result.packChecked, false);
 });
 
-test("assertRootVersionPolicy accepts the current public pre-1.0 release line", () => {
+test("assertRootVersionPolicy accepts stable releases across the 1.0 transition", () => {
   assert.doesNotThrow(() => assertRootVersionPolicy("0.5.6"));
+  assert.doesNotThrow(() => assertRootVersionPolicy("1.0.0"));
 });
 
-test("assertRootVersionPolicy rejects versions outside the public pre-1.0 line", () => {
-  assert.throws(() => assertRootVersionPolicy("1.3.0"), /valid pre-1\.0 release/);
+test("assertRootVersionPolicy rejects nonstable or malformed coordinates", () => {
+  for (const version of ["1.0", "1.00.0", "v1.0.0", "1.0.0-rc.1"]) {
+    assert.throws(() => assertRootVersionPolicy(version), /valid stable release/);
+  }
 });
 
 test("assertPackedSurface rejects unexpected non-OSS paths", () => {

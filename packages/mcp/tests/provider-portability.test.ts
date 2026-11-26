@@ -14,6 +14,7 @@ const MANAGED_ENV = [
   "HOME",
   "MARTIN_LIVE",
   "MARTIN_OPENAI_API_KEY",
+  "MARTIN_OPENAI_AUTH_POSTURE",
   "MARTIN_OPENAI_BASE_URL",
   "MARTIN_OPENAI_BILLING_MODE",
   "MARTIN_OPENAI_MODEL",
@@ -34,6 +35,32 @@ afterEach(() => {
 });
 
 describe("MCP provider portability", () => {
+  it("shares fail-closed OpenAI auth posture across MCP readiness", async () => {
+    process.env.MARTIN_LIVE = "true";
+    process.env.MARTIN_OPENAI_BASE_URL = "http://router.example.test/v1";
+    process.env.MARTIN_OPENAI_MODEL = "router/model:exact";
+    process.env.MARTIN_OPENAI_API_KEY = "secret-mcp-posture-canary";
+
+    const blocked = await martinPreflightTool({ objective: "Reject HTTP bearer", engine: "openai" });
+    expect(blocked.ok).toBe(false);
+    expect(blocked.execution.engineAvailability.detail).toContain("OPENAI_BEARER_REQUIRES_HTTPS");
+    expect(JSON.stringify(blocked)).not.toContain("secret-mcp-posture-canary");
+
+    process.env.MARTIN_OPENAI_BASE_URL = "https://remote.example.test/v1";
+    delete process.env.MARTIN_OPENAI_API_KEY;
+    const ambiguous = await martinPreflightTool({ objective: "Reject ambiguous no-auth", engine: "openai" });
+    expect(ambiguous.ok).toBe(false);
+    expect(ambiguous.execution.engineAvailability.detail).toContain("REMOTE_NO_AUTH_REQUIRES_EXPLICIT_AUTHORITY");
+
+    process.env.MARTIN_OPENAI_AUTH_POSTURE = "remote_no_auth";
+    const admitted = await martinPreflightTool({
+      objective: "Accept explicit remote no-auth",
+      engine: "openai",
+      pricePerMTokenUsd: 1,
+    });
+    expect(admitted.ok).toBe(true);
+    expect(admitted.execution.engineAvailability.detail).toContain("remote_no_auth");
+  });
   it("accepts a configured local OpenAI-compatible endpoint without an openai executable", async () => {
     const runsRoot = await mkdtemp(join(tmpdir(), "martin-mcp-doctor-runs-"));
     process.env.MARTIN_LIVE = "true";
@@ -101,6 +128,7 @@ describe("MCP provider portability", () => {
     await expect(runLoopTool({
       objective: "Reject an unpriced remote model",
       engine: "openai",
+      model: "vendor/custom-model",
       maxIterations: 1,
     })).rejects.toMatchObject({
       name: "MartinToolError",
@@ -146,6 +174,7 @@ describe("MCP provider portability", () => {
       await expect(runLoopTool({
         objective: "Reject malformed billing configuration",
         engine: "openai",
+        model: "local-test-model",
         maxIterations: 1,
       })).rejects.toMatchObject({
         name: "MartinToolError",

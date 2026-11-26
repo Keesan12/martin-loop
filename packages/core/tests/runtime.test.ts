@@ -1508,7 +1508,108 @@ describe("runMartin", () => {
     expect(ledger.map((entry) => entry.kind)).not.toEqual(
       expect.arrayContaining(["attempt.admitted", "patch.generated", "budget.settled"])
     );
+    expect(readCompletedFileEffects(result.loop)).toMatchObject({
+      observationStatus: "unavailable",
+      touchedDuringExecution: [],
+      netChangedAtCompletion: [],
+      revertedBeforeCompletion: [],
+      observationReason: expect.stringMatching(/filesystem policy denies every writable path/iu)
+    });
     expect(integrity.state).toBe("verified");
+  });
+
+  it("discards an unaccepted first attempt and persists its terminal receipt when settlement identity is invalid", async () => {
+    const root = await mkdtemp(join(tmpdir(), "martin-rejected-settlement-"));
+    const repoRoot = join(root, "repo");
+    const runsRoot = join(root, "runs");
+    try {
+      await mkdir(repoRoot);
+      const file = join(repoRoot, "answer.txt");
+      await writeFile(file, "original\n", "utf8");
+      initializeGitRepo(repoRoot);
+      expect(runGit(repoRoot, ["config", "core.autocrlf", "false"])).toBe(0);
+      const verify = vi.fn();
+      const ids = createIdFactory();
+      let runId: string | undefined;
+      const adapter: MartinAdapter = {
+        adapterId: "direct:settlement-fixture",
+        kind: "direct-provider",
+        label: "Settlement fixture",
+        metadata: { providerId: "fixture", model: "expected-model" },
+        async execute() {
+          await writeFile(file, "candidate\n", "utf8");
+          return {
+            status: "completed",
+            summary: "Proposed a file change.",
+            usage: {
+              actualUsd: 0.01,
+              tokensIn: 10,
+              tokensOut: 5,
+              providerSettlement: {
+                providerId: "fixture",
+                model: "different-model",
+                source: "codex_jsonl",
+                inputTokens: 10,
+                outputTokens: 5,
+                rawUsageAvailable: true,
+                settledAt: "2026-11-19T20:00:00.000Z"
+              }
+            },
+            get verification() {
+              verify();
+              return { passed: true, summary: "Unexpected verifier observation." };
+            }
+          };
+        }
+      };
+      await expect(runMartin({
+        workspaceId: "ws_ops",
+        projectId: "proj_runtime",
+        task: {
+          title: "Check admission of accounting evidence",
+          objective: "Discard an attempt with contradictory accounting authority.",
+          verificationPlan: [],
+          repoRoot
+        },
+        budget: { maxUsd: 1, softLimitUsd: 1, maxIterations: 1, maxTokens: 2_000 },
+        adapter,
+        store: createFileRunStore({ runsRoot }),
+        idFactory(prefix) {
+          const id = ids(prefix);
+          if (prefix === "loop") runId = id;
+          return id;
+        }
+      })).rejects.toMatchObject({ code: "PROVIDER_SETTLEMENT_MODEL_MISMATCH" });
+
+      expect(verify).not.toHaveBeenCalled();
+      expect(await readFile(file, "utf8")).toBe("original\n");
+      expect(runId).toBeDefined();
+      const id = runId!;
+      const loopRecordPath = join(runsRoot, id, "loop-record.json");
+      const ledgerPath = join(runsRoot, id, "ledger.jsonl");
+      const persisted = JSON.parse(await readFile(loopRecordPath, "utf8"));
+      expect(persisted).toMatchObject({
+        status: "exited",
+        lifecycleState: "human_escalation",
+        cost: { provenance: "unavailable" },
+        terminationEnvelope: { class: "guard_stop", guard: { reasonCode: "provider_settlement_binding_rejected" } }
+      });
+      expect(persisted.cost).not.toHaveProperty("providerSettlement");
+      expect(await readLedger(runsRoot, id)).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          kind: "run.diagnostic",
+          payload: expect.objectContaining({
+            code: "provider_settlement_binding_rejected",
+            observedUsage: { actualUsd: 0.01, tokensIn: 10, tokensOut: 5 }
+          })
+        })
+      ]));
+      expect((await verifyReceiptIntegrityFromFiles({
+        runId: id, runsRoot, loopRecordPath, ledgerPath
+      })).state).toBe("verified");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it("preserves explicit read-only execution under a global deny policy", async () => {

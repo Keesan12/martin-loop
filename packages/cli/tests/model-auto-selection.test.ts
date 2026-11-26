@@ -30,6 +30,32 @@ describe("model-agnostic route classification", () => {
 });
 
 describe("model authority", () => {
+  it.each(["", " auto", "auto", "proof", "stub", "fallback", "simulation", "default"])(
+    "rejects invalid explicit live model authority %j on ordinary run and continue",
+    (model) => {
+      expect(() => parseCliArguments(["run", "task", "--engine", "codex", "--model", model]))
+        .toThrow(/model/iu);
+      expect(() => parseCliArguments(["continue", "loop_test", "--model", model]))
+        .toThrow(/model/iu);
+    },
+  );
+
+  it("preserves an accepted explicit model identifier exactly", () => {
+    const model = "vendor/model:2026-11-19";
+    expect(parseCliArguments(["run", "task", "--engine", "codex", "--model", model]))
+      .toMatchObject({ request: { model } });
+  });
+
+  it("validates live model authority before readiness probing or adapter construction", () => {
+    const source = readFileSync(fileURLToPath(new URL("../src/index.ts", import.meta.url)), "utf8");
+    const run = source.slice(source.indexOf("async function executeRunCommand("), source.indexOf("async function executePreflightCommand("));
+    const modelGate = run.indexOf("assertCliConcreteLiveModel(resolvedRequest.model)");
+    expect(modelGate).toBeGreaterThan(-1);
+    expect(modelGate).toBeLessThan(run.indexOf("executePreflightCommand("));
+    expect(modelGate).toBeLessThan(run.indexOf("resolveCodexProbeForCli("));
+    expect(modelGate).toBeLessThan(run.indexOf("selectAdapter("));
+  });
+
   it("allows only the explicit model override to reach delegated adapters", () => {
     const source = readFileSync(
       fileURLToPath(new URL("../src/index.ts", import.meta.url)),
@@ -187,6 +213,14 @@ describe("runtime auto-selection", () => {
     // Must check openai availability via resolveOpenAiCompatibleRuntimeConfig, not just CLI tools.
     expect(resolverFn).toContain("resolveOpenAiCompatibleRuntimeConfig()");
     expect(resolverFn).toContain(`{ id: "openai"`);
+  });
+
+  it("threads one non-secret OpenAI posture through selection, persistence, and continuation", () => {
+    expect(source).toContain("isOpenAiAuthPostureReady(openAiConfig.authPosture)");
+    expect(source).toContain("openAiAuthPosture: adapter.metadata.authPosture");
+    expect(source).toContain("openAiEndpointClass: adapter.metadata.endpointClass");
+    expect(source).toContain("continue cannot change the persisted OpenAI auth posture or endpoint class");
+    expect(source).not.toContain("openAiApiKey:");
   });
 
   it("MULTIPLE_RUNTIME_AMBIGUITY: resolveAutoEngine fails closed when multiple runtimes present", () => {

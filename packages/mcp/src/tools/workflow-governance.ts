@@ -3,6 +3,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 
 import { DEFAULT_BUDGET, type LoopBudget } from "@martin/contracts";
+import { validateWallClockBudget } from "@martin/core";
 
 import {
   createSkippedCliAvailability,
@@ -70,11 +71,7 @@ export interface MartinPolicyPackDefinition {
   requireApprovalAtOrAbove: MartinRiskAssessment["level"];
 }
 
-export interface MartinPlanBudget {
-  maxUsd: number;
-  softLimitUsd: number;
-  maxIterations: number;
-  maxTokens?: number;
+export interface MartinPlanBudget extends LoopBudget {
   maxMinutes: number;
   maxFilesChanged: number;
   maxCommands: number;
@@ -136,17 +133,14 @@ interface ContractOverrides {
   maxUsd?: number;
   maxIterations?: number;
   maxTokens?: number;
+  maxWallClockMs?: number;
+  softTimeLimitMs?: number;
   maxMinutes?: number;
   maxFilesChanged?: number;
   maxCommands?: number;
 }
 
-interface LoopBudgetOverrides {
-  maxUsd?: number;
-  softLimitUsd?: number;
-  maxIterations?: number;
-  maxTokens?: number;
-}
+type LoopBudgetOverrides = Partial<LoopBudget>;
 
 const HOST_COMMANDS = {
   claude: "claude",
@@ -459,6 +453,7 @@ export function buildRunContract(
 }
 
 export function normalizeLoopBudget(overrides: LoopBudgetOverrides = {}): LoopBudget {
+  validateWallClockBudget(overrides);
   const maxUsd = overrides.maxUsd ?? DEFAULT_BUDGET.maxUsd;
   const softLimitUsd = Math.min(
     overrides.softLimitUsd ?? DEFAULT_BUDGET.softLimitUsd,
@@ -469,7 +464,9 @@ export function normalizeLoopBudget(overrides: LoopBudgetOverrides = {}): LoopBu
     maxUsd,
     softLimitUsd,
     maxIterations: overrides.maxIterations ?? DEFAULT_BUDGET.maxIterations,
-    ...(overrides.maxTokens !== undefined ? { maxTokens: overrides.maxTokens } : {})
+    ...(overrides.maxTokens !== undefined ? { maxTokens: overrides.maxTokens } : {}),
+    ...(overrides.maxWallClockMs !== undefined ? { maxWallClockMs: overrides.maxWallClockMs } : {}),
+    ...(overrides.softTimeLimitMs !== undefined ? { softTimeLimitMs: overrides.softTimeLimitMs } : {})
   };
 }
 

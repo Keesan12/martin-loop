@@ -1823,7 +1823,7 @@ function assertApproval(value: unknown, path: string): void {
 }
 
 function assertBudget(value: unknown, path: string): void {
-  assertExactKeys(asObject(value, path), ["maxUsd", "softLimitUsd", "maxIterations", "maxTokens"], path);
+  assertExactKeys(asObject(value, path), ["maxUsd", "softLimitUsd", "maxIterations", "maxTokens", "maxWallClockMs", "softTimeLimitMs"], path);
 }
 
 function assertExactKeys(value: Record<string, unknown>, allowed: readonly string[], path: string): void {

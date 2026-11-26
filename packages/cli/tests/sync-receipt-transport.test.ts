@@ -261,6 +261,7 @@ describe("receipt-bound hosted sync transport", () => {
           attemptId: "att_8w318ieo",
           index: 0,
           adapterId: "agent-cli:claude",
+          model: "claude-sonnet-5",
           startedAt: "2026-08-20T11:58:00.000Z",
           completedAt: "2026-08-20T12:00:00.000Z",
           summary: `Read ${sensitiveWindowsRoot}\\package.json`,

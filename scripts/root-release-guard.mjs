@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 
 import { resolveRcCommandExecution } from "./rc-validation.mjs";
 
-const ROOT_VERSION_PATTERN = /^0\.\d+\.\d+$/;
+const ROOT_VERSION_PATTERN = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/u;
 const ALLOWED_FILES = [
   "benchmarks/fixtures",
   "CODE_OF_CONDUCT.md",
@@ -82,7 +82,7 @@ export async function runRootReleaseGuard(options = {}) {
 
 export function assertRootVersionPolicy(version) {
   if (!ROOT_VERSION_PATTERN.test(version)) {
-    throw new Error(`Root martin-loop version must remain a valid pre-1.0 release. Received ${version}.`);
+    throw new Error(`Root martin-loop version must be a valid stable release. Received ${version}.`);
   }
 }
 

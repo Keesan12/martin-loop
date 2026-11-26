@@ -1,13 +1,11 @@
 # Version Ledger
 
-This file is the release source of truth for package/version mapping in this repo. Check it before you cut a branch, update docs, or talk about npm state.
+This ledger maps the versions in this source tree. Use the live release sources below to check published versions.
 
 ## Root package: `martin-loop`
 
 - live npm dist-tag `latest`: verify live with `npm view martin-loop version`
-- live public GitHub release: `v0.9.0`
-- live public baseline in this train: `0.9.0`
-- root public baseline: `0.9.0`
+- public GitHub releases: find the matching `v<version>` tag in the [release list](https://github.com/Keesan12/martin-loop/releases)
 - releases consumed since the original `0.2.8` launch:
   - `0.2.9` fixed proof-run classification, Windows `.cmd` resolution, and public provider defaults
   - `0.2.10` tightened verifier evidence, `--runs-dir` consistency, and public help output
@@ -55,22 +53,19 @@ This file is the release source of truth for package/version mapping in this rep
   - `0.8.9` added provider fallback, durable execution leases, governed continuation, and reconnect-safe evidence retention
   - `0.8.10` closed the final post-0.8.9 CLI contracts, qualified the supported platform matrix, and completed paired trusted publication and Registry verification
   - `0.9.0` adds governed Swarm release authority, active MCP run controls, crash-safe cleanup ownership, and stronger evidence integrity
-  - `0.10.0` adds immutable resumable checkpoints, governed Memory V2, durable mission supervision, and source-bound restart/recovery authority
-- current in-repo root release baseline: `0.10.0` (pending publication)
+  - [`0.10.0`](https://github.com/Keesan12/martin-loop/releases/tag/v0.10.0) adds immutable resumable checkpoints, governed Memory V2, durable mission supervision, and source-bound restart/recovery authority
+- current in-repo root release baseline: `1.0.0`
 - next planned root follow-on: not scheduled
 
 ## Standalone package: `@martinloop/mcp`
 
 - live npm dist-tag `latest`: verify live with `npm view @martinloop/mcp version`
-- live public GitHub release: `mcp-v0.9.0`
-- live public baseline in this train: `0.9.0`
-- standalone MCP public baseline: `0.9.0`
-- official MCP Registry version: verify live during release close; do not cache the mutable registry version here
-- live MCPB baseline: `0.9.0`
-- live MCPB SHA-256: see the `mcp-v0.9.0` GitHub release checksum asset
-- live MCPB size: see the `mcp-v0.9.0` GitHub release asset
-- current in-repo standalone release baseline: `0.10.0` (pending publication)
-- current in-repo MCPB release baseline: `0.10.0` with manifest schema `0.3` (pending publication)
+- public GitHub releases: find the matching `mcp-v<version>` tag in the [release list](https://github.com/Keesan12/martin-loop/releases)
+- official MCP Registry: [MartinLoop server entry](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.Keesan12%2Fmartin-loop/versions/latest)
+- MCPB size and SHA-256: see the bundle and checksum assets on the matching MCP release
+- historical [MCP and MCPB 0.10.0 release](https://github.com/Keesan12/martin-loop/releases/tag/mcp-v0.10.0)
+- current in-repo standalone release baseline: `1.0.0`
+- current in-repo MCPB release baseline: `1.0.0` with manifest schema `0.3`
 - next planned standalone release: not scheduled
 
 ## Release rules
@@ -93,7 +88,7 @@ This file is the release source of truth for package/version mapping in this rep
 - The `0.8.9` train aligned the root package, standalone MCP package, plugin metadata, and MCPB product version at `0.8.9`. MCPB manifest schema remains `0.3`.
 - The `0.8.10` train aligned the root package, standalone MCP package, plugin metadata, and MCPB product version at `0.8.10`. MCPB manifest schema remains `0.3`.
 - The `0.9.0` candidate aligns the root package, standalone MCP package, plugin metadata, and MCPB product version at `0.9.0`. MCPB manifest schema remains `0.3`.
-- The `0.10.0` candidate aligns the root package, standalone MCP package, plugin metadata, and MCPB product version at `0.10.0`. MCPB manifest schema remains `0.3`.
+- The `1.0.0` source tree aligns the root package, standalone MCP package, plugin metadata, and MCPB product version at `1.0.0`. MCPB manifest schema remains `0.3`.
 - Do not infer standalone MCP release state from the root package, or the other way around.
 - Public release notes must be written for customers and evaluators, not for internal operators.
 - Public-facing examples, screenshots, README copy, and changelog entries must stay free of internal repo names, absolute system paths, private branch names, or process noise.

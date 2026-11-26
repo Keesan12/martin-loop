@@ -11,6 +11,29 @@
 import type { TerminationEnvelopeV1 } from "./exits.js";
 import type { AgentExecutionIntent } from "./agent-execution.js";
 import type { SwarmChildReceiptLink } from "./swarm.js";
+import type { OpenAiAuthPostureKind, OpenAiEndpointClass } from "./openai-auth-posture.js";
+
+export {
+  assertConcreteLiveModel,
+  validateConcreteLiveModel,
+} from "./model-authority.js";
+export type {
+  ConcreteLiveModelRejectionReason,
+  ConcreteLiveModelValidation,
+} from "./model-authority.js";
+
+export {
+  OPENAI_AUTH_POSTURES,
+  isOpenAiAuthPostureReady,
+  resolveOpenAiAuthPosture,
+} from "./openai-auth-posture.js";
+export type {
+  OpenAiAuthPosture,
+  OpenAiAuthPostureKind,
+  OpenAiEndpointClass,
+  OpenAiTransport,
+  ResolveOpenAiAuthPostureInput,
+} from "./openai-auth-posture.js";
 
 export {
   DEFAULT_AGENT_EXECUTION_INTENT,
@@ -98,6 +121,7 @@ export type LoopEventType =
   | "intervention.selected"
   | "verification.completed"
   | "budget.updated"
+  | "soft_limit_warning"
   | "run.completed"
   | "run.terminated";
 
@@ -185,6 +209,10 @@ export interface LoopBudget {
   softLimitUsd: number;
   maxIterations: number;
   maxTokens?: number;
+  /** Hard wall-clock run limit in milliseconds. */
+  maxWallClockMs?: number;
+  /** Advisory wall-clock deadline in milliseconds. Must precede the hard limit. */
+  softTimeLimitMs?: number;
 }
 
 export interface LoopCost {
@@ -221,6 +249,8 @@ export interface ProviderUsageSettlement {
   reasoningOutputTokens?: number;
   cacheCreationInputTokens?: number;
   billingMode?: "metered_api" | "subscription" | "local_unmetered" | "unknown";
+  openAiAuthPosture?: OpenAiAuthPostureKind;
+  openAiEndpointClass?: OpenAiEndpointClass;
   modelSource?: "provider_reported" | "explicit_override" | "provider_configured" | "agent_default" | "unavailable";
   pricingSource?: "provider_reported_total" | "static_catalog" | "blended_fallback" | "none";
   pricingVersion?: string;
@@ -377,6 +407,8 @@ export interface LoopRecord {
   lifecycleState: LoopLifecycleState;
   task: LoopTask;
   budget: LoopBudget;
+  /** Original time authority retained across continuation. */
+  wallClock?: { startedAtMs: number; hardLimitMs: number; deadlineAt?: string; softDeadlineAt?: string };
   cost: LoopCost;
   artifacts: LoopArtifact[];
   attempts: LoopAttempt[];

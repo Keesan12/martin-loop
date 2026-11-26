@@ -59,6 +59,12 @@ afterEach(() => {
   __setRunStoreOverrideForTests(undefined);
 });
 
+it.each(["martin_run", "martin_preflight", "martin_plan"] as const)("validates wall-clock budgets for %s", (tool) => {
+  const input = { objective: "Audit the workspace", maxWallClockMs: 10_000, softTimeLimitMs: 8_000 };
+  expect(validateToolInput(tool, input)).toMatchObject(input);
+  expect(() => validateToolInput(tool, { ...input, softTimeLimitMs: 10_000 })).toThrow(/below the hard wall-clock limit/u);
+});
+
 function createMemoryRunStore(runsRoot: string) {
   return {
     runsRoot,
@@ -360,6 +366,17 @@ describe("server validation", () => {
       pricePerMTokenUsd: -1
     })).toThrow("Invalid pricePerMTokenUsd.");
   });
+
+  it.each(["", " auto", "auto", "proof", "stub", "fallback", "simulation", "default"])(
+    "rejects invalid explicit model authority %j before MCP execution",
+    (model) => {
+      expect(() => validateToolInput("martin_run", {
+        objective: "Reject invalid model authority",
+        engine: "codex",
+        model
+      })).toThrow(/model/iu);
+    }
+  );
 
   it("accepts loopId and latest selectors for martin_status", () => {
     expect(
