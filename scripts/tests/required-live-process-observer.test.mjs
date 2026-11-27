@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -114,8 +114,11 @@ test("attributes concurrent native and command-shim provider launches with exact
   assert.ok(starts.every((record) => record.completedAt === undefined));
   const completedAt = new Date().toISOString();
   const references = attempts.map((attempt) => ({ ...attempt, startedAt, completedAt }));
+  const alias = join(root, "workspace alias");
+  await symlink(attempts[0].cwd, alias, process.platform === "win32" ? "junction" : "dir");
+  const aliasedReferences = [{ ...references[0], cwd: alias }, ...references.slice(1)];
   const records = await readProviderProcessObservations(authority);
-  const bound = bindProviderProcessObservations(records, references, authority);
+  const bound = bindProviderProcessObservations(records, aliasedReferences, authority);
   assert.equal(new Set(bound.map((record) => record.providerProcessId)).size, 3);
   bound.forEach((record, index) => {
     assert.equal(record.childRunId, references[index].childRunId);
@@ -128,6 +131,14 @@ test("attributes concurrent native and command-shim provider launches with exact
   assert.throws(() => bindProviderProcessObservations(records.slice(1), references, authority), /missing or ambiguous/i);
   assert.throws(() => bindProviderProcessObservations(records, [
     { ...references[0], sessionId: references[1].sessionId }, ...references.slice(1),
+  ], authority), /missing or ambiguous/i);
+  const siblingAlias = join(root, "sibling workspace alias");
+  await symlink(attempts[1].cwd, siblingAlias, process.platform === "win32" ? "junction" : "dir");
+  assert.throws(() => bindProviderProcessObservations(records, [
+    { ...references[0], cwd: siblingAlias }, ...references.slice(1),
+  ], authority), /missing or ambiguous/i);
+  assert.throws(() => bindProviderProcessObservations(records, [
+    { ...references[0], cwd: join(root, "missing workspace alias") }, ...references.slice(1),
   ], authority), /missing or ambiguous/i);
   assert.throws(() => bindProviderProcessObservations([
     records[0], { ...records[1], providerProcessId: records[0].providerProcessId }, records[2],

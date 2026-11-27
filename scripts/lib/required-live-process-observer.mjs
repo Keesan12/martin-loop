@@ -20,6 +20,18 @@ function pathKey(path) {
   return process.platform === "win32" ? canonical.toLowerCase() : canonical;
 }
 
+function attemptWorkspaceKey(path) {
+  const lexical = pathKey(path);
+  if (lexical === undefined) return undefined;
+  try {
+    return pathKey(realpathSync(path));
+  } catch (error) {
+    // Retained attempts may refer to a cleaned workspace. In that case,
+    // only its exact recorded spelling can establish the binding.
+    return error?.code === "ENOENT" ? lexical : undefined;
+  }
+}
+
 function stableTime(value) {
   return typeof value === "string" ? Date.parse(value) : NaN;
 }
@@ -177,7 +189,7 @@ export function bindProviderProcessObservations(records, attempts, authority) {
   }
   const claimed = new Set();
   return attempts.map((attempt) => {
-    const cwd = pathKey(attempt.cwd);
+    const cwd = attemptWorkspaceKey(attempt.cwd);
     const started = stableTime(attempt.startedAt);
     const completed = stableTime(attempt.completedAt);
     const matches = records.filter((record) =>

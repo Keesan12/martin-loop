@@ -3,15 +3,15 @@
   "sourceAuthority": "validated-internal-release-source",
   "sourceRepositoryFingerprint": "04aac733f3b08513fddcc72a9013b9f59cf7919f9a0a3893d0b3d953929826ec",
   "packageVersion": "1.0.0",
-  "privateMergeSha": "f444cd37ffaa4eac289d99084d60ffda6a13d830",
-  "privateMainShaValidated": "f444cd37ffaa4eac289d99084d60ffda6a13d830",
+  "privateMergeSha": "35354b33f2c210c54b1d65a65be4c638d414620b",
+  "privateMainShaValidated": "35354b33f2c210c54b1d65a65be4c638d414620b",
   "publicBaseSha": "4a481931972d061669dea9a2694279f11b9544fa",
   "promotedBy": "Keesan12",
-  "validatedAt": "2026-11-27T01:13:58.697Z",
+  "validatedAt": "2026-11-27T02:23:40.062Z",
   "internalHealthPassed": true,
-  "internalHealthEvidenceSha256": "55b19ec32884bdcdae5a467c29c8822fa110992abd7df450524c59cd7ad88ad0",
+  "internalHealthEvidenceSha256": "1185e49c7ea1e15a691ba4957666c939dcae4a6507724e923f2c33b553932cf5",
   "surfaceSpecHash": "a9c8d22be91bc0dd19238f7676aec62aacc77d8cc3a66327b46d71f16d65164a",
-  "publicSurfaceHash": "ec310b99be2a3b3cef2ff83f4653304362cbe5993178209a6ea13d9ea6afe647",
+  "publicSurfaceHash": "551bb61b9a094880aa92d90d4fa002e32ec425c8dfb7f1ead6cb9c066c5266c3",
   "publicSurfaceEntries": [
     {
       "path": ".agents/plugins/marketplace.json",
@@ -4006,7 +4006,7 @@
     {
       "path": "scripts/lib/required-live-process-observer.mjs",
       "mode": "100644",
-      "sha256": "2164b7db1ac8546e71f5f0fa0d2fc2fb65a136268c31880ace9ae2968d80d6d9"
+      "sha256": "861ffc2df9411a5bc1d0ba77b6469584f40bb63f03396566d5a4078fdf1d00f4"
     },
     {
       "path": "scripts/lifecycle-truth-matrix.mjs",
@@ -4331,7 +4331,7 @@
     {
       "path": "scripts/tests/required-live-process-observer.test.mjs",
       "mode": "100644",
-      "sha256": "96e450cf5d44cbc63cdfea4ca2219a8d78556b3747286ff0e6b3e81d55bb211c"
+      "sha256": "7dd11a5c1276af9dde986ae0384bd73641f96fc99e8ad14bd428124f8be70030"
     },
     {
       "path": "scripts/tests/required-live-qualification.test.mjs",
