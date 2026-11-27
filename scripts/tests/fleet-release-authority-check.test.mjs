@@ -16,6 +16,15 @@ test("release authority accepts an aligned 0.5.6 candidate", async () => {
   });
 });
 
+test("release authority accepts an aligned 1.0.0 candidate", async () => {
+  await withFixture(async (rootDir) => {
+    assert.deepEqual(await collectReleaseAuthorityFailures(rootDir), []);
+    await writeFile(path.join(rootDir, "README.md"), "For deterministic installs, pin `martin-loop@1.1.0`.\n");
+    const failures = await collectReleaseAuthorityFailures(rootDir);
+    assert.match(failures.join("\n"), /stale current release reference 1\.1\.0; expected 1\.0\.0/);
+  }, "1.0.0");
+});
+
 test("release authority rejects drift across package, server, truth, runtime, and facade surfaces", async () => {
   await withFixture(async (rootDir) => {
     await writeJson(path.join(rootDir, "packages", "mcp", "server.json"), {
@@ -130,7 +139,7 @@ test("release authority rejects stale current install authority in README", asyn
   });
 });
 
-async function withFixture(run) {
+async function withFixture(run, releaseVersion = TEST_RELEASE_VERSION) {
   const rootDir = await mkdtemp(path.join(os.tmpdir(), "martin-release-authority-"));
   try {
     for (const relativeDir of [
@@ -148,44 +157,44 @@ async function withFixture(run) {
 
     await writeJson(path.join(rootDir, "package.json"), {
       name: "martin-loop",
-      version: TEST_RELEASE_VERSION,
+      version: releaseVersion,
     });
     await writeJson(path.join(rootDir, "packages", "mcp", "package.json"), {
       name: "@martinloop/mcp",
-      version: TEST_RELEASE_VERSION,
+      version: releaseVersion,
     });
     await writeJson(path.join(rootDir, "packages", "mcp", "server.json"), {
-      version: TEST_RELEASE_VERSION,
+      version: releaseVersion,
       packages: [
         {
           registryType: "npm",
           identifier: "@martinloop/mcp",
-          version: TEST_RELEASE_VERSION,
+          version: releaseVersion,
         },
       ],
     });
     await writeJson(path.join(rootDir, "docs", "product-truth", "public-release-truth.json"), {
       schemaVersion: "1.0.0",
-      cliVersion: TEST_RELEASE_VERSION,
-      mcpVersion: TEST_RELEASE_VERSION,
+      cliVersion: releaseVersion,
+      mcpVersion: releaseVersion,
       failureClassCount: 13,
     });
     await writeJson(path.join(rootDir, "dist", "vendor", "cli", "package.json"), {
       name: "@martin/cli",
-      version: TEST_RELEASE_VERSION,
+      version: releaseVersion,
     });
     await writeJson(path.join(rootDir, "packages", "mcp", "mcpb", "manifest.json"), {
       manifest_version: "0.3",
-      version: TEST_RELEASE_VERSION,
+      version: releaseVersion,
     });
     await writeJson(path.join(rootDir, "plugins", "martinloop", "plugin.json"), {
       name: "martinloop",
-      version: TEST_RELEASE_VERSION,
+      version: releaseVersion,
     });
     await writeJson(path.join(rootDir, "plugins", "martinloop", ".mcp.json"), {
       mcpServers: {
         "martin-loop": {
-          args: ["-y", `@martinloop/mcp@${TEST_RELEASE_VERSION}`],
+          args: ["-y", `@martinloop/mcp@${releaseVersion}`],
         },
       },
     });
@@ -201,7 +210,7 @@ async function withFixture(run) {
     });
     await writeFile(
       path.join(rootDir, "packages", "mcp", "src", "package-version.ts"),
-      `export const MARTIN_MCP_PACKAGE_VERSION = "${TEST_RELEASE_VERSION}";\n`,
+      `export const MARTIN_MCP_PACKAGE_VERSION = "${releaseVersion}";\n`,
       "utf8",
     );
     await writeFile(
@@ -209,10 +218,10 @@ async function withFixture(run) {
       [
         "- live npm dist-tag `latest`: `0.5.5`",
         "- live public GitHub release: `v0.5.5`",
-        `- current in-repo root release target: \`${TEST_RELEASE_VERSION}\` (pending publication)`,
+        `- current in-repo root release target: \`${releaseVersion}\` (pending publication)`,
         "- live npm dist-tag `latest`: `0.5.5`",
         "- live public GitHub release: `mcp-v0.5.5`",
-        `- current in-repo standalone release target: \`${TEST_RELEASE_VERSION}\` (pending publication)`,
+        `- current in-repo standalone release target: \`${releaseVersion}\` (pending publication)`,
         "",
       ].join("\n"),
       "utf8",
@@ -220,9 +229,9 @@ async function withFixture(run) {
     await writeFile(
       path.join(rootDir, "README.md"),
       [
-        `Release notes for the current root package: MartinLoop ${TEST_RELEASE_VERSION}.`,
-        `For deterministic installs, pin \`martin-loop@${TEST_RELEASE_VERSION}\`.`,
-        `<!-- MCP package: @martinloop/mcp@${TEST_RELEASE_VERSION} -->`,
+        `Release notes for the current root package: MartinLoop ${releaseVersion}.`,
+        `For deterministic installs, pin \`martin-loop@${releaseVersion}\`.`,
+        `<!-- MCP package: @martinloop/mcp@${releaseVersion} -->`,
         "",
       ].join("\n"),
       "utf8",

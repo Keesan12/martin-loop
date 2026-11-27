@@ -162,6 +162,8 @@ const trustedCaptureCases = [
   ["Q-06 rejects a cross-attempt child observation", "live-swarm-canary-capture.json", (value) => { value.children[0].attemptId = "attempt-from-another-run"; }, /attempt|identity/iu],
   ["Q-06 rejects a cross-workspace child observation", "live-swarm-canary-capture.json", (value) => { value.children[0].workspaceId = "workspace-from-another-run"; }, /workspace/iu],
   ["Q-06 rejects a cross-source child observation", "live-swarm-canary-capture.json", (value) => { value.children[0].workspaceSourceSha = "f".repeat(40); }, /source/iu],
+  ["Q-06 rejects a provider PID reused by another child", "live-swarm-canary-capture.json", (value) => { value.children[0].providerProcessId = value.children[1].providerProcessId; }, /provider process IDs must be unique/iu],
+  ["Q-06 rejects a provider process outside the attempt window", "live-swarm-canary-capture.json", (value) => { value.children[0].launchedAt = "2020-01-01T00:00:00.000Z"; }, /outside the recorded attempt/iu],
   ["Q-08 rejects a simulated trusted execution claim", "live-swarm-canary-capture.json", (value) => { value.executionMode = "simulated"; }, /executionMode|governed/iu],
   ["Q-10 rejects ledger/dossier/budget observation inconsistency", "live-swarm-full-capture.json", (value) => { value.accounting.settledUsd += 1; }, /accounting/iu],
 ];

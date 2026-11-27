@@ -32,9 +32,28 @@ test("shouldScanPath skips known fixture and guard files", () => {
   assert.equal(shouldScanPath("scripts/public-copy-scan.mjs"), false);
   assert.equal(shouldScanPath("scripts/public-portability-guard.mjs"), false);
   assert.equal(shouldScanPath("scripts/run-swarm-live-qualification.ts"), false);
+  assert.equal(shouldScanPath(".planning/STATE.md"), false);
+  assert.equal(shouldScanPath(".release/qualification/evidence.json"), false);
+  assert.equal(shouldScanPath(".planning/STATE.md", { publicDistribution: true }), true);
+  assert.equal(shouldScanPath(".release/qualification/evidence.json", { publicDistribution: true }), true);
   assert.equal(shouldScanPath("scripts/run-swarm-live-qualification-public.ts"), true);
   assert.equal(shouldScanPath("packages/core/src/public-copy-scan.test-helper.ts"), true);
   assert.equal(shouldScanPath("packages/core/src/index.ts"), true);
+});
+
+test("public distribution scans private-only planning and release paths if they leak into the public tree", async () => {
+  const rootDir = await mkdtemp(path.join(os.tmpdir(), "martin-portability-public-private-path-"));
+  const relativePath = ".planning/STATE.md";
+  await mkdir(path.join(rootDir, ".planning"), { recursive: true });
+  execFileSync("git", ["init", "-b", "main"], { cwd: rootDir, stdio: "ignore" });
+  execFileSync("git", ["remote", "add", "origin", "https://github.com/Keesan12/martin-loop.git"], { cwd: rootDir, stdio: "ignore" });
+  await writeFile(path.join(rootDir, relativePath), "Evidence: C:\\Users\\Example\\private\\proof.json\n");
+  execFileSync("git", ["add", relativePath], { cwd: rootDir, stdio: "ignore" });
+
+  await assert.rejects(
+    () => runPublicPortabilityGuard({ rootDir }),
+    /\.planning\/STATE\.md: windows user profile path/iu,
+  );
 });
 
 test("runPublicPortabilityGuard reports exact production paths and rules for representative credentials", async () => {

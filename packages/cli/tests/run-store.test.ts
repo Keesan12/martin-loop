@@ -360,6 +360,20 @@ describe("buildVerificationSummary", () => {
 });
 
 describe("buildVerifiedHandoffFromPersistedLoop", () => {
+  it("retains non-secret OpenAI authority without credential material", () => {
+    const loop = makeLoopRecord({
+      metadata: {
+        openAiAuthPosture: "router_bearer",
+        openAiEndpointClass: "router",
+      },
+    });
+    const dossier = buildRunDossier(makePersistedDetail(loop));
+    const serialized = JSON.stringify(dossier);
+    expect(serialized).toContain("router_bearer");
+    expect(serialized).toContain("openAiEndpointClass");
+    expect(serialized).not.toContain("secret-run-store-canary");
+    expect(serialized).not.toContain("MARTIN_OPENAI_API_KEY");
+  });
   it("preserves successful verifier lifecycle evidence for a budget-stopped governed run", () => {
     const loop = makeLoopRecord({
       loopId: "loop_ntaopvdc_shape",
@@ -466,6 +480,73 @@ describe("buildVerifiedHandoffFromPersistedLoop", () => {
       lifecycleTruth: handoff.lifecycleTruth,
       fileEffects: handoff.fileEffects,
     });
+  });
+
+  it("preserves the exact accepted fallback model in receipt and dossier projections", () => {
+    const base = makeLifecycleTruthLoop();
+    const loop = makeLifecycleTruthLoop({
+      attempts: [
+        {
+          attemptId: "attempt-primary",
+          index: 1,
+          adapterId: "agent-cli:claude",
+          model: "claude-sonnet-4-5",
+          startedAt: "2026-10-09T20:28:00.000Z",
+          completedAt: "2026-10-09T20:28:30.000Z",
+          failureClass: "environment_mismatch",
+        },
+        {
+          attemptId: "attempt_lifecycle_truth",
+          index: 2,
+          adapterId: "agent-cli:codex",
+          model: "gpt-6.1-sol-2026-11-01",
+          startedAt: "2026-10-09T20:29:00.000Z",
+          completedAt: "2026-10-09T20:30:00.000Z",
+        },
+      ],
+      events: [
+        {
+          eventId: "evt_fallback_started",
+          timestamp: "2026-10-09T20:29:00.000Z",
+          type: "attempt.started",
+          lifecycleState: "running",
+          payload: {
+            attemptId: "attempt_lifecycle_truth",
+            adapterId: "agent-cli:codex",
+            providerId: "codex",
+            model: "gpt-6.1-sol-2026-11-01",
+          },
+        },
+        ...base.events,
+      ],
+      cost: {
+        actualUsd: 1,
+        avoidedUsd: 0,
+        tokensIn: 100,
+        tokensOut: 50,
+        providerSettlement: {
+          providerId: "codex",
+          model: "gpt-6.1-sol-2026-11-01",
+          source: "codex_jsonl",
+          inputTokens: 100,
+          outputTokens: 50,
+          rawUsageAvailable: true,
+          settledAt: "2026-10-09T20:30:00.000Z",
+        },
+      },
+    });
+
+    const dossier = buildRunDossier(makePersistedDetail(loop));
+    const receipt = dossier["receipt"] as Record<string, unknown>;
+    expect(JSON.stringify(dossier)).toContain("gpt-6.1-sol-2026-11-01");
+    expect(JSON.stringify(receipt)).toContain("gpt-6.1-sol-2026-11-01");
+    expect(receipt["executionAuthority"]).toEqual({
+      attemptId: "attempt_lifecycle_truth",
+      adapterId: "agent-cli:codex",
+      providerId: "codex",
+      model: "gpt-6.1-sol-2026-11-01",
+    });
+    expect(JSON.stringify(dossier)).toContain("claude-sonnet-4-5");
   });
 
   it("preserves reverted and observed no-edit file effects without conflating them", () => {

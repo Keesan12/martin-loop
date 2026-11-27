@@ -24,6 +24,7 @@ import {
   normalizeProviderExecutionTimeoutMs,
   type AgentExecutionIntent
 } from "@martin/core";
+import { assertConcreteLiveModel } from "@martin/contracts";
 
 import {
   readGitChangedFiles,
@@ -34,6 +35,7 @@ import {
   type SpawnLike
 } from "./cli-bridge.js";
 import { buildCodexExecArgs } from "./codex-launcher.js";
+import { readCodexSessionEvidence, readCodexTokenUsage, type CodexTokenUsage } from "./codex-session-evidence.js";
 import {
   createAdapterCapabilities,
   normalizeStructuredErrors,
@@ -166,8 +168,19 @@ interface ClaudeJsonOutput {
   };
 }
 
+interface ClaudeStreamInspection {
+  result?: ClaudeJsonOutput;
+  observedModel?: string;
+  malformedLine?: string;
+  inheritedMcpServers: number;
+}
+
 interface CodexJsonEvent {
   type?: string;
+  model?: string;
+  thread_id?: string;
+  message?: unknown;
+  error?: { message?: unknown };
   item?: {
     id?: string;
     type?: string;
@@ -181,33 +194,73 @@ interface CodexJsonEvent {
   };
 }
 
-interface GeminiJsonOutput {
-  session_id?: string;
-  response?: string;
+interface GeminiStreamEvent {
+  type?: string;
+  model?: string;
+  role?: string;
+  content?: string;
+  severity?: string;
+  message?: string;
+  status?: string;
   stats?: {
-    cachedReadTokens?: number;
-    cachedWriteTokens?: number;
-    inputTokens?: number;
-    outputTokens?: number;
-    thoughtTokens?: number;
-    totalTokens?: number;
+    cached?: number;
+    cached_input_tokens?: number;
+    input?: number;
+    input_tokens?: number;
+    output_tokens?: number;
+    reasoning_output_tokens?: number;
+    total_tokens?: number;
   };
-  error?: {
-    type?: string;
-    message?: string;
-    code?: number;
-  };
+  error?: { type?: string; message?: string; code?: number | string };
 }
 
-function extractClaudeObservedModel(stdout: string): string | undefined {
+interface GeminiStreamInspection {
+  summary?: string;
+  observedModel?: string;
+  usage?: MartinAdapterResult["usage"];
+  protocolFailure?: string;
+}
+
+function inspectClaudeStream(stdout: string): ClaudeStreamInspection {
+  let result: ClaudeJsonOutput | undefined;
+  let observedModel: string | undefined;
+  let inheritedMcpServers = 0;
   for (const line of stdout.split(/\r?\n/u)) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      continue;
+    }
     try {
-      const event = JSON.parse(line) as Record<string, unknown>;
+      const event = JSON.parse(trimmed) as Record<string, unknown>;
       if (event.type === "system" && event.subtype === "init" && typeof event.model === "string") {
-        return event.model;
+        observedModel = event.model;
+        if (Array.isArray(event.mcp_servers)) {
+          inheritedMcpServers = Math.max(inheritedMcpServers, event.mcp_servers.length);
+        }
+      }
+      if (event.type === "result") {
+        result = event as unknown as ClaudeJsonOutput;
       }
     } catch {
-      // Ignore non-JSON stream fragments.
+      return { result, observedModel, malformedLine: truncate(trimmed, 200), inheritedMcpServers };
+    }
+  }
+  return { result, observedModel, inheritedMcpServers };
+}
+
+function validateClaudeUsage(result: ClaudeJsonOutput): string | undefined {
+  const values: Array<[string, unknown]> = [
+    ["total_cost_usd", result.total_cost_usd],
+    ["input_tokens", result.usage?.input_tokens ?? result.usage?.inputTokens],
+    ["output_tokens", result.usage?.output_tokens ?? result.usage?.outputTokens],
+    ["cache_read_input_tokens", result.usage?.cache_read_input_tokens ?? result.usage?.cacheReadInputTokens],
+    ["cache_creation_input_tokens", result.usage?.cache_creation_input_tokens ?? result.usage?.cacheCreationInputTokens],
+    ["cache_creation.ephemeral_5m_input_tokens", result.usage?.cache_creation?.ephemeral_5m_input_tokens],
+    ["cache_creation.ephemeral_1h_input_tokens", result.usage?.cache_creation?.ephemeral_1h_input_tokens]
+  ];
+  for (const [label, value] of values) {
+    if (value !== undefined && (typeof value !== "number" || !Number.isFinite(value) || value < 0)) {
+      return `Claude terminal usage/cost field ${label} must be a finite non-negative number.`;
     }
   }
   return undefined;
@@ -302,169 +355,178 @@ function extractUsage(
   });
 }
 
-/**
- * Returns the provider's failure message when the Codex JSONL stream shows a failed turn:
- * an explicit `turn.failed`, or an `error` event with no `turn.completed`. Undefined otherwise.
- */
-function findCodexTurnFailure(stdout: string): string | undefined {
-  let completed = false;
-  let turnFailed = false;
-  let message: string | undefined;
-  for (const line of stdout.split(/\r?\n/u)) {
-    let event: { type?: string; message?: unknown; error?: { message?: unknown } };
-    try {
-      event = JSON.parse(line.trim()) as typeof event;
-    } catch {
-      continue;
-    }
-    if (event.type === "turn.completed") completed = true;
-    if (event.type === "turn.failed") {
-      turnFailed = true;
-      message = String(event.error?.message ?? message ?? "Codex turn failed.");
-    } else if (event.type === "error") {
-      message ??= String(event.message ?? "Codex reported an error.");
-    }
-  }
-  if (turnFailed) return message;
-  return message !== undefined && !completed ? message : undefined;
+interface CodexExecutionInspection {
+  summary: string;
+  usage: MartinAdapterResult["usage"];
+  protocolFailure?: string;
 }
 
-function codexTurnCompleted(stdout: string): boolean {
-  return /"type"\s*:\s*"turn\.completed"/u.test(stdout);
-}
-
-function extractCodexJsonlResult(
+async function inspectCodexExecution(
   stdout: string,
-  modelLabel: string | undefined
-): { summary: string; usage: MartinAdapterResult["usage"] } | undefined {
-  const events = stdout
-    .split(/\r?\n/u)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      try {
-        return JSON.parse(line) as CodexJsonEvent;
-      } catch {
-        return undefined;
+  requestedModel: string | undefined,
+  launch: { workingDirectory: string; startedAt: number; completedAt: number }
+): Promise<CodexExecutionInspection> {
+  const events: CodexJsonEvent[] = [];
+  let protocolFailure: string | undefined;
+  for (const row of stdout.split(/\r?\n/u)) {
+    if (!row.trim()) continue;
+    try {
+      const value = JSON.parse(row) as CodexJsonEvent | null;
+      if (!value || typeof value !== "object" || Array.isArray(value) || typeof value.type !== "string") {
+        throw new Error("Invalid event");
       }
-    })
-    .filter((event): event is CodexJsonEvent => event !== undefined);
-
-  if (events.length === 0) {
-    return undefined;
+      events.push(value);
+    } catch {
+      protocolFailure = "Codex emitted malformed JSONL before terminal success.";
+    }
+  }
+  const providerFailure = events.find((event) => event.type === "turn.failed" || event.type === "error");
+  if (providerFailure) {
+    protocolFailure ??= String(providerFailure.error?.message ?? providerFailure.message ?? "Codex reported an error.");
+  }
+  const completions = events.filter((event) => event.type === "turn.completed");
+  const terminal = completions.at(-1);
+  const usage = readCodexTokenUsage(terminal?.usage);
+  if (completions.length !== 1 || terminal !== events.at(-1)) {
+    protocolFailure ??= "Codex stream ended without a single final turn.completed terminal success.";
+  } else if (!usage) {
+    protocolFailure ??= "Codex terminal completion did not include valid provider usage.";
+  }
+  const first = events[0];
+  const threadCount = events.filter((event) => event.type === "thread.started").length;
+  const turnCount = events.filter((event) => event.type === "turn.started").length;
+  const threadId = threadCount === 1 && first?.type === "thread.started"
+    && typeof first.thread_id === "string" && first.thread_id.trim()
+    ? first.thread_id : undefined;
+  const turnStartIndex = events.findIndex((event) => event.type === "turn.started");
+  if (threadId === undefined || turnCount !== 1 || turnStartIndex < 1 || turnStartIndex >= events.length - 1) {
+    protocolFailure ??= "Codex stream must open one thread and start one turn before completing.";
+  }
+  const context = threadId !== undefined
+    ? await readCodexSessionEvidence({ ...launch, threadId, ...(usage ? { usage } : {}) })
+    : undefined;
+  const terminalModel = typeof terminal?.model === "string" && terminal.model.trim() ? terminal.model : undefined;
+  const contextModel = context?.state === "bound" ? context.model : undefined;
+  const inconsistent = context?.state === "invalid" || (terminalModel && contextModel && terminalModel !== contextModel);
+  const observedModel = inconsistent ? undefined : terminalModel ?? contextModel;
+  if (inconsistent) protocolFailure ??= "Codex model mismatch: terminal and bound session evidence are inconsistent.";
+  if (observedModel === undefined) {
+    protocolFailure ??= "Codex model authority is missing from the terminal event and bound session.";
+  } else if (requestedModel !== undefined && observedModel !== requestedModel) {
+    protocolFailure ??= `Codex model mismatch: requested ${requestedModel}, observed ${observedModel}.`;
   }
 
-  const latestAgentMessage = [...events]
-    .reverse()
-    .find((event) => event.type === "item.completed" && event.item?.type === "agent_message");
-  const latestTurnCompleted = [...events]
-    .reverse()
-    .find((event) => event.type === "turn.completed" && event.usage !== undefined);
-
-  const summary =
-    typeof latestAgentMessage?.item?.text === "string" && latestAgentMessage.item.text.trim().length > 0
-      ? latestAgentMessage.item.text.trim()
-      : stdout.trim();
-
-  if (!latestTurnCompleted?.usage) {
-    return {
-      summary,
-      usage: normalizeUsage({
-        actualUsd: 0,
-        tokensIn: 0,
-        tokensOut: 0,
-        provenance: "unavailable",
-        providerSettlement: {
-          providerId: "codex",
-          ...(modelLabel ? { model: modelLabel } : {}),
-          transport: "cli",
-          source: "unavailable",
-          inputTokens: 0,
-          outputTokens: 0,
-          rawUsageAvailable: false,
-          settledAt: new Date().toISOString()
-        }
-      })
-    };
-  }
-
-  const promptTokens = latestTurnCompleted.usage.input_tokens ?? 0;
-  const cachedInputTokens = latestTurnCompleted.usage.cached_input_tokens ?? 0;
-  const outputTokens = latestTurnCompleted.usage.output_tokens ?? 0;
-  const reasoningOutputTokens = latestTurnCompleted.usage.reasoning_output_tokens ?? 0;
-  // Codex exposes cached/reasoning token detail fields as subsets of the
-  // corresponding input/output totals. Do not add those details twice.
-  const tokensIn = promptTokens;
-  const tokensOut = outputTokens;
-  const pricingResolution = resolveModelPricing(modelLabel, "openai", promptTokens);
-  const exactPricing = pricingResolution.pricing;
-  const actualUsd = exactPricing
-    ? calculateUsageCost({
-        inputTokens: Math.max(promptTokens - cachedInputTokens, 0),
-        cachedInputTokens,
-        cacheCreationInputTokens: 0,
-        outputTokens
-      }, exactPricing, promptTokens)
-    : 0;
-
+  const text = events
+    .filter((event) => event.type === "item.completed" && event.item?.type === "agent_message")
+    .at(-1)?.item?.text;
   return {
-    summary,
-    usage: normalizeUsage({
-      actualUsd: Number(actualUsd.toFixed(6)),
-      tokensIn,
-      tokensOut,
-      cachedInputTokens,
-      reasoningTokensOut: reasoningOutputTokens,
-      provenance: exactPricing ? "calculated" : "unavailable",
-      providerSettlement: {
-        providerId: "codex",
-        ...(modelLabel ? { model: modelLabel } : {}),
-        transport: "cli",
-        source: "codex_jsonl",
-        inputTokens: promptTokens,
-        cachedInputTokens,
-        outputTokens,
-        reasoningOutputTokens,
-        billingMode: "unknown",
-        modelSource: modelLabel ? "explicit_override" : "agent_default",
-        pricingSource: exactPricing ? "static_catalog" : "none",
-        ...(exactPricing?.pricingVersion ? { pricingVersion: exactPricing.pricingVersion } : {}),
-        rawUsageAvailable: true,
-        settledAt: new Date().toISOString()
-      }
-    })
+    summary: typeof text === "string" && text.trim() ? text.trim() : stdout.trim(),
+    usage: settleCodexUsage(usage ?? (context?.state === "bound" ? context.usage : undefined), observedModel),
+    ...(protocolFailure === undefined ? {} : { protocolFailure })
   };
 }
 
-function extractGeminiJsonResult(
-  stdout: string,
-  modelLabel: string | undefined
-): { summary: string; usage: MartinAdapterResult["usage"] } | undefined {
-  let parsed: GeminiJsonOutput | undefined;
-  try {
-    parsed = JSON.parse(stdout) as GeminiJsonOutput;
-  } catch {
-    return undefined;
+function settleCodexUsage(
+  usage: CodexTokenUsage | undefined,
+  observedModel: string | undefined
+): MartinAdapterResult["usage"] {
+  const inputTokens = usage?.input_tokens ?? 0;
+  const cachedInputTokens = usage?.cached_input_tokens ?? 0;
+  const outputTokens = usage?.output_tokens ?? 0;
+  const reasoningOutputTokens = usage?.reasoning_output_tokens ?? 0;
+  const pricing = usage && observedModel ? resolveModelPricing(observedModel, "openai", inputTokens).pricing : undefined;
+  const actualUsd = pricing
+    ? calculateUsageCost({
+        inputTokens: inputTokens - cachedInputTokens,
+        cachedInputTokens,
+        cacheCreationInputTokens: 0,
+        outputTokens
+      }, pricing, inputTokens)
+    : 0;
+  return normalizeUsage({
+    actualUsd: Number(actualUsd.toFixed(6)),
+    tokensIn: inputTokens,
+    tokensOut: outputTokens,
+    cachedInputTokens,
+    reasoningTokensOut: reasoningOutputTokens,
+    provenance: pricing ? "calculated" : "unavailable",
+    providerSettlement: {
+      providerId: "codex",
+      ...(observedModel ? { model: observedModel } : {}),
+      transport: "cli",
+      source: usage ? "codex_jsonl" : "unavailable",
+      inputTokens,
+      cachedInputTokens,
+      outputTokens,
+      reasoningOutputTokens,
+      billingMode: "unknown",
+      modelSource: observedModel ? "provider_reported" : "unavailable",
+      pricingSource: pricing ? "static_catalog" : "none",
+      ...(pricing?.pricingVersion ? { pricingVersion: pricing.pricingVersion } : {}),
+      rawUsageAvailable: usage !== undefined,
+      settledAt: new Date().toISOString()
+    }
+  });
+}
+function inspectGeminiStream(stdout: string, requestedModel: string | undefined): GeminiStreamInspection {
+  let observedModel: string | undefined;
+  let terminal: GeminiStreamEvent | undefined;
+  let fatalEvent: GeminiStreamEvent | undefined;
+  const assistantChunks: string[] = [];
+
+  for (const rawLine of stdout.split(/\r?\n/u)) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    let event: GeminiStreamEvent;
+    try {
+      event = JSON.parse(line) as GeminiStreamEvent;
+    } catch {
+      return { protocolFailure: `Gemini stream was malformed before terminal completion: ${truncate(line, 200)}` };
+    }
+    if (event.type === "init") {
+      if (typeof event.model !== "string" || event.model.trim().length === 0) {
+        return { protocolFailure: "Gemini init event did not report a concrete model." };
+      }
+      observedModel = event.model.trim();
+    } else if (event.type === "message" && event.role === "assistant" && typeof event.content === "string") {
+      assistantChunks.push(event.content);
+    } else if (event.type === "error" && event.severity === "error") {
+      fatalEvent = event;
+    } else if (event.type === "result") {
+      if (terminal) return { protocolFailure: "Gemini stream contained multiple terminal result events." };
+      terminal = event;
+    }
   }
 
-  const summary =
-    typeof parsed.response === "string" && parsed.response.trim().length > 0
-      ? parsed.response.trim()
-      : typeof parsed.error?.message === "string" && parsed.error.message.trim().length > 0
-        ? parsed.error.message.trim()
-        : stdout.trim();
+  if (!observedModel) return { protocolFailure: "Gemini stream did not contain a structured init event with model identity." };
+  if (requestedModel && observedModel !== requestedModel) {
+    return { observedModel, protocolFailure: `Gemini model mismatch: requested ${requestedModel}, observed ${observedModel}.` };
+  }
+  if (!terminal) return { observedModel, protocolFailure: "Gemini stream did not contain a structured terminal result." };
+  if (fatalEvent) {
+    return { observedModel, protocolFailure: `Gemini stream reported an error event: ${truncate(fatalEvent.message ?? "unknown error", 500)}` };
+  }
+  if (terminal.status !== "success") {
+    return { observedModel, protocolFailure: `Gemini terminal status was ${terminal.status ?? "missing"}: ${truncate(terminal.error?.message ?? terminal.error?.type ?? "unknown error", 500)}` };
+  }
+  const summary = assistantChunks.join("").trim();
+  if (!summary) return { observedModel, protocolFailure: "Gemini terminal success did not include a non-empty assistant message." };
 
-  const promptTokens = parsed.stats?.inputTokens ?? 0;
-  const cachedInputTokens = parsed.stats?.cachedReadTokens ?? 0;
-  const outputTokens = parsed.stats?.outputTokens ?? 0;
-  const reasoningOutputTokens = parsed.stats?.thoughtTokens ?? 0;
-  const hasUsage =
-    parsed.stats !== undefined &&
+  const promptTokens = terminal.stats?.input_tokens ?? terminal.stats?.input ?? 0;
+  const cachedInputTokens = terminal.stats?.cached_input_tokens ?? terminal.stats?.cached ?? 0;
+  const outputTokens = terminal.stats?.output_tokens ?? 0;
+  const reasoningOutputTokens = terminal.stats?.reasoning_output_tokens ?? 0;
+  for (const [label, value] of Object.entries({ promptTokens, cachedInputTokens, outputTokens, reasoningOutputTokens })) {
+    if (!Number.isFinite(value) || value < 0) {
+      return { observedModel, protocolFailure: `Gemini terminal usage ${label} must be a non-negative finite number.` };
+    }
+  }
+  const hasUsage = terminal.stats !== undefined &&
     (promptTokens > 0 || cachedInputTokens > 0 || outputTokens > 0 || reasoningOutputTokens > 0);
-
   if (!hasUsage) {
     return {
       summary,
+      observedModel,
       usage: normalizeUsage({
         actualUsd: 0,
         tokensIn: 0,
@@ -472,11 +534,13 @@ function extractGeminiJsonResult(
         provenance: "unavailable",
         providerSettlement: {
           providerId: "gemini",
-          ...(modelLabel ? { model: modelLabel } : {}),
+          model: observedModel,
           transport: "cli",
           source: "unavailable",
           inputTokens: 0,
           outputTokens: 0,
+          modelSource: "provider_reported",
+          pricingSource: "none",
           rawUsageAvailable: false,
           settledAt: new Date().toISOString()
         }
@@ -484,31 +548,24 @@ function extractGeminiJsonResult(
     };
   }
 
-  const tokensIn = promptTokens;
   const tokensOut = outputTokens + reasoningOutputTokens;
-  const pricingResolution = resolveModelPricing(modelLabel, "google", promptTokens);
-  const exactPricing = pricingResolution.pricing;
+  const exactPricing = resolveModelPricing(observedModel, "google", promptTokens).pricing;
   const actualUsd = exactPricing
-    ? calculateUsageCost({
-        inputTokens: Math.max(promptTokens - cachedInputTokens, 0),
-        cachedInputTokens,
-        cacheCreationInputTokens: 0,
-        outputTokens: tokensOut
-      }, exactPricing, promptTokens)
+    ? calculateUsageCost({ inputTokens: Math.max(promptTokens - cachedInputTokens, 0), cachedInputTokens, cacheCreationInputTokens: 0, outputTokens: tokensOut }, exactPricing, promptTokens)
     : 0;
-
   return {
     summary,
+    observedModel,
     usage: normalizeUsage({
       actualUsd: Number(actualUsd.toFixed(6)),
-      tokensIn,
+      tokensIn: promptTokens,
       tokensOut,
       cachedInputTokens,
       reasoningTokensOut: reasoningOutputTokens,
       provenance: exactPricing ? "estimated" : "unavailable",
       providerSettlement: {
         providerId: "gemini",
-        ...(modelLabel ? { model: modelLabel } : {}),
+        model: observedModel,
         transport: "cli",
         source: "gemini_json",
         inputTokens: promptTokens,
@@ -516,7 +573,7 @@ function extractGeminiJsonResult(
         outputTokens,
         reasoningOutputTokens,
         billingMode: "unknown",
-        modelSource: modelLabel ? "explicit_override" : "agent_default",
+        modelSource: "provider_reported",
         pricingSource: exactPricing ? "static_catalog" : "none",
         ...(exactPricing?.pricingVersion ? { pricingVersion: exactPricing.pricingVersion } : {}),
         rawUsageAvailable: true,
@@ -862,25 +919,6 @@ function findClaudeResultError(result: ClaudeJsonOutput): string | undefined {
   return truncate(result.result ?? result.error ?? result.subtype ?? "unknown error", 500);
 }
 
-function parseStreamJsonResult(stdout: string): ClaudeJsonOutput | undefined {
-  let lastResult: ClaudeJsonOutput | undefined;
-  for (const rawLine of stdout.split(/\r?\n/u)) {
-    const line = rawLine.trim();
-    if (!line) {
-      continue;
-    }
-    try {
-      const event = JSON.parse(line) as ClaudeJsonOutput;
-      if (event.type === "result") {
-        lastResult = event;
-      }
-    } catch {
-      // Ignore non-JSON / partial lines.
-    }
-  }
-  return lastResult;
-}
-
 // ---------------------------------------------------------------------------
 // Structural failure hint detection
 //
@@ -1159,6 +1197,7 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
           )
           : undefined;
 
+      const providerStartedAt = Date.now();
       const agentResult = await runSubprocess(options.executionCommand ?? options.command, args, {
         cwd: workingDirectory,
         timeoutMs: executionTimeoutMs,
@@ -1167,6 +1206,7 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
         ...(streamingUsage ? { onStdoutChunk: streamingUsage.onChunk } : {}),
         ...(request.signal !== undefined ? { signal: request.signal } : {})
       });
+      const providerCompletedAt = Date.now();
 
       if (agentResult.terminationReason) {
         const snapshot = streamingUsage?.snapshot();
@@ -1239,10 +1279,12 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
       // object per line — the final `result` event carries the same
       // `result`/`usage`/`total_cost_usd` fields as single-blob `json` output.
       let parsed: ClaudeJsonOutput | undefined;
+      let claudeInspection: ClaudeStreamInspection | undefined;
       if (supportsJsonOutput) {
         try {
+          claudeInspection = options.streamingUsageCap ? inspectClaudeStream(agentResult.stdout) : undefined;
           parsed = options.streamingUsageCap
-            ? parseStreamJsonResult(agentResult.stdout)
+            ? claudeInspection?.result
             : (JSON.parse(agentResult.stdout) as ClaudeJsonOutput);
         } catch {
           // Fall through to plain-text handling
@@ -1250,17 +1292,55 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
       }
 
       const codexJsonlResult =
-        !supportsJsonOutput && options.command === "codex"
-          ? extractCodexJsonlResult(agentResult.stdout, options.model)
+        options.command === "codex"
+          ? await inspectCodexExecution(agentResult.stdout, options.model, {
+              workingDirectory, startedAt: providerStartedAt, completedAt: providerCompletedAt
+            })
           : undefined;
-      const geminiJsonResult =
+      const geminiInspection =
         !supportsJsonOutput && options.command === "gemini"
-          ? extractGeminiJsonResult(agentResult.stdout, options.model)
+          ? inspectGeminiStream(agentResult.stdout, options.model)
           : undefined;
+      if (options.command === "claude") {
+        const protocolFailure =
+          claudeInspection?.malformedLine !== undefined
+            ? `Claude stream was malformed before terminal completion: ${claudeInspection.malformedLine}`
+            : !parsed || parsed.type !== "result" || typeof parsed.result !== "string" || parsed.result.trim().length === 0
+              ? "Claude stream did not contain a non-empty structured terminal result."
+              : options.model && claudeInspection?.observedModel !== options.model
+                ? `Claude model mismatch: requested ${options.model}, observed ${claudeInspection?.observedModel ?? "missing"}.`
+                : (claudeInspection?.inheritedMcpServers ?? 0) > 0
+                  ? `Claude MCP isolation failed: observed ${String(claudeInspection?.inheritedMcpServers)} inherited MCP server(s).`
+                  : validateClaudeUsage(parsed);
+        if (protocolFailure !== undefined) {
+          return {
+            status: "failed",
+            summary: "Claude protocol validation failed before verifier execution.",
+            usage: normalizeUsage({ actualUsd: 0, tokensIn: 0, tokensOut: 0, provenance: "unavailable" }),
+            verification: { passed: false, summary: `Verifier not run: ${protocolFailure}` },
+            failure: { message: protocolFailure }
+          };
+        }
+      }
+      if (options.command === "gemini") {
+        const protocolFailure = agentResult.exitCode !== 0
+          ? formatPreVerifierSubprocessFailure(options.command, agentResult.stderr || agentResult.stdout, agentResult.exitCode)
+          : geminiInspection === undefined
+            ? "Gemini stream did not contain structured output."
+            : geminiInspection.protocolFailure;
+        if (protocolFailure) {
+          return {
+            status: "failed",
+            summary: "Gemini protocol validation failed before verifier execution.",
+            usage: geminiInspection?.usage ?? normalizeUsage({ actualUsd: 0, tokensIn: 0, tokensOut: 0, provenance: "unavailable" }),
+            verification: { passed: false, summary: `Verifier not run: ${protocolFailure}` },
+            failure: { message: protocolFailure }
+          };
+        }
+      }
       // A failed Codex turn did no verified work: never let the verifier run against an
       // untouched workspace and certify it.
-      const codexTurnFailure =
-        options.command === "codex" ? findCodexTurnFailure(agentResult.stdout) : undefined;
+      const codexTurnFailure = codexJsonlResult?.protocolFailure;
       if (codexTurnFailure !== undefined) {
         const failureMessage = `codex turn failed: ${codexTurnFailure}`;
         return {
@@ -1291,9 +1371,8 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
       }
       const producedStructuredCompletion =
         parsed?.result !== undefined ||
-        (codexJsonlResult !== undefined &&
-          (agentResult.exitCode === 0 || codexTurnCompleted(agentResult.stdout))) ||
-        geminiJsonResult !== undefined;
+        codexJsonlResult !== undefined ||
+        geminiInspection?.usage !== undefined;
       if (agentResult.exitCode !== 0 && !producedStructuredCompletion) {
         const failureMessage = formatPreVerifierSubprocessFailure(
           options.command,
@@ -1317,13 +1396,11 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
       }
       const agentText =
         codexJsonlResult?.summary ??
-        geminiJsonResult?.summary ??
+        geminiInspection?.summary ??
         parsed?.result ??
         agentResult.stdout.trim();
       const summary = truncate(agentText, 2000);
-      const observedClaudeModel = options.streamingUsageCap
-        ? extractClaudeObservedModel(agentResult.stdout)
-        : undefined;
+      const observedClaudeModel = claudeInspection?.observedModel;
       const usage = parsed
         ? extractUsage(
             parsed,
@@ -1335,7 +1412,7 @@ export function createAgentCliAdapter(options: AgentCliAdapterOptions): MartinAd
                 : "agent_default"
           )
         : codexJsonlResult?.usage ??
-          geminiJsonResult?.usage ??
+          geminiInspection?.usage ??
           normalizeUsage({
             actualUsd: estimatedUsage.actualUsd,
             ...(estimatedUsage.estimatedUsd === undefined ? {} : { estimatedUsd: estimatedUsage.estimatedUsd }),
@@ -1599,14 +1676,15 @@ function buildClaudeVerifierAllowedTools(request: MartinAdapterRequest): string[
  *   https://docs.anthropic.com/claude-code
  */
 export function createClaudeCliAdapter(options: ClaudeCliAdapterOptions = {}): MartinAdapter {
-  const modelArgs: string[] = options.model ? ["--model", options.model] : [];
+  const launchModel = options.model === undefined ? undefined : assertConcreteLiveModel(options.model);
+  const modelArgs: string[] = launchModel ? ["--model", launchModel] : [];
   const extraArgs = options.extraArgs ?? [];
   assertClaudePermissionControlsAreGoverned(extraArgs);
 
   return createAgentCliAdapter({
     command: "claude",
     adapterIdSuffix: "claude",
-    model: options.model,
+    model: launchModel,
     label: options.label ?? "Claude CLI adapter",
     workingDirectory: options.workingDirectory,
     timeoutMs: options.timeoutMs,
@@ -1703,6 +1781,7 @@ export function createCodexCliAdapter(options: CodexCliAdapterOptions = {}): Mar
  *   npm install -g @google/gemini-cli
  */
 export function createGeminiCliAdapter(options: GeminiCliAdapterOptions = {}): MartinAdapter {
+  const launchModel = options.model === undefined ? undefined : assertConcreteLiveModel(options.model);
   const approvalMode = options.readOnly ? "plan" : options.approvalMode ?? "yolo";
   if (!options.readOnly && approvalMode !== "yolo") {
     throw new Error("governed-autonomous Gemini execution requires yolo approval mode; interactive downgrade rejected.");
@@ -1718,7 +1797,7 @@ export function createGeminiCliAdapter(options: GeminiCliAdapterOptions = {}): M
   return createAgentCliAdapter({
     command: "gemini",
     adapterIdSuffix: "gemini",
-    model: options.model,
+    model: launchModel,
     label: options.label ?? "Gemini CLI adapter",
     workingDirectory: options.workingDirectory,
     timeoutMs: options.timeoutMs,
@@ -1728,14 +1807,14 @@ export function createGeminiCliAdapter(options: GeminiCliAdapterOptions = {}): M
     supportsJsonOutput: false,
     spawnImpl: options.spawnImpl,
     argsBuilder: () => [
-      ...(options.model ? ["--model", options.model] : []),
+      ...(launchModel ? ["--model", launchModel] : []),
       "--prompt",
       "",
       "--approval-mode",
       approvalMode,
       ...(options.sandbox ? ["--sandbox"] : []),
       "--output-format",
-      "json",
+      "stream-json",
       ...extraArgs
     ],
     stdinBuilder: (prompt) => prompt

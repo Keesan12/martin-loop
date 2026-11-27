@@ -4,30 +4,30 @@
     {
       "lane": "public",
       "relativePath": "packages/mcp/src/tools/tool-support.ts",
-      "localSha": "a3bda02b6a03cbe6e0148fab11124f16e56f6572f09ebee04cf7207234be1408",
-      "remoteSha": "f1284522465fefe99e37cb5d821b35ac631e7db2c7231a8550e1165f8a1696c9",
-      "reason": "The reviewed 0.10.0 source adds provider-neutral runtime discovery, explicit pricing authority, and bounded run-store diagnostics ahead of public 0.9.0."
+      "localSha": "5bbd2f3fdc0fb2405c10280f3f8f8d3d76be9b844c3272680148681fd186c054",
+      "remoteSha": "a3bda02b6a03cbe6e0148fab11124f16e56f6572f09ebee04cf7207234be1408",
+      "reason": "Require explicit authentication and pricing readiness for OpenAI-compatible endpoints."
     },
     {
       "lane": "public",
       "relativePath": "packages/mcp/src/server-validation.ts",
-      "localSha": "21cc13e36f87127ad145797c1b24e461be487a0b82861c00a32f79f4d52446d7",
-      "remoteSha": "c6dadd57e5db41d1c74460699d43c2c3bef4437f4c312ebbdf0a799bd3974b95",
-      "reason": "The reviewed 0.10.0 source adds explicit pricing authority and bounded diagnostics to MCP validation ahead of public 0.9.0."
+      "localSha": "e0f3a6974208d42b97d725895a770e0b5e618352362c44a9c9436f7d05ed7ac1",
+      "remoteSha": "21cc13e36f87127ad145797c1b24e461be487a0b82861c00a32f79f4d52446d7",
+      "reason": "Validate exact engine and model fallback profiles and require the advisory deadline to precede the hard limit."
     },
     {
       "lane": "public",
       "relativePath": "packages/mcp/src/server.ts",
-      "localSha": "9b301760d52c2c9427d1fd8b17da861debcff3fd960db535411cfa8a28ff8559",
-      "remoteSha": "8206eac14e690e9680b307352b2362bf9382709c9e922ea85c405db39ad1cf0e",
-      "reason": "The reviewed 0.10.0 source binds MCP run cancellation to the request signal and exposes explicit pricing authority ahead of public 0.9.0."
+      "localSha": "eeb4bf882e5119ea0cdaf7ec1408597b6c1022fb2dbd1b590132a701b968c2f9",
+      "remoteSha": "9b301760d52c2c9427d1fd8b17da861debcff3fd960db535411cfa8a28ff8559",
+      "reason": "Expose exact fallback profiles and show the effective advisory and hard wall-clock budgets in MCP."
     },
     {
       "lane": "public",
       "relativePath": "packages/cli/src/index.ts",
-      "localSha": "289e4882ab1ca8b4eded616dece610b522c52998b7c4f512dc1073b75939c09e",
-      "remoteSha": "a15bce8e83b4f88f521ce7b48bc13102ed7b6bba91137d55002dd93ac4522f1c",
-      "reason": "The reviewed 0.10.0 source adds bounded mission and memory operator commands and core operator ports ahead of public 0.9.0."
+      "localSha": "95c58d04576090b2831ff4169982b3d9a0e0fd68022975ff925ce8d36b833214",
+      "remoteSha": "289e4882ab1ca8b4eded616dece610b522c52998b7c4f512dc1073b75939c09e",
+      "reason": "Bind live and continued runs to the selected model and authentication settings, and expose advisory and hard wall-clock flags."
     }
   ]
 }

@@ -73,6 +73,22 @@ function makeRequest(workingDirectory: string) {
   };
 }
 
+function editResponse(content: unknown): MockResponse {
+  return {
+    body: {
+      model: "moonshotai/kimi-k2",
+      choices: [{
+        message: {
+          role: "assistant",
+          content: typeof content === "string" ? content : JSON.stringify(content),
+        },
+        finish_reason: "stop",
+      }],
+      usage: { prompt_tokens: 200, completion_tokens: 50 },
+    },
+  };
+}
+
 describe("OpenAI-compatible governed workspace edits", () => {
   const cleanup: string[] = [];
   let closeServer: (() => void) | undefined;
@@ -282,5 +298,157 @@ describe("OpenAI-compatible governed workspace edits", () => {
     expect(result.status).toBe("failed");
     expect(result.failure?.message).toContain("WORKSPACE_EDIT_PROTOCOL");
     expect(await readFile(join(workingDirectory, "src", "billing.js"), "utf8")).toContain("annual = false");
+  });
+
+  it.each([
+    ["prose-wrapped JSON", 'Here is the plan: {"edits":[{"path":"src/billing.js","content":"export const annual = true;\\n"}],"deletions":[]}'],
+    ["fenced JSON", '```json\n{"edits":[{"path":"src/billing.js","content":"export const annual = true;\\n"}],"deletions":[]}\n```'],
+    ["missing required deletions", '{"edits":[{"path":"src/billing.js","content":"export const annual = true;\\n"}]}'],
+    ["unexpected top-level field", '{"edits":[{"path":"src/billing.js","content":"export const annual = true;\\n"}],"deletions":[],"trusted":true}'],
+  ])("rejects %s without mutation", { timeout: INTEGRATION_TEST_TIMEOUT_MS }, async (_label, content) => {
+    const workingDirectory = await createWorkspace();
+    cleanup.push(workingDirectory);
+    const before = await readFile(join(workingDirectory, "src", "billing.js"), "utf8");
+    const { url, close } = await startMockServer(() => editResponse(content));
+    closeServer = close;
+
+    const result = await createOpenAiCompatibleAdapter({
+      baseUrl: url,
+      model: "moonshotai/kimi-k2",
+      workingDirectory,
+    }).execute(makeRequest(workingDirectory) as any);
+
+    expect(result.status).toBe("failed");
+    expect(result.failure?.message).toMatch(/WORKSPACE_EDIT_PROTOCOL_INVALID_(?:JSON|SHAPE)/u);
+    expect(await readFile(join(workingDirectory, "src", "billing.js"), "utf8")).toBe(before);
+  });
+
+  it.each([
+    ["canonical duplicate", {
+      edits: [
+        { path: "src/billing.js", content: "export const annual = true;\n" },
+        { path: "src/./billing.js", content: "export const annual = true;\n" },
+      ],
+      deletions: [],
+    }, "WORKSPACE_EDIT_PROTOCOL_DUPLICATE_PATH"],
+    ["edit/delete collision", {
+      edits: [{ path: "src/billing.js", content: "export const annual = true;\n" }],
+      deletions: ["src/./billing.js"],
+    }, "WORKSPACE_EDIT_PROTOCOL_EDIT_DELETE_COLLISION"],
+  ])("rejects a %s before any mutation", { timeout: INTEGRATION_TEST_TIMEOUT_MS }, async (_label, plan, diagnostic) => {
+    const workingDirectory = await createWorkspace();
+    cleanup.push(workingDirectory);
+    const before = await readFile(join(workingDirectory, "src", "billing.js"), "utf8");
+    const { url, close } = await startMockServer(() => editResponse(plan));
+    closeServer = close;
+
+    const result = await createOpenAiCompatibleAdapter({
+      baseUrl: url,
+      model: "moonshotai/kimi-k2",
+      workingDirectory,
+    }).execute(makeRequest(workingDirectory) as any);
+
+    expect(result.status).toBe("failed");
+    expect(result.failure?.message).toContain(diagnostic);
+    expect(await readFile(join(workingDirectory, "src", "billing.js"), "utf8")).toBe(before);
+  });
+
+  it.each([
+    ["POSIX absolute", "/tmp/outside.js"],
+    ["drive absolute", "C:\\outside\\owned.js"],
+    ["UNC absolute", "\\\\server\\share\\owned.js"],
+    ["parent traversal", "src/../../outside.js"],
+  ])("rejects a %s target and preserves the outside canary", { timeout: INTEGRATION_TEST_TIMEOUT_MS }, async (_label, path) => {
+    const workingDirectory = await createWorkspace();
+    const outsideDirectory = await mkdtemp(join(tmpdir(), "martin-openai-path-canary-"));
+    cleanup.push(workingDirectory, outsideDirectory);
+    const outsideCanary = join(outsideDirectory, "canary.txt");
+    await writeFile(outsideCanary, "outside-safe\n", "utf8");
+    const { url, close } = await startMockServer(() => editResponse({
+      edits: [{ path, content: "owned\n" }],
+      deletions: [],
+    }));
+    closeServer = close;
+
+    const result = await createOpenAiCompatibleAdapter({
+      baseUrl: url,
+      model: "moonshotai/kimi-k2",
+      workingDirectory,
+    }).execute(makeRequest(workingDirectory) as any);
+
+    expect(result.status).toBe("failed");
+    expect(result.failure?.message).toMatch(/WORKSPACE_EDIT_(?:INVALID_PATH|PATH_ESCAPE)/u);
+    expect(await readFile(outsideCanary, "utf8")).toBe("outside-safe\n");
+  });
+
+  it("rejects identical-content edits as a no-op before verifier execution", { timeout: INTEGRATION_TEST_TIMEOUT_MS }, async () => {
+    const workingDirectory = await createWorkspace();
+    cleanup.push(workingDirectory);
+    const { url, close } = await startMockServer(() => editResponse({
+      edits: [{ path: "src/billing.js", content: "export const annual = false;\n" }],
+      deletions: [],
+    }));
+    closeServer = close;
+
+    const result = await createOpenAiCompatibleAdapter({
+      baseUrl: url,
+      model: "moonshotai/kimi-k2",
+      workingDirectory,
+    }).execute(makeRequest(workingDirectory) as any);
+
+    expect(result.status).toBe("failed");
+    expect(result.failure?.message).toContain("WORKSPACE_EDIT_PROTOCOL_NO_EFFECTIVE_CHANGES");
+    expect(await readFile(join(workingDirectory, "src", "billing.js"), "utf8")).toBe("export const annual = false;\n");
+  });
+
+  it.each([
+    ["edit count", { edits: Array.from({ length: 65 }, (_, index) => ({ path: `src/file-${index}.js`, content: "x\n" })), deletions: [] }, "WORKSPACE_EDIT_PROTOCOL_TOO_MANY_CHANGES"],
+    ["per-file bytes", { edits: [{ path: "src/large.js", content: "x".repeat(262_145) }], deletions: [] }, "WORKSPACE_EDIT_PROTOCOL_FILE_TOO_LARGE"],
+    ["aggregate bytes", { edits: [
+      { path: "src/large-a.js", content: "a".repeat(262_144) },
+      { path: "src/large-b.js", content: "b".repeat(262_144) },
+      { path: "src/large-c.js", content: "c" },
+    ], deletions: [] }, "WORKSPACE_EDIT_PROTOCOL_TOTAL_TOO_LARGE"],
+  ])("rejects excessive %s before mutation", { timeout: INTEGRATION_TEST_TIMEOUT_MS }, async (_label, plan, diagnostic) => {
+    const workingDirectory = await createWorkspace();
+    cleanup.push(workingDirectory);
+    const before = await readFile(join(workingDirectory, "src", "billing.js"), "utf8");
+    const { url, close } = await startMockServer(() => editResponse(plan));
+    closeServer = close;
+
+    const result = await createOpenAiCompatibleAdapter({
+      baseUrl: url,
+      model: "moonshotai/kimi-k2",
+      workingDirectory,
+      maxResponseBytes: 800_000,
+    }).execute(makeRequest(workingDirectory) as any);
+
+    expect(result.status).toBe("failed");
+    expect(result.failure?.message).toContain(diagnostic);
+    expect(await readFile(join(workingDirectory, "src", "billing.js"), "utf8")).toBe(before);
+  });
+
+  it("rolls back applied edits when the verifier fails", { timeout: INTEGRATION_TEST_TIMEOUT_MS }, async () => {
+    const workingDirectory = await createWorkspace();
+    cleanup.push(workingDirectory);
+    const before = await readFile(join(workingDirectory, "src", "billing.js"), "utf8");
+    const { url, close } = await startMockServer(() => editResponse({
+      edits: [{ path: "src/billing.js", content: "export const annual = true;\n" }],
+      deletions: [],
+    }));
+    closeServer = close;
+    const request = makeRequest(workingDirectory) as any;
+    request.context.verificationPlan = ["node -e \"process.exit(1)\""];
+
+    const result = await createOpenAiCompatibleAdapter({
+      baseUrl: url,
+      model: "moonshotai/kimi-k2",
+      workingDirectory,
+    }).execute(request);
+
+    expect(result.status).toBe("failed");
+    expect(result.verification.passed).toBe(false);
+    expect(await readFile(join(workingDirectory, "src", "billing.js"), "utf8")).toBe(before);
+    expect(result.execution?.changedFiles).toEqual([]);
   });
 });

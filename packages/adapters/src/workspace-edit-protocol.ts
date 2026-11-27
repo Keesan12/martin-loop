@@ -1,5 +1,5 @@
-import { lstat, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
-import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { lstat, mkdir, readFile, readdir, rmdir, rm, stat, writeFile } from "node:fs/promises";
+import { dirname, posix, relative, resolve, sep, win32 } from "node:path";
 
 export interface WorkspaceEdit {
   path: string;
@@ -28,9 +28,18 @@ export interface ApplyWorkspaceEditsOptions {
   deniedPaths?: string[];
 }
 
+export interface AppliedWorkspaceEdits {
+  changedFiles: string[];
+  summary?: string;
+  rollback: () => Promise<void>;
+}
+
 const DEFAULT_MAX_FILES = 48;
 const DEFAULT_MAX_BYTES = 120_000;
 const DEFAULT_MAX_FILE_BYTES = 24_000;
+export const MAX_WORKSPACE_EDIT_CHANGES = 64;
+export const MAX_WORKSPACE_EDIT_FILE_BYTES = 262_144;
+export const MAX_WORKSPACE_EDIT_TOTAL_BYTES = 524_288;
 const SKIP_DIRECTORIES = new Set([
   ".git",
   ".martin",
@@ -43,7 +52,7 @@ const SKIP_DIRECTORIES = new Set([
 ]);
 
 function normalizePath(value: string): string {
-  return value.replace(/\\/gu, "/").replace(/^\.\//u, "");
+  return value.replace(/\\/gu, "/").replace(/^(?:\.\/)+/u, "");
 }
 
 function globToRegExp(pattern: string): RegExp {
@@ -100,15 +109,26 @@ export function pathAllowedByGovernance(
 
 function assertSafeRelativePath(path: string, workingDirectory: string): string {
   const normalized = normalizePath(path.trim());
-  if (!normalized || isAbsolute(path) || normalized.startsWith("../") || normalized === "..") {
+  const segments = normalized.split("/");
+  if (
+    !normalized ||
+    posix.isAbsolute(path) ||
+    win32.isAbsolute(path) ||
+    segments.includes("..")
+  ) {
     throw new Error(`WORKSPACE_EDIT_INVALID_PATH: ${path}`);
   }
   const target = resolve(workingDirectory, normalized);
   const rel = relative(resolve(workingDirectory), target);
-  if (!rel || rel.startsWith(`..${sep}`) || rel === ".." || isAbsolute(rel)) {
+  if (!rel || rel.startsWith(`..${sep}`) || rel === ".." || posix.isAbsolute(rel) || win32.isAbsolute(rel)) {
     throw new Error(`WORKSPACE_EDIT_PATH_ESCAPE: ${path}`);
   }
-  return normalized;
+  return normalizePath(rel);
+}
+
+function canonicalTargetKey(path: string, workingDirectory: string): string {
+  const absolute = resolve(workingDirectory, path);
+  return process.platform === "win32" ? absolute.toLocaleLowerCase("en-US") : absolute;
 }
 
 async function assertNoSymlinkTraversal(path: string, workingDirectory: string): Promise<void> {
@@ -133,24 +153,17 @@ async function assertNoSymlinkTraversal(path: string, workingDirectory: string):
   }
 }
 
-function extractJsonPayload(responseText: string): string {
-  const trimmed = responseText.trim();
-  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/iu)?.[1]?.trim();
-  if (fenced) {
-    return fenced;
+function assertExactKeys(record: Record<string, unknown>, allowed: readonly string[], diagnostic: string): void {
+  const extra = Object.keys(record).find((key) => !allowed.includes(key));
+  if (extra) {
+    throw new Error(`${diagnostic}: unexpected field ${extra}`);
   }
-  const first = trimmed.indexOf("{");
-  const last = trimmed.lastIndexOf("}");
-  if (first >= 0 && last > first) {
-    return trimmed.slice(first, last + 1);
-  }
-  return trimmed;
 }
 
 export function parseWorkspaceEditPlan(responseText: string): WorkspaceEditPlan {
   let parsed: unknown;
   try {
-    parsed = JSON.parse(extractJsonPayload(responseText));
+    parsed = JSON.parse(responseText);
   } catch (error) {
     throw new Error(
       `WORKSPACE_EDIT_PROTOCOL_INVALID_JSON: ${error instanceof Error ? error.message : String(error)}`,
@@ -162,19 +175,40 @@ export function parseWorkspaceEditPlan(responseText: string): WorkspaceEditPlan 
   }
 
   const record = parsed as Record<string, unknown>;
-  const rawEdits = record.edits ?? [];
-  const rawDeletions = record.deletions ?? [];
+  assertExactKeys(record, ["summary", "edits", "deletions"], "WORKSPACE_EDIT_PROTOCOL_INVALID_SHAPE");
+  if (record.summary !== undefined && typeof record.summary !== "string") {
+    throw new Error("WORKSPACE_EDIT_PROTOCOL_INVALID_SHAPE: summary must be a string");
+  }
+  const rawEdits = record.edits;
+  const rawDeletions = record.deletions;
   if (!Array.isArray(rawEdits) || !Array.isArray(rawDeletions)) {
     throw new Error("WORKSPACE_EDIT_PROTOCOL_INVALID_SHAPE: edits/deletions must be arrays");
   }
+  if (rawEdits.length + rawDeletions.length > MAX_WORKSPACE_EDIT_CHANGES) {
+    throw new Error(`WORKSPACE_EDIT_PROTOCOL_TOO_MANY_CHANGES: maximum is ${String(MAX_WORKSPACE_EDIT_CHANGES)}`);
+  }
 
+  let totalContentBytes = 0;
   const edits: WorkspaceEdit[] = rawEdits.map((entry, index) => {
     if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
       throw new Error(`WORKSPACE_EDIT_PROTOCOL_INVALID_EDIT: edits[${index}]`);
     }
     const edit = entry as Record<string, unknown>;
+    assertExactKeys(edit, ["path", "content"], `WORKSPACE_EDIT_PROTOCOL_INVALID_EDIT: edits[${String(index)}]`);
     if (typeof edit.path !== "string" || typeof edit.content !== "string") {
       throw new Error(`WORKSPACE_EDIT_PROTOCOL_INVALID_EDIT: edits[${index}] requires path/content strings`);
+    }
+    const contentBytes = Buffer.byteLength(edit.content, "utf8");
+    if (contentBytes > MAX_WORKSPACE_EDIT_FILE_BYTES) {
+      throw new Error(
+        `WORKSPACE_EDIT_PROTOCOL_FILE_TOO_LARGE: edits[${String(index)}] exceeds ${String(MAX_WORKSPACE_EDIT_FILE_BYTES)} bytes`,
+      );
+    }
+    totalContentBytes += contentBytes;
+    if (totalContentBytes > MAX_WORKSPACE_EDIT_TOTAL_BYTES) {
+      throw new Error(
+        `WORKSPACE_EDIT_PROTOCOL_TOTAL_TOO_LARGE: edit content exceeds ${String(MAX_WORKSPACE_EDIT_TOTAL_BYTES)} bytes`,
+      );
     }
     return { path: edit.path, content: edit.content };
   });
@@ -200,7 +234,7 @@ export function parseWorkspaceEditPlan(responseText: string): WorkspaceEditPlan 
 export async function applyWorkspaceEditPlan(
   plan: WorkspaceEditPlan,
   options: Omit<ApplyWorkspaceEditsOptions, "responseText">,
-): Promise<{ changedFiles: string[]; summary?: string }> {
+): Promise<AppliedWorkspaceEdits> {
   const normalizedEdits = plan.edits.map((edit) => ({
     ...edit,
     path: assertSafeRelativePath(edit.path, options.workingDirectory),
@@ -209,14 +243,26 @@ export async function applyWorkspaceEditPlan(
     assertSafeRelativePath(path, options.workingDirectory),
   );
 
-  const proposedPaths = [
-    ...normalizedEdits.map((edit) => edit.path),
-    ...normalizedDeletions,
-  ];
-  const duplicate = proposedPaths.find((path, index) => proposedPaths.indexOf(path) !== index);
-  if (duplicate) {
-    throw new Error(`WORKSPACE_EDIT_PROTOCOL_DUPLICATE_PATH: ${duplicate}`);
+  const editKeys = new Map<string, string>();
+  for (const edit of normalizedEdits) {
+    const key = canonicalTargetKey(edit.path, options.workingDirectory);
+    if (editKeys.has(key)) {
+      throw new Error(`WORKSPACE_EDIT_PROTOCOL_DUPLICATE_PATH: ${edit.path}`);
+    }
+    editKeys.set(key, edit.path);
   }
+  const deletionKeys = new Map<string, string>();
+  for (const path of normalizedDeletions) {
+    const key = canonicalTargetKey(path, options.workingDirectory);
+    if (editKeys.has(key)) {
+      throw new Error(`WORKSPACE_EDIT_PROTOCOL_EDIT_DELETE_COLLISION: ${path}`);
+    }
+    if (deletionKeys.has(key)) {
+      throw new Error(`WORKSPACE_EDIT_PROTOCOL_DUPLICATE_PATH: ${path}`);
+    }
+    deletionKeys.set(key, path);
+  }
+  const proposedPaths = [...editKeys.values(), ...deletionKeys.values()];
 
   for (const path of proposedPaths) {
     if (!pathAllowedByGovernance(path, options.allowedPaths, options.deniedPaths)) {
@@ -225,24 +271,90 @@ export async function applyWorkspaceEditPlan(
     await assertNoSymlinkTraversal(path, options.workingDirectory);
   }
 
-  for (const edit of normalizedEdits) {
-    const target = resolve(options.workingDirectory, edit.path);
-    await mkdir(dirname(target), { recursive: true });
-    await writeFile(target, edit.content, "utf8");
+  const originals = new Map<string, Buffer | undefined>();
+  const createdDirectories = new Set<string>();
+  const root = resolve(options.workingDirectory);
+  for (const path of proposedPaths) {
+    const target = resolve(root, path);
+    try {
+      const info = await lstat(target);
+      if (!info.isFile()) {
+        throw new Error(`WORKSPACE_EDIT_TARGET_NOT_FILE: ${path}`);
+      }
+      originals.set(path, await readFile(target));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      originals.set(path, undefined);
+    }
   }
   for (const path of normalizedDeletions) {
-    await rm(resolve(options.workingDirectory, path), { force: true });
+    if (originals.get(path) === undefined) {
+      throw new Error(`WORKSPACE_EDIT_PROTOCOL_NO_EFFECTIVE_CHANGES: deletion target does not exist: ${path}`);
+    }
+  }
+  for (const edit of normalizedEdits) {
+    const original = originals.get(edit.path);
+    if (original !== undefined && original.equals(Buffer.from(edit.content, "utf8"))) {
+      throw new Error(`WORKSPACE_EDIT_PROTOCOL_NO_EFFECTIVE_CHANGES: identical content for ${edit.path}`);
+    }
+  }
+
+  const rollback = async (): Promise<void> => {
+    for (const path of [...proposedPaths].reverse()) {
+      const target = resolve(root, path);
+      const original = originals.get(path);
+      if (original === undefined) {
+        await rm(target, { force: true });
+      } else {
+        await mkdir(dirname(target), { recursive: true });
+        await writeFile(target, original);
+      }
+    }
+    const directories = [...createdDirectories].sort((a, b) => b.length - a.length);
+    for (const directory of directories) {
+      try {
+        await rmdir(directory);
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code !== "ENOENT" && code !== "ENOTEMPTY" && code !== "EEXIST") throw error;
+      }
+    }
+  };
+
+  try {
+    for (const edit of normalizedEdits) {
+      const target = resolve(root, edit.path);
+      let cursor = dirname(target);
+      while (cursor !== root && cursor.startsWith(`${root}${sep}`)) {
+        try {
+          await lstat(cursor);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+          createdDirectories.add(cursor);
+        }
+        cursor = dirname(cursor);
+      }
+      await mkdir(dirname(target), { recursive: true });
+      await writeFile(target, edit.content, "utf8");
+    }
+    for (const path of normalizedDeletions) {
+      await rm(resolve(root, path));
+    }
+  } catch (error) {
+    await rollback();
+    throw error;
   }
 
   return {
     changedFiles: proposedPaths,
     ...(plan.summary ? { summary: plan.summary } : {}),
+    rollback,
   };
 }
 
 export async function applyWorkspaceEdits(
   options: ApplyWorkspaceEditsOptions,
-): Promise<{ changedFiles: string[]; summary?: string }> {
+): Promise<AppliedWorkspaceEdits> {
   return applyWorkspaceEditPlan(parseWorkspaceEditPlan(options.responseText), options);
 }
 

@@ -148,7 +148,9 @@ const budgetSchema = {
     maxUsd: { type: "number" },
     softLimitUsd: { type: "number" },
     maxIterations: { type: "integer" },
-    maxTokens: { type: "integer" }
+    maxTokens: { type: "integer" },
+    maxWallClockMs: { type: "integer", minimum: 1 },
+    softTimeLimitMs: { type: "integer", minimum: 1 }
   },
   required: ["maxUsd", "softLimitUsd", "maxIterations"]
 } as const;
@@ -1177,7 +1179,21 @@ export function createMartinMcpServer(serverInfo?: {
               enum: [...MARTIN_ENGINE_VALUES]
             },
             description:
-              "Explicit ordered provider fallbacks authorized for this run. No provider is added implicitly."
+              "Deprecated engine-only form. Rejected with migration guidance; use fallbackProfiles."
+          },
+          fallbackProfiles: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                engine: { type: "string", enum: [...MARTIN_ENGINE_VALUES] },
+                model: { type: "string" }
+              },
+              required: ["engine", "model"]
+            },
+            description:
+              "Explicit ordered fallback providers with exact concrete model authority. No provider or model is added implicitly."
           },
           maxUsd: {
             type: "number",
@@ -1194,6 +1210,8 @@ export function createMartinMcpServer(serverInfo?: {
             exclusiveMinimum: 0,
             description: "Maximum total tokens across all attempts."
           },
+          maxWallClockMs: { type: "integer", minimum: 1, description: "Hard elapsed time limit in milliseconds." },
+          softTimeLimitMs: { type: "integer", minimum: 1, description: "Time to warn and stop starting attempts, in milliseconds." },
           verifyTimeoutMs: {
             type: "integer",
             exclusiveMinimum: 0,
@@ -1349,6 +1367,8 @@ export function createMartinMcpServer(serverInfo?: {
           maxUsd: { type: "number", exclusiveMinimum: 0 },
           maxIterations: { type: "integer", exclusiveMinimum: 0 },
           maxTokens: { type: "integer", exclusiveMinimum: 0 },
+          maxWallClockMs: { type: "integer", minimum: 1, description: "Hard elapsed time limit in milliseconds." },
+          softTimeLimitMs: { type: "integer", minimum: 1, description: "Time to warn and stop starting attempts, in milliseconds." },
           maxMinutes: { type: "integer", exclusiveMinimum: 0 },
           maxFilesChanged: { type: "integer", exclusiveMinimum: 0 },
           maxCommands: { type: "integer", exclusiveMinimum: 0 }
@@ -1414,6 +1434,8 @@ export function createMartinMcpServer(serverInfo?: {
             exclusiveMinimum: 0,
             description: "Maximum total tokens across all attempts."
           },
+          maxWallClockMs: { type: "integer", minimum: 1, description: "Hard elapsed time limit in milliseconds." },
+          softTimeLimitMs: { type: "integer", minimum: 1, description: "Time to warn and stop starting attempts, in milliseconds." },
           maxMinutes: {
             type: "integer",
             exclusiveMinimum: 0,
@@ -2326,7 +2348,9 @@ function normalizeRunBudget(input: Parameters<typeof runLoopTool>[0]): LoopBudge
   return normalizeLoopBudget({
     maxUsd: input.maxUsd,
     maxIterations: input.maxIterations,
-    maxTokens: input.maxTokens
+    maxTokens: input.maxTokens,
+    maxWallClockMs: input.maxWallClockMs,
+    softTimeLimitMs: input.softTimeLimitMs
   });
 }
 

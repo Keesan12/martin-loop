@@ -20,6 +20,7 @@ import {
   flushSyncQueue,
   setSwarmClaimTransitionHookForTests,
   setSwarmReleaseIdentityResolvedHookForTests,
+  syncLoopToHosted,
 } from "../src/swarm-sync-client.js";
 
 const execFileAsync = promisify(execFile);
@@ -78,6 +79,55 @@ describe("swarm hosted sync", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
     await expect(readdir(queueDir)).rejects.toMatchObject({ code: "ENOENT" });
     expect(stderr).not.toHaveBeenCalled();
+  });
+
+  it("preserves mixed attempt-local provider and model authority in legacy loop sync", async () => {
+    const requests: Array<Record<string, unknown>> = [];
+    const server = await startServer((req, res) => {
+      let body = "";
+      req.on("data", (chunk) => { body += String(chunk); });
+      req.on("end", () => {
+        requests.push(JSON.parse(body) as Record<string, unknown>);
+        res.writeHead(202, { "Content-Type": "application/json" });
+        res.end("{}");
+      });
+    });
+    process.env["MARTIN_TELEMETRY_ENDPOINT"] = server.url;
+    try {
+      await syncLoopToHosted({
+        loopId: "loop-mixed-lineage",
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        status: "completed",
+        lifecycleState: "completed",
+        metadata: {},
+        createdAt: "2026-11-19T20:00:00.000Z",
+        updatedAt: "2026-11-19T20:02:00.000Z",
+        task: { title: "Mixed lineage", objective: "Preserve attempt authority", verificationPlan: [] },
+        attempts: [
+          { attemptId: "att-primary", index: 0, adapterId: "agent-cli:claude", model: "claude-sonnet-4-5", startedAt: "2026-11-19T20:00:00.000Z", failureClass: "environment_mismatch" },
+          { attemptId: "att-fallback", index: 1, adapterId: "agent-cli:codex", model: "gpt-6.1-sol", startedAt: "2026-11-19T20:01:00.000Z" },
+        ],
+        events: [
+          { eventId: "evt-primary", type: "attempt.started", timestamp: "2026-11-19T20:00:00.000Z", lifecycleState: "running", payload: { attemptId: "att-primary", providerId: "claude", model: "claude-sonnet-4-5" } },
+          { eventId: "evt-fallback", type: "attempt.started", timestamp: "2026-11-19T20:01:00.000Z", lifecycleState: "running", payload: { attemptId: "att-fallback", providerId: "codex", model: "gpt-6.1-sol" } },
+        ],
+        artifacts: [],
+        budget: { maxIterations: 2, maxUsd: 1, maxTokens: 10_000, softLimitUsd: 1 },
+        cost: {
+          actualUsd: 0.04,
+          avoidedUsd: 0,
+          tokensIn: 100,
+          tokensOut: 50,
+          providerSettlement: { providerId: "codex", model: "gpt-6.1-sol", source: "codex_jsonl", inputTokens: 100, outputTokens: 50, rawUsageAvailable: true, settledAt: "2026-11-19T20:02:00.000Z" },
+        },
+      }, { runtimeVersion: "0.1.0" });
+      const events = requests[0]?.["events"] as Array<Record<string, unknown>>;
+      expect(events.find((event) => event["attemptId"] === "att-primary")?.["payload"]).toMatchObject({ providerId: "claude", model: "claude-sonnet-4-5" });
+      expect(events.find((event) => event["attemptId"] === "att-fallback")?.["payload"]).toMatchObject({ providerId: "codex", model: "gpt-6.1-sol" });
+    } finally {
+      await server.close();
+    }
   });
 
   it("queues only an authenticated post-seal projection without changing any Phase 4 or 5 evidence bytes", async () => {

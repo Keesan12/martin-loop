@@ -13,12 +13,11 @@ import {
 } from "@martin/adapters";
 import type { MartinAdapter } from "@martin/core";
 import type { SwarmChildAdapterFactory } from "../../core/dist/swarm/live-runtime.js";
-import { SWARM_LIVE_ENGINES, type SwarmLiveEngineProfile } from "@martin/contracts";
+import { SWARM_LIVE_ENGINES, assertConcreteLiveModel, type SwarmLiveEngineProfile } from "@martin/contracts";
 
 import { CliCommandError } from "./ux.js";
 
 const LIVE_ENGINES = SWARM_LIVE_ENGINES;
-const FORBIDDEN_MODEL_SENTINELS = new Set(["auto", "proof", "stub", "fallback", "simulation", "default"]);
 
 interface SwarmEngineFactories {
   claude(options: { workingDirectory: string; model: string; readOnly: boolean }): MartinAdapter;
@@ -91,7 +90,7 @@ export function createExplicitSwarmAdapterFactory(
       "Codex governed launch binding is required before creating live swarm adapters.",
     );
   }
-  const binding = Object.freeze({ engine: selected.engine, model: selected.model.trim() });
+  const binding = Object.freeze({ engine: selected.engine, model: assertConcreteLiveModel(selected.model) });
 
   return (input) => {
     if (input.engine.engine !== binding.engine || input.engine.model !== binding.model) {
@@ -139,8 +138,9 @@ export function assertConcreteSwarmEngineProfile(profile: SwarmLiveEngineProfile
       "Live swarm requires one concrete live engine: claude, codex, gemini, or openai.",
     );
   }
-  const model = typeof profile.model === "string" ? profile.model.trim().toLowerCase() : "";
-  if (!model || profile.model !== profile.model.trim() || FORBIDDEN_MODEL_SENTINELS.has(model)) {
+  try {
+    assertConcreteLiveModel(profile.model);
+  } catch {
     throw new CliCommandError("invalid_input", "Live swarm requires one explicit concrete model.");
   }
 }

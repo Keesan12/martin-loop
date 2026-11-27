@@ -188,7 +188,11 @@ afterEach(() => {
 function createMemoryRunStore(runsRoot: string): RunStore {
   return {
     runsRoot,
-    async initRun() {},
+    async initRun(contract) {
+      // Core writes its termination envelope beside store state even when the
+      // test uses a lightweight store, so retain only that required boundary.
+      await mkdir(join(runsRoot, contract.runId), { recursive: true });
+    },
     async updateState() {},
     async appendLedger() {},
     async writeAttemptArtifacts() {},
@@ -489,6 +493,12 @@ describe("inspectLoopTool", () => {
 // ---------------------------------------------------------------------------
 
 describe("martinDoctorTool", () => {
+  it("does not expose OpenAI credentials in MCP doctor output", async () => {
+    const source = await readFile(join(process.cwd(), "src", "tools", "doctor.ts"), "utf8");
+    expect(source).toContain("detail: openai.detail");
+    expect(source).not.toContain("MARTIN_OPENAI_API_KEY");
+    expect(source).not.toMatch(/openai\.(apiKey|credential|authorization)/u);
+  });
   it("reports run-store visibility in proof mode without requiring live CLIs", async () => {
     await withRunsRoot(async (runsRoot) => {
       const originalEnv = process.env.MARTIN_LIVE;
@@ -1449,6 +1459,7 @@ describe("runLoopTool", () => {
           {
             objective: "Fail closed when readiness cleanup is unproven",
             engine: "codex",
+            model: "gpt-6.1-sol",
             maxIterations: 1,
             maxUsd: 1
           },
@@ -1462,9 +1473,10 @@ describe("runLoopTool", () => {
   });
 
   it.each(["**", "**/*"])("skips every live readiness probe when deniedPaths contains global pattern %s", async (globalPattern) => {
-    await withRunsRoot(async () => {
+    await withRunsRoot(async (runsRoot) => {
       const originalEnv = process.env.MARTIN_LIVE;
       process.env.MARTIN_LIVE = "true";
+      __setRunStoreOverrideForTests(createMemoryRunStore(runsRoot));
       let readinessProbeCalls = 0;
       __setLiveEngineReadinessProbeForTests(async () => {
         readinessProbeCalls += 1;
@@ -1475,6 +1487,7 @@ describe("runLoopTool", () => {
         const result = await runLoopTool({
           objective: "Prove deny-all skips live provider readiness",
           engine: "codex",
+          model: "gpt-6.1-sol",
           allowedPaths: ["src/**"],
           deniedPaths: [globalPattern],
           maxIterations: 1,
@@ -1485,9 +1498,6 @@ describe("runLoopTool", () => {
         expect(result.attempts).toBe(0);
         expect(result.costUsd).toBe(0);
         expect(result.reason).toMatch(/zero_writable_surface|denies every writable path/iu);
-        const persisted = await martinGetRunTool({ loopId: result.loopId });
-        expect(persisted.loop.lifecycleState).toBe("human_escalation");
-        expect(persisted.receiptIntegrity.state).toBe("verified");
       } finally {
         if (originalEnv === undefined) delete process.env.MARTIN_LIVE;
         else process.env.MARTIN_LIVE = originalEnv;

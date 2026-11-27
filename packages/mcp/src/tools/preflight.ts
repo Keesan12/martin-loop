@@ -53,6 +53,8 @@ export interface MartinPreflightInput {
   maxUsd?: number;
   maxIterations?: number;
   maxTokens?: number;
+  maxWallClockMs?: number;
+  softTimeLimitMs?: number;
   maxMinutes?: number;
   maxFilesChanged?: number;
   maxCommands?: number;
@@ -95,6 +97,8 @@ export interface MartinPreflightOutput {
       softLimitUsd: number;
       maxIterations: number;
       maxTokens?: number;
+      maxWallClockMs?: number;
+      softTimeLimitMs?: number;
     };
     verificationPlan: string[];
     allowedPaths?: string[];
@@ -209,7 +213,9 @@ export async function martinPreflightTool(
   const budget = normalizeLoopBudget({
     maxUsd: input.maxUsd,
     maxIterations: input.maxIterations,
-    maxTokens: input.maxTokens
+    maxTokens: input.maxTokens,
+    maxWallClockMs: input.maxWallClockMs,
+    softTimeLimitMs: input.softTimeLimitMs
   });
 
   if (!executionMode.liveMode) {

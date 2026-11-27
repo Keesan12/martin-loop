@@ -14,6 +14,7 @@ import type {
   TerminationEnvelopeV1,
   VerifiedHandoffFileEffectsV1
 } from "@martin/contracts";
+import { isOpenAiAuthPostureReady } from "@martin/contracts";
 import {
   evaluateCostGovernor,
   resolveRunsRoot,
@@ -327,7 +328,11 @@ export function getEngineAvailability(
       const safeConfigurationError = error instanceof Error && (
         error.message.startsWith("INVALID_OPENAI_BILLING_MODE:") ||
         error.message.startsWith("INVALID_OPENAI_BASE_URL:") ||
-        error.message.startsWith("INVALID_OPENAI_PRICE:")
+        error.message.startsWith("INVALID_OPENAI_PRICE:") ||
+        error.message.startsWith("INVALID_OPENAI_AUTH_POSTURE:") ||
+        error.message.startsWith("OPENAI_BEARER_REQUIRES_HTTPS:") ||
+        error.message.startsWith("OPENAI_AUTH_POSTURE_CONFLICT:") ||
+        error.message.startsWith("OPENAI_REMOTE_NO_AUTH_REQUIRES_EXPLICIT_AUTHORITY:")
       );
       const detail = safeConfigurationError
         ? error.message
@@ -384,7 +389,8 @@ export function getEngineAvailability(
     }
     const explicitPricingAvailable = pricePerMTokenUsd !== undefined;
     const pricingAvailable = billingMode === "local_unmetered" || catalogPricingAvailable || explicitPricingAvailable;
-    const available = Boolean(model) && (config.apiKeyConfigured || localEndpoint) && pricingAvailable;
+    const authReady = isOpenAiAuthPostureReady(config.authPosture);
+    const available = Boolean(model) && authReady && pricingAvailable;
     return {
       command: "openai",
       available,
@@ -394,9 +400,11 @@ export function getEngineAvailability(
         ? "MODEL_CONFIGURATION_REQUIRED: set MARTIN_OPENAI_MODEL before live execution."
         : !pricingAvailable
           ? "PRICING_CONFIGURATION_REQUIRED: unknown non-local models require pricePerMTokenUsd."
-        : available
-          ? `OpenAI-compatible model configured: ${model} at ${endpoint.origin}.`
-          : "OpenAI-compatible remote execution requires MARTIN_OPENAI_API_KEY."
+        : !authReady
+          ? `OPENAI_AUTH_NOT_READY: ${config.authPosture.posture} requires its explicit credential/no-auth authority.`
+          : available
+            ? `OpenAI-compatible model configured: ${model} at ${endpoint.origin} (${config.authPosture.posture}).`
+            : "OpenAI-compatible execution is not ready."
     };
   }
 

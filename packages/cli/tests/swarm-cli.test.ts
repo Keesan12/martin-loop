@@ -668,13 +668,21 @@ describe("swarm parser and live run", () => {
 
   it("creates the existing OpenAI-compatible adapter under the generic live engine identity", async () => {
     const fixture = await createPlanFixture({ engine: "openai", model: "gpt-6.1-sol" });
-    const factory = createExplicitSwarmAdapterFactory(fixture.plan.engine);
-    const created = factory(adapterInput("openai-live", join(fixture.root, "openai-workspace"), fixture.plan));
-    const adapter = "adapter" in created ? created.adapter : created;
+    vi.stubEnv("MARTIN_OPENAI_BASE_URL", "https://api.openai.com/v1");
+    vi.stubEnv("MARTIN_OPENAI_API_KEY", "unit-test-bearer");
+    try {
+      const factory = createExplicitSwarmAdapterFactory(fixture.plan.engine);
+      const created = factory(adapterInput("openai-live", join(fixture.root, "openai-workspace"), fixture.plan));
+      const adapter = "adapter" in created ? created.adapter : created;
 
-    expect(adapter.metadata.providerId).toBe("openai");
-    expect(adapter.metadata.model).toBe("gpt-6.1-sol");
-    expect(adapter.metadata.transport).toBe("http");
+      expect(adapter.metadata.providerId).toBe("openai");
+      expect(adapter.metadata.model).toBe("gpt-6.1-sol");
+      expect(adapter.metadata.transport).toBe("http");
+      expect(adapter.metadata.authPosture).toBe("hosted_bearer");
+      expect(adapter.metadata.credentialConfigured).toBe(true);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("binds a negotiated Codex capability profile and autonomy resolution into each live child", async () => {

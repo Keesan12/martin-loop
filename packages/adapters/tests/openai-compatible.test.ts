@@ -8,7 +8,7 @@ import type { AddressInfo } from "node:net";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, it, expect, afterEach, vi } from "vitest";
+import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { createLoopRecord } from "@martin/contracts";
 import {
   createOpenAiCompatibleAdapter,
@@ -81,6 +81,89 @@ function makeRequest(overrides = {}) {
 // ---------------------------------------------------------------------------
 
 describe("createOpenAiCompatibleAdapter", () => {
+  const originalOpenAiApiKey = process.env.MARTIN_OPENAI_API_KEY;
+  const originalOpenAiAuthPosture = process.env.MARTIN_OPENAI_AUTH_POSTURE;
+
+  beforeEach(() => {
+    delete process.env.MARTIN_OPENAI_API_KEY;
+    delete process.env.MARTIN_OPENAI_AUTH_POSTURE;
+  });
+
+  afterEach(() => {
+    if (originalOpenAiApiKey === undefined) delete process.env.MARTIN_OPENAI_API_KEY;
+    else process.env.MARTIN_OPENAI_API_KEY = originalOpenAiApiKey;
+    if (originalOpenAiAuthPosture === undefined) delete process.env.MARTIN_OPENAI_AUTH_POSTURE;
+    else process.env.MARTIN_OPENAI_AUTH_POSTURE = originalOpenAiAuthPosture;
+  });
+  it("rejects remote HTTP bearer credentials before fetch", () => {
+    const fetchImpl = vi.fn<typeof fetch>();
+    expect(() => createOpenAiCompatibleAdapter({
+      baseUrl: "http://router.example.test",
+      apiKey: "secret-canary-http",
+      model: "router/model:v1",
+      pricePerMTokenUsd: 1,
+      fetchImpl,
+    })).toThrow(/BEARER_REQUIRES_HTTPS/u);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("rejects ambiguous remote no-auth before fetch and accepts explicit authority", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async (_input, init) => {
+      expect(init?.headers).not.toMatchObject({ Authorization: expect.anything() });
+      expect(JSON.parse(String(init?.body))).toMatchObject({ model: "remote/model:exact" });
+      return new Response(JSON.stringify({
+        choices: [{ message: { role: "assistant", content: "done" }, finish_reason: "stop" }],
+        usage: { prompt_tokens: 1, completion_tokens: 1 },
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+    expect(() => createOpenAiCompatibleAdapter({
+      baseUrl: "https://remote.example.test",
+      model: "remote/model:exact",
+      pricePerMTokenUsd: 1,
+      fetchImpl,
+    })).toThrow(/REMOTE_NO_AUTH_REQUIRES_EXPLICIT_AUTHORITY/u);
+    expect(fetchImpl).not.toHaveBeenCalled();
+
+    const result = await createOpenAiCompatibleAdapter({
+      baseUrl: "https://remote.example.test",
+      model: "remote/model:exact",
+      authPosture: "remote_no_auth",
+      pricePerMTokenUsd: 1,
+      fetchImpl,
+    }).execute(makeRequest() as any);
+    expect(result.status).toBe("completed");
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["https://api.openai.com", "gpt-exact-2026-11-19", "hosted_bearer", "hosted"],
+    ["https://openrouter.ai/api", "vendor/router-model:exact", "router_bearer", "router"],
+    ["http://127.0.0.1:11434", "local/arbitrary-model:exact", "loopback_no_auth", "loopback"],
+  ] as const)("preserves exact model and non-secret authority for %s", async (baseUrl, model, posture, endpointClass) => {
+    const fetchImpl = vi.fn<typeof fetch>(async (_input, init) => {
+      expect(JSON.parse(String(init?.body)).model).toBe(model);
+      return new Response(JSON.stringify({
+        choices: [{ message: { role: "assistant", content: "done" }, finish_reason: "stop" }],
+        usage: { prompt_tokens: 1, completion_tokens: 1 },
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+    const adapter = createOpenAiCompatibleAdapter({
+      baseUrl,
+      model,
+      ...(posture === "loopback_no_auth" ? {} : { apiKey: "secret-canary-matrix" }),
+      ...(posture === "loopback_no_auth" ? {} : { pricePerMTokenUsd: 1 }),
+      fetchImpl,
+    });
+    expect(adapter.metadata).toMatchObject({ model, authPosture: posture, endpointClass });
+    expect(JSON.stringify(adapter.metadata)).not.toContain("secret-canary-matrix");
+    const result = await adapter.execute(makeRequest() as any);
+    expect(result.status).toBe("completed");
+    expect(result.usage.providerSettlement).toMatchObject({
+      model,
+      openAiAuthPosture: posture,
+      openAiEndpointClass: endpointClass,
+    });
+  });
   it("fails closed for a metered model without authoritative pricing", () => {
     expect(() => createOpenAiCompatibleAdapter({
       baseUrl: "https://api.example.test",
@@ -93,7 +176,8 @@ describe("createOpenAiCompatibleAdapter", () => {
     expect(() => createOpenAiCompatibleAdapter({
       baseUrl: "https://api.example.test",
       model: "provider/unknown-model",
-      billingMode: "unknown"
+      billingMode: "unknown",
+      authPosture: "remote_no_auth"
     })).toThrow(/PRICING_CONFIGURATION_REQUIRED/u);
   });
 
@@ -120,6 +204,7 @@ describe("createOpenAiCompatibleAdapter", () => {
       baseUrl: "https://api.example.test",
       model: "provider/unknown-model",
       billingMode: "unknown",
+      authPosture: "remote_no_auth",
       pricePerMTokenUsd: 40,
       fetchImpl: async () => new Response(JSON.stringify({
         choices: [{ message: { role: "assistant", content: "Done." }, finish_reason: "stop" }],
@@ -189,7 +274,6 @@ describe("createOpenAiCompatibleAdapter", () => {
     const adapter = createOpenAiCompatibleAdapter({
       baseUrl: url,
       model: "test-model",
-      apiKey: "sk-test",
       pricePerMTokenUsd: 3
     });
 
@@ -268,6 +352,7 @@ describe("createOpenAiCompatibleAdapter", () => {
     const adapter = createOpenAiCompatibleAdapter({
       baseUrl: "https://api.example.test",
       model: "test-model",
+      authPosture: "remote_no_auth",
       pricePerMTokenUsd: 3,
       fetchImpl: async () => new Response(JSON.stringify({
         choices: [{ message: { role: "assistant", content: "" }, finish_reason: "stop" }],
@@ -393,32 +478,6 @@ describe("createOpenAiCompatibleAdapter", () => {
     expect(result.summary).toMatch(/cancel/i);
   });
 
-  it("aborts a retry delay immediately instead of launching another request", async () => {
-    const controller = new AbortController();
-    const fetchImpl = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({
-      error: { message: "rate limited" }
-    }), {
-      status: 429,
-      headers: { "Content-Type": "application/json" }
-    }));
-    const adapter = createOpenAiCompatibleAdapter({
-      baseUrl: "http://127.0.0.1:1",
-      model: "test-model",
-      fetchImpl
-    });
-    const request = makeRequest() as any;
-    request.signal = controller.signal;
-
-    const execution = adapter.execute(request);
-    await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(1));
-    controller.abort(new Error("parent cancelled retry"));
-    const result = await execution;
-
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
-    expect(result.status).toBe("failed");
-    expect(result.summary).toMatch(/cancel/i);
-  });
-
   it("closes the parent-abort race while registering a provider request listener", async () => {
     const controller = new AbortController();
     const originalAddEventListener = controller.signal.addEventListener.bind(controller.signal);
@@ -438,44 +497,6 @@ describe("createOpenAiCompatibleAdapter", () => {
         choices: [{ message: { role: "assistant", content: "done" }, finish_reason: "stop" }]
       }), { status: 200, headers: { "Content-Type": "application/json" } });
     });
-    const adapter = createOpenAiCompatibleAdapter({
-      baseUrl: "http://127.0.0.1:1",
-      model: "test-model",
-      fetchImpl
-    });
-    const request = makeRequest() as any;
-    request.signal = controller.signal;
-
-    try {
-      const result = await adapter.execute(request);
-      expect(fetchImpl).toHaveBeenCalledTimes(1);
-      expect(result.status).toBe("failed");
-      expect(result.summary).toMatch(/cancel/i);
-    } finally {
-      registration.mockRestore();
-    }
-  });
-
-  it("closes the parent-abort race while registering a retry-delay listener", async () => {
-    const controller = new AbortController();
-    const originalAddEventListener = controller.signal.addEventListener.bind(controller.signal);
-    let abortRegistrations = 0;
-    const registration = vi.spyOn(controller.signal, "addEventListener").mockImplementation((
-      type: string,
-      listener: EventListenerOrEventListenerObject,
-      options?: boolean | AddEventListenerOptions
-    ) => {
-      if (type === "abort") {
-        abortRegistrations += 1;
-        if (abortRegistrations === 2 && !controller.signal.aborted) {
-          controller.abort(new Error("cancelled while registering retry listener"));
-        }
-      }
-      originalAddEventListener(type, listener, options);
-    });
-    const fetchImpl = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({
-      error: { message: "rate limited" }
-    }), { status: 429, headers: { "Content-Type": "application/json" } }));
     const adapter = createOpenAiCompatibleAdapter({
       baseUrl: "http://127.0.0.1:1",
       model: "test-model",
@@ -533,7 +554,6 @@ describe("createOpenAiCompatibleAdapter", () => {
     const adapter = createOpenAiCompatibleAdapter({
       baseUrl: `${url}/openrouter`,
       model: "deepseek/deepseek-chat",
-      apiKey: ["sk", "or", "test"].join("-"),
       pricePerMTokenUsd: 3
     });
 
@@ -604,6 +624,7 @@ describe("createOpenAiCompatibleAdapter", () => {
     const result = await createOpenAiCompatibleAdapter({
       baseUrl: "https://localhost.example.com",
       model: "gpt-6.1-sol",
+      authPosture: "remote_no_auth",
       fetchImpl
     }).execute(request);
 
@@ -651,6 +672,7 @@ describe("createOpenAiCompatibleAdapter", () => {
     const result = await createOpenAiCompatibleAdapter({
       baseUrl: "https://api.example.test",
       model: "gpt-6.1-sol",
+      authPosture: "remote_no_auth",
       fetchImpl: async () => new Response(JSON.stringify({
         choices: [{ message: { role: "assistant", content: "Fixed." }, finish_reason: "stop" }]
       }), { status: 200, headers: { "Content-Type": "application/json" } })
@@ -664,6 +686,7 @@ describe("createOpenAiCompatibleAdapter", () => {
     const result = await createOpenAiCompatibleAdapter({
       baseUrl: "https://api.example.test",
       model: "gpt-6.1-sol",
+      authPosture: "remote_no_auth",
       fetchImpl: async () => new Response(JSON.stringify({
         choices: [{ message: { role: "assistant", content: "Fixed." }, finish_reason: "stop" }],
         usage: { prompt_tokens: 100 }
@@ -725,7 +748,8 @@ describe("createOpenAiCompatibleAdapter", () => {
     const previousModel = process.env.MARTIN_OPENAI_MODEL;
     try {
       delete process.env.MARTIN_OPENAI_MODEL;
-      expect(() => createOpenAiCompatibleAdapter({})).toThrow("MODEL_CONFIGURATION_REQUIRED");
+      expect(() => createOpenAiCompatibleAdapter({ baseUrl: "http://localhost:11434" }))
+        .toThrow("MODEL_CONFIGURATION_REQUIRED");
     } finally {
       if (previousModel === undefined) delete process.env.MARTIN_OPENAI_MODEL;
       else process.env.MARTIN_OPENAI_MODEL = previousModel;
@@ -734,6 +758,7 @@ describe("createOpenAiCompatibleAdapter", () => {
 
   it("reads explicit billing authority from the runtime environment", () => {
     expect(resolveOpenAiCompatibleRuntimeConfig({
+      MARTIN_OPENAI_BASE_URL: "http://localhost:11434",
       MARTIN_OPENAI_BILLING_MODE: "metered_api"
     })).toMatchObject({ billingMode: "metered_api" });
   });
@@ -746,6 +771,7 @@ describe("createOpenAiCompatibleAdapter", () => {
 
   it("reads custom-model pricing authority from the runtime environment", () => {
     expect(resolveOpenAiCompatibleRuntimeConfig({
+      MARTIN_OPENAI_BASE_URL: "http://localhost:11434",
       MARTIN_OPENAI_PRICE_PER_M_TOKEN_USD: "12.5"
     })).toMatchObject({ pricePerMTokenUsd: 12.5 });
   });
@@ -769,6 +795,7 @@ describe("createOpenAiCompatibleAdapter", () => {
 
   it("rejects invalid custom-model pricing authority from the runtime environment", () => {
     expect(() => resolveOpenAiCompatibleRuntimeConfig({
+      MARTIN_OPENAI_BASE_URL: "http://localhost:11434",
       MARTIN_OPENAI_PRICE_PER_M_TOKEN_USD: "not-a-price"
     })).toThrow(/INVALID_OPENAI_PRICE/u);
   });
@@ -788,31 +815,27 @@ describe("createOpenAiCompatibleAdapter", () => {
   });
 
   it("uses the runtime API key when options.apiKey is unset", async () => {
-    let capturedHeaders: Record<string, string | string[] | undefined> = {};
+    let capturedHeaders: HeadersInit | undefined;
     const previousApiKey = process.env.MARTIN_OPENAI_API_KEY;
 
     try {
       process.env.MARTIN_OPENAI_API_KEY = "sk-env-fallback";
-      const { url, close } = await startMockServer((req) => {
-        capturedHeaders = req.headers as Record<string, string | string[] | undefined>;
-        return {
-          body: {
+      const adapter = createOpenAiCompatibleAdapter({
+        baseUrl: "https://router.example.test",
+        model: "test-model",
+        pricePerMTokenUsd: 3,
+        fetchImpl: async (_input, init) => {
+          capturedHeaders = init?.headers;
+          return new Response(JSON.stringify({
             choices: [{ message: { role: "assistant", content: "Fixed." }, finish_reason: "stop" }],
             usage: { prompt_tokens: 10, completion_tokens: 5 }
-          }
-        };
-      });
-      mockClose = close;
-
-      const adapter = createOpenAiCompatibleAdapter({
-        baseUrl: url,
-        model: "test-model",
-        pricePerMTokenUsd: 3
+          }), { status: 200, headers: { "Content-Type": "application/json" } });
+        }
       });
       const result = await adapter.execute(makeRequest() as any);
 
       expect(result.status).toBe("completed");
-      expect(capturedHeaders["authorization"]).toBe("Bearer sk-env-fallback");
+      expect(capturedHeaders).toMatchObject({ Authorization: "Bearer sk-env-fallback" });
     } finally {
       if (previousApiKey === undefined) {
         delete process.env.MARTIN_OPENAI_API_KEY;
@@ -822,24 +845,11 @@ describe("createOpenAiCompatibleAdapter", () => {
     }
   });
 
-  it("retries on 429 rate-limit and succeeds on the subsequent attempt", async () => {
-    // Regression: before the fix, a 429 immediately failed the run. Now it retries
-    // with exponential backoff and succeeds if the server recovers.
+  it("fails a 429 response without retrying or reaching the verifier", async () => {
     let callCount = 0;
-    const { url, close } = await startMockServer((_req, _body) => {
+    const { url, close } = await startMockServer(() => {
       callCount++;
-      if (callCount === 1) {
-        // First call: rate-limited
-        return { status: 429, body: { error: { message: "rate limit exceeded", type: "rate_limit_error" } } };
-      }
-      // Second call: success
-      return {
-        status: 200,
-        body: {
-          choices: [{ message: { role: "assistant", content: "// Fixed\nconst x = 1;" } }],
-          usage: { prompt_tokens: 100, completion_tokens: 50 }
-        }
-      };
+      return { status: 429, body: { error: { message: "rate limit exceeded", type: "rate_limit_error" } } };
     });
     mockClose = close;
 
@@ -850,10 +860,10 @@ describe("createOpenAiCompatibleAdapter", () => {
     });
     const result = await adapter.execute(makeRequest() as any);
 
-    expect(callCount).toBe(2);
-    // After a successful retry, result is not failed — the rate-limit error was transient.
-    expect(result.status).not.toBe("failed");
-  }, 15_000);
+    expect(callCount).toBe(1);
+    expect(result.status).toBe("failed");
+    expect(result.verification.passed).toBe(false);
+  });
 
   it("fails immediately on 401 auth error without retrying", async () => {
     // Auth errors are permanent — retrying would waste time and potentially expose the key.
@@ -871,7 +881,7 @@ describe("createOpenAiCompatibleAdapter", () => {
     expect(result.status).toBe("failed");
   });
 
-  it("retries on 503 server error up to max retries then fails", async () => {
+  it("fails a 503 response without retrying", async () => {
     let callCount = 0;
     const { url, close } = await startMockServer(() => {
       callCount++;
@@ -882,10 +892,129 @@ describe("createOpenAiCompatibleAdapter", () => {
     const adapter = createOpenAiCompatibleAdapter({ baseUrl: url, model: "test-model" });
     const result = await adapter.execute(makeRequest() as any);
 
-    // Should have tried MAX_RETRIES=3 times before giving up
-    expect(callCount).toBe(3);
+    expect(callCount).toBe(1);
     expect(result.status).toBe("failed");
     // Summary includes the error message body from the final attempt
     expect(result.summary).toContain("service unavailable");
-  }, 20_000);
+  });
+
+  it.each([
+    ["malformed JSON", () => new Response("{not-json", { status: 200 })],
+    ["missing choices", () => new Response(JSON.stringify({ usage: { prompt_tokens: 1, completion_tokens: 1 } }), { status: 200 })],
+    ["invalid message", () => new Response(JSON.stringify({ choices: [{ message: { role: "assistant", content: 42 } }] }), { status: 200 })],
+    ["negative usage", () => new Response(JSON.stringify({ choices: [{ message: { role: "assistant", content: "done" } }], usage: { prompt_tokens: -1, completion_tokens: 1 } }), { status: 200 })],
+    ["fractional usage", () => new Response(JSON.stringify({ choices: [{ message: { role: "assistant", content: "done" } }], usage: { prompt_tokens: 1.5, completion_tokens: 1 } }), { status: 200 })],
+    ["typed-string usage", () => new Response(JSON.stringify({ choices: [{ message: { role: "assistant", content: "done" } }], usage: { prompt_tokens: "1", completion_tokens: 1 } }), { status: 200 })],
+    ["inconsistent total usage", () => new Response(JSON.stringify({ choices: [{ message: { role: "assistant", content: "done" } }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 1 } }), { status: 200 })],
+    ["observed model mismatch", () => new Response(JSON.stringify({ model: "provider/other-model", choices: [{ message: { role: "assistant", content: "done" } }], usage: { prompt_tokens: 1, completion_tokens: 1 } }), { status: 200 })],
+  ])("rejects %s before verifier execution", async (_label, makeResponse) => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => makeResponse());
+    const result = await createOpenAiCompatibleAdapter({
+      baseUrl: "http://127.0.0.1:1",
+      model: "provider/requested-model",
+      fetchImpl,
+    }).execute(makeRequest({
+      task: {
+        title: "Must not verify",
+        objective: "Reject invalid provider authority.",
+        verificationPlan: ["node -e \"process.exit(0)\""],
+      },
+    }) as any);
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(result.status).toBe("failed");
+    expect(result.verification.passed).toBe(false);
+    expect(result.verification.summary).toMatch(/before verifier|response/i);
+  });
+
+  it("accepts a schema-valid response with exact observed model and finite nonnegative usage", async () => {
+    const result = await createOpenAiCompatibleAdapter({
+      baseUrl: "http://127.0.0.1:1",
+      model: "provider/exact-model",
+      fetchImpl: async () => new Response(JSON.stringify({
+        model: "provider/exact-model",
+        choices: [{ message: { role: "assistant", content: "done" }, finish_reason: "stop" }],
+        usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+      }), { status: 200 }),
+    }).execute(makeRequest() as any);
+
+    expect(result.status).toBe("completed");
+    expect(result.usage.tokensIn).toBe(0);
+    expect(result.usage.tokensOut).toBe(0);
+  });
+
+  it("stops reading and rejects a response that exceeds the byte limit", async () => {
+    let cancelled = false;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.enqueue(new TextEncoder().encode("x".repeat(700)));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const result = await createOpenAiCompatibleAdapter({
+      baseUrl: "http://127.0.0.1:1",
+      model: "provider/exact-model",
+      maxResponseBytes: 1_024,
+      fetchImpl: async () => new Response(stream, { status: 200 }),
+    }).execute(makeRequest() as any);
+
+    expect(result.status).toBe("failed");
+    expect(result.failure?.message).toContain("OPENAI_RESPONSE_TOO_LARGE");
+    expect(cancelled).toBe(true);
+  });
+
+  it("fails closed when the response stream disconnects", async () => {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{"choices":['));
+        controller.error(new Error("fixture disconnected"));
+      },
+    });
+    const result = await createOpenAiCompatibleAdapter({
+      baseUrl: "http://127.0.0.1:1",
+      model: "provider/exact-model",
+      fetchImpl: async () => new Response(stream, { status: 200 }),
+    }).execute(makeRequest() as any);
+
+    expect(result.status).toBe("failed");
+    expect(result.failure?.message).toContain("fixture disconnected");
+    expect(result.verification.passed).toBe(false);
+  });
+
+  it("aborts and classifies a provider timeout before verifier execution", async () => {
+    let observedSignal: AbortSignal | undefined;
+    const result = await createOpenAiCompatibleAdapter({
+      baseUrl: "http://127.0.0.1:1",
+      model: "provider/exact-model",
+      timeoutMs: 20,
+      fetchImpl: async (_input, init) => {
+        observedSignal = init?.signal ?? undefined;
+        await new Promise<void>((_resolve, reject) => {
+          observedSignal?.addEventListener("abort", () => reject(new DOMException("timed out", "AbortError")), { once: true });
+        });
+        throw new Error("unreachable");
+      },
+    }).execute(makeRequest() as any);
+
+    expect(observedSignal?.aborted).toBe(true);
+    expect(result.status).toBe("failed");
+    expect(result.verification.summary).toContain("timed out");
+  });
+
+  it.each([400, 401, 403, 404, 409, 429, 500, 503])("rejects HTTP %i in one request", async (status) => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({
+      error: { message: `fixture HTTP ${status}` },
+    }), { status }));
+    const result = await createOpenAiCompatibleAdapter({
+      baseUrl: "http://127.0.0.1:1",
+      model: "provider/exact-model",
+      fetchImpl,
+    }).execute(makeRequest() as any);
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(result.status).toBe("failed");
+    expect(result.failure?.message).toContain(`fixture HTTP ${status}`);
+  });
 });

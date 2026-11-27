@@ -610,6 +610,7 @@ describe("createCodexCliAdapter live token enforcement", () => {
         }),
         JSON.stringify({
           type: "turn.completed",
+          model: "gpt-6.1-sol",
           usage: {
             input_tokens: 608_871,
             cached_input_tokens: 590_000,
@@ -690,6 +691,7 @@ describe("createCodexCliAdapter live token enforcement", () => {
         }),
         JSON.stringify({
           type: "turn.completed",
+          model: "gpt-6.1-sol",
           usage: {
             input_tokens: 10_000,
             cached_input_tokens: 8_000,
@@ -759,6 +761,7 @@ describe("createCodexCliAdapter live token enforcement", () => {
         }),
         JSON.stringify({
           type: "turn.completed",
+          model: "gpt-6.1-sol",
           usage: {
             input_tokens: 1_300,
             cached_input_tokens: 500,
@@ -1303,6 +1306,9 @@ function createStreamingCodexSpawn(
     };
 
     void (async () => {
+      await new Promise((resolveStart) => setImmediate(resolveStart));
+      child.stdout.write(`${JSON.stringify({ type: "thread.started", thread_id: "thread_fixture" })}\n`);
+      child.stdout.write(`${JSON.stringify({ type: "turn.started" })}\n`);
       for (const [index, line] of lines.entries()) {
         if (killed) return;
         beforeLine?.(index);

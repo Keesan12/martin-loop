@@ -49,6 +49,27 @@ function makeRequest(overrides: Partial<MartinAdapterRequest> = {}): MartinAdapt
   };
 }
 
+function codexJsonlSuccess(text = "done", model = "gpt-6.1-sol"): string {
+  return [
+    JSON.stringify({ type: "thread.started", thread_id: "thread_fixture" }),
+    JSON.stringify({ type: "turn.started" }),
+    JSON.stringify({ type: "item.completed", item: { id: "item_test", type: "agent_message", text } }),
+    JSON.stringify({ type: "turn.completed", ...(model ? { model } : {}), usage: { input_tokens: 10, output_tokens: 5 } })
+  ].join("\n");
+}
+
+function geminiJsonlSuccess(
+  text = "done",
+  model = "gemini-router/local-v1",
+  stats: Record<string, number> = { input_tokens: 10, output_tokens: 5, total_tokens: 15 }
+): string {
+  return [
+    JSON.stringify({ type: "init", timestamp: "2026-11-19T00:00:00.000Z", session_id: "gemini_test", model }),
+    JSON.stringify({ type: "message", timestamp: "2026-11-19T00:00:01.000Z", role: "assistant", content: text, delta: true }),
+    JSON.stringify({ type: "result", timestamp: "2026-11-19T00:00:02.000Z", status: "success", stats })
+  ].join("\n");
+}
+
 interface SpawnCall {
   command: string;
   args: readonly string[];
@@ -1074,6 +1095,54 @@ describe("createClaudeCliAdapter", () => {
     expect(result.summary).toContain("done");
   });
 
+  it("binds a matching observed Claude model into provider settlement before verification", async () => {
+    const calls: SpawnCall[] = [];
+    const adapter = createClaudeCliAdapter({
+      model: "claude-sonnet-4-6",
+      spawnImpl: createScriptedSpawn(calls, [
+        { stdout: '{"type":"system","subtype":"init","model":"claude-sonnet-4-6","mcp_servers":[]}\n{"type":"result","subtype":"success","result":"done","total_cost_usd":0.0042,"usage":{"input_tokens":10,"output_tokens":5}}\n' },
+        { stdout: "ok\n" }
+      ])
+    });
+    const result = await adapter.execute(makeRequest());
+    expect(result.status).toBe("completed");
+    expect(result.verification.passed).toBe(true);
+    expect(result.usage.providerSettlement).toMatchObject({ providerId: "claude", model: "claude-sonnet-4-6", modelSource: "provider_reported", rawUsageAvailable: true });
+    expect(calls).toHaveLength(2);
+  });
+
+  it.each([
+    { label: "observed-model mismatch", stdout: '{"type":"system","subtype":"init","model":"claude-haiku-4-5","mcp_servers":[]}\n{"type":"result","subtype":"success","result":"done","usage":{"input_tokens":10,"output_tokens":5}}\n', failure: /model mismatch/iu },
+    { label: "error terminal", stdout: '{"type":"system","subtype":"init","model":"claude-sonnet-4-6","mcp_servers":[]}\n{"type":"result","subtype":"error_max_turns","is_error":true,"result":"maximum turns reached"}\n', failure: /reported an error/iu },
+    { label: "malformed stream", stdout: '{"type":"system","subtype":"init","model":"claude-sonnet-4-6","mcp_servers":[]}\nnot-json\n{"type":"result","subtype":"success","result":"done"}\n', failure: /malformed/iu },
+    { label: "prose-only output", stdout: "I changed the requested files successfully.\n", failure: /malformed|terminal result/iu },
+    { label: "missing terminal", stdout: '{"type":"system","subtype":"init","model":"claude-sonnet-4-6","mcp_servers":[]}\n{"type":"assistant","message":{"content":[{"type":"text","text":"done"}]}}\n', failure: /terminal result/iu },
+    { label: "misleading empty success", stdout: '{"type":"system","subtype":"init","model":"claude-sonnet-4-6","mcp_servers":[]}\n{"type":"result","subtype":"success","result":"   "}\n', failure: /terminal result/iu },
+    { label: "malformed usage", stdout: '{"type":"system","subtype":"init","model":"claude-sonnet-4-6","mcp_servers":[]}\n{"type":"result","subtype":"success","result":"done","total_cost_usd":-1,"usage":{"input_tokens":-10,"output_tokens":5}}\n', failure: /usage|cost/iu }
+  ])("fails closed before verifier execution for $label", async ({ stdout, failure }) => {
+    const calls: SpawnCall[] = [];
+    const adapter = createClaudeCliAdapter({ model: "claude-sonnet-4-6", spawnImpl: createScriptedSpawn(calls, [{ stdout }, { stdout: "verifier must not run\n" }]) });
+    const result = await adapter.execute(makeRequest());
+    expect(result.status).toBe("failed");
+    expect(result.verification.passed).toBe(false);
+    expect(result.verification.summary).toContain("Verifier not run");
+    expect(result.failure?.message).toMatch(failure);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("fails closed when the controlled Claude child observes an inherited MCP server", async () => {
+    const calls: SpawnCall[] = [];
+    const adapter = createClaudeCliAdapter({ model: "claude-sonnet-4-6", spawnImpl: createScriptedSpawn(calls, [
+      { stdout: '{"type":"system","subtype":"init","model":"claude-sonnet-4-6","mcp_servers":[{"name":"parent-control-plane","status":"connected"}]}\n{"type":"result","subtype":"success","result":"MCP tool was reachable"}\n' },
+      { stdout: "verifier must not run\n" }
+    ]) });
+    const result = await adapter.execute(makeRequest());
+    expect(result.status).toBe("failed");
+    expect(result.failure?.message).toMatch(/MCP isolation/iu);
+    expect(result.verification.summary).toContain("Verifier not run");
+    expect(calls).toHaveLength(1);
+  });
+
   it("pre-approves only the exact governed verification commands for standalone Claude Bash", async () => {
     const calls: SpawnCall[] = [];
     const verificationPlan = [
@@ -1411,7 +1480,7 @@ describe("createClaudeCliAdapter", () => {
       const observations: unknown[] = [];
       const adapter = createClaudeCliAdapter({
         model: "claude-haiku-5-5",
-        spawnImpl: createStreamingSpawn(calls, [JSON.stringify({
+        spawnImpl: createStreamingSpawn(calls, [streamingInit("claude-haiku-5-5"), JSON.stringify({
           type: "result",
           subtype: "success",
           result: "done",
@@ -1517,6 +1586,7 @@ describe("createClaudeCliAdapter", () => {
     it("prices dated Haiku cache usage correctly and reaches verification", async () => {
       const calls: SpawnCall[] = [];
       const lines = [
+        streamingInit("claude-haiku-4-5-20251001"),
         JSON.stringify({
           type: "assistant",
           message: {
@@ -1576,6 +1646,7 @@ describe("createClaudeCliAdapter", () => {
     it("does not enforce an invented blended price for an unknown Claude model", async () => {
       const calls: SpawnCall[] = [];
       const lines = [
+        streamingInit("claude-unknown-20990101"),
         JSON.stringify({
           type: "assistant",
           message: { usage: { input_tokens: 1_000_000, output_tokens: 10_000 } }
@@ -1889,7 +1960,7 @@ describe("createCodexCliAdapter", () => {
       workingDirectory,
       capabilityProfile: negotiatedCodexProfile(),
       autonomyResolution: negotiatedCodexAutonomy(),
-      spawnImpl: createScriptedSpawn(calls)
+      spawnImpl: createScriptedSpawn(calls, [{ stdout: codexJsonlSuccess() }])
     });
     const result = await adapter.execute(
       makeRequest({
@@ -1933,7 +2004,7 @@ describe("createCodexCliAdapter", () => {
   it("enforces token guardrails via streamingUsageCap, not --max-tokens subprocess flag", async () => {
     const calls: SpawnCall[] = [];
     const adapter = createClaudeCliAdapter({
-      spawnImpl: createScriptedSpawn(calls)
+      spawnImpl: createScriptedSpawn(calls, [{ stdout: '{"type":"result","subtype":"success","result":"done"}\n' }])
     });
 
     const result = await adapter.execute(makeRequest());
@@ -1953,7 +2024,7 @@ describe("createCodexCliAdapter", () => {
       extraArgs: ["--ignore-rules"],
       capabilityProfile: negotiatedCodexProfile(),
       autonomyResolution: negotiatedCodexAutonomy(),
-      spawnImpl: createScriptedSpawn(calls)
+      spawnImpl: createScriptedSpawn(calls, [{ stdout: codexJsonlSuccess("inspected", "gpt-5.5") }])
     });
     const result = await adapter.execute(
       makeRequest({
@@ -1992,7 +2063,7 @@ describe("createCodexCliAdapter", () => {
     const adapter = createCodexCliAdapter({
       capabilityProfile: negotiatedCodexProfile(),
       autonomyResolution: negotiatedCodexAutonomy(),
-      spawnImpl: createScriptedSpawn(calls, [{ stdout: "patched\n" }, { stdout: "ok\n" }])
+      spawnImpl: createScriptedSpawn(calls, [{ stdout: codexJsonlSuccess("patched") }, { stdout: "ok\n" }])
     });
     const result = await adapter.execute(
       makeRequest({
@@ -2042,7 +2113,7 @@ describe("createCodexCliAdapter", () => {
     );
 
     expect(result.status).toBe("failed");
-    expect(result.summary).toContain("exited before verifier execution");
+    expect(result.summary).toContain("turn failed before verifier execution");
     expect(result.verification.passed).toBe(false);
     expect(calls).toHaveLength(1);
   });
@@ -2057,12 +2128,14 @@ describe("createCodexCliAdapter", () => {
         {
           stdout: [
             JSON.stringify({ type: "thread.started", thread_id: "thread_123" }),
+            JSON.stringify({ type: "turn.started" }),
             JSON.stringify({
               type: "item.completed",
               item: { id: "item_1", type: "agent_message", text: "Patched the failing test and re-ran verification." }
             }),
             JSON.stringify({
               type: "turn.completed",
+              model: "gpt-5-codex",
               usage: {
                 input_tokens: 1200,
                 cached_input_tokens: 300,
@@ -2109,10 +2182,15 @@ describe("createCodexCliAdapter", () => {
       capabilityProfile: negotiatedCodexProfile(),
       autonomyResolution: negotiatedCodexAutonomy(),
       spawnImpl: createScriptedSpawn([], [{
-        stdout: JSON.stringify({
-          type: "turn.completed",
-          usage: { input_tokens: 300_000, output_tokens: 1_000 }
-        })
+        stdout: [
+          { type: "thread.started", thread_id: "thread_fixture" },
+          { type: "turn.started" },
+          {
+            type: "turn.completed",
+            model: "gpt-6.1-sol",
+            usage: { input_tokens: 300_000, output_tokens: 1_000 }
+          }
+        ].map((event) => JSON.stringify(event)).join("\n")
       }])
     });
 
@@ -2150,16 +2228,22 @@ describe("createCodexCliAdapter", () => {
       capabilityProfile: negotiatedCodexProfile(),
       autonomyResolution: negotiatedCodexAutonomy(),
       spawnImpl: createScriptedSpawn([], [{
-        stdout: JSON.stringify({
-          type: "turn.completed",
-          usage: { input_tokens: 1_000, output_tokens: 100 }
-        })
+        stdout: [
+          { type: "thread.started", thread_id: "thread_fixture" },
+          { type: "turn.started" },
+          {
+            type: "turn.completed",
+            model,
+            usage: { input_tokens: 1_000, output_tokens: 100 }
+          }
+        ].map((event) => JSON.stringify(event)).join("\n")
       }])
     });
 
     const result = await adapter.execute(makeRequest());
 
     expect(result.usage.provenance).toBe("calculated");
+    expect(result.usage.providerSettlement?.modelSource).toBe("provider_reported");
     expect(result.usage.providerSettlement?.pricingSource).toBe("static_catalog");
     expect(result.usage.providerSettlement?.pricingVersion).toBe(
       ["gpt-6-sol", "gpt-5.6-sol"].includes(model)
@@ -2173,19 +2257,24 @@ describe("createCodexCliAdapter", () => {
       capabilityProfile: negotiatedCodexProfile(),
       autonomyResolution: negotiatedCodexAutonomy(),
       spawnImpl: createScriptedSpawn([], [{
-        stdout: JSON.stringify({
-          type: "turn.completed",
-          usage: { input_tokens: 1_000, output_tokens: 100 }
-        })
+        stdout: [
+          { type: "thread.started", thread_id: "thread_fixture" },
+          { type: "turn.started" },
+          {
+            type: "turn.completed",
+            usage: { input_tokens: 1_000, output_tokens: 100 }
+          }
+        ].map((event) => JSON.stringify(event)).join("\n")
       }])
     });
 
     const result = await adapter.execute(makeRequest());
 
+    expect(result.status).toBe("failed");
     expect(result.usage.provenance).toBe("unavailable");
     expect(result.usage.actualUsd).toBe(0);
     expect(result.usage.estimatedUsd).toBeUndefined();
-    expect(result.usage.providerSettlement?.modelSource).toBe("agent_default");
+    expect(result.usage.providerSettlement?.modelSource).toBe("unavailable");
     expect(result.usage.providerSettlement?.pricingSource).toBe("none");
     expect(result.usage.providerSettlement?.pricingSource).not.toBe("static_catalog");
   });
@@ -2243,17 +2332,15 @@ describe("createGeminiCliAdapter", () => {
   it("uses Gemini headless mode with stdin-backed prompts", async () => {
     const calls: SpawnCall[] = [];
     const adapter = createGeminiCliAdapter({
+      model: "gemini-router/local-v1",
       spawnImpl: createScriptedSpawn(calls, [
         {
-          stdout: JSON.stringify({
-            response: "Patched the failing function.",
-            stats: {
-              inputTokens: 120,
-              cachedReadTokens: 30,
-              outputTokens: 45,
-              thoughtTokens: 10,
-              totalTokens: 205
-            }
+          stdout: geminiJsonlSuccess("Patched the failing function.", "gemini-router/local-v1", {
+            input_tokens: 120,
+            cached_input_tokens: 30,
+            output_tokens: 45,
+            reasoning_output_tokens: 10,
+            total_tokens: 205
           })
         },
         { stdout: "ok\n" }
@@ -2277,14 +2364,15 @@ describe("createGeminiCliAdapter", () => {
     expect(result.status).toBe("completed");
     expect(calls[0]?.command).toBe("gemini");
     expect(calls[0]?.args).toEqual([
+      "--model",
+      "gemini-router/local-v1",
       "--prompt",
       "",
       "--approval-mode",
       "yolo",
       "--output-format",
-      "json"
+      "stream-json"
     ]);
-    expect(calls[0]?.args).not.toContain("--model");
     expect(calls[0]?.stdin).toContain("OBJECTIVE:");
     expect(result.summary).toContain("Patched the failing function");
     expect(result.usage.provenance).toBe("unavailable");
@@ -2297,14 +2385,73 @@ describe("createGeminiCliAdapter", () => {
     expect(result.usage.providerSettlement?.source).toBe("gemini_json");
   });
 
+  it.each([
+    {
+      label: "error terminal",
+      stdout: [
+        JSON.stringify({ type: "init", model: "gemini-router/local-v1" }),
+        JSON.stringify({ type: "result", status: "error", error: { type: "FatalAuthenticationError", message: "denied" } })
+      ].join("\n"),
+      exitCode: 0,
+      failure: /error|denied/iu
+    },
+    { label: "malformed JSONL", stdout: '{"type":"init","model":"gemini-router/local-v1"}\nnot-json\n{"type":"result","status":"success"}', exitCode: 0, failure: /malformed/iu },
+    { label: "prose-only output", stdout: "completed successfully", exitCode: 0, failure: /malformed|structured/iu },
+    { label: "missing terminal", stdout: '{"type":"init","model":"gemini-router/local-v1"}\n{"type":"message","role":"assistant","content":"done"}', exitCode: 0, failure: /terminal/iu },
+    {
+      label: "misleading success with error event",
+      stdout: [
+        JSON.stringify({ type: "init", model: "gemini-router/local-v1" }),
+        JSON.stringify({ type: "message", role: "assistant", content: "done" }),
+        JSON.stringify({ type: "error", severity: "error", message: "safety blocked" }),
+        JSON.stringify({ type: "result", status: "success" })
+      ].join("\n"),
+      exitCode: 0,
+      failure: /safety blocked|error event/iu
+    },
+    { label: "model contradiction", stdout: geminiJsonlSuccess("done", "gemini-substituted-v2"), exitCode: 0, failure: /model mismatch/iu },
+    { label: "nonzero exit", stdout: geminiJsonlSuccess("done", "gemini-router/local-v1"), exitCode: 1, failure: /provider failed|environment_mismatch/iu }
+  ])("fails closed before verifier execution for Gemini $label", async ({ stdout, exitCode, failure }) => {
+    const calls: SpawnCall[] = [];
+    const adapter = createGeminiCliAdapter({
+      model: "gemini-router/local-v1",
+      spawnImpl: createScriptedSpawn(calls, [
+        { stdout, exitCode, stderr: exitCode === 0 ? "" : "provider failed" },
+        { stdout: "verifier should not run" }
+      ])
+    });
+
+    const result = await adapter.execute(makeRequest());
+
+    expect(result.status).toBe("failed");
+    expect(result.verification.summary).toContain("Verifier not run");
+    expect(result.failure?.message).toMatch(failure);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("preserves an arbitrary concrete Gemini model ID unchanged", async () => {
+    const calls: SpawnCall[] = [];
+    const model = "acme-router/gemini-experimental-2026-11";
+    const adapter = createGeminiCliAdapter({
+      model,
+      spawnImpl: createScriptedSpawn(calls, [{ stdout: geminiJsonlSuccess("done", model) }])
+    });
+    const request = makeRequest();
+    request.context.verificationPlan = [];
+
+    const result = await adapter.execute(request);
+
+    expect(result.status).toBe("completed");
+    expect(calls[0]?.args).toEqual(expect.arrayContaining(["--model", model]));
+    expect(result.usage.providerSettlement?.model).toBe(model);
+    expect(result.usage.providerSettlement?.modelSource).toBe("provider_reported");
+  });
+
   it("applies the Gemini Pro long-context tier above 200K input tokens", async () => {
     const adapter = createGeminiCliAdapter({
       model: "gemini-2.5-pro",
       spawnImpl: createScriptedSpawn([], [{
-        stdout: JSON.stringify({
-          response: "inspected",
-          stats: { inputTokens: 210_000, outputTokens: 1_000 }
-        })
+        stdout: geminiJsonlSuccess("inspected", "gemini-2.5-pro", { input_tokens: 210_000, output_tokens: 1_000, total_tokens: 211_000 })
       }])
     });
 
@@ -2341,10 +2488,7 @@ describe("createGeminiCliAdapter", () => {
     const adapter = createGeminiCliAdapter({
       model,
       spawnImpl: createScriptedSpawn([], [{
-        stdout: JSON.stringify({
-          response: "inspected",
-          stats: { inputTokens: 1_000, outputTokens: 100 }
-        })
+        stdout: geminiJsonlSuccess("inspected", model, { input_tokens: 1_000, output_tokens: 100, total_tokens: 1_100 })
       }])
     });
 
@@ -2358,18 +2502,13 @@ describe("createGeminiCliAdapter", () => {
 
   it("does not claim exact pricing when Gemini uses Auto", async () => {
     const adapter = createGeminiCliAdapter({
-      spawnImpl: createScriptedSpawn([], [{
-        stdout: JSON.stringify({
-          response: "inspected",
-          stats: { inputTokens: 1_000, outputTokens: 100 }
-        })
-      }])
+      spawnImpl: createScriptedSpawn([], [{ stdout: geminiJsonlSuccess("inspected", "auto", { input_tokens: 1_000, output_tokens: 100, total_tokens: 1_100 }) }])
     });
 
     const result = await adapter.execute(makeRequest());
 
     expect(result.usage.provenance).toBe("unavailable");
-    expect(result.usage.providerSettlement?.modelSource).toBe("agent_default");
+    expect(result.usage.providerSettlement?.modelSource).toBe("provider_reported");
     expect(result.usage.actualUsd).toBe(0);
     expect(result.usage.estimatedUsd).toBeUndefined();
     expect(result.usage.providerSettlement?.pricingSource).toBe("none");
@@ -2380,7 +2519,8 @@ describe("createGeminiCliAdapter", () => {
     const calls: SpawnCall[] = [];
     const adapter = createGeminiCliAdapter({
       readOnly: true,
-      spawnImpl: createScriptedSpawn(calls, [{ stdout: JSON.stringify({ response: "inspected" }) }])
+      model: "gemini-router/local-v1",
+      spawnImpl: createScriptedSpawn(calls, [{ stdout: geminiJsonlSuccess("inspected", "gemini-router/local-v1") }])
     });
     const request = makeRequest();
     (request.context as any).mutationMode = "read_only";

@@ -460,10 +460,16 @@ function buildIngestBody(
     },
   });
 
-  const settledModel = loop.cost?.providerSettlement?.model;
-
   // One event per attempt — taxonomy locked 2026-08-21.
   for (const attempt of loop.attempts) {
+    const startedEvent = loop.events?.find((event) =>
+      event.type === "attempt.started"
+      && event.payload?.["attemptId"] === attempt.attemptId
+    );
+    const startedPayload = isPlainRecord(startedEvent?.payload) ? startedEvent.payload : undefined;
+    const providerId = typeof startedPayload?.["providerId"] === "string"
+      ? startedPayload["providerId"]
+      : undefined;
     const eventType = attempt.failureClass != null ? "attempt.failed" : "attempt.completed";
     events.push({
       eventId: `evt_attempt_${attempt.attemptId}`,
@@ -474,8 +480,8 @@ function buildIngestBody(
       payload: {
         ...(attempt.failureClass != null && { failureClass: attempt.failureClass }),
         ...(attempt.summary != null && { summary: attempt.summary }),
-        // Provider settlement is run-level evidence; this does not claim per-attempt model accuracy.
-        ...(settledModel != null && { model: settledModel }),
+        ...(providerId !== undefined && { providerId }),
+        ...(attempt.model != null && { model: attempt.model }),
         ...(attempt.adapterId != null && { adapterId: attempt.adapterId }),
       },
     });

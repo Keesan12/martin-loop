@@ -18,6 +18,7 @@ import {
   resolveCliCommandAvailability
 } from "@martin/adapters";
 import { createLoopRecord } from "@martin/contracts";
+import { verifyReceiptIntegrityFromFiles } from "@martin/core";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -25,6 +26,7 @@ import {
   __setRunAdapterOverrideForTests,
   executeCli
 } from "../src/index.js";
+import { persistLoopArtifacts } from "../src/persistence.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -376,6 +378,26 @@ describe("--proof mode", () => {
 // ---------------------------------------------------------------------------
 
 describe("--engine flag", () => {
+  it("reports only non-secret OpenAI auth authority from doctor", async () => {
+    const secret = "secret-cli-posture-canary";
+    const result = await withScratchEnv({
+      MARTIN_OPENAI_BASE_URL: "https://router.example.test/v1",
+      MARTIN_OPENAI_MODEL: "router/model:exact",
+      MARTIN_OPENAI_API_KEY: secret,
+    }, () => executeCli(["--json", "doctor", "--engine", "openai"]));
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).not.toContain(secret);
+    expect(JSON.parse(result.stdout).engines.openai).toMatchObject({
+      available: true,
+      model: "router/model:exact",
+      authPosture: {
+        posture: "router_bearer",
+        endpointClass: "router",
+        credentialConfigured: true,
+      },
+    });
+  });
   it("defaults to claude when no --engine flag is given", { timeout: 45_000 }, async () => {
     // Verification-only mode preserves the requested engine metadata without launching it.
     const result = await withRunsRoot(() =>
@@ -483,6 +505,8 @@ describe("--engine flag", () => {
           runsDir,
           "--objective",
           "Fix the bug",
+          "--model",
+          "test-no-runtime",
           "--verify",
           NOOP_VERIFIER,
           "--max-iterations",
@@ -543,12 +567,12 @@ describe("--engine flag", () => {
       const runsDir = join(workspace, ".martin-runs");
 
       const result = await executeCli([
-        "--json", "run", "--engine", "codex", "--cwd", workspace,
+        "--json", "run", "--engine", "codex", "--model", "gpt-5.4", "--cwd", workspace,
         "--runs-dir", runsDir, "--objective", "Fix the fresh run",
         "--verify", NOOP_VERIFIER, "--max-iterations", "1", "--budget-usd", "2"
       ]);
 
-      expect(result.exitCode).toBe(7);
+      expect(result.exitCode, result.stderr || result.stdout).toBe(7);
       const payload = JSON.parse(result.stdout);
       expect(payload.command).toBe("run");
       const state = await readWorkflowState(runsDir, workspace);
@@ -564,7 +588,8 @@ describe("--engine flag", () => {
       withScratchEnv(
         {
           MARTIN_INTEGRITY_KEY_DIR: join(workspace, ".martin-receipt-integrity"),
-          MARTIN_GROUNDING_DIR: join(workspace, ".martin-grounding")
+          MARTIN_GROUNDING_DIR: join(workspace, ".martin-grounding"),
+          MARTIN_PERSISTENCE_LEASE_DIR: join(workspace, ".martin-persistence-leases")
         },
         async () => {
           initializeGitRepo(workspace);
@@ -588,7 +613,7 @@ describe("--engine flag", () => {
             "2",
           ]);
 
-          expect(result.exitCode).toBe(0);
+          expect(result.exitCode, result.stderr || result.stdout).toBe(0);
           const payload = JSON.parse(result.stdout);
           expect(payload.command).toBe("run");
           expect(payload.environment.engine).toBe("codex");
@@ -642,6 +667,8 @@ describe("--engine flag", () => {
                 "doctor",
                 "--engine",
                 "codex",
+                "--model",
+                "gpt-5.4",
                 "--cwd",
                 workspace,
                 "--runs-dir",
@@ -668,6 +695,8 @@ describe("--engine flag", () => {
                 "preflight",
                 "--engine",
                 "codex",
+                "--model",
+                "gpt-5.4",
                 "--cwd",
                 workspace,
                 "--runs-dir",
@@ -712,6 +741,8 @@ describe("--engine flag", () => {
                 "run",
                 "--engine",
                 "codex",
+                "--model",
+                "gpt-5.4",
                 "--cwd",
                 workspace,
                 "--runs-dir",
@@ -732,6 +763,98 @@ describe("--engine flag", () => {
             expect(payload.command).toBe("run");
             expect(payload.environment.engine).toBe("codex");
           expect(payload.environment.liveMode).toBe("live");
+        }
+      )
+    );
+  });
+
+  it("continues Codex under the exact persisted model with zero fallback and retained accounting", { timeout: 45000 }, async () => {
+    await withTempDir((workspace) =>
+      withScratchEnv(
+        {
+          MARTIN_INTEGRITY_KEY_DIR: join(workspace, ".martin-receipt-integrity"),
+          MARTIN_GROUNDING_DIR: join(workspace, ".martin-grounding"),
+          MARTIN_PERSISTENCE_LEASE_DIR: join(workspace, ".martin-persistence-leases")
+        },
+        async () => {
+          initializeGitRepo(workspace);
+          installDeterministicCodexHost();
+          const runsDir = join(workspace, ".martin-runs");
+          const seeded = createLoopRecord({
+            workspaceId: "ws_codex_continuation",
+            projectId: "proj_codex_continuation",
+            task: {
+              title: "Continue the controlled Codex fixture",
+              objective: "Continue without widening provider authority.",
+              repoRoot: workspace,
+              verificationPlan: [NOOP_VERIFIER],
+              mutationMode: "read_only"
+            },
+            budget: { maxUsd: 2, softLimitUsd: 1.5, maxIterations: 2, maxTokens: 128_000 },
+            cost: { actualUsd: 0.25, avoidedUsd: 0, tokensIn: 100, tokensOut: 20, provenance: "actual" },
+            metadata: {
+              executionMode: "governed",
+              authorizedPrimaryEngine: "codex",
+              authorizedPrimaryModel: "gpt-5.4",
+              authorizedFallbackProfiles: "[]"
+            }
+          });
+          const seededRunRoot = join(runsDir, seeded.loopId);
+          await mkdir(seededRunRoot, { recursive: true });
+          await writeFile(
+            join(seededRunRoot, "ledger.jsonl"),
+            `${JSON.stringify({ kind: "contract.created", loopId: seeded.loopId, timestamp: seeded.createdAt })}\n`,
+            "utf8"
+          );
+          await persistLoopArtifacts(seeded, { runsRoot: runsDir });
+
+          const result = await executeCli([
+            "--json",
+            "continue",
+            seeded.loopId,
+            "--engine",
+            "codex",
+            "--model",
+            "gpt-5.4",
+            "--runs-dir",
+            runsDir
+          ]);
+
+          expect(result.exitCode, result.stderr || result.stdout).toBe(7);
+          const payload = JSON.parse(result.stdout);
+          expect(payload).toMatchObject({
+            command: "continue",
+            loopId: seeded.loopId,
+            engine: "codex",
+            model: "gpt-5.4",
+            fallbackProfiles: [],
+            outcome: "NEEDS_REVIEW"
+          });
+
+          const persisted = JSON.parse(await readFile(join(runsDir, seeded.loopId, "loop-record.json"), "utf8"));
+          expect(persisted.metadata).toMatchObject({
+            authorizedPrimaryEngine: "codex",
+            authorizedPrimaryModel: "gpt-5.4",
+            authorizedFallbackProfiles: "[]",
+            resumedVia: "cli"
+          });
+          expect(persisted.cost.actualUsd).toBeGreaterThanOrEqual(0.25);
+          expect(persisted.attempts).toHaveLength(1);
+
+          const receiptIntegrity = await verifyReceiptIntegrityFromFiles({
+            runId: seeded.loopId,
+            runsRoot: runsDir,
+            loopRecordPath: join(runsDir, seeded.loopId, "loop-record.json"),
+            ledgerPath: join(runsDir, seeded.loopId, "ledger.jsonl")
+          });
+          expect(receiptIntegrity.state).toBe("verified");
+
+          const verifyResult = await executeCli([
+            "--json", "runs", "verify", "--loop-id", seeded.loopId, "--runs-dir", runsDir
+          ]);
+          expect(verifyResult.exitCode).toBe(7);
+          const verifyPayload = JSON.parse(verifyResult.stdout);
+          expect(verifyPayload.verification.status).toBe(payload.verification.status);
         }
       )
     );
@@ -815,6 +938,8 @@ describe("--engine flag", () => {
                 "run",
                 "--engine",
                 "codex",
+                "--model",
+                "gpt-5.4",
                 "--cwd",
                 workspace,
                 "--runs-dir",
@@ -865,6 +990,8 @@ describe("--engine flag", () => {
                   "doctor",
                   "--engine",
                   "codex",
+                  "--model",
+                  "gpt-5.4",
                   "--cwd",
                   workspace,
                   "--runs-dir",
@@ -923,6 +1050,8 @@ describe("--engine flag", () => {
                   "run",
                   "--engine",
                   "codex",
+                  "--model",
+                  "gpt-5.4",
                   "--cwd",
                   workspace,
                   "--runs-dir",
@@ -1009,6 +1138,7 @@ describe("saved engine preference lifecycle", () => {
 
       const run = await withEnv("MARTIN_LIVE", "true", () => executeCli([
         "--json", "run",
+        "--model", "gpt-5.4",
         "--cwd", workspace,
         "--runs-dir", runsDir,
         "--objective", "Use the saved engine",
@@ -1024,7 +1154,7 @@ describe("saved engine preference lifecycle", () => {
         "--json", "preflight",
         "--cwd", workspace,
         "--runs-dir", runsDir,
-        "--engine", "openai",
+        "--engine", "openai", "--model", "gpt-5.4",
         "--objective", "Override the saved engine",
         "--verify", NOOP_VERIFIER,
         "--budget-usd", "2"
@@ -1036,7 +1166,7 @@ describe("saved engine preference lifecycle", () => {
         "--json", "run",
         "--cwd", workspace,
         "--runs-dir", runsDir,
-        "--engine", "openai",
+        "--engine", "openai", "--model", "gpt-5.4",
         "--objective", "Override the saved engine",
         "--verify", NOOP_VERIFIER,
         "--budget-usd", "2",

@@ -108,7 +108,9 @@ export function cloneExecutionPolicy(policy: ExecutionPolicy): ExecutionPolicy {
       maxUsd: policy.budget.maxUsd,
       softLimitUsd: policy.budget.softLimitUsd,
       maxIterations: policy.budget.maxIterations,
-      ...(policy.budget.maxTokens !== undefined ? { maxTokens: policy.budget.maxTokens } : {})
+      ...(policy.budget.maxTokens !== undefined ? { maxTokens: policy.budget.maxTokens } : {}),
+      ...(policy.budget.maxWallClockMs !== undefined ? { maxWallClockMs: policy.budget.maxWallClockMs } : {}),
+      ...(policy.budget.softTimeLimitMs !== undefined ? { softTimeLimitMs: policy.budget.softTimeLimitMs } : {})
     },
     governance: {
       policyProfile: policy.governance.policyProfile,

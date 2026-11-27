@@ -2,11 +2,11 @@
 
 The standalone MCP line is published as its own package. Treat it like a product surface, not a side effect of the root package.
 
-## Current public truth
+## Version references
 
-- current published standalone package: `@martinloop/mcp` (live version: `0.9.0`)
-- current in-repo standalone release baseline: `0.10.0` (pending publication)
-- next planned standalone release: `0.10.0`, after exact release acceptance
+- published standalone version: run `npm view @martinloop/mcp version`
+- current in-repo standalone release baseline: `1.0.0`
+- GitHub release, MCPB downloads, and registry: see the [version ledger](./VERSION-LEDGER.md)
 - publish authority: GitHub Actions trusted publishing / OIDC
 
 ## Before publish

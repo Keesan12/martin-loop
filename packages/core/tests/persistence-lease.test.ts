@@ -153,23 +153,30 @@ describe("persistence lease queue", () => {
 
     const firstAcquisition = acquirePersistenceLease(runsRoot, runId);
     const secondAcquisition = acquirePersistenceLease(runsRoot, runId);
-    const firstRelease = await firstAcquisition;
-    await firstRelease();
-    const secondRelease = await secondAcquisition;
-    await secondRelease();
+    // Queue order is set by the append, after asynchronous filesystem work.
+    const firstOwner = await Promise.race([
+      firstAcquisition.then((release) => ({ release, next: secondAcquisition })),
+      secondAcquisition.then((release) => ({ release, next: firstAcquisition }))
+    ]);
+    await firstOwner.release();
+    const releaseNextOwner = await firstOwner.next;
+    await releaseNextOwner();
 
     const records = (await readFile(queuePath, "utf8"))
       .split(/\r?\n/u)
       .filter(Boolean)
       .map((line) => {
         try {
-          return JSON.parse(line) as { type: string };
+          return JSON.parse(line) as { type: string; token?: string };
         } catch {
           return { type: "torn" };
         }
       });
+    const acquisitions = records.filter((record) => record.type === "acquire");
+    const releases = records.filter((record) => record.type === "release");
     expect(records.filter((record) => record.type === "recover-torn-tail")).toHaveLength(2);
-    expect(records.filter((record) => record.type === "acquire")).toHaveLength(3);
-    expect(records.filter((record) => record.type === "release")).toHaveLength(2);
+    expect(acquisitions).toHaveLength(3);
+    expect(releases.map((record) => record.token))
+      .toEqual(acquisitions.slice(1).map((record) => record.token));
   });
 });

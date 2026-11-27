@@ -36,6 +36,7 @@ export const SWARM_EVENT_TYPES = [
   "GLOBAL_VERIFIER_PASSED",
   "GLOBAL_VERIFIER_FAILED",
   "SWARM_CANCEL_REQUESTED",
+  "SOFT_LIMIT_WARNING",
   "SWARM_STOPPED",
   "SWARM_NEEDS_REVIEW",
   "SWARM_VERIFIED"
@@ -792,6 +793,7 @@ export function validateSwarmParentContract(parent: SwarmParentContract): SwarmV
   if (!isPositiveFinite(parent.maxWallClockMs)) {
     addError(errors, "INVALID_WALL_CLOCK", "maxWallClockMs", "must be a positive finite number");
   }
+  validateWallClockBudgetWithinContract(parent.budget, parent.maxWallClockMs, errors);
   if (parent.scope.allowedPaths.length === 0) {
     addError(errors, "INVALID_SCOPE", "scope.allowedPaths", "at least one non-empty allowed path is required");
   }
@@ -887,6 +889,7 @@ export function validateSwarmChildContract(
   if (!isPositiveFinite(child.maxWallClockMs) || child.maxWallClockMs > parent.maxWallClockMs) {
     addError(errors, "CHILD_WALL_CLOCK_WIDENED", "maxWallClockMs", "child wall-clock cap must not exceed parent cap");
   }
+  validateWallClockBudgetWithinContract(child.budget, child.maxWallClockMs, errors);
   if (!isSubset(child.permissions.networkDomains, parent.permissions.networkDomains)) {
     addError(errors, "CHILD_NETWORK_WIDENED", "permissions.networkDomains", "child network permissions must be a parent subset");
   }
@@ -900,6 +903,24 @@ export function validateSwarmChildContract(
     addError(errors, "CHILD_GLOBAL_VERIFIER_FORBIDDEN", "verifierAuthority", "only the parent may hold global verifier authority");
   }
   return validationResult(errors);
+}
+
+function validateWallClockBudgetWithinContract(
+  budget: LoopBudget,
+  hardLimit: number,
+  errors: SwarmValidationError[]
+): void {
+  if (budget.maxWallClockMs !== undefined && (
+    !Number.isSafeInteger(budget.maxWallClockMs) || budget.maxWallClockMs <= 0 || budget.maxWallClockMs > hardLimit
+  )) {
+    addError(errors, "INVALID_WALL_CLOCK", "budget.maxWallClockMs", "must be a positive integer within the contract cap");
+  }
+  if (budget.softTimeLimitMs !== undefined && (
+    !Number.isSafeInteger(budget.softTimeLimitMs) || budget.softTimeLimitMs <= 0
+    || budget.softTimeLimitMs >= Math.min(hardLimit, budget.maxWallClockMs ?? Infinity)
+  )) {
+    addError(errors, "INVALID_WALL_CLOCK", "budget.softTimeLimitMs", "must be a positive integer below the hard cap");
+  }
 }
 
 export function createSwarmRunRecord(

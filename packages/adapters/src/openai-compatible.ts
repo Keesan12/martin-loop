@@ -35,6 +35,12 @@ import type {
   MartinAdapterRequest,
   MartinAdapterResult
 } from "@martin/core";
+import {
+  assertConcreteLiveModel,
+  resolveOpenAiAuthPosture,
+  type OpenAiAuthPosture,
+  type OpenAiAuthPostureKind,
+} from "@martin/contracts";
 
 import { readGitChangedFiles, runVerification } from "./cli-bridge.js";
 import { createAdapterCapabilities, normalizeUsage } from "./runtime-support.js";
@@ -86,6 +92,7 @@ function normalizeOpenAiCompatibleUsage(input: {
   usageWasFullyProviderReported: boolean;
   modelSource: "explicit_override" | "provider_configured";
   billingMode: "metered_api" | "local_unmetered" | "unknown";
+  authPosture: OpenAiAuthPosture;
   configuredPricePerMTokenUsd?: number;
 }) {
   const resolution = resolveProviderPricing(input.model, {
@@ -122,6 +129,8 @@ function normalizeOpenAiCompatibleUsage(input: {
       inputTokens: input.tokensIn,
       outputTokens: input.tokensOut,
       billingMode: input.billingMode,
+      openAiAuthPosture: input.authPosture.posture,
+      openAiEndpointClass: input.authPosture.endpointClass,
       modelSource: input.modelSource,
       pricingSource: configuredUsd !== undefined
         ? "blended_fallback"
@@ -160,6 +169,7 @@ interface OpenAiUsage {
 }
 
 interface OpenAiResponse {
+  model?: string;
   choices?: OpenAiChoice[];
   usage?: OpenAiUsage;
   error?: { message?: string; type?: string; code?: string };
@@ -179,6 +189,8 @@ export interface OpenAiCompatibleAdapterOptions {
   baseUrl?: string;
   /** API key. Empty string for local (Ollama/LM Studio) endpoints. */
   apiKey?: string;
+  /** Explicit authority for a remote endpoint that intentionally accepts no credential. */
+  authPosture?: OpenAiAuthPostureKind;
   /** Model identifier passed as-is to the API (e.g. "deepseek/deepseek-chat"). */
   model?: string;
   /** Explicit billing authority. Required to classify a metered loopback proxy. */
@@ -192,6 +204,8 @@ export interface OpenAiCompatibleAdapterOptions {
   systemPrompt?: string;
   /** Request timeout in milliseconds. Default: 300_000 (5 min). */
   timeoutMs?: number;
+  /** Maximum provider response bytes read into memory. Default: 1 MiB. */
+  maxResponseBytes?: number;
   /** Verifier timeout in milliseconds. Default: 120_000. */
   verifyTimeoutMs?: number;
   /** Working directory for git artifact collection and verification. */
@@ -237,17 +251,19 @@ export function resolveOpenAiCompatibleRuntimeConfig(
   env: NodeJS.ProcessEnv = process.env,
   billingModeOverride?: OpenAiCompatibleBillingMode,
   baseUrlOverride?: string,
-  pricePerMTokenUsdOverride?: number
+  pricePerMTokenUsdOverride?: number,
+  authPostureOverride?: OpenAiAuthPostureKind,
+  apiKeyOverride?: string,
 ): {
   baseUrl: string;
   model?: string;
   apiKey: string;
   apiKeyConfigured: boolean;
-  authPosture: "api_key" | "anonymous_or_local";
+  authPosture: OpenAiAuthPosture;
   billingMode?: OpenAiCompatibleBillingMode;
   pricePerMTokenUsd?: number;
 } {
-  const apiKey = env["MARTIN_OPENAI_API_KEY"] ?? "";
+  const apiKey = apiKeyOverride ?? env["MARTIN_OPENAI_API_KEY"] ?? "";
   const configuredBillingMode = billingModeOverride ?? env["MARTIN_OPENAI_BILLING_MODE"];
   if (
     configuredBillingMode !== undefined &&
@@ -262,6 +278,26 @@ export function resolveOpenAiCompatibleRuntimeConfig(
   const baseUrl = normalizeOpenAiCompatibleBaseUrl(
     baseUrlOverride ?? env["MARTIN_OPENAI_BASE_URL"] ?? DEFAULT_OPENAI_BASE_URL
   );
+  const configuredPosture = authPostureOverride ?? env["MARTIN_OPENAI_AUTH_POSTURE"];
+  if (
+    configuredPosture !== undefined &&
+    configuredPosture !== "hosted_bearer" &&
+    configuredPosture !== "router_bearer" &&
+    configuredPosture !== "loopback_no_auth" &&
+    configuredPosture !== "remote_no_auth"
+  ) {
+    throw new Error(
+      "INVALID_OPENAI_AUTH_POSTURE: MARTIN_OPENAI_AUTH_POSTURE must be remote_no_auth when explicit remote no-auth authority is required."
+    );
+  }
+  const authPosture = resolveOpenAiAuthPosture({
+    baseUrl,
+    credentialConfigured: apiKey.length > 0,
+    ...(configuredPosture === undefined ? {} : { configuredPosture }),
+  });
+  const configuredModel = env["MARTIN_OPENAI_MODEL"]
+    ? assertConcreteLiveModel(env["MARTIN_OPENAI_MODEL"])
+    : undefined;
   const configuredPriceText = pricePerMTokenUsdOverride === undefined
     ? env["MARTIN_OPENAI_PRICE_PER_M_TOKEN_USD"]
     : undefined;
@@ -277,10 +313,10 @@ export function resolveOpenAiCompatibleRuntimeConfig(
   }
   return {
     baseUrl,
-    ...(env["MARTIN_OPENAI_MODEL"] ? { model: env["MARTIN_OPENAI_MODEL"] } : {}),
+    ...(configuredModel ? { model: configuredModel } : {}),
     apiKey,
     apiKeyConfigured: apiKey.length > 0,
-    authPosture: apiKey.length > 0 ? "api_key" : "anonymous_or_local",
+    authPosture,
     ...(configuredBillingMode ? { billingMode: configuredBillingMode } : {}),
     ...(configuredPrice === undefined ? {} : { pricePerMTokenUsd: configuredPrice })
   };
@@ -389,28 +425,109 @@ function abortError(message: string): Error {
   return error;
 }
 
-function waitForRetryDelay(delayMs: number, signal?: AbortSignal): Promise<void> {
-  if (signal?.aborted) {
-    return Promise.reject(abortError("OpenAI-compatible retry cancelled by parent."));
+const DEFAULT_MAX_RESPONSE_BYTES = 1_048_576;
+
+async function readBoundedResponseText(response: Response, maxBytes: number): Promise<string> {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) {
+    throw new Error("INVALID_OPENAI_RESPONSE_LIMIT: maxResponseBytes must be a positive safe integer.");
   }
-  return new Promise<void>((resolve, reject) => {
-    let settled = false;
-    const onAbort = () => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      signal?.removeEventListener("abort", onAbort);
-      reject(abortError("OpenAI-compatible retry cancelled by parent."));
-    };
-    const timer = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      signal?.removeEventListener("abort", onAbort);
-      resolve();
-    }, delayMs);
-    signal?.addEventListener("abort", onAbort, { once: true });
-    if (signal?.aborted) onAbort();
-  });
+  if (!response.body) {
+    throw new Error("OPENAI_RESPONSE_BODY_MISSING");
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder("utf-8", { fatal: true });
+  let byteCount = 0;
+  let text = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    byteCount += value.byteLength;
+    if (byteCount > maxBytes) {
+      await reader.cancel("OPENAI_RESPONSE_TOO_LARGE");
+      throw new Error(`OPENAI_RESPONSE_TOO_LARGE: response exceeded ${String(maxBytes)} bytes`);
+    }
+    text += decoder.decode(value, { stream: true });
+  }
+  return text + decoder.decode();
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function parseOpenAiResponse(text: string, requestedModel: string): OpenAiResponse {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch (error) {
+    throw new Error(
+      `OPENAI_RESPONSE_INVALID_JSON: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  if (!isRecord(parsed)) {
+    throw new Error("OPENAI_RESPONSE_INVALID_SCHEMA: expected an object");
+  }
+  if (parsed.model !== undefined) {
+    if (typeof parsed.model !== "string") {
+      throw new Error("OPENAI_RESPONSE_INVALID_SCHEMA: model must be a string");
+    }
+    if (parsed.model !== requestedModel) {
+      throw new Error(
+        `OPENAI_RESPONSE_MODEL_MISMATCH: requested ${requestedModel}, observed ${parsed.model}`,
+      );
+    }
+  }
+  if (parsed.error !== undefined) {
+    if (!isRecord(parsed.error)) {
+      throw new Error("OPENAI_RESPONSE_INVALID_SCHEMA: error must be an object");
+    }
+    for (const field of ["message", "type", "code"] as const) {
+      if (parsed.error[field] !== undefined && typeof parsed.error[field] !== "string") {
+        throw new Error(`OPENAI_RESPONSE_INVALID_SCHEMA: error.${field} must be a string`);
+      }
+    }
+    return parsed as OpenAiResponse;
+  }
+  if (!Array.isArray(parsed.choices) || parsed.choices.length === 0) {
+    throw new Error("OPENAI_RESPONSE_INVALID_SCHEMA: choices must be a non-empty array");
+  }
+  for (const [index, choice] of parsed.choices.entries()) {
+    if (!isRecord(choice) || !isRecord(choice.message)) {
+      throw new Error(`OPENAI_RESPONSE_INVALID_SCHEMA: choices[${String(index)}].message must be an object`);
+    }
+    if (choice.message.role !== "assistant" || typeof choice.message.content !== "string") {
+      throw new Error(
+        `OPENAI_RESPONSE_INVALID_SCHEMA: choices[${String(index)}].message requires assistant role and string content`,
+      );
+    }
+    if (
+      choice.finish_reason !== undefined &&
+      choice.finish_reason !== null &&
+      typeof choice.finish_reason !== "string"
+    ) {
+      throw new Error(`OPENAI_RESPONSE_INVALID_SCHEMA: choices[${String(index)}].finish_reason must be a string or null`);
+    }
+  }
+  if (parsed.usage !== undefined) {
+    if (!isRecord(parsed.usage)) {
+      throw new Error("OPENAI_RESPONSE_INVALID_USAGE: usage must be an object");
+    }
+    for (const field of ["prompt_tokens", "completion_tokens", "total_tokens"] as const) {
+      const value = parsed.usage[field];
+      if (value !== undefined && (!Number.isSafeInteger(value) || (value as number) < 0)) {
+        throw new Error(`OPENAI_RESPONSE_INVALID_USAGE: ${field} must be a finite nonnegative integer`);
+      }
+    }
+    if (
+      typeof parsed.usage.prompt_tokens === "number" &&
+      typeof parsed.usage.completion_tokens === "number" &&
+      typeof parsed.usage.total_tokens === "number" &&
+      parsed.usage.total_tokens !== parsed.usage.prompt_tokens + parsed.usage.completion_tokens
+    ) {
+      throw new Error("OPENAI_RESPONSE_INVALID_USAGE: total_tokens must equal prompt_tokens plus completion_tokens");
+    }
+  }
+  return parsed as OpenAiResponse;
 }
 
 // ---------------------------------------------------------------------------
@@ -422,6 +539,7 @@ export function createOpenAiCompatibleAdapter(
 ): MartinAdapter {
   const workingDirectory = options.workingDirectory ?? process.cwd();
   const timeoutMs = options.timeoutMs ?? 300_000;
+  const maxResponseBytes = options.maxResponseBytes ?? DEFAULT_MAX_RESPONSE_BYTES;
   const verifyTimeoutMs = options.verifyTimeoutMs ?? 120_000;
   const systemPrompt = options.systemPrompt ?? DEFAULT_SYSTEM_PROMPT;
   const fetchFn = options.fetchImpl ?? globalThis.fetch;
@@ -429,16 +547,27 @@ export function createOpenAiCompatibleAdapter(
     process.env,
     options.billingMode,
     options.baseUrl,
-    options.pricePerMTokenUsd
+    options.pricePerMTokenUsd,
+    options.authPosture,
+    options.apiKey,
   );
   const baseUrl = runtimeConfig.baseUrl;
-  const model = options.model ?? runtimeConfig.model;
+  const model = options.model === undefined
+    ? runtimeConfig.model
+    : assertConcreteLiveModel(options.model);
   if (!model) {
     throw new Error(
       "MODEL_CONFIGURATION_REQUIRED: set --model or MARTIN_OPENAI_MODEL for direct OpenAI-compatible execution."
     );
   }
   const apiKey = options.apiKey ?? runtimeConfig.apiKey;
+  const authPosture = runtimeConfig.authPosture;
+  if (
+    (authPosture.posture === "hosted_bearer" || authPosture.posture === "router_bearer") &&
+    !authPosture.credentialConfigured
+  ) {
+    throw new Error("OPENAI_BEARER_CREDENTIAL_REQUIRED: the selected hosted endpoint requires a bearer credential.");
+  }
   const modelSource = options.model ? "explicit_override" as const : "provider_configured" as const;
   const billingMode: OpenAiCompatibleBillingMode =
     runtimeConfig.billingMode ??
@@ -468,6 +597,9 @@ export function createOpenAiCompatibleAdapter(
       providerId: "openai-compatible",
       model,
       transport: "http",
+      authPosture: authPosture.posture,
+      endpointClass: authPosture.endpointClass,
+      credentialConfigured: authPosture.credentialConfigured,
       ...(pricePerMTokenUsd === undefined ? {} : {
         budgetPreflight: {
           pricePerMTokenUsd,
@@ -537,13 +669,6 @@ export function createOpenAiCompatibleAdapter(
         };
       }
 
-      // Call the OpenAI-compatible endpoint with exponential-backoff retry on
-      // transient failures (429 rate-limit, 503/5xx server errors, network errors).
-      // Auth errors (401/403) and bad-request errors (400) are not retried — they
-      // indicate a permanent configuration problem.
-      const MAX_RETRIES = 3;
-      const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
-      const NON_RETRYABLE_STATUS = new Set([400, 401, 403]);
       const apiRoot = /\/v1$/iu.test(baseUrl) ? baseUrl : `${baseUrl}/v1`;
       const endpoint = `${apiRoot}/chat/completions`;
       let responseText = "";
@@ -567,116 +692,97 @@ export function createOpenAiCompatibleAdapter(
         max_tokens: 8192
       });
 
-      let lastError = "";
-      let succeeded = false;
-
-      for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-        const controller = new AbortController();
-        let timedOut = false;
-        const abortFromParent = () => controller.abort(request.signal?.reason);
-        if (request.signal?.aborted) abortFromParent();
-        else if (request.signal) {
-          request.signal.addEventListener("abort", abortFromParent, { once: true });
-          if (request.signal.aborted) abortFromParent();
-        }
-        const timer = setTimeout(() => {
-          timedOut = true;
-          controller.abort(abortError(`${model} request timed out after ${timeoutMs}ms`));
-        }, timeoutMs);
-        try {
-          const res = await fetchFn(endpoint, {
-            method: "POST",
-            headers,
-            body: requestBody,
-            signal: controller.signal
-          });
-
-          const body = (await res.json()) as OpenAiResponse;
-
-          if (!res.ok || body.error) {
-            const errMsg = body.error?.message ?? `HTTP ${res.status}`;
-            // Fail immediately on non-retryable errors (auth, bad request)
-            if (NON_RETRYABLE_STATUS.has(res.status)) {
-              return {
-                status: "failed",
-                summary: `${model} API error: ${errMsg}`,
-                usage: normalizeUsage({ actualUsd: 0, tokensIn: 0, tokensOut: 0, provenance: "unavailable" }),
-                verification: { passed: false, summary: "API call failed before verifier." },
-                failure: { message: errMsg, classHint: "infrastructure_error" as FailureClass }
-              };
-            }
-            // Retry on transient errors
-            if (RETRYABLE_STATUS.has(res.status) && attempt < MAX_RETRIES - 1) {
-              lastError = errMsg;
-              // Exponential backoff: 1s, 2s, 4s
-              try {
-                await waitForRetryDelay(1000 * Math.pow(2, attempt), request.signal);
-              } catch (error) {
-                if (error instanceof Error && error.name === "AbortError") return cancelledResult();
-                throw error;
-              }
-              continue;
-            }
-            return {
-              status: "failed",
-              summary: `${model} API error: ${errMsg}`,
-              usage: normalizeUsage({ actualUsd: 0, tokensIn: 0, tokensOut: 0, provenance: "unavailable" }),
-              verification: { passed: false, summary: "API call failed before verifier." },
-              failure: { message: errMsg, classHint: "infrastructure_error" as FailureClass }
-            };
-          }
-
-          responseText = body.choices?.[0]?.message?.content ?? "";
-          if (body.usage) {
-            const providerPromptTokens = body.usage.prompt_tokens;
-            const providerCompletionTokens = body.usage.completion_tokens;
-            usageWasFullyProviderReported =
-              typeof providerPromptTokens === "number" &&
-              typeof providerCompletionTokens === "number";
-            tokensIn = providerPromptTokens ?? tokensIn;
-            tokensOut = providerCompletionTokens ?? Math.ceil(responseText.length / CHARS_PER_TOKEN);
-          } else {
-            tokensOut = Math.ceil(responseText.length / CHARS_PER_TOKEN);
-          }
-          succeeded = true;
-          break;
-        } catch (error: unknown) {
-          const isAbort = error instanceof Error && error.name === "AbortError";
-          if (request.signal?.aborted && !timedOut) return cancelledResult();
-          if (isAbort || attempt === MAX_RETRIES - 1) {
-            const message = isAbort
-              ? `${model} request timed out after ${timeoutMs}ms`
-              : String(error);
-            return {
-              status: "failed",
-              summary: message,
-              usage: normalizeUsage({ actualUsd: 0, tokensIn: 0, tokensOut: 0, provenance: "unavailable" }),
-              verification: { passed: false, summary: isAbort ? "Request timed out." : "Network error." },
-              failure: { message, classHint: "infrastructure_error" as FailureClass }
-            };
-          }
-          // Transient network error — retry with backoff
-          lastError = String(error);
-          try {
-            await waitForRetryDelay(1000 * Math.pow(2, attempt), request.signal);
-          } catch (delayError) {
-            if (delayError instanceof Error && delayError.name === "AbortError") return cancelledResult();
-            throw delayError;
-          }
-        } finally {
-          clearTimeout(timer);
-          request.signal?.removeEventListener("abort", abortFromParent);
-        }
+      const controller = new AbortController();
+      let timedOut = false;
+      const abortFromParent = () => controller.abort(request.signal?.reason);
+      if (request.signal?.aborted) abortFromParent();
+      else if (request.signal) {
+        request.signal.addEventListener("abort", abortFromParent, { once: true });
+        if (request.signal.aborted) abortFromParent();
       }
+      const timer = setTimeout(() => {
+        timedOut = true;
+        controller.abort(abortError(`${model} request timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+      try {
+        const res = await fetchFn(endpoint, {
+          method: "POST",
+          headers,
+          body: requestBody,
+          signal: controller.signal
+        });
+        const rawBody = await readBoundedResponseText(res, maxResponseBytes);
+        if (!res.ok) {
+          let errMsg = `HTTP ${String(res.status)}`;
+          try {
+            const errorBody = JSON.parse(rawBody) as unknown;
+            if (
+              isRecord(errorBody) &&
+              isRecord(errorBody.error) &&
+              typeof errorBody.error.message === "string"
+            ) {
+              errMsg = errorBody.error.message;
+            }
+          } catch {
+            // HTTP status is authoritative even when the error body is malformed.
+          }
+          return {
+            status: "failed",
+            summary: `${model} API error: ${errMsg}`,
+            usage: normalizeUsage({ actualUsd: 0, tokensIn: 0, tokensOut: 0, provenance: "unavailable" }),
+            verification: { passed: false, summary: "API call failed before verifier." },
+            failure: { message: errMsg, classHint: "infrastructure_error" as FailureClass }
+          };
+        }
 
-      if (!succeeded) {
+        const body = parseOpenAiResponse(rawBody, model);
+        if (body.error) {
+          const errMsg = body.error.message ?? "OpenAI-compatible response contained an error";
+          return {
+            status: "failed",
+            summary: `${model} API error: ${errMsg}`,
+            usage: normalizeUsage({ actualUsd: 0, tokensIn: 0, tokensOut: 0, provenance: "unavailable" }),
+            verification: { passed: false, summary: "API response failed before verifier." },
+            failure: { message: errMsg, classHint: "infrastructure_error" as FailureClass }
+          };
+        }
+        responseText = body.choices?.[0]?.message.content ?? "";
+        if (body.usage) {
+          const providerPromptTokens = body.usage.prompt_tokens;
+          const providerCompletionTokens = body.usage.completion_tokens;
+          usageWasFullyProviderReported =
+            providerPromptTokens !== undefined && providerCompletionTokens !== undefined;
+          tokensIn = providerPromptTokens ?? tokensIn;
+          tokensOut = providerCompletionTokens ?? Math.ceil(responseText.length / CHARS_PER_TOKEN);
+        } else {
+          tokensOut = Math.ceil(responseText.length / CHARS_PER_TOKEN);
+        }
+      } catch (error: unknown) {
+        const isAbort = error instanceof Error && error.name === "AbortError";
+        if (request.signal?.aborted && !timedOut) return cancelledResult();
+        const message = isAbort
+          ? `${model} request timed out after ${timeoutMs}ms`
+          : error instanceof Error
+            ? error.message
+            : String(error);
+        const invalidResponse = message.startsWith("OPENAI_RESPONSE_");
         return {
           status: "failed",
-          summary: `${model} API error after ${MAX_RETRIES} attempts: ${lastError}`,
+          summary: message,
           usage: normalizeUsage({ actualUsd: 0, tokensIn: 0, tokensOut: 0, provenance: "unavailable" }),
-          verification: { passed: false, summary: "API call failed after retries." },
-          failure: { message: lastError, classHint: "infrastructure_error" as FailureClass }
+          verification: {
+            passed: false,
+            summary: isAbort
+              ? "Request timed out before verifier execution."
+              : invalidResponse
+                ? "Invalid provider response before verifier execution."
+                : "Network or response-stream error before verifier execution."
+          },
+          failure: { message, classHint: "infrastructure_error" as FailureClass }
         };
+      } finally {
+        clearTimeout(timer);
+        request.signal?.removeEventListener("abort", abortFromParent);
       }
 
       if (!responseText.trim()) {
@@ -690,6 +796,7 @@ export function createOpenAiCompatibleAdapter(
             usageWasFullyProviderReported,
             modelSource,
             billingMode,
+            authPosture,
             configuredPricePerMTokenUsd
           }),
           verification: { passed: false, summary: "Empty response — nothing to verify." },
@@ -697,14 +804,16 @@ export function createOpenAiCompatibleAdapter(
         };
       }
 
+      let rollbackWorkspaceEdits: (() => Promise<void>) | undefined;
       if (governedCodingRun && mutationMode === "edit") {
         try {
-          await applyWorkspaceEdits({
+          const application = await applyWorkspaceEdits({
             workingDirectory,
             responseText,
             allowedPaths: request.context.allowedPaths,
             deniedPaths: request.context.deniedPaths
           });
+          rollbackWorkspaceEdits = application.rollback;
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           return {
@@ -717,6 +826,7 @@ export function createOpenAiCompatibleAdapter(
               usageWasFullyProviderReported,
               modelSource,
               billingMode,
+              authPosture,
               configuredPricePerMTokenUsd
             }),
             verification: { passed: false, summary: "Workspace edit protocol failed before verifier execution." },
@@ -744,6 +854,31 @@ export function createOpenAiCompatibleAdapter(
         request.signal
       );
 
+      const verificationConfigured = verification.binding.commands.length > 0;
+      if (verificationConfigured && !verification.passed && rollbackWorkspaceEdits) {
+        try {
+          await rollbackWorkspaceEdits();
+        } catch (error) {
+          const rollbackMessage = error instanceof Error ? error.message : String(error);
+          return {
+            status: "failed",
+            summary: `${model} verifier failed and workspace rollback failed: ${rollbackMessage}`,
+            usage: normalizeOpenAiCompatibleUsage({
+              model,
+              tokensIn,
+              tokensOut,
+              usageWasFullyProviderReported,
+              modelSource,
+              billingMode,
+              authPosture,
+              configuredPricePerMTokenUsd
+            }),
+            verification,
+            failure: { message: `WORKSPACE_EDIT_ROLLBACK_FAILED: ${rollbackMessage}` }
+          };
+        }
+      }
+
       const execution = {
         changedFiles: hasVerificationSteps
           ? (await readGitChangedFiles(workingDirectory, 5_000)).filter(
@@ -751,7 +886,6 @@ export function createOpenAiCompatibleAdapter(
             )
           : []
       };
-      const verificationConfigured = verification.binding.commands.length > 0;
 
       return {
         status: verification.passed || !verificationConfigured ? "completed" : "failed",
@@ -767,6 +901,7 @@ export function createOpenAiCompatibleAdapter(
           usageWasFullyProviderReported,
           modelSource,
           billingMode,
+          authPosture,
           configuredPricePerMTokenUsd
         }),
         verification,

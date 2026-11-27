@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [1.0.0]
+
+### Added
+- Governed runs can warn and let an in-flight attempt wrap up at an optional soft time limit. No further attempts start after that limit, and the hard wall-clock cap still bounds execution.
+
+### Changed
+- Provider selection binds governed runs to a concrete model and validates any explicitly approved fallback before it runs.
+- CLI and MCP readiness explain which provider, model, workspace, and pricing data are available before a run starts.
+
+### Fixed
+- Codex can verify the model from the exact execution session when the completion event omits it.
+- Rejected provider settlements preserve observed token usage and distinguish known costs from estimates.
+
 ## [0.10.0] - 2026-11-18
 
 ### Added

@@ -32,6 +32,7 @@ const EXIT_PRECEDENCE: readonly ExitKind[] = [
   "budget_cap",
   "turn_cap",
   "goal_met",
+  "soft_wall_clock",
   "error_threshold",
   "no_progress"
 ];
@@ -58,6 +59,8 @@ export interface ExitPolicyOverrides {
   externalEvent?: Partial<ExitPolicyV1["externalEvent"]>;
 }
 
+export const DEFAULT_WALL_CLOCK_LIMIT_MS = 30 * 60 * 1000;
+
 export function createDefaultExitPolicy(
   budget: LoopBudget,
   overrides: ExitPolicyOverrides = {}
@@ -70,7 +73,10 @@ export function createDefaultExitPolicy(
       maxUsd: budget.maxUsd,
       ...(budget.maxTokens !== undefined ? { maxTokens: budget.maxTokens } : {})
     },
-    wallClock: { maxElapsedMs: 30 * 60 * 1000 },
+    wallClock: {
+      maxElapsedMs: budget.maxWallClockMs ?? DEFAULT_WALL_CLOCK_LIMIT_MS,
+      ...(budget.softTimeLimitMs !== undefined ? { softElapsedMs: budget.softTimeLimitMs } : {})
+    },
     progress: { windowSize: 3, unchangedStateLimit: 3 },
     errors: { maxConsecutive: 3 },
     humanInterrupt: { enabled: true },
@@ -91,6 +97,17 @@ export function createDefaultExitPolicy(
   };
 }
 
+export function validateWallClockBudget(budget: Pick<LoopBudget, "maxWallClockMs" | "softTimeLimitMs">): void {
+  const hard = budget.maxWallClockMs ?? DEFAULT_WALL_CLOCK_LIMIT_MS;
+  if (!Number.isSafeInteger(hard) || hard <= 0) {
+    throw new RangeError("maxWallClockMs must be a positive whole number");
+  }
+  const soft = budget.softTimeLimitMs;
+  if (soft !== undefined && (!Number.isSafeInteger(soft) || soft <= 0 || soft >= hard)) {
+    throw new RangeError("softTimeLimitMs must be a positive whole number below the hard wall-clock limit");
+  }
+}
+
 export function validateExitPolicy(policy: ExitPolicyV1): void {
   assertFinitePositive("turns.max", policy.turns.max);
   if (policy.budget.zeroSpendAuthority === true) {
@@ -104,6 +121,12 @@ export function validateExitPolicy(policy: ExitPolicyV1): void {
     assertFinitePositive("budget.maxTokens", policy.budget.maxTokens);
   }
   assertFinitePositive("wallClock.maxElapsedMs", policy.wallClock.maxElapsedMs);
+  if (policy.wallClock.softElapsedMs !== undefined) {
+    const soft = policy.wallClock.softElapsedMs;
+    if (!Number.isSafeInteger(soft) || soft <= 0 || soft >= policy.wallClock.maxElapsedMs) {
+      throw new RangeError("softTimeLimitMs must be a positive whole number below the hard wall-clock limit");
+    }
+  }
   assertFinitePositive("progress.windowSize", policy.progress.windowSize);
   assertFinitePositive("progress.unchangedStateLimit", policy.progress.unchangedStateLimit);
   assertFinitePositive("errors.maxConsecutive", policy.errors.maxConsecutive);
@@ -121,6 +144,9 @@ export function validateExitPolicy(policy: ExitPolicyV1): void {
     if (!Number.isFinite(parsed)) {
       throw new RangeError("wallClock.deadlineAt must be an ISO timestamp");
     }
+  }
+  if (policy.wallClock.softDeadlineAt !== undefined && !Number.isFinite(Date.parse(policy.wallClock.softDeadlineAt))) {
+    throw new RangeError("wallClock.softDeadlineAt must be an ISO timestamp");
   }
 }
 
@@ -192,6 +218,15 @@ export function evaluateExitPolicy(
       elapsedMs,
       maxElapsedMs: policy.wallClock.maxElapsedMs,
       deadlineAt: policy.wallClock.deadlineAt
+    });
+  }
+  const advisoryDeadline = Math.min(
+    policy.wallClock.softElapsedMs === undefined ? Infinity : snapshot.runStartedAtMs + policy.wallClock.softElapsedMs,
+    policy.wallClock.softDeadlineAt === undefined ? Infinity : Date.parse(policy.wallClock.softDeadlineAt)
+  );
+  if (snapshot.phase !== "during_attempt" && snapshot.nowMs >= advisoryDeadline) {
+    push("soft_wall_clock", "Advisory wall-clock limit reached. No further attempts will start.", {
+      elapsedMs, advisoryDeadline
     });
   }
 
@@ -299,7 +334,7 @@ export function toLegacyExitDecision(
   if (primary === "error_threshold") {
     return exited("error_threshold", reason, primary, evaluation);
   }
-  if (primary === "wall_clock") {
+  if (primary === "wall_clock" || primary === "soft_wall_clock") {
     return exited("wall_clock", reason, primary, evaluation);
   }
   if (primary === "external_event") {

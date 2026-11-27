@@ -730,6 +730,88 @@ describe("A10 payload contract", () => {
     await close();
   });
 
+  it("preserves mixed attempt-local provider and model authority", async () => {
+    let events: Array<Record<string, unknown>> = [];
+    const { url, close } = await startServer((req, res) => {
+      let raw = "";
+      req.on("data", (chunk) => { raw += String(chunk); });
+      req.on("end", () => {
+        events = (JSON.parse(raw) as { events: Array<Record<string, unknown>> }).events;
+        res.writeHead(202);
+        res.end("{}");
+      });
+    });
+    process.env["MARTIN_TELEMETRY_ENDPOINT"] = url;
+    process.env["MARTIN_API_TOKEN"] = "tok";
+    const loop = makeLoop({
+      attempts: [
+        {
+          attemptId: "att-primary",
+          index: 0,
+          adapterId: "agent-cli:claude",
+          model: "claude-sonnet-4-5",
+          startedAt: "2026-11-19T20:00:00.000Z",
+          completedAt: "2026-11-19T20:01:00.000Z",
+          failureClass: "environment_mismatch",
+        },
+        {
+          attemptId: "att-fallback",
+          index: 1,
+          adapterId: "agent-cli:codex",
+          model: "gpt-6.1-sol",
+          startedAt: "2026-11-19T20:01:01.000Z",
+          completedAt: "2026-11-19T20:02:00.000Z",
+        },
+      ],
+      events: [
+        {
+          eventId: "evt-primary-started",
+          type: "attempt.started",
+          timestamp: "2026-11-19T20:00:00.000Z",
+          lifecycleState: "running",
+          payload: { attemptId: "att-primary", providerId: "claude", model: "claude-sonnet-4-5" },
+        },
+        {
+          eventId: "evt-fallback-started",
+          type: "attempt.started",
+          timestamp: "2026-11-19T20:01:01.000Z",
+          lifecycleState: "running",
+          payload: { attemptId: "att-fallback", providerId: "codex", model: "gpt-6.1-sol" },
+        },
+      ],
+      cost: {
+        actualUsd: 0.04,
+        avoidedUsd: 0,
+        tokensIn: 100,
+        tokensOut: 50,
+        providerSettlement: {
+          providerId: "codex",
+          model: "gpt-6.1-sol",
+          source: "codex_jsonl",
+          inputTokens: 100,
+          outputTokens: 50,
+          rawUsageAvailable: true,
+          settledAt: "2026-11-19T20:02:00.000Z",
+        },
+      },
+    } as never);
+
+    await syncLoopToHosted(loop, { runtimeVersion: "0.1.0" });
+    const primary = events.find((event) => event["attemptId"] === "att-primary");
+    const fallback = events.find((event) => event["attemptId"] === "att-fallback");
+    expect(primary?.["payload"]).toMatchObject({
+      adapterId: "agent-cli:claude",
+      providerId: "claude",
+      model: "claude-sonnet-4-5",
+    });
+    expect(fallback?.["payload"]).toMatchObject({
+      adapterId: "agent-cli:codex",
+      providerId: "codex",
+      model: "gpt-6.1-sol",
+    });
+    await close();
+  });
+
   it("attempt.failed event emitted for a failed attempt", async () => {
     let events: unknown[] = [];
     const { url, close } = await startServer((req, res) => {

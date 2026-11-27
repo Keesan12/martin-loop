@@ -63,13 +63,28 @@ const PATH_ALLOWLIST = [
   /^docs\/internal\//,
 ];
 
+// Private governance and qualification evidence is intentionally excluded from
+// promotion. Keep scanning these paths in the public repository so an accidental
+// projection still fails closed.
+const PRIVATE_ONLY_PATH_ALLOWLIST = [
+  /^\.planning\//,
+  /^\.release\//,
+];
+
 export function normalizeRelativePath(value) {
   return value.replaceAll("\\", "/").replace(/^\.\//, "");
 }
 
-export function shouldScanPath(relativePath) {
+export function shouldScanPath(relativePath, options = {}) {
   const normalized = normalizeRelativePath(relativePath);
   if (!isTextPath(normalized)) {
+    return false;
+  }
+
+  if (
+    options.publicDistribution !== true
+    && PRIVATE_ONLY_PATH_ALLOWLIST.some((rule) => rule.test(normalized))
+  ) {
     return false;
   }
 
@@ -146,8 +161,9 @@ export function collectTrackedFiles(rootDir = ROOT_DIR) {
 export async function runPublicPortabilityGuard(options = {}) {
   const rootDir = options.rootDir ?? ROOT_DIR;
   const trackedFiles = options.files ?? collectTrackedFiles(rootDir);
-  const scannedFiles = trackedFiles.filter((file) => shouldScanPath(file));
-  const identityFiles = isPublicDistributionRepository(rootDir)
+  const publicDistribution = isPublicDistributionRepository(rootDir);
+  const scannedFiles = trackedFiles.filter((file) => shouldScanPath(file, { publicDistribution }));
+  const identityFiles = publicDistribution
     ? trackedFiles.filter((file) => isTextPath(normalizeRelativePath(file)))
     : [];
   const scannedFileSet = new Set(scannedFiles);

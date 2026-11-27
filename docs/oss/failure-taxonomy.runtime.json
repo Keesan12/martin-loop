@@ -4,7 +4,7 @@
   "sourceProvenance": {
     "file": "packages/contracts/src/index.ts",
     "symbol": "FAILURE_CLASSES",
-    "fileSha256": "a6bf2689082172e09106e6bdcf066dbc04f96a572f98687a700294376b660fd3"
+    "fileSha256": "32725f368337262f6d3bc6a473030c6e86a46125bbdfa31c422c0b590b9017f4"
   },
   "canonicalClassCount": 13,
   "failureClasses": [

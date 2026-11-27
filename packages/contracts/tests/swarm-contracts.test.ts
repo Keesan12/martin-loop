@@ -736,6 +736,7 @@ describe("swarm records and events", () => {
       "GLOBAL_VERIFIER_PASSED",
       "GLOBAL_VERIFIER_FAILED",
       "SWARM_CANCEL_REQUESTED",
+      "SOFT_LIMIT_WARNING",
       "SWARM_STOPPED",
       "SWARM_NEEDS_REVIEW",
       "SWARM_VERIFIED"

@@ -172,44 +172,23 @@ test("rejects stale pinned package versions on active onboarding surfaces", () =
   });
 });
 
-test("accepts an explicitly labeled live standalone MCP baseline that matches the version ledger", () => {
+test("accepts a dynamic published-version lookup", () => {
   const result = evaluateOnboardingDocument({
     relativePath: "docs/oss/MCP-FOR-AI-AGENTS.md",
-    contents: "`@martinloop/mcp@0.8.10` is the live public standalone MCP baseline for MartinLoop.",
-    currentRootVersion: "0.9.0",
-    currentMcpVersion: "0.9.0",
-    liveMcpVersion: "0.8.10",
+    contents: "Use `npm view @martinloop/mcp version` to check the current published MCP version.",
+    currentRootVersion: "1.0.0",
+    currentMcpVersion: "1.0.0",
   });
 
   assert.deepEqual(result, { ok: true, violations: [] });
 });
 
-test("rejects an explicitly labeled live standalone MCP baseline that disagrees with the version ledger", () => {
-  const result = evaluateOnboardingDocument({
-    relativePath: "docs/oss/MCP-FOR-AI-AGENTS.md",
-    contents: "`@martinloop/mcp@0.8.9` is the live public standalone MCP baseline for MartinLoop.",
-    currentRootVersion: "0.9.0",
-    currentMcpVersion: "0.9.0",
-    liveMcpVersion: "0.8.10",
-  });
-
-  assert.deepEqual(result, {
-    ok: false,
-    violations: [{
-      relativePath: "docs/oss/MCP-FOR-AI-AGENTS.md",
-      line: 1,
-      reason: "stale live MCP baseline 0.8.9; version ledger live baseline is 0.8.10",
-    }],
-  });
-});
-
-test("does not treat an executable MCP pin comment as a live-baseline declaration", () => {
+test("rejects stale MCP executable pins despite a live-baseline comment", () => {
   const result = evaluateOnboardingDocument({
     relativePath: "docs/oss/MCP-FOR-AI-AGENTS.md",
     contents: "npx -y @martinloop/mcp@0.8.10 # live public standalone MCP baseline",
     currentRootVersion: "0.9.0",
     currentMcpVersion: "0.9.0",
-    liveMcpVersion: "0.8.10",
   });
 
   assert.deepEqual(result, {
@@ -222,18 +201,21 @@ test("does not treat an executable MCP pin comment as a live-baseline declaratio
   });
 });
 
-test("does not exempt a second stale pin on a valid live-baseline declaration line", () => {
+test("rejects all stale pins on a purported live-baseline declaration line", () => {
   const result = evaluateOnboardingDocument({
     relativePath: "docs/oss/MCP-FOR-AI-AGENTS.md",
     contents: "`@martinloop/mcp@0.8.10` is the live public standalone MCP baseline; do not install `@martinloop/mcp@0.8.9`.",
     currentRootVersion: "0.9.0",
     currentMcpVersion: "0.9.0",
-    liveMcpVersion: "0.8.10",
   });
 
   assert.deepEqual(result, {
     ok: false,
     violations: [{
+      relativePath: "docs/oss/MCP-FOR-AI-AGENTS.md",
+      line: 1,
+      reason: 'stale package version "@martinloop/mcp@0.8.10"; current package version is 0.9.0',
+    }, {
       relativePath: "docs/oss/MCP-FOR-AI-AGENTS.md",
       line: 1,
       reason: 'stale package version "@martinloop/mcp@0.8.9"; current package version is 0.9.0',

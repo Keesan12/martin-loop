@@ -13,6 +13,7 @@ export type LedgerEventKind =
   | "grounding.violations_found"
   | "safety.violations_found"
   | "budget.settled"
+  | "soft_limit_warning"
   | "attempt.kept"
   | "attempt.discarded"
   | "run.exited"

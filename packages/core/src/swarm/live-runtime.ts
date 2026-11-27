@@ -26,6 +26,9 @@ import {
   type RunMartinResult
 } from "../index.js";
 import { redactSecretsFromText } from "../leash.js";
+import { DEFAULT_WALL_CLOCK_LIMIT_MS } from "../exits.js";
+import { readRejectedProviderUsage } from "../provider-rejection-accounting.js";
+import { scheduleWallClock } from "../wall-clock.js";
 import {
   createFileRunStore,
   runDir,
@@ -530,18 +533,21 @@ export async function runLiveSwarmWithDependencies(
   const providerBindingMode: SwarmProviderBindingMode = input.providerBindingMode ?? "strict";
   const now = input.now ?? (() => new Date().toISOString());
   const nowMs = input.nowMs ?? (() => Date.now());
-  const parentDeadlineMs = nowMs() + input.plan.parentContract.maxWallClockMs;
+  const parentStartedMs = nowMs();
+  const parentBudget = input.plan.parentContract.budget;
+  const parentDeadlineMs = parentStartedMs + Math.min(input.plan.parentContract.maxWallClockMs, parentBudget.maxWallClockMs ?? Infinity);
+  const parentSoftDeadlineMs = parentBudget.softTimeLimitMs === undefined
+    ? undefined : parentStartedMs + parentBudget.softTimeLimitMs;
   const createId = input.createId ?? ((prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 10)}`);
   const parentController = new AbortController();
   const cancellationMonitorController = new AbortController();
   let schedulingOpen = true;
-  const parentDeadlineTimer = setTimeout(() => {
+  const stopParentDeadlineTimer = scheduleWallClock(parentDeadlineMs, nowMs, () => {
     schedulingOpen = false;
     if (!parentController.signal.aborted) {
       parentController.abort(new Error("Parent swarm wall-clock deadline reached."));
     }
-  }, Math.min(input.plan.parentContract.maxWallClockMs, 2_147_483_647));
-  parentDeadlineTimer.unref();
+  });
   const abortParent = (): void => {
     schedulingOpen = false;
     if (!parentController.signal.aborted) parentController.abort(input.signal?.reason);
@@ -606,6 +612,22 @@ export async function runLiveSwarmWithDependencies(
   const reassignmentCounts = new Map<string, number>();
   const preboundAttemptIds = new Map<string, string>();
   const observedUsageByLease = new Map<string, { usd: number; tokens: number }>();
+  let parentSoftWarning: Promise<void> | undefined;
+  let parentSoftWarningFailure: unknown;
+  const observeParentSoftDeadline = (): boolean => {
+    if (parentSoftDeadlineMs === undefined || nowMs() < parentSoftDeadlineMs) return false;
+    schedulingOpen = false;
+    parentSoftWarning ??= appendEvent({
+      idempotencyKey: `${input.plan.planHash}:soft-limit-warning`,
+      type: "SOFT_LIMIT_WARNING",
+      timestamp: now(),
+      payload: { softDeadlineMs: parentSoftDeadlineMs, hardDeadlineMs: parentDeadlineMs }
+    }).catch((error: unknown) => { parentSoftWarningFailure = error; });
+    return true;
+  };
+  const stopParentSoftTimer = parentSoftDeadlineMs === undefined ? undefined : scheduleWallClock(parentSoftDeadlineMs, nowMs, () => {
+    if (active.size > 0) observeParentSoftDeadline();
+  });
 
   try {
     await appendEvent({
@@ -621,6 +643,9 @@ export async function runLiveSwarmWithDependencies(
 
     while (true) {
       await observeDurableCancellation();
+      const softDeadlineReached = observeParentSoftDeadline();
+      await parentSoftWarning;
+      if (parentSoftWarningFailure !== undefined) throw parentSoftWarningFailure;
       if (nowMs() >= parentDeadlineMs && !parentController.signal.aborted) {
         parentController.abort(new Error("Parent swarm wall-clock deadline reached."));
       }
@@ -630,7 +655,8 @@ export async function runLiveSwarmWithDependencies(
           record = withTerminal(record, "needs_review", safeError(cancellationMonitorFailure), now());
         }
         const needsReview = record.outcome.state === "needs_review";
-        const terminalReason = needsReview ? record.outcome.reason : "parent_cancelled";
+        const deadlineReached = nowMs() >= parentDeadlineMs;
+        const terminalReason = needsReview ? record.outcome.reason : deadlineReached ? "parent_wall_clock" : "parent_cancelled";
         await appendEvent({
           idempotencyKey: `${input.plan.planHash}:${needsReview ? "needs-review" : "stopped"}:cancelled`,
           type: needsReview ? "SWARM_NEEDS_REVIEW" : "SWARM_STOPPED",
@@ -639,7 +665,8 @@ export async function runLiveSwarmWithDependencies(
         });
         return finalizeTerminalResult(needsReview
           ? { record, outcome: record.outcome, candidateIds: Object.freeze([...candidateIds]) }
-          : terminalResult(record, candidateIds, "stopped", "Parent cancelled the live swarm."));
+          : terminalResult(record, candidateIds, "stopped", deadlineReached
+              ? "Swarm hard wall-clock limit reached." : "Parent cancelled the live swarm."));
       }
 
       if (schedulingOpen) {
@@ -655,7 +682,7 @@ export async function runLiveSwarmWithDependencies(
         } else {
           for (const task of batch.tasks) {
             await observeDurableCancellation();
-            if (!schedulingOpen || parentController.signal.aborted) break;
+            if (!schedulingOpen || parentController.signal.aborted || observeParentSoftDeadline()) break;
             const launched = await launchTask(task);
             if (!launched) {
               schedulingOpen = false;
@@ -670,6 +697,11 @@ export async function runLiveSwarmWithDependencies(
       if (active.size === 0) {
         const incompleteRequired = record.tasks.filter((task) => task.required && task.status !== "accepted");
         if (incompleteRequired.length > 0) {
+          if ((softDeadlineReached || observeParentSoftDeadline()) && record.outcome.state === "running") {
+            await parentSoftWarning;
+            if (parentSoftWarningFailure !== undefined) throw parentSoftWarningFailure;
+            return finalizeTerminalResult(terminalResult(record, candidateIds, "stopped", "Swarm advisory wall-clock limit reached."));
+          }
           if (record.outcome.state === "running") {
             record = withTerminal(record, "needs_review", "Required tasks could not reach accepted state.", now());
           }
@@ -747,7 +779,9 @@ export async function runLiveSwarmWithDependencies(
     return finalizeTerminalResult(result);
   } finally {
     schedulingOpen = false;
-    clearTimeout(parentDeadlineTimer);
+    stopParentDeadlineTimer();
+    stopParentSoftTimer?.();
+    await parentSoftWarning;
     input.signal?.removeEventListener("abort", abortParent);
     await closeRemainingAttempts();
     cancellationMonitorController.abort("runtime closed");
@@ -770,7 +804,7 @@ export async function runLiveSwarmWithDependencies(
   }
 
   async function launchTask(task: SwarmTaskNode): Promise<boolean> {
-    if (await observeDurableCancellation()) return false;
+    if (await observeDurableCancellation() || observeParentSoftDeadline()) return false;
     const agent = record.agents.find((candidate) => candidate.agentId === task.assignedAgentId);
     if (!agent) {
       record = withTerminal(record, "needs_review", `Task ${task.taskId} has no assigned agent.`, now());
@@ -850,8 +884,12 @@ export async function runLiveSwarmWithDependencies(
     }
     let adapter: MartinAdapter;
     try {
-      if (await observeDurableCancellation()) {
-        await cancelPreparedLaunch({ task, agent, childRunId, leaseId, workspace, attemptId });
+      const cancelled = await observeDurableCancellation();
+      if (cancelled || observeParentSoftDeadline()) {
+        await cancelPreparedLaunch(
+          { task, agent, childRunId, leaseId, workspace, attemptId },
+          cancelled ? "parent_cancelled" : "soft_wall_clock"
+        );
         return false;
       }
       const factoryResult = input.adapterFactory({
@@ -901,16 +939,24 @@ export async function runLiveSwarmWithDependencies(
       await failPreparedLaunch({ task, agent, childRunId, leaseId, workspace, attemptId }, error);
       return false;
     }
-    const effectiveWallClockMs = Math.max(
-      1,
-      Math.min(agent.contract.maxWallClockMs, parentDeadlineMs - nowMs()),
+    if (!parentController.signal.aborted && observeParentSoftDeadline()) {
+      parentController.signal.removeEventListener("abort", relayAbort);
+      await cancelPreparedLaunch({ task, agent, childRunId, leaseId, workspace, attemptId }, "soft_wall_clock");
+      return false;
+    }
+    const childStartedMs = nowMs();
+    const childHardLimitMs = Math.min(agent.contract.maxWallClockMs, budget.maxWallClockMs ?? DEFAULT_WALL_CLOCK_LIMIT_MS);
+    const childDeadlineMs = Math.min(childStartedMs + childHardLimitMs, parentDeadlineMs);
+    const effectiveWallClockMs = Math.max(1, childDeadlineMs - childStartedMs);
+    const childAdvisoryDeadlineMs = Math.min(
+      parentSoftDeadlineMs ?? Infinity,
+      budget.softTimeLimitMs === undefined ? Infinity : childStartedMs + budget.softTimeLimitMs
     );
-    const childDeadlineTimer = setTimeout(() => {
+    const stopChildDeadlineTimer = scheduleWallClock(childDeadlineMs, nowMs, () => {
       if (!controller.signal.aborted) {
         controller.abort(new Error("Child swarm wall-clock deadline reached."));
       }
-    }, Math.min(effectiveWallClockMs, 2_147_483_647));
-    childDeadlineTimer.unref();
+    });
     const observedUsageGovernor: MartinObservedUsageGovernor = (observation) => {
       const currentLease = record.budgetLedger.leases.find((lease) => lease.leaseId === leaseId);
       const prior = observedUsageByLease.get(leaseId) ?? { usd: 0, tokens: 0 };
@@ -978,7 +1024,17 @@ export async function runLiveSwarmWithDependencies(
         providerExecutionTimeoutMs: effectiveWallClockMs,
         mutationMode: task.mutationMode === "write" ? "edit" as const : "read_only" as const
       },
-      budget,
+      budget: {
+        maxUsd: budget.maxUsd,
+        softLimitUsd: budget.softLimitUsd,
+        maxIterations: budget.maxIterations,
+        ...(budget.maxTokens !== undefined ? { maxTokens: budget.maxTokens } : {})
+      },
+      exitPolicy: { wallClock: {
+        maxElapsedMs: childHardLimitMs,
+        deadlineAt: new Date(childDeadlineMs).toISOString(),
+        ...(childAdvisoryDeadlineMs < childDeadlineMs ? { softDeadlineAt: new Date(childAdvisoryDeadlineMs).toISOString() } : {})
+      } },
       ...(providerBindingMode === "provider_free_deterministic"
         ? { spendAuthority: "provider_free_zero_spend" as const, forceWorkspaceMutationTracking: true }
         : {}),
@@ -1036,7 +1092,7 @@ export async function runLiveSwarmWithDependencies(
         (result) => ({ active: activeAttempt, result }),
         (error: unknown) => ({ active: activeAttempt, error })
       ).finally(() => {
-        clearTimeout(childDeadlineTimer);
+        stopChildDeadlineTimer();
         parentController.signal.removeEventListener("abort", relayAbort);
       })
     });
@@ -1086,7 +1142,8 @@ export async function runLiveSwarmWithDependencies(
   }
 
   async function cancelPreparedLaunch(
-    attempt: Pick<ActiveAttempt, "task" | "agent" | "childRunId" | "leaseId" | "workspace" | "attemptId">
+    attempt: Pick<ActiveAttempt, "task" | "agent" | "childRunId" | "leaseId" | "workspace" | "attemptId">,
+    reason: "parent_cancelled" | "soft_wall_clock"
   ): Promise<void> {
     const released = releaseSwarmBudgetLease(record.budgetLedger, attempt.leaseId);
     if (released.ok) record = { ...record, budgetLedger: released.ledger, updatedAt: now() };
@@ -1108,7 +1165,7 @@ export async function runLiveSwarmWithDependencies(
     await appendEvent(childTerminalEvent(
       attempt,
       clean ? "CHILD_STOPPED" : "CHILD_NEEDS_REVIEW",
-      clean ? "parent_cancelled" : "cleanup_pending",
+      clean ? reason : "cleanup_pending",
       now(),
       undefined,
       budgetEventDetails(attempt)
@@ -1129,8 +1186,21 @@ export async function runLiveSwarmWithDependencies(
     const { active: attempt } = completed;
     const closurePersisted = await persistProcessClosure(attempt);
     if (completed.error || !completed.result) {
-      const released = releaseSwarmBudgetLease(record.budgetLedger, attempt.leaseId);
-      if (released.ok) record = { ...record, budgetLedger: released.ledger };
+      const rejected = readRejectedProviderUsage(completed.error);
+      const observed = observedUsageByLease.get(attempt.leaseId);
+      observedUsageByLease.delete(attempt.leaseId);
+      const actualUsd = rejected?.usd ?? observed?.usd ?? 0;
+      const actualTokens = Math.max(rejected?.tokens ?? 0, observed?.tokens ?? 0);
+      const hasUsage = rejected !== undefined || actualTokens > 0 || (observed?.usd ?? 0) > 0;
+      const provenance = rejected?.usd === undefined && (observed?.usd ?? 0) > 0 ? "estimated" : "unavailable";
+      const accounting = hasUsage
+        ? settleSwarmBudgetLease(record.budgetLedger, {
+            leaseId: attempt.leaseId, actualUsd, actualTokens, provenance
+          })
+        : releaseSwarmBudgetLease(record.budgetLedger, attempt.leaseId);
+      if (accounting.ok || accounting.errors.some((error) => error.code === "LEASE_OVERSPEND")) {
+        record = { ...record, budgetLedger: accounting.ledger };
+      }
       const cleanup = closurePersisted
         ? await cleanupWorkspace(attempt.workspace, true)
         : await preserveWorkspaceForMissingEvidence(attempt.workspace);
@@ -1140,10 +1210,17 @@ export async function runLiveSwarmWithDependencies(
         "CHILD_NEEDS_REVIEW",
         !closurePersisted
           ? "process_closure_evidence_not_persisted"
-          : cleanup.state === "completed" ? "child_crash" : "cleanup_pending",
+          : cleanup.state === "completed"
+            ? rejected ? "provider_settlement_binding_rejected" : "child_crash"
+            : "cleanup_pending",
         now(),
         "environment_mismatch",
-        budgetEventDetails(attempt)
+        {
+          ...budgetEventDetails(attempt),
+          ...(hasUsage ? { actualTokens } : {}),
+          ...(rejected?.usd === undefined ? {} : { actualUsd }),
+          ...(observed?.usd === undefined ? {} : { observedEstimatedUsd: observed.usd })
+        }
       ));
       record = withTerminal(
         record,
@@ -1154,10 +1231,14 @@ export async function runLiveSwarmWithDependencies(
       return true;
     }
 
-    const actualUsd = completed.result.loop.cost.actualUsd;
-    const actualTokens = completed.result.loop.cost.tokensIn + completed.result.loop.cost.tokensOut;
     const childPassed = completed.result.loop.status === "completed"
       && completed.result.decision.lifecycleState === "completed";
+    const childCost = completed.result.loop.cost;
+    const observed = observedUsageByLease.get(attempt.leaseId);
+    const estimatedFailedUsd = !childPassed && childCost.provenance === "unavailable" && childCost.actualUsd === 0
+      ? observed?.usd ?? 0 : 0;
+    const actualUsd = estimatedFailedUsd || childCost.actualUsd;
+    const actualTokens = childCost.tokensIn + childCost.tokensOut;
     const withinExplicitChildCap = (
       (attempt.agent.contract.hardMaxUsd === undefined || actualUsd <= attempt.agent.contract.hardMaxUsd)
       && (attempt.agent.contract.hardMaxTokens === undefined || actualTokens <= attempt.agent.contract.hardMaxTokens)
@@ -1184,7 +1265,7 @@ export async function runLiveSwarmWithDependencies(
       leaseId: attempt.leaseId,
       actualUsd,
       actualTokens,
-      provenance: completed.result.loop.cost.provenance
+      provenance: estimatedFailedUsd > 0 ? "estimated" : childCost.provenance
     });
     observedUsageByLease.delete(attempt.leaseId);
     if (!settlement.ok) {
@@ -1285,6 +1366,7 @@ export async function runLiveSwarmWithDependencies(
     }
 
     if (!childPassed) {
+      const advisoryStop = completed.result.decision.reasonCode === "soft_wall_clock";
       const cleanup = await cleanupWorkspace(attempt.workspace, true);
       if (cleanup.state === "completed") {
         await persistCompletion(attempt, completed.result, "settled", cleanup);
@@ -1293,12 +1375,13 @@ export async function runLiveSwarmWithDependencies(
       await appendEvent(childTerminalEvent(
         attempt,
         "CHILD_STOPPED",
-        "child_terminal_failure",
+        advisoryStop ? "soft_wall_clock" : "child_terminal_failure",
         now(),
         childFailureClass(completed.result),
         budgetEventDetails(attempt, actualUsd, actualTokens)
       ));
       if (cleanup.state !== "completed") return true;
+      if (advisoryStop || observeParentSoftDeadline()) return false;
       return await reassignTask(
         attempt.task.taskId,
         attempt.agent.agentId,

@@ -116,6 +116,52 @@ describe("runLiveSwarm", () => {
     expect(result.outcome.state).toBe("needs_review");
   });
 
+  it("settles a running child at the parent soft deadline without launching its dependent", async () => {
+    let elapsed = 0;
+    const base = createPlan([task("task-a"), task("task-b", ["task-a"])]);
+    const plan = createSwarmLivePlan({
+      ...base,
+      parentContract: { ...base.parentContract, budget: { ...base.parentContract.budget, softTimeLimitMs: 500 } }
+    });
+    const fixture = createFixture(plan);
+    const execute = vi.fn(async (request: MartinAdapterRequest) => {
+      expect(request.wrapUpSignal).toBeDefined();
+      expect(request.signal?.aborted).toBe(false);
+      elapsed = 550;
+      return passedAdapterResult(request);
+    });
+    fixture.input.adapterFactory = ({ engine }) => ({ ...passAdapter(engine.model), execute });
+    const result = await runLiveSwarmWithDependencies({ ...fixture.input, nowMs: () => elapsed }, fixture.dependencies);
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(result.record.tasks.map((entry) => entry.status)).toEqual(["accepted", "queued"]);
+    expect(result.record.events.filter((entry) => entry.type === "SOFT_LIMIT_WARNING")).toHaveLength(1);
+    expect(result.outcome).toMatchObject({ state: "stopped", reason: "Swarm advisory wall-clock limit reached." });
+    expect(result.record.budgetLedger.leases[0]?.status).toBe("settled");
+  });
+
+  it("releases a prepared child without calling its adapter when the parent soft deadline passes", async () => {
+    let elapsed = 0;
+    const base = createPlan([task("task-a")]);
+    const plan = createSwarmLivePlan({
+      ...base,
+      parentContract: { ...base.parentContract, budget: { ...base.parentContract.budget, softTimeLimitMs: 500 } }
+    });
+    const fixture = createFixture(plan);
+    const createWorkspace = fixture.input.workspaceManager.createWorkspace.bind(fixture.input.workspaceManager);
+    fixture.input.workspaceManager.createWorkspace = async (options: unknown) => {
+      const workspace = await createWorkspace(options);
+      elapsed = 550;
+      return workspace;
+    };
+    const adapterFactory = vi.spyOn(fixture.input, "adapterFactory");
+    const result = await runLiveSwarmWithDependencies({ ...fixture.input, nowMs: () => elapsed }, fixture.dependencies);
+    expect(adapterFactory).not.toHaveBeenCalled();
+    expect(result.record.budgetLedger.leases[0]?.status).toBe("released");
+    expect(result.record.events).toContainEqual(expect.objectContaining({
+      type: "CHILD_STOPPED", payload: expect.objectContaining({ reason: "soft_wall_clock" })
+    }));
+  });
+
   it("preserves read-only authority and child network, approval, and wall-clock limits", async () => {
     const base = createPlan([task("task-a")]);
     const plan = createSwarmLivePlan({
@@ -221,7 +267,7 @@ describe("runLiveSwarm", () => {
       },
     });
 
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
     try {
       const running = runLiveSwarmWithDependencies(fixture.input, fixture.dependencies);
       await Promise.resolve();
@@ -1091,6 +1137,55 @@ describe("runLiveSwarm", () => {
     expect(fixture.live.events).toEqual(expect.arrayContaining([
       expect.objectContaining({ type: "CHILD_NEEDS_REVIEW", payload: expect.objectContaining({ reason: "child_crash" }) })
     ]));
+  });
+
+  it.each([
+    { label: "priced rejection", model: "gpt-other", usd: 0.04, priceKnown: true, parentUsd: 0.04 },
+    { label: "unpriced rejection", model: "gpt-other", usd: 0, priceKnown: false, parentUsd: 0.06 },
+    { label: "missing model authority", model: undefined, usd: 0, priceKnown: false, parentUsd: 0.06 }
+  ])("retains failed child spend with $label", async ({ model, usd, priceKnown, parentUsd }) => {
+    const fixture = createFixture(createPlan([task("task-a"), task("task-b", ["task-a"])]));
+    fixture.input.adapterFactory = () => ({
+      ...passAdapter("gpt-test"),
+      async execute(request) {
+        if (!priceKnown) {
+          const decision = request.observedUsageGovernor?.({ cumulativeUsd: 0.06, cumulativeTokens: 12, turns: 1, final: true });
+          expect(decision?.action).toBe("continue");
+        }
+        return {
+          status: "failed",
+          summary: "Provider model authority failed.",
+          verification: { passed: false, summary: "Verifier not run." },
+          usage: {
+            actualUsd: usd,
+            tokensIn: 10,
+            tokensOut: 2,
+            provenance: priceKnown ? "calculated" : "unavailable",
+            providerSettlement: {
+              providerId: "codex", ...(model ? { model } : {}), transport: "cli", source: "codex_jsonl",
+              inputTokens: 10, outputTokens: 2, modelSource: model ? "provider_reported" : "unavailable",
+              rawUsageAvailable: true, settledAt: "2026-11-24T21:42:14.132Z"
+            }
+          }
+        };
+      }
+    });
+
+    const result = await runLiveSwarmWithDependencies(fixture.input, fixture.dependencies);
+
+    expect(result.outcome.state).not.toBe("verified");
+    expect(result.record.budgetLedger).toMatchObject({ settledUsd: parentUsd, settledTokens: 12 });
+    expect(result.record.budgetLedger.leases).toEqual([
+      expect.objectContaining({
+        status: "settled",
+        actualUsage: { usd: parentUsd, tokens: 12, provenance: priceKnown ? "unavailable" : "estimated" }
+      })
+    ]);
+    const childRunId = fixture.live.events.find((event) => event.type === "CHILD_STARTED")?.childRunId;
+    expect(childRunId).toEqual(expect.any(String));
+    const child = JSON.parse(await readFile(join(fixture.input.runsRoot, childRunId!, "loop-record.json"), "utf8")) as LoopRecord;
+    expect(child.cost).toMatchObject({ actualUsd: usd, tokensIn: 10, tokensOut: 2, provenance: "unavailable" });
+    expect(result.record.tasks[1]?.status).not.toBe("verified");
   });
 
   it("keeps a rejected write candidate out of parent integration", async () => {

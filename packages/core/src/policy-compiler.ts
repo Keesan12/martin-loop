@@ -6,6 +6,9 @@ import {
   type PolicyProfile,
   type TelemetryDestination
 } from "@martin/contracts";
+import { validateWallClockBudget } from "./exits.js";
+
+type OptionalBudgetField = "maxTokens" | "maxWallClockMs" | "softTimeLimitMs";
 
 export function compileExecutionPolicy(input: ExecutionPolicyCompileInput): ExecutionPolicy {
   const provenance: ExecutionPolicy["provenance"] = [];
@@ -14,8 +17,11 @@ export function compileExecutionPolicy(input: ExecutionPolicyCompileInput): Exec
     maxUsd: resolveBudgetField("maxUsd", input, provenance),
     softLimitUsd: resolveBudgetField("softLimitUsd", input, provenance),
     maxIterations: resolveBudgetField("maxIterations", input, provenance),
-    ...resolveOptionalTokenBudget(input, provenance)
+    ...resolveOptionalBudgetField("maxTokens", input, provenance),
+    ...resolveOptionalBudgetField("maxWallClockMs", input, provenance),
+    ...resolveOptionalBudgetField("softTimeLimitMs", input, provenance)
   };
+  validateWallClockBudget(budget);
 
   if (budget.softLimitUsd >= budget.maxUsd) {
     budget.softLimitUsd = Math.round(budget.maxUsd * 0.75 * 100) / 100;
@@ -118,28 +124,29 @@ export function compileExecutionPolicy(input: ExecutionPolicyCompileInput): Exec
   });
 }
 
-function resolveOptionalTokenBudget(
+function resolveOptionalBudgetField(
+  field: OptionalBudgetField,
   input: ExecutionPolicyCompileInput,
   provenance: ExecutionPolicy["provenance"]
-): Pick<ExecutionPolicy["budget"], "maxTokens"> {
-  if (input.request.budgetOverrides?.maxTokens && input.request.budget.maxTokens !== undefined) {
-    provenance.push({ field: "budget.maxTokens", source: "request", value: String(input.request.budget.maxTokens) });
-    return { maxTokens: input.request.budget.maxTokens };
+): Pick<ExecutionPolicy["budget"], OptionalBudgetField> {
+  if (input.request.budgetOverrides?.[field] && input.request.budget[field] !== undefined) {
+    provenance.push({ field: `budget.${field}`, source: "request", value: String(input.request.budget[field]) });
+    return { [field]: input.request.budget[field] };
   }
-  const configValue = input.config?.budget?.maxTokens;
+  const configValue = input.config?.budget?.[field];
   if (typeof configValue === "number" && Number.isFinite(configValue)) {
-    provenance.push({ field: "budget.maxTokens", source: "config", value: String(configValue) });
-    return { maxTokens: configValue };
+    provenance.push({ field: `budget.${field}`, source: "config", value: String(configValue) });
+    return { [field]: configValue };
   }
-  if (input.defaults.budget.maxTokens !== undefined) {
-    provenance.push({ field: "budget.maxTokens", source: "default", value: String(input.defaults.budget.maxTokens) });
-    return { maxTokens: input.defaults.budget.maxTokens };
+  if (input.defaults.budget[field] !== undefined) {
+    provenance.push({ field: `budget.${field}`, source: "default", value: String(input.defaults.budget[field]) });
+    return { [field]: input.defaults.budget[field] };
   }
   return {};
 }
 
 function resolveBudgetField(
-  field: Exclude<keyof ExecutionPolicy["budget"], "maxTokens">,
+  field: Exclude<keyof ExecutionPolicy["budget"], OptionalBudgetField>,
   input: ExecutionPolicyCompileInput,
   provenance: ExecutionPolicy["provenance"]
 ): number {

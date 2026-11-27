@@ -35,12 +35,12 @@ npx -y martin-loop@latest doctor
 For deterministic package-line verification in fresh environments:
 
 ```sh
-npx -y martin-loop@0.10.0 --version
+npx -y martin-loop@1.0.0 --version
 npm view martin-loop version
 npm view @martinloop/mcp version
 ```
 
-If `npx martin-loop --version` differs from npm live, run `npx -y martin-loop@latest --version` or pin `@0.10.0` to avoid local cache drift.
+If `npx martin-loop --version` differs from npm live, run `npx -y martin-loop@latest --version` or pin `@1.0.0` to avoid local cache drift.
 
 ## Run a Governed Task
 
