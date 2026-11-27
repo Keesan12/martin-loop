@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import { mkdirSync, writeFileSync } from "node:fs";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
@@ -427,20 +427,24 @@ describe("capability-driven Codex adapter", () => {
     it.each([
       { scenario: "matching turn context", expected: "completed" },
       { scenario: "matching turn context with default model", expected: "completed", useDefault: true },
+      { scenario: "matching turn context through a workspace alias", expected: "completed", aliasCwd: "same" },
       { scenario: "no bound context", expected: "failed", omitContext: true },
       { scenario: "no bound context with default model", expected: "failed", omitContext: true, useDefault: true },
       { scenario: "conflicting model", expected: "failed", contextModel: "gpt-6.1-astra" },
       { scenario: "terminal and context disagree", expected: "failed", terminalModel: "gpt-6.1-sol", contextModel: "gpt-6.1-astra" },
       { scenario: "stale matching context", expected: "failed", stale: true },
       { scenario: "concurrent child's matching context", expected: "failed", otherCwd: true },
+      { scenario: "sibling workspace alias with a terminal model", expected: "failed", aliasCwd: "sibling", terminalModel: "gpt-6.1-sol" },
+      { scenario: "missing workspace alias with a terminal model", expected: "failed", aliasCwd: "missing", terminalModel: "gpt-6.1-sol" },
       { scenario: "other thread's matching context", expected: "failed", otherThread: true },
       { scenario: "different completed turn", expected: "failed", otherTurn: true },
       { scenario: "ambiguous matching session files", expected: "failed", duplicate: true },
       { scenario: "missing provider usage", expected: "failed", omitUsage: true },
+      { scenario: "workspace alias with missing terminal usage", expected: "failed", aliasCwd: "same", omitUsage: true },
       { scenario: "usage from another execution", expected: "failed", otherUsage: true }
     ])("validates retained Codex exec evidence with $scenario", async ({
       expected, contextModel, terminalModel, omitContext, stale, otherCwd, otherThread,
-      otherTurn, duplicate, omitUsage, otherUsage, useDefault
+      otherTurn, duplicate, omitUsage, otherUsage, useDefault, aliasCwd
     }) => {
       const root = await mkdtemp(join(tmpdir(), "martin-codex-session-fixture-"));
       const home = join(root, "codex-home");
@@ -461,15 +465,24 @@ describe("capability-driven Codex adapter", () => {
       await mkdir(cwd);
       vi.stubEnv("CODEX_HOME", home);
       try {
+        let recordedCwd = otherCwd ? root : cwd;
+        if (aliasCwd) {
+          const target = aliasCwd === "sibling" ? join(root, "sibling") : cwd;
+          if (aliasCwd === "sibling") await mkdir(target);
+          recordedCwd = join(root, "workspace-alias");
+          if (aliasCwd !== "missing") {
+            await symlink(target, recordedCwd, process.platform === "win32" ? "junction" : "dir");
+          }
+        }
         const adapter = createCodexCliAdapter({
-          workingDirectory: cwd,
+          workingDirectory: aliasCwd ? await realpath(cwd) : cwd,
           ...(useDefault ? {} : { model: "gpt-6.1-sol" }),
           capabilityProfile: negotiatedProfile({ model: { flag: "--model", scope: "exec" } }),
           autonomyResolution: negotiatedAutonomy(),
           spawnImpl: (...args) => {
             if (calls.length === 0 && !omitContext) {
               writeRetainedCodexSession({
-                home, cwd: otherCwd ? root : cwd, id, turn, contextModel, stale, otherThread,
+                home, cwd: recordedCwd, id, turn, contextModel, stale, otherThread,
                 otherTurn, duplicate, usage: otherUsage ? { ...usage, input_tokens: 147836 } : usage
               });
             }
@@ -491,7 +504,7 @@ describe("capability-driven Codex adapter", () => {
             expect(result.failure?.message).toContain("did not include valid provider usage");
             expect(result.usage.actualUsd).toBeGreaterThan(0);
           }
-          if (omitContext || stale || otherThread || otherCwd || otherUsage) {
+          if (omitContext || stale || otherThread || otherCwd || otherUsage || aliasCwd === "sibling" || aliasCwd === "missing") {
             expect(result.usage.provenance).toBe("unavailable");
             expect(result.usage.providerSettlement?.model).toBeUndefined();
           }

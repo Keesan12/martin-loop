@@ -109,13 +109,22 @@ export async function readCodexSessionEvidence(input: CodexSessionBinding): Prom
     } finally {
       await file.close();
     }
-    return inspectRollout(bytes, input, cwd);
+    return await inspectRollout(bytes, input, cwd);
   } catch (error) {
     return { state: isMissing(error) ? "missing" : "invalid" };
   }
 }
 
-function inspectRollout(bytes: Buffer, input: CodexSessionBinding, boundCwd: string): CodexSessionEvidence {
+async function sameWorkingDirectory(value: unknown, boundCwd: string): Promise<boolean> {
+  if (typeof value !== "string" || !isAbsolute(value)) return false;
+  // Preserve exact lexical matches after the workspace has been cleaned up.
+  if (relative(boundCwd, resolve(value)) === "") return true;
+  // A different spelling must resolve to the exact bound directory.
+  const physical = await realpath(value).catch(() => undefined);
+  return physical !== undefined && relative(boundCwd, physical) === "";
+}
+
+async function inspectRollout(bytes: Buffer, input: CodexSessionBinding, boundCwd: string): Promise<CodexSessionEvidence> {
   const rows = bytes.toString("utf8").split(/\r?\n/u).filter(Boolean).map((line) => asRecord(JSON.parse(line)));
   const evidence = rows.flatMap((row, index) => {
     const payload = asRecord(row?.["payload"]);
@@ -141,12 +150,9 @@ function inspectRollout(bytes: Buffer, input: CodexSessionBinding, boundCwd: str
     const time = typeof value === "string" ? Date.parse(value) : NaN;
     return time >= input.startedAt && time <= input.completedAt;
   };
-  const sameWorkingDirectory = (value: unknown): boolean =>
-    typeof value === "string" && isAbsolute(value) && relative(boundCwd, resolve(value)) === "";
   if (session.payload["id"] !== input.threadId
     || (session.payload["session_id"] !== undefined && session.payload["session_id"] !== input.threadId)
-    || session.payload["source"] !== "exec" || !sameWorkingDirectory(session.payload["cwd"])
-    || !sameWorkingDirectory(turnContext.payload["cwd"])
+    || session.payload["source"] !== "exec"
     || typeof turnId !== "string" || !SESSION_ID.test(turnId)
     || turnContext.payload["turn_id"] !== turnId || turnEnd.payload["turn_id"] !== turnId
     || !(turnStart.index < turnContext.index && turnContext.index < turnEnd.index)
@@ -165,6 +171,9 @@ function inspectRollout(bytes: Buffer, input: CodexSessionBinding, boundCwd: str
     || usage.cached_input_tokens !== input.usage.cached_input_tokens
     || usage.reasoning_output_tokens !== input.usage.reasoning_output_tokens
   )) return { state: "invalid" };
+  for (const cwd of new Set([session.payload["cwd"], turnContext.payload["cwd"]])) {
+    if (!await sameWorkingDirectory(cwd, boundCwd)) return { state: "invalid" };
+  }
   return {
     state: "bound",
     sessionId: input.threadId,
